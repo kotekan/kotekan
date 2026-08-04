@@ -190,6 +190,8 @@ gnss0_combine:
   cpu_affinity:
   - 31
   deep_coherent: true
+  deep_rate_search: true
+  deep_rate_min_q: 10.0
   fft_len: 16384
   in_bufs:
   - gnss0_rec_buf

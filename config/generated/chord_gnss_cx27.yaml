@@ -189,6 +189,8 @@ gnss0_cmb_buf:
 gnss0_combine:
   fft_len: 16384
   deep_coherent: true
+  deep_rate_search: true
+  deep_rate_min_q: 10.0
   cpu_affinity:
   - 31
   in_bufs:
@@ -329,6 +331,8 @@ gnss1_cmb_buf:
 gnss1_combine:
   fft_len: 16384
   deep_coherent: true
+  deep_rate_search: true
+  deep_rate_min_q: 10.0
   cpu_affinity:
   - 57
   in_bufs:

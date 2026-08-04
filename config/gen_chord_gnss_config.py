@@ -287,6 +287,15 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # (2048 hops = 10.4857 periods). Without this the combiner has NO route to
             # coherence_s at all and integrates one 10.5 ms record at a time.
             "deep_coherent": True,
+            # PHASE-RATE SEARCH before that sum (2026-08-04). Measured on sky: the per-record
+            # prompts carry a linear phase ramp beyond the record-rate Nyquist, so the straight
+            # sum recovered 2-5% of the power while the incoherent moments said +10..15 dB per
+            # record -- every ladder rung read the Rayleigh value. Searching the rate and
+            # derotating recovers 65-80%. Gated on peak/median of the search's own spectrum
+            # (17.9-22.0 on signal, 2.8-6.1 on noise), not a closed-form floor, which mispredicts
+            # it badly because oversampled bins are not independent.
+            "deep_rate_search": True,
+            "deep_rate_min_q": 10.0,
             # Hops per record frame: turns the frame metadata's sample_seq into the absolute HOP
             # index, which is what the seed (ref_hop), the replica generators and the search all
             # speak. Published as pow_hop so the broker can group EVERY node's E/L powers by an

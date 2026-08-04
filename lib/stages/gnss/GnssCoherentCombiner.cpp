@@ -263,6 +263,13 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     //     variance goes as 1/energy). Publishing the ratio alone would throw the weights away.
     // Off by default: this is ~100 records x n_prn of JSON, far too much for the status poll the
     // viewer runs, so it lives on its own endpoint and only exists when asked for.
+    // PHASE-RATE SEARCH. Default OFF: it changes what deep_snr means (a max over rates rather
+    // than a straight sum), so a config that has not opted in keeps the old, comparable number.
+    _deep_rate = config.get_default<bool>(unique_name, "deep_rate_search", false);
+    _deep_rate_min_q = config.get_default<double>(unique_name, "deep_rate_min_q", 10.0);
+    _st_deep_rate.assign(_n_prn, 0.0f);
+    _st_deep_rate_q.assign(_n_prn, 0.0f);
+
     _rec_export = config.get_default<int>(unique_name, "record_export", 0);
     if (_rec_export > 0) {
         _recex.assign(_n_prn, {});
@@ -865,6 +872,8 @@ void GnssCoherentCombiner::main_thread() {
         // are opposite diagnoses wanting opposite fixes. Costs nothing -- the rungs are already
         // computed and thrown away. (len, snr, span_s), longest-first as walked.
         std::vector<std::vector<std::array<float, 3>>> rungs(_n_prn);
+        std::vector<double> deep_rate(_n_prn, 0.0);   // phase-rate removed before the deep sum
+        std::vector<double> deep_rate_q(_n_prn, 0.0); // its peak/median -- the gate, and the SNR
         std::vector<double> peel_rsnr(_n_prn, 0.0);  // residual deep significance (peel_depth)
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions (P7a)
         // FIXED-WINDOW, noise-debiased coherent power (Hz) for the beam map: the coherent
@@ -924,6 +933,59 @@ void GnssCoherentCombiner::main_thread() {
                     n = std::max<size_t>(2, (size_t)std::ceil(rec_dt_floor_s / dt));
             }
             return std::max<size_t>(hard_min, n);
+        };
+        // LINEAR PHASE-RATE SEARCH over one rung. Returns the rate (Hz) whose removal maximises
+        // the coherent sum, and peak/median of the spectrum as the quality that gates it.
+        //
+        // Records are uniform in HOP, so (utc - utc0)/dt is an integer even across gaps: the
+        // series lands on a uniform grid with holes, and a hole contributes exactly zero. dt is
+        // the MINIMUM consecutive spacing, not the mean -- with gaps the mean is not the record
+        // period, and a wrong dt rescales every frequency in the answer.
+        auto rate_search = [](const std::vector<std::complex<double>>& x,
+                              const std::vector<double>& u, double& best_f, double& q) {
+            best_f = 0.0;
+            q = 0.0;
+            const size_t L = x.size();
+            if (L < 8 || u.size() != L)
+                return;
+            double dt = 0.0;
+            for (size_t k = 1; k < L; ++k) {
+                const double d = u[k] - u[k - 1];
+                if (d > 1e-9 && (dt == 0.0 || d < dt))
+                    dt = d;
+            }
+            if (dt <= 0.0)
+                return;
+            std::vector<long long> m(L);
+            long long span = 0;
+            for (size_t k = 0; k < L; ++k) {
+                m[k] = std::llround((u[k] - u[0]) / dt);
+                span = std::max(span, m[k]);
+            }
+            // 4x oversampled so the true rate is never more than 1/8 bin from a sample; the
+            // peak's own width is 1/(L dt), and losing half a bin costs ~4% of the amplitude.
+            const size_t nb = (size_t)std::min<long long>(4 * (span + 1), 4096);
+            if (nb < 8)
+                return;
+            std::vector<std::complex<double>> tw(nb); // integer-indexed: no trig in the inner loop
+            for (size_t i = 0; i < nb; ++i)
+                tw[i] = std::polar(1.0, -2.0 * M_PI * (double)i / (double)nb);
+            std::vector<double> mag(nb, 0.0);
+            for (size_t i = 0; i < nb; ++i) {
+                std::complex<double> acc(0.0, 0.0);
+                for (size_t k = 0; k < L; ++k)
+                    acc += x[k] * tw[(size_t)(((long long)i * m[k]) % (long long)nb)];
+                mag[i] = std::abs(acc);
+            }
+            const size_t ip = (size_t)(std::max_element(mag.begin(), mag.end()) - mag.begin());
+            std::vector<double> srt(mag);
+            std::nth_element(srt.begin(), srt.begin() + nb / 2, srt.end());
+            const double med = srt[nb / 2];
+            q = med > 0.0 ? mag[ip] / med : 0.0;
+            // Bins run 0..nb-1 over one full record-rate period; fold the upper half negative so
+            // the reported rate is the signed offset a carrier loop could actually consume.
+            const double frac = (double)ip / (double)nb;
+            best_f = (frac < 0.5 ? frac : frac - 1.0) / dt;
         };
         auto coh_span = [](const std::vector<double>& u, size_t len) {
             if (u.empty() || len < 2 || u.size() < len)
@@ -1536,19 +1598,60 @@ void GnssCoherentCombiner::main_thread() {
                 // a little margin for the ladder's own handful of rungs.
                 const double flr = std::sqrt(2.0 * std::log(2.0)) + 1.0;
                 for (size_t len : ladder(ab.size(), min_rung(ub, 4))) {
-                    const gnss::OverlayWipeResult cs =
-                        (len == ab.size())
-                            ? gnss::coherent_sum(ab)
-                            : gnss::coherent_sum(std::vector<std::complex<double>>(
-                                  ab.end() - (long)len, ab.end()));
+                    std::vector<std::complex<double>> w(ab.end() - (long)len, ab.end());
+                    // PHASE-RATE SEARCH (2026-08-04). Measured on sky: the per-record prompts
+                    // carry a strong LINEAR phase ramp -- lag-1 coherence 0.49-0.67 against a
+                    // shuffled null of 0.04-0.12, and a ramp-corrected sum recovers 0.65-0.80 of
+                    // the power where the straight sum recovers 0.02-0.05. That is why every
+                    // rung read the Rayleigh value (~1) while the incoherent moments said +10 to
+                    // +15 dB per record: the sum was integrating a rotating phasor. Not sign
+                    // flips (the squaring test says 0.03-0.13) and not phase noise (a random walk
+                    // has no lag-1 structure like this).
+                    //
+                    // The ramp rate exceeds the record-rate Nyquist and jumps between polls, so
+                    // it cannot simply be predicted and subtracted -- it has to be searched. The
+                    // search is over a uniform grid because the records ARE uniform in hop; the
+                    // gaps (a PRN the broker drops for a window) become zeros in the transform,
+                    // which is exact rather than approximate.
+                    double rate_hz = 0.0, rate_q = 0.0;
+                    if (_deep_rate) {
+                        const std::vector<double> us(ub.end() - (long)len, ub.end());
+                        rate_search(w, us, rate_hz, rate_q);
+                        if (rate_q >= _deep_rate_min_q && rate_hz != 0.0) {
+                            // Derotate and let the EXISTING estimator score it, so deep_snr,
+                            // deep_amplitude and coherence_s stay in the currency every consumer
+                            // already reads. The search decides WHETHER; coherent_sum decides
+                            // what the number is.
+                            const double t0 = us.front();
+                            for (size_t k = 0; k < w.size(); ++k)
+                                w[k] *= std::polar(1.0, -2.0 * M_PI * rate_hz * (us[k] - t0));
+                        } else {
+                            rate_hz = 0.0; // nothing found: score the straight sum, as before
+                        }
+                    }
+                    const gnss::OverlayWipeResult cs = gnss::coherent_sum(w);
                     if (full_len == 0) { // ladder walks longest-first
                         full = cs;
                         full_len = len;
+                        deep_rate[p] = rate_hz;
+                        deep_rate_q[p] = rate_q;
                     }
                     rungs[p].push_back({(float)len, (float)cs.snr, (float)coh_span(ub, len)});
-                    if (cs.snr < FLOOR_MARGIN * flr)
+                    // THE GATE IS THE SEARCH'S OWN SPECTRUM, not a closed-form floor. A max over
+                    // bins needs an alignment penalty, and the closed form sqrt(2 ln n)+1 gets it
+                    // badly wrong here (predicts 4.53, noise actually reads ~3.1) because 4x
+                    // oversampled bins are nowhere near independent. peak/median is measured on
+                    // the same data, so it is immune to rung length, bin count and correlation
+                    // alike: on sky it read 17.9-22.0 on signal and 2.8-6.1 on noise. Same
+                    // self-calibrating principle as the fleet DLL's q_floor.
+                    if (_deep_rate && rate_hz != 0.0) {
+                        if (rate_q < _deep_rate_min_q)
+                            continue;
+                    } else if (cs.snr < FLOOR_MARGIN * flr)
                         continue; // indistinguishable from noise
                     if (!cleared || cs.snr > deep_snr[p] * 1.05) {
+                        deep_rate[p] = rate_hz;
+                        deep_rate_q[p] = rate_q;
                         rec[8] = (float)cs.amplitude;
                         deep_snr[p] = cs.snr;
                         deep_rec[p] = (int)len;
@@ -1763,6 +1866,8 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_rec[p] = deep_rec[p];
                 _st_deep_floor[p] = (float)deep_floor[p];
                 _st_rungs[p] = rungs[p];
+                _st_deep_rate[p] = (float)deep_rate[p];
+                _st_deep_rate_q[p] = (float)deep_rate_q[p];
                 if (_rec_export > 0)
                     _st_recex[p] = _recex[p];
                 _st_deep_pow[p] = (float)deep_pow[p];
@@ -1977,6 +2082,14 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // at the knee. Same floor applies to all rungs on the plain branch
                          // (deep_floor); the wipe branches' floor grows with rung length.
                          {"rungs", _st_rungs[p]},
+                         // PHASE-RATE SEARCH: the linear rate removed before the deep sum (Hz,
+                         // signed, modulo the record rate -- the true ramp exceeds that Nyquist),
+                         // and the peak/median of its spectrum. deep_rate_q is the honest
+                         // detection statistic for the coherent rung: measured on sky at 17.9-22.0
+                         // on signal and 2.8-6.1 on noise. 0 = the search did not run or found
+                         // nothing and the straight sum was scored instead.
+                         {"deep_rate_hz", _st_deep_rate[p]},
+                         {"deep_rate_q", _st_deep_rate_q[p]},
                          // PEEL DEPTH (docs/gnss_voltage_peel_live.md): deep/incoherent |A| of the
                          // voltage-peel RESIDUAL. depth_db = 20*log10(deep_amplitude/peel_deep);
                          // 0 when this chain does not peel. At the combiner floor -> a LOWER BOUND.

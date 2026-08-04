@@ -381,6 +381,11 @@ private:
     /// [hop, re, im, energy] for one record: the absolute hop is the exact cross-node alignment
     /// key, re/im the energy-normalized complex prompt, and energy the ML combining weight.
     /// `_recex` is the live ring (main thread); `_st_recex` its snapshot for REST.
+    /// PHASE-RATE SEARCH before the deep coherent sum (see the _deep_plain branch). Off by
+    /// default; _deep_rate_min_q is the peak/median the search must reach to be believed.
+    bool _deep_rate = false;
+    double _deep_rate_min_q = 10.0;
+    std::vector<float> _st_deep_rate, _st_deep_rate_q;
     int _rec_export = 0;
     std::vector<std::vector<std::array<double, 4>>> _recex, _st_recex;
     /// Append one record to the export ring, trimming to _rec_export. Kept independent of the
