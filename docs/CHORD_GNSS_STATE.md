@@ -2801,13 +2801,25 @@ coherence_s median         1.049           1.049       1.049
 n                             954             370         257        134
 ```
 
-**Read this cautiously.** The direction is consistent (closed < open in both runs) but the
-magnitude is not reproducible -- 18.36 vs 20.27 Hz against a 23.60 baseline, and `frac < 3 Hz`
-went 15% -> 4% between two runs of the same configuration. So the honest claim is only that
-closing the loop does not HURT (deep_snr and coherence are unchanged) and may help slightly.
-It certainly does not converge to zero. What IS solid is that **raising the gain makes it
-worse**: 0.6 is no better than open loop, with trims driven to +-37 against a +-40 rail. The
-loop is not too slow.
+**Read this cautiously, and note the correction below.** The residual direction is consistent
+(closed < open in both runs) but the magnitude is not reproducible -- 18.36 vs 20.27 Hz against
+a 23.60 baseline, and `frac < 3 Hz` went 15% -> 4% between two runs of the same configuration.
+
+**CLOSING THE LOOP IS NOT SAFE YET, at ANY gain tested.** I first read the unchanged deep_snr
+and coherence as "it does not hurt". The trim says otherwise: at gain **0.25**, PRN 3 reached
+`trim +40.00` -- the rail -- with its residual still `+46.49 Hz`, and gain 0.6 drove trims to
++-37 while measuring WORSE than open loop (24.80 Hz). Sats tracking on cx19's combiner fell
+from 6 to 3 across the loop experiments (union across all six nodes: 4). The gates do not
+prevent this: they suppress the sample AT a reference jump, but the samples AFTER it are
+measured against the NEW reference, so the loop integrates a reference change as if it were an
+error and the trim ratchets. This is the same failure the trim-to-rail note in 8.19.4
+described, and it is not a gain-tuning problem.
+
+Reverted to `--carrier-gain 0.0`. That genuinely clears the trims: the tracker reads
+`s.value("carrier_trim_hz", 0.0)`, and the broker omits the key whenever `car_trim` is empty or
+zero, so an absent key commands zero. (The `if car_trim.get(prn):` truthiness test therefore
+looks like a latch bug -- a computed 0.0 is never sent -- but is harmless in effect for exactly
+this reason. Do not "fix" it without re-checking the tracker default.)
 
 The measurement that explains it: the search runs 12 eligible PRNs at `prns_per_pass: 1` and
 ~0.8 s per pass, so **each PRN is re-seeded every ~9.6 s** -- and the measured median time
