@@ -2435,3 +2435,109 @@ large-prime pathology. And padding is NOT available: the correlation is CYCLIC o
 period, so zero-padding to 4096 would make it linear and destroy the wrap-around. 3125 is also
 not free to choose -- it is `lcm(code period, hop)/fft_len`, the shortest window that is a whole
 number of both, and every legal alternative is a multiple of 5^5.
+
+# ============================================================================
+# 8.18 STATE AT COMPACTION #4 (2026-08-04 15:00 UTC) -- READ FIRST
+# ============================================================================
+
+## 8.18.1 SUSTAINED CODE LOCK, at last
+
+Three to six satellites hold `q` = 2.5-3.4 continuously (theoretical max 4.0, floor ~1.09),
+14 instances, 106 channels. Yesterday morning every PRN was pinned at exactly 1.0. Nothing was
+wrong with the loops -- the seed went stale faster than it could be used.
+
+| | 08-03 morning | now |
+|---|---|---|
+| replica build | 1223 s | **0.11 s** |
+| search pass | 106 s | **0.90 s** |
+| revisit | 1276 s | **11 s** |
+| code walk per seed update | 765 chips | **0.055 chips** |
+| sats at a real peak | 0 | **3-6 at q 2.5-3.4** |
+
+The chain, each measured: `refine_span` 512 (426 evals -> 14, and the deployed aggregator was
+simply MISSING the key); nh factorisation (20 replica builds -> 2, exact via head/tail through
+the nav_bit hook); disk cache (121 s -> 0.11 s); `refine_hops` 391 (16 code periods -> 2,
+bit-identical answer under 20x noise).
+
+## 8.18.2 THE OPEN PROBLEM: coherent detection, and it is per-record SNR
+
+`coherence_s` is still 0 almost everywhere; `deep_snr` sits at 1.2-3.6 against a 2.18 floor,
+with occasional excursions to 11.4 -- so coherent detection IS achievable here, intermittently.
+
+The cause is measured: **sigma_phi ~2.2-2.55 rad over the 1.05 s deep window**, i.e. coherent
+retention exp(-s^2/2) = **0.039, a 29 dB loss**. That is why PRN 3 shows search snr 1400 and
+deep significance 2-3 sigma: the search integrates 16 ms where drift does not matter, the deep
+integrates 1.05 s where it dominates.
+
+**BOTH routes to fixing it are noise-dominated at CHORD's per-record SNR (amp_snr 3-5):**
+
+* `carrier_hz_resid` (direct phase-slope fit) is SIGNAL-FREE: |resid| median 0.519 Hz on sats
+  with signal, 0.492 Hz on sats without. The carrier loop was integrating noise -- warm-vs-warm
+  A/B showed it made things WORSE (deep_snr mean 1.265 vs 1.447 off, best 6.9 vs 11.4). OFF.
+* Code-derived carrier (fitted cp slope x f_carrier/f_chip = 115.03 Hz per chip/s; ratio itself
+  validated in 7.2) swings tens of Hz between consecutive samples. The ratio is also a 115x
+  NOISE amplifier: 0.05 chips/s of slope scatter -> +-5.75 Hz.
+
+**So the constraint is per-record SNR, not the estimator.** At 2.2 rad / 1.05 s the phase
+wanders ~2.1 rad/s, capping the usable coherent span at ~**0.25 s** (0.5 rad).
+
+## 8.18.3 PICK UP HERE
+
+1. **Dump `deep_snr` PER RUNG, not just the winner.** The ladder already walks short rungs
+   (`min_rung(ub, 4)` = 4 records = 42 ms). Over 0.25 s the phase DOES cohere, so the question
+   is whether ~23 records give enough gain to clear the floor. Short rungs failing on COHERENCE
+   and failing on SNR want opposite fixes, and right now we cannot tell which it is. One
+   measurement, and it gates everything else here.
+2. **Cross-node coherent combining, for 8.8 dB of per-record SNR** (14 of 106 channels today).
+   Better than I framed it in the shared-DLL design: coherent summing ACROSS FREQUENCY already
+   works inside a node (`gr += rec[3]`), time alignment is exact and free from `sample_seq`, and
+   the data volume is the same handful of numbers the fleet DLL already ships. What remains is
+   a per-node instrumental phase offset -- constant per node per channel, calibratable exactly
+   like the nh constant. And it HELPS the phase problem rather than depending on it: more SNR
+   per record -> less phase noise -> longer coherent span.
+3. Remaining search items, now smaller: the nh anchor fix (span 2 -> 0, ~27% of the mean pass,
+   and it fixes a real correctness wart -- see 8.17.1); the data-FFT hoist is only ~3% and was
+   over-sold in 8.17.3 item 5.
+4. Bootstrap bursts for unfitted sats (3 x pass instead of 3 x revisit to first fit).
+5. **Beam anomaly, deprioritised but unexplained:** PRN 19 passed 0.40 deg off the assumed
+   boresight and peaked at snr 74, while PRN 28 at 4-22 deg ELEVATION reaches thousands.
+   Separation from boresight does not predict strength (Spearman +0.20). `beamlog.py` is
+   accumulating az/el vs strength to settle it. Does not block locks, which is why it was
+   deprioritised -- strong detections are strong regardless of why.
+
+## 8.18.4 MEASURED AND REJECTED TODAY (do not re-try without new evidence)
+
+* **Weakening the DLL leak** (`--dll-leak-present` 0.01): best-q median 2.05 -> 1.03, 4/8 -> 0/8
+  above q 2.0. With a RAILED discriminator `tau` carries only the SIGN, so the leak is what
+  bounds the excursion, not merely a ceiling.
+* **Carrier loop on** (`--carrier-gain 0.25`): worse on every metric, sigma_phi unchanged.
+* **Code-derived carrier**: unstable by tens of Hz (8.18.2).
+* **Allocation hoist in `refine_peak`**: predicted to be the cost on the ms-split precedent;
+  measured 3.59 s vs 3.62 s, i.e. nothing. Kept (correct, removes a hazard) but it was not the
+  win, and `refine_hops` was.
+* **Lazy replica building**: deferred the cost instead of removing it; superseded by the exact
+  factorisation.
+
+## 8.18.5 THE STANDING CHECK (four instances in one day)
+
+Four separate loops were found consuming a statistic that does not measure what its name says:
+`q` (peak sharpness, so it vetoed exactly the shoulders a DLL exists to pull in), the reported
+`nh` (anchor moves, so it does not propagate), `carrier_hz_resid` (signal-free), and the
+code-derived carrier (noise-amplified 115x).
+
+**Before wiring any statistic into a loop: measure it ON SIGNAL and ON NOISE, and measure
+whether it is STABLE.** Two cheap tests, and each of the four would have been caught by one of
+them. A corollary learned the hard way today: never validate a new statistic by comparing it
+against one already known to be bad.
+
+Related discipline, also re-earned: characterise a DISTRIBUTION before quoting it. The "2 -> 12 s
+search regression" and "the search is 82% idle" were both artefacts of reading a handful of log
+lines instead of the whole population.
+
+## 8.18.6 Running state
+
+All 8 nodes active. Aggregator on agg8 (`GNSS_SEARCH_PROFILE=1`), broker via
+`scripts/gnss/broker_up.sh` (carrier-gain 0, dll-gain 0.25, nh-hint span 2, publish-port 12060),
+viewer on 12060 through the broker's publisher (one origin for both `get_status` and
+`get_detections`; it cannot straddle two ports -- `host: location.hostname`, so tunnel 8080 and
+12060 or proxy through the viewer). `beamlog.py` accumulating. Tree clean, all pushed.
