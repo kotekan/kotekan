@@ -202,10 +202,11 @@ dpdk:
   tx_ring_size: 128
   num_mbufs: 512
   mbuf_cache_size: 128
-
   # Set to true when using a switch to replicate packets
   using_switch: true
-  alignment: samples_per_data_set * 4
+  alignment: samples_per_data_set
+  alignment_startup_delay: 20.0
+  lcore_start_delay: 1.0
   # List of PCIe devices we don't want to attach too
   # Required to exclude the ConnectX 6 Lx output NICs.
   # Excluded devices are listed by their PCIe address. 
