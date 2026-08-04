@@ -55,6 +55,8 @@ add_library(
     gnss/beidouB2bCode.cpp
     gnss/galileoE5bCode.cpp
     gnss/galileoE6Code.cpp
+    gnss/beidouB1ICode.cpp
+    gnss/beidouB3ICode.cpp
     gnss/gnssOverlay.cpp
     gnss/GnssSubbandSplit.cpp
     gnss/GnssQuantize44.cpp

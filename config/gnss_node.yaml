@@ -1210,7 +1210,13 @@ bands:
           No peel (new band, keep it light) -> no epl_frame override.
         rec_buf_depth: 1200
         search:
-          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          params: { acquire_snr: 6.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          # acquire_snr 6.0 + 200 windows (2026-08-04), NOT the 8.0/100 the other mid bands use:
+          # E6 first light showed TRACKING is healthy (E30 deep_snr 97, on par with E5b-Q's 85
+          # for the same sat) while ACQUISITION takes only the strongest sat. E5b's own search
+          # sits at sig 7.3-10.5 against a threshold of 8.0 -- already marginal -- so a couple of
+          # dB less margin at 1278.75 puts everything under it. Buy the margin back with a lower
+          # threshold + more incoherent windows (pure processing gain, no RF change).
           note: |
             hops_per_record 1000 = the 1 ms E6 primary at 20 MSPS (like L5 E5a-Q / B2b / E5b-Q).
             require_hint: scan only broker-hinted visible Galileo PRNs.
