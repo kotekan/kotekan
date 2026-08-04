@@ -4,7 +4,7 @@
 # config/run_3band.sh. Per-band anchors are independent (shared GPSDO -> constant
 # inter-band offsets, absorbed by each band's sky clock solve).
 rest_server:
-    cors_allow_origins: ["http://127.0.0.1:8080", "http://127.0.0.1:8081", "http://127.0.0.1:8082", "http://gx10.vdl:8080", "http://gx10.vdl:8081", "http://gx10.vdl:8082", "http://localhost:8080", "http://localhost:8081", "http://localhost:8082"]
+    cors_allow_origins: ["http://127.0.0.1:8080", "http://127.0.0.1:8086", "http://gx10.vdl:8080", "http://gx10.vdl:8086", "http://localhost:8080", "http://localhost:8086"]
 
 # ================= band l1 (live_l1_dual20.yaml) =================
 type: config
@@ -66,7 +66,7 @@ l1_airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x03A464C837525967  # ASSIGNED from the dongle pool: unit A (historically L1) (slot 0 of BANDS='l1 l2c l5'). Not a pin -- see the `dongles:` note.
+    serial: 0x03A464C837525967  # ASSIGNED from the dongle pool: unit A (historically L1) (slot 0 of BANDS='l1 l3oc'). Not a pin -- see the `dongles:` note.
     freq: 1575.42
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real
     # Gains dropped 14/15/15 -> 11/11/11 for the 2026-07-14 front end: a second-stage amp
@@ -569,22 +569,22 @@ l1_l1c_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l1_l1c_d_rec
 l1_l1c_d_record: { kotekan_stage: rawFileWrite, in_buf: l1_l1c_d_out_buf, base_dir: "/tmp/gpswipe", file_name: "l1c_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 199680, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 51, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L1CA, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 10.0, acquire_windows: 20, doppler_min: -5500.0, doppler_max: 5500.0, doppler_step: 100.0, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63, l1c_n_prn: 32 }
 l1_spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: l1_out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1 --unified --kotekan-rest-port 12048 --stage-prefix l1_', samples_per_data_set: 199680, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 51, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L1CA, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 10.0, acquire_windows: 20, doppler_min: -5500.0, doppler_max: 5500.0, doppler_step: 100.0, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63, l1c_n_prn: 32 }
 
-# ================= band l2c (live_l2c_gpu.yaml) =================
-l2c_gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 836 }
-l2c_input_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 99840 }
-l2c_chan_buf: { kotekan_buffer: standard, metadata_pool: l2c_gnss_pool, num_frames: 16, frame_size: 199680 }
-l2c_chan_buf2: { kotekan_buffer: standard, metadata_pool: l2c_gnss_pool, num_frames: 201, frame_size: 199680 }
+# ================= band l3oc (live_l3oc_gpu.yaml) =================
+l3oc_gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 836 }
+l3oc_input_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 99840 }
+l3oc_chan_buf: { kotekan_buffer: standard, metadata_pool: l3oc_gnss_pool, num_frames: 16, frame_size: 199680 }
+l3oc_chan_buf2: { kotekan_buffer: standard, metadata_pool: l3oc_gnss_pool, num_frames: 201, frame_size: 199680 }
 # CHORD 4+4b voltages (GnssQuantize44 out): ONE byte per (hop, chan) complex sample = 1/8
 # the float frame -> the H2D copy shrinks 8x. 49920 counts REAL ADC
 # samples (fft_len per hop, N complex channels out), so bytes/frame = samples / 2.
-l2c_q_buf: { kotekan_buffer: standard, metadata_pool: l2c_gnss_pool, num_frames: 201, frame_size: 24960 }
-l2c_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 6048 }
-l2c_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 6048 }
+l3oc_q_buf: { kotekan_buffer: standard, metadata_pool: l3oc_gnss_pool, num_frames: 201, frame_size: 24960 }
+l3oc_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 6048 }
+l3oc_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 6048 }
 # GPU epl frame = gnssGpuChain::frame_bytes(63, n_chan) = 176 + 1024*63 +
 # 1536*63*n_chan (n_chan 10 -> 15360*63). MAX_REC=16 is baked in, so the size is
-# independent of l2c_record length.
-l2c_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 1032368 }
-l2c_airspy_in:
+# independent of l3oc_record length.
+l3oc_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 1032368 }
+l3oc_airspy_in:
     samples_per_data_set: 49920
     bytes_per_sample: 2
     buffer_depth: 16
@@ -594,30 +594,28 @@ l2c_airspy_in:
     num_taps: 4
     sample_rate: 20.0e6
     f_offset: 5.0e6
-    signal: BDS_B2B_I
+    signal: GLO_L3OC_P
     code_doppler_sign: 1.0
     n_prn: 63
     record_floats: 24
     doppler_margin_hz: 250000.0
-    acquire_snr: 8.0
-    acquire_windows: 100
+    acquire_snr: 6.0
+    acquire_windows: 200
     doppler_min: -5000.0
     doppler_max: 5000.0
     doppler_step: 100
     prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-    gal_n_prn: 36
-    bds_n_prn: 63
     cpu_affinity: [12]
     kotekan_stage: airspyInput
-    out_buf: l2c_input_buf
+    out_buf: l3oc_input_buf
     # PIN THE DEVICE BY SERIAL (0 / absent = "open whichever enumerates first" -- a silent
     # coin-flip with three dongles plugged in: the wrong board tunes, never acquires, looks
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x744C60C821692F4F  # ASSIGNED from the dongle pool: unit B (historically L2C) (slot 1 of BANDS='l1 l2c l5'). Not a pin -- see the `dongles:` note.
-    freq: 1207.14
-    sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B2b needs the wide mode)
+    serial: 0x744C60C821692F4F  # ASSIGNED from the dongle pool: unit B (historically L2C) (slot 1 of BANDS='l1 l3oc'). Not a pin -- see the `dongles:` note.
+    freq: 1202.025
+    sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps L3OC needs the wide mode)
     gain_lna: 11
     gain_mix: 11
     gain_if: 11
@@ -630,15 +628,15 @@ l2c_airspy_in:
     # work: all three airspys share ONE GPSDO, dither off = deterministic LO across restarts
     # (phase-coherent), at the cost of deterministic frac-N spurs.
     dither_disable: true
-l2c_fengine: { kotekan_stage: fftwEngine, in_buf: l2c_input_buf, out_buf: l2c_chan_buf, input_type: real, pfb_window: hamming, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
+l3oc_fengine: { kotekan_stage: fftwEngine, in_buf: l3oc_input_buf, out_buf: l3oc_chan_buf, input_type: real, pfb_window: hamming, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
 
-# require_hint: scan only broker-hinted (visible + B2b-capable BDS-3) PRNs.
-# hops_per_record 1000 = the 1 ms B2b code period at 20 MSPS (like L5's Q5; the
-# tracker derives its own).
-l2c_gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: l2c_chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
-l2c_valve: { kotekan_stage: Valve, in_buf: l2c_chan_buf, out_buf: l2c_chan_buf2, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
-l2c_quant: { kotekan_stage: GnssQuantize44, in_buf: l2c_chan_buf2, out_buf: l2c_q_buf, target_lsb: 2.1, measure_frames: 64, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 } # the RFSoC's job in software: noise rms -> target_lsb, freeze, demote to CHORD 4+4b (2.1 point, cold soak closed 07-19)
-l2c_gputrack:
+# hops_per_record 1000 = the 1 ms L3OC primary at 20 MSPS (as B2b / B3I / E5b-Q).
+# require_hint: scan only broker-hinted visible GLONASS-K slots. ★ If first light
+# fails, THIS is the knob to drop -- see the header's code-index-vs-slot question.
+l3oc_gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: l3oc_chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 6.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
+l3oc_valve: { kotekan_stage: Valve, in_buf: l3oc_chan_buf, out_buf: l3oc_chan_buf2, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
+l3oc_quant: { kotekan_stage: GnssQuantize44, in_buf: l3oc_chan_buf2, out_buf: l3oc_q_buf, target_lsb: 2.1, measure_frames: 64, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] } # the RFSoC's job in software: noise rms -> target_lsb, freeze, demote to CHORD 4+4b (2.1 point, cold soak closed 07-19)
+l3oc_gputrack:
     samples_per_data_set: 49920
     bytes_per_sample: 2
     buffer_depth: 16
@@ -648,105 +646,59 @@ l2c_gputrack:
     num_taps: 4
     sample_rate: 20.0e6
     f_offset: 5.0e6
-    signal: BDS_B2B_I
+    signal: GLO_L3OC_P
     code_doppler_sign: 1.0
     n_prn: 63
     record_floats: 24
     doppler_margin_hz: 250000.0
-    acquire_snr: 8.0
-    acquire_windows: 100
+    acquire_snr: 6.0
+    acquire_windows: 200
     doppler_min: -5000.0
     doppler_max: 5000.0
     doppler_step: 100
     prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-    gal_n_prn: 36
-    bds_n_prn: 63
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 4
+    num_cuda_streams: 3
     frame_arrival_period: 0.0
-    in_buffers: { l2c_q_buf: l2c_q_buf }
-    out_buffers: { l2c_epl_buf: l2c_epl_buf, l2c_gal_epl_buf: l2c_gal_epl_buf, l2c_e5b_i_epl_buf: l2c_e5b_i_epl_buf, l2c_bds_epl_buf: l2c_bds_epl_buf }
+    in_buffers: { l3oc_q_buf: l3oc_q_buf }
+    out_buffers: { l3oc_epl_buf: l3oc_epl_buf, l3oc_l3oc_d_epl_buf: l3oc_l3oc_d_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
-          in_buf: l2c_q_buf
-          gpu_mem: l2c_gnss_chan_frame
+          in_buf: l3oc_q_buf
+          gpu_mem: l3oc_gnss_chan_frame
         - name: cudaGnssTrack
-          signal: BDS_B2B_I
-          # max_anchor_age_s 0 = re-pin the replica carrier EVERY l2c_record. Safe only because the
+          signal: GLO_L3OC_P
+          # max_anchor_age_s 0 = re-pin the replica carrier EVERY l3oc_record. Safe only because the
           # re-pin is CONTINUOUS in both currencies: the code-phase step is translated into the
           # new f_ref (cudaGnssTrack) and the df*t_abs carrier-phase step is folded into the NCO
           # (GnssGpuRecordAssemble). A stale f_ref drifts off truth at dop_rate between re-pins --
           # negligible on 1 ms records, ~1 dB on B1C's 10 ms.
-          max_anchor_age_s: 0.0
-          # 1 ms records (like L5), so the fleet 15 Hz fence applies -- the 12 Hz L2C value
-          # was for 20 ms records (12.5 Hz bit-robust alias limit) and no longer applies here.
-          fll_reacq_hz: 15.0
-          cuda_stream: 1
-          gpu_mem_input: l2c_gnss_chan_frame
-          gpu_mem_output: l2c_gnss_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l2c_gps_track/set_seeds"
-        - name: cudaOutputData
-          gpu_mem: l2c_gnss_epl
-          out_buf: l2c_epl_buf
-          in_buf: ""
-        - name: cudaGnssTrack
-          signal: GAL_E5B_Q
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # 1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)
           cuda_stream: 1
-          gpu_mem_input: l2c_gnss_chan_frame
-          gpu_mem_output: l2c_gal_epl
+          gpu_mem_input: l3oc_gnss_chan_frame
+          gpu_mem_output: l3oc_gnss_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
           in_frame_len: 24960
           n_channels: 10
           channel_offset: 0
-          n_prn: 36
-          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
           capture_utc0: 1.0
           fll_gain: 0.0
           carrier_shared: true
-          seed_endpoint: "/l2c_gal_track/set_seeds"
+          seed_endpoint: "/l3oc_gps_track/set_seeds"
         - name: cudaOutputData
-          gpu_mem: l2c_gal_epl
-          out_buf: l2c_gal_epl_buf
+          gpu_mem: l3oc_gnss_epl
+          out_buf: l3oc_epl_buf
           in_buf: ""
         - name: cudaGnssTrack
-          signal: GAL_E5B_I
+          signal: GLO_L3OC_D
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0
           cuda_stream: 1
-          gpu_mem_input: l2c_gnss_chan_frame
-          gpu_mem_output: l2c_e5b_i_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          n_prn: 36
-          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l2c_e5b_i_track/set_seeds"
-        - name: cudaOutputData
-          gpu_mem: l2c_e5b_i_epl
-          out_buf: l2c_e5b_i_epl_buf
-          in_buf: ""
-        - name: cudaGnssTrack
-          signal: BDS_B2I
-          max_anchor_age_s: 0.0
-          fll_reacq_hz: 15.0    # 1 ms records -> fleet 15 Hz fence
-          cuda_stream: 1
-          gpu_mem_input: l2c_gnss_chan_frame
-          gpu_mem_output: l2c_bds_epl
+          gpu_mem_input: l3oc_gnss_chan_frame
+          gpu_mem_output: l3oc_l3oc_d_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
           in_frame_len: 24960
           n_channels: 10
@@ -756,619 +708,36 @@ l2c_gputrack:
           capture_utc0: 1.0
           fll_gain: 0.0
           carrier_shared: true
-          seed_endpoint: "/l2c_bds_track/set_seeds"
+          seed_endpoint: "/l3oc_d_track/set_seeds"
         - name: cudaOutputData
-          gpu_mem: l2c_bds_epl
-          out_buf: l2c_bds_epl_buf
+          gpu_mem: l3oc_l3oc_d_epl
+          out_buf: l3oc_l3oc_d_epl_buf
           in_buf: ""
-l2c_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l2c_epl_buf, out_buf: l2c_rec_buf, sample_rate: 20.0e6, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
-# DATA-only B2b: navwipe_bit_records 1 (B-CNAV3 is 1000 sps = one symbol per 1 ms
-# l2c_record, so a l2c_record is exactly one symbol -- the L5-I / B2a-D discipline) wipes the
-# data so the sum integrates past 1 ms. bit_export publishes the per-l2c_record bit
-# decisions as nav_obs for the B-CNAV3 decoder. NO secondary_overlay (B2b has no
-# secondary code). No peel / epl_frame override (data channel, shared 15360 default).
-# ★ integration_length 1000 NOT 100 (2026-08-03): the emit window is integration_length
-# RECORDS = a TIME only via the l2c_record period. B2b records are 1 ms, so 100 = a 0.1 s
-# emit -- SHORTER than the broker's 0.2 s nav_obs poll, so consecutive get_status
-# snapshots don't overlap and the symbol timeline fragments at ~200 syms, far short of
-# the 1000-symbol B-CNAV3 frame. 1000 records = 1 s = one full frame per emit, captured
-# gap-free (b1c_d gets away with 100 only because its B1C records are 10 ms = 1 s). The
-# count-where-a-time-was-meant trap, in the nav-decode export path.
-l2c_gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l2c_rec_buf], out_buf: l2c_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, navwipe_bit_records: 1, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l2c_record: { kotekan_stage: rawFileWrite, in_buf: l2c_out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
+l3oc_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l3oc_epl_buf, out_buf: l3oc_rec_buf, sample_rate: 20.0e6, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
+# PURE PILOT once NH10 is wiped (the E5a-Q / E5b-Q / B2a-P / E6-C segmented-pilot
+# case). integration_length 1000 x 1 ms = 1 s emit cadence.
+l3oc_gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l3oc_rec_buf], out_buf: l3oc_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, secondary_overlay: L3OC_NH10, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100 }
+l3oc_record: { kotekan_stage: rawFileWrite, in_buf: l3oc_out_buf, base_dir: "/tmp/gps_l3oc_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
 
-# ---- Galileo E5b-Q parallel chain (dataless pilot, PRN 1..36, 1207.14 MHz) ----
-# Rides the B2b channelized stream (second consumer). Tracked by the shared l2c
-# l2c_gputrack; l2c_gal_epl_buf is its output. NO peel (light beside B2b, matching the L5
-# E5a-Q chain whose peel is currently off) -> no epl_frame override.
-l2c_gal_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 3456 }
-l2c_gal_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 3456 }
-l2c_gal_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 590000 }
-# 1000 hops/l2c_record = the 1 ms E5b primary at 20 MSPS (like L5 E5a-Q / B2b). require_hint:
-# scan only broker-hinted visible Galileo PRNs.
-l2c_gal_search:
-    samples_per_data_set: 49920
-    bytes_per_sample: 2
-    buffer_depth: 16
-    valve_depth: 201
-    sizeof_float: 4
-    spectrum_length: 10
-    num_taps: 4
-    sample_rate: 20.0e6
-    f_offset: 5.0e6
-    code_doppler_sign: 1.0
-    record_floats: 24
-    doppler_margin_hz: 250000.0
-    doppler_min: -5000.0
-    doppler_max: 5000.0
-    doppler_step: 100
-    gal_n_prn: 36
-    bds_n_prn: 63
-    kotekan_stage: GnssChannelizedSearch
-    in_buf: l2c_chan_buf
-    channel_offset: 0
-    n_channels: 10
-    signal: GAL_E5B_Q
-    n_prn: 36
-    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
-    acquire_snr: 8.0
-    acquire_windows: 100
-    hops_per_record: 1000
-    require_hint: true
-    hint_ttl_s: 30.0
-l2c_gal_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l2c_gal_epl_buf, out_buf: l2c_gal_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-# PURE PILOT once CS100 is wiped deterministically (secondary_overlay E5B_CS100, one
-# chip per 1 ms period, 100 ms cycle -> the E5a-Q/B2a-P segmented-pilot case). Deep
-# integrates fully coherently; integration_length 1000 x 1 ms = 1 s emit cadence.
-l2c_gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l2c_gal_rec_buf], out_buf: l2c_gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5B_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l2c_gal_record: { kotekan_stage: rawFileWrite, in_buf: l2c_gal_out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ---- Galileo E5b-I DATA component (I/NAV) ----
-# DERIVED from E5b-Q exactly as E5a-I is from E5a-Q (and E1B from E1C): no search stage.
-# E5b-I (data) and E5b-Q (pilot) share the SAME 10230-chip primary at the SAME 1 ms
-# period and epoch -- only the X2 code differs -- so an E5b-I row is the E5b-Q row
-# VERBATIM: no code-phase lift, no segment index, no broker flag. run_live adds
-# e5b_i_track to the GAL(E5b) broker's --trackers so it gets the same consensus seeds as
-# gal_track (E5b-Q). The combiner wipes the 4-chip CS4 secondary AND exports per-4ms-symbol
-# signs (secondary_overlay E5B_CS4 + navwipe_bit_records 4 + bit_export -- the composed
-# wipe E5a-I proved, since an I/NAV symbol is 4 ms = one CS4 period). run_live hands
-# l2c_e5b_i_combiner to the broker as --inav-combiner so its nav_obs reach the SAME InavPredictor
-# E1B uses (E5b carries the SAME I/NAV message as E1B) and the decoded ephemeris is
-# BRDC-cross-checked -- a FOURTH independent Galileo ephemeris decode (E1B vs E5a-F/NAV vs
-# E5b-I/NAV vs BRDC). NO peel; l2c_rec_buf sized in TIME (the count-vs-time discipline).
-l2c_e5b_i_n_prn: 36
-l2c_e5b_i_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l2c_e5b_i_n_prn * 24 * 4 }
-l2c_e5b_i_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l2c_e5b_i_n_prn * 24 * 4 }
-l2c_e5b_i_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l2c_e5b_i_n_prn + 15360 * l2c_e5b_i_n_prn }
-l2c_e5b_i_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l2c_e5b_i_epl_buf, out_buf: l2c_e5b_i_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-# integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 4 = 4 ms / 1 ms records
-# = ONE I/NAV symbol per CS4 period (a TIME expressed in records, count-vs-time). secondary
-# _overlay E5B_CS4 wipes the 4-chip overlay so the 4 code periods within a symbol sum
-# coherently; bit_export publishes the per-symbol signs as nav_obs. The composed
-# secondary+navwipe branch is the E5a-I / L5-I case, just 4 ms/symbol. NO peel (no epl_frame).
-l2c_e5b_i_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l2c_e5b_i_rec_buf], out_buf: l2c_e5b_i_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5B_CS4, navwipe_bit_records: 4, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l2c_e5b_i_record: { kotekan_stage: rawFileWrite, in_buf: l2c_e5b_i_out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "e5b_i_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ---- BeiDou-2 B2I (legacy, 1207.14 MHz) ----
-# DATA-ONLY: acquired directly and nav-wiped, the B1I/B3I shape. Rides the B2b
-# channelized stream as a second consumer.
-l2c_bds_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: 6048 }
-l2c_bds_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 6048 }
-l2c_bds_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 1032368 }
-l2c_bds_search:
-    samples_per_data_set: 49920
-    bytes_per_sample: 2
-    buffer_depth: 16
-    valve_depth: 201
-    sizeof_float: 4
-    spectrum_length: 10
-    num_taps: 4
-    sample_rate: 20.0e6
-    f_offset: 5.0e6
-    code_doppler_sign: 1.0
-    record_floats: 24
-    doppler_margin_hz: 250000.0
-    doppler_min: -5000.0
-    doppler_max: 5000.0
-    doppler_step: 100
-    gal_n_prn: 36
-    bds_n_prn: 63
-    kotekan_stage: GnssChannelizedSearch
-    in_buf: l2c_chan_buf
-    channel_offset: 0
-    n_channels: 10
-    signal: BDS_B2I
-    n_prn: 63
-    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-    acquire_snr: 8.0
-    acquire_windows: 100
-    hops_per_record: 1000
-    require_hint: true
-    hint_ttl_s: 30.0
-l2c_bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l2c_bds_epl_buf, out_buf: l2c_bds_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-# The composed wipe, as for B1I/B3I: B2I_NH20 wipes the 20-chip NH so the 20 code
-# periods in a symbol sum coherently, then navwipe_bit_records 20 estimates the D1
-# symbol. integration_length 1000 x 1 ms = 1 s emit.
-l2c_bds_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l2c_bds_rec_buf], out_buf: l2c_bds_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, secondary_overlay: B2I_NH20, navwipe_bit_records: 20, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l2c_bds_record: { kotekan_stage: rawFileWrite, in_buf: l2c_bds_out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: BDS_B2B_I, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ================= band l5 (live_l5_gpu.yaml) =================
-l5_gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 836 }
-l5_input_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 99840 }
-l5_chan_buf: { kotekan_buffer: standard, metadata_pool: l5_gnss_pool, num_frames: 16, frame_size: 199680 }
-l5_chan_buf2: { kotekan_buffer: standard, metadata_pool: l5_gnss_pool, num_frames: 201, frame_size: 199680 }
-# CHORD 4+4b voltages (GnssQuantize44 out): ONE byte per (hop, chan) complex sample = 1/8
-# the float frame -> the H2D copy shrinks 8x. 49920 counts REAL ADC
-# samples (fft_len per hop, N complex channels out), so bytes/frame = samples / 2.
-l5_q_buf: { kotekan_buffer: standard, metadata_pool: l5_gnss_pool, num_frames: 201, frame_size: 24960 }
-l5_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 3072 }
-l5_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 3072 }
-# GPU epl frame = gnssGpuChain::frame_bytes(32, n_chan) = 176 + 1024*32 +
-# 1536*32*n_chan (n_chan 10 -> 15360*32). MAX_REC=16 is baked in, so the size is
-# independent of l5_record length.
-l5_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 770224 }
-l5_airspy_in:
-    samples_per_data_set: 49920
-    bytes_per_sample: 2
-    buffer_depth: 16
-    valve_depth: 201
-    sizeof_float: 4
-    spectrum_length: 10
-    num_taps: 4
-    sample_rate: 20.0e6
-    f_offset: 5.0e6
-    signal: GPS_L5_Q
-    code_doppler_sign: 1.0
-    n_prn: 32
-    record_floats: 24
-    doppler_margin_hz: 250000.0
-    acquire_snr: 8.0
-    acquire_windows: 100
-    doppler_min: -5000.0
-    doppler_max: 5000.0
-    doppler_step: 100
-    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
-    gal_n_prn: 36
-    bds_n_prn: 63
-    cpu_affinity: [13]
-    kotekan_stage: airspyInput
-    out_buf: l5_input_buf
-    # PIN THE DEVICE BY SERIAL (0 / absent = "open whichever enumerates first" -- a silent
-    # coin-flip with three dongles plugged in: the wrong board tunes, never acquires, looks
-    # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
-    # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
-    # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x03A464C837264F67  # ASSIGNED from the dongle pool: unit C (historically L5) (slot 2 of BANDS='l1 l2c l5'). Not a pin -- see the `dongles:` note.
-    freq: 1176.45
-    sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real
-    gain_lna: 8
-    gain_mix: 8
-    gain_if: 8
-    # OFF as of the 3-airspy rework (2026-07-14): the ACTIVE antenna is powered by a
-    # SEPARATE inline bias tee, not the dongle. Three dongles pushing DC into a common
-    # splitter is the failure mode to avoid. HISTORY: this was `true` and had to be (antenna
-    # dead without bias, A/B confirmed) -- if the external supply is removed, back to true.
-    biast_power: false
-    # Disable the R820T fractional-N PLL dither (reg 0x12 bit4) for COHERENT multi-unit
-    # work: all three airspys share ONE GPSDO, dither off = deterministic LO across restarts
-    # (phase-coherent), at the cost of deterministic frac-N spurs.
-    dither_disable: true
-l5_fengine: { kotekan_stage: fftwEngine, in_buf: l5_input_buf, out_buf: l5_chan_buf, input_type: real, pfb_window: hamming, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-
-# require_hint: scan only broker-hinted (visible + L5-capable) PRNs.
-# hops_per_record 1000 = the 1 ms Q5 period at this geometry (search needs it
-# explicitly; the tracker derives it).
-l5_gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: l5_chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-l5_valve: { kotekan_stage: Valve, in_buf: l5_chan_buf, out_buf: l5_chan_buf2, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-l5_quant: { kotekan_stage: GnssQuantize44, in_buf: l5_chan_buf2, out_buf: l5_q_buf, target_lsb: 2.1, measure_frames: 64, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 } # the RFSoC's job in software: noise rms -> target_lsb, freeze, demote to CHORD 4+4b (2.1 point, cold soak closed 07-19)
-
-# SHARED-INPUT tri-constellation GPU stage. All three L5 signals despread the SAME
-# channelized voltage, so ONE cudaInputData copies l5_q_buf -> gnss_chan_frame per frame
-# and all three cudaGnssTrack commands read it (previously 3 stages = 3x the H2D
-# traffic on the GB10's bandwidth-limited unified memory). Sequencing: cudaInputData
-# runs on stream 0 (COPY_IN default); every cudaGnssTrack waits the shared input event
-# (pre_events[0] explicitly, NOT its own stream's), then the three tracker+output pairs
-# run CONCURRENTLY on streams 1/2/3, joined back on stream 0 by cudaProcess. The
-# trackers keep their own seed_endpoints so the per-constellation brokers are unchanged
-# (run_live detects them by seed_endpoint, not a top-level gal_track:/bds_track: stage).
-#
-# PER-CHAIN STREAMS (2026-07-27), the L1 arrangement adopted here. L5 is the band with
-# the least slack -- 2.496 ms of frame period against 0.91 ms of tracker work, where L1
-# has 9.984 ms -- and all three chains were serialized on one stream (0.32 + 0.30 +
-# 0.29 ms). Nothing needs them serialized: they read the same input and write disjoint
-# outputs. One launch is ~32 x 10 blocks x 256 threads, ~20% of the GB10's 48 SMs,
-# so the three overlap nearly free and the tracker phase collapses toward its longest
-# single chain. That headroom is the point: the 2026-07-27 L5 peel died of real-time
-# overrun (silent Valve drops -> ring gaps), and the peel costs ~2.05x.
-l5_gputrack:
-    samples_per_data_set: 49920
-    bytes_per_sample: 2
-    buffer_depth: 16
-    valve_depth: 201
-    sizeof_float: 4
-    spectrum_length: 10
-    num_taps: 4
-    sample_rate: 20.0e6
-    f_offset: 5.0e6
-    signal: GPS_L5_Q
-    code_doppler_sign: 1.0
-    n_prn: 32
-    record_floats: 24
-    doppler_margin_hz: 250000.0
-    acquire_snr: 8.0
-    acquire_windows: 100
-    doppler_min: -5000.0
-    doppler_max: 5000.0
-    doppler_step: 100
-    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
-    gal_n_prn: 36
-    bds_n_prn: 63
-    kotekan_stage: cudaProcess
-    gpu_id: 0
-    num_cuda_streams: 7
-    frame_arrival_period: 0.0
-    in_buffers: { l5_q_buf: l5_q_buf }
-    out_buffers: { l5_epl_buf: l5_epl_buf, l5_i_epl_buf: l5_i_epl_buf, l5_gal_epl_buf: l5_gal_epl_buf, l5_e5a_i_epl_buf: l5_e5a_i_epl_buf, l5_bds_epl_buf: l5_bds_epl_buf, l5_b2a_d_epl_buf: l5_b2a_d_epl_buf }
-    commands:
-        # ONE host->device copy of the channelized 4+4b frame
-        - name: cudaInputData
-          in_buf: l5_q_buf
-          gpu_mem: l5_gnss_chan_frame
-        - name: cudaGnssTrack
-          signal: GPS_L5_Q
-          # max_anchor_age_s 0 = re-pin the replica carrier EVERY l5_record. Safe only because the
-          # re-pin is CONTINUOUS in both currencies: the code-phase step is translated into the
-          # new f_ref (cudaGnssTrack) and the df*t_abs carrier-phase step is folded into the NCO
-          # (GnssGpuRecordAssemble). A stale f_ref drifts off truth at dop_rate between re-pins --
-          # negligible on 1 ms records, ~1 dB on B1C's 10 ms.
-          max_anchor_age_s: 0.0
-          fll_reacq_hz: 15.0    # tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)
-          cuda_stream: 1
-          gpu_mem_input: l5_gnss_chan_frame
-          gpu_mem_output: l5_gnss_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l5_gps_track/set_seeds"
-          peel: true
-          peel_gain_alpha: 0.01
-          peel_warmup_records: 100
-          peel_fll_gain: 0.05
-        - name: cudaOutputData
-          cuda_stream: 1
-          gpu_mem: l5_gnss_epl
-          out_buf: l5_epl_buf
-          in_buf: ""
-        - name: cudaGnssTrack
-          signal: GPS_L5_I
-          max_anchor_age_s: 0.0
-          fll_reacq_hz: 15.0
-          cuda_stream: 2
-          gpu_mem_input: l5_gnss_chan_frame
-          gpu_mem_output: l5_i_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          n_prn: 32
-          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l5_i_track/set_seeds"
-        - name: cudaOutputData
-          cuda_stream: 2
-          gpu_mem: l5_i_epl
-          out_buf: l5_i_epl_buf
-          in_buf: ""
-        - name: cudaGnssTrack
-          signal: GAL_E5A_Q
-          max_anchor_age_s: 0.0
-          fll_reacq_hz: 15.0    # tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)
-          cuda_stream: 3
-          gpu_mem_input: l5_gnss_chan_frame
-          gpu_mem_output: l5_gal_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          n_prn: 36
-          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l5_gal_track/set_seeds"
-        - name: cudaOutputData
-          cuda_stream: 3
-          gpu_mem: l5_gal_epl
-          out_buf: l5_gal_epl_buf
-          in_buf: ""
-        - name: cudaGnssTrack
-          signal: GAL_E5A_I
-          max_anchor_age_s: 0.0
-          fll_reacq_hz: 15.0
-          cuda_stream: 4
-          gpu_mem_input: l5_gnss_chan_frame
-          gpu_mem_output: l5_e5a_i_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          n_prn: 36
-          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l5_e5a_i_track/set_seeds"
-        - name: cudaOutputData
-          cuda_stream: 4
-          gpu_mem: l5_e5a_i_epl
-          out_buf: l5_e5a_i_epl_buf
-          in_buf: ""
-        - name: cudaGnssTrack
-          signal: BDS_B2A_P
-          max_anchor_age_s: 0.0
-          fll_reacq_hz: 15.0    # tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)
-          cuda_stream: 5
-          gpu_mem_input: l5_gnss_chan_frame
-          gpu_mem_output: l5_bds_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          n_prn: 63
-          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l5_bds_track/set_seeds"
-        - name: cudaOutputData
-          cuda_stream: 5
-          gpu_mem: l5_bds_epl
-          out_buf: l5_bds_epl_buf
-          in_buf: ""
-        - name: cudaGnssTrack
-          signal: BDS_B2A_D
-          max_anchor_age_s: 0.0
-          fll_reacq_hz: 15.0
-          cuda_stream: 6
-          gpu_mem_input: l5_gnss_chan_frame
-          gpu_mem_output: l5_b2a_d_epl
-          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
-          in_frame_len: 24960
-          n_channels: 10
-          channel_offset: 0
-          n_prn: 63
-          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-          capture_utc0: 1.0
-          fll_gain: 0.0
-          carrier_shared: true
-          seed_endpoint: "/l5_b2a_d_track/set_seeds"
-        - name: cudaOutputData
-          cuda_stream: 6
-          gpu_mem: l5_b2a_d_epl
-          out_buf: l5_b2a_d_epl_buf
-          in_buf: ""
-l5_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_epl_buf, out_buf: l5_rec_buf, sample_rate: 20.0e6, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-# L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
-# per 1 ms l5_record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
-# period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
-# ladder finds the knee live).
-l5_gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_rec_buf], out_buf: l5_out_buf, integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-l5_record: { kotekan_stage: rawFileWrite, in_buf: l5_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ---- GPS L5-I DATA component (S4 part 2, PHASE 1: acquire/track only) ----
-# The second Mechanism-A chain (docs/gnss_shared_knowledge_framework.md, S4).
-# NO SEARCH STAGE, deliberately: like CL, L5-I is DERIVED, not acquired.
-# ★ SIMPLER THAN CL. CM->CL needed a code-phase lift (cp + k*10230) because CM and
-# CL are chip-interleaved on a 1.5 s period. L5-I and L5-Q share the SAME 10230-chip
-# primary code, the SAME 1 ms period and the SAME code epoch -- only the XB advance
-# differs -- so an L5-I row is the L5-Q row VERBATIM: no lift, no segment index k,
-# and no broker flag at all. The endpoint is named `i_track` precisely so it lands in
-# run_live.sh's auto-detected --trackers list (that grep excludes only
-# ^(gal|bds|l1c|cl)_), and the GPS broker POSTs it the same consensus payload it
-# sends L5-Q. Verified the trackers list is used ONLY to POST seeds -- no per-tracker
-# status reads a derived chain could confuse. L5-Q stays as the in-run control.
-# ★ PROVEN ON SKY 2026-07-29 00:56-01:08Z: acquired + certified within ~3 min off the
-# derived seeds (PRN 27 deep_snr 40, 26 38, 3 26, 28 21). That trial was REVERTED not
-# because the chain failed but because it did not fit real time ON TOP of three
-# PEELING L5 chains (/l5_valve 0 -> 2931 in ~3 min). The L5 peel is now OFF (see the
-# gps chain note), which is what buys the budget for this.
-# NO peel on this chain either -- so NO epl_frame override (ROWS_PLAIN 4 -> the shared
-# 15360 default). Overriding it to the peel-sized 23040 is what failed the first
-# launch: the buffer asked 770224 while the tracker allocated 524464.
-l5_i_n_prn: 32
-l5_i_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l5_i_n_prn * 24 * 4 }
-l5_i_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l5_i_n_prn * 24 * 4 }
-l5_i_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l5_i_n_prn + 15360 * l5_i_n_prn }
-l5_i_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_i_epl_buf, out_buf: l5_i_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-# ★ PHASE 2 (2026-07-29): secondary_overlay AND navwipe_bit_records TOGETHER -- the
-# COMPOSED wipe. This is the only chain on the node that sets both, and the combiner
-# branch that handles it exists for this signal: NH10 comes off each 1 ms l5_record
-# first, then the nav-bit wipe runs over 20-l5_record CNAV symbols on the result
-# (navwipe_bit_records 20 = 20 ms / 1 ms records -- a TIME expressed in records, so
-# it is band-specific; L2C sets 1 because its records ARE 20 ms).
-# The NH alignment is searched by the NAVWIPE statistic, not a coherent sum: a
-# coherent phase search is meaningless on a data channel past 20 ms. It is searched
-# ONCE on the longest window and reused across rungs (the alignment is a property of
-# the GPS_L5_Q, not the window).
-# THE PRIZE, measured in phase 1: L5-I ran ~14 dB below its L5-Q sibling at the 1 s
-# rung, and the deficit GREW with rung length -- the signature of a hard 20 ms
-# coherence cap. Wiping the symbols is what lifts it. bit_export then feeds the
-# broker's CNAV decoder, giving a second independent decode of the SAME message set
-# L2C already decodes -> eph cross-checkable three ways (L2C vs L5 vs BRDC).
-#
-# PHASE 1 (superseded) = OVERLAY PATH ONLY. L5-I is a DATA channel that ALSO carries a secondary
-# overlay (NH10, one +-1 chip per 1 ms l5_record, 10 ms cycle) -- no other chain on
-# this node is both, and the combiner treats secondary_overlay and
-# navwipe_bit_records as MUTUALLY EXCLUSIVE branches. That crux only bites when we
-# want coherence PAST the 20 ms CNAV symbol boundary and the bit export;
-# acquisition and tracking do not need it. Wiping NH10 alone coheres to the symbol
-# boundary -- the same situation L1 C/A lives in with its 20 ms bits -- so phase 1
-# runs the EXISTING overlay path (the one L5-Q runs with NH20) and defers the
-# branch merge to phase 2. L5_NH10 was already in the overlay registry bound to
-# GPS_L5_I (gnssOverlay.cpp:54). NO navwipe_bit_records, NO bit_export: phase 2.
-# ★ integration_length 4000 (= 4 s at 1 ms records) IS NOT ABOUT COHERENCE -- the
-# ladder still finds its knee near 1 s. It sets the EMIT SPAN, and the emit span is
-# what the CNAV decoder consumes. nav_obs is exported on the FULL window only, so
-# the span of one emit is integration_length x l5_record period. The decoder's window
-# constants (WIN_EMITS 7, COLD_EMITS 5) are COUNTS OF EMITS, and its cold bootstrap
-# is 2^COLD_EMITS Viterbis, so the count cannot simply be raised: 12 emits would be
-# 4096. A CNAV message is 600 symbols (12 s), so an emit must carry enough symbols
-# that a handful of them span one. L2C gets this for free (200 records x 20 ms =
-# 4 s); at 1 s L5-I would have offered 350 symbols per 7-emit window against the 600
-# needed and would have decoded NEVER, silently. Matching the span (4 s here too)
-# makes the decoder's emit counts mean the same thing on both bands.
-# Same COUNT-vs-TIME trap as 16 / coherence_s / navwipe_bit_records: the
-# constant is dimensionless, the bands disagree about what the unit is worth.
-# Cost is linear in the window -- l5_i duty ~0.008 at 1 s -> ~0.03 at 4 s, still
-# negligible beside the 1.56 the missing buffer clear used to cost.
-#
-# THE PHASE-1 MEASUREMENT, still UNANSWERED: the auto-coherence ladder should knee
-# AT 20 ms -- the data-bit limit. The 07-29 trial could not answer it because the
-# rungs were read while frames were dropping (climbing valves invalidate every
-# depth number). This run, with the peel off, is the first chance to read it.
-l5_i_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_i_rec_buf], out_buf: l5_i_out_buf, n_prn: 32, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], integration_length: 4000, secondary_overlay: L5_NH10, navwipe_bit_records: 10, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l5_i_record: { kotekan_stage: rawFileWrite, in_buf: l5_i_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "i_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ---- Galileo E5a-Q parallel chain (dataless pilot, PRN 1..36) ----
-# Tracked by the shared-input l5_gputrack above (its own cudaProcess stage was
-# removed); l5_gal_epl_buf is still the tracker output, written by l5_gputrack's
-# cudaOutputData.
-l5_gal_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 3456 }
-l5_gal_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 3456 }
-l5_gal_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 590000 }
-l5_gal_search:
-    samples_per_data_set: 49920
-    bytes_per_sample: 2
-    buffer_depth: 16
-    valve_depth: 201
-    sizeof_float: 4
-    spectrum_length: 10
-    num_taps: 4
-    sample_rate: 20.0e6
-    f_offset: 5.0e6
-    code_doppler_sign: 1.0
-    record_floats: 24
-    doppler_margin_hz: 250000.0
-    doppler_min: -5000.0
-    doppler_max: 5000.0
-    doppler_step: 100
-    gal_n_prn: 36
-    bds_n_prn: 63
-    kotekan_stage: GnssChannelizedSearch
-    in_buf: l5_chan_buf
-    channel_offset: 0
-    n_channels: 10
-    signal: GAL_E5A_Q
-    n_prn: 36
-    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
-    acquire_snr: 8.0
-    acquire_windows: 100
-    hops_per_record: 1000
-    require_hint: true
-    hint_ttl_s: 30.0
-l5_gal_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_gal_epl_buf, out_buf: l5_gal_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l5_gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_gal_rec_buf], out_buf: l5_gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l5_gal_record: { kotekan_stage: rawFileWrite, in_buf: l5_gal_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ---- Galileo E5a-I DATA component (S5 D-component #2: F/NAV) ----
-# DERIVED from E5a-Q exactly as E1B is from E1C and L5-I is from L5-Q: no search stage.
-# E5a-I (data) and E5a-Q (pilot) share the SAME 10230-chip primary at the SAME 1 ms
-# period and epoch -- only the code (X2 start table) differs -- so an E5a-I row is the
-# E5a-Q row VERBATIM: no code-phase lift, no segment index, no broker flag. run_live
-# adds e5a_i_track to the GAL(E5a) broker's --trackers so it gets the same consensus
-# seeds as gal_track (E5a-Q). The combiner wipes the 20-chip CS20 secondary AND exports
-# the per-20ms-symbol signs (secondary_overlay E5A_CS20 + navwipe_bit_records 20 +
-# bit_export -- the SAME composed wipe the L5-I chain proved in S4 phase 2, since an
-# F/NAV symbol is 20 ms = one CS20 period). run_live hands l5_e5a_i_combiner to the broker
-# as --fnav-combiner so its nav_obs reach the FnavPredictor (galileo_fnav codec) and
-# the decoded F/NAV ephemeris is cross-checked against BRDC -- an independent E5a decode
-# beside E1B's I/NAV, a THIRD verification of the Galileo ephemeris (E1B vs E5a vs BRDC).
-# GPU BUDGET: this rides the L5 band, which (unlike L1's E1B) is the loaded band. It is
-# a plain 1 s combiner with NO peel -- but MEASURE l5_valve after enabling (the L5-I
-# lesson: a chain broke real time there only atop three PEELING chains, and peel is
-# currently OFF). l5_rec_buf sized in TIME (the L5-I / count-vs-time lesson).
-l5_e5a_i_n_prn: 36
-l5_e5a_i_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l5_e5a_i_n_prn * 24 * 4 }
-l5_e5a_i_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l5_e5a_i_n_prn * 24 * 4 }
-l5_e5a_i_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l5_e5a_i_n_prn + 15360 * l5_e5a_i_n_prn }
-l5_e5a_i_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_e5a_i_epl_buf, out_buf: l5_e5a_i_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-# integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 20 = 20 ms / 1 ms
-# records = ONE F/NAV symbol per CS20 period (a TIME expressed in records, the
-# count-vs-time discipline). secondary_overlay E5A_CS20 wipes the 20-chip overlay so
-# the 20 code periods within a symbol sum coherently; bit_export then publishes the
-# per-symbol signs as nav_obs. The composed secondary+navwipe branch is the one L5-I
-# exercises. NO peel, so NO epl_frame override (shared default).
-l5_e5a_i_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_e5a_i_rec_buf], out_buf: l5_e5a_i_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5A_CS20, navwipe_bit_records: 20, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l5_e5a_i_record: { kotekan_stage: rawFileWrite, in_buf: l5_e5a_i_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "e5a_i_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ---- BeiDou-3 B2a-pilot parallel chain (dataless pilot, PRN 1..63; BDS-3 only) ----
-l5_bds_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 6048 }
-l5_bds_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 6048 }
-l5_bds_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 1032368 }
-l5_bds_search:
-    samples_per_data_set: 49920
-    bytes_per_sample: 2
-    buffer_depth: 16
-    valve_depth: 201
-    sizeof_float: 4
-    spectrum_length: 10
-    num_taps: 4
-    sample_rate: 20.0e6
-    f_offset: 5.0e6
-    code_doppler_sign: 1.0
-    record_floats: 24
-    doppler_margin_hz: 250000.0
-    doppler_min: -5000.0
-    doppler_max: 5000.0
-    doppler_step: 100
-    gal_n_prn: 36
-    bds_n_prn: 63
-    kotekan_stage: GnssChannelizedSearch
-    in_buf: l5_chan_buf
-    channel_offset: 0
-    n_channels: 10
-    signal: BDS_B2A_P
-    n_prn: 63
-    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-    acquire_snr: 8.0
-    acquire_windows: 100
-    hops_per_record: 1000
-    require_hint: true
-    hint_ttl_s: 30.0
-l5_bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_bds_epl_buf, out_buf: l5_bds_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l5_bds_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_bds_rec_buf], out_buf: l5_bds_out_buf, n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-l5_bds_record: { kotekan_stage: rawFileWrite, in_buf: l5_bds_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
-
-# ---- BeiDou-3 B2a-DATA component (S5 D-component #3: B-CNAV2, first LDPC) ----
-# DERIVED from B2a-P exactly as E5a-I is from E5a-Q and L5-I from L5-Q: no search stage.
-# B2a-D (data) and B2a-P (pilot) share the SAME 10230-chip primary period and epoch
-# (their codes differ only in the generator polys) -- so a B2a-D row is the B2a-P row
-# VERBATIM: no code-phase lift, no broker flag. run_live adds b2a_d_track to the BDS
-# broker's --trackers so it gets the same consensus seeds as bds_track (B2a-P). The
-# combiner wipes the 5-chip CS5 secondary AND exports the per-5ms-symbol signs
-# (secondary_overlay B2A_CS5 + navwipe_bit_records 5 + bit_export -- the composed wipe
-# E5a-I/L5-I proved, since a B-CNAV2 symbol is 5 ms = one CS5 period). run_live hands
-# l5_b2a_d_combiner to the broker as --bcnav2-combiner so its nav_obs reach the
-# Bcnav2Predictor (beidou_bcnav2's GF(64) NON-BINARY LDPC codec) and the decoded
-# B-CNAV2 ephemeris is cross-checked against BRDC -- BeiDou's first nav-message decode
-# here, beside the two Galileo ones (E1B I/NAV, E5a F/NAV).
-# GPU BUDGET: 6th L5 chain -- MEASURE l5_valve after enabling (loaded band; peel OFF).
-# l5_rec_buf sized in TIME (the L5-I / count-vs-time lesson).
-l5_b2a_d_n_prn: 63
-l5_b2a_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l5_b2a_d_n_prn * 24 * 4 }
-l5_b2a_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l5_b2a_d_n_prn * 24 * 4 }
-l5_b2a_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l5_b2a_d_n_prn + 15360 * l5_b2a_d_n_prn }
-l5_b2a_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_b2a_d_epl_buf, out_buf: l5_b2a_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-# integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 5 = 5 ms / 1 ms
-# records = ONE B-CNAV2 symbol per CS5 period (the count-vs-time discipline).
-# secondary_overlay B2A_CS5 wipes the 5-chip overlay so the 5 code periods within a
-# symbol sum coherently; bit_export publishes the per-symbol signs as nav_obs. NO peel.
-l5_b2a_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_b2a_d_rec_buf], out_buf: l5_b2a_d_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, secondary_overlay: B2A_CS5, navwipe_bit_records: 5, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-l5_b2a_d_record: { kotekan_stage: rawFileWrite, in_buf: l5_b2a_d_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "b2a_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
+# ---- GLONASS L3OC-d DATA component ----
+# The CDMA nav message is 100 bps through a rate-1/2 code = 200 sym/s, so a symbol is
+# 5 ms = FIVE 1 ms code periods, and the 5-chip BARKER secondary covers exactly one
+# symbol. That is the composed wipe B2a-D / E5a-I / L5-I proved: secondary_overlay
+# L3OC_BC5 (one chip per 1 ms period) AND navwipe_bit_records 5 (5 records = 1 symbol).
+# ⚠️ Same length as B2A_CS5 but a DIFFERENT sequence -- Barker 11101, not B2a's CS5.
+# ★ Before building any message decoder, CHECK THE MODULATION EXISTS with the symbol
+# transition rate on a satellite already proven above floor (~0.5 = real message, ~0 =
+# unmodulated). That is the lesson GPS L1C-D cost us: a perfectly correct codec spent
+# against an empty carrier.
+l3oc_l3oc_d_n_prn: 63
+l3oc_l3oc_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l3oc_l3oc_d_n_prn * 24 * 4 }
+l3oc_l3oc_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l3oc_l3oc_d_n_prn * 24 * 4 }
+l3oc_l3oc_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l3oc_l3oc_d_n_prn + 15360 * l3oc_l3oc_d_n_prn }
+l3oc_l3oc_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l3oc_l3oc_d_epl_buf, out_buf: l3oc_l3oc_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100 }
+# ★ integration_length 1000, NOT 200: the emit window is integration_length RECORDS,
+# a TIME only via the l3oc_record period. L3OC records are 1 ms, so 200 would be a 0.2 s
+# emit -- right at the broker's nav_obs poll, fragmenting the symbol timeline (the
+# B2b count-vs-time trap). 1000 records = 1 s = 200 nav symbols per emit.
+l3oc_l3oc_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l3oc_l3oc_d_rec_buf], out_buf: l3oc_l3oc_d_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, secondary_overlay: L3OC_BC5, navwipe_bit_records: 5, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100 }
+l3oc_l3oc_d_record: { kotekan_stage: rawFileWrite, in_buf: l3oc_l3oc_d_out_buf, base_dir: "/tmp/gps_l3oc_gpu", file_name: "l3oc_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
 

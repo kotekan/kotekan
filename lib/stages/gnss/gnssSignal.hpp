@@ -349,6 +349,35 @@ inline constexpr SignalDescriptor BDS_B2I = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// GLONASS L3OC-p (1202.025 MHz) -- the dataless *pilot* of GLONASS's CDMA signal, and our first
+/// GLONASS signal of any kind. 10230-chip ALGORITHMIC code at 10.23 Mcps (1 ms), BPSK(10): the
+/// SAME record geometry as BDS_B2B_I / BDS_B3I, so the front end, record shapes and channelizer
+/// plan are already proven. 10-chip NH secondary (10 ms). ⚠️ GLONASS-K SATELLITES ONLY (7 of 28
+/// operational as of 2026-08) -- Celestrak marks them with a trailing 'K' in the Uragan number,
+/// which is where the capability filter reads it from, the same trick as the GPS block names.
+/// ⚠️ 1202.025 does NOT fit the l2c tune (1207.14 covers 1202.14-1212.14, missing L3OC's centre
+/// by 0.115 MHz) -- it needs its own front end. ReplicaSource: glonassL3OCCode.
+/// ★ The PRN here is a CODE INDEX whose relationship to the orbital slot number is to be settled
+/// by measurement, not assumed -- hence the full 1..63 range. See glonassL3OCCode.hpp.
+inline constexpr SignalDescriptor GLO_L3OC_P = {
+    "GLO_L3OC_P", 1202.025e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/10,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
+/// GLONASS L3OC-d (1202.025 MHz) -- the DATA component beside the L3OC-p pilot, carrying the
+/// CDMA navigation message at 100 bps through a rate-1/2 code = 200 sym/s. Its secondary is the
+/// 5-chip BARKER code, so a symbol is 5 ms = five 1 ms code periods: exactly the BDS_B2A_D /
+/// GAL_E5A_I shape (secondary_length 5 AND nav_symbol_s 5 ms, wiped as a composed
+/// overlay+navwipe). DERIVED from the pilot -- no search of its own, seeded verbatim.
+inline constexpr SignalDescriptor GLO_L3OC_D = {
+    "GLO_L3OC_D", 1202.025e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/5e-3, /*secondary_length=*/5,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -358,7 +387,7 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
           &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B, &BDS_B1I,
-          &BDS_B3I, &BDS_B2I})
+          &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D})
         if (name == s->name)
             return s;
     return nullptr;

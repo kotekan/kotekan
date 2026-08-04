@@ -610,7 +610,7 @@ def main(argv=None):
                          "TLE's ~km, includes the sat clock, and needs no skyfield. tle = the "
                          "legacy celestrak path (also the automatic fallback when BRDC is "
                          "unreachable at startup).")
-    ap.add_argument("--constellation", default=None, choices=("G", "E", "C"),
+    ap.add_argument("--constellation", default=None, choices=("G", "E", "C", "R"),
                     help="constellation letter for the BRDC almanac (which file covers ALL "
                          "systems, unlike the per-group TLE URLs). Default: --dr-constellation. "
                          "C keeps only PRN >= 19 (BDS-3): the BDS-2 birds transmit B1I at "
@@ -1156,8 +1156,11 @@ def main(argv=None):
                          "express 'L1C only'. Read ONCE at startup from the live Celestrak block "
                          "names (gps_beamtrack.signal_capable_prns); on fetch failure or empty "
                          "result the filter is DISABLED with a warning (phantoms return, but the "
-                         "chain lives -- better than killing L1C during a network outage). GPS "
-                         "only; E/C constellations use --tle-name-filter instead.")
+                         "chain lives -- better than killing L1C during a network outage). "
+                         "GPS and GLONASS: for R the block marker is the Celestrak 'K' suffix on "
+                         "the Uragan number, and GLO_L3OC_* -> K satellites only (the CDMA "
+                         "signals are GLONASS-K's; the FDMA L1OF/L2OF are on every satellite, so "
+                         "they get no filter). E/C use --tle-name-filter instead.")
     ap.add_argument("--dr-min-prn", type=int, default=None,
                     help="dead-reckon only PRNs >= this: a SIGNAL-CAPABILITY gate, not a "
                          "visibility one. Default 19 for BeiDou (B1C/B2a are BDS-3 ONLY; the "
@@ -1386,10 +1389,25 @@ def main(argv=None):
                         "eph": _alm_eph_mod.parse_rinex_nav(_alm_eph_mod.fetch_brdc(when)),
                         "eph_t": time.time()}
             n = sum(1 for k in brdc_alm["eph"] if k[0] == alm_sys and k[1] >= alm_min_prn)
-            _log("almanac: BRDC %s (%d %s sats%s) @ (%.4f, %.4f)"
-                 % (args.almanac_source, n, alm_sys,
-                    ", PRN >= %d" % alm_min_prn if alm_min_prn > 1 else "",
-                    args.lat, args.lon))
+            if n == 0:
+                # ★ A PARSE THAT SUCCEEDS WITH ZERO SATS IS A FAILURE, not a result. Only an
+                # EXCEPTION used to reach the TLE fallback below, so an almanac that simply has
+                # nothing for this constellation left the chain hinting NOTHING -- indistinguish-
+                # able, from the outside, from codes that do not correlate. GLONASS makes this
+                # reachable by construction: gnss_ephemeris' RINEX parser filters on sysc in
+                # "GEC", so every R record is skipped and an R broker parses a full file into
+                # zero satellites, every time. Falling through to TLE is right for ANY
+                # constellation the almanac does not cover.
+                _log("almanac: BRDC parsed but has 0 %s sats%s -> treating as UNAVAILABLE and "
+                     "falling back to TLE" % (alm_sys,
+                                              " with PRN >= %d" % alm_min_prn
+                                              if alm_min_prn > 1 else ""))
+                brdc_alm = None
+            else:
+                _log("almanac: BRDC %s (%d %s sats%s) @ (%.4f, %.4f)"
+                     % (args.almanac_source, n, alm_sys,
+                        ", PRN >= %d" % alm_min_prn if alm_min_prn > 1 else "",
+                        args.lat, args.lon))
         except Exception as e:
             _log("BRDC almanac unavailable (%s); falling back to TLE" % e)
     if args.almanac and brdc_alm is None:
@@ -1428,10 +1446,15 @@ def main(argv=None):
     # Signal-capability PRN gate (--signal-capability): the general block filter, fetched once.
     # Empty/failed lookup -> None (disabled) so a network hiccup can't dark the chain.
     _capable = None
-    if args.signal_capability and args.constellation == "G":
+    if args.signal_capability and args.constellation in ("G", "R"):
         try:
             import gps_beamtrack as _bt
-            _cap = _bt.signal_capable_prns(args.signal_capability)
+            # Pass THIS broker's TLE source: the GLONASS block marker lives in the glo-ops
+            # names, and signal_capable_prns' default is the gps-ops group. Omitting it would
+            # read GPS names for GLONASS slots and mark every satellite not-K -- an EMPTY
+            # capable set, which the branch below then quietly turns into "filter disabled".
+            _cap = _bt.signal_capable_prns(args.signal_capability,
+                                           args.tle or _bt.DEFAULT_TLE_URL)
             if _cap:
                 _capable = _cap
                 _log("signal-capability %s: seeds+hints restricted to %d block-capable PRNs %s"

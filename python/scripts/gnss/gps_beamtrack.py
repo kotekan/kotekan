@@ -44,6 +44,11 @@ FIELDS = ["prn", "doppler_hz", "code_phase_chips", "peak_amp", "peak_re",
 
 # Celestrak GPS operational TLEs.
 DEFAULT_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle"
+# Celestrak GLONASS operational TLEs. Names carry the Uragan number, with GLONASS-K marked by a
+# trailing K -- the capability marker glonass_block_by_prn() reads. Slot numbers come from the
+# IGS SINEX by catalog number (these names have no PRN field), which load_gps_satellites()
+# already does as its unnamed-satellite fallback.
+GLONASS_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"
 
 
 def _infer_n_prn(path):
@@ -255,6 +260,26 @@ def gps_block_by_prn(tle_source=DEFAULT_TLE_URL, _sats=None):
     return blocks
 
 
+def glonass_block_by_prn(tle_source=GLONASS_TLE_URL, _sats=None):
+    """Return {slot: block} for GLONASS, where block is 'K' for a GLONASS-K satellite and 'M'
+    otherwise. Celestrak names carry the Uragan number in parentheses and mark the K-series with
+    a trailing K -- 'COSMOS 2501 (702K)' is a K, 'COSMOS 2456 (730)' is not. Exactly the trick
+    gps_block_by_prn() uses on 'GPS BIII-10 (PRN 13)': read the capability from the SAME live
+    feed the visibility comes from, so it tracks launches and retirements by itself.
+
+    ★ This is what gates L3OC: only the K satellites carry GLONASS's CDMA signals (7 of 28
+    operational as of 2026-08). 'M' lumps together GLONASS-M and anything unrecognised -- the
+    distinction that matters here is K vs not-K, and calling the remainder 'M' is accurate for
+    every currently-operational non-K satellite."""
+    import re
+    sats = _sats if _sats is not None else load_gps_satellites(tle_source)
+    blocks = {}
+    for slot, s in sats.items():
+        m = re.search(r"\((\d+)(K?)\)", s.name or "")
+        blocks[slot] = "K" if (m and m.group(2)) else "M"
+    return blocks
+
+
 def _signal_block_filter(signal):
     """Predicate over a GPS block name ('IIR','IIRM','IIF','III',...) selecting the blocks that
     broadcast `signal`. Returns None when EVERY GPS satellite carries the signal (no filter).
@@ -273,13 +298,35 @@ def _signal_block_filter(signal):
     return None                             # unknown -> don't filter
 
 
+def _glonass_block_filter(signal):
+    """The GLONASS counterpart of _signal_block_filter. The CDMA signals (L3OC, and later L2OC /
+    L1OC) are GLONASS-K only; the FDMA signals (L1OF/L2OF) are on every satellite."""
+    s = (signal or "").upper()
+    if "OC" in s:                           # L3OC / L2OC / L1OC -- CDMA, K satellites only
+        return lambda b: b == "K"
+    return None                             # L1OF/L2OF (and unknown) -- every satellite
+
+
 def signal_capable_prns(signal, tle_source=DEFAULT_TLE_URL, _sats=None):
-    """PRNs whose GPS block actually broadcasts `signal`, from the live Celestrak block names, so
+    """PRNs whose satellite block actually broadcasts `signal`, from the live Celestrak names, so
     it tracks launches/commissioning automatically. Returns ALL PRNs when the signal is on every
-    satellite (L1 C/A) or is unknown. Non-transmitting sats belong nowhere near a search list --
-    correlating their (absent) code only wastes channels and manufactures false detections."""
-    blocks = gps_block_by_prn(tle_source, _sats)
-    pred = _signal_block_filter(signal)
+    satellite (GPS L1 C/A, GLONASS L1OF/L2OF) or is unknown. Non-transmitting sats belong nowhere
+    near a search list -- correlating their (absent) code only wastes channels and manufactures
+    false detections.
+
+    Dispatches on the signal token's constellation prefix: GLO_* reads the GLONASS K marker (and
+    defaults to the glo-ops TLE group), everything else reads the GPS block name."""
+    if (signal or "").upper().startswith("GLO_"):
+        # Guard the easy mistake: a GLONASS signal asked for against the GPS default TLE group
+        # would find no 'K' marker on anything and return an EMPTY set, which callers treat as
+        # "lookup failed -> filter disabled". Substitute the right group instead of silently
+        # producing a filter that does nothing.
+        blocks = glonass_block_by_prn(
+            GLONASS_TLE_URL if tle_source == DEFAULT_TLE_URL else tle_source, _sats)
+        pred = _glonass_block_filter(signal)
+    else:
+        blocks = gps_block_by_prn(tle_source, _sats)
+        pred = _signal_block_filter(signal)
     if pred is None:
         return set(blocks)
     return {prn for prn, b in blocks.items() if pred(b)}

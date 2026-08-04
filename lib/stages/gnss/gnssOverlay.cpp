@@ -10,6 +10,7 @@
 #include "galileoE5bCode.hpp" // for e5bq_secondary (per-PRN E5b-Q overlay)
 #include "galileoE6Code.hpp" // for generate_e6c_secondary (per-PRN E6-C overlay)
 #include "gpsL1CCode.hpp"    // for generate_l1co_code (per-PRN L1C-P overlay)
+#include "glonassL3OCCode.hpp" // for L3OC_NH10 / L3OC_BC5 (shared GLONASS CDMA overlays)
 #include "gpsL5Code.hpp"     // for L5_NH10/NH20 (shared Neuman-Hofman overlays)
 
 namespace gnss {
@@ -66,6 +67,12 @@ static std::vector<int8_t> gen_e6c(int prn) {
 static std::vector<int8_t> gen_e5bi_cs4(int) {
     const auto o = galileo::e5bi_secondary(); // shared 4-chip CS4 (E5b-I data channel)
     return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_l3oc_nh10(int) {
+    return {glonass::L3OC_NH10.begin(), glonass::L3OC_NH10.end()};
+}
+static std::vector<int8_t> gen_l3oc_bc5(int) {
+    return {glonass::L3OC_BC5.begin(), glonass::L3OC_BC5.end()};
 }
 static std::vector<int8_t> gen_l1co(int prn) {
     const auto o = gps::generate_l1co_code(prn);
@@ -125,6 +132,13 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     {"B3I_NH20", /*per_prn=*/false, 1, 20, gen_b3i_nh20, "BDS_B3I"},
     // B2I: same D1 NH20 again (and the same ranging code as B1I -- see the descriptor).
     {"B2I_NH20", /*per_prn=*/false, 1, 20, gen_b1i_nh20, "BDS_B2I"},
+    // GLONASS L3OC pilot: 10-chip Neuman-Hofman, one SHARED sequence -- the GPS L5_NH20 shape
+    // at half the length. Floor ~sqrt(2 ln 10) ~2.1 sigma.
+    {"L3OC_NH10", /*per_prn=*/false, 1, 10, gen_l3oc_nh10, "GLO_L3OC_P"},
+    // GLONASS L3OC DATA: the 5-chip BARKER secondary, shared (the 200 sps nav symbol rides on
+    // top) -- structurally the BDS_B2A_D / GAL_E5A_I case at 5 ms/symbol, and the same length
+    // as B2A_CS5 though a different sequence. Floor ~sqrt(2 ln 5) ~1.8 sigma.
+    {"L3OC_BC5", /*per_prn=*/false, 1, 5, gen_l3oc_bc5, "GLO_L3OC_D"},
 };
 
 const OverlayDescriptor* overlay_by_name(const std::string& name) {

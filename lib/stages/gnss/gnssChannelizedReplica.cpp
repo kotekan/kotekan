@@ -8,6 +8,7 @@
 #include "beidouB1CCode.hpp"
 #include "beidouB1ICode.hpp"
 #include "beidouB3ICode.hpp"
+#include "glonassL3OCCode.hpp"
 #include "beidouB2aCode.hpp"
 #include "beidouB2bCode.hpp"
 #include "galileoE1Code.hpp"
@@ -84,6 +85,14 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
     }
     if (name == "BDS_B3I") {
         auto a = beidou::generate_b3i_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GLO_L3OC_P") {
+        auto a = glonass::generate_l3ocp_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GLO_L3OC_D") {
+        auto a = glonass::generate_l3ocd_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "GAL_E6_C") {

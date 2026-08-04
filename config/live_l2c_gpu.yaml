@@ -80,7 +80,7 @@ airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x744C60C821692F4F  # ASSIGNED from the dongle pool: unit B (historically L2C) (slot 1 of BANDS='l1 l2c l5'). Not a pin -- see the `dongles:` note.
+    serial: 0x744C60C821692F4F  # L2C unit -- REPURPOSED 2026-08-03 from GPS L2C (1227.6/5 MSPS) to BeiDou B2b (1207.14/20 MSPS). Same physical dongle; the mid-band build retunes it (mid-band-gal-bds- receivers). B2b == Galileo E5b centre, so this ONE tune samples BOTH: the l2c band now stacks a Galileo E5b-Q chain beside B2b (2026-08-03), no further retune.
     freq: 1207.14
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B2b needs the wide mode)
     gain_lna: 11

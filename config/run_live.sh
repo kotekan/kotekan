@@ -446,7 +446,15 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # receiver clock solved from detected sats seed CODE PHASE for every visible sat the
   # search hasn't found -- sub-threshold sats despread on-peak with no detection needed
   # (the search demotes to bootstrap/fallback/integrity; watch 'dead-reckon' broker lines).
-  if [ "${DEAD_RECKON:-1}" != "0" ]; then ALM="$ALM --dead-reckon --dr-constellation $PRIM_SYS"; fi
+  # ⚠️ GLONASS has NO BRDC path here: its broadcast ephemeris is a position/velocity/acceleration
+  # state vector integrated by Runge-Kutta, not a Keplerian element set, so gnss_ephemeris'
+  # RINEX parser filters R records out entirely and sat_pos_clk cannot propagate them. Arming
+  # dead-reckon for R would log "armed" and then never pin a single satellite. Say so instead.
+  if [ "$PRIM_SYS" = "R" ]; then
+    echo "GLONASS primary: dead-reckon DISABLED (no Keplerian BRDC for R); hints come from TLE."
+  elif [ "${DEAD_RECKON:-1}" != "0" ]; then
+    ALM="$ALM --dead-reckon --dr-constellation $PRIM_SYS"
+  fi
   if [ "${NARROW_SEARCH:-1}" != "0" ]; then
     # --search-margin-wide-hz = the COLD per-PRN window (pre-clock-bias), sized from the clock
     # profile's accuracy bound; the warm margin (--search-margin-hz) applies once the bias solves.
@@ -489,9 +497,17 @@ CLOCK_BIAS_FILE=${CLOCK_BIAS_FILE:-$BIAS_DIR/gps_clock_bias_${TAG}.hz}
 # band's modernized signal (L2C -> IIR-M+, L5 -> IIF+, L1C -> III). The BeiDou-3 phantom fix
 # was a numeric PRN cutoff (--dr-min-prn) that can't express GPS's interspersed III sats.
 # L1 C/A is on every sat -> no gate (and no risk of excluding a sat missing from the TLE).
-# --signal-capability is a GPS-BLOCK gate (IIR-M/IIF/III per modernized signal) -- meaningless
-# for BeiDou/Galileo/GLONASS, so suppress it for any non-GPS primary (and for L1 C/A, on all sats).
-case "$SIGNAL" in *L1CA*|*L1_CA*|GAL_*|BDS_*|GLO_*) SIG_CAP="";; *) SIG_CAP="--signal-capability $SIGNAL";; esac
+# --signal-capability is a BLOCK gate (GPS IIR-M/IIF/III per modernized signal; GLONASS 'K' for
+# the CDMA signals) -- meaningless for BeiDou/Galileo, which use --tle-name-filter instead.
+# ★ GLONASS L3OC is GLONASS-K ONLY -- 7 of 28 operational satellites -- so the gate matters MORE
+# here than anywhere else: ungated, three quarters of the hinted slots would be satellites that
+# do not transmit the signal at all. GLONASS FDMA (L1OF/L2OF) is on every satellite -> no gate.
+case "$SIGNAL" in
+    *L1CA*|*L1_CA*|GAL_*|BDS_*) SIG_CAP="" ;;
+    GLO_*OC*)                   SIG_CAP="--signal-capability $SIGNAL" ;;
+    GLO_*)                      SIG_CAP="" ;;
+    *)                          SIG_CAP="--signal-capability $SIGNAL" ;;
+esac
 # S2 / Mechanism B OBSERVER (2026-07-29). Each broker publishes its receiver-state
 # estimates as JSON here. WRITE-ONLY: nothing consumes these yet, by design -- the fused
 # state gets a full soak of scoring before it is allowed to steer anything.

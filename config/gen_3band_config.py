@@ -37,7 +37,11 @@ _ALL_BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5"
               # from the default set for exactly that reason. See the e6 note in gnss_node.yaml.
               ("e6", "live_e6_gpu.yaml"),
               # b1i/b3i BORROW the l2c dongle (see the band notes): another exclusive group.
-              ("b1i", "live_b1i_gpu.yaml"), ("b3i", "live_b3i_gpu.yaml")]
+              ("b1i", "live_b1i_gpu.yaml"), ("b3i", "live_b3i_gpu.yaml"),
+              # GLONASS L3OC (1202.025) -- the fourth constellation. Needs its OWN tune: it is
+              # 0.115 MHz below the l2c window's lower edge (1207.14 covers 1202.14-1212.14),
+              # infuriatingly close, but a miss is a miss, so it cannot stack there.
+              ("l3oc", "live_l3oc_gpu.yaml")]
 # Bands and dongles are DECOUPLED (2026-08-04): gen_band_config assigns the dongle pool to the
 # bands in $BANDS order, so there is no longer any band-pair that "cannot run together" -- the
 # only rule is that you cannot select more bands than there are dongles, which that generator
