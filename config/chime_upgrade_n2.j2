@@ -193,11 +193,13 @@ dpdk:
   rx_ring_size: 192
   tx_ring_size: 128
   num_mbufs: 512
+  # Increase this value if ports are not synchronizing
+  alignment_startup_delay: 20.0
+  lcore_start_delay: 1.0
   mbuf_cache_size: 128
-
   # Set to true when using a switch to replicate packets
   using_switch: true
-  alignment: samples_per_data_set * 4
+  alignment: samples_per_data_set
   # List of PCIe devices we don't want to attach too
   # Required to exclude the ConnectX 6 Lx output NICs.
   # Excluded devices are listed by their PCIe address. 
@@ -342,7 +344,7 @@ baseband_merge:
 
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: host_buffer_depth
     value_type: int8
     extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
@@ -667,8 +669,6 @@ run_rfi_S012tilde:
             host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -713,8 +713,6 @@ run_rfi_SKtilde:
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -741,8 +739,6 @@ run_rfi_SKbar:
             host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput

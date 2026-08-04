@@ -20,7 +20,6 @@ type: config
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
-num_elements: 2048
 num_freq_host_buf: 1
 num_freq_gpu_buf: 16
 samples_per_frame: 16384
@@ -33,6 +32,14 @@ cpu_affinity: [0, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 sizeof_float: 4
 sizeof_int: 4
 sizeof_short: 2
+
+{% set num_polarizations = 2 %}
+{% set num_dishes = 1024 %}
+{% set num_elements = num_polarizations * num_dishes %}
+
+num_polarizations: {{ num_polarizations }}
+num_dishes: {{ num_dishes }}
+num_elements: {{ num_elements }}
 
 use_hugepages: true
 
@@ -111,7 +118,9 @@ dpdk:
   max_rx_pkt_len: 5000
   # Set to true when using a switch to replicate packets
   using_switch: true
-  alignment: samples_per_frame * 4
+  alignment: samples_per_frame
+  alignment_startup_delay: 20.0
+  lcore_start_delay: 1.0
   # List of PCIe devices we don't want to attach too
   # Required to exclude the ConnectX 6 Lx output NICs.
   # Excluded devices are listed by their PCIe address. 

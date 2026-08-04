@@ -355,6 +355,10 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf* mbuf) {
     if (unlikely(!iceBoardHandler::check_order(diff)))
         return 0;
 
+    // Accepting the packet, add to stats
+    rx_packets_total += 1;
+    rx_bytes_total += mbuf->pkt_len;
+
     // Handle lost packets
     // Note this handles packets for all loss reasons,
     // because we don't update the last_seq number value if the
@@ -559,6 +563,23 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 }
 
 inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
+
+    // A single gap (nearly) as large as the whole lost samples ringbuffer can never be
+    // back-filled: reusing those frames requires the other producers in this link group to
+    // catch up first, but they may share an lcore with this handler and so would never be
+    // serviced again while we block in advance_frames(). Fail with a clear error instead of
+    // deadlocking all the DPDK lcores.
+    // Note: one byte per time sample in the lost samples frames.
+    if (unlikely(lost_samples >= (int64_t)(lost_samples_buf->num_frames - 1)
+                                     * (int64_t)lost_samples_buf->frame_size)) {
+        FATAL_ERROR("Port {:d}: gap of {:d} lost samples exceeds the lost samples buffer "
+                    "capacity ({:d} frames of {:d} samples). Back-filling it would deadlock "
+                    "the DPDK handlers. Check for major packet loss on this port and/or "
+                    "increase the number of frames in the lost samples buffer, closing "
+                    "kotekan!",
+                    port, lost_samples, lost_samples_buf->num_frames, lost_samples_buf->frame_size);
+        return false;
+    }
 
     // By design all the seq numbers for all frames should be the same here.
     int64_t lost_sample_location;

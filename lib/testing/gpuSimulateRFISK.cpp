@@ -572,6 +572,7 @@ void gpuSimulateRFISK::main_thread() {
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
+        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         out_rfi_sk_buf->mark_frame_full(unique_name, out_rfi_sk_frame_id++);
         out_rfi_sktilde_buf->mark_frame_full(unique_name, out_rfi_sktilde_frame_id++);
         out_rfi_mask_buf->mark_frame_full(unique_name, out_rfi_mask_frame_id++);
