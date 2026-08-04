@@ -135,7 +135,7 @@ void processFeedGains::main_thread() {
             timespec timeout;
             if (set_coarse_freqs_once) {
                 // first frame - need to wait until we get something
-                timeout = double_to_ts(60 * 60 * 24);
+                timeout = double_to_ts(current_time() + 60 * 60 * 24);
             } else {
                 timeout = double_to_ts(current_time());
             }
