@@ -51,7 +51,17 @@ const METRICS = {
 // constellation is its own section below the shared header rather than a grey side-note.
 const BAND_LABEL = {L1: "High", L2: "Mid", L5: "Low"};
 const BAND_ORDER = ["L1", "L2", "L5"];
+// STATIC FALLBACK ONLY -- the live list comes from the server's `chains` via consts_of() below.
+// Hardcoding it here meant a new constellation got a sky marker and a legend chip but NO table
+// section and no columns, because every bucket/loop in this file iterated this literal. That is
+// how GLONASS arrived: visible in the sky panel, absent from the detections table.
 const CONSTS = [{tag: "G", name: "GPS"}, {tag: "E", name: "Galileo"}, {tag: "C", name: "BeiDou"}];
+
+/// Constellations to section the table by, from the server inventory (`chains`), which is
+/// itself derived from the running kotekan config. Falls back to the literal above.
+const consts_of = (d) => (d && Array.isArray(d.chains) && d.chains.length)
+    ? d.chains.map(c => ({tag: c.tag, name: c.name}))
+    : CONSTS;
 
 const COLS = [
     {key: "id",   label: "Sat",  align: "left",  dir: 1,
@@ -178,12 +188,15 @@ export class GpsTablePanel {
     _render_unified(d) {
         const {shown, locked, visible, sky_state, rms, site, chips} = this._prep(d);
         const M = METRICS[this.metric] || METRICS.cn0;
+        const CONSTS = consts_of(d);        // live inventory; shadows the static fallback
 
-        // Signals grouped per (constellation, band), in the server's listed order.
-        const byCB = {};                    // tag -> band -> [signal defs]
+        // Signals grouped per (constellation, band), in the server's listed order. Grouped by
+        // SYS (the satellite's constellation), not by the display tag -- GPS L1C's tag is "L"
+        // but its satellite is a GPS bird, so its columns belong in the GPS section beside C/A.
+        const byCB = {};                    // sys -> band -> [signal defs]
         const seen = {};
         for (const s of d.signals) {
-            ((byCB[s.tag] ??= {})[s.band] ??= []).push(s);
+            ((byCB[s.sys || s.tag] ??= {})[s.band] ??= []).push(s);
             seen[s.band] = true;
         }
         const BANDS = BAND_ORDER.filter(b => seen[b]);

@@ -992,6 +992,13 @@ def discover_signals(host, rest_port, timeout=3.0):
         tag, col, name = _display_for(sigid)
         rows.append({
             "tag": tag,
+            # ★ The CONSTELLATION this signal's satellite belongs to, which is NOT always the
+            # display tag. "L" (GPS L1C) is a synthetic tag invented so L1C keeps a distinct
+            # SIGNAL series from C/A on the same PRN -- but the bird is a GPS bird. The client
+            # keys satellite ROWS by sys and signal COLUMNS by tag, so a Block III satellite
+            # gets ONE row carrying both CA and L1C, which is the entire premise of the unified
+            # viewer ("one satellite per row"). Keying rows by tag split it into G20 and L20.
+            "sys": _SYS_TAG.get(sigid.split("_", 1)[0], tag),
             "band": _band_of(carrier) if carrier else "L1",
             "col": col,
             "name": name,
@@ -1253,7 +1260,11 @@ class GpsSkyResource(resource.Resource):
         ("G", None),        # None -> gps_beamtrack.DEFAULT_TLE_URL (gps-ops)
         ("E", "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
         ("C", "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"),
-        ("L", None),        # GPS L1C-P: same GPS birds (gps-ops TLE) as "G", distinct viewer tag
+        # ⚠️ NO "L" LAYER. GPS L1C is a synthetic SIGNAL tag on GPS birds, not a constellation:
+        # drawing it here put a second marker on top of every L1C-capable GPS satellite, at
+        # identical az/el. (It was masked for a while because --unified hardcoded the sky to
+        # "G,E,C"; deriving that list correctly is what exposed the duplicates.) The sky draws
+        # one marker per SATELLITE; L1C's presence shows up as a column in the detections table.
         ("R", "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"),
     )
 
@@ -1771,6 +1782,12 @@ def main():
         if discovered:
             global UNIFIED_SIGNALS
             UNIFIED_SIGNALS = discovered
+        # Backfill "sys" (the satellite's real constellation) on whichever list we ended up
+        # with, so the static fallback behaves identically to the discovered one. Derived from
+        # the signal id's prefix where there is one, else the display tag.
+        for _s in UNIFIED_SIGNALS:
+            _s.setdefault("sys", _SYS_TAG.get((_s.get("sigid") or "").split("_", 1)[0],
+                                              _s.get("tag")))
         rf = discover_rf_bands(args.kotekan_host, args.kotekan_rest_port)
         if rf:
             global UNIFIED_RF_BANDS
