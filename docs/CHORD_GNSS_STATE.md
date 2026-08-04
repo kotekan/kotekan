@@ -2326,3 +2326,112 @@ it wants a real regeneration. It costs 3 dB per instance and doubles the endpoin
 costs the fleet DLL no bandwidth, since the sum is over instances either way.
 
 **Regenerate all eight the next time production is up on 12048.**
+
+# ============================================================================
+# 8.17 STATE AT END OF 2026-08-03/04 -- READ THIS FIRST IN THE MORNING
+# ============================================================================
+
+## 8.17.1 The one real explanation: -4, +16 and the +-2 jitter are ONE thing
+
+```
+Mp spans 16 code periods        overlay length 20
+16 mod 20 = 16                  -4 mod 20 = 16          <- the same number
+measured offset (predicted nh - reported nh) = 16
+```
+
+The empirical `--nh-period-offset -4`, the ephemeris-vs-reported offset of +16, and the acquire
+window's length in code periods are **one quantity**, reached three independent ways. The
+"global clock constant" (8.17.4) is NOT a clock reference: it is the window-length artefact.
+
+The search picks the alignment that best matches over a window spanning 16 periods, and the
+reported `nh` is anchored at one end of that window while the phase it is paired with refers to
+the other -- off by exactly 16 == -4 (mod 20).
+
+That also explains the **+-2 jitter** and why propagating our own `nh` forward failed (4 of 26
+correct). The window start lands at a different FRACTIONAL position inside a code period every
+snapshot -- 195.3125 hops per period never repeats -- so "which period index does the window
+start in" shifts by +-1 on rounding, and +-2 once the 16-period span and Doppler drift are in.
+It is quantisation we were reading as noise.
+
+**Consequence:** it does NOT re-randomise across restarts (it is geometry, not timing) --
+correcting what was said earlier in the session. **Fix:** do not add another offset constant.
+Make the search report `nh` anchored to a STATED end of the window and carry the period count
+explicitly instead of letting it fall out of a modulus. This is the FOURTH defect from the same
+root (16-period window vs 20-chip overlay, neither dividing the other).
+
+## 8.17.2 What was fixed, measured, on 2026-08-03/04
+
+| | start of day | end |
+|---|---|---|
+| replica build | 1223 s | **0.11 s** (factorised + disk cache) |
+| search pass | 106 s | 2.05 s measured, then 12 s -- see 8.17.3 |
+| revisit | 1276 s | ~25 s at best |
+| code walk per seed update | 765 chips | 0.29 chips |
+| fleet DLL | did not exist | 14 instances, 106 channels, self-calibrating gate |
+| satellites at a real peak | 0 (all pinned at q = 1.0) | several at q 1.9-3.1 |
+
+Also fixed: `refine_span` missing from the deployed aggregator (426 evals -> 14, 30x);
+cx51 writing cx27's aggregator feed slot; `dish_coelev_deg` 18.7 deg wrong; `--nh-overlay-len`
+defaulting to B1C's 1800 on an L5 chain; the fleet hop-window sized from one sample of a
+free-running quantity (fleet silently flapping 14 -> 8 instances).
+
+## 8.17.3 PICK UP HERE, in this order
+
+1. **The search bottleneck, and the 2.05 s -> 12 s regression.** Same instance, no code change
+   between: 44 passes/90 s became 10 passes/120 s. Measured at the slow rate: 36% CPU on a
+   16-thread stage while DROPPING 17.7% of input frames. Dropping means the consumer is behind,
+   so it is not starvation; 36% means it is not compute-bound either. Something serialises the
+   pass. **Instrument the pass with stage timers** (the `GNSS_MSSPLIT_PROFILE` pattern) rather
+   than inferring from CPU percentages.
+2. **Fit `dop_rate` ourselves instead of taking BRDC's.** BRDC seeded PRN 3 at -0.4699 Hz/s
+   where the Doppler track measured -0.578; the 0.108 Hz/s residual is the quadratic walk. The
+   search reports `doppler_hz` every pass, so its slope is a direct, well-conditioned fit -- at
+   a 25 s revisit, four points span 100 s over which Doppler moves ~58 Hz against ~1.5 Hz
+   per-detection noise. **Fit the DOPPLER, not a quadratic on cp**: cp0 is an argument with the
+   5094.9 chips/Hz lever and re-opens the currency problem; Doppler has no such lever.
+3. **Burst the round-robin for BOOTSTRAP only.** A sat with no fit needs 3 points before
+   `code_phase_rate` exists -- today 3 x revisit = 75 s, but 3 x pass ~ 6 s if bursted. Uniform
+   round-robin once fitted: bursting a fitted sat makes its revisit k times WORSE, and clustered
+   points are a poorly-conditioned slope fit. The cursor already exists; it needs to prefer
+   unfitted PRNs.
+4. **Hoist the data FFT out of the nh loop.** In `channel_correlate_into` the data transform
+   depends only on the snapshot and channel -- not on PRN or `nh` -- yet sits inside the
+   alignment loop: 20x redundant (5x with a hint). The REPLICA FFT genuinely cannot be factored
+   (R_nh = s0[m]*head[m] + s1[m]*tail[m] with signs varying per hop, so the FFT does not
+   distribute). `prns_per_pass` only becomes worthwhile AFTER this hoist -- that transform is
+   the sole work shared across PRNs.
+5. **Verify the nh hint actually narrows.** The offset now calibrates legally (15/16) but the
+   pass time did not obviously drop. Check `nh_scan.size()` is 5, not 20.
+6. **The discriminator is RAILED** (|disc| ~ 0.9 most of the time), which is why the leak
+   experiment failed (8.17.4). A railed disc carries only the SIGN of the error. The honest fix
+   is a seed inside the linear region, i.e. 8.17.1 -- not a bigger integrator.
+7. **PRN 19 passes 0.40 deg off boresight at 08:04 UTC, daily.** Full dish gain, ~10^4x the
+   power of a deep-sidelobe sat. The validation pass: if it does not lock hard, sensitivity is
+   exonerated and it is a bug. PRN 9 at 1.31 deg / 02:06 UTC is the half-power warm-up.
+
+## 8.17.4 Measured and REJECTED -- do not re-try without new evidence
+
+* **Weakening the DLL leak on the fleet path** (`--dll-leak-present` 0.01, ceiling 1.25 -> 6.25
+  chips). Strictly WORSE: best-q median 2.05 -> 1.03, samples above q 2.0 went 4/8 -> 0/8, every
+  sat driven to noise, PRN 9's disc flipping -0.984 -> +0.981 as its trim ran a chip through the
+  peak. The leak is not only a ceiling: with a RAILED discriminator `tau` saturates and carries
+  only the sign, so the integrator pushes one way indefinitely and the leak is what bounds the
+  excursion. Reverted to 0.05.
+* **Echoing our own reported `nh` back as a hint.** 4 of 26 propagations correct, with or
+  without the argument-vs-phase correction -- explained by 8.17.1.
+* **Gating the fleet DLL on q.** q is peak-SHARPNESS: high only when already ON the peak, so it
+  vetoes exactly the shoulders a DLL exists to pull in. Replaced by a signal-present test on
+  summed prompt power.
+* **Lazy replica building.** Deferred the 1223 s rather than removing it, and made passes 7x
+  slower while the cache filled. Superseded by the exact factorisation.
+* **ms-split.** Acquire 77x cheaper (0.55 s vs 42.18 s) but it was only ~30% of the bill then.
+  Now that `refine_span` is fixed the acquire IS ~92%, so this is worth REVISITING -- against a
+  32.55 s NH postfix, which the nh work may make unnecessary.
+
+## 8.17.5 FFT lengths -- asked and answered
+
+`Mp = 3125 = 5^5`: smooth, single small prime, FFTW has radix-5 codelets. Not a `2^N-1` or
+large-prime pathology. And padding is NOT available: the correlation is CYCLIC over the code
+period, so zero-padding to 4096 would make it linear and destroy the wrap-around. 3125 is also
+not free to choose -- it is `lcm(code period, hop)/fft_len`, the shortest window that is a whole
+number of both, and every legal alternative is a multiple of 5^5.
