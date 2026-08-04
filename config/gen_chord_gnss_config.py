@@ -373,6 +373,12 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         "require_hint": True,
         "acquire_windows": args.acquire_windows,
         "acquire_snr": args.acquire_snr,
+        # Alignments scanned either side of the broker's ephemeris-predicted one (--nh-hint).
+        # The acquire builds a FULL surface per alignment, so 20 of them are ~92% of a pass;
+        # 5 of 20 is 4x. Span 2 because the measured offset spread was +-2 on 2026-08-04 --
+        # which is itself an open anomaly, nh being deterministic given ephemeris and time.
+        # Harmless without a hint: no hint scans all 20, exactly as before.
+        "nh_hint_span": 2,
         "acquire_fine_step": args.acquire_fine_step,
         "prns_per_pass": args.prns_per_pass,
         # L5 Q5 is a dataless PILOT, which does not mean unmodulated: it carries the

@@ -1121,12 +1121,23 @@ def main(argv=None):
                          "update so discriminator NOISE can't random-walk it to the clamp. DC "
                          "loop gain = dll_gain/dll_leak; ~1/leak windows of smoothing.")
     ap.add_argument("--nh-hint", action="store_true",
-                    help="echo each PRN's last REPORTED secondary-code alignment back to the "
-                         "search as its own hint, so the acquire scans nh_hint_span alignments "
-                         "instead of all 20 (~92%% of a pass). DISABLED by default: the "
-                         "reported nh does not currently propagate deterministically (4 of 26 "
-                         "correct on 2026-08-04), and a wrong hint narrows the scan away from "
-                         "the truth. Enable only once the alignment report is reproducible.")
+                    help="hint the search's secondary-code alignment from the EPHEMERIS, so the "
+                         "acquire scans nh_hint_span alignments instead of all 20 (~92%% of a "
+                         "pass). nh at transmit is round((gpst - range/c + clk_sv)/period) mod "
+                         "overlay_len -- the same convention --nh-assist uses for the combiner "
+                         "-- leaving ONE global constant, the receiver clock reference, which "
+                         "any detection measures and every satellite shares. Works for sats "
+                         "NEVER detected, which is where a full 20-way scan hurts most. "
+                         "Requires --almanac and the capture time anchor.")
+    ap.add_argument("--nh-hint-span", type=int, default=2,
+                    help="alignments scanned either side of the prediction. Measured 2026-08-04: "
+                         "the offset is 16 with a +-2 spread, so span 2 (5 of 20 = 4x) covered "
+                         "100%% of samples while span 1 (6.7x) covered 85%%. The stage keeps its "
+                         "own nh_hint_span; this only sizes the LOG. The +-2 spread on a "
+                         "deterministic quantity is an OPEN anomaly, not an accepted tolerance.")
+    ap.add_argument("--nh-hint-min-samples", type=int, default=6,
+                    help="detections pooled before the nh offset is trusted and hints are sent. "
+                         "The constant is common to all satellites, so this fills quickly.")
     ap.add_argument("--publish-port", type=int, default=0,
                     help="serve the FLEET-MERGED per-PRN state on this port (0 = off): "
                          "GET /get_status returns rows in GnssCoherentCombiner's schema, so "
@@ -1860,7 +1871,9 @@ def main(argv=None):
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
-    nh_seen = {}        # prn -> (nh, ref_hop) last REPORTED by the search: echoed back
+    nh_off_hist = []    # pooled (predicted - reported) samples: ONE receiver-clock constant
+    nh_offset = [None]  # the calibrated constant, once enough samples agree
+    nh_seen = {}        # prn -> (nh, ref_hop) last REPORTED by the search: calibrates the offset
                         # as its own alignment hint, so nothing external has to be trusted
     dll_last_hop = {}   # prn -> last integrated WINDOW (fleet DLL): the exact dedup dll_last
                         # approximates. A changed float disc means "probably a new emit"; a
@@ -2558,17 +2571,80 @@ def main(argv=None):
             # so no propagation law fits. Posting a wrong hint NARROWS the scan away from the
             # truth, which is worse than not hinting: self-healing (the TTL restores the full
             # scan) but at the cost of a revisit each time.
-            nh_hints = ([dict(prn=_p, nh=int(_nh), ref_hop=int(_rh))
-                         for _p, (_nh, _rh) in nh_seen.items()] if args.nh_hint else [])
+            # ALIGNMENT HINT from the EPHEMERIS, not from echoing our own report back.
+            #
+            # nh is the overlay chip index at TRANSMIT, so BRDC gives it outright:
+            #   nh = round((gpst(t) - range/c + clk_sv) / period) mod overlay_len
+            # (the convention --nh-assist already uses for the combiner, proven to 0.01 chip).
+            # What that leaves is ONE global constant -- the receiver clock reference -- shared
+            # by every satellite and measured from any detection at all. Measured on sky
+            # 2026-08-04: PRN 3 gave offset 16 on nine consecutive detections, and pooled across
+            # six satellites 100% of samples landed within +-2 of 16.
+            #
+            # Strictly better than echoing our own nh back: no propagation law (mine got 4 of 26
+            # right), no dependence on the previous detection, and it works for a satellite
+            # NEVER detected -- which is the real prize, since a first acquisition otherwise
+            # pays the full 20-way scan.
+            #
+            # OPEN: the +-2 jitter should not exist. nh is deterministic given ephemeris and
+            # time, so a spread means something upstream is not -- likely the same cause that
+            # broke propagation (suspect the 16-period acquire window against a 20-chip
+            # overlay, 16 !== 0 mod 20). The span absorbs it; it does not explain it.
+            nh_hints = []
+            if args.nh_hint and pred and utc0_sample0:
+                try:
+                    import gnss_ephemeris as _nh2
+                    _per = args.code_length / args.chip_rate_hz
+                    def _pred_nh(_p, _t):
+                        _v = pred[_p]
+                        return int(round((_nh2.gpst_of_utc(_t) - _v[3] / _nh2.C_LIGHT
+                                          + (_v[4] if len(_v) > 4 else 0.0)) / _per)) % args.nh_overlay_len
+                    # (a) re-measure the constant from every fresh detection we have
+                    for _p, (_nh, _rh) in nh_seen.items():
+                        if _p not in pred:
+                            continue
+                        _t = utc0_sample0 + _rh / args.hops_per_sec
+                        nh_off_hist.append((_pred_nh(_p, _t) - _nh) % args.nh_overlay_len)
+                    del nh_off_hist[:-64]
+                    # (b) circular median: the offsets cluster, so rotate to the mode before
+                    # taking it, or a cluster straddling the 0/20 wrap averages to nonsense.
+                    if len(nh_off_hist) >= args.nh_hint_min_samples:
+                        _mode = max(set(nh_off_hist), key=nh_off_hist.count)
+                        _rot = [((o - _mode + args.nh_overlay_len // 2) % args.nh_overlay_len)
+                                - args.nh_overlay_len // 2 for o in nh_off_hist]
+                        _rot.sort()
+                        nh_offset[0] = (_mode + _rot[len(_rot) // 2]) % args.nh_overlay_len
+                    # (c) hint EVERY visible sat, detected or not, at a hop the stage can
+                    # propagate over a few seconds rather than a minute
+                    if nh_offset[0] is not None:
+                        _rh_now = int(round((t0 - utc0_sample0) * args.hops_per_sec))
+                        nh_hints = [dict(prn=int(_p),
+                                         nh=(_pred_nh(_p, t0) - nh_offset[0]) % args.nh_overlay_len,
+                                         ref_hop=_rh_now)
+                                    for _p in pred if pred[_p][2] >= args.mask_deg]
+                        _log_rl("nhhint", "nh hint: offset %d (%d samples) -> %d sat(s), span %d"
+                                % (nh_offset[0], len(nh_off_hist), len(nh_hints),
+                                   args.nh_hint_span), every_s=60.0)
+                except Exception as e:
+                    _log_rl("nhhint-err", "nh hint failed: %s" % e, every_s=60.0)
             pushed = 0
             for d_ep in detectors:
                 try:
                     _post("%s/set_doppler_hints" % d_ep, hints)
-                    if nh_hints:
-                        _post("%s/set_nh_hint" % d_ep, nh_hints)
                     pushed += 1
                 except Exception as e:
                     _log("set_doppler_hints %s failed: %s" % (d_ep, e))
+                # SEPARATE try: a detector running a binary without /set_nh_hint 404s here, and
+                # sharing the block above would make that failure look like the DOPPLER hint
+                # failing -- silently un-narrowing the search on every cycle during a rolling
+                # upgrade. Rate-limited because a stale binary fails every single cycle.
+                if nh_hints:
+                    try:
+                        _post("%s/set_nh_hint" % d_ep, nh_hints)
+                    except Exception as e:
+                        _log_rl("nhpost-%s" % d_ep,
+                                "set_nh_hint %s failed (old binary?): %s" % (d_ep, e),
+                                every_s=120.0)
             _log_rl("narrow",
                     "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
                     % (len(hints), int(margin),

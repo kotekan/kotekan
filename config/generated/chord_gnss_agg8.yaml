@@ -661,6 +661,7 @@ gps_search:
   in_buf: agg_merged_buf
   kotekan_stage: GnssChannelizedSearch
   n_channels: 106
+  nh_hint_span: 2
   nh_search: true
   num_taps: 4
   pfb_window: hamming

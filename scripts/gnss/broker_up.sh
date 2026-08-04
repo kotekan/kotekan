@@ -38,6 +38,7 @@ http://127.0.0.1:12099/sink_track" \
     --combiner gnss0_combine \
     --dll-combiners "${MERGED}${SPLIT}" \
     --publish-port 12060 \
+    --nh-hint --nh-hint-span 2 \
     --almanac --almanac-source brdc --dead-reckon --narrow-search \
     --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
     --constellation G --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 \
