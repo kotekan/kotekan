@@ -179,6 +179,64 @@ def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz
     return rate_chips_per_hop * hops_per_sec / chip_hz
 
 
+def rate_residuals(status, min_q, clip_hz, log=None):
+    """Per-PRN carrier residual (Hz) from the combiner's phase-rate search.
+
+    TWO FAILURE MODES, TWO DEFENCES. Measured on sky 2026-08-04 by splitting each PRN's records
+    into independent halves and fitting each:
+
+        amp_snr 83.7 -> halves agree to 0.000 Hz      amp_snr 9.3 -> 0.093 Hz
+        amp_snr 44.2 -> 0.186                         amp_snr 9.5 -> 41.7 Hz  <-- WRONG BIN
+        amp_snr 43.1 -> 0.466
+
+    So a strong sat is pinned to ~0.2 Hz (against the <1 Hz a 1.05 s window needs), while a weak
+    one does not merely scatter -- it lands on the wrong spectral bin and is off by tens of Hz.
+    An average alone cannot survive that, and a hard gate alone throws away sats that are
+    perfectly usable. Hence both:
+
+      1. HARD GATE on the search's own peak/median (deep_rate_q): 17.9-22.0 on signal vs 2.8-6.1
+         on noise, so min_q sits in the gap and is a property of the measurement, not of SNR.
+      2. ROBUST WEIGHTED CONSENSUS across PRNs, weight = amp_snr, after clipping about the
+         MEDIAN. The median comes first precisely because a wrong-bin outlier is arbitrarily far
+         and would drag any mean; weighting then lets the 83-sigma sat dominate the 9-sigma ones
+         inside the surviving set, which is the right thing when precision tracks SNR.
+
+    A PRN that passes the gate keeps its OWN residual -- the per-satellite differences are real
+    (they are what a per-PRN trim exists for). One that fails INHERITS the consensus, which is
+    far better than either a wrong bin or no correction at all, because the dominant term is
+    common-mode (every node reports the same rate for a given PRN to within one search bin).
+
+    Returns {prn: residual_hz}; empty when nothing clears the gate.
+    """
+    cand = {}
+    for prn, rec in (status or {}).items():
+        q = float(rec.get("deep_rate_q") or 0.0)
+        f = rec.get("deep_rate_hz")
+        if f is None or q < min_q:
+            continue
+        w = float(rec.get("amp_snr") or 0.0)
+        if w > 0.0:
+            cand[int(prn)] = (float(f), w)
+    if not cand:
+        return {}
+    vals = sorted(v[0] for v in cand.values())
+    med = vals[len(vals) // 2]
+    # Clip about the median, then weight. clip_hz <= 0 disables the clip (keep everything gated).
+    keep = {p: (f, w) for p, (f, w) in cand.items()
+            if clip_hz <= 0.0 or abs(f - med) <= clip_hz}
+    if keep:
+        sw = sum(w for _, w in keep.values())
+        consensus = sum(f * w for f, w in keep.values()) / sw if sw > 0 else med
+    else:
+        consensus = med
+    out = {p: f for p, (f, _) in keep.items()}
+    dropped = [p for p in cand if p not in keep]
+    if log and dropped:
+        log("carrier-rate: %d PRN(s) clipped as outliers (>%.1f Hz from median %+.2f): %s"
+            % (len(dropped), clip_hz, med, sorted(dropped)))
+    return out, consensus
+
+
 def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier_hz):
     """Seed the cp0 slope (chips/hop) for a not-yet-fittable sat from the calibrated (l - a).
 
@@ -1038,6 +1096,28 @@ def main(argv=None):
                          "carrier_hz_resid into a per-PRN carrier_trim_hz commanded to every "
                          "subband tracker's NCO -- one loop at full-band SNR instead of N "
                          "noise-driven per-channel FLLs. Trackers need carrier_shared: true.")
+    ap.add_argument("--carrier-source", choices=("rate", "resid"), default="rate",
+                    help="what the shared carrier loop integrates. 'rate' (default, 2026-08-04) "
+                         "= the combiner's phase-rate search (deep_rate_hz), measured at "
+                         "peak/median 17.9-22.0 on signal vs 2.8-6.1 on noise and pinned to "
+                         "~0.2 Hz by split-half on strong sats. 'resid' = the legacy "
+                         "carrier_hz_resid, which is SIGNAL-FREE (0.519 Hz on signal, 0.492 on "
+                         "noise) -- kept only to reproduce the old behaviour, never for science.")
+    ap.add_argument("--carrier-rate-min-q", type=float, default=10.0,
+                    help="hard gate on deep_rate_q before a rate residual is believed. The 8.18.5 "
+                         "gap: 17.9-22.0 on signal, 2.8-6.1 on noise. A weak sat does not merely "
+                         "scatter, it lands on the WRONG spectral bin (measured: amp_snr 9.5 was "
+                         "41.7 Hz out by split-half, where amp_snr 83.7 was 0.000).")
+    ap.add_argument("--carrier-rate-clip-hz", type=float, default=25.0,
+                    help="clip rate residuals this far from the fleet MEDIAN before the weighted "
+                         "consensus (<=0 disables). Median first, because a wrong-bin outlier is "
+                         "arbitrarily far and would drag any mean.")
+    ap.add_argument("--carrier-rate-inherit", action="store_true", default=True,
+                    help="a PRN failing the q gate takes the fleet's amp_snr-weighted consensus "
+                         "instead of no correction. The dominant term is common-mode, so this is "
+                         "far better than free-running -- and strictly better than a wrong bin.")
+    ap.add_argument("--no-carrier-rate-inherit", dest="carrier_rate_inherit",
+                    action="store_false", help="disable the consensus fallback (per-PRN only)")
     ap.add_argument("--carrier-max-hz", type=float, default=40.0,
                     help="clamp on the shared carrier trim (Hz)")
     ap.add_argument("--carrier-leak", type=float, default=0.05,
@@ -4214,6 +4294,10 @@ def main(argv=None):
                 car_trim[_p] = _trim_force.pop(_p)
                 _log("TRIM FORCE (bench): PRN %d car_trim POISONED to %+.1f Hz"
                      % (_p, car_trim[_p]))
+            rate_resid, rate_consensus = {}, None
+            if args.carrier_source == "rate":
+                rate_resid, rate_consensus = rate_residuals(
+                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, _log)
             car_report = []
             for prn in list(seeds):
                 if prn in probe_set:
@@ -4235,6 +4319,24 @@ def main(argv=None):
                 #  --dop-continuous), and a walked trim latch is the watchdog's lifecycle
                 #  rescue. v1's fleet-kill postmortem lives in git history at 069e8770.)
                 resid = float(rec.get("carrier_hz_resid", 0.0))
+                if args.carrier_source == "rate":
+                    # THE MEASUREMENT THE LOOP WAS ALWAYS MISSING (2026-08-04). carrier_hz_resid
+                    # is signal-free -- 0.519 Hz on signal vs 0.492 Hz on noise -- which is why
+                    # closing this loop on it made every metric worse (8.18.4) and why leaving it
+                    # open left the carrier free-running (the ramp). deep_rate_hz comes from the
+                    # combiner's phase-rate search: peak/median 17.9-22.0 on signal against
+                    # 2.8-6.1 on noise, and split-half agreement of 0.0-0.5 Hz on strong sats
+                    # against the <1 Hz a 1.05 s window needs.
+                    #
+                    # It is a DELTA, not an absolute: the search runs on records the tracker
+                    # already derotated by car_trim, so what it reports is what remains. That is
+                    # exactly the residual this loop integrates -- no reference change.
+                    rr = rate_resid.get(prn)
+                    if rr is None and args.carrier_rate_inherit:
+                        rr = rate_consensus # failed its own gate: take the fleet's answer
+                    if rr is None:
+                        continue
+                    resid = rr
                 if resid == 0.0:
                     continue
                 # TWO-MODE LOOP. BOOTSTRAP (never certified since seed): legacy behavior --
