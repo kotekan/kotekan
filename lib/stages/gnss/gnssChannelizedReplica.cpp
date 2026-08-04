@@ -76,6 +76,12 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b1i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "BDS_B2I") {
+        // ★ NOT a typo: B2I's ranging code IS B1I's -- the ICD specifies ONE generator for
+        // C_B1I and C_B2I. Only the carrier and the broadcasting satellites differ.
+        auto a = beidou::generate_b1i_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
     if (name == "BDS_B3I") {
         auto a = beidou::generate_b3i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());

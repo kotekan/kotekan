@@ -334,6 +334,21 @@ inline constexpr SignalDescriptor BDS_B3I = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// BeiDou B2I (1207.14 MHz) -- BDS-2's legacy second signal. ★ It reuses the B1I RANGING CODE
+/// VERBATIM: the ICD draws one generator for C_B1I and C_B2I (same 11-stage LFSR pair, same
+/// per-PRN phase table), so the only differences from BDS_B1I are the carrier and the satellites
+/// that broadcast it. Same 2.046 Mcps / 2046 chips / 1 ms, same D1 message, same 20-chip NH.
+/// ★ 1207.14 is EXACTLY the B2b / Galileo E5b centre, and a 4 MHz lobe fits well inside that
+/// 10 MHz window -- so B2I STACKS on the existing l2c tune for free, no retune.
+/// ⚠️ BDS-2 ONLY: BDS-3 replaced B2I with B2a/B2b, and from Canada only the BDS-2 MEOs rise
+/// (its GEO/IGSO sit over ~58-160 E). Expect a couple of satellites, not a constellation.
+inline constexpr SignalDescriptor BDS_B2I = {
+    "BDS_B2I", 1207.14e6, 2.046e6, 2046, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/20,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -343,7 +358,7 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
           &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B, &BDS_B1I,
-          &BDS_B3I})
+          &BDS_B3I, &BDS_B2I})
         if (name == s->name)
             return s;
     return nullptr;

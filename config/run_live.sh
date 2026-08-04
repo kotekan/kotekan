@@ -597,7 +597,13 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
     # clock-freq bias (2026-07-12: lone cross-corr 'C14' lock swallowed -1550 Hz as clock
     # bias and deadlocked the narrowed search for the whole constellation). The BRDC
     # almanac gates PRN >= 19 itself; the name filter covers the TLE fallback path.
-    BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3"
+    # BDS-2 vs BDS-3: the BEIDOU-3 name filter is right for B1C/B2a/B2b (BDS-3 signals), but
+    # B2I is a BDS-2-ONLY signal -- filtering to BEIDOU-3 would hint exactly the satellites that
+    # do NOT broadcast it. Widen to the whole BeiDou group for a B2I chain.
+    case "$BDS_SIGNAL" in
+        BDS_B2I) : ;;                                   # BDS-2 signal: no BDS-3 filter
+        *) BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3" ;;
+    esac
     BDS_ALM="$BDS_ALM --noise-probes ${NOISE_PROBES:-4}"
     if [ "${DEAD_RECKON:-1}" != "0" ]; then BDS_ALM="$BDS_ALM --dead-reckon --dr-constellation C"; fi
     BDS_ALM="$BDS_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"

@@ -123,6 +123,8 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     // structurally the GPS L5_NH10 / E5A_CS20 / B2A_CS5 case. Floor ~sqrt(2 ln 20) ~2.4 sigma.
     {"B1I_NH20", /*per_prn=*/false, 1, 20, gen_b1i_nh20, "BDS_B1I"},
     {"B3I_NH20", /*per_prn=*/false, 1, 20, gen_b3i_nh20, "BDS_B3I"},
+    // B2I: same D1 NH20 again (and the same ranging code as B1I -- see the descriptor).
+    {"B2I_NH20", /*per_prn=*/false, 1, 20, gen_b1i_nh20, "BDS_B2I"},
 };
 
 const OverlayDescriptor* overlay_by_name(const std::string& name) {

@@ -152,6 +152,32 @@ shared:
 # PER-BAND TABLE. chains[0] is always the primary GPS chain (unprefixed stage names,
 # top-level signal/n_prn inheritance); later rows get gal_/bds_ prefixes.
 # =============================================================================================
+# ---------------------------------------------------------------------------------------------
+# DONGLE POOL -- the physical airspys, decoupled from the bands (2026-08-04).
+# ---------------------------------------------------------------------------------------------
+# Bands used to PIN a serial each, which made "run band X on dongle Y" a config edit and forced
+# an exclusivity table. They are now ASSIGNED: the generator hands the dongles out to the bands
+# in $BANDS ORDER, so any band runs on any dongle and the only rule left is
+# len(BANDS) <= len(dongles). Each band's own `airspy.serial` survives as the DEFAULT used when
+# it is not in $BANDS (its file is still generated, just unused).
+#     BANDS="l1 e6 b3i"   -> l1->dongle0, e6->dongle1, b3i->dongle2
+#     BANDS="b1i e6 b3i"  -> b1i->dongle0, e6->dongle1, b3i->dongle2
+# ⚠️ ORDER IS THE ASSIGNMENT: keep $BANDS order stable between runs if you want a band to stay
+# on the same physical unit (l-a code-bias files and clock-bias state are per TAG, not per
+# dongle, so a reshuffle re-converges them). cpu_affinity follows the DONGLE, not the band.
+# All three units see the same sky through the same splitter, so any assignment is valid RF-wise
+# -- but VERIFY A PIN BY BREAKING IT (airspy-serials memory) if a band ever looks wrong.
+dongles:
+  - serial: "0x03A464C837525967"
+    cpu_affinity: [11]
+    note: "unit A (historically L1)"
+  - serial: "0x744C60C821692F4F"
+    cpu_affinity: [12]
+    note: "unit B (historically L2C)"
+  - serial: "0x03A464C837264F67"
+    cpu_affinity: [13]
+    note: "unit C (historically L5)"
+
 bands:
 
   l1:
@@ -615,7 +641,7 @@ bands:
     doppler_note: |
       BeiDou B2b at 1207 MHz ~ 0.766 x L1 geometric Doppler; +-5000 with margin. step 100 (was
       50 for 20 ms L2C coherent bins): B2b records are 1 ms (like L5), so L5's 100 Hz grid applies.
-    num_cuda_streams: 3
+    num_cuda_streams: 4
     per_chain_streams: false
     record_dir: /tmp/gps_l2c_gpu
     # viewer_args REMOVED 2026-07-30: pared to ONE unified viewer (L1, --unified). The unified page
@@ -730,6 +756,39 @@ bands:
             _overlay E5B_CS4 wipes the 4-chip overlay so the 4 code periods within a symbol sum
             coherently; bit_export publishes the per-symbol signs as nav_obs. The composed
             secondary+navwipe branch is the E5a-I / L5-I case, just 4 ms/symbol. NO peel (no epl_frame).
+
+      # STACKED 2026-08-04: BeiDou-2 B2I rides the SAME 1207.14 tune as B2b and E5b -- a THIRD
+      # constellation chain on one dongle, exactly as E5b was added beside B2b. At 2.046 Mcps its
+      # 4 MHz main lobe sits well inside the 10 MHz window, so it costs a chain and nothing else.
+      # ★ Its ranging code IS B1I's (one ICD generator for C_B1I and C_B2I) -- only the carrier
+      # and the satellites differ. Labelled `constellation: bds` so run_live's EXISTING BeiDou
+      # broker block fires (keyed on a bds_track stage) with no launcher edit; chip rate and code
+      # length follow from the BDS_B2I descriptor.
+      # ⚠️ BDS-2 ONLY -- BDS-3 dropped B2I for B2a/B2b. From here only the BDS-2 MEOs rise (its
+      # GEO/IGSO sit over ~58-160 E), so expect a couple of satellites. run_live's BEIDOU-3 TLE
+      # filter is therefore SUPPRESSED for a BDS_B2I chain, or it would hint exactly the wrong birds.
+      - constellation: bds
+        signal: BDS_B2I
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /bds_track/set_seeds
+        record_name: bds_level
+        section_note: |
+          ---- BeiDou-2 B2I (legacy, 1207.14 MHz) ----
+          DATA-ONLY: acquired directly and nav-wiped, the B1I/B3I shape. Rides the B2b
+          channelized stream as a second consumer.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: B2I_NH20, navwipe_bit_records: 20, bit_export: true }
+          note: |
+            The composed wipe, as for B1I/B3I: B2I_NH20 wipes the 20-chip NH so the 20 code
+            periods in a symbol sum coherently, then navwipe_bit_records 20 estimates the D1
+            symbol. integration_length 1000 x 1 ms = 1 s emit.
 
   l5:
     out_file: live_l5_gpu.yaml

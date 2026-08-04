@@ -474,6 +474,29 @@ def main():
     with open(args.node) as f:
         node = yaml.safe_load(f)
 
+    # ---- DONGLE ASSIGNMENT (2026-08-04): pool -> bands, in $BANDS order --------------------
+    # See the `dongles:` note in gnss_node.yaml. A band in $BANDS takes the next dongle in the
+    # pool; a band NOT selected keeps its declared default (its file is generated but unused).
+    pool = node.get("dongles") or []
+    sel = os.environ.get("BANDS", "").replace(",", " ").split()
+    unknown = [b for b in sel if b not in node["bands"]]
+    if unknown:
+        raise SystemExit("BANDS: unknown band(s) %s; known: %s"
+                         % (" ".join(unknown), " ".join(node["bands"])))
+    if pool and len(sel) > len(pool):
+        raise SystemExit("BANDS: %d bands selected but only %d dongles in the pool"
+                         % (len(sel), len(pool)))
+    for i, b in enumerate(sel):
+        if i < len(pool):
+            node["bands"][b]["airspy"]["serial"] = pool[i]["serial"]
+            node["bands"][b]["airspy"]["cpu_affinity"] = pool[i]["cpu_affinity"]
+            node["bands"][b]["airspy"]["serial_note"] = (
+                "ASSIGNED from the dongle pool: %s (slot %d of BANDS=%r). Not a pin -- see the "
+                "`dongles:` note." % (pool[i].get("note", "?"), i, " ".join(sel)))
+    if sel:
+        print("dongle assignment: " + ", ".join(
+            "%s -> %s" % (b, node["bands"][b]["airspy"]["serial"]) for b in sel))
+
     os.makedirs(args.out_dir, exist_ok=True)
     failed = False
     for band_id in node["bands"]:
