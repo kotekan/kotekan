@@ -1056,6 +1056,14 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             const double anchor_age =
                 (double)(whop - S.reacq_hop[p]) * (double)S.fft_len / S.sample_rate;
             const bool fresh = std::isnan(S.f_ref[p]);
+            // NOT THE CHORD PATH. CHORD instantiates cudaGnssChordTrack, which has no f_ref,
+            // no fll_reacq_hz and no fence at all -- it uses the seed Doppler DIRECTLY as the
+            // replica carrier every window, so there the SEED IS THE REFERENCE and the fix is
+            // to seed smoothly (--seed-doppler auto), not to hold a pin. This hold was written
+            // against the measurement below and then found to be inert on CHORD for exactly
+            // that reason; it remains correct for THIS class (airspy/prototype), and is OFF by
+            // default. Check which tracker a config instantiates before tuning either.
+            //
             // LOCK-HOLD (2026-08-04). A re-pin is a REFERENCE change, not a correction: the
             // absolutely-anchored replica phase steps by df*t_abs, and (dop - f_ref) is NOT
             // carried by the NCO, so it IS the residual the combiner's rate search reports.
