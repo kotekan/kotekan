@@ -12,6 +12,7 @@
 #include <algorithm>  // for min, max
 #include <chrono>     // for steady_clock (hint TTL)
 #include <cmath>      // for fabs, fmod, norm
+#include <cstdio>     // for fopen/fread/fwrite (the replica disk cache)
 #include <cstring>    // for memcpy
 #include <functional> // for bind
 #include "json.hpp"   // for json
@@ -278,6 +279,81 @@ void GnssChannelizedSearch::search_snapshot() {
                                 * _replica->chip_rate_hz() / _sample_rate;
             _repl_k0[(size_t)m] = (long long)std::floor(chip / (double)Lc);
         }
+        // DISK CACHE. The head/tail bank is a pure function of the signal, the rates, the PFB,
+        // the PRN list, the covering comb, Mp and the anchor -- and the anchor is Mp*fft_len, a
+        // derived constant, not a per-run value. So it is bit-identical on every restart and
+        // there is no reason to spend two minutes rebuilding it. Node-LOCAL path: /home is NFS
+        // here, and 170 MB over NFS would give back what the cache saves.
+        //
+        // The key hashes every input, so a changed comb / PRN set / signal / format simply
+        // misses and rebuilds -- a stale file can never be silently used. Bump CACHE_VERSION to
+        // invalidate everywhere.
+        constexpr uint32_t CACHE_VERSION = 1;
+        uint64_t ckey = 1469598103934665603ull;
+        const auto mix = [&ckey](const void* d, size_t n) {
+            const auto* b = static_cast<const unsigned char*>(d);
+            for (size_t i = 0; i < n; ++i) { ckey ^= b[i]; ckey *= 1099511628211ull; }
+        };
+        {
+            const uint32_t ver = CACHE_VERSION;
+            const long cl = _replica->code_length(), ecl = _replica->eff_code_length();
+            const double cr = _replica->chip_rate_hz();
+            const int sl = _replica->secondary_length();
+            mix(&ver, sizeof ver); mix(&cl, sizeof cl); mix(&ecl, sizeof ecl);
+            mix(&cr, sizeof cr);   mix(&sl, sizeof sl);
+            mix(&_sample_rate, sizeof _sample_rate);
+            mix(&_fft_len, sizeof _fft_len);
+            mix(&Mp, sizeof Mp);
+            mix(&anchor, sizeof anchor);
+            mix(&n_prn, sizeof n_prn);
+            mix(_prns.data(), _prns.size() * sizeof(int));
+            mix(cov_global.data(), cov_global.size() * sizeof(int));
+            mix(cov_local.data(), cov_local.size() * sizeof(int));
+        }
+        char cpath[128];
+        std::snprintf(cpath, sizeof cpath, "/tmp/gnss_repl_%016llx.bin",
+                      (unsigned long long)ckey);
+        const size_t per_bytes = (size_t)Mp * sizeof(cf);
+        const size_t want_bytes = 2u * (size_t)n_prn * cov_local.size() * per_bytes;
+        // EVERY local channel index must be inside the row before anything indexes by it. The
+        // previous attempt at this cache indexed without checking and corrupted the heap.
+        bool cov_ok = true;
+        for (int lc : cov_local)
+            if (lc < 0 || lc >= _n_chan)
+                cov_ok = false;
+        if (!cov_ok)
+            FATAL_ERROR("GnssChannelizedSearch[{:s}]: covering channel index outside [0,{:d})",
+                        unique_name, _n_chan);
+        bool from_cache = false;
+        if (cov_ok) {
+            if (FILE* fp = std::fopen(cpath, "rb")) {
+                std::fseek(fp, 0, SEEK_END);
+                const long sz = std::ftell(fp);
+                std::fseek(fp, 0, SEEK_SET);
+                if (sz > 0 && (size_t)sz == want_bytes) {
+                    _repl_head.assign((size_t)n_prn, {});
+                    _repl_tail.assign((size_t)n_prn, {});
+                    from_cache = true;
+                    for (int p = 0; p < n_prn && from_cache; ++p) {
+                        _repl_head[(size_t)p].assign((size_t)_n_chan, {});
+                        _repl_tail[(size_t)p].assign((size_t)_n_chan, {});
+                        for (int lc : cov_local) {
+                            auto& h = _repl_head[(size_t)p][(size_t)lc];
+                            auto& t = _repl_tail[(size_t)p][(size_t)lc];
+                            h.assign((size_t)Mp, cf(0.0f, 0.0f));
+                            t.assign((size_t)Mp, cf(0.0f, 0.0f));
+                            if (std::fread(h.data(), 1, per_bytes, fp) != per_bytes
+                                || std::fread(t.data(), 1, per_bytes, fp) != per_bytes) {
+                                from_cache = false; // truncated or racing writer -> rebuild
+                                break;
+                            }
+                        }
+                    }
+                }
+                std::fclose(fp);
+            }
+        }
+        if (!from_cache) {
         _repl_head.assign((size_t)n_prn, {});
         _repl_tail.assign((size_t)n_prn, {});
         for (int p = 0; p < n_prn; ++p) {
@@ -304,14 +380,26 @@ void GnssChannelizedSearch::search_snapshot() {
                 }
             }
         }
+        }
+        if (!from_cache) { // persist for every future restart; a partial file simply misses above
+            if (FILE* fp = std::fopen(cpath, "wb")) {
+                for (int p = 0; p < n_prn; ++p)
+                    for (int lc : cov_local) {
+                        std::fwrite(_repl_head[(size_t)p][(size_t)lc].data(), 1, per_bytes, fp);
+                        std::fwrite(_repl_tail[(size_t)p][(size_t)lc].data(), 1, per_bytes, fp);
+                    }
+                std::fclose(fp);
+            }
+        }
         _repl_scratch.assign((size_t)_n_chan, {});
         for (size_t i = 0; i < cov_local.size(); ++i)
             _repl_scratch[(size_t)cov_local[i]].assign((size_t)Mp, cf(0.0f, 0.0f));
         INFO("GnssChannelizedSearch[{:s}]: repl0 head/tail built for {:d} PRNs x {:d} channels x "
-             "{:d} hops in {:.2f} s ({:.1f} MB) -- the {:d} nh alignments are a per-hop sign "
-             "pair, 2 generator calls per PRN instead of {:d}",
+             "{:d} hops in {:.2f} s ({:.1f} MB, {:s}) -- the {:d} nh alignments are a per-hop "
+             "sign pair, 2 generator calls per PRN instead of {:d}",
              unique_name, n_prn, (int)cov_local.size(), Mp, steady_s() - t_build,
-             2e-6 * (double)n_prn * cov_local.size() * Mp * sizeof(cf), _n_nh, _n_nh);
+             2e-6 * (double)n_prn * cov_local.size() * Mp * sizeof(cf),
+             from_cache ? "from disk cache" : cpath, _n_nh, _n_nh);
         _repl0_cover = cov_global;
         // The refine cost is one exact replica build per step, so say the number out loud: at
         // fft_len 16384 with the default step of 1 this is 32769 builds on the FIRST detection,
