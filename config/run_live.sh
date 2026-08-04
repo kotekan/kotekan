@@ -137,6 +137,16 @@ if grep -qE '^b1c_d_combiner:' "$CFG"; then
   B1C_D_TRK=",${SP}b1c_d_track"
   echo "BeiDou B1C-D B-CNAV1: broker decodes ${SP}b1c_d_combiner's symbols + BRDC cross-check"
 fi
+# GPS L1C-D DATA sibling (CNAV-2) on the L1 band. Like B1C-D from B1C-P: derived from the L1C-P
+# pilot, seeded verbatim -- l1c_d_track joins the L1C broker's --trackers so it gets L1C-P seeds.
+# Its combiner's nav_obs go to --cnav2-combiner for the Cnav2Predictor + BRDC xcheck (phase 2).
+CNAV2A=""
+L1C_D_TRK=""
+if grep -qE '^l1c_d_combiner:' "$CFG"; then
+  CNAV2A="--cnav2-combiner ${SP}l1c_d_combiner"
+  L1C_D_TRK=",${SP}l1c_d_track"
+  echo "GPS L1C-D CNAV-2: broker decodes ${SP}l1c_d_combiner's symbols + BRDC cross-check"
+fi
 CLA=""
 if grep -qE 'seed_endpoint:[[:space:]]*"/cl_track/set_seeds"' "$CFG"; then
   CLA="--cl-tracker ${SP}cl_track"
@@ -646,7 +656,7 @@ if grep -qE '^l1c_track:|seed_endpoint:[[:space:]]*"/l1c_track/set_seeds"' "$RUN
   fi
   { [ -z "$LAT" ] || [ -z "$LON" ]; } && echo "WARNING: l1c_track present but LAT/LON unset -- L1C require_hint search will scan NOTHING"
   echo "starting GPS-L1C broker ($L1C_SIGNAL: l1c_search/l1c_track/l1c_combiner, constellation G, chip $L1C_CHIP code $L1C_CODELEN)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}l1c_search --trackers ${SP}l1c_track --combiner ${SP}l1c_combiner \
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}l1c_search --trackers ${SP}l1c_track${L1C_D_TRK} --combiner ${SP}l1c_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_l1c.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_l1c.hz $SIB_L1C $STA_L1C \
           --chip-rate-hz $L1C_CHIP --code-length $L1C_CODELEN --hold-max-cp-err $L1C_CPERR \

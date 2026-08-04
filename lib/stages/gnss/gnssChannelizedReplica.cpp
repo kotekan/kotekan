@@ -41,6 +41,10 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = gps::generate_l1cp_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GPS_L1C_D") {
+        auto a = gps::generate_l1cd_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
     if (name == "GPS_L5_I") {
         auto a = gps::generate_l5i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());

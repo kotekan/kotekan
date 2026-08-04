@@ -88,6 +88,18 @@ inline constexpr SignalDescriptor GPS_L1C_P = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
+/// GPS L1C-D (1575.42 MHz) -- the L1C DATA channel carrying CNAV-2: same 10230-chip BOC(1,1)
+/// primary at 10 ms as L1C-P (its own Weil code), NO overlay of its own (the 1800-symbol overlay
+/// is the pilot's). CNAV-2 is 50 bps through rate-1/2 LDPC = 100 sps, so a symbol is 10 ms = one
+/// code period -> navwipe_bit_records 1 (the B1C-D / L5-I discipline). DERIVED from the L1C-P
+/// pilot; decoded by gps_cnav2 (binary LDPC, 18 s frame). ReplicaSource: gpsL1CCode::generate_l1cd.
+inline constexpr SignalDescriptor GPS_L1C_D = {
+    "GPS_L1C_D", 1575.42e6, 1.023e6, 10230, 10e-3,
+    Modulation::BOC, 1, 1, // BOC(1,1)
+    /*pilot=*/false, /*nav_symbol_s=*/10e-3, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
+};
+
 /// GPS L2C CM (1227.6 MHz) -- the *data* component: 10230 chips at 511.5 kcps
 /// (20 ms), chip-interleaved with CL to a 1.023 Mcps stream; carries CNAV
 /// (25 bps + FEC -> 50 sps). ReplicaSource: gpsL2CCode (27-stage LFSR + CM
@@ -278,7 +290,7 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
-          &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I})
+          &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D})
         if (name == s->name)
             return s;
     return nullptr;
