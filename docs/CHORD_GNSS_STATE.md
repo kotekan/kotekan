@@ -2948,3 +2948,53 @@ one that runs. **The check costs one command and must precede the edit:**
 `grep -c <ClassName> config/generated/*.yaml`. CHORD carries near-duplicate pairs
 (`cudaGnssTrack` / `cudaGnssChordTrack`, `GnssChannelizedTracker`) that make
 reading-the-plausible-file fail silently every time.
+
+### 8.20.8 ROOT CAUSE: carrier_trim_hz never reaches the CHORD despread
+
+The carrier loop does not converge because **it has no actuator**. On the CHORD GPU path the
+trim is plumbed as far as the record export and no further:
+
+```
+broker            car_trim[prn] -> seed key "carrier_trim_hz"
+cudaGnssChordTrack  sd.ctrim_hz -> c.f_nco            (control block only)
+GnssGpuRecordAssemble            _phi[p] += 2*pi*c.f_nco*dt   <- ONLY consumer: the
+                                                                 exported commanded phase (ADR)
+GnssCudaDespread   wc = 2*pi*(f_off + sp.doppler_hz)/fs        <- NO trim term
+```
+
+`GnssCudaDespread::Spec` has no NCO/trim member at all (`p`, `cp_seed`, `spacing_chips`,
+`doppler_hz`, `covering`), and `f_nco` appears nowhere in `lib/cuda/*.cu`. So the despread
+replica runs at the seed Doppler alone, the prompt correlations are invariant to
+`carrier_trim_hz`, and `deep_rate_hz` -- measured from those raw prompts (`_navbuf`) -- cannot
+respond to the trim. The loop integrates an error it can never null, so it walks to the +-40 Hz
+clamp at ANY gain. That is precisely what was observed at 0.25 and at 0.6.
+
+**Measured on sky, open-loop, with `f_ref` held still** (the live POST /set_carrier_trim path,
+4 phases 0 / +20 / -20 / 0, drift fitted out using the two bracketing zeros because the residual
+drifts ~-0.1 Hz/s = ~-12 Hz per 2-minute phase, comparable to the step):
+
+```
+PRN  4: drift -6.28 Hz/phase   trim gain k = -0.437
+PRN 28: drift -3.54 Hz/phase   trim gain k = +0.305
+PRN 32: drift -0.72 Hz/phase   trim gain k = +0.140
+median k = +0.14           expected -1.00 if plumbed; ~4 sigma from -1, consistent with 0
+```
+
+Note this is the CHORD (GPU) path only. `GnssChannelizedTracker` DOES apply it --
+`f_nco = f_track + ctrim + ff_hz; phi_track += 2*pi*f_nco*dt` -- which is why the design note in
+`cudaGnssTrack.hpp` ("the residual is ~0.01 Hz once the broker's shared carrier loop is closed")
+reads as true and is not true here. Same family as 8.20.7: the class that reads correctly is not
+the class that runs.
+
+**The fix, and the two things that must be validated with it.** The despread carrier has to
+carry the trim, i.e. `wc = 2*pi*(f_off + doppler_hz +/- ctrim)/fs` with `ctrim` added to the
+`Spec`:
+1. **Sign.** The NCO lives in the r2c-flipped internal convention while `doppler_hz` is
+   physical-signed. Do not reason it out -- re-run the step probe after the change; `k` must come
+   out **-1.00**, and the probe now exists and takes ~8 minutes.
+2. **The assembler's reconstruction.** `GnssGpuRecordAssemble` recovers ctrim from the identity
+   `ctrim = (f_nco + fcar_report - fcar)/2` for the ADR export. If the despread starts consuming
+   the trim, that identity and the exported `Phi_cmd` must stay consistent or ADR/`deep_rate`
+   bookkeeping breaks. Change both together, and check `adr_cycles` continuity across the switch.
+
+Until then **keep `--carrier-gain 0.0`**: with no actuator, any nonzero gain is a pure ratchet.
