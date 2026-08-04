@@ -1,3 +1,6 @@
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #include "gnssSeedTransport.hpp"
 
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
@@ -46,13 +49,38 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
     (void)dims; // (shape is informational now; the scan no longer depends on s_stored)
 
     std::vector<double> pw((size_t)n_eval, -1.0);
-#pragma omp parallel for schedule(static) num_threads(n_threads > 0 ? n_threads : 1)
+    // PER-THREAD SCRATCH, allocated once. hoprate_stream returns ~2.6 MB by value, so the
+    // by-value form had every one of these threads calling the allocator inside the loop, on
+    // every detection. The same churn took the ms-split refine from 89 s to 874 s when it was
+    // found in that path (docs/CHORD_GNSS_MS_SPLIT_SEARCH.md section 8); the ordinary refine
+    // still had it. Sized by thread id, so no two threads share a buffer.
+    const int nthr = n_threads > 0 ? n_threads : 1;
+    std::vector<std::vector<std::vector<std::complex<float>>>> scratch((size_t)nthr);
+    // n_hops may be SHORTER than the data (a caller trading integration for speed -- the refine
+    // only has to localise a peak that already cleared detection). channelized_despread
+    // requires matching lengths, so take the leading n_hops of each channel once, here, rather
+    // than per trial phase.
+    std::vector<std::vector<std::complex<float>>> dview;
+    const std::vector<std::vector<std::complex<float>>>* dp = &data;
+    if (!data.empty() && (int)data[0].size() > n_hops) {
+        dview.resize(data.size());
+        for (size_t c = 0; c < data.size(); ++c)
+            dview[c].assign(data[c].begin(), data[c].begin() + n_hops);
+        dp = &dview;
+    }
+#pragma omp parallel for schedule(static) num_threads(nthr)
     for (int e = 0; e < n_eval; ++e) {
         const double cp = coarse_cp + (double)(-span + e * step) * cps;
         // Same secondary-code alignment the peak was found at, or the refine despreads an
         // overlay-blind replica against an overlay-aligned peak and walks off it.
-        const auto r = bank.hoprate_stream(rf, prn_index, anchor, cp, dop, n_hops, {}, nh_phase);
-        pw[(size_t)e] = std::norm(channelized_despread(data, r).amplitude);
+#ifdef _OPENMP
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
+        auto& r = scratch[(size_t)std::min(tid, nthr - 1)];
+        bank.hoprate_stream_into(rf, prn_index, anchor, cp, dop, n_hops, {}, nh_phase, r);
+        pw[(size_t)e] = std::norm(channelized_despread(*dp, r).amplitude);
     }
     // Reduce serially so the result does not depend on thread scheduling -- a tie broken by
     // whichever thread finished first is exactly the kind of irreproducibility that makes a

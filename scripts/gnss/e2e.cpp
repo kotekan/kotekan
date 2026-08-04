@@ -102,6 +102,7 @@ struct Opt {
     // turned out to BE the bug -- a harness defaulting to a broken config silently
     // reproduces the break and calls it baseline.
     int refine_span = 0, refine_step = 303;
+    int refine_hops = 0; ///< refine integration hops (0 = the full record)
 
     // Tracker side (chord_gnss_cx19.yaml gnss0_track)
     int t_chan0 = 5972, t_stride = 16, t_nchan = 7;
@@ -157,6 +158,7 @@ static void usage() {
         "  --fine-step N      acquire_fine_step (default 32)\n"
         "  --threads N        acquire threads (default 6)\n"
         "  --refine-span N    refine +-samples (default fft_len)  --refine-step N (default 303)\n"
+        "  --refine-hops N    refine integration length, hops (default = the full record)\n"
         "  --seed-dop-err F   Hz of Doppler error given ONLY to the seed (the live residual)\n"
         "  --seed-cp-rate X   code_phase_rate handed to the tracker, chips/hop\n"
         "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker\n"
@@ -245,6 +247,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--fine-step")) o.fine_step = next_i();
         else if (arg_eq(a, "--threads")) o.threads = next_i();
         else if (arg_eq(a, "--refine-span")) o.refine_span = next_i();
+        else if (arg_eq(a, "--refine-hops")) o.refine_hops = next_i();
         else if (arg_eq(a, "--refine-step")) o.refine_step = next_i();
         else if (arg_eq(a, "--seed-dop-err")) o.seed_dop_err = next_d();
         else if (arg_eq(a, "--seed-cp-rate")) o.seed_cp_rate = next_d();
@@ -594,7 +597,9 @@ int main(int argc, char** argv) {
         const double t_ref0 = tnow();
         const double best_cp =
             gnss::refine_peak(sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop,
-                              anchor, rhops, o.sample_rate, o.refine_span, o.refine_step,
+                              anchor,
+                              (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops,
+                              o.sample_rate, o.refine_span, o.refine_step,
                               o.threads);
 
         T_ref += tnow() - t_ref0;

@@ -217,6 +217,11 @@ private:
     /// rather than 1 -- on a wide bank a 1-sample step is thousands of times finer than the
     /// covering set can resolve, and costs one replica build each.
     int _refine_span = 0;
+    /// Refine integration length in hops; 0 = the full record. The refine only LOCALISES a peak
+    /// that already cleared detection, and costs one full n_chan x n_hops replica build per
+    /// trial phase -- 82% of all search compute at CHORD dimensions. The airspy prototype does
+    /// 1/33 of that work because its record IS one code period, where CHORD's spans 16.
+    int _refine_hops = 0;
     int _refine_step = 0;
 
     /// Precomputed repl0 (code phase 0, Doppler 0), BANDED to the covering channels: [prn]

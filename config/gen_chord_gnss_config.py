@@ -416,6 +416,13 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # that -- the grating-lobe ambiguity, 13.09 chips at g=4 -- and the span must still
         # cover it. 8 nodes give g=1; fewer can too (any two nodes with adjacent comb offsets),
         # so compute it rather than assume the node count.
+        # Refine integration length, hops. The refine LOCALISES a peak that already cleared
+        # detection, and costs one full n_chan x n_hops replica build per trial phase -- 82% of
+        # all search compute at CHORD dimensions (measured 2026-08-04). Two code periods give a
+        # BIT-IDENTICAL answer to the full 16-period record, noiseless and at 20x noise, because
+        # the refine only has to pick the best of 14 discrete trial phases and the 0.246-chip
+        # step quantisation dominates. 391 ~= 2 x 195.3125.
+        "refine_hops": 391,
         "refine_span": 512 if _comb_g(chan_ids, fe["num_bins"] * 2) == 1
                        else fe["num_bins"] * 2,
         # The aggregate is parallel over Doppler bins and is the whole cost of an aggregator

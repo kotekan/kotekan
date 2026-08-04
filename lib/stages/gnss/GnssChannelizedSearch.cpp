@@ -159,6 +159,15 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // at CHORD's fft_len 16384 the default is 32769 builds, and see the loop for why they buy
     // nothing. Set it in config for a wide bank.
     _refine_span = config.get_default<int>(unique_name, "refine_span", _fft_len);
+    // REFINE INTEGRATION LENGTH, hops. 0 = the full record (hpr), which is what it has always
+    // used. The refine only has to LOCALISE a peak that already cleared the detection
+    // threshold, and it costs one full 106-channel x hpr replica build per trial phase -- ~3.5 s
+    // at CHORD dimensions, which is 82% of all search compute. The airspy prototype refines
+    // over 10 channels x 1000 hops = 1/33 of the work, because its record IS one code period;
+    // CHORD's spans 16. Shortening this to a period or two is therefore matching the prototype
+    // rather than cutting below it -- but it trades SNR for speed, so measure the phase error
+    // before trusting it (scripts/gnss/e2e --refine-hops).
+    _refine_hops = std::max(0, config.get_default<int>(unique_name, "refine_hops", 0));
     _refine_step = std::max(1, config.get_default<int>(unique_name, "refine_step", 1));
 
     // SECONDARY-CODE (Neuman-Hofman) ALIGNMENT SEARCH.
@@ -642,7 +651,8 @@ void GnssChannelizedSearch::search_snapshot() {
             const double _t_r0 = prof ? steady_s() : 0.0;
             const double best_cp = gnss::refine_peak(
                 *_replica, p, d, cov_global, a.code_phase_chips, dims,
-                (_n_nh > 1) ? best_nh : -1, dop, anchor, hpr, _sample_rate, _refine_span,
+                (_n_nh > 1) ? best_nh : -1, dop, anchor,
+                (_refine_hops > 0 && _refine_hops < hpr) ? _refine_hops : hpr, _sample_rate, _refine_span,
                 _refine_step, _acquire_threads);
             if (prof) t_ref += steady_s() - _t_r0;
             // Peak -> reported phases. The arithmetic lives in gnssSeedTransport so the

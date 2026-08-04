@@ -372,6 +372,19 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
                                        double code_phase_chips, double doppler_hz, int n_hops,
                                        const std::function<float(long long)>& nav_bit,
                                        int nh_phase) const {
+    std::vector<std::vector<cf>> chan_out;
+    hoprate_stream_into(f, p, window_start_sample, code_phase_chips, doppler_hz, n_hops, nav_bit,
+                        nh_phase, chan_out);
+    return chan_out;
+}
+
+void
+ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
+                                            long long window_start_sample, double code_phase_chips,
+                                            double doppler_hz, int n_hops,
+                                            const std::function<float(long long)>& nav_bit,
+                                            int nh_phase,
+                                            std::vector<std::vector<cf>>& chan) const {
     // Per-hop carrier + code phase use the CURRENT Doppler (exact); the filter shape f is
     // built for a nearby Doppler (it barely moves). R_j[m] = 1/2 ( e^{+i wc n_m} Σ_d code·d̂·
     // (PhiA over chip d) + e^{-i wc n_m} ... PhiB ), d the chip relative to the window edge.
@@ -382,7 +395,12 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
     const int Lf = _fft_len * _num_taps;
     const int nw = (int)f.PhiA.size();
 
-    std::vector<std::vector<cf>> chan(nw, std::vector<cf>(n_hops));
+    // Reuse the caller's buffer; only grow when it does not already fit.
+    if ((int)chan.size() != nw)
+        chan.assign((size_t)nw, std::vector<cf>((size_t)n_hops));
+    for (auto& row : chan)
+        if ((int)row.size() != n_hops)
+            row.assign((size_t)n_hops, cf(0.0f, 0.0f));
     const long long n0 = window_start_sample + _fft_len - 1;
     std::complex<double> pa = std::polar(1.0, std::fmod(wc * (double)n0, 2.0 * M_PI));
     const std::complex<double> pstep = std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
@@ -459,7 +477,6 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
         pa *= pstep;
         pa /= std::abs(pa);
     }
-    return chan;
 }
 
 std::vector<std::vector<cf>>

@@ -101,6 +101,18 @@ public:
                    double code_phase_chips, double doppler_hz, int n_hops,
                    const std::function<float(long long)>& nav_bit = {}, int nh_phase = -1) const;
 
+    /// @ref hoprate_stream writing into a CALLER-OWNED buffer, resized only when it does not
+    /// already fit. The refine evaluates ~14 trial phases in an OpenMP loop and the by-value
+    /// form allocates ~2.6 MB inside every iteration, so 14 threads hit the allocator at once,
+    /// every detection. That exact pathology was diagnosed in the sibling ms-split path
+    /// (K=16's refine went 89 s -> 874 s on allocation churn alone, docs/CHORD_GNSS_MS_SPLIT_
+    /// SEARCH.md section 8) and fixed there; the ordinary refine still had it. Hoist the buffer
+    /// out of the loop and the allocator is touched once per thread per pass instead.
+    void hoprate_stream_into(const HopRateFilter& f, int p, long long window_start_sample,
+                             double code_phase_chips, double doppler_hz, int n_hops,
+                             const std::function<float(long long)>& nav_bit, int nh_phase,
+                             std::vector<std::vector<std::complex<float>>>& out) const;
+
     /// Global channel indices whose passband covers the carrier at @c doppler_hz.
     std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz) const;
 

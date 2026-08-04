@@ -700,6 +700,7 @@ gps_search:
   - 32
   prns_per_pass: 1
   refine_step: 77
+  refine_hops: 391
   refine_span: 512
   require_hint: true
   sample_rate: 3200000000.0
