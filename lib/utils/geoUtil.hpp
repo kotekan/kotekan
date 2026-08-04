@@ -14,25 +14,25 @@ using mat3x3d_t = std::array<std::array<double, 3>, 3>;
  * @brief A class which defines a cartesian reference frame on the surface of the Earth
  * and facilitates transformations between this frame and the ITRS.
  *
- * The frame exists at a particular point on the Earth specified by geodetic Latitude and Longitude
- *in ITRS. This object is concerned with three reference frames:
+ * The frame exists at a particular point on the Earth specified by geodetic Latitude and
+ * Longitude in ITRS. This object is concerned with three reference frames:
  *
- * 1) ITRS (International Terrestrial Reference System). The coordinate system for the planet Earth,
- *where geodetic Latitude and Longitude live. The x-, y-, and z- axes are at latitude and longitude
- *(0, 0), (0, 90), and (90, *), the origin is at Earth Barycenter. The IAU defines the
- *transformations between this frame and sky (e.g. ICRS).
+ * 1) ITRS (International Terrestrial Reference System). The coordinate system for the planet
+ * Earth, where geodetic Latitude and Longitude live. The x-, y-, and z- axes are at latitude and
+ * longitude (0, 0), (0, 90), and (90, *), the origin is at Earth Barycenter. The IAU defines the
+ * transformations between this frame and sky (e.g. ICRS).
  *
- * 2) TOPO (Topocentric coordinates). A local, Cartesian coordinate system with origin at a point on
- *the Earth, aligned with geodetic latitude, longitude, and altitude.  The x-, y-, and z- axes are
- *directed exactly East, North, and Up at the origin point and are mutually orthogonal.
+ * 2) TOPO (Topocentric coordinates). A local, Cartesian coordinate system with origin at a point
+ * on the Earth, aligned with geodetic latitude, longitude, and altitude.  The x-, y-, and z- axes
+ * are directed exactly East, North, and Up at the origin point and are mutually orthogonal.
  *
  * 3) This Frame (name). The frame defined by this object. A local, Cartesian coordinate system,
- *with origin at a point on the Earth, and x-, y-, and z- axes mutually orthonormal but otherwise
- *arbitrary.  This frame's origin may be displaced from the TOPO origin. The axes of this frame are
- *provided in the TOPO basis.
+ * with origin at a point on the Earth, and x-, y-, and z- axes mutually orthonormal but otherwise
+ * arbitrary.  This frame's origin may be displaced from the TOPO origin. The axes of this frame
+ * are provided in the TOPO basis.
  *
  * In practice this object is often defining the axes of an interferometric array, but it is also
- *used to define the orientation of a dish pointing, and may serve other uses in the future.
+ * used to define the orientation of a dish pointing, and may serve other uses in the future.
  *
  * @author Geoffrey Ryan
  **/
