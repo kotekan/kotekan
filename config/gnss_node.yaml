@@ -1139,6 +1139,22 @@ bands:
       to enable HAS); see galileoE6Code.hpp + e6_code_check.py.
       ★ 5.115 Mcps main lobe (+-5.115 MHz) FITS the 10 MHz window -- better than B2b, whose
       10.23 Mcps lobe is captured half and still decodes.
+      ✅ FIRST LIGHT 2026-08-04: E30 locked on BOTH chains at coh_s 1.000 -- pilot deep_snr to
+      146 (24x its 4.03 floor, sustained 87% over 60 s), data to 143. A pilot lock at coh_s 1.0
+      retro-validates the ENTIRE transcription at once: the E6-C primary code, the per-PRN CS100
+      secondary and the 5115-chip/5.115-Mcps geometry must ALL be right to get it, so the
+      1279-hex padding convention is confirmed ON THE SKY, not just by the balance argument.
+      ✅ HAS IS MODULATED: on E30's locked emits the E6-B stream runs 3001 contiguous symbols at
+      trans 0.523, autocorr(100) +0.002, CS100 match 0.078 -- a real non-periodic coded message.
+      ⚠️ BUT THE LOCK IS INTERMITTENT and only E30 (the strongest Galileo up) holds it. What
+      remains is a LINK BUDGET problem, NOT a correctness one: suspect the antenna/LNA passband
+      at 1278.75 (the first launch measured ADC rms 94 vs l2c's 1049). Next test: sweep
+      1207 -> 1278 at FIXED gain and watch rms.
+      ⚠️⚠️ READ deep_snr AGAINST deep_floor HERE, ALWAYS (pilot 4.03, data 26.06). An UNLOCKED
+      navwipe rectifies noise to trans ~0.50, non-periodic, coh/deep ~0 -- it mimics a real
+      message perfectly. Those tests discriminate ONLY on a sat already proven above floor, and
+      a lock test must be a SUSTAINED FRACTION, never a first threshold crossing (an unlocked
+      chain crosses any modest threshold within minutes). Both mistakes were made here.
     http_port: 8083
     kotekan_rest_port: 12348
     samples_per_data_set: 49920
