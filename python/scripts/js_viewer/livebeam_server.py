@@ -755,6 +755,10 @@ BAND_CHAINS = {
     "l5":  [{"tag": "G", "name": "GPS L5",      "t_rec": 1e-3,  "color": "#4d9de0"},
             {"tag": "E", "name": "Galileo E5a", "t_rec": 1e-3,  "color": "#e8923c"},
             {"tag": "C", "name": "BeiDou B2a",  "t_rec": 1e-3,  "color": "#d64550"}],
+    # GLONASS L3OC (2026-08-04) -- the fourth constellation, tag R, 1 ms records. PRNs are
+    # orbital SLOT numbers. Only the 7 GLONASS-K satellites transmit it; the sky layer filters
+    # to those via _l3oc_capable_set, the same way "L" filters to GPS III.
+    "l3oc": [{"tag": "R", "name": "GLONASS L3OC", "t_rec": 1e-3, "color": "#9b6fd6"}],
 }
 
 # UNIFIED VIEWER (2026-07-28): one page, one satellite per row, every signal that satellite
@@ -856,6 +860,17 @@ SIG_DISPLAY = {
     "BDS_B2A_P":  ("C", "B2a",  "BeiDou B2a"),
     "BDS_B2A_D":  ("C", "B2aD", "BeiDou B2a (data, B-CNAV2)"),
     "BDS_B2B_I":  ("C", "B2b",  "BeiDou B2b (data, B-CNAV3)"),
+    # Signals added after this table was last swept -- without a row each renders with its raw
+    # id and a one-letter column ("D"), which reads as a bug in the table rather than an
+    # omission in it.
+    "GPS_L1C_D":  ("L", "L1CD", "GPS L1C-D (data, CNAV-2) -- carrier UNMODULATED, see notes"),
+    "GAL_E6_C":   ("E", "E6C",  "Galileo E6-C (pilot)"),
+    "GAL_E6_B":   ("E", "E6B",  "Galileo E6-B (data, HAS)"),
+    "BDS_B1I":    ("C", "B1I",  "BeiDou B1I (legacy, D1)"),
+    "BDS_B3I":    ("C", "B3I",  "BeiDou B3I (legacy, D1)"),
+    "BDS_B2I":    ("C", "B2I",  "BeiDou B2I (legacy BDS-2, D1)"),
+    "GLO_L3OC_P": ("R", "L3OC", "GLONASS L3OC-p (pilot)"),
+    "GLO_L3OC_D": ("R", "L3OCd", "GLONASS L3OC-d (data)"),
 }
 _SYS_TAG = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
 
@@ -1140,7 +1155,12 @@ class WsPortResource(resource.Resource):
             self.capability = _gps_signal_capability()
             self.chains = [{"tag": "G", "name": "GPS",     "color": "#4d9de0"},
                            {"tag": "E", "name": "Galileo", "color": "#e8923c"},
-                           {"tag": "C", "name": "BeiDou",  "color": "#d64550"}]
+                           {"tag": "C", "name": "BeiDou",  "color": "#d64550"},
+                           # GLONASS (2026-08-04): violet, distinct from the G/E/C palette and
+                           # from the green the synthetic "L" (GPS L1C) tag uses. PRNs here are
+                           # orbital SLOT numbers, which is what the L3OC code index turned out
+                           # to be -- so tag+prn keys GLONASS satellites the same way as the rest.
+                           {"tag": "R", "name": "GLONASS", "color": "#9b6fd6"}]
             return
         tags = [t.strip() for t in consts.split(",") if t.strip()]
         table = BAND_CHAINS.get(band, BAND_CHAINS["l1"])
@@ -1149,7 +1169,11 @@ class WsPortResource(resource.Resource):
         # hardcoded spellings when absent (old server / new client and vice versa both work).
         base = {"G": ("gps_search", "gps_combiner"), "E": ("gal_search", "gal_combiner"),
                 "C": ("bds_search", "bds_combiner"),
-                "L": ("l1c_search", "l1c_combiner")}  # GPS L1C-P: 4th L1 chain, synthetic tag
+                "L": ("l1c_search", "l1c_combiner"),  # GPS L1C-P: 4th L1 chain, synthetic tag
+                # GLONASS L3OC is a Shape-A primary: its chain is labelled `constellation: gps`
+                # in gnss_node.yaml so it keeps the un-prefixed gps_* stage names the primary
+                # broker needs, even though the SIGNAL is GLONASS. Hence gps_*, not glo_*.
+                "R": ("gps_search", "gps_combiner")}
         self.chains = []
         for c in table:
             if c["tag"] not in tags:
@@ -1206,6 +1230,8 @@ class GpsSkyResource(resource.Resource):
         self._eph_t = None                       # monotonic s of last BRDC parse
         self._l1c_capable = None                 # cached set of L1C-capable PRNs (GPS III)
         self._l1c_capable_t = None               # monotonic s of last capability fetch
+        self._l3oc_capable = None                # cached set of L3OC-capable slots (GLONASS-K)
+        self._l3oc_capable_t = None              # monotonic s of last capability fetch
         self._last_compute = None                # monotonic s of last attempt
         self._refreshing = False
 
@@ -1228,19 +1254,64 @@ class GpsSkyResource(resource.Resource):
         ("E", "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
         ("C", "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"),
         ("L", None),        # GPS L1C-P: same GPS birds (gps-ops TLE) as "G", distinct viewer tag
+        ("R", "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"),
     )
+
+    # Constellations gnss_ephemeris can actually propagate. Its RINEX parser filters on
+    # sysc in "GEC", and GLONASS broadcasts a position/velocity/acceleration state vector
+    # integrated by Runge-Kutta rather than a Keplerian element set, so there is nothing for
+    # sat_pos_clk to work with. 'R' therefore comes from TLE even when BRDC is healthy --
+    # see _compute, which merges the two sources rather than choosing between them.
+    _BRDC_TAGS = frozenset(("G", "E", "C", "L"))
 
     def _compute(self):
         """Runs in a worker thread. PRIMARY: broadcast-ephemeris (BRDC) geometry via predict_all
         -- the SAME source the tracker uses, so the sky plot agrees with what we actually lock,
         and it is PRN-intrinsic (no fragile TLE name->PRN mapping, which had mis-placed BeiDou
         MEOs C31/C39 below the horizon while we were tracking them at +17/+27 deg). FALLBACK:
-        Celestrak TLE + skyfield, used only when the BRDC is unavailable (offline / parse fail)."""
+        Celestrak TLE + skyfield, used only when the BRDC is unavailable (offline / parse fail).
+
+        ★ The two sources are MERGED, not chosen between. GLONASS has no BRDC path at all (see
+        _BRDC_TAGS), so the old "if BRDC returned anything, use it and stop" would have taken the
+        BRDC result for GPS/Galileo/BeiDou and silently dropped GLONASS from the sky plot
+        entirely -- satellites we are actively locking, absent from the picture, with nothing
+        anywhere saying why. Same shape as the broker's zero-satellite almanac trap: a source
+        succeeding for SOME constellations is not the same as it covering the ones you asked for.
+        """
         want = [c[0] for c in self.CONSTELLATIONS]
-        sats = self._brdc_skypos(want)
-        if sats is not None:
-            return {"ok": True, "sats": sats, "src": "brdc"}
-        return {"ok": True, "sats": self._tle_skypos(), "src": "tle"}
+        brdc_want = [t for t in want if t in self._BRDC_TAGS]
+        tle_want = [t for t in want if t not in self._BRDC_TAGS]
+        sats = self._brdc_skypos(brdc_want) if brdc_want else None
+        if sats is None:
+            # BRDC unavailable -> everything falls back to TLE (the original behaviour).
+            return {"ok": True, "sats": self._tle_skypos(want), "src": "tle"}
+        if tle_want:
+            sats = sats + self._tle_skypos(tle_want)
+            return {"ok": True, "sats": sats, "src": "brdc+tle"}
+        return {"ok": True, "sats": sats, "src": "brdc"}
+
+    def _l3oc_capable_set(self):
+        """Cached set of GLONASS SLOTS that actually broadcast L3OC = the GLONASS-K satellites
+        (7 of 28 as of 2026-08), from the live Celestrak 'K' marker on the Uragan number. Exactly
+        the job _l1c_capable_set does for GPS III: without it the 'R' sky layer would show all 28
+        slots, three quarters of them silent birds that look like failed L3OC locks.
+        None on failure => no filter (show all GLONASS under R)."""
+        if (self._l3oc_capable_t is not None
+                and (time.monotonic() - self._l3oc_capable_t) < 3600.0):
+            return self._l3oc_capable
+        try:
+            import gps_beamtrack as bt
+            caps = bt.signal_capable_prns("GLO_L3OC_P", bt.GLONASS_TLE_URL)
+            # As in _l1c_capable_set: a set covering everything carries no information. The
+            # GLONASS constellation is ~28 slots, so anything near that means the K marker
+            # was not found and the filter should stand down rather than hide real satellites.
+            self._l3oc_capable = set(caps) if caps and len(caps) < 24 else None
+        except Exception as e:
+            log_.warning("gps_sky: L3OC capability set unavailable (%s); showing all GLONASS "
+                         "under R", e)
+            self._l3oc_capable = None
+        self._l3oc_capable_t = time.monotonic()
+        return self._l3oc_capable
 
     def _l1c_capable_set(self):
         """Cached set of PRNs whose GPS block actually broadcasts L1C (GPS III), from the live
@@ -1301,8 +1372,10 @@ class GpsSkyResource(resource.Resource):
                              "az": round(v["az"], 2), "el": round(v["el"], 2)})
         return sats
 
-    def _tle_skypos(self):
-        """Fallback sky positions from Celestrak TLE + skyfield propagation."""
+    def _tle_skypos(self, want=None):
+        """Sky positions from Celestrak TLE + skyfield propagation, for the tags in `want`
+        (default: all configured). Used as the whole-sky fallback when BRDC is unavailable, and
+        as the ONLY source for constellations BRDC cannot propagate (GLONASS)."""
         from gps_beamtrack import (DEFAULT_TLE_URL, load_gps_satellites,
                                    predict_skypos)
         if self._sats is None:
@@ -1313,12 +1386,16 @@ class GpsSkyResource(resource.Resource):
                 except Exception as e:
                     log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
         cap_L = self._l1c_capable_set()
+        cap_R = self._l3oc_capable_set()
         sats = []
         for tag, by_prn in self._sats.items():
+            if want is not None and tag not in want:
+                continue
             pos = predict_skypos(self.lat, self.lon, self.alt, _sats=by_prn)
             sats += [{"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
                      for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg
-                     and not (tag == "L" and cap_L is not None and p not in cap_L)]
+                     and not (tag == "L" and cap_L is not None and p not in cap_L)
+                     and not (tag == "R" and cap_R is not None and p not in cap_R)]
         return sats
 
     def _kick_refresh(self):
