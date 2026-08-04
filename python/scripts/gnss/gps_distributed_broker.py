@@ -180,7 +180,7 @@ def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz
 
 
 def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, fft_len=16384,
-                   rec_hops=2048, prev_val=None, max_step=3.0):
+                   rec_hops=2048, prev_val=None, max_step=3.0, unit_hop=None):
     """Per-PRN carrier residual (Hz) from the combiner's phase-rate search.
 
     TWO FAILURE MODES, TWO DEFENCES. Measured on sky 2026-08-04 by splitting each PRN's records
@@ -232,7 +232,20 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
             prev_hop[int(prn)] = h
             if ph is None or h == ph:
                 continue                       # first sight, or the same window again
-            if (h - ph) > max_gap * rec_hops * 1.0:
+            # SPACING IS ONE EMIT, NOT ONE RECORD. This compared (h - ph) against
+            # max_gap * rec_hops = 4096 hops, i.e. two RECORDS -- but successive observations
+            # are one EMIT apart, measured at 389120 hops = 190 records = 1.99 s. So the test
+            # overshot by ~95x and gated out EVERY sample: 118 log lines, zero measurements
+            # admitted, the carrier loop starved while appearing to run. Derive the unit from
+            # the stream instead of naming it: emits share one pow_hop across all PRNs, and
+            # the cadence is a property of the combiner's window, not of anything the broker
+            # knows. `unit` is the running minimum positive step, so a PRN whose first sighting
+            # straddles a gap self-corrects as soon as one contiguous pair arrives.
+            step = h - ph
+            if unit_hop:
+                unit_hop[0] = min(unit_hop[0], step) if unit_hop[0] else step
+            u = (unit_hop[0] if unit_hop and unit_hop[0] else float(rec_hops)) or 1.0
+            if step > max_gap * u * 1.5:       # 1.5: jitter margin on the derived unit
                 gapped.append(int(prn))
                 continue                       # re-anchored: re-baselined above, skip
             # SLEW GATE. The hop gap above only catches re-anchors that COINCIDE with a dropped
@@ -1155,10 +1168,18 @@ def main(argv=None):
                     help="clip rate residuals this far from the fleet MEDIAN before the weighted "
                          "consensus (<=0 disables). Median first, because a wrong-bin outlier is "
                          "arbitrarily far and would drag any mean.")
-    ap.add_argument("--carrier-rate-inherit", action="store_true", default=True,
+    ap.add_argument("--carrier-rate-inherit", action="store_true", default=False,
                     help="a PRN failing the q gate takes the fleet's amp_snr-weighted consensus "
-                         "instead of no correction. The dominant term is common-mode, so this is "
-                         "far better than free-running -- and strictly better than a wrong bin.")
+                         "instead of no correction. OFF since 2026-08-04: this was built on "
+                         "'the dominant term is common-mode', which the sky refutes. Measured "
+                         "across 131 emits with >=3 PRNs each, the spread of deep_rate_hz "
+                         "BETWEEN PRNs within a single emit has median 60.8 Hz -- near the full "
+                         "+-47.7 Hz range of the search. That is expected in hindsight: the "
+                         "residual is measured against each tracker's OWN f_ref, which re-pins "
+                         "per PRN on its own schedule, so there is no shared zero to average "
+                         "towards. (The claim that IS true, and a different one, is that "
+                         "different NODES agree on a given PRN.) Inheriting hands a satellite a "
+                         "number belonging to someone else's reference; free-running is better.")
     ap.add_argument("--no-carrier-rate-inherit", dest="carrier_rate_inherit",
                     action="store_false", help="disable the consensus fallback (per-PRN only)")
     ap.add_argument("--carrier-trim-const", type=float, default=None,
@@ -2117,6 +2138,7 @@ def main(argv=None):
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
+    rate_unit_hop = [0]  # [emit spacing in hops], LEARNED -- see rate_residuals' continuity gate
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
@@ -4362,7 +4384,8 @@ def main(argv=None):
                 rate_resid, rate_consensus = rate_residuals(
                     status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, _log,
                     prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap,
-                    prev_val=rate_prev_val, max_step=args.carrier_rate_max_step)
+                    prev_val=rate_prev_val, max_step=args.carrier_rate_max_step,
+                    unit_hop=rate_unit_hop)
             car_report = []
             for prn in list(seeds):
                 if prn in probe_set:
