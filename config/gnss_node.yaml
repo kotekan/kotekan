@@ -1594,11 +1594,15 @@ bands:
       # E6-B / B1C-D / E5b-I discipline. ★ Seeded by THIS band's OWN primary broker -- pilot and
       # data share chip rate (10.23 Mcps) and code length (10230) exactly, so the primary's
       # consensus seeds apply VERBATIM and no second broker is needed.
-      - constellation: l3oc_d
+      # ⚠️ constellation `d`, NOT `l3oc_d`: the merge prefixes chain names with the BAND name, so
+      # a chain label that repeats the band stutters into `l3oc_l3oc_d_*`. The seed endpoint and
+      # the stage registration then disagree about how many prefixes to apply and the broker
+      # 404s on every push. Keep the label short and band-free, as e6's `b` sibling does.
+      - constellation: d
         signal: GLO_L3OC_D
         tracker_signal_explicit: true
         n_prn: 63
-        seed_endpoint: /l3oc_d_track/set_seeds
+        seed_endpoint: /d_track/set_seeds
         record_name: l3oc_d_level
         section_note: |
           ---- GLONASS L3OC-d DATA component ----

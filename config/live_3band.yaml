@@ -662,7 +662,7 @@ l3oc_gputrack:
     num_cuda_streams: 3
     frame_arrival_period: 0.0
     in_buffers: { l3oc_q_buf: l3oc_q_buf }
-    out_buffers: { l3oc_epl_buf: l3oc_epl_buf, l3oc_l3oc_d_epl_buf: l3oc_l3oc_d_epl_buf }
+    out_buffers: { l3oc_epl_buf: l3oc_epl_buf, l3oc_d_epl_buf: l3oc_d_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -698,7 +698,7 @@ l3oc_gputrack:
           fll_reacq_hz: 15.0
           cuda_stream: 1
           gpu_mem_input: l3oc_gnss_chan_frame
-          gpu_mem_output: l3oc_l3oc_d_epl
+          gpu_mem_output: l3oc_d_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
           in_frame_len: 24960
           n_channels: 10
@@ -710,8 +710,8 @@ l3oc_gputrack:
           carrier_shared: true
           seed_endpoint: "/l3oc_d_track/set_seeds"
         - name: cudaOutputData
-          gpu_mem: l3oc_l3oc_d_epl
-          out_buf: l3oc_l3oc_d_epl_buf
+          gpu_mem: l3oc_d_epl
+          out_buf: l3oc_d_epl_buf
           in_buf: ""
 l3oc_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l3oc_epl_buf, out_buf: l3oc_rec_buf, sample_rate: 20.0e6, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
 # PURE PILOT once NH10 is wiped (the E5a-Q / E5b-Q / B2a-P / E6-C segmented-pilot
@@ -729,15 +729,15 @@ l3oc_record: { kotekan_stage: rawFileWrite, in_buf: l3oc_out_buf, base_dir: "/tm
 # transition rate on a satellite already proven above floor (~0.5 = real message, ~0 =
 # unmodulated). That is the lesson GPS L1C-D cost us: a perfectly correct codec spent
 # against an empty carrier.
-l3oc_l3oc_d_n_prn: 63
-l3oc_l3oc_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l3oc_l3oc_d_n_prn * 24 * 4 }
-l3oc_l3oc_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l3oc_l3oc_d_n_prn * 24 * 4 }
-l3oc_l3oc_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l3oc_l3oc_d_n_prn + 15360 * l3oc_l3oc_d_n_prn }
-l3oc_l3oc_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l3oc_l3oc_d_epl_buf, out_buf: l3oc_l3oc_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100 }
+l3oc_d_n_prn: 63
+l3oc_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l3oc_d_n_prn * 24 * 4 }
+l3oc_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l3oc_d_n_prn * 24 * 4 }
+l3oc_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l3oc_d_n_prn + 15360 * l3oc_d_n_prn }
+l3oc_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l3oc_d_epl_buf, out_buf: l3oc_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100 }
 # ★ integration_length 1000, NOT 200: the emit window is integration_length RECORDS,
 # a TIME only via the l3oc_record period. L3OC records are 1 ms, so 200 would be a 0.2 s
 # emit -- right at the broker's nav_obs poll, fragmenting the symbol timeline (the
 # B2b count-vs-time trap). 1000 records = 1 s = 200 nav symbols per emit.
-l3oc_l3oc_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l3oc_l3oc_d_rec_buf], out_buf: l3oc_l3oc_d_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, secondary_overlay: L3OC_BC5, navwipe_bit_records: 5, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100 }
-l3oc_l3oc_d_record: { kotekan_stage: rawFileWrite, in_buf: l3oc_l3oc_d_out_buf, base_dir: "/tmp/gps_l3oc_gpu", file_name: "l3oc_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
+l3oc_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l3oc_d_rec_buf], out_buf: l3oc_d_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, secondary_overlay: L3OC_BC5, navwipe_bit_records: 5, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100 }
+l3oc_d_record: { kotekan_stage: rawFileWrite, in_buf: l3oc_d_out_buf, base_dir: "/tmp/gps_l3oc_gpu", file_name: "l3oc_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GLO_L3OC_P, code_doppler_sign: 1.0, n_prn: 63, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 6.0, acquire_windows: 200, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
 
