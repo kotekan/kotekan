@@ -298,3 +298,94 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb_chord_scale) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------
+// GLONASS FDMA: the per-PRN carrier offset.
+//
+// Every other signal here is CDMA -- one carrier per band, satellites separated by code. GLONASS
+// L2OF inverts that: EVERY satellite transmits the same 511-chip m-sequence and they are
+// separated by CARRIER, satellite k sitting at 1246.0 + k*0.4375 MHz. So the per-satellite
+// identity lives entirely in ChannelizedReplicaBank::set_prn_freq_offset(), and these cases pin
+// that it enters the carrier EXACTLY, and nowhere else.
+// ---------------------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(fdma_offset_is_exactly_a_carrier_shift) {
+    // ★ THE IDENTITY: an FDMA offset of X Hz on a PRN must produce precisely the replica that
+    // PRN would have at Doppler+X with no offset -- because both enter as carrier_offset(p) +
+    // doppler in the same phasor. Every GLONASS PRN shares one code, so the two replicas are
+    // comparable chip-for-chip and any discrepancy is the offset leaking somewhere it should not.
+    //
+    // ⚠️ code_doppler_sign = 0 is what makes it an EXACT identity rather than an approximate
+    // one, and it is also the physics: an FDMA offset is a STATIC carrier difference, not a
+    // line-of-sight velocity, so it must NOT scale the code rate the way Doppler does (every
+    // GLONASS satellite clocks its code at 511 kcps regardless of k). Leaving code-Doppler on
+    // would make the two sides differ by exactly that term -- which is the bug this guards.
+    auto bank = make_bank("GLO_L2OF", {1, 2});
+    bank.code_doppler_sign = 0.0;
+
+    const double X = 437.5e3; // one GLONASS L2 channel
+    bank.set_prn_freq_offset(1, X);
+
+    const long long ws = 3 * 2 * N * 7;
+    const int n_hops = 200;
+    for (double dop : {0.0, 1200.0, -1200.0}) {
+        auto shifted = bank.channels(1, ws, 61.0, dop, n_hops);     // offset X, Doppler dop
+        auto by_dop = bank.channels(0, ws, 61.0, dop + X, n_hops);  // no offset, Doppler dop+X
+        for (int c = 0; c < N; ++c)
+            BOOST_CHECK_MESSAGE(rel_err(shifted[c], by_dop[c]) < 1e-6,
+                                "dop " << dop << " ch " << c << ": FDMA offset != carrier shift, err "
+                                       << rel_err(shifted[c], by_dop[c]));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(fdma_offset_moves_the_occupied_channels) {
+    // The offset must actually relocate the signal on the channel grid -- a no-op that silently
+    // did nothing would still pass an identity test comparing two no-ops.
+    auto bank = make_bank("GLO_L2OF", {1, 2});
+    const double bin_w = FS / (2 * N);
+    const double X = 3 * bin_w; // three whole channels, so the shift is unambiguous
+    bank.set_prn_freq_offset(1, X);
+
+    const auto base = bank.covering_bins(0.0, 0.0, 0);
+    const auto moved = bank.covering_bins(0.0, 0.0, 1);
+    BOOST_REQUIRE(!base.empty() && !moved.empty());
+    // Centre of the covering set should move by X/bin_w channels.
+    const double c0 = 0.5 * (base.front() + base.back());
+    const double c1 = 0.5 * (moved.front() + moved.back());
+    BOOST_CHECK_MESSAGE(std::abs((c1 - c0) - 3.0) < 0.51,
+                        "covering set moved by " << (c1 - c0) << " channels, expected ~3");
+    // And an unset PRN index must behave exactly as before (band offset only) -- this is what
+    // keeps every CDMA caller untouched.
+    BOOST_CHECK(bank.covering_bins(0.0, 0.0, -1) == base);
+}
+
+BOOST_AUTO_TEST_CASE(fdma_hoprate_matches_exact_with_offset) {
+    // The hop-rate generator carries its own copy of the carrier, so the offset has to reach
+    // BOTH paths. If it reached only channels(), the fast path used in production would quietly
+    // despread every GLONASS satellite at the wrong frequency.
+    auto bank = make_bank("GLO_L2OF", {1, 2});
+    bank.set_prn_freq_offset(1, -2 * 437.5e3); // k = -2
+
+    std::vector<int> want = bank.covering_bins(0.0, 0.0, 1);
+    BOOST_REQUIRE(!want.empty());
+    const long long ws = 2 * 2 * N * 11;
+    const int n_hops = 150;
+    auto exact = bank.channels(1, ws, 23.0, 900.0, n_hops);
+    auto hop = bank.channels_hoprate(1, ws, 23.0, 900.0, n_hops, want);
+    for (size_t ci = 0; ci < want.size(); ++ci)
+        BOOST_CHECK_MESSAGE(rel_err(hop[ci], exact[want[ci]]) < 1e-5,
+                            "ch " << want[ci] << ": hop-rate/exact disagree under an FDMA offset, err "
+                                  << rel_err(hop[ci], exact[want[ci]]));
+}
+
+BOOST_AUTO_TEST_CASE(fdma_same_code_every_satellite) {
+    // Sanity on the other half of FDMA: unlike every CDMA signal here, cross-PRN despread must
+    // be PERFECT, because the satellites really do share one code. A cross-PRN null would mean
+    // someone had wired a per-PRN code table in, defeating the whole design.
+    auto bank = make_bank("GLO_L2OF", {1, 2});
+    const long long ws = 0;
+    auto a = bank.channels(0, ws, 0.0, 0.0, 40);
+    auto b = bank.channels(1, ws, 0.0, 0.0, 40);
+    BOOST_CHECK_MESSAGE(despread_mag(a, b) > 0.99,
+                        "GLONASS PRNs must share one code; cross-despread " << despread_mag(a, b));
+}

@@ -8,6 +8,7 @@
 #include "beidouB1CCode.hpp"
 #include "beidouB1ICode.hpp"
 #include "beidouB3ICode.hpp"
+#include "glonassCACode.hpp"
 #include "glonassL3OCCode.hpp"
 #include "beidouB2aCode.hpp"
 #include "beidouB2bCode.hpp"
@@ -18,6 +19,7 @@
 #include "gpsL5Code.hpp"       // for generate_l5i_code, generate_l5q_code
 
 #include <algorithm> // for max
+#include <cassert>   // for assert (FDMA filter/PRN pairing)
 #include <cmath>     // for cos, floor, llround, M_PI
 #include <mutex>     // for lock_guard
 #include <numeric>   // for gcd
@@ -85,6 +87,13 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
     }
     if (name == "BDS_B3I") {
         auto a = beidou::generate_b3i_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GLO_L2OF") {
+        // ★ No PRN: FDMA gives every satellite the SAME code and separates them by carrier.
+        // The per-satellite part is set_prn_freq_offset(), not this table.
+        (void)prn;
+        const auto& a = glonass::ca_code();
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "GLO_L3OC_P") {
@@ -258,15 +267,30 @@ int ChannelizedReplicaBank::overlay_sign(long long period, int nh_phase) const {
     return _secondary[(size_t)k];
 }
 
+void ChannelizedReplicaBank::set_prn_freq_offset(int prn_index, double df_hz) {
+    if (prn_index < 0)
+        return;
+    if ((size_t)prn_index >= _prn_df.size())
+        _prn_df.resize((size_t)prn_index + 1, 0.0);
+    _prn_df[(size_t)prn_index] = df_hz;
+}
+
+double ChannelizedReplicaBank::carrier_offset(int prn_index) const {
+    if (prn_index < 0 || (size_t)prn_index >= _prn_df.size())
+        return _f_offset;
+    return _f_offset + _prn_df[(size_t)prn_index];
+}
+
 std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz,
-                                                       double doppler_margin_hz) const {
+                                                       double doppler_margin_hz,
+                                                       int prn_index) const {
     // Global r2c bin grid: bin j centred at j*Fs/(2N) over [0, Fs/2), natural order.
     std::vector<ChannelBand> chans(_N);
     const double bin_w = _sample_rate / _fft_len;
     for (int j = 0; j < _N; ++j)
         chans[j] = {(freq_id_t)j, j * bin_w, bin_w};
     SignalDescriptor local = _sig;
-    local.carrier_hz = _f_offset;
+    local.carrier_hz = carrier_offset(prn_index);
     const double max_dop = std::abs(doppler_hz) + doppler_margin_hz;
     const auto ids = covering_channels(chans, local, max_dop);
     return std::vector<int>(ids.begin(), ids.end());
@@ -294,7 +318,7 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     const double chip_per_sample =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double cp0 = (double)_comb_mult * code_phase_chips; // CM chips -> combined chips
-    const double wcarrier = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
+    const double wcarrier = 2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
 
     // Carrier as a phasor recurrence: cos(wcarrier*n) = Re(e^{i wcarrier n}), advanced
     // by one complex multiply per sample instead of a transcendental cos() each --
@@ -345,15 +369,17 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
 }
 
 ChannelizedReplicaBank::HopRateFilter
-ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz) const {
+ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz,
+                                       int prn_index) const {
     const double cps =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
-    const double wc = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
+    const double wc = 2.0 * M_PI * (carrier_offset(prn_index) + doppler_hz) / _sample_rate;
     const int Lf = _fft_len * _num_taps;
     const std::complex<double> I(0.0, 1.0);
 
     HopRateFilter f;
     f.doppler_hz = doppler_hz;
+    f.prn_index = prn_index;
     f.n_chips = (int)std::ceil((double)(Lf - 1) * cps) + 2; // chips the filter spans
     f.chans = want;
     const int nw = (int)want.size();
@@ -386,7 +412,12 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
     const double cps =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double cp0 = (double)_comb_mult * code_phase_chips; // CM chips -> combined chips
-    const double wc = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
+    // ⚠️ FDMA: the filter f carries the carrier of the PRN it was built for. Streaming it for a
+    // DIFFERENT PRN would silently pair one satellite's filter shape with another's phasor --
+    // a wrong-carrier replica that still looks well-formed, so nothing downstream would flag it.
+    // -1 means band-wide (every CDMA signal), which matches any p.
+    assert(f.prn_index < 0 || f.prn_index == p);
+    const double wc = 2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
     const int Lf = _fft_len * _num_taps;
     const int nw = (int)f.PhiA.size();
 
@@ -476,7 +507,7 @@ ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
                                          const std::vector<int>& want,
                                          const std::function<float(long long)>& nav_bit,
                                          int nh_phase) const {
-    return hoprate_stream(hoprate_filter(want, doppler_hz), p, window_start_sample,
+    return hoprate_stream(hoprate_filter(want, doppler_hz, p), p, window_start_sample,
                           code_phase_chips, doppler_hz, n_hops, nav_bit, nh_phase);
 }
 
@@ -488,7 +519,8 @@ const std::vector<std::vector<cf>>&
 HopRateReplicaStream::generate(long long window_start, double cp, double doppler_hz, int n_hops,
                                const std::function<float(long long)>& nav_bit) {
     if (!_built || std::fabs(doppler_hz - _filter.doppler_hz) > _refresh_hz) {
-        _filter = _bank.hoprate_filter(_chans, doppler_hz); // slow part -- only on a real drift
+        // per-PRN carrier under FDMA; this object already owns one filter per PRN.
+        _filter = _bank.hoprate_filter(_chans, doppler_hz, _prn); // slow -- only on a real drift
         _built = true;
         ++_rebuilds;
     }

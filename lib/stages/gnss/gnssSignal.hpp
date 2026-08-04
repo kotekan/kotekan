@@ -378,6 +378,28 @@ inline constexpr SignalDescriptor GLO_L3OC_D = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// GLONASS L2OF (~1246 MHz) -- the legacy FDMA open signal, and the ONLY signal we carry whose
+/// satellites are separated by FREQUENCY rather than by code. 511-chip m-sequence at 511 kcps
+/// (1 ms), BPSK, and EVERY satellite transmits the SAME code: satellite with frequency-channel
+/// number k sits at 1246.0 MHz + k*0.4375 MHz, k = -7..+6. So @c carrier_hz here is the comb's
+/// NOMINAL CENTRE (k=0), and each satellite's true carrier comes from
+/// ChannelizedReplicaBank::set_prn_freq_offset() with k supplied by the broker
+/// (gnss_ephemeris.glonass_freq_channels(), read from BRDC -- k is reassigned as satellites are
+/// replaced, so it must never be hardcoded).
+/// ★ The whole comb spans 1242.94-1248.63 = 5.69 MHz and FITS ONE 10 MHz tune (~1245.8), so FDMA
+/// costs no retuning here -- only the per-PRN carrier offset. L2OC at 1248.06 rides the same tune.
+/// DATA-ONLY (no pilot): 50 bps MANCHESTER-encoded to 100 sym/s, so a symbol is 10 ms = ten 1 ms
+/// code periods and each 20 ms bit is a +-/-+ symbol pair. There is NO secondary overlay -- wipe
+/// at the 10 ms symbol (navwipe_bit_records 10) and the Manchester structure comes out for free,
+/// since each half-bit is a constant +-1. ReplicaSource: glonassCACode (glonass_ca_code_check.py).
+/// PRN here is the ORBITAL SLOT (1..32 covers the ~28 in use), as it is for L3OC.
+inline constexpr SignalDescriptor GLO_L2OF = {
+    "GLO_L2OF", 1246.0e6, 511e3, 511, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/10e-3, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -387,7 +409,7 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
           &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B, &BDS_B1I,
-          &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D})
+          &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D, &GLO_L2OF})
         if (name == s->name)
             return s;
     return nullptr;
