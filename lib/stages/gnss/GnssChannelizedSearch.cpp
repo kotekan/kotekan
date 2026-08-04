@@ -785,15 +785,25 @@ void GnssChannelizedSearch::main_thread() {
 
     _worker = std::thread(&GnssChannelizedSearch::search_worker, this);
 
+    // CONSUMER PROFILE (GNSS_SEARCH_PROFILE=1). The worker profile showed the pass computing
+    // for 0.25 s on a 1.57 s period -- 82% idle -- so the interesting time is on THIS side.
+    // Split it: blocked in wait_for_full_frame (upstream is slow), vs frames arriving but
+    // discarded because the worker was still busy (we are throwing away sky we could search).
+    const bool cprof = std::getenv("GNSS_SEARCH_PROFILE") != nullptr;
+    double t_wait = 0.0, t_cyc0 = steady_s();
+    long n_frames = 0, n_skipped_busy = 0, n_snaps = 0;
+
     int frame_in = 0;
     bool filling = false;
     size_t filled_hops = 0;  // hops actually copied into the current snapshot (for the drop log)
     long long abs_hops = 0;  // total hops consumed from the stream (absolute reference)
 
     while (!stop_thread) {
+        const double _t_w0 = cprof ? steady_s() : 0.0;
         auto* in_local = (cf*)in_buf->wait_for_full_frame(unique_name, frame_in);
         if (in_local == nullptr)
             break;
+        if (cprof) { t_wait += steady_s() - _t_w0; ++n_frames; }
         const int frame_hops = in_buf->frame_size / (int)sizeof(cf) / _n_chan;
 
         // Absolute hop index of this frame's first hop, from the F-engine's sample_seq
@@ -807,6 +817,8 @@ void GnssChannelizedSearch::main_thread() {
 
         if (!filling) {
             std::lock_guard<std::mutex> lk(_m);
+            if (_worker_busy && cprof)
+                ++n_skipped_busy; // sky arriving while the searcher is occupied -> discarded
             if (!_worker_busy) {
                 filling = true;
                 filled_hops = 0;
@@ -849,6 +861,15 @@ void GnssChannelizedSearch::main_thread() {
                 _snap_ready = true;
                 _worker_busy = true;
                 _cv.notify_one();
+                if (cprof && ++n_snaps % 20 == 0) {
+                    const double el = steady_s() - t_cyc0;
+                    INFO("GnssChannelizedSearch[{:s}]: [consumer] {:.1f}s: {:d} frames "
+                         "({:.1f}/s), blocked {:.1f}s ({:.0f}%), {:d} frames discarded while "
+                         "the worker was busy ({:.0f}%), {:d} snapshots",
+                         unique_name, el, n_frames, n_frames / el, t_wait, 100.0 * t_wait / el,
+                         n_skipped_busy, 100.0 * n_skipped_busy / std::max(1L, n_frames), n_snaps);
+                    t_cyc0 = steady_s(); t_wait = 0.0; n_frames = 0; n_skipped_busy = 0;
+                }
             }
         }
 
