@@ -37,6 +37,16 @@ public:
     int n_prn = 0, n_chan = 0, chan_offset = 0, fft_len = 0, hops_per_record = 0;
     double sample_rate = 5e6, capture_utc0 = 0.0, doppler_margin_hz = 5000.0;
     double dll_spacing = 0.5, fll_reacq_hz = 200.0, max_anchor_age_s = 30.0;
+    /// LOCK-HOLD on the f_ref fence. While a PRN's gain SNR is at or above this, a seed that
+    /// has merely drifted past `fll_reacq_hz` does NOT re-pin f_ref -- see the long note at the
+    /// fence in cudaGnssTrack.cpp. 0 disables (every seed past the fence re-pins, the pre-
+    /// 2026-08-04 behaviour). `reseed_hold_hz` is the hard ceiling that re-pins anyway.
+    double reseed_hold_snr = 0.0, reseed_hold_hz = 0.0;
+    long long n_hold = 0, n_fence = 0, n_hold_log = 0; ///< fence bookkeeping (throttled INFO)
+    /// Observed lock SNR at fence-arm time, so the threshold can be CHOSEN FROM DATA off a
+    /// single deployment rather than guessed and redeployed (a node restart needs interactive
+    /// sudo, so a second pass is expensive). Reported by the same throttled line.
+    double hold_snr_min = 1e30, hold_snr_max = -1.0;
     double f_offset_hz = 0.0; ///< carrier IF (bin-distance reference for max_cover_bins)
     int max_cover_bins = 0;   ///< DIAGNOSTIC (2026-07-21, L5 ADR-wander channel-width A/B):
                               ///< despread on only the N covering channels nearest the

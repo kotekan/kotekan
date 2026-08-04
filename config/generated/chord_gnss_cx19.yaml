@@ -235,6 +235,8 @@ gnss0_gpu:
     n_elements: 32
     name: cudaGnssChordTrack
     prns: *id001
+    reseed_hold_hz: 0.0
+    reseed_hold_snr: 3.0
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_track/set_seeds
     signal: GPS_L5_Q_NH
@@ -358,6 +360,8 @@ gnss1_gpu:
     n_elements: 32
     name: cudaGnssChordTrack
     prns: *id001
+    reseed_hold_hz: 0.0
+    reseed_hold_snr: 3.0
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_track/set_seeds
     signal: GPS_L5_Q_NH

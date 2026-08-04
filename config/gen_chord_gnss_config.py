@@ -207,6 +207,13 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
                  # behaviour) for a single-node bench, or as the control in a before/after.
                  "trim_gain": args.local_trim_gain,
                  "trim_endpoint": f"/{pre}track/get_trim",
+                 # LOCK-HOLD on the f_ref fence (see the fence in cudaGnssTrack.cpp). The
+                 # seeded Doppler carries ~6 Hz of per-pass search scatter, which alone trips
+                 # the 9.54 Hz fence within one or two detections -- a REFERENCE jump every
+                 # ~10 s that the broker's carrier loop integrates into a railed trim. A locked
+                 # sat now keeps its pin and lets ctrim absorb the difference.
+                 "reseed_hold_snr": args.reseed_hold_snr,
+                 "reseed_hold_hz": args.reseed_hold_hz,
                  # GPS-disciplined UTC of absolute sample 0 -- without it the assembler
                  # stamps records with HOST wall clock (see cudaGnssChordTrack.cpp).
                  "frame0_utc": float(cfg["fengine"].get("frame0_utc", 0.0))},
@@ -753,6 +760,16 @@ def main():
                          "directory that is not there.")
     ap.add_argument("--search-port-base", type=int, default=11040,
                     help="bufferRecv port for GPU 0; GPU 1 uses base+1")
+    ap.add_argument("--reseed-hold-snr", type=float, default=3.0,
+                    help="hold the tracker's f_ref through a re-seed while its gain SNR is at "
+                         "or above this, instead of re-pinning whenever the seed drifts past "
+                         "fll_reacq_hz. 0 restores the pre-2026-08-04 behaviour (re-pin on any "
+                         "fence crossing). The tracker logs the lock_snr range it actually sees "
+                         "at fence-arm time, so this can be re-chosen from one deployment.")
+    ap.add_argument("--reseed-hold-hz", type=float, default=0.0,
+                    help="hard ceiling on the hold: past this the f_ref re-pins even when "
+                         "locked, because staleness costs sinc(df*T_rec) INSIDE each record. "
+                         "0 = the tracker's default of 2x fll_reacq_hz (~0.2 cycle, -0.6 dB).")
     # THE DEFAULTS BELOW ARE THE DEPLOYED VALUES, not neutral ones. They were defaults-by-
     # omission twice (2026-08-02 and 2026-08-04) and both times a regeneration silently
     # reverted the tuning: the second cost ~40 minutes of a dead search on cf06, whose only

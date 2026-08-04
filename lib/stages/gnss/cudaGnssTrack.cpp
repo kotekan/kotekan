@@ -98,6 +98,19 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     // full windows on the SAME LO, which is what localized this). 30 s caps it at ~0.08
     // cycles; the fence's phase glitch costs one deep window (~3% duty at 1 s windows).
     max_anchor_age_s = config.get_default<double>(unique_name, "max_anchor_age_s", 30.0);
+    // LOCK-HOLD on the fence (see the fence itself for the measurement that motivates it).
+    // Default 0 = disabled, so a config that does not ask for this behaves exactly as before.
+    // The hard ceiling defaults to 2x the fence: staleness costs sinc(df*T_rec) WITHIN a
+    // record, so 0.1 cycle (the fence) is ~-0.2 dB and 0.2 cycle (this) ~-0.6 dB. Beyond that
+    // the hold would be buying reference stability with real sensitivity.
+    reseed_hold_snr = config.get_default<double>(unique_name, "reseed_hold_snr", 0.0);
+    // 0 (or absent) means "use the derived default", NOT "a ceiling of zero". A literal 0 in
+    // the config would otherwise make `df_ref < ceiling` always false and disable the hold
+    // silently -- the generator emits this key unconditionally, so that is the common case,
+    // and a wrong default here produces nothing rather than an error.
+    reseed_hold_hz = config.get_default<double>(unique_name, "reseed_hold_hz", 0.0);
+    if (reseed_hold_hz <= 0.0)
+        reseed_hold_hz = 2.0 * fll_reacq_hz;
 
     const int ring_records = config.get_default<int>(unique_name, "ring_records", 50);
     ring_hops = (long long)ring_records * hops_per_record;
@@ -1043,7 +1056,57 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             const double anchor_age =
                 (double)(whop - S.reacq_hop[p]) * (double)S.fft_len / S.sample_rate;
             const bool fresh = std::isnan(S.f_ref[p]);
-            const bool fence = !fresh && std::fabs(S.f_ref[p] - dop[p]) > S.fll_reacq_hz;
+            // LOCK-HOLD (2026-08-04). A re-pin is a REFERENCE change, not a correction: the
+            // absolutely-anchored replica phase steps by df*t_abs, and (dop - f_ref) is NOT
+            // carried by the NCO, so it IS the residual the combiner's rate search reports.
+            // The broker's carrier loop then integrates that step as though it were an error
+            // and ratchets its trim to the +-40 Hz rail -- measured, at every gain tried.
+            //
+            // What trips the fence is NOISE, not physics. Measured on sky: the seeded Doppler
+            // (--seed-doppler det) carries ~6 Hz of per-pass measurement scatter (median step
+            // between consecutive detections; 35% of single steps already exceed the 9.54 Hz
+            // fence), so with f_ref FIXED the cumulative walk crosses it within one or two
+            // detections -- a reference jump every ~10 s, UNIFORM across PRNs. The true
+            // Doppler drift cannot explain that: at the measured -0.109..-0.465 Hz/s it implies
+            // 20-88 s and varies 4x between satellites. The fence exists so f_ref cannot go
+            // stale enough to decohere a record; it should not fire because one pass was noisy.
+            //
+            // So while the PRN is LOCKED, hold the pin and let ctrim absorb the difference --
+            // which also gives the carrier loop the one thing it never had, a reference that
+            // stays put long enough to converge against. Bounded by reseed_hold_hz, because
+            // staleness does eventually cost real SNR inside the record.
+            double lk_sig2 = 0.0, lk_noise = 0.0;
+            const double lock_snr = peel_gain_split(S, p, lk_sig2, lk_noise) && lk_noise > 0.0
+                                        ? std::sqrt(lk_sig2 / lk_noise)
+                                        : 0.0;
+            const double df_ref = fresh ? 0.0 : std::fabs(S.f_ref[p] - dop[p]);
+            // FAIL OPEN TO THE OLD BEHAVIOUR: no gain estimate (lock_snr 0, which is what every
+            // re-anchor reset leaves behind) means not locked, so the fence fires as it always
+            // did. The hold is only ever an ADDITION of evidence, never an assumption of it.
+            const bool held = S.reseed_hold_snr > 0.0 && lock_snr >= S.reseed_hold_snr
+                              && df_ref < S.reseed_hold_hz;
+            const bool fence = !fresh && df_ref > S.fll_reacq_hz && !held;
+            // Whether the hold FIRED is not visible from outside -- a quiet f_ref looks the
+            // same as a fence that never armed. Count both so "the hold is working" and "the
+            // hold never triggered" are distinguishable without a rebuild.
+            if (!fresh && df_ref > S.fll_reacq_hz) {
+                if (held)
+                    ++S.n_hold;
+                else
+                    ++S.n_fence;
+                S.hold_snr_min = std::min(S.hold_snr_min, lock_snr);
+                S.hold_snr_max = std::max(S.hold_snr_max, lock_snr);
+                if (S.n_hold + S.n_fence >= S.n_hold_log + 200) {
+                    S.n_hold_log = S.n_hold + S.n_fence;
+                    INFO("cudaGnssTrack: f_ref fence armed {:d}x -- {:d} HELD, {:d} re-pinned "
+                         "(threshold {:.1f}, ceiling {:.1f} Hz); lock_snr seen at arm time "
+                         "{:.2f}..{:.2f} -- pick the threshold INSIDE that range",
+                         S.n_hold + S.n_fence, S.n_hold, S.n_fence, S.reseed_hold_snr,
+                         S.reseed_hold_hz, S.hold_snr_min, S.hold_snr_max);
+                    S.hold_snr_min = 1e30;
+                    S.hold_snr_max = -1.0;
+                }
+            }
             if (fresh || fence || anchor_age > S.max_anchor_age_s) {
                 if (fresh) {
                     S.f_ref[p] = dop[p]; // genuine (re)acquisition: adopt the seed
