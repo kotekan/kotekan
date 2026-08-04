@@ -2541,3 +2541,176 @@ All 8 nodes active. Aggregator on agg8 (`GNSS_SEARCH_PROFILE=1`), broker via
 viewer on 12060 through the broker's publisher (one origin for both `get_status` and
 `get_detections`; it cannot straddle two ports -- `host: location.hostname`, so tunnel 8080 and
 12060 or proxy through the viewer). `beamlog.py` accumulating. Tree clean, all pushed.
+
+# 8.19 THE RAMP (2026-08-04) -- the deep sum was integrating a rotating phasor
+
+## 8.19.1 What was found, in the order it fell out
+
+8.18.3 item 1 (dump `deep_snr` PER RUNG) was meant to separate "not enough SNR" from "not
+cohering". It found NEITHER. Every rung on every satellite read the **Rayleigh value** (~1),
+which is what a coherent sum of random-phase terms reads BY CONSTRUCTION, while the incoherent
+moments said +10..15 dB per record. Only a phase scramble makes those compatible.
+
+The per-record export (`/get_records`, added the same restart) settled which, on sky:
+
+```
+squaring |sum x^2|/sum|x|^2   0.03-0.13   -> NOT sign flips (no NH/nav leak)
+lag-1 coherence               0.49-0.67   -> phase is SMOOTH record to record  (null 0.04-0.12)
+ramp-corrected fraction       0.65-0.80   -> a LINEAR RAMP holds the power      (null 0.19-0.24)
+plain coherent fraction       0.02-0.05   -> what the ladder was scoring
+```
+
+On-signal 0.748 median vs on-noise 0.223 (5 PRNs each). **This RETIRES 8.18.2**: `sigma_phi` was
+measured about a SLOPE FIT, so it never saw the slope doing the damage. "Per-record SNR caps the
+coherent span" was reading the symptom.
+
+## 8.19.2 The fix that worked, and why the carrier was free-running
+
+`deep_rate_search` in the combiner: a 4x-oversampled phase-rate search per rung, derotate, then
+the EXISTING `coherent_sum` so `deep_snr`/`coherence_s` keep their currency. Gated on peak/median
+of the search's own spectrum (17.9-22.0 on signal, 2.8-6.1 on noise) -- NOT a closed-form floor,
+which mispredicts it badly (`sqrt(2 ln n)+1` says 4.53 where noise reads ~3.1, because 4x
+oversampled bins are nowhere near independent) and would have rejected every detection found.
+
+**Result: the whole fleet went to `coherence_s 1.049` (the full window), `deep_snr 13-16`,
+5-6 coherent sats per node.** First sustained coherent detections on CHORD.
+
+WHY it was needed: carrier and code have **SEPARATE CONTROL PATHS**. Code is closed by the fleet
+DLL (`code_phase_chips += dll_trim`); carrier by `carrier_trim_hz -> f_nco`, a pure derotation
+that never touches code timing. `cudaGnssTrack.hpp` states the assumption: the NCO "carries only
+the COMMANDED carrier ... the residual is ~0.01 Hz once the broker's shared carrier loop is
+closed". It was NEVER closed (`--carrier-gain 0.0`) because its only input, `carrier_hz_resid`,
+is signal-free (0.519 Hz on signal, 0.492 on noise). Closing on it hurt (8.18.4); leaving it open
+left the ramp. Both bad for ONE reason. That is also exactly why the code stayed locked while the
+carrier rotated, and why the integrity residual is a constant few-chip offset rather than a walk.
+
+## 8.19.3 The re-anchor jumps, and the prototype comparison
+
+`S.f_ref[p]` is the replica carrier, **held FIXED between re-anchors**. So the residual drifts at
+the Doppler rate against a static reference (measured -0.36 Hz/s) and STEPS when f_ref re-pins.
+Sampling per emit window and keying on `pow_hop` separates them cleanly:
+
+```
+gap  80 records (contiguous)  ->  step -0.238 .. -0.715 Hz    smooth, always negative
+gap 150+ records              ->  step +15, -42, +30, -44 Hz  JUMP
+```
+
+`gnssRecord.hpp` is explicit that the fold "keeps Phi_cmd continuous through f_ref re-pins" --
+the PHASE is made continuous, the **FREQUENCY is not**. A re-anchor is a pure reference change.
+
+**WHY THE PROTOTYPE NEVER SAW IT.** `fll_reacq_hz` defaults to 0.1 cycle per RECORD:
+
+```
+0.1 / t_rec  ->  100 Hz at airspy's 1 ms records
+             ->  9.5 Hz at CHORD's 10.49 ms records
+```
+
+Same rule, same constant; the residual drifts at the same physical rate, so the fence fires every
+~4.6 MINUTES on the prototype and every ~26 SECONDS here -- and CHORD integrates 1.05 s where the
+prototype integrated 1 ms. Another entry in the 16-vs-20 / record-geometry family: a constant
+that was right at prototype scale and is not here. Note the two re-anchor paths were never equal
+and the code says so: the AGE re-pin folds the FF ramp into f_ref and is documented
+frequency-continuous; the FENCE path adopts `dop[p]` outright.
+
+## 8.19.4 Carrier loop: rebuilt, deployed, NOT YET CONVERGING
+
+`--carrier-source rate` integrates `deep_rate_hz` instead of `carrier_hz_resid`. Split-half
+precision (two independent halves of the same record set, the test that matters for a LOOP rather
+than a detection):
+
+```
+amp_snr 83.7 -> halves agree 0.000 Hz     amp_snr 9.3 -> 0.093 Hz
+amp_snr 44.2 -> 0.186                     amp_snr 9.5 -> 41.7 Hz   <-- WRONG BIN
+amp_snr 43.1 -> 0.466
+```
+
+A weak sat does not merely scatter, it lands on the WRONG SPECTRAL BIN. Hence FOUR gates:
+hard `deep_rate_q`; amp_snr-weighted consensus after clipping about the MEDIAN (median first --
+a wrong-bin outlier is arbitrarily far and drags any mean); `pow_hop` continuity; and a 3 Hz slew
+gate for FENCE re-anchors, which fire mid-tracking with NO window gap to mark them.
+
+**Status: does not converge.** Median |rate| held 15-24 Hz over 2 min at gain 0.25 while the trim
+climbed toward its +-40 rail, though coherent sats rose 4->6. The slew gate went in after that
+measurement and has NOT been evaluated. **This is the first thing to measure next.**
+
+## 8.19.5 Also fixed: the one-radian ULP (real, but 0.37 dB not 1.55)
+
+`wc*n0` reaches 6.8e15 at CHORD's absolute sample index -- the binade [2^52, 2^53) where a
+double's ULP is EXACTLY ONE RADIAN. The code path used `long double` from the start; the carrier
+path never did. Invisible on the prototype by twelve orders of magnitude (n0 ~1e9), and
+SLOW-ONSET: the error grows with F-engine uptime, so a fresh restart looks healthy.
+
+Fixed on the host (`long double`) and in all three CUDA copies (`fma` two-product; CUDA maps
+`long double` to `double`). **I predicted 1.55 dB and measured nothing, twice.** See 8.19.7.
+
+## 8.19.6 Hardware / topology
+
+* **SIX NODES**: cx47 + cx52 released. That is the BEST pair of all 28 (worst correlation
+  sidelobe 0.233 at 19.65 chips vs 0.253 at 6.58 for cx51+cx52); `g = 1` still holds (cx42 at
+  mod-8 residue 5, cx43 at 6 are adjacent). 106 -> 79 channels, -1.3 dB. NO pair can break g=1:
+  that needs all six survivors to share a parity, and only four residues of each parity exist.
+* **DROPPING A NODE RENUMBERS FEED SLOTS.** Removing cx47 moved cx51 from slot 6 to 5: its config
+  sent to 11052/11053 while the new aggregator listens on 11050/11051. Same class as the
+  2026-08-03 cx51->cx27 error. ALWAYS verify every `server_port` against the aggregator's own
+  feed list before deploying.
+* **Generator flags are recoverable BY REPRODUCTION**: regenerating cx19 with `--combine-gpus`
+  reproduces the live config with ZERO semantic differences. The headers do not record the flags;
+  diffing a regeneration is what makes it safe.
+* **cf06 migration FAILED and is rolled back** (see 8.19.8).
+
+## 8.19.7 MISTAKES, and what would have caught them
+
+1. **Predicted 1.55 dB from the ULP fix; measured nothing, twice.** The rms I quoted was
+   dominated by a near-CONSTANT phase offset, and constants do not decohere -- a correlation sees
+   |<exp(-i eps)>|, and decomposing gives: total rms 0.598 rad, CONSTANT part 0.523, VARYING part
+   0.289 -> retention 0.959 = 0.37 dB. **Decompose a statistic before predicting from it.**
+2. **Fixed the ULP in the file I was reading, not the one that was live.** CHORD runs no
+   `GnssChannelizedTracker`; the despread is the GPU path, which had its own copy. grep found the
+   other three in seconds -- AFTER the measurement said no. **Check what is running before
+   predicting what a fix will do.**
+3. **Crashed the broker** (`rate_residuals` early-returned a bare `{}` where the caller unpacked
+   two values), taking the viewer's 12060 feed down for ~20 min. It survived unit testing because
+   some PRN always cleared the gate; the crash came the first time ALL were gated -- which the
+   continuity gate I had just added makes far more likely. **A new gate makes new code paths
+   reachable; test the all-rejected path.**
+4. **Hypothesised the Doppler staircase was the 31.25 Hz search grid.** The user checked: steps
+   are a few Hz and the plateaus align with SNR, i.e. just the search cadence. Wrong, and cheap
+   for them to disprove because it was stated as a number.
+5. **Inline ssh one-liners lost their redirect and their `kill`**, leaving a stalled aggregator
+   holding 12050 while a new one failed to bind -- indistinguishable from "the move broke the
+   search". `scripts/gnss/agg_up.sh` exists so it cannot recur.
+
+## 8.19.8 cf06 -- verified suitable, migration FAILED, ROLLED BACK
+
+cf06 (64 cores, no isolcpus, 1.9 TB RAM, 2x L40S) runs the `build_nodpdk` binary (DPDK off, CUDA
+ON for the future GPU search) with zero unresolved libraries. Broker + viewer worked there.
+
+**The aggregator did not.** `GnssChanAlignMerge` reports `first aligned frame across 12 inputs`
+and then the search NEVER processes a single frame (zero `gps_search` metrics, ever).
+
+Ruled out: feed wiring (all 12 connect from the right nodes, every port verified); bandwidth
+(120 Mb/s of 1000, ZERO drops -- and that matches the expected rate, so data IS arriving);
+replica/config (cache load 0.10 s, 79 channels, no errors); buffer depth (8 -> 64, no change).
+
+Untested and the remaining candidate: cf06 sits on **10.222.3.6, a different subnet reached via a
+1 Gb/s NIC**, where cx19 was local to the nodes. Latency/jitter across 12 senders is the
+difference, but this is NOT demonstrated.
+
+Node configs are REGENERATED BACK to cx19 (`--search-host 10.222.1.19`, same slots 11040-11051);
+restoring service needs only a node restart plus aggregator+broker on cx19.
+
+## 8.19.9 PICK UP HERE
+
+1. **Restore the data path** (node restart -> aggregator + broker on cx19). Nothing else can be
+   measured until this is done.
+2. **Evaluate the carrier loop with the slew gate.** It went in untested. The self-consistency
+   test is that `deep_rate_hz` -- which measures the residual AFTER the trim -- should collapse
+   toward 0. It held 15-24 Hz before the slew gate.
+3. **Publish `f_ref` (or a re-anchor counter)** from the tracker. The slew gate INFERS re-pins
+   from step size because the broker cannot see them; publishing makes it exact.
+4. Consider whether `fll_reacq_hz` should be raised toward the prototype's effective cadence --
+   trades re-anchor frequency against intra-record decoherence. The 0.1-cycle rule exists for a
+   reason; do not override it without measuring.
+5. cf06: instrument the merge (per-input arrival timing) rather than guessing at the link.
+6. Still open from 8.18.3: cross-node coherent combining (`fleetcoh.py` is written, and the
+   ramp removal it was waiting on now exists); the beam anomaly.

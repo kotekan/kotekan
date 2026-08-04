@@ -12,7 +12,7 @@
 # BEST pair to give away -- worst sidelobe 0.233 at 19.65 chips vs 0.253 at 6.58 for
 # cx51+cx52; see the ranking of all 28 pairs in git history). That is a
 # CONFIGURATION change, not a degradation to absorb quietly -- the aggregator must be
-# regenerated to match (chord_gnss_agg6_cf06.yaml, 79 channels over 12 feeds), because
+# regenerated to match (chord_gnss_agg6.yaml, 79 channels over 12 feeds), because
 # GnssChanAlignMerge waits on every feed it was built with and the missing ones never arrive.
 # The comb survives it: cx47/cx52 held mod-8 residues 3 and 1, and the remaining six still
 # contain ADJACENT residues (cx42 at 5, cx43 at 6), so g = 1 and there is no modular lag
