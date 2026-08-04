@@ -1116,6 +1116,24 @@ def main(argv=None):
                          "decisions (R1, docs/gnss_architecture_audit.md).")
     ap.add_argument("--dll-spacing", type=float, default=0.5,
                     help="tracker Early/Late spacing in chips (must match dll_spacing_chips)")
+    ap.add_argument("--dll-leak-present", type=float, default=0.05,
+                    help="DLL integrator leak on the FLEET path, where `present` has already "
+                         "confirmed signal (--dll-combiners). The ordinary --dll-leak caps the "
+                         "reachable correction at (gain/leak)*0.25 = 1.25 chips, which is below "
+                         "the residuals actually seen and leaves the loop pushing at a railed "
+                         "discriminator without arriving. 0.01 lifts that ceiling to 6.25 chips "
+                         "-- past the 3.27-chip tracker grating-lobe spacing -- while still "
+                         "mean-reverting over ~100 updates. The leak was a stand-in for a signal "
+                         "test; the fleet path now has a real one, so it does not need to be "
+                         "this strong. The single-combiner fallback keeps --dll-leak.\n"
+                         "MEASURED 2026-08-04 AND REVERTED: 0.01 made locks strictly WORSE -- "
+                         "best-q median 2.05 -> 1.03 and samples above q 2.0 went 4/8 -> 0/8, "
+                         "every satellite driven to noise. The leak is not only a ceiling: when "
+                         "the discriminator is RAILED (|disc| ~ 0.9, which is most of the time "
+                         "here) tau saturates at 0.25 chips and carries only the SIGN, not the "
+                         "distance -- so the integrator pushes one way indefinitely and the leak "
+                         "is what bounds the excursion. Default restored to 0.05; the knob is "
+                         "kept so the experiment is repeatable, not because it should be moved.")
     ap.add_argument("--dll-leak", type=float, default=0.05,
                     help="DLL integrator leak (0 = pure integrator): trim mean-reverts each "
                          "update so discriminator NOISE can't random-walk it to the clamp. DC "
@@ -3999,7 +4017,23 @@ def main(argv=None):
                 # over 2 min, dragging the code off the +-0.5-chip peak and collapsing the deep
                 # while the search stayed strong). Steady state gain*tau/leak still nulls a real
                 # static fit bias; noise averages over ~1/leak windows.
-                trim = (1.0 - args.dll_leak) * dll_trim.get(prn, 0.0) + args.dll_gain * tau
+                # LEAK GATE. The leak exists because a PURE integrator random-walked the trim
+                # into the clamp on discriminator noise (L1, 2026-07-07). But it also CAPS the
+                # correction: steady state is trim = (gain/leak)*tau and |tau| <= 0.25 chips, so
+                # at gain 0.25 / leak 0.05 nothing beyond 1.25 chips is reachable. Measured
+                # 2026-08-04: PRN 9 parked at trim +1.00 with disc railed at -0.984 -- the loop
+                # pushing as hard as it can and still not arriving.
+                #
+                # What the leak was standing in for was a signal test, and the fleet path now
+                # HAS one: `present` is a self-calibrating significance on the summed prompt
+                # power (fleet_dll), and a PRN that fails it is skipped entirely rather than
+                # leaked. So on the fleet path the leak can be much smaller -- it keeps the slow
+                # mean-reversion that stops a long-lived bias accumulating, without capping the
+                # correction below the errors we actually have. The single-combiner fallback
+                # keeps the original leak: it has no such gate, and that is where the runaway
+                # happened.
+                leak = args.dll_leak_present if fl is not None else args.dll_leak
+                trim = (1.0 - leak) * dll_trim.get(prn, 0.0) + args.dll_gain * tau
                 dll_trim[prn] = max(-3.0, min(3.0, trim))
                 dll_report.append(
                     "PRN %d disc %+.3f trim %+.2f%s"
