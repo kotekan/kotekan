@@ -242,7 +242,8 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
         log("carrier-rate: %d PRN(s) skipped across a window gap (re-anchor, not a "
             "measurement): %s" % (len(gapped), sorted(gapped)))
     if not cand:
-        return {}
+        return {}, None   # (residuals, consensus) -- ALWAYS a 2-tuple; a bare {} here killed
+                          # the broker the first time every PRN was gated out at once
     vals = sorted(v[0] for v in cand.values())
     med = vals[len(vals) // 2]
     # Clip about the median, then weight. clip_hz <= 0 disables the clip (keep everything gated).
