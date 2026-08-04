@@ -187,21 +187,21 @@ gnss0_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_combine:
-  fft_len: 16384
-  deep_coherent: true
-  deep_rate_search: true
-  deep_rate_min_q: 10.0
   cpu_affinity:
   - 31
+  deep_coherent: true
+  deep_rate_min_q: 10.0
+  deep_rate_search: true
+  fft_len: 16384
   in_bufs:
   - gnss0_rec_buf
   integration_length: 100
-  record_export: 128
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_cmb_buf
+  record_export: 128
 gnss0_epl_buf:
   frame_size: 7487664
   kotekan_buffer: standard
@@ -221,7 +221,6 @@ gnss0_gpu:
     - 6053
     - 6069
     code_trim: true
-    trim_gain: 0.0
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
@@ -239,6 +238,7 @@ gnss0_gpu:
     seed_endpoint: /gnss0_track/set_seeds
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss0_track/get_trim
+    trim_gain: 0.0
   - name: cudaSyncOutput
   - gpu_mem: gnss0_epl
     name: cudaOutputData
@@ -276,7 +276,7 @@ gnss0_srch_send:
   drop_frames: true
   kotekan_stage: bufferSend
   retry_time: 5.0
-  server_ip: 10.222.1.19
+  server_ip: 10.222.3.6
   server_port: 11044
   use_config_tracker: false
 gnss0_srch_tap:
@@ -331,21 +331,21 @@ gnss1_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_combine:
-  fft_len: 16384
-  deep_coherent: true
-  deep_rate_search: true
-  deep_rate_min_q: 10.0
   cpu_affinity:
   - 57
+  deep_coherent: true
+  deep_rate_min_q: 10.0
+  deep_rate_search: true
+  fft_len: 16384
   in_bufs:
   - gnss1_rec_buf
   integration_length: 100
-  record_export: 128
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
   n_prn: 32
   out_buf: gnss1_cmb_buf
+  record_export: 128
 gnss1_epl_buf:
   frame_size: 6422704
   kotekan_buffer: standard
@@ -364,7 +364,6 @@ gnss1_gpu:
     - 6045
     - 6061
     code_trim: true
-    trim_gain: 0.0
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
@@ -382,6 +381,7 @@ gnss1_gpu:
     seed_endpoint: /gnss1_track/set_seeds
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss1_track/get_trim
+    trim_gain: 0.0
   - name: cudaSyncOutput
   - gpu_mem: gnss1_epl
     name: cudaOutputData
@@ -419,7 +419,7 @@ gnss1_srch_send:
   drop_frames: true
   kotekan_stage: bufferSend
   retry_time: 5.0
-  server_ip: 10.222.1.19
+  server_ip: 10.222.3.6
   server_port: 11045
   use_config_tracker: false
 gnss1_srch_tap:
