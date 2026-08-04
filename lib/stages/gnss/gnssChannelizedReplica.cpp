@@ -9,6 +9,7 @@
 #include "beidouB1ICode.hpp"
 #include "beidouB3ICode.hpp"
 #include "glonassCACode.hpp"
+#include "glonassL2OCCode.hpp"
 #include "glonassL3OCCode.hpp"
 #include "beidouB2aCode.hpp"
 #include "beidouB2bCode.hpp"
@@ -96,6 +97,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         const auto& a = glonass::ca_code();
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GLO_L2OC_P")
+        return glonass::generate_l2ocp_code(prn); // already a vector (zeros = TDM'd data slots)
     if (name == "GLO_L3OC_P") {
         auto a = glonass::generate_l3ocp_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());

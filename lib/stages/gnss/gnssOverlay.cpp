@@ -10,6 +10,7 @@
 #include "galileoE5bCode.hpp" // for e5bq_secondary (per-PRN E5b-Q overlay)
 #include "galileoE6Code.hpp" // for generate_e6c_secondary (per-PRN E6-C overlay)
 #include "gpsL1CCode.hpp"    // for generate_l1co_code (per-PRN L1C-P overlay)
+#include "glonassL2OCCode.hpp" // for L2OC_OC2 (shared 50-chip L2OC-p overlay)
 #include "glonassL3OCCode.hpp" // for L3OC_NH10 / L3OC_BC5 (shared GLONASS CDMA overlays)
 #include "gpsL5Code.hpp"     // for L5_NH10/NH20 (shared Neuman-Hofman overlays)
 
@@ -70,6 +71,9 @@ static std::vector<int8_t> gen_e5bi_cs4(int) {
 }
 static std::vector<int8_t> gen_l3oc_nh10(int) {
     return {glonass::L3OC_NH10.begin(), glonass::L3OC_NH10.end()};
+}
+static std::vector<int8_t> gen_l2oc_oc2(int) {
+    return {glonass::L2OC_OC2.begin(), glonass::L2OC_OC2.end()}; // shared 50-chip L2OC-p overlay
 }
 static std::vector<int8_t> gen_l3oc_bc5(int) {
     return {glonass::L3OC_BC5.begin(), glonass::L3OC_BC5.end()};
@@ -139,6 +143,11 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     // top) -- structurally the BDS_B2A_D / GAL_E5A_I case at 5 ms/symbol, and the same length
     // as B2A_CS5 though a different sequence. Floor ~sqrt(2 ln 5) ~1.8 sigma.
     {"L3OC_BC5", /*per_prn=*/false, 1, 5, gen_l3oc_bc5, "GLO_L3OC_D"},
+    // GLONASS L2OC PILOT: the shared 50-chip OC2 secondary, one chip per 20 ms primary period
+    // (1 s cycle) -- the E5a-Q / E6-C segmented-pilot shape, longer period. Floor ~sqrt(2 ln 50)
+    // ~2.8 sigma; read deep_snr against it over a LONG rolling integration (the 1 s cycle wants
+    // seconds to resolve the 50-phase alignment).
+    {"L2OC_OC2", /*per_prn=*/false, 1, 50, gen_l2oc_oc2, "GLO_L2OC_P"},
 };
 
 const OverlayDescriptor* overlay_by_name(const std::string& name) {

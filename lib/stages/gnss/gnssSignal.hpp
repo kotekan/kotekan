@@ -400,6 +400,22 @@ inline constexpr SignalDescriptor GLO_L2OF = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
+/// GLONASS L2OC-p (1248.06 MHz) -- the modernised CDMA PILOT, riding the SAME ~1246 tune as L2OF
+/// (+2.06 MHz off the k=0 nominal). GLONASS-K only, the same 7 satellites as L3OC. Its base
+/// ranging code is BIT-IDENTICAL to L3OC-p's (glonassL2OCCode reuses generate_l3ocp_code); the
+/// difference is a per-chip [0,0,+1,-1] BOC(1,1)+TDM expansion, so the TRANSMITTED code is 40920
+/// chips at 2.046 Mcps, 20 ms period, HALF of them zero (the data component's TDM slots). The
+/// expansion is baked into the code table, so this is a plain BPSK descriptor at the expanded
+/// rate -- no TDM/BOC mechanism, the zeros carry the structure. Shared 50-chip OC2 secondary
+/// (one chip per 20 ms period, 1 s cycle). ReplicaSource: glonassL2OCCode (l2oc_code_check.py).
+/// ⚠️ 20 ms code period: acquired the L2C-CM way (blind full-period search, not time-assisted).
+inline constexpr SignalDescriptor GLO_L2OC_P = {
+    "GLO_L2OC_P", 1248.06e6, 2.046e6, 40920, 20e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/50,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -409,7 +425,7 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
           &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B, &BDS_B1I,
-          &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D, &GLO_L2OF})
+          &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D, &GLO_L2OF, &GLO_L2OC_P})
         if (name == s->name)
             return s;
     return nullptr;
