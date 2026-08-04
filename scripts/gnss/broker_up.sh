@@ -1,12 +1,22 @@
 #!/bin/bash
 # Start the CHORD L5 broker with the FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md).
 #
-# WHY THIS EXISTS: --dll-combiners is a 14-endpoint list whose shape is NOT uniform -- cx19 and
-# cx51 were regenerated with --combine-gpus and expose ONE merged 14-channel combiner
-# (gnss0_combine), while the other six still predate that change and expose TWO 7-channel ones
+# WHY THIS EXISTS: --dll-combiners is a multi-endpoint list whose shape is NOT uniform -- cx19
+# was regenerated with --combine-gpus and exposes ONE merged 14-channel combiner
+# (gnss0_combine), while the others predate that change and expose TWO 7-channel ones
 # (gnss0_combine and gnss1_combine). Typing that by hand once is fine; typing it right every
-# time is not. Regenerate all eight configs when production is serving /config on 12048 again
+# time is not. Regenerate all configs when production is serving /config on 12048 again
 # and this asymmetry goes away (STATE 8.16.4) -- then every node takes the {0..1} form.
+#
+# SIX NODES since 2026-08-04: cx51 and cx52 went back to the other developers. That is a
+# CONFIGURATION change, not a degradation to absorb quietly -- the aggregator must be
+# regenerated to match (chord_gnss_agg6.yaml, 80 channels over 12 feeds), because
+# GnssChanAlignMerge waits on every feed it was built with and four of them are now dead.
+# The comb survives it: cx51/cx52 held mod-8 residues 7 and 1, the remaining six still contain
+# adjacent residues (cx44 at 2, cx47 at 3), so g = 1 and there is no modular lag ambiguity.
+# Cost is 106 -> 80 channels (-1.2 dB) and a worst sidelobe of 0.253 at 6.58 chips vs 0.128
+# for the full eight. If a swap is ever on offer, cx47+cx52 or cx19+cx43 is the best pair to
+# give away (0.233, and the lobe moves out to 19.65 chips, clear of the DLL's pull-in).
 #
 # The fleet combine costs nothing if a node is missing: an unreachable instance is skipped with
 # a log line, and a PRN with fewer than --dll-min-instances agreeing instances falls back to the
@@ -26,10 +36,10 @@ PY=/home/kvand/gnss/venv/bin/python
 cd "$K"
 
 # One merged combiner (--combine-gpus nodes)
-MERGED="http://cx19:12049/gnss0_combine,http://cx51:12049/gnss0_combine"
+MERGED="http://cx19:12049/gnss0_combine"
 # Two per-GPU combiners (the rest)
 SPLIT=""
-for n in cx27 cx42 cx43 cx44 cx47 cx52; do
+for n in cx27 cx42 cx43 cx44 cx47; do
     SPLIT="$SPLIT,http://$n:12049/gnss{0..1}_combine"
 done
 
@@ -39,7 +49,6 @@ exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
     --trackers "http://cx19:12049/gnss{0..1}_track,http://cx27:12049/gnss{0..1}_track,\
 http://cx42:12049/gnss{0..1}_track,http://cx43:12049/gnss{0..1}_track,\
 http://cx44:12049/gnss{0..1}_track,http://cx47:12049/gnss{0..1}_track,\
-http://cx51:12049/gnss{0..1}_track,http://cx52:12049/gnss{0..1}_track,\
 http://127.0.0.1:12099/sink_track" \
     --combiner gnss0_combine \
     --dll-combiners "${MERGED}${SPLIT}" \
