@@ -293,6 +293,13 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # exact integer match and close ONE code loop at full L5 bandwidth -- a single
             # instance sees 6.7% of the lobe (docs/CHORD_GNSS_SHARED_DLL.md).
             "fft_len": cfg["fengine"]["fft_length"],
+            # PER-RECORD EXPORT for the fleet's coherent combine (/get_records). One instance
+            # sees 7 of 106 channels -- 8.8 dB below the fleet -- and per-record SNR is what caps
+            # the coherent span. Summing the per-record complex prompts across instances recovers
+            # it; the window means cannot, the phase noise has already eaten those. Sized to the
+            # deep window (integration_length) so a consumer always has the same records the
+            # local ladder ran on, with a little margin for poll jitter.
+            "record_export": args.integration_length + 28,
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
         f"{pre}record": {

@@ -16,6 +16,7 @@
 #include "prometheusMetrics.hpp" // for Counter, Gauge (real-time cost instrumentation)
 #include "restServer.hpp"        // for connectionInstance
 
+#include <array>   // for array (per-rung ladder dump)
 #include <complex> // for complex
 #include <cstdint> // for int8_t
 #include <cstdio>  // for FILE (phase-dump instrumentation)
@@ -100,6 +101,8 @@ public:
 private:
     /// broker poll: latest full-band |A| (and seed) per PRN, for drop decisions.
     void get_status_callback(kotekan::connectionInstance& conn);
+    /// Per-record complex prompts for the fleet's coherent combine (see _rec_export).
+    void get_records_callback(kotekan::connectionInstance& conn);
 
     /// Nav-bit-wiped deep coherent amplitude from a window of per-record (A, capture-UTC):
     /// bin records into nav-bit epochs by their ABSOLUTE code-period index (from UTC, so
@@ -369,6 +372,22 @@ private:
     /// Absolute HOP index the E/P/L window ends on (rolling: the newest record; block: the
     /// window's first). The fleet combine groups instances by this -- see _fft_len.
     long long _st_pow_hop = -1;
+    /// EVERY ladder rung's significance, not only the winner's (2026-08-04). The winner is a MAX
+    /// over rungs, so a low deep_snr cannot distinguish "the signal never cohered" from "it cohered
+    /// but no window was long enough to clear the bar" -- and those two want opposite fixes. Each
+    /// entry is (records, snr, span_s) for one rung, longest-first, exactly as walked.
+    std::vector<std::vector<std::array<float, 3>>> _st_rungs;
+    /// PER-RECORD EXPORT for cross-node coherent combining (0 = off). Each entry is
+    /// [hop, re, im, energy] for one record: the absolute hop is the exact cross-node alignment
+    /// key, re/im the energy-normalized complex prompt, and energy the ML combining weight.
+    /// `_recex` is the live ring (main thread); `_st_recex` its snapshot for REST.
+    int _rec_export = 0;
+    std::vector<std::vector<std::array<double, 4>>> _recex, _st_recex;
+    /// Append one record to the export ring, trimming to _rec_export. Kept independent of the
+    /// deep-wipe buffers deliberately: those are trimmed by _integration_length and skipped in
+    /// configs that do not wipe, and a ring that silently desyncs from its own hop labels would
+    /// be worse than no export at all.
+    void push_recex(int p, long long hop, double re, double im, double energy);
     std::vector<float> _st_head_frac; ///< boundary fraction f = <head energy>/<prompt energy>
     std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed
     std::vector<float> _st_s4_raw;   ///< ... before the debias (diagnostic)

@@ -195,6 +195,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_p_pow.assign(_n_prn, 0.0f);
     _st_l_pow.assign(_n_prn, 0.0f);
     _st_nchan.assign(_n_prn, 0.0f);
+    _st_rungs.assign(_n_prn, {});
     _st_head_frac.assign(_n_prn, 0.0f);
     _st_s4.assign(_n_prn, 0.0f);
     _st_s4_raw.assign(_n_prn, 0.0f);
@@ -246,6 +247,27 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _nh_search_chips = config.get_default<int>(unique_name, "nh_search_chips", 2);
     _nh_ref_margin = config.get_default<double>(unique_name, "nh_ref_margin", 2.0);
     _nh_hint.assign(_n_prn, -1);
+
+    // PER-RECORD EXPORT (2026-08-04) -- the raw material for cross-node coherent combining.
+    // One instance sees 7 of 106 channels, so its per-record SNR is ~8.8 dB below the fleet's,
+    // and that per-record SNR is what caps the coherent span (8.18.2). Summing the per-record
+    // COMPLEX prompts across instances -- not the window means, which the phase noise has already
+    // destroyed -- recovers it. That combine cannot live inside a stage that sees one node, so
+    // the stage's job is to publish the buffer it already keeps and let the broker do the sum.
+    //
+    // Exported as [hop, re, im, energy] per record, newest last:
+    //   * hop is the EXACT alignment key -- every node's sample_seq descends from one F-engine
+    //     counter, so equal hop is the same sky with no tolerance (the fleet DLL groups on it).
+    //   * re/im are energy-NORMALIZED amplitudes, so they are directly comparable instance to
+    //     instance; energy travels alongside because the ML combine weights by it (noise
+    //     variance goes as 1/energy). Publishing the ratio alone would throw the weights away.
+    // Off by default: this is ~100 records x n_prn of JSON, far too much for the status poll the
+    // viewer runs, so it lives on its own endpoint and only exists when asked for.
+    _rec_export = config.get_default<int>(unique_name, "record_export", 0);
+    if (_rec_export > 0) {
+        _recex.assign(_n_prn, {});
+        _st_recex.assign(_n_prn, {});
+    }
 }
 
 GnssCoherentCombiner::~GnssCoherentCombiner() {
@@ -262,6 +284,10 @@ void GnssCoherentCombiner::main_thread() {
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_nh_hint",
             std::bind(&GnssCoherentCombiner::set_nh_hint_callback, this, _1, _2));
+    if (_rec_export > 0)
+        kotekan::restServer::instance().register_get_callback(
+            unique_name + "/get_records",
+            std::bind(&GnssCoherentCombiner::get_records_callback, this, _1));
 
     std::vector<frameID> in_ids;
     for (Buffer* b : in_bufs)
@@ -381,12 +407,15 @@ void GnssCoherentCombiner::main_thread() {
         // -- an integer match, where the record's capture UTC would need a tolerance. Read here
         // because the frames are released a few lines below. Input 0 only: the realign loop
         // above has already put every input on the same window.
+        // THIS record's hop, kept alive past the block below: win_hop labels the emitted WINDOW
+        // (newest record when rolling, first when blocking), while the per-record export needs
+        // the hop of the record actually being buffered -- the same number only in rolling mode.
+        long long cur_hop = -1;
         {
             const GnssChanMetadata* mi = get_gnss_chan_metadata(in_bufs[0], in_ids[0]);
-            const long long cur_hop = (mi && mi->sample_seq >= 0)
-                                          ? (_fft_len > 0 ? mi->sample_seq / _fft_len
-                                                          : (long long)mi->sample_seq)
-                                          : -1;
+            cur_hop = (mi && mi->sample_seq >= 0)
+                          ? (_fft_len > 0 ? mi->sample_seq / _fft_len : (long long)mi->sample_seq)
+                          : -1;
             if (_rolling || n_acc == 0) // rolling: the newest record, as ref_utc is; block: the
                 win_hop = cur_hop;      // window's first, as ref_utc is
         }
@@ -734,6 +763,8 @@ void GnssCoherentCombiner::main_thread() {
                         }
                     }
                 }
+                if (_rec_export > 0 && energy > 0.0)
+                    push_recex(p, cur_hop, ar, ai, energy);
                 ref_prn[p] = ref[0]; // reference = the latest record (rolling has no block start)
                 ref_dop[p] = ref[1];
                 ref_cp[p] = ref[2];
@@ -776,6 +807,8 @@ void GnssCoherentCombiner::main_thread() {
                                                      h_energy > 0.0 ? rhi / energy : ri / energy);
                     }
                 }
+                if (_rec_export > 0 && energy > 0.0)
+                    push_recex(p, cur_hop, ar, ai, energy);
                 if (n_acc == 0) { // window reference from the first record of the block
                     ref_prn[p] = ref[0];
                     ref_dop[p] = ref[1];
@@ -826,6 +859,12 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
+        // EVERY rung, not only the winner (2026-08-04). deep_snr is a MAX over the ladder, and a
+        // max cannot say WHY it is small: "the phase never cohered" (short rungs also at floor)
+        // and "it cohered but no window cleared the bar" (short rungs high, long rungs collapsing)
+        // are opposite diagnoses wanting opposite fixes. Costs nothing -- the rungs are already
+        // computed and thrown away. (len, snr, span_s), longest-first as walked.
+        std::vector<std::vector<std::array<float, 3>>> rungs(_n_prn);
         std::vector<double> peel_rsnr(_n_prn, 0.0);  // residual deep significance (peel_depth)
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions (P7a)
         // FIXED-WINDOW, noise-debiased coherent power (Hz) for the beam map: the coherent
@@ -1153,6 +1192,7 @@ void GnssCoherentCombiner::main_thread() {
                             full_snr = snr;
                             full_len = len;
                         }
+                        rungs[p].push_back({(float)len, (float)snr, (float)coh_span(ub, len)});
                         if (snr < FLOOR_MARGIN * nav_floor(len))
                             continue; // indistinguishable from noise rectification
                         if (!cleared || snr > deep_snr[p] * 1.05) {
@@ -1233,6 +1273,7 @@ void GnssCoherentCombiner::main_thread() {
                             full = ow;
                             full_len = len;
                         }
+                        rungs[p].push_back({(float)len, (float)ow.snr, (float)coh_span(ub, len)});
                         if (ow.snr < FLOOR_MARGIN * flr)
                             continue; // indistinguishable from noise rectification
                         if (!cleared || ow.snr > deep_snr[p] * 1.05) {
@@ -1400,6 +1441,7 @@ void GnssCoherentCombiner::main_thread() {
                         full_snr = snr;
                         full_len = len;
                     }
+                    rungs[p].push_back({(float)len, (float)snr, (float)coh_span(ub, len)});
                     if (snr < FLOOR_MARGIN * nav_floor(len))
                         continue; // indistinguishable from noise rectification
                     if (!cleared || snr > deep_snr[p] * 1.05) {
@@ -1503,6 +1545,7 @@ void GnssCoherentCombiner::main_thread() {
                         full = cs;
                         full_len = len;
                     }
+                    rungs[p].push_back({(float)len, (float)cs.snr, (float)coh_span(ub, len)});
                     if (cs.snr < FLOOR_MARGIN * flr)
                         continue; // indistinguishable from noise
                     if (!cleared || cs.snr > deep_snr[p] * 1.05) {
@@ -1719,6 +1762,9 @@ void GnssCoherentCombiner::main_thread() {
                 _st_coh_s[p] = (float)coh_s[p];
                 _st_deep_rec[p] = deep_rec[p];
                 _st_deep_floor[p] = (float)deep_floor[p];
+                _st_rungs[p] = rungs[p];
+                if (_rec_export > 0)
+                    _st_recex[p] = _recex[p];
                 _st_deep_pow[p] = (float)deep_pow[p];
                 _st_peel_deep[p] = rec[gnss::CMB_PEEL_DEEP];
                 _st_peel_incoh[p] = rec[gnss::CMB_PEEL_INCOH];
@@ -1882,6 +1928,30 @@ void GnssCoherentCombiner::set_nh_hint_callback(kotekan::connectionInstance& con
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
+void GnssCoherentCombiner::push_recex(int p, long long hop, double re, double im, double energy) {
+    auto& r = _recex[p];
+    r.push_back({(double)hop, re, im, energy});
+    if ((int)r.size() > _rec_export)
+        r.erase(r.begin(), r.begin() + ((int)r.size() - _rec_export));
+}
+
+void GnssCoherentCombiner::get_records_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json reply = nlohmann::json::array();
+    std::lock_guard<std::mutex> lk(_st_mtx);
+    for (int p = 0; p < _n_prn; ++p) {
+        if (_st_recex[p].empty())
+            continue; // a PRN with no records is silence, not a row of zeros
+        reply.push_back({{"prn", _st_prn[p]},
+                         {"doppler_hz", _st_dop[p]},
+                         {"code_phase_chips", _st_cp[p]},
+                         // [hop, re, im, energy] per record, oldest first. See _rec_export: hop
+                         // is the exact cross-node key, re/im are energy-normalized (so directly
+                         // comparable across instances), energy is the ML combining weight.
+                         {"records", _st_recex[p]}});
+    }
+    conn.send_json_reply(reply);
+}
+
 void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn) {
     nlohmann::json reply = nlohmann::json::array();
     std::lock_guard<std::mutex> lk(_st_mtx);
@@ -1900,6 +1970,13 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_records", _st_deep_rec[p]},
                          {"deep_floor", _st_deep_floor[p]},
                          {"deep_pow_hz", _st_deep_pow[p]},
+                         // EVERY ladder rung this emit, longest-first: [[records, snr, span_s], ...].
+                         // deep_snr is the MAX over these, and a max hides the shape. A signal that
+                         // never coheres sits at the floor on EVERY rung; one that coheres but is
+                         // too weak rises as the rung shortens (less phase loss) or peaks mid-ladder
+                         // at the knee. Same floor applies to all rungs on the plain branch
+                         // (deep_floor); the wipe branches' floor grows with rung length.
+                         {"rungs", _st_rungs[p]},
                          // PEEL DEPTH (docs/gnss_voltage_peel_live.md): deep/incoherent |A| of the
                          // voltage-peel RESIDUAL. depth_db = 20*log10(deep_amplitude/peel_deep);
                          // 0 when this chain does not peel. At the combiner floor -> a LOWER BOUND.

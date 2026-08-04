@@ -194,6 +194,7 @@ gnss0_combine:
   in_bufs:
   - gnss0_rec_buf
   integration_length: 100
+  record_export: 128
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
@@ -335,6 +336,7 @@ gnss1_combine:
   in_bufs:
   - gnss1_rec_buf
   integration_length: 100
+  record_export: 128
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
