@@ -16,12 +16,12 @@ agg0_f_buf:
   frame_size: samples_per_data_set * 7 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg0_in_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg0_recv:
   buf: agg0_in_buf
   cpu_affinity:
@@ -45,12 +45,12 @@ agg10_f_buf:
   frame_size: samples_per_data_set * 7 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg10_in_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg10_recv:
   buf: agg10_in_buf
   cpu_affinity:
@@ -74,12 +74,12 @@ agg11_f_buf:
   frame_size: samples_per_data_set * 6 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg11_in_buf:
   frame_size: samples_per_data_set * 6 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg11_recv:
   buf: agg11_in_buf
   cpu_affinity:
@@ -103,12 +103,12 @@ agg1_f_buf:
   frame_size: samples_per_data_set * 7 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg1_in_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg1_recv:
   buf: agg1_in_buf
   cpu_affinity:
@@ -132,12 +132,12 @@ agg2_f_buf:
   frame_size: samples_per_data_set * 6 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg2_in_buf:
   frame_size: samples_per_data_set * 6 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg2_recv:
   buf: agg2_in_buf
   cpu_affinity:
@@ -161,12 +161,12 @@ agg3_f_buf:
   frame_size: samples_per_data_set * 7 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg3_in_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg3_recv:
   buf: agg3_in_buf
   cpu_affinity:
@@ -190,12 +190,12 @@ agg4_f_buf:
   frame_size: samples_per_data_set * 7 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg4_in_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg4_recv:
   buf: agg4_in_buf
   cpu_affinity:
@@ -219,12 +219,12 @@ agg5_f_buf:
   frame_size: samples_per_data_set * 6 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg5_in_buf:
   frame_size: samples_per_data_set * 6 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg5_recv:
   buf: agg5_in_buf
   cpu_affinity:
@@ -248,12 +248,12 @@ agg6_f_buf:
   frame_size: samples_per_data_set * 7 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg6_in_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg6_recv:
   buf: agg6_in_buf
   cpu_affinity:
@@ -277,12 +277,12 @@ agg7_f_buf:
   frame_size: samples_per_data_set * 6 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg7_in_buf:
   frame_size: samples_per_data_set * 6 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg7_recv:
   buf: agg7_in_buf
   cpu_affinity:
@@ -306,12 +306,12 @@ agg8_f_buf:
   frame_size: samples_per_data_set * 6 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg8_in_buf:
   frame_size: samples_per_data_set * 6 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg8_recv:
   buf: agg8_in_buf
   cpu_affinity:
@@ -335,12 +335,12 @@ agg9_f_buf:
   frame_size: samples_per_data_set * 7 * 8
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg9_in_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 64
+  num_frames: 8
 agg9_recv:
   buf: agg9_in_buf
   cpu_affinity:
@@ -403,10 +403,10 @@ gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120
 gps_search:
-  acquire_fine_step: 1
-  acquire_snr: 12.0
-  acquire_threads: 6
-  acquire_windows: 32
+  acquire_fine_step: 128
+  acquire_snr: 30.0
+  acquire_threads: 16
+  acquire_windows: 1
   channel_ids:
   - 5972
   - 5988
@@ -490,6 +490,10 @@ gps_search:
   channel_offset: 5972
   code_doppler_sign: 1.0
   cpu_affinity:
+  - 19
+  - 24
+  - 31
+  - 57
   - 58
   - 59
   - 60
@@ -543,7 +547,7 @@ gps_search:
   - 30
   - 31
   - 32
-  prns_per_pass: 0
+  prns_per_pass: 1
   refine_hops: 391
   refine_span: 512
   refine_step: 103

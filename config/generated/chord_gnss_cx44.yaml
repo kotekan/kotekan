@@ -275,7 +275,7 @@ gnss0_srch_send:
   drop_frames: true
   kotekan_stage: bufferSend
   retry_time: 5.0
-  server_ip: 10.222.1.19
+  server_ip: 10.222.3.6
   server_port: 11048
   use_config_tracker: false
 gnss0_srch_tap:
@@ -418,7 +418,7 @@ gnss1_srch_send:
   drop_frames: true
   kotekan_stage: bufferSend
   retry_time: 5.0
-  server_ip: 10.222.1.19
+  server_ip: 10.222.3.6
   server_port: 11049
   use_config_tracker: false
 gnss1_srch_tap:

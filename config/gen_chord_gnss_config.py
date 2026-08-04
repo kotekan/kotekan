@@ -753,30 +753,51 @@ def main():
                          "directory that is not there.")
     ap.add_argument("--search-port-base", type=int, default=11040,
                     help="bufferRecv port for GPU 0; GPU 1 uses base+1")
-    ap.add_argument("--acquire-threads", type=int, default=6,
+    # THE DEFAULTS BELOW ARE THE DEPLOYED VALUES, not neutral ones. They were defaults-by-
+    # omission twice (2026-08-02 and 2026-08-04) and both times a regeneration silently
+    # reverted the tuning: the second cost ~40 minutes of a dead search on cf06, whose only
+    # symptom was "merge aligned, then nothing" -- a pass got ~1e5x more expensive
+    # (all-PRNs x 32 windows x undecimated fine axis) and simply never finished, so it never
+    # logged. A wrong default here does not error; it produces silence or noise. Change one
+    # only with a measurement, and see STATE 5r.1 / 8.19 before raising acquire_windows.
+    ap.add_argument("--acquire-threads", type=int, default=16,
                     help="threads for the aggregate half of the acquire (parallel over Doppler "
-                         "bins x coarse lags). Aggregator only; per-node instances keep 1.")
-    ap.add_argument("--acquire-fine-step", type=int, default=1,
+                         "bins x coarse lags). Aggregator only; per-node instances keep 1. The "
+                         "affinity set is widened to match, so this also sizes the core list.")
+    ap.add_argument("--acquire-fine-step", type=int, default=128,
                     help="fine-lag decimation in the acquire surface. The fine axis resolves a "
                          "lobe sph/(comb span in bins) wide -- ~156 samples at CHORD regardless "
                          "of channel COUNT (the span sets it, not the density) -- so storing it "
                          "per sample is ~156x oversampled and the surface is the whole cost of a "
                          "pass. Step must stay well under the lobe width or the peak is missed.")
-    ap.add_argument("--prns-per-pass", type=int, default=0,
+    ap.add_argument("--prns-per-pass", type=int, default=1,
                     help="how many ELIGIBLE PRNs to search per snapshot, round-robin. 0 = all "
                          "(airspy's behaviour). A detection's ref_hop is the SNAPSHOT's start "
                          "hop, so with one snapshot per pass the last PRN searched carries an "
                          "epoch as old as the pass; seed error is Doppler error x that age at "
                          "0.0087 chips/Hz/s. Bounds the epoch at emit by (pass time)/(this).")
-    ap.add_argument("--acquire-windows", type=int, default=32,
-                    help="windows stacked per acquisition attempt. CHOOSE BY INTEGRATION TIME, "
-                         "not by copying the airspy count: a window is repl_period_hops long, "
-                         "which is 1 ms there (1000 hops) but 16 ms here (3125 hops), because "
-                         "CHORD's 1 ms code period is not commensurate with its 5.12 us hop. So "
-                         "the same COUNT buys 16x the integration and costs 16x more. 32 windows "
-                         "= 512 ms, ~5x the airspy node's 100 ms -- deliberate compensation for "
-                         "holding only 7 of 106 channels (-11.8 dB).")
-    ap.add_argument("--acquire-snr", type=float, default=12.0)
+    ap.add_argument("--acquire-windows", type=int, default=1,
+                    help="windows stacked per acquisition attempt. MUST STAY 1 at CHORD until "
+                         "the overlay bookkeeping lands (STATE 5r.1). A window is 3125 hops = 16 "
+                         "PRIMARY periods, so the code phase is stationary window to window -- "
+                         "but 16 is not a whole number of NH20 periods, so each window's overlay "
+                         "advances +4 mod 20 and lands in a DIFFERENT nh bin. Stacking therefore "
+                         "puts the signal in one bin and noise in all of them: measured on "
+                         "noiseless synthetic, 2 windows gave EXACTLY HALF the snr of 1, every "
+                         "injection; live, PRN 23 read 342 with one window against 56 with "
+                         "eight, and the reported nh was scrambled. This is the same 16-vs-20 "
+                         "geometry as the record-length defects, so it does not go away by "
+                         "itself. The fix is to route window w into bin (a + 4w) mod 20 -- pure "
+                         "bookkeeping -- after which this can rise again and buy real "
+                         "integration. Raising it WITHOUT that costs sensitivity and lies about "
+                         "nh. It is also the dominant cost term: 32 here is 32x the pass time.")
+    ap.add_argument("--acquire-snr", type=float, default=30.0,
+                    help="detection threshold. Tied to --acquire-windows: at 1 window the "
+                         "pure-noise ceiling is a Gamma(1) tail (~19) rather than Gamma(8) "
+                         "(~4.5), so a threshold carried over from a multi-window config lets "
+                         "pure noise through as detections. The stage logs its own computed "
+                         "ceiling every pass and flags a threshold below it -- read that line "
+                         "after any change here. Keep in step with the broker's --acquire-snr.")
     ap.add_argument("--search-instance", action="store_true",
                     help="emit the SEARCH instance config instead of the node config")
     args = ap.parse_args()
