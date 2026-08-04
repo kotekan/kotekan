@@ -50,11 +50,25 @@ public:
     /// One (PRN x E/P/L) despread request against the uploaded window. @c covering holds this
     /// subband's LOCAL channel indices.
     struct Spec {
-        int p;                     ///< PRN slot
-        double cp_seed;            ///< commanded prompt code phase (chips, signal units)
-        double spacing_chips;      ///< Early/Late offset
-        double doppler_hz;         ///< replica carrier (the tracker's fixed f_ref)
+        int p;                ///< PRN slot
+        double cp_seed;       ///< commanded prompt code phase (chips, signal units)
+        double spacing_chips; ///< Early/Late offset
+        double doppler_hz;    ///< replica carrier (the tracker's fixed f_ref)
         std::vector<int> covering; ///< local channel indices in this PRN's covering set
+        /// Broker carrier trim (Hz), added to the replica CARRIER only -- never to the code
+        /// rate, because carrier and code are separate control paths. Before 2026-08-04 this
+        /// did not exist and `carrier_trim_hz` reached `c.f_nco` and stopped there, consumed
+        /// only by GnssGpuRecordAssemble's exported commanded phase. So the despread ignored
+        /// the trim while the ADR export already assumed it had been applied
+        /// (`_phi += 2*pi*f_nco*dt`) -- the loop had no actuator, deep_rate_hz was invariant to
+        /// the trim (measured gain +0.14 against an expected -1.00), and the broker's carrier
+        /// loop integrated an error it could never null, to the +-40 Hz rail at any gain.
+        /// Adding it here makes the despread and the export consistent for the first time.
+        ///
+        /// LAST, and defaulted, because several call sites brace-initialize the members before
+        /// it positionally and legitimately have no trim: the host tracker applies its own via
+        /// f_nco, and the offline harness commands none.
+        double ctrim_hz = 0.0;
     };
 
     /// Batched despread: ALL requested PRNs' E/P/L triples in ONE kernel launch (G1c -- one

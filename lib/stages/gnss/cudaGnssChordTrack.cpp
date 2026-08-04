@@ -445,6 +445,13 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             sp.doppler_hz = dop;
             sp.cp_seed = cp;
             sp.spacing_chips = S.dll_spacing;
+            // THE ACTUATOR. Without this the broker's carrier loop commands a trim that reaches
+            // c.f_nco (the exported commanded phase) and nothing else -- the despread ran at the
+            // bare seed Doppler, deep_rate_hz could not respond, and the loop ratcheted to its
+            // rail at every gain tried. c.fcar below stays f_offset + dop: it is the REPLICA
+            // reference the assembler reconstructs Phi_cmd against, and f_nco already carries
+            // the trim in that identity.
+            sp.ctrim_hz = sd.ctrim_hz;
             sp.covering = S.covering;
 
             c.run = 1;

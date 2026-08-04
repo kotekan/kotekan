@@ -226,7 +226,11 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
         const double cps =
             im.bank.eff_chip_rate() / im.fs
             * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
-        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz) / im.fs;
+        // + ctrim: the CARRIER trim, carrier-only (cps above deliberately does not take
+        // it -- code and carrier are separate control paths). ensure_phi stays keyed on
+        // doppler alone: it caches the channelizer response, and a few tens of Hz is
+        // nothing against a MHz-wide channel.
+        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz + sp.ctrim_hz) / im.fs;
         uint64_t mask = 0;
         for (int c : sp.covering)
             if (c >= 0 && c < im.n_chan)
@@ -299,7 +303,11 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
         const double cps =
             im.bank.eff_chip_rate() / im.fs
             * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
-        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz) / im.fs;
+        // + ctrim: the CARRIER trim, carrier-only (cps above deliberately does not take
+        // it -- code and carrier are separate control paths). ensure_phi stays keyed on
+        // doppler alone: it caches the channelizer response, and a few tens of Hz is
+        // nothing against a MHz-wide channel.
+        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz + sp.ctrim_hz) / im.fs;
         uint64_t mask = 0;
         for (int c : sp.covering)
             if (c >= 0 && c < im.n_chan)
