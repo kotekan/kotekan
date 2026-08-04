@@ -8,6 +8,22 @@
 # to enable HAS); see galileoE6Code.hpp + e6_code_check.py.
 # ★ 5.115 Mcps main lobe (+-5.115 MHz) FITS the 10 MHz window -- better than B2b, whose
 # 10.23 Mcps lobe is captured half and still decodes.
+# ✅ FIRST LIGHT 2026-08-04: E30 locked on BOTH chains at coh_s 1.000 -- pilot deep_snr to
+# 146 (24x its 4.03 floor, sustained 87% over 60 s), data to 143. A pilot lock at coh_s 1.0
+# retro-validates the ENTIRE transcription at once: the E6-C primary code, the per-PRN CS100
+# secondary and the 5115-chip/5.115-Mcps geometry must ALL be right to get it, so the
+# 1279-hex padding convention is confirmed ON THE SKY, not just by the balance argument.
+# ✅ HAS IS MODULATED: on E30's locked emits the E6-B stream runs 3001 contiguous symbols at
+# trans 0.523, autocorr(100) +0.002, CS100 match 0.078 -- a real non-periodic coded message.
+# ⚠️ BUT THE LOCK IS INTERMITTENT and only E30 (the strongest Galileo up) holds it. What
+# remains is a LINK BUDGET problem, NOT a correctness one: suspect the antenna/LNA passband
+# at 1278.75 (the first launch measured ADC rms 94 vs l2c's 1049). Next test: sweep
+# 1207 -> 1278 at FIXED gain and watch rms.
+# ⚠️⚠️ READ deep_snr AGAINST deep_floor HERE, ALWAYS (pilot 4.03, data 26.06). An UNLOCKED
+# navwipe rectifies noise to trans ~0.50, non-periodic, coh/deep ~0 -- it mimics a real
+# message perfectly. Those tests discriminate ONLY on a sat already proven above floor, and
+# a lock test must be a SUSTAINED FRACTION, never a first threshold crossing (an unlocked
+# chain crosses any modest threshold within minutes). Both mistakes were made here.
 type: config
 log_level: warn
 instrument_name: airspy_gps
@@ -45,8 +61,8 @@ code_doppler_sign: 1.0
 n_prn: 36
 record_floats: 24
 doppler_margin_hz: 250000.0
-acquire_snr: 8.0
-acquire_windows: 100
+acquire_snr: 6.0
+acquire_windows: 200
 # E6 at 1278.75 MHz ~ 0.812 x L1 geometric Doppler; +-5000 with margin. step 100: E6 records
 # are 1 ms (like L5/B2b), so the L5 100 Hz grid argument applies verbatim.
 doppler_min: -5000.0
@@ -82,9 +98,9 @@ airspy_in:
     serial: 0x03A464C837264F67  # The L5 unit, RETUNED to E6 (1176.45 -> 1278.75). Same physical dongle as the `l5` band above -- never put both in $BANDS.
     freq: 1278.75
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real (5.115 Mcps E6 wants the wide mode)
-    gain_lna: 8
-    gain_mix: 8
-    gain_if: 8
+    gain_lna: 15
+    gain_mix: 15
+    gain_if: 15
     # OFF as of the 3-airspy rework (2026-07-14): the ACTIVE antenna is powered by a
     # SEPARATE inline bias tee, not the dongle. Three dongles pushing DC into a common
     # splitter is the failure mode to avoid. HISTORY: this was `true` and had to be (antenna
@@ -98,7 +114,7 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 
 # hops_per_record 1000 = the 1 ms E6 primary at 20 MSPS (like L5 E5a-Q / B2b / E5b-Q).
 # require_hint: scan only broker-hinted visible Galileo PRNs.
-gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 6.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
 valve: { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.1, measure_frames: 64 }  # the RFSoC's job in software: noise rms -> target_lsb, freeze, demote to CHORD 4+4b (2.1 point, cold soak closed 07-19)
 
