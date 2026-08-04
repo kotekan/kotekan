@@ -1223,7 +1223,7 @@ class GpsSkyResource(resource.Resource):
 
     isLeaf = True
 
-    def __init__(self, lat, lon, alt, mask_deg, consts="G,E,C"):
+    def __init__(self, lat, lon, alt, mask_deg, consts="G,E,C", glonass_sigids=None):
         resource.Resource.__init__(self)
         self.lat, self.lon, self.alt, self.mask_deg = lat, lon, alt, mask_deg
         # Only serve the constellations this band actually tracks: L1 tri-band = G,E,C (all share
@@ -1231,14 +1231,18 @@ class GpsSkyResource(resource.Resource):
         # not even in this band). Filter the class table to the requested tags, order preserved.
         want = [t.strip() for t in consts.split(",") if t.strip()]
         self.CONSTELLATIONS = tuple(c for c in type(self).CONSTELLATIONS if c[0] in want)
+        # The GLONASS signals actually running (sigids, e.g. GLO_L2OF / GLO_L3OC_P), so the R sky
+        # layer can filter to what ANY of them can track rather than to one signal's capability.
+        # None/empty -> no per-signal filter (show every GLONASS sat).
+        self.glonass_sigids = list(glonass_sigids or [])
         self._cache = {"ok": False, "sats": []}  # last good (or empty) result
         self._sats = None                        # cached {prn: EarthSatellite} (TLE fallback)
         self._eph = None                         # cached parsed BRDC {(sys,prn):[recs]}
         self._eph_t = None                       # monotonic s of last BRDC parse
         self._l1c_capable = None                 # cached set of L1C-capable PRNs (GPS III)
         self._l1c_capable_t = None               # monotonic s of last capability fetch
-        self._l3oc_capable = None                # cached set of L3OC-capable slots (GLONASS-K)
-        self._l3oc_capable_t = None              # monotonic s of last capability fetch
+        self._glo_capable = None                 # cached set of GLONASS slots any running R
+        self._glo_capable_t = None               # signal can track (union); None = no filter
         self._last_compute = None                # monotonic s of last attempt
         self._refreshing = False
 
@@ -1301,28 +1305,47 @@ class GpsSkyResource(resource.Resource):
             return {"ok": True, "sats": sats, "src": "brdc+tle"}
         return {"ok": True, "sats": sats, "src": "brdc"}
 
-    def _l3oc_capable_set(self):
-        """Cached set of GLONASS SLOTS that actually broadcast L3OC = the GLONASS-K satellites
-        (7 of 28 as of 2026-08), from the live Celestrak 'K' marker on the Uragan number. Exactly
-        the job _l1c_capable_set does for GPS III: without it the 'R' sky layer would show all 28
-        slots, three quarters of them silent birds that look like failed L3OC locks.
-        None on failure => no filter (show all GLONASS under R)."""
-        if (self._l3oc_capable_t is not None
-                and (time.monotonic() - self._l3oc_capable_t) < 3600.0):
-            return self._l3oc_capable
+    def _glonass_capable_set(self):
+        """Cached set of GLONASS SLOTS trackable by ANY GLONASS signal we are running -- the
+        UNION of each running R signal's capability. This is the R analogue of _l1c_capable_set,
+        but it MUST be a union, not one signal's set, because the R sky layer aggregates every
+        GLONASS signal onto one marker per satellite.
+
+        ★ WHY THE UNION MATTERS (the bug this fixes, 2026-08-04): L3OC is GLONASS-K only (7 sats)
+        while L2OF is on EVERY satellite (~26 with a known channel). Filtering the whole R sky to
+        L3OC capability hid every non-K satellite -- so with both signals running, only the K sats
+        showed and L2OF's ~19 other trackable satellites vanished from the plot. A satellite that
+        carries L2OF but not L3OC is not a silent bird; it is trackable, and belongs in the sky.
+
+        The union conditions on what is ACTUALLY running (self.glonass_sigids from the live
+        /config): L3OC alone -> K only; L2OF present -> all known-k slots. None => no filter (no
+        GLONASS signals, or a capability lookup that covered ~everything and so carried no info)."""
+        if (self._glo_capable_t is not None
+                and (time.monotonic() - self._glo_capable_t) < 3600.0):
+            return self._glo_capable
+        union = set()
         try:
             import gps_beamtrack as bt
-            caps = bt.signal_capable_prns("GLO_L3OC_P", bt.GLONASS_TLE_URL)
-            # As in _l1c_capable_set: a set covering everything carries no information. The
-            # GLONASS constellation is ~28 slots, so anything near that means the K marker
-            # was not found and the filter should stand down rather than hide real satellites.
-            self._l3oc_capable = set(caps) if caps and len(caps) < 24 else None
+            for sigid in self.glonass_sigids:
+                # ⚠️ Use the CLEAN primitive per signal, not signal_capable_prns: for an FDMA
+                # signal that function falls back to the WHOLE slot set when the frequency plan
+                # is unavailable (its block filter is None -> "all"), which is indistinguishable
+                # by size from the legitimate ~26-slot known-k set. glonass_fdma_trackable() and
+                # the K-marker path both return empty on failure instead, never a spurious full
+                # set -- so the union stays trustworthy without a fragile size threshold.
+                if "OF" in sigid.upper():
+                    union |= bt.glonass_fdma_trackable()          # known-k, empty on failure
+                else:
+                    union |= set(bt.signal_capable_prns(sigid, bt.GLONASS_TLE_URL))  # K set
         except Exception as e:
-            log_.warning("gps_sky: L3OC capability set unavailable (%s); showing all GLONASS "
+            log_.warning("gps_sky: GLONASS capability set unavailable (%s); showing all GLONASS "
                          "under R", e)
-            self._l3oc_capable = None
-        self._l3oc_capable_t = time.monotonic()
-        return self._l3oc_capable
+            union = set()
+        # Empty => the lookup failed (or no GLONASS signals): stand the filter down and show all,
+        # never hide a real satellite behind a failed capability check.
+        self._glo_capable = union or None
+        self._glo_capable_t = time.monotonic()
+        return self._glo_capable
 
     def _l1c_capable_set(self):
         """Cached set of PRNs whose GPS block actually broadcasts L1C (GPS III), from the live
@@ -1397,7 +1420,7 @@ class GpsSkyResource(resource.Resource):
                 except Exception as e:
                     log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
         cap_L = self._l1c_capable_set()
-        cap_R = self._l3oc_capable_set()
+        cap_R = self._glonass_capable_set()
         sats = []
         for tag, by_prn in self._sats.items():
             if want is not None and tag not in want:
@@ -1841,9 +1864,14 @@ def main():
         _scripts = os.path.dirname(static_dir)
         sys.path.insert(0, _scripts)
         sys.path.insert(0, os.path.join(_scripts, "gnss"))
+        # GLONASS sky filter is the UNION of the running R signals' capabilities (L3OC = K
+        # only, L2OF = all known-k), so a satellite trackable by ANY of them shows. Derived from
+        # the same discovered inventory the table uses, so a band swap needs no viewer edit.
+        _glo_sigids = sorted({s.get("sigid") for s in UNIFIED_SIGNALS
+                              if (s.get("sigid") or "").startswith("GLO_")} - {None})
         root.putChild(b"gps_sky",
                       GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg,
-                                     args.gps_constellations))
+                                     args.gps_constellations, glonass_sigids=_glo_sigids))
         root.putChild(b"decode_health",
                       DecodeHealthResource(args.decode_health_dir, lat=args.lat, lon=args.lon,
                                            alt=args.alt, obs_globs=args.pvt_obs_globs.split(",")))
