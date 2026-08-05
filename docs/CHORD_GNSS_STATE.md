@@ -3161,3 +3161,41 @@ Two corrections to earlier sections, both mine:
 * The harness's first `sigma_phi` folded the prompts WITHOUT derotating, unlike the combiner, so
   it reported the ramp rather than the residual (17.3 rad at a 5 Hz seed error where the true
   residual was 0.0115). Fixed to derotate first.
+
+### 8.20.12 The floor is SHARED across nodes and REMOVABLE -- +9.7 dB, cross-validated
+
+The residual of 8.20.11 is deterministic per satellite and reproduces across nodes (r = +0.862).
+That makes it *measurable by the fleet* whether or not we know its cause. Leave-one-out test:
+estimate each record's phase from the OTHER five nodes, apply it to the held-out node, refold.
+The correction never sees the node it is applied to, so this cannot be overfitting.
+
+```
+median gain 3.04x  (+9.7 dB)     36 of 36 (node, PRN) combinations improved
+deep_snr 10-13  ->  15-88        best 9.35x (PRN 4 / cx42)
+```
+
+Per-satellite examples (held-out node, before -> after): PRN 3 cx19 10.05 -> 21.23; PRN 11 cx19
+11.32 -> 51.90; PRN 26 cx51 12.66 -> 52.49. The cap of 8.20.9 is not a physical sensitivity
+limit -- it is a phase error we can measure and divide out.
+
+**This IS the cross-node coherent combining item** left open since 8.18.3 (`fleetcoh.py` was
+written for it and has been waiting on the ramp removal, which now exists). It now has a measured
+payoff rather than a predicted one, and the mechanism is clearer than when it was proposed: the
+gain does not come from summing voltage across nodes, it comes from using the fleet to estimate a
+per-record phase that a single node cannot separate from its own thermal noise.
+
+Constraints the implementation has to respect, all measured:
+* the residual is **per satellite** (different-satellite correlation -0.062), so the estimate must
+  be per PRN -- there is no single fleet-wide correction
+* it is **shared across nodes** (+0.862), which is what makes a 5-node estimate meaningful
+* it is **phase-only** (perp/par ~2), so correct the phase and leave the amplitude alone
+* it needs the records **hop-aligned** across nodes; `pow_hop` is the exact integer key and is
+  already exported by `/get_records`
+
+Still unknown: what the phase error physically IS. Ruled out so far -- thermal (it is phase-only
+and cross-node correlated), a shared clock/reference (satellites do not share it), the despread
+and seed-propagation arithmetic (synthetic is clean to 1e-4 rad), seed Doppler error (0.0024 rad
+at 25 Hz), 4+4b quantization (~2%), Doppler curvature, code-period phase and NH20 index (both
+fail a split-half reproducibility test). It behaves like a mismatch between our replica model and
+the true satellite signal, which a self-consistent synthetic is structurally blind to (8.20.11).
+**But the fix does not wait on the diagnosis:** the correction above is empirical and validated.
