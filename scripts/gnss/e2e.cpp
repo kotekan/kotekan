@@ -167,6 +167,9 @@ static void usage() {
         "  --ms-split K       run the ms-split acquire over K ~1 ms sub-windows instead\n"
         "  --sub-hops N       hops per sub-window (default 196 = ceil(code period))\n"
         "  --s-stride N       search comb stride (default 4 = 2 nodes; 1 = the 8-node agg)\n"
+        "  --t-stride N       TRACKER comb stride (default 16 = one GPU's comb; 1 = contiguous)\n"
+        "  --t-nchan N        tracker channel count (default 7)\n"
+        "  --t-chan0 N        tracker comb first channel (default 5972)\n"
         "  --s-nchan N        search channel count (default 27; 106 for the 8-node agg)\n"
         "  --s-chan0 N        search comb first channel (default 5972)\n"
         "  --noise R          add complex Gaussian noise, std = R x signal rms (0 = noiseless)\n"
@@ -257,6 +260,9 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
         else if (arg_eq(a, "--ms-split")) o.ms_split = next_i();
         else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
+        else if (arg_eq(a, "--t-stride")) o.t_stride = next_i();
+        else if (arg_eq(a, "--t-nchan")) o.t_nchan = next_i();
+        else if (arg_eq(a, "--t-chan0")) o.t_chan0 = next_i();
         else if (arg_eq(a, "--s-stride")) o.s_stride = next_i();
         else if (arg_eq(a, "--s-nchan")) o.s_nchan = next_i();
         else if (arg_eq(a, "--s-chan0")) o.s_chan0 = next_i();

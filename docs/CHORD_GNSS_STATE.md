@@ -3245,3 +3245,40 @@ running), and the code Doppler implied by a wrong seed Doppler
 **This also reframes 8.20.12.** The +9.7 dB leave-one-out gain is not mysterious: the fleet is
 estimating and removing a shared CODE-phase error through its carrier signature. Fixing the code
 loop would remove it at the source -- and would be worth the same ~10 dB.
+
+### 8.20.14 Why the cap was there at 8 nodes too -- and what the coupling actually depends on
+
+KV's challenge: the cap was visible when all 8 nodes were up, and that union was contiguous, so
+how can a sparse comb be the cause? Checked, and the two combs are different objects:
+
+```
+8-node SEARCH union: 106 ch, 5971..6076, distinct gaps [1]      <- contiguous, KV is right
+6-node SEARCH union:  79 ch, 5972..6076, distinct gaps [1, 2]
+TRACKER (per GPU):     7 ch, stride 16, span 97 bins            <- NEVER changes with node count
+```
+
+The deep fold folds TRACKER prompts, and the tracker comb is a property of one GPU's channel
+allocation, not of how many nodes are running. It was 7-at-stride-16 at 8 nodes and it is
+7-at-stride-16 now. So the cap surviving the 8-node era is consistent, not contradictory.
+
+**And the mechanism test, with a correction to my own first version.** Injecting the SAME cp
+drift (0.102 chips/record) and varying only the tracker comb:
+
+```
+stride  4 x  7   span 25 bins   sigma_phi 1.234     <- SPARSE
+stride  1 x 32   span 32 bins             0.223     <- CONTIGUOUS, comparable span
+stride 16 x  7   span 97 bins             0.999     <- the LIVE comb
+stride  1 x  7   span  7 bins             0.019
+```
+
+My first pass compared stride-16x7 against stride-1x7 and read the 54x collapse as "sparseness
+does it". That comparison was CONFOUNDED: stride-1x7 is both contiguous AND eight times narrower.
+At matched span (25 vs 32 bins) sparseness costs ~5.5x, and span drives the rest -- a wider comb
+means a sharper correlation peak, so a given cp error moves further along it. Both terms are
+real; neither alone is the story.
+
+Practical consequence: the live tracker sits at the worst corner of that table (sparse AND
+97 bins wide), which is exactly the configuration that maximises cp -> phase coupling. Widening
+the tracker comb for sensitivity (the 7%-of-band item) would make this WORSE unless the comb is
+also densified, and densifying is bounded -- `GnssCudaDespread` rejects >64 channels outright
+(`chan_mask` is a uint64), which is itself worth knowing before anyone plans a wider tracker.
