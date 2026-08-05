@@ -218,10 +218,45 @@ one that is slow, until weeks later.
   So A3's shape: all eligible PRNs per pass at their hinted grids, plus a rotating blind slot,
   with a configured GPU duty-cycle budget rather than "go as fast as the hardware allows".
 * **A4 -- fuse 3-5** with Doppler tiling for L2 residency.
-* **A5 -- refine on GPU.** In *hinted* mode refine is 75% of the pass (0.48 s of 0.62 s), so it
-  becomes the limiter the moment acquire is fast. It is exact despreads, which is what
-  `GnssCudaDespread` / `cudaGnssDespreadKernel.cu` already do for the tracker -- reuse, do not
-  rewrite.
+* **A5 -- refine on GPU. THE WHOLE REMAINING COST.** Measured live 2026-08-05 with A2/A3 on:
+  `pass 0.473 = acquire 0.0031 (0.7%) + refine 0.465 (98.2%)`. Everything below is now noise
+  next to this.
+
+  **What it is.** `gnss::refine_peak` scans `n_eval = 2*span/step + 1` trial code phases (live:
+  span 512, step 103 -> 10 evals), and at each one generates a full channelized replica
+  (`hoprate_stream_into`) over `refine_hops` (391) x 79 channels and takes `|<data, replica>|^2`.
+  Synthesis + MAC, exactly what `GnssCudaDespread` does -- and its replica semantics ARE
+  `hoprate_stream`, so this is a reuse, not a rewrite.
+
+  **The clean mapping.** The scan is UNIFORM (`cp0 + k*step`), and `DespreadJob` already emits a
+  triple at `cp-ds, cp, cp+ds`. So three consecutive trial phases = ONE spec with
+  `spacing_chips = step * cps`, and 10 evals become 4 specs. No new kernel.
+
+  ⚠️ **THE BLOCKER: the GPU despread has no secondary overlay.** `DespreadJob` carries only
+  `m_head` -- a split of the prompt at ONE code-period boundary, so the record assembler can
+  apply the NH sign afterwards (gnssRecord slots 16-18). But the refine window is
+  391 hops x 16384 = 6.406e6 samples = **2.00 code periods**, so it spans TWO boundaries and a
+  one-way split cannot reconstruct it. The CPU path has no such problem: it passes `nh_phase`
+  straight into the generator and the replica carries the overlay per chip.
+
+  Three ways out, in preference order:
+
+  1. **Emit PER-CODE-PERIOD partial correlations** instead of one overlay-aware sum, and let the
+     host apply the signs. Strictly more general than `m_head`, and it hands the SEARCH all 20
+     NH alignments as sign-weighted sums of the same partials -- the "direction that IS exact"
+     from 5o, which failed there only because it was attempted on the approximate cross-channel
+     reconstruction `D`, not on exact despreads. Here there is no such approximation.
+  2. **Add `nh_phase` to `DespreadJob`** and apply the sign per chip in the kernel. Smallest
+     change, matches CPU semantics exactly; but it touches the kernel the TRACKER depends on, so
+     it needs the `cuda_gnss_despread_test` suite green before deployment.
+  3. **Shorten `refine_hops` below one code period** (< 196) so `m_head` suffices. Cheapest, but
+     it trades integration length for implementation convenience -- acceptable only because the
+     refine merely LOCALISES a peak that already cleared detection. Measure the peak margin
+     before accepting it; 5o's note about the true lobe beating the grating lobe by only ~15% is
+     the number at risk.
+
+  (1) is the better investment because the search's 20-way NH scan is the other multiplier, and
+  it is the same primitive.
 * **A6 -- other signals.** Only after A2 is on sky, because a 100-length secondary code is a 5x
   larger NH multiplier and will find any remaining cost that scales with it.
 
