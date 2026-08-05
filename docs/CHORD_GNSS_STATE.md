@@ -3321,3 +3321,35 @@ now seed age): *check the control condition before reading the treatment.* Every
 would have been caught in seconds by looking at the baseline the run reports -- `P/P_true` was
 printed as 0.013 on every line of the sweep I drew a conclusion from. State the expected control
 value first, then read it, then interpret.
+
+### 8.20.16 The deep_rate q gate is CORRECT, and the bimodality is the gate
+
+Chasing why the fleet's deep folds had collapsed (amp_snr 84 on PRN 4 with deep_snr 0.87 and
+coherence_s 0.000), the immediate cause is the `deep_rate_min_q = 10.0` gate: below it the
+combiner does not derotate at all, so the fold sees the raw ramp and reads ~1. That also explains
+the BIMODALITY in 8.20.9's amplitude table -- deep_snr is either ~1 or ~13, with nothing between,
+because it is pass/fail on the gate rather than a continuum.
+
+I then computed what the gated-out satellites "would give" if derotated (6.3-7.9 vs a published
+0.57-0.86) and was about to call it an 8.5-11x loss. **That was wrong.** The on-noise control:
+
+```
+NOISE  (amp_snr < 2, n=8):  q 2.9-5.6   derotated deep_snr median 3.83, MAX 6.55
+SIGNAL (amp_snr > 5, n=2):  q 11.3-13.2 derotated deep_snr median 11.85
+```
+
+The rate search takes a max over ~400 oversampled bins, so on pure noise it finds a bin and the
+derotated fold reads 3.8-6.6 **by construction**. The "recoverable" 6.3-7.9 was that floor. The
+gate sits in a clean gap between the two populations and should NOT be lowered. The satellites
+failing it were genuinely losing lock (PRN 11 went amp_snr 39.6 -> 0.0 within minutes).
+
+This is [[gamma-noise-ceiling]] and "measure the statistic before the loop" in a new costume: a
+max-over-N-cells statistic has a noise floor, and any "gain" measured against it must be compared
+to that floor, not to zero. **The on-noise control is not optional** -- it cost one command and
+reversed the conclusion.
+
+Also corrects 8.20.9's reading of the faint end: "faint sats scale proportionally, bright ones
+cap" was really "gate failed (deep_snr ~1) vs gate passed (deep_snr ~13)". The proportional-looking
+values at the bottom (1.18, 1.57, 3.08) were gate failures, not a thermal regime. The
+phase-limited cap at sqrt(N)/sigma_phi ~13 for satellites that DO pass the gate still stands, as
+does the +9.7 dB leave-one-out result (8.20.12), which was measured only on gate-passing PRNs.

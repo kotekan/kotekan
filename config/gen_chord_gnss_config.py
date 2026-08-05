@@ -319,6 +319,16 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # deep window (integration_length) so a consumer always has the same records the
             # local ladder ran on, with a little margin for poll jitter.
             "record_export": args.integration_length + 28,
+            # PER-RECORD PHASE DUMP, off unless asked for. /get_records gives the complex prompt
+            # but NOT the commanded phase increment or the per-record code phase, and those are
+            # what an investigation into the 0.7 rad deep-fold floor (STATE 8.20.9-8.20.15) needs:
+            # the floor is phase-only, per-satellite and shared across nodes, and every mechanism
+            # guessed at from the harness so far has been wrong, because the harness synthesizes
+            # the sky with the same model it despreads against. This dumps the live per-record
+            # trajectory instead of inferring it. One line per record per listed PRN -- keep the
+            # list short.
+            "phase_dump_prns": args.phase_dump_prns,
+            "phase_dump_path": f"/tmp/gnss_phase_dump_{node}_{gpu}.txt",
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
         f"{pre}record": {
@@ -761,6 +771,12 @@ def main():
                          "without /data: rawFileWrite takes base_dir from the config, so pointing "
                          "the LOGS elsewhere does not move the RECORDS, and the stage fails on a "
                          "directory that is not there.")
+    ap.add_argument("--phase-dump-prns", type=int, nargs="*", default=[],
+                    help="PRNs whose per-record despread trajectory the combiner should dump\n"
+                         "(arg A, E/L powers, commanded phase increment, code phase) to\n"
+                         "/tmp/gnss_phase_dump_<node>_<gpu>.txt. Empty = off. Diagnostic for\n"
+                         "the deep-fold phase floor; one line per record per PRN, so keep it\n"
+                         "to one or two bright satellites.")
     ap.add_argument("--search-port-base", type=int, default=11040,
                     help="bufferRecv port for GPU 0; GPU 1 uses base+1")
     ap.add_argument("--acquire-threads", type=int, default=16,
