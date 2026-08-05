@@ -376,3 +376,74 @@ scripts/gnss/aggbench --nd 5 --mp 400                        # fast correctness 
 `build_tool.sh` now takes `KBUILD` (cf06 has no DPDK or testing lib) and writes `<tool>.<host>`
 with a `<tool>` symlink, because `/home/kvand` is NFS-shared and two hosts building the same
 tool clobbered each other -- which presents as "the tool suddenly segfaults".
+
+---
+
+## 9. THE TRACKER kernel, 2026-08-05 -- where the GPU actually goes
+
+Not the search. This is `cudaGnssChordTrack`, and it is what saturated the node GPUs.
+
+### 9.1 The split, measured in situ
+
+`log_kernel_split` on the tracker command (pairs with the cudaProcess stage's `log_profiling`:
+one gives the command total, the other says where it goes). cx19, real geometry:
+
+    7 spec x 7 chan x 32 elem x 2048 hops
+      synthesis   (launch_waveform)      2.632 ms   89.4%
+      correlation (launch_correlate_nm)  0.313 ms   10.6%
+
+**Folding the correlation into CHORD's N^2 recovers at most ~11%.** The replica synthesis, which
+N^2 cannot absorb because it knows nothing about GNSS codes, is nine tenths of the cost.
+
+This contradicts BOTH earlier positions, so record why:
+* the kernel header's 2026-07-16 "the despread MAC measured at 0% of the kernel" was a
+  ONE-ELEMENT measurement (airspy). It does not transfer to 32 elements.
+* the synthetic sweep that corrected it (54% correlation at n_elem 32) was measured at the unit
+  test's geometry, where the gather is ~8 chips per hop against CHORD's **210**. Synthesis per
+  sample is far more expensive here, and the element axis does not rescue the correlation
+  because the replica is generated ONCE and broadcast across element lanes.
+
+The lesson is the same one twice: `n_chips` = ceil((Lf-1)*cps)+2 depends on the geometry
+(65536-sample PFB span / 312.8 samples per chip = 210 at CHORD, ~13 at airspy L5, ~8 at the unit
+test). Nothing measured at one geometry transfers to another.
+
+### 9.2 The gather IS the cost -- confirmed, not inferred
+
+`despread_max_chips` caps the gather depth (BENCH ONLY: it truncates the filter, so the despread
+output and every detection downstream are invalid; the stage WARNs).
+
+    n_chips 210: synthesis 2.632 ms / 7 spec = 0.376 ms/spec | correlation 0.313 ms
+    n_chips 105: synthesis 1.432 ms / 8 spec = 0.179 ms/spec | correlation 0.313 ms
+    ratio 0.476, against 0.500 for a perfectly linear gather
+
+The control is what makes this trustworthy: correlation is 0.313 ms in BOTH runs. It does no
+gathering, so it must not move, and it does not.
+
+### 9.3 The two optimizations, now justified
+
+1. **Transpose the Phi tables.** `khi_base` advances by `ks` = 313 entries per chip, so
+   consecutive chips read phiA/phiB **2502 bytes apart** -- every 8-byte load claims its own
+   128 B line, and across a warp adjacent hops sit ~16400 entries apart, so it is fully
+   scattered. A `[t mod ks][t / ks]` layout makes the walk contiguous.
+   ⚠️ The gain is NOT the naive 16x: the stride is non-integer (312.8), so the row index drifts
+   and only ~5 chips stay contiguous before it steps. Estimate ~5x on the gather. It touches
+   `hoprate_filter`, which the CPU despread, the search and the e2e harness all share -- so it
+   is exact but has real blast radius.
+2. **Truncate `n_chips` to the filter's real support.** Now a MEASURED multiplier. But the PFB
+   prototype is a 4-tap windowed sinc and its span IS the channel response, so this trades
+   accuracy directly. Validate against `cuda_gnss_despread_test` and the e2e SEARCH LEG figure.
+
+**Do (2) first**: the knob exists, its cost is measurable in tests that already run, and it needs
+no change to shared code. Judge (1) after (2) shows how much depth is actually needed.
+
+### 9.4 Also settled today
+
+* **The tracker latched seeds forever** -- `sd.have` was only ever set true, so a satellite that
+  had SET was still despread and the spec count grew with everything that had ever risen. Fixed
+  with `seed_ttl_s` (60 s). Confirmed live: expiry log lines firing, kernel spec count tracking
+  the broker's live set. NOTE `/get_trim`'s "active" count is a HIGH-WATER MARK (trim state
+  persists past expiry by design) -- the spec count in the split line is the live number.
+* **It does not explain saturation on its own.** Fitting the soak gives ~1.12 ms/PRN over a
+  6.89 ms intercept, so even a fully latched 32-PRN tracker predicts ~39% duty against the
+  observed 100%. ⚠️ That intercept is a TWO-POINT fit -- no residual, so it cannot be
+  distinguished from a curve. It needs a PRN sweep before it is worth chasing.
