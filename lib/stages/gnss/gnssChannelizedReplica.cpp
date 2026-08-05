@@ -354,6 +354,19 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
     HopRateFilter f;
     f.doppler_hz = doppler_hz;
     f.n_chips = (int)std::ceil((double)(Lf - 1) * cps) + 2; // chips the filter spans
+    // TRUNCATION (`max_chips`, 0 = the full span = unchanged). The gather runs n_chips deep per
+    // hop and synthesis is LINEAR in it -- measured on cx19 at CHORD geometry 2026-08-05:
+    // 210 chips -> 0.376 ms/spec, 105 chips -> 0.179 ms/spec, ratio 0.476 against 0.500 for a
+    // perfectly linear loop, with the correlation kernel unchanged in both runs as the control.
+    // Synthesis is 89% of the tracker kernel, so this is the single biggest lever on GPU load.
+    //
+    // ⚠️ IT IS NOT FREE. n_chips is set by the PFB span (Lf = num_taps * fft_len = 65536 samples
+    // = 210 chips at CHORD's 312.8 samples/chip), and that span IS the channel response --
+    // truncating it changes the replica, not just its cost. Applied HERE rather than on the GPU
+    // so the CPU despread, the search refine and scripts/gnss/e2e all see the same replica and
+    // the error can be measured at CHORD geometry with the shipped code.
+    if (_max_chips > 0 && f.n_chips > _max_chips)
+        f.n_chips = _max_chips;
     f.chans = want;
     const int nw = (int)want.size();
     f.PhiA.resize(nw);

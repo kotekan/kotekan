@@ -176,11 +176,21 @@ public:
     // Combined-stream (TDM zero-stuffed) quantities + the raw code table -- what an external
     // (GPU) despread needs to reproduce hoprate_stream exactly (see GnssCudaDespread).
     double eff_chip_rate() const { return _eff_chip_rate; }
+    /// Truncate the per-hop chip gather to at most this many chips (0 = the filter's true
+    /// span). Synthesis is LINEAR in the gather depth and is 89% of the tracker's GPU kernel,
+    /// so this is the biggest single lever on GPU load -- and it is NOT free: the PFB span is
+    /// the channel response, so a shorter gather is a DIFFERENT replica. Set it here rather
+    /// than on the GPU so the CPU despread, the search refine and the e2e harness all see the
+    /// same replica and the accuracy cost is measurable at the real geometry.
+    void set_max_chips(int n) { _max_chips = n; }
+    int max_chips() const { return _max_chips; }
+
     long eff_code_length() const { return _eff_code_length; }
     int comb_mult() const { return _comb_mult; }
     const std::vector<int8_t>& full_code(int p) const { return _full_code[(size_t)p]; }
 
 private:
+    int _max_chips = 0; ///< 0 = the filter's true span (see set_max_chips)
     SignalDescriptor _sig;
     double _sample_rate;
     double _f_offset;

@@ -129,6 +129,7 @@ struct Opt {
     const char* emit_det = nullptr;
     const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
     bool cuda_refine = false;         ///< also run the GPU refine and compare (A5)
+    int max_chips = 0;                ///< truncate the PFB chip gather (0 = full span)
     int ms_split = 0;   ///< >0 = run the ms-split acquire with this many ~1 ms sub-windows
     int sub_hops = 196; ///< N: ceil(code period in hops) at CHORD
     const char* dump_ms = nullptr; ///< dump the ms-split surface along the lag axis
@@ -261,6 +262,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
         else if (arg_eq(a, "--cuda-refine")) o.cuda_refine = true;
+        else if (arg_eq(a, "--max-chips")) o.max_chips = next_i();
         else if (arg_eq(a, "--ms-split")) o.ms_split = next_i();
         else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
         else if (arg_eq(a, "--t-stride")) o.t_stride = next_i();
@@ -304,6 +306,17 @@ int main(int argc, char** argv) {
     gnss::ChannelizedReplicaBank tbank(*sig_t, o.sample_rate, o.f_offset, o.spectrum_length,
                                        o.num_taps, dsp::Window::Hamming, {o.prn, o.prn});
     sbank.code_doppler_sign = o.code_doppler_sign;
+    // TRUNCATE THE ANALYSIS BANK ONLY. sbank builds the SEARCH's replica; the synthetic sky comes
+    // from tbank (channels_hoprate at [1]). Capping both would make the measurement
+    // self-consistent -- the sky and the replica would be truncated identically, the error would
+    // come out ~0, and it would mean nothing. This way the truth keeps the full 210-chip PFB span
+    // and the search analyses with a shorter one, which is exactly the on-sky situation.
+    if (o.max_chips > 0) {
+        sbank.set_max_chips(o.max_chips);
+        printf("    [--max-chips %d] SEARCH replica gather truncated; the injected sky keeps the "
+               "full span\n",
+               o.max_chips);
+    }
     tbank.code_doppler_sign = o.code_doppler_sign;
 
     const int Mp = sbank.repl_period_hops();
