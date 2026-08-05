@@ -248,6 +248,13 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                                         const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     pre_execute();
+    // PROFILING BRACKET. Without this, cudaCommand's `if (profiling && start_event && end_event)`
+    // is false and it records add_sample(0.) -- so `log_profiling` reported this command as
+    // "Time: 0.000 ms", which reads as "the kernel is free" when it actually means "the kernel
+    // was never measured". That cost real time on 2026-08-05 chasing a GPU at 100% util whose
+    // only instrumented commands were the two copies. record_start_event() is itself a no-op
+    // unless profiling is on, so this is free in production. Matches cudaGnssTrack.cpp:900.
+    record_start_event();
     cudaGnssChordTrackState& S = *st();
     const cudaStream_t stream = device.getStream(cuda_stream_id);
     const int n_rec = S.n_hops_frame / S.hops_per_record;
