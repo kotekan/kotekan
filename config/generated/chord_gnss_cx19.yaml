@@ -202,6 +202,10 @@ gnss0_combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_cmb_buf
+  phase_dump_path: /tmp/gnss_phase_dump_cx19_0.txt
+  phase_dump_prns:
+  - 9
+  - 8
   record_export: 128
 gnss0_epl_buf:
   frame_size: 7487664

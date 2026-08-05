@@ -714,9 +714,30 @@ void GnssCoherentCombiner::main_thread() {
             if (_phase_dump && energy > 0.0 && (int)ref[0] >= 0
                 && (int)ref[0] < (int)_phase_dump_prn.size() && _phase_dump_prn[(int)ref[0]]) {
                 std::fprintf(_phase_dump,
-                             "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f %.6e %.6e\n", utc_p,
+                             "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f %.6e %.6e", utc_p,
                              (int)ref[0], ar, ai, e2, l2, (double)ref[gnss::REC_CPHASE],
                              (double)ref[1], (double)ref[2], ahr, ahi);
+                // ...then EVERY ANTENNA's prompt, A_e = G_e / E, same normalisation and the same
+                // shared replica energy as `ar, ai` above, so the reference element and the
+                // element blocks are directly comparable.
+                //
+                // WHY THIS IS THE MEASUREMENT THAT MATTERS. Everything analysed for the 0.7 rad
+                // deep-fold floor so far -- deep_snr, sigma_phi, the +9.7 dB cross-node result --
+                // came from `ar, ai`, and those are the REFERENCE ELEMENT alone (gnssRecord.hpp:
+                // the header slots are one antenna, deliberately, because the broker's loops need
+                // a phase-coherent single-antenna view). So every number is a ONE-of-32-antenna
+                // measurement. The floor is per-satellite, channel-independent (nodes share zero
+                // channels yet correlate at r=0.862) and phase-only; the antenna axis is the only
+                // common axis never looked at. If the per-record residual is COMMON across
+                // antennas the cause is in the signal or a shared model term; if it is
+                // INDEPENDENT per antenna it is per-antenna and the cross-node correlation has
+                // been reporting shared ELEMENTS rather than shared sky.
+                if (_n_elements > 0 && energy > 0.0) {
+                    for (int el = 0; el < _n_elements; ++el)
+                        std::fprintf(_phase_dump, " %.6e %.6e", _ge_r[(size_t)el] / energy,
+                                     _ge_i[(size_t)el] / energy);
+                }
+                std::fputc('\n', _phase_dump);
             }
             if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
                 acc_pow[p] += alpha * (p2 - acc_pow[p]);

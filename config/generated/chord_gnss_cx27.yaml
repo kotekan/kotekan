@@ -201,6 +201,10 @@ gnss0_combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_cmb_buf
+  phase_dump_path: /tmp/gnss_phase_dump_cx27_0.txt
+  phase_dump_prns: &id003
+  - 9
+  - 8
   record_export: 128
 gnss0_epl_buf:
   frame_size: 6422704
@@ -343,6 +347,8 @@ gnss1_combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss1_cmb_buf
+  phase_dump_path: /tmp/gnss_phase_dump_cx27_1.txt
+  phase_dump_prns: *id003
   record_export: 128
 gnss1_epl_buf:
   frame_size: 7487664
@@ -422,7 +428,7 @@ gnss1_srch_send:
   server_port: 11043
   use_config_tracker: false
 gnss1_srch_tap:
-  chan_ids: &id003
+  chan_ids: &id004
   - 277
   - 278
   - 279
@@ -441,7 +447,7 @@ gnss1_srch_tap:
   n_elements: 1
   out_buf: gnss1_srch_buf
 gnss1_tap:
-  chan_ids: *id003
+  chan_ids: *id004
   cpu_affinity:
   - 24
   element_offset: 0
