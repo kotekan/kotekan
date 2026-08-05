@@ -3720,3 +3720,82 @@ sensitivity budget built on the larger number is wrong.
 quoting a gain, check that the statistic measuring it is invariant to the choices you are free to
 make. deep_snr is not, in the regime we operate in. Quote the coherence fraction, or the amplitude,
 whenever the fold is phase-limited rather than thermal-limited.
+
+## 8.21 THE PHASE FLOOR -- consolidated state for pickup
+
+### 8.21.1 What the effect is, in one paragraph
+
+Every satellite's per-record despread phase carries a wander of **sigma_phi ~ 0.9 rad**. It is
+per-satellite (different satellites uncorrelated, r = -0.06), identical on every antenna
+(r = +0.99) and on every frequency comb (the union band has the same floor), correlated in time
+on scales beyond 42 ms, and mildly red in spectrum. It costs **~3 dB of coherent amplitude**
+(coherence fraction |sum x|/sum|x| = 0.67 against an ideal 1.0) and it puts a FLOOR on the deep
+fold: `deep_snr` reads 10-14 for every satellite regardless of brightness, because in the
+phase-limited regime `deep_snr = sqrt(N) D / sigma_phi` has no dependence on signal strength.
+
+### 8.21.2 What is ruled out, and by what measurement
+
+| candidate | how it was excluded |
+|---|---|
+| thermal noise | phase/amplitude quadrature ratio 1.89-2.56, thermal gives 1.0 |
+| a shared clock or reference | different satellites are uncorrelated (r = -0.062, 27 pairs) |
+| despread + seed arithmetic | noiseless synthetic with a perfect seed: sigma_phi 0.0001 rad |
+| seed Doppler error | 0.0024 rad at 25 Hz of injected error (on-peak) |
+| seed Doppler-RATE error | seeded vs observed agree to ~20% once settled; 0.03-0.12 rad |
+| 4+4b quantization | adds ~2% (0.6196 -> 0.6310 in the harness) |
+| Doppler curvature | 0.03-0.13 rad at the measured -0.109..-0.465 Hz/s |
+| code-period phase / NH symbol | 19900 records, binned: 2.4-2.9 sigma spread = flat |
+| NH20 sequence, PRN codes | NH20 matches IS-GPS-705 chip for chip; primaries vs PocketSDR |
+| code-phase drift | 0.0003 rad at 0.002 chips/record ON PEAK (the off-peak result was an artifact) |
+| rate-grid quantization | refining continuously off the 0.124 Hz grid gains 1.02x |
+| per-antenna effects | residual identical on all 25-32 antennas (r = +0.994) |
+| window span / duty cycle | sigma_phi flat from 3.4 s to 102 s of span |
+| **the frequency comb, entirely** | the energy-weighted sum across instances IS the union-comb correlation (79 ch, near-contiguous) and gives the SAME floor: -0.26..+0.18 dB |
+| **record geometry (10.4857 periods)** | flat vs code-period phase AND NH index over 19900 records |
+
+### 8.21.3 What it is NOT explained by, that we thought it was
+
+* **NOT the record count / cadence.** 8.20.23 argued airspy's ceiling is sqrt(1000)/0.7 = 45
+  against our sqrt(100)/0.7 = 14. True of the STATISTIC, not the instrument: the record is a
+  processing choice, both instruments carry the same information in 1 s, and both pay the same
+  ~3 dB. RETRACTED in 8.20.24.
+* **NOT worth +17 dB.** That was `deep_snr` responding to its own chopping dependence. The real
+  amplitude recovery is **+3.0 to +3.4 dB** (coherence fraction 0.67 -> 0.94-0.98).
+* **NOT a constant offset either**, which is the other half of KV's objection. Removing the floor
+  restores BRIGHTNESS DEPENDENCE: deep_snr spans 1.3x across a 4x brightness range before the
+  correction and 3.6x after (rank-correlation with brightness +0.60 -> +0.90). Bright satellites
+  gain 6.4x, faint ones 2.5x. So the fold returns to thermal-limited, which is the real prize --
+  the 3 dB is the amplitude, the floor removal is what makes the significance honest.
+
+### 8.21.4 Where it comes from -- still open
+
+A per-satellite, receiver-independent phase wander of ~0.9 rad, correlated beyond 42 ms, red
+spectrum, identical at every antenna and every comb. Everything in our processing has been
+excluded. What remains is the signal path outside the instrument: the satellite itself, or
+propagation. Note the amplitude is NOT modulated with it (s4 debiased is exactly 0.000), which
+argues against amplitude scintillation and for a pure phase effect.
+
+**Next measurements, in order:**
+1. Does sigma_phi depend on ELEVATION? Propagation effects do; a satellite artefact does not.
+   Needs a transit's worth of data, no code changes.
+2. Does it correlate between satellites CLOSE ON THE SKY? Shared ionosphere would; independent
+   satellite clocks would not. The current r = -0.062 pools all pairs regardless of separation.
+3. Is it present on L5I as well as L5Q (same satellite, different code)? Separates signal
+   structure from propagation.
+
+### 8.21.5 How to change the PROCESSING (not just post-hoc correction)
+
+1. **Coherently sum the antennas into the record header.** The header carries the REFERENCE
+   ELEMENT alone (gnssRecord.hpp) -- one antenna of 32. Summing them does NOT improve the fold
+   (the wander is common, measured +0.2 dB) but it raises per-record SNR by ~sqrt(N_ant) ~ 5x,
+   which is what makes the per-record phase ESTIMABLE FROM ONE INSTANCE. That converts the fleet
+   phase reference from a cross-node post-process into a local, per-node operation. This is the
+   single highest-value change and the header comment already anticipates it ("upgrading to a
+   self-calibrated coherent sum later changes only what the assembler writes there").
+2. **Publish the coherence fraction next to deep_snr.** deep_snr is chopping-dependent in the
+   phase-limited regime, so it cannot be compared across configurations, and a threshold on it is
+   not a threshold on sensitivity. `|sum x|/sum|x|` is invariant and is what sets detection.
+3. **Extend the rate search to a quadratic.** Measured 1.23x on its own (null-checked: 1.00x on
+   noise at the same SNR), cheap, and entirely local.
+4. **Keep the fleet phase reference** as the cross-check and as the mitigation until (1) lands.
+   It is a 3 dB amplitude recovery plus the floor removal, and it is cross-validated.
