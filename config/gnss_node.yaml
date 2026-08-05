@@ -641,8 +641,17 @@ bands:
     doppler_note: |
       BeiDou B2b at 1207 MHz ~ 0.766 x L1 geometric Doppler; +-5000 with margin. step 100 (was
       50 for 20 ms L2C coherent bins): B2b records are 1 ms (like L5), so L5's 100 Hz grid applies.
-    num_cuda_streams: 4
-    per_chain_streams: false
+    # 2026-08-05: 4 -> 5 and false -> TRUE. This band was ONE chain (GPS L2C) when
+    # per_chain_streams was set false; the 08-03 B2b repurpose grew it to FOUR (B2b-I, E5b-Q,
+    # E5b-I, B2I) and nobody revisited the flag, so all four cudaGnssTrack calls were queued on
+    # cuda_stream 1 and SERIALIZED. Measured cost: kernels sum 0.843 ms against a 2.496 ms frame
+    # = 33.8% duty, where the LARGEST single kernel is only 0.271 ms = 10.8%. l1 (7 chains) and
+    # l5 (6 chains) have always had per-chain streams; l2c was the lone hold-out -- and it is
+    # exactly the "4-chain band at 20 MSPS does not fit" the DQ log kept pointing at.
+    # ⚠️ The two MOVE TOGETHER: streams are assigned 1..n_chains, so num_cuda_streams must be
+    # n_chains+1 or a chain indexes past the allocated set (l1: 8 for 7, l5: 7 for 6).
+    num_cuda_streams: 5
+    per_chain_streams: true
     record_dir: /tmp/gps_l2c_gpu
     # viewer_args REMOVED 2026-07-30: pared to ONE unified viewer (L1, --unified). The unified page
     # already shows L2C signals; this per-band flat viewer only survived as a power streamer.
@@ -696,8 +705,9 @@ bands:
       # 1 ms primary (1000 hops/record), per-PRN 100-chip CS100 secondary wiped deterministically
       # (secondary_overlay E5B_CS100). SECONDARY chain -> constellation `gal` -> gen_band_config
       # emits l2c_gal_search/track/combiner, and run_live's existing GALILEO-broker block (keyed
-      # on a gal_track stage) launches a group=galileo broker for it -- no launcher edit. Serial
-      # on GPU stream 1 beside B2b (per_chain_streams false, like L5). Sky-validated 2026-08-03:
+      # on a gal_track stage) launches a group=galileo broker for it -- no launcher edit. Runs on
+      # its OWN GPU stream beside B2b since 2026-08-05 (per_chain_streams true, as l1 and l5 have
+      # always been -- the claim here that L5 was `false` was simply wrong). Sky-validated 2026-08-03:
       # E5b-Q acquires E3/E5/E15/E32/E34 off this capture (e5b_code_check.py, mid_band_decode.py).
       - constellation: gal
         signal: GAL_E5B_Q

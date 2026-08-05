@@ -107,7 +107,7 @@ quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, targe
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 4
+    num_cuda_streams: 5
     frame_arrival_period: 0.0
     in_buffers: { q_buf: q_buf }
     out_buffers: { epl_buf: epl_buf, gal_epl_buf: gal_epl_buf, e5b_i_epl_buf: e5b_i_epl_buf, bds_epl_buf: bds_epl_buf }
@@ -139,6 +139,7 @@ gputrack:
           carrier_shared: true
           seed_endpoint: "/gps_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 1
           gpu_mem: gnss_epl
           out_buf: epl_buf
           in_buf: ""
@@ -146,7 +147,7 @@ gputrack:
           signal: GAL_E5B_Q
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # 1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)
-          cuda_stream: 1
+          cuda_stream: 2
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gal_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -160,6 +161,7 @@ gputrack:
           carrier_shared: true
           seed_endpoint: "/gal_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 2
           gpu_mem: gal_epl
           out_buf: gal_epl_buf
           in_buf: ""
@@ -167,7 +169,7 @@ gputrack:
           signal: GAL_E5B_I
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0
-          cuda_stream: 1
+          cuda_stream: 3
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: e5b_i_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -181,6 +183,7 @@ gputrack:
           carrier_shared: true
           seed_endpoint: "/e5b_i_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 3
           gpu_mem: e5b_i_epl
           out_buf: e5b_i_epl_buf
           in_buf: ""
@@ -188,7 +191,7 @@ gputrack:
           signal: BDS_B2I
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # 1 ms records -> fleet 15 Hz fence
-          cuda_stream: 1
+          cuda_stream: 4
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: bds_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -202,6 +205,7 @@ gputrack:
           carrier_shared: true
           seed_endpoint: "/bds_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 4
           gpu_mem: bds_epl
           out_buf: bds_epl_buf
           in_buf: ""

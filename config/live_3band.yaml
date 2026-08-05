@@ -66,7 +66,7 @@ l1_airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x03A464C837525967  # L1 unit (AirSpy NOS v1.0.0-rc9). [REVERTED 2026-07-21 from the L1<->L5 hardware-attribution swap: the swap RETIRED hardware -- L5-leg TEC noise stayed ~25-66 TECU on the strong dongle and L5 single-band ADR was ~15-25x L2C on BOTH dongles, so the noise is L5-GPS_L1CA PROCESSING (overlay wipe), not this unit. See tec-error-budget-l5-leg.]
+    serial: 0x03A464C837525967  # ASSIGNED from the dongle pool: unit A (historically L1) (slot 0 of BANDS='l1 l2c'). Not a pin -- see the `dongles:` note.
     freq: 1575.42
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real
     # Gains dropped 14/15/15 -> 11/11/11 for the 2026-07-14 front end: a second-stage amp
@@ -615,7 +615,7 @@ l2c_airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x744C60C821692F4F  # L2C unit -- REPURPOSED 2026-08-03 from GPS L2C (1227.6/5 MSPS) to BeiDou B2b (1207.14/20 MSPS). Same physical dongle; the mid-band build retunes it (mid-band-gal-bds- receivers). B2b == Galileo E5b centre, so this ONE tune samples BOTH: the l2c band now stacks a Galileo E5b-Q chain beside B2b (2026-08-03), no further retune.
+    serial: 0x744C60C821692F4F  # ASSIGNED from the dongle pool: unit B (historically L2C) (slot 1 of BANDS='l1 l2c'). Not a pin -- see the `dongles:` note.
     freq: 1207.14
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B2b needs the wide mode)
     gain_lna: 11
@@ -663,7 +663,7 @@ l2c_gputrack:
     bds_n_prn: 63
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 4
+    num_cuda_streams: 5
     frame_arrival_period: 0.0
     in_buffers: { l2c_q_buf: l2c_q_buf }
     out_buffers: { l2c_epl_buf: l2c_epl_buf, l2c_gal_epl_buf: l2c_gal_epl_buf, l2c_e5b_i_epl_buf: l2c_e5b_i_epl_buf, l2c_bds_epl_buf: l2c_bds_epl_buf }
@@ -695,6 +695,7 @@ l2c_gputrack:
           carrier_shared: true
           seed_endpoint: "/l2c_gps_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 1
           gpu_mem: l2c_gnss_epl
           out_buf: l2c_epl_buf
           in_buf: ""
@@ -702,7 +703,7 @@ l2c_gputrack:
           signal: GAL_E5B_Q
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # 1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)
-          cuda_stream: 1
+          cuda_stream: 2
           gpu_mem_input: l2c_gnss_chan_frame
           gpu_mem_output: l2c_gal_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -716,6 +717,7 @@ l2c_gputrack:
           carrier_shared: true
           seed_endpoint: "/l2c_gal_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 2
           gpu_mem: l2c_gal_epl
           out_buf: l2c_gal_epl_buf
           in_buf: ""
@@ -723,7 +725,7 @@ l2c_gputrack:
           signal: GAL_E5B_I
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0
-          cuda_stream: 1
+          cuda_stream: 3
           gpu_mem_input: l2c_gnss_chan_frame
           gpu_mem_output: l2c_e5b_i_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -737,6 +739,7 @@ l2c_gputrack:
           carrier_shared: true
           seed_endpoint: "/l2c_e5b_i_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 3
           gpu_mem: l2c_e5b_i_epl
           out_buf: l2c_e5b_i_epl_buf
           in_buf: ""
@@ -744,7 +747,7 @@ l2c_gputrack:
           signal: BDS_B2I
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # 1 ms records -> fleet 15 Hz fence
-          cuda_stream: 1
+          cuda_stream: 4
           gpu_mem_input: l2c_gnss_chan_frame
           gpu_mem_output: l2c_bds_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -758,6 +761,7 @@ l2c_gputrack:
           carrier_shared: true
           seed_endpoint: "/l2c_bds_track/set_seeds"
         - name: cudaOutputData
+          cuda_stream: 4
           gpu_mem: l2c_bds_epl
           out_buf: l2c_bds_epl_buf
           in_buf: ""
