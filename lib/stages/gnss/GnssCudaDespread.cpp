@@ -207,6 +207,17 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
     im.window_start = window_start_sample;
 }
 
+int GnssCudaDespread::max_batch_specs() const {
+    // THIS path's arena is `maxs = np` (see the constructor) -- ONE job per PRN slot, on the
+    // tracker's assumption of one spec per PRN. It is NOT gnss_gpu::max_specs(n_prn) =
+    // n_prn * MAX_REC; that larger bound belongs to the DEVICE path (enqueue_batch_device), whose
+    // per-frame arena slice holds every record in flight. Confusing the two over-batches by
+    // MAX_REC and the only symptom is "jobs upload: invalid argument" from the H2D, an opaque
+    // CUDA error a long way from the cause. A caller batching many specs against ONE PRN (the A5
+    // refine scan) must chunk against this.
+    return _impl->n_prn;
+}
+
 std::vector<std::array<gnss::DespreadResult, 3>>
 GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     Impl& im = *_impl;

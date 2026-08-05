@@ -228,6 +228,12 @@ private:
     std::unique_ptr<class GnssCudaAcquire> _cuda_acq;
     bool _cuda_acq_wanted = false;
     long _cuda_acq_fallbacks = 0; ///< times a pass fell back to the CPU (rate-limited WARN)
+
+    /// A5: the refine on the GPU. Separate from _cuda_acq because they are different engines
+    /// over different geometries (the acquire works on the correlation surface, the refine on
+    /// exact despreads) and either can be unavailable without the other.
+    std::unique_ptr<class GnssCudaDespread> _cuda_ref;
+    bool _cuda_ref_wanted = false;
 #endif
 
     /// Fine code-phase refine (post-detection), in SAMPLES: scan +-_refine_span at _refine_step

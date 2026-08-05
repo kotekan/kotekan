@@ -33,6 +33,10 @@
 #include <complex>
 #include <vector>
 
+/// Global-namespace: the GPU despread driver (only built with USE_CUDA). Declared rather
+/// than included so this header stays free of the CUDA-side dependency for CPU callers.
+class GnssCudaDespread;
+
 namespace gnss {
 
 /// Localize the acquire peak to sub-chip precision by scanning the FULL lag ambiguity.
@@ -79,6 +83,38 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
                    const AcquisitionSurface& dims, int nh_phase, double dop, long long anchor,
                    int n_hops, double sample_rate, int refine_span, int refine_step,
                    int n_threads = 1);
+
+#ifdef GNSS_CUDA
+/// @ref refine_peak on the GPU (A5 of docs/gnss_gpu_search.md). Same contract, same return.
+///
+/// With A2/A3 live the refine is 98.2% of a search pass (measured 0.465 s of 0.473 s), because
+/// it is `n_eval` exact despreads on the CPU -- the one operation the tracker already does on
+/// the GPU. This is a REUSE of GnssCudaDespread, not a new kernel, and it needs no kernel change
+/// at all for two reasons that are worth stating because they were not obvious:
+///
+///  1. THE SCAN IS UNIFORM. Trials sit at `coarse_cp + (-span + e*step)*cps`, and a Spec already
+///     emits {cp-ds, cp, cp+ds}. So three consecutive trials are ONE spec with
+///     `spacing_chips = step*cps`, and the whole scan is ceil(n_eval/3) specs in one launch.
+///  2. THE OVERLAY IS ALREADY IN THE CODE TABLE. GPS_L5_Q_NH declares code_length 204600
+///     (= 10230 x 20, NH baked in) and secondary_length 0, so `nh_phase` is INERT for it and the
+///     GPU's code lookup carries the overlay for free. The effective code period is therefore
+///     20 ms, not 1 ms -- which is why a 391-hop (2.0 ms) refine window contains no code-period
+///     boundary at all, and why `m_head` (one boundary) is sufficient for a 10.49 ms record.
+///     Computing that window in PRIMARY periods says "2.00 periods, two boundaries" and sends
+///     you off to generalize the kernel for nothing. It cost an afternoon; do not repeat it.
+///
+/// `cp_seed` has the same ARGUMENT convention as @c coarse_cp (build_jobs does
+/// `cp0 = comb_mult * cp_seed`, and the kernel forms `C(n) = cp0 + n*cps`), so trial phases pass
+/// straight through with no translation.
+///
+/// @param gpu    engine constructed over the SAME channel set and n_hops the refine uses
+/// @param window the snapshot, [hop][n_chan] interleaved, as GnssChannelizedSearch holds it
+/// @param cov_local LOCAL channel indices in this PRN's covering set
+double refine_peak_cuda(::GnssCudaDespread& gpu, const ChannelizedReplicaBank& bank,
+                        int prn_index, const std::complex<float>* window, long long anchor,
+                        const std::vector<int>& cov_local, double coarse_cp, double dop,
+                        double sample_rate, int refine_span, int refine_step);
+#endif
 
 /// What the search reports about one detected peak's code phase. Three currencies, because
 /// three consumers exist and they do not want the same thing:

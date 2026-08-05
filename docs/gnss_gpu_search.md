@@ -255,8 +255,36 @@ one that is slow, until weeks later.
      before accepting it; 5o's note about the true lobe beating the grating lobe by only ~15% is
      the number at risk.
 
-  (1) is the better investment because the search's 20-way NH scan is the other multiplier, and
-  it is the same primitive.
+  **RESOLVED 2026-08-05 -- there was no blocker.** The analysis above is kept because the
+  MISTAKE in it is the useful part. `GPS_L5_Q_NH` declares `code_length 204600` (= 10230 x 20,
+  the NH overlay BAKED INTO THE CODE TABLE) and `secondary_length 0`, so:
+  * `nh_phase` is INERT for this signal -- `hoprate_stream`'s overlay branch never fires;
+  * the GPU's code lookup carries the overlay for free, with no kernel change;
+  * the effective code period is **20 ms, not 1 ms**, so the 391-hop (2.0 ms) refine window
+    holds NO code-period boundary at all, and `m_head`'s single split is exactly right for a
+    10.49 ms record.
+
+  Computing the window in PRIMARY periods says "2.00 periods, two boundaries" and sends you off
+  to generalize the kernel for nothing. Check `code_length` against `eff_code_length` and
+  `secondary_length` BEFORE reasoning about overlay boundaries.
+
+  **A5 IS THEREFORE A PURE REUSE, and it is DONE**: `gnss::refine_peak_cuda`
+  (lib/stages/gnss/gnssSeedTransport.cpp), driven by `use_cuda_refine` (defaults to follow
+  `use_cuda_acquire`). Validated by `scripts/gnss/e2e --cuda-refine`, which runs BOTH refines on
+  the same data and prints the delta:
+
+      live geometry  (span 512, step 103): cp 1622.465213 both, delta 0.000e+00,  8.9x
+      default        (span fft_len, 303) : cp 1609.153425 both, delta 0.000e+00, 52.2x
+      SEARCH LEG ERROR unchanged at -13.188 chips (the 2-node grating-lobe figure)
+
+  Both speedups are with the harness chunking ONE spec per launch (`n_prn = 1`); the live stage
+  has 32 PRN slots, so its 4 specs go in a single launch.
+
+  ⚠️ `despread_batch`'s job arena is `n_prn`, NOT `gnss_gpu::max_specs(n_prn) = n_prn * MAX_REC`
+  -- that larger bound belongs to the DEVICE path (`enqueue_batch_device`), whose per-frame slice
+  holds every record in flight. Confusing them over-batches by MAX_REC and the only symptom is
+  `jobs upload: invalid argument` from the H2D, a long way from the cause. `max_batch_specs()`
+  now exposes the right bound and `refine_peak_cuda` chunks against it.
 * **A6 -- other signals.** Only after A2 is on sky, because a 100-length secondary code is a 5x
   larger NH multiplier and will find any remaining cost that scales with it.
 

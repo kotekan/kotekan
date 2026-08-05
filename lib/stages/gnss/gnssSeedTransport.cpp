@@ -4,9 +4,14 @@
 #include "gnssSeedTransport.hpp"
 
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
+#ifdef GNSS_CUDA
+#include "GnssCudaDespread.hpp" // A5: the GPU refine reuses the tracker's despread driver
+#endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <complex>
 #include <vector>
 
 namespace gnss {
@@ -91,6 +96,63 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
             best_e = e;
     return coarse_cp + (double)(-span + best_e * step) * cps;
 }
+
+#ifdef GNSS_CUDA
+double refine_peak_cuda(::GnssCudaDespread& gpu, const ChannelizedReplicaBank& bank, int prn_index,
+                        const std::complex<float>* window, long long anchor,
+                        const std::vector<int>& cov_local, double coarse_cp, double dop,
+                        double sample_rate, int refine_span, int refine_step) {
+    // Mirrors refine_peak's scan geometry EXACTLY -- same cps, same step/span clamping, same
+    // n_eval, same ascending first-strict-max tie-break -- so a disagreement between the two is
+    // a real one and not a difference of arithmetic.
+    const double cps = bank.chip_rate_hz() / sample_rate;
+    const int step = std::max(1, refine_step);
+    const int span = std::max(step, refine_span);
+    const int n_eval = 2 * span / step + 1;
+
+    gpu.upload_window(window, anchor);
+
+    // Three trials per spec: the Spec's {early, prompt, late} ARE {e0, e0+1, e0+2} when the
+    // prompt sits on the middle trial and the spacing is one scan step.
+    //
+    // CHUNKED against the driver's DespreadJob arena (n_prn * MAX_REC, sized on the tracker's
+    // one-spec-per-PRN assumption). The live geometry needs 4 specs and never comes close, but a
+    // wider refine_span or finer refine_step silently would, and the symptom is an opaque
+    // "jobs upload: invalid argument" from the H2D. Chunk rather than assume.
+    const int cap = std::max(1, gpu.max_batch_specs());
+    const int n_group = (n_eval + 2) / 3;
+
+    int best_e = 0;
+    double best_pw = -1.0;
+    for (int g0 = 0; g0 < n_group; g0 += cap) {
+        const int ng = std::min(cap, n_group - g0);
+        std::vector<::GnssCudaDespread::Spec> specs;
+        specs.reserve((size_t)ng);
+        for (int g = g0; g < g0 + ng; ++g) {
+            ::GnssCudaDespread::Spec sp;
+            sp.p = prn_index;
+            sp.cp_seed = coarse_cp + (double)(-span + (3 * g + 1) * step) * cps;
+            sp.spacing_chips = (double)step * cps;
+            sp.doppler_hz = dop;
+            sp.covering = cov_local;
+            specs.push_back(sp);
+        }
+        const std::vector<std::array<DespreadResult, 3>> res = gpu.despread_batch(specs);
+        for (size_t k = 0; k < res.size(); ++k)
+            for (int j = 0; j < 3; ++j) {
+                const int e = (g0 + (int)k) * 3 + j;
+                if (e >= n_eval) // the last group's padding: computed, never scored
+                    break;
+                const double pw = std::norm(res[k][(size_t)j].amplitude);
+                if (pw > best_pw) { // strict >, ascending e: same first-max rule as refine_peak
+                    best_pw = pw;
+                    best_e = e;
+                }
+            }
+    }
+    return coarse_cp + (double)(-span + best_e * step) * cps;
+}
+#endif // GNSS_CUDA
 
 DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_cp, int best_nh,
                                int n_nh, double dop, long long snap_start_hop, long long anchor,

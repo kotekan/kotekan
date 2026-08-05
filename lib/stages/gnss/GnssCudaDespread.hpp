@@ -77,6 +77,12 @@ public:
     std::vector<std::array<gnss::DespreadResult, 3>>
     despread_batch(const std::vector<Spec>& specs);
 
+    /// Largest `specs.size()` @ref despread_batch can accept: the DespreadJob arena is sized
+    /// n_prn * MAX_REC on the tracker's one-spec-per-PRN-per-record assumption. A caller that
+    /// batches many specs against ONE PRN (the A5 refine scan) must chunk against this, or the
+    /// H2D fails with "jobs upload: invalid argument" a long way from the cause.
+    int max_batch_specs() const;
+
     /// Single-PRN convenience (= despread_batch of one Spec).
     std::array<gnss::DespreadResult, 3> despread3(int p, double cp_seed, double spacing_chips,
                                                   double doppler_hz,

@@ -127,6 +127,7 @@ struct Opt {
     /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
     const char* emit_det = nullptr;
     const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
+    bool cuda_refine = false;         ///< also run the GPU refine and compare (A5)
     int ms_split = 0;   ///< >0 = run the ms-split acquire with this many ~1 ms sub-windows
     int sub_hops = 196; ///< N: ceil(code period in hops) at CHORD
     const char* dump_ms = nullptr; ///< dump the ms-split surface along the lag axis
@@ -258,6 +259,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
+        else if (arg_eq(a, "--cuda-refine")) o.cuda_refine = true;
         else if (arg_eq(a, "--ms-split")) o.ms_split = next_i();
         else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
         else if (arg_eq(a, "--t-stride")) o.t_stride = next_i();
@@ -610,6 +612,36 @@ int main(int argc, char** argv) {
 
         T_ref += tnow() - t_ref0;
         printf("    [stages] acquire %.2fs | nh-postfix %.2fs | refine %.2fs\n", T_acq, T_nh, T_ref);
+#ifdef GNSS_CUDA
+        // A5 VALIDATION. The GPU refine must return the SAME code phase as the CPU one, on the
+        // same data, with the same scan geometry -- it is a reuse of GnssCudaDespread, not a
+        // different algorithm, so anything but agreement to float precision is a bug. Run both
+        // and print the delta rather than trusting the speedup.
+        if (o.cuda_refine) {
+            const int rh = (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops;
+            const size_t nc = d.size();
+            // refine_peak takes [chan][hop]; the GPU driver takes the stage's native
+            // [hop][chan] interleave. Transpose here so the comparison is like for like.
+            std::vector<std::complex<float>> win((size_t)rh * nc);
+            for (size_t c = 0; c < nc; ++c)
+                for (int m = 0; m < rh; ++m)
+                    win[(size_t)m * nc + c] = d[c][(size_t)m];
+            std::vector<int> loc(nc);
+            for (size_t i = 0; i < nc; ++i)
+                loc[i] = (int)i;
+            GnssCudaDespread gref(sbank, 1, s_chans, rh, o.sample_rate, sbank.f_offset());
+            const double t_g0 = tnow();
+            const double gcp =
+                gnss::refine_peak_cuda(gref, sbank, 0, win.data(), anchor, loc,
+                                       a.code_phase_chips, det_dop, o.sample_rate, o.refine_span,
+                                       o.refine_step);
+            const double t_g = tnow() - t_g0;
+            printf("    CUDA refine: cp %.6f  CPU %.6f  delta %+.3e chips  |  %.3f s vs %.3f s "
+                   "= %.1fx  %s\n",
+                   gcp, best_cp, gcp - best_cp, t_g, T_ref, T_ref / t_g,
+                   std::fabs(gcp - best_cp) < 1e-6 ? "OK" : "MISMATCH");
+        }
+#endif
         // ---- THE SHIPPED REPORTING ARITHMETIC ----
         // The lag-period lift is for the SHIPPED geometry, where the coarse lag runs over
         // Mp = 3125 hops = 16 code periods and therefore carries a whole-period count that
