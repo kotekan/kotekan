@@ -63,7 +63,18 @@ public:
         double ctrim_hz = 0.0;    ///< broker carrier trim
         long long ref_hop = 0;
         double phase_ref_chips = -1.0; ///< physical code phase at ref_hop (-1 = derive from cp)
+        /// steady_clock seconds when this seed last arrived. A seed used to be LATCHED FOREVER:
+        /// `have` was set true and never cleared, so a satellite that had set was still
+        /// despread, and the spec count grew monotonically with everything that had ever risen.
+        /// Measured 2026-08-05 on a 1 h soak: 14 active PRN slots against the 6-7 the broker
+        /// seeds, kernel 14.20 -> 22.63 ms, GPU memory 561 -> 601 MiB, saturating toward the
+        /// 32-PRN list -- and after ~4 h that is the 100% GPU / 24k-dropped-frame state.
+        double t_recv = 0.0;
     };
+    /// Drop a seed not refreshed within this many seconds (config `seed_ttl_s`, 0 = never, the
+    /// old latching behaviour). The broker re-seeds every --interval (2 s live), so the default
+    /// is many refreshes of margin while still retiring a set satellite promptly.
+    double seed_ttl_s = 60.0;
     std::mutex seed_mtx;
     std::vector<Seed> seeds;
 

@@ -552,11 +552,12 @@ gps_search:
   - 30
   - 31
   - 32
-  prns_per_pass: 1
+  prns_per_pass: 0
   refine_hops: 391
   refine_span: 512
   refine_step: 103
   require_hint: true
+  blind_prns_per_pass: 0
   sample_rate: 3200000000.0
   signal: GPS_L5_Q
   spectrum_length: 8192

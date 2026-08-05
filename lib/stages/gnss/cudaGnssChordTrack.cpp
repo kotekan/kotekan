@@ -1,5 +1,7 @@
 #include "cudaGnssChordTrack.hpp"
 
+#include <chrono>
+
 #include "cudaGnssChordDespread.hpp"
 #include "gnssBandPlan.hpp"
 #include "gnssGpuChain.hpp"
@@ -53,6 +55,9 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     trim_pow_alpha = config.get_default<double>(unique_name, "trim_pow_alpha", 0.05);
     trim_ref_elem = config.get_default<int>(unique_name, "trim_ref_elem", 0);
     frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
+    // 0 = never expire (the old latching behaviour). The broker re-seeds every --interval (2 s
+    // live), so 60 s is ~30 refreshes of margin while still retiring a set satellite promptly.
+    seed_ttl_s = config.get_default<double>(unique_name, "seed_ttl_s", 60.0);
 
     if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
         FATAL_ERROR("cudaGnssChordTrack: hops_per_record {:d} must divide samples_per_data_set "
@@ -153,9 +158,14 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
         return;
     }
     {
+        const double now = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
         std::lock_guard<std::mutex> lk(seed_mtx);
-        for (auto& u : upd)
+        for (auto& u : upd) {
+            u.second.t_recv = now;
             seeds[(size_t)u.first] = u.second;
+        }
     }
     {
         // A re-seed moves the commanded cp, so the power average that gates the trim no
@@ -405,7 +415,21 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     std::vector<cudaGnssChordTrackState::Seed> seeds;
     std::vector<double> trim_now;
     {
+        // EXPIRE STALE SEEDS, under the same lock that copies them. Without this a seed is
+        // latched forever -- `have` was only ever set true -- so a satellite that had SET was
+        // still despread and the spec count grew with everything that had ever risen. Measured
+        // 2026-08-05: 14 active slots against the 6-7 the broker seeds, kernel 14.20 -> 22.63 ms
+        // over an hour, GPU memory 561 -> 601 MiB, saturating toward the 32-PRN list; after ~4 h
+        // that is the 100% GPU / 24k-dropped-frame state. Cleared in the SHARED state, not just
+        // the frame's copy, so /get_trim and the Phi cache also reflect the live set.
+        const double now = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
         std::lock_guard<std::mutex> lk(S.seed_mtx);
+        if (S.seed_ttl_s > 0.0)
+            for (auto& sd : S.seeds)
+                if (sd.have && sd.t_recv > 0.0 && (now - sd.t_recv) > S.seed_ttl_s)
+                    sd.have = false;
         seeds = S.seeds;
     }
     if (S.trim_enable) {
