@@ -1432,6 +1432,14 @@ def main(argv=None):
                          "applying it. carrier_hz_resid is signal-free at CHORD SNR, so the "
                          "carrier loop was integrating noise; the code side is strong. Compare "
                          "the two before letting the derived value drive anything.")
+    ap.add_argument("--dop-rate-model-tol", type=float, default=0.12,
+                    help="reject a FITTED doppler rate that disagrees with the model's by\n"
+                         "more than this (Hz/s) and keep the model. --dop-rate-max only\n"
+                         "bounds magnitude, so a wrong-SIGNED or half-size fit passes it;\n"
+                         "measured on sky, PRN 8 was seeded 2.18x small and PRN 30 with the\n"
+                         "wrong sign. BRDC range-rate differencing is good to ~0.05 Hz/s, so\n"
+                         "0.12 admits real fit noise and rejects a fit that is simply wrong.\n"
+                         "0 disables the cross-check (the pre-2026-08-05 behaviour).")
     ap.add_argument("--dop-rate-max", type=float, default=0.8,
                     help="reject a fitted doppler rate beyond this (Hz/s) and fall back to the "
                          "almanac's. PHYSICAL, not tuned: GPS Doppler acceleration peaks near "
@@ -2226,6 +2234,7 @@ def main(argv=None):
                  % (_p, float(_v)))
     cp_fit_slope = {}    # prn -> fitted cp slope, chips/s (x f_carrier/f_chip = carrier error)
     dop_rate_fitted = {} # prn -> the fitted rate actually seeded (for the log)
+    dop_rate_rejected = {} # prn -> (fitted, model) when the fit disagreed with the model
     dop_hist = {}    # prn -> [(ref_hop, doppler_hz), ...] for the MEASURED doppler-rate fit
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
     # PERIOD CONTINUITY. The search's sub-period phase is sound, but the OVERLAY PERIOD it
@@ -3151,10 +3160,26 @@ def main(argv=None):
             # --seed-doppler det is: the model exists to own sats we have not measured. Gated on
             # enough points over enough baseline that the slope is real rather than fitted to
             # detection noise.
+            # CROSS-CHECK THE FIT AGAINST THE MODEL BEFORE ADOPTING IT. Measured on sky
+            # 2026-08-05, seeded rate vs the Doppler actually observed over 140 s: PRN 8 seeded
+            # 2.18x too small (-0.195 against -0.424), PRN 30 seeded the WRONG SIGN (+0.205
+            # against -0.155), and PRNs 5/7/16 seeded None while drifting at -0.15..-0.45 Hz/s.
+            # The rate is fitted from the MEASURED Doppler, which carries ~6 Hz of per-pass
+            # search scatter (8.20.5), and it was the last word unconditionally -- a noisy
+            # estimator overriding a model one, the same trade --seed-doppler det got wrong.
+            # dop_rate_max only bounds the MAGNITUDE, so a wrong-signed or half-size fit inside
+            # +-0.8 sails through. Its error costs twice: the carrier NCO extrapolation AND the
+            # quadratic code term both use it.
+            _model_dr = seed.get("doppler_rate_hz_s")
             _dr = fit_dop_rate(dop_hist.get(prn, []), args.hops_per_sec,
                                args.dop_rate_min_pts, args.dop_rate_min_span_s,
                                args.dop_rate_max)
-            if _dr is not None:
+            if (_dr is not None and _model_dr is not None and args.dop_rate_model_tol > 0.0
+                    and abs(_dr - _model_dr) > args.dop_rate_model_tol):
+                # The two disagree by more than the model's own accuracy: trust the MODEL, which
+                # comes from an orbit rather than from detection noise, and say so.
+                dop_rate_rejected[prn] = (_dr, _model_dr)
+            elif _dr is not None:
                 seed["doppler_rate_hz_s"] = _dr
                 dop_rate_fitted[prn] = _dr
             elif args.force_doppler_rate is not None:
@@ -4395,6 +4420,17 @@ def main(argv=None):
                 if _rows:
                     _log_rl("carfromcode", "CARRIER-FROM-CODE (shadow): " + "; ".join(_rows[:6]),
                             every_s=30.0)
+            if dop_rate_rejected:
+                _log("dop-rate: %d fit(s) REJECTED against the model (kept the model): %s"
+                     % (len(dop_rate_rejected),
+                        ", ".join("PRN %d fit %+.3f vs model %+.3f" % (k, v[0], v[1])
+                                  for k, v in sorted(dop_rate_rejected.items())[:5])))
+            _absent = sorted(p for p in seeds
+                             if seeds[p].get("doppler_rate_hz_s") is None)
+            if _absent:
+                # No carrier extrapolation AND no quadratic code term for these sats.
+                _log("dop-rate: %d seeded PRN(s) have NO doppler rate at all: %s"
+                     % (len(_absent), _absent[:8]))
             if dop_rate_fitted:
                 _log_rl("doprate", "doppler-rate FIT seeded on %d sat(s): %s"
                         % (len(dop_rate_fitted),

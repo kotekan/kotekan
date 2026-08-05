@@ -3481,7 +3481,24 @@ Those errors are 0.1-0.45 Hz/s, which is only **0.03-0.12 rad** of detrended cur
 worth fixing, but 15x too small to be the 1.83 Hz/s the quadratic fit implies. So the quadratic
 component is NOT the Doppler-rate feed-forward, and its origin is still open.
 
-**Three seeding defects worth fixing on their own** (broker-side, no node restart):
+**CORRECTION (same night): those three "defects" were a WARM-UP TRANSIENT, not bugs.** The
+sample above was taken ~25 s after a broker restart, before `dop_hist` had accumulated enough
+points for `fit_dop_rate` to pass its own gates -- so the model value had not yet been replaced
+and, for some PRNs, no value existed at all. Re-measured once settled, every tracked PRN has a
+rate and all sit within ~20% of the observed drift:
+
+```
+prn        4      5      7      8      9     16     18
+measured -0.191 -0.446 -0.224 -0.424 -0.384 -0.147 -0.420
+seeded   -0.160 -0.487 -0.229 -0.474 -0.366 -0.094 -0.440    None: []
+```
+
+The cross-check added below is kept as a guard -- it costs nothing and would catch a genuinely
+wrong-signed or half-size fit -- but it fires on nothing in steady state, and the seeding was not
+the problem. Judging a fitted quantity before its estimator has data is the same error as reading
+a loop before its gate has admitted a sample.
+
+**The guard, retained** (broker-side, no node restart):
 1. `doppler_rate_hz_s` is **None** for several tracked PRNs -- they get zero carrier and zero
    quadratic-code feed-forward.
 2. It is 2.18x too small on PRN 8.
