@@ -72,6 +72,16 @@ int peak_blocks(long n_cells);
 /// Bytes of scratch @ref launch_peak needs for `n_cells`.
 size_t peak_scratch_bytes(long n_cells);
 
+/// Per-Doppler max / sum / argmax, written to HOST arrays of length `n_dop`.
+/// gnss::peak_from_reduction needs each Doppler bin's own max-over-tau for its sub-grid parabolic
+/// refine, and the global peak/mean fall out of the same reduction. Synchronizes `stream`.
+/// `h_idx[d]` is the argmax WITHIN slice d (0..cells_per_dop).
+void launch_peak_dop(const float* surf, int n_dop, long cells_per_dop, float* h_max, double* h_sum,
+                     long long* h_idx, void* scratch, cudaStream_t stream);
+
+/// Bytes of scratch @ref launch_peak_dop needs.
+size_t peak_dop_scratch_bytes(long cells_per_dop, int n_dop);
+
 // ---------------------------------------------------------------------------------------------
 // A2: the correlate, so the whole chain is device-resident. See docs/gnss_gpu_search.md.
 // ---------------------------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 #include "cudaGnssAcquireKernel.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -87,7 +88,12 @@ GnssCudaAcquire::GnssCudaAcquire(int nc, int Mp, int M, int n_chan_total, int ma
     alloc((void**)&_p->dTw, (size_t)(s_cols / 2) * sizeof(float2), "twiddle");
     alloc((void**)&_p->dVal, sizeof(float2), "val");
     alloc((void**)&_p->dIdx, sizeof(long long), "idx");
-    alloc(&_p->dScratch, gnss_cuda::peak_scratch_bytes((long)max_dop * Mp * s_cols), "scratch");
+    // One scratch buffer serves both reductions -- the global one (peak()) and the per-Doppler
+    // one (peak_result()) -- so size it for the larger.
+    alloc(&_p->dScratch,
+          std::max(gnss_cuda::peak_scratch_bytes((long)max_dop * Mp * s_cols),
+                   gnss_cuda::peak_dop_scratch_bytes((long)Mp * s_cols, max_dop)),
+          "scratch");
 
     ck(cudaStreamCreate(&_p->stream), "stream");
 
@@ -288,6 +294,37 @@ GnssCudaAcquire::Peak GnssCudaAcquire::peak() const {
     pk.q = (int)((idx / _s_cols) % _Mp);
     pk.d = (int)(idx / ((long)_s_cols * _Mp));
     return pk;
+}
+
+gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurface& dims,
+                                                     const std::vector<double>& doppler_grid,
+                                                     double sample_rate, double chip_rate,
+                                                     long code_length) const {
+    const long cells_per_dop = (long)_Mp * _s_cols;
+    std::vector<float> dmax((size_t)_nd);
+    std::vector<double> dsum((size_t)_nd);
+    std::vector<long long> didx((size_t)_nd);
+    gnss_cuda::launch_peak_dop(_p->dSurf, _nd, cells_per_dop, dmax.data(), dsum.data(),
+                               didx.data(), _p->dScratch, _p->stream);
+
+    double peak = -1.0, sum = 0.0;
+    int best_d = 0;
+    long long best_off = 0;
+    std::vector<double> dop_peak((size_t)_nd);
+    for (int d = 0; d < _nd; ++d) {
+        dop_peak[(size_t)d] = (double)dmax[(size_t)d];
+        sum += dsum[(size_t)d];
+        if ((double)dmax[(size_t)d] > peak) {
+            peak = (double)dmax[(size_t)d];
+            best_d = d;
+            best_off = didx[(size_t)d];
+        }
+    }
+    const double mean = sum / (double)((long)_nd * cells_per_dop);
+    const int best_q = (int)(best_off / _s_cols);
+    const int best_i = (int)(best_off % _s_cols);
+    return gnss::peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, peak,
+                                     mean, best_d, best_q, best_i, dop_peak);
 }
 
 void GnssCudaAcquire::download_surface(std::vector<double>& out) const {

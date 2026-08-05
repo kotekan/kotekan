@@ -1,6 +1,7 @@
 #include "cudaGnssAcquireKernel.hpp"
 
 #include <cuda_runtime.h>
+#include <vector>
 
 namespace gnss_cuda {
 
@@ -417,6 +418,110 @@ void launch_dopmul(const float2* A, const float2* B, const int* bshift, float2* 
         return;
     const dim3 blk(256), grd((unsigned)((Mp + 255) / 256), (unsigned)n_dop, (unsigned)nc);
     dopmul_kernel<<<grd, blk, 0, stream>>>(A, B, bshift, X, nc, n_dop, Mp, 1.0f / (float)Mp);
+}
+
+// Per-Doppler reduction. channelized_peak needs the max-over-tau of EVERY Doppler slice, not
+// just the global one, because its sub-grid refine fits a parabola through the peak bin and its
+// two neighbours -- and it deliberately uses each bin's OWN max rather than a fixed-tau slice,
+// since code Doppler walks the peak's tau from bin to bin and a fixed slice biases the vertex.
+//
+// One block row per Doppler bin. Slices are contiguous (the surface is [d][Mp][s_cols]), so this
+// is the same streaming pattern as the global reduction, just with the grid's y axis naming the
+// output.
+__global__ void dop_partial_kernel(const float* __restrict__ surf, long cells_per_dop,
+                                   float* __restrict__ bmax, double* __restrict__ bsum,
+                                   long long* __restrict__ bidx, int nblk) {
+    __shared__ float smax[PEAK_THREADS];
+    __shared__ double ssum[PEAK_THREADS];
+    __shared__ long long sidx[PEAK_THREADS];
+
+    const int d = blockIdx.y;
+    const float* base = surf + (long)d * cells_per_dop;
+    const int t = threadIdx.x;
+    float m = -1.0f, s = 0.0f;
+    long long mi = -1;
+    for (long i = (long)blockIdx.x * blockDim.x + t; i < cells_per_dop;
+         i += (long)gridDim.x * blockDim.x) {
+        const float v = base[i];
+        s += v;
+        if (v > m) {
+            m = v;
+            mi = i;
+        }
+    }
+    smax[t] = m;
+    ssum[t] = (double)s;
+    sidx[t] = mi;
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (t < stride) {
+            ssum[t] += ssum[t + stride];
+            if (smax[t + stride] > smax[t]
+                || (smax[t + stride] == smax[t] && sidx[t + stride] < sidx[t])) {
+                smax[t] = smax[t + stride];
+                sidx[t] = sidx[t + stride];
+            }
+        }
+        __syncthreads();
+    }
+    if (t == 0) {
+        const long o = (long)d * nblk + blockIdx.x;
+        bmax[o] = smax[0];
+        bsum[o] = ssum[0];
+        bidx[o] = sidx[0];
+    }
+}
+
+int dop_blocks(long cells_per_dop) {
+    const long per = (long)PEAK_THREADS * PEAK_ITEMS;
+    long nb = (cells_per_dop + per - 1) / per;
+    return (int)(nb < 1 ? 1 : (nb > 4096 ? 4096 : nb));
+}
+
+size_t peak_dop_scratch_bytes(long cells_per_dop, int n_dop) {
+    const long nb = (long)dop_blocks(cells_per_dop) * n_dop;
+    return (size_t)nb * (sizeof(double) + sizeof(long long) + sizeof(float));
+}
+
+void launch_peak_dop(const float* surf, int n_dop, long cells_per_dop, float* h_max, double* h_sum,
+                     long long* h_idx, void* scratch, cudaStream_t stream) {
+    if (n_dop <= 0 || cells_per_dop <= 0)
+        return;
+    const int nblk = dop_blocks(cells_per_dop);
+    const long tot = (long)nblk * n_dop;
+    double* bsum = (double*)scratch; // widest first: see launch_peak
+    long long* bidx = (long long*)(bsum + tot);
+    float* bmax = (float*)(bidx + tot);
+
+    const dim3 grd((unsigned)nblk, (unsigned)n_dop);
+    dop_partial_kernel<<<grd, PEAK_THREADS, 0, stream>>>(surf, cells_per_dop, bmax, bsum, bidx,
+                                                         nblk);
+    // Final combine on the host: n_dop*nblk is a few thousand values, so a second kernel plus a
+    // second synchronization buys nothing, and the caller needs the per-Doppler array on the
+    // host anyway for the parabolic fit.
+    std::vector<float> hm((size_t)tot);
+    std::vector<double> hs((size_t)tot);
+    std::vector<long long> hi((size_t)tot);
+    cudaMemcpyAsync(hm.data(), bmax, hm.size() * sizeof(float), cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(hs.data(), bsum, hs.size() * sizeof(double), cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(hi.data(), bidx, hi.size() * sizeof(long long), cudaMemcpyDeviceToHost, stream);
+    cudaStreamSynchronize(stream);
+    for (int d = 0; d < n_dop; ++d) {
+        float m = -1.0f;
+        double s = 0.0;
+        long long mi = -1;
+        for (int b = 0; b < nblk; ++b) {
+            const long o = (long)d * nblk + b;
+            s += hs[(size_t)o];
+            if (hm[(size_t)o] > m || (hm[(size_t)o] == m && hi[(size_t)o] < mi)) {
+                m = hm[(size_t)o];
+                mi = hi[(size_t)o];
+            }
+        }
+        h_max[d] = m;
+        h_sum[d] = s;
+        h_idx[d] = mi;
+    }
 }
 
 void launch_peak(const float* surf, long n_cells, float2* out_val, long long* out_idx,

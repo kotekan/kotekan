@@ -8,6 +8,9 @@
 #include "gnssSignal.hpp"              // for SignalDescriptor, signal_by_name
 #include "kotekanLogging.hpp"          // for INFO, FATAL_ERROR
 #include "pfbPrototype.hpp"            // for window_from_string
+#ifdef GNSS_CUDA
+#include "GnssCudaAcquire.hpp" // device-resident acquire (docs/gnss_gpu_search.md A2)
+#endif
 
 #include <algorithm>  // for min, max
 #include <chrono>     // for steady_clock (hint TTL)
@@ -119,6 +122,18 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
     _nh_hint_span = std::max(0, config.get_default<int>(unique_name, "nh_hint_span", 1));
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
+    // Bounded cold-start: with require_hint false, EVERY unhinted PRN would otherwise get a full
+    // blind grid (~30x a hinted one), so a sky full of below-horizon satellites dominates the
+    // pass. 0 keeps the historical behaviour exactly.
+    _blind_prns_per_pass = std::max(0, config.get_default<int>(unique_name, "blind_prns_per_pass", 0));
+#ifdef GNSS_CUDA
+    _cuda_acq_wanted = config.get_default<bool>(unique_name, "use_cuda_acquire", false);
+#else
+    if (config.get_default<bool>(unique_name, "use_cuda_acquire", false))
+        WARN("GnssChannelizedSearch[{:s}]: use_cuda_acquire set but this binary was built without "
+             "CUDA -- running the CPU acquire",
+             unique_name);
+#endif
     double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
     double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
     _doppler_step = config.get_default<double>(unique_name, "doppler_step", 500.0);
@@ -424,6 +439,30 @@ void GnssChannelizedSearch::search_snapshot() {
              (double)_refine_step < res_samp / 8.0
                  ? " -- OVERSAMPLED, consider raising refine_step"
                  : "");
+
+#ifdef GNSS_CUDA
+        // Build the device engine once the covering set and Mp are known. Anything it cannot
+        // represent EXACTLY (a non-power-of-two fine axis, a geometry where the fold's
+        // precondition fails) throws here, and we log it and stay on the CPU -- the GPU path is
+        // an optimization, never a change of answer.
+        if (_cuda_acq_wanted && !cov_local.empty()) {
+            try {
+                const int s_cols = (_fft_len + _acquire_fine_step - 1) / _acquire_fine_step;
+                _cuda_acq.reset(new GnssCudaAcquire((int)cov_local.size(), Mp, hpr, _n_chan,
+                                                    (int)_doppler_grid.size(), s_cols));
+                _cuda_acq->set_channels(cov_local, cov_global, _fft_len, _acquire_fine_step);
+                INFO("GnssChannelizedSearch[{:s}]: CUDA acquire ENABLED -- {:.2f} GB on device, "
+                     "surface stays there ({:d} Doppler x {:d} lags x {:d} fine)",
+                     unique_name, 1e-9 * (double)_cuda_acq->device_bytes(),
+                     (int)_doppler_grid.size(), Mp, s_cols);
+            } catch (const std::exception& e) {
+                _cuda_acq.reset();
+                WARN("GnssChannelizedSearch[{:s}]: CUDA acquire unavailable, using the CPU path: "
+                     "{:s}",
+                     unique_name, e.what());
+            }
+        }
+#endif
     }
 
     // PASS PROFILE, opt-in via GNSS_SEARCH_PROFILE=1. The pass runs at ~30% CPU across 11
@@ -446,6 +485,32 @@ void GnssChannelizedSearch::search_snapshot() {
     // once per snapshot. The hint-validity test here MUST match the one in the loop below (it is
     // only the validity predicate, not the grid construction); if they ever disagree the cursor
     // walks a different set than the loop searches.
+    // Blind slot: which UNHINTED PRNs may be blind-scanned this pass. Uses the same hint-validity
+    // predicate as the loop below, and its own cursor so it rotates independently of _prn_cursor.
+    std::vector<char> blind_selected((size_t)n_prn, 0);
+    if (_blind_prns_per_pass > 0 && !cov_local.empty()) {
+        std::vector<int> unhinted;
+        {
+            std::lock_guard<std::mutex> lk(_hint_mtx);
+            for (int p = 0; p < n_prn; ++p) {
+                const DopHint& hh =
+                    _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p] : _dop_hints[(size_t)p];
+                const bool hinted =
+                    hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
+                if (!hinted)
+                    unhinted.push_back(p);
+            }
+        }
+        const int nu = (int)unhinted.size();
+        if (nu > 0) {
+            if (_blind_cursor >= nu)
+                _blind_cursor = 0;
+            for (int i = 0; i < _blind_prns_per_pass && i < nu; ++i)
+                blind_selected[(size_t)unhinted[(size_t)((_blind_cursor + i) % nu)]] = 1;
+            _blind_cursor = (_blind_cursor + _blind_prns_per_pass) % nu;
+        }
+    }
+
     std::vector<char> selected((size_t)n_prn, 1);
     if (_prns_per_pass > 0 && !cov_local.empty()) {
         std::vector<int> elig;
@@ -526,6 +591,15 @@ void GnssChannelizedSearch::search_snapshot() {
             _detections[p] = Detection{};
             continue;
         }
+        // BOUNDED COLD START. An unhinted PRN gets the full blind grid, ~30x a hinted one, so
+        // with require_hint false a sky of below-horizon satellites would spend the whole pass on
+        // PRNs that cannot be found. Give the blind scan a rotating slot instead: every hinted
+        // PRN is searched every pass (cheap, and what keeps cp_hist dense enough for the broker's
+        // code_phase_rate fit), while reacquisition sweeps the rest a few at a time.
+        if (!hinted && _blind_prns_per_pass > 0 && !blind_selected[(size_t)p]) {
+            ++n_deferred;
+            continue;
+        }
 
         // ROUND-ROBIN: search only this pass's slice of the eligible set, and leave everyone
         // else's HELD detection untouched (they are not misses -- they simply were not looked
@@ -538,6 +612,34 @@ void GnssChannelizedSearch::search_snapshot() {
         }
 
         const std::vector<double>& grid = pgrid.empty() ? _doppler_grid : pgrid;
+
+        // Per-PRN device setup: the Doppler grid (this PRN's, hinted or blind) and the replica
+        // tables. Both are PRN-scoped, so they happen once here rather than per alignment.
+        bool gpu_ok = false;
+#ifdef GNSS_CUDA
+        if (_cuda_acq) {
+            gpu_ok = _cuda_acq->set_doppler_grid(grid, _sample_rate, _fft_len);
+            if (!gpu_ok) {
+                // Almost always doppler_step being half the transform's bin spacing. The engine
+                // refuses rather than computing a DIFFERENT thing, so say why, once in a while.
+                if ((_cuda_acq_fallbacks++ % 512) == 0)
+                    WARN("GnssChannelizedSearch[{:s}]: CUDA acquire declined this Doppler grid "
+                         "(step {:.4f} Hz is not a whole multiple of the transform bin {:.4f} Hz) "
+                         "-- running the CPU acquire. Set doppler_step to the bin spacing.",
+                         unique_name, _doppler_step,
+                         _sample_rate / ((double)Mp * (double)_fft_len));
+            } else {
+                // Covering-order head/tail for this PRN. A2 re-uploads per PRN (~4 MB); caching
+                // the whole bank on the device is A3's follow-on, not correctness.
+                std::vector<std::vector<cf>> hh(cov_local.size()), tt(cov_local.size());
+                for (size_t ii = 0; ii < cov_local.size(); ++ii) {
+                    hh[ii] = _repl_head[(size_t)p][(size_t)cov_local[ii]];
+                    tt[ii] = _repl_tail[(size_t)p][(size_t)cov_local[ii]];
+                }
+                _cuda_acq->set_replica(hh, tt);
+            }
+        }
+#endif
 
         // Integrate the |D|^2 surface over the snapshot windows (incoherent), once per
         // secondary-code alignment, and keep the best peak. The alignments are processed
@@ -605,22 +707,49 @@ void GnssChannelizedSearch::search_snapshot() {
             const std::vector<std::vector<cf>>& repl0 = _repl_scratch;
             if (prof) t_mat += steady_s() - _t_m0;
             const double _t_a0 = prof ? steady_s() : 0.0;
-            surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
-            for (int w = 0; w < nwin; ++w) {
-                for (int lc = 0; lc < _n_chan; ++lc)
-                    for (int m = 0; m < hpr; ++m)
-                        dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
-                dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate,
-                                                    _n_chan, surf, _acq_ws, cov_global, _fft_len,
-                                                    _acquire_threads, _acquire_fine_step);
+            gnss::AcquisitionResult ai{};
+#ifdef GNSS_CUDA
+            if (gpu_ok) {
+                // Device path. The replica MATERIALISE happens on the GPU too (from the sign
+                // pair), so _repl_scratch above is redundant here -- left in place because the
+                // CPU fallback shares this loop and the materialise is 0.002 s per pass.
+                dims = gnss::surface_dims(cov_global, _fft_len, (int)grid.size(), Mp,
+                                          _acquire_fine_step);
+                _cuda_acq->clear_surface();
+                for (int w = 0; w < nwin; ++w) {
+                    // FFT(data) depends on neither PRN nor alignment; re-uploading per window is
+                    // the price of the (PRN -> nh -> window) loop order, and with the shipped
+                    // acquire_windows: 1 it happens once per alignment. Hoisting it out of the
+                    // PRN loop entirely is A4.
+                    _cuda_acq->set_snapshot(_snapshot.data() + (size_t)w * hpr * _n_chan);
+                    _cuda_acq->accumulate(_sgn0.data(), _sgn1.data());
+                }
+                _last_surface_cells = dims.size();
+                if (prof) t_acq += steady_s() - _t_a0;
+                const double _t_p0 = prof ? steady_s() : 0.0;
+                ai = _cuda_acq->peak_result(dims, grid, _sample_rate, _replica->chip_rate_hz(),
+                                            _replica->code_length());
+                if (prof) t_acq += steady_s() - _t_p0;
+            } else
+#endif
+            {
+                surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
+                for (int w = 0; w < nwin; ++w) {
+                    for (int lc = 0; lc < _n_chan; ++lc)
+                        for (int m = 0; m < hpr; ++m)
+                            dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
+                    dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate,
+                                                        _n_chan, surf, _acq_ws, cov_global,
+                                                        _fft_len, _acquire_threads,
+                                                        _acquire_fine_step);
+                }
+                _last_surface_cells = dims.size();
+                if (prof) t_acq += steady_s() - _t_a0;
+                const double _t_p0 = prof ? steady_s() : 0.0;
+                ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
+                                            _replica->chip_rate_hz(), _replica->code_length());
+                if (prof) t_acq += steady_s() - _t_p0;
             }
-            _last_surface_cells = dims.size();
-            if (prof) t_acq += steady_s() - _t_a0;
-            const double _t_p0 = prof ? steady_s() : 0.0;
-            const auto ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
-                                                   _replica->chip_rate_hz(),
-                                                   _replica->code_length());
-            if (prof) t_acq += steady_s() - _t_p0;
             if (best_nh < 0 || ai.snr > a.snr) {
                 a = ai;
                 best_nh = nh;

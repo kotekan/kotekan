@@ -238,10 +238,40 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
                     std::vector<double>& surf, AcquireWorkspace& ws, int fine_step = 1,
                     int n_threads = 1);
 
+/// Surface dimensions for a given covering set, WITHOUT computing a surface.
+///
+/// The `s_stored` rule (drop the exactly-periodic copies of the fine axis when the covering
+/// channels share a factor with `sph`) is subtle enough that it must exist once: a caller that
+/// derives dimensions independently of @ref aggregate_accumulate and gets `s_stored` wrong
+/// indexes a correct surface incorrectly. The GPU search is such a caller -- it never builds a
+/// host surface at all, but still needs these dims to interpret its device reduction.
+AcquisitionSurface surface_dims(const std::vector<int>& chan_freq, int samples_per_hop, int n_dop,
+                                int Mp, int fine_step);
+
 AcquisitionResult channelized_peak(const std::vector<double>& surf,
                                    const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length);
+
+/// The second half of @ref channelized_peak: everything after the surface scan.
+///
+/// Split out so a caller that produced the reduction some other way -- the GPU search reduces on
+/// the device and never materializes the surface on the host at all -- reuses this arithmetic
+/// instead of reimplementing it. That matters more than it looks: the cell -> code-phase mapping
+/// carries TWO sign inversions (the fine half is opposite to the coarse half; the reported delay
+/// is the negative of the surface lag), each of which was a multi-day bug once already, and a
+/// second copy is a second chance to get them wrong.
+///
+/// @param peak     max cell value over the whole surface
+/// @param mean     mean cell value over the whole surface (the SNR denominator)
+/// @param best_d,best_q,best_i  the argmax cell, decomposed
+/// @param dop_peak per-Doppler max-over-tau, length n_dop; drives the sub-grid parabolic refine.
+///                 Pass empty to skip that refine (the Doppler then lands on the grid).
+AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
+                                      const std::vector<double>& doppler_grid, double sample_rate,
+                                      double chip_rate, long code_length, double peak, double mean,
+                                      int best_d, int best_q, int best_i,
+                                      const std::vector<double>& dop_peak);
 
 /// Peak-pick an ms-split surface. NOT channelized_peak: that one's tau -> code-phase mapping
 /// silently assumes two things the shipped geometry arranges and the ms-split cannot.

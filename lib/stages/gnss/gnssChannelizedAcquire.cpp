@@ -152,6 +152,22 @@ void channel_correlate_into(const std::vector<cf>& data, const std::vector<cf>& 
     }
 }
 
+AcquisitionSurface surface_dims(const std::vector<int>& chan_freq, int samples_per_hop, int n_dop,
+                                int Mp, int fine_step) {
+    const int nc = (int)chan_freq.size();
+    const int sph = samples_per_hop;
+    int g = 0;
+    for (int ci = 1; ci < nc; ++ci)
+        g = std::gcd(g, std::abs(chan_freq[ci] - chan_freq[0]));
+    // g == 0 means a single covering channel: |D|^2 is then flat in s (one unit-modulus ramp),
+    // so one column suffices. std::gcd(0, sph) == sph gives exactly that.
+    const int s_stored = (nc > 0 && sph > 0) ? sph / std::gcd(g, sph) : sph;
+    // Decimate the fine axis: it is sampled every sample but its lobe is sph/(comb span)
+    // samples wide (157 here), so the stored width is ~157x finer than the peak it resolves.
+    const int s_step = std::max(1, fine_step);
+    return AcquisitionSurface{n_dop, Mp, sph, s_stored, s_step};
+}
+
 AcquisitionSurface
 aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
                      const std::vector<int>& chan_freq, int samples_per_hop,
@@ -182,16 +198,8 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
     //     already returned the s in [0, sph/g); the peak cell is unchanged.
     //   - its noise floor is a mean over the surface, and dropping g uniform copies of every
     //     value leaves the mean identical -- so the reported SNR is unchanged too.
-    int g = 0;
-    for (int ci = 1; ci < nc; ++ci)
-        g = std::gcd(g, std::abs(chan_freq[ci] - chan_freq[0]));
-    // g == 0 means a single covering channel: |D|^2 is then flat in s (one unit-modulus ramp),
-    // so one column suffices. std::gcd(0, sph) == sph gives exactly that.
-    const int s_stored = (nc > 0 && sph > 0) ? sph / std::gcd(g, sph) : sph;
-    // Decimate the fine axis: it is sampled every sample but its lobe is sph/(comb span)
-    // samples wide (157 here), so the stored width is ~157x finer than the peak it resolves.
-    const int s_step = std::max(1, fine_step);
-    const AcquisitionSurface dims{nd, Mp, sph, s_stored, s_step};
+    const AcquisitionSurface dims = surface_dims(chan_freq, sph, nd, Mp, fine_step);
+    const int s_step = dims.s_step;
     const int s_cols = dims.fine();
     if ((long)surf.size() != dims.size())
         surf.assign(dims.size(), 0.0);
@@ -556,6 +564,21 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
         }
     }
 
+    // Everything past this point is ARITHMETIC on the reduction, not a scan -- and it is where
+    // the two sign traps live (the fine half carries the opposite sign to the coarse half; the
+    // reported delay is the negative of the surface lag). It is split out so the GPU path, which
+    // produces the same reduction on the device, calls THIS rather than growing a second copy.
+    const double mean0 = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
+    return peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, best.peak,
+                               mean0, best_d, best_q, best_i, dop_peak);
+}
+
+AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
+                                      const std::vector<double>& doppler_grid, double sample_rate,
+                                      double chip_rate, long code_length, double peak, double mean,
+                                      int best_d, int best_q, int best_i,
+                                      const std::vector<double>& dop_peak) {
+    AcquisitionResult best{0.0, 0.0, 0, peak, 0.0};
     best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
     // Sub-grid Doppler refine: the correlation-vs-Doppler peak is smooth but sampled on a
     // coarse grid (doppler_step), so the cell max is only +-step/2 accurate. Fit a parabola to
@@ -565,7 +588,7 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     // Lifts the seed to ~+-step/20: a tighter Doppler for the tracker FLL to pull in from and a
     // sharper input to the broker's clock-bias solve. Skipped at the grid edges / non-concave.
     const int nd = (int)doppler_grid.size();
-    if (nd >= 3 && best_d > 0 && best_d < nd - 1) {
+    if (nd >= 3 && best_d > 0 && best_d < nd - 1 && (int)dop_peak.size() == nd) {
         const double sm = dop_peak[best_d - 1], s0 = dop_peak[best_d], sp = dop_peak[best_d + 1];
         const double denom = sm - 2.0 * s0 + sp;
         if (denom < 0.0) {
@@ -574,7 +597,6 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
             best.doppler_hz += delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
         }
     }
-    const double mean = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
     best.snr = (mean > 0.0) ? best.peak / mean : 0.0;
 
     // The correlation peaks at the negative of the replica's code-phase advance

@@ -212,6 +212,24 @@ private:
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
     gnss::AcquireWorkspace _acq_ws;
 
+    /// Search only this many UNHINTED PRNs per pass (0 = the old behaviour: none if
+    /// `require_hint`, all of them otherwise). An unhinted PRN costs a FULL blind grid -- ~30x a
+    /// hinted one -- so with `require_hint: false` and a sky full of below-horizon satellites the
+    /// pass cost is dominated by PRNs that will never be found. One rotating blind slot per pass
+    /// gives cold-start reacquisition at a bounded, predictable duty cycle, which is the whole
+    /// point of moving to the GPU: leave headroom for other constellations rather than spend it.
+    int _blind_prns_per_pass = 0;
+    int _blind_cursor = 0; ///< rotates through the unhinted set, advanced once per pass
+
+#ifdef GNSS_CUDA
+    /// Device-resident acquire (docs/gnss_gpu_search.md A2). Null unless `use_cuda_acquire` and
+    /// the geometry is one the engine can represent exactly; the CPU path stays the fallback and
+    /// stays authoritative -- see the A/B note at the call site.
+    std::unique_ptr<class GnssCudaAcquire> _cuda_acq;
+    bool _cuda_acq_wanted = false;
+    long _cuda_acq_fallbacks = 0; ///< times a pass fell back to the CPU (rate-limited WARN)
+#endif
+
     /// Fine code-phase refine (post-detection), in SAMPLES: scan +-_refine_span at _refine_step
     /// with an exact despread. See the note at the refine loop for why the step is DERIVED
     /// rather than 1 -- on a wide bank a 1-sample step is thousands of times finer than the

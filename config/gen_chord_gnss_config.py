@@ -408,7 +408,14 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # old 250 Hz step a half-bin miss is 125 Hz, which rotates the phase TWO FULL
         # CYCLES across 16 ms and lands the correlation in a sinc null. The Doppler grid
         # resolution and the coherent window length are ONE parameter, not two.
-        "doppler_step": 31.25,
+        # ...but on the GPU path it must ALSO be a whole number of the transform's own bin
+        # spacing Fs/(Mp*fft_len) = 62.5 Hz, because that is what makes a Doppler wipe an exact
+        # cyclic shift of one forward FFT instead of a fresh transform per trial.
+        # 31.25 is exactly HALF a bin, so it misses that by the maximum possible amount, and
+        # GnssCudaAcquire will decline the grid and fall back to the CPU (with a WARN saying so).
+        # 62.5 is bin-aligned, halves the grid, and costs nothing measurable: channelized_peak's
+        # parabolic vertex fit already recovers the Doppler to ~step/20.
+        "doppler_step": 62.5 if args.cuda_acquire else 31.25,
         # 30 s, matching the live airspy L5 chain -- NOT the 8 s default. The broker
         # refreshes hints every 10 s, so an 8 s TTL guarantees a window each cycle where
         # every hint is stale; with require_hint that means every PRN is skipped before
@@ -421,7 +428,14 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # Only search PRNs the broker has HINTED, and only near the hinted Doppler. The
         # broker knows every visible satellite's Doppler to ~Hz from BRDC, so a blind
         # grid over all 32 PRNs is work we can simply not do.
-        "require_hint": True,
+        # Hinted-only is a COST measure, not a correctness one: the broker knows every visible
+        # satellite's Doppler to ~Hz from BRDC, so a blind grid over all 32 PRNs was work we
+        # simply could not afford. On the GPU it costs ~8 ms per (PRN, alignment), so
+        # reacquisition comes back -- bounded to blind_prns_per_pass rotating slots rather than
+        # every below-horizon satellite at once.
+        "require_hint": True if not args.cuda_acquire else args.require_hint,
+        "blind_prns_per_pass": args.blind_prns_per_pass,
+        "use_cuda_acquire": bool(args.cuda_acquire),
         "acquire_windows": args.acquire_windows,
         "acquire_snr": args.acquire_snr,
         # Alignments scanned either side of the broker's ephemeris-predicted one (--nh-hint).
@@ -832,6 +846,24 @@ def main():
                          "hop, so with one snapshot per pass the last PRN searched carries an "
                          "epoch as old as the pass; seed error is Doppler error x that age at "
                          "0.0087 chips/Hz/s. Bounds the epoch at emit by (pass time)/(this).")
+    ap.add_argument("--cuda-acquire", action="store_true",
+                    help="run the acquisition surface on the GPU (docs/gnss_gpu_search.md). "
+                         "Blind dims measured 8.3 ms against 1.15 s of CPU, the surface never "
+                         "leaves the device, and the peak agrees with the CPU path to rel 6e-8. "
+                         "ALSO sets doppler_step to the bin-aligned 62.5 Hz -- the engine "
+                         "declines a half-bin grid and falls back to the CPU. Requires a CUDA "
+                         "build; falls back with a WARN otherwise.")
+    ap.add_argument("--require-hint", action="store_true", default=True,
+                    help="search only PRNs the broker has hinted (see the config comment). "
+                         "Only consulted with --cuda-acquire; without it, hinted-only is forced "
+                         "because a blind pass is minutes.")
+    ap.add_argument("--no-require-hint", dest="require_hint", action="store_false",
+                    help="also blind-search unhinted PRNs, bounded by --blind-prns-per-pass.")
+    ap.add_argument("--blind-prns-per-pass", type=int, default=0,
+                    help="how many UNHINTED PRNs may be blind-scanned per pass, rotating. An "
+                         "unhinted PRN costs a FULL Doppler grid, ~30x a hinted one, so with "
+                         "--no-require-hint and a sky of below-horizon sats the pass would be "
+                         "dominated by satellites that cannot be found. 0 = the old behaviour.")
     ap.add_argument("--acquire-windows", type=int, default=1,
                     help="windows stacked per acquisition attempt. MUST STAY 1 at CHORD until "
                          "the overlay bookkeeping lands (STATE 5r.1). A window is 3125 hops = 16 "

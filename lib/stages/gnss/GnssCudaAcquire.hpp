@@ -1,6 +1,8 @@
 #ifndef GNSS_CUDA_ACQUIRE_HPP
 #define GNSS_CUDA_ACQUIRE_HPP
 
+#include "gnssChannelizedAcquire.hpp" // for AcquisitionResult / AcquisitionSurface
+
 #include <complex>
 #include <vector>
 
@@ -74,6 +76,16 @@ public:
     /// Correlate + aggregate one window of the currently-loaded replica into the surface,
     /// for one secondary-code alignment. `sgn0`/`sgn1` are the hoisted per-hop sign pair, [Mp].
     void accumulate(const float* sgn0, const float* sgn1);
+
+    /// Peak-pick the accumulated surface exactly as the CPU path does, reducing on the DEVICE.
+    ///
+    /// Reuses gnss::peak_from_reduction for every bit of the cell -> (code phase, Doppler)
+    /// arithmetic, including the sub-grid parabolic Doppler refine; only the reduction itself is
+    /// GPU work. `dims` must describe this engine's surface, and `doppler_grid` be the grid
+    /// handed to @ref set_doppler_grid.
+    gnss::AcquisitionResult peak_result(const gnss::AcquisitionSurface& dims,
+                                        const std::vector<double>& doppler_grid, double sample_rate,
+                                        double chip_rate, long code_length) const;
 
     /// Peak / mean of the accumulated surface, computed on the device.
     struct Peak {
