@@ -225,6 +225,43 @@ one that is slow, until weeks later.
 * **A6 -- other signals.** Only after A2 is on sky, because a 100-length secondary code is a 5x
   larger NH multiplier and will find any remaining cost that scales with it.
 
+## 6b. FIRST LIVE RUN, 2026-08-05 17:44-17:52 -- works, and exposed something else
+
+Deployed on cf06 via `chord_gnss_agg6_cuda.yaml` (patched from `chord_gnss_agg6.yaml` by exactly
+two keys: `use_cuda_acquire: true`, `doppler_step` 31.25 -> 62.5). Rolled back after ~8 min.
+
+**The acquire itself: confirmed.** Over 200 live passes each:
+
+    CPU acquire  0.1375 s      GPU acquire  0.0030 s      46x
+    pass composition after: acquire 0.9%, refine 97.6%   <- A5 is now the whole cost
+
+Same 7 PRNs detected, comparable SNRs, ZERO `declined this Doppler grid` fallbacks, 907 MiB
+resident. Doppler differed between the runs by -0.07 to -0.28 Hz/s, all NEGATIVE -- correct sky
+motion (GPS Doppler falls monotonically through a pass), not a bias.
+
+**What it exposed: the fleet-coherent gate has ~2 records of margin.**
+`fleet_coherent` needs `--coh-min-records` (default **32**) COMMON record hops across >= 3
+instances. Measured on PRN 10:
+
+| config | common hops | instance window spread |
+|---|---|---|
+| CPU | **34** (vs 32 required) | 34 records |
+| GPU trial | 0-16 | 205-263 records |
+
+and sampling repeatedly on one config gives 0, 4, 12, 16, 34 -- it FLUCTUATES across the
+threshold, so the combine fires intermittently and `deep_snr` alternates between the fleet value
+(hundreds) and the single-instance value (~14) with nothing in the row saying which regime it is
+in. That is why a 1160 in the morning and a 14 in the afternoon can both be "normal".
+
+⚠️ **UNPROVEN**: the GPU config demonstrably had a 6x larger window spread, but the only
+mechanism identified is a 1.44x faster pass (per-PRN revisit 16.3 s -> 11.3 s), which is a weak
+lever for a 6x effect. Do NOT record "the GPU search broke the deep fold" as fact. What IS
+established: the gate is marginal on BOTH configs, and after rollback the published rows still
+showed no `fleet:N` even though a direct `fleet_coherent(min_rec=32)` call returned 17 PRNs.
+
+**The real question this raises**, and it is not a GPU question: why do ten combiners' 128-record
+windows sit up to 34 records (~36 s) apart at all? Fix that and the gate stops being marginal.
+
 ## 7. Traps specific to this port
 
 1. **Ramp sign.** The aggregate sums `e^{+i...}`; FFTW `FFTW_BACKWARD` and cuFFT `INVERSE` both
