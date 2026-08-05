@@ -31,6 +31,7 @@ add_library(
     cudaHFB1Accumulate.cu
     cudaMemsetInt.cu
     cudaGnssDespreadKernel.cu
+    cudaGnssAcquireKernel.cu
     cudaGnssChordDespread.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp

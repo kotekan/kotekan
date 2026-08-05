@@ -1,3 +1,9 @@
 e2e
+aggbench
+sumtrack_test
+# build_tool.sh writes <tool>.<hostname-short> with a plain <tool> symlink, because /home/kvand
+# is NFS-shared and two hosts building the same tool clobbered each other's binary.
+*.cf[0-9]*
+*.cx[0-9]*
 *.o
 *.o.d
