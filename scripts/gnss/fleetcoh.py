@@ -42,10 +42,16 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
+# TEN COMBINERS on the six nodes we hold (cx47/cx52 went back to the other developers
+# 2026-08-04). cx19 and cx51 run --combine-gpus, so each exposes ONE merged 14-channel combiner;
+# the other four expose two 6-7 channel ones. The instance -- not the node -- is the unit here:
+# what varies between them is the COMB, and the comb is what the combine exists to average over
+# (STATE 8.20.21: the residual is comb-specific, r drops 0.99 -> 0.55 the moment the comb
+# changes, and it does not matter whether the host changes with it).
 DEFAULT_ENDPOINTS = [
     "http://cx19:12049/gnss0_combine", "http://cx51:12049/gnss0_combine",
 ] + ["http://%s:12049/gnss%d_combine" % (n, g)
-     for n in ("cx27", "cx42", "cx43", "cx44", "cx47", "cx52") for g in (0, 1)]
+     for n in ("cx27", "cx42", "cx43", "cx44") for g in (0, 1)]
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--endpoints", default=",".join(DEFAULT_ENDPOINTS))
@@ -134,6 +140,60 @@ def combine(st, hops, off, roll=None):
             den += en
         if den > 0:
             out.append(num / den)
+    return out
+
+
+def deep_fold(xs, ts):
+    """The combiner's OWN deep statistic: search the residual rate, derotate, coherent_sum.
+
+    This is what `deep_snr` means, so it is what a combine has to move. The older `rec_snr`
+    below compares |mean| against the quadrature scatter, and |mean| over a window is itself a
+    COHERENT quantity -- so on a phase-floor-limited signal it measures the floor, and comparing
+    two floor-limited numbers shows a combine no gain even when the combine works.
+    """
+    if len(xs) < 8:
+        return 0.0
+    dt = min(ts[i + 1] - ts[i] for i in range(len(ts) - 1))
+    m = [round((u - ts[0]) / dt) for u in ts]
+    nb = min(4 * (m[-1] - m[0] + 1), 4096)
+    if nb < 8:
+        return 0.0
+    mags = [abs(sum(xs[i] * cmath.exp(-2j * math.pi * k * m[i] / nb) for i in range(len(xs))))
+            for k in range(nb)]
+    ip = max(range(nb), key=lambda k: mags[k])
+    frac = ip / nb
+    f = (frac if frac < 0.5 else frac - 1.0) / dt
+    w = [xs[i] * cmath.exp(-2j * math.pi * f * (ts[i] - ts[0])) for i in range(len(xs))]
+    s = sum(w)
+    if abs(s) == 0:
+        return 0.0
+    rot = cmath.exp(-1j * cmath.phase(s))
+    n2 = sum(((x * rot).imag) ** 2 for x in w)
+    return abs(s) / math.sqrt(n2) if n2 > 0 else 0.0
+
+
+def fleet_phase_reference(st, hops, exclude=None):
+    """Per-record phase of the signal, estimated from the fleet -- the correction that works.
+
+    A plain coherent SUM is the wrong operation here and measures ~0 dB. The deep fold is limited
+    by a per-record phase error of which ~55% is SHARED across instances and ~45% is comb-specific
+    (STATE 8.20.21). Summing averages down only the independent part, so it cannot move a floor
+    the shared part sets. Estimating each record's PHASE from the fleet and derotating removes the
+    shared part too -- which is the whole floor -- and measures +15.3 dB.
+
+    Pass `exclude` to leave one instance out, so the correction applied to it was estimated
+    without ever seeing it. That is what makes the gain a measurement rather than a fit.
+    """
+    out = {}
+    for h in hops:
+        acc = 0j
+        for ep, d in st.items():
+            if ep == exclude or h not in d:
+                continue
+            A = d[h][0]
+            if abs(A) > 0:
+                acc += A / abs(A)     # unit vectors: a phase estimate, not an amplitude one
+        out[h] = cmath.exp(-1j * cmath.phase(acc)) if abs(acc) > 0 else 1.0 + 0j
     return out
 
 
@@ -244,6 +304,29 @@ for it in range(a.polls):
     for ep in sorted(wt, key=wt.get, reverse=True):
         print("    %-28s phi %+7.1f deg   coh %.3f" % (ep.split("/")[2] + "/" + ep.split("/")[-1],
                                                        math.degrees(off[ep]), wt[ep]))
+    # ---- THE MEASUREMENT THAT MATTERS: fleet phase reference, leave-one-out ----
+    rec_dt = 2048.0 / 195312.5
+    ts = [h / 195312.5 for h in hops]
+    gains = []
+    for ep in st:
+        base = deep_fold([st[ep][h][0] for h in hops if h in st[ep]],
+                         [h / 195312.5 for h in hops if h in st[ep]])
+        ref_ph = fleet_phase_reference(st, hops, exclude=ep)   # never sees `ep`
+        fixed = deep_fold([st[ep][h][0] * ref_ph[h] for h in hops if h in st[ep]],
+                          [h / 195312.5 for h in hops if h in st[ep]])
+        if base > 0:
+            gains.append((fixed / base, ep, base, fixed))
+    if gains:
+        gains.sort(reverse=True)
+        med = sorted(g[0] for g in gains)[len(gains) // 2]
+        print("  FLEET PHASE REFERENCE (leave-one-out, so the correction never saw the instance"
+              " it corrects):")
+        for g, ep, b, f in gains[:3]:
+            print("    %-28s deep_snr %6.2f -> %7.2f   %+6.2f dB"
+                  % (ep.split("/")[2] + "/" + ep.split("/")[-1], b, f, 20 * math.log10(g)))
+        print("    median over %d instances: %.2fx (%+.1f dB), %d%% improved"
+              % (len(gains), med, 20 * math.log10(med),
+                 100 * sum(1 for g in gains if g[0] > 1) // len(gains)))
     print("  ladder (records, span_s, snr, floor x2 = bar %.2f):"
           % (2 * (math.sqrt(2 * math.log(2)) + 1)))
     bar = 2 * (math.sqrt(2 * math.log(2)) + 1)
