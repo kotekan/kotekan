@@ -240,8 +240,30 @@ GAL_CHIP=$(sig_chip "$GAL_SIGNAL");    GAL_CHIP=${GAL_CHIP:-1.023e6}
 GAL_CODELEN=$(sig_codelen "$GAL_SIGNAL"); GAL_CODELEN=${GAL_CODELEN:-4092}
 BDS_CHIP=$(sig_chip "$BDS_SIGNAL");    BDS_CHIP=${BDS_CHIP:-1.023e6}
 BDS_CODELEN=$(sig_codelen "$BDS_SIGNAL"); BDS_CODELEN=${BDS_CODELEN:-10230}
-case "$GAL_SIGNAL" in GAL_E5A*) GAL_OBS=obs_gal_e5a ;; GAL_E5B*) GAL_OBS=obs_gal_e5b ;; *) GAL_OBS=obs_gal_e1 ;; esac
-case "$BDS_SIGNAL" in BDS_B2A*) BDS_OBS=obs_bds_b2a ;; *) BDS_OBS=obs_bds_b1c ;; esac
+# Obs-log filename per signal. EVERY signal wants an explicit row; the fallback DERIVES a name
+# from the signal so a new code can never silently land in ANOTHER signal's file. Until
+# 2026-08-05 the BDS catch-all named every non-B2A signal obs_bds_b1c, so when the l2c band was
+# retuned to 1207.14 its BDS_B2I chain wrote 17 h of B2I into a file labelled B1C -- and B1C is a
+# real signal on another front end 368 MHz away, so anything keyed on the filename (a beam map,
+# dtec, cmc) would coadd the two. Same "silently wrong data is worse than no data" trap the
+# primary chain's case block below was already fixed for; this one was missed.
+_obs_of() { echo "obs_$(echo "$1" | tr '[:upper:]' '[:lower:]')"; }
+case "$GAL_SIGNAL" in
+    GAL_E1*)  GAL_OBS=obs_gal_e1 ;;
+    GAL_E5A*) GAL_OBS=obs_gal_e5a ;;
+    GAL_E5B*) GAL_OBS=obs_gal_e5b ;;
+    GAL_E6*)  GAL_OBS=obs_gal_e6 ;;
+    *)        GAL_OBS=$(_obs_of "$GAL_SIGNAL") ;;
+esac
+case "$BDS_SIGNAL" in
+    BDS_B1C*) BDS_OBS=obs_bds_b1c ;;
+    BDS_B1I*) BDS_OBS=obs_bds_b1i ;;
+    BDS_B2A*) BDS_OBS=obs_bds_b2a ;;
+    BDS_B2B*) BDS_OBS=obs_bds_b2b ;;
+    BDS_B2I*) BDS_OBS=obs_bds_b2i ;;
+    BDS_B3I*) BDS_OBS=obs_bds_b3i ;;
+    *)        BDS_OBS=$(_obs_of "$BDS_SIGNAL") ;;
+esac
 # Escape-referee threshold, CHIP-SCALED (2026-07-19 census): the broker default 0.4 chips is
 # calibrated in L1-scale chips. Detection-timing noise is constant in TIME, so in CHIPS it
 # scales with chip rate -- at 10.23 Mcps (L5/E5a/B2a) the same fit noise reads 10x more chips
@@ -729,17 +751,26 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
   # "GPS_L1CA, 1023 chips, 1.023 Mcps" -- right carrier, wrong everything else, and the file was
   # even named obs_gps_l1.jsonl. Silently wrong data is worse than no data.
   # Primary obs filename by signal (a retuned band names its file by the real signal, not L1).
+  # Explicit row per signal; the fallback derives a UNIQUE name (see _obs_of above) rather than
+  # collapsing a constellation to one file. The old BDS_*/GAL_*/GLO_* catch-alls meant every
+  # GLONASS primary -- L3OC-p, L2OF, L2OC-p -- logged to "obs_glo.jsonl", so the filename said
+  # nothing about which of three signals (three different carriers) it held.
   case "${SIGNAL:-GPS_L1CA}" in
+    GPS_L1CA*) _obs=obs_gps_l1 ;;
     GPS_L2C*) _obs=obs_gps_l2c ;;
     GPS_L5*)  _obs=obs_gps_l5  ;;
     GPS_L1C_*) _obs=obs_gps_l1c ;;
+    BDS_B1C*) _obs=obs_bds_b1c ;;
+    BDS_B1I*) _obs=obs_bds_b1i ;;
+    BDS_B2A*) _obs=obs_bds_b2a ;;
     BDS_B2B*) _obs=obs_bds_b2b ;;
-    BDS_*)    _obs=obs_bds ;;
+    BDS_B2I*) _obs=obs_bds_b2i ;;
+    BDS_B3I*) _obs=obs_bds_b3i ;;
+    GAL_E1*)  _obs=obs_gal_e1 ;;
+    GAL_E5A*) _obs=obs_gal_e5a ;;
     GAL_E5B*) _obs=obs_gal_e5b ;;
     GAL_E6*)  _obs=obs_gal_e6 ;;
-    GAL_*)    _obs=obs_gal ;;
-    GLO_*)    _obs=obs_glo ;;
-    *)        _obs=obs_gps_l1  ;;
+    *)        _obs=$(_obs_of "${SIGNAL:-GPS_L1CA}") ;;
   esac
   # gal_/bds_ band params are DERIVED (GAL_SIGNAL/BDS_SIGNAL etc., above) so the same loop covers
   # the L1 tune (E1C/B1C) and the L5 tune (E5a-Q/B2a-P); the grep skips whichever chain is absent.
