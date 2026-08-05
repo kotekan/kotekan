@@ -3199,3 +3199,49 @@ at 25 Hz), 4+4b quantization (~2%), Doppler curvature, code-period phase and NH2
 fail a split-half reproducibility test). It behaves like a mismatch between our replica model and
 the true satellite signal, which a self-consistent synthetic is structurally blind to (8.20.11).
 **But the fix does not wait on the diagnosis:** the correction above is empirical and validated.
+
+### 8.20.13 PHYSICAL ORIGIN: code-phase error rotates the correlation, ~10 rad per chip
+
+Direct inspection first. The node-averaged residual (thermal down by sqrt(5)) is smooth and
+roughly Gaussian at 0.62-0.78 rad rms -- **no discreteness, no clustering near +-pi**, so it is
+not a sign or bit error; amplitude is not systematically worse on bad-phase records; the spectrum
+is mildly RED (34-42% of power in the lowest quarter of the band vs 25% for white) with no line.
+`s4` (debiased) is exactly 0.000 on every satellite, so there is no amplitude scintillation.
+
+The cause is **code-phase error**, which this comb converts into carrier phase. Measured in the
+harness (noiseless, perfect seed except for an injected `--seed-cp-rate`):
+
+```
+cp drift per record   sigma_phi
+   0.000 chips          0.0001
+   0.020 chips          0.216       ~10.8 rad/chip
+   0.102 chips          0.999       ~ 9.8 rad/chip
+   0.205 chips          1.474       ~ 7.2 rad/chip   (saturating)
+```
+
+**~10 radians of correlation phase per chip of code-phase error.** With a stride-16 comb holding
+7 of 79 channels the correlation function is NOT the real triangle a contiguous band gives -- it
+is complex, so a code offset rotates the correlation instead of merely shrinking it. Code and
+carrier are COUPLED here in a way they are not on the prototype's contiguous subband.
+
+This accounts for every property measured in 8.20.11-12 without further assumptions:
+* **per satellite** -- each PRN carries its own cp error (different-satellite r = -0.062)
+* **shared across nodes** -- the broker pushes the SAME cp seed to all six, so the error is
+  common by construction (same-satellite cross-node r = +0.862)
+* **phase-only** -- it is a rotation, not an amplitude loss, until the offset gets large
+* **invisible to e2e** -- with a perfect seed there is no cp error, hence 0.0001 rad
+* **not code-period phase or NH index** -- it is the cp ERROR, not the cp value, which is why
+  both failed the split-half test
+* **mildly red** -- a drifting error, not a white one
+
+Implied live cp jitter from sigma_phi 0.6-0.8 rad is **~0.06-0.08 chips per record**, which is
+the number to go and check next: the fleet DLL discriminators run ~0.5 chips, and STATIC offset
+is harmless (a constant rotation) -- it is the per-record VARIATION that costs. Two candidates,
+both measurable from data already published: an error in the seeded `code_phase_rate` (see the
+fit-gap/revisit history -- the per-PRN revisit is now ~10 s, so the fit should finally be
+running), and the code Doppler implied by a wrong seed Doppler
+(chip_rate * df/fc = 0.0023 chips/record at df = 25 Hz, ~30x too small on its own).
+
+**This also reframes 8.20.12.** The +9.7 dB leave-one-out gain is not mysterious: the fleet is
+estimating and removing a shared CODE-phase error through its carrier signature. Fixing the code
+loop would remove it at the source -- and would be worth the same ~10 dB.
