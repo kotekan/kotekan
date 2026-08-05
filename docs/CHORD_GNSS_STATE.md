@@ -3391,3 +3391,49 @@ commanded phase increment and per-record code phase alongside arg A) and the raw
 a single node, then test whether the per-record residual is common across ANTENNAS. Common ->
 the signal or a shared model term; independent per antenna -> the element sum is the culprit and
 the cross-node correlation has been telling us about shared elements, not shared sky, all along.
+
+### 8.20.18 The prompts are ONE ANTENNA, and the floor is common to all 32
+
+The per-antenna dump landed (75 fields: 11 header + 32 x 2). Three results, the middle one
+decisive.
+
+**1. Everything measured against this floor was a single-antenna measurement.** The record header
+carries the REFERENCE ELEMENT, not a sum (gnssRecord.hpp says so explicitly: the broker's loops
+need a phase-coherent single-antenna view). So `deep_snr`, `sigma_phi`, the quadrature split and
+the +9.7 dB cross-node result are all one antenna of 32. That does not invalidate them, but it
+changes what they mean.
+
+**2. The residual is COMMON ACROSS ANTENNAS.** Per-record residual phase, reference antenna vs
+each other antenna, on PRN 9 (deep_snr 9.5, 25 live antennas):
+
+```
+antenna  0  2  3  6  8  9 10 11 ...    corr with reference  +1.00 +0.997 +0.995 +0.990 ... mean +0.994
+PRN 8 (weak, deep_snr 2.9):            mean +0.159   <- thermal-dominated, as expected
+```
+
+**3. And therefore a coherent antenna sum buys almost nothing:**
+
+```
+PRN 9, 25 live antennas:  reference alone deep_snr 9.46  ->  coherent sum 9.62   (1.02x, +0.2 dB)
+                          sqrt(25) = 5.00x (+14 dB) if it were thermal-limited
+PRN 8, 32 live antennas:  2.92 -> 3.30 (1.13x)           sqrt(32) = 5.66x
+```
+
+**This is the strongest statement yet about the floor: it is not thermal, and it is not
+per-antenna.** Adding 25 antennas coherently recovers 0.2 dB because every one of them carries
+the SAME phase error. So the defect costs twice -- it caps deep_snr at ~13 AND makes ~14 dB of
+array gain unusable. Finding it is worth far more than the 8.20.12 leave-one-out workaround.
+
+Combined with 8.20.17 (channel-independent: instances sharing zero channels correlate at +0.862),
+the error is common across **antennas AND frequencies**, and per-satellite. That leaves the
+satellite's own transmitted signal, or a per-satellite term in our commanded model that is
+identical across every antenna and channel.
+
+**One lead followed and dropped.** `fcar_report` steps up to 0.87 Hz within a window, and the
+detrended commanded phase correlates with the measured residual at +0.541 on PRN 9 (~5 sigma),
+with an implied coefficient of ~1.0 -- which looked exactly like a commanded-model error feeding
+straight through. It is not: removing the commanded phase before folding gives **0.81x** (worse)
+from `fcar_report` and **1.00x** from the exported `REC_CPHASE`. The correlation is shared
+Doppler CURVATURE -- the true and commanded carriers follow the same orbit, so detrending both
+leaves the same second-order term in each. A correlation between two quantities that share a
+known common driver is not evidence of coupling between them.
