@@ -3592,3 +3592,42 @@ Caveat on the numbers: today's cross-comb r (~0.55) is lower than yesterday's cr
 within-comb control (+0.994) is from yesterday's healthy data and could not be repeated today --
 the per-antenna dump is off (8.20.19). Re-measure both together, on one node with
 `phase_dump_stride`, for a clean single-epoch decomposition into thermal / comb-specific / shared.
+
+### 8.20.22 The comb is RULED OUT -- the union band has the same floor
+
+KV's inference, and it holds. Summing the per-record correlations across instances is not an
+approximation of a wider comb, it IS one: each instance computes sum_c d_c conj(r_c) over its own
+channels, so an ENERGY-WEIGHTED sum over instances (sum of raw G, divided by sum of E) is exactly
+the correlation against the union of all their channels -- 79 channels, near-contiguous, the whole
+band. Measured:
+
+```
+prn   best single (7ch sparse)   UNION (79ch)    gain     sigma_phi single -> union
+ 11         12.57                   12.20      -0.26 dB      0.864 -> 0.890
+ 21         15.26                   15.17      -0.05 dB      0.712 -> 0.716
+ 25         14.44                   14.74      +0.18 dB      0.752 -> 0.737
+ 28         13.96                   13.77      -0.12 dB      0.778 -> 0.789
+```
+
+**A near-contiguous 79-channel correlation has the SAME phase floor as a sparse 7-channel one.**
+So the comb -- sparseness, density, span, geometry, all of it -- is not the origin. 8.20.21's
+"comb-specific" reading was over-drawn: the correlation DOES fall from +0.99 to +0.55 when the
+comb changes, but if that difference were an independent comb term then averaging ten combs would
+have recovered it, and it does not. Those two results are in tension and the tension is not
+resolved -- flagged here rather than smoothed over, because it is a lead: something distinguishes
+instances (dropping the correlation to 0.55) that nonetheless does not average down over ten of
+them.
+
+**And the fleet phase reference is a WORKAROUND, not an explanation.** It restores thermal-limited
+performance (+17.3 dB) by measuring each record's phase with 10x the SNR and dividing it out. That
+is worth having -- but the prototype needs no such step, and until the origin is known this is
+papering over. Recorded as such.
+
+**What the eliminations now leave.** Excluded by measurement: thermal, a shared clock, the
+despread and seed arithmetic, seed Doppler error, seed Doppler-RATE error, 4+4b quantization,
+Doppler curvature, code-period phase, NH20 index and sequence, code-phase drift on-peak,
+rate-grid quantization, per-antenna effects, window span/duty cycle, and now the comb in every
+form. Of KV's two structural differences from the prototype, one is gone; the remaining one is
+the **sample cadence -- 1 us there against 5.12 us here** -- which also sets the record geometry
+(1 code period per record there, 10.4857 here). That is where to look next, and the
+[[airspy-record-period-coincidence]] note says the same thing from the other direction.
