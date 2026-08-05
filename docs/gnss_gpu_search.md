@@ -502,3 +502,48 @@ Note also that SNR is NOT the metric here: max_chips 32 scores a HIGHER SNR than
    despread, the search refine and the e2e harness.
 3. The ~2.5x of tracker saturation still unexplained by the seed latch (see 9.4), which needs a
    PRN sweep rather than the two-point fit it currently rests on.
+
+### 9.7 ncu: the waveform kernel is DRAM-bound at 96%, and L2 hit rate is 3%
+
+Profiled on cx19 (A40, sm_86), `--section SpeedOfLight,MemoryWorkloadAnalysis,WarpStateStats`,
+report at `/tmp/gnss_ncu.ncu-rep`. Grid (11, 7) x 256 = 11 jobs x 7 channels.
+
+    DRAM throughput        96.26%   (669 GB/s of an A40's ~696 peak)
+    Compute (SM)            5.58%
+    L1/TEX hit rate        78.84%
+    L2 hit rate             3.14%   <-- THE FINDING
+    warp stall             30.1 cycles/warp on an L1TEX scoreboard dependency
+    duration                2.40 ms
+
+**Memory-bound, not compute-bound.** That settles what the n_chips linearity could not: the
+linearity was consistent with either, since both scale with the loop count.
+
+**Why L2 misses.** The Phi tables are 1.05 MB per channel (65537 entries x 8 B x 2 images) and
+the grid runs all 7 channels concurrently, so the live working set is **7.3 MB against the A40's
+6 MB L2**. It does not fit, the access is scattered, nothing is reused, and every load reaches
+DRAM.
+
+### 9.8 PICK UP HERE -- serialize the waveform launch over channels
+
+Launch the waveform kernel once per channel (or per pair) instead of once for all seven. Each
+launch's working set falls to 1.05 MB, comfortably L2-resident, and the DRAM traffic should
+largely become L2 hits at ~3x the bandwidth.
+
+Why this over the layout rewrite: it is a GRID DECOMPOSITION change, not a data layout change.
+`hoprate_filter` is untouched, so the CPU despread, the search refine and the e2e harness are
+unaffected, and the arithmetic is bit-identical. Cost is 7 launches instead of 1 -- ~35 us of
+overhead against a 2.4 ms kernel.
+
+⚠️ **CHECK BEFORE BUILDING:**
+* Parallelism. 11 blocks per launch against 84 SMs would badly underutilise the GPU and could eat
+  the whole win. Pairs (4 launches, 22 blocks) or a 2D compromise may be better -- sweep it.
+* `L2 Persisting Size` reads 1.18 MB in the report, which is oddly small against the 7.3 MB
+  working-set argument. Understand that before trusting the diagnosis.
+* Measure with `log_kernel_split` (synthesis ms) before and after, at a matched seed count.
+
+**RETRACTED, do not attempt:** transposing the Phi tables to `[t mod ks][t / ks]`. It needs
+consecutive chips to share a row index, but dt = ks + (0 or 1) with kf ~ 0.8, so the row changes
+~80% of steps; and `base` varies per hop, so no FIXED permutation linearises more than one hop's
+walk. The ~5x quoted earlier assumed slow drift; it drifts fast. And the ncu profile shows the
+problem is CAPACITY (3% L2), not coalescing -- contiguity would not have helped while the working
+set still did not fit.
