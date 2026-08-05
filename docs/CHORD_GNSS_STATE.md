@@ -3437,3 +3437,55 @@ from `fcar_report` and **1.00x** from the exported `REC_CPHASE`. The correlation
 Doppler CURVATURE -- the true and commanded carriers follow the same orbit, so detrending both
 leaves the same second-order term in each. A correlation between two quantities that share a
 known common driver is not evidence of coupling between them.
+
+### 8.20.19 A real quadratic term (1.23x), and three seeding defects found alongside it
+
+**The residual has a genuine smooth component.** Removing a fitted quadratic from the per-record
+residual phase of PRN 9 (deep_snr 9.46):
+
+```
+residual rms after removing a polynomial of degree 1 / 2 / 3 / 5:
+   0.918   0.787   0.738   0.708 rad
+deep_snr with the quadratic removed: 9.46 -> 11.59  (1.23x)
+```
+
+**Null-checked, and the null matters here.** Fitting 3 parameters to 100 records inflates a PURE
+NOISE fold by 1.22x -- almost exactly the gain seen -- so this needed the control. At PRN 9's
+signal level (rho ~ 1) the same procedure inflates noise by **1.00x**, so the 1.23x is genuine
+recovery, not the fit eating noise. (300 trials per point.)
+
+Most of the residual is NOT polynomial, though: 0.787 of 0.918 rad survives a quadratic and 0.708
+survives degree 5. So this is a contributor, not the floor.
+
+**What it is NOT.** The obvious explanation is an uncompensated carrier Doppler rate, and I first
+concluded CHORD had no carrier feed-forward at all (`c.f_nco = sd.ctrim_hz`, against the airspy
+path's `f_track + ctrim + ff_hz`). Wrong: `propagate_seed` extrapolates
+`out.doppler_hz = sd.doppler_hz + sd.dop_rate*dt` and CHORD uses that per record, so the
+feed-forward is there. Measuring the seeded rate against the Doppler actually observed over 140 s:
+
+```
+prn    measured dop_rate   seeded    ratio
+  4       -0.191          -0.219      0.87
+  8       -0.424          -0.195      2.18     <- seeded 2x too small
+  9       -0.384          -0.265      1.45
+ 18       -0.420          -0.429      0.98
+ 21       -0.495          -0.609      0.81
+ 27       -0.545          -0.500      1.09
+ 30       -0.155          +0.205     -0.76     <- WRONG SIGN
+  5       -0.446           None       --       <- no rate seeded at all
+  7       -0.224           None       --
+ 16       -0.147           None       --
+```
+
+Those errors are 0.1-0.45 Hz/s, which is only **0.03-0.12 rad** of detrended curvature -- real,
+worth fixing, but 15x too small to be the 1.83 Hz/s the quadratic fit implies. So the quadratic
+component is NOT the Doppler-rate feed-forward, and its origin is still open.
+
+**Three seeding defects worth fixing on their own** (broker-side, no node restart):
+1. `doppler_rate_hz_s` is **None** for several tracked PRNs -- they get zero carrier and zero
+   quadratic-code feed-forward.
+2. It is 2.18x too small on PRN 8.
+3. It has the **wrong sign** on PRN 30 (+0.205 seeded against -0.155 measured).
+The rate is fitted from the MEASURED Doppler, which carries ~6 Hz of per-pass search scatter
+(8.20.5), and it is "the LAST word" over BRDC in the seed logic -- a noisy estimator preferred
+over a model one, which is the same trade that 8.20.5 got wrong for the Doppler itself.
