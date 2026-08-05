@@ -3681,3 +3681,42 @@ says the floor is a real correlated phase wander rather than an artifact of our 
 does NOT identify the physical source of a ~0.7 rad, >42 ms-correlated, per-satellite phase wander
 common to every antenna and every comb. That is the remaining question, and the fleet phase
 reference (8.20.12, +17.3 dB) is a workaround for it, not an answer.
+
+### 8.20.24 CORRECTION: deep_snr is chopping-dependent, and the real cost is ~3 dB not 17
+
+KV: "we're sampling the same band for the same duration, the same information content -- how can
+CHORD have intrinsically higher phase noise?" It cannot, and chasing that down corrects both
+8.20.12 and 8.20.23.
+
+**The record is a processing choice, not physics.** `deep_snr = |sum x| / sqrt(sum Im^2)`:
+
+* thermal-limited -- `|sum x|` and `sqrt(sum Im^2)` scale together, so the statistic is INVARIANT
+  to how finely the window is chopped. Correct behaviour.
+* phase-limited -- `Im ~ A*phi`, so `sum Im^2 = A^2 N sigma^2` and `|sum x| = N A D`, giving
+  `deep_snr = sqrt(N) D / sigma`. It DEPENDS ON N, i.e. on the chopping.
+
+So in the phase-limited regime deep_snr is not a sensitivity measure. The 8.20.23 story --
+"airspy's ceiling is sqrt(1000)/0.7 = 45 against our sqrt(100)/0.7 = 14" -- is arithmetically
+right but describes the STATISTIC, not the instrument. Both see the same wander and pay the same
+physical price. Nothing here is intrinsically worse; KV was right.
+
+**The physical quantity is the coherence fraction** `|sum x| / sum|x|` = `exp(-sigma^2/2)`, which
+is what sets detection sensitivity. Measured, with the fleet phase reference applied leave-one-out:
+
+```
+prn   coherence fraction before   after    real gain    sigma_phi before -> after
+ 21          0.6662              0.9819    +3.37 dB          0.901 -> 0.191
+ 25          0.6725              0.9444    +2.95 dB          0.891 -> 0.338
+ 26          0.6695              0.9803    +3.31 dB          0.896 -> 0.199
+```
+
+**So the wander costs ~3 dB of real sensitivity, and the fleet correction recovers ~3 dB.** The
++17.3 dB of 8.20.12/8.20.21 was overwhelmingly the statistic responding to its own chopping
+dependence. The correction is still worth doing -- 3 dB is 3 dB, and the corrected coherence
+fraction of 0.94-0.98 is close to ideal -- but it is a 3 dB fix, not a 17 dB one, and any
+sensitivity budget built on the larger number is wrong.
+
+**Lesson, and it is the same one as the noise-ceiling and the max-over-bins episodes:** before
+quoting a gain, check that the statistic measuring it is invariant to the choices you are free to
+make. deep_snr is not, in the regime we operate in. Quote the coherence fraction, or the amplitude,
+whenever the fold is phase-limited rather than thermal-limited.
