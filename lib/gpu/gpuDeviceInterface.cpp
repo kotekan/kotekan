@@ -38,16 +38,14 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
         gpu_memory[name].metadata_pointers.push_back(nullptr);
     }
     // The size must match what has already been allocated.
-    if (len != gpu_memory[name].len) {
-        ERROR("GPU[{:d}] memory: {:s}, requested len: {:d}, have len: {:d}", gpu_id, name, len,
-              gpu_memory[name].len);
-    }
-    assert(len == gpu_memory[name].len);
-    if (gpu_memory[name].gpu_pointers.size() != 1) {
-        ERROR("GPU[{:d}] memory: {:s}, implicitly requested 1 frame, have {:d}", gpu_id, name,
-              gpu_memory[name].gpu_pointers.size());
-    }
-    assert(gpu_memory[name].gpu_pointers.size() == 1);
+    if (len != gpu_memory[name].len)
+        FATAL_ERROR("GPU[{:d}] memory: {:s}, requested len: {:d}, have len: {:d}", gpu_id, name,
+                    len, gpu_memory[name].len);
+    // Another user allocated this name as an array; returning frame 0 would
+    // silently alias whatever its instance 0 reads.
+    if (gpu_memory[name].gpu_pointers.size() != 1)
+        FATAL_ERROR("GPU[{:d}] memory: {:s}, implicitly requested 1 frame, have {:d}", gpu_id, name,
+                    gpu_memory[name].gpu_pointers.size());
 
     // Return the requested memory.
     return gpu_memory[name].gpu_pointers[0];
@@ -73,14 +71,16 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
         }
     }
     // The size must match what has already been allocated.
-    if (len != gpu_memory[name].len) {
-        ERROR("get_gpu_memory_array failed: requested name \"{:s}\" size {:d} index {:d}, but "
-              "existing memory is size {:d}",
-              name, len, index, gpu_memory[name].len);
-    }
-    assert(len == gpu_memory[name].len);
-    // Make sure we aren't asking for an index past the end of the array.
-    assert(index < gpu_memory[name].gpu_pointers.size());
+    if (len != gpu_memory[name].len)
+        FATAL_ERROR("get_gpu_memory_array failed: requested name \"{:s}\" size {:d} index {:d}, "
+                    "but existing memory is size {:d}",
+                    name, len, index, gpu_memory[name].len);
+    // Make sure we aren't asking for an index past the end of the array. This
+    // also catches another user having allocated the name as a single frame.
+    if (index >= gpu_memory[name].gpu_pointers.size())
+        FATAL_ERROR("get_gpu_memory_array failed: requested name \"{:s}\" index {:d}, but only "
+                    "{:d} frame(s) are allocated",
+                    name, index, gpu_memory[name].gpu_pointers.size());
     // Return the requested memory.
     return gpu_memory[name].gpu_pointers[index];
 }
