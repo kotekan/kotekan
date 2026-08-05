@@ -345,6 +345,12 @@ private:
     /// half-cycle slips vs continuous wander, and the +-0.25-chip code-offset signature in E-L).
     /// Empty list (the default) = disabled, zero cost.
     std::vector<bool> _phase_dump_prn; ///< indexed by PRN number; true = dump this PRN
+    /// Write one line every N records per PRN. The per-element dump is 75 fields, and
+    /// unthrottled it cost 3.4 MB/s per file and pushed the combiner's emit time from
+    /// 7.5 to 18.8 ms -- enough to make the voltage tap drop frames and destroy the very
+    /// coherence being measured (2026-08-05).
+    int _phase_dump_stride = 16;
+    long long _phase_dump_n = 0;
     FILE* _phase_dump = nullptr;       ///< open dump file (nullptr = disabled)
 
     // Latest combined record snapshot for REST status (full-band |A| per PRN).

@@ -202,9 +202,7 @@ gnss0_combine:
   n_prn: 32
   out_buf: gnss0_cmb_buf
   phase_dump_path: /tmp/gnss_phase_dump_cx27_0.txt
-  phase_dump_prns: &id003
-  - 9
-  - 8
+  phase_dump_prns: &id003 []
   record_export: 128
 gnss0_epl_buf:
   frame_size: 6422704

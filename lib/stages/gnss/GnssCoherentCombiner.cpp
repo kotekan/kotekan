@@ -165,6 +165,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // relaunch extends the record rather than destroying the episode it was launched to catch.
     const auto dump_prns =
         config.get_default<std::vector<int>>(unique_name, "phase_dump_prns", {});
+    _phase_dump_stride =
+        std::max(1, config.get_default<int>(unique_name, "phase_dump_stride", 16));
     if (!dump_prns.empty()) {
         const std::string dump_path = config.get_default<std::string>(
             unique_name, "phase_dump_path", "/tmp/gnss_phase_dump.txt");
@@ -711,8 +713,16 @@ void GnssCoherentCombiner::main_thread() {
             // Per-record phase dump (debug): raw despread A + E/L powers, one line per record.
             // Enough to reconstruct the intra-window phase trajectory offline (arg A, plus the
             // commanded increment for ADR-style continuity) and the E-L code-offset signature.
+            // STRIDE, because this ran unthrottled once and throttled the PIPELINE. With the
+            // per-element block it is 75 fields per record per PRN: 3.4 MB/s per file, a 2.5 GB
+            // file in under an hour, and the combiner's mean emit time went 7.5 -> 18.8 ms,
+            // which backed up into GnssChordVoltageTap dropping 16.6 frames/s. The deep window
+            // then spanned 10.8 s of wall clock instead of 1.05 s and every fold failed its
+            // rate gate. A diagnostic that changes what it is measuring is worse than no
+            // diagnostic. Default stride keeps a full 16-record GPU frame out of every burst.
             if (_phase_dump && energy > 0.0 && (int)ref[0] >= 0
-                && (int)ref[0] < (int)_phase_dump_prn.size() && _phase_dump_prn[(int)ref[0]]) {
+                && (int)ref[0] < (int)_phase_dump_prn.size() && _phase_dump_prn[(int)ref[0]]
+                && (_phase_dump_n++ % _phase_dump_stride) == 0) {
                 std::fprintf(_phase_dump,
                              "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f %.6e %.6e", utc_p,
                              (int)ref[0], ar, ai, e2, l2, (double)ref[gnss::REC_CPHASE],
