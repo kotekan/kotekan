@@ -5,6 +5,7 @@
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "gnssElemCal.hpp"
 
 #include <complex>
 #include <vector>
@@ -43,6 +44,22 @@ private:
     int _n_elements = 0;
     /// Which antenna the record HEADER's correlation slots carry -- the broker's loop reference.
     int _reference_element = 0;
+    /// SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp; CHORD_GNSS_STATE 8.21.5). When enabled the
+    /// header correlation slots carry the calibrated weighted MEAN over all elements instead of
+    /// the bare reference element: same phase convention (reference-anchored), same "one
+    /// element" scale, per-record SNR up ~sqrt(N_healthy) -- which is what makes the per-record
+    /// carrier phase estimable from one instance (the phase-floor fix) and hands the broker's
+    /// DLL/carrier loops the array gain for free. Until each PRN's cal is warm (~3 tau of
+    /// updates) the header is the reference element, byte-identical to the historical output.
+    bool _elem_sum = false;
+    double _elem_sum_tau_s = 0.5;  ///< cal EMA time constant -- fast enough to follow the
+                                   ///< inter-element fringe rotation as a satellite transits
+    double _elem_sum_min_w = 0.02; ///< weight gate vs the strongest element: absent/unpowered
+                                   ///< elements (EMA of pure noise) fall below and are excluded
+    std::vector<gnss::ElemCal> _cal; ///< per PRN slot
+    std::vector<uint8_t> _anchor_warned; ///< one WARN per PRN when the phase anchor moves off
+                                         ///< the reference element (a one-time phase step
+                                         ///< downstream); cleared on cal reset
     /// Scratch, [n_rows_spec][n_elem]: the per-antenna covering-mask sum, reused per PRN so the
     /// per-record path does not allocate.
     std::vector<std::complex<double>> _g_elem;

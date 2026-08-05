@@ -49,6 +49,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                     _reference_element, _n_elements);
         return;
     }
+    // SELF-CALIBRATED ELEMENT SUM (hpp note / gnssElemCal.hpp). Off by default; no-op unless
+    // the element axis exists.
+    _elem_sum = config.get_default<bool>(unique_name, "elem_sum", false) && _n_elements > 0;
+    _elem_sum_tau_s = config.get_default<double>(unique_name, "elem_sum_tau_s", 0.5);
+    _elem_sum_min_w = config.get_default<double>(unique_name, "elem_sum_min_w", 0.02);
     const int n = (int)_prns.size();
     // Record width is a C++ constant; the frame is sized in yaml (n_prn * record_floats *
     // sizeof_float) with nothing linking the two. A stale config under-sizes the frame and this
@@ -60,6 +65,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                     "({:d} B). Bump 'record_floats' in the config to {:d}.",
                     (size_t)out_buf->frame_size, n, rec_stride, rec_bytes_need, rec_stride);
         return;
+    }
+    if (_elem_sum) {
+        _cal.assign((size_t)n, gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
+                                             _elem_sum_min_w));
+        _anchor_warned.assign((size_t)n, 0);
     }
     _phi.assign(n, 0.0);
     _phi_cyc.assign(n, 0.0);
@@ -176,6 +186,37 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                     g3[t] = _g_elem[(size_t)t * n_e + ref_e];
                     e3[t] = e;
+                }
+                // SELF-CALIBRATED ELEMENT SUM (hpp note). Once this PRN's cal is warm, every
+                // header row (E/P/L/PH/RES -- same weights: same antennas) becomes the
+                // calibrated weighted mean instead of the bare reference element: reference-
+                // anchored phase, "one element" scale, noise down ~sqrt(N_healthy). The cal
+                // updates AFTER the combine (causal: this record's weights come from previous
+                // records only), from the PROMPT row against the header actually emitted --
+                // the bootstrap that starts on the reference element and converges to MRC.
+                // The element BLOCKS are untouched: they are the per-antenna measurement.
+                if (_elem_sum) {
+                    gnss::ElemCal& ec = _cal[p];
+                    if (c.reanchored == 1) {
+                        ec.reset(); // fresh acquisition: the fringes may have moved arbitrarily
+                        _anchor_warned[p] = 0;
+                    }
+                    if (ec.warm())
+                        for (int t = 0; t < n_rows_spec; ++t)
+                            g3[t] = ec.combine(&_g_elem[(size_t)t * n_e]);
+                    if (_a_prev_ok[p] && wstart > _wstart_prev[p])
+                        ec.update(&_g_elem[(size_t)1 * n_e], g3[1],
+                                  (double)(wstart - _wstart_prev[p]) / _sample_rate);
+                    if (ec.anchor_moved()) {
+                        if (!_anchor_warned[p]) {
+                            WARN("elem_sum PRN {:d}: reference element {:d} too weak -- phase "
+                                 "anchor moved to the strongest element (one-time phase step "
+                                 "downstream)",
+                                 _prns[p], _reference_element);
+                            _anchor_warned[p] = 1;
+                        }
+                    } else
+                        _anchor_warned[p] = 0;
                 }
                 // Per-channel PROMPT dump (diagnostic, see hpp): raw pre-rotation per-channel
                 // correlations -- the cross-channel relative phases are the observable.

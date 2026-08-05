@@ -187,6 +187,12 @@ constexpr int CMB_HOP_SLOT = 19;  ///< absolute HOP index (int64 aliased at slot
                                   ///< COMBINER RECORDS ONLY -- tracker records use 19-23 for
                                   ///< REC_TRIM_INC / REC_RES_*, and the two flavours never share
                                   ///< a buffer. See docs/CHORD_GNSS_SHARED_DLL.md.
+constexpr int CMB_COH_FRAC = 21;  ///< coherence fraction |sum A|/sum|A| of the WINNING deep
+                                  ///< stream (after rate/phase-track derotation). THE chopping-
+                                  ///< independent coherence measure: deep_snr scales with the
+                                  ///< record count when phase-limited (8.20.24), this does not.
+                                  ///< exp(-sigma_phi^2/2) for Gaussian wander; 0 = not computed
+                                  ///< (non-plain deep paths, for now). COMBINER RECORDS ONLY.
 
 // ---------------------------------------------------------------------------------------
 // ELEMENT AXIS (CHORD)
@@ -215,11 +221,15 @@ constexpr int CMB_HOP_SLOT = 19;  ///< absolute HOP index (int64 aliased at slot
 /// and the M x M block fills the header energies, with no schema change.
 ///
 /// THE HEADER'S CORRELATION SLOTS carry the REFERENCE ELEMENT (config @c reference_element),
-/// not element 0 blindly and not a sum. The broker closes the DLL and carrier loops off those
-/// slots, so they must be a phase-coherent single-antenna view; an incoherent element sum
-/// would destroy the carrier loop, and a coherent sum needs the per-element phases that are
-/// the very thing being measured. Pick the reference as a healthy high-gain feed. Upgrading
-/// to a self-calibrated coherent sum later changes only what the assembler writes there.
+/// not element 0 blindly and not a blind sum. The broker closes the DLL and carrier loops off
+/// those slots, so they must be a phase-coherent view; an incoherent element sum would destroy
+/// the carrier loop, and a coherent sum needs the per-element phases that are the very thing
+/// being measured. Pick the reference as a healthy high-gain feed.
+/// The promised upgrade landed 2026-08-05 (config @c elem_sum, gnssElemCal.hpp): the assembler
+/// SELF-CALIBRATES those phases from the satellite (bootstrap MRC, reference-anchored phase
+/// convention, "one element" scale) and writes the calibrated weighted mean instead --
+/// per-record SNR up ~sqrt(N_healthy), same observable, and byte-identical to the historical
+/// output until each PRN's cal warms (~3 tau) or when elem_sum is off (the default).
 constexpr int ELEM_FLOATS = 12;
 
 constexpr int ELEM_P_RE = 0;  ///< prompt correlation for this antenna
