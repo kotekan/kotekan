@@ -3353,3 +3353,41 @@ cap" was really "gate failed (deep_snr ~1) vs gate passed (deep_snr ~13)". The p
 values at the bottom (1.18, 1.57, 3.08) were gate failures, not a thermal regime. The
 phase-limited cap at sqrt(N)/sigma_phi ~13 for satellites that DO pass the gate still stands, as
 does the +9.7 dB leave-one-out result (8.20.12), which was measured only on gate-passing PRNs.
+
+### 8.20.17 The disjoint-channel constraint, and what it prunes
+
+The single most useful fact for this hunt, and it was sitting in the config: **no two tracker
+instances share a channel.** Every (node, GPU) comb is a distinct mod-16 residue -- checked
+pairwise, overlap is 0 of 7 for all 15 pairs across cx19/cx27/cx42.
+
+The residual correlates across nodes at **r = +0.862**. Two instances sharing ZERO channels see
+the same per-record phase. Therefore **the culprit cannot be frequency-dependent**, which
+eliminates in one stroke: per-channel gain/phase errors, the PFB response model, the replica's
+per-channel carrier generation, chip-shaping/bandlimit mismatch, and dispersion across the comb.
+Whatever it is, it is channel-INDEPENDENT.
+
+Two further candidates tested and excluded since:
+
+* **The code sequence.** NH20 as implemented is
+  `{1,1,1,1,1,-1,1,1,-1,-1,1,-1,1,-1,1,1,-1,-1,-1,1}`, which matches IS-GPS-705's
+  `00000100110101001110` chip-for-chip; the primary L5 tables were already cross-validated
+  against PocketSDR. A wrong code WOULD have been the perfect suspect (channel-independent,
+  per-satellite, and invisible to a self-consistent synthetic) -- it just is not wrong.
+* **Rate-search grid quantization.** The search picks a rate on a 4x-oversampled grid, step
+  1/(4*N*dt) = 0.124 Hz here; half a step across a 1.049 s window is ~0.4 rad of un-removed ramp,
+  which would have been per-satellite, cross-node identical (same signal, same bin) AND invisible
+  to my harness (which fits the rate by least squares rather than gridding it). Refining
+  continuously off the grid gains **1.02x** -- so it is not that either.
+
+**What survives the pruning** is channel-independent, per-satellite, and varies record to record.
+The strongest remaining candidate is the **element/antenna combination**: every instance sums the
+SAME elements, so an error there is common across nodes by construction, and it is
+satellite-direction dependent, hence per-PRN. Nothing measured so far touches that axis, because
+`/get_records` exports the element-SUMMED prompt. The record format does carry per-element blocks
+(`ELEM_FLOATS` x n_elem, see gnssRecord.hpp), so the data exists -- it just has to be captured.
+
+**Next step, one node restart buys both:** enable `--phase-dump-prns` (now wired, gives the
+commanded phase increment and per-record code phase alongside arg A) and the raw record writer on
+a single node, then test whether the per-record residual is common across ANTENNAS. Common ->
+the signal or a shared model term; independent per antenna -> the element sum is the culprit and
+the cross-node correlation has been telling us about shared elements, not shared sky, all along.
