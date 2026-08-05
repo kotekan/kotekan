@@ -3799,3 +3799,53 @@ argues against amplitude scintillation and for a pure phase effect.
    noise at the same SNR), cheap, and entirely local.
 4. **Keep the fleet phase reference** as the cross-check and as the mitigation until (1) lands.
    It is a 3 dB amplitude recovery plus the floor removal, and it is cross-validated.
+
+### 8.21.6 SHIPPED 2026-08-05 -- items (1) and (2), plus the closed loop itself
+
+The structural understanding that unlocked it: **the prototype was immune because it ran
+CLOSED-LOOP** -- its full-band per-record phase estimate was signal-dominated, so its carrier
+tracking removed the wander before any long integration, invisibly. CHORD's comb fragmented the
+per-record phase observable below trackability, which FORCED the open-loop polynomial derotation,
+and open-loop is what a 0.9 rad non-polynomial wander kills. The wander was always physical and
+always there; only the ability to remove it was lost. Corollary: phase wander is BOUNDED, so it
+needs no feedback loop at all -- the ctrim loop (broker, ~0.1 Hz, 2 s dead time) keeps its job of
+pinning unbounded drifts, and the wander is removed feed-forward at the point of integration.
+
+Three commits (assembler / combiner / config):
+* `elem_sum` (GnssGpuRecordAssemble + gnssElemCal.hpp): header = self-calibrated weighted mean
+  over all 32 elements. Bootstrap MRC from the satellite itself, EMA of G_e*conj(H); reference-
+  anchored phase (downstream carrier/ADR see the same observable, quieter); "one element" scale;
+  dead elements auto-gated (the weighted average, not a blind sum); dead reference fails over
+  with a one-time WARN; alpha clamped 0.25 vs coast gaps; reset on fresh acquisition.
+* `phase_track` (GnssCoherentCombiner + gnss::phase_track_loo): each record derotated by the
+  LEAVE-ONE-OUT phase of its neighbours, half-width candidates {1,2,4,8} + straight competing
+  under the same estimator, floor raised to pay the 5-way selection (sqrt(2 ln 10)+1 = 3.15).
+  Self-excluded => fail-closed: pure noise cannot be aligned (synthetic control: no inflation
+  over 160 trials). Runs after the rate search: rate takes the deterministic ramp, tracker the
+  stochastic wander. New exports: `coh_frac` (|sum|/sum|.| of the winning stream -- item (2),
+  the chopping-independent number) and `pt_hw` (winning half-width; 0 = straight won).
+* Validation tool `scripts/gnss/sumtrack_test.cpp` (deterministic): tracker 1.14-2.0x on AR(1)
+  wander depending on SNR/rec, elem sum 5.8x of the 7.95x MRC bound, fringe-tolerant, dead-ref
+  safe. e2e bit-identical with features off.
+
+FIRST LIGHT (same day, ~30 min after fleet restart, cx51 still down):
+* Per-record amplitude SNR at the header: **4-7 per record** on the bright sats (was ~1.1) --
+  elem_sum working, measured directly from /get_records power ratios.
+* PRN 23 on EVERY instance: deep_snr 19-21 (the pre-fix ceiling was 11-14 flat), pt_hw 1-2,
+  coh_frac 0.87-0.89. Brightness ordering restored: PRN 26 (amp 8-12) reads deep 6.9-7.5.
+* coh_frac now differs PER SATELLITE (0.49-0.89 across the sky at one instant) -- the
+  per-satellite wander severity is finally a live, directly-published observable. This is the
+  8.21.4 elevation/pierce-point discriminator armed for free: correlate coh_frac vs elevation
+  and vs sky separation from a few hours of records.
+* Residual after tracking: coh_frac 0.87 at pt_hw 1 with estimator noise ~0.1 rad means
+  ~0.5 rad of wander INNOVATION faster than +-1 record (~20 ms) survives. The fleet reference
+  cannot remove that either (it is common across nodes but fast in time); further gains would
+  need better smoothing weights than a boxcar, at diminishing returns.
+
+WATCH: pt_hw per satellite is the early signal for when the broker-side fleet phase reference
+becomes worth building -- bright sats at pt_hw 1, faint at 4-8 means the local reference is
+running out of SNR at the faint end. At full CHORD (fewer channels/node, 512 elements) the
+element axis outruns the frequency dilution (~sqrt: 1/7 the channels costs 2.6x, 512/32
+elements buys 4x), so the local tracker survives; the fleet reference then arrives as ONE MORE
+CANDIDATE in the same competition (hop-keyed phase table via /get_records + POST, fail-safe by
+losing the score when stale), not as an architecture change.
