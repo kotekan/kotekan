@@ -807,7 +807,25 @@ int main(int argc, char** argv) {
     // our arithmetic and not on the sky.
     if (prompts.size() >= 4) {
         const int N = (int)prompts.size();
-        const gnss::OverlayWipeResult cs = gnss::coherent_sum(prompts);
+        // DEROTATE FIRST, as the combiner does. Folding raw prompts measures the RAMP, not the
+        // residual: at a 5 Hz seed error the raw fold collapses to snr 0.58 while the residual
+        // about the ramp is 0.0115 rad, i.e. clean. Comparing that raw number against the live
+        // deep_snr (which IS derotated by the rate search) compares two different quantities.
+        std::vector<std::complex<double>> der = prompts;
+        {   // best-fit linear phase over the record index, removed as a frequency
+            std::vector<double> p0(prompts.size());
+            double acc = 0.0, pv = 0.0;
+            for (size_t i = 0; i < prompts.size(); ++i) {
+                const double q = std::arg(prompts[i]);
+                if (i) { double d = q - pv; while (d > M_PI) d -= 2*M_PI; while (d < -M_PI) d += 2*M_PI; acc += d; }
+                pv = q; p0[i] = acc;
+            }
+            double sx=0, sy=0, sxx=0, sxy=0;
+            for (int i = 0; i < N; ++i) { sx+=i; sy+=p0[i]; sxx+=(double)i*i; sxy+=(double)i*p0[i]; }
+            const double dn = N*sxx - sx*sx, sl = dn != 0.0 ? (N*sxy - sx*sy)/dn : 0.0;
+            for (int i = 0; i < N; ++i) der[i] = prompts[i] * std::polar(1.0, -sl*i);
+        }
+        const gnss::OverlayWipeResult cs = gnss::coherent_sum(der);
         // ... and again after removing a best-fit LINEAR phase ramp, which is what the
         // combiner's rate search does before folding. Any residual after that is not a ramp.
         std::vector<double> ph(prompts.size());

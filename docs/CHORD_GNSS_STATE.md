@@ -3099,3 +3099,65 @@ the multi-record assembly. The next test is cheap and already plumbed: `/get_rec
 live per-record complex prompts, so the phase scatter can be measured directly on sky and
 compared against what `deep_snr` implies. If the exported prompts already carry 0.7 rad, the
 damage is upstream of the fold; if they do not, the fold's own noise estimate is the problem.
+
+### 8.20.11 The floor is a DETERMINISTIC, PER-SATELLITE phase error -- and the synthetic cannot see it
+
+Measured on the LIVE exported prompts (`/get_records`, which pushes the SAME `ar, ai` that enter
+`_navbuf`, so it is exactly the fold's input). Reproducing the combiner's own pipeline -- rate
+search, derotate, `coherent_sum` -- lands on the published number to two decimals:
+
+```
+PRN    published deep_snr   my reproduction   rate_hz    sigma_phi
+ 3          13.76               13.75         -43.63       0.727
+ 4          10.20               10.20          -8.58       0.980
+11          14.09               14.09         -31.47       0.710
+```
+
+So the reproduction is trustworthy and the residual is real. Three properties pin it down:
+
+**1. It is PHASE-ONLY.** Thermal noise perturbs both quadratures equally (ratio 1.0). Measured
+perpendicular/parallel scatter about the mean phasor: **1.89, 2.00, 2.56, 1.98** across four PRNs
+(~10 sigma from 1.0 at n=100). Decomposing, thermal ~0.35 rad and a phase-only systematic
+**~0.6 rad**.
+
+**2. It is DETERMINISTIC and PER-SATELLITE.** Correlating the per-record residual phase at
+MATCHING hops, pooled over all six nodes:
+
+```
+same satellite, DIFFERENT nodes   18 pairs   mean r = +0.862
+different satellites              27 pairs   mean r = -0.062      (1 sigma ~0.11)
+```
+
+Independent receivers, with different channel subsets and independent thermal noise, reproduce
+the same per-record phase wobble for a given satellite -- and satellites do not share it. So it
+is neither thermal nor a common clock/reference term: it is a deterministic function of THAT
+satellite's signal and how we despread it. (A shared reference WOULD have shown in the
+different-satellite column, and it does not, which also rules out a common-mode fix.)
+
+**3. The synthetic harness cannot reproduce it.** Noiseless with a perfect seed: 0.0001 rad. With
+the live seed Doppler error injected (`--seed-dop-err`, derotated the same way the combiner
+does): 0.0024 rad at 25 Hz, 0.0976 rad at 45 Hz -- still ~10x short of 0.70.
+
+**And that last point is the lead, not a dead end.** `e2e` synthesizes the sky with the SAME
+replica model it despreads against, so any mismatch between our model and the true satellite
+signal CANCELS and is invisible by construction. A model error would look exactly like what we
+measure: deterministic, per-satellite, phase-only, identical at every node (all nodes run the
+same model against the same sky), and absent from a self-consistent synthetic. This is the one
+failure mode a noiseless synthetic is structurally blind to -- worth remembering, because
+"validate with a noiseless synthetic" has been the standing advice since the sparse-comb bug.
+
+**Next test**, and it needs no sky time: the residual is deterministic, so it must be a FUNCTION
+of something we know per record. Correlate the live per-record residual phase against the
+record's commanded code phase -- specifically its fractional part in chips and in samples. A
+rounding or convention error in the cp -> replica mapping would show up as residual phase varying
+systematically with that fraction, and would explain every property above. If that is flat, the
+next candidates are the NH20 overlay alignment across the 10.4857-code-period record boundary and
+the satellite's true chip shaping vs our PFB model.
+
+Two corrections to earlier sections, both mine:
+* 8.20.9 called the residual "white" from `snr/sqrt(len)` scaling between the 50- and 100-record
+  rungs. Deterministic-but-fast-varying also averages down that way; the rung test cannot tell
+  them apart, and the cross-node correlation can. The residual is NOT random.
+* The harness's first `sigma_phi` folded the prompts WITHOUT derotating, unlike the combiner, so
+  it reported the ramp rather than the residual (17.3 rad at a 5 Hz seed error where the true
+  residual was 0.0115). Fixed to derotate first.
