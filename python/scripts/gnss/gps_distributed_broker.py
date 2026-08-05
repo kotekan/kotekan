@@ -679,6 +679,198 @@ class FleetPublisher:
                           "utc": time.time()}
 
 
+def _coherent_sum(a):
+    """Coherent sum SNR / amplitude / coherence fraction of a per-record complex series.
+
+    Line-for-line the same statistic as gnss::coherent_sum (gnssChannelizedDespread.cpp): rotate
+    the sum real, take the ORTHOGONAL component as the noise estimate. Kept identical on purpose
+    -- the broker's fleet number and a combiner's local number are compared against each other
+    and against the same floors, and two SNR conventions differing by a factor nobody wrote down
+    is how a floor stops meaning anything.
+
+    Returns (snr, amplitude, coh_frac) where coh_frac = |sum|/sum|.| -- the chopping-independent
+    coherence measure (STATE 8.20.24); snr scales with sqrt(N) and coh_frac does not.
+    """
+    n = len(a)
+    if n < 2:
+        return 0.0, 0.0, 0.0
+    sr = sum(x.real for x in a)
+    si = sum(x.imag for x in a)
+    mag = math.hypot(sr, si)
+    if mag <= 0.0:
+        return 0.0, 0.0, 0.0
+    cr, ci = sr / mag, -si / mag          # e^{-i arg(sum)}
+    noise2 = 0.0
+    for x in a:
+        im = x.real * ci + x.imag * cr    # Im(x * rot)
+        noise2 += im * im
+    denom = math.sqrt(noise2)
+    tot_abs = sum(abs(x) for x in a)
+    return (mag / denom if denom > 0.0 else 0.0), mag / n, (mag / tot_abs if tot_abs > 0 else 0.0)
+
+
+def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None):
+    """CROSS-NODE COHERENT COMBINE: the per-record sky phase, and the deep folds it unlocks.
+
+    WHAT THIS FIXES, measured on sky 2026-08-05. Every instance's deep fold sat at ~14 sigma
+    against a THERMAL ceiling of ~101 (per-record SNR 9.25, 120 records). The gap is a common
+    per-record phase error of ~0.75 rad which is:
+        * 0.984 COHERENT ACROSS INSTANCES (same sky, independent thermal noise), and
+        * only ~0.57 autocorrelated record-to-record (lag 1) -- i.e. nearly WHITE IN TIME.
+    So a within-node TEMPORAL estimator cannot touch it (a record's neighbours do not predict
+    it; the tracker built on that premise measured 14.5 -> 13.2, a loss), while the other
+    INSTANCES measure it instantly. Correcting each instance against the others took its deep
+    fold from ~14 to 65-105, i.e. to the thermal bound.
+
+    WHY IT MUST LIVE HERE AND NOT ON A NODE. Each instance has ample SNR to MEASURE the phase
+    (9.25/record -> 0.11 rad). What it cannot do is use its OWN estimate: derotating a record by
+    a phase computed from that same record subtracts its own noise, rectifies it, and inflates
+    every statistic downstream. It needs an INDEPENDENT estimate of a COMMON quantity, and the
+    only independent view of the same sky lives on the other nodes. (The other independent axis
+    is the ELEMENT axis -- see gnssElemCal, deferred -- which is what makes this local again at
+    full CHORD, where each node holds fewer channels but far more elements.)
+
+    THE TWO ESTIMATORS, both leave-one-out by construction:
+      * PER INSTANCE: derotate instance i's records by the phase of the sum of the OTHERS. The
+        rotation is then statistically independent of instance i's noise, so noise cannot align
+        with itself. This is the honest per-node number.
+      * THE FLEET TOTAL: ONE-WAY SPLIT. Sum the instances into two disjoint halves S and R, and
+        derotate S by R's phase -- S alone is the integrated signal, R is only the reference.
+        ⚠️ NOT the symmetric S*e^{-i arg R} + R*e^{-i arg S}, and not a derotation by the fleet's
+        own sum. Both are unbiased in the MEAN and both destroy the VARIANCE estimate, which is
+        what every significance number is built on:
+          - fleet-sum derotation collapses each record onto the positive real axis outright;
+          - the symmetric pair expands to (r_S + r_R) cos d + i (r_S - r_R) sin d, so with
+            balanced halves (r_S ~ r_R) the imaginary part vanishes BY CONSTRUCTION.
+        Either way coherent_sum finds no orthogonal component, and the SNR explodes: measured
+        38526 with coh_frac exactly 1.000 on live data, and 47.3 against a GENIE of 17.7 on
+        synthetic -- "beating" perfect knowledge, the signature of a self-referential estimator.
+        One-way keeps arg(S) - arg(R) random under noise, so the statistic keeps its meaning.
+        The price is honest and small: only half the aperture is integrated (the other half is
+        spent measuring the phase), i.e. ~sqrt(2) below a hypothetical full-aperture coherent
+        sum -- while still ~sqrt(K/2) above any single instance.
+
+    NO RATE SEARCH IS NEEDED, which is what makes this cheap enough for the poll loop. Every
+    instance despreads against the SAME broker seed, so their residual carrier rates are
+    identical (measured -0.20996 cyc/record on all ten) -- the alignment cross-product cancels
+    it, and the leave-one-out derotation then removes the common ramp along with the sky phase.
+    Cost is O(records x instances) per PRN with no transform anywhere: pure stdlib, ~1 ms.
+
+    ALIGNMENT. Instances have arbitrary constant phase offsets (different combs, different NCO
+    history), so each is rotated onto the strongest instance by arg(<A_i conj(A_ref)>) before
+    anything is summed. Skipping this is not subtle -- an unaligned "fleet average" reads as a
+    13 rad phase excursion of pure garbage (I made exactly that mistake while diagnosing this).
+    Instances are weighted by replica ENERGY, which is the MRC weight: A = G/E has variance
+    ~1/E, so summing E*A is summing the raw correlations G.
+
+    Returns {prn: {deep_snr, deep_amplitude, coh_frac, n_src, n_rec, span_s, align, per_inst}}
+    for PRNs seen by >= min_instances instances over >= min_records common hops. A PRN below
+    that is ABSENT, so the caller keeps the single-instance number and a partly-down fleet
+    degrades instead of stalling.
+    """
+    if not endpoints:
+        return {}
+    # url -> prn -> {hop: (A, energy)}. Unreachable instances are skipped, never fatal.
+    got = {}
+    for url in endpoints:
+        try:
+            recs = _get("%s/get_records" % url)
+        except Exception as e:
+            _log_rl("fleet-coh-%s" % url, "fleet coherent: %s unreachable (%s)" % (url, e))
+            continue
+        per = {}
+        for r in recs or []:
+            prn = int(r.get("prn", -1))
+            if prn <= 0 or (prns is not None and prn not in prns):
+                continue
+            d = {}
+            for x in r.get("records") or []:
+                try:
+                    hop, re_, im_, en = int(x[0]), float(x[1]), float(x[2]), float(x[3])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if en > 0.0:
+                    d[hop] = (complex(re_, im_), en)
+            if d:
+                per[prn] = d
+        if per:
+            got[url] = per
+
+    out = {}
+    all_prns = set()
+    for per in got.values():
+        all_prns.update(per)
+    for prn in sorted(all_prns):
+        src = {u: per[prn] for u, per in got.items() if prn in per}
+        if len(src) < min_instances:
+            continue
+        hops = None
+        for d in src.values():
+            hops = set(d) if hops is None else (hops & set(d))
+        hops = sorted(hops or ())
+        if len(hops) < min_records:
+            continue
+        # Reference instance = the most energetic view; every other is rotated onto it.
+        ref_u = max(src, key=lambda u: sum(src[u][h][1] for h in hops))
+        ref = [src[ref_u][h][0] for h in hops]
+        aligned, align_q = {}, []
+        for u, d in src.items():
+            a = [d[h][0] for h in hops]
+            w = sum(d[h][1] for h in hops) / float(len(hops))    # MRC weight = mean energy
+            cr = sum(a[k] * ref[k].conjugate() for k in range(len(hops)))
+            if abs(cr) <= 0.0:
+                continue
+            rot = complex(cr.real, -cr.imag) / abs(cr)           # e^{-i arg(<A conj(A_ref)>)}
+            aligned[u] = [x * rot * w for x in a]
+            # Alignment coherence: |<A conj(A_ref)>| / (sum|A||A_ref|). Near 1 means these two
+            # instances really are seeing one sky with one carrier model -- the assumption the
+            # whole combine rests on, so it is REPORTED rather than assumed.
+            den = sum(abs(a[k]) * abs(ref[k]) for k in range(len(hops)))
+            if den > 0.0 and u != ref_u:
+                align_q.append(abs(cr) / den)
+        if len(aligned) < min_instances:
+            continue
+        urls = sorted(aligned)
+        nrec = len(hops)
+        tot = [sum(aligned[u][k] for u in urls) for k in range(nrec)]
+        # ---- per instance: leave THAT instance out of its own reference ----
+        per_inst = {}
+        for u in urls:
+            corr = []
+            for k in range(nrec):
+                rest = tot[k] - aligned[u][k]
+                m = abs(rest)
+                corr.append(aligned[u][k] * complex(rest.real, -rest.imag) / m if m > 0.0
+                            else aligned[u][k])
+            per_inst[u] = _coherent_sum(corr)[0]
+        # ---- fleet total: ONE-WAY split (S integrated, R only referenced) -- see the note ----
+        half = {u: (i % 2) for i, u in enumerate(sorted(urls, key=lambda u: -sum(
+            abs(x) for x in aligned[u])))}                        # interleave: balanced halves
+        fleet = []
+        for k in range(nrec):
+            s = sum(aligned[u][k] for u in urls if half[u] == 0)  # SIGNAL half
+            r = sum(aligned[u][k] for u in urls if half[u] == 1)  # REFERENCE half
+            m = abs(r)
+            fleet.append(s * complex(r.real, -r.imag) / m if m > 0.0 else 0j)
+        snr, amp, cf = _coherent_sum(fleet)
+        out[prn] = {
+            "deep_snr": snr, "deep_amplitude": amp, "coh_frac": cf,
+            "n_src": len(urls), "n_rec": nrec,
+            "align": (sum(align_q) / len(align_q)) if align_q else 0.0,
+            "per_inst": per_inst,
+            "best_inst": max(per_inst, key=per_inst.get) if per_inst else None,
+            "best_inst_snr": max(per_inst.values()) if per_inst else 0.0,
+        }
+    if log and out:
+        best = max(out, key=lambda p: out[p]["deep_snr"])
+        b = out[best]
+        log("fleet coherent: %d PRN, best PRN %d deep %.1f (best single instance %.1f, "
+            "%dx over %d records, align %.3f, coh_frac %.3f)"
+            % (len(out), best, b["deep_snr"], b["best_inst_snr"], b["n_src"], b["n_rec"],
+               b["align"], b["coh_frac"]))
+    return out
+
+
 def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     """BRDC-almanac analog of gps_beamtrack.predict_dopplers for ONE constellation:
     {prn: (doppler_hz, doppler_rate_hz_s, elevation_deg, range_m, sat_clk_s)}.
