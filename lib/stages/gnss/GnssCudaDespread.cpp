@@ -44,6 +44,14 @@ struct GnssCudaDespread::Impl {
     int Lf = 0;
 
     std::vector<float2> stage;  // host transpose staging [chan][hop]
+    // BENCH: optional CUDA events bracketing the two CHORD kernels, so the synthesis /
+    // correlation split can be measured ON THE NODE at the real geometry. Doing it here rather
+    // than in a synthetic bench avoids the trap that killed the last attempt: chip_gather's depth
+    // (job.n_chips) is set by the PFB span, ~8 chips/hop at the test's 40-sample hop against ~52
+    // at CHORD's 16384, so a per-sample rate measured on one geometry does not transfer to the
+    // other. Off by default; the events are only created when enabled.
+    bool split_timing = false;
+    cudaEvent_t ev_a = nullptr, ev_b = nullptr, ev_c = nullptr;
     cudaStream_t stream = nullptr;
     std::vector<gnss_cuda::DespreadJob> h_jobs;
     std::vector<double2> h_corr;
@@ -205,6 +213,34 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
                        cudaMemcpyHostToDevice, im.stream),
        "window upload");
     im.window_start = window_start_sample;
+}
+
+void GnssCudaDespread::enable_split_timing(bool on) {
+    Impl& im = *_impl;
+    if (on && !im.ev_a) {
+        ck(cudaEventCreate(&im.ev_a), "ev_a");
+        ck(cudaEventCreate(&im.ev_b), "ev_b");
+        ck(cudaEventCreate(&im.ev_c), "ev_c");
+    }
+    im.split_timing = on;
+}
+
+bool GnssCudaDespread::split_timing_ms(double& synthesis_ms, double& correlation_ms) const {
+    Impl& im = *_impl;
+    if (!im.split_timing || !im.ev_c)
+        return false;
+    // The caller reads this after the frame has completed (gpuProcess logs profiling from
+    // results_thread, post finalize), so the events are already resolved; synchronize anyway
+    // rather than assume it.
+    if (cudaEventSynchronize(im.ev_c) != cudaSuccess)
+        return false;
+    float a = 0.f, b = 0.f;
+    if (cudaEventElapsedTime(&a, im.ev_a, im.ev_b) != cudaSuccess
+        || cudaEventElapsedTime(&b, im.ev_b, im.ev_c) != cudaSuccess)
+        return false;
+    synthesis_ms = a;
+    correlation_ms = b;
+    return true;
 }
 
 int GnssCudaDespread::max_batch_specs() const {
@@ -418,15 +454,21 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // the correlator below -- that reuse is the entire reason the fused kernel is split for
     // CHORD. Both launches go on the SAME stream, so the correlator cannot start before the
     // waveform it consumes is complete.
+    if (im.split_timing)
+        ck(cudaEventRecord(im.ev_a, st), "split ev_a");
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
                                   im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
        "launch waveform (NxM)");
+    if (im.split_timing)
+        ck(cudaEventRecord(im.ev_b, st), "split ev_b");
     ck(gnss_cuda::launch_correlate_nm((const unsigned char*)d_frame, (const float*)d_chan_scale,
                                       d_chan_ids, (const float2*)d_wave,
                                       (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan,
                                       n_elem, elem_stride, frame_chan_stride, par,
                                       (double2*)d_corr_out, st),
        "launch correlate NxM");
+    if (im.split_timing)
+        ck(cudaEventRecord(im.ev_c, st), "split ev_c");
     return 4 * n_spec;
 }
 

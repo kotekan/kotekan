@@ -77,6 +77,19 @@ public:
     std::vector<std::array<gnss::DespreadResult, 3>>
     despread_batch(const std::vector<Spec>& specs);
 
+    /// BENCH: bracket the CHORD split path's two kernels with CUDA events, so the
+    /// synthesis / correlation balance can be measured ON THE NODE at the real geometry.
+    /// Measuring it in a synthetic bench does not work: chip_gather's depth (job.n_chips) comes
+    /// from the PFB span -- ~8 chips per hop at the unit test's 40-sample hop against ~52 at
+    /// CHORD's 16384 -- so a per-sample rate from one geometry does not transfer to the other.
+    /// Off by default; costs two event records per frame when on.
+    void enable_split_timing(bool on);
+    /// Last frame's split, milliseconds. False if timing is off or the events are not resolved.
+    /// synthesis = launch_waveform (n_elem-INDEPENDENT: one replica per PRN/chan/hop, broadcast
+    /// across elements), correlation = launch_correlate_nm (scales with n_elem). That asymmetry
+    /// is why a 1-element measurement cannot be carried to CHORD's 32.
+    bool split_timing_ms(double& synthesis_ms, double& correlation_ms) const;
+
     /// Largest `specs.size()` @ref despread_batch can accept: the DespreadJob arena is sized
     /// n_prn * MAX_REC on the tracker's one-spec-per-PRN-per-record assumption. A caller that
     /// batches many specs against ONE PRN (the A5 refine scan) must chunk against this, or the

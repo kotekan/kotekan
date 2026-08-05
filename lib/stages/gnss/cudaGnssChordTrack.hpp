@@ -75,6 +75,8 @@ public:
     /// old latching behaviour). The broker re-seeds every --interval (2 s live), so the default
     /// is many refreshes of margin while still retiring a set satellite promptly.
     double seed_ttl_s = 60.0;
+    /// Report the per-frame synthesis / correlation split (config `log_kernel_split`).
+    bool split_timing = false;
     std::mutex seed_mtx;
     std::vector<Seed> seeds;
 

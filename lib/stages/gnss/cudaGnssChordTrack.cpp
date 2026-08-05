@@ -58,6 +58,11 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // 0 = never expire (the old latching behaviour). The broker re-seeds every --interval (2 s
     // live), so 60 s is ~30 refreshes of margin while still retiring a set satellite promptly.
     seed_ttl_s = config.get_default<double>(unique_name, "seed_ttl_s", 60.0);
+    // BENCH: report the synthesis / correlation split per frame. Pairs with the cudaProcess
+    // stage's `log_profiling` -- that gives the command's total, this says where it goes.
+    split_timing = config.get_default<bool>(unique_name, "log_kernel_split", false);
+    if (split_timing)
+        despread->enable_split_timing(true);
 
     if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
         FATAL_ERROR("cudaGnssChordTrack: hops_per_record {:d} must divide samples_per_data_set "
@@ -449,6 +454,20 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
         trim_now = S.trim;
     } else
         trim_now.assign((size_t)S.n_prn, 0.0);
+    if (S.split_timing) {
+        // Spec count = seeds actually live this frame, which is what the kernel was launched
+        // with -- not the PRN list size (they differed by 2x before the seed TTL).
+        int n_active = 0;
+        for (const auto& sd : seeds)
+            if (sd.have)
+                ++n_active;
+        double syn = 0.0, cor = 0.0;
+        if (S.despread->split_timing_ms(syn, cor) && (syn + cor) > 0.0)
+            INFO("cudaGnssChordTrack: kernel split -- synthesis {:.3f} ms ({:.1f}%) | "
+                 "correlation {:.3f} ms ({:.1f}%) | {:d} spec x {:d} chan x {:d} elem x {:d} hops",
+                 syn, 100.0 * syn / (syn + cor), cor, 100.0 * cor / (syn + cor), n_active,
+                 S.n_chan, S.n_elem, S.hops_per_record);
+    }
     for (int prn : expired)
         INFO("cudaGnssChordTrack: PRN {:d} seed expired after {:.0f} s without a refresh -- "
              "dropped from the despread (it was latched forever before seed_ttl_s existed)",

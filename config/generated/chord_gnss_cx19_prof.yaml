@@ -241,6 +241,7 @@ gnss0_gpu:
     hops_per_record: 2048
     n_channels: 7
     n_elements: 32
+    log_kernel_split: true
     name: cudaGnssChordTrack
     prns: *id001
     sample_rate: 3200000000.0
@@ -367,6 +368,7 @@ gnss1_gpu:
     hops_per_record: 2048
     n_channels: 7
     n_elements: 32
+    log_kernel_split: true
     name: cudaGnssChordTrack
     prns: *id001
     sample_rate: 3200000000.0
