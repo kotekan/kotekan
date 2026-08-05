@@ -3282,3 +3282,42 @@ Practical consequence: the live tracker sits at the worst corner of that table (
 the tracker comb for sensitivity (the 7%-of-band item) would make this WORSE unless the comb is
 also densified, and densifying is bounded -- `GnssCudaDespread` rejects >64 channels outright
 (`chan_mask` is a uint64), which is itself worth knowing before anyone plans a wider tracker.
+
+### 8.20.15 RETRACTION: the cp -> phase coupling of 8.20.13/14 was a test artifact
+
+**8.20.13 and 8.20.14 are wrong and are retracted.** The "~10 rad of correlation phase per chip"
+was produced by my own harness setup, not by the chain.
+
+`--seed-cp-rate` is a rate in chips/HOP, and the harness defaults to `--age-s 27`. So the seed
+arrives already offset by `rate * 27 s * 195312.5 hop/s`: at 1e-5 that is **53 chips**, and every
+run in that sweep was despreading at `P/P_true ~ 0.013`, i.e. 1.5% of peak, far off the
+correlation function. What I measured was the phase of a collapsed correlation, which is
+meaningless, and it is also why the comb-density sweep came out non-monotonic (stride 2x49
+"worse" at 2.01 rad) -- a denser, sharper ACF simply falls off faster from an offset that large.
+
+Re-run with `--age-s 0`, so record 0 starts ON peak and only the per-record drift acts:
+
+```
+cp drift/record   total over 100 rec   P/P_true end   sigma_phi
+  0.0000 chips          0                1.000          0.0001
+  0.0020 chips          0.2 chips        0.836          0.0003     <- on peak: NO phase error
+  0.0102 chips          1.0 chips        0.0055         0.0467     <- already off peak
+```
+
+A code-phase drift that keeps the correlation on peak produces **0.0003 rad**. Code phase does
+not rotate the correlation in any regime the tracker actually operates in, and the live tracker
+IS on peak (`q = 2P/(E+L) ~ 3`, healthy amplitudes, `dll_disc ~ 0.5` chips static).
+
+**So the origin of the 0.7 rad floor is UNKNOWN again.** What still stands, all independently
+measured and none of it resting on 8.20.13: the cap itself (8.20.9), phase-only (perp/par ~2),
+per-satellite and cross-node shared (r = +0.862 vs -0.062), and the **+9.7 dB leave-one-out
+removal (8.20.12), which is empirical and cross-validated and does not depend on knowing the
+cause at all.** Excluded: thermal, shared clock, despread/seed arithmetic, seed Doppler error,
+quantization, Doppler curvature, code-period phase, NH20 index, and now code-phase drift.
+
+**The lesson, since this is the fourth confounded test in two days** (broker restarts in the trim
+probe; a signed median on a zero-straddling quantity; `--noise` never reaching the tracker leg;
+now seed age): *check the control condition before reading the treatment.* Every one of these
+would have been caught in seconds by looking at the baseline the run reports -- `P/P_true` was
+printed as 0.013 on every line of the sweep I drew a conclusion from. State the expected control
+value first, then read it, then interpret.
