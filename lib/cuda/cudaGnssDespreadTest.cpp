@@ -607,6 +607,84 @@ int main(int argc, char** argv) {
             printf("CHORD split (waveform + NxM) vs fused despread, N=1: corr %.3e energy %.3e "
                    "%s\n",
                    cmax, emax, split_ok ? "OK (exact)" : "FAIL");
+
+            // ---- KERNEL SPLIT AT CHORD GEOMETRY (2026-08-05) ----------------------------
+            // The tracker runs THIS path, not the fused kernel: enqueue_batch_device launches
+            // waveform (replica SYNTHESIS) then correlate_nm (the CORRELATION over elements).
+            // Time them separately, because the two answer different questions:
+            //   * correlation is what eventually folds into CHORD's N^2
+            //   * synthesis NEVER can -- N^2 knows nothing about GNSS codes
+            // If synthesis dominates, folding the correlation into N^2 buys ~nothing on the GPU,
+            // and that is a planning input worth having measured rather than assumed.
+            {
+                const int NIT = 200;
+                cudaEvent_t e0, e1, e2;
+                CK(cudaEventCreate(&e0)); CK(cudaEventCreate(&e1)); CK(cudaEventCreate(&e2));
+                // warm-up
+                CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave,
+                                              d_nenergy, 0));
+                CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs,
+                                                  n_spec, n_chan, n_elem, n_elem, n_chan, p,
+                                                  d_ncorr, 0));
+                CK(cudaDeviceSynchronize());
+                CK(cudaEventRecord(e0, 0));
+                for (int it = 0; it < NIT; ++it)
+                    CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave,
+                                                  d_nenergy, 0));
+                CK(cudaEventRecord(e1, 0));
+                for (int it = 0; it < NIT; ++it)
+                    CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs,
+                                                      n_spec, n_chan, n_elem, n_elem, n_chan, p,
+                                                      d_ncorr, 0));
+                CK(cudaEventRecord(e2, 0));
+                CK(cudaDeviceSynchronize());
+                float ms_syn = 0.f, ms_cor = 0.f;
+                CK(cudaEventElapsedTime(&ms_syn, e0, e1));
+                CK(cudaEventElapsedTime(&ms_cor, e1, e2));
+                ms_syn /= NIT; ms_cor /= NIT;
+                printf("KERNEL SPLIT (%d spec x %d chan x %d elem x %d hops):\n"
+                       "   synthesis  (waveform)     %8.4f ms  %5.1f%%   <- N^2 CANNOT absorb this\n"
+                       "   correlation(nm, %2d elem) %8.4f ms  %5.1f%%   <- this is the N^2 candidate\n",
+                       n_spec, n_chan, n_elem, p.n_hops, ms_syn,
+                       100.0 * ms_syn / (ms_syn + ms_cor), n_elem, ms_cor,
+                       100.0 * ms_cor / (ms_syn + ms_cor));
+                // ELEMENT SWEEP. Synthesis is n_elem-INDEPENDENT (one replica per PRN/chan/hop,
+                // broadcast across element lanes); the correlation scales with it. So a
+                // 1-element measurement flatters synthesis, and any claim that "the MAC is 0% of
+                // the kernel" measured at 1 element does NOT transfer to CHORD's 32. Sweep it.
+                for (int ne : {1, 8, 32}) {
+                    unsigned char* d_q2 = nullptr;
+                    double2* d_c2 = nullptr;
+                    CK(cudaMalloc(&d_q2, (size_t)n_hops * n_chan * ne));
+                    CK(cudaMemset(d_q2, 0, (size_t)n_hops * n_chan * ne));
+                    CK(cudaMalloc(&d_c2, (size_t)4 * n_spec * n_chan * ne * sizeof(double2)));
+                    CK(gnss_cuda::launch_correlate_nm(d_q2, d_scale, d_chan_ids, d_wave, d_jobs,
+                                                      n_spec, n_chan, ne, ne, n_chan, p, d_c2, 0));
+                    CK(cudaDeviceSynchronize());
+                    cudaEvent_t a0, a1;
+                    CK(cudaEventCreate(&a0));
+                    CK(cudaEventCreate(&a1));
+                    CK(cudaEventRecord(a0, 0));
+                    for (int it = 0; it < NIT; ++it)
+                        CK(gnss_cuda::launch_correlate_nm(d_q2, d_scale, d_chan_ids, d_wave,
+                                                          d_jobs, n_spec, n_chan, ne, ne, n_chan,
+                                                          p, d_c2, 0));
+                    CK(cudaEventRecord(a1, 0));
+                    CK(cudaDeviceSynchronize());
+                    float ms = 0.f;
+                    CK(cudaEventElapsedTime(&ms, a0, a1));
+                    ms /= NIT;
+                    printf("   n_elem %2d: synthesis %8.4f ms (%5.1f%%) | correlation %8.4f ms "
+                           "(%5.1f%%)\n",
+                           ne, ms_syn, 100.0 * ms_syn / (ms_syn + ms), ms,
+                           100.0 * ms / (ms_syn + ms));
+                    cudaEventDestroy(a0);
+                    cudaEventDestroy(a1);
+                    cudaFree(d_q2);
+                    cudaFree(d_c2);
+                }
+                cudaEventDestroy(e0); cudaEventDestroy(e1); cudaEventDestroy(e2);
+            }
             pass = pass && split_ok;
 
             cudaFree(d_qt);

@@ -64,7 +64,21 @@ using gnss_cuda::chip_gather;
 using gnss_cuda::cmulf;
 using gnss_cuda::load_v;
 
-template <typename T, bool XC>
+/// ABL: kernel-split ablation, a BENCH-ONLY template parameter. Production instantiates
+/// ABL_NONE and is unaffected -- like XC, everything else compiles away.
+///
+/// Exists because the tracker kernel's cost had to be attributed rather than guessed, and the
+/// attribution is a planning input: the correlation MAC is what eventually folds into CHORD's
+/// N^2, while the replica SYNTHESIS never can (N^2 knows nothing about GNSS codes). The kernel
+/// header records a 2026-07-16 ablation claiming the MAC is 0% of the runtime; this is how that
+/// gets re-confirmed at CHORD geometry instead of inherited.
+///
+/// NO_MAC keeps a single add so the gather cannot be dead-code-eliminated -- measure the
+/// difference from ABL_NONE to get the MAC's cost. NO_SYN replaces the gather with a constant,
+/// keeping the carrier and the MAC -- the difference gives synthesis.
+enum AblMode { ABL_NONE = 0, ABL_NO_MAC = 1, ABL_NO_SYN = 2 };
+
+template <typename T, bool XC, int ABL = ABL_NONE>
 __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nchan][n_hops]
                                      const float* __restrict__ chan_scale, // [nchan], 4+4b only
                                      const int8_t* __restrict__ code, // [batch-shared code table]
@@ -148,13 +162,25 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> cp0 / cp0-ds / cp0+ds
             float2 sA, sB;
-            chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
-                        phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
+            if (ABL == ABL_NO_SYN) {
+                // Constant replica: the gather disappears, the carrier apply and MAC remain.
+                sA = make_float2(1.0f, 0.0f);
+                sB = make_float2(1.0f, 0.0f);
+            } else {
+                chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code,
+                            phiA, phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
+            }
             // Replica channel sample r = 0.5 (pa sA + conj(pa) sB); then the despread MAC:
             // acc += data * conj(r), e += |r|^2 -- float compute, widened once for the reduction.
             const float2 t1 = cmulf(pa, sA);
             const float2 t2 = cmulf(pb, sB);
             const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
+            if (ABL == ABL_NO_MAC) {
+                // ONE add, purely so the gather above stays live. Anything cheaper and nvcc
+                // eliminates the synthesis entirely and the measurement means nothing.
+                acc[t].x += (double)r.x;
+                continue;
+            }
             const double re = (double)(dd.x * r.x + dd.y * r.y); // Re(d * conj(r))
             const double im = (double)(dd.y * r.x - dd.x * r.y); // Im(d * conj(r))
             const double ee = (double)(r.x * r.x + r.y * r.y);
@@ -276,6 +302,27 @@ cudaError_t launch_despread(const float2* data, const int8_t* code, const Despre
     else
         gnss_despread_kernel<float2, false><<<grid, despread_block(p.n_hops), 0, stream>>>(
             data, nullptr, code, jobs, p, corr, energy, nullptr);
+    return cudaGetLastError();
+}
+
+/// BENCH ONLY -- kernel-split ablation. `abl` selects AblMode; 0 is exactly the production
+/// path. Never called from the pipeline: the production launchers above instantiate ABL_NONE
+/// and are unchanged, so this costs the deployed kernel nothing but two extra instantiations
+/// in the object file.
+cudaError_t launch_despread_abl(const float2* data, const int8_t* code, const DespreadJob* jobs,
+                                int n_spec, int n_chan, const DespreadParams& p, double2* corr,
+                                double* energy, cudaStream_t stream, int abl) {
+    dim3 grid(n_spec, n_chan);
+    const int blk = despread_block(p.n_hops);
+    if (abl == ABL_NO_MAC)
+        gnss_despread_kernel<float2, false, ABL_NO_MAC>
+            <<<grid, blk, 0, stream>>>(data, nullptr, code, jobs, p, corr, energy, nullptr);
+    else if (abl == ABL_NO_SYN)
+        gnss_despread_kernel<float2, false, ABL_NO_SYN>
+            <<<grid, blk, 0, stream>>>(data, nullptr, code, jobs, p, corr, energy, nullptr);
+    else
+        gnss_despread_kernel<float2, false, ABL_NONE>
+            <<<grid, blk, 0, stream>>>(data, nullptr, code, jobs, p, corr, energy, nullptr);
     return cudaGetLastError();
 }
 

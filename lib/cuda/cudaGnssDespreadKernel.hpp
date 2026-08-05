@@ -174,6 +174,17 @@ cudaError_t launch_despread(const float2* data, const int8_t* code, const Despre
 /// As launch_despread, but reading a CHORD 4+4b ring: one byte per (channel, hop), unpacked with
 /// @c chan_scale [n_chan] (lsb -> volts, the inverse of the ingest's scale). Same kernel, same
 /// numerics, only the voltage load differs -- the demotion must not fork the despread.
+/// BENCH ONLY: run the despread with part of the work ablated, to attribute the kernel's cost.
+/// abl: 0 = production (nothing ablated), 1 = NO_MAC (synthesis + carrier only, one add kept so
+/// the gather is not eliminated), 2 = NO_SYN (constant replica; carrier + MAC only).
+///   synthesis  ~ T(0) - T(NO_SYN)
+///   correlation~ T(0) - T(NO_MAC)
+/// The production launchers instantiate the un-ablated path and are unaffected. Results from an
+/// ablated run are MEANINGLESS as despread output -- timing only.
+cudaError_t launch_despread_abl(const float2* data, const int8_t* code, const DespreadJob* jobs,
+                                int n_spec, int n_chan, const DespreadParams& p, double2* corr,
+                                double* energy, cudaStream_t stream, int abl);
+
 cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale,
                               const int8_t* code, const DespreadJob* jobs, int n_spec, int n_chan,
                               const DespreadParams& p, double2* corr, double* energy,
