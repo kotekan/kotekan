@@ -3888,3 +3888,87 @@ the power), so the honest MRC gain over the reference element is ~2.1x, not sqrt
 Open: the end-to-end synthetic for combine_split still returns 0 (integration bug, not a
 conceptual one). The WIP is in `git stash` and carries a RECORD_FLOATS 24->26 bump, which needs
 `record_floats` regenerated in every config before any node runs it.
+
+## 8.22 HANDOFF 2026-08-05 -- coherent summation CLOSED; next thread is the GPU search
+
+### 8.22.1 What is live right now
+
+* **The broker's cross-node coherent combine is running and publishing** (`fleet_coherent`,
+  cf06, `--publish-port 12060`). Rows carry genuine fleet numbers with `coh_src: "fleet:N"`;
+  PRNs that fail the measured null floor keep their single-instance values and say so.
+  On sky: PRN 23 folding at 114-805 sigma with `coh_frac` 0.995-1.000, against ~14 before.
+  It touches NO loop -- an observable only, so a fault degrades the display, never the tracking.
+* **The viewer is pointed at 12060** (port-forwarded), so it shows the fleet numbers. The
+  per-instance combiner endpoints still show the OLD ~12 sigma / coh_frac 0.73 -- that is the
+  local path, which structurally cannot remove the sky phase. Not a bug; do not "fix" it.
+
+### 8.22.2 ⚠️ THE RUNNING NODES DIFFER FROM THE TREE -- read before the next restart
+
+The nodes have been up since 2026-08-05 14:03 and hold the binary + config they loaded then.
+The tree and `build/kotekan/kotekan` moved on at 15:56. The next `node_up.sh` therefore changes
+behaviour, all of it intended and self-consistent (configs were regenerated in the same commit):
+
+* `RECORD_FLOATS` 24 -> 26, every config regenerated to stride 410. Consistent pair; a MISMATCHED
+  pair dies loudly at construction on the frame-size assert rather than corrupting memory.
+* `phase_track` now **false** (was true). Measured on sky it cost 14.5 -> 13.2 and raised the
+  local deep floor 2.18 -> 3.15 for every satellite.
+* `elem_sum` still true, but on the REWRITTEN `gnssElemCal` (fixed cal reference, 3-sigma
+  statistical gate, tau 5 s). Verified on synthetic, NOT yet seen on sky.
+* `sky_deep` **false**: the assembler writes the split-aperture slots 24/25 so they can be
+  measured, but the combiner ignores them. See 8.22.3.
+
+### 8.22.3 OPEN: the split-aperture bound violation (blocks `sky_deep`)
+
+On synthetic data at 1.20 rad injected phase the split rung reads **28.4 against a GENIE of
+20.5** -- and the genie itself moves with the injected amplitude (41.5 at 0.75 rad) when it
+should be invariant to it. An estimator that beats perfect knowledge is not understood. Suspect
+the harness before the estimator: the genie's dependence on `sky_sig` is the part that makes no
+sense, and `sumtrack_test` part C shares its RNG stream between the phase draw and the noise
+draws. Do NOT enable `sky_deep` until this is closed.
+
+Everything else about the split aperture is verified: at the live operating point (per-record
+SNR ~9/instance, ~8 effective elements) it takes 13.7 -> 30.0 against a genie of 41.5, and the
+no-sky control confirms the honest price is exactly sqrt(2) (40.8 -> 28.2).
+
+### 8.22.4 OPEN: smaller items
+
+* **The null floor is a MAX statistic** and occasionally spikes (one cycle read 16.6 against a
+  typical 4-6, characterised max 5.73 over 726 samples). A spike briefly suppresses marginal
+  detections. Consider a high percentile instead of the max, or an EMA over cycles.
+* **RFI, 2026-08-05 15:49-16:04 UTC.** Broadband +8.7 dB noise with the SIGNAL falling at the
+  same time -- the signature of the 4+4b quantizer being driven toward saturation (a gain change
+  moves both together; a Tsys change does not suppress signal). Identical on both interleaved
+  combs, so not narrowband. All satellites dropped together; recovered on its own. Wanted:
+  a **clip-fraction monitor** on the 4+4b path so this is measured rather than inferred, and a
+  low-cadence per-channel band-power log so the next event is characterised in frequency while
+  it happens. NOTE the timing coincided with a rebuild and was checked: the nodes were on the
+  14:03 binary throughout, so it was not us.
+* **Cross-node -> local migration.** `fleet_coherent` scales the wrong way for full CHORD (fewer
+  channels per node). The element axis grows to 512 and the phase is common across elements, so
+  split-aperture is the long-term answer; the broker path is the reference implementation to
+  validate it against.
+* Element health: the array is ~8 effective elements with a 14 dB gain spread (13 above 3 sigma,
+  top 4 hold 53% of the power), so the honest MRC gain over the reference element is ~2.1x, NOT
+  sqrt(32). Some feeds have oscillating amplitudes (18-23% frame-to-frame vs 2-12% typical).
+
+### 8.22.5 The metric, settled
+
+`search_snr` is `peak/mean of |D|^2` -- a POWER ratio (∝ A^2). `deep_snr` is an amplitude
+significance (∝ A). Compare `sqrt(search_snr)` against `deep_snr`, and both instruments obey the
+same law: prototype sqrt(1000 records) = 32x, CHORD sqrt(77.5 x 2.59 x 4.4) = 30x. The apparent
+"prototype gets thousands, CHORD gets hundreds" was squared-vs-linear units, plus CHORD's search
+integrating 16 code periods where the airspy's integrated 1.
+
+`deep_snr` is a DETECTION statistic, not a sensitivity metric -- it scales with choices we make
+(window length, fleet size). Quote **`coh_frac`** (invariant; now 0.99-1.00, i.e. under 1%
+coherence loss -- there is nothing left to reclaim), **C/N0 in dB-Hz** for cross-configuration
+comparison, and for beam mapping the per-element complex gain with an error bar plus dynamic
+range per transit.
+
+### 8.22.6 NEXT THREAD: move the search onto the GPU
+
+Prerequisite for folding in other bands/constellations. Start from 5o (why the search is slow)
+and 8.20.x (the acquire parameters that are now the defaults). The search is currently the only
+CPU-bound stage and the reason a pass costs minutes; it is single-antenna by design
+(`--search-element`) and runs on a stride-4 comb, so it is a different geometry from the
+tracker's stride-16 per-instance view.
