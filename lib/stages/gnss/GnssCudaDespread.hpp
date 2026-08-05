@@ -77,6 +77,14 @@ public:
     std::vector<std::array<gnss::DespreadResult, 3>>
     despread_batch(const std::vector<Spec>& specs);
 
+    /// BENCH ONLY: cap chip_gather's depth. The gather runs n_chips deep per hop, where
+    /// n_chips is the chips the PFB filter spans -- 210 at CHORD against the 13 the kernel
+    /// comment describes for airspy L5, because a 65536-sample span covers 210 chips at 312.8
+    /// samples/chip. Capping it TRUNCATES THE FILTER: the despread output is WRONG and the run
+    /// is for timing only. Its purpose is to answer one question before anyone rewrites the
+    /// Phi layout -- is synthesis time proportional to the gather depth, or not?
+    void set_max_chips(int n);
+
     /// BENCH: bracket the CHORD split path's two kernels with CUDA events, so the
     /// synthesis / correlation balance can be measured ON THE NODE at the real geometry.
     /// Measuring it in a synthetic bench does not work: chip_gather's depth (job.n_chips) comes

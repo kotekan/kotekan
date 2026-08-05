@@ -50,6 +50,7 @@ struct GnssCudaDespread::Impl {
     // (job.n_chips) is set by the PFB span, ~8 chips/hop at the test's 40-sample hop against ~52
     // at CHORD's 16384, so a per-sample rate measured on one geometry does not transfer to the
     // other. Off by default; the events are only created when enabled.
+    int max_chips = 0; ///< BENCH: cap chip_gather depth (0 = the filter's true span)
     bool split_timing = false;
     bool split_recorded = false; ///< at least one enqueue has recorded the events
     cudaEvent_t ev_a = nullptr, ev_b = nullptr, ev_c = nullptr;
@@ -189,6 +190,14 @@ struct GnssCudaDespread::Impl {
         pc.valid = true;
         pc.doppler = doppler;
         pc.n_chips = f.n_chips;
+        // BENCH: cap the gather depth. n_chips = ceil((Lf-1)*cps)+2 is the chips the PFB filter
+        // spans -- 210 at CHORD (65536-sample span, 312.8 samples/chip) against the 13 the
+        // kernel's own comment describes for airspy L5. If synthesis time is proportional to
+        // this, the gather loop IS the cost and a layout fix is worth the risk; if it is not,
+        // the bottleneck is elsewhere and the layout change would be wasted. TRUNCATES THE
+        // FILTER, so a capped run is for TIMING ONLY -- the despread output is wrong.
+        if (max_chips > 0 && pc.n_chips > max_chips)
+            pc.n_chips = max_chips;
         return pc;
     }
 };
@@ -245,6 +254,12 @@ bool GnssCudaDespread::split_timing_ms(double& synthesis_ms, double& correlation
     synthesis_ms = a;
     correlation_ms = b;
     return true;
+}
+
+void GnssCudaDespread::set_max_chips(int n) {
+    _impl->max_chips = n;
+    for (auto& pc : _impl->phi) // force a rebuild so the cap takes effect on cached buckets
+        pc.valid = false;
 }
 
 int GnssCudaDespread::max_batch_specs() const {

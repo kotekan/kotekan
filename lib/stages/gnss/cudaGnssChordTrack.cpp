@@ -109,6 +109,14 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // the aggregator links this file but never instantiates cudaGnssChordTrack.
     if (split_timing)
         despread->enable_split_timing(true);
+    // BENCH: >0 truncates the PFB gather. Timing experiment only -- the despread is WRONG.
+    const int max_chips = config.get_default<int>(unique_name, "despread_max_chips", 0);
+    if (max_chips > 0) {
+        despread->set_max_chips(max_chips);
+        WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} -- THE GATHER IS TRUNCATED AND "
+                    "THE DESPREAD OUTPUT IS INVALID. Timing experiment only.",
+                    max_chips);
+    }
 
     seeds.assign((size_t)n_prn, Seed{});
     trim.assign((size_t)n_prn, 0.0);
