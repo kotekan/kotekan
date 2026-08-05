@@ -51,6 +51,7 @@ struct GnssCudaDespread::Impl {
     // at CHORD's 16384, so a per-sample rate measured on one geometry does not transfer to the
     // other. Off by default; the events are only created when enabled.
     bool split_timing = false;
+    bool split_recorded = false; ///< at least one enqueue has recorded the events
     cudaEvent_t ev_a = nullptr, ev_b = nullptr, ev_c = nullptr;
     cudaStream_t stream = nullptr;
     std::vector<gnss_cuda::DespreadJob> h_jobs;
@@ -227,7 +228,10 @@ void GnssCudaDespread::enable_split_timing(bool on) {
 
 bool GnssCudaDespread::split_timing_ms(double& synthesis_ms, double& correlation_ms) const {
     Impl& im = *_impl;
-    if (!im.split_timing || !im.ev_c)
+    // split_recorded matters: the tracker queries this near the TOP of execute, so on the very
+    // first frame the events exist but have never been recorded. cudaEventElapsedTime on those
+    // is an error rather than a crash, but relying on that is not a guarantee worth taking.
+    if (!im.split_timing || !im.ev_c || !im.split_recorded)
         return false;
     // The caller reads this after the frame has completed (gpuProcess logs profiling from
     // results_thread, post finalize), so the events are already resolved; synchronize anyway
@@ -467,8 +471,10 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
                                       n_elem, elem_stride, frame_chan_stride, par,
                                       (double2*)d_corr_out, st),
        "launch correlate NxM");
-    if (im.split_timing)
+    if (im.split_timing) {
         ck(cudaEventRecord(im.ev_c, st), "split ev_c");
+        im.split_recorded = true;
+    }
     return 4 * n_spec;
 }
 

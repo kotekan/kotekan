@@ -60,9 +60,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     seed_ttl_s = config.get_default<double>(unique_name, "seed_ttl_s", 60.0);
     // BENCH: report the synthesis / correlation split per frame. Pairs with the cudaProcess
     // stage's `log_profiling` -- that gives the command's total, this says where it goes.
+    // Read here with the other config; the engine is ENABLED after `despread` exists (below).
     split_timing = config.get_default<bool>(unique_name, "log_kernel_split", false);
-    if (split_timing)
-        despread->enable_split_timing(true);
 
     if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
         FATAL_ERROR("cudaGnssChordTrack: hops_per_record {:d} must divide samples_per_data_set "
@@ -105,6 +104,11 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // is why nothing ever locked (found 2026-07-31). See GnssCudaDespread.hpp.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                  sample_rate, f_offset_hz);
+    // MUST follow the construction above: enabling it next to the config read dereferenced a
+    // null unique_ptr and the node SEGV'd 12 s into startup. The cf06 build did not catch it --
+    // the aggregator links this file but never instantiates cudaGnssChordTrack.
+    if (split_timing)
+        despread->enable_split_timing(true);
 
     seeds.assign((size_t)n_prn, Seed{});
     trim.assign((size_t)n_prn, 0.0);
@@ -454,6 +458,8 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
         trim_now = S.trim;
     } else
         trim_now.assign((size_t)S.n_prn, 0.0);
+    // Reports the PREVIOUS frame's split: this runs near the top of execute, before this
+    // frame's enqueues. That is fine for a steady-state measurement and avoids a sync here.
     if (S.split_timing) {
         // Spec count = seeds actually live this frame, which is what the kernel was launched
         // with -- not the PRN list size (they differed by 2x before the seed TTL).
