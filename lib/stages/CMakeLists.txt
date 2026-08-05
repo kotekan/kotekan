@@ -269,6 +269,9 @@ if(USE_CUDA)
     # record assembler. The command lives here (not lib/cuda) because it drives the
     # GnssCudaDespread driver -- keeps the stages -> kotekan_cuda link one-way.
     target_sources(kotekan_stages PRIVATE gnss/cudaGnssTrack.cpp gnss/GnssGpuRecordAssemble.cpp)
-    target_link_libraries(kotekan_stages PRIVATE kotekan_cuda)
+    # A2 of docs/gnss_gpu_search.md: the device-resident acquisition search. Needs cuFFT (the
+    # despread driver did not -- it generates replicas in closed form and never transforms).
+    target_sources(kotekan_stages PRIVATE gnss/GnssCudaAcquire.cpp)
+    target_link_libraries(kotekan_stages PRIVATE kotekan_cuda CUDA::cufft)
     target_compile_definitions(kotekan_stages PRIVATE GNSS_CUDA=1)
 endif()

@@ -127,6 +127,100 @@ __global__ void agg_folded_kernel(const float2* __restrict__ P, float* __restric
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// FOLDED path over the CHANNEL-MAJOR layout [nc][n_dop][Mp] -- cuFFT's NATURAL inverse output.
+//
+// Why this exists: the [d][q][c] variant above wants channel contiguous, which cuFFT can produce
+// directly with ostride=nc. That looked free and is not -- it writes 8-byte elements at
+// nc*8 = 632-byte stride, so every write claims its own sector and the correlate ran 41 ms
+// against a 2.5 ms aggregate (measured, blind dims). Letting cuFFT write contiguously and doing
+// the transpose HERE, through a shared-memory tile, moves it to the read side where it is a
+// pattern rather than extra traffic: each (channel, q-tile) load is Q consecutive complex.
+//
+// One block owns (one Doppler bin, one tile of Q coarse lags) and walks the tile's rows.
+// ---------------------------------------------------------------------------------------------
+__global__ void agg_folded_cdq_kernel(const float2* __restrict__ P, float* __restrict__ surf,
+                                      const int* __restrict__ bin,
+                                      const float2* __restrict__ twiddle, int nc, int n_dop, int Mp,
+                                      int s_cols, int log2n, int Q) {
+    const int d = blockIdx.y;
+    const int q0 = blockIdx.x * Q;
+    if (d >= n_dop || q0 >= Mp)
+        return;
+    const int t = threadIdx.x;
+    const int qn = min(Q, Mp - q0);
+
+    float2* F = smem;                    // [s_cols]
+    float2* W = F + s_cols;              // [s_cols/2]
+    float2* Ps = W + s_cols / 2;         // [nc][Q]
+
+    for (int i = t; i < s_cols / 2; i += blockDim.x)
+        W[i] = twiddle[i];
+    // Stage the tile: Q consecutive lags for every channel. Coalesced within a channel.
+    for (int i = t; i < nc * qn; i += blockDim.x) {
+        const int c = i / qn, j = i - c * qn;
+        Ps[(long)c * Q + j] = P[((long)c * n_dop + d) * Mp + q0 + j];
+    }
+    __syncthreads();
+
+    for (int j = 0; j < qn; ++j) {
+        for (int i = t; i < s_cols; i += blockDim.x)
+            F[i] = make_float2(0.0f, 0.0f);
+        __syncthreads();
+        for (int c = t; c < nc; c += blockDim.x) {
+            const float2 p = Ps[(long)c * Q + j];
+            const int b = bin[c];
+            atomicAdd(&F[b].x, p.x);
+            atomicAdd(&F[b].y, p.y);
+        }
+        __syncthreads();
+
+        float2 v = make_float2(0.0f, 0.0f);
+        if (t < s_cols)
+            v = F[__brev((unsigned)t) >> (32 - log2n)];
+        __syncthreads();
+        if (t < s_cols)
+            F[t] = v;
+        __syncthreads();
+
+        for (int len = 2; len <= s_cols; len <<= 1) {
+            const int half = len >> 1;
+            if (t < s_cols / 2) {
+                const int jj = t & (half - 1);
+                const int base = (t / half) * len;
+                const int i0 = base + jj, i1 = i0 + half;
+                const float2 w = W[jj * (s_cols / len)];
+                const float2 a = F[i0];
+                const float2 b2 = cmul(F[i1], w);
+                F[i0] = cadd(a, b2);
+                F[i1] = csub(a, b2);
+            }
+            __syncthreads();
+        }
+        if (t < s_cols) {
+            const float2 dv = F[t];
+            surf[((long)d * Mp + q0 + j) * s_cols + t] += dv.x * dv.x + dv.y * dv.y;
+        }
+    }
+}
+
+void launch_aggregate_cdq(const float2* P, float* surf, const int* bin, const float2* twiddle,
+                          int nc, int n_dop, int Mp, int s_cols, cudaStream_t stream) {
+    if (nc <= 0 || n_dop <= 0 || Mp <= 0 || s_cols <= 0)
+        return;
+    int log2n = 0;
+    while ((1 << log2n) < s_cols)
+        ++log2n;
+    // Q trades staging shared memory against block count. 32 keeps the tile at nc*32*8 = 20 KB
+    // for CHORD's 79 channels, inside the 48 KB default without an opt-in carveout, while still
+    // giving nd*ceil(Mp/32) = 31k blocks over 142 SMs.
+    const int Q = 32;
+    const size_t shm = (size_t)(s_cols + s_cols / 2 + nc * Q) * sizeof(float2);
+    const dim3 grd((unsigned)((Mp + Q - 1) / Q), (unsigned)n_dop);
+    agg_folded_cdq_kernel<<<grd, s_cols, shm, stream>>>(P, surf, bin, twiddle, nc, n_dop, Mp,
+                                                        s_cols, log2n, Q);
+}
+
 void launch_aggregate(const float2* P, float* surf, const float2* ramp, const int* bin,
                       const float2* twiddle, int nc, int n_dop, int Mp, int s_cols, bool folded,
                       cudaStream_t stream) {
@@ -248,14 +342,95 @@ __global__ void peak_final_kernel(const float* __restrict__ bmax, const double* 
     // float still represents to ~1e3 -- 1e-7 relative. Good enough for an SNR, deliberately.
 }
 
+// ---------------------------------------------------------------------------------------------
+// A2: correlate front end.
+// ---------------------------------------------------------------------------------------------
+
+__global__ void gather_pad_kernel(const float2* __restrict__ snap, const int* __restrict__ cov,
+                                  float2* __restrict__ out, int n_chan_total, int M, int Mp,
+                                  int nc) {
+    const int c = blockIdx.y;
+    if (c >= nc)
+        return;
+    const int lc = cov[c];
+    for (int m = blockIdx.x * blockDim.x + threadIdx.x; m < Mp; m += gridDim.x * blockDim.x)
+        out[(long)c * Mp + m] =
+            (m < M) ? snap[(long)m * n_chan_total + lc] : make_float2(0.0f, 0.0f);
+}
+
+void launch_gather_pad(const float2* snap, const int* cov, float2* out, int n_chan_total, int M,
+                       int Mp, int nc, cudaStream_t stream) {
+    if (nc <= 0 || Mp <= 0)
+        return;
+    const dim3 blk(256), grd((unsigned)((Mp + 255) / 256), (unsigned)nc);
+    gather_pad_kernel<<<grd, blk, 0, stream>>>(snap, cov, out, n_chan_total, M, Mp, nc);
+}
+
+__global__ void materialise_kernel(const float2* __restrict__ head, const float2* __restrict__ tail,
+                                   const float* __restrict__ sgn0, const float* __restrict__ sgn1,
+                                   float2* __restrict__ R, int nc, int Mp) {
+    const int c = blockIdx.y;
+    if (c >= nc)
+        return;
+    for (int m = blockIdx.x * blockDim.x + threadIdx.x; m < Mp; m += gridDim.x * blockDim.x) {
+        const long i = (long)c * Mp + m;
+        const float2 h = head[i], t = tail[i];
+        const float a0 = sgn0[m], a1 = sgn1[m];
+        R[i] = make_float2(h.x * a0 + t.x * a1, h.y * a0 + t.y * a1);
+    }
+}
+
+void launch_materialise(const float2* head, const float2* tail, const float* sgn0,
+                        const float* sgn1, float2* R, int nc, int Mp, cudaStream_t stream) {
+    if (nc <= 0 || Mp <= 0)
+        return;
+    const dim3 blk(256), grd((unsigned)((Mp + 255) / 256), (unsigned)nc);
+    materialise_kernel<<<grd, blk, 0, stream>>>(head, tail, sgn0, sgn1, R, nc, Mp);
+}
+
+__global__ void dopmul_kernel(const float2* __restrict__ A, const float2* __restrict__ B,
+                              const int* __restrict__ bshift, float2* __restrict__ X, int nc,
+                              int n_dop, int Mp, float inv_mp) {
+    const int c = blockIdx.z;
+    const int d = blockIdx.y;
+    if (c >= nc || d >= n_dop)
+        return;
+    const int b = bshift[d];
+    const float2* __restrict__ Ac = A + (long)c * Mp;
+    const float2* __restrict__ Bc = B + (long)c * Mp;
+    float2* __restrict__ Xc = X + ((long)c * n_dop + d) * Mp;
+    for (int k = blockIdx.x * blockDim.x + threadIdx.x; k < Mp; k += gridDim.x * blockDim.x) {
+        int j = k + b;
+        if (j >= Mp)
+            j -= Mp; // b is already reduced mod Mp, so one conditional suffices
+        const float2 a = Ac[j];
+        const float2 bb = Bc[k];
+        // a * conj(bb), scaled by cuFFT's missing 1/Mp
+        Xc[k] = make_float2((a.x * bb.x + a.y * bb.y) * inv_mp,
+                            (a.y * bb.x - a.x * bb.y) * inv_mp);
+    }
+}
+
+void launch_dopmul(const float2* A, const float2* B, const int* bshift, float2* X, int nc,
+                   int n_dop, int Mp, cudaStream_t stream) {
+    if (nc <= 0 || n_dop <= 0 || Mp <= 0)
+        return;
+    const dim3 blk(256), grd((unsigned)((Mp + 255) / 256), (unsigned)n_dop, (unsigned)nc);
+    dopmul_kernel<<<grd, blk, 0, stream>>>(A, B, bshift, X, nc, n_dop, Mp, 1.0f / (float)Mp);
+}
+
 void launch_peak(const float* surf, long n_cells, float2* out_val, long long* out_idx,
                  void* scratch, cudaStream_t stream) {
     if (n_cells <= 0)
         return;
     const int nb = peak_blocks(n_cells);
-    float* bmax = (float*)scratch;
-    double* bsum = (double*)(bmax + nb);
+    // ALIGNMENT: lay the partials out widest-first. A float[nb] at the front leaves the
+    // following double* 4-byte aligned whenever nb is ODD, which faults with "misaligned
+    // address" -- and only for some surface sizes, so it survives every test that happens to
+    // use an even block count. n_dop 321 gives nb 1960 (fine) and n_dop 41 gives nb 251 (fault).
+    double* bsum = (double*)scratch;
     long long* bidx = (long long*)(bsum + nb);
+    float* bmax = (float*)(bidx + nb);
     peak_partial_kernel<<<nb, PEAK_THREADS, 0, stream>>>(surf, n_cells, bmax, bsum, bidx);
     peak_final_kernel<<<1, 1, 0, stream>>>(bmax, bsum, bidx, nb, out_val, out_idx);
 }

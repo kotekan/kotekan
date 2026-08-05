@@ -52,6 +52,14 @@ void launch_aggregate(const float2* P, float* surf, const float2* ramp, const in
                       const float2* twiddle, int nc, int n_dop, int Mp, int s_cols, bool folded,
                       cudaStream_t stream);
 
+/// Folded aggregate over the CHANNEL-MAJOR layout `P[nc][n_dop][Mp]` -- cuFFT's natural inverse
+/// output. Prefer this over @ref launch_aggregate for the full chain: producing the [d][q][c]
+/// layout instead costs `ostride = nc`, i.e. 8-byte writes at 632-byte stride, which measured
+/// 41 ms of correlate against a 2.5 ms aggregate. Here the transpose happens through a
+/// shared-memory tile on the READ side, where it is a pattern rather than extra traffic.
+void launch_aggregate_cdq(const float2* P, float* surf, const int* bin, const float2* twiddle,
+                          int nc, int n_dop, int Mp, int s_cols, cudaStream_t stream);
+
 /// Peak + mean of a surface, on device -- so the 1.03 GB surface never crosses PCIe.
 /// Writes {peak, sum} to `out_val[0..1]` (float2) and the flat argmax to `out_idx[0]`.
 /// `scratch` must hold at least `n_blocks` float2 + int; pass n_blocks from @ref peak_blocks.
@@ -63,6 +71,47 @@ int peak_blocks(long n_cells);
 
 /// Bytes of scratch @ref launch_peak needs for `n_cells`.
 size_t peak_scratch_bytes(long n_cells);
+
+// ---------------------------------------------------------------------------------------------
+// A2: the correlate, so the whole chain is device-resident. See docs/gnss_gpu_search.md.
+// ---------------------------------------------------------------------------------------------
+
+/// Gather the covering channels out of the stage's [hop][n_chan] snapshot into per-channel
+/// contiguous rows, zero-padded from the data window M out to the replica period Mp.
+/// @param snap  device [M][n_chan_total] complex, exactly as GnssChannelizedSearch holds it
+/// @param cov   device [nc] LOCAL channel indices
+/// @param out   device [nc][Mp] complex, zero beyond M
+void launch_gather_pad(const float2* snap, const int* cov, float2* out, int n_chan_total, int M,
+                       int Mp, int nc, cudaStream_t stream);
+
+/// Materialise one secondary-code alignment of a PRN's replica:
+///   R[c][m] = head[c][m] * sgn0[m] + tail[c][m] * sgn1[m]
+/// The sign pair depends on the HOP and the alignment but not the channel, which is why it is
+/// hoisted to a [Mp] table by the caller -- evaluating overlay_sign per channel made the CPU
+/// pass slower than the eager bank it replaced (7.14 s vs 4.4 s, measured; see the search stage).
+void launch_materialise(const float2* head, const float2* tail, const float* sgn0,
+                        const float* sgn1, float2* R, int nc, int Mp, cudaStream_t stream);
+
+/// Doppler wipe + replica conjugate multiply, in the frequency domain:
+///   X[(c*n_dop + d)*Mp + k] = A[c][(k + bshift[d]) mod Mp] * conj(B[c][k]) / Mp
+///
+/// The cyclic SHIFT is the bin-aligned Doppler trick and it is exact, not an approximation:
+/// wiping the data by f_d multiplies it by e^{-i 2 pi f_d m sph/Fs}, which is a pure cyclic shift
+/// of its spectrum whenever f_d is a whole number of this transform's own bins
+/// (Fs/(Mp*sph) = 62.5 Hz at CHORD). One forward transform of the data then serves EVERY Doppler
+/// trial. The live CPU config uses doppler_step 31.25 -- exactly half a bin -- and so silently
+/// takes the slow path of one forward FFT per trial; the GPU path should always be given a
+/// bin-aligned grid, since channelized_peak's parabolic refine already recovers sub-grid Doppler.
+///
+/// The 1/Mp is cuFFT's missing inverse normalization, applied here because it is the cheapest
+/// place: |D|^2 is quadratic in P, so folding it in later would need a second pass over the
+/// surface.
+///
+/// Layout is (channel-major, Doppler-minor) so the inverse transform can be batched over Doppler
+/// for a FIXED channel -- the only ordering for which BOTH cuFFT strides stay linear while the
+/// output lands in the [d][q][c] layout @ref launch_aggregate wants. See GnssCudaAcquire.
+void launch_dopmul(const float2* A, const float2* B, const int* bshift, float2* X, int nc,
+                   int n_dop, int Mp, cudaStream_t stream);
 
 } // namespace gnss_cuda
 

@@ -181,10 +181,42 @@ one that is slow, until weeks later.
   more than the 505 ms the kernel saves. A1 is a correctness milestone, not a release -- which
   is exactly why it was built against a planted peak and the double CPU surface rather than
   wired straight into the stage.
-* **A2 -- device correlate.** Batched cuFFT + the hoisted `FFT(data)` + the bin-aligned Doppler
-  shift. Now the whole (correlate -> aggregate -> peak) chain is device-resident and A1's win is
-  real. This is the first deployable unit.
-* **A3 -- batch over (PRN x NH)** in one launch set, replica materialise on device.
+* **A2 -- device correlate. DONE 2026-08-05.** `lib/stages/gnss/GnssCudaAcquire.{hpp,cpp}` driving
+  the kernels, validated end to end by `scripts/gnss/acqbench` against
+  `gnss::channelized_accumulate` on identical inputs with a planted delay + Doppler.
+
+  | n_dop | CPU (16 thr) | GPU chain | speedup |
+  |---|---|---|---|
+  | 11 | 0.046 s | 0.55 ms | 84x |
+  | 19 (typical hinted) | 0.070 s | 0.59 ms | 118x |
+  | 41 | 0.145 s | 1.2 ms | 124x |
+  | 161 | 0.52 s | 4.7 ms | 111x |
+  | **321 (blind)** | **1.15 s** | **8.3 ms** | **113x** |
+
+  Surface agrees to `rel 5.9e-08` at every size, same argmax cell, same SNR to 7 digits
+  (153982.541 vs 153982.537 at blind dims). 1.16 GB of device memory per engine.
+
+  Blind GPS L5 is then `20 NH x 32 PRN x 8.3 ms` = **5.3 s per snapshot on one GPU**, against
+  427 s. Hinted, all 32 PRNs, 5 alignments: **95 ms** -- ~10% duty at a 1 s cadence.
+* **A3 -- batch over (PRN x NH)** in one launch set, replica materialise on device. KV settled
+  two policy questions here on 2026-08-05, and they change what A3 builds:
+
+  **Drop the round-robin; search every PRN every pass.** The cost argument is easy -- all 32
+  PRNs hinted is ~95 ms, ~10% of one GPU at a 1 s cadence, and one rotating *blind*
+  reacquisition slot (1 PRN, 321 bins x 20 NH) adds ~166 ms. But the better reason is not
+  speed: `prns_per_pass: 1` gives a ~1276 s per-PRN revisit, which exceeds the broker's
+  `--fit-gap-s 900`, so `cp_hist` resets on every detection and **`code_phase_rate` is never
+  fit at all**. Searching every PRN every pass closes that as a side effect.
+
+  **Throttle to ~1 s, deliberately leaving the GPU idle.** Faster buys nothing real: the
+  snapshot is 16 ms of data, and seed staleness costs 0.0087 chips/Hz/s, so a 1 s-old seed
+  carries ~2 chips against the ~13 minutes we have today. The headroom is not waste -- it is
+  what the other signals will spend. Galileo E5a alone (36 sats x a **100**-length secondary
+  x ~19 bins) is ~1.1 s of GPU per pass and already exceeds a 1 s cadence on one device. The
+  NH multiplier is per-signal, and L5's 20 is the *small* one.
+
+  So A3's shape: all eligible PRNs per pass at their hinted grids, plus a rotating blind slot,
+  with a configured GPU duty-cycle budget rather than "go as fast as the hardware allows".
 * **A4 -- fuse 3-5** with Doppler tiling for L2 residency.
 * **A5 -- refine on GPU.** In *hinted* mode refine is 75% of the pass (0.48 s of 0.62 s), so it
   becomes the limiter the moment acquire is fast. It is exact despreads, which is what
@@ -218,6 +250,20 @@ one that is slow, until weeks later.
    thread: 195 -> 567 GB/s. Measure before attributing.
 7. **`cudaDeviceProp::memoryClockRate` no longer exists in CUDA 13** (cf06 runs 13.3). Use
    `cudaDeviceGetAttribute(cudaDevAttrMemoryClockRate)`.
+8. **Asking cuFFT for the layout you want is not free.** The aggregate wants channel-fastest
+   `[d][q][c]`, and cuFFT will write it via `ostride = nc`. That is 8-byte writes at 632-byte
+   stride: the correlate took **41 ms against a 2.5 ms aggregate**. Writing cuFFT's natural
+   contiguous layout and transposing through a shared-memory tile on the aggregate's READ side
+   took the whole chain 45 ms -> 8.3 ms and dropped 0.63 GB (the inverse now runs in place).
+   Layout conversions belong where they are a *pattern*, not where they are *traffic*.
+9. **A NULL `inembed` with a non-NULL `onembed` is not a valid mixture** -- cuFFT follows FFTW's
+   rule that NULL inembed means "basic layout, ignore every other stride argument", and returns
+   `CUFFT_INVALID_VALUE` rather than doing what you meant.
+10. **Size-dependent alignment faults.** `launch_peak`'s scratch originally laid out
+    `float[nb]` before `double[nb]`, which leaves the `double*` 4-byte aligned whenever `nb` is
+    ODD. `n_dop` 321 gives `nb` 1960 and passes; 41 gives 251 and faults with "misaligned
+    address" -- reported at the *next* sync point, so it presents as a failure in an unrelated
+    memcpy. Sweep several sizes, not one; a single blind-dimension test would have shipped this.
 
 ## 8. Reproducing the baseline
 
