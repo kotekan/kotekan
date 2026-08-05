@@ -39,6 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import math
 import json
 import os
+import random
 import re
 import statistics
 import sys
@@ -636,8 +637,9 @@ class FleetPublisher:
             v = self._ctl["carrier_trim_const"]
         return fallback if v is None else v
 
-    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None):
+    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None):
         rows = []
+        fcoh = fcoh or {}
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
             sd = seeds.get(prn, {})
@@ -669,6 +671,30 @@ class FleetPublisher:
                 "doppler_rate_hz_s": sd.get("doppler_rate_hz_s"),
                 "dll_trim": dll_trim.get(prn, 0.0),
             })
+            # FLEET-COHERENT OVERRIDE. This is what overturns the "BEST-OF a single instance"
+            # rule in the class docstring above: the coherent statistics ARE mergeable now,
+            # because fleet_coherent solves the cross-node phase alignment that the power
+            # combine deliberately avoids. Only for PRNs that cleared the MEASURED null floor;
+            # everything else keeps the best single instance's numbers, which stay honest.
+            fc = fcoh.get(prn)
+            if fc and fc.get("present"):
+                row.update({
+                    "deep_snr": fc["deep_snr"],
+                    "deep_amplitude": fc["deep_amplitude"],
+                    "coh_frac": fc["coh_frac"],
+                    "coh_src": "fleet:%d" % fc["n_src"],
+                    "fleet_coh_floor": fc["floor"],
+                    "fleet_coh_align": fc["align"],
+                    "fleet_coh_records": fc["n_rec"],
+                    # The best single instance kept alongside, so the GAIN this buys is
+                    # visible in the same row rather than inferred across restarts.
+                    "fleet_coh_best_inst": fc["best_inst_snr"],
+                })
+            elif fc:
+                # Measured and rejected: publish the floor it failed against, so "no fleet
+                # number" is distinguishable from "fleet never looked at this PRN".
+                row.update({"fleet_coh_floor": fc["floor"],
+                            "fleet_coh_align": fc["align"]})
             rows.append(row)
         with self._lock:
             self._rows = rows
@@ -709,7 +735,8 @@ def _coherent_sum(a):
     return (mag / denom if denom > 0.0 else 0.0), mag / n, (mag / tot_abs if tot_abs > 0 else 0.0)
 
 
-def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None):
+def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
+                   null_trials=1, floor_margin=3.0, seed=0):
     """CROSS-NODE COHERENT COMBINE: the per-record sky phase, and the deep folds it unlocks.
 
     WHAT THIS FIXES, measured on sky 2026-08-05. Every instance's deep fold sat at ~14 sigma
@@ -763,10 +790,23 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None):
     Instances are weighted by replica ENERGY, which is the MRC weight: A = G/E has variance
     ~1/E, so summing E*A is summing the raw correlations G.
 
-    Returns {prn: {deep_snr, deep_amplitude, coh_frac, n_src, n_rec, span_s, align, per_inst}}
-    for PRNs seen by >= min_instances instances over >= min_records common hops. A PRN below
-    that is ABSENT, so the caller keeps the single-instance number and a partly-down fleet
-    degrades instead of stalling.
+    THE FLOOR IS MEASURED, NOT ASSUMED (same principle as fleet_dll's q_floor). Every cycle the
+    identical math is re-run on a NULL built by SHUFFLING each instance's records independently:
+    real amplitudes, real energies, real instance count -- but the common per-record phase, which
+    is the entire thing this estimator locks onto, destroyed. Whatever the null reads is what the
+    estimator manufactures from nothing at this fleet size and window length, so a detection must
+    clear floor_margin x that. Characterised over 6 polls / 726 null samples: median 1.35, 99th
+    percentile 4.15, max 5.73, against a weakest REAL coherent detection of 22.2 -- a clean gap,
+    and non-coherent PRNs sat in the null population (median 1.93) exactly as they should.
+    A shuffle (not a roll) is required: a roll shifts the shared linear carrier ramp by a
+    CONSTANT, leaving it fully intact, so a rolled null measures the rate-search floor (~18-25)
+    rather than this estimator's own.
+
+    Returns {prn: {deep_snr, deep_amplitude, coh_frac, n_src, n_rec, align, per_inst, floor,
+    present}} for PRNs seen by >= min_instances instances over >= min_records common hops.
+    `present` is the floor-cleared flag -- the caller publishes coherent numbers only for those
+    and keeps the single-instance value otherwise, so a partly-down fleet degrades rather than
+    stalls, and a noise-only PRN can never manufacture a fleet detection.
     """
     if not endpoints:
         return {}
@@ -796,12 +836,13 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None):
         if per:
             got[url] = per
 
-    out = {}
-    all_prns = set()
-    for per in got.values():
+    def _solve(store):
+      out = {}
+      all_prns = set()
+      for per in store.values():
         all_prns.update(per)
-    for prn in sorted(all_prns):
-        src = {u: per[prn] for u, per in got.items() if prn in per}
+      for prn in sorted(all_prns):
+        src = {u: per[prn] for u, per in store.items() if prn in per}
         if len(src) < min_instances:
             continue
         hops = None
@@ -861,13 +902,41 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None):
             "best_inst": max(per_inst, key=per_inst.get) if per_inst else None,
             "best_inst_snr": max(per_inst.values()) if per_inst else 0.0,
         }
-    if log and out:
+      return out
+
+    out = _solve(got)
+    if not out:
+        return {}
+    # ---- MEASURED NULL FLOOR (see the docstring): same math, common phase destroyed ----
+    # The shuffle is per instance and per PRN, so each instance's records keep their amplitudes
+    # and energies but no longer line up in time with anyone else's. The floor is the MAX over
+    # every null statistic produced this cycle -- fleet totals and per-instance values alike,
+    # since both are published and both must be defensible.
+    rng = random.Random(seed)
+    floor = 0.0
+    for _ in range(max(1, null_trials)):
+        shuf = {}
+        for u, per in got.items():
+            sp = {}
+            for prn, d in per.items():
+                hops = list(d)
+                vals = [d[h] for h in hops]
+                rng.shuffle(vals)
+                sp[prn] = {hops[i]: vals[i] for i in range(len(hops))}
+            shuf[u] = sp
+        nres = _solve(shuf)
+        for v in nres.values():
+            floor = max(floor, v["deep_snr"], *(v["per_inst"].values() or [0.0]))
+    for v in out.values():
+        v["floor"] = floor
+        v["present"] = v["deep_snr"] >= floor_margin * floor
+    if log:
         best = max(out, key=lambda p: out[p]["deep_snr"])
         b = out[best]
-        log("fleet coherent: %d PRN, best PRN %d deep %.1f (best single instance %.1f, "
-            "%dx over %d records, align %.3f, coh_frac %.3f)"
-            % (len(out), best, b["deep_snr"], b["best_inst_snr"], b["n_src"], b["n_rec"],
-               b["align"], b["coh_frac"]))
+        log("fleet coherent: %d PRN (%d clear the floor), best PRN %d deep %.1f vs floor %.1f "
+            "(best single instance %.1f, %dx over %d records, align %.3f, coh_frac %.3f)"
+            % (len(out), sum(1 for v in out.values() if v["present"]), best, b["deep_snr"],
+               floor, b["best_inst_snr"], b["n_src"], b["n_rec"], b["align"], b["coh_frac"]))
     return out
 
 
@@ -1696,6 +1765,31 @@ def main(argv=None):
                          "sum is used. Below this the PRN falls back to the single --combiner "
                          "discriminator, so a partially-down fleet degrades instead of "
                          "stalling.")
+    ap.add_argument("--fleet-coherent", action=argparse.BooleanOptionalAction, default=True,
+                    help="CROSS-NODE COHERENT COMBINE (fleet_coherent). Polls /get_records from "
+                         "the --dll-combiners endpoints and removes the per-record COMMON SKY "
+                         "PHASE -- ~0.75 rad, 0.984-coherent across instances but only ~0.57 "
+                         "autocorrelated in time, which is why no within-node temporal estimator "
+                         "can touch it and why the deep folds sat at ~14 sigma against a ~100 "
+                         "sigma thermal ceiling. Each instance is corrected against the OTHERS "
+                         "(leave-one-out), and the fleet total uses a one-way split so the noise "
+                         "estimate survives. Measured 2026-08-05: 14 -> 170-700 on the bright "
+                         "sats, against a shuffled-null floor of ~4. Costs one extra REST poll "
+                         "per combiner and ~0.2 s per cycle; publishes into the coherent fields "
+                         "the FleetPublisher previously had to take best-of-one-instance.")
+    ap.add_argument("--coh-min-instances", type=int, default=3,
+                    help="fleet coherent: instances that must see a PRN before it is combined. "
+                         "Below this the PRN keeps its single-instance coherent numbers.")
+    ap.add_argument("--coh-min-records", type=int, default=32,
+                    help="fleet coherent: common records (hops) required per PRN.")
+    ap.add_argument("--coh-floor-margin", type=float, default=3.0,
+                    help="fleet coherent: multiple of the MEASURED null floor a fleet deep_snr "
+                         "must clear to be published as a detection. The floor is re-measured "
+                         "every cycle by shuffling each instance's records (real amplitudes, no "
+                         "common phase), exactly as the fleet DLL measures its q floor -- never "
+                         "a constant, because the right bar depends on fleet size and window "
+                         "length. Characterised: null 99th pct 4.15 / max 5.73 vs a weakest real "
+                         "detection of 22.2, so 3x sits in a clean gap.")
     ap.add_argument("--cl-assist", action="store_true",
                     help="LEGACY single-chain CL mode (superseded by --cl-tracker, which keeps "
                          "CM running as the in-run control): lift each seed's code_phase_chips "
@@ -4503,11 +4597,26 @@ def main(argv=None):
             # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
             fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
                               args.dll_quality_sigma, args.dll_quality_min)
+            # CROSS-NODE COHERENT COMBINE. Separate from the DLL on purpose: the DLL sums
+            # POWERS (phase-free, which is what makes it cheap) while this removes the common
+            # per-record PHASE, and the two answer different questions off the same endpoints.
+            # It touches NO loop -- purely an observable, published for the viewer and the beam
+            # map -- so a fault here can degrade what is displayed but can never move the code
+            # or carrier loops.
+            fcoh = {}
+            if args.fleet_coherent:
+                try:
+                    fcoh = fleet_coherent(dll_combiners, args.coh_min_instances,
+                                          args.coh_min_records, prns=set(seeds) or None,
+                                          log=None, floor_margin=args.coh_floor_margin,
+                                          seed=int(time.time()))
+                except Exception as e:
+                    _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
                 # input that produced a given correction.
-                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets)
+                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, fcoh)
             dll_report = []
             for prn in list(seeds):
                 rec = status.get(prn, {})
