@@ -3506,3 +3506,42 @@ a loop before its gate has admitted a sample.
 The rate is fitted from the MEASURED Doppler, which carries ~6 Hz of per-pass search scatter
 (8.20.5), and it is "the LAST word" over BRDC in the seed logic -- a noisy estimator preferred
 over a model one, which is the same trade that 8.20.5 got wrong for the Doppler itself.
+
+### 8.20.20 The disjoint-channel argument was too strong -- comb GEOMETRY is common
+
+KV's correction, and it is right. 8.20.17 concluded that because tracker instances share ZERO
+channels yet correlate at r = +0.862, the cause "cannot be frequency-dependent". That only
+excludes a channel-SPECIFIC error. It does NOT exclude a **comb-geometry** effect: every instance
+runs the same geometry -- 6-7 channels, stride 16, ~96-bin span -- just at a different mod-16
+offset. A geometry effect produces the same signature on every instance and would correlate
+across nodes exactly as observed. The airspy prototype, by contrast, despreads a CONTIGUOUS band,
+so this is a real structural difference between the two systems and one of only two KV listed
+(the other being the 1 us vs 5.12 us sample cadence).
+
+**The existing numbers already lean that way.** Yesterday, on healthy data:
+
+```
+same comb, different antennas   r = +0.994      <- within one instance
+different comb (across nodes)   r = +0.862      <- across instances
+```
+
+Across-node is also across-comb, so the 0.994 -> 0.862 gap is consistent with a comb-specific
+component of order 13% of the variance. Suggestive; not established.
+
+**The clean discriminator, and it needs no new code.** A node WITHOUT `--combine-gpus` (cx27,
+cx42, cx43, cx44) runs two combiners with DIFFERENT combs over the SAME antennas and the same
+everything else. So:
+
+* SAME comb, different antennas -> the control, expected ~+0.99
+* DIFFERENT comb, same antennas -> if this falls well below the control, comb geometry contributes
+
+Attempted on cx27 and the answer was "not measurable right now": both came out ~0.00, INCLUDING
+the control, because the fleet is in the degraded state of 8.20.19 (2.7 records/s, folds failing)
+and the residual is noise-dominated. **The control reading ~0 instead of ~+0.99 is what says the
+measurement is insensitive, not that the hypothesis is wrong** -- run it again once the fleet is
+restored. Always read the control first.
+
+Note also that cx19 and cx51 carry `--combine-gpus`, i.e. ONE merged 14-channel combiner at
+effective stride 8 rather than two at stride 16. If the effect is comb-geometry, those two nodes
+should show a DIFFERENT floor from the other four -- a second, independent test of the same
+hypothesis, available from the same data.
