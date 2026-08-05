@@ -142,6 +142,7 @@ frame_arrival_period: 5.12e-6 * 8192
 gnss0_assemble:
   cpu_affinity:
   - 62
+  elem_sum: true
   in_buf: gnss0_epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -203,6 +204,7 @@ gnss0_combine:
   out_buf: gnss0_cmb_buf
   phase_dump_path: /tmp/gnss_phase_dump_cx27_0.txt
   phase_dump_prns: &id003 []
+  phase_track: true
   record_export: 128
 gnss0_epl_buf:
   frame_size: 6422704
@@ -318,6 +320,7 @@ gnss0_volt_buf:
 gnss1_assemble:
   cpu_affinity:
   - 63
+  elem_sum: true
   in_buf: gnss1_epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -347,6 +350,7 @@ gnss1_combine:
   out_buf: gnss1_cmb_buf
   phase_dump_path: /tmp/gnss_phase_dump_cx27_1.txt
   phase_dump_prns: *id003
+  phase_track: true
   record_export: 128
 gnss1_epl_buf:
   frame_size: 7487664

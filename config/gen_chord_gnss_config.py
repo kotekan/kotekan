@@ -232,6 +232,14 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             "prns": args.prns,
             "n_elements": n_elem,
             "reference_element": args.reference_element,
+            # SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp, STATE 8.21.5). The header
+            # correlation slots carry the calibrated weighted mean over all elements instead of
+            # the bare reference element: same reference-anchored phase convention, same "one
+            # element" scale, per-record SNR up ~sqrt(N_healthy) ~ 5x -- the array gain the
+            # DLL/carrier loops and the combiner's phase tracker all inherit for free. The cal
+            # is bootstrap MRC from the satellite itself; until warm (~3 tau) the output is
+            # byte-identical to reference-element-only.
+            "elem_sum": args.elem_sum,
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [cores[(gpu + 8) % len(cores)]],
         },
@@ -306,6 +314,13 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # it badly because oversampled bins are not independent.
             "deep_rate_search": True,
             "deep_rate_min_q": 10.0,
+            # COMMON-PHASE TRACKER before the deep sum (STATE 8.21.5): the batch form of the
+            # carrier loop the airspy closed at 1 kHz. Removes the per-satellite ~0.9 rad
+            # propagation wander that capped every deep at ~11-14 sigma; leave-one-out per
+            # record => fail-closed on noise, and the half-width candidates compete with the
+            # straight sum under the same estimator (the floor pays the selection). Exports
+            # coh_frac -- the chopping-independent coherence measure -- beside deep_snr.
+            "phase_track": args.phase_track,
             # Hops per record frame: turns the frame metadata's sample_seq into the absolute HOP
             # index, which is what the seed (ref_hop), the replica generators and the search all
             # speak. Published as pow_hop so the broker can group EVERY node's E/L powers by an
@@ -721,7 +736,25 @@ def main():
                          "overlay transition (which P_HEAD handles)")
     ap.add_argument("--reference-element", type=int, default=0,
                     help="antenna whose correlation fills the record HEADER -- the broker's DLL "
-                         "and carrier loop reference")
+                         "and carrier loop reference (and, with --elem-sum, the phase anchor of "
+                         "the calibrated sum)")
+    ap.add_argument("--elem-sum", action=argparse.BooleanOptionalAction, default=True,
+                    help="record HEADER = self-calibrated weighted mean over ALL elements "
+                         "(bootstrap MRC, reference-anchored phase, 'one element' scale) instead "
+                         "of the bare reference element. ~sqrt(N_healthy) ~ 5x per-record SNR "
+                         "for every header consumer: the broker's DLL/carrier loops, the "
+                         "combiner's deep fold and its phase tracker. The per-element cal comes "
+                         "from the satellite itself (validated: 5.8x of the 7.95x MRC bound on "
+                         "synthetic, dead elements auto-gated, dead reference fails over). "
+                         "STATE 8.21.5 item 1 -- the phase-floor fix's SNR half.")
+    ap.add_argument("--phase-track", action=argparse.BooleanOptionalAction, default=True,
+                    help="combiner: leave-one-out common-phase tracker before the deep coherent "
+                         "sum -- the batch form of the carrier loop the airspy chain closed, "
+                         "removing the per-satellite ~0.9 rad propagation wander that capped "
+                         "every deep_snr at ~11-14 regardless of brightness (STATE 8.21). "
+                         "Fail-closed on noise (self-excluded estimates cannot align it; "
+                         "validated on synthetic). Exports coh_frac (the chopping-independent "
+                         "coherence measure) and pt_hw beside deep_snr. STATE 8.21.5 item 2.")
     ap.add_argument("--buffer-depth", type=int, default=4)
     ap.add_argument("--search-element", type=int, default=0,
                     help="element (relative to the live range) the acquisition search runs on. "
@@ -761,7 +794,7 @@ def main():
                          "2026-08-03) hands the code loop to the broker's fleet DLL "
                          "(--dll-combiners, docs/CHORD_GNSS_SHARED_DLL.md), which sums Early/"
                          "Late POWERS across every instance and so closes at the full 20.46 MHz "
-                         "L5 bandwidth instead of the 6.7% one instance can see. Two loops "
+                         "L5 bandwidth instead of the 6.7%% one instance can see. Two loops "
                          "cannot coexist: E/L are measured relative to the phase each instance "
                          "despread at, so independent local trims drift apart and the fleet sum "
                          "smears rather than sharpens. 0.15 restores the stage default for a "
