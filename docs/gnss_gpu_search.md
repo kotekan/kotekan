@@ -447,3 +447,58 @@ no change to shared code. Judge (1) after (2) shows how much depth is actually n
   6.89 ms intercept, so even a fully latched 32-PRN tracker predicts ~39% duty against the
   observed 100%. ⚠️ That intercept is a TWO-POINT fit -- no residual, so it cannot be
   distinguished from a curve. It needs a PRN sweep before it is worth chasing.
+
+### 9.5 Gather truncation: measured, and it is 1.31x -- not the big win
+
+`ChannelizedReplicaBank::set_max_chips`, swept with `scripts/gnss/e2e --max-chips` at CHORD
+geometry (GPS_L5_Q_NH, 3.2 GSPS, N=8192) through the shipped code:
+
+| max_chips | search SNR | SEARCH LEG ERROR | nh |
+|---|---|---|---|
+| 210 (full) | 26812 | **+0.123 chips** | 5 correct |
+| 160 | 26524 | **+0.123 chips** | 5 correct |
+| 105 | 18641 | -13.073 chips | 4 WRONG |
+| 64 | 6742 | -78.545 chips | 3 WRONG |
+| 32 | 12800 | -91.537 chips | 6 WRONG |
+
+**160 is free (error identical to full depth, SNR down 1%); 105 already breaks it.** The failure
+is the familiar one: the truncated replica no longer makes the true lobe win, so the search
+settles on a grating lobe -- the same shape as the old `refine_span: 4096` bug, and the same
+13-chip signature.
+
+So truncation is worth **1.31x** on the dominant cost (210 -> 160): synthesis 2.632 -> ~2.0 ms,
+tracker kernel ~2.95 -> ~2.3 ms, about a 22% cut in tracker GPU load for a measured-zero change
+in the answer. Real and free -- but NOT the several-fold win truncation looked like it might be.
+The PFB span genuinely IS the channel response; the filter's tails matter down to ~160/210 and
+then fall off a cliff.
+
+**The cliff, bracketed** (second sweep): 150 / 140 / 130 / 120 all give the IDENTICAL
++0.123 chips. So the edge sits between 120 and 105 -- everything at or above 120 is exact, and
+105 is 13 chips out. That is a genuine discontinuity, not a gradual degradation, which is what
+makes picking a value without bracketing it dangerous.
+
+**Recommended: max_chips 140.** 210 -> 140 is **1.50x** on the dominant cost (synthesis
+2.632 -> ~1.75 ms, tracker kernel ~2.95 -> ~2.06 ms, a ~30% cut in tracker GPU load), with 17%
+margin above the measured 120 floor. 160 would be more conservative at 1.31x; below 120 the
+search lands on a grating lobe.
+
+**How to measure this honestly** (the trap is easy to fall into): e2e's synthetic sky comes from
+`tbank` and the search analyses with `sbank`. `--max-chips` caps **sbank only**. Capping both
+would truncate the sky and the replica identically, the error would come out ~0, and it would
+measure nothing at all.
+
+⚠️ SCOPE: this is the SEARCH leg. The tracker despreads with `tbank`, which also generates the
+sky, so e2e cannot isolate the tracker's truncation error the same way. Same generator and same
+geometry, so 160 should transfer -- but that is an inference, not a measurement.
+
+Note also that SNR is NOT the metric here: max_chips 32 scores a HIGHER SNR than 64 (12800 vs
+6742) while being more wrong (-91.5 vs -78.5 chips). Score the code phase.
+
+### 9.6 What is left, in order
+
+1. **max_chips ~160** once the cliff edge is bracketed. Measured, free, 1.31x.
+2. **Transpose the Phi tables** -- now the larger remaining lever (~5x on the gather, EXACT, no
+   accuracy cost), and the one with real blast radius: `hoprate_filter` is shared by the CPU
+   despread, the search refine and the e2e harness.
+3. The ~2.5x of tracker saturation still unexplained by the seed latch (see 9.4), which needs a
+   PRN sweep rather than the two-point fit it currently rests on.
