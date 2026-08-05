@@ -3800,52 +3800,91 @@ argues against amplitude scintillation and for a pure phase effect.
 4. **Keep the fleet phase reference** as the cross-check and as the mitigation until (1) lands.
    It is a 3 dB amplitude recovery plus the floor removal, and it is cross-validated.
 
-### 8.21.6 SHIPPED 2026-08-05 -- items (1) and (2), plus the closed loop itself
+### 8.21.6 SOLVED 2026-08-05 -- the loop was OPEN, and closing it is a CROSS-NODE operation
 
-The structural understanding that unlocked it: **the prototype was immune because it ran
-CLOSED-LOOP** -- its full-band per-record phase estimate was signal-dominated, so its carrier
-tracking removed the wander before any long integration, invisibly. CHORD's comb fragmented the
-per-record phase observable below trackability, which FORCED the open-loop polynomial derotation,
-and open-loop is what a 0.9 rad non-polynomial wander kills. The wander was always physical and
-always there; only the ability to remove it was lost. Corollary: phase wander is BOUNDED, so it
-needs no feedback loop at all -- the ctrim loop (broker, ~0.1 Hz, 2 s dead time) keeps its job of
-pinning unbounded drifts, and the wander is removed feed-forward at the point of integration.
+**The result.** Deep folds went from 11-14 flat for every satellite to **90-713, ordered by
+brightness**, with coh_frac 0.99-1.00. The fold is thermal-limited again; the sky phase is gone.
 
-Three commits (assembler / combiner / config):
-* `elem_sum` (GnssGpuRecordAssemble + gnssElemCal.hpp): header = self-calibrated weighted mean
-  over all 32 elements. Bootstrap MRC from the satellite itself, EMA of G_e*conj(H); reference-
-  anchored phase (downstream carrier/ADR see the same observable, quieter); "one element" scale;
-  dead elements auto-gated (the weighted average, not a blind sum); dead reference fails over
-  with a one-time WARN; alpha clamped 0.25 vs coast gaps; reset on fresh acquisition.
-* `phase_track` (GnssCoherentCombiner + gnss::phase_track_loo): each record derotated by the
-  LEAVE-ONE-OUT phase of its neighbours, half-width candidates {1,2,4,8} + straight competing
-  under the same estimator, floor raised to pay the 5-way selection (sqrt(2 ln 10)+1 = 3.15).
-  Self-excluded => fail-closed: pure noise cannot be aligned (synthetic control: no inflation
-  over 160 trials). Runs after the rate search: rate takes the deterministic ramp, tracker the
-  stochastic wander. New exports: `coh_frac` (|sum|/sum|.| of the winning stream -- item (2),
-  the chopping-independent number) and `pt_hw` (winning half-width; 0 = straight won).
-* Validation tool `scripts/gnss/sumtrack_test.cpp` (deterministic): tracker 1.14-2.0x on AR(1)
-  wander depending on SNR/rec, elem sum 5.8x of the 7.95x MRC bound, fringe-tolerant, dead-ref
-  safe. e2e bit-identical with features off.
+**Why the prototype was immune.** It ran CLOSED-LOOP: its full-band per-record phase estimate was
+signal-dominated, so its carrier tracking removed the wander before any long integration, and
+nobody ever saw it. CHORD's comb fragmented the per-record phase observable below trackability,
+which FORCED the open-loop polynomial derotation -- and a 0.9 rad non-polynomial wander kills
+open-loop. The wander was always physical (propagation) and always present on both instruments;
+only the ability to remove it was lost.
 
-FIRST LIGHT (same day, ~30 min after fleet restart, cx51 still down):
-* Per-record amplitude SNR at the header: **4-7 per record** on the bright sats (was ~1.1) --
-  elem_sum working, measured directly from /get_records power ratios.
-* PRN 23 on EVERY instance: deep_snr 19-21 (the pre-fix ceiling was 11-14 flat), pt_hw 1-2,
-  coh_frac 0.87-0.89. Brightness ordering restored: PRN 26 (amp 8-12) reads deep 6.9-7.5.
-* coh_frac now differs PER SATELLITE (0.49-0.89 across the sky at one instant) -- the
-  per-satellite wander severity is finally a live, directly-published observable. This is the
-  8.21.4 elevation/pierce-point discriminator armed for free: correlate coh_frac vs elevation
-  and vs sky separation from a few hours of records.
-* Residual after tracking: coh_frac 0.87 at pt_hw 1 with estimator noise ~0.1 rad means
-  ~0.5 rad of wander INNOVATION faster than +-1 record (~20 ms) survives. The fleet reference
-  cannot remove that either (it is common across nodes but fast in time); further gains would
-  need better smoothing weights than a boxcar, at diminishing returns.
+**What the phase actually is (measured, and it overturned the working model).**
+* per-record common error ~0.75 rad
+* **0.984 coherent ACROSS INSTANCES** (same sky, independent thermal noise)
+* only **~0.57 autocorrelated record-to-record** -- i.e. common in SPACE, near-WHITE in TIME.
+* thermal per-record SNR is **9.25**, so one instance should fold to sqrt(120)*9.25 ~ 101; it
+  was delivering 14. The missing 7x was entirely this phase.
 
-WATCH: pt_hw per satellite is the early signal for when the broker-side fleet phase reference
-becomes worth building -- bright sats at pt_hw 1, faint at 4-8 means the local reference is
-running out of SNR at the faint end. At full CHORD (fewer channels/node, 512 elements) the
-element axis outruns the frequency dilution (~sqrt: 1/7 the channels costs 2.6x, 512/32
-elements buys 4x), so the local tracker survives; the fleet reference then arrives as ONE MORE
-CANDIDATE in the same competition (hop-keyed phase table via /get_records + POST, fail-safe by
-losing the score when stale), not as an architecture change.
+The earlier "correlated beyond 42 ms" belief is RETRACTED: it drove me to build a temporal
+tracker (`gnss::phase_track_loo`, half-widths 1-8), which measured **14.5 -> 13.2, a LOSS**.
+Neighbouring records do not predict a record's phase. The other INSTANCES do, instantly.
+
+**Why it cannot be fixed on one node (the subtle part).** It is NOT an SNR problem -- every
+instance has ample SNR to MEASURE the phase (9.25/record -> 0.11 rad). What an instance cannot do
+is use its OWN estimate: derotating a record by a phase computed from that same record subtracts
+its own noise and rectifies it. It needs an INDEPENDENT estimate of a COMMON quantity, and the
+only independent view of the same sky lives on the other nodes. KV called this from the start;
+the "local is sufficient" argument was wrong.
+
+**SHIPPED** (`fleet_coherent` in gps_distributed_broker.py, live on cf06):
+* per instance: leave-THAT-instance-out derotation -> the honest per-node number;
+* fleet total: **ONE-WAY split** (S integrated, R only referenced);
+* instances aligned by arg(<A_i conj(A_ref)>) and energy-weighted (MRC: A = G/E has variance
+  ~1/E, so summing E*A sums the raw correlations G);
+* no rate search anywhere -- every instance shares the broker seed, so the residual rates are
+  identical (-0.20996 cyc/rec on all ten) and the alignment cross-product cancels the rate.
+  O(records x instances), pure stdlib, ~0.2 s per cycle including the null.
+* touches NO loop: an observable only, so a fault degrades the display, never the tracking.
+
+**THE FLOOR IS MEASURED EVERY CYCLE** by re-running the identical math on records SHUFFLED
+independently per instance (real amplitudes, common phase destroyed). Characterised over 6 polls
+/ 726 null samples: median 1.35, 99th pct 4.15, max 5.73, vs a weakest real detection of 22.2.
+A shuffle and NOT a roll: a roll shifts the shared linear carrier ramp by a CONSTANT, leaving it
+intact, so a rolled null measures the rate-search floor (18-25) instead of this estimator's (~4).
+
+**THREE SELF-REFERENCE TRAPS, all unbiased in the MEAN and all fatal to the VARIANCE.** This is
+the transferable lesson -- none of them is visible from the number alone:
+1. **Per-element (or per-instance) LOO summed over the elements.** With N items, every item's
+   leave-one-out reference is ~the same vector (rest_e ~ tot), so to first order
+   `sum_e c_e e^{-i arg(rest_e)} = |tot|` -- real, positive, EVERY record. The orthogonal
+   component that coherent_sum uses as its noise is only the second-order remainder.
+   Synthetic: **47.3 against a GENIE of 17.7** -- it beat perfect knowledge.
+   Excluding one of N removes only 1/N of the self-reference; it does not remove the collapse.
+2. **SYMMETRIC split-half** `S e^{-i arg R} + R e^{-i arg S}` = `(rS+rR) cos d + i (rS-rR) sin d`,
+   so BALANCED halves annihilate the imaginary part by construction. Live: **38526 at coh_frac
+   exactly 1.000**.
+3. **Ignoring the per-instance constant phase offsets** -- an unaligned "fleet average" reads as
+   a 13 rad phase excursion of pure garbage (this produced a wrong intermediate conclusion).
+
+THE RULE: *whatever you integrate must never appear in the phase reference you derotate it by* --
+not partially, not through a symmetrization. And validate every phase estimator against BOTH a
+GENIE (true phase known: you must not beat it) and a SHUFFLED NULL (no common phase: you must
+collapse to it).
+
+Note why the temporal LOO was safe where the element LOO was not: each record's reference is a
+different local window, so no single direction exists for everything to collapse onto. The
+element version has one shared reference. Same estimator name, opposite behaviour.
+
+### 8.21.7 NEXT: split-aperture, the full-CHORD path (WIP, stashed)
+
+The broker fix scales the wrong way: full CHORD gives each node FEWER channels, and in the limit
+one subband. But the ELEMENT axis grows to 512, and the phase is common across elements too --
+so the same correction becomes local again, done by SPLIT APERTURE (two disjoint halves, each
+derotated by the other's phase; never per-element LOO, see trap 1). With ~8 live elements each
+half holds ~4, giving a per-half per-record SNR of ~6.5 -> 0.15 rad -> ~1% coherence loss.
+
+Also verified while chasing this (`gnssElemCal`, stashed): the element weighting needs tau ~5 s
+(NOT 0.5 s -- the fringe rate is only ~0.05 Hz, and 0.5 s left the weights so noisy that DEAD
+elements were being kept at ~2/3 the weight of live ones) and a STATISTICAL gate (an element must
+beat its own noise-only expectation by ~4 sigma) rather than a fraction-of-the-strongest. With
+those: 8/8 live kept, 0 dead, weight phase error 0.083 rad, 98.5% of the ideal MRC combine.
+The array is ~8 effective elements with a 14 dB gain spread (13 above 3 sigma, top 4 hold 53% of
+the power), so the honest MRC gain over the reference element is ~2.1x, not sqrt(32).
+
+Open: the end-to-end synthetic for combine_split still returns 0 (integration bug, not a
+conceptual one). The WIP is in `git stash` and carries a RECORD_FLOATS 24->26 bump, which needs
+`record_floats` regenerated in every config before any node runs it.
