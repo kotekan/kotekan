@@ -494,14 +494,19 @@ geometry, so 160 should transfer -- but that is an inference, not a measurement.
 Note also that SNR is NOT the metric here: max_chips 32 scores a HIGHER SNR than 64 (12800 vs
 6742) while being more wrong (-91.5 vs -78.5 chips). Score the code phase.
 
-### 9.6 What is left, in order
+### 9.6 What is left, in order  (SUPERSEDED -- see 9.11)
+
+Kept as written for the record; both leads in it turned out badly and it is worth seeing how.
 
 1. **max_chips ~160** once the cliff edge is bracketed. Measured, free, 1.31x.
+   -- SUPERSEDED by 9.9: the block width makes the FULL span cheaper than the truncated one, so
+   the cap should be reverted rather than tuned.
 2. **Transpose the Phi tables** -- now the larger remaining lever (~5x on the gather, EXACT, no
    accuracy cost), and the one with real blast radius: `hoprate_filter` is shared by the CPU
    despread, the search refine and the e2e harness.
+   -- RETRACTED, see 9.9. It was aimed at coalescing, and coalescing was never the problem.
 3. The ~2.5x of tracker saturation still unexplained by the seed latch (see 9.4), which needs a
-   PRN sweep rather than the two-point fit it currently rests on.
+   PRN sweep rather than the two-point fit it currently rests on.  -- still open.
 
 ### 9.7 ncu: the waveform kernel is DRAM-bound at 96%, and L2 hit rate is 3%
 
@@ -523,27 +528,112 @@ the grid runs all 7 channels concurrently, so the live working set is **7.3 MB a
 6 MB L2**. It does not fit, the access is scattered, nothing is reused, and every load reaches
 DRAM.
 
-### 9.8 PICK UP HERE -- serialize the waveform launch over channels
+### 9.8 The channel-serialization plan was WRONG, on both its premise and its remedy
 
-Launch the waveform kernel once per channel (or per pair) instead of once for all seven. Each
-launch's working set falls to 1.05 MB, comfortably L2-resident, and the DRAM traffic should
-largely become L2 hits at ~3x the bandwidth.
+The plan §9.7 pointed at was: launch the waveform kernel once per channel so each launch's Phi
+working set (1.05 MB) is L2-resident instead of seven channels' 7.3 MB against a 6 MB L2. Its own
+"check before building" list killed it. Both checks failed.
 
-Why this over the layout rewrite: it is a GRID DECOMPOSITION change, not a data layout change.
-`hoprate_filter` is untouched, so the CPU despread, the search refine and the e2e harness are
-unaffected, and the arithmetic is bit-identical. Cost is 7 launches instead of 1 -- ~35 us of
-overhead against a 2.4 ms kernel.
+**The premise is false: Phi is bucketed PER PRN, not per channel.** `GnssCudaDespread::Impl` holds
+`std::vector<PhiCache> phi` -- one `[n_chan][Lf+1]` pair of tables per PRN SLOT, rebuilt whenever
+that PRN's Doppler moves by more than `refresh_hz`, because the carrier rate `wc` sits inside the
+table's exponent. So the live Phi is `n_prn x n_chan x 1.05 MB` = **77 MB at 11 PRNs**, not 7.3,
+and no two blocks share a slice. Serializing over channels reaches 11.5 MB -- still twice the L2.
+It could never have been resident.
 
-⚠️ **CHECK BEFORE BUILDING:**
-* Parallelism. 11 blocks per launch against 84 SMs would badly underutilise the GPU and could eat
-  the whole win. Pairs (4 launches, 22 blocks) or a 2D compromise may be better -- sweep it.
-* `L2 Persisting Size` reads 1.18 MB in the report, which is oddly small against the 7.3 MB
-  working-set argument. Understand that before trusting the diagnosis.
-* Measure with `log_kernel_split` (synthesis ms) before and after, at a matched seed count.
+**The remedy loses anyway, at every group size.** Measured on cx19 (`scripts/gnss/wavebench.cpp`),
+against the 2.42 ms all-channel launch:
+
+    chan group 1: 0.946 ms x 7 launches = 6.62 ms     2.74x SLOWER
+    chan group 2: 1.032 ms x 3 + 0.946  = 4.04 ms     1.67x SLOWER
+    chan group 4: 1.537 + 1.220 (4+3)   = 2.76 ms     1.14x SLOWER
+
+Exactly the parallelism failure the check anticipated: 11 blocks against 84 SMs.
+
+**`L2 Persisting Size 1.18 MB` was a red herring** -- it is the configured persisting-access
+window (`cudaLimitPersistingL2CacheSize`), a device default that nothing in this tree sets. It is
+not a working-set measurement and says nothing about the diagnosis either way.
+
+### 9.9 THE FIX: the block width IS the traffic knob -- 3.67x, bit-identical
+
+The right question was never "does the working set fit in L2". It is **how many times does one
+block re-read its own slice**, and the answer was 24.
+
+A block owns one (PRN, channel) Phi slice. Within `chip_gather`, thread lane `m`'s tap index is
+`t(d) = d*ks + floor(base + d*kf) + 1` with `base = phi*inv_cps`, and `phi` is a FRACTIONAL part,
+so `base` is in `[0, inv_cps)` for every hop and every E/P/L trial. At chip `d` the whole block
+therefore lands in the same ~313-entry window -- which is why L1 hit rate was already 78.84%. But
+the block walks that slice once per **hop pass** and once per **trial**, and between two visits to
+chip `d` it has streamed the entire 689 KB slice through a 128 KB L1. Nothing survives:
+
+    hop passes = n_hops / blockDim = 2048 / 256 = 8,  x 3 trials  = 24 re-walks
+    24 x 689 KB x 77 blocks = 1.24 GB per launch, against 51.8 MB of distinct data
+
+So DRAM traffic is inversely proportional to the block width, and the width was 256 for no reason
+beyond it being the fused kernel's. Raising it to 1024 cuts the passes to 2. Measured, cx19 A40:
+
+     256 threads   8 hop passes   2.519 ms   1.00x    <- as profiled
+     512 threads   4 hop passes   1.234 ms   2.03x
+    1024 threads   2 hop passes   0.684 ms   3.67x
+
+**`wave` is bit-identical at every width** (checked over all 4.6M replica samples at CHORD
+geometry): each hop's replica sample depends only on that hop, so the width moves which thread
+computes it and nothing else. Only the ENERGY reduction's lane count changes -- and at this
+bench's inputs even that came out bit-identical, though only the `wave` guarantee is structural.
+`CHORD split vs fused despread` still reports `corr 0.000e+00 energy 0.000e+00`.
+
+Two things had to be got right:
+
+* **`__launch_bounds__` is load-bearing.** Unbounded, the gather compiles to ~72 registers and the
+  driver refuses 1024 threads outright ("too many resources requested") -- the first 1024-wide run
+  failed to launch. The kernel is now templated on its width so ptxas is told the bound: at
+  `MAXT=1024` it fits in 64 registers with **0 bytes spilled**. Without the template the width
+  silently clamps to 512 and you get 2.03x instead of 3.67x.
+* **The width is a REQUEST, not a promise.** `launch_waveform_tuned` queries
+  `cudaFuncGetAttributes().maxThreadsPerBlock` and falls back to the 512 instantiation, because
+  the ceiling moves with the architecture and with any edit to the gather, and exceeding it does
+  not degrade -- it fails the launch.
+
+Holds across the envelope (chips x PRNs), never below 2.74x:
+
+              4 PRN    11 PRN    20 PRN
+    140 chips  2.74x     3.68x     3.43x
+    212 chips  2.81x     3.76x     3.72x
+
+**This retires the `max_chips` truncation.** 212 chips (the full PFB span) at 1024 threads is
+1.001 ms -- 2.5x FASTER than the 140-chip truncated kernel that is deployed today at 2.517 ms. The
+cap bought 1.31x by throwing away part of the channel response; the width buys 3.67x by throwing
+away nothing. Recommend reverting `despread_max_chips` to 0 on all eight node configs.
 
 **RETRACTED, do not attempt:** transposing the Phi tables to `[t mod ks][t / ks]`. It needs
 consecutive chips to share a row index, but dt = ks + (0 or 1) with kf ~ 0.8, so the row changes
 ~80% of steps; and `base` varies per hop, so no FIXED permutation linearises more than one hop's
-walk. The ~5x quoted earlier assumed slow drift; it drifts fast. And the ncu profile shows the
-problem is CAPACITY (3% L2), not coalescing -- contiguity would not have helped while the working
-set still did not fit.
+walk. The ~5x quoted earlier assumed slow drift; it drifts fast. And it was aimed at coalescing,
+which was never the problem -- L1 was already at 78.84%.
+
+### 9.10 The bench, and why a synthetic one is allowed here
+
+`scripts/gnss/wavebench.cpp` (build: `KBUILD=build scripts/gnss/build_tool.sh wavebench`, run on a
+cx node). Two previous attempts to reason about this kernel died on numbers carried across a
+GEOMETRY -- `n_chips` is 212 at CHORD, ~13 at airspy L5, ~8 at the unit test. The trap was never
+"synthetic", it was the geometry, so the bench hard-codes CHORD's and its FIRST OUTPUT is a
+faithfulness gate: the 256-wide launch must reproduce the 2.402 ms ncu measured in situ. It comes
+out at 2.51 ms, +4.5%, and the run says so in as many words. Phi contents do not affect timing --
+only addresses do, and those are fixed by (inv_cps, n_chips, Lf, n_hops, frac(cp0)) -- so the
+tables are filled with junk.
+
+Note the unit test does NOT gate the width: at its 125 hops the block is 64 threads wide and the
+launch is byte-for-byte what it always was. The bit-identity check that matters is the bench's,
+over all 4.6M samples at 2048 hops.
+
+### 9.11 What is left, in order
+
+1. **Revert `despread_max_chips` to 0** -- 9.9 makes the full filter span cheaper than today's
+   truncated one. Removes a known-lossy approximation for free.
+2. **Fuse the three E/P/L trials into one chip loop.** The last factor of 3 in the re-walk count.
+   The three trials' windows at chip `d` overlap (they differ by `ds*inv_cps` ~ 156 entries of a
+   313-entry window), so one pass could serve all three -- but it costs registers, and registers
+   are exactly what caps the width. Might net 6 -> 4 re-walks rather than 6 -> 2. Bench it before
+   building it.
+3. The ~2.5x of tracker saturation still unexplained by the seed latch (see 9.4), which needs a
+   PRN sweep rather than the two-point fit it currently rests on.

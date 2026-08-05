@@ -18,11 +18,19 @@ using gnss_cuda::cmulf;
 
 /// grid.x = job (PRN), grid.y = covering channel, block.x = hop lane (grid-stride).
 /// Mirrors gnss_despread_kernel's geometry so the per-hop arithmetic is identical.
-__global__ void gnss_waveform_kernel(const int8_t* __restrict__ code,
-                                     const gnss_cuda::DespreadJob* __restrict__ jobs,
-                                     gnss_cuda::DespreadParams p,
-                                     float2* __restrict__ wave,     // [3*n_job][nchan][n_hops]
-                                     double* __restrict__ energy) { // [4*n_job][nchan]
+///
+/// MAXT is the block width this instantiation is COMPILED for, via __launch_bounds__. It is a
+/// template parameter and not just a launch-time choice because the width is capped by registers
+/// -- unbounded, the gather compiles to ~72 registers on sm_86 and the driver refuses anything
+/// past 512 threads. Naming the bound lets ptxas trade registers for the width, and the width is
+/// what sets the DRAM traffic (see WAVE_THREADS). Whether that trade wins is a measurement, so
+/// both instantiations exist and scripts/gnss/wavebench.cpp compares them.
+template<int MAXT>
+__global__ __launch_bounds__(MAXT) void
+gnss_waveform_kernel(const int8_t* __restrict__ code,
+                     const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
+                     float2* __restrict__ wave,     // [3*n_job][nchan][n_hops]
+                     double* __restrict__ energy) { // [4*n_job][nchan]
     const int b = blockIdx.x;
     const int ci = blockIdx.y;
     const int m = threadIdx.x;
@@ -99,8 +107,9 @@ __global__ void gnss_waveform_kernel(const int8_t* __restrict__ code,
     }
 
     // Block reduction over hop lanes, one row at a time (as the fused kernel does, for the same
-    // shared-memory reason).
-    __shared__ double sh_e[256];
+    // shared-memory reason). Sized for THIS instantiation's width -- 8 KB at the widest, against
+    // the SM's 100 KB, so shared memory is never the occupancy limiter here (registers are).
+    __shared__ double sh_e[MAXT];
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
         if (j == 3 && job.m_head == 0) {
@@ -204,18 +213,46 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
 
 namespace gnss_cuda {
 
-cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
-                            const DespreadParams& p, float2* wave, double* energy,
-                            cudaStream_t stream) {
-    int threads = p.n_hops < 256 ? p.n_hops : 256;
+cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, int n_job,
+                                  int n_chan, const DespreadParams& p, float2* wave, double* energy,
+                                  int threads_hint, cudaStream_t stream) {
+    int cap = threads_hint > 0 ? threads_hint : WAVE_THREADS;
+    if (cap > 1024)
+        cap = 1024; // sh_e is sized for this
+    int threads = p.n_hops < cap ? p.n_hops : cap;
     // The shared reduction tree halves blockDim.x, so it must be a power of two.
     int pow2 = 1;
     while (pow2 * 2 <= threads)
         pow2 *= 2;
     threads = pow2;
+    // ASK THE DRIVER, do not assume. Each instantiation's ceiling is whatever ptxas gave it, it
+    // moves with the architecture and with any edit to the gather, and exceeding it does not
+    // degrade -- the launch fails outright with "too many resources requested". Clamping here is
+    // what makes WAVE_THREADS a portable REQUEST rather than a promise the hardware may not keep.
+    auto ceiling = [](const void* fn) {
+        cudaFuncAttributes at{};
+        return cudaFuncGetAttributes(&at, fn) == cudaSuccess ? at.maxThreadsPerBlock : 256;
+    };
     const dim3 grid(n_job, n_chan);
-    gnss_waveform_kernel<<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+    if (threads > 512) {
+        static const int kmax = ceiling((const void*)gnss_waveform_kernel<1024>);
+        if (threads <= kmax) {
+            gnss_waveform_kernel<1024><<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+            return cudaGetLastError();
+        }
+        threads = 512;
+    }
+    static const int kmax5 = ceiling((const void*)gnss_waveform_kernel<512>);
+    if (threads > kmax5)
+        threads = kmax5;
+    gnss_waveform_kernel<512><<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
     return cudaGetLastError();
+}
+
+cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
+                            const DespreadParams& p, float2* wave, double* energy,
+                            cudaStream_t stream) {
+    return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, stream);
 }
 
 cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_scale,

@@ -59,9 +59,42 @@ namespace gnss_cuda {
  *                is the whole of what the record header needs; P_HEAD's energy is the prompt's
  *                own, accumulated over the head hops only.
  */
+/// Block width for @ref launch_waveform, and THE tuning knob for the synthesis kernel.
+///
+/// It is not an occupancy setting -- it is a MEMORY setting. Each block owns one (PRN, channel)
+/// Phi slice, and NO TWO BLOCKS SHARE ONE: the tables are Doppler-bucketed per PRN (see
+/// GnssCudaDespread::Impl::PhiCache), because the carrier rate sits inside the table's exponent.
+/// The block walks its slice once per HOP PASS and once per E/P/L TRIAL, and between two visits
+/// to a given chip it has streamed the whole 689 KB slice through a 128 KB L1, so nothing
+/// survives. A block of W threads makes n_hops/W passes, hence 3*n_hops/W re-walks, so the
+/// kernel's DRAM traffic is INVERSELY PROPORTIONAL TO W. At CHORD's 2048 hops the old 256 gave
+/// 24 re-walks of a 689 KB slice = 1.24 GB per launch against 52 MB of distinct data.
+///
+/// Measured on cx19 (A40), 11 PRNs x 7 channels x 140 chips, scripts/gnss/wavebench.cpp:
+///
+///     256 threads  2.519 ms  1.00x       512 threads  1.234 ms  2.03x
+///                                       1024 threads  0.684 ms  3.67x
+///
+/// `wave` is BIT-IDENTICAL at every width -- each hop's replica sample depends only on that hop,
+/// so W moves which thread computes it and nothing else. Raising it costs only the 8 KB sh_e
+/// array, and the block is capped by n_hops in any case: at the unit test's 125 hops the launch
+/// is byte-for-byte the old one, which is why the bench and not the test is the gate here.
+///
+/// This is a REQUEST. The real ceiling is registers (see the kernel's __launch_bounds__ note) and
+/// @ref launch_waveform_tuned clamps to what the driver reports.
+static constexpr int WAVE_THREADS = 1024;
+
 cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream);
+
+/// @ref launch_waveform with the block width overridden (0 = @ref WAVE_THREADS). BENCH ONLY --
+/// the width changes the ENERGY summation order (lane L sums hops L, L+W, L+2W, ... and then a
+/// W-lane tree), so two widths agree to rounding, not bit-for-bit. The replica samples in @c wave
+/// are unaffected: each hop's sample depends only on that hop.
+cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, int n_job,
+                                  int n_chan, const DespreadParams& p, float2* wave, double* energy,
+                                  int threads_hint, cudaStream_t stream);
 
 /**
  * @brief Correlate N antenna voltages against the M generated references.
