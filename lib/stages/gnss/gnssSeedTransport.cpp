@@ -98,10 +98,10 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
 }
 
 #ifdef GNSS_CUDA
-double refine_peak_cuda(::GnssCudaDespread& gpu, const ChannelizedReplicaBank& bank, int prn_index,
-                        const std::complex<float>* window, long long anchor,
-                        const std::vector<int>& cov_local, double coarse_cp, double dop,
-                        double sample_rate, int refine_span, int refine_step) {
+double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedReplicaBank& bank,
+                        int prn_index, const std::complex<float>* window, int window_stride,
+                        long long anchor, double coarse_cp, double dop, double sample_rate,
+                        int refine_span, int refine_step) {
     // Mirrors refine_peak's scan geometry EXACTLY -- same cps, same step/span clamping, same
     // n_eval, same ascending first-strict-max tie-break -- so a disagreement between the two is
     // a real one and not a difference of arithmetic.
@@ -109,46 +109,74 @@ double refine_peak_cuda(::GnssCudaDespread& gpu, const ChannelizedReplicaBank& b
     const int step = std::max(1, refine_step);
     const int span = std::max(step, refine_span);
     const int n_eval = 2 * span / step + 1;
+    if (groups.empty())
+        return coarse_cp;
 
-    gpu.upload_window(window, anchor);
+    // CHANNEL GROUPS. DespreadJob::chan_mask is a uint64_t, so one engine covers at most 64
+    // channels -- fine for the tracker's 7, not for the aggregator's 79-channel union comb.
+    // Splitting is EXACT rather than an approximation: DespreadResult.correlation is the raw
+    // coherent sum over channels and .replica_energy is sum_c sum_m |R|^2, so both are additive,
+    // and amplitude = correlation / replica_energy recombines from the group totals. That is
+    // why this is done here instead of widening chan_mask in the kernel the six live tracker
+    // nodes depend on.
+    for (CudaRefineGroup& g : groups) {
+        const int ng = (int)g.local.size();
+        g.stage.resize((size_t)g.n_hops * (size_t)ng);
+        for (int m = 0; m < g.n_hops; ++m)
+            for (int i = 0; i < ng; ++i)
+                g.stage[(size_t)m * ng + i] = window[(size_t)m * window_stride + g.local[(size_t)i]];
+        g.gpu->upload_window(g.stage.data(), anchor);
+    }
 
-    // Three trials per spec: the Spec's {early, prompt, late} ARE {e0, e0+1, e0+2} when the
-    // prompt sits on the middle trial and the spacing is one scan step.
-    //
-    // CHUNKED against the driver's DespreadJob arena (n_prn * MAX_REC, sized on the tracker's
-    // one-spec-per-PRN assumption). The live geometry needs 4 specs and never comes close, but a
-    // wider refine_span or finer refine_step silently would, and the symptom is an opaque
-    // "jobs upload: invalid argument" from the H2D. Chunk rather than assume.
-    const int cap = std::max(1, gpu.max_batch_specs());
+    // Three trials per spec: a Spec's {early, prompt, late} ARE {e0, e0+1, e0+2} when the prompt
+    // sits on the middle trial and the spacing is one scan step. Chunked against the engine's
+    // job arena (n_prn, NOT max_specs -- see GnssCudaDespread::max_batch_specs).
+    int cap = 1 << 30;
+    for (const CudaRefineGroup& g : groups)
+        cap = std::min(cap, std::max(1, g.gpu->max_batch_specs()));
     const int n_group = (n_eval + 2) / 3;
+
+    std::vector<std::complex<double>> corr((size_t)n_eval, {0.0, 0.0});
+    std::vector<double> energy((size_t)n_eval, 0.0);
+
+    for (int g0 = 0; g0 < n_group; g0 += cap) {
+        const int ng2 = std::min(cap, n_group - g0);
+        for (CudaRefineGroup& grp : groups) {
+            std::vector<::GnssCudaDespread::Spec> specs;
+            specs.reserve((size_t)ng2);
+            std::vector<int> all(grp.local.size());
+            for (size_t i = 0; i < grp.local.size(); ++i)
+                all[i] = (int)i; // every channel of this group is covering, in group-local order
+            for (int gg = g0; gg < g0 + ng2; ++gg) {
+                ::GnssCudaDespread::Spec sp;
+                sp.p = prn_index;
+                sp.cp_seed = coarse_cp + (double)(-span + (3 * gg + 1) * step) * cps;
+                sp.spacing_chips = (double)step * cps;
+                sp.doppler_hz = dop;
+                sp.covering = all;
+                specs.push_back(sp);
+            }
+            const std::vector<std::array<DespreadResult, 3>> res = grp.gpu->despread_batch(specs);
+            for (size_t k = 0; k < res.size(); ++k)
+                for (int j = 0; j < 3; ++j) {
+                    const int e = (g0 + (int)k) * 3 + j;
+                    if (e >= n_eval) // the last group's padding: computed, never scored
+                        break;
+                    corr[(size_t)e] += res[k][(size_t)j].correlation;
+                    energy[(size_t)e] += res[k][(size_t)j].replica_energy;
+                }
+        }
+    }
 
     int best_e = 0;
     double best_pw = -1.0;
-    for (int g0 = 0; g0 < n_group; g0 += cap) {
-        const int ng = std::min(cap, n_group - g0);
-        std::vector<::GnssCudaDespread::Spec> specs;
-        specs.reserve((size_t)ng);
-        for (int g = g0; g < g0 + ng; ++g) {
-            ::GnssCudaDespread::Spec sp;
-            sp.p = prn_index;
-            sp.cp_seed = coarse_cp + (double)(-span + (3 * g + 1) * step) * cps;
-            sp.spacing_chips = (double)step * cps;
-            sp.doppler_hz = dop;
-            sp.covering = cov_local;
-            specs.push_back(sp);
+    for (int e = 0; e < n_eval; ++e) {
+        const double en = energy[(size_t)e];
+        const double pw = (en > 0.0) ? std::norm(corr[(size_t)e] / en) : 0.0;
+        if (pw > best_pw) { // strict >, ascending e: same first-max rule as refine_peak
+            best_pw = pw;
+            best_e = e;
         }
-        const std::vector<std::array<DespreadResult, 3>> res = gpu.despread_batch(specs);
-        for (size_t k = 0; k < res.size(); ++k)
-            for (int j = 0; j < 3; ++j) {
-                const int e = (g0 + (int)k) * 3 + j;
-                if (e >= n_eval) // the last group's padding: computed, never scored
-                    break;
-                const double pw = std::norm(res[k][(size_t)j].amplitude);
-                if (pw > best_pw) { // strict >, ascending e: same first-max rule as refine_peak
-                    best_pw = pw;
-                    best_e = e;
-                }
-            }
     }
     return coarse_cp + (double)(-span + best_e * step) * cps;
 }

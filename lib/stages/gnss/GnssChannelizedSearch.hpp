@@ -14,6 +14,7 @@
 #include "bufferContainer.hpp"        // for bufferContainer
 #include "gnssChannelizedAcquire.hpp" // for AcquireWorkspace
 #include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
+#include "gnssSeedTransport.hpp"     // for gnss::CudaRefineGroup
 #include "restServer.hpp"             // for connectionInstance
 
 #include <complex>            // for complex
@@ -232,7 +233,10 @@ private:
     /// A5: the refine on the GPU. Separate from _cuda_acq because they are different engines
     /// over different geometries (the acquire works on the correlation surface, the refine on
     /// exact despreads) and either can be unavailable without the other.
-    std::unique_ptr<class GnssCudaDespread> _cuda_ref;
+    /// ONE engine per <=64-channel group (chan_mask is a uint64_t), plus the group descriptors
+    /// refine_peak_cuda consumes. Empty = the CPU refine runs.
+    std::vector<std::unique_ptr<class GnssCudaDespread>> _cuda_ref;
+    std::vector<gnss::CudaRefineGroup> _cuda_ref_groups;
     bool _cuda_ref_wanted = false;
 #endif
 

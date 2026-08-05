@@ -67,6 +67,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -629,10 +630,28 @@ int main(int argc, char** argv) {
             std::vector<int> loc(nc);
             for (size_t i = 0; i < nc; ++i)
                 loc[i] = (int)i;
-            GnssCudaDespread gref(sbank, 1, s_chans, rh, o.sample_rate, sbank.f_offset());
+            // One engine per <=64-channel group: chan_mask is a uint64_t. The harness comb is
+            // 27 channels so this is a single group, but exercise the same code path the live
+            // 79-channel aggregator takes.
+            std::vector<std::unique_ptr<GnssCudaDespread>> engines;
+            std::vector<gnss::CudaRefineGroup> rgroups;
+            const size_t GMAX = 64;
+            for (size_t i0 = 0; i0 < nc; i0 += GMAX) {
+                const size_t ng = std::min(GMAX, nc - i0);
+                std::vector<int> gg(s_chans.begin() + i0, s_chans.begin() + i0 + ng);
+                engines.emplace_back(
+                    new GnssCudaDespread(sbank, 1, gg, rh, o.sample_rate, sbank.f_offset()));
+                gnss::CudaRefineGroup grp;
+                grp.gpu = engines.back().get();
+                grp.local.resize(ng);
+                for (size_t i = 0; i < ng; ++i)
+                    grp.local[i] = (int)(i0 + i);
+                grp.n_hops = rh;
+                rgroups.push_back(std::move(grp));
+            }
             const double t_g0 = tnow();
             const double gcp =
-                gnss::refine_peak_cuda(gref, sbank, 0, win.data(), anchor, loc,
+                gnss::refine_peak_cuda(rgroups, sbank, 0, win.data(), (int)nc, anchor,
                                        a.code_phase_chips, det_dop, o.sample_rate, o.refine_span,
                                        o.refine_step);
             const double t_g = tnow() - t_g0;

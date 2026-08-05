@@ -107,13 +107,27 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
 /// `cp0 = comb_mult * cp_seed`, and the kernel forms `C(n) = cp0 + n*cps`), so trial phases pass
 /// straight through with no translation.
 ///
-/// @param gpu    engine constructed over the SAME channel set and n_hops the refine uses
-/// @param window the snapshot, [hop][n_chan] interleaved, as GnssChannelizedSearch holds it
-/// @param cov_local LOCAL channel indices in this PRN's covering set
-double refine_peak_cuda(::GnssCudaDespread& gpu, const ChannelizedReplicaBank& bank,
-                        int prn_index, const std::complex<float>* window, long long anchor,
-                        const std::vector<int>& cov_local, double coarse_cp, double dop,
-                        double sample_rate, int refine_span, int refine_step);
+/// One channel group's engine. DespreadJob::chan_mask is a uint64_t, so ONE engine covers at
+/// most 64 channels -- ample for the tracker's 7, not for the aggregator's 79-channel union
+/// comb. Splitting the refine across groups is EXACT, not an approximation: DespreadResult's
+/// `correlation` (the raw coherent sum over channels) and `replica_energy` are both additive,
+/// so `amplitude = correlation / replica_energy` recombines from the group totals. Doing it
+/// here rather than widening chan_mask keeps the kernel the six live tracker nodes run
+/// untouched.
+struct CudaRefineGroup {
+    ::GnssCudaDespread* gpu = nullptr; ///< engine over exactly this group's channels
+    std::vector<int> local;            ///< the group's channel indices in the CALLER's row
+    int n_hops = 0;                    ///< hops the engine was built for
+    std::vector<std::complex<float>> stage; ///< de-interleave scratch, reused across calls
+};
+
+/// @param groups  one entry per <=64-channel group; `stage` is scratch and may be resized
+/// @param window  the snapshot, [hop][window_stride] interleaved, as the stage holds it
+/// @param window_stride  channels per hop in @c window (the stage's full row, not the group's)
+double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedReplicaBank& bank,
+                        int prn_index, const std::complex<float>* window, int window_stride,
+                        long long anchor, double coarse_cp, double dop, double sample_rate,
+                        int refine_span, int refine_step);
 #endif
 
 /// What the search reports about one detected peak's code phase. Three currencies, because

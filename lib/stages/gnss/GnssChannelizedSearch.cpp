@@ -466,29 +466,35 @@ void GnssChannelizedSearch::search_snapshot() {
                      unique_name, e.what());
             }
         }
-        // A5: the refine engine. Built over the FULL local channel row (the snapshot's stride),
-        // not just the covering subset, because upload_window reads [hop][n_chan] as the stage
-        // holds it; a PRN's covering set is then selected per-spec by the channel mask.
+        // A5: the refine engines, ONE PER <=64-CHANNEL GROUP. chan_mask is a uint64_t, so a
+        // single engine cannot cover the aggregator's 79-channel union comb; the split is exact
+        // because correlation and replica_energy are both additive over channels.
         if (_cuda_ref_wanted && !cov_local.empty()) {
             try {
                 const int rh = (_refine_hops > 0 && _refine_hops < hpr) ? _refine_hops : hpr;
-                std::vector<int> all_global((size_t)_n_chan, -1);
-                for (size_t ii = 0; ii < cov_local.size(); ++ii)
-                    all_global[(size_t)cov_local[ii]] = cov_global[ii];
-                // Non-covering rows are never read (the mask excludes them), but they must still
-                // carry a sane bin: a replica built near DC against data at 1176 MHz is the
-                // silent-noise failure GnssCudaDespread's own header warns about.
-                for (int c = 0; c < _n_chan; ++c)
-                    if (all_global[(size_t)c] < 0)
-                        all_global[(size_t)c] = cov_global.empty() ? c : cov_global[0];
-                _cuda_ref.reset(new GnssCudaDespread(*_replica, n_prn, all_global, rh,
-                                                     _sample_rate, _replica->f_offset()));
+                _cuda_ref.clear();
+                _cuda_ref_groups.clear();
+                const int GMAX = 64;
+                for (size_t i0 = 0; i0 < cov_local.size(); i0 += GMAX) {
+                    const size_t ng = std::min((size_t)GMAX, cov_local.size() - i0);
+                    std::vector<int> gl(cov_local.begin() + i0, cov_local.begin() + i0 + ng);
+                    std::vector<int> gg(cov_global.begin() + i0, cov_global.begin() + i0 + ng);
+                    _cuda_ref.emplace_back(
+                        new GnssCudaDespread(*_replica, n_prn, gg, rh, _sample_rate,
+                                             _replica->f_offset()));
+                    gnss::CudaRefineGroup grp;
+                    grp.gpu = _cuda_ref.back().get();
+                    grp.local = gl;
+                    grp.n_hops = rh;
+                    _cuda_ref_groups.push_back(std::move(grp));
+                }
                 INFO("GnssChannelizedSearch[{:s}]: CUDA refine ENABLED -- {:d} trial phases as "
-                     "{:d} E/P/L specs in one launch, {:d} hops x {:d} channels",
+                     "{:d} E/P/L specs, {:d} channel group(s) of <=64, {:d} hops",
                      unique_name, 2 * _refine_span / _refine_step + 1,
-                     (2 * _refine_span / _refine_step + 1 + 2) / 3, rh, (int)cov_local.size());
+                     (2 * _refine_span / _refine_step + 1 + 2) / 3, (int)_cuda_ref.size(), rh);
             } catch (const std::exception& e) {
-                _cuda_ref.reset();
+                _cuda_ref.clear();
+                _cuda_ref_groups.clear();
                 WARN("GnssChannelizedSearch[{:s}]: CUDA refine unavailable, using the CPU path: "
                      "{:s}",
                      unique_name, e.what());
@@ -813,11 +819,11 @@ void GnssChannelizedSearch::search_snapshot() {
             const int rh = (_refine_hops > 0 && _refine_hops < hpr) ? _refine_hops : hpr;
             double best_cp;
 #ifdef GNSS_CUDA
-            if (_cuda_ref) {
+            if (!_cuda_ref_groups.empty()) {
                 // The GPU refine reads the snapshot in its native [hop][n_chan] layout, so it
                 // does NOT need `d` -- the per-channel copy above is CPU-path scratch.
-                best_cp = gnss::refine_peak_cuda(*_cuda_ref, *_replica, p, _snapshot.data(),
-                                                 anchor, cov_local, a.code_phase_chips, dop,
+                best_cp = gnss::refine_peak_cuda(_cuda_ref_groups, *_replica, p, _snapshot.data(),
+                                                 _n_chan, anchor, a.code_phase_chips, dop,
                                                  _sample_rate, _refine_span, _refine_step);
             } else
 #endif
