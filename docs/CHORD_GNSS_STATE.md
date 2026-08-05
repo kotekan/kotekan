@@ -3631,3 +3631,53 @@ form. Of KV's two structural differences from the prototype, one is gone; the re
 the **sample cadence -- 1 us there against 5.12 us here** -- which also sets the record geometry
 (1 code period per record there, 10.4857 here). That is where to look next, and the
 [[airspy-record-period-coincidence]] note says the same thing from the other direction.
+
+### 8.20.23 Record geometry is out too -- and why the prototype never saw this
+
+**Record geometry, properly tested and refuted.** The earlier split-half test used 100 records and
+was worthless. With 19900 records and the per-record commanded code phase from the dump (field 8,
+chips mod 204600), binning the residual by where the record boundary falls:
+
+```
+vs code-period phase (10 bins):  spread 0.099 rad, SE 0.034  ->  2.9 sigma   FLAT
+vs NH symbol index   (20 bins):  spread 0.120 rad, SE 0.050  ->  2.4 sigma   FLAT
+```
+
+For 10-20 bins a max-minus-min of ~3 sigma is what noise gives. This excludes any
+geometry-dependent term above ~0.14 rad, a few percent of the floor. The non-integer record
+geometry (10.4857 code periods here against exactly 1 on airspy) is NOT the origin.
+
+**What the residual actually is.** Fold G ADJACENT records into one effective record and
+re-measure:
+
+```
+                 G=1     G=2     G=4        white: 1/sqrt(G)   random walk: sqrt(G)
+PRN 8           1.533   1.488   1.509            0.71, 0.50         1.41, 2.00
+PRN 9           1.541   1.466   1.565
+ratio to G=1     1.00    0.97    0.98
+```
+
+**Unchanged.** Not white (would fall as 1/sqrt(G)), not a random walk (would grow as sqrt(G)):
+a CORRELATED, slowly-varying phase wander with a correlation time longer than 42 ms. That agrees
+with the mildly-red spectrum of 8.20.13 and RETIRES the "white" reading of 8.20.9 for good.
+
+**And that answers KV's question.** Because sigma_phi does not depend on record length, both
+instruments see the SAME wander. But the deep statistic's ceiling is sqrt(N)/sigma_phi, and for
+the same 1 s integration:
+
+```
+airspy   1000 records of 1 ms      ceiling ~ sqrt(1000)/0.7 = 45
+CHORD     100 records of 10.4857   ceiling ~ sqrt(100)/0.7  = 14
+```
+
+Nothing on the prototype CORRECTS this term and nothing there introduces it -- the wander is
+simply sampled 10x more finely inside the same window, so its ceiling sits at ~45 where nobody
+would ever notice it. The mechanism is the sample cadence (1 us vs 5.12 us) acting through the
+RECORD COUNT, not through the record geometry. Of the two structural differences, the comb is
+excluded (8.20.22) and this is the surviving one, now with a number attached.
+
+**What this does and does not settle.** It explains the prototype's silence quantitatively, and it
+says the floor is a real correlated phase wander rather than an artifact of our arithmetic. It
+does NOT identify the physical source of a ~0.7 rad, >42 ms-correlated, per-satellite phase wander
+common to every antenna and every comb. That is the remaining question, and the fleet phase
+reference (8.20.12, +17.3 dB) is a workaround for it, not an answer.
