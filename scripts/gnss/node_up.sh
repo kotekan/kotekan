@@ -15,6 +15,10 @@
 #         node_up.sh cx51 status
 #         for n in cx42 cx43 cx44 cx47 cx51 cx52; do scripts/gnss/node_up.sh $n; done
 #
+#   env:  GNSS_BIN  binary            (default build/kotekan/kotekan)
+#         GNSS_CFG  config            (default config/generated/chord_gnss_<node>.yaml)
+#         GNSS_LOG  log file          (default /tmp/gnss_node.log)
+#
 # Needs an interactive sudo on the target, so it uses `ssh -t` and will prompt per node.
 set -u
 K=/home/kvand/gnss/kotekan
@@ -30,7 +34,19 @@ PREMERGE=/home/kvand/gnss/kotekan_premerge
 BIN=${GNSS_BIN:-/home/kvand/gnss/kotekan/build/kotekan/kotekan}
 N=${1:?usage: node_up.sh <node> [up|down|status]}
 ACT=${2:-up}
-CFG=$K/config/generated/chord_gnss_$N.yaml
+# GNSS_CFG / GNSS_LOG override the config and the log, the same way GNSS_BIN overrides the
+# binary. Use them to bring a node up on the PROFILING config without editing anything:
+#
+#   GNSS_CFG=$K/config/generated/chord_gnss_cx19_prof.yaml GNSS_LOG=/tmp/gnss_prof.log \
+#       scripts/gnss/node_up.sh cx19
+#
+# Give the profiling run its OWN log: it emits one INFO block per GPU frame per GPU (~760
+# lines/s), which buries /tmp/gnss_node.log. And note the log must not already exist owned by a
+# DIFFERENT user -- systemd runs the unit as root, and fs.protected_regular=2 refuses root an
+# O_CREAT append onto another user's file in /tmp. That failure surfaces as status=209/STDOUT
+# with nothing else to go on; `sudo rm -f` the stale file first.
+CFG=${GNSS_CFG:-$K/config/generated/chord_gnss_$N.yaml}
+LOG=${GNSS_LOG:-/tmp/gnss_node.log}
 
 case "$ACT" in
   status)
@@ -53,8 +69,8 @@ case "$ACT" in
     ssh -t "$N" "mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
       test -r '$CFG' && sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
-        --property=StandardOutput=append:/tmp/gnss_node.log \
-        --property=StandardError=append:/tmp/gnss_node.log \
+        --property=StandardOutput=append:$LOG \
+        --property=StandardError=append:$LOG \
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12049" \
       && sleep 3 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node
     ;;
