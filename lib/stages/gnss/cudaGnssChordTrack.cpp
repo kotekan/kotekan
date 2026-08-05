@@ -109,13 +109,28 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // the aggregator links this file but never instantiates cudaGnssChordTrack.
     if (split_timing)
         despread->enable_split_timing(true);
-    // BENCH: >0 truncates the PFB gather. Timing experiment only -- the despread is WRONG.
+    // Truncate the per-hop PFB chip gather. Synthesis is 89% of this kernel and LINEAR in the
+    // depth, so this is the biggest single lever on tracker GPU load.
+    //
+    // VALIDATED FLOOR IS 120 (scripts/gnss/e2e --max-chips, CHORD geometry, 2026-08-05): every
+    // value from 120 to the full 210 reproduces the full-depth answer EXACTLY (+0.123 chips),
+    // and 105 is 13 chips out with the wrong NH alignment -- a discontinuity, not a gradual
+    // degradation. 140 is the recommended operating point: 1.50x, with 17% margin over 120.
+    // Below 120 the truncated replica stops making the true lobe win and the search settles on a
+    // grating lobe, which is the old refine_span: 4096 failure wearing a different hat.
     const int max_chips = config.get_default<int>(unique_name, "despread_max_chips", 0);
     if (max_chips > 0) {
         despread->set_max_chips(max_chips);
-        WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} -- THE GATHER IS TRUNCATED AND "
-                    "THE DESPREAD OUTPUT IS INVALID. Timing experiment only.",
-                    max_chips);
+        if (max_chips < 120)
+            WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} is BELOW THE VALIDATED "
+                        "FLOOR of 120 -- the replica is truncated past the point where the "
+                        "search resolves the true lobe. Timing experiments only; detections "
+                        "and locks from this run are INVALID.",
+                        max_chips);
+        else
+            INFO_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} (full span ~210) -- gather "
+                        "truncated at a validated depth; {:.2f}x less synthesis work",
+                        max_chips, 210.0 / (double)max_chips);
     }
 
     seeds.assign((size_t)n_prn, Seed{});
