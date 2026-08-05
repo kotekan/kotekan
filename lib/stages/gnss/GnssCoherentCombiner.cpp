@@ -132,6 +132,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _carrier_pilot = config.get_default<bool>(unique_name, "carrier_pilot", false);
     if (_wipe_buffer) {
         _navbuf.assign(_n_prn, {});
+        _navsky.assign(_n_prn, {});
         _navutc.assign(_n_prn, {});
         _navhead.assign(_n_prn, {});
         _navwipe.assign(_n_prn, {});
@@ -275,6 +276,12 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // brackets the wander's measured >42 ms correlation time in records; each is a candidate
     // and the floor pays the selection, so more widths cost floor height, not correctness.
     _phase_track = config.get_default<bool>(unique_name, "phase_track", false);
+    // SKY-CORRECTED DEEP RUNG (record slots 24/25, gnssElemCal split aperture). Default OFF
+    // pending the open bound violation: on synthetic data at 1.20 rad injected phase the split
+    // rung reads 28.4 against a GENIE of 20.5, and an estimator that beats perfect knowledge is
+    // not understood yet (2026-08-05). The assembler still WRITES the slots when elem_sum is on,
+    // so the correction can be measured on sky without being believed.
+    _sky_deep = config.get_default<bool>(unique_name, "sky_deep", false);
     _pt_widths = config.get_default<std::vector<int>>(unique_name, "phase_track_widths",
                                                       {1, 2, 4, 8});
     _st_coh_frac.assign(_n_prn, 0.0f);
@@ -445,6 +452,7 @@ void GnssCoherentCombiner::main_thread() {
             // Sum the un-normalized correlation and replica energy across subbands
             // (the cross-channel coherent combine), then the full-band amplitude.
             double gr = 0.0, gi = 0.0, energy = 0.0, nchan = 0.0;
+            double skr = 0.0, ski = 0.0; // sky-phase-corrected prompt (REC_SKY_*), summed like it
             double er = 0.0, ei = 0.0, e_energy = 0.0, lr = 0.0, li = 0.0, l_energy = 0.0;
             double ghr = 0.0, ghi = 0.0, h_energy = 0.0; // prompt HEAD segment (slots 16-18)
             const float* ref = ins[0] + (size_t)p * _rec_stride; // PRN/dop/cp/UTC reference
@@ -471,6 +479,11 @@ void GnssCoherentCombiner::main_thread() {
                 ghr += rec[gnss::REC_PH_RE];
                 ghi += rec[gnss::REC_PH_IM];
                 h_energy += rec[gnss::REC_PH_ENERGY];
+                // SKY-PHASE-CORRECTED prompt: additive across subbands exactly like the prompt
+                // (same replica energy normalizes it below). Each subband corrected it with its
+                // OWN elements, so the corrections are independent and the sum is still honest.
+                skr += rec[gnss::REC_SKY_RE];
+                ski += rec[gnss::REC_SKY_IM];
                 // PER-ANTENNA prompt, summed across subbands exactly like the reference
                 // element's -- additive for the same reason (raw G sums; the shared energy
                 // normalizes once, below).
@@ -518,6 +531,10 @@ void GnssCoherentCombiner::main_thread() {
             // tail == 0, and every consumer reduces to the old whole-record behaviour.
             const double ahr = energy > 0.0 ? ghr / energy : 0.0;
             const double ahi = energy > 0.0 ? ghi / energy : 0.0;
+            // Sky-corrected amplitude, same normalization as A so the deep estimators and their
+            // floors are unchanged in currency. Zero => absent (cold cal / elem_sum off).
+            const std::complex<double> A_sky(energy > 0.0 ? skr / energy : 0.0,
+                                             energy > 0.0 ? ski / energy : 0.0);
             const double e2 = e_energy > 0.0 ? (er * er + ei * ei) / (e_energy * e_energy) : 0.0;
             const double l2 = l_energy > 0.0 ? (lr * lr + li * li) / (l_energy * l_energy) : 0.0;
 
@@ -777,6 +794,7 @@ void GnssCoherentCombiner::main_thread() {
                     // estimate: a mostly-zero window reported a tiny deep |A| at an enormous
                     // fake significance (observed 500 sigma at |A|=0.04 on flapping CL sats).
                     _navbuf[p].emplace_back(ar, ai);
+                    _navsky[p].push_back(A_sky);
                     _navutc[p].push_back(utc_p);
                     // Head segment (0 when the tracker doesn't segment -> h_energy 0 -> treat
                     // the whole record as head so the segmented wipe reduces to unsegmented).
@@ -800,6 +818,7 @@ void GnssCoherentCombiner::main_thread() {
                     }
                     if ((int)_navbuf[p].size() > _integration_length) {
                         _navbuf[p].erase(_navbuf[p].begin());
+                        _navsky[p].erase(_navsky[p].begin());
                         _navutc[p].erase(_navutc[p].begin());
                         _navhead[p].erase(_navhead[p].begin());
                         _navwipe[p].erase(_navwipe[p].begin());
@@ -830,6 +849,7 @@ void GnssCoherentCombiner::main_thread() {
                     // zero-energy (inactive) records are gaps, not zeros -- see the rolling
                     // branch comment (fake-significance pathology otherwise).
                     _navbuf[p].emplace_back(ar, ai);
+                    _navsky[p].push_back(A_sky);
                     _navutc[p].push_back(utc_p);
                     _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
                                              h_energy > 0.0 ? ahi : ai);
@@ -1327,6 +1347,7 @@ void GnssCoherentCombiner::main_thread() {
                 // look like a leak from the outside; it looks like an expensive algorithm.
                 if (!_rolling) {
                     _navbuf[p].clear();
+                    _navsky[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
@@ -1499,6 +1520,7 @@ void GnssCoherentCombiner::main_thread() {
                 // this window's per-record A/head to run the hinted wipe for the weak sats.
                 if (!_rolling && !_nh_assist) {
                     _navbuf[p].clear();
+                    _navsky[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
@@ -1607,6 +1629,7 @@ void GnssCoherentCombiner::main_thread() {
                 }
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
+                    _navsky[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
@@ -1642,10 +1665,31 @@ void GnssCoherentCombiner::main_thread() {
                 // a max over its half-width candidates (straight + each width), and that
                 // selection is paid HERE -- fail-closed twice over: the LOO estimate cannot
                 // align noise, and the bar still rises with the candidate count.
-                const size_t n_cand = 1 + (_phase_track ? _pt_widths.size() : 0);
+                // SKY-CORRECTED STREAM available? (record slots 24/25; all-zero = absent.)
+                // Checked over the window, not per record, so a few cold records at the start of
+                // an arc do not disable the rung for the whole window.
+                const auto& skb = _navsky[p];
+                bool have_sky = _sky_deep && skb.size() == ab.size();
+                if (have_sky) {
+                    double e_sky = 0.0;
+                    for (const auto& v : skb)
+                        e_sky += std::norm(v);
+                    have_sky = e_sky > 0.0;
+                }
+                const size_t n_cand =
+                    1 + (_phase_track ? _pt_widths.size() : 0) + (have_sky ? 1 : 0);
                 const double flr = std::sqrt(2.0 * std::log(2.0 * (double)n_cand)) + 1.0;
                 for (size_t len : ladder(ab.size(), min_rung(ub, 4))) {
                     std::vector<std::complex<double>> w(ab.end() - (long)len, ab.end());
+                    // THE SKY-CORRECTED RUNG (2026-08-05). The per-record common phase is
+                    // 0.98-coherent across elements and ~white in time, so the OTHER ELEMENTS
+                    // measure it instantly while temporal neighbours cannot: the producer already
+                    // derotated each element by the leave-one-out phase of the rest. Scored as
+                    // one more candidate here (the floor above pays for it) rather than replacing
+                    // the raw stream, so a bad cal loses on merit instead of corrupting the fold.
+                    std::vector<std::complex<double>> wsky;
+                    if (have_sky)
+                        wsky.assign(skb.end() - (long)len, skb.end());
                     // PHASE-RATE SEARCH (2026-08-04). Measured on sky: the per-record prompts
                     // carry a strong LINEAR phase ramp -- lag-1 coherence 0.49-0.67 against a
                     // shuffled null of 0.04-0.12, and a ramp-corrected sum recovers 0.65-0.80 of
@@ -1664,6 +1708,18 @@ void GnssCoherentCombiner::main_thread() {
                     if (_deep_rate) {
                         const std::vector<double> us(ub.end() - (long)len, ub.end());
                         rate_search(w, us, rate_hz, rate_q);
+                        if (have_sky) {
+                            // The sky correction removes the per-record phase INCLUDING whatever
+                            // linear part it carried, so the corrected stream gets its own rate
+                            // search rather than inheriting the raw stream's answer.
+                            double f2 = 0.0, q2 = 0.0;
+                            rate_search(wsky, us, f2, q2);
+                            if (q2 >= _deep_rate_min_q && f2 != 0.0) {
+                                const double t0 = us.front();
+                                for (size_t k = 0; k < wsky.size(); ++k)
+                                    wsky[k] *= std::polar(1.0, -2.0 * M_PI * f2 * (us[k] - t0));
+                            }
+                        }
                         if (rate_q >= _deep_rate_min_q && rate_hz != 0.0) {
                             // Derotate and let the EXISTING estimator score it, so deep_snr,
                             // deep_amplitude and coherence_s stay in the currency every consumer
@@ -1678,11 +1734,24 @@ void GnssCoherentCombiner::main_thread() {
                     }
                     // Per-record magnitudes are invariant under any derotation, so ONE pass
                     // serves every candidate's coherence fraction |sum| / sum|.| below.
-                    double sum_abs = 0.0;
+                    double sum_abs_raw = 0.0, sum_abs_sky = 0.0;
                     for (const auto& v : w)
-                        sum_abs += std::abs(v);
+                        sum_abs_raw += std::abs(v);
+                    if (have_sky)
+                        for (const auto& v : wsky)
+                            sum_abs_sky += std::abs(v);
                     gnss::OverlayWipeResult cs = gnss::coherent_sum(w);
                     int hw_used = 0;
+                    // Sky-corrected candidate. pt_hw = -1 marks "the elements did it", which is
+                    // a different mechanism from any temporal half-width and must be legible as
+                    // such in the status.
+                    if (have_sky) {
+                        const gnss::OverlayWipeResult csk = gnss::coherent_sum(wsky);
+                        if (csk.snr > cs.snr) {
+                            cs = csk;
+                            hw_used = -1;
+                        }
+                    }
                     // COMMON-PHASE TRACKER: derotate each record by its neighbours' leave-one-
                     // out phase (the batch form of the carrier loop the airspy closed at 1 kHz;
                     // 8.21.5) and let the SAME estimator score it against the straight sum.
@@ -1699,6 +1768,10 @@ void GnssCoherentCombiner::main_thread() {
                                 }
                             }
                     }
+                    // Coherence fraction of the stream that ACTUALLY won (the sky-corrected
+                    // records have their own magnitudes; scoring the winner against the raw
+                    // stream's sum|.| would silently mix two normalizations).
+                    const double sum_abs = (hw_used == -1) ? sum_abs_sky : sum_abs_raw;
                     const double cf =
                         sum_abs > 0.0 ? cs.amplitude * (double)len / sum_abs : 0.0;
                     if (full_len == 0) { // ladder walks longest-first
@@ -1909,6 +1982,7 @@ void GnssCoherentCombiner::main_thread() {
             if (!_rolling) // the deferred block-mode clear, now that the window is consumed
                 for (int p = 0; p < _n_prn; ++p) {
                     _navbuf[p].clear();
+                    _navsky[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();

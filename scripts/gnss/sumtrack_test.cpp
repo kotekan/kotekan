@@ -82,9 +82,9 @@ int main() {
     }
 
     printf("\n== [B] ElemCal: 32 elements (4 dead), static gains amp 0.5-1.5, common wander, "
-           "tau 0.5 s, rec 10.5 ms ==\n");
-    const int NE = 32, NDEAD = 4, NREC = 4000; // 42 s: warm-up plus a long measure window
-    const double DT = 0.0105, TAU = 0.5;
+           "tau 5 s, rec 10.5 ms ==\n");
+    const int NE = 32, NDEAD = 4, NREC = 20000; // 42 s: warm-up plus a long measure window
+    const double DT = 0.0105, TAU = 5.0;
     auto run_elemcal = [&](double s_elem, double fringe_hz, bool kill_ref, const char* label) {
         std::mt19937 rng(777);
         std::normal_distribution<double> g(0.0, 1.0);
@@ -115,7 +115,7 @@ int main() {
             }
             const cd href = gp[0];
             const cd h = cal.warm() ? cal.combine(gp.data()) : href;
-            cal.update(gp.data(), h, DT);
+            cal.update(gp.data(), DT);
             if (k >= NREC / 2 && cal.warm()) { // measure on the settled second half
                 moved = moved || cal.anchor_moved();
                 const cd dem = std::polar(1.0, -phi[(size_t)k]);
@@ -161,5 +161,67 @@ int main() {
     run_elemcal(0.3, 0.0, false, "static gains, s_elem 0.3:");
     run_elemcal(0.6, 0.1, false, "0.1 Hz fringe on half the array:");
     run_elemcal(0.6, 0.0, true, "DEAD reference element:");
+
+    // ---------------------------------------------------------------------------------------
+    // [C] THE REAL CHORD CASE, as measured on sky 2026-08-05: a per-record common phase that is
+    // coherent across ELEMENTS but ~white in TIME (lag-1 autocorr 0.57), on an array of ~8
+    // effective elements with unequal gains and a couple of oscillating (excess-noise) feeds.
+    // Temporal LOO cannot touch this; leave-one-ELEMENT-out should recover nearly all of it.
+    // ---------------------------------------------------------------------------------------
+    printf("\n== [C] sky phase (common across elements, white in time) + noisy feeds: "
+           "deep fold over 128 records ==\n");
+    printf("%22s %9s %9s %9s %9s %9s\n", "case", "straight", "temporal", "split-ap", "genie",
+           "thermal");
+    auto run_sky = [&](double sky_sig, int n_osc, double osc_excess, double s_elem,
+                       const char* label) {
+        const int NE2 = 32, NLIVE = 8, NREC2 = 128 + 20000; // 2000 records of cal warm-up
+        const double DT2 = 0.0105;
+        std::mt19937 rng(4242);
+        std::normal_distribution<double> g(0.0, 1.0);
+        std::uniform_real_distribution<double> ua(0.4, 1.4), up(0.0, 2.0 * M_PI);
+        std::vector<cd> gains((size_t)NE2, cd(0.0, 0.0));
+        for (int e = 0; e < NLIVE; ++e) // only NLIVE elements instrumented
+            gains[(size_t)e] = std::polar(ua(rng), up(rng));
+        std::vector<double> exn((size_t)NE2, 1.0);
+        for (int e = 0; e < n_osc; ++e) // oscillating feeds: real signal, excess noise
+            exn[(size_t)e + 1] = osc_excess;
+        gnss::ElemCal cal(NE2, 0, 5.0, 0.02);
+        std::vector<cd> gp((size_t)NE2);
+        std::vector<cd> raw, sky, genie;
+        for (int k = 0; k < NREC2; ++k) {
+            const double phi_sky = sky_sig * g(rng); // WHITE in time, common to all elements
+            const cd sig = s_elem * std::polar(1.0, phi_sky);
+            for (int e = 0; e < NE2; ++e)
+                gp[(size_t)e] = gains[(size_t)e] * sig
+                                + exn[(size_t)e] * cd(g(rng), g(rng)) * 0.70710678;
+            const cd h = cal.warm() ? cal.combine(gp.data()) : gp[0];
+            if (cal.warm() && k >= NREC2 - 128) {
+                raw.push_back(h);
+                sky.push_back(cal.combine_split(gp.data()));
+                genie.push_back(h * std::polar(1.0, -phi_sky));
+            }
+            cal.update(gp.data(), DT2);
+        }
+        if (raw.size() < 64) {
+            printf("  %-20s (cal never warmed)\n", label);
+            return;
+        }
+        std::vector<cd> tr;
+        gnss::phase_track_loo(raw, 2, tr);
+        printf("%22s %9.1f %9.1f %9.1f %9.1f %9s\n", label, gnss::coherent_sum(raw).snr,
+               gnss::coherent_sum(tr).snr, gnss::coherent_sum(sky).snr,
+               gnss::coherent_sum(genie).snr, "--");
+    };
+    // s_elem sweep: the split-aperture correction only helps when the REFERENCE half has a
+    // per-record SNR comfortably above 1, since arg(B) is the phase estimate. Live CHORD runs at
+    // ~9.25 per record per instance over ~8 effective elements, i.e. s_elem ~ 3.
+    run_sky(0.0,  0, 1.0, 0.55, "weak, no sky:");
+    run_sky(0.75, 0, 1.0, 0.55, "weak, 0.75 rad:");
+    run_sky(0.75, 2, 3.0, 0.55, "weak, 0.75 + 2 osc:");
+    printf("%22s %9s %9s %9s %9s\n", "-- live CHORD level --", "", "", "", "");
+    run_sky(0.0,  0, 1.0, 3.00, "live, no sky:");
+    run_sky(0.75, 0, 1.0, 3.00, "live, 0.75 rad:");
+    run_sky(0.75, 2, 3.0, 3.00, "live, 0.75 + 2 osc:");
+    run_sky(1.20, 2, 3.0, 3.00, "live, 1.20 + 2 osc:");
     return 0;
 }

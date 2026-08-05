@@ -114,7 +114,7 @@ namespace gnss {
 /// frame and the producers write past the end of it -- so the record producers now assert the
 /// frame is big enough at construction (see GnssChannelizedTracker / GnssGpuRecordAssemble /
 /// GnssCoherentCombiner) and die loudly instead of corrupting memory.
-constexpr int RECORD_FLOATS = 24;
+constexpr int RECORD_FLOATS = 26;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // Shared header slots
@@ -155,6 +155,23 @@ constexpr int REC_RES_PH_RE = 22; ///< residual prompt HEAD segment (same bounda
 constexpr int REC_RES_PH_IM = 23; ///< required, or the residual's deep integration self-cancels.
                                   ///< All four zero = no peel ran. Energies are the prompt's
                                   ///< (same replica). See the header note + the peel design doc.
+constexpr int REC_SKY_RE = 24;    ///< SKY-PHASE-CORRECTED PROMPT (gnssElemCal.hpp): the same
+constexpr int REC_SKY_IM = 25;    ///< prompt correlation, but with each ELEMENT derotated by the
+                                  ///< phase of the sum of the OTHER elements before summing.
+                                  ///< Removes the ~0.75 rad per-record common sky phase that is
+                                  ///< 0.98-coherent across instances/elements and ~white in time
+                                  ///< (measured 2026-08-05) -- the thing that held every deep
+                                  ///< fold at ~14 sigma against a ~100 sigma thermal ceiling.
+                                  ///< ⚠️ A SEPARATE SLOT, NOT a replacement for slots 3/4. The
+                                  ///< header prompt's phase IS the carrier-phase/ADR observable,
+                                  ///< and the sky phase is part of what ADR measures -- removing
+                                  ///< it there would delete the quantity a downstream product
+                                  ///< exists to produce. Deep folds read THIS; ADR reads 3/4.
+                                  ///< Leave-one-out per element, so the rotation applied to an
+                                  ///< element is independent of that element's own noise and the
+                                  ///< coherent sum stays unbiased (a full-sum derotation would
+                                  ///< rectify noise). ZERO when the cal is cold or elem_sum is
+                                  ///< off -- consumers read zero as "absent" and fall back.
 
 // Combiner-record slots
 constexpr int CMB_AMP_INCOH = 3;

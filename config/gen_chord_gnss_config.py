@@ -100,7 +100,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
 
     # Record frames carry the element axis: RECORD_FLOATS + n_elem*ELEM_FLOATS per PRN
     # (gnssRecord.hpp record_stride()). Kept in one place; the stages assert against it.
-    record_floats = 24 + n_elem * 12
+    record_floats = 26 + n_elem * 12
     n_prn = len(args.prns)
 
     blocks = {
@@ -747,14 +747,18 @@ def main():
                          "from the satellite itself (validated: 5.8x of the 7.95x MRC bound on "
                          "synthetic, dead elements auto-gated, dead reference fails over). "
                          "STATE 8.21.5 item 1 -- the phase-floor fix's SNR half.")
-    ap.add_argument("--phase-track", action=argparse.BooleanOptionalAction, default=True,
+    ap.add_argument("--phase-track", action=argparse.BooleanOptionalAction, default=False,
                     help="combiner: leave-one-out common-phase tracker before the deep coherent "
                          "sum -- the batch form of the carrier loop the airspy chain closed, "
                          "removing the per-satellite ~0.9 rad propagation wander that capped "
                          "every deep_snr at ~11-14 regardless of brightness (STATE 8.21). "
                          "Fail-closed on noise (self-excluded estimates cannot align it; "
                          "validated on synthetic). Exports coh_frac (the chopping-independent "
-                         "coherence measure) and pt_hw beside deep_snr. STATE 8.21.5 item 2.")
+                         "coherence measure) and pt_hw beside deep_snr. DEFAULT OFF since\n"
+                         "2026-08-05: measured on sky it costs 14.5 -> 13.2 (the wander is ~white\n"
+                         "in time, so temporal neighbours carry no information) and it raises the\n"
+                         "local deep floor from 2.18 to 3.15 for every satellite. The working fix\n"
+                         "is the broker's fleet_coherent (STATE 8.21.6).")
     ap.add_argument("--buffer-depth", type=int, default=4)
     ap.add_argument("--search-element", type=int, default=0,
                     help="element (relative to the live range) the acquisition search runs on. "
@@ -1001,7 +1005,7 @@ def main():
     print(f"  node          {args.node}", file=sys.stderr)
     print(f"  covering ch   {len(chans)} -> per GPU " +
           ", ".join(f"gpu{g}:{len(v)}" for g, v in sorted(per_gpu.items())), file=sys.stderr)
-    print(f"  record_floats {record_floats} (24 header + n_elem*12)", file=sys.stderr)
+    print(f"  record_floats {record_floats} (26 header + n_elem*12)", file=sys.stderr)
     print(f"  rest port     {port}", file=sys.stderr)
     print(f"  dropped       {len(dropped)} production blocks", file=sys.stderr)
 

@@ -183,7 +183,7 @@ gnss0_assemble:
   reference_element: 0
   sample_rate: 3200000000.0
 gnss0_cmb_buf:
-  frame_size: 32 * 408 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -204,7 +204,7 @@ gnss0_combine:
   out_buf: gnss0_cmb_buf
   phase_dump_path: /tmp/gnss_phase_dump_cx42_0.txt
   phase_dump_prns: &id003 []
-  phase_track: true
+  phase_track: false
   record_export: 128
 gnss0_epl_buf:
   frame_size: 7487664
@@ -256,7 +256,7 @@ gnss0_gpu:
   out_buffers:
     gnss_epl_out: gnss0_epl_buf
 gnss0_rec_buf:
-  frame_size: 32 * 408 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -331,7 +331,7 @@ gnss1_assemble:
   reference_element: 0
   sample_rate: 3200000000.0
 gnss1_cmb_buf:
-  frame_size: 32 * 408 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -352,7 +352,7 @@ gnss1_combine:
   out_buf: gnss1_cmb_buf
   phase_dump_path: /tmp/gnss_phase_dump_cx42_1.txt
   phase_dump_prns: *id003
-  phase_track: true
+  phase_track: false
   record_export: 128
 gnss1_epl_buf:
   frame_size: 6422704
@@ -403,7 +403,7 @@ gnss1_gpu:
   out_buffers:
     gnss_epl_out: gnss1_epl_buf
 gnss1_rec_buf:
-  frame_size: 32 * 408 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4

@@ -256,6 +256,11 @@ private:
     bool _auto_coherence;           ///< deep wipe over an octave ladder of trailing sub-windows,
                                     ///< keep the best -> integrate as deep as the clock coheres
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
+    /// Per-PRN per-record SKY-PHASE-CORRECTED A (record slots 24/25, gnssElemCal.hpp's
+    /// leave-one-element-out derotation). Parallel to _navbuf record-for-record; all-zero when
+    /// the producer does not supply it (cold cal / elem_sum off / CPU tracker), which is how the
+    /// deep branch decides whether the corrected rung is available at all.
+    std::vector<std::vector<std::complex<double>>> _navsky;
     std::vector<std::vector<double>> _navutc;              ///< per-PRN per-record capture UTC
     /// Per-PRN per-record HEAD-segment amplitude (prompt over the hops before the record's
     /// code-period boundary, normalized by the TOTAL prompt energy so head + tail = A).
@@ -402,6 +407,8 @@ private:
     /// estimator (the optimal width is SNR-dependent: measured on synthetic AR(1) wander,
     /// narrow wins bright, wide wins faint) and the floor pays the selection. Off by default.
     bool _phase_track = false;
+    bool _sky_deep = false;  ///< use the record's split-aperture sky-corrected prompt as a deep
+                             ///< candidate (slots 24/25). OFF until the bound violation is closed.
     std::vector<int> _pt_widths;             ///< half-widths tried (records); config
     std::vector<float> _st_coh_frac;         ///< |sum|/sum|.| of the WINNING deep stream --
                                              ///< the chopping-independent coherence measure

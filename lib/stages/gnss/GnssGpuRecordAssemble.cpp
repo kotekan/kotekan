@@ -52,7 +52,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     // SELF-CALIBRATED ELEMENT SUM (hpp note / gnssElemCal.hpp). Off by default; no-op unless
     // the element axis exists.
     _elem_sum = config.get_default<bool>(unique_name, "elem_sum", false) && _n_elements > 0;
-    _elem_sum_tau_s = config.get_default<double>(unique_name, "elem_sum_tau_s", 0.5);
+    _elem_sum_tau_s = config.get_default<double>(unique_name, "elem_sum_tau_s", 5.0);
     _elem_sum_min_w = config.get_default<double>(unique_name, "elem_sum_min_w", 0.02);
     const int n = (int)_prns.size();
     // Record width is a C++ constant; the frame is sized in yaml (n_prn * record_floats *
@@ -195,17 +195,23 @@ void GnssGpuRecordAssemble::main_thread() {
                 // records only), from the PROMPT row against the header actually emitted --
                 // the bootstrap that starts on the reference element and converges to MRC.
                 // The element BLOCKS are untouched: they are the per-antenna measurement.
+                std::complex<double> g_sky(0.0, 0.0); // LOO sky-phase-corrected prompt (slot 24/25)
                 if (_elem_sum) {
                     gnss::ElemCal& ec = _cal[p];
                     if (c.reanchored == 1) {
                         ec.reset(); // fresh acquisition: the fringes may have moved arbitrarily
                         _anchor_warned[p] = 0;
                     }
-                    if (ec.warm())
+                    if (ec.warm()) {
                         for (int t = 0; t < n_rows_spec; ++t)
                             g3[t] = ec.combine(&_g_elem[(size_t)t * n_e]);
+                        // The deep fold's input: same prompt, each element derotated by the phase
+                        // of the OTHERS. Separate slot -- the header keeps the raw phase because
+                        // that IS the ADR observable (gnssRecord.hpp REC_SKY_RE).
+                        g_sky = ec.combine_split(&_g_elem[(size_t)1 * n_e]);
+                    }
                     if (_a_prev_ok[p] && wstart > _wstart_prev[p])
-                        ec.update(&_g_elem[(size_t)1 * n_e], g3[1],
+                        ec.update(&_g_elem[(size_t)1 * n_e],
                                   (double)(wstart - _wstart_prev[p]) / _sample_rate);
                     if (ec.anchor_moved()) {
                         if (!_anchor_warned[p]) {
@@ -308,6 +314,14 @@ void GnssGpuRecordAssemble::main_thread() {
                 // restricted to the hops before the code-period boundary), so head + tail
                 // reconstructs P exactly and the combiner can wipe each side with its own
                 // overlay chip.
+                // SKY-PHASE-CORRECTED PROMPT: same NCO rotation as the prompt it is a version of,
+                // so the combiner can deep-integrate it in exactly the prompt's currency. Zero
+                // when the cal is cold / elem_sum is off, which consumers read as "absent".
+                if (std::norm(g_sky) > 0.0) {
+                    const std::complex<double> gs = g_sky * rot;
+                    rec[gnss::REC_SKY_RE] = (float)gs.real();
+                    rec[gnss::REC_SKY_IM] = (float)gs.imag();
+                }
                 const std::complex<double> gh_corr = g3[3] * rot;
                 rec[gnss::REC_PH_RE] = (float)gh_corr.real();
                 rec[gnss::REC_PH_IM] = (float)gh_corr.imag();
