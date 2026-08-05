@@ -192,6 +192,46 @@ OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
     return out;
 }
 
+bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
+                     std::vector<std::complex<double>>& out_a) {
+    // Sliding leave-one-out boxcar: window sum minus self, O(n) via a running sum. Zero-
+    // amplitude records (gaps: the caller buffers no inactive records, but rate-derotated
+    // zeros can appear) contribute nothing to any estimate and pass through unrotated.
+    using cd = std::complex<double>;
+    const int n = (int)a.size();
+    if (n < 4 || half_width < 1)
+        return false;
+    out_a.assign((size_t)n, cd(0.0, 0.0));
+    cd win(0.0, 0.0); // sum of a[j] over the current window [lo, hi]
+    int lo = 0, hi = -1;
+    int n_used = 0; // nonzero records inside the window
+    for (int k = 0; k < n; ++k) {
+        // Advance the window to [k - half_width, k + half_width].
+        while (hi < std::min(n - 1, k + half_width)) {
+            ++hi;
+            if (std::norm(a[(size_t)hi]) > 0.0) {
+                win += a[(size_t)hi];
+                ++n_used;
+            }
+        }
+        while (lo < k - half_width) {
+            if (std::norm(a[(size_t)lo]) > 0.0) {
+                win -= a[(size_t)lo];
+                --n_used;
+            }
+            ++lo;
+        }
+        const bool self_nz = std::norm(a[(size_t)k]) > 0.0;
+        const cd s = win - (self_nz ? a[(size_t)k] : cd(0.0, 0.0)); // LEAVE-ONE-OUT
+        const int nb = n_used - (self_nz ? 1 : 0);
+        // < 2 neighbours: the estimate would be a single record's noise -- pass through.
+        out_a[(size_t)k] = (nb >= 2 && std::norm(s) > 0.0)
+                               ? a[(size_t)k] * std::polar(1.0, -std::arg(s))
+                               : a[(size_t)k];
+    }
+    return true;
+}
+
 OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
                                   const std::vector<double>& utc,
                                   const std::vector<int8_t>& overlay, int phase,

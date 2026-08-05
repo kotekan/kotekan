@@ -89,6 +89,31 @@ struct OverlayWipeResult {
 /// (the point) no max-over-alignments, so the noise floor carries no extreme-value inflation.
 OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a);
 
+/// LEAVE-ONE-OUT COMMON-PHASE TRACKER -- the closed carrier loop the airspy had, in batch form.
+///
+/// The on-sky per-record prompts carry a slow (~>42 ms correlated) per-satellite phase wander
+/// that is NOT a polynomial of low order (measured ~0.9 rad rms over 1 s, red spectrum, common
+/// across every antenna and subband -- propagation/sky, not processing). The airspy never saw
+/// it because its per-record phase estimate was signal-dominated and its carrier loop TRACKED
+/// it out before any long integration; CHORD's open-loop polynomial derotation cannot. This is
+/// the batch equivalent of closing that loop: estimate each record's common phase from its
+/// NEIGHBOURS within the wander's correlation time and derotate.
+///
+/// Each record k is derotated by arg(sum of a[j], j in [k-half_width, k+half_width], j != k,
+/// zero-amplitude records skipped). SELF-EXCLUDED, deliberately: the estimate is then
+/// statistically independent of record k's own noise, so under pure noise the derotation is a
+/// random rotation that cannot align anything -- the tracker is FAIL-CLOSED (it cannot
+/// manufacture a detection) and coherent_sum's E[snr^2] = 2 noise convention survives it.
+/// The price is estimator noise ~1/(SNR_rec * sqrt(2*half_width)) rad of added jitter, so
+/// tracking a clean strong signal costs ~exp(-sigma_est^2/2) -- a few percent -- while removing
+/// a 0.9 rad wander recovers ~exp(0.9^2/2) ~ 1.5x amplitude. Callers should score tracked and
+/// untracked with the SAME estimator and keep the better (a 2-way selection the floor must pay).
+///
+/// Records with fewer than 2 usable neighbours pass through unrotated. Returns false (out_a
+/// untouched) on a degenerate window (< 4 records or half_width < 1).
+bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
+                     std::vector<std::complex<double>>& out_a);
+
 /// Selection-free overlay wipe at a GIVEN alignment (dead-reckoned by the caller):
 /// one coherent sum, no phase search -- E[snr^2] = 2 exactly under noise.
 ///

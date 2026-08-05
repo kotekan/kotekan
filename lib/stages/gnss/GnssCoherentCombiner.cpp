@@ -271,6 +271,14 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _deep_rate_min_q = config.get_default<double>(unique_name, "deep_rate_min_q", 10.0);
     _st_deep_rate.assign(_n_prn, 0.0f);
     _st_deep_rate_q.assign(_n_prn, 0.0f);
+    // COMMON-PHASE TRACKER (see the hpp note / CHORD_GNSS_STATE 8.21.5). The half-width list
+    // brackets the wander's measured >42 ms correlation time in records; each is a candidate
+    // and the floor pays the selection, so more widths cost floor height, not correctness.
+    _phase_track = config.get_default<bool>(unique_name, "phase_track", false);
+    _pt_widths = config.get_default<std::vector<int>>(unique_name, "phase_track_widths",
+                                                      {1, 2, 4, 8});
+    _st_coh_frac.assign(_n_prn, 0.0f);
+    _st_pt_hw.assign(_n_prn, 0.0f);
 
     _rec_export = config.get_default<int>(unique_name, "record_export", 0);
     if (_rec_export > 0) {
@@ -905,6 +913,8 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<std::vector<std::array<float, 3>>> rungs(_n_prn);
         std::vector<double> deep_rate(_n_prn, 0.0);   // phase-rate removed before the deep sum
         std::vector<double> deep_rate_q(_n_prn, 0.0); // its peak/median -- the gate, and the SNR
+        std::vector<double> coh_frac(_n_prn, 0.0); // |sum|/sum|.| of the winning deep stream
+        std::vector<int> pt_hw(_n_prn, 0);         // winning tracker half-width (0 = straight)
         std::vector<double> peel_rsnr(_n_prn, 0.0);  // residual deep significance (peel_depth)
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions (P7a)
         // FIXED-WINDOW, noise-debiased coherent power (Hz) for the beam map: the coherent
@@ -1622,12 +1632,18 @@ void GnssCoherentCombiner::main_thread() {
                 bool cleared = false;
                 gnss::OverlayWipeResult full{};
                 size_t full_len = 0;
+                double full_cf = 0.0;
+                int full_hw = 0;
                 // Floor with NO alignment search in it. The overlay rungs pay
                 // sqrt(2 ln n_align) for taking a max over alignments; a straight sum takes no
                 // max, so its floor is the plain Rayleigh tail and the bar sits LOWER -- which
                 // is the sensitivity this branch is for. n = 2 keeps the log defined and leaves
-                // a little margin for the ladder's own handful of rungs.
-                const double flr = std::sqrt(2.0 * std::log(2.0)) + 1.0;
+                // a little margin for the ladder's own handful of rungs. The phase tracker adds
+                // a max over its half-width candidates (straight + each width), and that
+                // selection is paid HERE -- fail-closed twice over: the LOO estimate cannot
+                // align noise, and the bar still rises with the candidate count.
+                const size_t n_cand = 1 + (_phase_track ? _pt_widths.size() : 0);
+                const double flr = std::sqrt(2.0 * std::log(2.0 * (double)n_cand)) + 1.0;
                 for (size_t len : ladder(ab.size(), min_rung(ub, 4))) {
                     std::vector<std::complex<double>> w(ab.end() - (long)len, ab.end());
                     // PHASE-RATE SEARCH (2026-08-04). Measured on sky: the per-record prompts
@@ -1660,10 +1676,36 @@ void GnssCoherentCombiner::main_thread() {
                             rate_hz = 0.0; // nothing found: score the straight sum, as before
                         }
                     }
-                    const gnss::OverlayWipeResult cs = gnss::coherent_sum(w);
+                    // Per-record magnitudes are invariant under any derotation, so ONE pass
+                    // serves every candidate's coherence fraction |sum| / sum|.| below.
+                    double sum_abs = 0.0;
+                    for (const auto& v : w)
+                        sum_abs += std::abs(v);
+                    gnss::OverlayWipeResult cs = gnss::coherent_sum(w);
+                    int hw_used = 0;
+                    // COMMON-PHASE TRACKER: derotate each record by its neighbours' leave-one-
+                    // out phase (the batch form of the carrier loop the airspy closed at 1 kHz;
+                    // 8.21.5) and let the SAME estimator score it against the straight sum.
+                    // Runs on the rate-derotated stream: the rate search removes the fast
+                    // deterministic ramp, the tracker eats the slow stochastic wander.
+                    if (_phase_track) {
+                        std::vector<std::complex<double>> wt;
+                        for (int hw : _pt_widths)
+                            if (gnss::phase_track_loo(w, hw, wt)) {
+                                const gnss::OverlayWipeResult ct = gnss::coherent_sum(wt);
+                                if (ct.snr > cs.snr) {
+                                    cs = ct;
+                                    hw_used = hw;
+                                }
+                            }
+                    }
+                    const double cf =
+                        sum_abs > 0.0 ? cs.amplitude * (double)len / sum_abs : 0.0;
                     if (full_len == 0) { // ladder walks longest-first
                         full = cs;
                         full_len = len;
+                        full_cf = cf;
+                        full_hw = hw_used;
                         deep_rate[p] = rate_hz;
                         deep_rate_q[p] = rate_q;
                     }
@@ -1688,6 +1730,8 @@ void GnssCoherentCombiner::main_thread() {
                         deep_rec[p] = (int)len;
                         deep_floor[p] = flr;
                         coh_s[p] = coh_span(ub, len);
+                        coh_frac[p] = cf;
+                        pt_hw[p] = hw_used;
                         cleared = true;
                     }
                 }
@@ -1697,6 +1741,8 @@ void GnssCoherentCombiner::main_thread() {
                     deep_rec[p] = (int)full_len;
                     deep_floor[p] = flr;
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
+                    coh_frac[p] = full_cf;
+                    pt_hw[p] = full_hw;
                 }
                 if (full_len > 1 && ub.size() >= full_len) {
                     const double span = ub.back() - ub[ub.size() - full_len];
@@ -1705,6 +1751,7 @@ void GnssCoherentCombiner::main_thread() {
                         deep_pow[p] = (full.snr * full.snr - (flr * flr + 1.0)) / (2.0 * T);
                 }
             }
+            rec[gnss::CMB_COH_FRAC] = (float)coh_frac[p];
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
             // Absolute hop of this window, alongside the UTC rather than instead of it (slot 9
             // has consumers, and overlay_apply/coh_span are UTC-based). Makes a recorded .raw
@@ -1899,6 +1946,8 @@ void GnssCoherentCombiner::main_thread() {
                 _st_rungs[p] = rungs[p];
                 _st_deep_rate[p] = (float)deep_rate[p];
                 _st_deep_rate_q[p] = (float)deep_rate_q[p];
+                _st_coh_frac[p] = (float)coh_frac[p];
+                _st_pt_hw[p] = (float)pt_hw[p];
                 if (_rec_export > 0)
                     _st_recex[p] = _recex[p];
                 _st_deep_pow[p] = (float)deep_pow[p];
@@ -2121,6 +2170,13 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // nothing and the straight sum was scored instead.
                          {"deep_rate_hz", _st_deep_rate[p]},
                          {"deep_rate_q", _st_deep_rate_q[p]},
+                         // COMMON-PHASE TRACKER (8.21.5). coh_frac = |sum|/sum|.| of the winning
+                         // deep stream -- the chopping-independent coherence measure (deep_snr
+                         // scales with record count when phase-limited; THIS is what a detection
+                         // threshold should mean). pt_hw = winning leave-one-out half-width in
+                         // records; 0 = the straight sum won (tracker off, or nothing to track).
+                         {"coh_frac", _st_coh_frac[p]},
+                         {"pt_hw", _st_pt_hw[p]},
                          // PEEL DEPTH (docs/gnss_voltage_peel_live.md): deep/incoherent |A| of the
                          // voltage-peel RESIDUAL. depth_db = 20*log10(deep_amplitude/peel_deep);
                          // 0 when this chain does not peel. At the combiner floor -> a LOWER BOUND.

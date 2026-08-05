@@ -392,6 +392,21 @@ private:
     bool _deep_rate = false;
     double _deep_rate_min_q = 10.0;
     std::vector<float> _st_deep_rate, _st_deep_rate_q;
+
+    /// COMMON-PHASE TRACKER before the deep coherent sum (the _deep_plain branch): the batch
+    /// form of the closed carrier loop the airspy chain had -- each record derotated by the
+    /// leave-one-out phase of its neighbours (gnss::phase_track_loo), which removes the
+    /// per-satellite ~0.9 rad propagation wander that capped every deep at ~11-14 sigma
+    /// (CHORD_GNSS_STATE 8.21). Self-excluded => fail-closed: pure noise cannot be aligned.
+    /// Candidates at several half-widths compete with the straight sum under the SAME
+    /// estimator (the optimal width is SNR-dependent: measured on synthetic AR(1) wander,
+    /// narrow wins bright, wide wins faint) and the floor pays the selection. Off by default.
+    bool _phase_track = false;
+    std::vector<int> _pt_widths;             ///< half-widths tried (records); config
+    std::vector<float> _st_coh_frac;         ///< |sum|/sum|.| of the WINNING deep stream --
+                                             ///< the chopping-independent coherence measure
+                                             ///< (quote THIS, not deep_snr: 8.20.24)
+    std::vector<float> _st_pt_hw;            ///< winning tracker half-width (0 = straight sum)
     int _rec_export = 0;
     std::vector<std::vector<std::array<double, 4>>> _recex, _st_recex;
     /// Append one record to the export ring, trimming to _rec_export. Kept independent of the
