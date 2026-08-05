@@ -3545,3 +3545,50 @@ Note also that cx19 and cx51 carry `--combine-gpus`, i.e. ONE merged 14-channel 
 effective stride 8 rather than two at stride 16. If the effect is comb-geometry, those two nodes
 should show a DIFFERENT floor from the other four -- a second, independent test of the same
 hypothesis, available from the same data.
+
+### 8.20.21 The comb DOES matter -- but density does not, and that points at the fix
+
+Fleet restored (95.2 records/s, zero tap drops, 4 coherent per node), so 8.20.20's tests are
+measurable. Both run off `/get_records`, no restart.
+
+**Test 1: does comb DENSITY change the floor?** cx19/cx51 run `--combine-gpus` -- ONE merged
+14-channel comb at effective stride 8 -- against 6-7 channels at stride 16 on the other four.
+Matched per satellite:
+
+```
+prn      merged 14ch/stride8    split 6-7ch/stride16
+ 21            0.907                   0.901
+ 28            0.934                   0.906
+overall        0.920                   0.903        ratio 1.019
+```
+
+**No.** Doubling the channel count and halving the stride moves sigma_phi by 2%.
+
+**Test 2: is the residual comb-SPECIFIC?** Correlation between instances observing the same
+satellite, split by whether the comb differs:
+
+```
+same comb, different antennas (8.20.18, healthy data)   r = +0.994
+same NODE, different comb                    n=  8      r = +0.569
+different node (also different comb)         n= 82      r = +0.548
+```
+
+**Yes.** Changing the comb drops the correlation from ~0.99 to ~0.55, and it makes no difference
+whether the node also changes -- the comb is the variable, not the host. So a substantial part of
+the residual is comb-specific.
+
+**Both at once is the useful statement:** each comb contributes an error of the SAME MAGNITUDE but
+a DIFFERENT REALIZATION. Denser does not mean smaller, so there is nothing to gain by rebuilding
+one instance's comb -- but the comb-specific part is INDEPENDENT between instances, so combining
+across combs averages it down. The fleet has 10 combs; if ~45% of the variance is comb-specific
+and independent, combining all ten reduces that term by ~sqrt(10).
+
+That is exactly what the +9.7 dB leave-one-out result (8.20.12) was already doing without knowing
+why -- it estimates each record's phase from OTHER COMBS. So the cross-comb combine is not a
+workaround for an unknown defect; it is the correct treatment for a now-characterised one.
+
+Caveat on the numbers: today's cross-comb r (~0.55) is lower than yesterday's cross-node r
+(+0.862) because today's satellites are weaker, so thermal dilutes the correlation. The
+within-comb control (+0.994) is from yesterday's healthy data and could not be repeated today --
+the per-antenna dump is off (8.20.19). Re-measure both together, on one node with
+`phase_dump_stride`, for a clean single-epoch decomposition into thermal / comb-specific / shared.
