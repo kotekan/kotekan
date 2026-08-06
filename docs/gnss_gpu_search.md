@@ -1244,6 +1244,30 @@ record's seed is propagated deterministically), so the frame-integrated tile is 
 4-record sum, not a smear. n_rec = 1 in the emitted header. Downstream tolerance of the longer
 record is the open item to check first (combiner integration_length, the broker's revisit).
 
+### 11.12 M5 ON SKY: records validated, one metadata item open (2026-08-06)
+
+With the dual correlator integrating ONE RECORD (11.11), path B's records were compared
+against the tracker's live, same node, same sky, via the two combiners' /get_records:
+
+    PRN   |B|/|A|   phase(B-A)   concentration   A raw coh   B raw coh
+     10     0.790    +0.053 rad          0.941       0.041       0.023
+     27     1.125    +0.008 rad          0.980       0.045       0.031
+     28     0.874    -0.044 rad          0.982       0.123       0.129
+    (120 common hops each)
+
+Path B tracks path A RECORD FOR RECORD in amplitude and phase -- the phase difference is a
+near-zero CONSTANT (concentration 0.94-0.98), and both paths show the same low raw
+record-to-record coherence, which is the phase ramp the combiner exists to remove. The earlier
+0.55 amplitude deficit is gone (it was the frame-length coherent window, as predicted).
+
+OPEN: path A's combiner recovers coh_frac 0.68-0.75 from those records; path B's gets
+0.05-0.14 from equivalent ones. Since the records agree, the fault is downstream of them --
+almost certainly a PHASE-MODEL FIELD in the PrnCtl cudaGnssInject writes (the assembler derives
+REC_CPHASE, the commanded carrier-phase increment, from f_nco/fcar, and the combiner's deep
+rate search operates on that). Check the injector's PrnCtl against cudaGnssChordTrack's field
+by field; the record export does not carry CPHASE, so this needs either a record dump or a
+temporary export.
+
 ### 11.10 Two statistics that are BLIND on CHORD (do not reuse them)
 
 1. |P|/rms(E,L) per channel. Measured from the M^2 block: <E,P> = <P,L> = <E,L> = 0.97 at
