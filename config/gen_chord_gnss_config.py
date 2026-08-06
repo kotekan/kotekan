@@ -39,7 +39,8 @@ import yaml
 CONF = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CONF)
 
-from chord_band_plan import all_band_channels, covering_channels, node_channels  # noqa: E402
+from chord_band_plan import (all_band_channels, covering_channels,  # noqa: E402
+                             node_channels, signal_table)
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
@@ -83,8 +84,83 @@ def gpu_of_channel(cfg, node, freq_id):
     raise SystemExit(f"freq_id {freq_id} is not on {node} (offsets {off16})")
 
 
-def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
-    """The GNSS stages+buffers to inject, for one GPU's covering channels."""
+def gpu_pairs_for(cfg, node, gpu, chans):
+    """(freq_id, comb index) of the channels in `chans` that live on this GPU, in comb order."""
+    out = []
+    for fid in chans:
+        g, idx = gpu_of_channel(cfg, node, fid)
+        if g == gpu:
+            out.append((fid, idx))
+    return sorted(out)
+
+
+def signal_tag(name):
+    """Short buffer/endpoint suffix for an extra signal chain, e.g. GAL_E5A_Q_CS -> _e5a.
+
+    Names must be distinct across the chains on one node -- every buffer, stage and REST
+    endpoint of the chain is derived from it, and kotekan's per-consumer bookkeeping is
+    keyed by stage name (a collision is the `gnss_ring` trap in cudaGnssTrack.cpp:382,
+    which cost a whole BDS chain silently degrading on the first tri-constellation night).
+    """
+    parts = name.split("_")
+    body = parts[1] if len(parts) > 1 else parts[0]
+    return "_" + body.lower()
+
+
+def parse_extra_signals(cfg, args, node, primary_chans):
+    """--extra-signal NAME:PRNS -> chain dicts, with their covering channels resolved.
+
+    The descriptor comes from signal_table() (parsed out of gnssSignal.hpp) so the carrier
+    and chip rate that set the covering channels are the SAME constants the stage builds its
+    replica from. A chain whose covering set equals the primary's shares the voltage tap.
+    """
+    if not args.extra_signal:
+        return []
+    table = signal_table()
+    tags = set()
+    chains = []
+    for spec in args.extra_signal:
+        name, _, prn_s = spec.partition(":")
+        if name not in table:
+            raise SystemExit(f"--extra-signal {name}: unknown signal (not in gnssSignal.hpp)")
+        if not prn_s.strip():
+            raise SystemExit(
+                f"--extra-signal {name}: PRNs are required, e.g. {name}:1,2,3. Constellations "
+                "have different PRN ranges and the count IS the path-B lane budget "
+                "(4 lanes/PRN of 128), so it is not something to default silently.")
+        prns = [int(p) for p in prn_s.split(",") if p.strip()]
+        s = table[name]
+        tag = signal_tag(name)
+        if tag in tags:
+            raise SystemExit(f"--extra-signal {name}: tag '{tag}' collides with another chain; "
+                             "every buffer and endpoint is named from it")
+        tags.add(tag)
+        chans = covering_channels(node_channels(cfg, node), s["carrier_hz"], s["chip_rate_hz"],
+                                  float(cfg["signals"]["max_doppler_hz"]),
+                                  modulation=s["modulation"], boc_m=s["boc_m"], boc_n=s["boc_n"])
+        if not chans:
+            raise SystemExit(f"--extra-signal {name}: {node} holds no covering channels "
+                             f"(carrier {s['carrier_hz']/1e6:.2f} MHz -- outside the science "
+                             "band, or this node's comb misses it entirely)")
+        chains.append({
+            "signal": name, "tracker": name, "prns": prns, "tag": tag,
+            "ord": len(chains) + 1,  # 0 is the primary chain; drives the core rotation
+            "carrier_hz": s["carrier_hz"], "chip_rate_hz": s["chip_rate_hz"],
+            "chans": chans, "shares_tap": chans == primary_chans,
+        })
+    return chains
+
+
+def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None):
+    """The GNSS stages+buffers to inject, for one GPU's covering channels.
+
+    @param chain  None = the PRIMARY chain (prefix `gnss{gpu}_`, byte-identical to what the
+                  single-signal generator has always emitted). Otherwise a dict
+                  {tracker, search, prns, tag, shares_tap} describing an EXTRA signal chain:
+                  its blocks are prefixed `gnss{gpu}{tag}_`, and when `shares_tap` it
+                  consumes the primary chain's voltage tap instead of opening a second one
+                  (kotekan buffers are per-consumer, so both chains see every frame).
+    """
     sig = cfg["signals"]
     rt = cfg["runtime"]
     arr = cfg["array"]
@@ -92,19 +168,47 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
     elem0 = arr["live_elements"][0]
     n_chan = len(chan_idx)
     cores = rt["cpu_affinity"]
-    pre = f"gnss{gpu}_"
+    tag = chain["tag"] if chain else ""
+    pre = f"gnss{gpu}{tag}_"
 
-    tap_out = f"{pre}volt_buf"
+    # PER-CHAIN CORE ROTATION. Every affinity below is cores[(gpu + k) % len], which is a
+    # function of the STAGE and the GPU only -- so without a rotation each extra chain lands
+    # its cudaProcess on the same core as the primary's, its combiner on the same core as the
+    # primary's, and so on. That is not a theoretical tidiness point: gnss1_n2dual sharing
+    # core 60 with gnss0_gpu was a real bug found on 2026-08-06. The rotation is 3 per chain
+    # because 3 is coprime to the 10-core pool, so N chains walk N distinct cores per stage.
+    # It does NOT create free cores -- a multi-chain node oversubscribes a 10-core pool, and
+    # main() prints the resulting load so it is a stated cost rather than a surprise.
+    rot = 3 * (chain["ord"] if chain else 0)
+
+    def core(k):
+        return cores[(k + rot) % len(cores)]
+
+    # The tap output is SIGNAL-INDEPENDENT -- [hop][chan][elem] 4+4b voltages, no replica
+    # anywhere in it -- so a chain on the same covering channels reads the primary's tap
+    # rather than opening a second one. That is the whole reason E5a/B2a cost no extra
+    # ingest, PCIe or CPU: same carrier, same channels, same bytes.
+    shares_tap = bool(chain and chain.get("shares_tap"))
+    tap_out = f"gnss{gpu}_volt_buf" if shares_tap else f"{pre}volt_buf"
     rec_buf = f"{pre}rec_buf"
     cmb_buf = f"{pre}cmb_buf"
+
+    # Which signal this chain tracks, which PRNs, and at WHAT SKY CARRIER. The carrier is
+    # the replica's f_offset and is the single easiest thing to get wrong here (a wrong one
+    # builds every replica in the wrong part of the band and every correlation is noise --
+    # see the f_offset note below), so it comes from the chain, never from the primary.
+    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
+    prns = chain["prns"] if chain else args.prns
+    carrier_hz = chain["carrier_hz"] if chain else float(sig["carrier_hz"])
 
     # Record frames carry the element axis: RECORD_FLOATS + n_elem*ELEM_FLOATS per PRN
     # (gnssRecord.hpp record_stride()). Kept in one place; the stages assert against it.
     record_floats = 26 + n_elem * 12
-    n_prn = len(args.prns)
+    n_prn = len(prns)
 
-    blocks = {
-        tap_out: {
+    blocks = {}
+    if not shares_tap:
+        blocks[tap_out] = {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
             "num_frames": args.buffer_depth,
@@ -116,7 +220,9 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # noise for every PRN with correct records and correct replicas -- the one
             # thing there was no way to inspect was the data itself.
             "peek_hold": True,
-        },
+        }
+
+    blocks.update({
         rec_buf: {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
@@ -129,7 +235,9 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             "num_frames": args.buffer_depth,
             "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
         },
-        f"{pre}tap": {
+    })
+    if not shares_tap:
+        blocks[f"{pre}tap"] = {
             "kotekan_stage": "GnssChordVoltageTap",
             "in_buf": f"host_voltage_buffer_{gpu}",
             "out_buf": tap_out,
@@ -146,8 +254,10 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # walks up to the top-level value, so simply omitting the key is both correct and
             # safe.
             "fft_length": cfg["fengine"]["fft_length"],
-            "cpu_affinity": [cores[gpu % len(cores)]],
-        },
+            "cpu_affinity": [core(gpu)],
+        }
+
+    blocks.update({
         f"{pre}epl_buf": {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
@@ -161,7 +271,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
         f"{pre}gpu": {
             "kotekan_stage": "cudaProcess",
             "gpu_id": gpu,
-            "cpu_affinity": [cores[(gpu + 6) % len(cores)]],
+            "cpu_affinity": [core(gpu + 6)],
             "in_buffers": {"gnss_volt_in": tap_out},
             "out_buffers": {"gnss_epl_out": f"{pre}epl_buf"},
             "commands": [
@@ -172,15 +282,16 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
                  "conjugate": True,
                  "gpu_mem_input": f"{pre}voltage",
                  "gpu_mem_output": f"{pre}epl",
-                 # NH-baked tracker code (2026-07-31): multi-period records despread the bare
-                 # primary to ~zero (NH20 partial sums cancel); see chord_gnss_node.yaml.
-                 "signal": sig.get("tracker", sig["primary"]),
+                 # OVERLAY-BAKED tracker code (2026-07-31): multi-period records despread the
+                 # bare primary to ~zero (the NH20/CS100 partial sums cancel by design); see
+                 # chord_gnss_node.yaml and docs/CHORD_MULTIBAND.md section 4.
+                 "signal": track_signal,
                  # GLOBAL bins of this GPU's covering comb, in the tap's local order. The
                  # replica for a channel must be built at ITS OWN sky frequency, and CHORD's
                  # comb is stride-16, so a contiguous chan_offset cannot describe it -- passing
                  # 0 put every replica at DC and nothing ever locked (2026-07-31).
                  "channel_ids": list(freq_ids if freq_ids is not None else chan_idx),
-                 "prns": args.prns,
+                 "prns": prns,
                  "n_channels": n_chan,
                  "n_elements": n_elem,
                  "elem_stride": n_elem,
@@ -191,7 +302,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
                  # directly and L5 sits at bin 6023 of 8192. Leaving this at the 0.0 default
                  # generates the replica at DC, so covering_bins lands on bins -51..52 while
                  # the data is at 5971..6076 -- zero overlap, and every correlation is noise.
-                 "f_offset_hz": float(sig["carrier_hz"]),
+                 "f_offset_hz": float(carrier_hz),
                  "hops_per_record": args.hops_per_record,
                  "fft_length": cfg["fengine"]["fft_length"],
                  "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
@@ -235,7 +346,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             "kotekan_stage": "GnssGpuRecordAssemble",
             "in_buf": f"{pre}epl_buf",
             "out_buf": rec_buf,
-            "prns": args.prns,
+            "prns": prns,
             "n_elements": n_elem,
             "reference_element": args.reference_element,
             # SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp, STATE 8.21.5). The header
@@ -247,9 +358,19 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # byte-identical to reference-element-only.
             "elem_sum": args.elem_sum,
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
-            "cpu_affinity": [cores[(gpu + 8) % len(cores)]],
+            "cpu_affinity": [core(gpu + 8)],
         },
-        # SEARCH FEED. A SECOND tap on the same voltage buffer, taking ONE element -- the
+    })
+
+    # SEARCH FEED -- PRIMARY CHAIN ONLY. Extra chains are dead-reckon seeded: the signals we
+    # add first (E5a/B2a) carry PER-PRN secondaries, which the replica bank's single-sequence
+    # overlay slot cannot hold, so `nh_search` on them is a silent no-op and blind multi-period
+    # acquisition does not exist (docs/CHORD_MULTIBAND.md section 5). Emitting a search feed
+    # for them would ship bytes to an acquire that cannot use them. The primary chain's search
+    # measures the instrumental delay and the clock, which is what the extras are reckoned from.
+    if not chain:
+        blocks.update({
+        # A SECOND tap on the same voltage buffer, taking ONE element -- the
         # acquisition search is single-antenna by design, so this is ~57 kB/frame (1.4 MB/s)
         # rather than the 1.8 MB/frame the tracking tap moves. Shipped as 4+4b bytes and
         # unpacked on the far side, which is 8x cheaper on the wire than sending floats.
@@ -269,7 +390,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             "frame_chan_stride": "num_local_freq",
             "frame_elem_stride": "num_elements",
             "fft_length": cfg["fengine"]["fft_length"],
-            "cpu_affinity": [cores[(gpu + 1) % len(cores)]],
+            "cpu_affinity": [core(gpu + 1)],
         },
         f"{pre}srch_send": {
             "kotekan_stage": "bufferSend",
@@ -289,14 +410,17 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # 12", where 12 is sizeof(GnssChanMetadata). Nothing about that message points at
             # config_tracker, so pin it rather than inherit it.
             "use_config_tracker": False,
-            "cpu_affinity": [cores[(gpu + 3) % len(cores)]],
+            "cpu_affinity": [core(gpu + 3)],
         },
+        })
+
+    blocks.update({
         f"{pre}combine": {
             "kotekan_stage": "GnssCoherentCombiner",
             # --combine-gpus: GPU 0's combiner takes BOTH streams (the other GPU's rec_buf name
             # is deterministic, so no cross-branch plumbing is needed) and GPU 1's is dropped
             # below. Order is GPU-major so the subband layout is stable across regenerations.
-            "in_bufs": ([rec_buf, f"gnss{1 - gpu}_rec_buf"] if (args.combine_gpus and gpu == 0)
+            "in_bufs": ([rec_buf, f"gnss{1 - gpu}{tag}_rec_buf"] if (args.combine_gpus and gpu == 0)
                         else [rec_buf]),
             "out_buf": cmb_buf,
             "n_prn": n_prn,
@@ -349,18 +473,18 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # trajectory instead of inferring it. One line per record per listed PRN -- keep the
             # list short.
             "phase_dump_prns": args.phase_dump_prns,
-            "phase_dump_path": f"/tmp/gnss_phase_dump_{node}_{gpu}.txt",
-            "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
+            "phase_dump_path": f"/tmp/gnss_phase_dump_{node}_{gpu}{tag}.txt",
+            "cpu_affinity": [core(gpu + 2)],
         },
         f"{pre}record": {
             "kotekan_stage": "rawFileWrite",
             "in_buf": cmb_buf,
             "base_dir": args.record_dir or rt["record_dir"],
-            "file_name": f"{node}_gnss{gpu}_cmb",
+            "file_name": f"{node}_gnss{gpu}{tag}_cmb",
             "file_ext": "raw",
-            "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
+            "cpu_affinity": [core(gpu + 4)],
         },
-    }
+    })
     return blocks, record_floats, n_elem
 
 
@@ -1003,6 +1127,15 @@ def main():
     ap.add_argument("--keep-n2", action="store_true",
                     help="retain the science pipeline alongside the GNSS branch")
     ap.add_argument("--prns", type=int, nargs="*", default=list(range(1, 33)))
+    ap.add_argument("--extra-signal", action="append", default=[], metavar="NAME:PRNS",
+                    help="add a SECOND tracker chain for another signal, e.g. "
+                         "--extra-signal GAL_E5A_Q_CS:1,2,3. Repeatable. PRNs are REQUIRED "
+                         "(constellations have different PRN ranges, and the count is the "
+                         "path-B lane budget -- 4 lanes per PRN). A chain whose covering "
+                         "channels match the primary's SHARES its voltage tap (E5a/B2a are on "
+                         "L5's carrier, so this is the free case); a different carrier gets its "
+                         "own tap. Buffer/endpoint names are suffixed with a tag derived from "
+                         "the signal name. See docs/CHORD_MULTIBAND.md.")
     ap.add_argument("--integration-length", type=int, default=100)
     ap.add_argument("--hops-per-record", type=int, default=2048,
                     help="10.49 ms at CHORD's 5.12 us hop; divides the 8192-hop frame 4 ways and "
@@ -1176,6 +1309,8 @@ def main():
     if not chans:
         raise SystemExit(f"{args.node} holds no covering channels for {sig['primary']}")
 
+    extra_chains = parse_extra_signals(cfg, args, args.node, chans)
+
     # Split the covering set by which GPU's comb holds each channel, and convert global freq_id
     # to that comb's buffer index -- the tap indexes into the frame, not the sky.
     per_gpu = {}
@@ -1281,6 +1416,20 @@ def main():
             blocks.update(build_n2dual_branch(cfg, args.node, gpu, [i for _, i in pairs],
                                               [f for f, _ in pairs], args,
                                               out.get("samples_per_data_set", 8192)))
+        # EXTRA SIGNAL CHAINS on this GPU. Each is a full tracker branch (GPU process,
+        # assembler, combiner, writer) under its own tag; a chain on the primary's channels
+        # shares the voltage tap, so the marginal cost is GPU + CPU, not ingest.
+        for ch in extra_chains:
+            ch_pairs = ([(f, i) for f, i in pairs] if ch["shares_tap"]
+                        else [(f, i) for f, i in gpu_pairs_for(cfg, args.node, gpu, ch["chans"])])
+            if not ch_pairs:
+                print(f"  NOTE {ch['signal']}: no covering channels on gpu{gpu}, chain skipped",
+                      file=sys.stderr)
+                continue
+            xb, _, _ = build_gnss_branch(cfg, args.node, gpu, [i for _, i in ch_pairs], args,
+                                         freq_ids=[f for f, _ in ch_pairs], chain=ch)
+            blocks.update(xb)
+
         if args.combine_gpus and gpu != 0:
             # GPU 0's combiner consumed this GPU's rec_buf too, so its own combiner would be a
             # duplicate reader of the same stream -- two stages competing for one buffer, each
@@ -1326,6 +1475,28 @@ def main():
     print(f"  record_floats {record_floats} (26 header + n_elem*12)", file=sys.stderr)
     print(f"  rest port     {port}", file=sys.stderr)
     print(f"  dropped       {len(dropped)} production blocks", file=sys.stderr)
+
+    # EXTRA CHAINS: state what they cost. A 10-core pool does not grow, so a multi-chain node
+    # oversubscribes it; the rotation only guarantees that no two chains put the SAME heavy
+    # stage on one core. Print the busiest cores and the shared taps so the cost is read off
+    # the generator rather than discovered from a slow node.
+    if extra_chains:
+        load = {}
+        for k, v in out.items():
+            if k.startswith("gnss") and isinstance(v, dict) and "cpu_affinity" in v:
+                for c in v["cpu_affinity"]:
+                    load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
+        busiest = sorted(load.items(), key=lambda kv: -len(kv[1]))[:3]
+        for ch in extra_chains:
+            n_here = sum(1 for g in per_gpu if gpu_pairs_for(cfg, args.node, g, ch["chans"]))
+            print(f"  + chain       {ch['signal']} tag '{ch['tag'].strip('_')}' "
+                  f"{len(ch['prns'])} PRNs, {len(ch['chans'])} ch on {n_here} gpu(s), "
+                  f"tap {'SHARED with the primary' if ch['shares_tap'] else 'OWN (new carrier)'}",
+                  file=sys.stderr)
+        print("  cpu load      " + ", ".join(f"core {c}: {len(v)} stages" for c, v in busiest)
+              + f"  (pool of {len(cfg['runtime']['cpu_affinity'])})", file=sys.stderr)
+        print("  NB extra chains are DEAD-RECKON seeded: no search feed is emitted for them "
+              "(docs/CHORD_MULTIBAND.md section 5)", file=sys.stderr)
 
 
 if __name__ == "__main__":

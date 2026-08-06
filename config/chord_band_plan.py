@@ -58,6 +58,51 @@ def covering_channels(chans, carrier_hz, chip_rate_hz, max_doppler_hz, **kw):
     return [fid for _, fid in hits]
 
 
+def signal_table(header=None):
+    """Every SignalDescriptor in lib/stages/gnss/gnssSignal.hpp, by name.
+
+    PARSED, not transcribed. The descriptors are spec constants that already live in
+    exactly one place, and a second copy here would drift silently -- the failure mode
+    would be a config whose covering channels disagree with the replica the stage builds,
+    i.e. a tracker looking in the wrong part of the band and reporting noise (the DC-replica
+    lesson, chord_gnss_node.yaml). Each row is:
+
+        inline constexpr SignalDescriptor NAME = {
+            "NAME", carrier_hz, chip_rate_hz, code_length, code_period_s,
+            Modulation::MOD, boc_m, boc_n, ...
+
+    Returns {name: {carrier_hz, chip_rate_hz, code_length, code_period_s, modulation,
+                    boc_m, boc_n}}.
+    """
+    if header is None:
+        header = os.path.join(os.path.dirname(CONF), "lib", "stages", "gnss", "gnssSignal.hpp")
+    import re
+    text = open(header).read()
+    pat = re.compile(
+        r'inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*'
+        r'"(\w+)"\s*,\s*([\d.eE+-]+)\s*,\s*([\d.eE+-]+)\s*,\s*(\d+)\s*,\s*([\d.eE+-]+)\s*,\s*'
+        r'Modulation::(\w+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,')
+    out = {}
+    for m in pat.finditer(text):
+        var, name = m.group(1), m.group(2)
+        if var != name:
+            raise SystemExit(f"{header}: descriptor {var} declares name '{name}' -- "
+                             "the two must match or config lookups by name go wrong")
+        out[name] = {
+            "carrier_hz": float(m.group(3)),
+            "chip_rate_hz": float(m.group(4)),
+            "code_length": int(m.group(5)),
+            "code_period_s": float(m.group(6)),
+            "modulation": m.group(7),
+            "boc_m": int(m.group(8)),
+            "boc_n": int(m.group(9)),
+        }
+    if not out:
+        raise SystemExit(f"{header}: parsed zero SignalDescriptors -- the header's shape "
+                         "changed and this parser needs updating")
+    return out
+
+
 def node_channels(cfg, node):
     """Every freq_id the node holds, as (freq_id, centre_hz, width_hz)."""
     sb = cfg["science_band"]

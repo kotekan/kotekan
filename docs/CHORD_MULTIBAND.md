@@ -38,25 +38,32 @@ A node holds every 8th science-band channel (1.5625 MHz spacing), each GPU a str
 comb (3.125 MHz). Channel = carrier / 195312.5 Hz. What each candidate's main lobe puts
 on the combs (occupied band = carrier ± chip rate ± 5 kHz Doppler):
 
-| Signal | Carrier MHz | Mcps | Lobe | freq_ids | chans/GPU | Notes |
-|---|---|---|---|---|---|---|
-| GAL E5a-Q / BDS B2a-P | 1176.45 | 10.23 | 20.5 MHz | 5971..6075 | **7 (the L5 comb, byte-identical)** | pilots, per-PRN CS100 |
-| GAL E5b-Q | 1207.14 | 10.23 | 20.5 MHz | 6128..6232 | ~7 (new comb) | pilot, per-PRN CS100; same sats as E5a |
-| GLO L3OC-p | 1202.025 | 10.23 | 20.5 MHz | 6101..6206 | ~7 | pilot, shared NH10; ~7 GLONASS-K sats |
-| BDS B3I | 1268.52 | 10.23 | 20.5 MHz | 6442..6547 | ~7 | DATA-only, shared NH20 + 20 ms D1 symbols |
-| GAL E6-C | 1278.75 | 5.115 | 10.2 MHz | 6520..6573 | ~3 | pilot, per-PRN CS100 |
-| **GPS L2C** | 1227.60 | 1.023 | 2.05 MHz | 6280..6290 | **0..1** | CM/CL TDM, CL 1.5 s time-assisted |
+COMPUTED, not estimated: `chord_band_plan.py` against the descriptors parsed out of
+`gnssSignal.hpp` (`signal_table()`), cx19's comb, |Doppler| ≤ 5 kHz. "band" = channels
+in the whole science band; "cx19" = that node's 1-of-8; then its two GPUs' 1-of-16 combs.
+
+| Signal | Carrier MHz | Mcps | band | cx19 | gpu0 | gpu1 | Notes |
+|---|---|---|---|---|---|---|---|
+| GAL E5a-Q / BDS B2a-P | 1176.45 | 10.23 | 106 (5971..6076) | 14 | **7** | **7** | the L5 comb, byte-identical |
+| GAL E5b-Q | 1207.14 | 10.23 | 106 (6128..6233) | 13 | 7 | 6 | pilot, per-PRN CS100; same sats as E5a |
+| GLO L3OC-p | 1202.025 | 10.23 | 106 (6102..6207) | 13 | 6 | 7 | pilot, shared NH10; ~7 GLONASS-K sats |
+| BDS B3I | 1268.52 | 10.23 | 106 (6442..6547) | 13 | 6 | 7 | DATA-only, shared NH20 + 20 ms D1 |
+| GAL E6-C | 1278.75 | 5.115 | 53 (6521..6573) | 7 | 3 | 4 | pilot, per-PRN CS100 |
+| **GPS L2C** | 1227.60 | 1.023 | **6** (6283..6288) | **1** | **0** | **1** | CM/CL TDM, CL 1.5 s time-assisted |
+| GAL E1 / BDS B1I | 1575.42 / 1561.1 | -- | **0** | -- | -- | -- | above the science band, permanently |
 
 Three consequences:
 
 1. **E5a/B2a are free.** Same carrier as L5 → the identical covering channels, taps, GPU
    input bytes, and record geometry. The rollout is replica-side only.
    `chord_gnss_node.yaml` anticipated exactly this (`also_available`).
-2. **L2C is structurally hostile to this instrument.** One GPU's comb catches at most ONE
-   195 kHz channel of a 2 MHz lobe: no code-phase discrimination at all (the E≈P≈L
-   narrowband blindness taken to its limit -- one channel cannot even form a DLL
-   discriminant). It becomes meaningful only with full-fleet coherent combining, when all
-   ~11 covering channels exist across 8 nodes. Add the unverified GPU TDM path and CM's
+2. **L2C is structurally hostile to this instrument.** The whole L2C main lobe is SIX
+   channels of the science band, of which cx19 holds one -- and that one lands on gpu1, so
+   **gpu0 sees literally nothing**. One channel gives no code-phase discrimination at all
+   (the E≈P≈L narrowband blindness taken to its limit: a single channel cannot form a DLL
+   discriminant). It becomes meaningful only with full-fleet coherent combining, where the
+   6 covering channels are spread across 6 of the 8 nodes. Add the unverified GPU TDM path
+   and CM's
    20 ms nav symbols straddling our 10.49 ms records, and L2C is the most work for the
    least measurement. **Deferred indefinitely.**
 3. **The whole L1 window is permanently out of reach**: L1 C/A / L1C / E1 / B1C
@@ -64,7 +71,7 @@ Three consequences:
    (max freq_id 7679). The lower L-band is the menu; there is no upper L-band option.
 
 Comb-sharing bonuses for later phases: the L3OC comb overlaps the E5b comb over
-6128..6206, and the E6 comb overlaps B3I's over 6520..6547 -- a widened tap serves both
+6128..6207, and the E6 comb overlaps B3I's over 6521..6547 -- a widened tap serves both
 of each pair.
 
 ## 3. Why E5b-Q over L2C as the second band
