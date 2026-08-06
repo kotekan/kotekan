@@ -11,9 +11,10 @@
 #include "driver_types.h"          // for cudaEvent_t
 #include "n2k_dual/DualCorrelator.hpp" // for DualCorrelator
 
-#include <cstdint> // for int32_t, uint32_t
-#include <string>  // for string
-#include <vector>  // for vector
+#include <cstdint>  // for int32_t, uint32_t
+#include <optional> // for optional (rfi_all_pass)
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class cudaCorrelatorDual
@@ -60,6 +61,12 @@
  * @conf  gnss_tiles_name      String. Base name for the gathered-tiles output buffer.
  * @conf  gnss_synth_name      String. Name of the synthetic-input GPU array. Default
  *                             "gnss_synth".
+ * @conf  rfi_all_pass         Bool, default false. True = do not consume an RFI-mask ring;
+ *                             use a constant all-ones mask instead. For the GNSS dev
+ *                             deployment, where the RFI chain is dropped: production runs
+ *                             with rfi_first_stage_excision_enabled: false, i.e. its
+ *                             correlator also sees an all-good mask, so this is
+ *                             behavior-identical -- not an approximation.
  */
 class cudaCorrelatorDual : public cudaCommand {
 public:
@@ -93,9 +100,12 @@ private:
     /// (freq, int32-offset-within-slice) of each gathered tile, in output order.
     std::vector<int2> _tile_sel;
 
+    const bool _rfi_all_pass;
+
     /// Signaling ring buffer for the input (voltage) data.
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
-    NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
+    /// Absent when rfi_all_pass (a constant all-ones device mask is used instead).
+    std::optional<NDArrayRingBuffer<kotekan::uint1x8_t, 3>> rfi_RFImask;
     NDArrayBuffer<std::int32_t, 6> n2k_correlation; // standard N^2 out, shape as cudaCorrelator
     NDArrayBuffer<std::int32_t, 6> gnss_tiles;      // [Tc][gnss chan][tile][16][16][2]
 

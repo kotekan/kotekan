@@ -358,6 +358,105 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
     return blocks, record_floats, n_elem
 
 
+def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
+    """GNSS path B (--n2-dual): one GPU's cudaGnssInject + cudaCorrelatorDual process.
+
+    Consumes the GPU voltage ring that run_send_voltage feeds (which --n2-dual keeps).
+    The N^2 prefix of the extended triangle stays on-GPU in this mode (no science consumer
+    in dev); the gathered GNSS tiles come to the host and go to a sink (dropAllFrames, or
+    rawFileWrite with --n2-dump for short captures).
+    """
+    sig = cfg["signals"]
+    rt = cfg["runtime"]
+    arr = cfg["array"]
+    cores = rt["cpu_affinity"]
+    pre = f"gnss{gpu}_"
+    n_chan = len(chan_idx)
+    n_prn = len(args.prns)
+    n_live = arr["live_elements"][1] - arr["live_elements"][0] + 1
+
+    # Tile count per channel: mixed (synth rows x live-antenna col tiles) + the synthetic
+    # triangle. MUST match cudaCorrelatorDual's build_tile_selection (and the consumer's
+    # recomputation): num_elements 128, num_synth 128.
+    num_synth = 128
+    na16, nt16 = 128 // 16, (128 + num_synth) // 16
+    mixed = (nt16 - na16) * ((n_live + 15) // 16)
+    bb = (nt16 - na16) * (nt16 - na16 + 1) // 2
+    tiles_frame_bytes = n_chan * (mixed + bb) * 512 * 4  # nt_outer = 1 at production shape
+
+    if 4 * n_prn > num_synth:
+        raise SystemExit(f"--n2-dual: 4*{n_prn} PRNs exceeds {num_synth} synthetic lanes "
+                         f"(4 lanes per PRN slot); shrink --prns")
+
+    ring = "host_voltage_ringbuffer" + ("" if gpu == 0 else f"_{gpu}")
+    tiles_buf = f"{pre}n2tiles_buf"
+
+    blocks = {
+        tiles_buf: {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            "frame_size": tiles_frame_bytes,
+        },
+        f"{pre}n2dual": {
+            "kotekan_stage": "cudaProcess",
+            "gpu_id": gpu,
+            "cpu_affinity": [cores[(gpu + 5) % len(cores)]],
+            "in_buffers": {"host_voltage_ringbuffer": ring},
+            "out_buffers": {"host_gnss_tiles": tiles_buf},
+            "commands": [
+                # ORDER MATTERS: the injector's pack lands on the same stream before the
+                # correlator's kernel reads the synth array -- that ordering is the entire
+                # synchronization story (no ring semantics on gnss_synth).
+                {"name": "cudaGnssInject",
+                 "voltage_name": "voltage",
+                 "num_synth": num_synth,
+                 # LOCAL frame indices of the comb (the tap's chan_ids) -- never freq_ids.
+                 "gnss_local_channels": chan_idx,
+                 # cudaGnssInjectState (= the tracker's state class): same seed contract,
+                 # same propagation, own endpoints. The broker POSTs the same payload here.
+                 "prns": args.prns,
+                 "n_channels": n_chan,
+                 "n_elements": 1,  # unused by the injector; the state class requires it
+                 "channel_ids": freq_ids,  # GLOBAL bins, local order (replica sky freq)
+                 "signal": sig.get("tracker", sig["primary"]),
+                 "f_offset_hz": float(sig["carrier_hz"]),
+                 "hops_per_record": args.hops_per_record,
+                 "fft_length": cfg["fengine"]["fft_length"],
+                 "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
+                 "seed_endpoint": f"/{pre}inject/set_seeds",
+                 "trim_endpoint": f"/{pre}inject/get_trim"},
+                {"name": "cudaCorrelatorDual",
+                 "voltage_name": "voltage",
+                 "rfi_RFImask_name": "rfi_RFImask",  # unused with rfi_all_pass, key required
+                 # Production runs rfi_first_stage_excision_enabled: false -- its correlator
+                 # sees an all-good mask too, so this is behavior-identical, not approximate.
+                 "rfi_all_pass": True,
+                 "n2k_correlation_name": "correlation",
+                 "gnss_tiles_name": "gnss_tiles",
+                 "num_synth": num_synth,
+                 "num_live_elements": n_live,
+                 "gnss_local_channels": chan_idx},
+                {"name": "cudaSyncOutput"},
+                {"name": "cudaOutputData",
+                 "gpu_mem": "gnss_tiles_buffer",
+                 "out_buf": "host_gnss_tiles"},
+            ],
+        },
+        f"{pre}n2sink": (
+            {"kotekan_stage": "rawFileWrite",
+             "in_buf": tiles_buf,
+             "base_dir": args.record_dir or rt["record_dir"],
+             "file_name": f"{node}_gnss{gpu}_n2tiles",
+             "file_ext": "raw",
+             "cpu_affinity": [cores[(gpu + 7) % len(cores)]]}
+            if args.n2_dump else
+            {"kotekan_stage": "dropAllFrames",
+             "in_buf": tiles_buf}),
+    }
+    return blocks
+
+
 def _comb_g(chan_ids, fft_len):
     """gcd of the covering channels' frequency differences with fft_len.
 
@@ -740,6 +839,17 @@ def main():
                     help="drop dpdk + the transposes, leaving host_voltage_buffer unfed. The "
                          "GNSS branch still CONSTRUCTS, so --dry-run validates it without "
                          "needing the root privileges DPDK's hugepages require. Not runnable.")
+    ap.add_argument("--n2-dual", action="store_true",
+                    help="GNSS path B (docs/gnss_gpu_search.md 11): keep run_send_voltage (the "
+                         "GPU voltage ring) and add a run-per-GPU cudaProcess with "
+                         "cudaGnssInject + cudaCorrelatorDual -- the two-input N^2 whose mixed "
+                         "tiles ARE the despread. Seeds: the broker POSTs the SAME payload to "
+                         "/gnss<N>_inject/set_seeds (add the endpoints to --dll-combiners' "
+                         "tracker list in broker_up.sh). RFI mask is all-pass, which is "
+                         "behavior-identical to production (first-stage excision is off there).")
+    ap.add_argument("--n2-dump", action="store_true",
+                    help="with --n2-dual: rawFileWrite the gathered tiles to /tmp/gnss "
+                         "(~17 MB/s -- short captures only, 1 GB/min) instead of dropAllFrames")
     ap.add_argument("--keep-n2", action="store_true",
                     help="retain the science pipeline alongside the GNSS branch")
     ap.add_argument("--prns", type=int, nargs="*", default=list(range(1, 33)))
@@ -989,6 +1099,16 @@ def main():
             del out[key]
             dropped.append(key)
         elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES):
+            # --n2-dual: run_send_voltage survives (the dual correlator consumes the GPU
+            # voltage ring it feeds); run_n2k itself is still dropped -- cudaCorrelatorDual
+            # replaces it and keeps the N^2 prefix on-GPU.
+            if args.n2_dual and key.startswith("run_send_voltage"):
+                continue
+            del out[key]
+            dropped.append(key)
+        elif args.n2_dual and key.startswith("host_correlation_buffer"):
+            # Nothing produces or consumes it in this mode (no cudaOutputData for the N^2
+            # prefix in dev); leaving it would just allocate dead host memory.
             del out[key]
             dropped.append(key)
 
@@ -1007,6 +1127,9 @@ def main():
         blocks, record_floats, n_elem = build_gnss_branch(
             cfg, args.node, gpu, [i for _, i in pairs], args,
             freq_ids=[f for f, _ in pairs])
+        if args.n2_dual:
+            blocks.update(build_n2dual_branch(cfg, args.node, gpu, [i for _, i in pairs],
+                                              [f for f, _ in pairs], args))
         if args.combine_gpus and gpu != 0:
             # GPU 0's combiner consumed this GPU's rec_buf too, so its own combiner would be a
             # duplicate reader of the same stream -- two stages competing for one buffer, each

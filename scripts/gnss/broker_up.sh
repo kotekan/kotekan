@@ -64,12 +64,18 @@ for n in cx27 cx42 cx43 cx44; do
     SPLIT="$SPLIT,http://$n:12049/gnss{0..1}_combine"
 done
 
+# cx19's gnss{0..1}_inject entries are the PATH-B injector endpoints (cudaGnssInject) -- the
+# SAME seed payload as _track, consumed by the N^2 synthetic-lane injector. They exist only
+# when cx19 runs config/generated/chord_gnss_cx19_n2dual.yaml; on the normal config the broker
+# logs "set_seeds ... failed" for them each cycle, which is benign (the per-endpoint try/except
+# posts everything else regardless).
 exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
     --rest-url http://cx19:12049 \
     --detectors http://localhost:12050/gps_search \
     --trackers "http://cx19:12049/gnss{0..1}_track,http://cx27:12049/gnss{0..1}_track,\
 http://cx42:12049/gnss{0..1}_track,http://cx43:12049/gnss{0..1}_track,\
 http://cx44:12049/gnss{0..1}_track,http://cx51:12049/gnss{0..1}_track,\
+http://cx19:12049/gnss{0..1}_inject,\
 http://127.0.0.1:12099/sink_track" \
     --combiner gnss0_combine \
     --dll-combiners "${MERGED}${SPLIT}" \

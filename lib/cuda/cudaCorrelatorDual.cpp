@@ -72,16 +72,12 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
                                                                "gnss_local_channels")),
     _tile_sel(build_tile_selection(_gnss_local_channels, _num_elements, _num_synth,
                                    _num_live_elements)),
+    _rfi_all_pass(config.get_default<bool>(unique_name, "rfi_all_pass", false)),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
             std::array<std::string, 4>{"T", "F", "P", "D"},
             std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this),
-    rfi_RFImask(_rfi_RFImask_name, "RFImask",
-                std::array<std::ptrdiff_t, 3>{_buffer_depth * div_noremainder(_num_times, 8 * 128),
-                                              _num_local_freq, 128},
-                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"},
-                std::array<std::ptrdiff_t, 3>{1024, 1, 8}, *this),
     n2k_correlation([&]() {
         // Standard N^2 output -- IDENTICAL declaration to cudaCorrelator's, so downstream
         // (cudaOutputData -> host_correlation_buffer -> N2Accumulate) is unchanged.
@@ -117,7 +113,22 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
                 "these are LOCAL frame indices, not global freq_ids");
 
     voltage.register_consumer();
-    rfi_RFImask.register_consumer();
+    if (!_rfi_all_pass) {
+        rfi_RFImask.emplace(
+            _rfi_RFImask_name, "RFImask",
+            std::array<std::ptrdiff_t, 3>{_buffer_depth * div_noremainder(_num_times, 8 * 128),
+                                          _num_local_freq, 128},
+            std::array<std::string, 3>{"T8hi128", "F", "T8lo128"},
+            std::array<std::ptrdiff_t, 3>{1024, 1, 8}, *this);
+        rfi_RFImask->register_consumer();
+    } else {
+        // Constant all-ones mask: identical to production behavior with first-stage excision
+        // off (cudaRFISKtilde writes an all-good mask there). Layout does not matter for a
+        // constant -- every bit is set.
+        const size_t mask_bytes = (size_t)_num_times / 8 * _num_local_freq;
+        void* d_mask = device.get_gpu_memory(unique_name + "_allpass_mask", mask_bytes);
+        CHECK_CUDA_ERROR(cudaMemset(d_mask, 0xFF, mask_bytes));
+    }
 
     gpu_buffers_used.push_back(std::make_tuple(_n2k_correlation_name, true, false, true));
     gpu_buffers_used.push_back(std::make_tuple(_gnss_tiles_name, true, false, true));
@@ -167,18 +178,21 @@ int cudaCorrelatorDual::wait_on_precondition() {
         return voltage_errcode;
     DEBUG("Finished waiting for voltage input for data frame {:d}.", gpu_frame_id);
 
-    DEBUG("Waiting for rfi_RFImask input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const int rfi_RFImask_errcode =
-        rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-            const int rfi_needed_samples = div_noremainder(_num_times, 8 * 128);
-            if (available_elements < rfi_needed_samples)
-                return read_descriptor_t{.claimed = 0, .read = 0};
-            else
-                return read_descriptor_t{.claimed = rfi_needed_samples, .read = rfi_needed_samples};
-        });
-    if (rfi_RFImask_errcode < 0)
-        return rfi_RFImask_errcode;
-    DEBUG("Finished waiting for rfi_RFImask input for data frame {:d}.", gpu_frame_id);
+    if (rfi_RFImask) {
+        DEBUG("Waiting for rfi_RFImask input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const int rfi_RFImask_errcode =
+            rfi_RFImask->wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+                const int rfi_needed_samples = div_noremainder(_num_times, 8 * 128);
+                if (available_elements < rfi_needed_samples)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                else
+                    return read_descriptor_t{.claimed = rfi_needed_samples,
+                                             .read = rfi_needed_samples};
+            });
+        if (rfi_RFImask_errcode < 0)
+            return rfi_RFImask_errcode;
+        DEBUG("Finished waiting for rfi_RFImask input for data frame {:d}.", gpu_frame_id);
+    }
 
     return 0;
 }
@@ -188,20 +202,25 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
     pre_execute();
 
     voltage.check_metadata();
-    rfi_RFImask.check_metadata();
+    if (rfi_RFImask)
+        rfi_RFImask->check_metadata();
     n2k_correlation.set_metadata(voltage.get_metadata());
     gnss_tiles.set_metadata(voltage.get_metadata());
 
     const std::shared_ptr<const chordMetadata> voltage_meta = voltage.get_metadata();
-    const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
     const std::shared_ptr<chordMetadata> n2k_corr_meta = n2k_correlation.get_metadata();
     const std::shared_ptr<chordMetadata> tiles_meta = gnss_tiles.get_metadata();
 
     // Ensure consistency:
-    assert(voltage_meta->get_fpga_seq_num()
-               + voltage.get_read_valid().begin() * voltage_meta->get_time_downsampling_fpga()
-           == rfi_meta->get_fpga_seq_num()
-                  + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
+    if (rfi_RFImask) {
+        const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask->get_metadata();
+        assert(voltage_meta->get_fpga_seq_num()
+                   + voltage.get_read_valid().begin() * voltage_meta->get_time_downsampling_fpga()
+               == rfi_meta->get_fpga_seq_num()
+                      + rfi_RFImask->get_read_valid().begin()
+                            * rfi_meta->get_time_downsampling_fpga());
+        (void)rfi_meta;
+    }
 
     // The input ringbuffer metadata do not contain time-dependent metadata,
     // so we must reconstruct it here. (fpga_seq_num)
@@ -224,13 +243,19 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
     const kotekan::int4x2_swapped_withoffset_t* const input_memory =
         &voltage.get_ndarray()(time_offset, 0, 0, 0);
 
-    const std::ptrdiff_t rfi_time_offset =
-        rfi_RFImask.get_read_valid().begin() % rfi_RFImask.get_ndarray().extent(0);
-    // Ensure there is no ring-buffer wrap-around
-    assert((rfi_RFImask.get_read_valid().end() - 1) % rfi_RFImask.get_ndarray().extent(0)
-           >= rfi_time_offset);
-    const kotekan::uint1x8_t* const rfi_RFImask_memory =
-        &rfi_RFImask.get_ndarray()(rfi_time_offset, 0, 0);
+    const kotekan::uint1x8_t* rfi_RFImask_memory = nullptr;
+    if (rfi_RFImask) {
+        const std::ptrdiff_t rfi_time_offset =
+            rfi_RFImask->get_read_valid().begin() % rfi_RFImask->get_ndarray().extent(0);
+        // Ensure there is no ring-buffer wrap-around
+        assert((rfi_RFImask->get_read_valid().end() - 1) % rfi_RFImask->get_ndarray().extent(0)
+               >= rfi_time_offset);
+        rfi_RFImask_memory = &rfi_RFImask->get_ndarray()(rfi_time_offset, 0, 0);
+    } else {
+        const size_t mask_bytes = (size_t)_num_times / 8 * _num_local_freq;
+        rfi_RFImask_memory = (const kotekan::uint1x8_t*)device.get_gpu_memory(
+            unique_name + "_allpass_mask", mask_bytes);
+    }
 
     // aka "nt_outer" in n2k.hpp
     const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
@@ -281,6 +306,7 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
 void cudaCorrelatorDual::finalize_frame() {
     // Advance the input ringbuffers
     voltage.finish_read();
-    rfi_RFImask.finish_read();
+    if (rfi_RFImask)
+        rfi_RFImask->finish_read();
     cudaCommand::finalize_frame();
 }
