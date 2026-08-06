@@ -1163,6 +1163,49 @@ ORDERING between them.
 Any new cudaCommand consuming a COPY_IN buffer must honour `pre_events[0]`. `(void)pre_events`
 in a KERNEL command is a bug unless everything it reads is written on its own stream.
 
+### 11.9 ON-SKY VALIDATION (2026-08-06): path B detects the sky
+
+First clean measurement, cx19 on chord_gnss_cx19_n2dump.yaml with the 11.8 fix in place (path A
+healthy ALONGSIDE path B: P18 14.2, max amplitude 1.07e-04).
+
+Signal test: CROSS-FRAME ELEMENT-VECTOR COHERENCE (scripts/gnss/n2tiles_signal.py). Do NOT use
+|P|/rms(E,L) -- the E/P/L replicas are ~0.97 coherent within one 195 kHz channel, so that
+statistic cannot tell signal from noise here (11.10). Instead: for a real source the 32-antenna
+complex vector is stable frame to frame and a common phase rotation cancels in a normalized
+inner product, so signal -> ~1 and noise -> 1/sqrt(32) = 0.177.
+
+    PRN   path-B coh   path-A deep_snr
+     27      0.534         12.31
+     32      0.446         11.97
+     18      0.394         11.28
+     23      0.387         11.74
+     24      0.321         13.21
+     10      0.298          1.23
+      8      0.202          0.66
+      2      0.193          2.16
+
+    Spearman = 0.667 (n=8); path-A-strong mean coh 0.416 vs weak 0.231; PERFECT SEPARATION
+    (min strong 0.321 > max weak 0.298), weak group sitting on the 0.177 noise floor.
+
+WHAT THIS PROVES: the whole path-B chain works on real sky -- broker seeds -> shared
+propagate_seed -> per-record synthesis -> conj_replica pack into 4+4b lanes -> the dual N^2 ->
+the GPU tile gather -> host. It detects the same satellites the shipped tracker does.
+
+WHAT IT DOES NOT YET PROVE: amplitude/phase agreement at the per-element level. Path A exports
+only the elem_sum-calibrated header value, not per-element correlations, so a quantitative A/B
+needs either a per-element export or an offline replay. The offline M3 gate (11.6) already
+bounds the quantization cost at +0.036 dB / 2.29 mrad.
+
+### 11.10 Two statistics that are BLIND on CHORD (do not reuse them)
+
+1. |P|/rms(E,L) per channel. Measured from the M^2 block: <E,P> = <P,L> = <E,L> = 0.97 at
+   0.5-chip spacing, because each PFB bin is ~195 kHz against a 10.23 Mcps code. E ~ P ~ L is
+   what STRONG SIGNAL looks like too. This statistic reported "path B is despreading noise" on
+   a chain that was working.
+2. amp_snr from a single get_status sample. It swings 0.4 -> 45 record to record. Use
+   `amplitude` and `coh_frac`, and compare against another NODE at the same instant -- the sky
+   moves, so a single PRN is not a stable probe across a long session.
+
 ### 11.7 (continued) Remaining for M4 sign-off
 
 Remaining for M4 sign-off (needs a sudo node start): live run on sky under
