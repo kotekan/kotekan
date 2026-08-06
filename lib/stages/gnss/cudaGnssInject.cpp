@@ -62,9 +62,17 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     _h_slot2spec.assign((size_t)n_rec * S.n_prn, -1);
 
     set_command_type(gpuCommandType::KERNEL);
+    // The F-engine conjugation is absorbed by conjugating the REPLICA (launch_pack44) -- the
+    // N^2 kernel has no conj_data flag and its antenna input is production's. This MUST match
+    // the tracker's `conjugate`, or path B despreads the conjugate of the sky.
+    if (!S._conjugate)
+        WARN("cudaGnssInject: conjugate=false. On CHORD the F-engine output IS conjugated "
+             "relative to the decode (measured on sky 2026-07-30); with this false the "
+             "synthetic lanes despread the conjugate of the sky and every tile reads NOISE.");
     INFO("cudaGnssInject: {:d} PRN slots x 4 lanes into '{:s}' [{:d}][{:d}][{:d}], {:d} "
-         "records/frame, channels {:d}",
-         S.n_prn, _gnss_synth_name, _num_times, _num_local_freq, _num_synth, n_rec, S.n_chan);
+         "records/frame, channels {:d}, conjugate {:s}",
+         S.n_prn, _gnss_synth_name, _num_times, _num_local_freq, _num_synth, n_rec, S.n_chan,
+         S._conjugate ? "ON" : "off");
 }
 
 cudaGnssChordTrackState* cudaGnssInject::st() {
@@ -194,7 +202,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             d_synth + (size_t)r * S.hops_per_record * _num_local_freq * _num_synth;
         CHECK_CUDA_ERROR(gnss_cuda::launch_pack44(
             d_wave, d_energy, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn, S.n_chan,
-            S.hops_per_record, d_chan_map, _num_local_freq, _num_synth, d_synth_rec, stream));
+            S.hops_per_record, d_chan_map, _num_local_freq, _num_synth, S._conjugate,
+            d_synth_rec, stream));
     }
 
     if ((++_frames & 0xFF) == 1)

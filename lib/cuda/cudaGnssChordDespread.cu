@@ -412,7 +412,7 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
                                    const gnss_cuda::DespreadJob* __restrict__ jobs,
                                    const int* __restrict__ slot2spec, int n_slot, int n_chan,
                                    int n_hops, const int* __restrict__ chan_map,
-                                   int frame_chan_stride, int num_synth,
+                                   int frame_chan_stride, int num_synth, int conj_replica,
                                    unsigned char* __restrict__ synth) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int lane = idx % num_synth;
@@ -436,7 +436,14 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
             if (rms > 0.0f) {
                 const float s = 7.0f / (3.0f * rms);
                 int qr = __float2int_rn(s * w.x);
-                int qi = __float2int_rn(s * w.y);
+                // CONJUGATE THE REPLICA, not the data (DespreadParams::conj_data's job on the
+                // fused path). The N^2 kernel is production's and has no conj flag, and the
+                // antenna input is shared -- so the F-engine's conjugation must be absorbed
+                // here. It CANNOT be undone downstream: the correlator forms
+                // sum_t R conj(D), while the tracker forms sum_t conj(D) conj(R), and those
+                // are not conjugates of each other once summed. Injecting conj(R) makes the
+                // mixed tile equal the tracker's answer directly.
+                int qi = __float2int_rn(conj_replica ? -s * w.y : s * w.y);
                 qr = qr < -7 ? -7 : (qr > 7 ? 7 : qr);
                 qi = qi < -7 ? -7 : (qi > 7 ? 7 : qi);
                 out = (unsigned char)(((qr + 8) << 4) | ((qi + 8) & 0xf));
@@ -451,13 +458,13 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
 cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
                           const int* slot2spec, int n_slot, int n_chan, int n_hops,
                           const int* chan_map, int frame_chan_stride, int num_synth,
-                          unsigned char* synth, cudaStream_t stream) {
+                          bool conj_replica, unsigned char* synth, cudaStream_t stream) {
     const long total = (long)n_hops * n_chan * num_synth;
     const int threads = 256;
     const long blocks = (total + threads - 1) / threads;
     gnss_pack44_kernel<<<(unsigned)blocks, threads, 0, stream>>>(
         wave, energy, jobs, slot2spec, n_slot, n_chan, n_hops, chan_map, frame_chan_stride,
-        num_synth, synth);
+        num_synth, conj_replica ? 1 : 0, synth);
     return cudaGetLastError();
 }
 

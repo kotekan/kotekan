@@ -410,6 +410,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
                 # synchronization story (no ring semantics on gnss_synth).
                 {"name": "cudaGnssInject",
                  "voltage_name": "voltage",
+                 # MUST match the tracker's `conjugate`. The N^2 kernel has no conj_data flag
+                 # and its antenna input is production's, so the F-engine conjugation is
+                 # absorbed by conjugating the REPLICA in the pack. Without it every mixed
+                 # tile reads noise -- measured on sky 2026-08-06, and it is the same
+                 # conjugation lesson as 2026-07-30.
+                 "conjugate": True,
                  "num_synth": num_synth,
                  # LOCAL frame indices of the comb (the tap's chan_ids) -- never freq_ids.
                  "gnss_local_channels": chan_idx,

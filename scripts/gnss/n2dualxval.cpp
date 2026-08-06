@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <cstring>
 #include <random>
+#include <string>
 #include <vector>
 
 using cf = std::complex<float>;
@@ -62,6 +63,11 @@ static constexpr int N_SPEC = 4; // 16 lanes of 128
 
 int main(int argc, char** argv) {
     const unsigned seed = argc > 1 ? (unsigned)atoi(argv[1]) : 4242u;
+    // --conj: simulate the CHORD F-ENGINE CONJUGATION (the frame carries conj(sky), measured
+    // 2026-07-30) and exercise both sides' compensation -- path A's DespreadParams::conj_data
+    // and path B's conj_replica in the pack. Without this the harness only ever proved the
+    // unconjugated case, which is why the live tiles read noise on 2026-08-06.
+    const bool CONJ = (argc > 2 && std::string(argv[2]) == "--conj");
     std::mt19937 rng(seed);
     std::normal_distribution<float> gauss(0.0f, 1.0f);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
@@ -166,7 +172,10 @@ int main(int argc, char** argv) {
                 const double amp = (e == 0) ? 5.0 : 1.0;
                 for (int i = 0; i < N_SPEC; i++) {
                     cf w = wat(i, 1, c, m); // PROMPT replica
-                    v += amp * gains[(size_t)i * N_ELEM + e] * cd(w.real(), w.imag());
+                    const cd s = amp * gains[(size_t)i * N_ELEM + e] * cd(w.real(), w.imag());
+                    // The F-engine emits conj(sky); path A undoes it with conj_data, path B
+                    // by injecting a conjugated replica.
+                    v += CONJ ? std::conj(s) : s;
                 }
                 auto q = [](double x) {
                     int r = (int)lrint(x);
@@ -179,7 +188,7 @@ int main(int argc, char** argv) {
 
     // ---- path A on the real frame ----------------------------------------------------------
     despr.enqueue_batch_nm(d_frame, d_chan_scale, d_chan_idx, d_wave, N_ELEM, NSA, NFRAME,
-                           window_start, specs, d_jobs, d_corr, d_energy, nullptr, false);
+                           window_start, specs, d_jobs, d_corr, d_energy, nullptr, CONJ);
     CK(cudaDeviceSynchronize());
     std::vector<double2> corr_a(corr_n);
     CK(cudaMemcpy(corr_a.data(), d_corr, corr_n * sizeof(double2), cudaMemcpyDeviceToHost));
@@ -210,8 +219,9 @@ int main(int argc, char** argv) {
                         int r = (int)lrint(x);
                         return r < -7 ? -7 : (r > 7 ? 7 : r);
                     };
+                    const double wi = CONJ ? -(double)w.imag() : (double)w.imag();
                     h_synth[((size_t)m * NFRAME + c) * NSB + (4 * i + t)] =
-                        (uint8_t)(((q(s * w.real()) + 8) << 4) | ((q(s * w.imag()) + 8) & 0xf));
+                        (uint8_t)(((q(s * w.real()) + 8) << 4) | ((q(s * wi) + 8) & 0xf));
                 }
         }
     unsigned char* d_synth;
@@ -327,10 +337,15 @@ int main(int argc, char** argv) {
                        + 32 * ilo + 2 * jlo;
             cd V = cd(vis[o], vis[o + 1])
                    / (lane_scale[(size_t)4 * i + ta] * lane_scale[(size_t)4 * i + tb]);
+            // The tiles hold the PACKED replica, which is conj(R) when the F-engine
+            // conjugation is being compensated -- so the reference must be conjugated too,
+            // or this reads as a 0.4 relative error that is purely a convention mismatch.
             cd R(0.0, 0.0);
             for (int m = 0; m < N_HOPS; m++) {
                 cf a = wat(i, ta, c, m), b = wat(i, tb, c, m);
-                R += cd(a.real(), a.imag()) * std::conj(cd(b.real(), b.imag()));
+                cd A = cd(a.real(), a.imag()), B = cd(b.real(), b.imag());
+                if (CONJ) { A = std::conj(A); B = std::conj(B); }
+                R += A * std::conj(B);
             }
             printf("  <%s,%s>: tile %+.5g%+.5gi  float %+.5g%+.5gi  rel %.3g\n", row_name[ta],
                    row_name[tb], V.real(), V.imag(), R.real(), R.imag(),

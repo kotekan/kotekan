@@ -159,12 +159,19 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  * @param jobs       [n_job] device jobs (m_head, chan_mask)
  * @param slot2spec  [n_slot] device: job index of each PRN slot this record, -1 = inactive
  * @param chan_map   [n_chan] device: LOCAL frame channel of each covering channel
+ * @param conj_replica negate the replica's imag before quantizing -- the path-B equivalent of
+ *        @ref DespreadParams::conj_data. The N^2 kernel is production's (no conj flag) and the
+ *        antenna input is shared, so the F-engine's conjugation is absorbed on THIS side.
+ *        MUST match the tracker's `conjugate` or path B despreads the conjugate of the sky and
+ *        reads noise at every code phase. Not fixable downstream: the correlator forms
+ *        sum_t R conj(D) and the tracker sum_t conj(D) conj(R), which are not conjugates of
+ *        each other once summed.
  * @param synth      base of THIS RECORD's rows: [n_hops][frame_chan_stride][num_synth] bytes
  */
 cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
                           const int* slot2spec, int n_slot, int n_chan, int n_hops,
                           const int* chan_map, int frame_chan_stride, int num_synth,
-                          unsigned char* synth, cudaStream_t stream);
+                          bool conj_replica, unsigned char* synth, cudaStream_t stream);
 
 } // namespace gnss_cuda
 
