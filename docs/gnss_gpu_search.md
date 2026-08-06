@@ -823,12 +823,17 @@ time and final accumulation, and the table could plausibly be HALF a float.
 
 Three ceiling tests in `scripts/gnss/wavebench.cpp`, all at 212 chips, fused, 1024 threads:
 
-    jobs      fp32 baseline    fp16 Phi     shared Phi      lockstep
-      11         0.535 ms      0.393 (1.36x)  0.817 (0.65x)  0.491 (1.09x)
-      50         2.641 ms      2.110 (1.25x)  2.890 (0.91x)  2.522 (1.05x)
-     100         4.939 ms      4.027 (1.23x)  5.555 (0.89x)  4.668 (1.05x)
+⚠️ **MIN OF 7 RUNS, and that is not optional.** cx19 runs the live tracker, and single-shot
+timings on the same config spread 0.5352-0.7627 ms -- a factor 1.42, i.e. LARGER than every
+effect below. The first pass of this table was single-shot and its share-phi row came out with
+the opposite sign. Minimum-of-N is robust to contention spikes; never quote a single run here
+while a node is tracking.
 
-* **fp16 `Phi` (`--phi16`): 1.23-1.36x, NOT the 2x a byte-bound kernel would give.** Accuracy is
+    jobs      fp32 baseline    fp16 Phi     shared Phi      lockstep
+      11         0.5355 ms     0.3929 (1.36x) 0.5716 (0.94x) 0.4903 (1.09x)
+     100         4.9011 ms     3.7369 (1.31x) 5.2856 (0.93x) 4.6709 (1.05x)
+
+* **fp16 `Phi` (`--phi16`): 1.31-1.36x, NOT the 2x a byte-bound kernel would give.** Accuracy is
   fine (3.3e-04 worst case per chip step, 10.5). Real but modest.
 * **Doppler factoring (`--share-phi`): DEAD.** This points every job at ONE table -- perfect
   sharing, trivially L2-resident, the best any factored scheme could reach. It is **SLOWER**
@@ -846,7 +851,27 @@ is saturated. What is left is LATENCY on the dependent gather chain, and that is
 "212 serial chip steps per output sample" at this PFB span. **We are within ~1.25x of what this
 hardware will do for this access pattern.**
 
-⚠️ So stop trying to make the per-output cost cheaper. The remaining lever is **fewer outputs**:
+**Two follow-ups, both answered by the lockstep bound (asked 2026-08-06):**
+
+* *"Stage Phi in shared memory instead of relying on L2."* Shared memory would replace 32
+  scattered L1 lookups per warp with one coalesced load plus SMEM reads. But `--lockstep` already
+  measures the ceiling of exactly that: with an integer chips-per-hop every lane computes the SAME
+  index, so each step is one broadcast hit -- perfectly coalesced, minimum traffic, L1-hit latency.
+  SMEM cannot beat "every access is a broadcast hit". **1.05x.** Not worth building.
+* *"The read locations are predictable and periodic -- restructure the table for sequential
+  reads."* They are ALREADY sequential per step: `t = d*ks + floor(base + d*kf)` with the floor
+  term in `[0, ~313)`, so at step `d` every lane reads inside one contiguous 313-entry window.
+  (This is why the `[t mod ks][t / ks]` transpose was retracted -- the layout was never the
+  problem.) What is sparse is the OCCUPANCY of that window: 32 lanes over 313 slots, ~10%, and
+  that sparsity is the per-hop sub-chip phase itself. Removing it entirely is lockstep: 1.05x.
+
+**STILL UNTESTED, and the best remaining layout idea:** `phiA[t]` and `phiB[t]` live in two
+separate arrays ~1 MB apart, so each chip step issues TWO requests to TWO sectors. Interleaving
+them into one `float4` table would make it ONE 16-byte request -- same bytes, HALF the requests.
+Given fp16 (half bytes, same requests) buys 1.31x, a same-bytes/half-requests change is worth
+measuring, and combining both (interleaved `__half2` pairs = one 8-byte load) would halve each.
+
+⚠️ Otherwise stop trying to make the per-output cost cheaper. The remaining lever is **fewer outputs**:
 
 * **E/L on a subset of hops.** The three trials are 3x the synthesis, but E and L exist only to
   feed the DLL discriminator, which needs far less SNR than the prompt does. Computing E/L on,
