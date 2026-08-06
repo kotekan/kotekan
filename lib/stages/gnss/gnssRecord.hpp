@@ -117,6 +117,14 @@ namespace gnss {
 constexpr int RECORD_FLOATS = 26;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
+// THE HOP-ORDER CONTRACT (decided 2026-08-06, docs/gnss_gpu_search.md 11.3): every hop-indexed
+// GNSS array -- the tap output, the synthesis `wave` [3*n_job][n_chan][n_hops], and the record
+// windows these rows summarize -- stores hop `mh` at index `mh`, i.e. TIME ORDER. This was
+// implicit; it is now an invariant. It may NOT be permuted for optimization (10.6b's sorted-hop
+// store is disallowed): under path B the N^2 correlator consumes hops as its time axis, and the
+// pack kernel (wave -> synthetic 4+4 lanes) assumes wave index == correlator time sample.
+// Coalescing fixes must happen INSIDE a kernel (shared-memory exchange), not in the layout.
+
 // Shared header slots
 constexpr int REC_PRN = 0;
 constexpr int REC_DOPPLER = 1;

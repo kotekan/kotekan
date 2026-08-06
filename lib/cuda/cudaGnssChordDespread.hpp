@@ -54,7 +54,10 @@ namespace gnss_cuda {
  * @param n_job   PRNs in this batch
  * @param n_chan  covering channels
  * @param p       batch-shared geometry (n0, fft_len, n_hops, Lf)
- * @param wave    out [3*n_job][n_chan][n_hops] float2, replica samples (device)
+ * @param wave    out [3*n_job][n_chan][n_hops] float2, replica samples (device). HOP-ORDER
+ *                CONTRACT: hop `mh` lives at index `mh` (time order) -- an invariant, not a
+ *                convenience. Path B's pack kernel maps wave index == N^2 correlator time
+ *                sample, so sorted-hop storage (10.6b) is disallowed; see gnssRecord.hpp.
  * @param energy  out [4*n_job][n_chan] double, rows E/P/L/P_HEAD. Element-independent, so this
  *                is the whole of what the record header needs; P_HEAD's energy is the prompt's
  *                own, accumulated over the head hops only.
