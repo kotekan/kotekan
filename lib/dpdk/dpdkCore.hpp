@@ -239,7 +239,7 @@ private:
     std::string init_mem_alloc;
 
     /// Seconds to wait after port start before the lcore RX loop begins
-    uint32_t lcore_start_delay;
+    uint32_t max_link_start_delay;
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;

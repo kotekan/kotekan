@@ -106,6 +106,7 @@ add_library(
     N2TimeDownsample.cpp
     N2FringeStop.cpp
     TransposeBasebandArray.cpp
+    SubsetBaseband.cpp
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
     RfiMaskSum.cpp
