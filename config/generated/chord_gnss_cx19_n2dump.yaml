@@ -294,7 +294,6 @@ gnss0_n2combine:
   fft_len: 16384
   in_bufs:
   - gnss0_n2rec_buf
-  - gnss1_n2rec_buf
   integration_length: 100
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
@@ -543,6 +542,30 @@ gnss1_n2assemble_tiles:
   num_synth: 128
   out_buf: gnss1_n2epl_buf
   tiles_buf: gnss1_n2tiles_buf
+gnss1_n2cmb_buf:
+  frame_size: 32 * 410 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss1_n2combine:
+  cpu_affinity:
+  - 59
+  deep_coherent: true
+  deep_rate_min_q: 10.0
+  deep_rate_search: true
+  fft_len: 16384
+  in_bufs:
+  - gnss1_n2rec_buf
+  integration_length: 100
+  integration_mode: rolling
+  kotekan_stage: GnssCoherentCombiner
+  n_elements: 32
+  n_prn: 32
+  out_buf: gnss1_n2cmb_buf
+  phase_dump_path: /tmp/gnss_n2phase_cx19_1.txt
+  phase_dump_prns: []
+  phase_track: false
+  record_export: 128
 gnss1_n2ctl_buf:
   frame_size: 147632
   kotekan_buffer: standard
@@ -618,6 +641,15 @@ gnss1_n2rec_buf:
   metadata_pool: gnss_pool
   num_frames: 4
   peek_hold: true
+gnss1_n2sink:
+  allow_ndarray: true
+  base_dir: /tmp/gnss
+  cpu_affinity:
+  - 62
+  file_ext: raw
+  file_name: cx19_gnss1_n2rec
+  in_buf: gnss1_n2cmb_buf
+  kotekan_stage: rawFileWrite
 gnss1_n2tiles_buf:
   frame_size: 2981888
   kotekan_buffer: standard
