@@ -54,8 +54,23 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
                           : (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
     const PHI* phiB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
 
-    for (int mh_i = m; mh_i < p.n_hops; mh_i += blockDim.x) {
-        const int mh = HOPPERM ? p.hop_perm[(size_t)b * p.n_hops + mh_i] : mh_i;
+    // PRELOAD the permutation. Read inside the loop, hop_perm[] is a dependent global load at
+    // the head of every hop: it must land before n_m -> C_P -> base -> the whole 212-step chain
+    // can start, and with ~2 hops per thread there is nothing to hide it behind. Measured 0.81x
+    // that way. Issuing all of a thread's lookups up front lets them overlap each other and the
+    // prologue instead.
+    constexpr int MAX_HOPS_PER_THREAD = 8;
+    int hop_id[MAX_HOPS_PER_THREAD];
+    if (HOPPERM) {
+#pragma unroll
+        for (int k = 0; k < MAX_HOPS_PER_THREAD; ++k) {
+            const int mh_i = m + k * (int)blockDim.x;
+            hop_id[k] = (mh_i < p.n_hops) ? p.hop_perm[(size_t)b * p.n_hops + mh_i] : 0;
+        }
+    }
+    int kk = 0;
+    for (int mh_i = m; mh_i < p.n_hops; mh_i += blockDim.x, ++kk) {
+        const int mh = HOPPERM ? hop_id[kk < MAX_HOPS_PER_THREAD ? kk : 0] : mh_i;
         // An uncovered channel still has to WRITE its replica rows -- the correlator reads the
         // wave array unconditionally, and a stale/uninitialised sample would contribute garbage
         // rather than nothing. Zero is the correct replica for a channel this PRN does not

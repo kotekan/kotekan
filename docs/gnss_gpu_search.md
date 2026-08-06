@@ -874,6 +874,43 @@ the clustering. Two candidates, neither eliminated:
 So this is NOT a refutation of the idea -- it is one implementation of it, measured, and it lost.
 Anyone retrying should fix (1) first and re-measure before touching anything else.
 
+### 10.6c ncu COUNTERS: it is DRAM BYTES, not coalescing -- and that overturns 10.6/10.6b
+
+Six black-box A/B tests produced a contradictory picture. The counters settle it (cx19 idle,
+11 jobs x 7 chan x 212 chips, one launch):
+
+    variant     dur us   LD req      LD sectors    sec/req    ST sec/req   DRAM
+    fp32        535.97   9,486,400   298,601,238     31.5         7.9      245 MB
+    fp16        393.06   9,486,400   271,464,521     28.6          --       --
+    ilv         495.46   6,334,944   199,358,636     31.5          --       --
+    hopsort     629.63   9,491,328   113,385,918     11.9        31.4      300 MB
+
+**The gather is maximally uncoalesced -- 31.5 of a possible 32 sectors per warp load, i.e. every
+lane in its own sector -- AND THAT IS NOT WHAT COSTS.** Hop-sorting did exactly what it was
+designed to do, cutting load sectors 62% (31.5 -> 11.9 sec/req), and came out 17% SLOWER. The
+interleave cut requests and sectors 33% for an 8% gain. fp16 cut sectors only 9% and gained 27%.
+Load sectors do not order the results; they anti-correlate with them.
+
+**DRAM bytes do.** fp32 moves 245 MB in 536 us = 457 GB/s, ~66% of the A40's 696 GB/s. fp16 wins
+because it halves the TABLE, not because it coalesces. And hop-sorting loses because it scatters
+the STORES -- `wave[...][mh]` with a permuted `mh` puts 32 lanes at 32 offsets, 7.9 -> 31.4
+sectors per store request -- which drives DRAM from 245 to 300 MB. It bought L1 coalescing that
+was never the constraint and paid for it in DRAM write traffic that is.
+
+**So the lever is DRAM FOOTPRINT.** fp16 (1.27-1.37x) is right for the right reason. The
+interleave changes no bytes and duly did nothing. Anything that shrinks the resident table helps;
+anything that only rearranges access does not.
+
+**Hop-sorting is still not dead, but it needs its stores fixed.** The read permutation and the
+write index are the same `mh`, so they cannot be decoupled directly -- but the writes could be
+staged in shared memory and flushed in hop order, keeping the coalesced store AND the coalesced
+gather. Worth one attempt, now with the counter that will tell you immediately whether it worked
+(`l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum / ..._requests_...`, must stay near 8).
+
+⚠️ **METHOD.** Six A/B experiments produced a model that was wrong three times (bandwidth-bound,
+then transaction-bound, then sector-bound). Two ncu runs settled it. **Profile before theorising
+about a kernel; the black-box ladder cost most of a day and got the mechanism backwards.**
+
 ### 10.7 Levers, ranked, with what is measured vs speculative
 
 
