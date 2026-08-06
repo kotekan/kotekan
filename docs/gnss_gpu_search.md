@@ -819,10 +819,52 @@ appears in exactly two places, both OUTSIDE it:
 So "why full floats" has a clean answer: the samples are float already, the doubles are absolute
 time and final accumulation, and the table could plausibly be HALF a float.
 
-### 10.6 Levers, ranked, with what is measured vs speculative
+### 10.6 BENCHED 2026-08-06: fp16 is 1.25x, the other two are dead, and the reason matters
 
-1. **fp16 `Phi` -- MEASURED viable, ~2x.** See 10.5. Cheapest real win available.
-2. **Doppler-factored `Phi` -- the only lever that changes the SCALING law.** Share one table set
+Three ceiling tests in `scripts/gnss/wavebench.cpp`, all at 212 chips, fused, 1024 threads:
+
+    jobs      fp32 baseline    fp16 Phi     shared Phi      lockstep
+      11         0.535 ms      0.393 (1.36x)  0.817 (0.65x)  0.491 (1.09x)
+      50         2.641 ms      2.110 (1.25x)  2.890 (0.91x)  2.522 (1.05x)
+     100         4.939 ms      4.027 (1.23x)  5.555 (0.89x)  4.668 (1.05x)
+
+* **fp16 `Phi` (`--phi16`): 1.23-1.36x, NOT the 2x a byte-bound kernel would give.** Accuracy is
+  fine (3.3e-04 worst case per chip step, 10.5). Real but modest.
+* **Doppler factoring (`--share-phi`): DEAD.** This points every job at ONE table -- perfect
+  sharing, trivially L2-resident, the best any factored scheme could reach. It is **SLOWER**
+  (0.89-0.65x). And a real factored scheme is strictly worse than this ceiling, because it needs
+  3 table reads per chip instead of 1. Do not build it.
+* **Sector locality (`--lockstep`): DEAD at scale.** This forces an integer chips-per-hop so every
+  lane in a warp shares one `base` and the ~20 scattered sectors collapse to ~1 -- the ceiling of
+  any hop-reordering scheme (e.g. sorting hops by fractional phase, which was the obvious next
+  idea). **1.05x at 50-100 jobs.** The 1.09x at 11 is the underfilled regime, not a signal.
+
+**What that means together.** The kernel is not byte-bound (halving bytes gives 1.25x, not 2x),
+not reuse-bound (perfect sharing LOSES), and not locality-bound (perfect coalescing gives 5%).
+At 100 jobs it sits at ~7% of fp32 peak, ~10% of issue rate and ~16% of L1 bandwidth -- nothing
+is saturated. What is left is LATENCY on the dependent gather chain, and that is intrinsic to
+"212 serial chip steps per output sample" at this PFB span. **We are within ~1.25x of what this
+hardware will do for this access pattern.**
+
+⚠️ So stop trying to make the per-output cost cheaper. The remaining lever is **fewer outputs**:
+
+* **E/L on a subset of hops.** The three trials are 3x the synthesis, but E and L exist only to
+  feed the DLL discriminator, which needs far less SNR than the prompt does. Computing E/L on,
+  say, 1/4 of the hops takes the trial factor from 3.0 to 1.5 -- **a ~2x, larger than anything
+  above**. It costs DLL discriminator noise (and `trim_quality_min`, whose floor is calibrated on
+  `q = 2P/(E+L)`, would need recalibrating). This is a PHYSICS trade, not a kernel trick, which is
+  why it is the one worth arguing about.
+* Reducing `n_hops`, `n_chan` or the PFB span all trade aperture or resolution; the span is fixed
+  by other science targets.
+
+### 10.7 Levers, ranked, with what is measured vs speculative
+
+
+1. **fp16 `Phi` -- BENCHED 1.23-1.36x** (10.6), not the 2x predicted. Still the best single
+   available win, and accuracy is not the constraint.
+2. **Doppler-factored `Phi` -- REJECTED, benched (10.6).** The accuracy works (quadratic over a
+   +-1000 Hz bucket is 1.3e-04, better than fp16's own error), but the sharing CEILING is slower
+   than the private-table baseline, so the scheme cannot win. Kept below for the record. Share one table set
    per channel across all PRNs in a Doppler bucket, plus a low-order correction. Measured tilt
    across the span: **0.643 rad at +-5 kHz** (chip-step `dPhi` changes by 63%), **0.064 rad at
    +-500 Hz** (6.4%). So a shared table needs either genuine correction terms or buckets far

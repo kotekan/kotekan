@@ -28,7 +28,7 @@ using gnss_cuda::cmulf;
 /// FUSE3 walks the chip loop ONCE for all three E/P/L trials (@ref gnss_cuda::chip_gather3)
 /// instead of three times. Bit-identical either way; it trades registers for DRAM traffic, and
 /// registers are what cap MAXT, so the two knobs pull against each other.
-template<int MAXT, bool FUSE3>
+template<int MAXT, bool FUSE3, class PHI = float2>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
@@ -46,8 +46,8 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
     // Hoisted exactly as in the fused kernel: invariant across hops and across trials.
     const int ks = (int)job.inv_cps;
     const float kf = (float)(job.inv_cps - ks);
-    const float2* phiA = job.phiA + (size_t)ci * (p.Lf + 1);
-    const float2* phiB = job.phiB + (size_t)ci * (p.Lf + 1);
+    const PHI* phiA = (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
+    const PHI* phiB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
 
     for (int mh = m; mh < p.n_hops; mh += blockDim.x) {
         // An uncovered channel still has to WRITE its replica rows -- the correlator reads the
@@ -123,7 +123,8 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
                 const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> cp0 / cp0-ds / cp0+ds
                 float2 sA, sB;
                 chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code,
-                            phiA, phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
+                            (const float2*)phiA, (const float2*)phiB, ks, kf,
+                            C_P + (double)(t - 1) * job.ds, sA, sB);
                 const float2 t1 = cmulf(pa, sA);
                 const float2 t2 = cmulf(pb, sB);
                 const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
@@ -246,7 +247,8 @@ namespace gnss_cuda {
 
 cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, int n_job,
                                   int n_chan, const DespreadParams& p, float2* wave, double* energy,
-                                  int threads_hint, int fuse3, cudaStream_t stream) {
+                                  int threads_hint, int fuse3, int phi16,
+                                  cudaStream_t stream) {
     const bool fuse = fuse3 < 0 ? WAVE_FUSE3 : (fuse3 != 0);
     int cap = threads_hint > 0 ? threads_hint : WAVE_THREADS;
     if (cap > 1024)
@@ -266,6 +268,27 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
         return cudaFuncGetAttributes(&at, fn) == cudaSuccess ? at.maxThreadsPerBlock : 256;
     };
     const dim3 grid(n_job, n_chan);
+    // BENCH ONLY: fp16 Phi. job.phiA/phiB then point at __half2 tables (the struct field type is
+    // a lie the caller opts into). Answers whether the kernel is byte-limited or request-limited;
+    // production never takes this path.
+    if (phi16) {
+        auto ceil16 = [](const void* fn) {
+            cudaFuncAttributes at{};
+            return cudaFuncGetAttributes(&at, fn) == cudaSuccess ? at.maxThreadsPerBlock : 256;
+        };
+        if (threads > 512) {
+            static const int k16 = ceil16((const void*)gnss_waveform_kernel<1024, true, __half2>);
+            if (threads <= k16) {
+                gnss_waveform_kernel<1024, true, __half2>
+                    <<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+                return cudaGetLastError();
+            }
+            threads = 512;
+        }
+        gnss_waveform_kernel<512, true, __half2>
+            <<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+        return cudaGetLastError();
+    }
     if (threads > 512) {
         static const int kmaxF = ceiling((const void*)gnss_waveform_kernel<1024, true>);
         static const int kmaxU = ceiling((const void*)gnss_waveform_kernel<1024, false>);
@@ -295,7 +318,7 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
 cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream) {
-    return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, -1, stream);
+    return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, -1, 0, stream);
 }
 
 cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_scale,

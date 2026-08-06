@@ -19,6 +19,7 @@
 
 #include "cudaGnssDespreadKernel.hpp" // for gnss_cuda::unpack_44
 
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -38,6 +39,16 @@ namespace gnss_cuda {
 /// 2.461e-07 -> 2.454e-07). Both call sites move together, so every exactness gate stays at 0.
 __device__ inline float2 cmulf(float2 a, float2 b) {
     return make_float2(fmaf(a.x, b.x, -(a.y * b.y)), fmaf(a.x, b.y, a.y * b.x));
+}
+
+/// Phi element load, typed. `float2` is the production format; `__half2` exists to answer
+/// whether this kernel is limited by BYTES (then halving the table helps) or by scattered
+/// REQUESTS (then it does not). See scripts/gnss/wavebench.cpp --phi16.
+__device__ inline float2 phi_ld(const float2* p, int i) {
+    return p[i];
+}
+__device__ inline float2 phi_ld(const __half2* p, int i) {
+    return __half22float2(p[i]);
 }
 
 /// Chip gather over the filter span at absolute code phase @c C:
@@ -151,11 +162,12 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
 /// ⚠️ IT COSTS REGISTERS -- three live (sA, sB, pA, pB, idx, f, khi_base) states instead of one,
 /// and registers are exactly what caps the block width. Fusing and widening pull against each
 /// other, so which wins is a MEASUREMENT (scripts/gnss/wavebench.cpp), not a deduction.
+template<class PHI>
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int Lf, const int8_t* __restrict__ code,
-                                    const float2* __restrict__ phiA,
-                                    const float2* __restrict__ phiB, int ks, float kf,
-                                    const double C[3], float2 sA[3], float2 sB[3]) {
+                                    const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
+                                    int ks, float kf, const double C[3], float2 sA[3],
+                                    float2 sB[3]) {
     int idx[3], khi_base[3];
     float f[3];
     float2 pA[3], pB[3];
@@ -177,8 +189,8 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
         khi_base[u] = 0;
         int t_prev = prev_khi + 1;
         t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
-        pA[u] = phiA[t_prev];
-        pB[u] = phiB[t_prev];
+        pA[u] = phi_ld(phiA, t_prev);
+        pB[u] = phi_ld(phiB, t_prev);
     }
     for (int d = 0; d < job_n_chips; ++d) {
 #pragma unroll
@@ -187,8 +199,8 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
             t = t < 0 ? 0 : (t > Lf ? Lf : t);
             f[u] += kf;
             khi_base[u] += ks;
-            const float2 cA = phiA[t];
-            const float2 cB = phiB[t];
+            const float2 cA = phi_ld(phiA, t);
+            const float2 cB = phi_ld(phiB, t);
             const float cv = (float)code[job_code_offset + idx[u]];
             // fmaf explicitly -- see the note in chip_gather. This is the half of the pair that
             // made it matter.

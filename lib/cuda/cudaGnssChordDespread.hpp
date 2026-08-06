@@ -103,9 +103,11 @@ static constexpr bool WAVE_FUSE3 = true;
 /// @param fuse3 -1 = @ref WAVE_FUSE3, 0 = three separate gathers, 1 = fused. Bit-identical either
 ///        way, energy included: each trial's accumulation over chips is untouched, only the
 ///        interleaving of the three moves.
+/// @param phi16 BENCH ONLY. 1 = read Phi as __half2 (the caller must have uploaded half tables
+///        and stashed the pointer in job.phiA). Forces the 512-wide fused instantiation.
 cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, int n_job,
                                   int n_chan, const DespreadParams& p, float2* wave, double* energy,
-                                  int threads_hint, int fuse3, cudaStream_t stream);
+                                  int threads_hint, int fuse3, int phi16, cudaStream_t stream);
 
 /**
  * @brief Correlate N antenna voltages against the M generated references.

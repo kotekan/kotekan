@@ -121,5 +121,50 @@ int main(int argc, char** argv) {
     printf("    phase tilt across the whole span 2*pi*ddop/fs*Lf = %.3f rad\n", tiltmax);
     printf("    worst relative change in a chip-step dPhi        = %.3e\n", relmax);
     printf("    -> a shared table + low-order correction must beat THIS to be worth it\n");
+
+    // ---- 3. CAN ONE SHARED TABLE SET COVER A DOPPLER BUCKET? ---------------------------------
+    // Phi(delta) is analytic in the Doppler offset, so build the expansion NUMERICALLY from a
+    // few exact tables at the bucket nodes -- which is how it would be built for real, and it
+    // avoids needing the prototype taps. Linear = 2 nodes at the edges; quadratic = 3 nodes
+    // (edges + centre). Then evaluate INSIDE the bucket, where interpolation is worst, and
+    // compare the chip-step differences the gather actually consumes.
+    printf("\n[3] SHARED-TABLE RECONSTRUCTION over a Doppler bucket\n");
+    printf("%10s %8s %14s %14s\n", "half-width", "order", "max rel err", "median rel err");
+    for (double W : {250.0, 500.0, 1000.0, 2000.0, 5000.0}) {
+        const auto fm = bank.hoprate_filter(want, dop - W);
+        const auto fc = bank.hoprate_filter(want, dop);
+        const auto fp = bank.hoprate_filter(want, dop + W);
+        const auto &Pm = fm.PhiA[0], &Pc = fc.PhiA[0], &Pp = fp.PhiA[0];
+        for (int order : {1, 2}) {
+            double worst = 0.0;
+            std::vector<double> rel;
+            // Probe inside the bucket -- the nodes themselves are exact by construction.
+            for (double frac : {-0.75, -0.5, -0.25, 0.25, 0.5, 0.75}) {
+                const double d = frac * W;
+                const auto fe = bank.hoprate_filter(want, dop + d);
+                const auto& Pe = fe.PhiA[0];
+                const double u = d / W; // in [-1,1]
+                for (int dd = 1; dd < f0.n_chips; ++dd) {
+                    const int t1 = std::min(Lf, dd * ks), t0 = std::min(Lf, (dd - 1) * ks);
+                    auto dphi = [&](const std::vector<cd>& T) {
+                        return T[(size_t)t1] - T[(size_t)t0];
+                    };
+                    cd approx;
+                    if (order == 1) // linear through the two edges
+                        approx = 0.5 * (1.0 - u) * dphi(Pm) + 0.5 * (1.0 + u) * dphi(Pp);
+                    else // quadratic Lagrange through -W, 0, +W
+                        approx = 0.5 * u * (u - 1.0) * dphi(Pm) + (1.0 - u * u) * dphi(Pc)
+                                 + 0.5 * u * (u + 1.0) * dphi(Pp);
+                    const cd ex = dphi(Pe);
+                    if (std::abs(ex) > 0.0)
+                        rel.push_back(std::abs(approx - ex) / std::abs(ex));
+                }
+            }
+            std::sort(rel.begin(), rel.end());
+            worst = rel.back();
+            printf("%9.0f %8d %14.3e %14.3e\n", W, order, worst, rel[rel.size() / 2]);
+        }
+    }
+    printf("    (fp16 storage costs 3.3e-04 -- a reconstruction much better than that is wasted)\n");
     return 0;
 }
