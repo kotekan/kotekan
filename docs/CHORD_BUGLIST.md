@@ -175,7 +175,7 @@ Design flaw, not yet fixed — a confirmation of a deployed setting should not b
 
 ## 🟢 Performance / scaling
 
-### P1. Revert `despread_max_chips` to 0
+### P1. DONE 2026-08-06 — `despread_max_chips` reverted to 0 on all eight node configs
 The truncation is obsolete: 212 chips (the full PFB span) at the current kernel is **cheaper than
 the 140-chip kernel that the cap was introduced for**. The cap bought 1.31× by throwing away part
 of the channel response; the width + fusion buy 7.6× and throw away nothing. Costs 1.42× at
@@ -197,6 +197,26 @@ is small regardless.
 **Kept anyway, on a different argument:** both kernels now call the SAME gather, and they are
 required to produce bit-identical replicas. That is the same reason `chip_gather` is shared in a
 header rather than copied. Do not quote a speedup for it.
+
+### P0. Synthesis cost is THE scaling limiter — one lever measured (see gnss_gpu_search §10)
+At 100 codes synthesis is ~3.5–4 ms of a 10.486 ms record, before correlation. Six ceiling tests,
+then ncu, settled where the cycles go: **DRAM BYTES**, at ~66% of peak (245 MB in 536 µs =
+457 GB/s). NOT coalescing — the gather is maximally uncoalesced at 31.5 of 32 sectors per warp
+load, and hop-sorting cut that to 11.9 and ran **17% slower**.
+
+* **fp16 Φ: 1.27–1.37×, the only lever that worked**, and it works by halving the TABLE. Accuracy
+  is not the constraint (3.3e-04 per chip step). **Not yet implemented in production.**
+* Rejected, all measured: Doppler-factored/shared Φ (0.93×), interleaved float4 (1.03–1.08×),
+  hop-sorting (0.81×, and it eats fp16's win), lockstep locality ceiling (1.05×).
+* Ceiling if memory were free: 2.13×. So ~half the runtime is memory, and fp16 takes half of that.
+* **The bigger lever is fewer OUTPUTS:** E/L exist only to feed the DLL discriminator and could run
+  on a subset of hops, taking the trial factor 3.0 → ~1.5, a ~2×. Physics trade (discriminator
+  noise; `trim_quality_min` is calibrated on `q = 2P/(E+L)`), so it wants a decision, not a patch.
+* **OPEN:** ~30 MB of hop-sorting's +55 MB DRAM is unexplained — its scattered stores account for
+  only ~11–23 MB, and it has FEWER load sectors while moving MORE DRAM. `lts__t_sector_hit_rate`
+  on the two variants is the next counter.
+* Energy is ALREADY integrated (register accumulate + one tree reduction, 4 writes per
+  job-channel = 2% of stores). Nothing to win there.
 
 ### P3. Phi rebuild cost at 100–200 codes — UNMEASURED
 `hoprate_filter` builds ~917k `std::exp` per PRN per rebuild, single-threaded, and `refresh_hz`
