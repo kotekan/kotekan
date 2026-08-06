@@ -3917,6 +3917,10 @@ behaviour, all of it intended and self-consistent (configs were regenerated in t
 * `sky_deep` **false**: the assembler writes the split-aperture slots 24/25 so they can be
   measured, but the combiner ignores them. See 8.22.3.
 
+> **The consolidated open list now lives in `docs/CHORD_BUGLIST.md`.** This section and 8.22.4
+> remain the narrative; the buglist is the index, and it is the one kept current. Note
+> `airspy_docs/buglist.md` is the PROTOTYPE's list, a different repo, and has never tracked CHORD.
+
 ### 8.22.3 OPEN: the split-aperture bound violation (blocks `sky_deep`)
 
 On synthetic data at 1.20 rad injected phase the split rung reads **28.4 against a GENIE of

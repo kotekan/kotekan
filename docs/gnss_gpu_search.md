@@ -698,6 +698,8 @@ everything rather than extending the PRN loop.
 
 ### 9.13 What is left, in order
 
+> Mirrored, with the rest of the CHORD open items, in `docs/CHORD_BUGLIST.md` (P1-P3, C1).
+
 1. **Revert `despread_max_chips` to 0** -- 9.9/9.11 make the full 212-chip span cheaper than
    today's truncated one. Removes a known-lossy approximation. Costs 1.42x at scale (212 vs 140
    chips), which at 100 codes is 2.73 -> 3.9 ms and still comfortable.
