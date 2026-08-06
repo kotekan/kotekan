@@ -256,6 +256,35 @@ gnss0_gpu:
   kotekan_stage: cudaProcess
   out_buffers:
     gnss_epl_out: gnss0_epl_buf
+gnss0_n2assemble:
+  cpu_affinity:
+  - 31
+  elem_sum: true
+  in_buf: gnss0_n2epl_buf
+  kotekan_stage: GnssGpuRecordAssemble
+  n_elements: 32
+  out_buf: gnss0_n2rec_buf
+  prns: *id001
+  reference_element: 0
+  sample_rate: 3200000000.0
+gnss0_n2assemble_tiles:
+  cpu_affinity:
+  - 63
+  ctl_buf: gnss0_n2ctl_buf
+  hops_per_record: 2048
+  kotekan_stage: GnssN2RecordAssemble
+  n_gnss_channels: 7
+  n_live_elements: 32
+  n_prn: 32
+  num_elements: 128
+  num_synth: 128
+  out_buf: gnss0_n2epl_buf
+  tiles_buf: gnss0_n2tiles_buf
+gnss0_n2ctl_buf:
+  frame_size: 147632
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
 gnss0_n2dual:
   commands:
   - channel_ids:
@@ -301,6 +330,9 @@ gnss0_n2dual:
   - gpu_mem: gnss_tiles_buffer
     name: cudaOutputData
     out_buf: host_gnss_tiles
+  - gpu_mem: gnss_n2ctl
+    name: cudaOutputData
+    out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 59
   gpu_id: 0
@@ -308,15 +340,26 @@ gnss0_n2dual:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
   out_buffers:
+    host_gnss_n2ctl: gnss0_n2ctl_buf
     host_gnss_tiles: gnss0_n2tiles_buf
+gnss0_n2epl_buf:
+  frame_size: 7487664
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_n2rec_buf:
+  frame_size: 32 * 410 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
 gnss0_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
   - 61
   file_ext: raw
-  file_name: cx19_gnss0_n2tiles
-  in_buf: gnss0_n2tiles_buf
+  file_name: cx19_gnss0_n2rec
+  in_buf: gnss0_n2rec_buf
   kotekan_stage: rawFileWrite
 gnss0_n2tiles_buf:
   frame_size: 745472
@@ -387,6 +430,7 @@ gnss0_volt_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+  peek_hold: true
 gnss1_assemble:
   cpu_affinity:
   - 63
@@ -447,6 +491,35 @@ gnss1_gpu:
   kotekan_stage: cudaProcess
   out_buffers:
     gnss_epl_out: gnss1_epl_buf
+gnss1_n2assemble:
+  cpu_affinity:
+  - 57
+  elem_sum: true
+  in_buf: gnss1_n2epl_buf
+  kotekan_stage: GnssGpuRecordAssemble
+  n_elements: 32
+  out_buf: gnss1_n2rec_buf
+  prns: *id001
+  reference_element: 0
+  sample_rate: 3200000000.0
+gnss1_n2assemble_tiles:
+  cpu_affinity:
+  - 19
+  ctl_buf: gnss1_n2ctl_buf
+  hops_per_record: 2048
+  kotekan_stage: GnssN2RecordAssemble
+  n_gnss_channels: 7
+  n_live_elements: 32
+  n_prn: 32
+  num_elements: 128
+  num_synth: 128
+  out_buf: gnss1_n2epl_buf
+  tiles_buf: gnss1_n2tiles_buf
+gnss1_n2ctl_buf:
+  frame_size: 147632
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
 gnss1_n2dual:
   commands:
   - channel_ids:
@@ -492,22 +565,36 @@ gnss1_n2dual:
   - gpu_mem: gnss_tiles_buffer
     name: cudaOutputData
     out_buf: host_gnss_tiles
+  - gpu_mem: gnss_n2ctl
+    name: cudaOutputData
+    out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 60
+  - 57
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
   out_buffers:
+    host_gnss_n2ctl: gnss1_n2ctl_buf
     host_gnss_tiles: gnss1_n2tiles_buf
+gnss1_n2epl_buf:
+  frame_size: 7487664
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss1_n2rec_buf:
+  frame_size: 32 * 410 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
 gnss1_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx19_gnss1_n2tiles
-  in_buf: gnss1_n2tiles_buf
+  file_name: cx19_gnss1_n2rec
+  in_buf: gnss1_n2rec_buf
   kotekan_stage: rawFileWrite
 gnss1_n2tiles_buf:
   frame_size: 745472
@@ -570,6 +657,7 @@ gnss1_volt_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+  peek_hold: true
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120

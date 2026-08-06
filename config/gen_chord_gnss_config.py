@@ -396,6 +396,17 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
 
     ring = "host_voltage_ringbuffer" + ("" if gpu == 0 else f"_{gpu}")
     tiles_buf = f"{pre}n2tiles_buf"
+    ctl_buf = f"{pre}n2ctl_buf"
+    epl_buf = f"{pre}n2epl_buf"
+    n2rec_buf = f"{pre}n2rec_buf"
+    # epl frame: gnss_gpu::frame_bytes(n_prn, n_chan, ROWS_PLAIN=4, n_elem) -- the SAME
+    # expression the tracker's epl_buf uses, since the consumer emits that exact layout.
+    epl_bytes = (48 + 8 * 16 + 64 * 16 * n_prn
+                 + 16 * 4 * n_prn * 16 * n_chan * n_live
+                 + 8 * 4 * n_prn * 16 * n_chan)
+    # control block = the same minus the corr array.
+    ctl_bytes = (48 + 8 * 16 + 64 * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
+    record_floats = 26 + n_live * 12
 
     blocks = {
         tiles_buf: {
@@ -415,7 +426,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
             # cudaProcess stages must not. Explicit, not arithmetic, so it stays checkable.
             "cpu_affinity": [cores[(5 - 2 * gpu) % len(cores)]],
             "in_buffers": {"host_voltage_ringbuffer": ring},
-            "out_buffers": {"host_gnss_tiles": tiles_buf},
+            "out_buffers": {"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf},
             "commands": [
                 # ORDER MATTERS: the injector's pack lands on the same stream before the
                 # correlator's kernel reads the synth array -- that ordering is the entire
@@ -459,13 +470,63 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
                 {"name": "cudaOutputData",
                  "gpu_mem": "gnss_tiles_buffer",
                  "out_buf": "host_gnss_tiles"},
+                # M5: the injector's control block (FrameHdr + winstart + PrnCtl + the true
+                # replica energies) -- the epl layout minus corr, which the consumer fills
+                # from the tiles. See docs/gnss_gpu_search.md 11.11.
+                {"name": "cudaOutputData",
+                 "gpu_mem": "gnss_n2ctl",
+                 "out_buf": "host_gnss_n2ctl"},
             ],
+        },
+        ctl_buf: {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            "frame_size": ctl_bytes,
+        },
+        epl_buf: {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            "frame_size": epl_bytes,
+        },
+        n2rec_buf: {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
+        },
+        # M5 CONSUMER: tiles + control -> the epl layout the SHIPPED assembler eats.
+        f"{pre}n2assemble_tiles": {
+            "kotekan_stage": "GnssN2RecordAssemble",
+            "ctl_buf": ctl_buf,
+            "tiles_buf": tiles_buf,
+            "out_buf": epl_buf,
+            "num_elements": 128,
+            "num_synth": num_synth,
+            "n_live_elements": n_live,
+            "n_gnss_channels": n_chan,
+            "n_prn": n_prn,
+            "hops_per_record": args.hops_per_record,
+            "cpu_affinity": [cores[(gpu + 9) % len(cores)]],
+        },
+        # ... and then the EXISTING record assembler, unchanged.
+        f"{pre}n2assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "in_buf": epl_buf,
+            "out_buf": n2rec_buf,
+            "prns": args.prns,
+            "n_elements": n_live,
+            "reference_element": args.reference_element,
+            "elem_sum": args.elem_sum,
+            "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
+            "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
         f"{pre}n2sink": (
             {"kotekan_stage": "rawFileWrite",
-             "in_buf": tiles_buf,
+             "in_buf": n2rec_buf,
              "base_dir": args.record_dir or rt["record_dir"],
-             "file_name": f"{node}_gnss{gpu}_n2tiles",
+             "file_name": f"{node}_gnss{gpu}_n2rec",
              "file_ext": "raw",
              # The tiles buffer carries an NDArray descriptor (set dynamically by the GPU
              # path); we write raw bytes and the reader supplies the layout, which is fixed
@@ -474,7 +535,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
              "cpu_affinity": [cores[(gpu + 7) % len(cores)]]}
             if args.n2_dump else
             {"kotekan_stage": "dropAllFrames",
-             "in_buf": tiles_buf}),
+             "in_buf": n2rec_buf}),
     }
     return blocks
 
