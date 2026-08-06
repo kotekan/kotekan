@@ -1019,15 +1019,60 @@ and is why 10.6b lists SMEM first.
 * The N^2 kernel itself lives in the CHORD/kotekan correlator tree (`lib/cuda/`, n2k), NOT in the
   GNSS stages. Read it first; the two-input extension is its constraint, not ours.
 
-### 11.5 Open questions to settle first
+### 11.5 Open questions to settle first -- ALL ANSWERED 2026-08-06 (see 11.6)
 
-1. Does the N^2 kernel's input layout admit extra "antennas" without a copy? If the synthetic
-   lanes have to be interleaved into the antenna buffer, that is a memcpy of the voltage-sized
-   array and it eats the saving.
-2. M is per-PRN-per-trial (3 rows x n_prn) and N is 32 today, 512 at full CHORD. At 100 codes M is
-   300 -- LARGER than N. `(N+M)^2` is then dominated by M^2, which we mostly do not want. Check
-   whether the kernel can be told to skip the M^2 block, or whether M^2's cost is acceptable.
-3. Precision: the N^2 kernel's accumulator format vs the double accumulators the despread uses.
-4. Cadence: N^2 runs on the standard pipeline's frame cadence; the tracker runs per record. Are
-   they the same? If not, who re-blocks?
+1. Does the N^2 kernel's input layout admit extra "antennas" without a copy? **YES, better than
+   hoped**: n2k's e_in is dereferenced in exactly one place (`prefetch_chunk`), per-warp,
+   per-128-station panel, with the base offset host-precomputed (the "ptable"). A second input
+   is a warp-uniform pointer select + a runtime per-warp time stride -- zero cost in the MMA
+   loop, no interleaving copy. Constraint: NSA and NSB each a multiple of 128.
+2. Skip the M^2 block? **YES, host-side**: blockIdx.x -> (atile,btile) is decided when the
+   ptable is built, so block classes (AxA / mixed / BxB) can be dropped per launch with zero
+   device-code change (`block_class_mask`).
+3. Precision: int32 accumulators, EXACT (4-bit products over nt_inner <= 8192 cannot overflow);
+   samples must be in [-7,7] -- the value -8 SILENTLY corrupts (`negate_4bit`). Measured cost of
+   quantizing the REPLICA side to 4+4b: see 11.6.
+4. Cadence: one GNSS hop == one correlator time sample, exactly (5.12 us). Production frame =
+   8192 hops = 4 tracker records; `sub_integration_ntime` = 8192 -> one visibility per 41.94 ms.
+   DECIDED (user, 2026-08-06): keep 8192. Path-B records are frame-length; the re-blocker is the
+   consumer stage (M5).
+
+### 11.6 STATUS 2026-08-06: n2k_dual built; M1-M3 gates PASS
+
+Decisions in force: straight to the two-input kernel (the 96 dead elements 32-127 are being
+populated with real dishes over ~a month -- not available); **clone, don't clobber** (others
+develop n2k: `external/n2k` and `cudaCorrelator` are untouched; the clone is
+`external/n2k_dual/`, namespace `n2k_dual`, divergences listed in its README); keep
+`sub_integration_ntime` 8192.
+
+The module: `DualCorrelator(nstations_a, nstations_b, nfreq, block_class_mask)`. The kernel
+template depends only on the TOTAL station count (the A/B split is host-side ptable data), so
+one instantiation serves every 128-multiple split; compiled: (128,8), (256,8) tests,
+(256,384) pathfinder deploy. **P_HEAD survives `nt_outer=1` as a 4th TIME-GATED lane** (the
+prompt with zeros beyond m_head), so lanes are 4 per job: E/P/L/P_HEAD, 32 jobs at NSB=128.
+
+Gates (all on cx19 A40):
+
+* **M1/M2** `scripts/gnss/n2dualtest` (seeds 12345/2/777, int32 = exact equality):
+  dual(128+0) == n2k(128) **bitwise**; dual(128+128) AA block is a **verbatim prefix** of each
+  (t,f) slice, bitwise == n2k(128) (so the N^2 pass-through split is one strided copy /
+  `cudaMemcpy2DAsync`); full dual == CPU reference over 256 stations incl. random RFI mask;
+  class-mask run bitwise == full run on its tiles.
+* **M3** `scripts/gnss/n2dualxval` (real replicas via the shipped `enqueue_batch_nm`, identical
+  frame bytes to both paths so the difference isolates replica quantization):
+  **orientation: path A == conj(V_BA)/s** (mixed tiles put the synthetic station on the row
+  side; the consumer conjugates); clean-channel quantization cost **+0.04 dB, 2.3 mrad**;
+  row-level amplitude agreement -0.08 dB; per-entry phase ~17 mrad rms; M^2 replica
+  cross-terms vs float reference 3e-3; P_HEAD gating verified with a combined-period boundary
+  mid-window (m_head 852).
+* The hop-order contract (11.3) is decided -- option (a), time order, now written into
+  `gnssRecord.hpp` and on `launch_waveform`'s wave param. 10.6b-style sorted-hop storage is
+  disallowed.
+
+Remaining: **M4** -- `cudaCorrelatorDual` kotekan wrapper (voltage ring + synth ring input,
+GPU-side split: N^2 prefix -> standard `correlation_buffer` unchanged, mixed+M^2 gather for the
+7 GNSS channels -> small host buffer), the `cudaGnssInject` producer (frame-cadence seeds ->
+`launch_waveform` n_hops=8192 -> pack_quantize44 into the synth ring), config wiring on cx19,
+SK/RFI invariance + N^2 on/off invariance checks. **M5** -- consumer stage -> frame-length
+records -> assembler/broker (survey hops_per_record assumptions first).
 
