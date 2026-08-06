@@ -711,3 +711,141 @@ everything rather than extending the PRN loop.
    Doppler rates. At 200 codes that is ~1.8 rebuilds/s. Probably fine; UNMEASURED.
 4. The ~2.5x of tracker saturation still unexplained by the seed latch (see 9.4), which needs a
    PRN sweep rather than the two-point fit it currently rests on.
+
+## 10. The synthesis kernel: structure, cost model, and where the levers are
+
+Written 2026-08-06 because synthesis is now the dominant GPU cost and the question "can this
+scale to 100+ codes" needs a shared model rather than a per-thread argument.
+
+### 10.1 Notation -- TWO things are called phi, and they are unrelated
+
+* **`phi` (lowercase, in the code)** is the FRACTIONAL code phase, `C - floor(C)`, in `[0,1)`.
+  It only places the chip/tap boundary within a hop.
+* **`Phi` / `PhiA` / `PhiB`** is the cumulative filter TABLE, `[n_chan][Lf+1]` complex, built on
+  the host by `hoprate_filter`. This is the 1.06 MB per (PRN, channel) object the kernel streams.
+
+Everything below about "the Doppler is in the exponent" is about the TABLE.
+
+### 10.2 What the kernel computes
+
+One complex sample per (PRN, channel, hop, trial). Because the code is piecewise constant over a
+chip, the PFB's response over its whole filter span collapses to a sum over CHIPS:
+
+    sample = sum_d  code[chip0 - d] * ( Phi[t_d] - Phi[t_{d-1}] )
+
+`Phi` is a prefix sum of the channel-modulated PFB prototype, so a chip's contribution is one
+DIFFERENCE of it. That is the whole algorithm: 212 chip steps instead of 65536 sample steps --
+a 300x algorithmic win that is already banked, and the reason a dense/FFT formulation loses
+(10.6).
+
+    Phi_A,c[K] = sum_{j<K} proto[j] * exp(-i (off_c + wc) j),   off_c = 2*pi*c/fft_len
+    Phi_B,c[K] = same with (off_c - wc)          wc = 2*pi*(f_offset + doppler)/fs
+
+**THE DOPPLER SITS INSIDE THAT EXPONENTIAL, MULTIPLIED BY THE TAP INDEX j.** That is why every
+PRN needs its own table: two PRNs at different Doppler differ by a factor `exp(-i d(wc) j)` that
+varies ALONG the sum, so one table cannot be scaled into another -- it would have to be re-summed.
+Two tables (A and B) because the replica is the real-signal pair
+`r = 0.5*(pa*sA + pb*sB)`, `pa/pb` being the per-hop carrier phasor and its conjugate.
+
+### 10.3 The loop nest, at deployed CHORD geometry
+
+    per record                        10.4858 ms = 2048 hops x 16384 samples @ 3.2 GS/s
+      per PRN                         n_prn seeded
+        per channel                   7 per instance
+          per hop                     2048
+            per trial (E/P/L)         3        <- fused into one walk since f789d6856
+              per chip                212      <- THE INNER LOOP
+                2 loads from Phi (16 B) + ~14 flops
+
+`n_chips = ceil((Lf-1)*cps)+2 = 212` is NOT a tuning knob: `Lf = num_taps * fft_len = 4*16384 =
+65536` samples of PFB span at 312.8 samples/chip. It is set by the F-engine.
+
+Per PRN per record: `7 * 2048 * 3 * 212 = 9.1M` chip steps. At 11 PRNs, 100M chip steps,
+~1.6 GB of loads, ~1.4 Gflop.
+
+### 10.4 The cost model: memory, by ~60x
+
+Arithmetic intensity is **0.9 flop/byte** (14 flops per 16 B) against the A40's balance point of
+~54 (37.4 Tflop/s fp32 / 696 GB/s). Nothing about cheaper arithmetic matters. Only bytes.
+
+And the bytes are awkward structurally: consecutive `t_d` are ~312 entries apart (2.5 kB), so
+every chip touches a fresh line, and **no two blocks share a table** (10.2). Each block streams
+its own 1.06 MB slice.
+
+    measured, 11 PRN x 7 chan x 212 chips, fused/1024   0.546 ms   (5.2% of a record)
+    pure-traffic floor (each slice read once)           0.12-0.24 ms
+    linear regime above ~12 PRN                         ~0.038 ms/PRN
+
+Below ~12 PRNs the GPU is not full: 1024-thread blocks are one per SM, and 84 SMs / 7 channels =
+12 PRNs. **At 100 codes: ~3.8 ms synthesis + ~2.6 ms correlation = ~61% of a record period, for
+ONE band on ONE instance.** That is the scaling problem.
+
+### 10.5 Precision -- MEASURED, and it corrects an earlier claim
+
+`scripts/gnss/phibits.cpp` builds `Phi` at deployed geometry and reports what the gather actually
+needs. **The "Phi is a prefix sum so it needs the dynamic range" argument is WRONG**, and I made
+it before checking:
+
+    max|Phi|                                    0.674
+    |dPhi| over one chip step   median          0.0825      max|Phi|/median = 8.2  (3.0 bits)
+                                min             2.56e-05    max|Phi|/min    = 26325 (14.7 bits)
+
+The integrand oscillates at 2.31 rad/sample, so the prefix sum does NOT grow secularly -- it is a
+bounded oscillation, and the differences are within ~8x of the values. Rounding `Phi` to N
+mantissa bits (true per-value float exponents) costs, on the chip-step difference:
+
+    23 bits (fp32)  median 1.5e-08   worst 4.2e-08
+    15 bits         median 4.0e-06   worst 1.2e-05
+    11 bits (fp16)  median 6.2e-05   worst 3.3e-04
+     8 bits (bf16)  median 5.2e-04   worst 1.8e-03
+
+**fp16 Phi is viable.** A 3e-4 worst-case relative error per chip step is ~-70 dB on the replica,
+far under every other error in the chain. That halves the table, halves the traffic, and the
+kernel is memory-bound by 60x -- so it is a near-direct **2x**, and it is the cheapest lever on
+this list. What it costs is the bit-exactness contract between the waveform and fused kernels
+(both would move together, so the gates stay at 0, but the replica changes by ~1e-4 -- a REAL
+change, unlike the fmaf pinning).
+
+**Where the doubles are, and why they stay.** The inner loop is already entirely float. Double
+appears in exactly two places, both OUTSIDE it:
+
+1. **Once per hop, for absolute time.** `C = cp0 + n_m*cps` with `n_m ~ 2.95e15` after ten days
+   of F-engine uptime, and the carrier angle `wc*n_m ~ 6.8e15` -- which lands in the binade where
+   a double's ULP is EXACTLY ONE RADIAN (hence the fma two-product in the kernel). float has 24
+   bits; this needs 52. Non-negotiable, and it is 1/212 of the work.
+2. **The reductions.** `acc[]` and `e[]` accumulate over 2048 hops in double. That is about the
+   SUM, not the sample.
+
+So "why full floats" has a clean answer: the samples are float already, the doubles are absolute
+time and final accumulation, and the table could plausibly be HALF a float.
+
+### 10.6 Levers, ranked, with what is measured vs speculative
+
+1. **fp16 `Phi` -- MEASURED viable, ~2x.** See 10.5. Cheapest real win available.
+2. **Doppler-factored `Phi` -- the only lever that changes the SCALING law.** Share one table set
+   per channel across all PRNs in a Doppler bucket, plus a low-order correction. Measured tilt
+   across the span: **0.643 rad at +-5 kHz** (chip-step `dPhi` changes by 63%), **0.064 rad at
+   +-500 Hz** (6.4%). So a shared table needs either genuine correction terms or buckets far
+   tighter than the current 100 Hz `refresh_hz` implies -- but even ~20 buckets beats 100
+   per-PRN tables at 100 codes, and it stops live `Phi` growing with `n_prn` at all. Needs an
+   accuracy study; the tilt numbers above are the input to it.
+3. **Shorter PFB span.** `n_chips` is exactly proportional to `num_taps * fft_len`. A 2-tap PFB
+   halves synthesis. F-engine parameter, changes the channel response, not ours -- but it is
+   linear and worth knowing.
+4. **Code-transition sparsity -- LOOKS good, IS not.** By summation by parts,
+   `sum_d c_d (Phi_d - Phi_{d-1}) = sum_d Phi_d (c_d - c_{d+1}) + boundary`, and with `c = +-1`
+   half those weights are exactly zero. But threads in a warp sit at different HOPS, and `chip0`
+   advances 52.4 chips per hop, so the skip mask is uncorrelated across lanes: the branch is
+   fully divergent, the warp still issues the loads, and we are memory-bound. Real flop saving,
+   worthless.
+5. **Tensor cores -- NO, and it is worth recording why.** The binding constraint is a
+   data-dependent GATHER, not a matrix multiply; tensor cores raise a flop ceiling that is 60x
+   away from binding. For a fixed hop the `t_d` are shared across channels, so `s = M v` with M
+   7x212 -- but building M *is* the gather, and the multiply that follows is trivial. The only
+   formulation that is a genuine dense GEMM is the pre-collapse one (`n_chan x Lf` per hop,
+   459k MACs against the gather's 1484): **300x more arithmetic**, against a tensor advantage of
+   8-16x. Loses by more than an order of magnitude. The chip gather already IS the sparse
+   algorithm.
+6. **Traffic engineering -- mostly spent.** 24 re-walks -> 2 (block width + gather fusion, 7.6x).
+   We sit 2-4x above the pure-traffic floor; that is all that is left there.
+
