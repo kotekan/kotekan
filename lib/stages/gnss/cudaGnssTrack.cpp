@@ -65,6 +65,15 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         *sig, sample_rate, f_offset, N, num_taps, dsp::window_from_string(win), prns);
     replica->code_doppler_sign =
         config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
+    // FDMA (GLONASS L1OF/L2OF): every satellite shares one code and is separated by CARRIER, so
+    // each PRN needs its own offset from band centre. The table is built by the config generator
+    // from the live GLONASS frequency plan and travels in the yaml, where it is readable next to
+    // the PRN list. Absent/empty -> CDMA, i.e. every other signal, unchanged.
+    replica->set_prn_freq_offsets(
+        config.get_default<std::vector<double>>(unique_name, "prn_freq_offset_hz", {}));
+    if (replica->prn_freq_offsets_set() > 0)
+        INFO("cudaGnssTrack: FDMA carrier offsets applied to {:d} of {:d} PRNs",
+             replica->prn_freq_offsets_set(), (int)prns.size());
     hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", replica->repl_period_hops());
     // dll_spacing_chips is in EFFECTIVE (post-comb) chips: /comb_mult converts to the component
@@ -135,6 +144,7 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     ctrim.assign(n_prn, 0.0);
     ref_hop.assign(n_prn, 0);
     active.assign(n_prn, 0);
+    carrier_repin.assign(n_prn, 0.0);
     f_ref.assign(n_prn, std::nan(""));
     reacq_hop.assign(n_prn, 0);
 
@@ -254,7 +264,7 @@ void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
     // Nothing here needs the lock: build the update locally, then swap it in.
     struct Upd {
         int i;
-        double dop, cp, cp_rate, dop_rate, ctrim;
+        double dop, cp, cp_rate, dop_rate, ctrim, carrier_repin;
         long long ref_hop;
         bool has_bits;
         NavBits bits;
@@ -275,6 +285,7 @@ void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                     u.dop_rate = s.value("doppler_rate_hz_s", 0.0);
                     u.ctrim = s.value("carrier_trim_hz", 0.0);
                     u.ref_hop = s.value("ref_hop", (long long)0);
+                    u.carrier_repin = s.value("carrier_repin", 0.0);  // trim-bleed amount (Hz)
                     // P7a predicted nav bits (optional): +-1 per 20 ms bit, 0 = unknown.
                     if (peel && s.contains("nav_bits")) {
                         try {
@@ -326,6 +337,10 @@ void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                 dop_rate[u.i] = u.dop_rate;
                 ctrim[u.i] = u.ctrim;
                 ref_hop[u.i] = u.ref_hop;
+                // SET-only (never cleared here): a request must survive until the frame snapshot
+                // consumes it, so a subsequent flagless seed post cannot drop an unconsumed re-pin.
+                if (u.carrier_repin != 0.0)
+                    carrier_repin[u.i] = u.carrier_repin;
                 if (u.has_bits)
                     nav_bits[u.i] = std::move(u.bits);
                 active[u.i] = 1;
@@ -965,7 +980,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
 
     // Snapshot the REST-updated seeds once per frame (the tracker snapshots per window; the
     // broker cadence is 0.2 s, a frame is ~10 ms -- same behavior).
-    std::vector<double> dop, cp, cp_rate, dop_rate, ctrim;
+    std::vector<double> dop, cp, cp_rate, dop_rate, ctrim, repin;
     std::vector<long long> ref_hop;
     std::vector<uint8_t> active;
     std::vector<cudaGnssTrackState::NavBits> navb;
@@ -978,6 +993,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         ctrim = S.ctrim;
         ref_hop = S.ref_hop;
         active = S.active;
+        // CONSUME the one-shot re-pin requests: copy out, then clear the persistent flags so a
+        // request forces exactly ONE re-pin (this frame), never a standing forced re-pin.
+        repin = S.carrier_repin;
+        std::fill(S.carrier_repin.begin(), S.carrier_repin.end(), 0.0);
         if (S.peel)
             navb = S.nav_bits;
     }
@@ -1007,7 +1026,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 continue;
             }
             // Covering channels at the seed Doppler (GLOBAL ids -> this subband's local set).
-            auto cover = S.replica->covering_bins(dop[p], S.doppler_margin_hz);
+            auto cover = S.replica->covering_bins(dop[p], S.doppler_margin_hz, p);  // p: FDMA carriers are per-PRN (GLONASS)
             // DIAGNOSTIC channel-width trim (max_cover_bins, 2026-07-21): keep only the N
             // covering channels nearest the carrier IF -- the narrow-despread A/B for the
             // L5-band ADR wander (wide 10.23 Mcps chains wander 20-50x vs the narrow chains
@@ -1115,12 +1134,33 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     S.hold_snr_max = -1.0;
                 }
             }
-            if (fresh || fence || anchor_age > S.max_anchor_age_s) {
+            // TRIM-BLEED re-pin request (broker --carrier-bleed): ADD the absorbed trim to f_ref.
+            // NOT f_ref = dop -- dop is the FLEET model, off from this sat's true carrier by
+            // exactly the per-sat trim, so adopting it would leave that per-sat residual
+            // UNcompensated and decohere the sat. f_ref += trim leaves the combined carrier
+            // f_ref + ctrim invariant (the broker zeroed ctrim to match), so coherence is
+            // preserved while the frozen offset moves out of the despread ramp. Ignored while
+            // still fresh (no pin yet). Takes precedence over fence/age below.
+            const double bleed_hz = fresh ? 0.0 : repin[p];
+            if (fresh || fence || bleed_hz != 0.0 || anchor_age > S.max_anchor_age_s) {
                 if (fresh) {
                     S.f_ref[p] = dop[p]; // genuine (re)acquisition: adopt the seed
                     reanchored = 1;      // no phase history worth keeping
                 } else {
-                    if (fence)
+                    if (bleed_hz != 0.0) {
+                        // f_ref -= trim (NOT +=): the combined carrier is f_ref - ctrim (the NCO
+                        // rides the r2c-flipped internal convention -- "phi enters NEGATED"), so to
+                        // zero ctrim while holding the combined carrier fixed, f_ref moves DOWN by
+                        // the trim. f_ref = (true + ctrim) - ctrim = true. (f_ref += decohered and
+                        // the loop re-grew the trim to ~2x -- measured live 2026-08-03; the sign
+                        // flip then VERIFIED, trim -> ~0 coherent.)
+                        S.f_ref[p] -= bleed_hz;
+                        // ONE re-pin per request: the anchor loop runs once PER RECORD in this
+                        // frame, but repin is a frame-wide snapshot -- consume it here so the fold
+                        // is applied exactly once, not once per record.
+                        repin[p] = 0.0;
+                    }
+                    else if (fence)
                         S.f_ref[p] = dop[p]; // the seed moved out of the fence: adopt it
                     else // AGE re-pin: fold the FF ramp into f_ref -- frequency-continuous
                          // (see GnssChannelizedTracker for the full story)

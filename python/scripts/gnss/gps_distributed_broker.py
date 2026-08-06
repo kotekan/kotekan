@@ -1009,6 +1009,17 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     return out
 
 
+def _dh_dpos(xc):
+    """Pull the numeric BRDC-agreement residual (metres) out of an xcheck suffix string, or
+    None. The xcheck functions return a human suffix (' | BRDC dpos=0.05 m ...'); the
+    decode-health export wants the number. Parsing the string we already control keeps the five
+    shared, tested xcheck functions untouched (they ride the live seed loop)."""
+    if not xc:
+        return None
+    m = re.search(r"dpos=([-+]?\d+(?:\.\d+)?)", xc)
+    return float(m.group(1)) if m else None
+
+
 def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
     """S4 ephemeris cross-check: ECEF position residual between the live-decoded CNAV ephemeris
     and the downloaded BRDC (LNAV) ephemeris, both propagated to the SAME absolute instant (the
@@ -1031,6 +1042,29 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
         bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
         cx, cy, cz = _C.sv_position_cnav(cnav_eph, toe)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
+def _cnav2_brdc_xcheck(brdc_alm, sys, prn, cnav2_eph, log):
+    """GPS L1C-D CNAV-2 ephemeris cross-check -- the _cnav_brdc_xcheck analogue (CNAV-2 SF2 is the
+    same CNAV Keplerian set, so sv_position reuses gps_cnav). Ready for the live field map; until
+    CNV2_EPH_FIELDS is filled the ephemeris is None so this is never reached."""
+    try:
+        import gps_cnav2 as _C2
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        toe = cnav2_eph["toe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _C2.sv_position_cnav2(cnav2_eph, toe)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
     except Exception as ex:
@@ -1060,6 +1094,34 @@ def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODnav %d)" % (
             dpos, be["toe_sow"] - t0e, inav_eph.get("IODnav", -1))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
+def _lnav_brdc_xcheck(brdc_alm, sys, prn, lnav_eph, log):
+    """LNAV ephemeris cross-check, the _inav_brdc_xcheck analogue for GPS L1 C/A. Unlike the
+    other constellations this is the STRONGEST possible check: BRDC's GPS record IS the LNAV
+    message, and sv_position_lnav is the same legacy Keplerian math as ge.sat_pos_clk, so a
+    correct on-node decode matches BRDC to ~centimetres (the only residual is a different
+    upload set, shown via the toe/IODE deltas). A large dpos here means a WRONG field offset in
+    LNAV_EPH_FIELDS -- this is the live validator that pack/unpack cannot be (see that table's
+    note). Kepler only, no framing."""
+    try:
+        import gps_nav_decode as _L
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        toe = lnav_eph["toe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _L.sv_position_lnav(lnav_eph, toe)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d/%d)" % (
+            dpos, be["toe_sow"] - toe, int(lnav_eph.get("IODE", -1)), int(be.get("iode", -1)))
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -1113,6 +1175,31 @@ def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
             dpos, be["toe_sow"] - t0e, bcnav2_eph.get("IODE", -1),
             int(round(bcnav2_eph.get("SatType", -1))))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
+def _bcnav3_brdc_xcheck(brdc_alm, sys, prn, bcnav3_eph, log):
+    """S5 ephemeris cross-check for BeiDou B2b B-CNAV3, the _bcnav2_brdc_xcheck analogue. Ready
+    for Phase 2 (needs beidou_bcnav3.sv_position_bcnav3 + a filled BCNV3_EPH_FIELDS); until then
+    the ephemeris is None so this is never reached. Kepler/CNAV-style."""
+    try:
+        import beidou_bcnav3 as _B
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = bcnav3_eph["t_oe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _B.sv_position_bcnav3(bcnav3_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
+            dpos, be["toe_sow"] - t0e, bcnav3_eph.get("IODE", -1),
+            int(round(bcnav3_eph.get("SatType", -1))))
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -1261,7 +1348,7 @@ def main(argv=None):
                          "TLE's ~km, includes the sat clock, and needs no skyfield. tle = the "
                          "legacy celestrak path (also the automatic fallback when BRDC is "
                          "unreachable at startup).")
-    ap.add_argument("--constellation", default=None, choices=("G", "E", "C"),
+    ap.add_argument("--constellation", default=None, choices=("G", "E", "C", "R"),
                     help="constellation letter for the BRDC almanac (which file covers ALL "
                          "systems, unlike the per-group TLE URLs). Default: --dr-constellation. "
                          "C keeps only PRN >= 19 (BDS-3): the BDS-2 birds transmit B1I at "
@@ -1311,6 +1398,24 @@ def main(argv=None):
                          "for cannot yet be written. Exports each chain's PRE-fusion value "
                          "and its scatter, because the persisted .hz files already read each "
                          "other and their agreement is therefore partly manufactured.")
+    ap.add_argument("--decoded-eph-fallback", type=int, default=1,
+                    help="when the network BRDC fetch fails, keep the dead-reckon predict alive "
+                         "off THIS broker's own on-node decoded ephemeris (decoded_eph.py, which "
+                         "reuses each decoder's BRDC-validated propagator). Geometry+Doppler are "
+                         "exact; precise sat-clock is Galileo-complete, best-effort elsewhere. "
+                         "1=on (default), 0=off (pre-fallback behaviour: predict goes dark).")
+    ap.add_argument("--decoded-eph-fallback-force", type=int, default=0,
+                    help="ALWAYS predict from decoded eph, even when BRDC is available -- the live "
+                         "A/B validation harness (compare against the BRDC predict in the log). "
+                         "Exercises the BeiDou BDT frame + CNAV clock the offline test can't. "
+                         "Do NOT leave on in production.")
+    ap.add_argument("--decode-health-file", default=None,
+                    help="publish this broker's NAV-DECODE health as JSON (atomically "
+                         "replaced) for the viewer + the eventual decoded-eph BRDC fallback: "
+                         "per (signal, PRN) whether SYNCED, whether a full ephemeris was "
+                         "EXTRACTED, the BRDC-agreement residual dpos_m, and decode freshness. "
+                         "WRITE-ONLY, sibling of --state-file; the viewer reads the directory "
+                         "and merges. Off when unset.")
     ap.add_argument("--state-dongle", default=None,
                     help="fusion scope key for --state-file: what physically shares an LO "
                          "(one airspy per band, so this is the band tag, identical for every "
@@ -1569,6 +1674,47 @@ def main(argv=None):
     #  by surviving mechanisms: a stale/aliased f_ref offset is snapped by the TIGHT
     #  tracker fence (fll_reacq_hz ~15 Hz, free under --dop-continuous), and a walked/
     #  aliased TRIM latch is the watchdog's lifecycle rescue below.)
+    ap.add_argument("--carrier-bleed-shadow", type=int, default=1,
+                    help="f_ref TRIM-BLEED SHADOW (1 = on, log-only): report where a converged, "
+                         "coherent, STANDING carrier trim WOULD be re-pinned into f_ref (which "
+                         "would drop the sinc(ctrim*T_rec) despread loss, ~0.13-0.26 dB on L2C). "
+                         "Takes NO action -- it validates the TRIGGER on live data before any "
+                         "tracker change (the fleet-collapse lesson: a carrier correction that "
+                         "fires on the wrong sat is catastrophic). Gated on coherent + converged "
+                         "so it can never flag the BOOTSTRAP/incoherent noise-walk that killed "
+                         "alias-escape v1/v2.")
+    ap.add_argument("--carrier-bleed-hz", type=float, default=2.0,
+                    help="Shadow: minimum standing |trim| (Hz) to consider a bleed candidate. "
+                         "Below this the sinc loss is negligible and not worth a re-pin.")
+    ap.add_argument("--carrier-bleed-stable-emits", type=int, default=8,
+                    help="Shadow: consecutive coherent emits the trim must hold steady over to "
+                         "count as CONVERGED (a moving trim is still settling -- not a candidate). "
+                         "Longer window makes the drift SLOPE (below) measurable above noise.")
+    ap.add_argument("--carrier-bleed-stable-hz", type=float, default=0.4,
+                    help="Shadow: max peak-to-peak trim spread (Hz) over the stability window to "
+                         "call it converged.")
+    ap.add_argument("--carrier-bleed-max-slope", type=float, default=0.02,
+                    help="Shadow: max |least-squares trim slope| (Hz/s) over the window. A still-"
+                         "settling trim drifts (low spread but a monotonic climb); bleeding it folds "
+                         "a mid-convergence value and leaves a residual (the 2026-08-03 REFUTED "
+                         "class). Requiring a FLAT slope, not just low spread, rejects those.")
+    ap.add_argument("--carrier-bleed", type=int, default=0,
+                    help="ARM the trim-bleed (0 = shadow-only). On a verified candidate: zero "
+                         "car_trim and flag the tracker to re-adopt the seed (f_ref = dop, phase-"
+                         "continuous reanchored==2) -- folding the frozen sub-fence pin offset into "
+                         "f_ref so the despread runs on-true. EXPLAIN-APPLY-VERIFY: heal (stay "
+                         "coherent) or it is logged REFUTED and the loop re-grows the trim from 0. "
+                         "Default OFF -- validate on the replay bench (GNSS_TRIM_FORCE) first.")
+    ap.add_argument("--carrier-bleed-verify-emits", type=int, default=3,
+                    help="Emits to watch after a bleed before judging the re-pin by its residual.")
+    ap.add_argument("--carrier-bleed-ok-hz", type=float, default=1.5,
+                    help="Post-bleed |residual| (Hz) at the end of the verify window to count "
+                         "VERIFIED. Judged on the SETTLED residual, not coh_ok -- a re-pin resets "
+                         "the deep coherent window for ~1 emit (coherence_s blips) even on a good "
+                         "bleed, so coh_ok would false-refute; and a mild remainder still reduced "
+                         "the standing trim (net win).")
+    ap.add_argument("--carrier-bleed-lockout-s", type=float, default=120.0,
+                    help="Minimum seconds between bleeds of the same PRN (anti-churn).")
     ap.add_argument("--watchdog-s", type=float, default=0.0,
                     help="TRACK WATCHDOG (0 = off): a sat with a fresh detection at "
                          ">= --watchdog-det-snr that has ZERO coherent emits for this many "
@@ -2036,8 +2182,11 @@ def main(argv=None):
                          "express 'L1C only'. Read ONCE at startup from the live Celestrak block "
                          "names (gps_beamtrack.signal_capable_prns); on fetch failure or empty "
                          "result the filter is DISABLED with a warning (phantoms return, but the "
-                         "chain lives -- better than killing L1C during a network outage). GPS "
-                         "only; E/C constellations use --tle-name-filter instead.")
+                         "chain lives -- better than killing L1C during a network outage). "
+                         "GPS and GLONASS: for R the block marker is the Celestrak 'K' suffix on "
+                         "the Uragan number, and GLO_L3OC_* -> K satellites only (the CDMA "
+                         "signals are GLONASS-K's; the FDMA L1OF/L2OF are on every satellite, so "
+                         "they get no filter). E/C use --tle-name-filter instead.")
     ap.add_argument("--dr-min-prn", type=int, default=None,
                     help="dead-reckon only PRNs >= this: a SIGNAL-CAPABILITY gate, not a "
                          "visibility one. Default 19 for BeiDou (B1C/B2a are BDS-3 ONLY; the "
@@ -2128,9 +2277,11 @@ def main(argv=None):
                          "(bit_export: true), pushed as nav_bits with each seed row -- the "
                          "fused peel's sign source (P7a: ~11 -> >=26-35 dB). Self-gating: "
                          "chains whose combiner exports no nav_obs are untouched. 0 = off.")
-    ap.add_argument("--nav-decoder", default="lnav", choices=("lnav", "cnav"),
+    ap.add_argument("--nav-decoder", default="lnav", choices=("lnav", "cnav", "bcnav3"),
                     help="which decoder consumes nav_obs. lnav (default): the LNAV "
                          "decode-and-predict (GPS L1CA, the periodic-subframe future-bit source). "
+                         "bcnav3: the BeiDou B2b B-CNAV3 decoder (GF(64) NB-LDPC(162,81) + CRC-24Q, "
+                         "the B2b PRIMARY chain's own nav; pure decode + BRDC xcheck, no bit-pred). "
                          "cnav: the CNAV decoder (GPS L2C-CM / L5-I) -- FEC+CRC-24Q, NOT a "
                          "future-bit source (the type schedule is not fixed); it decodes live "
                          "ephemeris/messages and shadow-serves the signs of DECODED spans. Set "
@@ -2185,6 +2336,14 @@ def main(argv=None):
                          "the Bcnav1Predictor (reusing the GF(64) NB-LDPC codec, different H "
                          "matrices for SF2/SF3) and the decoded ephemeris is cross-checked "
                          "against BRDC -- completing the civil D-component set (GPS+GAL+BDS).")
+    ap.add_argument("--cnav2-combiner", default=None,
+                    help="AUXILIARY combiner polled for GPS L1C-D CNAV-2 nav_obs, the "
+                         "--bcnav1-combiner analogue on the L1C broker: the broker's own --combiner "
+                         "is the L1C-P PILOT (deterministic L1CO overlay signs), while the CNAV-2 "
+                         "DATA symbols come off the derived L1C-D sibling. Symbols go to the "
+                         "Cnav2Predictor (binary-LDPC systematic extract + CRC-24Q, 18 s frame) and "
+                         "the decoded ephemeris is cross-checked against BRDC -- the 4th GPS-family "
+                         "decode (LNAV / CNAV / CNAV-2).")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -2246,6 +2405,7 @@ def main(argv=None):
     fnav_combiner = resolve_prefix(args.fnav_combiner, base) if args.fnav_combiner else None
     bcnav2_combiner = resolve_prefix(args.bcnav2_combiner, base) if args.bcnav2_combiner else None
     bcnav1_combiner = resolve_prefix(args.bcnav1_combiner, base) if args.bcnav1_combiner else None
+    cnav2_combiner = resolve_prefix(args.cnav2_combiner, base) if args.cnav2_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -2265,10 +2425,25 @@ def main(argv=None):
                         "eph": _alm_eph_mod.parse_rinex_nav(_alm_eph_mod.fetch_brdc(when)),
                         "eph_t": time.time()}
             n = sum(1 for k in brdc_alm["eph"] if k[0] == alm_sys and k[1] >= alm_min_prn)
-            _log("almanac: BRDC %s (%d %s sats%s) @ (%.4f, %.4f)"
-                 % (args.almanac_source, n, alm_sys,
-                    ", PRN >= %d" % alm_min_prn if alm_min_prn > 1 else "",
-                    args.lat, args.lon))
+            if n == 0:
+                # ★ A PARSE THAT SUCCEEDS WITH ZERO SATS IS A FAILURE, not a result. Only an
+                # EXCEPTION used to reach the TLE fallback below, so an almanac that simply has
+                # nothing for this constellation left the chain hinting NOTHING -- indistinguish-
+                # able, from the outside, from codes that do not correlate. GLONASS makes this
+                # reachable by construction: gnss_ephemeris' RINEX parser filters on sysc in
+                # "GEC", so every R record is skipped and an R broker parses a full file into
+                # zero satellites, every time. Falling through to TLE is right for ANY
+                # constellation the almanac does not cover.
+                _log("almanac: BRDC parsed but has 0 %s sats%s -> treating as UNAVAILABLE and "
+                     "falling back to TLE" % (alm_sys,
+                                              " with PRN >= %d" % alm_min_prn
+                                              if alm_min_prn > 1 else ""))
+                brdc_alm = None
+            else:
+                _log("almanac: BRDC %s (%d %s sats%s) @ (%.4f, %.4f)"
+                     % (args.almanac_source, n, alm_sys,
+                        ", PRN >= %d" % alm_min_prn if alm_min_prn > 1 else "",
+                        args.lat, args.lon))
         except Exception as e:
             _log("BRDC almanac unavailable (%s); falling back to TLE" % e)
     if args.almanac and brdc_alm is None:
@@ -2307,10 +2482,15 @@ def main(argv=None):
     # Signal-capability PRN gate (--signal-capability): the general block filter, fetched once.
     # Empty/failed lookup -> None (disabled) so a network hiccup can't dark the chain.
     _capable = None
-    if args.signal_capability and args.constellation == "G":
+    if args.signal_capability and args.constellation in ("G", "R"):
         try:
             import gps_beamtrack as _bt
-            _cap = _bt.signal_capable_prns(args.signal_capability)
+            # Pass THIS broker's TLE source: the GLONASS block marker lives in the glo-ops
+            # names, and signal_capable_prns' default is the gps-ops group. Omitting it would
+            # read GPS names for GLONASS slots and mark every satellite not-K -- an EMPTY
+            # capable set, which the branch below then quietly turns into "filter disabled".
+            _cap = _bt.signal_capable_prns(args.signal_capability,
+                                           args.tle or _bt.DEFAULT_TLE_URL)
             if _cap:
                 _capable = _cap
                 _log("signal-capability %s: seeds+hints restricted to %d block-capable PRNs %s"
@@ -2451,6 +2631,10 @@ def main(argv=None):
     _bcnav2_log_t = [0.0]
     bcnav1 = None    # B-CNAV1 decoder (--bcnav1-combiner, BeiDou B1C-D); created lazily
     _bcnav1_log_t = [0.0]
+    cnav2 = None     # CNAV-2 decoder (--cnav2-combiner, GPS L1C-D); created lazily
+    _cnav2_log_t = [0.0]
+    bcnav3 = None    # B-CNAV3 decoder (--nav-decoder bcnav3, BeiDou B2b PRIMARY chain); lazy
+    _bcnav3_log_t = [0.0]
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
     # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
@@ -2500,6 +2684,21 @@ def main(argv=None):
     # anchors). VERIFY_EMITS bounds the hypothesis: heal within 3 emits or be reverted.
     CARRIER_EXPLAIN_HZ = 0.5
     CARRIER_VERIFY_EMITS = 3
+    # f_ref TRIM-BLEED shadow (2026-08-02): a converged, coherent, STANDING carrier trim means
+    # f_ref was pinned off-true at acquisition and the sub-fence offset froze in (the AGE re-pin
+    # keeps the slope but never re-adopts the seed) -- so the despread replica runs at f_ref while
+    # the true carrier is f_ref+ctrim, costing sinc(ctrim*T_rec) (L2C's 20 ms records: 0.13-0.26
+    # dB). The fix is an occasional gated re-adopt; this SHADOW logs where it WOULD fire, to
+    # validate the trigger on live data BEFORE any tracker change (the fleet-collapse lesson: a
+    # carrier correction that fires on the wrong sat is catastrophic -- see [[carrier-loop-
+    # absorbing-state]] alias-escape v1/v2). Log-only; takes NO action.
+    car_bleed_hist = {}   # prn -> [recent trim values on coherent ungated emits] (convergence)
+    car_bleed_log_t = {}  # prn -> last shadow-log walltime (rate limit)
+    # ARMED action (--carrier-bleed): when a candidate fires, zero car_trim and flag the tracker to
+    # re-adopt the seed (f_ref = dop, phase-continuous) -- folding the frozen offset into f_ref.
+    car_repin_pending = {}     # prn -> bleed amount (Hz) to carry as carrier_repin in this seed
+    car_bleed_verify = {}      # prn -> {emits, prev_trim, t}: post-bleed EXPLAIN-APPLY-VERIFY
+    car_bleed_lock_t = {}      # prn -> earliest walltime to bleed this prn again (anti-churn)
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
@@ -2677,6 +2876,100 @@ def main(argv=None):
         except Exception as e:
             _log("receiver-state export DISABLED: %s" % e)
             state_w = None
+    # NAV-DECODE health export (viewer surface + the decoded-eph fallback's status hook).
+    dhw = None
+    if args.decode_health_file:
+        try:
+            import decode_health
+            dhw = decode_health.DecodeHealthWriter(
+                args.decode_health_file,
+                chain=os.path.basename(args.decode_health_file).rsplit(".", 1)[0],
+                sys=alm_sys, log=_log)
+            _log("decode-health export -> %s (sys %s)" % (args.decode_health_file, alm_sys))
+        except Exception as e:
+            _log("decode-health export DISABLED: %s" % e)
+            dhw = None
+    # cnav runs in a GPS band broker; label by carrier so L2C and L5 stay distinct in the file.
+    _cnav_sig = ("GPS_L2C_CNAV" if abs((args.carrier_hz or 0) - 1227.6e6) < 5e6
+                 else "GPS_L5_CNAV")
+
+    def _dh_obs(sig, prn, h, eph_obj, xc):
+        """One decode-health observation, uniform across decoders. `eph_obj` is the extracted
+        ephemeris object (None until this decoder has a full set); `xc` the BRDC-xcheck suffix
+        (dpos parsed out). count is whatever monotonic decode counter the health dict carries.
+        Never raises."""
+        if dhw is None:
+            return
+        try:
+            cnt = (h.get("words") or h.get("decoded") or h.get("decoded_sf")
+                   or h.get("pages") or 0)
+            syn = h.get("synced")
+            if syn is None:
+                syn = (h.get("words") or 0) > 0 or eph_obj is not None
+            dhw.observe(sig, prn, time.time(), count=cnt, synced=bool(syn),
+                        eph=(eph_obj is not None), dpos_m=_dh_dpos(xc))
+        except Exception:
+            pass
+
+    # ---- Decoded-eph BRDC fallback (decoded_eph.py). Registry: for each decoder that may be
+    # armed in THIS broker, (signal, sys, sv_position fn, toe-field, ephemeris getter). Built once;
+    # the getters read the live decoder vars (inav/fnav/... reassigned in the loop) at call time.
+    _decfb = None
+    if args.decoded_eph_fallback or args.decoded_eph_fallback_force:
+        try:
+            import decoded_eph as _decfb
+            from galileo_inav import sv_position_inav as _svp_inav
+            from galileo_fnav import sv_position_fnav as _svp_fnav
+            from gps_cnav import sv_position_cnav as _svp_cnav
+            from gps_nav_decode import sv_position_lnav as _svp_lnav
+            from beidou_bcnav1 import sv_position_bcnav1 as _svp_bc1
+            from beidou_bcnav2 import sv_position_bcnav2 as _svp_bc2
+        except Exception as e:
+            _log("decoded-eph fallback DISABLED (import: %s)" % e)
+            _decfb = None
+    # (signal, sys, sv_pos, toe_field, lambda -> live decoder or None)
+    _dec_reg = [
+        ("GPS_L1_LNAV",    "G", _svp_lnav, "toe", lambda: navbits) if _decfb else None,
+        ("GAL_E1B_INAV",   "E", _svp_inav, "t0e", lambda: inav) if _decfb else None,
+        ("GAL_E5AI_FNAV",  "E", _svp_fnav, "t0e", lambda: fnav) if _decfb else None,
+        (_cnav_sig,        "G", _svp_cnav, "toe", lambda: cnav) if _decfb else None,
+        ("BDS_B1C_BCNAV1", "C", _svp_bc1,  "t_oe", lambda: bcnav1) if _decfb else None,
+        ("BDS_B2A_BCNAV2", "C", _svp_bc2,  "t_oe", lambda: bcnav2) if _decfb else None,
+    ] if _decfb else []
+    _dec_reg = [r for r in _dec_reg if r]
+
+    def _decoded_entries(now_w):
+        """Build decoded_eph entries (sys, prn, signal, eph, sv_pos, toe_gpst) from whichever
+        decoders are armed. toe_gpst is reconstructed in NOW's week from the eph's sow field.
+        Never raises -- a bad decoder/eph is skipped, not fatal."""
+        ents = []
+        if not _decfb:
+            return ents
+        gpst_now = _decfb.gpst_of_utc(datetime.fromtimestamp(now_w, tz=timezone.utc))
+        wk = int(gpst_now // 604800)
+        for signal, sys, svp, toef, getter in _dec_reg:
+            try:
+                dec = getter()
+                if dec is None:
+                    continue
+                for prn in list(dec._p):
+                    try:
+                        e = dec.ephemeris(prn)
+                        if e is None or toef not in e:
+                            continue
+                        toe_gpst = wk * 604800 + e[toef]  # nearest-week fold
+                        if toe_gpst - gpst_now > 302400:
+                            toe_gpst -= 604800
+                        elif toe_gpst - gpst_now < -302400:
+                            toe_gpst += 604800
+                        ents.append((sys, prn, signal, e, svp, toe_gpst))
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        return ents
+
+    _decfb_log_t = [0.0]
     CODE_LEN = float(args.code_length)
     # The long/overlaid code the TRACKERS despread, in primary periods and in seconds. The
     # time-assist below computes WHICH period a seed's cp sits in rather than searching it;
@@ -3904,6 +4197,14 @@ def main(argv=None):
                         cnav = CnavPredictor(log=_log)
                         _log("CNAV decoder armed (combiner exports nav_obs)")
                     cnav.ingest(_p, _r["nav_obs"])
+                elif args.nav_decoder == "bcnav3":
+                    # BeiDou B2b B-CNAV3: the PRIMARY chain's own nav decoder (NB-LDPC block, not a
+                    # bit-prediction scheme -> no peel role, pure decode + BRDC xcheck).
+                    if bcnav3 is None:
+                        from bcnav3_predictor import Bcnav3Predictor
+                        bcnav3 = Bcnav3Predictor(log=_log)
+                        _log("B-CNAV3 decoder armed (combiner exports nav_obs)")
+                    bcnav3.ingest(_p, _r["nav_obs"])
                 else:
                     if navbits is None:
                         from navbit_predictor import LnavPredictor
@@ -3955,9 +4256,12 @@ def main(argv=None):
                         inav = InavPredictor(log=_log)
                         _log("I/NAV decoder armed on aux chain %s" % inav_combiner)
                     inav.ingest(_p, _r["nav_obs"])
-                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
+                # I/NAV rides E1B on L1 and E5b-I on the mid band -- SAME message + decoder; label
+                # the decode-health obs by the actual carrier (from the aux combiner name).
                 if inav is not None and time.time() - _inav_log_t[0] > 60.0:
                     _inav_log_t[0] = time.time()
+                    _inav_sig = "GAL_E5BI_INAV" if "e5b" in inav_combiner else "GAL_E1B_INAV"
                     for _p in sorted(inav._p):
                         h = inav.health(_p)
                         if not h or not h["words"]:
@@ -3968,6 +4272,7 @@ def main(argv=None):
                         _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs(_inav_sig, _p, h, eph, xc)
             # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
             if fnav_combiner:
                 try:
@@ -3998,6 +4303,7 @@ def main(argv=None):
                         _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs("GAL_E5AI_FNAV", _p, h, eph, xc)
             # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
             if bcnav2_combiner:
                 try:
@@ -4028,6 +4334,7 @@ def main(argv=None):
                         _log("bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs("BDS_B2A_BCNAV2", _p, h, eph, xc)
             # S5 D-component #4 (LAST): BeiDou B1C B-CNAV1, the B-CNAV2-aux analogue on L1 BDS.
             if bcnav1_combiner:
                 try:
@@ -4057,6 +4364,37 @@ def main(argv=None):
                         _log("bcnav1 PRN %d: %d frames, %d crc, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs("BDS_B1C_BCNAV1", _p, h, eph, xc)
+            # GPS L1C-D CNAV-2: the bcnav1-aux analogue on the L1C broker (alm_sys 'G'). The broker's
+            # own --combiner is the L1C-P pilot; the CNAV-2 data symbols come off the derived L1C-D.
+            if cnav2_combiner:
+                try:
+                    _c2aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav2_combiner)
+                              if r.get("prn")}
+                except Exception as e:
+                    _c2aux = {}
+                    _log_rl("cnav2aux", "cnav2 aux combiner %s unreadable: %s"
+                            % (cnav2_combiner, e))
+                for _p, _r in _c2aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if cnav2 is None:
+                        from cnav2_predictor import Cnav2Predictor
+                        cnav2 = Cnav2Predictor(log=_log)
+                        _log("CNAV-2 decoder armed on aux chain %s" % cnav2_combiner)
+                    cnav2.ingest(_p, _r["nav_obs"])
+                if cnav2 is not None and time.time() - _cnav2_log_t[0] > 60.0:
+                    _cnav2_log_t[0] = time.time()
+                    for _p in sorted(cnav2._p):
+                        h = cnav2.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = cnav2.ephemeris(_p)
+                        xc = (_cnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
+                             % (_p, h["words"], h["toi"], "YES" if eph is not None else "no", xc))
+                        _dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
@@ -4077,10 +4415,22 @@ def main(argv=None):
                     h = navbits.health(_p)
                     if not h:
                         continue
+                    # Now that LNAV extracts the orbit set (subframes 1-3), surface the live
+                    # ephemeris + a BRDC position cross-check exactly as CNAV/I-NAV do -- this is
+                    # the live validator of the LNAV_EPH_FIELDS bit offsets (near-zero dpos, since
+                    # BRDC IS the LNAV message) and the on-node BRDC-fallback source for L1.
+                    eph_s = ""
+                    e = None
                     if h["synced"]:
-                        _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s"
+                        e = navbits.ephemeris(_p)
+                        if e is not None:
+                            eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
+                            if brdc_alm is not None:
+                                eph_s += _lnav_brdc_xcheck(brdc_alm, alm_sys, _p, e, _log)
+                        _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s%s"
                              % (_p, h["decoded_sf"], h["pages"],
-                                ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a"))
+                                ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a",
+                                eph_s))
                     else:
                         # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
                         # the reason: contiguous run vs total history vs what sync needs.
@@ -4089,6 +4439,7 @@ def main(argv=None):
                                 " -> CONSTRUCTED from BRDC"
                                 if (navbrdc is not None and navbrdc.ready())
                                 else " -> not peeled"))
+                    _dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
                 if navbrdc is not None:
                     # The calibration IS the trust boundary: a bad offset makes every
                     # constructed bit confidently wrong, so state it every cycle. `verify`
@@ -4121,6 +4472,7 @@ def main(argv=None):
                     if not h:
                         continue
                     eph_s = ""
+                    e = None
                     if h["eph"]:
                         e = cnav.ephemeris(_p)
                         if e is not None:
@@ -4134,6 +4486,23 @@ def main(argv=None):
                     else:
                         _log("cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
                              % (_p, h["emits"], h["g2"]))
+                    _dh_obs(_cnav_sig, _p, h, e, eph_s)
+            # B-CNAV3 decode health (BeiDou B2b PRIMARY chain). Frame decode is convention-complete
+            # (LDPC + CRC); the message-type histogram + SOW logged here is exactly what maps the
+            # ephemeris field table (Phase 2), after which eph + a BRDC dpos xcheck join (like cnav).
+            if bcnav3 is not None and time.time() - _bcnav3_log_t[0] > 60.0:
+                _bcnav3_log_t[0] = time.time()
+                for _p in sorted(bcnav3._p):
+                    h = bcnav3.health(_p)
+                    if not h or not h["words"]:
+                        continue
+                    eph = bcnav3.ephemeris(_p)
+                    xc = (_bcnav3_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                          if (eph is not None and brdc_alm is not None) else "")
+                    _log("bcnav3 PRN %d: %d frames CRC-OK, have %s, sow=%s, eph %s%s"
+                         % (_p, h["words"], h["have"], h["sow"],
+                            "YES" if eph is not None else "no", xc))
+                    _dh_obs("BDS_B2B_BCNAV3", _p, h, eph, xc)
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
@@ -4348,7 +4717,12 @@ def main(argv=None):
                 except Exception as e:
                     _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % e)
                     dr_state["eph_t"] = now_w - 7200 + 600
-            if dr_state["eph"]:
+            # DECODED-EPH FALLBACK: keep predicting off our own decode when the network BRDC is
+            # gone (or always, under --decoded-eph-fallback-force, the live A/B harness).
+            _use_decoded = _decfb is not None and (
+                args.decoded_eph_fallback_force
+                or (args.decoded_eph_fallback and not dr_state["eph"]))
+            if dr_state["eph"] or _use_decoded:
                 tag = args.dr_constellation
                 t_now_abs = now_w - utc0_sample0
                 la = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
@@ -4363,13 +4737,47 @@ def main(argv=None):
                 try:
                     # two epochs, 4 s apart: range_rate difference -> doppler RATE (the
                     # TLE almanac's rate is unused here -- BRDC governs model-owned sats)
-                    pd = dr_eph_mod.predict_all(
-                        dr_state["eph"], args.lat, args.lon, args.alt,
-                        datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
-                    pd2 = dr_eph_mod.predict_all(
-                        dr_state["eph"], args.lat, args.lon, args.alt,
-                        datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
-                        mask_deg=-90.0)
+                    if _use_decoded:
+                        _ents = _decoded_entries(now_w)
+                        pd = _decfb.predict_from_decoders(
+                            _ents, args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                        pd2 = _decfb.predict_from_decoders(
+                            _ents, args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
+                            mask_deg=-90.0)
+                        if time.time() - _decfb_log_t[0] > 60.0:
+                            _decfb_log_t[0] = time.time()
+                            ab = ""
+                            if args.decoded_eph_fallback_force and dr_state["eph"]:
+                                # A/B: compare decoded vs BRDC predict, worst common sat.
+                                pb = dr_eph_mod.predict_all(
+                                    dr_state["eph"], args.lat, args.lon, args.alt,
+                                    datetime.fromtimestamp(now_w, tz=timezone.utc),
+                                    mask_deg=-90.0)
+                                cm = set(pd) & set(pb)
+                                if cm:
+                                    dr_m = max(abs(pd[k]["range_m"] - pb[k]["range_m"])
+                                               for k in cm)
+                                    dd = max(abs(pd[k]["range_rate_mps"]
+                                                 - pb[k]["range_rate_mps"]) for k in cm)
+                                    ab = (" | A/B vs BRDC over %d sats: worst range %.1f m, "
+                                          "range-rate %.3f m/s (%.2f Hz@fc)"
+                                          % (len(cm), dr_m, dd,
+                                             dd / 299792458.0 * args.carrier_hz))
+                            _log("dead-reckon: predicting from DECODED eph (%s; %d entries -> "
+                                 "%d sats)%s"
+                                 % ("FORCE A/B" if args.decoded_eph_fallback_force
+                                    else "BRDC network DOWN -> fallback",
+                                    len(_ents), len(pd), ab))
+                    else:
+                        pd = dr_eph_mod.predict_all(
+                            dr_state["eph"], args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                        pd2 = dr_eph_mod.predict_all(
+                            dr_state["eph"], args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
+                            mask_deg=-90.0)
                 except Exception as e:
                     pd, pd2 = {}, {}
                     _log("dead-reckon: predict failed: %s" % e)
@@ -4860,6 +5268,32 @@ def main(argv=None):
                         continue
                     else:
                         continue  # verdict pending: hold, no further corrections
+                # ---- POST-BLEED VERIFY (trim-bleed, explain-apply-verify) ----
+                # A re-pin is a falsifiable hypothesis too: after folding the trim into f_ref, the
+                # sat must stay coherent. Unlike a step, there is NOTHING to revert (the re-pin is
+                # phase-continuous and car_trim correctly re-grows from 0 via the normal loop), so
+                # this only OBSERVES the outcome and lets the lockout prevent churn. It falls
+                # through to integrate normally either way (trim re-grows to the small remnant).
+                if prn in car_bleed_verify:
+                    bv = car_bleed_verify[prn]
+                    bv["emits"] += 1
+                    if bv["emits"] >= args.carrier_bleed_verify_emits:
+                        del car_bleed_verify[prn]
+                        # Judge by the SETTLED residual, not coh_ok (which blips for ~1 emit on the
+                        # deep-window reset a re-pin causes, good bleed or not). A residual at/under
+                        # the bar means the fold left the carrier aligned; a large one is a real
+                        # miss (the loop re-grows the trim from 0 either way -- and even a mild miss
+                        # already REDUCED the standing trim, so the bar is generous).
+                        if abs(resid) <= args.carrier_bleed_ok_hz:
+                            _log("CARRIER BLEED VERIFIED PRN %d: resid settled %+.2f Hz "
+                                 "(<= %.2f) over %d emits, trim now %+.2f"
+                                 % (prn, resid, args.carrier_bleed_ok_hz, bv["emits"],
+                                    car_trim.get(prn, 0.0)))
+                        else:
+                            _log("CARRIER BLEED REFUTED PRN %d: resid %+.2f Hz (> %.2f) after "
+                                 "%d emits -- loop re-grows trim, %.0f s lockout"
+                                 % (prn, resid, args.carrier_bleed_ok_hz, bv["emits"],
+                                    args.carrier_bleed_lockout_s))
                 sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
                        if coh_ok else 0.0)
                 tracking = prn in car_locked
@@ -4977,6 +5411,58 @@ def main(argv=None):
                                            min(args.carrier_max_step, trim - prev_trim))
                 car_trim[prn] = max(-args.carrier_max_hz, min(args.carrier_max_hz, trim))
                 car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, car_trim[prn]))
+                # ---- f_ref TRIM-BLEED SHADOW (log-only, no action) ----
+                # This emit is COHERENT and TRACKING (it reached the integrator ungated). If the
+                # trim has held a STANDING value across the stability window, f_ref is pinned
+                # off-true by ~that trim and a re-pin (f_ref += trim) would clear it. Log the
+                # candidate so the trigger can be validated on live data before it is ever armed.
+                # Recency-windowed like car_step_hist (a decoherence gap ages the window out ->
+                # not "converged"), so no per-gate-branch cleanup is needed.
+                if (args.carrier_bleed_shadow or args.carrier_bleed) and tracking and coh_ok:
+                    bh = car_bleed_hist.setdefault(prn, [])
+                    bh.append((t0, car_trim[prn]))
+                    del bh[:-args.carrier_bleed_stable_emits]
+                    vals = [v for _, v in bh]
+                    # FLAT-TRIM gate (2026-08-03): a truly converged trim is FLAT; a still-settling
+                    # one DRIFTS (low spread but a monotonic climb toward a higher plateau). Bleeding
+                    # a drifting trim folds a mid-convergence value into f_ref and leaves the
+                    # remainder as a residual -> the REFUTED class from the L2C live arm (PRN21 bled
+                    # at +5.37 while climbing -> +2.86 resid). Spread alone can't tell drift from
+                    # noise; the least-squares SLOPE can (noise averages out, a drift does not).
+                    slope = 0.0
+                    if len(bh) >= 2:
+                        tb = sum(t for t, _ in bh) / len(bh)
+                        vb = sum(vals) / len(vals)
+                        den = sum((t - tb) ** 2 for t, _ in bh)
+                        if den > 0.0:
+                            slope = sum((t - tb) * (v - vb) for t, v in bh) / den
+                    converged = (len(bh) >= args.carrier_bleed_stable_emits
+                                 and t0 - bh[0][0] < 90.0
+                                 and abs(car_trim[prn]) >= args.carrier_bleed_hz
+                                 and max(vals) - min(vals) <= args.carrier_bleed_stable_hz
+                                 and abs(slope) <= args.carrier_bleed_max_slope)
+                    # ARMED: re-pin f_ref and zero the trim (one bleed per lockout, never while a
+                    # step- or bleed-hypothesis is already under verify for this PRN).
+                    if (converged and args.carrier_bleed and prn not in car_verify
+                            and prn not in car_bleed_verify
+                            and t0 >= car_bleed_lock_t.get(prn, 0.0)):
+                        prev_trim = car_trim[prn]
+                        car_trim[prn] = 0.0             # f_ref re-pin absorbs the offset
+                        car_repin_pending[prn] = prev_trim  # tracker does f_ref += prev_trim
+                        car_bleed_verify[prn] = {"emits": 0, "prev_trim": prev_trim, "t": t0}
+                        car_bleed_lock_t[prn] = t0 + args.carrier_bleed_lockout_s
+                        car_bleed_hist[prn] = []
+                        car_bleed_log_t[prn] = t0
+                        _log("CARRIER BLEED PRN %d: re-pinning f_ref (%+.2f Hz absorbed, slope "
+                             "%+.3f Hz/s), trim->0, VERIFYING (heal in %d emits)"
+                             % (prn, prev_trim, slope, args.carrier_bleed_verify_emits))
+                    elif converged and t0 - car_bleed_log_t.get(prn, 0.0) >= 60.0:
+                        car_bleed_log_t[prn] = t0
+                        _log("CAR-BLEED CANDIDATE PRN %d: trim %+.2f Hz stable %d emits "
+                             "(spread %.2f, slope %+.3f Hz/s), coherent -> %s"
+                             % (prn, car_trim[prn], len(bh), max(vals) - min(vals), slope,
+                                "locked out" if args.carrier_bleed
+                                else "would re-pin f_ref, predict trim->~0 (shadow, no action)"))
             if car_report:
                 _log("CAR: " + "; ".join(car_report))
             for k in list(car_trim):
@@ -4986,6 +5472,11 @@ def main(argv=None):
                     car_verify.pop(k, None)  # a dropped sat's hypothesis dies with it
                     car_step_hist.pop(k, None)
                     car_fade.pop(k, None)
+                    car_bleed_hist.pop(k, None)  # its convergence history dies with it
+                    car_bleed_log_t.pop(k, None)
+                    car_bleed_verify.pop(k, None)
+                    car_bleed_lock_t.pop(k, None)
+                    car_repin_pending.pop(k, None)
 
         # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
         # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
@@ -5109,6 +5600,12 @@ def main(argv=None):
                 d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
+            if prn in car_repin_pending:
+                # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
+                # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
+                # carrier_trim_hz accompanies it -- the trim moves wholly into f_ref, leaving the
+                # combined carrier invariant).
+                d["carrier_repin"] = car_repin_pending.pop(prn)
             # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
             # its secondary overlay is DETERMINISTIC, so the chips are projected from the
             # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.
@@ -5548,6 +6045,8 @@ def main(argv=None):
                 # persistent fault names itself once a minute instead of flooding.
                 _log_rl("stateobs", "receiver-state observe/flush failed: %r" % (e,),
                         every_s=60.0)
+        if dhw is not None:
+            dhw.flush(t0)
         if args.once:
             return
         dt = args.interval - (time.time() - t0)

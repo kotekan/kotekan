@@ -136,10 +136,16 @@ export class GpsFeed {
     // visibility inherited from the constellation tag (one G/E/C toggle hides all that sat's
     // signals -- the row itself). t_rec/peel/band/col ride along for the table + C/N0.
     _build_signals() {
-        for (const s of SIGNALS)
-            if (!(s.tag in this.vis))
-                this.vis[s.tag] = (this._prefs && this._prefs.vis && s.tag in this._prefs.vis)
-                    ? !!this._prefs.vis[s.tag] : true;
+        for (const s of SIGNALS) {
+            // Register visibility under the CONSTELLATION (sys), not the display tag, so the
+            // one GPS toggle hides C/A and L1C together -- they are the same satellite. Keying
+            // this by tag created a phantom "L" entry that no chip ever rendered and nothing
+            // could turn off.
+            const k = s.sys || s.tag;
+            if (!(k in this.vis))
+                this.vis[k] = (this._prefs && this._prefs.vis && k in this._prefs.vis)
+                    ? !!this._prefs.vis[k] : true;
+        }
         return SIGNALS.map(s => Object.assign({}, s));
     }
 
@@ -301,7 +307,12 @@ export class GpsFeed {
                 const l = store[sg.key] || {};
                 if (Array.isArray(l.det))
                     for (const d of l.det) {
-                        const r = get(sg.tag, d.prn);
+                        // sys, NOT tag: the satellite ROW is keyed by constellation, the signal
+                        // COLUMN by tag. GPS L1C carries tag "L" so its series stays distinct
+                        // from C/A on the same PRN, but it is a GPS bird -- keying the row by
+                        // tag split one Block III satellite into a G20 row and an L20 row,
+                        // against the whole "one satellite per row" premise of this viewer.
+                        const r = get(sg.sys || sg.tag, d.prn);
                         r.detected = true;
                         if (d.snr != null) {
                             // Keep the search SNR PER SIGNAL, not just as a row maximum: it is
@@ -318,7 +329,7 @@ export class GpsFeed {
                 if (Array.isArray(l.status))
                     for (const s of l.status) {
                         if (!s.prn) continue;
-                        const r = get(sg.tag, s.prn);
+                        const r = get(sg.sys || sg.tag, s.prn);   // see the det loop above
                         const m = signal_metrics(s, sg.t_rec);
                         // The det loop above may already have stashed this signal's search SNR;
                         // signal_metrics() knows nothing about detections, so carry it across

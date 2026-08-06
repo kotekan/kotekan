@@ -28,6 +28,11 @@ constexpr int L1CO_LENGTH = 1800;      ///< L1C-P overlay (secondary) length, 18
 /// L1C-P (pilot) primary spreading code for @p prn (1..32), bipolar +1/-1.
 std::array<int8_t, L1C_CODE_LENGTH> generate_l1cp_code(int prn);
 
+/// L1C-D (DATA) primary spreading code for @p prn (1..32), bipolar +1/-1. Same Weil-code
+/// construction as L1C-P (shared Legendre + 7-chip insertion), only the per-PRN Weil/insertion
+/// indices differ. Carries CNAV-2; the data sibling of the L1C-P pilot (no overlay of its own).
+std::array<int8_t, L1C_CODE_LENGTH> generate_l1cd_code(int prn);
+
 /// L1C-P overlay (secondary) code for @p prn (1..32), bipolar +1/-1, length @ref L1CO_LENGTH.
 /// One overlay symbol multiplies each 10 ms primary period; coherently integrating L1C-P past
 /// one period requires wiping this (cf. the L5 NH overlay, but per-PRN and 1800 long).

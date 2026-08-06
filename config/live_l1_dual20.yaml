@@ -38,7 +38,7 @@ bytes_per_sample: 2
 buffer_depth: 16
 valve_depth: 51  # post-Valve elasticity in FRAMES = ceil(500 ms / 9.984 ms frame); buffer_depth is a frame count and the bands disagree on what a frame is, so it is sized in time
 sizeof_float: 4
-cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]  # LIVE/DEV SPLIT (2026-07-25): 0-10 stages, 11-13 = one private core per airspy (USB isolation; was a PAIR each, but a single core carries one input thread fine and 3 cores were idle), 14-19 = RESERVED for benches/dev so offline work cannot steal from the soak. Stages measured at ~8.7 cores busy, so 11 leaves ~20% headroom -- widen back toward 13 if frames start dropping.
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16, 18, 19]  # LIVE/DEV SPLIT (2026-07-25, WIDENED 2026-08-05): stages now get 0-10 + 14-16 + 18-19 (16 cores); 11-13 = one private core per airspy (USB isolation); 17 left free (the control plane's brokers/loggers/viewer measured ~99% there). ⚠️ 14-19 were RESERVED for benches/dev -- an offline bench now CONTENDS with the soak, so pin benches explicitly (taskset -c 11-13 is wrong too; use 17 or accept the contention). WHY WIDENED: the 07-25 note said stages were ~8.7 cores busy and to 'widen back toward 13 if frames start dropping'. On the 3-band node they are, and the cap was the binding constraint: kotekan demanded 1038% against an 11-core allowance with cores 0-10 all at 85-100% while 14-16/18-19 sat at 6-24% idle. ★ THE 3-BAND DEFICIT IS CPU, NOT GPU -- l1 was losing 38% of its frames while its own GPU duty was only 31%, which no amount of GPU headroom explains. See docs/buglist.md 'The THIRD BAND over-subscribes the node'.
 
 spectrum_length: 10  # N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS
 num_taps: 4
@@ -90,7 +90,7 @@ airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x03A464C837525967  # L1 unit (AirSpy NOS v1.0.0-rc9). [REVERTED 2026-07-21 from the L1<->L5 hardware-attribution swap: the swap RETIRED hardware -- L5-leg TEC noise stayed ~25-66 TECU on the strong dongle and L5 single-band ADR was ~15-25x L2C on BOTH dongles, so the noise is L5-signal PROCESSING (overlay wipe), not this unit. See tec-error-budget-l5-leg.]
+    serial: 0x03A464C837525967  # ASSIGNED from the dongle pool: unit A (historically L1) (slot 0 of BANDS='l1 l2c'). Not a pin -- see the `dongles:` note.
     freq: 1575.42
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real
     # Gains dropped 14/15/15 -> 11/11/11 for the 2026-07-14 front end: a second-stage amp
@@ -127,10 +127,10 @@ quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, targe
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 7
+    num_cuda_streams: 8
     frame_arrival_period: 0.0
     in_buffers: { q_buf: q_buf }
-    out_buffers: { epl_buf: epl_buf, gal_epl_buf: gal_epl_buf, e1b_epl_buf: e1b_epl_buf, bds_epl_buf: bds_epl_buf, b1c_d_epl_buf: b1c_d_epl_buf, l1c_epl_buf: l1c_epl_buf }
+    out_buffers: { epl_buf: epl_buf, gal_epl_buf: gal_epl_buf, e1b_epl_buf: e1b_epl_buf, bds_epl_buf: bds_epl_buf, b1c_d_epl_buf: b1c_d_epl_buf, l1c_epl_buf: l1c_epl_buf, l1c_d_epl_buf: l1c_d_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -296,6 +296,28 @@ gputrack:
           cuda_stream: 6
           gpu_mem: l1c_epl
           out_buf: l1c_epl_buf
+          in_buf: ""
+        - name: cudaGnssTrack
+          signal: GPS_L1C_D
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0
+          cuda_stream: 7
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: l1c_d_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 32
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/l1c_d_track/set_seeds"
+        - name: cudaOutputData
+          cuda_stream: 7
+          gpu_mem: l1c_d_epl
+          out_buf: l1c_d_epl_buf
           in_buf: ""
 assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 20.0e6 }
 # integration_length 1000, navwipe_bit_records 20 -> navwipe: integrate ~1 s
@@ -471,5 +493,31 @@ l1c_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l1c_epl_buf, out_b
 # the combiner self-calibrates the convention constant from confidently-locked sats.
 l1c_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 2, in_bufs: [l1c_rec_buf], out_buf: l1c_out_buf, n_prn: 32, integration_length: 100, secondary_overlay: L1CO, peel_depth: true, bit_export: true }
 l1c_record: { kotekan_stage: rawFileWrite, in_buf: l1c_out_buf, base_dir: "/tmp/gpswipe", file_name: "l1c_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+# ---- GPS L1C-DATA component (CNAV-2) ----
+# DERIVED from L1C-P exactly as B1C-D is from B1C-P: no search stage. L1C-D (data) and
+# L1C-P (pilot) share the SAME 10230-chip BOC(1,1) primary period and epoch (codes differ
+# only in the Weil tables), so an L1C-D row is the L1C-P row VERBATIM: no lift, no broker
+# flag. run_live adds l1c_d_track to the L1C broker's --trackers so it gets the same
+# consensus seeds as l1c_track (L1C-P). PURE DATA channel with NO secondary:
+# navwipe_bit_records 1 (one 10 ms code period = one CNAV-2 symbol) + bit_export, no
+# secondary_overlay (the 1800-symbol overlay is the L1C-P PILOT's). run_live hands
+# l1c_d_combiner to the broker as --cnav2-combiner so its nav_obs reach the Cnav2Predictor
+# (binary LDPC) and the decoded CNAV-2 ephemeris is cross-checked vs BRDC -- completing the
+# GPS L1C pilot+data pair (only ~10 Block-III sats broadcast it).
+# ⚠️ CNAV-2's frame is 18 s (like B-CNAV1): needs a phase-CONTINUOUS run to decode. GPU:
+# 7th L1 chain (stream 7) -- MEASURE l1_valve. rec_buf in TIME (the L5-I lesson).
+l1c_d_n_prn: 32
+l1c_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l1c_d_n_prn * record_floats * sizeof_float }
+l1c_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: l1c_d_n_prn * record_floats * sizeof_float }
+l1c_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * l1c_d_n_prn + 15360 * l1c_d_n_prn }
+l1c_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l1c_d_epl_buf, out_buf: l1c_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] }
+# integration_length 100 x 10 ms = 1 s emit (10 ms records, so 100 gives a full 1 s -- NOT
+# the B2b count-vs-time trap, whose 1 ms records made 100 too short). navwipe_bit_records 1:
+# a 10 ms L1C record is exactly ONE CNAV-2 symbol (100 sps), so one sign per record (the
+# B1C-D / E1B pattern). NO secondary_overlay (the 1800-symbol overlay is the L1C-P pilot's).
+# NO peel.
+l1c_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l1c_d_rec_buf], out_buf: l1c_d_out_buf, n_prn: 32, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], integration_length: 100, navwipe_bit_records: 1, bit_export: true }
+l1c_d_record: { kotekan_stage: rawFileWrite, in_buf: l1c_d_out_buf, base_dir: "/tmp/gpswipe", file_name: "l1c_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1 --unified' }

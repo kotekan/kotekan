@@ -30,6 +30,8 @@ import {GpsTablePanel}            from "./panels/gps_table.js";
 import {GpsFeed, configure_chains, configure_signals} from "./panels/gps_feed.js";
 import {GpsAmpHistoryPanel}       from "./panels/gps_amp_history.js";
 import {AirspyStatsPanel}         from "./panels/airspy_stats.js";
+import {DecodeHealthPanel}        from "./panels/decode_health.js";
+import {PositionSurveyPanel}      from "./panels/position_survey.js";
 
 
 function default_state() {
@@ -233,6 +235,16 @@ export class App {
             this.layout.addWidget({mount_id: "airspy_stats_card", title: "Stream health",
                                    x: 0, y: 13, w: 12, h: 2, min_w: 4, min_h: 2});
             this.panels.push(new AirspyStatsPanel({target: "airspy_stats_card", feed}));
+            // On-node nav-decode health (per data signal: synced / eph / BRDC dpos / freshness).
+            // Reads the viewer server's /decode_health endpoint, not the kotekan feed.
+            this.layout.addWidget({mount_id: "decode_health_card", title: "Nav decode health",
+                                   x: 0, y: 15, w: 12, h: 3, min_w: 4, min_h: 2});
+            this.panels.push(new DecodeHealthPanel({target: "decode_health_card"}));
+            // Position self-survey (gnss_pvt): single-freq vs dual-frequency iono-free best-fit +
+            // per-signal offsets. Its own widget; reads the same /decode_health endpoint's `pvt`.
+            this.layout.addWidget({mount_id: "position_survey_card", title: "Position self-survey",
+                                   x: 0, y: 18, w: 12, h: 4, min_w: 4, min_h: 2});
+            this.panels.push(new PositionSurveyPanel({target: "position_survey_card"}));
             this.layout.restore_from_storage();
             return;
         }

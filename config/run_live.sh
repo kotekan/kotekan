@@ -55,7 +55,7 @@ TAG=${TAG:-gpslive}                 # log-file stem: /tmp/$TAG*.log
 # k*10230) -- raw CM seeds POSTed to it would despread the wrong 1/75th of the CL code.
 TRK=${TRK:-$(
   { grep -oE 'seed_endpoint:[[:space:]]*"/[a-z_0-9]+/set_seeds"' "$CFG" \
-      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c|cl|e1b|e5a_i|b2a_d|b1c_d)_';
+      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c|cl|e1b|e5a_i|e5b_i|b2a_d|b1c_d)_';
     grep -oE '^track[_0-9]*' "$CFG"; } | sort -u | tr '\n' ',' | sed 's/,$//')}
 # Also hand any GnssVoltagePeel stage to the broker's --trackers: it POSTs the same consensus seeds
 # {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
@@ -92,10 +92,20 @@ fi
 # --inav-combiner. e1b_track joins the GAL broker's --trackers so it gets the E1C seeds.
 INAVA=""
 E1B_TRK=""
+E5B_I_TRK=""
 if grep -qE '^e1b_combiner:' "$CFG"; then
   INAVA="--inav-combiner ${SP}e1b_combiner"
   E1B_TRK=",${SP}e1b_track"
   echo "Galileo E1B I/NAV: broker decodes ${SP}e1b_combiner's symbols + BRDC cross-check"
+fi
+# S5 D-component: the Galileo E5b-I DATA sibling (I/NAV) on the mid band. E5b carries the SAME
+# I/NAV as E1B, so it reuses --inav-combiner + the InavPredictor -- derived from the E5b-Q pilot,
+# seeded verbatim, e5b_i_track joins the GAL(E5b) broker's --trackers to get E5b-Q seeds. A band
+# has E1B or E5b-I (never both), so this shares INAVA with the E1B block above without collision.
+if grep -qE '^e5b_i_combiner:' "$CFG"; then
+  INAVA="--inav-combiner ${SP}e5b_i_combiner"
+  E5B_I_TRK=",${SP}e5b_i_track"
+  echo "Galileo E5b-I I/NAV: broker decodes ${SP}e5b_i_combiner's symbols + BRDC cross-check"
 fi
 # S5 D-component #2: the Galileo E5a-I DATA sibling (F/NAV) on the L5 band. Like E1B but from
 # the E5a-Q pilot: derived, seeded verbatim, its combiner's nav_obs handed to the GAL(E5a)
@@ -126,6 +136,16 @@ if grep -qE '^b1c_d_combiner:' "$CFG"; then
   BCNAV1A="--bcnav1-combiner ${SP}b1c_d_combiner"
   B1C_D_TRK=",${SP}b1c_d_track"
   echo "BeiDou B1C-D B-CNAV1: broker decodes ${SP}b1c_d_combiner's symbols + BRDC cross-check"
+fi
+# GPS L1C-D DATA sibling (CNAV-2) on the L1 band. Like B1C-D from B1C-P: derived from the L1C-P
+# pilot, seeded verbatim -- l1c_d_track joins the L1C broker's --trackers so it gets L1C-P seeds.
+# Its combiner's nav_obs go to --cnav2-combiner for the Cnav2Predictor + BRDC xcheck (phase 2).
+CNAV2A=""
+L1C_D_TRK=""
+if grep -qE '^l1c_d_combiner:' "$CFG"; then
+  CNAV2A="--cnav2-combiner ${SP}l1c_d_combiner"
+  L1C_D_TRK=",${SP}l1c_d_track"
+  echo "GPS L1C-D CNAV-2: broker decodes ${SP}l1c_d_combiner's symbols + BRDC cross-check"
 fi
 CLA=""
 if grep -qE 'seed_endpoint:[[:space:]]*"/cl_track/set_seeds"' "$CFG"; then
@@ -196,6 +216,22 @@ sig_codelen() { [ -f "$SIGHDR" ] && awk -F, -v s="$1" '$1 ~ ("^[[:space:]]*\"" s
 # stage's signal can't leak in. Default = the L1-band signal (backward compat for dual20).
 blk_signal()  { awk -v b="^$1:" '$0 ~ b {f=1;next} /^[^[:space:]]/{f=0} f&&/^[[:space:]]*signal:/{print $2;exit}' "$CFG"; }
 CHIP_HZ=$(sig_chip "$SIGNAL"); CODELEN=$(sig_codelen "$SIGNAL")
+# ---- PRIMARY CONSTELLATION, derived from the primary chain's SIGNAL (2026-08-03) ----
+# A band's PRIMARY chain is emitted with the un-prefixed "gps_" stage names by convention
+# (gen_band_config chain_prefix: "gps_" now means "the primary chain", NOT necessarily GPS), but
+# its ACTUAL constellation comes from the signal. So a retuned band (L2C -> BeiDou B2b now, next
+# Galileo E5b on the same dongle, later GLONASS) drives the right broker with NO per-band flag:
+# the sys letter, TLE fallback and capability gate all follow from this one table. ★ TO SWAP A
+# BAND: change its airspy `freq:` + primary `signal:` in gnss_node.yaml and everything below
+# adapts (chip/code already come from the descriptor). A brand-new constellation = add a row here
+# (+ a nav decoder in the broker if you want the message). GPS keeps its PRN-indexed BRDC almanac
+# (empty TLE); the others fall back to celestrak TLE like the parallel gal_/bds_ chains do.
+case "$SIGNAL" in
+    GAL_*) PRIM_SYS=E; PRIM_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"; PRIM_TLE_FILTER="" ;;
+    BDS_*) PRIM_SYS=C; PRIM_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle";  PRIM_TLE_FILTER="BEIDOU-3" ;;
+    GLO_*) PRIM_SYS=R; PRIM_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"; PRIM_TLE_FILTER="" ;;
+    *)     PRIM_SYS=G; PRIM_TLE=""; PRIM_TLE_FILTER="" ;;
+esac
 # Per-constellation signal params for the parallel gal_/bds_ chains (see the brokers below).
 # GAL_E1C -> 1.023e6/4092/obs_gal_e1 ; GAL_E5A_Q -> 10.23e6/10230/obs_gal_e5a. Likewise BDS.
 GAL_SIGNAL=$(blk_signal gal_search); GAL_SIGNAL=${GAL_SIGNAL:-GAL_E1C}
@@ -204,8 +240,30 @@ GAL_CHIP=$(sig_chip "$GAL_SIGNAL");    GAL_CHIP=${GAL_CHIP:-1.023e6}
 GAL_CODELEN=$(sig_codelen "$GAL_SIGNAL"); GAL_CODELEN=${GAL_CODELEN:-4092}
 BDS_CHIP=$(sig_chip "$BDS_SIGNAL");    BDS_CHIP=${BDS_CHIP:-1.023e6}
 BDS_CODELEN=$(sig_codelen "$BDS_SIGNAL"); BDS_CODELEN=${BDS_CODELEN:-10230}
-case "$GAL_SIGNAL" in GAL_E5A*) GAL_OBS=obs_gal_e5a ;; *) GAL_OBS=obs_gal_e1 ;; esac
-case "$BDS_SIGNAL" in BDS_B2A*) BDS_OBS=obs_bds_b2a ;; *) BDS_OBS=obs_bds_b1c ;; esac
+# Obs-log filename per signal. EVERY signal wants an explicit row; the fallback DERIVES a name
+# from the signal so a new code can never silently land in ANOTHER signal's file. Until
+# 2026-08-05 the BDS catch-all named every non-B2A signal obs_bds_b1c, so when the l2c band was
+# retuned to 1207.14 its BDS_B2I chain wrote 17 h of B2I into a file labelled B1C -- and B1C is a
+# real signal on another front end 368 MHz away, so anything keyed on the filename (a beam map,
+# dtec, cmc) would coadd the two. Same "silently wrong data is worse than no data" trap the
+# primary chain's case block below was already fixed for; this one was missed.
+_obs_of() { echo "obs_$(echo "$1" | tr '[:upper:]' '[:lower:]')"; }
+case "$GAL_SIGNAL" in
+    GAL_E1*)  GAL_OBS=obs_gal_e1 ;;
+    GAL_E5A*) GAL_OBS=obs_gal_e5a ;;
+    GAL_E5B*) GAL_OBS=obs_gal_e5b ;;
+    GAL_E6*)  GAL_OBS=obs_gal_e6 ;;
+    *)        GAL_OBS=$(_obs_of "$GAL_SIGNAL") ;;
+esac
+case "$BDS_SIGNAL" in
+    BDS_B1C*) BDS_OBS=obs_bds_b1c ;;
+    BDS_B1I*) BDS_OBS=obs_bds_b1i ;;
+    BDS_B2A*) BDS_OBS=obs_bds_b2a ;;
+    BDS_B2B*) BDS_OBS=obs_bds_b2b ;;
+    BDS_B2I*) BDS_OBS=obs_bds_b2i ;;
+    BDS_B3I*) BDS_OBS=obs_bds_b3i ;;
+    *)        BDS_OBS=$(_obs_of "$BDS_SIGNAL") ;;
+esac
 # Escape-referee threshold, CHIP-SCALED (2026-07-19 census): the broker default 0.4 chips is
 # calibrated in L1-scale chips. Detection-timing noise is constant in TIME, so in CHIPS it
 # scales with chip rate -- at 10.23 Mcps (L5/E5a/B2a) the same fit noise reads 10x more chips
@@ -392,7 +450,12 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
   # --constellation: BRDC-almanac constellation gate (the default almanac source since
   # 2026-07-17; PRN-indexed = immune to the celestrak label rot. --tle stays as fallback).
-  ALM="$ALM --constellation G --doppler-sign ${DOPPLER_SIGN:-1}"
+  ALM="$ALM --constellation $PRIM_SYS --doppler-sign ${DOPPLER_SIGN:-1}"
+  # Non-GPS primary (retuned band): add the celestrak TLE fallback -- GPS uses the PRN-indexed
+  # BRDC almanac (no TLE), the others (BeiDou/Galileo/GLONASS) need their TLE like the gal_/bds_
+  # secondary chains do. Derived from PRIM_TLE above so a band swap needs no edit here.
+  [ -n "$PRIM_TLE" ] && ALM="$ALM --tle $PRIM_TLE"
+  [ -n "$PRIM_TLE_FILTER" ] && ALM="$ALM --tle-name-filter $PRIM_TLE_FILTER"
   # 2 deepest-below-horizon PRNs stay seeded as NOISE PROBES: genuine signal-free emits
   # calibrate the beam map's pedestal (the almanac gate otherwise never tracks one and
   # the GPS pedestal fell back to a signal percentile, blinding the map's low end).
@@ -405,7 +468,15 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # receiver clock solved from detected sats seed CODE PHASE for every visible sat the
   # search hasn't found -- sub-threshold sats despread on-peak with no detection needed
   # (the search demotes to bootstrap/fallback/integrity; watch 'dead-reckon' broker lines).
-  if [ "${DEAD_RECKON:-1}" != "0" ]; then ALM="$ALM --dead-reckon --dr-constellation G"; fi
+  # ⚠️ GLONASS has NO BRDC path here: its broadcast ephemeris is a position/velocity/acceleration
+  # state vector integrated by Runge-Kutta, not a Keplerian element set, so gnss_ephemeris'
+  # RINEX parser filters R records out entirely and sat_pos_clk cannot propagate them. Arming
+  # dead-reckon for R would log "armed" and then never pin a single satellite. Say so instead.
+  if [ "$PRIM_SYS" = "R" ]; then
+    echo "GLONASS primary: dead-reckon DISABLED (no Keplerian BRDC for R); hints come from TLE."
+  elif [ "${DEAD_RECKON:-1}" != "0" ]; then
+    ALM="$ALM --dead-reckon --dr-constellation $PRIM_SYS"
+  fi
   if [ "${NARROW_SEARCH:-1}" != "0" ]; then
     # --search-margin-wide-hz = the COLD per-PRN window (pre-clock-bias), sized from the clock
     # profile's accuracy bound; the warm margin (--search-margin-hz) applies once the bias solves.
@@ -448,7 +519,31 @@ CLOCK_BIAS_FILE=${CLOCK_BIAS_FILE:-$BIAS_DIR/gps_clock_bias_${TAG}.hz}
 # band's modernized signal (L2C -> IIR-M+, L5 -> IIF+, L1C -> III). The BeiDou-3 phantom fix
 # was a numeric PRN cutoff (--dr-min-prn) that can't express GPS's interspersed III sats.
 # L1 C/A is on every sat -> no gate (and no risk of excluding a sat missing from the TLE).
-case "$SIGNAL" in *L1CA*|*L1_CA*) SIG_CAP="";; *) SIG_CAP="--signal-capability $SIGNAL";; esac
+# --signal-capability is a BLOCK gate (GPS IIR-M/IIF/III per modernized signal; GLONASS 'K' for
+# the CDMA signals) -- meaningless for BeiDou/Galileo, which use --tle-name-filter instead.
+# ★ GLONASS L3OC is GLONASS-K ONLY -- 7 of 28 operational satellites -- so the gate matters MORE
+# here than anywhere else: ungated, three quarters of the hinted slots would be satellites that
+# do not transmit the signal at all. GLONASS FDMA (L1OF/L2OF) is on every satellite -> no gate.
+case "$SIGNAL" in
+    *L1CA*|*L1_CA*|GAL_*|BDS_*) SIG_CAP="" ;;
+    # ★ ALL GLONASS is gated, but for two different reasons. CDMA (L3OC/L2OC/L1OC) is
+    # GLONASS-K only -- 7 of 28 satellites. FDMA (L1OF/L2OF) is on every satellite, but its
+    # capability test is "do we KNOW ITS CARRIER": satellites are separated by frequency, so a
+    # slot whose channel number k we cannot read would be searched at the wrong frequency.
+    GLO_*)                      SIG_CAP="--signal-capability $SIGNAL" ;;
+    *)                          SIG_CAP="--signal-capability $SIGNAL" ;;
+esac
+# NO_SIG_CAP=1 drops the gate for one run. It is a CAPABILITY claim, not a measurement --
+# "which satellites transmit this signal" is read off satellite metadata (GPS block names,
+# GLONASS's 'K' marker), and metadata can be wrong or incomplete. Relaxing it turns the gate
+# into a question the SKY answers: hint everything visible and see which PRNs actually lock.
+# ★ Live use: GLONASS L3OC is gated to GLONASS-K, but late GLONASS-M units are reported to
+# carry it too -- if so the gate is hiding satellites we could be tracking. Cheap to check,
+# and the only cost of being wrong is wasted search channels.
+if [ "${NO_SIG_CAP:-0}" != "0" ] && [ -n "$SIG_CAP" ]; then
+    echo "NO_SIG_CAP=1: signal-capability gate DISABLED for this run (was: $SIG_CAP)"
+    SIG_CAP=""
+fi
 # S2 / Mechanism B OBSERVER (2026-07-29). Each broker publishes its receiver-state
 # estimates as JSON here. WRITE-ONLY: nothing consumes these yet, by design -- the fused
 # state gets a full soak of scoring before it is allowed to steer anything.
@@ -472,6 +567,13 @@ STA_GPS="--state-file $STATE_DIR/${TAG}.json --state-dongle ${TAG} $STA_COMMON"
 STA_GAL="--state-file $STATE_DIR/${TAG}_gal.json --state-dongle ${TAG} $STA_COMMON"
 STA_BDS="--state-file $STATE_DIR/${TAG}_bds.json --state-dongle ${TAG} $STA_COMMON"
 STA_L1C="--state-file $STATE_DIR/${TAG}_l1c.json --state-dongle ${TAG} $STA_COMMON"
+# Nav-decode health export -> one shared dir the viewer merges. GPS carries LNAV+CNAV, GAL
+# I/NAV+F/NAV, BDS B-CNAV1/2; L1C is a pilot with no data decode, so no file for it.
+DECODE_DIR=${DECODE_DIR:-$BIAS_DIR/decode_health}
+mkdir -p "$DECODE_DIR" 2>/dev/null
+DH_GPS="--decode-health-file $DECODE_DIR/${TAG}.json"
+DH_GAL="--decode-health-file $DECODE_DIR/${TAG}_gal.json"
+DH_BDS="--decode-health-file $DECODE_DIR/${TAG}_bds.json"
 CBP=$BIAS_DIR/gps_clock_bias_${TAG}
 SIB_GPS="--clock-bias-siblings ${CBP}_gal.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
 SIB_GAL="--clock-bias-siblings ${CBP}.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
@@ -493,7 +595,7 @@ fi
 echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
 python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search --trackers "$TRK" --combiner ${SP}gps_combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
-        ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" --clock-bias-file "$CLOCK_BIAS_FILE" $SIB_GPS $STA_GPS \
+        ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" --clock-bias-file "$CLOCK_BIAS_FILE" $SIB_GPS $STA_GPS $DH_GPS \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
         --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
         --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
@@ -527,7 +629,7 @@ if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUN
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker ($GAL_SIGNAL: gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track${E1B_TRK}${E5A_I_TRK} --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_gal.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_gal.hz $SIB_GAL $STA_GAL           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10}           ${BROKER_EXTRA:-} $GAL_ALM $CARG $INAVA $FNAVA           > /tmp/${TAG}_broker_gal.log 2>&1 &
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track${E1B_TRK}${E5A_I_TRK}${E5B_I_TRK} --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_gal.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_gal.hz $SIB_GAL $STA_GAL $DH_GAL           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10}           ${BROKER_EXTRA:-} $GAL_ALM $CARG $INAVA $FNAVA           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner ${SP}gal_combiner --search ${SP}gal_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!
@@ -547,7 +649,13 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
     # clock-freq bias (2026-07-12: lone cross-corr 'C14' lock swallowed -1550 Hz as clock
     # bias and deadlocked the narrowed search for the whole constellation). The BRDC
     # almanac gates PRN >= 19 itself; the name filter covers the TLE fallback path.
-    BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3"
+    # BDS-2 vs BDS-3: the BEIDOU-3 name filter is right for B1C/B2a/B2b (BDS-3 signals), but
+    # B2I is a BDS-2-ONLY signal -- filtering to BEIDOU-3 would hint exactly the satellites that
+    # do NOT broadcast it. Widen to the whole BeiDou group for a B2I chain.
+    case "$BDS_SIGNAL" in
+        BDS_B2I) : ;;                                   # BDS-2 signal: no BDS-3 filter
+        *) BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3" ;;
+    esac
     BDS_ALM="$BDS_ALM --noise-probes ${NOISE_PROBES:-4}"
     if [ "${DEAD_RECKON:-1}" != "0" ]; then BDS_ALM="$BDS_ALM --dead-reckon --dr-constellation C"; fi
     BDS_ALM="$BDS_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
@@ -568,7 +676,7 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
   echo "starting BEIDOU broker ($BDS_SIGNAL: bds_search/bds_track/bds_combiner, TLE group=beidou)..."
   python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}bds_search --trackers ${SP}bds_track${B2A_D_TRK}${B1C_D_TRK} --combiner ${SP}bds_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
-          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_bds.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_bds.hz $SIB_BDS $STA_BDS \
+          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_bds.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_bds.hz $SIB_BDS $STA_BDS $DH_BDS \
           --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN --hold-max-cp-err $BDS_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
@@ -606,13 +714,13 @@ if grep -qE '^l1c_track:|seed_endpoint:[[:space:]]*"/l1c_track/set_seeds"' "$RUN
   fi
   { [ -z "$LAT" ] || [ -z "$LON" ]; } && echo "WARNING: l1c_track present but LAT/LON unset -- L1C require_hint search will scan NOTHING"
   echo "starting GPS-L1C broker ($L1C_SIGNAL: l1c_search/l1c_track/l1c_combiner, constellation G, chip $L1C_CHIP code $L1C_CODELEN)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}l1c_search --trackers ${SP}l1c_track --combiner ${SP}l1c_combiner \
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}l1c_search --trackers ${SP}l1c_track${L1C_D_TRK} --combiner ${SP}l1c_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_l1c.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_l1c.hz $SIB_L1C $STA_L1C \
           --chip-rate-hz $L1C_CHIP --code-length $L1C_CODELEN --hold-max-cp-err $L1C_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-          ${BROKER_EXTRA:-} $ALM $CARG $L1C_NH --signal-capability ${L1C_SIGNAL:-GPS_L1C_P} \
+          ${BROKER_EXTRA:-} $ALM $CARG $L1C_NH $CNAV2A --signal-capability ${L1C_SIGNAL:-GPS_L1C_P} \
           > /tmp/${TAG}_broker_l1c.log 2>&1 &
   L1CPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
@@ -642,15 +750,31 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
   # from a hardcoded L1 triple. It used to be hardcoded, so an L2C run logged its observables as
   # "GPS_L1CA, 1023 chips, 1.023 Mcps" -- right carrier, wrong everything else, and the file was
   # even named obs_gps_l1.jsonl. Silently wrong data is worse than no data.
+  # Primary obs filename by signal (a retuned band names its file by the real signal, not L1).
+  # Explicit row per signal; the fallback derives a UNIQUE name (see _obs_of above) rather than
+  # collapsing a constellation to one file. The old BDS_*/GAL_*/GLO_* catch-alls meant every
+  # GLONASS primary -- L3OC-p, L2OF, L2OC-p -- logged to "obs_glo.jsonl", so the filename said
+  # nothing about which of three signals (three different carriers) it held.
   case "${SIGNAL:-GPS_L1CA}" in
+    GPS_L1CA*) _obs=obs_gps_l1 ;;
     GPS_L2C*) _obs=obs_gps_l2c ;;
     GPS_L5*)  _obs=obs_gps_l5  ;;
     GPS_L1C_*) _obs=obs_gps_l1c ;;
-    *)        _obs=obs_gps_l1  ;;
+    BDS_B1C*) _obs=obs_bds_b1c ;;
+    BDS_B1I*) _obs=obs_bds_b1i ;;
+    BDS_B2A*) _obs=obs_bds_b2a ;;
+    BDS_B2B*) _obs=obs_bds_b2b ;;
+    BDS_B2I*) _obs=obs_bds_b2i ;;
+    BDS_B3I*) _obs=obs_bds_b3i ;;
+    GAL_E1*)  _obs=obs_gal_e1 ;;
+    GAL_E5A*) _obs=obs_gal_e5a ;;
+    GAL_E5B*) _obs=obs_gal_e5b ;;
+    GAL_E6*)  _obs=obs_gal_e6 ;;
+    *)        _obs=$(_obs_of "${SIGNAL:-GPS_L1CA}") ;;
   esac
   # gal_/bds_ band params are DERIVED (GAL_SIGNAL/BDS_SIGNAL etc., above) so the same loop covers
   # the L1 tune (E1C/B1C) and the L5 tune (E5a-Q/B2a-P); the grep skips whichever chain is absent.
-  for _o in "gps_combiner gps_search G ${SIGNAL:-GPS_L1CA} ${CODELEN:-1023} $_obs ${CHIP_HZ:-1.023e6}" \
+  for _o in "gps_combiner gps_search $PRIM_SYS ${SIGNAL:-GPS_L1CA} ${CODELEN:-1023} $_obs ${CHIP_HZ:-1.023e6}" \
             "gal_combiner gal_search E $GAL_SIGNAL $GAL_CODELEN $GAL_OBS $GAL_CHIP" \
             "bds_combiner bds_search C $BDS_SIGNAL $BDS_CODELEN $BDS_OBS $BDS_CHIP" \
             "l1c_combiner l1c_search G ${L1C_SIGNAL:-GPS_L1C_P} ${L1C_CODELEN:-10230} obs_gps_l1c ${L1C_CHIP:-1.023e6}"; do

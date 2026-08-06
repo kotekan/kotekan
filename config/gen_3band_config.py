@@ -26,10 +26,43 @@ MECHANICS. Per band (l1 / l2c / l5), from the validated single-band config:
 Top-level: one rest_server (CORS = union), one metadata pool per band (prefixed), shared
 log_level/cpu_affinity.
 """
+import os
 import re
 import sys
 
-BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5", "live_l5_gpu.yaml")]
+_ALL_BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5", "live_l5_gpu.yaml"),
+              # e6 SHARES the l5 dongle -- Galileo E6 (1278.75) is a RETUNE of the L5 unit
+              # (1176.45), not a fourth front end. Defining it as its own band makes the swap a
+              # launch-time choice that preserves both configs: BANDS="l1 l2c e6". It is excluded
+              # from the default set for exactly that reason. See the e6 note in gnss_node.yaml.
+              ("e6", "live_e6_gpu.yaml"),
+              # b1i/b3i BORROW the l2c dongle (see the band notes): another exclusive group.
+              ("b1i", "live_b1i_gpu.yaml"), ("b3i", "live_b3i_gpu.yaml"),
+              # GLONASS L3OC (1202.025) -- the fourth constellation. Needs its OWN tune: it is
+              # 0.115 MHz below the l2c window's lower edge (1207.14 covers 1202.14-1212.14),
+              # infuriatingly close, but a miss is a miss, so it cannot stack there.
+              ("l3oc", "live_l3oc_gpu.yaml"),
+              # GLONASS L2OF (FDMA): the whole k=-7..+6 comb on ONE tune at the k=0 nominal.
+              ("l2of", "live_l2of_gpu.yaml"),
+              # GLONASS L2OC (1248.06) -- modernised CDMA pilot; own tune in dev, rides l2of on CHORD.
+              ("l2oc", "live_l2oc_gpu.yaml")]
+# Bands and dongles are DECOUPLED (2026-08-04): gen_band_config assigns the dongle pool to the
+# bands in $BANDS order, so there is no longer any band-pair that "cannot run together" -- the
+# only rule is that you cannot select more bands than there are dongles, which that generator
+# enforces (it owns the pool). This used to be an _EXCLUSIVE table of same-serial band groups.
+_DEFAULT = ["l1", "l2c", "l5"]
+# Band SUBSET support (2026-08-03): the $BANDS env (space/comma list, e.g. "l1 l2c") selects which
+# bands merge into the one kotekan process -- suspending a band (free GPU / stop its valve loss
+# during mid-band dev) is a config regen, not a stopped broker, because all bands run in ONE
+# process. run_3band.sh exports the same $BANDS so its control-plane loop matches. Empty/unset =
+# all three. Bands are independent (nothing crosses frequency), so any subset is a valid node.
+_sel = os.environ.get("BANDS", "").replace(",", " ").split()
+_unknown = [b for b in _sel if b not in {n for n, _ in _ALL_BANDS}]
+if _unknown:
+    raise SystemExit("BANDS: unknown band(s) %r; known: %s"
+                     % (" ".join(_unknown), " ".join(n for n, _ in _ALL_BANDS)))
+BANDS = [b for b in _ALL_BANDS if b[0] in _sel] if _sel else [b for b in _ALL_BANDS
+                                                              if b[0] in _DEFAULT]
 PORT = 12048  # the ONE kotekan REST port; viewers + brokers all talk to it
 HERE = "config/"
 

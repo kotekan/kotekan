@@ -67,11 +67,20 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/galileoE1Code.cpp # + GAL_E1B/E1C memory codes
         ../../lib/stages/gnss/beidouB1CCode.cpp # + BDS B1C Weil codes
         ../../lib/stages/gnss/beidouB2aCode.cpp
-        ../../lib/stages/gnss/galileoE5aCode.cpp) # + the L5-band siblings B2a/E5a
+        ../../lib/stages/gnss/galileoE5aCode.cpp # + the L5-band siblings B2a/E5a
+        ../../lib/stages/gnss/galileoE5bCode.cpp ../../lib/stages/gnss/galileoE6Code.cpp
+        ../../lib/stages/gnss/beidouB1ICode.cpp ../../lib/stages/gnss/beidouB2bCode.cpp
+        ../../lib/stages/gnss/beidouB3ICode.cpp ../../lib/stages/gnss/glonassL3OCCode.cpp ../../lib/stages/gnss/glonassL2OCCode.cpp
+        ../../lib/stages/gnss/glonassCACode.cpp)
     target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 
+    # ⚠️ BOTH targets compile gnssChannelizedReplica.cpp, whose signal_code() dispatch references
+    # EVERY code module -- so both source lists must list every one of them, whether or not the
+    # test exercises that signal. The lists had drifted six modules behind the dispatch (E5b, E6,
+    # B1I, B2b, B3I, L3OC) and would not have linked; nobody noticed because WITH_BOOST_TESTS
+    # defaults OFF in the CUDA build dir. Add the code module here when you add it to the dispatch.
     # Channelized replica bank: per-signal code dispatch (L1 C/A, L5 I/Q, L2C),
     # checked by self / cross-PRN / cross-signal despread. Needs FFTW (r2c replica).
     add_executable(
@@ -81,7 +90,11 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gpsCACode.cpp ../../lib/stages/gnss/gpsL1CCode.cpp ../../lib/stages/gnss/gpsL2CCode.cpp
         ../../lib/stages/gnss/gpsL5Code.cpp ../../lib/stages/gnss/galileoE1Code.cpp
         ../../lib/stages/gnss/beidouB1CCode.cpp ../../lib/stages/gnss/beidouB2aCode.cpp
-        ../../lib/stages/gnss/galileoE5aCode.cpp)
+        ../../lib/stages/gnss/galileoE5aCode.cpp
+        ../../lib/stages/gnss/glonassCACode.cpp # + GLONASS L2OF (the FDMA per-PRN carrier cases)
+        ../../lib/stages/gnss/galileoE5bCode.cpp ../../lib/stages/gnss/galileoE6Code.cpp
+        ../../lib/stages/gnss/beidouB1ICode.cpp ../../lib/stages/gnss/beidouB2bCode.cpp
+        ../../lib/stages/gnss/beidouB3ICode.cpp ../../lib/stages/gnss/glonassL3OCCode.cpp ../../lib/stages/gnss/glonassL2OCCode.cpp)
     target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})

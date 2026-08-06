@@ -35,9 +35,16 @@ mkdir -p /tmp/gpswipe /tmp/gps_l2c_gpu /tmp/gps_l5_gpu /tmp/gnss_run
 # Bands: original config (parsed by run_live for all derived quantities), stage prefix, TAG
 # (log stems + l-a code-bias files -- SAME TAGs as run_band.sh so the converged per-dongle l-a
 # estimates carry over), and the viewer HTTP/WS ports (must match the merged config's spawns).
-BANDS="l1 l2c l5"
-cfg_of()  { case "$1" in l1) echo config/live_l1_dual20.yaml;; l2c) echo config/live_l2c_gpu.yaml;; l5) echo config/live_l5_gpu.yaml;; esac; }
-http_of() { case "$1" in l1) echo 8080;; l2c) echo 8081;; l5) echo 8082;; esac; }
+# BANDS = which dongles/bands run in THIS node. Override to suspend a band during dev, e.g.
+# BANDS="l1 l2c" ./config/run_3band.sh  (drop L5 -> free GPU + stop its valve loss). Exported so
+# gen_3band_config.py merges the SAME subset into the one kotekan process (a band is suspended by
+# leaving it OUT of the merged config, not by stopping a broker -- all bands share one process).
+# ★ `e6` (Galileo E6, 1278.75) is a RETUNE of the l5 dongle, so it is a band you SWAP IN, never
+# add: BANDS="l1 l2c e6". gen_3band_config.py refuses l5+e6 together (one airspy, two bands).
+BANDS="${BANDS:-l1 l2c l5}"
+export BANDS
+cfg_of()  { case "$1" in l1) echo config/live_l1_dual20.yaml;; l2c) echo config/live_l2c_gpu.yaml;; l5) echo config/live_l5_gpu.yaml;; e6) echo config/live_e6_gpu.yaml;; b1i) echo config/live_b1i_gpu.yaml;; b3i) echo config/live_b3i_gpu.yaml;; l3oc) echo config/live_l3oc_gpu.yaml;; l2of) echo config/live_l2of_gpu.yaml;; l2oc) echo config/live_l2oc_gpu.yaml;; esac; }
+http_of() { case "$1" in l1) echo 8080;; l2c) echo 8081;; l5) echo 8082;; e6) echo 8083;; b1i) echo 8084;; b3i) echo 8085;; l3oc) echo 8086;; l2of) echo 8087;; l2oc) echo 8088;; esac; }
 # (viewer WS ports are baked into each config's spawn_pyviewer exec -- no env plumbing)
 
 # ---- teardown of anything stale (we own the whole box's GNSS control plane here) ----
@@ -135,6 +142,13 @@ echo "starting the merged kotekan ($CFG3) -> $LOG"
 # diag/silent_kill_forensics.md; this line just lifts the per-process limit so a core is
 # actually written. Harmless when nothing crashes.
 ulimit -c unlimited 2>/dev/null || true
+# Record dirs, DERIVED from the merged config rather than the hardcoded list at the top: a band
+# added later (e6 was, 2026-08-04) brings its own record_dir, and a missing one kills kotekan at
+# stage construction with "Cannot open file" -- exactly the 2026-07-18 failure the top-of-file
+# mkdir exists to prevent, re-armed by every new band. Derive it and the trap cannot recur.
+sed -nE 's/.*base_dir:[[:space:]]*"?([^",}]+)"?.*/\1/p' "$CFG3" | sort -u | while read -r d; do
+    [ -n "$d" ] && mkdir -p "$d"
+done
 $KOTEKAN -c $CFG3 -b 0.0.0.0:$PORT > $LOG 2>&1 &
 sleep 8
 if ! pgrep -f "[k]otekan .*live_3band" >/dev/null; then
@@ -169,13 +183,21 @@ for b in $BANDS; do
     # other callers. The transport was since fixed (c839b3ca: parse outside seed_mtx +
     # NAVBITS-BAD counter, broker CPU 98->31%), and the node has run it on all day.
     BX="${BROKER_EXTRA:---dop-continuous --nav-bits-brdc 1}"
-    # L2C-CM carries CNAV (FEC+CRC), not LNAV: route its nav_obs to the CNAV decoder or the
-    # LNAV frame-sync churns on CNAV symbols forever (S3, 2026-07-28). A band property, appended
-    # regardless of BROKER_EXTRA; the cnav path ignores --nav-bits-brdc (LNAV-only), so no clash.
-    [ "$b" = l2c ] && BX="$BX --nav-decoder cnav"
+    # Nav-decoder for the band's PRIMARY chain, keyed on its SIGNAL (not the band name) so a
+    # retuned band picks the right one: GPS L2C-CM carries CNAV (FEC+CRC; route its nav_obs there
+    # or the LNAV frame-sync churns on CNAV symbols forever, S3). GPS L1 C/A -> LNAV (broker
+    # default). BeiDou B2b -> B-CNAV3 (NB-LDPC(162,81)+CRC-24Q, the primary chain's own decoder).
+    # Other non-GPS primaries fall through to the default lnav, which simply never syncs on their
+    # symbols (harmless).
+    _prim_sig=$(awk '/^[[:space:]]*signal:/{print $2; exit}' "$(cfg_of "$b")" 2>/dev/null)
+    case "$_prim_sig" in
+        GPS_L2C*)  BX="$BX --nav-decoder cnav" ;;
+        BDS_B2B*)  BX="$BX --nav-decoder bcnav3" ;;
+    esac
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
         BROKER_EXTRA=$BX \
+        NO_SIG_CAP=${NO_SIG_CAP:-0} \
         bash config/run_live.sh > /tmp/gps_${b}_ctl.log 2>&1 &
     SUBPIDS="$SUBPIDS $!"
     echo "  $b control plane up (brokers/loggers; log /tmp/gps_${b}_ctl.log)"

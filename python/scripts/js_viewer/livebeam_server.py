@@ -35,6 +35,7 @@ import json
 import logging
 import math
 import os
+import re
 import select
 import signal
 import socket
@@ -747,10 +748,17 @@ BAND_CHAINS = {
             # DISTINCT viewer tag "L" (the series key is tag+prn) backed by explicit l1c_ stages
             # in WsPortResource.base -- reusing "G" would merge it into the C/A series.
             {"tag": "L", "name": "GPS L1C",     "t_rec": 10e-3, "color": "#6fbf73"}],
-    "l2c": [{"tag": "G", "name": "GPS L2C",     "t_rec": 20e-3, "color": "#4d9de0"}],
+    # l2c dongle REPURPOSED to BeiDou B2b (2026-08-03): tag C, 1 ms records (was GPS L2C, tag G,
+    # 20 ms). The mid-band swap (mid-band-gal-bds-receivers); the stage names stay l2c_gps_* (the
+    # Shape-A primary convention), only the constellation/signal displayed change.
+    "l2c": [{"tag": "C", "name": "BeiDou B2b",  "t_rec": 1e-3,  "color": "#d64550"}],
     "l5":  [{"tag": "G", "name": "GPS L5",      "t_rec": 1e-3,  "color": "#4d9de0"},
             {"tag": "E", "name": "Galileo E5a", "t_rec": 1e-3,  "color": "#e8923c"},
             {"tag": "C", "name": "BeiDou B2a",  "t_rec": 1e-3,  "color": "#d64550"}],
+    # GLONASS L3OC (2026-08-04) -- the fourth constellation, tag R, 1 ms records. PRNs are
+    # orbital SLOT numbers. Only the 7 GLONASS-K satellites transmit it; the sky layer filters
+    # to those via _l3oc_capable_set, the same way "L" filters to GPS III.
+    "l3oc": [{"tag": "R", "name": "GLONASS L3OC", "t_rec": 1e-3, "color": "#9b6fd6"}],
 }
 
 # UNIFIED VIEWER (2026-07-28): one page, one satellite per row, every signal that satellite
@@ -767,15 +775,21 @@ BAND_CHAINS = {
 #   t_rec      record period (s) -> incoherent C/N0 = x / t_rec
 #   peel       whether this chain runs the voltage peel (peel-depth column applies)
 # The table renders columns in THIS order; add a signal by adding a row.
+#
+# STATIC FALLBACK ONLY (2026-08-03): main() replaces this at startup with the list DISCOVERED
+# from kotekan's running /config (see discover_signals() below), so a band/constellation swap in
+# gnss_node.yaml -- L2C dongle -> BeiDou B2b today, Galileo E5b next, GLONASS later -- flows into
+# the viewer with no edit here. This literal is used only when /config is unreachable at launch.
 UNIFIED_SIGNALS = [
     {"tag": "G", "band": "L1", "col": "CA",  "name": "GPS L1 C/A", "sigid": "GPS_L1CA",
      "combiner": "l1_gps_combiner", "search": "l1_gps_search",  "t_rec": 1e-3,  "peel": True},
     {"tag": "G", "band": "L1", "col": "L1C", "name": "GPS L1C-P", "sigid": "GPS_L1C_P",
      "combiner": "l1_l1c_combiner", "search": "l1_l1c_search",  "t_rec": 10e-3, "peel": True},
-    {"tag": "G", "band": "L2", "col": "CM",  "name": "GPS L2C-CM", "sigid": "GPS_L2C_CM",
-     "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 20e-3, "peel": False},
-    {"tag": "G", "band": "L2", "col": "CL",  "name": "GPS L2C-CL (pilot)", "sigid": "GPS_L2C_CL",
-     "combiner": "l2c_cl_combiner", "search": None,             "t_rec": 20e-3, "peel": False},
+    # L2/MID band: the l2c dongle was REPURPOSED from GPS L2C (CM data + CL pilot) to BeiDou B2b
+    # (2026-08-03, mid-band-gal-bds-receivers). B2b is DATA-only (no pilot), tag C, 1 ms records;
+    # the primary stage keeps its l2c_gps_* name (Shape-A convention), only the signal changes.
+    {"tag": "C", "band": "L2", "col": "B2b", "name": "BeiDou B2b (data, B-CNAV3)", "sigid": "BDS_B2B_I",
+     "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 1e-3,  "peel": False},
     {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q", "sigid": "GPS_L5_Q",
      "combiner": "l5_gps_combiner", "search": "l5_gps_search",  "t_rec": 1e-3,  "peel": True},
     # L5-I is the DATA component of the same signal L5-Q pilots (S4 phase 2). Like L2C-CL it
@@ -808,6 +822,202 @@ UNIFIED_SIGNALS = [
     {"tag": "C", "band": "L5", "col": "B2aD","name": "BeiDou B2a (data, B-CNAV2)",
      "combiner": "l5_b2a_d_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
 ]
+
+# ---------------------------------------------------------------------------
+# Signal-list discovery from kotekan's running /config (the swap-proof path).
+#
+# The hardcoded UNIFIED_SIGNALS above needed a hand-edit on every band swap. Instead we read the
+# live merged config and reconstruct the table. Sources, all authoritative and per-chain:
+#   * the 13 `cudaGnssTrack` commands (nested in the per-band `cudaProcess` stages) -- each carries
+#     a seed_endpoint `/<chain>_track/set_seeds` (-> the combiner `<chain>_combiner`), the chain's
+#     real `signal` (None on a primary chain -> inherits, so we fall back to its search stage), and
+#     a per-chain `peel` flag.
+#   * the `GnssChannelizedSearch` stages -- `<chain>_search`: the acquired chains' signal, and the
+#     "is this chain acquired vs derived" flag (a derived data/pilot sibling has no search).
+# band + t_rec come from the signal descriptor (parsed from gnssSignal.hpp, the C++ source of
+# truth), so a signal newly added there flows through with no python edit. Only the display
+# labels (tag/column/full-name) are genuine presentation -- SIG_DISPLAY, with a derived fallback.
+
+# Presentation metadata per signal id: (viewer tag, short column label, full name). The tag is the
+# satellite-series key (tag+prn) across every band -- GPS L1C is "L" not "G" so it stays a distinct
+# series from C/A. Everything else about a signal is discovered; a signal absent here still renders
+# via _display_for()'s derived fallback, so this table only prettifies -- it is not required.
+SIG_DISPLAY = {
+    "GPS_L1CA":   ("G", "CA",   "GPS L1 C/A"),
+    "GPS_L1C_P":  ("L", "L1C",  "GPS L1C-P"),
+    "GPS_L2C_CM": ("G", "CM",   "GPS L2C-CM"),
+    "GPS_L2C_CL": ("G", "CL",   "GPS L2C-CL (pilot)"),
+    "GPS_L5_Q":   ("G", "Q",    "GPS L5-Q"),
+    "GPS_L5_I":   ("G", "I",    "GPS L5-I (data, CNAV)"),
+    "GAL_E1C":    ("E", "E1C",  "Galileo E1-C"),
+    "GAL_E1B":    ("E", "E1B",  "Galileo E1-B (data, I/NAV)"),
+    "GAL_E5A_Q":  ("E", "E5a",  "Galileo E5a-Q"),
+    "GAL_E5A_I":  ("E", "E5aI", "Galileo E5a-I (data, F/NAV)"),
+    "GAL_E5B_Q":  ("E", "E5b",  "Galileo E5b-Q (pilot)"),
+    "GAL_E5B_I":  ("E", "E5bI", "Galileo E5b-I (data, I/NAV)"),
+    "BDS_B1C_P":  ("C", "B1C",  "BeiDou B1C"),
+    "BDS_B1C_D":  ("C", "B1CD", "BeiDou B1C (data, B-CNAV1)"),
+    "BDS_B2A_P":  ("C", "B2a",  "BeiDou B2a"),
+    "BDS_B2A_D":  ("C", "B2aD", "BeiDou B2a (data, B-CNAV2)"),
+    "BDS_B2B_I":  ("C", "B2b",  "BeiDou B2b (data, B-CNAV3)"),
+    # Signals added after this table was last swept -- without a row each renders with its raw
+    # id and a one-letter column ("D"), which reads as a bug in the table rather than an
+    # omission in it.
+    "GPS_L1C_D":  ("L", "L1CD", "GPS L1C-D (data, CNAV-2) -- carrier UNMODULATED, see notes"),
+    "GAL_E6_C":   ("E", "E6C",  "Galileo E6-C (pilot)"),
+    "GAL_E6_B":   ("E", "E6B",  "Galileo E6-B (data, HAS)"),
+    "BDS_B1I":    ("C", "B1I",  "BeiDou B1I (legacy, D1)"),
+    "BDS_B3I":    ("C", "B3I",  "BeiDou B3I (legacy, D1)"),
+    "BDS_B2I":    ("C", "B2I",  "BeiDou B2I (legacy BDS-2, D1)"),
+    "GLO_L3OC_P": ("R", "L3OC", "GLONASS L3OC-p (pilot)"),
+    "GLO_L3OC_D": ("R", "L3OCd", "GLONASS L3OC-d (data)"),
+}
+_SYS_TAG = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
+
+
+def _display_for(sigid):
+    """(tag, col, name) for a signal id -- SIG_DISPLAY if known, else derived from the id."""
+    if sigid in SIG_DISPLAY:
+        return SIG_DISPLAY[sigid]
+    pre = sigid.split("_", 1)[0]
+    tag = _SYS_TAG.get(pre, (pre[:1] or "?"))
+    col = sigid.split("_")[-1]
+    return (tag, col, sigid)
+
+
+def _band_of(carrier_hz):
+    """RF-band column group (L1/L2/L5) from the sky carrier. The mid band (~1200-1280 MHz:
+    L2C, B2b/E5b, B3I, E6) groups under 'L2'; anything below 1.2 GHz (L5/E5a/B2a) under 'L5'."""
+    if carrier_hz >= 1.40e9:
+        return "L1"
+    if carrier_hz >= 1.20e9:
+        return "L2"
+    return "L5"
+
+
+def _signal_descriptors():
+    """Parse gnssSignal.hpp -> {sigid: (carrier_hz, code_period_s)}.
+
+    That C++ table is the single source of truth for every signal's sky carrier and primary-code
+    period, so parsing it here means a signal added there (e.g. Galileo E5b) supplies its own
+    band + record period with no edit in this file. Empty dict if the header can't be found ->
+    the caller drops back to the static table.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    cands = [
+        os.path.normpath(os.path.join(here, "../../../lib/stages/gnss/gnssSignal.hpp")),
+        os.path.normpath(os.path.join(here, "../../../../lib/stages/gnss/gnssSignal.hpp")),
+    ]
+    text = None
+    for p in cands:
+        try:
+            with open(p) as f:
+                text = f.read()
+            break
+        except OSError:
+            continue
+    out = {}
+    if not text:
+        return out
+    # Each descriptor initialiser begins:  "NAME", <carrier_hz>, <chip_rate>, <code_len>, <period>,
+    num = r"[0-9][0-9.eE+-]*"
+    pat = re.compile(r'"([A-Z0-9_]+)"\s*,\s*(%s)\s*,\s*%s\s*,\s*[0-9]+\s*,\s*(%s)' % (num, num, num))
+    for m in pat.finditer(text):
+        try:
+            out[m.group(1)] = (float(m.group(2)), float(m.group(3)))
+        except ValueError:
+            pass
+    return out
+
+
+def discover_signals(host, rest_port, timeout=3.0):
+    """Reconstruct the UNIFIED_SIGNALS table from kotekan's running /config. Returns the list, or
+    None on any failure (fetch/parse/empty) so main() keeps the static UNIFIED_SIGNALS fallback."""
+    import urllib.request
+    # --kotekan-host defaults to 0.0.0.0 (a *bind* address); reuse it as a connect target only
+    # after mapping the wildcard to loopback.
+    if host in ("0.0.0.0", "", "::"):
+        host = "127.0.0.1"
+    url = "http://%s:%d/config" % (host, rest_port)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            cfg = json.load(r)
+    except Exception as e:  # noqa: BLE001 -- any failure -> fallback, never fatal
+        log_.warning("signal discovery: /config fetch failed (%s); using static table", e)
+        return None
+
+    searches = {}          # stage name -> signal (acquired chains only)
+    tracks = []            # (chain, signal_or_None, peel_bool) in config order
+
+    def walk(node):
+        if isinstance(node, dict):
+            for name, v in node.items():
+                if isinstance(v, dict):
+                    kind = v.get("kotekan_stage")
+                    if kind == "GnssChannelizedSearch":
+                        searches[name] = v.get("signal")
+                    elif kind == "cudaProcess":
+                        for cm in v.get("commands", []):
+                            if isinstance(cm, dict) and cm.get("name") == "cudaGnssTrack":
+                                m = re.match(r"/([A-Za-z0-9_]+)_track/set_seeds$",
+                                             cm.get("seed_endpoint") or "")
+                                if m:
+                                    tracks.append((m.group(1), cm.get("signal"),
+                                                   bool(cm.get("peel"))))
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    try:
+        walk(cfg)
+    except Exception as e:  # noqa: BLE001
+        log_.warning("signal discovery: config walk failed (%s); using static table", e)
+        return None
+    if not tracks:
+        log_.warning("signal discovery: no cudaGnssTrack commands in /config; using static table")
+        return None
+
+    desc = _signal_descriptors()
+    band_rank = {"L1": 0, "L2": 1, "L5": 2}
+    tag_rank = {"G": 0, "L": 1, "E": 2, "C": 3, "R": 4}
+    rows = []
+    for chain, sig, peel in tracks:
+        search_stage = chain + "_search"
+        sigid = sig or searches.get(search_stage)
+        if not sigid:
+            log_.warning("signal discovery: chain %s has no resolvable signal; skipping", chain)
+            continue
+        carrier, period = desc.get(sigid, (None, None))
+        tag, col, name = _display_for(sigid)
+        rows.append({
+            "tag": tag,
+            # ★ The CONSTELLATION this signal's satellite belongs to, which is NOT always the
+            # display tag. "L" (GPS L1C) is a synthetic tag invented so L1C keeps a distinct
+            # SIGNAL series from C/A on the same PRN -- but the bird is a GPS bird. The client
+            # keys satellite ROWS by sys and signal COLUMNS by tag, so a Block III satellite
+            # gets ONE row carrying both CA and L1C, which is the entire premise of the unified
+            # viewer ("one satellite per row"). Keying rows by tag split it into G20 and L20.
+            "sys": _SYS_TAG.get(sigid.split("_", 1)[0], tag),
+            "band": _band_of(carrier) if carrier else "L1",
+            "col": col,
+            "name": name,
+            "sigid": sigid,
+            "combiner": chain + "_combiner",
+            # A derived data/pilot sibling has no search stage -> no SNR cell in the table.
+            "search": search_stage if search_stage in searches else None,
+            "t_rec": period if period else 1e-3,
+            "peel": peel,
+        })
+
+    # Column order: band (L1<L2<L5), then constellation (G<L<E<C<R), then acquired-before-derived.
+    rows.sort(key=lambda s: (band_rank.get(s["band"], 9),
+                             tag_rank.get(s["tag"], 9),
+                             0 if s["search"] else 1))
+    log_.info("signal discovery: %d chains from /config -> %s",
+              len(rows), ", ".join("%s/%s" % (r["band"], r["sigid"]) for r in rows))
+    return rows
+
 
 def _gps_signal_capability():
     """{sigid: [PRNs that BROADCAST it]} for the GPS signals in UNIFIED_SIGNALS.
@@ -860,15 +1070,63 @@ def _gps_signal_capability():
         return {}
 
 
-# The three physical front ends, for the unified page's RF selector (spectrum + waterfall +
-# airspy controls switch between them). ws_port = the per-band livebeam_server the browser
-# opens for that band's power stream (those servers keep running as headless streamers);
-# airspy = the ADC stage on the merged kotekan. Must match gen_3band_config's port plan.
+# The physical front ends, for the unified page's RF selector (spectrum + waterfall + airspy
+# controls switch between them). ws_port = the per-band livebeam_server the browser opens for that
+# band's power stream; airspy = the ADC stage on the merged kotekan.
+#
+# STATIC FALLBACK ONLY: main() replaces this with discover_rf_bands() from the running /config, so
+# each front end is LABELLED BY ITS ACTUAL airspy tuning (not a hardcoded GPS band name -- the l2c
+# dongle now tunes 1207.14 for BeiDou B2b / Galileo E5b, not GPS L2C's 1227.6), and a suspended
+# band (absent airspy stage) drops out of the selector. Used only when /config is unreachable.
 UNIFIED_RF_BANDS = [
     {"band": "l1",  "ws_port": 8539, "airspy": "l1_airspy_in",  "label": "L1 · 1575.42 MHz"},
-    {"band": "l2c", "ws_port": 8639, "airspy": "l2c_airspy_in", "label": "L2C · 1227.6 MHz"},
+    {"band": "l2c", "ws_port": 8639, "airspy": "l2c_airspy_in", "label": "L2 · 1207.14 MHz"},
     {"band": "l5",  "ws_port": 8739, "airspy": "l5_airspy_in",  "label": "L5 · 1176.45 MHz"},
 ]
+_RF_WS_PORT = {"l1": 8539, "l2c": 8639, "l5": 8739}
+
+
+def discover_rf_bands(host, rest_port, timeout=3.0):
+    """Build the RF-band selector from the airspyInput stages in kotekan's /config: label each
+    front end by its ACTUAL airspy freq, and include only the front ends present (a suspended band
+    has no airspy stage -> drops out). Returns None on failure so main() keeps the static list."""
+    import urllib.request
+    if host in ("0.0.0.0", "", "::"):
+        host = "127.0.0.1"
+    try:
+        with urllib.request.urlopen("http://%s:%d/config" % (host, rest_port), timeout=timeout) as r:
+            cfg = json.load(r)
+    except Exception as e:  # noqa: BLE001
+        log_.warning("rf-band discovery: /config fetch failed (%s); using static table", e)
+        return None
+    found = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            for name, v in node.items():
+                if isinstance(v, dict) and v.get("kotekan_stage") == "airspyInput":
+                    m = re.match(r"([a-z0-9]+)_airspy", name)
+                    if m and v.get("freq") is not None:
+                        try:
+                            found[m.group(1)] = (name, float(v["freq"]))
+                        except (TypeError, ValueError):
+                            pass
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(cfg)
+    if not found:
+        return None
+    order = {"l1": 0, "l2c": 1, "l5": 2}
+    rows = []
+    for band, (name, freq_mhz) in sorted(found.items(), key=lambda kv: order.get(kv[0], 9)):
+        region = _band_of(freq_mhz * 1e6)  # airspy freq is in MHz
+        rows.append({"band": band, "ws_port": _RF_WS_PORT.get(band, 8539), "airspy": name,
+                     "label": "%s · %.2f MHz" % (region, freq_mhz)})
+    log_.info("rf-band discovery: %s", ", ".join(r["label"] for r in rows))
+    return rows
 
 
 class WsPortResource(resource.Resource):
@@ -904,7 +1162,12 @@ class WsPortResource(resource.Resource):
             self.capability = _gps_signal_capability()
             self.chains = [{"tag": "G", "name": "GPS",     "color": "#4d9de0"},
                            {"tag": "E", "name": "Galileo", "color": "#e8923c"},
-                           {"tag": "C", "name": "BeiDou",  "color": "#d64550"}]
+                           {"tag": "C", "name": "BeiDou",  "color": "#d64550"},
+                           # GLONASS (2026-08-04): violet, distinct from the G/E/C palette and
+                           # from the green the synthetic "L" (GPS L1C) tag uses. PRNs here are
+                           # orbital SLOT numbers, which is what the L3OC code index turned out
+                           # to be -- so tag+prn keys GLONASS satellites the same way as the rest.
+                           {"tag": "R", "name": "GLONASS", "color": "#9b6fd6"}]
             return
         tags = [t.strip() for t in consts.split(",") if t.strip()]
         table = BAND_CHAINS.get(band, BAND_CHAINS["l1"])
@@ -913,7 +1176,11 @@ class WsPortResource(resource.Resource):
         # hardcoded spellings when absent (old server / new client and vice versa both work).
         base = {"G": ("gps_search", "gps_combiner"), "E": ("gal_search", "gal_combiner"),
                 "C": ("bds_search", "bds_combiner"),
-                "L": ("l1c_search", "l1c_combiner")}  # GPS L1C-P: 4th L1 chain, synthetic tag
+                "L": ("l1c_search", "l1c_combiner"),  # GPS L1C-P: 4th L1 chain, synthetic tag
+                # GLONASS L3OC is a Shape-A primary: its chain is labelled `constellation: gps`
+                # in gnss_node.yaml so it keeps the un-prefixed gps_* stage names the primary
+                # broker needs, even though the SIGNAL is GLONASS. Hence gps_*, not glo_*.
+                "R": ("gps_search", "gps_combiner")}
         self.chains = []
         for c in table:
             if c["tag"] not in tags:
@@ -956,7 +1223,7 @@ class GpsSkyResource(resource.Resource):
 
     isLeaf = True
 
-    def __init__(self, lat, lon, alt, mask_deg, consts="G,E,C"):
+    def __init__(self, lat, lon, alt, mask_deg, consts="G,E,C", glonass_sigids=None):
         resource.Resource.__init__(self)
         self.lat, self.lon, self.alt, self.mask_deg = lat, lon, alt, mask_deg
         # Only serve the constellations this band actually tracks: L1 tri-band = G,E,C (all share
@@ -964,12 +1231,18 @@ class GpsSkyResource(resource.Resource):
         # not even in this band). Filter the class table to the requested tags, order preserved.
         want = [t.strip() for t in consts.split(",") if t.strip()]
         self.CONSTELLATIONS = tuple(c for c in type(self).CONSTELLATIONS if c[0] in want)
+        # The GLONASS signals actually running (sigids, e.g. GLO_L2OF / GLO_L3OC_P), so the R sky
+        # layer can filter to what ANY of them can track rather than to one signal's capability.
+        # None/empty -> no per-signal filter (show every GLONASS sat).
+        self.glonass_sigids = list(glonass_sigids or [])
         self._cache = {"ok": False, "sats": []}  # last good (or empty) result
         self._sats = None                        # cached {prn: EarthSatellite} (TLE fallback)
         self._eph = None                         # cached parsed BRDC {(sys,prn):[recs]}
         self._eph_t = None                       # monotonic s of last BRDC parse
         self._l1c_capable = None                 # cached set of L1C-capable PRNs (GPS III)
         self._l1c_capable_t = None               # monotonic s of last capability fetch
+        self._glo_capable = None                 # cached set of GLONASS slots any running R
+        self._glo_capable_t = None               # signal can track (union); None = no filter
         self._last_compute = None                # monotonic s of last attempt
         self._refreshing = False
 
@@ -991,20 +1264,88 @@ class GpsSkyResource(resource.Resource):
         ("G", None),        # None -> gps_beamtrack.DEFAULT_TLE_URL (gps-ops)
         ("E", "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
         ("C", "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"),
-        ("L", None),        # GPS L1C-P: same GPS birds (gps-ops TLE) as "G", distinct viewer tag
+        # ⚠️ NO "L" LAYER. GPS L1C is a synthetic SIGNAL tag on GPS birds, not a constellation:
+        # drawing it here put a second marker on top of every L1C-capable GPS satellite, at
+        # identical az/el. (It was masked for a while because --unified hardcoded the sky to
+        # "G,E,C"; deriving that list correctly is what exposed the duplicates.) The sky draws
+        # one marker per SATELLITE; L1C's presence shows up as a column in the detections table.
+        ("R", "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"),
     )
+
+    # Constellations gnss_ephemeris can actually propagate. Its RINEX parser filters on
+    # sysc in "GEC", and GLONASS broadcasts a position/velocity/acceleration state vector
+    # integrated by Runge-Kutta rather than a Keplerian element set, so there is nothing for
+    # sat_pos_clk to work with. 'R' therefore comes from TLE even when BRDC is healthy --
+    # see _compute, which merges the two sources rather than choosing between them.
+    _BRDC_TAGS = frozenset(("G", "E", "C", "L"))
 
     def _compute(self):
         """Runs in a worker thread. PRIMARY: broadcast-ephemeris (BRDC) geometry via predict_all
         -- the SAME source the tracker uses, so the sky plot agrees with what we actually lock,
         and it is PRN-intrinsic (no fragile TLE name->PRN mapping, which had mis-placed BeiDou
         MEOs C31/C39 below the horizon while we were tracking them at +17/+27 deg). FALLBACK:
-        Celestrak TLE + skyfield, used only when the BRDC is unavailable (offline / parse fail)."""
+        Celestrak TLE + skyfield, used only when the BRDC is unavailable (offline / parse fail).
+
+        ★ The two sources are MERGED, not chosen between. GLONASS has no BRDC path at all (see
+        _BRDC_TAGS), so the old "if BRDC returned anything, use it and stop" would have taken the
+        BRDC result for GPS/Galileo/BeiDou and silently dropped GLONASS from the sky plot
+        entirely -- satellites we are actively locking, absent from the picture, with nothing
+        anywhere saying why. Same shape as the broker's zero-satellite almanac trap: a source
+        succeeding for SOME constellations is not the same as it covering the ones you asked for.
+        """
         want = [c[0] for c in self.CONSTELLATIONS]
-        sats = self._brdc_skypos(want)
-        if sats is not None:
-            return {"ok": True, "sats": sats, "src": "brdc"}
-        return {"ok": True, "sats": self._tle_skypos(), "src": "tle"}
+        brdc_want = [t for t in want if t in self._BRDC_TAGS]
+        tle_want = [t for t in want if t not in self._BRDC_TAGS]
+        sats = self._brdc_skypos(brdc_want) if brdc_want else None
+        if sats is None:
+            # BRDC unavailable -> everything falls back to TLE (the original behaviour).
+            return {"ok": True, "sats": self._tle_skypos(want), "src": "tle"}
+        if tle_want:
+            sats = sats + self._tle_skypos(tle_want)
+            return {"ok": True, "sats": sats, "src": "brdc+tle"}
+        return {"ok": True, "sats": sats, "src": "brdc"}
+
+    def _glonass_capable_set(self):
+        """Cached set of GLONASS SLOTS trackable by ANY GLONASS signal we are running -- the
+        UNION of each running R signal's capability. This is the R analogue of _l1c_capable_set,
+        but it MUST be a union, not one signal's set, because the R sky layer aggregates every
+        GLONASS signal onto one marker per satellite.
+
+        ★ WHY THE UNION MATTERS (the bug this fixes, 2026-08-04): L3OC is GLONASS-K only (7 sats)
+        while L2OF is on EVERY satellite (~26 with a known channel). Filtering the whole R sky to
+        L3OC capability hid every non-K satellite -- so with both signals running, only the K sats
+        showed and L2OF's ~19 other trackable satellites vanished from the plot. A satellite that
+        carries L2OF but not L3OC is not a silent bird; it is trackable, and belongs in the sky.
+
+        The union conditions on what is ACTUALLY running (self.glonass_sigids from the live
+        /config): L3OC alone -> K only; L2OF present -> all known-k slots. None => no filter (no
+        GLONASS signals, or a capability lookup that covered ~everything and so carried no info)."""
+        if (self._glo_capable_t is not None
+                and (time.monotonic() - self._glo_capable_t) < 3600.0):
+            return self._glo_capable
+        union = set()
+        try:
+            import gps_beamtrack as bt
+            for sigid in self.glonass_sigids:
+                # ⚠️ Use the CLEAN primitive per signal, not signal_capable_prns: for an FDMA
+                # signal that function falls back to the WHOLE slot set when the frequency plan
+                # is unavailable (its block filter is None -> "all"), which is indistinguishable
+                # by size from the legitimate ~26-slot known-k set. glonass_fdma_trackable() and
+                # the K-marker path both return empty on failure instead, never a spurious full
+                # set -- so the union stays trustworthy without a fragile size threshold.
+                if "OF" in sigid.upper():
+                    union |= bt.glonass_fdma_trackable()          # known-k, empty on failure
+                else:
+                    union |= set(bt.signal_capable_prns(sigid, bt.GLONASS_TLE_URL))  # K set
+        except Exception as e:
+            log_.warning("gps_sky: GLONASS capability set unavailable (%s); showing all GLONASS "
+                         "under R", e)
+            union = set()
+        # Empty => the lookup failed (or no GLONASS signals): stand the filter down and show all,
+        # never hide a real satellite behind a failed capability check.
+        self._glo_capable = union or None
+        self._glo_capable_t = time.monotonic()
+        return self._glo_capable
 
     def _l1c_capable_set(self):
         """Cached set of PRNs whose GPS block actually broadcasts L1C (GPS III), from the live
@@ -1065,8 +1406,10 @@ class GpsSkyResource(resource.Resource):
                              "az": round(v["az"], 2), "el": round(v["el"], 2)})
         return sats
 
-    def _tle_skypos(self):
-        """Fallback sky positions from Celestrak TLE + skyfield propagation."""
+    def _tle_skypos(self, want=None):
+        """Sky positions from Celestrak TLE + skyfield propagation, for the tags in `want`
+        (default: all configured). Used as the whole-sky fallback when BRDC is unavailable, and
+        as the ONLY source for constellations BRDC cannot propagate (GLONASS)."""
         from gps_beamtrack import (DEFAULT_TLE_URL, load_gps_satellites,
                                    predict_skypos)
         if self._sats is None:
@@ -1077,12 +1420,16 @@ class GpsSkyResource(resource.Resource):
                 except Exception as e:
                     log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
         cap_L = self._l1c_capable_set()
+        cap_R = self._glonass_capable_set()
         sats = []
         for tag, by_prn in self._sats.items():
+            if want is not None and tag not in want:
+                continue
             pos = predict_skypos(self.lat, self.lon, self.alt, _sats=by_prn)
             sats += [{"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
                      for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg
-                     and not (tag == "L" and cap_L is not None and p not in cap_L)]
+                     and not (tag == "L" and cap_L is not None and p not in cap_L)
+                     and not (tag == "R" and cap_R is not None and p not in cap_R)]
         return sats
 
     def _kick_refresh(self):
@@ -1119,6 +1466,148 @@ class GpsSkyResource(resource.Resource):
         }
         if self._cache.get("error"):
             out["error"] = self._cache["error"]
+        return json.dumps(out).encode("utf-8")
+
+
+def _pvt_measurements(globs, max_age_s, t_now):
+    """Freshest per-(sys, prn, freq-band) code observation across the obs logs, for the PVT
+    self-survey. One row per satellite-frequency (pilot/data of the same sat dedupe to one, same
+    geometry). Residuals are wrapped clock-dominated ranges -> de-wrapped per group to the group
+    median so the common clock is a single free parameter and no sat straddles a code-period edge.
+    Returns a list of {group, az, el, resid_m}."""
+    import glob as _glob
+    import json as _json
+    C = 299792458.0
+
+    def _freq(band):
+        b = str(band)
+        if "L2" in b:
+            return "L2"
+        if "L5" in b or "E5" in b or "B2A" in b or "B2a" in b:
+            return "L5"
+        return "L1"
+
+    latest = {}   # (sys, prn, freq) -> (t, group, az, el, resid_m, L_m)
+    for pat in globs:
+        for path in _glob.glob(pat):
+            try:
+                size = os.path.getsize(path)
+                with open(path) as f:
+                    f.seek(max(0, size - 512 * 1024))   # tail: freshest rows only
+                    f.readline()
+                    for line in f:
+                        try:
+                            d = _json.loads(line)
+                        except Exception:
+                            continue
+                        t = d.get("t")
+                        sysid, prn = d.get("sys"), d.get("prn")
+                        res, az, el = d.get("code_resid_m"), d.get("az"), d.get("el")
+                        if (t is None or sysid is None or prn is None or res is None
+                                or az is None or el is None):
+                            continue
+                        if t_now - t > max_age_s:
+                            continue
+                        fr = _freq(d.get("band"))
+                        key = (sysid, prn, fr)
+                        if key in latest and latest[key][0] >= t:
+                            continue
+                        cl, ch = d.get("code_len"), d.get("chip_rate_hz")
+                        L = (cl / ch * C) if (cl and ch) else None
+                        latest[key] = (t, "%s-%s" % (sysid, fr), az, el, float(res), L)
+            except Exception:
+                continue
+
+    # de-wrap each group's residuals to the group median (handles the clock straddling a
+    # code-period boundary; L is the code period in metres). Keep the de-wrapped per-(sys,prn,freq)
+    # residual so the dual-frequency iono-free combination can be formed from CLEAN ranges.
+    import statistics as _st
+    by_group = {}
+    for (sysid, prn, fr), v in latest.items():
+        by_group.setdefault(v[1], []).append((sysid, prn, fr, v))
+    out = []
+    dw = {}   # (sys, prn, freq) -> (az, el, resid_dewrapped)
+    for group, rows in by_group.items():
+        med = _st.median([r[3][4] for r in rows])
+        for sysid, prn, fr, v in rows:
+            _t0, g, az, el, res, L = v
+            if L:
+                res = res - L * round((res - med) / L)   # unwrap to within +-L/2 of the median
+            out.append({"group": g, "az": az, "el": el, "resid_m": res})
+            dw[(sysid, prn, fr)] = (az, el, res)
+
+    # DUAL-FREQUENCY iono-free combination: for each satellite seen on two bands, remove the
+    # first-order ionosphere. rho_IF = (f1^2 rho1 - f2^2 rho2)/(f1^2 - f2^2) -- the ~1/f^2 iono
+    # cancels and any per-band clock/bias folds into a per-sat-independent constant the "-IF"
+    # group clock absorbs. Prefer the widest split (L1+L5) for the strongest iono removal. The
+    # solver puts these in their own combined_if solution (few-metre) beside the single-freq one.
+    FREQ_HZ = {"L1": 1575.42e6, "L2": 1227.60e6, "L5": 1176.45e6}
+    bysat = {}
+    for (sysid, prn, fr), (az, el, res) in dw.items():
+        bysat.setdefault((sysid, prn), {})[fr] = (az, el, res)
+    for (sysid, prn), bands in bysat.items():
+        pair = next((p for p in (("L1", "L5"), ("L1", "L2"), ("L2", "L5"))
+                     if p[0] in bands and p[1] in bands), None)
+        if pair is None:
+            continue
+        f1, f2 = FREQ_HZ[pair[0]], FREQ_HZ[pair[1]]
+        (az1, el1, r1), (_a2, _e2, r2) = bands[pair[0]], bands[pair[1]]
+        rif = (f1 * f1 * r1 - f2 * f2 * r2) / (f1 * f1 - f2 * f2)
+        out.append({"group": "%s-IF" % sysid, "az": az1, "el": el1, "resid_m": rif})
+    return out
+
+
+class DecodeHealthResource(resource.Resource):
+    """``GET /decode_health`` -> merged on-node nav-decode health (from the brokers' JSON files)
+    PLUS a PVT self-survey computed from the obs-log code residuals (:mod:`gnss_pvt`). Stale
+    broker files / obs rows are dropped, so a decoder or the position solve going dark shows up
+    as the row/section disappearing, not a frozen last value. PVT is cached (recomputed every
+    `pvt_ttl_s`) since it tail-reads several obs logs and solves."""
+
+    isLeaf = True
+
+    def __init__(self, dirpath, max_age_s=120.0, lat=None, lon=None, alt=None,
+                 obs_globs=None, pvt_ttl_s=15.0, pvt_max_age_s=30.0):
+        resource.Resource.__init__(self)
+        self.dirpath = dirpath
+        self.max_age_s = max_age_s
+        self.lat, self.lon, self.alt = lat, lon, (alt or 0.0)
+        self.obs_globs = obs_globs or []
+        self.pvt_ttl_s = pvt_ttl_s
+        # PVT wants NEAR-SIMULTANEOUS observations: the receiver clock (a free per-group param) is
+        # assumed common across a group's sats, and a disciplined-oscillator drift of ~1e-9 over
+        # 120 s is already ~36 m. 30 s keeps that error small while still catching ~1 row/sat.
+        self.pvt_max_age_s = pvt_max_age_s
+        self._pvt_cache = (0.0, None)
+
+    def _pvt(self, t_now):
+        if self.lat is None or self.lon is None or not self.obs_globs:
+            return None
+        if t_now - self._pvt_cache[0] < self.pvt_ttl_s:
+            return self._pvt_cache[1]
+        try:
+            import gnss_pvt as _pvt
+            meas = _pvt_measurements(self.obs_globs, self.pvt_max_age_s, t_now)
+            res = _pvt.solve(meas, self.lat, self.lon, self.alt) if meas else None
+            if res is not None:
+                res["apriori"] = {"lat": self.lat, "lon": self.lon, "alt": self.alt}
+                res["n_meas"] = len(meas)
+        except Exception as e:
+            res = {"error": str(e)}
+        self._pvt_cache = (t_now, res)
+        return res
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        request.setHeader(b"Access-Control-Allow-Origin", b"*")
+        try:
+            import time as _t
+            import decode_health as _dh
+            now = _t.time()
+            out = _dh.read_all(self.dirpath, max_age_s=self.max_age_s, t_now=now)
+            out["pvt"] = self._pvt(now)
+        except Exception as e:
+            out = {"signals": {}, "chains": [], "error": str(e)}
         return json.dumps(out).encode("utf-8")
 
 
@@ -1232,6 +1721,16 @@ def main():
     gg.add_argument("--gps-combiner-stage", default="gps_combiner",
                     help="kotekan GnssCoherentCombiner stage name (get_status); "
                     "default 'gps_combiner' (alias-resolved to 'combiner' as above).")
+    gg.add_argument("--decode-health-dir",
+                    default=os.path.join(os.path.expanduser("~"), ".cache",
+                                         "kotekan_gps", "decode_health"),
+                    help="dir the brokers write nav-decode health JSON to (matches run_live's "
+                         "DECODE_DIR); served merged at /decode_health for the viewer panel")
+    gg.add_argument("--pvt-obs-globs",
+                    default="/tmp/gpswipe/obs_*.jsonl,/tmp/gps_l2c_gpu/obs_*.jsonl,"
+                            "/tmp/gps_l5_gpu/obs_*.jsonl",
+                    help="comma-separated globs of obs-log jsonl (code_resid_m + az/el) the PVT "
+                         "self-survey reads; served under /decode_health's pvt field")
     gg.add_argument("--gps-constellations", default="G,E,C",
                     help="constellations to show on the sky plot (G=GPS, E=Galileo, C=BeiDou). "
                          "L1 tri-band = G,E,C; L2C = G; L5 = G,E,C (E5a/B2a).")
@@ -1282,7 +1781,12 @@ def main():
     # sky to the full sky (the RF band selector owns which spectrum shows).
     if args.unified:
         args.gps = True
-        args.gps_constellations = "G,E,C"
+        # DERIVED, not a literal: "the full sky" is whatever constellations GpsSkyResource
+        # knows how to place. This was hardcoded "G,E,C" and had already gone stale twice over
+        # -- it silently dropped the synthetic "L" (GPS L1C) layer, and would have dropped
+        # GLONASS the day it came up, on a page whose whole point is showing every signal at
+        # once. Adding a constellation to CONSTELLATIONS is now enough.
+        args.gps_constellations = ",".join(t for t, _ in GpsSkyResource.CONSTELLATIONS)
     args._gps_enabled = bool(args.gps or args.no_power_stream or args.unified)
 
     logging.basicConfig(
@@ -1290,6 +1794,27 @@ def main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     log.startLogging(sys.stdout, setStdout=False)
+
+    # SWAP-PROOF SIGNAL LIST: rebuild UNIFIED_SIGNALS from kotekan's running /config so a
+    # band/constellation swap in gnss_node.yaml needs no viewer edit. Falls back to the static
+    # literal if /config is unreachable (kotekan not up yet, wrong port, ...). Reassigning the
+    # module global is enough: _gps_signal_capability() and WsPortResource read it at call time.
+    # Done after logging is configured so the discovery summary lands in the viewer log.
+    if args.unified:
+        discovered = discover_signals(args.kotekan_host, args.kotekan_rest_port)
+        if discovered:
+            global UNIFIED_SIGNALS
+            UNIFIED_SIGNALS = discovered
+        # Backfill "sys" (the satellite's real constellation) on whichever list we ended up
+        # with, so the static fallback behaves identically to the discovered one. Derived from
+        # the signal id's prefix where there is one, else the display tag.
+        for _s in UNIFIED_SIGNALS:
+            _s.setdefault("sys", _SYS_TAG.get((_s.get("sigid") or "").split("_", 1)[0],
+                                              _s.get("tag")))
+        rf = discover_rf_bands(args.kotekan_host, args.kotekan_rest_port)
+        if rf:
+            global UNIFIED_RF_BANDS
+            UNIFIED_RF_BANDS = rf
 
     static_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -1339,11 +1864,19 @@ def main():
         _scripts = os.path.dirname(static_dir)
         sys.path.insert(0, _scripts)
         sys.path.insert(0, os.path.join(_scripts, "gnss"))
+        # GLONASS sky filter is the UNION of the running R signals' capabilities (L3OC = K
+        # only, L2OF = all known-k), so a satellite trackable by ANY of them shows. Derived from
+        # the same discovered inventory the table uses, so a band swap needs no viewer edit.
+        _glo_sigids = sorted({s.get("sigid") for s in UNIFIED_SIGNALS
+                              if (s.get("sigid") or "").startswith("GLO_")} - {None})
         root.putChild(b"gps_sky",
                       GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg,
-                                     args.gps_constellations))
-        log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s)",
-                  args.lat, args.lon, args.alt)
+                                     args.gps_constellations, glonass_sigids=_glo_sigids))
+        root.putChild(b"decode_health",
+                      DecodeHealthResource(args.decode_health_dir, lat=args.lat, lon=args.lon,
+                                           alt=args.alt, obs_globs=args.pvt_obs_globs.split(",")))
+        log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s); decode-health dir %s",
+                  args.lat, args.lon, args.alt, args.decode_health_dir)
 
     reactor.listenTCP(args.http_port, server.Site(root))
 

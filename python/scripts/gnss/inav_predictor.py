@@ -35,6 +35,7 @@ WORD_TTL_S = 3600.0            # a cached word older than this is stale (ephemer
 class _PrnState:
     def __init__(self):
         self.emits = {}          # slot0 -> np.array(+-1) one per distinct nav_obs emit
+        self.grid0 = None        # per-PRN symbol-grid origin (abs time of the first emit's sym 0)
         self.last_obs = None     # (utc_ref, phase, br) dedup
         self.pol = None          # resolved carrier polarity (+1/-1), None until first CRC-OK
         self.words = {}          # word_type -> (iodnav, word_bits[128], t_decoded)
@@ -65,22 +66,37 @@ class InavPredictor:
             return
         st.last_obs = key
         sym_s = br * rec_dt
+        # Symbol 0's absolute time, phase-corrected onto the symbol grid. Anchoring every emit to
+        # a PER-PRN grid origin (grid0) and indexing slots RELATIVE to it keeps round() near an
+        # integer, so consecutive emits abut exactly. Rounding each symbol's ABSOLUTE time instead
+        # (the old code) jitters +-1 slot whenever phase/br is fractional (br>1, e.g. E5b-I br=4):
+        # that 1-slot gap fragments the run and breaks I/NAV even/odd page pairing. br=1 (E1B) has
+        # an integer phase shift and was immune; this is identical for it (grid0 absorbs its offset).
+        t0 = utc_ref - phase * rec_dt
+        if st.grid0 is None:
+            st.grid0 = t0
+        base = int(round((t0 - st.grid0) / sym_s))
         m = {}
         for bi, sg in pairs:
             bi, sg = int(bi), int(sg)
             if sg not in (1, -1):
                 continue
-            slot = int(round((utc_ref + (bi * br - phase) * rec_dt) / sym_s))
+            slot = base + bi            # symbols are contiguous within an emit
             m[slot] = sg
         if len(m) < 2:
             return
-        slot0, hi = min(m), max(m)
-        arr = np.zeros(hi - slot0 + 1, dtype=np.int8)
-        for s, v in m.items():
-            arr[s - slot0] = v
-        if (arr == 0).any():     # a gap breaks the page-part contiguity: drop the emit
-            return
-        st.emits[slot0] = arr
+        # Store every maximal CONTIGUOUS segment of the emit, not just gap-free emits. A weak data
+        # channel (E5b-I) exports gappy per-symbol streams -- dropping the whole emit on any gap
+        # (the old behaviour) discarded 100% of E5b-I emits. Its clean runs still carry decodable
+        # page parts and stitch with neighbours; the _runs/_decode path already handles the rest.
+        slots = sorted(m)
+        seg = 0
+        for i in range(len(slots)):
+            if i + 1 == len(slots) or slots[i + 1] != slots[i] + 1:
+                s0, s1 = slots[seg], slots[i]
+                if s1 - s0 + 1 >= 2:
+                    st.emits[s0] = np.array([m[s] for s in range(s0, s1 + 1)], dtype=np.int8)
+                seg = i + 1
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)

@@ -168,6 +168,16 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
         FATAL_ERROR("GnssChannelizedSearch: {:s}", e.what());
         return;
     }
+    // FDMA (GLONASS L1OF/L2OF): every satellite shares one code and is separated by CARRIER, so
+    // each PRN needs its own offset from band centre. The table is built by the config generator
+    // from the live GLONASS frequency plan and travels in the yaml, where it is readable next to
+    // the PRN list. Absent/empty -> CDMA, i.e. every other signal, unchanged.
+    _replica->set_prn_freq_offsets(
+        config.get_default<std::vector<double>>(unique_name, "prn_freq_offset_hz", {}));
+    if (_replica->prn_freq_offsets_set() > 0)
+        INFO("GnssChannelizedSearch: FDMA carrier offsets applied to {:d} of {:d} PRNs",
+             _replica->prn_freq_offsets_set(), (int)_prns.size());
+
     _hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
@@ -252,7 +262,12 @@ void GnssChannelizedSearch::search_snapshot() {
     const int nwin = std::min(_acquire_windows, (int)(_snap_hops / (size_t)hpr));
 
     // Covering channels (global) for this carrier that fall in this subband.
-    const auto cover = _replica->covering_bins(dmax, _doppler_margin_hz);
+    // ★ UNION over PRNs, because this set is sliced ONCE and then reused for every PRN below.
+    // Under FDMA (GLONASS) each satellite sits on its own carrier, so a single PRN's covering
+    // set would send the search looking for every OTHER satellite in channels it does not
+    // occupy -- which finds nothing, while the front end, the codes and the hints all look
+    // healthy. Identical to the old call for CDMA, where every PRN shares one carrier.
+    const auto cover = _replica->covering_bins_union(dmax, _doppler_margin_hz);
     std::vector<int> cov_local, cov_global;
     for (int c : cover) {
         const int lc = local_of_global(c);

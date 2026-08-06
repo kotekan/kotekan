@@ -50,12 +50,18 @@ shared:
   # gates that exist are 30 s.
   valve_slack_ms: 500
   sizeof_float: 4
-  cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-  cpu_affinity_note: "LIVE/DEV SPLIT (2026-07-25): 0-10 stages, 11-13 = one private
-    core per airspy (USB isolation; was a PAIR each, but a single core carries one
-    input thread fine and 3 cores were idle), 14-19 = RESERVED for benches/dev so
-    offline work cannot steal from the soak. Stages measured at ~8.7 cores busy, so
-    11 leaves ~20% headroom -- widen back toward 13 if frames start dropping."
+  cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16, 18, 19]
+  cpu_affinity_note: "LIVE/DEV SPLIT (2026-07-25, WIDENED 2026-08-05): stages now get
+    0-10 + 14-16 + 18-19 (16 cores); 11-13 = one private core per airspy (USB isolation);
+    17 left free (the control plane's brokers/loggers/viewer measured ~99% there).
+    ⚠️ 14-19 were RESERVED for benches/dev -- an offline bench now CONTENDS with the soak,
+    so pin benches explicitly (taskset -c 11-13 is wrong too; use 17 or accept the contention).
+    WHY WIDENED: the 07-25 note said stages were ~8.7 cores busy and to 'widen back toward 13
+    if frames start dropping'. On the 3-band node they are, and the cap was the binding
+    constraint: kotekan demanded 1038% against an 11-core allowance with cores 0-10 all at
+    85-100% while 14-16/18-19 sat at 6-24% idle. ★ THE 3-BAND DEFICIT IS CPU, NOT GPU -- l1
+    was losing 38% of its frames while its own GPU duty was only 31%, which no amount of GPU
+    headroom explains. See docs/buglist.md 'The THIRD BAND over-subscribes the node'."
 
   spectrum_length: 10
   num_taps: 4
@@ -152,6 +158,32 @@ shared:
 # PER-BAND TABLE. chains[0] is always the primary GPS chain (unprefixed stage names,
 # top-level signal/n_prn inheritance); later rows get gal_/bds_ prefixes.
 # =============================================================================================
+# ---------------------------------------------------------------------------------------------
+# DONGLE POOL -- the physical airspys, decoupled from the bands (2026-08-04).
+# ---------------------------------------------------------------------------------------------
+# Bands used to PIN a serial each, which made "run band X on dongle Y" a config edit and forced
+# an exclusivity table. They are now ASSIGNED: the generator hands the dongles out to the bands
+# in $BANDS ORDER, so any band runs on any dongle and the only rule left is
+# len(BANDS) <= len(dongles). Each band's own `airspy.serial` survives as the DEFAULT used when
+# it is not in $BANDS (its file is still generated, just unused).
+#     BANDS="l1 e6 b3i"   -> l1->dongle0, e6->dongle1, b3i->dongle2
+#     BANDS="b1i e6 b3i"  -> b1i->dongle0, e6->dongle1, b3i->dongle2
+# ⚠️ ORDER IS THE ASSIGNMENT: keep $BANDS order stable between runs if you want a band to stay
+# on the same physical unit (l-a code-bias files and clock-bias state are per TAG, not per
+# dongle, so a reshuffle re-converges them). cpu_affinity follows the DONGLE, not the band.
+# All three units see the same sky through the same splitter, so any assignment is valid RF-wise
+# -- but VERIFY A PIN BY BREAKING IT (airspy-serials memory) if a band ever looks wrong.
+dongles:
+  - serial: "0x03A464C837525967"
+    cpu_affinity: [11]
+    note: "unit A (historically L1)"
+  - serial: "0x744C60C821692F4F"
+    cpu_affinity: [12]
+    note: "unit B (historically L2C)"
+  - serial: "0x03A464C837264F67"
+    cpu_affinity: [13]
+    note: "unit C (historically L5)"
+
 bands:
 
   l1:
@@ -206,13 +238,13 @@ bands:
       scans the ones the broker flags visible (hints), so the active set follows the sky as
       PRNs rise/set. run_live.sh skips its visible-PRN patch when require_hint is set (this
       full list survives). n_prn matches.
-    num_cuda_streams: 7          # 6 tracker chains use streams 1..6 (gps/E1C/E1B/bds/l1c/b1c_d);
-                                 # num must exceed the max stream index (streams 0..N-1), so 7.
-                                 # ⚠️ EMITTED VERBATIM, not derived -- bumped 5->6 for E1B, then
-                                 # 6->7 for the B1C-D B-CNAV1 sibling (6th L1 chain, stream 6),
-                                 # both 2026-07-30 (S5). A chain on stream N with num N indexes
-                                 # PAST the allocated set -- the recurring trap.
-    per_chain_streams: true      # trackers on streams 1..6 (gps/E1C/E1B/bds/l1c/b1c_d), stream-matched outputs
+    num_cuda_streams: 8          # 7 tracker chains use streams 1..7 (gps/E1C/E1B/bds/l1c/b1c_d/l1c_d);
+                                 # num must exceed the max stream index (streams 0..N-1), so 8.
+                                 # ⚠️ EMITTED VERBATIM, not derived -- bumped 5->6 for E1B, 6->7 for
+                                 # the B1C-D B-CNAV1 sibling, then 7->8 for the L1C-D CNAV-2 sibling
+                                 # (7th L1 chain, stream 7, 2026-08-03). A chain on stream N with
+                                 # num N indexes PAST the allocated set -- the recurring trap.
+    per_chain_streams: true      # trackers on streams 1..7 (gps/E1C/E1B/bds/l1c/b1c_d/l1c_d), stream-matched outputs
     gputrack_note: |
       UNIFIED L1 GPU PROCESS (2026-07-19): one cudaProcess, ONE q_buf upload, three
       cudaGnssTrack commands on streams 1/2/3, three stream-matched outputs. Needs the
@@ -545,6 +577,38 @@ bands:
             collapses 300->1->200). The broker's predicted L1CO phase (from GPST+range) pins it;
             the combiner self-calibrates the convention constant from confidently-locked sats.
 
+      - constellation: l1c_d
+        signal: GPS_L1C_D
+        tracker_signal_explicit: true
+        n_prn: 32
+        seed_endpoint: /l1c_d_track/set_seeds
+        record_name: l1c_d_level
+        section_note: |
+          ---- GPS L1C-DATA component (CNAV-2) ----
+          DERIVED from L1C-P exactly as B1C-D is from B1C-P: no search stage. L1C-D (data) and
+          L1C-P (pilot) share the SAME 10230-chip BOC(1,1) primary period and epoch (codes differ
+          only in the Weil tables), so an L1C-D row is the L1C-P row VERBATIM: no lift, no broker
+          flag. run_live adds l1c_d_track to the L1C broker's --trackers so it gets the same
+          consensus seeds as l1c_track (L1C-P). PURE DATA channel with NO secondary:
+          navwipe_bit_records 1 (one 10 ms code period = one CNAV-2 symbol) + bit_export, no
+          secondary_overlay (the 1800-symbol overlay is the L1C-P PILOT's). run_live hands
+          l1c_d_combiner to the broker as --cnav2-combiner so its nav_obs reach the Cnav2Predictor
+          (binary LDPC) and the decoded CNAV-2 ephemeris is cross-checked vs BRDC -- completing the
+          GPS L1C pilot+data pair (only ~10 Block-III sats broadcast it).
+          ⚠️ CNAV-2's frame is 18 s (like B-CNAV1): needs a phase-CONTINUOUS run to decode. GPU:
+          7th L1 chain (stream 7) -- MEASURE l1_valve. rec_buf in TIME (the L5-I lesson).
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 32, prns: RANGE, integration_length: 100, navwipe_bit_records: 1, bit_export: true }
+          note: |
+            integration_length 100 x 10 ms = 1 s emit (10 ms records, so 100 gives a full 1 s -- NOT
+            the B2b count-vs-time trap, whose 1 ms records made 100 too short). navwipe_bit_records 1:
+            a 10 ms L1C record is exactly ONE CNAV-2 symbol (100 sps), so one sign per record (the
+            B1C-D / E1B pattern). NO secondary_overlay (the 1800-symbol overlay is the L1C-P pilot's).
+            NO peel.
+
   l2c:
     out_file: live_l2c_gpu.yaml
     header: |
@@ -560,116 +624,187 @@ bands:
     kotekan_rest_port: 12148
     samples_per_data_set: 49920
     frame_note: |
-      49920 samples / 5 MSPS = 9.984 ms per frame (matches live_l2c). L2C records are 20 ms,
-      so a record spans ~2 frames -- the cudaGnssTrack device ring (ring_records 50)
-      accumulates across frames and emits each 5000-hop record when complete.
-    sample_rate: "5.0e6"
-    f_offset: "1.25e6"
-    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1)"
-    spectrum_note: "N=10 -> fft_len 20, channel width 250 kHz, 10 channels span 2.5 MHz"
+      49920 samples / 20 MSPS = 2.496 ms per frame (matches L5). BeiDou B2b records are 1 ms
+      (one 10230-chip period at 10.23 Mcps), so ~2.5 records complete per frame -- inside MAX_REC.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1/L5)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
     airspy:
       cpu_affinity: [12]
       serial: "0x744C60C821692F4F"
-      serial_note: "L2C unit"
-      freq: 1227.6
-      sample_bw: 2.5
-      sample_bw_note: "airspy 2.5 MSPS mode -> 5 MSPS real"
+      serial_note: "L2C unit -- REPURPOSED 2026-08-03 from GPS L2C (1227.6/5 MSPS) to BeiDou B2b
+        (1207.14/20 MSPS). Same physical dongle; the mid-band build retunes it (mid-band-gal-bds-
+        receivers). B2b == Galileo E5b centre, so this ONE tune samples BOTH: the l2c band now
+        stacks a Galileo E5b-Q chain beside B2b (2026-08-03), no further retune."
+      freq: 1207.14
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B2b needs the wide mode)"
       gain: 11
-    doppler_min: -4500.0
-    doppler_max: 4500.0
-    doppler_step: 50
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
     doppler_note: |
-      L2 geometric Doppler ~ 0.779 x L1 -> tighter than L1's +-5500. FINE step: the 20 ms
-      coherent integration washes out if the grid is coarser than ~50 Hz.
-    num_cuda_streams: 3
-    per_chain_streams: false
+      BeiDou B2b at 1207 MHz ~ 0.766 x L1 geometric Doppler; +-5000 with margin. step 100 (was
+      50 for 20 ms L2C coherent bins): B2b records are 1 ms (like L5), so L5's 100 Hz grid applies.
+    # 2026-08-05: 4 -> 5 and false -> TRUE. This band was ONE chain (GPS L2C) when
+    # per_chain_streams was set false; the 08-03 B2b repurpose grew it to FOUR (B2b-I, E5b-Q,
+    # E5b-I, B2I) and nobody revisited the flag, so all four cudaGnssTrack calls were queued on
+    # cuda_stream 1 and SERIALIZED. Measured cost: kernels sum 0.843 ms against a 2.496 ms frame
+    # = 33.8% duty, where the LARGEST single kernel is only 0.271 ms = 10.8%. l1 (7 chains) and
+    # l5 (6 chains) have always had per-chain streams; l2c was the lone hold-out -- and it is
+    # exactly the "4-chain band at 20 MSPS does not fit" the DQ log kept pointing at.
+    # ⚠️ The two MOVE TOGETHER: streams are assigned 1..n_chains, so num_cuda_streams must be
+    # n_chains+1 or a chain indexes past the allocated set (l1: 8 for 7, l5: 7 for 6).
+    num_cuda_streams: 5
+    per_chain_streams: true
     record_dir: /tmp/gps_l2c_gpu
     # viewer_args REMOVED 2026-07-30: pared to ONE unified viewer (L1, --unified). The unified page
     # already shows L2C signals; this per-band flat viewer only survived as a power streamer.
     # viewer_args: "--http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G --band l2c"
     chains:
 
+      # SHAPE A (2026-08-03 B2b repurpose, see mid-band-gal-bds-receivers): the primary chain
+      # stays labelled `constellation: gps` so gen_band_config emits the UN-PREFIXED
+      # gps_search/gps_track/gps_combiner stage names the control-plane's primary-broker path
+      # requires -- but its SIGNAL is BeiDou B2b, and run_live.sh points the broker at BeiDou
+      # (constellation C, BeiDou-3 TLE, --sys C) via a per-band conditional on the BDS_ signal
+      # name. B2b is DATA-only (no dataless pilot): acquired directly + nav-wiped, like GPS L1
+      # C/A -- NOT the B2a pilot-derive path. No secondary overlay, no peel/epl_frame override.
       - constellation: gps
-        signal: GPS_L2C_CM
+        signal: BDS_B2B_I
         tracker_signal_explicit: true
-        n_prn: 32
+        n_prn: 63
         seed_endpoint: /gps_track/set_seeds
         record_name: level
         search:
-          params: { acquire_snr: 8.0, acquire_windows: 40, hops_per_record: 5000, require_hint: true, hint_ttl_s: 30.0 }
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
           note: |
-            require_hint: scan only broker-hinted (visible + L2C-capable) PRNs.
-            hops_per_record 5000 = the 20 ms CM period at this geometry (search needs it
-            explicitly; the tracker derives it).
+            require_hint: scan only broker-hinted (visible + B2b-capable BDS-3) PRNs.
+            hops_per_record 1000 = the 1 ms B2b code period at 20 MSPS (like L5's Q5; the
+            tracker derives its own).
         tracker:
-          fll_reacq_hz: 12.0
+          fll_reacq_hz: 15.0
           note: |
-            2026-07-19 flap census: the DEFAULT fence (0.1 cyc/rec = 5 Hz at 20 ms records)
-            is exactly the size of every hold-release dop step, so each release tripped a
-            tracker re-pin whose FLL/deep reset costs "one deep window" -- at L2C's weak-
-            signal integration needs, the WHOLE stretch (54% of censused deaths were
-            RELEASE/CARRIER-STEP class). With max_anchor_age 0 the per-record fold keeps
-            f_ref current against slew, so the fence only needs to catch LARGE seed steps:
-            12 Hz lets the routine <=10 Hz steps ride the code-currency translation
-            seamlessly. (12 vs the fleet's 15 is deliberate -- L2C's 20 ms records put the
-            bit-robust FLL alias limit at 12.5 Hz.)
+            1 ms records (like L5), so the fleet 15 Hz fence applies -- the 12 Hz L2C value
+            was for 20 ms records (12.5 Hz bit-robust alias limit) and no longer applies here.
         combiner:
-          params: { integration_length: 200, navwipe_bit_records: 1, bit_export: true }
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, navwipe_bit_records: 1, bit_export: true }
           note: |
-            bit_export (2026-07-28, S3): export the per-20ms navwipe bit decisions as nav_obs
-            so the broker's CNAV decoder (gps_cnav.decode_cnav via a CnavPredictor) can stitch
-            the 50 sps symbol stream. ★ The RECORD FILE is NOT the symbol stream -- it holds
-            the combiner's ~0.1 Hz DEEP EMITS (positive amplitude, ~8 s apart), so
-            gps_cnav.py's offline read_symbols path is a dead end for GPU-chain records; the
-            live symbols only come through nav_obs (this flag), exactly as LNAV does at L1.
-            L2C DEEP WIPE: a 20 ms record is exactly ONE CNAV symbol, so navwipe_bit_records
-            1 wipes the 50 sym/s data and the sum integrates past 20 ms. integration_length
-            200 = 4 s max buffer (the auto-coherence ladder finds the knee live).
-            DIVERGENT (audit): 4 s window here vs ~1 s everywhere else.
+            DATA-only B2b: navwipe_bit_records 1 (B-CNAV3 is 1000 sps = one symbol per 1 ms
+            record, so a record is exactly one symbol -- the L5-I / B2a-D discipline) wipes the
+            data so the sum integrates past 1 ms. bit_export publishes the per-record bit
+            decisions as nav_obs for the B-CNAV3 decoder. NO secondary_overlay (B2b has no
+            secondary code). No peel / epl_frame override (data channel, shared 15360 default).
+            ★ integration_length 1000 NOT 100 (2026-08-03): the emit window is integration_length
+            RECORDS = a TIME only via the record period. B2b records are 1 ms, so 100 = a 0.1 s
+            emit -- SHORTER than the broker's 0.2 s nav_obs poll, so consecutive get_status
+            snapshots don't overlap and the symbol timeline fragments at ~200 syms, far short of
+            the 1000-symbol B-CNAV3 frame. 1000 records = 1 s = one full frame per emit, captured
+            gap-free (b1c_d gets away with 100 only because its B1C records are 10 ms = 1 s). The
+            count-where-a-time-was-meant trap, in the nav-decode export path.
 
-      - constellation: cl
-        signal: GPS_L2C_CL
+      # STACKED 2026-08-03 (mid-band-gal-bds-receivers): Galileo E5b rides the SAME 1207.14
+      # front-end as B2b -- E5b and B2b share the sky frequency, so one dongle tune samples
+      # BOTH, and this is a second constellation on one band exactly like L1's gps+gal+bds.
+      # E5b-Q is the dataless PILOT (PRN 1..36), the direct analogue of the L5 E5a-Q chain:
+      # 1 ms primary (1000 hops/record), per-PRN 100-chip CS100 secondary wiped deterministically
+      # (secondary_overlay E5B_CS100). SECONDARY chain -> constellation `gal` -> gen_band_config
+      # emits l2c_gal_search/track/combiner, and run_live's existing GALILEO-broker block (keyed
+      # on a gal_track stage) launches a group=galileo broker for it -- no launcher edit. Runs on
+      # its OWN GPU stream beside B2b since 2026-08-05 (per_chain_streams true, as l1 and l5 have
+      # always been -- the claim here that L5 was `false` was simply wrong). Sky-validated 2026-08-03:
+      # E5b-Q acquires E3/E5/E15/E32/E34 off this capture (e5b_code_check.py, mid_band_decode.py).
+      - constellation: gal
+        signal: GAL_E5B_Q
         tracker_signal_explicit: true
-        n_prn: 32
-        seed_endpoint: /cl_track/set_seeds
-        record_name: cl_level
+        n_prn: 36
+        seed_endpoint: /gal_track/set_seeds
+        record_name: gal_level
         section_note: |
-          L2C CL DATALESS PILOT -- the first Mechanism-A chain (docs/gnss_shared_knowledge_
-          framework.md, S1). NO SEARCH STAGE, deliberately: CL is DERIVED, not acquired. CM
-          and CL are chip-interleaved on one 511.5 kcps clock, so the broker (--cl-tracker,
-          set by run_live when it sees this chain) copies each CM seed row with the code
-          phase lifted by k*10230 -- the segment k pinned from absolute capture time
-          (utc0_sample0) + model range + SV clock, snapped to the measured CM cp. Same
-          doppler/rates/trim verbatim: CM's tracked solution IS CL's (same carrier, same
-          chip clock). CM stays untouched as the in-run control.
-          THE PRIZE: 1.5 s of code with NO data and NO overlay -> zero free signs, so the
-          navwipe floor (11.3 sigma at CM's 200 free signs / 4 s) collapses to the plain
-          Rayleigh floor and no bit can ever flip. The descriptor has called CL "best
-          target for peeling" since it was written; this chain is what makes that reachable.
-        tracker:
-          # Same record geometry and FLL fence as CM: 20 ms records (5000 hops), 12 Hz
-          # alias limit. hops_per_record is EXPLICIT because the tracker's default is
-          # repl_period_hops() = one code period -- 5000 at CM but 375,000 (1.5 s!) at CL.
-          # A CL record is a rolling 1/75th SEGMENT of the code; the despread kernel walks
-          # the full 1,534,500-comb-chip table with its ordinary code-index wrap
-          # (validated: cuda_gnss_despread_test GPS_L2C_CL 10 5000 [765749.75]).
-          fll_reacq_hz: 12.0
-          params:
-            hops_per_record: 5000
-        combiner:
-          # COHERENT = the length-1 all-ones overlay (gnssOverlay.cpp wrote the row for
-          # exactly this chain): overlay_wipe degenerates to a plain gap-robust coherent
-          # sum -- deep integration with no bit estimate, no alignment search, and the
-          # PREWIPED carrier path (raw phase fit, no squaring). navwipe_bit_records stays
-          # 0: CL has no data, and the whole point is to never pay the free-sign floor.
-          params: { n_prn: 32, prns: RANGE, integration_length: 200, secondary_overlay: COHERENT }
+          ---- Galileo E5b-Q parallel chain (dataless pilot, PRN 1..36, 1207.14 MHz) ----
+          Rides the B2b channelized stream (second consumer). Tracked by the shared l2c
+          gputrack; gal_epl_buf is its output. NO peel (light beside B2b, matching the L5
+          E5a-Q chain whose peel is currently off) -> no epl_frame override.
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
           note: |
-            CL DEEP: plain coherent integration over the auto-coherence ladder (min_rung is
-            a TIME since f57b9388, so the 20 ms records get rungs down to 0.24 s). Floor =
-            sqrt(2 ln 2)+1 ~ 2.2 sigma vs CM's navwipe 11.3 -- the certification bar drops
-            ~5x for the SAME satellites on the SAME band. Equal TDM power split means a
-            healthy CL should read within a few dB of its CM sibling; judge it against CM
-            (the in-run control), not against an absolute.
+            1000 hops/record = the 1 ms E5b primary at 20 MSPS (like L5 E5a-Q / B2b). require_hint:
+            scan only broker-hinted visible Galileo PRNs.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5B_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          note: |
+            PURE PILOT once CS100 is wiped deterministically (secondary_overlay E5B_CS100, one
+            chip per 1 ms period, 100 ms cycle -> the E5a-Q/B2a-P segmented-pilot case). Deep
+            integrates fully coherently; integration_length 1000 x 1 ms = 1 s emit cadence.
+
+      - constellation: e5b_i
+        signal: GAL_E5B_I
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /e5b_i_track/set_seeds
+        record_name: e5b_i_level
+        section_note: |
+          ---- Galileo E5b-I DATA component (I/NAV) ----
+          DERIVED from E5b-Q exactly as E5a-I is from E5a-Q (and E1B from E1C): no search stage.
+          E5b-I (data) and E5b-Q (pilot) share the SAME 10230-chip primary at the SAME 1 ms
+          period and epoch -- only the X2 code differs -- so an E5b-I row is the E5b-Q row
+          VERBATIM: no code-phase lift, no segment index, no broker flag. run_live adds
+          e5b_i_track to the GAL(E5b) broker's --trackers so it gets the same consensus seeds as
+          gal_track (E5b-Q). The combiner wipes the 4-chip CS4 secondary AND exports per-4ms-symbol
+          signs (secondary_overlay E5B_CS4 + navwipe_bit_records 4 + bit_export -- the composed
+          wipe E5a-I proved, since an I/NAV symbol is 4 ms = one CS4 period). run_live hands
+          e5b_i_combiner to the broker as --inav-combiner so its nav_obs reach the SAME InavPredictor
+          E1B uses (E5b carries the SAME I/NAV message as E1B) and the decoded ephemeris is
+          BRDC-cross-checked -- a FOURTH independent Galileo ephemeris decode (E1B vs E5a-F/NAV vs
+          E5b-I/NAV vs BRDC). NO peel; rec_buf sized in TIME (the count-vs-time discipline).
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5B_CS4, navwipe_bit_records: 4, bit_export: true }
+          note: |
+            integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 4 = 4 ms / 1 ms records
+            = ONE I/NAV symbol per CS4 period (a TIME expressed in records, count-vs-time). secondary
+            _overlay E5B_CS4 wipes the 4-chip overlay so the 4 code periods within a symbol sum
+            coherently; bit_export publishes the per-symbol signs as nav_obs. The composed
+            secondary+navwipe branch is the E5a-I / L5-I case, just 4 ms/symbol. NO peel (no epl_frame).
+
+      # STACKED 2026-08-04: BeiDou-2 B2I rides the SAME 1207.14 tune as B2b and E5b -- a THIRD
+      # constellation chain on one dongle, exactly as E5b was added beside B2b. At 2.046 Mcps its
+      # 4 MHz main lobe sits well inside the 10 MHz window, so it costs a chain and nothing else.
+      # ★ Its ranging code IS B1I's (one ICD generator for C_B1I and C_B2I) -- only the carrier
+      # and the satellites differ. Labelled `constellation: bds` so run_live's EXISTING BeiDou
+      # broker block fires (keyed on a bds_track stage) with no launcher edit; chip rate and code
+      # length follow from the BDS_B2I descriptor.
+      # ⚠️ BDS-2 ONLY -- BDS-3 dropped B2I for B2a/B2b. From here only the BDS-2 MEOs rise (its
+      # GEO/IGSO sit over ~58-160 E), so expect a couple of satellites. run_live's BEIDOU-3 TLE
+      # filter is therefore SUPPRESSED for a BDS_B2I chain, or it would hint exactly the wrong birds.
+      - constellation: bds
+        signal: BDS_B2I
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /bds_track/set_seeds
+        record_name: bds_level
+        section_note: |
+          ---- BeiDou-2 B2I (legacy, 1207.14 MHz) ----
+          DATA-ONLY: acquired directly and nav-wiped, the B1I/B3I shape. Rides the B2b
+          channelized stream as a second consumer.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: B2I_NH20, navwipe_bit_records: 20, bit_export: true }
+          note: |
+            The composed wipe, as for B1I/B3I: B2I_NH20 wipes the 20-chip NH so the 20 code
+            periods in a symbol sum coherently, then navwipe_bit_records 20 estimates the D1
+            symbol. integration_length 1000 x 1 ms = 1 s emit.
 
   l5:
     out_file: live_l5_gpu.yaml
@@ -1051,3 +1186,668 @@ bands:
             records = ONE B-CNAV2 symbol per CS5 period (the count-vs-time discipline).
             secondary_overlay B2A_CS5 wipes the 5-chip overlay so the 5 code periods within a
             symbol sum coherently; bit_export publishes the per-symbol signs as nav_obs. NO peel.
+
+  # ============================================================================================
+  # GALILEO E6 (1278.75 MHz) -- the LAST Galileo signal we don't track (2026-08-04).
+  # ============================================================================================
+  # ★ SHARES THE L5 DONGLE. This band and `l5` above declare the SAME airspy serial: only ONE of
+  # them may appear in $BANDS at a time. That is deliberate -- with three dongles, the third one
+  # is a REPURPOSABLE slot, and defining each tuning as its own band (rather than editing `l5` in
+  # place) makes the swap a LAUNCH-TIME choice that preserves every config:
+  #     BANDS="l1 l2c l5"   -> GPS L5 + Galileo E5a + BeiDou B2a  (6 chains, 3 constellations)
+  #     BANDS="l1 l2c e6"   -> Galileo E6-C pilot + E6-B HAS data (this band)
+  # A future `b3i` band joins the same way. ⚠️ E6 (1278.75) and BeiDou B3I (1268.52) are 10.23 MHz
+  # apart and 20 MSPS real gives ~10 MHz, so they CANNOT be stacked on one tune -- unlike B2b+E5b,
+  # which share 1207.14 EXACTLY. That near-miss is why this is a band swap, not another stack.
+  #
+  # Everything else adapts with NO launcher edit (run_live.sh's band-swap contract): the primary
+  # chain's GAL_ signal drives PRIM_SYS=E + the Galileo TLE, and chip rate / code length come from
+  # the GAL_E6_C descriptor. The E6-B sibling is seeded by THIS band's own primary broker (E6-C and
+  # E6-B share chip rate and code length exactly), so unlike l1c_d/b1c_d it needs NO exclusion from
+  # the tracker auto-collection and NO second broker -- it simply appears in --trackers.
+  e6:
+    out_file: live_e6_gpu.yaml
+    header: |
+      Galileo E6 on the GPU chain: E6-C dataless pilot + E6-B HAS data channel, 1278.75 MHz.
+      5115-chip MEMORY codes at 5.115 Mcps -> 1 ms period, BPSK(5), same record geometry as
+      B2b/E5b/L5. Codes from the EU "E6-B/C Codes Technical Note" Issue 1 Jan 2019 (published
+      to enable HAS); see galileoE6Code.hpp + e6_code_check.py.
+      ★ 5.115 Mcps main lobe (+-5.115 MHz) FITS the 10 MHz window -- better than B2b, whose
+      10.23 Mcps lobe is captured half and still decodes.
+      ✅ FIRST LIGHT 2026-08-04: E30 locked on BOTH chains at coh_s 1.000 -- pilot deep_snr to
+      146 (24x its 4.03 floor, sustained 87% over 60 s), data to 143. A pilot lock at coh_s 1.0
+      retro-validates the ENTIRE transcription at once: the E6-C primary code, the per-PRN CS100
+      secondary and the 5115-chip/5.115-Mcps geometry must ALL be right to get it, so the
+      1279-hex padding convention is confirmed ON THE SKY, not just by the balance argument.
+      ✅ HAS IS MODULATED: on E30's locked emits the E6-B stream runs 3001 contiguous symbols at
+      trans 0.523, autocorr(100) +0.002, CS100 match 0.078 -- a real non-periodic coded message.
+      ⚠️ BUT THE LOCK IS INTERMITTENT and only E30 (the strongest Galileo up) holds it. What
+      remains is a LINK BUDGET problem, NOT a correctness one: suspect the antenna/LNA passband
+      at 1278.75 (the first launch measured ADC rms 94 vs l2c's 1049). Next test: sweep
+      1207 -> 1278 at FIXED gain and watch rms.
+      ⚠️⚠️ READ deep_snr AGAINST deep_floor HERE, ALWAYS (pilot 4.03, data 26.06). An UNLOCKED
+      navwipe rectifies noise to trans ~0.50, non-periodic, coh/deep ~0 -- it mimics a real
+      message perfectly. Those tests discriminate ONLY on a sat already proven above floor, and
+      a lock test must be a SUSTAINED FRACTION, never a first threshold crossing (an unlocked
+      chain crosses any modest threshold within minutes). Both mistakes were made here.
+    http_port: 8083
+    kotekan_rest_port: 12348
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame (matches L5/L2C). E6 records are 1 ms (one
+      5115-chip period at 5.115 Mcps), so ~2.5 records complete per frame -- inside MAX_REC.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1/L2C/L5)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [13]
+      serial: "0x03A464C837264F67"
+      serial_note: "The L5 unit, RETUNED to E6 (1176.45 -> 1278.75). Same physical dongle as the
+        `l5` band above -- never put both in $BANDS."
+      freq: 1278.75
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (5.115 Mcps E6 wants the wide mode)"
+      # 15, not the l5 unit's 8: at 1278.75 the first launch measured ADC rms 94 vs l2c's 1049
+      # (21 dB down) with railfrac 0 -- the band sits high on the LNA/filter skirt, so it needs
+      # the headroom spent. Watch railfrac after any further bump.
+      gain: 15
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      E6 at 1278.75 MHz ~ 0.812 x L1 geometric Doppler; +-5000 with margin. step 100: E6 records
+      are 1 ms (like L5/B2b), so the L5 100 Hz grid argument applies verbatim.
+    prns_note: |
+      Galileo PRN 1..36 (n_prn 36, the gal convention); the code tables cover 1..50.
+    # 3 = stream 0 (shared cudaInputData) + the two chains. Bump if a chain is added: emitted
+    # VERBATIM, not derived from the chain count.
+    num_cuda_streams: 3
+    per_chain_streams: false
+    record_dir: /tmp/gps_e6_gpu
+    chains:
+
+      # SHAPE A: the primary chain stays labelled `constellation: gps` so gen_band_config emits
+      # the UN-PREFIXED gps_search/gps_track/gps_combiner names the primary-broker path needs --
+      # its SIGNAL is Galileo, and run_live derives constellation E + the Galileo TLE from that.
+      - constellation: gps
+        signal: GAL_E6_C
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- Galileo E6-C dataless PILOT (1278.75 MHz) ----
+          The acquisition/tracking anchor for the band, exactly as E5b-Q is on l2c. Per-PRN
+          100-chip secondary wiped deterministically (secondary_overlay E6_CS100, one chip per
+          1 ms period, 100 ms cycle) -> integrates fully coherently past the code period.
+          ⚠️ PER-PRN secondary, unlike E1-C's SHARED CS25 -- E6 follows the E5a-Q/E5b-Q shape.
+          No peel (new band, keep it light) -> no epl_frame override.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 6.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          # acquire_snr 6.0 + 200 windows (2026-08-04), NOT the 8.0/100 the other mid bands use:
+          # E6 first light showed TRACKING is healthy (E30 deep_snr 97, on par with E5b-Q's 85
+          # for the same sat) while ACQUISITION takes only the strongest sat. E5b's own search
+          # sits at sig 7.3-10.5 against a threshold of 8.0 -- already marginal -- so a couple of
+          # dB less margin at 1278.75 puts everything under it. Buy the margin back with a lower
+          # threshold + more incoherent windows (pure processing gain, no RF change).
+          note: |
+            hops_per_record 1000 = the 1 ms E6 primary at 20 MSPS (like L5 E5a-Q / B2b / E5b-Q).
+            require_hint: scan only broker-hinted visible Galileo PRNs.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E6_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          note: |
+            PURE PILOT once CS100 is wiped (the E5a-Q/E5b-Q/B2a-P segmented-pilot case).
+            integration_length 1000 x 1 ms = 1 s emit cadence.
+
+      # The E6-B DATA sibling: DERIVED from the E6-C pilot (no search, seeded verbatim), the
+      # B1C-D / L1C-D / E5b-I discipline. ★ Seeded by THIS band's OWN primary broker -- E6-C and
+      # E6-B share chip rate (5.115 Mcps) and code length (5115) exactly, so the primary's
+      # consensus seeds apply VERBATIM and e6_b_track needs no exclusion regex entry and no
+      # second broker. That is why this sibling is cheaper to wire than every previous one.
+      - constellation: b
+        signal: GAL_E6_B
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /b_track/set_seeds
+        record_name: e6_b_level
+        section_note: |
+          ---- Galileo E6-B DATA component (HAS, High Accuracy Service) ----
+          HAS is 1000 sps, so a symbol is 1 ms = EXACTLY ONE 5115-chip code period ->
+          navwipe_bit_records 1 + bit_export, NO secondary_overlay (the 100-chip secondary is
+          the E6-C PILOT's). ★ HAS has been OPERATIONAL since Jan 2023, so unlike GPS L1C-D
+          there IS a live message here -- but CHECK IT FIRST with the symbol transition rate
+          (~0.5 = real message, ~0 = unmodulated carrier; see gps-l1c-chain) BEFORE building a
+          HAS page decoder. That decoder is a NEW family (Reed-Solomon/MDS over HAS pages),
+          NOT a reuse of the B-CNAV / I-NAV spines.
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, navwipe_bit_records: 1, bit_export: true }
+          note: |
+            ★ integration_length 1000, NOT 100: the emit window is integration_length RECORDS,
+            a TIME only via the record period. E6 records are 1 ms, so 100 would be a 0.1 s emit
+            -- shorter than the broker's 0.2 s nav_obs poll, fragmenting the symbol timeline
+            (exactly the B2b count-vs-time trap). 1000 records = 1 s = 1000 HAS symbols per emit.
+
+  # ============================================================================================
+  # LEGACY BEIDOU B1I (1561.098) and B3I (1268.52) -- the last two public signals (2026-08-04).
+  # ============================================================================================
+  # ★ BOTH BORROW THE L2C DONGLE (serial 0x744C60C8...), so `l2c`, `b1i` and `b3i` are MUTUALLY
+  # EXCLUSIVE -- gen_3band_config enforces at most one per group. Running one costs the B2b
+  # B-CNAV3 + E5b-Q/E5b-I stack for the duration, which is the price of a test, not a permanent
+  # trade. (The l5/e6 dongle is the other exclusive group.) Neither signal can stack with
+  # anything we run: B1I is 14.3 MHz from L1 and B3I is 10.23 MHz from E6, both just outside a
+  # ~10 MHz window. ★ On CHORD this whole constraint evaporates -- it runs every band at once,
+  # so each simply needs its own front end; the contention is a DEV artifact.
+  #
+  # Both are DATA-ONLY legacy signals: acquired directly and nav-wiped (the GPS L1 C/A shape),
+  # with the D1 message at 50 bps spread by a 20-chip NH secondary. The combiner therefore runs
+  # the COMPOSED wipe that B2a-D / E5a-I / L5-I proved: secondary_overlay B?I_NH20 (one chip per
+  # 1 ms period) AND navwipe_bit_records 20 (20 x 1 ms records = one 20 ms NAV symbol).
+  b1i:
+    out_file: live_b1i_gpu.yaml
+    header: |
+      BeiDou B1I on the GPU chain, 1561.098 MHz: 2046-chip Gold code at 2.046 Mcps (1 ms),
+      BPSK(2), from two 11-stage LFSRs -- ALGORITHMIC, not a memory table. See beidouB1ICode.hpp
+      (⚠️ its G2 output tap is THREE taps for PRN 38..63) and b1i_b3i_code_check.py.
+      Runs the 20 MSPS front-end geometry for uniformity with the other bands; B1I's 4.1 MHz
+      main lobe would fit the 10 MSPS mode, so this band is a candidate for halving later.
+    http_port: 8084
+    kotekan_rest_port: 12448
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. B1I records are 1 ms (one 2046-chip period
+      at 2.046 Mcps), so ~2.5 records complete per frame -- inside MAX_REC, as for B2b/E5b/L5.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as every other band)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [12]
+      serial: "0x744C60C821692F4F"
+      serial_note: "The L2C unit, BORROWED for B1I (1207.14 -> 1561.098). Same physical dongle as
+        the `l2c` and `b3i` bands -- at most one of the three in $BANDS."
+      freq: 1561.098
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real"
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      B1I at 1561.098 ~ 0.991 x L1 geometric Doppler -- essentially L1's range. step 100: 1 ms
+      records, so the L5/B2b grid argument applies verbatim.
+    prns_note: |
+      BDS PRN 1..63. ⚠️ run_live's BDS_* case filters the TLE to BEIDOU-3, so the BDS-2 GEO/IGSO
+      satellites (which also broadcast B1I/B3I, and whose GEOs carry the 500 bps D2 message
+      instead of D1) are NOT hinted. BDS-3 alone is ~24+ satellites, so that is a fine start --
+      but it IS the knob to open if the legacy BDS-2 birds are ever wanted.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_b1i_gpu
+    chains:
+
+      - constellation: gps
+        signal: BDS_B1I
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- BeiDou B1I, DATA-ONLY (no pilot) ----
+          Acquired directly and nav-wiped, like GPS L1 C/A and B2b -- NOT a pilot-derive chain.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            hops_per_record 1000 = the 1 ms B1I period at 20 MSPS (as for B2b/E5b/L5).
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: B1I_NH20, navwipe_bit_records: 20, bit_export: true }
+          note: |
+            The COMPOSED wipe (B2a-D / E5a-I / L5-I discipline): secondary_overlay B1I_NH20 wipes
+            the 20-chip NH so the 20 code periods inside one symbol sum coherently, and
+            navwipe_bit_records 20 (= 20 ms / 1 ms records = ONE D1 symbol) then estimates and
+            wipes the NAV symbol itself. integration_length 1000 x 1 ms = 1 s emit. bit_export
+            publishes the per-symbol signs as nav_obs, ready for a future D1 decoder.
+
+  b3i:
+    out_file: live_b3i_gpu.yaml
+    header: |
+      BeiDou B3I on the GPU chain, 1268.52 MHz: 10230 chips at 10.23 Mcps (1 ms), BPSK(10), from
+      two 13-stage LFSRs. See beidouB3ICode.hpp (⚠️ G1 RESETS to all-ones at 0011111111111 --
+      omit it and the code correlates weakly rather than not at all) and b1i_b3i_code_check.py.
+      ★ Chip rate + record geometry are IDENTICAL to B2b, so the front-end and record shapes are
+      already proven on this very dongle -- only the code generator differs.
+    http_port: 8085
+    kotekan_rest_port: 12548
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. B3I records are 1 ms, like B2b -- ~2.5
+      records per frame, inside MAX_REC.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [12]
+      serial: "0x744C60C821692F4F"
+      serial_note: "The L2C unit, BORROWED for B3I (1207.14 -> 1268.52) -- a 61 MHz hop, well
+        inside the same LNA passband that already gives this dongle ADC rms ~1050 at 1207.14.
+        Same physical dongle as `l2c` and `b1i`; at most one of the three in $BANDS."
+      freq: 1268.52
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B3I needs the wide mode)"
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      B3I at 1268.52 ~ 0.805 x L1 geometric Doppler; +-5000 with margin. step 100 (1 ms records).
+    prns_note: |
+      BDS PRN 1..63; the BEIDOU-3 TLE filter note on the b1i band applies here identically.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_b3i_gpu
+    chains:
+
+      - constellation: gps
+        signal: BDS_B3I
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- BeiDou B3I, DATA-ONLY (no pilot) -- the B1I sibling one band down ----
+          Same D1 message, same 20-chip NH, same composed wipe; only the code and rate differ.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            hops_per_record 1000 = the 1 ms B3I period at 20 MSPS -- identical to the B2b chain
+            this dongle already runs.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: B3I_NH20, navwipe_bit_records: 20, bit_export: true }
+          note: |
+            Composed wipe, exactly as the b1i chain -- see its note. 1 s emit at 1 ms records.
+
+  # ============================================================================================
+  # GLONASS L2OF (FDMA) + later L2OC -- the fourth constellation's WORKHORSE band (2026-08-04).
+  # ============================================================================================
+  # ★★ THE ONE BAND WHERE SATELLITES ARE SEPARATED BY FREQUENCY, NOT BY CODE. Every GLONASS
+  # satellite transmits the SAME 511-chip m-sequence; satellite with frequency-channel number k
+  # sits at 1246.0 MHz + k*0.4375 MHz, k = -7..+6. So the per-satellite identity lives in
+  # `prn_freq_offset_hz` (emitted per chain by gen_band_config from the LIVE BRDC frequency plan,
+  # never hardcoded -- k is reassigned as satellites are replaced), and the codes carry none of it.
+  #
+  # ★ TUNED TO 1246.0 = the k=0 NOMINAL CARRIER, deliberately, not to the comb's geometric centre
+  # (1245.78). Tuning to the nominal makes each satellite's offset EXACTLY k*437.5 kHz with no
+  # re-centring arithmetic anywhere -- the number in the yaml is the number in the ICD. The comb
+  # then lands at IF 1.94-7.63 MHz inside the 0-10 MHz digitized band, ~1.9 MHz of margin below
+  # and ~2.4 MHz above, with every satellite's +-0.511 MHz main lobe fully inside.
+  #
+  # ✅ FRONT END CONFIRMED SAFE HERE (2026-08-04 sweep): 1246 measures -2.9 dB from the low-band
+  # peak and only 0.9 dB below GPS L2C, which works perfectly. That comparison holds regardless
+  # of how the mid-band deficit question resolves -- see docs/buglist.md.
+  # ⚠️ L2OC (1248.06, CDMA) rides THIS SAME TUNE and is phase 2: it is TDM+BOC(1,1) on a 511.5
+  # kcps chip (PocketSDR mod_code [0,0,1,-1]), which is a modulation shape the descriptor cannot
+  # express yet. Do it after L2OF locks; no retune needed when it lands.
+  l2of:
+    out_file: live_l2of_gpu.yaml
+    header: |
+      GLONASS L2OF on the GPU chain, 1246.0 MHz + k*0.4375: the legacy FDMA open signal, on
+      EVERY GLONASS satellite (~26 with a known channel) rather than the 7 GLONASS-K that carry
+      L3OC. 511-chip m-sequence at 511 kcps (1 ms), BPSK, ONE code shared by all satellites.
+      See glonassCACode.hpp + glonass_ca_code_check.py (which asserts the ideal m-sequence
+      autocorrelation exactly: all 510 non-zero shifts = -1).
+      ★ The per-satellite carrier offsets are in `prn_freq_offset_hz` on the search and track
+      commands -- READ THEM FIRST if a satellite will not lock. They are k*437.5 kHz with k from
+      the live BRDC plan; a wrong or zero table points the search at the wrong carrier and looks
+      exactly like a broken code.
+      DATA-ONLY: 50 bps MANCHESTER-encoded to 100 sym/s, so a symbol is 10 ms = ten 1 ms code
+      periods -> navwipe_bit_records 10 and NO secondary_overlay. Each 20 ms bit is a +-/-+
+      symbol pair, which the 10 ms wipe handles for free (each half is a constant +-1).
+      ⚠️⚠️ READ deep_snr AGAINST deep_floor, SUSTAINED, BESIDE A WORKING CHAIN -- the E6/L3OC
+      lesson. And judge L2OF against L3OC: same constellation, same front end, far more
+      satellites, and an operational service rather than a testbed signal.
+    http_port: 8087
+    kotekan_rest_port: 12748
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. L2OF records are 1 ms (one 511-chip period
+      at 511 kcps), so ~2.5 records per frame -- inside MAX_REC, as for every 1 ms band.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on the k=0 nominal carrier, Fs/4; per-PRN offsets ride on top of this"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [13]
+      serial: "0x03A464C837264F67"
+      serial_note: "Fallback only -- the top-level `dongles:` pool assigns serials in $BANDS
+        order. Any dongle can carry any band."
+      freq: 1246.0
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real; the 5.69 MHz comb needs the wide mode
+        even though a single 511 kcps satellite would not"
+      # 11, as l2c/l3oc: 1246 measured -2.9 dB from the low-band peak, the same regime as
+      # 1207/1228 where this gain gives ADC rms ~1030. Watch railfrac after any bump.
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      L2OF at ~1246 ~ 0.791 x L1 geometric Doppler; +-5000 with margin. ⚠️ GLONASS orbits are
+      lower (19100 km) and more inclined (64.8 deg) than GPS's, so the Doppler RATE runs higher
+      than the carrier ratio alone suggests -- the same caution as the l3oc band.
+      ★ The per-PRN carrier offset is NOT Doppler and must never be folded into this window: it
+      is static (a different channel, not a different velocity) and correctly does not scale the
+      code rate. It is applied separately via prn_freq_offset_hz.
+    prns_note: |
+      PRN = ORBITAL SLOT (1..24 in the classic plan; 26/27 also in use). Slots with no published
+      frequency channel get offset 0 AND are excluded from seeds/hints by the capability gate --
+      a satellite whose carrier we do not know is not trackable.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_l2of_gpu
+    chains:
+
+      # SHAPE A: primary chain labelled `constellation: gps` so gen_band_config emits the
+      # un-prefixed gps_* stage names the primary-broker path needs; the SIGNAL is GLONASS and
+      # run_live derives constellation R + the glo-ops TLE from it.
+      - constellation: gps
+        signal: GLO_L2OF
+        tracker_signal_explicit: true
+        n_prn: 28
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- GLONASS L2OF, DATA-ONLY, FDMA ----
+          No pilot and no secondary overlay: acquire directly and nav-wipe at the 10 ms
+          Manchester symbol (navwipe_bit_records 10), the GPS L1 C/A discipline with a 10 ms
+          symbol instead of 20. The per-PRN carrier offsets are the whole FDMA story.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 4.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0, log_level: info }
+          # ⚠️ TEMPORARILY 4.0/200 + log_level info for FDMA BRING-UP (2026-08-04): a low
+          # threshold shows the SHAPE of what the search sees (right PRNs at 5-7 = a margin
+          # problem; random PRNs at 4 = noise, i.e. still pointed at the wrong frequency), and
+          # the per-stage log_level surfaces the "FDMA carrier offsets applied" line that the
+          # node-wide `log_level: warn` otherwise swallows. Restore 8.0/100 once it locks.
+          # 8.0/100 (the proven mid-band setting), NOT L3OC's relaxed 6.0/200: L2OF is an
+          # operational signal on ~26 satellites in a band the sweep says is healthy, so there
+          # is no reason to spend threshold margin before seeing what it does.
+          note: |
+            hops_per_record 1000 = the 1 ms L2OF period at 20 MSPS.
+            require_hint: scan only broker-hinted visible slots WITH a known frequency channel.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 28, prns: RANGE, integration_length: 1000, navwipe_bit_records: 10, bit_export: true }
+          note: |
+            10 records x 1 ms = one 10 ms Manchester symbol. integration_length 1000 = 1 s emit
+            at 1 ms records (100 nav symbols), well clear of the broker's 0.2 s nav_obs poll --
+            the count-vs-time trap that fragmented B2b.
+
+  # ============================================================================================
+  # GLONASS L3OC (1202.025) -- the FOURTH constellation, and the last public system (2026-08-04).
+  # ============================================================================================
+  # ★ Filtered through the sub-1500 MHz rule: GLONASS L1OF (~1602) and L1OC (1600.995) are
+  # ASSIST-ONLY band and CHORD does not want them, which removes the half of GLONASS everyone
+  # thinks of first. The in-band signals are L3OC (here), and later L2OF + L2OC -- and the whole
+  # L2OF FDMA comb (k=-7..+6 = 5.69 MHz, ~6.7 MHz occupied) plus L2OC at 1248.06 FIT INSIDE ONE
+  # 10 MHz tune centred ~1245.8, so FDMA does NOT need per-satellite retuning. What it does need
+  # is per-PRN channel selection in the replica bank; L3OC deliberately comes first because it
+  # needs NONE of that -- it is an ordinary CDMA chain, so a failure here can only be the codes,
+  # the sky or the front end, never the new FDMA plumbing.
+  #
+  # ⚠️ GLONASS-K SATELLITES ONLY: 7 of 28 operational (slots 6, 9, 11, 19, 20, 22, 26 as of
+  # 2026-08-04). The --signal-capability gate reads the 'K' suffix Celestrak puts on the Uragan
+  # number, so it tracks launches by itself -- ungated, three quarters of the hinted slots would
+  # be satellites that do not transmit L3OC at all.
+  # ⚠️ NO BRDC: GLONASS broadcast ephemeris is a position/velocity/acceleration state vector
+  # integrated by Runge-Kutta, not a Keplerian element set, so gnss_ephemeris filters R records
+  # out and dead-reckon is disabled for this band. Hints come from the glo-ops TLE. That also
+  # means NO orbit cross-check of a decoded message yet -- new orbit code is the phase-2 cost.
+  l3oc:
+    out_file: live_l3oc_gpu.yaml
+    header: |
+      GLONASS L3OC on the GPU chain, 1202.025 MHz: L3OC-p dataless PILOT + L3OC-d DATA sibling.
+      10230 chips at 10.23 Mcps (1 ms), BPSK(10) -- the SAME record geometry as B2b/B3I/E5b, so
+      the front end, record shapes and channelizer plan are already proven; only the code
+      generator and the constellation plumbing are new. Codes are ALGORITHMIC (a shared 14-stage
+      LFSR times a per-satellite 7-stage one): see glonassL3OCCode.hpp + l3oc_code_check.py,
+      which verifies the C++ against an independent python implementation CHIP FOR CHIP -- the
+      first signal where we could do that, because there is no transcribed table to share a
+      mistake through.
+      ★ 1202.025 sits INSIDE the front end's good region (the receiver is specced for BeiDou B2
+      / Galileo E5, ~1176-1227), unlike E6 (1278.75) and B3I (1268.52) which fall in its
+      1260-1290 hole. So a weak result here is NOT explainable by the antenna, which makes this
+      a cleaner test than either of those.
+      ⚠️⚠️ READ deep_snr AGAINST deep_floor, SUSTAINED over ~60 s, BESIDE A WORKING CHAIN. An
+      unlocked navwipe rectifies noise into something that mimics a real message perfectly, and
+      an unlocked chain crosses any modest threshold within minutes. Both mistakes were made on
+      E6; do not repeat them here.
+      ★ THE OPEN QUESTION, to settle by MEASUREMENT not assumption: whether the L3OC code index
+      equals the orbital SLOT number. The chain below assumes it does (hints are keyed by slot).
+      If nothing locks while the L1 control shows GLONASS-K slots overhead, the next move is to
+      drop require_hint and search the full 1..63 index range blind to see which indices light
+      up -- a config change, not a code change. A wrong index is a CLEAN failure (it is another
+      satellite's valid code, so it lands at the cross-correlation floor), not a weak one.
+    http_port: 8086
+    kotekan_rest_port: 12648
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. L3OC records are 1 ms (one 10230-chip period
+      at 10.23 Mcps), so ~2.5 records complete per frame -- inside MAX_REC, exactly as B2b/B3I.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as every other band)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [13]
+      serial: "0x03A464C837264F67"
+      serial_note: "Nominally the l5/e6 unit; IRRELEVANT in practice -- the top-level `dongles:`
+        pool assigns serials in $BANDS order, so this is only the fallback when BANDS is unset.
+        Any dongle can carry any band."
+      freq: 1202.025
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps L3OC needs the wide mode)"
+      # 11, matching l2c: 1202.025 is only 5 MHz from 1207.14, where this class of dongle
+      # measures ADC rms ~1050 at gain 11. Well inside the antenna's specced range, so unlike
+      # e6's 15 there is no skirt to buy back. Watch railfrac after any bump.
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      L3OC at 1202.025 ~ 0.763 x L1 geometric Doppler; +-5000 with margin. step 100: 1 ms
+      records, so the L5/B2b 100 Hz grid argument applies verbatim.
+      ⚠️ GLONASS orbits are lower and more inclined than GPS's (19100 km, 64.8 deg), so its
+      geometric Doppler is somewhat LARGER than the carrier ratio alone suggests. +-5000 still
+      covers it; revisit if acquisition looks edge-limited.
+    prns_note: |
+      The PRN here is a CODE INDEX (1..63 valid; 0 is a degenerate LFSR seed, not a spare
+      index). Hints are keyed by orbital SLOT, on the assumption index == slot -- see the
+      header's open question. Only 7 slots are hinted at all, by the K-capability gate.
+    # 3 = stream 0 (shared cudaInputData) + the two chains. Emitted VERBATIM, not derived.
+    num_cuda_streams: 3
+    per_chain_streams: false
+    record_dir: /tmp/gps_l3oc_gpu
+    chains:
+
+      # SHAPE A: the primary chain stays labelled `constellation: gps` so gen_band_config emits
+      # the UN-PREFIXED gps_search/gps_track/gps_combiner names the primary-broker path needs --
+      # its SIGNAL is GLONASS, and run_live derives constellation R + the glo-ops TLE from that.
+      - constellation: gps
+        signal: GLO_L3OC_P
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- GLONASS L3OC-p dataless PILOT (1202.025 MHz) ----
+          The acquisition/tracking anchor for the band, as E6-C is on e6 and E5b-Q is on l2c.
+          10-chip NH secondary wiped deterministically (secondary_overlay L3OC_NH10, one chip
+          per 1 ms period, 10 ms cycle) -> integrates fully coherently past the code period.
+          SHARED sequence, not per-PRN -- the GPS L5_NH20 shape at half the length, so its
+          alignment-search floor is the lowest of any overlay we run (~sqrt(2 ln 10) ~2.1 sigma).
+          No peel (new band, keep it light) -> no epl_frame override.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 6.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          # 6.0/200 (the E6 setting), NOT the 8.0/100 the proven mid bands use: with only 7
+          # candidate satellites in the whole sky, a handful of which are up at once, the cost
+          # of a low threshold is small and the cost of missing first light is a debugging
+          # session. Pure processing gain -- no RF change. Raise to 8.0/100 once it locks.
+          note: |
+            hops_per_record 1000 = the 1 ms L3OC primary at 20 MSPS (as B2b / B3I / E5b-Q).
+            require_hint: scan only broker-hinted visible GLONASS-K slots. ★ If first light
+            fails, THIS is the knob to drop -- see the header's code-index-vs-slot question.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: L3OC_NH10, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          note: |
+            PURE PILOT once NH10 is wiped (the E5a-Q / E5b-Q / B2a-P / E6-C segmented-pilot
+            case). integration_length 1000 x 1 ms = 1 s emit cadence.
+
+      # The L3OC-d DATA sibling: DERIVED from the L3OC-p pilot (no search, seeded verbatim), the
+      # E6-B / B1C-D / E5b-I discipline. ★ Seeded by THIS band's OWN primary broker -- pilot and
+      # data share chip rate (10.23 Mcps) and code length (10230) exactly, so the primary's
+      # consensus seeds apply VERBATIM and no second broker is needed.
+      # ⚠️ constellation `d`, NOT `l3oc_d`: the merge prefixes chain names with the BAND name, so
+      # a chain label that repeats the band stutters into `l3oc_l3oc_d_*`. The seed endpoint and
+      # the stage registration then disagree about how many prefixes to apply and the broker
+      # 404s on every push. Keep the label short and band-free, as e6's `b` sibling does.
+      - constellation: d
+        signal: GLO_L3OC_D
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /d_track/set_seeds
+        record_name: l3oc_d_level
+        section_note: |
+          ---- GLONASS L3OC-d DATA component ----
+          The CDMA nav message is 100 bps through a rate-1/2 code = 200 sym/s, so a symbol is
+          5 ms = FIVE 1 ms code periods, and the 5-chip BARKER secondary covers exactly one
+          symbol. That is the composed wipe B2a-D / E5a-I / L5-I proved: secondary_overlay
+          L3OC_BC5 (one chip per 1 ms period) AND navwipe_bit_records 5 (5 records = 1 symbol).
+          ⚠️ Same length as B2A_CS5 but a DIFFERENT sequence -- Barker 11101, not B2a's CS5.
+          ★ Before building any message decoder, CHECK THE MODULATION EXISTS with the symbol
+          transition rate on a satellite already proven above floor (~0.5 = real message, ~0 =
+          unmodulated). That is the lesson GPS L1C-D cost us: a perfectly correct codec spent
+          against an empty carrier.
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: L3OC_BC5, navwipe_bit_records: 5, bit_export: true }
+          note: |
+            ★ integration_length 1000, NOT 200: the emit window is integration_length RECORDS,
+            a TIME only via the record period. L3OC records are 1 ms, so 200 would be a 0.2 s
+            emit -- right at the broker's nav_obs poll, fragmenting the symbol timeline (the
+            B2b count-vs-time trap). 1000 records = 1 s = 200 nav symbols per emit.
+
+  # ============================================================================================
+  # GLONASS L2OC (1248.06) -- the modernised CDMA pilot; the LAST GLONASS signal (2026-08-04).
+  # ============================================================================================
+  # ★ Its own band tuned to 1248.06 in DEV (a swap-in, like e6/b1i/b3i); on CHORD it rides the
+  # SAME 1246 front end as L2OF (1248.06 is +2.06 MHz off the k=0 nominal, inside the 10 MHz
+  # window). GLONASS-K only -- the same 7 satellites as L3OC -- so the l3oc GLONASS path is reused
+  # verbatim: constellation R, glo-ops TLE, the K-capability gate, no BRDC/dead-reckon.
+  # ⚠️ Two things are genuinely new here and are the reasons this is the hard GLONASS signal:
+  #   1. 20 ms code period (40920 chips at 2.046 Mcps), acquired blind like GPS L2C-CM -- 20x the
+  #      search data of every 1 ms band. Watch acquisition cost; time-assist is the fallback.
+  #   2. Carrier 1248.06 is the ICD value; PocketSDR rounds to 1248.0. 60 kHz is far outside a
+  #      +-5 kHz Doppler window, so if nothing locks while L2OF shows K-sats overhead, RE-TUNE to
+  #      1248.0 before touching anything else -- settle it on the sky, do not assume (the L3OC
+  #      code-index lesson).
+  l2oc:
+    out_file: live_l2oc_gpu.yaml
+    header: |
+      GLONASS L2OC-p on the GPU chain, 1248.06 MHz: the modernised dataless CDMA PILOT.
+      ★ Its base ranging code is BIT-IDENTICAL to L3OC-p's -- GLONASS reuses one sequence across
+      the L2/L3 CDMA pilots. The transmitted code is that sequence run through a per-chip
+      [0,0,+1,-1] BOC(1,1)+TDM expansion: 40920 chips at 2.046 Mcps, 20 ms period, HALF of them
+      zero (the data component's TDM slots). See glonassL2OCCode.hpp + l2oc_code_check.py.
+      ⚠️⚠️ READ deep_snr AGAINST deep_floor, SUSTAINED, BESIDE A WORKING CHAIN -- the E6/L3OC
+      lesson. Judge it against L3OC: SAME 7 GLONASS-K satellites, so if L3OC locks and L2OC does
+      not, suspect the 1248.06-vs-1248.0 carrier or the 20 ms acquisition, not the sky.
+    http_port: 8088
+    kotekan_rest_port: 12848
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. L2OC records are 1 ms (1000 hops at fft_len
+      20); the CODE is 20 ms = 20 records, so the search accumulates 20 records per code period.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as every other band)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [13]
+      serial: "0x03A464C837264F67"
+      serial_note: "Fallback only -- the top-level `dongles:` pool assigns serials in $BANDS
+        order. Any dongle can carry any band."
+      freq: 1248.06
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (the 2.046 Mcps expanded code + BOC
+        wants the wide mode)"
+      # 11, matching l2c/l3oc: 1248.06 is in the same regime the sweep measured healthy.
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      L2OC at 1248.06 ~ 0.792 x L1 geometric Doppler; +-5000 with margin. step 100: 1 ms records.
+      ⚠️ GLONASS orbits are lower/more inclined than GPS's, so the Doppler rate runs high -- same
+      caution as l3oc/l2of. ★ The +-5 kHz window does NOT absorb the 1248.06-vs-1248.0 carrier
+      ambiguity (60 kHz); that is settled by re-tuning, not by widening this.
+    prns_note: |
+      PRN = ORBITAL SLOT, GLONASS-K only (same 7 as L3OC), gated by the K-capability marker.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_l2oc_gpu
+    chains:
+
+      # SHAPE A: primary chain labelled `constellation: gps` so gen_band_config emits the
+      # un-prefixed gps_* stage names the primary-broker path needs; the SIGNAL is GLONASS and
+      # run_live derives constellation R + the glo-ops TLE from it.
+      - constellation: gps
+        signal: GLO_L2OC_P
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- GLONASS L2OC-p dataless PILOT (1248.06 MHz), 20 ms code ----
+          Shared 50-chip OC2 secondary wiped deterministically (secondary_overlay L2OC_OC2, one
+          chip per 20 ms primary period, 1 s cycle) -> integrates fully coherently once aligned.
+          The E5a-Q / E6-C segmented-pilot shape, just a 20 ms primary and a 50-phase overlay.
+          No peel (new band, keep it light).
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 5.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          # 5.0/200 for bring-up: only 7 candidate sats, modernised signal (may be faint or not
+          # fully deployed), and a 20 ms code -- buy sensitivity with a low threshold + more
+          # incoherent windows. Raise once it locks. hops_per_record 1000 = 1 ms at 20 MSPS; the
+          # search accumulates 20 records to span the 20 ms code period.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: L2OC_OC2, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          note: |
+            integration_length 1000 x 1 ms = 1 s emit = one full 50-chip OC2 overlay cycle, so
+            the 50-phase alignment resolves within one emit. PURE PILOT once OC2 is wiped.

@@ -87,11 +87,18 @@ public:
     /// @ref HopRateReplicaStream caches it; @ref hoprate_stream consumes it.
     struct HopRateFilter {
         double doppler_hz = 0.0;
+        int prn_index = -1; ///< PRN this filter's carrier was built for (FDMA); -1 = band-wide
         int n_chips = 0;
         std::vector<int> chans;
         std::vector<std::vector<std::complex<double>>> PhiA, PhiB; ///< [channel][Lf+1]
     };
-    HopRateFilter hoprate_filter(const std::vector<int>& want, double doppler_hz) const;
+    /// @c prn_index selects that PRN's carrier offset (FDMA); -1 = the band offset alone.
+    /// ⚠️ Under FDMA the filter is PER-PRN (different satellites sit on different carriers), so
+    /// a filter built for one PRN must not be streamed for another -- @ref hoprate_stream
+    /// checks. @ref HopRateReplicaStream already owns one filter per PRN, so steady-state cost
+    /// is unchanged; only a shared-filter caller has to start passing an index.
+    HopRateFilter hoprate_filter(const std::vector<int>& want, double doppler_hz,
+                                 int prn_index = -1) const;
 
     /// Stream @c n_hops from a prebuilt @ref HopRateFilter. The per-hop carrier phasor +
     /// code phase use the CURRENT @c code_phase_chips / @c doppler_hz (exact); the filter
@@ -114,7 +121,46 @@ public:
                              std::vector<std::vector<std::complex<float>>>& out) const;
 
     /// Global channel indices whose passband covers the carrier at @c doppler_hz.
-    std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz) const;
+    /// @c prn_index selects that PRN's carrier offset (FDMA); -1 = the band offset alone.
+    std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz,
+                                   int prn_index = -1) const;
+
+    // ---- FDMA support (GLONASS L1OF/L2OF) --------------------------------------------
+    // ★ Every other constellation we carry is CDMA: one carrier for the whole band, and the
+    // per-satellite identity lives in the code. GLONASS FDMA inverts that -- every satellite
+    // transmits the SAME 511-chip code and is separated by CARRIER, satellite k sitting at
+    // 1246.0 + k*0.4375 MHz on L2. The whole comb (k = -7..+6, 5.69 MHz) fits inside one
+    // 10 MHz tune, so this needs no retuning -- but the bank's single @c _f_offset has to
+    // become per-PRN, which is what these two do.
+    //
+    // Everything below defaults to the previous behaviour: an unset PRN contributes 0 Hz, and
+    // the new @c prn_index parameters default to -1, so every CDMA caller is untouched.
+
+    /// Extra carrier offset for PRN index @c p, Hz, on top of @c f_offset (0 = CDMA default).
+    void set_prn_freq_offset(int prn_index, double df_hz);
+
+    /// Whole table at once, indexed by PRN index (the order the bank was constructed with).
+    /// An empty vector clears it -> CDMA behaviour. This is what the stages hand the config's
+    /// `prn_freq_offset_hz` to; the config generator builds it from the live GLONASS frequency
+    /// plan, so the numbers are visible in the generated yaml next to the PRN list.
+    void set_prn_freq_offsets(const std::vector<double>& df_hz);
+
+    /// Number of PRNs with a NON-ZERO offset -- for the stage's init log, so "FDMA applied to N
+    /// satellites" is on the record. An all-zero table on an FDMA signal parks every satellite
+    /// on the band centre, which looks exactly like a broken code.
+    int prn_freq_offsets_set() const;
+
+    /// Total carrier offset from band centre for PRN index @c p: @c f_offset + its FDMA
+    /// offset. @c p < 0 (or unset) gives the band offset alone.
+    double carrier_offset(int prn_index) const;
+
+    /// Covering channels for the UNION of every PRN's carrier -- what a caller needs when it
+    /// extracts ONE channel set for all PRNs (the search does: it slices the band once, then
+    /// loops PRNs). Identical to @ref covering_bins for CDMA, where all PRNs share a carrier.
+    /// ★ Safe to over-cover: the replica is built PER PRN with that PRN's carrier, so in
+    /// channels outside its own lobe the replica is ~0 and the matched filter -- which
+    /// normalises by |replica| -- weights them away. The cost is compute, not SNR.
+    std::vector<int> covering_bins_union(double doppler_hz, double doppler_margin_hz) const;
 
     /// Bipolar code chip for PRN index @c p at fractional chip phase (wraps period).
     int8_t code_chip(int p, double chip_phase) const;
@@ -193,6 +239,7 @@ private:
     int _max_chips = 0; ///< 0 = the filter's true span (see set_max_chips)
     SignalDescriptor _sig;
     double _sample_rate;
+    std::vector<double> _prn_df; ///< per-PRN FDMA carrier offset, Hz (empty/0 = CDMA)
     double _f_offset;
     int _N;
     int _fft_len;   ///< 2*N real samples per hop (r2c)

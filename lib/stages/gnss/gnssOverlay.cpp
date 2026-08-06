@@ -2,10 +2,16 @@
 
 #include "gnssSignal.hpp"    // for signal_by_name (the documentary cross-check)
 #include "beidouB1CCode.hpp" // for generate_b1cp_secondary (per-PRN B1C overlay)
+#include "beidouB1ICode.hpp" // for B1I_NH20 (shared legacy-BeiDou D1 overlay)
 #include "beidouB2aCode.hpp" // for b2ap_secondary (per-PRN B2a overlay)
+#include "beidouB3ICode.hpp" // for B3I_NH20 (same sequence, own registry row)
 #include "galileoE1Code.hpp" // for E1C_CS25 (shared Galileo pilot overlay)
 #include "galileoE5aCode.hpp" // for e5aq_secondary (per-PRN E5a-Q overlay)
+#include "galileoE5bCode.hpp" // for e5bq_secondary (per-PRN E5b-Q overlay)
+#include "galileoE6Code.hpp" // for generate_e6c_secondary (per-PRN E6-C overlay)
 #include "gpsL1CCode.hpp"    // for generate_l1co_code (per-PRN L1C-P overlay)
+#include "glonassL2OCCode.hpp" // for L2OC_OC2 (shared 50-chip L2OC-p overlay)
+#include "glonassL3OCCode.hpp" // for L3OC_NH10 / L3OC_BC5 (shared GLONASS CDMA overlays)
 #include "gpsL5Code.hpp"     // for L5_NH10/NH20 (shared Neuman-Hofman overlays)
 
 namespace gnss {
@@ -44,6 +50,33 @@ static std::vector<int8_t> gen_b2ap(int prn) {
 static std::vector<int8_t> gen_b2ad_cs5(int) {
     const auto o = beidou::b2ad_secondary(); // shared 5-chip CS5 (B2a data channel)
     return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_e5bq(int prn) {
+    const auto o = galileo::e5bq_secondary(prn);
+    return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_b1i_nh20(int) {
+    return {beidou::B1I_NH20.begin(), beidou::B1I_NH20.end()}; // shared 20-chip D1 NH
+}
+static std::vector<int8_t> gen_b3i_nh20(int) {
+    return {beidou::B3I_NH20.begin(), beidou::B3I_NH20.end()}; // identical sequence to B1I's
+}
+static std::vector<int8_t> gen_e6c(int prn) {
+    const auto o = galileo::generate_e6c_secondary(prn);
+    return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_e5bi_cs4(int) {
+    const auto o = galileo::e5bi_secondary(); // shared 4-chip CS4 (E5b-I data channel)
+    return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_l3oc_nh10(int) {
+    return {glonass::L3OC_NH10.begin(), glonass::L3OC_NH10.end()};
+}
+static std::vector<int8_t> gen_l2oc_oc2(int) {
+    return {glonass::L2OC_OC2.begin(), glonass::L2OC_OC2.end()}; // shared 50-chip L2OC-p overlay
+}
+static std::vector<int8_t> gen_l3oc_bc5(int) {
+    return {glonass::L3OC_BC5.begin(), glonass::L3OC_BC5.end()};
 }
 static std::vector<int8_t> gen_l1co(int prn) {
     const auto o = gps::generate_l1co_code(prn);
@@ -84,8 +117,37 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     // BeiDou-3 B2a DATA: 5-chip secondary, one SHARED sequence (the B-CNAV2 symbol rides on
     // top) -- the GAL_E5A_I case, just 5 ms/symbol. Floor ~sqrt(2 ln 5) ~1.8 sigma.
     {"B2A_CS5", /*per_prn=*/false, 1, 5, gen_b2ad_cs5, "BDS_B2A_D"},
+    // Galileo E5b-Q pilot: PER-PRN 100-chip CS100 secondary -- structurally the E5a-Q case.
+    {"E5B_CS100", /*per_prn=*/true, 50, 100, gen_e5bq, "GAL_E5B_Q"},
+    // Galileo E5b-I DATA: 4-chip CS4, one SHARED sequence (the I/NAV symbol rides on top) --
+    // the GAL_E5A_I case, just 4 ms/symbol. Floor ~sqrt(2 ln 4) ~1.7 sigma.
+    {"E5B_CS4", /*per_prn=*/false, 1, 4, gen_e5bi_cs4, "GAL_E5B_I"},
     // GPS L1C-P pilot: PER-PRN 1800-symbol L1CO overlay (18 s).
     {"L1CO", /*per_prn=*/true, 32, 1800, gen_l1co, "GPS_L1C_P"},
+    // Galileo E6-C pilot: PER-PRN 100-chip secondary (100 ms) -- structurally the E5a-Q /
+    // E5b-Q case. ⚠️ per-PRN, NOT the shared-CS25 shape E1-C uses. E6-B (the HAS data
+    // channel) has NO overlay: its 1000 sps symbol IS one 1 ms code period.
+    {"E6_CS100", /*per_prn=*/true, 50, 100, gen_e6c, "GAL_E6_C"},
+    // LEGACY BeiDou B1I/B3I: the 20-chip D1 NH secondary, one SHARED sequence for every
+    // satellite AND identical between the two signals (kept as two rows so each chain's
+    // registry entry names its own signal). One chip per 1 ms period, 20 ms per NAV symbol --
+    // structurally the GPS L5_NH10 / E5A_CS20 / B2A_CS5 case. Floor ~sqrt(2 ln 20) ~2.4 sigma.
+    {"B1I_NH20", /*per_prn=*/false, 1, 20, gen_b1i_nh20, "BDS_B1I"},
+    {"B3I_NH20", /*per_prn=*/false, 1, 20, gen_b3i_nh20, "BDS_B3I"},
+    // B2I: same D1 NH20 again (and the same ranging code as B1I -- see the descriptor).
+    {"B2I_NH20", /*per_prn=*/false, 1, 20, gen_b1i_nh20, "BDS_B2I"},
+    // GLONASS L3OC pilot: 10-chip Neuman-Hofman, one SHARED sequence -- the GPS L5_NH20 shape
+    // at half the length. Floor ~sqrt(2 ln 10) ~2.1 sigma.
+    {"L3OC_NH10", /*per_prn=*/false, 1, 10, gen_l3oc_nh10, "GLO_L3OC_P"},
+    // GLONASS L3OC DATA: the 5-chip BARKER secondary, shared (the 200 sps nav symbol rides on
+    // top) -- structurally the BDS_B2A_D / GAL_E5A_I case at 5 ms/symbol, and the same length
+    // as B2A_CS5 though a different sequence. Floor ~sqrt(2 ln 5) ~1.8 sigma.
+    {"L3OC_BC5", /*per_prn=*/false, 1, 5, gen_l3oc_bc5, "GLO_L3OC_D"},
+    // GLONASS L2OC PILOT: the shared 50-chip OC2 secondary, one chip per 20 ms primary period
+    // (1 s cycle) -- the E5a-Q / E6-C segmented-pilot shape, longer period. Floor ~sqrt(2 ln 50)
+    // ~2.8 sigma; read deep_snr against it over a LONG rolling integration (the 1 s cycle wants
+    // seconds to resolve the 50-phase alignment).
+    {"L2OC_OC2", /*per_prn=*/false, 1, 50, gen_l2oc_oc2, "GLO_L2OC_P"},
 };
 
 const OverlayDescriptor* overlay_by_name(const std::string& name) {
