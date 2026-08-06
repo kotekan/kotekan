@@ -162,6 +162,17 @@ public:
                          void* d_energy_out /*double [4*specs][nchan]*/, void* stream,
                          bool conjugate = false);
 
+    /// Replicas ONLY -- the first half of @ref enqueue_batch_nm with no correlation: same
+    /// build_jobs, same launch_waveform, so the waveforms cannot fork from the tracker's.
+    /// For GNSS path B (cudaGnssInject): the correlation happens later inside the N^2 kernel,
+    /// against these waveforms quantized into synthetic 4+4b lanes (launch_pack44).
+    /// @c d_wave [3*specs][n_chan][n_hops] float2, @c d_energy_out [4*specs][n_chan] double
+    /// (rows E/P/L/P_HEAD -- row 3 is the head-gated prompt energy the pack's scale uses).
+    /// Returns specs.size() (the JOB count; wave rows are 3x, energy rows 4x that).
+    int enqueue_waveform(long long window_start_sample, const std::vector<Spec>& specs,
+                         void* d_jobs_slot, void* d_wave,
+                         void* d_energy_out /*double [4*specs][n_chan]*/, void* stream);
+
     /// One PRN's VOLTAGE PEEL request (docs/gnss_voltage_peel_live.md).
     ///
     /// The gains are FEED-FORWARD -- a slow EMA of previously tracked gain, carried forward, NOT

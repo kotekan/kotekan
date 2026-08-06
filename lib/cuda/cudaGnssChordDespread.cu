@@ -388,4 +388,77 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
     return cudaGetLastError();
 }
 
+// ---------------------------------------------------------------------------------------------
+// Path B: quantize the materialised replicas into synthetic 4+4b N^2 stations.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// One thread per (hop, covering channel, lane); consecutive threads take consecutive lanes so
+/// the 128-byte station row of each (hop, chan) is one coalesced store. Lane identity is
+/// STABLE: lane = 4*prn_slot + trial (E/P/L/P_HEAD), so the tile consumer's lane -> PRN map
+/// survives satellites rising and setting; slots without a live spec this record write the
+/// 0x88 background (0+0j). The P_HEAD lane is the PROMPT gated to hops [0, m_head) -- a
+/// time-gated replica IS just another lane, which is how P_HEAD survives nt_outer=1.
+///
+/// SCALE: s = 7 / (3 * rms) per (lane, channel), rms from the energy row launch_waveform
+/// already computed (row 3 = the head-gated prompt energy over m_head hops). The consumer
+/// never needs s: the M^2 diagonal carries the quantized replica's own energy, so
+/// conj(V_mixed)/M^2_diag is the amplitude with the scale cancelled -- the same
+/// correlation/replica_energy normalization the despread uses. Values CLAMP to [-7,7]:
+/// -8 silently corrupts the whole N^2 launch (n2k's negate_4bit).
+__global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
+                                   const double* __restrict__ energy,
+                                   const gnss_cuda::DespreadJob* __restrict__ jobs,
+                                   const int* __restrict__ slot2spec, int n_slot, int n_chan,
+                                   int n_hops, const int* __restrict__ chan_map,
+                                   int frame_chan_stride, int num_synth,
+                                   unsigned char* __restrict__ synth) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int lane = idx % num_synth;
+    const int c = (idx / num_synth) % n_chan;
+    const int m = idx / (num_synth * n_chan);
+    if (m >= n_hops)
+        return;
+
+    unsigned char out = 0x88; // offset-encoded 0+0j
+    const int slot = lane >> 2, t = lane & 3;
+    const int spec = (slot < n_slot) ? slot2spec[slot] : -1;
+    if (spec >= 0) {
+        const gnss_cuda::DespreadJob j = jobs[spec];
+        const bool covered = (j.chan_mask >> c) & 1ULL;
+        const bool live = (t != 3) || (m < j.m_head);
+        if (covered && live) {
+            const int wrow = (t == 3) ? 1 : t; // P_HEAD packs the prompt
+            const float2 w = wave[((size_t)(3 * spec + wrow) * n_chan + c) * n_hops + m];
+            const int nh = (t == 3) ? (j.m_head > 0 ? j.m_head : 1) : n_hops;
+            const float rms = sqrtf((float)(energy[(size_t)(4 * spec + t) * n_chan + c] / nh));
+            if (rms > 0.0f) {
+                const float s = 7.0f / (3.0f * rms);
+                int qr = __float2int_rn(s * w.x);
+                int qi = __float2int_rn(s * w.y);
+                qr = qr < -7 ? -7 : (qr > 7 ? 7 : qr);
+                qi = qi < -7 ? -7 : (qi > 7 ? 7 : qi);
+                out = (unsigned char)(((qr + 8) << 4) | ((qi + 8) & 0xf));
+            }
+        }
+    }
+    synth[((size_t)m * frame_chan_stride + chan_map[c]) * num_synth + lane] = out;
+}
+
+} // namespace
+
+cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
+                          const int* slot2spec, int n_slot, int n_chan, int n_hops,
+                          const int* chan_map, int frame_chan_stride, int num_synth,
+                          unsigned char* synth, cudaStream_t stream) {
+    const long total = (long)n_hops * n_chan * num_synth;
+    const int threads = 256;
+    const long blocks = (total + threads - 1) / threads;
+    gnss_pack44_kernel<<<(unsigned)blocks, threads, 0, stream>>>(
+        wave, energy, jobs, slot2spec, n_slot, n_chan, n_hops, chan_map, frame_chan_stride,
+        num_synth, synth);
+    return cudaGetLastError();
+}
+
 } // namespace gnss_cuda

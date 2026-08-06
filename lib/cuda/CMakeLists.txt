@@ -33,6 +33,7 @@ add_library(
     cudaGnssDespreadKernel.cu
     cudaGnssAcquireKernel.cu
     cudaGnssChordDespread.cu
+    cudaGnssN2Gather.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
     cudaPLMaskExpander.cpp
@@ -126,6 +127,8 @@ set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
 
 # gputils and n2k are vendorized; located in kotekan/external for now.
 target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
+# n2k_dual clone (GNSS path B) -- cudaCorrelator/n2k deliberately untouched.
+target_sources(kotekan_cuda PRIVATE cudaCorrelatorDual.cpp)
 
 target_link_libraries(
     kotekan_cuda

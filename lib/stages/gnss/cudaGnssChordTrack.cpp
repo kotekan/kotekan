@@ -210,6 +210,25 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
+std::vector<cudaGnssChordTrackState::Seed>
+cudaGnssChordTrackState::snapshot_seeds(std::vector<int>& expired) {
+    // EXPIRE STALE SEEDS, under the same lock that copies them (see the long note at the call
+    // site in cudaGnssChordTrack::execute -- the latch-forever failure this replaced).
+    const double now =
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    std::lock_guard<std::mutex> lk(seed_mtx);
+    if (seed_ttl_s > 0.0)
+        for (int p = 0; p < n_prn; ++p) {
+            auto& sd = seeds[(size_t)p];
+            if (sd.have && sd.t_recv > 0.0 && (now - sd.t_recv) > seed_ttl_s) {
+                sd.have = false;
+                expired.push_back(prns[(size_t)p]);
+            }
+        }
+    return seeds;
+}
+
 cudaGnssChordTrackState::~cudaGnssChordTrackState() {
     for (auto& s : trim_slots) {
         if (s.ev)
@@ -444,38 +463,22 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
 
     // Snapshot the seeds (and trims) once for the whole frame; the broker updates
     // asynchronously, and the trim update above runs on other frames' executes.
-    std::vector<cudaGnssChordTrackState::Seed> seeds;
+    //
+    // EXPIRY lives in snapshot_seeds (shared with cudaGnssInject). Without it a seed was
+    // latched forever -- `have` was only ever set true -- so a satellite that had SET was
+    // still despread and the spec count grew with everything that had ever risen. Measured
+    // 2026-08-05: 14 active slots against the 6-7 the broker seeds, kernel 14.20 -> 22.63 ms
+    // over an hour, GPU memory 561 -> 601 MiB, saturating toward the 32-PRN list; after ~4 h
+    // that is the 100% GPU / 24k-dropped-frame state. Cleared in the SHARED state, not just
+    // the frame's copy, so /get_trim reports the LIVE set rather than the high-water mark.
+    //
+    // NOTE the Phi table is NOT freed: ensure_phi allocates a pair per PRN slot on first use
+    // and keeps it. That is a bounded ~7 MB x (PRNs ever seeded), capped by the PRN list, and
+    // costs no COMPUTE once `have` is false -- the spec loop skips the PRN entirely. Freeing
+    // it would only trade memory for a rebuild when the satellite next rises.
     std::vector<double> trim_now;
     std::vector<int> expired; // logged AFTER the lock: never log while holding seed_mtx
-    {
-        // EXPIRE STALE SEEDS, under the same lock that copies them. Without this a seed is
-        // latched forever -- `have` was only ever set true -- so a satellite that had SET was
-        // still despread and the spec count grew with everything that had ever risen. Measured
-        // 2026-08-05: 14 active slots against the 6-7 the broker seeds, kernel 14.20 -> 22.63 ms
-        // over an hour, GPU memory 561 -> 601 MiB, saturating toward the 32-PRN list; after ~4 h
-        // that is the 100% GPU / 24k-dropped-frame state. Cleared in the SHARED state, not just
-        // the frame's copy, so /get_trim reports the LIVE set rather than the high-water mark.
-        //
-        // NOTE the Phi table is NOT freed: ensure_phi allocates a pair per PRN slot on first use
-        // and keeps it. That is a bounded ~7 MB x (PRNs ever seeded), capped by the PRN list, and
-        // costs no COMPUTE once `have` is false -- the spec loop skips the PRN entirely. Freeing
-        // it would only trade memory for a rebuild when the satellite next rises.
-        const double now = std::chrono::duration<double>(
-                               std::chrono::steady_clock::now().time_since_epoch())
-                               .count();
-        {
-            std::lock_guard<std::mutex> lk(S.seed_mtx);
-            if (S.seed_ttl_s > 0.0)
-                for (int p = 0; p < S.n_prn; ++p) {
-                    auto& sd = S.seeds[(size_t)p];
-                    if (sd.have && sd.t_recv > 0.0 && (now - sd.t_recv) > S.seed_ttl_s) {
-                        sd.have = false;
-                        expired.push_back(S.prns[(size_t)p]);
-                    }
-                }
-            seeds = S.seeds;
-        }
-    }
+    std::vector<cudaGnssChordTrackState::Seed> seeds = S.snapshot_seeds(expired);
     if (S.trim_enable) {
         std::lock_guard<std::mutex> lk(S.trim_mtx);
         trim_now = S.trim;

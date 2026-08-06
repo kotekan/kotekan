@@ -75,6 +75,13 @@ public:
     /// old latching behaviour). The broker re-seeds every --interval (2 s live), so the default
     /// is many refreshes of margin while still retiring a set satellite promptly.
     double seed_ttl_s = 60.0;
+
+    /// Snapshot the live seeds, expiring stale ones IN THE SHARED STATE (so /get_trim and
+    /// every consumer sees the live set, not the high-water mark). Expired PRN numbers land
+    /// in @c expired for the caller to log OUTSIDE the lock. Shared by cudaGnssChordTrack and
+    /// cudaGnssInject so the TTL semantics cannot fork between the two consumers of one seed
+    /// stream.
+    std::vector<Seed> snapshot_seeds(std::vector<int>& expired);
     /// Report the per-frame synthesis / correlation split (config `log_kernel_split`).
     bool split_timing = false;
     std::mutex seed_mtx;

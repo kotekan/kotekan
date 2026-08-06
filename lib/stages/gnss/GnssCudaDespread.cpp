@@ -511,6 +511,30 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     return 4 * n_spec;
 }
 
+int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
+                                       const std::vector<Spec>& specs, void* d_jobs_slot,
+                                       void* d_wave, void* d_energy_out, void* stream) {
+    Impl& im = *_impl;
+    if (specs.empty())
+        return 0;
+    const int n_spec = (int)specs.size();
+    const cudaStream_t st = (cudaStream_t)stream;
+    build_jobs(specs, d_jobs_slot, window_start_sample, stream);
+
+    gnss_cuda::DespreadParams par;
+    par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
+    par.fft_len = im.bank.fft_len();
+    par.n_hops = im.n_hops;
+    par.Lf = im.Lf;
+    par.data_stride = im.n_hops;
+    par.out_rows_spec = 4;
+
+    ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
+                                  im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
+       "launch waveform (inject)");
+    return n_spec;
+}
+
 int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
                                           long long window_start_sample,
                                           const std::vector<PeelSpec>& specs, void* d_pjobs_slot,

@@ -144,6 +144,28 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
                                 int frame_chan_stride, const DespreadParams& p, double2* corr,
                                 cudaStream_t stream);
 
+/**
+ * @brief Path B: quantize @ref launch_waveform's replicas into synthetic 4+4b N^2 stations.
+ *
+ * Writes one record's worth of the synthetic input array (cudaCorrelatorDual's
+ * @c gnss_synth): lanes at [hop][frame_chan][lane], lane = 4*prn_slot + trial
+ * (E/P/L/P_HEAD -- the head lane is the prompt zeroed at and beyond m_head). Slots without a
+ * live spec, non-covered channels and the gated head region get 0x88 (0+0j). Values clamp to
+ * [-7,7]: -8 silently corrupts the N^2 (n2k negate_4bit). Scale = 7/(3*rms) per (lane, chan)
+ * from @c energy; consumers normalize by the M^2 diagonal, so the scale cancels.
+ *
+ * @param wave       [3*n_job][n_chan][n_hops] float2, from @ref launch_waveform
+ * @param energy     [4*n_job][n_chan] double, rows E/P/L/P_HEAD (same launch)
+ * @param jobs       [n_job] device jobs (m_head, chan_mask)
+ * @param slot2spec  [n_slot] device: job index of each PRN slot this record, -1 = inactive
+ * @param chan_map   [n_chan] device: LOCAL frame channel of each covering channel
+ * @param synth      base of THIS RECORD's rows: [n_hops][frame_chan_stride][num_synth] bytes
+ */
+cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
+                          const int* slot2spec, int n_slot, int n_chan, int n_hops,
+                          const int* chan_map, int frame_chan_stride, int num_synth,
+                          unsigned char* synth, cudaStream_t stream);
+
 } // namespace gnss_cuda
 
 #endif // CUDA_GNSS_CHORD_DESPREAD_HPP
