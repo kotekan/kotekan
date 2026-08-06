@@ -307,7 +307,6 @@ cudaGnssChordTrackState* cudaGnssChordTrack::st() {
 
 cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                                         const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
     pre_execute();
     // PROFILING BRACKET. Without this, cudaCommand's `if (profiling && start_event && end_event)`
     // is false and it records add_sample(0.) -- so `log_profiling` reported this command as
@@ -319,6 +318,22 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     cudaGnssChordTrackState& S = *st();
     const cudaStream_t stream = device.getStream(cuda_stream_id);
     const int n_rec = S.n_hops_frame / S.hops_per_record;
+
+    // THE DESPREAD MUST FOLLOW THE FRAME'S H2D COPY. cudaInputData is COPY_IN (stream 0), this
+    // command is KERNEL (stream 2) -- see cudaCommand::set_command_type -- so the ONLY thing
+    // ordering the kernel after the upload is this wait. cudaGnssTrack has always done it
+    // (cudaGnssTrack.cpp, "The despread work must follow the frame's H2D copy"); this stage
+    // dropped it with a `(void)pre_events`, which is exactly the drift its own header warns
+    // about, and it went unnoticed because stream 0 is otherwise idle in the GNSS-only configs:
+    // the 1.8 MB tap copy always finished before the kernel launched.
+    //
+    // FOUND 2026-08-06: adding production's run_send_voltage (402 MB/frame through the same
+    // copy engine) delays the tap's upload past the kernel launch, and the tracker then
+    // despreads the PREVIOUS frame's voltage against THIS frame's replicas -- uncorrelated, so
+    // every PRN reads the noise floor while records, hops, replicas and the data itself all
+    // look perfect. That is the whole of docs/gnss_gpu_search.md 11.8.
+    if (!pre_events.empty() && pre_events[0])
+        CHECK_CUDA_ERROR(cudaStreamWaitEvent(stream, pre_events[0], 0));
 
     const char* d_frame = (const char*)device.get_gpu_memory_array(
         _gpu_mem_input, pipestate.gpu_frame_id, _gpu_buffer_depth, _in_frame_len);
