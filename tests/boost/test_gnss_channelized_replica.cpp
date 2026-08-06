@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_gnss_channelized_replica"
 
+#include "beidouB2aCode.hpp"           // for b2ap_secondary (baked-CS reference)
+#include "galileoE5aCode.hpp"          // for e5aq_secondary (baked-CS reference)
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
 #include "gnssSignal.hpp"              // for signal_by_name
@@ -94,6 +96,79 @@ BOOST_AUTO_TEST_CASE(l5q_nh20_overlay) {
     auto p0 = bank.channels(0, 0, 0.0, 0.0, H1, 0);
     auto p1 = bank.channels(0, 0, 0.0, 0.0, H1, 1);
     BOOST_CHECK_CLOSE(despread_mag(p0, p1), 1.0, 1e-2); // single period: still a matched filter
+}
+
+// Per-PRN baked secondaries (GAL_E5A_Q_CS / BDS_B2A_P_CS): the CHORD-tracker form of the
+// E5a/B2a pilots -- primary tiled by THAT PRN's 100-chip secondary into one 1023000-chip code,
+// the GPS_L5_Q_NH construction (docs/CHORD_MULTIBAND.md section 4). The thing under test is the
+// SEEDING CONTRACT, which no single stage can check: a cp in the baked space equals
+// (primary cp + 10230 * period-index mod 100), sign convention chip * secondary[period]
+// (== overlay_sign()'s). Every seeding bug of the 2026-08-02 week was a convention between
+// stages; this pins the new signals' convention to the plain-primary bank chip by chip.
+BOOST_AUTO_TEST_CASE(e5aq_cs_baked_convention) {
+    const gnss::SignalDescriptor* cs = gnss::signal_by_name("GAL_E5A_Q_CS");
+    BOOST_REQUIRE(cs != nullptr);
+    BOOST_CHECK_EQUAL(cs->code_length, 1023000L);
+    BOOST_CHECK_EQUAL(cs->secondary_length, 0); // baked in: nothing left to overlay
+    for (int prn : {1, 30}) {
+        auto bank_cs = make_bank("GAL_E5A_Q_CS", {prn});
+        auto bank_q = make_bank("GAL_E5A_Q", {prn});
+        // The plain bank's single-sequence overlay slot deliberately skips per-PRN
+        // secondaries, so nh_search on GAL_E5A_Q is a no-op -- the documented reason the
+        // baked signal is dead-reckon seeded (CHORD_MULTIBAND.md section 5). If this ever
+        // becomes nonzero, the bank grew a per-PRN slot and that section is stale.
+        BOOST_CHECK_EQUAL(bank_q.secondary_length(), 0);
+        const auto sec = galileo::e5aq_secondary(prn);
+        for (int k = 0; k < 100; ++k)
+            for (int i = 0; i < 10230; i += 341) // 30 probes per primary period
+                BOOST_REQUIRE_EQUAL((int)bank_cs.code_chip(0, (double)k * 10230 + i),
+                                    (int)bank_q.code_chip(0, (double)i) * (int)sec[(size_t)k]);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(b2ap_cs_baked_convention) {
+    const gnss::SignalDescriptor* cs = gnss::signal_by_name("BDS_B2A_P_CS");
+    BOOST_REQUIRE(cs != nullptr);
+    BOOST_CHECK_EQUAL(cs->code_length, 1023000L);
+    BOOST_CHECK_EQUAL(cs->secondary_length, 0);
+    for (int prn : {19, 45}) { // BDS-3 range (B2a is not on BDS-2)
+        auto bank_cs = make_bank("BDS_B2A_P_CS", {prn});
+        auto bank_p = make_bank("BDS_B2A_P", {prn});
+        BOOST_CHECK_EQUAL(bank_p.secondary_length(), 0); // per-PRN: not in the shared slot
+        const auto sec = beidou::b2ap_secondary(prn);
+        for (int k = 0; k < 100; ++k)
+            for (int i = 0; i < 10230; i += 341)
+                BOOST_REQUIRE_EQUAL((int)bank_cs.code_chip(0, (double)k * 10230 + i),
+                                    (int)bank_p.code_chip(0, (double)i) * (int)sec[(size_t)k]);
+    }
+}
+
+// Behavioral half of the same contract: over a FULL 100 ms baked period the CS replica is a
+// matched filter against itself, while the overlay-BLIND plain-primary tiling decorrelates to
+// |sum(CS100)|/100 -- the airspy-measured reason multi-period coherent integration needs the
+// overlay (a 10.49 ms CHORD record spans ~10 secondary chips whose signs mostly cancel).
+// Hop = 20 samples divides the 20460-sample primary period exactly (1023 hops), so the
+// per-period sums are clean and the blind bound is tight.
+BOOST_AUTO_TEST_CASE(e5aq_cs_multiperiod_coherence) {
+    std::vector<int> prns = {1};
+    auto cs = make_bank("GAL_E5A_Q_CS", prns);
+    auto q = make_bank("GAL_E5A_Q", prns);
+    const auto sec = galileo::e5aq_secondary(1);
+    int s = 0;
+    for (int8_t c : sec)
+        s += c;
+    BOOST_TEST_MESSAGE("CS100(PRN 1) balance sum = " << s);
+
+    const int H = cs.repl_period_hops(); // one full baked period = 100 primary periods
+    BOOST_CHECK_EQUAL(H, 100 * q.repl_period_hops());
+    auto data = cs.channels(0, 0, 0.0, 0.0, H);  // the real pilot: overlay signs in
+    auto blind = q.channels(0, 0, 0.0, 0.0, H);  // primary tiled with NO overlay signs
+
+    const double blind_mag = despread_mag(data, blind);
+    BOOST_TEST_MESSAGE("baked-vs-blind despread = " << blind_mag);
+    BOOST_CHECK_CLOSE(despread_mag(data, data), 1.0, 1e-2);       // self == matched filter
+    BOOST_CHECK_LT(blind_mag, std::abs(s) / 100.0 + 0.1);         // ~|sum|/100, the design bound
+    BOOST_CHECK_LT(blind_mag, 0.3);                               // and it genuinely decorrelates
 }
 
 // BOC(1,1) sub-carrier (the first non-BPSK modulation, for L1C / Galileo): applied here to the

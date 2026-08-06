@@ -226,6 +226,25 @@ inline constexpr SignalDescriptor GAL_E5A_Q = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
 };
 
+/// Galileo E5a-Q with the per-PRN CS100 secondary BAKED INTO the code table: the 10230-chip
+/// primary tiled 100x with THAT PRN's CS100 signs, one 1023000-chip / 100 ms "code" -- the
+/// GPS_L5_Q_NH construction (see it above for the WHY: multi-primary-period records despread
+/// coherently only with the overlay in the table). Two differences from the L5 case: the
+/// overlay is PER-PRN (registry row "E5A_CS100"), so the baked table differs per satellite;
+/// and the code-period boundary moves out to 100 ms -- a CHORD record (10.49 ms) still
+/// straddles at most ONE, so the P_HEAD design assumption holds. The seed's cp lives mod
+/// 1023000 with the CS phase implied (computable exactly from Galileo system time).
+/// secondary_length=0: nothing left to overlay. NOTE the SEARCH cannot blind-acquire this
+/// alignment today: the bank's single-sequence overlay slot skips per-PRN secondaries, so
+/// nh_search on GAL_E5A_Q is a no-op -- trackers on this signal are seeded by DEAD RECKONING
+/// from the GPS-measured instrumental delay + ephemeris (docs/CHORD_MULTIBAND.md section 5).
+inline constexpr SignalDescriptor GAL_E5A_Q_CS = {
+    "GAL_E5A_Q_CS", 1176.45e6, 10.23e6, 1023000, 100e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
 /// Galileo E5a-I (1176.45 MHz) -- the E5a DATA channel carrying F/NAV: same 10230-chip
 /// primary at 1 ms (its own X2 start table), a 20-chip CS20 secondary shared by all sats.
 /// F/NAV is 25 bps through the rate-1/2 FEC = 50 sps, so a symbol is 20 ms = twenty 1 ms
@@ -246,6 +265,18 @@ inline constexpr SignalDescriptor BDS_B2A_P = {
     "BDS_B2A_P", 1176.45e6, 10.23e6, 10230, 1e-3,
     Modulation::BPSK, 0, 0,
     /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/100,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
+/// BeiDou-3 B2a-pilot with the per-PRN 100-chip Weil-1021 secondary BAKED INTO the code
+/// table: 1023000 chips / 100 ms -- structurally IDENTICAL to GAL_E5A_Q_CS above (same
+/// primary length, same overlay length, same 100 ms boundary), differing only in the code
+/// generators. Same caveats: per-PRN table, cp mod 1023000, CS phase from BeiDou time,
+/// secondary_length=0, and NO blind acquisition of the alignment (dead-reckon seeded).
+inline constexpr SignalDescriptor BDS_B2A_P_CS = {
+    "BDS_B2A_P_CS", 1176.45e6, 10.23e6, 1023000, 100e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
@@ -440,7 +471,8 @@ inline constexpr SignalDescriptor GLO_L2OC_P = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GPS_L5_Q_NH,
-          &GAL_E1C, &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P,
+          &GAL_E1C, &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_Q_CS, &GAL_E5A_I,
+          &BDS_B2A_P, &BDS_B2A_P_CS,
           &BDS_B2A_D, &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B,
           &BDS_B1I, &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D, &GLO_L2OF, &GLO_L2OC_P})
         if (name == s->name)

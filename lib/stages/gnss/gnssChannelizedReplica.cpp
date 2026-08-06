@@ -43,6 +43,21 @@ namespace {
 // is applied on top in channels()/hoprate_stream via overlay_sign() -- a constant sign
 // within one period (invisible to acquisition), but it unlocks multi-period coherent
 // integration of the dataless Q5 pilot once the period alignment (nh_phase) is set.
+// Primary code tiled by a per-PRN secondary: the GPS_L5_Q_NH construction generalized to
+// overlays that differ per satellite (E5a-Q CS100, B2a-P Weil-1021). The sign convention is
+// EXACTLY overlay_sign()'s (chip * secondary[period]), so a cp in the baked space equals
+// (primary cp + primary_length * period-index mod overlay_length) -- pinned by
+// tests/boost/test_gnss_channelized_replica.cpp (e5aq_cs_baked / b2ap_cs_baked).
+template<typename Prim, typename Sec>
+std::vector<int8_t> bake_secondary(const Prim& a, const Sec& s) {
+    std::vector<int8_t> tiled;
+    tiled.reserve(a.size() * s.size());
+    for (size_t k = 0; k < s.size(); ++k)
+        for (size_t i = 0; i < a.size(); ++i)
+            tiled.push_back((int8_t)(a[i] * s[k]));
+    return tiled;
+}
+
 std::vector<int8_t> signal_code(const std::string& name, int prn) {
     if (name == "GPS_L1C_P") {
         auto a = gps::generate_l1cp_code(prn);
@@ -131,6 +146,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = galileo::generate_e5aq_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GAL_E5A_Q_CS") // per-PRN CS100 baked in (see bake_secondary above)
+        return bake_secondary(galileo::generate_e5aq_code(prn), galileo::e5aq_secondary(prn));
     if (name == "GAL_E5A_I") {
         auto a = galileo::generate_e5ai_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -139,6 +156,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b2ap_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "BDS_B2A_P_CS") // per-PRN Weil-1021 secondary baked in
+        return bake_secondary(beidou::generate_b2ap_code(prn), beidou::b2ap_secondary(prn));
     if (name == "BDS_B2A_D") {
         auto a = beidou::generate_b2ad_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
