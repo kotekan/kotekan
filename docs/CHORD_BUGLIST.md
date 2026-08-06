@@ -38,13 +38,35 @@ is whether the blind grid should be snapped or the fold generalised.
 
 ## 🟠 Correctness / accuracy
 
-### C1. The GPU chip gather carries the UNSNAPPED chip/tap boundary
+### C1. GPU chip gather is UNSNAPPED — attempted 2026-08-06, MEASURED AND REVERTED (costs 5.3×)
 `hoprate_stream` (CPU) snaps the chip/tap boundary to the exact per-sample expression
-(`66ca1583a`, backported to the prototype as `ffdb60e02`); `chip_gather` in
-`cudaGnssReplicaDevice.cuh` still uses the float floor, which falls to the wrong side for a whole
-congruence class of `d` because `cps` is rational. Floors peel depth at about **−53 dB**. Not a
-limiter today. **Do this together with P2** — same function, and touching it twice is how a
-bit-exactness gate gets broken.
+(`66ca1583a`); `chip_gather` still uses the float floor. Floors peel depth at about **−53 dB**.
+
+**The port was built, proven correct, and reverted on cost.** Numbers, all at CHORD geometry:
+
+* Ported `snap_khi` matching `hoprate_stream_into` line for line → **0 disagreements** against the
+  exact assignment over a full 3125-hop replica period (662500 chip boundaries). It works.
+* Cost: synthesis **0.375 → 1.973 ms, 5.3× slower**. The kernel becomes fp64-bound, and the block
+  width and gather fusion collapse from 7.6× to ~1.67× because they no longer address the limit.
+  At 100 codes that is ~14 ms/record against a 10.486 ms period — over real time.
+
+**⚠️ THE CHEAP GATE DOES NOT EXIST, and the reason is worth keeping.** The obvious optimisation is
+to run the fp64 check only when the float boundary is near a tie, since "the argument lands on an
+exact integer" is how the CPU comment describes the failure. That is **wrong**: measured, the
+correction fires on **30.1% of boundaries**, at fractional parts as far as 0.04 from a tie.
+`floor((phi+d)*inv_cps)` and `floor(C - k*cps)` are INVERSE relations and inverting a floor is not
+exact, so with `cps` rational the mismatch is a broad systematic congruence, not a tie. The CPU's
+"~8 times per replica period" counts hops where the resulting ERROR is large — the moved tap
+landing where `proto[k]` is significant — not boundaries that move.
+
+So the trade is: −53 dB of peel depth, which is not a limiter today, against most of the 7.6×.
+**Not worth it now.** Revisit if peel depth becomes the limit, and if so look for an exact
+formulation that avoids re-evaluating the big-magnitude `C - k*cps` per chip (an incremental
+carry is cheap but would NOT reproduce the CPU bit-for-bit, which may or may not matter).
+Instrument: `snap_ab.cu` in the session scratchpad — worth re-creating, it settles this in one run.
+
+⚠️ `cudaGnssDespreadTest` CANNOT gate this: the first affected hop is 255 and it runs 125, so
+every number it prints is identical with the snap on or off. That is how it stayed hidden.
 
 ### C2. `test_gnss_channelized_acquire` — 2 failures, stale tolerance
 `recovers_code_phase_and_doppler` and `accumulation_recovers_weak_signal_under_noise` assert
@@ -100,10 +122,21 @@ of the channel response; the width + fusion buy 7.6× and throw away nothing. Co
 scale, which at 100 codes is still comfortable. Edit `config/generated/chord_gnss_cx*.yaml`
 (eight files) and restart.
 
-### P2. `chip_gather3` in the FUSED despread kernel
-`gnss_despread_kernel` still makes three separate gathers per hop; it is what the search's
-`refine_peak_cuda` and the airspy path run, so the win lands on the SEARCH too. The `fmaf`
-pinning is already done. Gate on `cudaGnssDespreadTest`, **not** on a bench (see C4). Do with C1.
+### P2. `chip_gather3` in the FUSED despread kernel — DONE, but for consistency not speed
+`gnss_despread_kernel` now makes one gather per hop instead of three. Bit-exact (every gate still
+`0.000e+00`).
+
+**Measured effect: none.** 10007 vs 10303 rec/s at 12 PRN and 6841 vs 6826 at 32 PRN — inside the
+noise, slightly negative at 12. The reason is the geometry AGAIN: the despread test's bench runs
+airspy-scale `n_chips ≈ 8`, where the Phi slice fits in L1 and there is no re-walk to remove. The
+CHORD-geometry consumer is the search's `refine_peak_cuda`, and no instrument here isolates it —
+`e2e --cuda-refine` reports 7.30 s against the CPU path's 7.47 s, i.e. that stage time is host-side
+setup, not the kernel. The live search's refine is already <1 ms of a 12 ms pass, so the ceiling
+is small regardless.
+
+**Kept anyway, on a different argument:** both kernels now call the SAME gather, and they are
+required to produce bit-identical replicas. That is the same reason `chip_gather` is shared in a
+header rather than copied. Do not quote a speedup for it.
 
 ### P3. Phi rebuild cost at 100–200 codes — UNMEASURED
 `hoprate_filter` builds ~917k `std::exp` per PRN per rebuild, single-threaded, and `refresh_hz`

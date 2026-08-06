@@ -158,6 +158,18 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         // the xc path into acc/e (there is none: grep this function, xc[] never writes acc/e)
         // would be orders larger.
         float2 r_P = make_float2(0.f, 0.f);
+        // ONE walk of the chip loop for all three trials instead of three. A block re-reads its
+        // Phi slice once per trial otherwise, and the three trials' taps at a given chip are
+        // NEIGHBOURS (base is a fractional part scaled by inv_cps, so the trial offset moves the
+        // tap inside a ~625-entry window, not to another part of the slice) -- so one pass serves
+        // all three off the same L1 lines. Same three code phases, same {P,E,L} order, and the
+        // loop body below is textually unchanged: only the gather moved out of it.
+        float2 g3A[3], g3B[3];
+        if (ABL != ABL_NO_SYN) {
+            const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
+            gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf,
+                                    code, phiA, phiB, ks, kf, Cs, g3A, g3B);
+        }
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> cp0 / cp0-ds / cp0+ds
@@ -167,8 +179,8 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
                 sA = make_float2(1.0f, 0.0f);
                 sB = make_float2(1.0f, 0.0f);
             } else {
-                chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code,
-                            phiA, phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
+                sA = g3A[tt];
+                sB = g3B[tt];
             }
             // Replica channel sample r = 0.5 (pa sA + conj(pa) sB); then the despread MAC:
             // acc += data * conj(r), e += |r|^2 -- float compute, widened once for the reduction.
