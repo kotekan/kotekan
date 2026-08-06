@@ -1268,6 +1268,62 @@ rate search operates on that). Check the injector's PrnCtl against cudaGnssChord
 by field; the record export does not carry CPHASE, so this needs either a record dump or a
 temporary export.
 
+### 11.13 STATE AT 2026-08-06 END OF SESSION -- READ THIS FIRST
+
+BLOCKED ON THE F-ENGINE, NOT ON US. `chive:54321/get-frame0-time` is down (F-engine team
+pulled it for their own dev). Kotekan requires GPS time AT STARTUP and refuses to start
+without it, and EVERY config needs it -- plain, n2dual, n2debug alike. So cx19 cannot be
+restarted on anything until that service returns. The other five nodes are unaffected
+(startup-only dependency) and were tracking normally at deep_snr 11.8-12.8 when we stopped.
+cx19 is DOWN and out of the fleet.
+
+BEFORE SPENDING A RESTART: `curl http://chive:54321/get-frame0-time` must answer.
+
+PROVEN (measurements that survived scrutiny):
+  * path B reproduces the shipped despread PER ELEMENT offline: |corr| 0.994 (n2skyab, real
+    sky voltage through both paths)
+  * on sky, path B's records match path A's RECORD FOR RECORD: amplitude ~1.0, phase
+    concentration 0.98-0.998
+  * the record ENERGY units bug is fixed (0.0015 -> 0.50 of path A; the residual 2x is the
+    7-vs-14-channel merge asymmetry, understood and benign -- see 11.12)
+  * 11.8's blocker root-caused and fixed; path A runs HEALTHY alongside path B
+  * the frequency map is BITWISE identical to the full launch (n2dualtest gate [6], including
+    an out-of-order subset) and 9x cheaper OFFLINE (n2timing: +2.00 ms -> +0.22 ms marginal)
+  * M5 emits the SHIPPED epl layout and the UNMODIFIED GnssGpuRecordAssemble consumes it
+
+NOT YET MEASURED IN SITU (both need ONE clean --n2-debug run):
+  1. the frequency map on the node. Offline only. The one apparent in-situ reading was STALE
+     LOG CONTAMINATION -- two runs appended to the same file and I read old lines as current.
+     Use a distinct GNSS_LOG, and verify the process is alive and the lines postdate the start.
+  2. coh_frac on the per-GPU path-B combiner. The earlier reading (0.05-0.14 vs path A's
+     0.68-0.75) was taken on HALF the bandwidth and before the energy fix, so it is not a
+     valid number.
+
+NEXT STEPS, in order:
+  a. one `--n2-debug` run -> the two numbers above. Config is generated and --check-config
+     clean: config/generated/chord_gnss_cx19_n2debug.yaml
+  b. if coh_frac is still short, the suspect is a phase-model field in cudaGnssInject's PrnCtl
+     (the assembler derives REC_CPHASE from f_nco/fcar); diff it field by field against
+     cudaGnssChordTrack. The record export does NOT carry CPHASE, so this needs a record dump.
+  c. broker: path B's records now share the fleet DLL's pow_hop grid, so --dll-combiners is
+     unblocked in principle -- but only add path B there AFTER coh_frac is understood; that
+     list feeds the ONE code loop all six nodes share.
+  d. fleet rollout after (a)-(c). Regenerate per-node configs with the right flags; the
+     --combine-gpus asymmetry between nodes is a known trap (cx19/cx51 differ from the rest).
+  e. task 22, fp16 Phi (1.3x on synthesis, still the scaling limiter).
+
+TWO OPEN QUESTIONS ABOUT COST, both mine to answer honestly:
+  * GPU sat at ~52% with path B running, and the freq map did not visibly move it. The
+    per-command profiling (on a STALE config, so indicative only) said cudaGnssInject 2.4 ms,
+    cudaCorrelatorDual 3.2 ms, cudaGnssChordTrack 17.9 ms per 41.94 ms frame -- i.e. the
+    TRACKER dominated, not path B. But cudaGnssChordTrack's number now SPANS the
+    cudaStreamWaitEvent added in 2547921b5, so it is dependency stall, not compute. Do not
+    quote it as kernel time.
+  * at full CHORD (N=1024) the vis matrix cannot be dumped every 10 ms, so the integration
+    window must lengthen again and the phase-ramp problem of 11.11 returns. The fix there is
+    to fold the rate into the SYNTHESIZED replica's carrier -- the injector builds the
+    replica, so the derotation can move inside the synthesis.
+
 ### 11.10 Two statistics that are BLIND on CHORD (do not reuse them)
 
 1. |P|/rms(E,L) per channel. Measured from the M^2 block: <E,P> = <P,L> = <E,L> = 0.97 at
