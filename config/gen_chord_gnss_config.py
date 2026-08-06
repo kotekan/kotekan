@@ -449,6 +449,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
              "base_dir": args.record_dir or rt["record_dir"],
              "file_name": f"{node}_gnss{gpu}_n2tiles",
              "file_ext": "raw",
+             # The tiles buffer carries an NDArray descriptor (set dynamically by the GPU
+             # path); we write raw bytes and the reader supplies the layout, which is fixed
+             # by construction (see cudaCorrelatorDual.hpp's tile-list note).
+             "allow_ndarray": True,
              "cpu_affinity": [cores[(gpu + 7) % len(cores)]]}
             if args.n2_dump else
             {"kotekan_stage": "dropAllFrames",
