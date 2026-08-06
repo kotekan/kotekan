@@ -134,6 +134,34 @@ monitor on the 4+4b path so this is **measured rather than inferred**, and a low
 per-channel band-power log so the next event is characterised in frequency while it happens.
 (Checked: the nodes were on the 14:03 binary throughout, so it was not a rebuild.)
 
+### I1b. ⚠️ cf06 REBOOTS ~WEEKLY AT 03:00 AND NOTHING THERE COMES BACK
+Unattended kernel upgrades reboot cf06 at **03:00 UTC**, observed Sat 18 Jul, Thu 30 Jul, Thu
+6 Aug (6.8.0-136 -> 6.8.0-137). **Expect the next one around Thu 13 Aug.**
+
+The six cx nodes survive it — they are `systemd-run` units and come back. **cf06's three services
+do not exist to systemd at all**: the aggregator (:12050), the broker (:12060) and the viewer are
+manual `nohup setsid` processes, so a reboot silently ends the run. `/tmp` is wiped with it, so
+the broker log — the only overnight telemetry there is — goes too.
+
+It has already cost one overnight soak: nodes restarted 02:56 on 6 Aug, cf06 rebooted 03:03, and
+the instrument ran for **7 minutes** and then sat idle for 7 hours. The symptom is deceptively
+calm — nodes `active` with `NRestarts=0`, GPUs at 1-2% (front-end only, no despread), and
+`/get_trim` still listing PRNs because the trim EMA is a HIGH-WATER MARK that persists past seed
+expiry. Nothing announces it. The tell is `Connection refused` to 10.222.3.6:11040 in the node
+log, and `pgrep -f gps_distributed_broker` returning nothing on cf06.
+
+Restore (aggregator FIRST — the broker's `--detectors` points at localhost:12050):
+
+    ssh cf06 'GNSS_BIN=$K/build_nodpdk/kotekan/kotekan $K/scripts/gnss/agg_up.sh'
+    ssh cf06 'nohup setsid $K/scripts/gnss/broker_up.sh > /tmp/gnss_broker.log 2>&1 &'
+
+⚠️ `agg_up.sh` defaults `GNSS_BIN` to `build/` — the **DPDK node build**, which is wrong on cf06.
+It must be given `build_nodpdk/` explicitly or it will not start.
+
+**Fix:** installed systemd units (not transient ones — see `node_up.sh`'s note on why transient
+units vanish on stop) with `Restart=always`, plus a log path outside `/tmp`. Failing that, a
+watchdog on port 12060. Any soak that spans 03:00 is otherwise unreliable.
+
 ### I2. The null floor is a MAX statistic and spikes
 One cycle read 16.6 against a typical 4–6 (characterised max 5.73 over 726 samples). A spike
 briefly suppresses marginal detections. Consider a high percentile, or an EMA over cycles.
