@@ -11,6 +11,7 @@ Layout (must match cudaCorrelatorDual::build_tile_selection):
 usage: n2tiles.py [glob] [--prns 1,2,..]   (default: the newest gnss0 file in /tmp/gnss)
 """
 import glob
+import os
 import sys
 
 import numpy as np
@@ -26,7 +27,10 @@ FRAME = N_CHAN * N_TILE * 512 * 4
 
 pat = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('--') \
     else '/tmp/gnss/*gnss0_n2tiles*.raw'
-files = sorted(glob.glob(pat))
+# By MTIME, not name: rawFileWrite restarts its counter at 0 each run, so the
+# highest-numbered file can be from a PREVIOUS run (that would have made this read
+# pre-fix data and call the conjugation fix a failure).
+files = sorted(glob.glob(pat), key=os.path.getmtime)
 if not files:
     sys.exit(f'no files matching {pat}')
 
