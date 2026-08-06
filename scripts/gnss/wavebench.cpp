@@ -67,6 +67,12 @@ int main(int argc, char** argv) {
             share_phi = 1;
         else if (a == "--phi16")
             phi16 = 1; // store Phi as __half2: half the bytes, SAME number of scattered requests
+        else if (a == "--ilv")
+            phi16 = 4; // interleave PhiA/PhiB into one float4 table
+        else if (a == "--noload")
+            phi16 = 2; // ABLATION: keep every instruction, collapse the load ADDRESS to 0
+        else if (a == "--phi32")
+            phi16 = 3; // fp32 through the SAME isolated timing block as --phi16
         else if (a == "--lockstep")
             // CEILING TEST for hop-ordering. Pick cps so a hop advances an INTEGER number of
             // chips: then frac(C_P) is identical for every hop, every lane in a warp gets the
@@ -109,8 +115,18 @@ int main(int argc, char** argv) {
     std::vector<__half2> junk16(phi_n);
     for (size_t k = 0; k < phi_n; ++k)
         junk16[k] = __floats2half2_rn(junk[k].x, junk[k].y);
-    const size_t elem = phi16 ? sizeof(__half2) : sizeof(float2);
-    const void* src = phi16 ? (const void*)junk16.data() : (const void*)junk.data();
+    // PER MODE. Getting this wrong is silent and dangerous: an fp32 kernel over half-size
+    // tables reads OUT OF BOUNDS, which is exactly how an earlier --phi32 row got measured (and
+    // why its 100-job run died with no message).
+    std::vector<float4> junk4(phi_n);
+    for (size_t k = 0; k < phi_n; ++k)
+        junk4[k] = make_float4(junk[k].x, junk[k].y, junk[k].y, junk[k].x);
+    const size_t elem = (phi16 == 1)   ? sizeof(__half2)
+                        : (phi16 == 4) ? sizeof(float4)
+                                       : sizeof(float2);
+    const void* src = (phi16 == 1)   ? (const void*)junk16.data()
+                      : (phi16 == 4) ? (const void*)junk4.data()
+                                     : (const void*)junk.data();
     for (int b = 0; b < n_job; ++b) {
         CK(cudaMalloc(&dA[b], phi_n * elem));
         CK(cudaMalloc(&dB[b], phi_n * elem));
@@ -176,19 +192,23 @@ int main(int argc, char** argv) {
     // size, so the fp32 reference path would read them OUT OF BOUNDS -- do not try to compare
     // `wave` across the two. Report the time and stop.
     if (phi16) {
+        printf("*** MODE: %s\n", phi16 == 1 ? "fp16 Phi" :
+                                 phi16 == 2 ? "ABLATION, load address collapsed to 0" :
+                                 phi16 == 4 ? "INTERLEAVED float4 Phi (one 16 B load)" :
+                                              "fp32 via the isolated timing block");
         CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
-                                            1024, 1, 1, 0));
+                                            1024, 1, phi16 == 3 ? 0 : phi16, 0));
         CK(cudaDeviceSynchronize());
         CK(cudaEventRecord(e0, 0));
         for (int it = 0; it < iters; ++it)
             CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
-                                                1024, 1, 1, 0));
+                                                1024, 1, phi16 == 3 ? 0 : phi16, 0));
         CK(cudaEventRecord(e1, 0));
         CK(cudaDeviceSynchronize());
         float mh = 0.f;
         CK(cudaEventElapsedTime(&mh, e0, e1));
         mh /= iters;
-        printf("\nFP16 Phi (timing only)  fused/1024 %8.4f ms   vs fp32 baseline below\n", mh);
+        printf("\nISOLATED BLOCK  fused/1024 %8.4f ms\n", mh);
         printf("   half the table bytes, the SAME number of scattered requests\n");
         return 0;
     }

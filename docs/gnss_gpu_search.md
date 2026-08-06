@@ -819,68 +819,34 @@ appears in exactly two places, both OUTSIDE it:
 So "why full floats" has a clean answer: the samples are float already, the doubles are absolute
 time and final accumulation, and the table could plausibly be HALF a float.
 
-### 10.6 BENCHED 2026-08-06: fp16 is 1.25x, the other two are dead, and the reason matters
+### 10.6 BENCHED 2026-08-06 (idle GPU, min-of-5, all through ONE harness path)
 
-Three ceiling tests in `scripts/gnss/wavebench.cpp`, all at 212 chips, fused, 1024 threads:
+    jobs      fp32      interleaved      fp16        addr-collapsed
+      11    0.5372 ms  0.4979 (1.08x)  0.3927 (1.37x)  0.2309 (2.33x)
+      50    2.3994 ms  0.2309 --       1.8592 (1.29x)  1.1419 (2.10x)
+     100    4.3954 ms  4.2472 (1.03x)  3.4530 (1.27x)  2.0556 (2.14x)
 
-⚠️ **MIN OF 7 RUNS, and that is not optional.** cx19 runs the live tracker, and single-shot
-timings on the same config spread 0.5352-0.7627 ms -- a factor 1.42, i.e. LARGER than every
-effect below. The first pass of this table was single-shot and its share-phi row came out with
-the opposite sign. Minimum-of-N is robust to contention spikes; never quote a single run here
-while a node is tracking.
+* **`addr-collapsed` is the ceiling**: loads kept, every instruction kept, only the ADDRESS forced
+  to 0. Memory is therefore **~55% of the runtime** -- the kernel IS memory-bound, and the most
+  any layout work can buy is ~2.1-2.3x.
+* **fp16 Phi: 1.27-1.37x.** Reproducible, roughly half the available headroom.
+* **Interleaved float4 (PhiA/PhiB in one table, one 16 B load instead of two 8 B): 1.03-1.08x.**
+  Essentially nothing.
 
-    jobs      fp32 baseline    fp16 Phi     shared Phi      lockstep
-      11         0.5355 ms     0.3929 (1.36x) 0.5716 (0.94x) 0.4903 (1.09x)
-     100         4.9011 ms     3.7369 (1.31x) 5.2856 (0.93x) 4.6709 (1.05x)
+**A prediction that failed, recorded because the reasoning looked sound.** I argued the cost was
+the per-warp TRANSACTION count: 32 lanes scatter over a 313-entry window, ~26 distinct sectors per
+array, two arrays = ~52 transactions, so interleaving to one array should give ~1.8x on the
+memory half. Measured 1.05x. fp16 -- which does NOT reduce the load count, only narrows the
+window so lanes pack into fewer sectors -- is the one that works. So "sectors touched" explains
+fp16 and fails on the interleave, and I do not have a validated model of what this kernel pays
+for. What exists is the measurements above.
 
-* **fp16 `Phi` (`--phi16`): 1.31-1.36x, NOT the 2x a byte-bound kernel would give.** Accuracy is
-  fine (3.3e-04 worst case per chip step, 10.5). Real but modest.
-* **Doppler factoring (`--share-phi`): DEAD.** This points every job at ONE table -- perfect
-  sharing, trivially L2-resident, the best any factored scheme could reach. It is **SLOWER**
-  (0.89-0.65x). And a real factored scheme is strictly worse than this ceiling, because it needs
-  3 table reads per chip instead of 1. Do not build it.
-* **Sector locality (`--lockstep`): DEAD at scale.** This forces an integer chips-per-hop so every
-  lane in a warp shares one `base` and the ~20 scattered sectors collapse to ~1 -- the ceiling of
-  any hop-reordering scheme (e.g. sorting hops by fractional phase, which was the obvious next
-  idea). **1.05x at 50-100 jobs.** The 1.09x at 11 is the underfilled regime, not a signal.
-
-**What that means together.** The kernel is not byte-bound (halving bytes gives 1.25x, not 2x),
-not reuse-bound (perfect sharing LOSES), and not locality-bound (perfect coalescing gives 5%).
-At 100 jobs it sits at ~7% of fp32 peak, ~10% of issue rate and ~16% of L1 bandwidth -- nothing
-is saturated. What is left is LATENCY on the dependent gather chain, and that is intrinsic to
-"212 serial chip steps per output sample" at this PFB span. **We are within ~1.25x of what this
-hardware will do for this access pattern.**
-
-**Two follow-ups, both answered by the lockstep bound (asked 2026-08-06):**
-
-* *"Stage Phi in shared memory instead of relying on L2."* Shared memory would replace 32
-  scattered L1 lookups per warp with one coalesced load plus SMEM reads. But `--lockstep` already
-  measures the ceiling of exactly that: with an integer chips-per-hop every lane computes the SAME
-  index, so each step is one broadcast hit -- perfectly coalesced, minimum traffic, L1-hit latency.
-  SMEM cannot beat "every access is a broadcast hit". **1.05x.** Not worth building.
-* *"The read locations are predictable and periodic -- restructure the table for sequential
-  reads."* They are ALREADY sequential per step: `t = d*ks + floor(base + d*kf)` with the floor
-  term in `[0, ~313)`, so at step `d` every lane reads inside one contiguous 313-entry window.
-  (This is why the `[t mod ks][t / ks]` transpose was retracted -- the layout was never the
-  problem.) What is sparse is the OCCUPANCY of that window: 32 lanes over 313 slots, ~10%, and
-  that sparsity is the per-hop sub-chip phase itself. Removing it entirely is lockstep: 1.05x.
-
-**STILL UNTESTED, and the best remaining layout idea:** `phiA[t]` and `phiB[t]` live in two
-separate arrays ~1 MB apart, so each chip step issues TWO requests to TWO sectors. Interleaving
-them into one `float4` table would make it ONE 16-byte request -- same bytes, HALF the requests.
-Given fp16 (half bytes, same requests) buys 1.31x, a same-bytes/half-requests change is worth
-measuring, and combining both (interleaved `__half2` pairs = one 8-byte load) would halve each.
-
-⚠️ Otherwise stop trying to make the per-output cost cheaper. The remaining lever is **fewer outputs**:
-
-* **E/L on a subset of hops.** The three trials are 3x the synthesis, but E and L exist only to
-  feed the DLL discriminator, which needs far less SNR than the prompt does. Computing E/L on,
-  say, 1/4 of the hops takes the trial factor from 3.0 to 1.5 -- **a ~2x, larger than anything
-  above**. It costs DLL discriminator noise (and `trim_quality_min`, whose floor is calibrated on
-  `q = 2P/(E+L)`, would need recalibrating). This is a PHYSICS trade, not a kernel trick, which is
-  why it is the one worth arguing about.
-* Reducing `n_hops`, `n_chan` or the PFB span all trade aperture or resolution; the span is fixed
-  by other science targets.
+⚠️ **METHOD, learned the hard way today.** Four separate times a Python string-replace silently
+matched nothing, the build reused a stale binary, and an unparsed flag fell through to the default
+path -- producing "no change" results that looked like clean negatives. One of them (`--noload`)
+was reported as "the kernel is not I/O bound", which is the OPPOSITE of the truth. Every bench
+flag now prints a MODE banner, and every edit script asserts before writing. **If a ceiling test
+reports exactly the baseline, suspect the harness before the hardware.**
 
 ### 10.7 Levers, ranked, with what is measured vs speculative
 

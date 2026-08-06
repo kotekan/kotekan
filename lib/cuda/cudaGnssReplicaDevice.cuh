@@ -162,12 +162,26 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
 /// ⚠️ IT COSTS REGISTERS -- three live (sA, sB, pA, pB, idx, f, khi_base) states instead of one,
 /// and registers are exactly what caps the block width. Fusing and widening pull against each
 /// other, so which wins is a MEASUREMENT (scripts/gnss/wavebench.cpp), not a deduction.
-template<class PHI>
+/// ABL_NOLOAD is a BENCH-ONLY ablation answering "is this kernel actually I/O bound?".
+///
+/// It KEEPS the loads and every instruction and only forces the ADDRESS to 0, so traffic
+/// collapses to one line while the instruction count is untouched. `t` stays live via one int
+/// XOR into a sink.
+///
+/// ⚠️ THE FIRST VERSION OF THIS ABLATION WAS WRONG and concluded "loads are free". It DELETED
+/// the load and substituted `make_float2((float)(t & 3), 1.f)` to keep `t` live -- an AND plus
+/// an I2F, which in an ALU-bound kernel costs about what the load did, so it measured its own
+/// replacement. Substituting arithmetic for the thing being ablated is the trap.
+/// ILV: PhiA and PhiB INTERLEAVED into one float4 table (A.re, A.im, B.re, B.im). Each lane
+/// then issues ONE 16-byte load instead of two 8-byte loads into two arrays ~1 MB apart, halving
+/// the transaction count -- which is what this kernel actually pays (docs/gnss_gpu_search 10.6).
+template<class PHI, bool ABL_NOLOAD = false, bool ILV = false>
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int Lf, const int8_t* __restrict__ code,
                                     const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
                                     int ks, float kf, const double C[3], float2 sA[3],
                                     float2 sB[3]) {
+    int tsink = 0;
     int idx[3], khi_base[3];
     float f[3];
     float2 pA[3], pB[3];
@@ -189,8 +203,14 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
         khi_base[u] = 0;
         int t_prev = prev_khi + 1;
         t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
-        pA[u] = phi_ld(phiA, t_prev);
-        pB[u] = phi_ld(phiB, t_prev);
+        if (ILV) {
+            const float4 v = ((const float4*)phiA)[ABL_NOLOAD ? 0 : t_prev];
+            pA[u] = make_float2(v.x, v.y);
+            pB[u] = make_float2(v.z, v.w);
+        } else {
+            pA[u] = phi_ld(phiA, ABL_NOLOAD ? 0 : t_prev);
+            pB[u] = phi_ld(phiB, ABL_NOLOAD ? 0 : t_prev);
+        }
     }
     for (int d = 0; d < job_n_chips; ++d) {
 #pragma unroll
@@ -199,8 +219,17 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
             t = t < 0 ? 0 : (t > Lf ? Lf : t);
             f[u] += kf;
             khi_base[u] += ks;
-            const float2 cA = phi_ld(phiA, t);
-            const float2 cB = phi_ld(phiB, t);
+            if (ABL_NOLOAD)
+                tsink ^= t; // keep the index arithmetic live for one cheap ALU op
+            float2 cA, cB;
+            if (ILV) {
+                const float4 v = ((const float4*)phiA)[ABL_NOLOAD ? 0 : t];
+                cA = make_float2(v.x, v.y);
+                cB = make_float2(v.z, v.w);
+            } else {
+                cA = phi_ld(phiA, ABL_NOLOAD ? 0 : t);
+                cB = phi_ld(phiB, ABL_NOLOAD ? 0 : t);
+            }
             const float cv = (float)code[job_code_offset + idx[u]];
             // fmaf explicitly -- see the note in chip_gather. This is the half of the pair that
             // made it matter.
@@ -210,6 +239,8 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
             sB[u].y = fmaf(cv, cB.y - pB[u].y, sB[u].y);
             pA[u] = cA;
             pB[u] = cB;
+            if (ABL_NOLOAD && tsink == 0x7fffffff)
+                sA[u].x += 1.0f; // never taken; stops tsink being optimised away
             if (--idx[u] < 0)
                 idx[u] += job_code_len;
         }

@@ -28,7 +28,7 @@ using gnss_cuda::cmulf;
 /// FUSE3 walks the chip loop ONCE for all three E/P/L trials (@ref gnss_cuda::chip_gather3)
 /// instead of three times. Bit-identical either way; it trades registers for DRAM traffic, and
 /// registers are what cap MAXT, so the two knobs pull against each other.
-template<int MAXT, bool FUSE3, class PHI = float2>
+template<int MAXT, bool FUSE3, class PHI = float2, bool ABL_NOLOAD = false, bool ILV = false>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
@@ -46,7 +46,11 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
     // Hoisted exactly as in the fused kernel: invariant across hops and across trials.
     const int ks = (int)job.inv_cps;
     const float kf = (float)(job.inv_cps - ks);
-    const PHI* phiA = (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
+    // ⚠️ The channel stride is in ELEMENTS of the table's own type. Under ILV the table is
+    // float4, so advancing a float2* by ci*(Lf+1) lands at half the right offset and every
+    // channel above 0 reads out of bounds -- which is exactly how the first --ilv run died.
+    const PHI* phiA = ILV ? (const PHI*)((const float4*)job.phiA + (size_t)ci * (p.Lf + 1))
+                          : (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
     const PHI* phiB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
 
     for (int mh = m; mh < p.n_hops; mh += blockDim.x) {
@@ -102,8 +106,9 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             // Same three code phases in the same order, one walk of the chip loop.
             const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
             float2 sA[3], sB[3];
-            gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf,
-                                    code, phiA, phiB, ks, kf, Cs, sA, sB);
+            gnss_cuda::chip_gather3<PHI, ABL_NOLOAD, ILV>(job.inv_cps, job.code_offset, job.code_len,
+                                                    job.n_chips, p.Lf, code, phiA, phiB, ks, kf,
+                                                    Cs, sA, sB);
 #pragma unroll
             for (int tt = 0; tt < 3; ++tt) {
                 const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2;
@@ -271,6 +276,16 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
     // BENCH ONLY: fp16 Phi. job.phiA/phiB then point at __half2 tables (the struct field type is
     // a lie the caller opts into). Answers whether the kernel is byte-limited or request-limited;
     // production never takes this path.
+    if (phi16 == 4) { // BENCH: interleaved float4 Phi -- one 16 B load instead of two 8 B
+        gnss_waveform_kernel<1024, true, float2, false, true>
+            <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
+        return cudaGetLastError();
+    }
+    if (phi16 == 2) { // BENCH: no-load ablation -- all the index math and flops, no Phi traffic
+        gnss_waveform_kernel<1024, true, float2, true>
+            <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
+        return cudaGetLastError();
+    }
     if (phi16) {
         auto ceil16 = [](const void* fn) {
             cudaFuncAttributes at{};
