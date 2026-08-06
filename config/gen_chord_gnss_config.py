@@ -385,10 +385,14 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
     # triangle. MUST match cudaCorrelatorDual's build_tile_selection (and the consumer's
     # recomputation): num_elements 128, num_synth 128.
     num_synth = 128
+    # frames are samples_per_data_set hops; the tracker splits them into records. Taken from
+    # the BASE config (production owns it), passed in rather than guessed.
+    n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
     na16, nt16 = 128 // 16, (128 + num_synth) // 16
     mixed = (nt16 - na16) * ((n_live + 15) // 16)
     bb = (nt16 - na16) * (nt16 - na16 + 1) // 2
-    tiles_frame_bytes = n_chan * (mixed + bb) * 512 * 4  # nt_outer = 1 at production shape
+    # nt_outer = records per frame now that the dual correlator integrates one record
+    tiles_frame_bytes = n_rec_per_frame * n_chan * (mixed + bb) * 512 * 4
 
     if 4 * n_prn > num_synth:
         raise SystemExit(f"--n2-dual: 4*{n_prn} PRNs exceeds {num_synth} synthetic lanes "
@@ -407,9 +411,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
     # control block = the same minus the corr array.
     ctl_bytes = (48 + 8 * 16 + 64 * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
     record_floats = 26 + n_live * 12
-    # frames are samples_per_data_set hops; the tracker splits them into records. Taken from
-    # the BASE config (production owns it), passed in rather than guessed.
-    n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
 
     blocks = {
         tiles_buf: {
@@ -459,6 +460,16 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  "seed_endpoint": f"/{pre}inject/set_seeds",
                  "trim_endpoint": f"/{pre}inject/get_trim"},
                 {"name": "cudaCorrelatorDual",
+                 # ONE VISIBILITY PER RECORD, not per frame. Measured 2026-08-06: with the
+                 # frame-length window path B's amplitude was 0.55 of path A's, because the
+                 # per-record phase ramp (deep_rate_hz, up to 40 Hz) sits INSIDE the coherent
+                 # sum where the combiner's rate search cannot reach it -- the one satellite
+                 # with zero rate scored 0.75 and coh 0.88. Matching the tracker's record also
+                 # puts path B on the fleet DLL's exact pow_hop grid. NB at full CHORD (N=1024)
+                 # the vis matrix cannot be dumped this often and the window must lengthen
+                 # again; the fix there is to fold the rate into the SYNTHESIZED replica's
+                 # carrier, which the injector is already positioned to do.
+                 "sub_integration_ntime": args.hops_per_record,
                  "voltage_name": "voltage",
                  "rfi_RFImask_name": "rfi_RFImask",  # unused with rfi_all_pass, key required
                  # Production runs rfi_first_stage_excision_enabled: false -- its correlator
@@ -545,7 +556,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
             "out_buf": f"{pre}n2cmb_buf",
             "n_prn": n_prn,
             "n_elements": n_live,
-            "integration_length": max(4, args.integration_length // n_rec_per_frame),
+            # same record cadence as the tracker now, so the same deep window.
+            "integration_length": args.integration_length,
             "integration_mode": "rolling",
             "deep_coherent": True,
             "deep_rate_search": True,

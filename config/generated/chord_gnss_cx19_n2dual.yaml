@@ -294,7 +294,7 @@ gnss0_n2combine:
   fft_len: 16384
   in_bufs:
   - gnss0_n2rec_buf
-  integration_length: 25
+  integration_length: 100
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
@@ -349,6 +349,7 @@ gnss0_n2dual:
     num_synth: 128
     rfi_RFImask_name: rfi_RFImask
     rfi_all_pass: true
+    sub_integration_ntime: 2048
     voltage_name: voltage
   - name: cudaSyncOutput
   - gpu_mem: gnss_tiles_buffer
@@ -381,7 +382,7 @@ gnss0_n2sink:
   in_buf: gnss0_n2cmb_buf
   kotekan_stage: dropAllFrames
 gnss0_n2tiles_buf:
-  frame_size: 745472
+  frame_size: 2981888
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -548,7 +549,7 @@ gnss1_n2combine:
   fft_len: 16384
   in_bufs:
   - gnss1_n2rec_buf
-  integration_length: 25
+  integration_length: 100
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
@@ -603,6 +604,7 @@ gnss1_n2dual:
     num_synth: 128
     rfi_RFImask_name: rfi_RFImask
     rfi_all_pass: true
+    sub_integration_ntime: 2048
     voltage_name: voltage
   - name: cudaSyncOutput
   - gpu_mem: gnss_tiles_buffer
@@ -635,7 +637,7 @@ gnss1_n2sink:
   in_buf: gnss1_n2cmb_buf
   kotekan_stage: dropAllFrames
 gnss1_n2tiles_buf:
-  frame_size: 745472
+  frame_size: 2981888
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4

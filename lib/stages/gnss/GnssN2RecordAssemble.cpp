@@ -93,20 +93,27 @@ void GnssN2RecordAssemble::main_thread() {
             (double*)(out
                       + gnss_gpu::off_energy(_n_prn, n_chan, gnss_gpu::ROWS_PLAIN, _n_live));
 
-        // COLLAPSE TO ONE RECORD: the N^2 integrated the whole frame, so there is exactly one
-        // correlation regardless of how many sub-records the injector synthesized.
-        ohdr->n_rec = 1;
+        // ONE OUTPUT RECORD PER SUB-INTEGRATION. With sub_integration_ntime = hops_per_record
+        // the N^2 emits nt_outer = n_rec visibilities per frame, which map 1:1 onto the
+        // sub-records the injector synthesized -- so path B's records land on the SAME hop grid
+        // as the tracker's. That matters twice: the combiner can rate-search and derotate the
+        // per-record phase ramp (path B's amplitude was 0.55 of path A's without it, because
+        // the ramp was baked inside a 4x longer coherent sum), and the broker's fleet DLL groups
+        // powers by an EXACT pow_hop match, which a frame-length record can never satisfy.
+        ohdr->n_rec = n_rec;
         ohdr->n_prn = _n_prn;
         ohdr->n_chan = n_chan;
         ohdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
         ohdr->seq0 = ihdr->seq0;
         ohdr->utc0 = ihdr->utc0;
-        owin[0] = iwin[0];
 
+        const size_t tile_slice = (size_t)_n_gnss_chan * _n_tile * 512; // one sub-integration
         int n_out_jobs = 0;
-        for (int p = 0; p < _n_prn; ++p) {
-            const gnss_gpu::PrnCtl& in0 = ictl[p]; // record 0 describes the frame's start
-            gnss_gpu::PrnCtl& oc = octl[p];
+        for (int r = 0; r < n_rec; ++r) {
+            owin[r] = iwin[r];
+            for (int p = 0; p < _n_prn; ++p) {
+            const gnss_gpu::PrnCtl& in0 = ictl[(size_t)r * _n_prn + p];
+            gnss_gpu::PrnCtl& oc = octl[(size_t)r * _n_prn + p];
             if (!in0.run)
                 continue;
             oc = in0;
@@ -120,16 +127,18 @@ void GnssN2RecordAssemble::main_thread() {
                 for (int c = 0; c < n_chan && c < _n_gnss_chan; ++c) {
                     // The gathered tiles are a COMPACTED triangle: tile k of channel c lives at
                     // c*_n_tile + k, not at the full-triangle offset.
-                    const int32_t* slice = tiles + (size_t)c * _n_tile * 512;
+                    const int32_t* slice =
+                        tiles + (size_t)r * tile_slice + (size_t)c * _n_tile * 512;
 
                     // M^2 diagonal: the quantized replica's own (frame-integrated) energy.
                     const int bb_k = _n_mixed + (ihi - _na16) * (ihi - _na16 + 1) / 2
                                      + (ihi - _na16);
                     const double m2 = (double)slice[(size_t)bb_k * 512 + 32 * ilo + 2 * ilo];
 
-                    // Recover the pack's scale from the energy the injector actually used
-                    // (record 0, frozen frame-wide): s = 7 / (3 * rms), rms^2 = E0 / n_hops.
-                    const double e0 = ienergy[(size_t)(in0.job0 + t) * n_chan + c];
+                    // The pack's scale is FROZEN frame-wide at record 0's energy
+                    // (cudaGnssInject), so every sub-integration shares one s -- read it from
+                    // record 0's rows, not this record's.
+                    const double e0 = ienergy[(size_t)(ictl[p].job0 + t) * n_chan + c];
                     const double rms = (e0 > 0.0) ? std::sqrt(e0 / (double)_hops_per_record) : 0.0;
                     const double s = (rms > 0.0) ? 7.0 / (3.0 * rms) : 0.0;
 
@@ -149,6 +158,7 @@ void GnssN2RecordAssemble::main_thread() {
                 }
             }
             ++n_out_jobs;
+            }
         }
         ohdr->n_jobs = n_out_jobs * gnss_gpu::ROWS_PLAIN;
 
@@ -161,8 +171,7 @@ void GnssN2RecordAssemble::main_thread() {
         }
 
         if ((++n_frames & 0xFF) == 1)
-            INFO("GnssN2RecordAssemble: seq0 {:d}, {:d} PRNs -> {:d} job rows (n_rec {:d} "
-                 "collapsed to 1)",
+            INFO("GnssN2RecordAssemble: seq0 {:d}, {:d} job groups -> {:d} rows over {:d} records",
                  (long long)ohdr->seq0, n_out_jobs, (int)ohdr->n_jobs, n_rec);
 
         _out_buf->mark_frame_full(unique_name, out_id++);
