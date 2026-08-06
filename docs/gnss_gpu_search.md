@@ -1191,10 +1191,25 @@ WHAT THIS PROVES: the whole path-B chain works on real sky -- broker seeds -> sh
 propagate_seed -> per-record synthesis -> conj_replica pack into 4+4b lanes -> the dual N^2 ->
 the GPU tile gather -> host. It detects the same satellites the shipped tracker does.
 
-WHAT IT DOES NOT YET PROVE: amplitude/phase agreement at the per-element level. Path A exports
-only the elem_sum-calibrated header value, not per-element correlations, so a quantitative A/B
-needs either a per-element export or an offline replay. The offline M3 gate (11.6) already
-bounds the quantization cost at +0.036 dB / 2.29 mrad.
+PER-ELEMENT A/B ON REAL SKY -- DONE (scripts/gnss/n2sky_fetch.py + n2skyab.cpp). Path A
+exports only the elem_sum-calibrated header value, so instead of a live export we pull the
+actual voltage bytes (peek_hold on the tap buffer) plus the tracked (cp, doppler), and run BOTH
+paths over those identical bytes offline: path A through the shipped enqueue_batch_nm, path B
+through the production launch_pack44 + n2k_dual. Measured, 8 PRNs x E/P/L, all 4 records:
+
+    |corr| over the 32-element vector : median 0.994-0.996, min 0.979, max 0.999
+    phase of the fitted scale k       : within +-22 mrad
+    |k| spread                        : 0.0037-0.0042 (the pack's per-lane 1/s)
+    unrelated 32-vector would give    : 1/sqrt(32) = 0.177
+
+So path B reproduces the shipped despread per element on real sky, at the level the offline M3
+gate predicted (+0.036 dB / 2.29 mrad quantization cost).
+
+⚠️ MAKE THE COMPARISON SCALE-FREE. V/M^2 and corr/energy differ by the pack's 1/s (V ~ s,
+M^2 ~ s^2), so a raw ratio measures the QUANTIZER, not the agreement -- the first version of
+n2skyab did that and reported 5-90x. Comparing the 32-element VECTORS removes k entirely, and
+as a bonus needs no correct seed: identical inputs must agree even on noise (PRN 2, stale seed
+cp=0, still gives 0.985).
 
 ### 11.10 Two statistics that are BLIND on CHORD (do not reuse them)
 
