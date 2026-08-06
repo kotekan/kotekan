@@ -115,6 +115,12 @@ struct Opt {
     int spectrum_length = 8192, num_taps = 4;
     double code_doppler_sign = 1.0;
 
+    /// TRACKER (baked-overlay) signal. The SEARCH signal is derived by stripping the _NH/_CS
+    /// suffix (GPS_L5_Q_NH -> GPS_L5_Q, GAL_E5A_Q_CS -> GAL_E5A_Q). Per-PRN-secondary signals
+    /// (the _CS pair) have no blind search -- the bank's single-sequence overlay slot skips
+    /// them -- so they require --skip-search (docs/CHORD_MULTIBAND.md section 5).
+    const char* signal = "GPS_L5_Q_NH";
+
     // Seed source / perturbations. These are the levers the chain is actually sensitive to,
     // exposed so a sweep can measure the sensitivity instead of arguing about it.
     const char* seed_file = nullptr; ///< read a REAL broker seed (seeds.jsonl) instead of direct
@@ -148,7 +154,10 @@ static void usage() {
         "e2e -- inject a known code phase, run the shipped search->seed->track->despread chain\n"
         "       offline, print the error in chips at each hand-off.\n\n"
         "  --prn N            PRN to inject and search for (default 3)\n"
-        "  --cp204 X          INJECTED truth: generator argument, chips mod 204600\n"
+        "  --signal NAME      tracker (baked) signal: GPS_L5_Q_NH (default), GAL_E5A_Q_CS,\n"
+        "                     BDS_B2A_P_CS. The _CS signals have NO blind search: --skip-search\n"
+        "  --cp204 X          INJECTED truth: generator argument, chips mod the tracker code\n"
+        "                     (204600 for L5_Q_NH; 1023000 for the _CS signals)\n"
         "  --dop F            INJECTED truth Doppler, Hz\n"
         "  --hop0 H           snapshot start hop (default ~6.8 days of uptime, as on sky)\n"
         "  --age-s S          seed age at the first tracker record (default 27)\n"
@@ -258,6 +267,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-dop-err")) o.seed_dop_err = next_d();
         else if (arg_eq(a, "--seed-cp-rate")) o.seed_cp_rate = next_d();
         else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
+        else if (arg_eq(a, "--signal")) o.signal = argv[++i];
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
@@ -292,12 +302,26 @@ int main(int argc, char** argv) {
     for (int c = 0; c < o.t_nchan; ++c) { t_chans.push_back(o.t_chan0 + o.t_stride * c); t_cov.push_back(c); }
 
     // TWO banks, exactly as production runs them, and the difference between them is the whole
-    // reason this harness exists: the SEARCH works in the primary code (GPS_L5_Q, L = 10230)
-    // with the NH20 overlay carried separately as an alignment index, while the TRACKER works
-    // in the overlaid code (GPS_L5_Q_NH, L = 204600) with the overlay baked into the table.
-    // Everything that has gone wrong in seeding has gone wrong in that translation.
-    const gnss::SignalDescriptor* sig_s = gnss::signal_by_name("GPS_L5_Q");
-    const gnss::SignalDescriptor* sig_t = gnss::signal_by_name("GPS_L5_Q_NH");
+    // reason this harness exists: the SEARCH works in the primary code (e.g. GPS_L5_Q,
+    // L = 10230) with the overlay carried separately as an alignment index, while the TRACKER
+    // works in the overlaid code (e.g. GPS_L5_Q_NH, L = 204600) with the overlay baked into
+    // the table. Everything that has gone wrong in seeding has gone wrong in that translation.
+    // The search signal is the tracker name minus its _NH/_CS suffix.
+    const std::string tname(o.signal);
+    std::string sname = tname;
+    for (const char* suf : {"_NH", "_CS"}) {
+        const size_t sl = std::strlen(suf);
+        if (sname.size() > sl && sname.compare(sname.size() - sl, sl, suf) == 0) {
+            sname.resize(sname.size() - sl);
+            break;
+        }
+    }
+    const gnss::SignalDescriptor* sig_s = gnss::signal_by_name(sname);
+    const gnss::SignalDescriptor* sig_t = gnss::signal_by_name(tname);
+    if (!sig_s || !sig_t) {
+        printf("unknown --signal %s (derived search signal %s)\n", tname.c_str(), sname.c_str());
+        return 2;
+    }
     gnss::ChannelizedReplicaBank sbank(*sig_s, o.sample_rate, o.f_offset, o.spectrum_length,
                                        o.num_taps, dsp::Window::Hamming, {o.prn});
     // Two slots holding the SAME PRN: slot 0 takes the tracker's commanded phase, slot 1 the
@@ -322,13 +346,36 @@ int main(int argc, char** argv) {
     const int Mp = sbank.repl_period_hops();
     const long long anchor = (long long)Mp * FFT; // what the search generates repl0 at
     const double L = (double)sbank.code_length();
-    const int n_nh = sbank.secondary_length(); // 20
-    const double LL = L * (double)n_nh;        // 204600 == tbank.code_length()
+    // Overlay period count from the CODE-LENGTH RATIO, not the search bank's overlay slot:
+    // the two agree for shared secondaries (L5: 204600/10230 = 20 = NH20), but per-PRN
+    // secondaries (E5a/B2a CS100) are absent from the bank's single-sequence slot, where the
+    // ratio still reads 100.
+    const int n_nh = (int)(sig_t->code_length / sig_s->code_length);
+    if ((long)n_nh * sig_s->code_length != sig_t->code_length) {
+        printf("--signal %s: tracker code %ld is not an integer tiling of search code %ld\n",
+               tname.c_str(), sig_t->code_length, sig_s->code_length);
+        return 2;
+    }
+    if (sbank.secondary_length() > 0 && sbank.secondary_length() != n_nh) {
+        printf("--signal %s: search overlay %d != code-length ratio %d -- descriptor bug\n",
+               tname.c_str(), sbank.secondary_length(), n_nh);
+        return 2;
+    }
+    if (!o.skip_search && n_nh > 1 && sbank.secondary_length() == 0) {
+        printf("--signal %s: %s has a PER-PRN secondary, which the search bank's "
+               "single-sequence overlay slot cannot carry -- blind acquisition does not exist "
+               "for this signal. Run with --skip-search (the dead-reckon leg; "
+               "docs/CHORD_MULTIBAND.md section 5).\n",
+               tname.c_str(), sname.c_str());
+        return 2;
+    }
+    const double LL = L * (double)n_nh; // == tbank.code_length()
     const double hop_s = (double)FFT / o.sample_rate;
 
     printf("================================================================================\n");
-    printf("INJECTED TRUTH   PRN %d   cp204 %.4f  (primary %.4f, NH period %d)   dop %+.4f Hz\n",
-           o.prn, o.cp204, std::fmod(o.cp204, L), (int)(o.cp204 / L), o.dop);
+    printf("INJECTED TRUTH   %s (search %s)   PRN %d\n", tname.c_str(), sname.c_str(), o.prn);
+    printf("  cp %.4f mod %.0f  (primary %.4f, overlay period %d)   dop %+.4f Hz\n", o.cp204,
+           LL, std::fmod(o.cp204, L), (int)(o.cp204 / L), o.dop);
     printf("  snapshot hop %lld (sample %lld, %.2f days of uptime)\n", o.hop0, W0,
            (double)W0 / o.sample_rate / 86400.0);
     printf("  geometry: record %d hops = %.4f code periods | replica period %d hops = %.0f "

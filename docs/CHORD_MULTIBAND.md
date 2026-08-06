@@ -140,8 +140,14 @@ Clean, with one real finding.
 2. [done -- §5] Hardcode audit.
 3. Config generator: `signals` list in `chord_gnss_node.yaml` → one tracker/inject branch
    per signal on the shared comb; constellation-suffixed buffer names.
-4. `scripts/gnss/e2e` closure per new signal (inject known cp → seed → despread, error in
-   chips) -- the gate before anything touches a node.
+4. [DONE 2026-08-06] `scripts/gnss/e2e` closure per new signal: `--signal` flag added
+   (tracker name; search primary derived by stripping `_NH`/`_CS`; overlay count from the
+   code-length ratio, cross-checked against the bank). The `_CS` signals REFUSE the blind
+   search leg with a pointer to §5 and run `--skip-search` (the dead-reckon leg -- the only
+   leg that exists for them). Measured: E5a and B2a close at 0.000 chips through the
+   shipped GnssCudaDespread on the 1,023,000-chip banks, noiseless AND at --noise 30
+   --quantize (deep fold snr 24.3/8 rec, 12.5/4 rec). L5 regression unchanged: 2-node comb
+   12.8 chips (the documented grating lobe), 8-node comb +0.373 chips.
 5. Broker: instance-per-constellation (airspy pattern) with dead-reckon seeding; the
    Galileo/BeiDou ephemeris fetch already exists from the tri-constellation nights.
 
