@@ -1,28 +1,30 @@
 #ifndef GIVEN_DATA_GEN_H
 #define GIVEN_DATA_GEN_H
 
-#include "Config.hpp"  // for Config
-#include "Stage.hpp"   // for Stage
-#include "buffer.hpp"  // for Buffer
-#include "visUtil.hpp" // for input_ctype
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for ElementOrder
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include <stdint.h> // for uint32_t
-#include <string>   // for string
+#include <string>   // for string, basic_string
 #include <vector>   // for vector
 
 /**
  * @class parseReorderDefault
- * @brief Parse the reordering configuration section
+ * @brief Parse the reordering configuration section and create a mapping
+ * yielding elements in output_order when indexed in input_order.
  *
  * @par Buffers
  * @buffer out_buf Buffer to with reorder table column
  *         @buffer_metadata chordMetadata
  *
  * @conf  name                  String. Name of the quantity being set.
- * @conf  input_reorder         Table. The input reorder table to parse.
- * @conf  invert_mapping        Bool. Default: true. Invert the input reorder
- *                              table, that is store the target indices instead
- *                              of the source indices consecutively.
+ * @conf  input_order           ElementOrder. Default: CHIMECorrelator. Must be one of
+ * CHIMECorrelator, CHIMECylinder, CHIMEBeamformer.
+ * @conf  output_order          ElementOrder. Default: CHIMECylinder. Must be one of
+ * CHIMECorrelator, CHIMECylinder, CHIMEBeamformer.
  * @conf  num_polarizations     Int. Number of polarizations. Used only to
  *                              compute number of elements.
  * @conf  num_dishes            Int. Number of dishes in telescope. Used only to
@@ -40,10 +42,11 @@ public:
 private:
     Buffer* const _out_buf;
     const std::string _name;
-    const std::vector<uint32_t> _input_reorder;
-    const bool _invert_mapping;
+    const ElementOrder _input_order;
+    const ElementOrder _output_order;
     const int _num_polarizations;
     const int _num_dishes;
+    static const int _num_chime_cylinders = 4;
 };
 
 #endif

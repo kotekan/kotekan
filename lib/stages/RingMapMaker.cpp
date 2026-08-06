@@ -12,12 +12,14 @@
 
 #include "gsl-lite.hpp" // for span_iterator, span, at
 
+#include <algorithm>   // for fill, copy, transform, sort
 #include <cblas.h>     // for cblas_cgemv, CBLAS_ORDER, CBLAS_TRANSPOSE
 #include <complex>     // for complex, operator*, conj, operator/, exp, operator-
 #include <cstdint>     // for uint8_t
 #include <functional>  // for bind, function, _1, _2
 #include <future>      // for async, future
 #include <iterator>    // for begin, end, back_insert_iterator, back_inserter
+#include <json.hpp>    // for json, iter_impl
 #include <numeric>     // for iota
 #include <optional>    // for optional
 #include <set>         // for set

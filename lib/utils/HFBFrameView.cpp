@@ -6,16 +6,17 @@
 
 #include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
 
-#include <algorithm> // for copy
-#include <complex>   // for complex  // IWYU pragma: keep
-#include <cstdint>   // for uint64_t // IWYU pragma: keep
-#include <cstring>   // for memset
-#include <ctime>     // for gmtime
-#include <map>       // for map
-#include <set>       // for set
-#include <stdexcept> // for runtime_error
-#include <tuple>     // for tuple, make_tuple
-#include <vector>    // for vector
+#include <algorithm>    // for copy
+#include <complex>      // for complex  // IWYU pragma: keep
+#include <cstdint>      // for uint64_t // IWYU pragma: keep
+#include <cstring>      // for memset
+#include <ctime>        // for gmtime
+#include <gsl-lite.hpp> // for span
+#include <map>          // for map
+#include <set>          // for set
+#include <stdexcept>    // for runtime_error
+#include <tuple>        // for tuple, make_tuple
+#include <vector>       // for vector
 
 HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id), _metadata(std::static_pointer_cast<HFBMetadata>(buf->metadata[id])),

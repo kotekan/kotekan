@@ -1,7 +1,7 @@
 #include "restServer.hpp"
 
 #include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for ERROR_NON_OO, DEBUG_NON_OO, WARN_NON_OO, INFO_NON_OO
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, FatalError, DEBUG_NON_OO, WARN_NON_OO
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
@@ -15,6 +15,7 @@
 #include <event2/thread.h>         // for evthread_use_pthreads
 #include <evhttp.h>                // for evhttp_request
 #include <exception>               // for exception
+#include <json.hpp>                // for json_ref, basic_json, input_adapter, iter_impl, json
 #include <mutex>                   // for unique_lock
 #include <netdb.h>                 // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
 #include <netinet/in.h>            // for sockaddr_in, IPPROTO_IPV6, IPV6_V6ONLY
@@ -39,6 +40,16 @@ using std::map;
 using std::string;
 using std::vector;
 
+// Static flag with trivial type — zero-initialized before any dynamic initialization
+// and never destroyed, so it remains valid even after restServer's destructor runs.
+// This lets other singletons (e.g., datasetManager) safely check whether restServer
+// is still alive during their own static destruction.
+static std::atomic<bool> _restServer_alive{false};
+
+bool restServer::is_alive() {
+    return _restServer_alive.load(std::memory_order_acquire);
+}
+
 restServer& restServer::instance() {
     static restServer server_instance;
     return server_instance;
@@ -48,9 +59,11 @@ restServer::restServer() : main_thread() {
     stop_thread = false;
     _bind_address = "";
     _port = 0;
+    _restServer_alive.store(true, std::memory_order_release);
 }
 
 restServer::~restServer() {
+    _restServer_alive.store(false, std::memory_order_release);
     stop_thread = true;
     try {
         main_thread.join();
@@ -147,15 +160,75 @@ void restServer::start(const std::string& bind_address, u_short port) {
     this->_bind_address = bind_address;
     this->_port = port;
 
+    // Initialize libevent and bind the socket synchronously, so that by
+    // the time start() returns, _port reflects the OS-assigned port
+    // (when the caller requested port 0) and callers reading port() see
+    // a final value. The background thread, started below, runs only
+    // the event loop.
+
+    if (evthread_use_pthreads()) {
+        ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
+        exit(1);
+    }
+
+    event_config* ev_config = event_config_new();
+    if (!ev_config) {
+        ERROR_NON_OO("Failed to create config for libevent");
+        exit(1);
+    }
+    if (event_config_avoid_method(ev_config, "select")) {
+        ERROR_NON_OO("Failed to exclude select from the libevent options");
+        exit(1);
+    }
+    event_base = event_base_new_with_config(ev_config);
+    event_config_free(ev_config);
+    if (!event_base) {
+        ERROR_NON_OO("restServer: Failed to create libevent base");
+        exit(1);
+    }
+
+    ev_server = evhttp_new(event_base);
+    if (ev_server == nullptr) {
+        ERROR_NON_OO("restServer: Failed to create libevent http server");
+        exit(1);
+    }
+    // Always allow OPTIONS (browser CORS preflights), not just when
+    // cors_enabled(): start() runs before the config is parsed, so the
+    // allowlist isn't known yet. A preflight with CORS off gets a 200 with no
+    // CORS headers, which the browser rejects anyway -- same net effect.
+    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_OPTIONS);
+    evhttp_set_gencb(ev_server, handle_request, (void*)this);
+
+    struct evhttp_bound_socket* ev_sock =
+        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
+    if (ev_sock == nullptr) {
+        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
+        exit(1);
+    }
+
+    // If port was set to 0, find the OS-assigned port now.
+    if (_port == 0) {
+        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
+        struct sockaddr_in sin;
+        socklen_t len = sizeof(sin);
+        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
+                         _port);
+            exit(1);
+        }
+        _port = ntohs(sin.sin_port);
+    }
+
+    // Register endpoints before starting the loop thread: once dispatch
+    // runs, handle_request reads the callback map without a read lock.
+    using namespace std::placeholders;
+    register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
+
     main_thread = std::thread(&restServer::http_server_thread, this);
 
 #ifndef MAC_OSX
     pthread_setname_np(main_thread.native_handle(), "rest_server");
 #endif
-
-    // Framework level tracking of endpoints.
-    using namespace std::placeholders;
-    register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
 }
 
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
@@ -177,6 +250,14 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         map<string, string>& aliases = server->get_aliases();
         if (aliases.find(url) != aliases.end()) {
             url = aliases[url];
+        }
+
+        if (request->type == EVHTTP_REQ_OPTIONS) {
+            // CORS preflight. Always reply 200 with the configured CORS headers;
+            // routing happens on the subsequent GET/POST.
+            connectionInstance conn(request);
+            conn.send_empty_reply(HTTP_RESPONSE::OK);
+            return;
         }
 
         if (request->type == EVHTTP_REQ_GET) {
@@ -458,67 +539,9 @@ void restServer::timer(evutil_socket_t fd, short event, void* arg) {
 
 void restServer::http_server_thread() {
 
-    // Allow for using extra threads (not currently needed)
-    if (evthread_use_pthreads()) {
-        ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
-        exit(1);
-    }
-
-    // Create the base event for handling requests,
-    // and exclude using `select` as a backend API
-    event_config* ev_config = event_config_new();
-    if (!ev_config) {
-        ERROR_NON_OO("Failed to create config for libevent");
-        exit(1);
-    }
-    int err = event_config_avoid_method(ev_config, "select");
-    if (err) {
-        ERROR_NON_OO("Failed to exclude select from the libevent options");
-        exit(1);
-    }
-    event_base = event_base_new_with_config(ev_config);
-    if (!event_base) {
-        ERROR_NON_OO("restServer: Failed to create libevent base");
-        // Use exit() not raise() since this happens early in startup before
-        // the signal handlers are all in place.
-        exit(1);
-    }
-
-    // Create the server
-    ev_server = evhttp_new(event_base);
-    if (ev_server == nullptr) {
-        ERROR_NON_OO("restServer: Failed to create libevent base");
-        exit(1);
-    }
-
-    // Currently allow only GET and POST requests
-    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
-
-    // Just setup one handler and implement the URL parsing internally
-    evhttp_set_gencb(ev_server, handle_request, (void*)this);
-
-    // Bind to the IP and port
-    struct evhttp_bound_socket* ev_sock =
-        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
-    if (ev_sock == nullptr) {
-        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
-        exit(1);
-    }
-
-    // if port was set to random, find port socket is listening on
-    if (_port == 0) {
-        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
-        struct sockaddr_in sin;
-        socklen_t len = sizeof(sin);
-        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
-                         _port);
-            exit(1);
-        }
-        _port = ntohs(sin.sin_port);
-    }
-    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
-    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
+    // Init and socket bind were done synchronously in start(); this
+    // thread only runs the event loop and tears down libevent state on
+    // exit.
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -528,13 +551,73 @@ void restServer::http_server_thread() {
     interval.tv_usec = 100000;
     event_add(timer_event, &interval);
 
+    // Emit the "started" log from the first loop iteration (zero-delay
+    // timeout) so it signals a running loop, not just a bound socket.
+    struct timeval zero = {0, 0};
+    event_base_once(event_base, -1, EV_TIMEOUT, &restServer::log_started, this, &zero);
+
     // run event loop
     event_base_dispatch(event_base);
 
     event_free(timer_event);
     evhttp_free(ev_server);
     event_base_free(event_base);
-    event_config_free(ev_config);
+}
+
+void restServer::set_cors_from_config(Config& config) {
+    _cors_allow_origins =
+        config.get_default<std::vector<std::string>>("/rest_server", "cors_allow_origins", {});
+    _enable_cors = config.get_default<bool>("/rest_server", "enable_cors", false);
+    if (!_cors_allow_origins.empty()) {
+        INFO_NON_OO("restServer: CORS enabled, scoped to {:d} allowlisted origin(s).",
+                    _cors_allow_origins.size());
+    } else if (_enable_cors) {
+        INFO_NON_OO("restServer: CORS enabled with wildcard origin (*). Consider "
+                    "setting /rest_server/cors_allow_origins to scope it.");
+    }
+}
+
+std::string restServer::cors_allow_origin_for(const char* request_origin) const {
+    if (!_cors_allow_origins.empty()) {
+        // Validated reflection: only echo back an Origin we were told to
+        // trust. Anything else gets no header and the browser blocks the
+        // cross-origin read.
+        if (request_origin == nullptr)
+            return "";
+        for (const auto& allowed : _cors_allow_origins) {
+            if (allowed == request_origin)
+                return allowed;
+        }
+        return "";
+    }
+    // Legacy wildcard mode.
+    if (_enable_cors)
+        return "*";
+    return "";
+}
+
+/// Add CORS headers to @p request when the request's Origin is permitted.
+/// Intentionally tolerant of duplicate-header errors so this is safe to call
+/// from any reply path.
+static void maybe_add_cors_headers(struct evhttp_request* request) {
+    auto& server = kotekan::restServer::instance();
+    if (!server.cors_enabled())
+        return;
+    const char* req_origin =
+        evhttp_find_header(evhttp_request_get_input_headers(request), "Origin");
+    const std::string allow_origin = server.cors_allow_origin_for(req_origin);
+    if (allow_origin.empty())
+        return;
+    auto* headers = evhttp_request_get_output_headers(request);
+    evhttp_add_header(headers, "Access-Control-Allow-Origin", allow_origin.c_str());
+    // When the allowed origin is request-specific (not "*"), caches must key
+    // on Origin or they'd serve one client's allow-header to another.
+    if (allow_origin != "*")
+        evhttp_add_header(headers, "Vary", "Origin");
+    evhttp_add_header(headers, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    evhttp_add_header(headers, "Access-Control-Allow-Headers",
+                      "x-prototype-version, x-requested-with, content-type");
+    evhttp_add_header(headers, "Access-Control-Max-Age", "2520");
 }
 
 void restServer::set_server_affinity(Config& config) {
@@ -586,12 +669,13 @@ string connectionInstance::get_body() {
 }
 
 void connectionInstance::send_empty_reply(const HTTP_RESPONSE& status) {
+    maybe_add_cors_headers(request);
     evhttp_send_reply(request, static_cast<int>(status),
                       restServer::get_http_responce_code_text(status).c_str(), event_buffer);
 }
 
 void connectionInstance::send_text_reply(const string& reply_message) {
-
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type", "text/plain")
         != 0) {
         throw std::runtime_error("Failed to add header to reply");
@@ -608,6 +692,7 @@ void connectionInstance::send_binary_reply(uint8_t* data, int len) {
     assert(data != nullptr);
     assert(len > 0);
 
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
                           "Application/octet-stream")
         != 0) {
@@ -622,6 +707,7 @@ void connectionInstance::send_binary_reply(uint8_t* data, int len) {
 }
 
 void connectionInstance::send_error(const string& message, const HTTP_RESPONSE& status) {
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
                           "Application/JSON")
         != 0) {
@@ -640,6 +726,7 @@ void connectionInstance::send_error(const string& message, const HTTP_RESPONSE& 
 void connectionInstance::send_json_reply(const json& json_reply) {
     string json_string = json_reply.dump(0);
 
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
                           "Application/JSON")
         != 0) {

@@ -10,9 +10,9 @@
 #include "visBuffer.hpp"         // for VisFrameView, VisMetadata
 #include "visUtil.hpp"           // for time_ctype, frameID, modulo, operator<, current_time
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view, format
 
-#include <algorithm>   // for copy, fill_n, equal, max
+#include <algorithm>   // for fill_n, equal
 #include <assert.h>    // for assert
 #include <cstring>     // for strerror, memcpy, memset
 #include <errno.h>     // for errno, ENOENT

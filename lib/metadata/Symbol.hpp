@@ -6,18 +6,19 @@
 
 #include <array>         // for array
 #include <cstring>       // for size_t
-#include <fmt/format.h>  // for formatter
 #include <functional>    // for equal_to, less
 #include <iostream>      // for ostream
 #include <mutex>         // for mutex
 #include <string>        // for string, basic_string
-#include <unordered_set> // for unordered_set
+#include <string_view>   // for string_view, hash, basic_string_view
+#include <unordered_set> // for operator!=, _Node_iterator, _Node_iterator_base, unordered_set
 
 
 namespace kotekan {
 
 template<typename T>
 struct owning_unordered_set;
+
 template<>
 struct owning_unordered_set<std::string_view> : public std::unordered_set<std::string_view> {
     ~owning_unordered_set() {
@@ -153,7 +154,10 @@ template<>
 struct fmt::formatter<kotekan::Symbol> : fmt::formatter<std::string> {
     template<typename FormatContext>
     auto format(const kotekan::Symbol& sym, FormatContext& ctx) const {
-        return fmt::formatter<std::string>::format(sym.get_string(), ctx);
+        // An unset (invalid) Symbol has no string; render it as empty rather
+        // than letting get_string() throw.
+        return fmt::formatter<std::string>::format(sym.valid() ? sym.get_string() : std::string(),
+                                                   ctx);
     }
 };
 

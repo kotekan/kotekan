@@ -30,6 +30,7 @@ set(KERNELFILES
     kernel_128_64.cu
     kernel_128_128.cu
     kernel_128_256.cu
+    kernel_128_336.cu
     kernel_128_384.cu
     kernel_128_512.cu
     kernel_128_1024.cu
@@ -86,8 +87,12 @@ target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 # Install the shared library so installed kotekan can find libn2k at runtime.
 install(TARGETS n2k LIBRARY DESTINATION lib)
 
-# Set architecture flags
-set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "86;89")
+# Set architecture flags (honor CMAKE_CUDA_ARCHITECTURES when provided, e.g. 121 for GB10)
+if(CMAKE_CUDA_ARCHITECTURES)
+    set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
+else()
+    set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "86;89")
+endif()
 
 # Set language for CUDA files
 set_target_properties(n2k PROPERTIES LANGUAGE CUDA)

@@ -1,12 +1,12 @@
 #include "visAccumulate.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for operator!=, Hash
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
@@ -15,13 +15,13 @@
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for frameID, prod_ctype, input_ctype, modulo, freq_ctype
+#include "visUtil.hpp"           // for prod_ctype, frameID, input_ctype, modulo, freq_ctype
 
 #include "fmt.hpp"      // for compile_string_to_view, format, fmt, format_string
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for basic_json, iter_impl, iteration_proxy_value, json
 
-#include <algorithm>  // for max, fill, copy, equal, transform
+#include <algorithm>  // for fill, equal, transform, copy
 #include <assert.h>   // for assert
 #include <cmath>      // for pow
 #include <complex>    // for conj, operator*, complex
@@ -32,7 +32,7 @@
 #include <numeric>    // for iota
 #include <optional>   // for optional, nullopt
 #include <stdexcept>  // for invalid_argument, runtime_error
-#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
+#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC, timeval
 #include <time.h>     // for size_t, timespec
 #include <tuple>      // for get
 #include <vector>     // for vector
@@ -89,8 +89,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     float low_sample_fraction = config.get_default<float>(unique_name, "low_sample_fraction", 0.01);
     minimum_samples = (size_t)(low_sample_fraction * num_gpu_frames * samples_per_data_set);
 
-    size_t nb = num_elements / block_size;
-    num_prod_gpu = num_freq_in_frame * nb * (nb + 1) * block_size * block_size / 2;
+    num_prod_gpu = num_freq_in_frame * gpu_N2_size(num_elements, block_size);
 
     // Get everything we need for registering dataset states
 

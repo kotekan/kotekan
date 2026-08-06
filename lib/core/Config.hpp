@@ -19,10 +19,13 @@
 #include <exception>   // for exception
 #include <limits>      // for numeric_limits
 #include <list>        // for list
+#include <map>         // for map
 #include <regex>       // for regex, regex_match, cmatch, sregex_token_iterator
+#include <set>         // for set
 #include <stdexcept>   // for runtime_error
+#include <stdlib.h>    // for free
 #include <string>      // for basic_string, operator==, string, char_traits, allocator
-#include <type_traits> // for conditional, is_arithmetic, is_integral, is_unsigned, enab...
+#include <type_traits> // for is_arithmetic, is_integral, enable_if, is_same, conditional
 #include <typeinfo>    // for type_info
 #include <vector>      // for vector
 
@@ -31,10 +34,13 @@ namespace kotekan {
 
 // Define a "large" type for every arithmetic type
 template<typename Type>
-using LargeType = typename std::conditional<
-    std::is_integral<Type>::value,
-    typename std::conditional<std::is_unsigned<Type>::value, unsigned long long, long long>::type,
-    double>::type;
+using LargeType =
+    typename std::conditional<std::is_integral<Type>::value,
+                              // "long double" will have at least 64bits for the significant plus an
+                              // additional sign bit, enough to hold both int64_t and uint64_t
+                              // do not use "unsigned long long" to avoid unsigned(-1) ==
+                              // unsigned_max issues
+                              long double, double>::type;
 
 // Convert types, with checking for overflows
 template<typename Ret, typename Type>
@@ -85,30 +91,13 @@ public:
                                      T>::type* = nullptr>
     T get(const std::string& base_path, const std::string& name) const {
         nlohmann::json json_value = get_value(base_path, name);
-        T value;
         try {
-            // If the expected type is a number and the value
-            // isn't already a number then try using the configEval parser
-            if (std::is_arithmetic<T>::value && !json_value.is_number()) {
-                try {
-                    Config::configEval<T> eval(*this, base_path, name);
-                    value = eval.compute_result();
-                } catch (std::exception const& ex) {
-                    throw std::runtime_error(
-                        fmt::format(fmt("Failed to evaluate: '{:s}' with message: '{:s}' for name "
-                                        "{:s} in path {:s}"),
-                                    json_value.get<std::string>(), ex.what(), name, base_path));
-                }
-            } else {
-                value = checked_conversion<T>(json_value.get<LargeType<T>>());
-            }
+            return eval<T>(base_path, json_value);
         } catch (std::exception const& ex) {
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist: {:s}"),
                 name, base_path, demangle<T>(), ex.what()));
         }
-
-        return value;
     }
 
     /**
@@ -132,6 +121,36 @@ public:
         }
 
         return value;
+    }
+
+    /**
+     * @brief Evaluate a JSON value (a number, or an arithmetic expression
+     *        string) in the config scope given by @c base_path.
+     *
+     * Like @c get() for arithmetic types, but operates on a value that is
+     * not directly addressable by a config path -- e.g. the elements of an
+     * array value, inside which @c get() cannot evaluate expressions.
+     * Variables in the expression are resolved with the usual config
+     * scoping rules, relative to @c base_path.
+     *
+     * @param base_path Config scope used to resolve variables in the expression.
+     * @param value     The JSON value to evaluate (a number or an expression string).
+     * @return  The evaluated value.
+     */
+    template<class T,
+             typename std::enable_if<std::is_arithmetic<T>::value && !std::is_same<bool, T>::value,
+                                     T>::type* = nullptr>
+    T eval(const std::string& base_path, const nlohmann::json& value) const {
+        if (value.is_number())
+            return checked_conversion<T>(value.get<LargeType<T>>());
+        try {
+            Config::configEval<T> evaluator(*this, base_path, value);
+            return evaluator.compute_result();
+        } catch (std::exception const& ex) {
+            throw std::runtime_error(
+                fmt::format(fmt("Failed to evaluate: '{:s}' with message: '{:s}' in path {:s}"),
+                            value.dump(), ex.what(), base_path));
+        }
     }
 
     /**
@@ -249,9 +268,91 @@ public:
      */
     void dump_config() const;
 
+    /**
+     * @brief Severity of the config-usage report logged at shutdown, and
+     *        whether unused items are treated as an error.
+     *
+     * Selected from the top-level @c log_config_usage config value (see
+     * @c parse_usage_report_level()).
+     */
+    enum class UsageReportLevel {
+        off,   ///< Disabled (default): no tracking, no report.
+        info,  ///< Track; log the summary at INFO.
+        warn,  ///< Track; log the summary at WARN if any item was unused.
+        error, ///< Track; log the summary at ERROR if any item was unused.
+        fatal, ///< Track; fail kotekan (non-zero exit) if any item was unused.
+    };
+
+    /**
+     * @brief Set the config-usage report level (and thereby enable or disable
+     *        access tracking).
+     *
+     * Any level other than @c off records every leaf value returned by
+     * @c get_value(), together with the base path (typically a stage's unique
+     * name) that requested it. Branch (object) reads are not recorded; only
+     * leaf values count as "used". @c log_access_summary() then reports which
+     * items were and were not used, at the severity given here.
+     *
+     * Intended to be set once at startup, before any values are read, so the
+     * summary covers all framework and stage accesses.
+     */
+    void set_usage_report_level(UsageReportLevel level);
+
+    /**
+     * @brief Parse a @c log_config_usage config value into a UsageReportLevel.
+     *
+     * Accepts a boolean (@c false -> off, @c true -> info) or a string
+     * ("off"/"none", "info"/"true", "warn", "error", "fatal"/"fatal_error",
+     * case-insensitive).
+     *
+     * @throws std::runtime_error on any other value.
+     */
+    static UsageReportLevel parse_usage_report_level(const nlohmann::json& value);
+
+    /**
+     * @brief Log a summary of which config leaf items were accessed and which
+     *        were not, listing for each used item the base paths (stages) that
+     *        accessed it.
+     *
+     * The summary is logged at the level set via @c set_usage_report_level():
+     * @c info always logs at INFO; @c warn / @c error escalate to that
+     * severity when any item went unused; @c fatal additionally fails kotekan
+     * (non-zero exit) when any item went unused. Does nothing if tracking is
+     * @c off.
+     */
+    void log_access_summary() const;
+
 private:
     /// Internal json object
     nlohmann::json _json;
+
+    /// Config-usage report level (see @c set_usage_report_level()). Tracking is
+    /// active for any level other than @c off. Set once at startup before
+    /// stages run, so reads of it need no locking.
+    UsageReportLevel _usage_report_level = UsageReportLevel::off;
+
+    /// Resolved JSON pointer of each accessed leaf -> the base paths (stages)
+    /// that requested it. Only populated while tracking is active.
+    mutable std::map<std::string, std::set<std::string>> _accessed;
+
+    /// Record an access of the value at resolved @c path, requested from
+    /// @c base_path. If @c value is an object the caller fetched a whole block
+    /// (e.g. gpuProcess reading its @c in_buffers map), so every descendant
+    /// leaf is recorded; otherwise @c path itself is recorded. Called by
+    /// @c get_value() when tracking is enabled.
+    void record_access(const std::string& path, const nlohmann::json& value,
+                       const std::string& base_path) const;
+
+    /// Recursive worker for @c record_access(); caller must hold the access lock.
+    void record_access_locked(const std::string& path, const nlohmann::json& value,
+                              const std::string& base_path) const;
+
+    /// Append the JSON pointer of every leaf (non-object) node reachable from
+    /// @c j (built under @c path) to @c leaves. Skips framework markers and
+    /// configUpdater-managed (@c kotekan_update_endpoint) blocks, which are not
+    /// read through get(). Helper for @c log_access_summary().
+    void collect_leaf_paths(const nlohmann::json& j, const std::string& path,
+                            std::vector<std::string>& leaves) const;
 
     /**
      * @brief Finds all values with key "name". Searches the given json.
@@ -289,7 +390,8 @@ private:
     class configEval {
 
     public:
-        configEval(const Config& _config, const std::string& base_path, const std::string& name);
+        configEval(const Config& _config, const std::string& base_path,
+                   const nlohmann::json& value);
 
         ~configEval();
 
@@ -339,17 +441,15 @@ T Config::get_default(const std::string& base_path, const std::string& name,
 
 template<class Type>
 Config::configEval<Type>::configEval(const Config& _config, const std::string& base_path,
-                                     const std::string& name) :
+                                     const nlohmann::json& value) :
     config(_config), unique_name(base_path) {
 
-    nlohmann::json value = config.get_value(base_path, name);
-
-    if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error(fmt::format(
-            fmt("The value {:s} in path {:s} isn't a number or string to eval or does not exist."),
-            name, base_path));
+    if (!value.is_string()) {
+        throw std::runtime_error(
+            fmt::format(fmt("The value '{:s}' in path {:s} isn't a string to evaluate."),
+                        value.dump(), base_path));
     }
-    const std::string& expression = value.get<std::string>();
+    const std::string expression = value.get<std::string>();
 
     static const std::regex re(
         R"((-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+\-]?[0-9]+)?|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]*))",

@@ -8,6 +8,7 @@
 #include "N2Util.hpp"            // for cfloat, frameID
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
+#include "div.hpp"               // for div_ceil
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
 
@@ -53,7 +54,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _krylov(config.get_default<size_t>(unique_name, "krylov", 2)),
     _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
 
-    // blaze parallelizations
+    // Blaze SMP thread count
     _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 0)),
 
     // Masking params
@@ -82,13 +83,8 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
         FATAL_ERROR("EigenN2Iter stage requires an 'N2' buffer type for in_buf and out_buf.");
 
     // Validate that input and output buffers have N2 frame descriptors set
-    auto in_desc =
-        std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(in_buf->get_frame_description());
-    auto out_desc =
-        std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(out_buf->get_frame_description());
-    if (!in_desc || !out_desc) {
-        FATAL_ERROR("EigenN2Iter: Input and output buffers must have N2FrameDesc set");
-    }
+    auto in_desc = in_buf->require_frame_desc<kotekan::N2FrameDesc>();
+    auto out_desc = out_buf->require_frame_desc<kotekan::N2FrameDesc>();
     // Validate num_elements and layout match
     if (in_desc->get_num_elements() != out_desc->get_num_elements()) {
         FATAL_ERROR("EigenN2Iter: Input and output buffer num_elements must match");
@@ -109,11 +105,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
             FATAL_ERROR("EigenN2Iter stage requires 'N2' buffer type for failed_buf.");
 
         // Validate that input and failed buffers have N2 frame descriptors set
-        auto failed_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(
-            failed_buf->get_frame_description());
-        if (!failed_desc) {
-            FATAL_ERROR("EigenN2Iter: failed_buf buffer must have N2FrameDesc set");
-        }
+        auto failed_desc = failed_buf->require_frame_desc<kotekan::N2FrameDesc>();
         // Validate num_elements and layout match
         if (in_desc->get_num_elements() != failed_desc->get_num_elements()) {
             FATAL_ERROR("EigenN2Iter: Input and failed buffer num_elements must match");
@@ -154,7 +146,11 @@ void EigenN2Iter::main_thread() {
     uint32_t num_elements = 0;
     bool initialized = false;
 
-    // these are kotekan wide (process wide) settings
+    // Force serial BLAS so Blaze owns intra-op parallelism via its own OpenMP
+    // path (per-stage team, inherits this stage's cpu_affinity). With a
+    // multithreaded OpenBLAS we'd otherwise hit its process-global pool whose
+    // affinity is fixed at first-call time and bleeds between concurrent
+    // eigen stages.
     openblas_set_num_threads(1);
     if (_num_blaze_workers > 0)
         blaze::setNumThreads(_num_blaze_workers);
@@ -328,7 +324,7 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements) const {
 
     // Zero out blocks on the diagonal if requested
     if (_block_fill_size > 0) {
-        unsigned int nb = num_elements / _block_fill_size;
+        unsigned int nb = kotekan::div_ceil(num_elements, _block_fill_size);
         for (unsigned int ii = 0; ii < nb; ii++) {
             unsigned int start = ii * _block_fill_size;
             unsigned int width = std::min(num_elements - start, _block_fill_size);

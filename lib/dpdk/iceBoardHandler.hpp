@@ -16,7 +16,7 @@
 
 #include "json.hpp"
 
-#include <mutex>
+#include <atomic>
 
 /**
  * @brief Abstract class which contains things which are common to processing
@@ -34,6 +34,12 @@
  *                                                 payload, FPGA footer flags, and any padding
  *                                                 (but not the Ethernet CRC).
  * @conf   samples_per_packet Int. Default 2.    The number of time samples per FPGA packet
+ * @conf   alignment_startup_delay Float. Default 1.0. The minimum time (in seconds) between the
+ *                                                 first packet seen (on any port) and the
+ *                                                 alignment edge (FPGA seq number) at which all
+ *                                                 ports will start processing data. Increase
+ *                                                 this if ports fail to start within one frame
+ *                                                 of each other.
  * @conf   status_cadence    Int  Default 0      The time (in seconds between printing port
  *                                                 status) Default 0 == don't print.
  *
@@ -77,46 +83,62 @@ protected:
     /**
      * @brief Aligns the first packet.
      *
-     * This function should only be used at startup to find the first packet to start processing
+     * This function should only be used at startup to find the first packet to start processing.
+     *
+     * The first handler (on any port) to see a packet sets a shared target alignment edge
+     * which is at least @c alignment_startup_delay seconds in the future, rounded up to the
+     * next @c alignment boundary. All handlers then drop packets until they reach that edge,
+     * so every port starts processing at exactly the same FPGA seq number.
+     *
+     * Any gap between the target edge and the first packet a port sees after it is filled
+     * in by the lost packet system. If that gap is one full frame (@c alignment) or more,
+     * kotekan is stopped with a fatal error, since that indicates the port started too far
+     * behind the others (see @c alignment_startup_delay).
      *
      * Should be called by every handler.
      *
      * @param mbuf The packet to check for alignment
-     * @return True if the packet is within 100 of the alignment edge,
+     * @return True if the packet is at or past the shared target alignment edge,
      *         False otherwise.
      */
     bool align_first_packet(struct rte_mbuf* mbuf) {
         uint64_t seq = iceBoardHandler::get_mbuf_seq_num(mbuf);
+
+        // Get (or set, if we are the first handler to see a packet) the shared target edge.
+        uint64_t target_seq = get_alignment_target(seq);
+
+        // Wait for the target alignment edge to be reached.
+        if (seq < target_seq)
+            return false;
+
+        // Check that this port didn't start more than one frame past the target edge,
+        // otherwise the lost packet fill system would need to back-fill one or more
+        // entire frames to catch up.
+        if (unlikely(seq >= target_seq + alignment)) {
+            const double late_seconds =
+                (double)(seq - target_seq) * Telescope::instance().seq_length_nsec() * 1e-9;
+            FATAL_ERROR("Port {:d}: first packet (seq num {:d}) arrived {:d} frame(s) "
+                        "({:.3f} s) after the target alignment edge {:d}. Try increasing "
+                        "alignment_startup_delay (currently {:.3f} s), closing kotekan!",
+                        port, seq, (seq - target_seq) / alignment, late_seconds, target_seq,
+                        alignment_startup_delay);
+            return false;
+        }
+
         ice_stream_id_t stream_id =
             ice_extract_stream_id(iceBoardHandler::get_mbuf_stream_id(mbuf));
 
-        // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
-        // if this happens then the missing frames at the start of the buffer frame are filled
-        // in as lost packets.
-        // TODO This seems to happen more on the new CHIME hardware with extra links, this needs
-        // some optimization, likely requires moving buffer handling out of the critial packet loop.
-        if ((seq % alignment) <= 1000) {
+        last_seq = target_seq;
+        cur_seq = seq;
+        port_stream_id = stream_id;
+        got_first_packet = true;
 
-            last_seq = seq - seq % alignment;
-            cur_seq = seq;
-            port_stream_id = stream_id;
+        INFO("Port {:d}; Got StreamID: crate: {:d}, slot: {:d}, link: {:d}, unused: {:d}, "
+             "start seq num: {:d} current seq num: {:d}",
+             port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused,
+             last_seq, seq);
 
-            INFO("Port {:d}; Got StreamID: crate: {:d}, slot: {:d}, link: {:d}, unused: {:d}, "
-                 "start seq num: {:d} current seq num: {:d}",
-                 port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused,
-                 last_seq, seq);
-
-            if (!check_cross_handler_alignment(last_seq)) {
-                FATAL_ERROR("DPDK failed to align packets between handlers, closing kotekan!");
-                return false;
-            }
-
-            got_first_packet = true;
-
-            return true;
-        }
-
-        return false;
+        return true;
     }
 
     /**
@@ -181,10 +203,6 @@ protected:
             return false;
         }
 
-        // Add to common stats
-        rx_packets_total += 1;
-        rx_bytes_total += cur_mbuf->pkt_len;
-
         return true;
     }
 
@@ -244,53 +262,56 @@ protected:
     }
 
     /**
-     * @brief Function to ensure all handlers align to the same FPGA seq number
+     * @brief Gets the target FPGA seq number all handlers will align their first frame to.
+     *
+     * The first handler to call this function with the seq number of a received packet
+     * sets the shared target alignment edge: at least @c alignment_startup_delay seconds
+     * past the given seq number, rounded up to the next @c alignment boundary. All later
+     * calls simply return that shared target.
      *
      * This function must be called at least once with
-     * @c check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
-     * In order to initalize the alignment seq number
+     * @c get_alignment_target(std::numeric_limits<uint64_t>::max());
+     * in order to reset the shared target before packets are processed.
      *
-     * @param seq_num The seq number which should be aligned too.
-     * @return true if the alignment is good, or this is the first handler to call this function
-     *         false if the alignment fails.
+     * @param seq_num The FPGA seq number of the packet being processed,
+     *                or uint64_t max to reset the shared target.
+     * @return The shared target alignment seq number.
      */
-    inline bool check_cross_handler_alignment(uint64_t seq_num) {
+    inline uint64_t get_alignment_target(uint64_t seq_num) {
 
-        /// Alignment mutex
-        static std::mutex alignment_mutex;
+        /// The target seq number all handlers align to.
+        static std::atomic<uint64_t> alignment_target_seq{std::numeric_limits<uint64_t>::max()};
 
-        /// The first seq number seen by each handler
-        static uint64_t alignment_first_seq;
-
-        std::lock_guard<std::mutex> alignment_lock(alignment_mutex);
-
-        // This provides a way to init the alignment_first_seq to a fixed constand before we start
-        // getting packets.
+        // This provides a way to reset the alignment_target_seq to a fixed constant before
+        // we start getting packets.
         if (seq_num == std::numeric_limits<uint64_t>::max()) {
-            alignment_first_seq = std::numeric_limits<uint64_t>::max();
-            DEBUG("Setting alignment value to MAX={:d}", alignment_first_seq);
-            return true;
+            alignment_target_seq.store(std::numeric_limits<uint64_t>::max());
+            DEBUG("Setting alignment target to MAX={:d}", std::numeric_limits<uint64_t>::max());
+            return std::numeric_limits<uint64_t>::max();
         }
 
-        // This case deals with the first handler setting it's seq number.
-        if (seq_num != alignment_first_seq
-            && alignment_first_seq == std::numeric_limits<uint64_t>::max()) {
-            DEBUG("Port {:d}: Got first alignemnt value of {:d}", port, seq_num);
-            alignment_first_seq = seq_num;
-            return true;
+        // Fast path: the shared target has already been set by the first handler.
+        uint64_t target = alignment_target_seq.load();
+        if (target != std::numeric_limits<uint64_t>::max())
+            return target;
+
+        // The shared target isn't set yet, so compute a candidate and try to publish it.
+        // Only the first handler to succeed at the compare-exchange sets the target for
+        // everyone; any others discard their candidate and use the published value.
+        const uint64_t delay_samples =
+            (uint64_t)(alignment_startup_delay * 1e9 / Telescope::instance().seq_length_nsec());
+        const uint64_t candidate = ((seq_num + delay_samples) / alignment + 1) * alignment;
+
+        uint64_t expected = std::numeric_limits<uint64_t>::max();
+        if (alignment_target_seq.compare_exchange_strong(expected, candidate)) {
+            INFO("Port {:d}: Got first packet with seq num {:d}, set the target alignment "
+                 "seq num for all ports to {:d} ({:.3f} s startup delay)",
+                 port, seq_num, candidate, alignment_startup_delay);
+            return candidate;
         }
 
-        // This case deals with each addational handler checking if it has the same
-        // first seq number.
-        if (seq_num != alignment_first_seq) {
-            ERROR("Port {:d}: Got alignemnt value of {:d}, but expected {:d}", port, seq_num,
-                  alignment_first_seq);
-            return false;
-        }
-
-        // Additional handler(s) got the same first seq number.
-        DEBUG("Port {:d}: Got alignemnt value of {:d}", port, seq_num);
-        return true;
+        // Another handler won the race; expected now holds the published target.
+        return expected;
     }
 
     /**
@@ -324,6 +345,10 @@ protected:
 
     /// This is the value that we will align the first frame too.
     uint64_t alignment;
+
+    /// The minimum time (in seconds) between the first packet seen and the target
+    /// alignment edge all ports will start processing at.
+    double alignment_startup_delay;
 
     /// Offset into the first byte of data after the Ethernet/UP/UDP/FPGA packet headers
     /// this shouldn't change, so we don't expose this to the config.
@@ -396,9 +421,11 @@ inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::stri
 
     num_local_freq = config.get_default<int32_t>(unique_name, "num_local_freq", 1);
     alignment = config.get<uint64_t>(unique_name, "alignment");
+    alignment_startup_delay =
+        config.get_default<double>(unique_name, "alignment_startup_delay", 1.0);
     using_switch = config.get_default<bool>(unique_name, "using_switch", false);
 
-    check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
+    get_alignment_target(std::numeric_limits<uint64_t>::max());
 
     // Don't print anything for the first 30 seconds
     last_status_message_time = e_time() + 30;

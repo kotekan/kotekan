@@ -1,20 +1,27 @@
 #include "TransposeBasebandArray.hpp"
 
-#include "Config.hpp"
-#include "StageFactory.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
+#include "NDArray.hpp"
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <cstring>
-#include <stdexcept>
-#include <visUtil.hpp>
+#include <cstring>     // for memcpy, memset
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <stdexcept>   // for runtime_error
+#include <vector>      // for vector
+#include <visUtil.hpp> // for frameID, modulo
+#if defined(__x86_64__) || defined(__i386__)
+#include <xmmintrin.h> // for _mm_sfence, _MM_HINT_T0, _mm_prefetch
+#endif
 
 #ifdef __AVX512F__
-#include <immintrin.h>
+#include <immintrin.h> // for __m512i, _mm512_stream_si512, _mm512_set1_epi8, _mm512_se...
 #endif
 
 using kotekan::bufferContainer;
@@ -149,9 +156,10 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     // Set the output buffer frame ndarray shape
 
     // Confusingly the array name is "E" for electric field
-    out_buf->allocate_ndarray_frame_desc(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"});
+        {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"},
+        {1, 1, 1, 1}));
 
     INFO("TransposeBasebandArray: Input shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
          NUM_LOCAL_FREQ, ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);
@@ -428,10 +436,10 @@ void TransposeBasebandArray::main_thread() {
         out_meta->type = kotekan::int4x2_swapped_withoffset;
         out_meta->dims = 4;
         out_meta->set_name("E");
-        out_meta->set_array_dimension(0, timesamples_per_frame, "T");
-        out_meta->set_array_dimension(1, NUM_LOCAL_FREQ, "F");
-        out_meta->set_array_dimension(2, 2, "P");
-        out_meta->set_array_dimension(3, NUM_ELEMENTS / 2, "D");
+        out_meta->set_array_dimension(0, timesamples_per_frame, "T", 1);
+        out_meta->set_array_dimension(1, NUM_LOCAL_FREQ, "F", 1);
+        out_meta->set_array_dimension(2, 2, "P", 1);
+        out_meta->set_array_dimension(3, NUM_ELEMENTS / 2, "D", 1);
 
         out_meta->set_strides_simple();
         out_meta->set_coarse_freq(in_meta->get_coarse_freq());

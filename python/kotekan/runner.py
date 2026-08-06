@@ -1,14 +1,5 @@
 """Use Python to run a kotekan instance, particularly for testing.
 """
-
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
-
 import itertools
 import json
 import os
@@ -93,6 +84,7 @@ class KotekanRunner(object):
         expect_failure=False,
         rest_port=0,
         gdb=False,
+        timeout=None,
     ):
 
         self._buffers = buffers if buffers is not None else {}
@@ -104,8 +96,49 @@ class KotekanRunner(object):
         self.rest_port = rest_port
         self._gdb = gdb
         self.return_code = 0
+        # Max seconds to wait for kotekan to exit on its own before we kill it.
+        # Defaults to a little under pytest's per-test timeout (PYTEST_TIMEOUT, if
+        # exported) so the runner fails with a clear message and cleans up the
+        # process itself, rather than relying on pytest-timeout (which is
+        # unreliable under xdist). Falls back to 120s outside CI.
+        if timeout is None:
+            _pytest_to = os.environ.get("PYTEST_TIMEOUT")
+            timeout = 0.8 * float(_pytest_to) if _pytest_to else 120.0
+        self._timeout = float(timeout)
+        # Handle to the launched kotekan process, so run() can always reap it.
+        self._process = None
+
+    @staticmethod
+    def _cleanup(p):
+        """Ensure a launched kotekan process is stopped and reaped.
+
+        Guards against orphaned kotekan processes (and the indefinite hangs and
+        resource leaks they cause, especially under pytest-xdist) on every exit
+        path from ``run()``.
+        """
+        # The gdb path uses subprocess.run(), which returns a CompletedProcess
+        # with no poll()/terminate(); there is nothing to clean up there.
+        if p is None or not hasattr(p, "poll"):
+            return
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                try:
+                    p.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
 
     def run(self):
+        """Run kotekan, always terminating the kotekan process afterwards."""
+        try:
+            self._run()
+        finally:
+            self._cleanup(self._process)
+
+    def _run(self):
         """Run kotekan.
 
         This configures kotekan by creating a temporary config file.
@@ -151,6 +184,7 @@ class KotekanRunner(object):
                 cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
                 print(cmd)
                 p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
+                self._process = p
 
             # Run any requested REST commands
             if self._rest_commands and not self._gdb:
@@ -163,13 +197,28 @@ class KotekanRunner(object):
                 while attempt < 100:
 
                     if attempt == 99:
-                        print("Could not find kotekan REST server address in logs")
-                        exit(1)
+                        self._cleanup(p)
+                        self.output = open(f_out.name, "r").read()
+                        print(self.output)
+                        raise RuntimeError(
+                            "Could not find kotekan REST server address in logs. "
+                            "Command: %s" % cmd
+                        )
 
                     attempt += 1
 
-                    # Wait a moment for rest servers to start up.
-                    time.sleep(wait)
+                    # If kotekan already exited, its REST server will never appear.
+                    if p.poll() is not None:
+                        self.output = open(f_out.name, "r").read()
+                        print(self.output)
+                        raise RuntimeError(
+                            "kotekan exited (code %s) before its REST server "
+                            "started. Command: %s" % (p.returncode, cmd)
+                        )
+
+                    # Wait a moment for rest servers to start up (capped so a
+                    # missing server can't make this loop run for many minutes).
+                    time.sleep(min(wait, 2.0))
 
                     # If kotekan's REST server was started with a random port (0), we have to find out
                     # what that is from the logs
@@ -220,7 +269,10 @@ class KotekanRunner(object):
                     except requests.RequestException:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
-                        p.wait()
+                        try:
+                            p.wait(timeout=self._timeout)
+                        except subprocess.TimeoutExpired:
+                            self._cleanup(p)
                         self.output = open(f_out.name, "r")
 
                         # Print out the output from Kotekan for debugging
@@ -243,9 +295,20 @@ class KotekanRunner(object):
                 time.sleep(10)
                 print(open(f_out.name, "r").read())
 
-            # Wait for kotekan to finish and capture the output
+            # Wait for kotekan to finish and capture the output. Bound the wait so
+            # a kotekan that never exits fails the test quickly (and, under xdist,
+            # does not stall the whole run) instead of blocking here indefinitely.
             if not self._gdb:
-                p.wait()
+                try:
+                    p.wait(timeout=self._timeout)
+                except subprocess.TimeoutExpired:
+                    self._cleanup(p)
+                    self.output = open(f_out.name, "r").read()
+                    print(self.output)
+                    raise RuntimeError(
+                        "kotekan did not exit within %g seconds; terminated it. "
+                        "Command: %s" % (self._timeout, cmd)
+                    )
             self.output = open(f_out.name, "r").read()
 
             # Print out the output from Kotekan for debugging
@@ -755,7 +818,13 @@ class DumpVisBuffer(OutputBuffer):
 
 
 class ReadChordBuffer(InputBuffer):
-    """Write down a ChordBuffer and reads it with hdf5FileRead."""
+    """Write down a ChordBuffer and reads it with hdf5FileRead.
+
+    When the first buffer's metadata carries name/type/dim_names, the
+    kotekan buffer is declared as `kotekan_buffer: ndarray` so the frame
+    descriptor is attached at startup (and hdf5FileRead validates against
+    it); otherwise it falls back to a plain standard buffer.
+    """
 
     _buf_ind = 0
 
@@ -768,14 +837,29 @@ class ReadChordBuffer(InputBuffer):
         self.input_dir = input_dir
         self.buffer_list = buffer_list
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": buffer_list[0].data.nbytes,
+        meta = buffer_list[0].metadata
+        if all(key in meta for key in ("name", "type", "dim_names", "dim_scalings")):
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": str(meta["type"]),
+                    "quantity_name": str(meta["name"]),
+                    "extents": [int(n) for n in buffer_list[0].data.shape],
+                    "dimnames": [str(d) for d in meta["dim_names"]],
+                    "dimscalings": [int(n) for n in meta["dim_scalings"]],
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": buffer_list[0].data.nbytes,
+                }
+            }
 
         stage_config = {
             "kotekan_stage": "hdf5FileRead",
@@ -802,13 +886,37 @@ class DumpChordBuffer(OutputBuffer):
     ----------
     output_dir : str
         Temp. directory to output to. Dumped files are not removed.
+    quantity_name : str, optional
+        Together with `dimnames` and `dimscalings`, declare the buffer as `kotekan_buffer:
+        ndarray`, attaching the frame descriptor at startup (the stage under
+        test then validates against it instead of allocating it). Must match
+        the descriptor the producing stage declares exactly.
+    dimnames : list of str, optional
+        Axis labels, one per entry of `shape`. See `quantity_name`.
+    dimscalings : list of int, optional
+        Axis scalings, one per entry of `shape`. See `quantity_name`.
+    value_type : str, optional
+        kotekan DataType name for the ndarray declaration. Defaults to the
+        numpy name of `dtype`, which is correct for plain types; packed
+        types (e.g. "uint1x8", "int4x2") must be given explicitly.
     """
 
     _buf_ind = 0
 
     name = None
 
-    def __init__(self, output_dir, shape, dtype, max_frames=-1):
+    def __init__(
+        self,
+        output_dir,
+        shape,
+        dtype,
+        max_frames=-1,
+        input_order="CHORDBeamformer",
+        quantity_name=None,
+        dimnames=None,
+        dimscalings=None,
+        value_type=None,
+    ):
         self.name = f"dumpchord_buf{self._buf_ind}"
         stage_name = f"dump{self._buf_ind}"
 
@@ -819,14 +927,38 @@ class DumpChordBuffer(OutputBuffer):
         self.max_frames = max_frames
         self.dtype = dtype
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+        if quantity_name is not None:
+            if dimnames is None or len(dimnames) != len(shape):
+                raise ValueError(
+                    "dimnames must be given with quantity_name, one per axis"
+                )
+            if dimscalings is None:
+                # Optional: default each axis to a scaling of 1, matching
+                # GenericNDArray::from_config when `dimscalings` is omitted.
+                dimscalings = [1] * len(shape)
+            elif len(dimscalings) != len(shape):
+                raise ValueError("dimscalings must have one entry per axis")
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": value_type or np.dtype(self.dtype).name,
+                    "quantity_name": quantity_name,
+                    "extents": [int(n) for n in shape],
+                    "dimnames": list(dimnames),
+                    "dimscalings": list(dimscalings),
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+                }
+            }
 
         self.stage_block = {
             stage_name: {
@@ -836,6 +968,7 @@ class DumpChordBuffer(OutputBuffer):
                 "base_dir": output_dir,
                 "prefix_hostname": False,
                 "max_frames": max_frames,
+                "input_order": input_order,
             }
         }
 
@@ -907,7 +1040,12 @@ class DumpN2Buffer(OutputBuffer):
     name = None
 
     def __init__(
-        self, output_dir, exit_after_n_files=0, num_elements=None, num_ev=None
+        self,
+        output_dir,
+        exit_after_n_files=0,
+        num_elements=None,
+        num_ev=None,
+        num_freq=None,
     ):
 
         self.name = "dumpn2_buf%i" % self._buf_ind
@@ -923,12 +1061,17 @@ class DumpN2Buffer(OutputBuffer):
             self.num_prod = None
         self.num_ev = num_ev
 
+        # If num_freq is given, size the buffer to hold one full accumulation
+        # cycle (one frame per frequency) so the producer never stalls.
+
+        num_freq_in_buffer = num_freq if num_freq is not None else 1
+
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
                 "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
-                "num_frames": "buffer_depth",
+                "num_frames": "buffer_depth * {:d}".format(num_freq_in_buffer),
             }
         }
 
@@ -1536,6 +1679,8 @@ default_config = """
 ---
 type: config
 log_level: INFO
+num_polarizations: 2
+num_dishes: 5
 num_elements: 10
 num_freq_in_frame: 1
 num_local_freq: 1

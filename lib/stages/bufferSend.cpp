@@ -11,18 +11,18 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 
-#include <arpa/inet.h>   // for htons, inet_addr
-#include <bits/chrono.h> // for seconds
-#include <cerrno>        // for errno
-#include <cstring>       // for strerror, size_t
-#include <functional>    // for bind, ref, function
-#include <memory>        // for __shared_ptr_access, shared_ptr
-#include <stdexcept>     // for runtime_error
-#include <strings.h>     // for bzero
-#include <sys/socket.h>  // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
-#include <sys/time.h>    // for timeval
-#include <thread>        // for thread
-#include <unistd.h>      // for close, sleep
+#include <arpa/inet.h>  // for htons, inet_addr
+#include <cerrno>       // for errno
+#include <chrono>       // for seconds
+#include <cstring>      // for strerror, size_t
+#include <functional>   // for bind, ref, function
+#include <memory>       // for __shared_ptr_access, shared_ptr
+#include <stdexcept>    // for runtime_error
+#include <strings.h>    // for bzero
+#include <sys/socket.h> // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
+#include <sys/time.h>   // for timeval
+#include <thread>       // for thread
+#include <unistd.h>     // for close, sleep
 
 // Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
 #ifndef MSG_NOSIGNAL
@@ -64,8 +64,16 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
     socket_fd = -1;
 
-    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
+    // Default to the tracker's enabled state (set at startup, before stages).
+    // A stage may opt out, but cannot opt in when the tracker is off, so the
+    // configured value is ANDed with the tracker state.
+    const bool ct_enabled = ConfigTracker::instance().is_enabled();
+    use_config_tracker =
+        config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
     config_tracker_combined_hash = "";
+
+    use_frame_desc = config.get_default<bool>(unique_name, "use_frame_desc", false);
+    desc_sent = false;
 }
 
 bufferSend::~bufferSend() {}
@@ -107,7 +115,7 @@ void bufferSend::main_thread() {
             header.frame_size = static_cast<uint32_t>(buf->frame_size);
             header.config_tracker_update =
                 config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
-            // for legacy CHIME, do not send laast field (config_tracker_update)
+            // for legacy CHIME, do not send last field (config_tracker_update)
             size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
                                                    : sizeof(bufferFrameHeaderNoConfigTracker);
 
@@ -133,11 +141,43 @@ void bufferSend::main_thread() {
             }
 
 
-            // If the frame sent successfully,
-            if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
-                config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
-            }
+            // Record the tracker state we just signaled to the receiver.
+            config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
             DEBUG2("Sent header: {:d}", n_sent);
+
+            // Send the frame descriptor once per connection (independent of the
+            // config tracker), right after the first frame's header: a 4-byte
+            // JSON length followed by that many bytes. Later frames send neither.
+            if (use_frame_desc && !desc_sent) {
+                auto desc = buf->get_frame_desc();
+                const std::string desc_json = desc ? desc->to_json().dump() : std::string();
+                uint32_t frame_desc_size = static_cast<uint32_t>(desc_json.size());
+                n_sent = 0;
+                while ((n = send(socket_fd, &((uint8_t*)&frame_desc_size)[n_sent],
+                                 sizeof(frame_desc_size) - n_sent, MSG_NOSIGNAL))
+                       > 0)
+                    n_sent += n;
+                if (n < 0) {
+                    ERROR("Error {:s}, failed to send frame_desc size to {:s}:{:d}",
+                          strerror(errno), server_ip, server_port);
+                    close_connection();
+                    continue;
+                }
+                if (frame_desc_size > 0) {
+                    n_sent = 0;
+                    while ((n = send(socket_fd, desc_json.data() + n_sent, frame_desc_size - n_sent,
+                                     MSG_NOSIGNAL))
+                           > 0)
+                        n_sent += n;
+                    if (n < 0) {
+                        ERROR("Error {:s}, failed to send frame_desc to {:s}:{:d}", strerror(errno),
+                              server_ip, server_port);
+                        close_connection();
+                        continue;
+                    }
+                }
+                desc_sent = true;
+            }
 
             // Send metadata
             DEBUG2("Sending metadata");
@@ -258,6 +298,7 @@ void bufferSend::connect_to_server() {
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
             connected = true;
             first_transmission_sent = false; // Reset first transmission flag
+            desc_sent = false;               // re-send the frame descriptor on the new connection
         }
 
         // Notify that connection is established

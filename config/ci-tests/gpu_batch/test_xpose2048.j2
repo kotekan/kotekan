@@ -39,20 +39,22 @@ main_pool:
 # Buffers
 
 host_scatter_indices_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int32 * num_dishes * num_polarizations
+    value_type: int32
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_voltage_buffers:
   num_frames: host_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_host_buf
   metadata_pool: main_pool
   numa_0:
     numa_node: 0
 {%- for id in range(num_freq_gpu_buf) %}
     host_voltage_buffer_{{ id }}:
-      kotekan_buffer: standard
+      kotekan_buffer: ndarray
+      value_type: int4x2_swapped_withoffset
+      extents: [num_freq_host_buf, samples_per_data_set, num_elements]
 {%- endfor %}
 
 host_voltage_ringbuffer:
@@ -67,17 +69,19 @@ host_xposed_voltage_ringbuffer:
 
 host_xposed_voltage_buffer:
   num_frames: host_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_gpu_buf
   metadata_pool: main_pool
   host_xposed_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_freq_gpu_buf, num_polarizations, num_dishes]
 
 cpu_xposed_voltage_buffer:
   num_frames: host_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_gpu_buf
   metadata_pool: main_pool
   cpu_xposed_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_freq_gpu_buf, num_polarizations, num_dishes]
 # Stages
 
 set_voltage:

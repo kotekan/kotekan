@@ -7,9 +7,10 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
-#include <algorithm>     // for max, find, copy
-#include <bits/chrono.h> // for seconds
+#include <algorithm>     // for find, copy
+#include <chrono>        // for seconds
 #include <cstdlib>       // for abort
+#include <exception>     // for exception
 #include <future>        // for async, future, future_status, launch
 #include <pthread.h>     // for pthread_setaffinity_np, pthread_setname_np
 #include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO

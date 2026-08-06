@@ -10,7 +10,6 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <algorithm>  // for max
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, posix_fadvise, O_CREAT, O_WRONLY, POSIX_FADV_DONTNEED
 #include <functional> // for bind, function

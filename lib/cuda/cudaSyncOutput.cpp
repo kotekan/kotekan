@@ -6,9 +6,8 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm> // for max
-#include <stdint.h>  // for int32_t
-#include <vector>    // for allocator, vector
+#include <stdint.h> // for int32_t
+#include <vector>   // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -16,9 +16,10 @@
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, fill, max
+#include <algorithm>  // for copy, fill
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
+#include <json.hpp>   // for basic_json, iter_impl, operator<, operator>=, json
 #include <memory>     // for operator==, shared_ptr, __shared_ptr_access
 #include <stdexcept>  // for invalid_argument
 #include <tuple>      // for get

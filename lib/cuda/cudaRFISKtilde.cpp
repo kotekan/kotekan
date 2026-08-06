@@ -10,16 +10,17 @@
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
 #include "div.hpp"                 // for div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG
+#include "kotekanLogging.hpp"      // for DEBUG, INFO
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
+
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <algorithm>          // for min
 #include <array>              // for array
 #include <cstddef>            // for ptrdiff_t
-#include <cstdint>            // for int8_t, uint64_t, uint8_t, int64_t
+#include <cstdint>            // for int8_t, uint64_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaStreamSynchronize
 #include <driver_types.h>     // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
-#include <fmt.hpp>            // for compile_string_to_view
 #include <functional>         // for function
 #include <memory>             // for allocator, shared_ptr, __shared_ptr_access
 #include <string>             // for basic_string, string
@@ -71,6 +72,10 @@ private:
     const int rfi_downsampling_factor;
     const int rfi_num_times;
     const bool poison_buffers;
+    // If false, the SK kernel skips the RFI mask computation and an all-good mask is
+    // produced instead, so no samples are excised in the correlator. The SKtilde
+    // statistics are still computed for second-stage excision (RfiFrameMask).
+    const bool first_stage_excision_enabled;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -104,6 +109,8 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
+    first_stage_excision_enabled(
+        config.get_default<bool>(unique_name, "rfi_first_stage_excision_enabled", true)),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
@@ -111,18 +118,21 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
+            std::array<std::string, 2>{"P", "D"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this),
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"},
+             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this),
     rfi_SKtilde(rfi_SKtilde_name, "SKtilde",
                 std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
-                std::array<std::string, 3>{"Trfi", "F", "SK"}, *this),
+                std::array<std::string, 3>{"Trfi", "F", "SK"},
+                std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor, 1, 1}, *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
                 std::array<std::ptrdiff_t, 3>{div_noremainder(buffer_depth * num_times, 8 * 128),
                                               num_frequencies, 128},
-                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"},
+                std::array<std::ptrdiff_t, 3>{1024, 1, 8}, *this),
     // Kernels
     skKernel(n2k::SkKernel::Params{
         config.get<double>(unique_name, "rfi_sk_rfimask_sigmas"),
@@ -137,6 +147,10 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_S012.register_consumer();
     rfi_SKtilde.register_producer();
     rfi_RFImask.register_producer();
+
+    if (!first_stage_excision_enabled && get_instance_num() == 0)
+        INFO("First-stage RFI excision disabled: producing an all-good RFI mask. "
+             "SK statistics are still computed.");
 
     set_command_type(gpuCommandType::KERNEL);
 }
@@ -210,7 +224,8 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
 
     float* const out_sk_feed_averaged = rfi_SKtilde_memory;
     float* const out_sk_single_feed = nullptr;
-    uint* const out_rfimask = (uint*)rfi_RFImask_memory;
+    // The SK kernel skips the mask computation when out_rfimask is NULL.
+    uint* const out_rfimask = first_stage_excision_enabled ? (uint*)rfi_RFImask_memory : nullptr;
     const ulong* const in_S012 = rfi_S012_memory;
     const uint8_t* const in_bf_mask = (const uint8_t*)bf_mask_memory;
     const long T = rfi_S012.get_read_valid().size();
@@ -234,6 +249,21 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
                     F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
                     sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T512min, rfimask_T512size,
                     stream);
+
+    if (!first_stage_excision_enabled) {
+        // The kernel skipped the mask, so fill the claimed region with 1s (all samples
+        // good). The claimed region may wrap around the end of the ring buffer.
+        const long mask_row_len =
+            rfi_RFImask.get_ndarray().get_extent(1) * rfi_RFImask.get_ndarray().get_extent(2);
+        const long mask_row_bytes = mask_row_len * sizeof(kotekan::uint1x8_t);
+        const long mask_rows = rfi_RFImask.get_write_valid().size();
+        const long mask_rows_to_end = std::min(mask_rows, rfimask_T512size - rfimask_T512min);
+        CHECK_CUDA_ERROR(cudaMemsetAsync(rfi_RFImask_memory + rfimask_T512min * mask_row_len, 0xff,
+                                         mask_rows_to_end * mask_row_bytes, stream));
+        if (mask_rows > mask_rows_to_end)
+            CHECK_CUDA_ERROR(cudaMemsetAsync(
+                rfi_RFImask_memory, 0xff, (mask_rows - mask_rows_to_end) * mask_row_bytes, stream));
+    }
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif

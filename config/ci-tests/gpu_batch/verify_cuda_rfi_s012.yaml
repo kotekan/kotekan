@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # verify_cuda_rfi_s012.yaml
@@ -5,18 +6,14 @@
 # Config to test the cuda RFI S012 kernel
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
-cpu_affinity: [0,]
-sizeof_float: 4
-sizeof_int: 4
+cpu_affinity: [0]
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
@@ -36,40 +33,45 @@ main_pool:
 
 # Buffers
 raw_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, num_local_freq / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
 
 host_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 simulated_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 
 # Ringbuffer signalling buffer
 host_voltage_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq * num_elements 
+    ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq * num_elements
     metadata_pool: main_pool
 
 host_pl_mask_ringbuffer:
@@ -87,25 +89,27 @@ gen_data_voltage:
     kotekan_stage: testDataGen
     out_buf: raw_voltage_buffer
     name: "E"
-    array_shape: [ 1024, 8, 2, 64 ]
-    dim_name: ["T", "F", "P", "D" ]
+    array_shape: [1024, 8, 2, 64]
+    dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
 
 gen_pl_mask:
-    type: random1x8 
+    type: random1x8
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_buffer
     name: "pl_mask"
-    array_shape: [ 8, 2, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
-    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
+    array_shape: [8, 2, 2, 8, 8]    # = num_times/128, num_freq/4, 2, num_dishes/8, 8
+    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dim_scaling: [128, 4, 1, 8, 16]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
 
 applyPL:
-  kotekan_stage: applyGenPL
-  voltage_in_buf: raw_voltage_buffer
-  voltage_out_buf: host_voltage_buffer
-  plmask_in_buf: host_pl_mask_buffer
+    kotekan_stage: applyGenPL
+    voltage_in_buf: raw_voltage_buffer
+    voltage_out_buf: host_voltage_buffer
+    plmask_in_buf: host_pl_mask_buffer
 
 run_send_voltage:
     gpu_0:
@@ -116,12 +120,12 @@ run_send_voltage:
         out_buffers:
             host_voltage_ringbuffer_out: host_voltage_ringbuffer
         commands:
-        - name: cudaCopyToRingbuffer
-          input_size: samples_per_data_set * num_local_freq * num_elements
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_voltage_buffer_in
-          signal_buf: host_voltage_ringbuffer_out
-          gpu_mem_output: voltage_buffer
+            - name: cudaCopyToRingbuffer
+              input_size: samples_per_data_set * num_local_freq * num_elements
+              ring_buffer_size: buffer_depth * input_size
+              in_buf: host_voltage_buffer_in
+              signal_buf: host_voltage_ringbuffer_out
+              gpu_mem_output: voltage_buffer
 
 run_send_pl_mask:
     gpu_0:
@@ -132,12 +136,12 @@ run_send_pl_mask:
         out_buffers:
             host_pl_mask_ringbuffer_out: host_pl_mask_ringbuffer
         commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8) / 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_buffer_in
-          signal_buf: host_pl_mask_ringbuffer_out
-          gpu_mem_output: pl_mask_buffer
+            - name: cudaCopyToRingbuffer
+              input_size: (samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8) / 8
+              ring_buffer_size: buffer_depth * input_size
+              in_buf: host_pl_mask_buffer_in
+              signal_buf: host_pl_mask_ringbuffer_out
+              gpu_mem_output: pl_mask_buffer
 
 run_rfi_s012:
     gpu_0:
@@ -149,13 +153,13 @@ run_rfi_s012:
         out_buffers:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         commands:
-        - name: cudaRFIS012
-          voltage_name: voltage
-          pl_mask_name: pl_mask
-          rfi_S012_name: rfi_s012
-          num_times: samples_per_data_set
-          num_frequencies: num_local_freq
-          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+            - name: cudaRFIS012
+              voltage_name: voltage
+              pl_mask_name: pl_mask
+              rfi_S012_name: rfi_s012
+              num_times: samples_per_data_set
+              num_frequencies: num_local_freq
+              rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 
 run_recv_rfi_s012:
     gpu_0:
@@ -166,12 +170,12 @@ run_recv_rfi_s012:
         out_buffers:
             host_rfi_s012_buffer_out: host_rfi_s012_buffer
         commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_s012_ringbuffer_in
-          gpu_mem_input: rfi_s012_buffer
-          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_rfi_s012_buffer_out
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_rfi_s012_ringbuffer_in
+              gpu_mem_input: rfi_s012_buffer
+              output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+              ring_buffer_size: buffer_depth * output_size
+              out_buf: host_rfi_s012_buffer_out
 
 
 cpu_rfi_s012:
@@ -182,9 +186,10 @@ cpu_rfi_s012:
 
 
 check_rfi_data:
-  kotekan_stage: testDataCheckUlong
-  first_buf: host_rfi_s012_buffer
-  second_buf: simulated_rfi_s012_buffer
-  max_num_errors_logged: 384
-  num_frames_to_test: 2*buffer_depth
-  check_metadata: True
+    kotekan_stage: testDataCheckUlong
+    first_buf: host_rfi_s012_buffer
+    second_buf: simulated_rfi_s012_buffer
+    max_num_errors_logged: 384
+    num_frames_to_test: 2*buffer_depth
+    check_metadata: true
+log_config_usage: fatal_error

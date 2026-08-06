@@ -1,10 +1,12 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
+#include "div.hpp"             // for div_ceil, num_triangle_blocks
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 #include "metadata.hpp"        // for metadataObject
 
@@ -117,8 +119,8 @@ testLostCountsGen::testLostCountsGen(Config& config, const std::string& unique_n
     repeat_count(config.get_default<int64_t>(unique_name, "repeat_count", 0)),
     num_integrations(samples_per_data_set / sub_integration_ntime),
     num_entries(num_integrations * num_local_freq),
-    n2k_counts_lin_blocks(num_elements / (8 * n2k_counts_blocksize)),
-    n2k_counts_num_blocks((n2k_counts_lin_blocks * (n2k_counts_lin_blocks + 1)) / 2),
+    n2k_counts_lin_blocks(kotekan::div_ceil(num_elements / 8, n2k_counts_blocksize)),
+    n2k_counts_num_blocks(kotekan::num_triangle_blocks(num_elements / 8, n2k_counts_blocksize)),
     n2k_counts_num_prod(n2k_counts_num_blocks * n2k_counts_blocksize * n2k_counts_blocksize) {
 
     // Get buffers
@@ -158,14 +160,14 @@ testLostCountsGen::testLostCountsGen(Config& config, const std::string& unique_n
             FATAL_ERROR("num_elements {:d} is not a multiple of {:d}", num_elements,
                         8 * n2k_counts_blocksize);
 
-        in_buf->allocate_ndarray_frame_desc<int32_t, 5>(
+        in_buf->require_frame_desc(kotekan::NDArray<int32_t, 5>::describe(
             "n2k_counts",
             {num_integrations, num_local_freq, n2k_counts_num_blocks, n2k_counts_blocksize,
              n2k_counts_blocksize},
-            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {sub_integration_ntime, 1, 64, 8, 8}));
     }
-    out_buf->allocate_ndarray_frame_desc<int32_t, 2>(name, {num_integrations, num_local_freq},
-                                                     {"Tc", "F"});
+    out_buf->require_frame_desc(kotekan::NDArray<int32_t, 2>::describe(
+        name, {num_integrations, num_local_freq}, {"Tc", "F"}, {sub_integration_ntime, 1}));
 }
 
 std::shared_ptr<chordMetadata> testLostCountsGen::get_new_metadata(Buffer* buf, frameID frame_id) {
@@ -188,7 +190,7 @@ std::shared_ptr<chordMetadata> testLostCountsGen::get_new_metadata(Buffer* buf, 
 }
 
 void testLostCountsGen::set_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
-    meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+    meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
     meta->set_fpga_seq_num(seq_num);
     meta->set_time_downsampling_fpga(sub_integration_ntime);
@@ -256,7 +258,7 @@ void testLostCountsGen::main_thread() {
         set_metadata(meta, seq_num);
 
         // check frame descriptors match metadata
-        meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // If we're not repeating, or we're in the first num_frames, generate data
         if (repeat_count <= 0 || (num_frames > 0 && num_frames_generated < num_frames)) {

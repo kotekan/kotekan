@@ -1,0 +1,5 @@
+*****************
+SimpleCrosscorr
+*****************
+
+.. doxygenclass:: SimpleCrosscorr

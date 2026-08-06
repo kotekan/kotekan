@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # verify_cuda_pl_accum.yaml
@@ -5,19 +6,15 @@
 # Config to test the cuda PLMaskAccumulator (n2k s0) kernel.
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
-cpu_affinity: [0,]
-sizeof_float: 4
+cpu_affinity: [0]
 sizeof_int: 4
-sizeof_long: 8
 
 # For faster CHORD testing, we're using...
 samples_per_data_set: 1024
@@ -35,15 +32,17 @@ main_pool:
     num_metadata_objects: 20 * buffer_depth
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, num_local_freq / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
 
 host_pl_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_pl_lost_counts_buffer:
@@ -53,9 +52,10 @@ host_pl_lost_counts_buffer:
     metadata_pool: main_pool
 
 simulated_pl_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 
@@ -66,12 +66,13 @@ host_pl_mask_ringbuffer:
     metadata_pool: main_pool
 
 gen_pl_mask:
-    type: random1x8 
+    type: random1x8
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_buffer
     name: "pl_mask"
-    array_shape: [ 8, 2, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
-    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
+    array_shape: [8, 2, 2, 8, 8]    # = num_times/128, num_freq/4, 2, num_dishes/8, 8
+    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dim_scaling: [128, 4, 1, 8, 16]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
 
@@ -84,12 +85,12 @@ run_send_pl_mask:
         out_buffers:
             host_pl_mask_ringbuffer_out: host_pl_mask_ringbuffer
         commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8) / 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_buffer_in
-          signal_buf: host_pl_mask_ringbuffer_out
-          gpu_mem_output: pl_mask_buffer
+            - name: cudaCopyToRingbuffer
+              input_size: (samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8) / 8
+              ring_buffer_size: buffer_depth * input_size
+              in_buf: host_pl_mask_buffer_in
+              signal_buf: host_pl_mask_ringbuffer_out
+              gpu_mem_output: pl_mask_buffer
 
 run_pl_counts:
     gpu_0:
@@ -100,15 +101,15 @@ run_pl_counts:
         out_buffers:
             host_pl_counts: host_pl_counts_buffer
         commands:
-        - name: cudaPLMaskAccumulator
-          pl_mask_name: pl_mask
-          pl_counts_name: pl_counts
-          num_times: samples_per_data_set
-          num_frequencies: num_local_freq
-        - name: cudaSyncOutput
-        - name: cudaOutputData
-          gpu_mem: pl_counts_buffer
-          out_buf: host_pl_counts
+            - name: cudaPLMaskAccumulator
+              pl_mask_name: pl_mask
+              pl_counts_name: pl_counts
+              num_times: samples_per_data_set
+              num_frequencies: num_local_freq
+            - name: cudaSyncOutput
+            - name: cudaOutputData
+              gpu_mem: pl_counts_buffer
+              out_buf: host_pl_counts
 
 cpu_pl_counts:
     kotekan_stage: gpuSimulatePLMaskAccumulator
@@ -121,4 +122,5 @@ check_pl_counts_data:
     second_buf: simulated_pl_counts_buffer
     max_num_errors_logged: 384
     num_frames_to_test: 2*buffer_depth
-    check_metadata: True
+    check_metadata: true
+log_config_usage: fatal_error

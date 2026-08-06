@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import pytest
 import time
 
@@ -34,8 +27,8 @@ def make_chord_telescope_config(num_dishes=8):
         "require_gps": False,
         "eop_updatable_config": "/earth_rotation_data",
         "num_dishes": num_dishes,
-        "num_dishes_x": 4,
-        "num_dishes_y": 4,
+        "dish_grid_size_x": 4,
+        "dish_grid_size_y": 4,
         "dish_separation_x_m": 6.3,
         "dish_separation_y_m": 8.5,
         "dish_inputs": [

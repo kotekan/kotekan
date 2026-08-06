@@ -6,7 +6,7 @@
 #include "gateSpec.hpp" // for gateSpec, _factory_aliasgateSpec
 #include "visUtil.hpp"  // for prod_ctype, rstack_ctype, time_ctype, input_ctype, freq_ctype
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "fmt.hpp"  // for format, compile_string_to_view, fmt
 #include "json.hpp" // for json, json_ref, basic_json
 
 #include <cstdint>   // for uint32_t

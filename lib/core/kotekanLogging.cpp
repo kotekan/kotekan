@@ -1,14 +1,13 @@
 #include "kotekanLogging.hpp"
 
-#include "errors.h" // for __enable_syslog, get_log_level_string, __err_msg, __max_log_msg_len
+#include "errors.h" // for __enable_syslog, get_log_level_string, __err_msg, MAX_LOG_MSG_LEN
 
-#include "fmt.hpp" // for compile_string_to_view, print, basic_string_view, fmt, format
+#include "fmt.hpp" // for compile_string_to_view, vformat, fmt
 
-#include <fmt/format.h> // for vformat
-#include <stdexcept>    // for runtime_error
-#include <stdio.h>      // for stderr
-#include <strings.h>    // for strcasecmp
-#include <type_traits>  // for underlying_type
+#include <stdexcept>   // for runtime_error
+#include <stdio.h>     // for stderr
+#include <strings.h>   // for strcasecmp
+#include <type_traits> // for underlying_type
 
 namespace kotekan {
 
@@ -78,7 +77,7 @@ logLevel kotekanLogging::get_log_level() const {
 void kotekanLogging::vset_error_message(const fmt::basic_string_view<char> format,
                                         fmt::format_args args) {
     // Note: We should protect `__err_msg` with a lock
-    auto result = fmt::format_to_n(__err_msg, __max_log_msg_len - 1, fmt::vformat(format, args));
+    auto result = fmt::format_to_n(__err_msg, MAX_LOG_MSG_LEN - 1, fmt::vformat(format, args));
     char* next = result.out;
     // Ensure NUL termination
     *next = '\0';

@@ -2,7 +2,6 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
-#include <algorithm> // for max
 #include <assert.h>  // for assert
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair

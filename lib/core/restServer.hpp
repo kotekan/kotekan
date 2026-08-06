@@ -1,8 +1,10 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for INFO_NON_OO
 
+#include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
 
 #include <atomic>        // for atomic
@@ -12,9 +14,10 @@
 #include <map>           // for map
 #include <shared_mutex>  // for shared_timed_mutex
 #include <stdint.h>      // for uint8_t
-#include <string>        // for string, allocator
+#include <string>        // for string, allocator, basic_string
 #include <sys/types.h>   // for u_short
 #include <thread>        // for thread
+#include <vector>        // for vector (CORS allowlist)
 
 namespace kotekan {
 
@@ -140,6 +143,14 @@ public:
     static restServer& instance();
 
     /**
+     * @brief Check whether the restServer singleton is still alive.
+     *
+     * Safe to call during static destruction. Returns false after the
+     * restServer destructor has begun.
+     */
+    static bool is_alive();
+
+    /**
      * @brief Validate a bind address.
      *
      * Accepts the following forms:
@@ -256,6 +267,40 @@ public:
     void add_aliases_from_config(Config& config);
 
     /**
+     * @brief Configures CORS handling from the @c /rest_server config block.
+     *
+     * Two keys, both optional, CORS off entirely if neither is set:
+     *
+     *  - @c cors_allow_origins : a list of exact origin strings
+     *    (e.g. @c "http://cobalt.lwlab:8080"). When a request carries an
+     *    @c Origin header that matches one of these, that exact value is
+     *    reflected back in @c Access-Control-Allow-Origin (plus
+     *    @c Vary: Origin). Non-matching / origin-less requests get no CORS
+     *    headers, so the browser blocks the cross-origin read -- this is
+     *    the recommended, scoped setting.
+     *  - @c enable_cors : legacy boolean. When @c true (and no allowlist is
+     *    given) every reply gets @c Access-Control-Allow-Origin: * . Kept
+     *    for backward compatibility; prefer the allowlist.
+     *
+     * Off by default (secure). Only the browser viewer needs this; pure
+     * machine-to-machine REST use never does.
+     *
+     * @param config The config file to use
+     */
+    void set_cors_from_config(Config& config);
+
+    /// True if CORS is configured at all (allowlist non-empty or the legacy
+    /// boolean set). Used to decide whether to accept OPTIONS preflights.
+    inline bool cors_enabled() const {
+        return _enable_cors || !_cors_allow_origins.empty();
+    }
+
+    /// Resolve the @c Access-Control-Allow-Origin value to send for a
+    /// request whose @c Origin header is @p request_origin (may be null).
+    /// Returns the empty string when no CORS header should be emitted.
+    std::string cors_allow_origin_for(const char* request_origin) const;
+
+    /**
      * @brief Removes all aliases
      */
     void remove_all_aliases();
@@ -294,6 +339,26 @@ private:
      * @param arg The bufferRecv object (just `this`, but this is a static function)
      */
     static void timer(evutil_socket_t fd, short event, void* arg);
+
+    /**
+     * @brief libevent callback that emits the "started server" log line.
+     *
+     * Scheduled with a zero-delay timeout so it runs on the first
+     * event-loop iteration; the line the python runner waits on then
+     * signals a running loop, not just a bound socket.
+     *
+     * @param fd Not used
+     * @param event Not used
+     * @param arg The restServer instance (`this` at registration)
+     */
+    static void log_started(evutil_socket_t fd, short event, void* arg) {
+        (void)fd;
+        (void)event;
+        restServer* server = (restServer*)arg;
+        // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
+        INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", server->_bind_address,
+                    server->_port);
+    }
 
     /**
      * @brief Internal callback function for the evhttp server.
@@ -377,6 +442,14 @@ private:
 
     /// Flag set to true when exit condition is reached
     std::atomic<bool> stop_thread;
+
+    /// Cached value of /rest_server/enable_cors (legacy "*" mode); see
+    /// @c set_cors_from_config.
+    bool _enable_cors = false;
+
+    /// Cached /rest_server/cors_allow_origins allowlist. When non-empty,
+    /// CORS uses validated Origin reflection instead of "*".
+    std::vector<std::string> _cors_allow_origins;
 
     /// Allow connectionInstance to use internal helper functions
     friend class connectionInstance;

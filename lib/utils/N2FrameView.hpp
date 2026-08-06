@@ -7,28 +7,22 @@
 #ifndef N2BUFFER_HPP
 #define N2BUFFER_HPP
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope
-#include "Config.hpp"         // for Config
-#include "FrameView.hpp"      // for FrameView
-#include "N2FrameDesc.hpp"    // for N2FrameDesc
-#include "N2Metadata.hpp"     // for N2Metadata
-#include "N2Util.hpp"         // for cfloat, get_num_prod
-#include "buffer.hpp"         // for Buffer
-#include "chordMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
+#include "FrameView.hpp"   // for FrameView
+#include "N2FrameDesc.hpp" // for N2EigenMethod, N2Field, N2FrameDesc, n2frame_layout_t
+#include "N2Layout.hpp"    // for N2Layout
+#include "N2Metadata.hpp"  // for N2Metadata
+#include "N2Util.hpp"      // for cfloat
+#include "buffer.hpp"      // for Buffer
+#include "dataset.hpp"     // for dset_id_t
 
-#include "gsl-lite.hpp" // for span
+#include "gsl-lite.hpp"     // for span
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
-#include <algorithm> // for max
-#include <exception> // for exception
-#include <map>       // for allocator, map
-#include <memory>    // for shared_ptr
-#include <set>       // for set
-#include <stddef.h>  // for size_t
-#include <stdexcept> // for runtime_error
-#include <stdint.h>  // for uint32_t, uint64_t
-#include <string>    // for basic_string, string
-#include <utility>   // for pair, make_pair
-#include <vector>    // for vector
+#include <array>    // for array
+#include <memory>   // for shared_ptr
+#include <set>      // for set
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint64_t, uint32_t, int32_t, uint8_t
 
 using kotekan::N2EigenMethod;
 using kotekan::N2Field;
@@ -71,8 +65,8 @@ public:
     struct EOP& bin_eop;
     double& bin_start_ERA_deg;
     double& bin_end_ERA_deg;
-    double& bin_start_ERAL;
-    double& bin_end_ERAL;
+    double& bin_start_ERAL_deg;
+    double& bin_end_ERAL_deg;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)

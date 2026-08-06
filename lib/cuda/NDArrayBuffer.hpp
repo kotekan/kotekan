@@ -3,15 +3,17 @@
 
 #include "DataType.hpp"            // for operator<<
 #include "NDArray.hpp"             // for NDArray
-#include "Symbol.hpp"              // for Symbol, strings_to_symbols, operator==
+#include "Symbol.hpp"              // for Symbol, operator==, strings_to_symbols, operator<<
 #include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata
 #include "cudaCommand.hpp"         // for cudaCommand
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "kotekanLogging.hpp"      // for kotekanLogging, FATAL_ERROR
+#include "kotekanLogging.hpp"      // for kotekanLogging, ERROR, FATAL_ERROR
 #include "metadata.hpp"            // for metadataObject
 
-#include <algorithm>          // for find_if
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>          // for find_if, fill_n
 #include <array>              // for array
 #include <cassert>            // for assert
 #include <cstddef>            // for ptrdiff_t, size_t
@@ -19,10 +21,9 @@
 #include <cstring>            // for memcmp, memset
 #include <cuda_runtime_api.h> // for cudaMemsetAsync, cudaMemcpy
 #include <driver_types.h>     // for CUstream_st, cudaMemcpyKind, cudaStream_t
-#include <fmt.hpp>            // for compile_string_to_view
 #include <memory>             // for shared_ptr, __shared_ptr_access, allocator
 #include <sstream>            // for basic_ostream, operator<<, ostream, basic_ostringstream
-#include <string>             // for string, basic_string, char_traits, operator+, operator<<
+#include <string>             // for basic_string, string, char_traits, operator+, operator<<
 #include <vector>             // for vector
 
 // This affects copying from host to device. A standard buffer is
@@ -92,7 +93,8 @@ private:
 public:
     NDArrayBuffer(const std::string& buffer_name, const std::string& quantity_name,
                   const std::array<std::ptrdiff_t, D>& extents,
-                  const std::array<kotekan::Symbol, D>& dimnames, cudaCommand& cuda_command,
+                  const std::array<kotekan::Symbol, D>& dimnames,
+                  const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command,
                   const buffer_type_t buffer_type = buffer_type_t::standard) :
         // metadata
         buffer_name(buffer_name),                            // e.g. "bb_beams"
@@ -102,7 +104,7 @@ public:
         // Buffer
         cuda_command(cuda_command),
         // NDArray
-        ndarray(quantity_name, extents, dimnames, get_buffer_pointer(extents))
+        ndarray(quantity_name, extents, dimnames, dimscalings, get_buffer_pointer(extents))
     //
     {
         set_log_level(cuda_command.get_log_level());
@@ -110,17 +112,19 @@ public:
 
     NDArrayBuffer(const std::string& buffer_name, const std::string& quantity_name,
                   const std::array<std::ptrdiff_t, D>& extents,
-                  const std::array<std::string, D>& dimnames, cudaCommand& cuda_command,
+                  const std::array<std::string, D>& dimnames,
+                  const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command,
                   const buffer_type_t buffer_type = buffer_type_t::standard) :
         NDArrayBuffer(buffer_name, quantity_name, extents, kotekan::strings_to_symbols(dimnames),
-                      cuda_command, buffer_type) {}
+                      dimscalings, cuda_command, buffer_type) {}
 
     NDArrayBuffer(const std::string& buffer_name, const std::string& quantity_name,
                   const std::array<std::ptrdiff_t, D>& extents,
-                  const std::array<const char*, D>& dimnames, cudaCommand& cuda_command,
+                  const std::array<const char*, D>& dimnames,
+                  const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command,
                   const buffer_type_t buffer_type = buffer_type_t::standard) :
         NDArrayBuffer(buffer_name, quantity_name, extents, kotekan::strings_to_symbols(dimnames),
-                      cuda_command, buffer_type) {}
+                      dimscalings, cuda_command, buffer_type) {}
 
     virtual ~NDArrayBuffer() {}
 
@@ -208,10 +212,10 @@ public:
                       buffer_name, d, metadata->get_dimension_name(d),
                       std::string(ndarray.dimname(d)));
             assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
+            assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
             assert(metadata->dim[d] == int(ndarray.extent(d)));
             assert(metadata->stride[d] == ndarray.stride(d));
         }
-        // TODO: check `fpgq_seq_num`
     }
 
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) const {
@@ -224,10 +228,10 @@ public:
         metadata->type = ndarray.value_datatype;
         metadata->dims = ndarray.rank;
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
-            metadata->set_array_dimension(d, ndarray.extent(d), std::string(ndarray.dimname(d)));
+            metadata->set_array_dimension(d, ndarray.extent(d), std::string(ndarray.dimname(d)),
+                                          ndarray.dimscaling(d));
             metadata->stride[d] = ndarray.stride(d);
         }
-        // TODO: set `fpgq_seq_num`
     }
 
     // Poison
@@ -278,5 +282,8 @@ public:
         return buf.str();
     }
 };
+
+const std::shared_ptr<const chordMetadata> get_buffer_metadata(cudaCommand& cuda_command,
+                                                               const std::string& buffer_name);
 
 #endif // #ifndef NDARRAYBUFFER_HPP

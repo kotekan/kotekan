@@ -1,0 +1,139 @@
+# -*-yaml-*-
+
+# CHIME upchannelizer setup for HFB beams
+
+################################################################################
+
+# Upchannelizer setup
+
+upchan_hfb:
+    upchan_factors: [128]
+
+    # ranges are [min, max)
+    upchan_channel_ranges:
+        128: [0, 2048]
+    
+    # The GPU-local (not global) channel index range for each upchannelization factor
+    
+    # actual = 16, scaled = 2048
+    upchan_U128_max_num_channels: 16
+    upchan_U128_min_channel: 0
+    upchan_U128_max_channel: 16
+    upchan_U128_min_output_channel: 0
+    upchan_U128_max_output_channel: (upchan_U128_max_channel - upchan_U128_min_channel) * 128
+    upchan_U128_max_num_output_channels: upchan_U128_max_output_channel - upchan_U128_min_output_channel
+
+# A single-level copy of the stanza above so that we can reference it here in the config
+upchan_hfb_upchan_U128_max_num_channels: 16
+upchan_hfb_upchan_U128_min_channel: 0
+upchan_hfb_upchan_U128_max_channel: 16
+upchan_hfb_upchan_U128_min_output_channel: 0
+upchan_hfb_upchan_U128_max_output_channel: (upchan_hfb_upchan_U128_max_channel - upchan_hfb_upchan_U128_min_channel) * 128
+upchan_hfb_upchan_U128_max_num_output_channels: upchan_hfb_upchan_U128_max_output_channel - upchan_hfb_upchan_U128_min_output_channel
+
+################################################################################
+
+# Buffers
+
+# Gains
+
+host_upchan_hfb_U128_gain_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float16
+    extents: [upchan_hfb_upchan_U128_max_num_channels * 128]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+# Voltages
+
+host_upchan_hfb_U128_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times / 128, upchan_hfb_upchan_U128_max_num_channels * 128, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [128, 1, 1, 1]
+    metadata_pool: main_pool
+host_upchan_hfb_U128_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_set_upchan_hfb_U128_gain:
+    kotekan_stage: setUpchanGain
+    upchannelization_schedule_name: /upchan_hfb
+    upchan_factor: 128
+    upchan_max_num_channels: upchan_hfb_upchan_U128_max_num_channels
+    upchan_gain: [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    ]
+    upchan_gain_buffer: host_upchan_hfb_U128_gain_buffer
+
+run_upchan_hfb_U128:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+            host_upchan_hfb_U128_gain_buffer: host_upchan_hfb_U128_gain_buffer
+        out_buffers:
+            host_upchan_hfb_U128_voltage_ringbuffer: host_upchan_hfb_U128_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_upchan_hfb_U128_gain_buffer
+          gpu_mem: upchan_hfb_U128_gain_buffer
+        - name: cudaSyncInput
+        - name: cudaUpchannelizer_chime_U128
+          voltage_name: xposed_voltage
+          upchan_U128_gain_name: upchan_hfb_U128_gain
+          upchan_U128_voltage_name: upchan_hfb_U128_voltage
+          Fmin: upchan_hfb_upchan_U128_min_channel
+          Fmax: upchan_hfb_upchan_U128_max_channel
+
+################################################################################
+
+# Packet loss mask
+
+host_upchan_hfb_U128_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
+    metadata_pool: main_pool
+host_upchan_hfb_U128_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
+    metadata_pool: main_pool
+
+run_upchan_pl_hfb_U128:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_hfb_U128_expanded_pl_mask_ringbuffer: host_upchan_hfb_U128_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_hfb_U128_expanded_pl_mask
+          upchannelization_factor: 128
+          num_frequencies_out: upchan_hfb_upchan_U128_max_num_channels
+          Fmin: upchan_hfb_upchan_U128_min_channel
+          Fmax: upchan_hfb_upchan_U128_max_channel

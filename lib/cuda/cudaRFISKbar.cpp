@@ -11,13 +11,14 @@
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
 
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <algorithm>          // for min
 #include <array>              // for array
 #include <cstddef>            // for ptrdiff_t
 #include <cstdint>            // for int8_t, uint64_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaStreamSynchronize
 #include <driver_types.h>     // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
-#include <fmt.hpp>            // for compile_string_to_view
 #include <functional>         // for function
 #include <memory>             // for allocator, shared_ptr
 #include <string>             // for basic_string, string
@@ -109,19 +110,28 @@ cudaRFISKbar::cudaRFISKbar(kotekan::Config& config, const std::string& unique_na
     rfi_SKbartilde_name(config.get<std::string>(unique_name, "rfi_SKbartilde_name")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
+            std::array<std::string, 2>{"P", "D"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
     rfi_S012bar(rfi_S012bar_name, "S012bar",
                 std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times_bar, num_frequencies, 3,
                                               num_polarizations, num_dishes},
-                std::array<std::string, 5>{"Trfibar", "F", "S", "P", "D"}, *this),
+                std::array<std::string, 5>{"Trfibar", "F", "S", "P", "D"},
+                std::array<std::ptrdiff_t, 5>{
+                    rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1},
+                *this),
     rfi_SKbar(rfi_SKbar_name, "SKbar",
               std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times_bar, num_frequencies, 3,
                                             num_polarizations, num_dishes},
-              std::array<std::string, 5>{"Trfibar", "F", "SK", "P", "D"}, *this),
+              std::array<std::string, 5>{"Trfibar", "F", "SK", "P", "D"},
+              std::array<std::ptrdiff_t, 5>{
+                  rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1},
+              *this),
     rfi_SKbartilde(
         rfi_SKbartilde_name, "SKbartilde",
         std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times_bar, num_frequencies, 3},
-        std::array<std::string, 3>{"Trfibar", "F", "SK"}, *this),
+        std::array<std::string, 3>{"Trfibar", "F", "SK"},
+        std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor * rfi_second_downsampling_factor, 1,
+                                      1},
+        *this),
     // Kernels
     skKernel(n2k::SkKernel::Params{
         config.get<double>(unique_name, "rfi_sk_rfimask_sigmas"),

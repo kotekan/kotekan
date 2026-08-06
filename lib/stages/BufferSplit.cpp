@@ -4,8 +4,7 @@
 #include "buffer.hpp"       // for Buffer
 #include "visUtil.hpp"      // for frameID, modulo
 
-#include <algorithm> // for max
-#include <stdint.h>  // for uint8_t, uint32_t
+#include <stdint.h> // for uint8_t, uint32_t
 
 REGISTER_KOTEKAN_STAGE(BufferSplit);
 

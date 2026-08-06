@@ -8,8 +8,10 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for ElementOrder
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "geoUtil.hpp"         // for vec3d_t
 
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t
@@ -72,6 +74,9 @@ private:
 
     // Whether to apply fringestopping phases.
     bool do_fringestop;
+
+    // Feed positions in grid frame
+    std::vector<vec3d_t> feed_positions_m;
 
     // Buffers
     Buffer* in_buf;

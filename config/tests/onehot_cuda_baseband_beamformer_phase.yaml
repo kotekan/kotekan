@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # Config to test Kendrick & Erik's cuda baseband beamformer kernel.
@@ -5,19 +6,18 @@
 # to a non-zero value, with the voltage array all one constant value.
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 num_links: 4
-freq_array: [4,7,10,16]
+freq_array: [4, 7, 10, 16]
 timesamples_per_packet: 2
 num_gpus: 1
 buffer_depth: 9
 num_gpu_frames: 1
-cpu_affinity: [2,3,4,5,8,9,10,11]
+cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
 sizeof_float: 4
 sizeof_int: 4
 frame_arrival_period: 0.00000256 * samples_per_data_set
@@ -84,6 +84,8 @@ gen_phase:
     values: [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xff]
     # FREQ, POL, BEAM, DISH, REAL_IMAG
     array_shape: [16, 2, 96, 512, 2]
+    dim_name: ["F", "P", "B", "D", "C"]
+    dim_scaling: [1, 1, 1, 1, 1]
     kotekan_stage: testDataGen
     out_buf: host_phase_buffer
     #log_level: debug
@@ -99,31 +101,31 @@ gpu:
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
-    - name: cudaInputData
-      in_buf: host_voltage
-      gpu_mem: voltage
-    - name: cudaInputData
-      in_buf: host_phase
-      gpu_mem: phase
-    - name: cudaInputData
-      in_buf: host_shift
-      gpu_mem: shift
-    - name: cudaSyncInput
-    - name: cudaBasebandBeamformer
-      gpu_mem_voltage: voltage
-      gpu_mem_phase: phase
-      gpu_mem_output_scaling: shift
-      gpu_mem_formed_beams: formed_beams
-      gpu_mem_info: info
-    - name: cudaSyncOutput
-    - name: cudaOutputData
-      in_buf: host_voltage # Metadata transfer from here
-      gpu_mem: formed_beams
-      out_buf: host_formed_beams
-    - name: cudaOutputData
-      in_buf: host_voltage # Metadata transfer from here
-      gpu_mem: info
-      out_buf: host_info
+        - name: cudaInputData
+          in_buf: host_voltage
+          gpu_mem: voltage
+        - name: cudaInputData
+          in_buf: host_phase
+          gpu_mem: phase
+        - name: cudaInputData
+          in_buf: host_shift
+          gpu_mem: shift
+        - name: cudaSyncInput
+        - name: cudaBasebandBeamformer
+          gpu_mem_voltage: voltage
+          gpu_mem_phase: phase
+          gpu_mem_output_scaling: shift
+          gpu_mem_formed_beams: formed_beams
+          gpu_mem_info: info
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          in_buf: host_voltage # Metadata transfer from here
+          gpu_mem: formed_beams
+          out_buf: host_formed_beams
+        - name: cudaOutputData
+          in_buf: host_voltage # Metadata transfer from here
+          gpu_mem: info
+          out_buf: host_info
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0

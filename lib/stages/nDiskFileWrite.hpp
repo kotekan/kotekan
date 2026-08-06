@@ -74,6 +74,10 @@
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000005.vdif
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000008.vdif
  *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/raw_frames.rst. Any change to the file
+ *       or settings.txt layout written by this stage should be reflected there.
+ *
  * @author Andre Renard
  */
 class nDiskFileWrite : public kotekan::Stage {

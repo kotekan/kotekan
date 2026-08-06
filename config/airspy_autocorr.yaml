@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # airspy_autocorr.yaml
@@ -9,7 +10,6 @@
 # Author: Keith Vanderlinde
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
@@ -18,67 +18,94 @@ log_level: info
 
 instrument_name: airspy
 
+# Permit cross-origin REST access so the browser-based viewer can call
+# airspyInput's set_config / get_config / adcstat endpoints.
+# Scoped to the viewer's own origin(s) via an allowlist (validated Origin
+# reflection) rather than a wildcard. The viewer is served on :8080; add
+# whatever host you actually browse to (localhost / hostname / IP).
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
 samples_per_data_set: 32768
 bytes_per_sample: 2
 buffer_depth: 10
-cpu_affinity: [4,5,6,7]
+cpu_affinity: [4, 5, 6, 7]
 num_elements: 1
 one: 1
 two: 2
 sizeof_float: 4
 
-meta_pool:
-  kotekan_metadata_pool: chimeMetadata
-  num_metadata_objects: 5 * buffer_depth
+# No stage in the airspy pipeline reads, writes, or passes frame metadata,
+# so the buffers below declare `metadata_pool: none` and there is no
+# metadata-pool block at all (rather than the heavyweight, CHORD-specific
+# chordMetadata pool the forward-port inherited).
 
 input_buf:
-  kotekan_buffer: standard
-  metadata_pool: meta_pool
-  num_frames: buffer_depth
-  frame_size: samples_per_data_set * bytes_per_sample
+    kotekan_buffer: ndarray
+    value_type: int16
+    extents: [samples_per_data_set]
+    metadata_pool: none
+    num_frames: buffer_depth
 
 sample_bw: 10. #MHz, must be float?
 freq: 1421.    #MHz
 airspy_input:
-  kotekan_stage: airspyInput
-  out_buf: input_buf
-  gain_lna: 10 #0-14
-  gain_mix: 10 #0-15
-  gain_if:  10 #0-15
-  biast_power: false
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    gain_lna: 10 #0-14
+    gain_mix: 10 #0-15
+    gain_if: 10  #0-15
+    biast_power: false
+#    serial: 0x03A464C834658167  # uncomment & edit to pick a specific dongle
+
 
 spectrum_output:
-  integration_length: 64
-  power_integration_length: 64
-  spectrum_length: 1024
+    integration_length: 64
+    power_integration_length: 64
+    spectrum_length: 1024
 
-  post_fengine_buf:
-    kotekan_buffer: standard
-    metadata_pool: meta_pool
-    num_frames: buffer_depth
-    frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for half-size
+    post_fengine_buf:
+        kotekan_buffer: ndarray
+        value_type: cfloat32
+        extents: [samples_per_data_set * sizeof_float / 8]
+        metadata_pool: none
+        num_frames: buffer_depth
 
-  fengine:
-    kotekan_stage: fftwEngine
-    in_buf: input_buf
-    out_buf: post_fengine_buf
+    fengine:
+        kotekan_stage: fftwEngine
+        # airspyInput now produces real (RAW) int16 samples; use the real-input FFT.
+        input_type: real
+        in_buf: input_buf
+        out_buf: post_fengine_buf
 
-  post_corr_buf:
-    kotekan_buffer: standard
-    metadata_pool: meta_pool
-    num_frames: buffer_depth
-    frame_size: ( spectrum_length + one ) * sizeof_float
+    post_corr_buf:
+        kotekan_buffer: standard
+        metadata_pool: none
+        num_frames: buffer_depth
+        frame_size: ( spectrum_length + one ) * sizeof_float
 
-  xengine:
-    kotekan_stage: simpleAutocorr
-    in_buf: post_fengine_buf
-    out_buf: post_corr_buf
+    xengine:
+        kotekan_stage: simpleAutocorr
+        in_buf: post_fengine_buf
+        out_buf: post_corr_buf
 
-  power_stream:
-    kotekan_stage: networkPowerStream
-    num_freq: 1024
-    samples_per_data_set: 64
-    destination_port: 23401
-    destination_ip: "127.0.0.1"
-    destination_protocol: TCP
-    in_buf: post_corr_buf
+    power_stream:
+        kotekan_stage: networkPowerStream
+        num_freq: 1024
+        samples_per_data_set: 64
+        destination_port: 23401
+        destination_ip: "127.0.0.1"
+        destination_protocol: TCP
+        in_buf: post_corr_buf
+
+    # SpawnProcess invokes the exec line through /bin/sh -c, so $VIEWER_PYTHON
+    # expands to whichever python (with twisted+autobahn installed) the user
+    # picks. Set it to the venv that has the viewer requirements, e.g.
+    #   VIEWER_PYTHON=~/venv-kotekan/bin/python ./kotekan -c config/airspy_autocorr.yaml
+    spawn_pyviewer:
+        kotekan_stage: SpawnProcess
+        in_buf: post_corr_buf
+        exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py'
+

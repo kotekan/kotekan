@@ -12,14 +12,15 @@
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 #include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel, launch_s12_kernel
 
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <algorithm>          // for min
 #include <array>              // for array
 #include <cassert>            // for assert
-#include <cstddef>            // for ptrdiff_t, size_t
+#include <cstddef>            // for ptrdiff_t
 #include <cstdint>            // for uint64_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaStreamSynchronize
 #include <driver_types.h>     // for CUstream_st, cudaEvent_t, CUevent_st
-#include <fmt.hpp>            // for compile_string_to_view
 #include <functional>         // for function
 #include <memory>             // for allocator, shared_ptr, __shared_ptr_access
 #include <string>             // for basic_string, string
@@ -108,15 +109,18 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
             std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 2 * 64),
                                           div_noremainder(num_frequencies, 4), num_polarizations,
                                           div_noremainder(num_dishes, 8), 64 / 8},
-            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
+            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"},
+            std::array<std::ptrdiff_t, 5>{128, 4, 1, 8, 16}, *this),
     voltage(voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{buffer_depth * num_times, num_frequencies,
                                           num_polarizations, num_dishes},
-            std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
+            std::array<std::string, 4>{"T", "F", "P", "D"},
+            std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this)
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"},
+             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this)
 //
 {
     // For pl_mask_T128_sample_bytes

@@ -1,9 +1,12 @@
 #include "UpchannelizationSchedule.hpp"
 
-#include "CHORDTelescope.hpp"
+#include "Telescope.hpp" // for Telescope, freq_id_t
 
-#include <cstddef>
-#include <sstream>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstddef> // for size_t
+#include <mutex>
+#include <sstream> // for basic_ostream, basic_ostringstream, operator<<, basic_ostream::...
 
 std::vector<int> UpchannelizationSchedule::make_frequency_channels() const {
     const auto frequency_channels = config.get<std::vector<int>>(unique_name, "frequency_channels");
@@ -58,7 +61,7 @@ std::map<int, std::set<int>> UpchannelizationSchedule::make_upchan_channels_to_f
 }
 
 void UpchannelizationSchedule::output_statistics() const {
-    const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
+    const auto& telescope = Telescope::instance();
 
     INFO("Upchannelization schedule:");
 
@@ -77,8 +80,8 @@ void UpchannelizationSchedule::output_statistics() const {
     int total_output_channels = 0;
     INFO("There are {} local input frequency channels", frequency_channels.size());
     for (std::size_t index = 0; index < frequency_channels.size(); ++index) {
-        const int channel = frequency_channels.at(index);
-        const double frequency = chord_telescope.to_freq_MHz(channel);
+        const freq_id_t channel = frequency_channels.at(index);
+        const double frequency = telescope.to_freq_MHz(channel);
         const auto factors = get_upchan_factors(channel);
         std::ostringstream upchannelized;
         if (factors.empty()) {
@@ -162,10 +165,11 @@ bool UpchannelizationSchedule::invariant() const {
     return true;
 }
 
-UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config) :
+UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
+                                                   const std::string& unique_name) :
     kotekan::kotekanLogging(),
     //
-    unique_name(""), config(config),
+    unique_name(unique_name), config(config),
     //
     frequency_channels(make_frequency_channels()),
     frequency_channels_to_indices(make_frequency_channels_to_indices()),
@@ -180,8 +184,14 @@ UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config) :
     assert(invariant());
 }
 
-const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Config& config) {
-    static const UpchannelizationSchedule the_instance(config);
+const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Config& config,
+                                                                   const std::string& unique_name) {
+    static std::map<std::string, UpchannelizationSchedule> the_instances;
+    static std::mutex the_mutex;
+
+    std::lock_guard<std::mutex> lock(the_mutex);
+    const UpchannelizationSchedule& the_instance =
+        the_instances.try_emplace(unique_name, config, unique_name).first->second;
     return the_instance;
 }
 

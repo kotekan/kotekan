@@ -1,30 +1,27 @@
 #ifndef KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 #define KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 
-#include "Config.hpp"
-#include "N2Metadata.hpp"
-#include "Stage.hpp"
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "errors.h"
-#include "hdf5Files.hpp"
-#include "kotekanLogging.hpp"
-#include "prometheusMetrics.hpp"
+#include "Config.hpp"            // for Config
+#include "N2Layout.hpp"          // for N2Layout
+#include "Stage.hpp"             // for Stage
+#include "Telescope.hpp"         // for ElementOrder
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Gauge, MetricFamily, Counter
 
-#include "fmt.hpp"
-
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
-#include <N2Util.hpp>
-#include <cassert>
-#include <filesystem>
-#include <highfive/H5File.hpp>
-#include <map>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
+#include <H5public.h>                  // for hsize_t
+#include <N2FrameView.hpp>             // for N2FrameView
+#include <N2Util.hpp>                  // for cfloat
+#include <cstdint>                     // for uint64_t, int64_t, int32_t, uint16_t, uint8_t
+#include <highfive/H5DataType.hpp>     // for DataType
+#include <highfive/H5File.hpp>         // for File
+#include <highfive/H5PropertyList.hpp> // for DataSetCreateProps
+#include <map>                         // for map
+#include <memory>                      // for unique_ptr
+#include <optional>                    // for optional, nullopt
+#include <stddef.h>                    // for size_t
+#include <string>                      // for string, basic_string
+#include <vector>                      // for vector
 
 /**
  * @class N2FileData
@@ -70,11 +67,12 @@ public:
     enum FileMode { CHORD, CHIME };
 
     // Structural information and fixed sizes
-    const size_t num_elements; // number of inputs / elements
-    const size_t num_prod;     // number of products
-    const size_t num_ev;       // number of eigenvectors/values
-    const size_t num_file_f;   // number of frequencies
-    const size_t num_file_t;   // frames ("time" dimension)
+    const size_t num_elements;      // number of inputs / elements
+    const size_t num_prod;          // number of products
+    const size_t num_ev;            // number of eigenvectors/values
+    const ElementOrder input_order; // element ordering on input frameviews.
+    const size_t num_file_f;        // number of frequencies
+    const size_t num_file_t;        // frames ("time" dimension)
 
     // file bookkeeping owned by this object
     const FileMode file_mode;       // CHORD or CHIME (or other?)-type file
@@ -121,6 +119,7 @@ protected:
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;           // (t)
     std::vector<uint64_t> frame_length_fpga_ticks;   // (t)
+    std::vector<uint64_t> bin_abs_index;             // (t)
     std::vector<int64_t> time_center_t_inst_ns;      // (t)
     std::vector<int64_t> time_center_ut1_ns;         // (t)
     std::vector<int64_t> bin_t_inst_ns;              // (t)
@@ -131,8 +130,8 @@ protected:
     std::vector<double> bin_yp_as;                   // (t)
     std::vector<double> bin_start_ERA_deg;           // (t)
     std::vector<double> bin_end_ERA_deg;             // (t)
-    std::vector<double> bin_start_ERAL;              // (t)
-    std::vector<double> bin_end_ERAL;                // (t)
+    std::vector<double> bin_start_ERAL_deg;          // (t)
+    std::vector<double> bin_end_ERAL_deg;            // (t)
     std::vector<bool> rfi_frame_excision_enabled;    // (t)
     std::vector<int32_t> rfi_frame_excision_num;     // (t)
     std::vector<float> rfi_frame_excision_threshold; // (t, k)
@@ -165,7 +164,8 @@ public:
     enum class AddFrameStatus { Success, OutOfBounds, Duplicate, MetadataMismatch };
 
     N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
-               const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
+               const double open_wall_s_, const uint64_t abs_file_idx_,
+               const ElementOrder input_order_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
                const std::string base_dir_, const std::string baseband_gain_file_,
@@ -282,16 +282,20 @@ public:
  *                                false).
  * @conf baseband_gain_file       String. Path to the digital gains HDF5 file. If empty (default),
  *                                gains are not written. Mutually exclusive with
- *                                `baseband_gain_url`.
- * @conf baseband_gain_url        String. HTTP URL to fetch the digital gains HDF5 file from at
- *                                startup. The file is downloaded once into
+ *                                `baseband_gain_host_info`.
+ * @conf baseband_gain_host_info  String. Absolute config path (e.g. `/fpga_controller`) to a block
+ *                                that exposes `host`, `port`, and an optional `gains_endpoint`
+ *                                (default `/get-current-gain-file`). At startup the gains HDF5
+ *                                file is fetched once over plain HTTP from
+ *                                `http://<host>:<port><gains_endpoint>` into
  *                                `<base_dir>/.partial/baseband_gains.h5` and then used as if it
- *                                had been provided via `baseband_gain_file`. Plain HTTP only; no
- *                                HTTPS, no auth. Mutually exclusive with `baseband_gain_file`.
+ *                                had been provided via `baseband_gain_file`. Mutually exclusive
+ *                                with `baseband_gain_file`.
  * @conf baseband_gain_update_idx Int. Index along the update_time axis to read from the gains
  *                                file (-1 = latest, default: -1).
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
  * @conf max_frames               Int. Stop writing after this many frames (-1 = unlimited).
+ * @conf input_order              ElementOrder. The element order of input buffer.
  *
  * @par Metrics
  * @metric kotekan_hdf5N2Write_write_time_seconds        Duration to write the last flush
@@ -327,6 +331,9 @@ public:
  *
  * @note N2FileData documents the per-file layout, chunking, and compression details.
  * @note User-level documentation lives in docs/sphinx/user/processes/hdf5N2Write.rst.
+ * @note The on-disk file format is documented in detail in
+ *       docs/sphinx/user/file_formats/n2_vis_hdf5.rst. Any change to the datasets
+ *       or attributes written by this stage should be reflected there.
  **/
 class hdf5N2Write : public kotekan::Stage {
 
@@ -341,11 +348,16 @@ private:
     // Config settings (initialized from Config in constructor)
     const std::string _base_dir; /// Base directory to write files into
     /// Path to digital gains HDF5 file. Set either directly from config or, if
-    /// `baseband_gain_url` is configured, populated at startup after the URL is
-    /// downloaded into `<base_dir>/.partial/baseband_gains.h5`.
+    /// `baseband_gain_host_info` is configured, populated at startup after the
+    /// file is fetched into `<base_dir>/.partial/baseband_gains.h5`.
     std::string _baseband_gain_file;
-    const std::string _baseband_gain_url; /// HTTP URL to fetch the gains file from (optional)
-    const int _baseband_gain_update_idx;  /// update_time index (-1 = latest)
+    /// Resolved host/port/path for the gains-file HTTP fetch. All empty / 0 when
+    /// `baseband_gain_host_info` was not set. Filled in by the constructor body
+    /// from the referenced fpga-controller block.
+    std::string _baseband_gain_host;
+    std::uint16_t _baseband_gain_port = 0;
+    std::string _baseband_gain_endpoint;
+    const int _baseband_gain_update_idx; /// update_time index (-1 = latest)
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;
@@ -355,8 +367,9 @@ private:
     const std::uint64_t _blocksize_p;
     const std::uint64_t _blocksize_t;
     const std::uint64_t
-        _late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
-    const int _max_frames;         /// Stop writing after this many frames (-1 = unlimited)
+        _late_frame_grace_seconds;   /// Grace period in seconds for late frames (default: 60)
+    const int _max_frames;           /// Stop writing after this many frames (-1 = unlimited)
+    const ElementOrder _input_order; /// The element ordering in input buffers.
 
     Buffer* const _buffer;
 
@@ -378,7 +391,7 @@ private:
      * based on its absolute frame index and the configured
      * number of time frames per file.
      */
-    std::uint64_t _get_abs_file_idx(const N2FrameView& fv) const;
+    size_t _get_abs_file_idx(const N2FrameView& fv) const;
 
     /**
      * @brief Finalize a file: close and rename from .partial to final name.

@@ -27,6 +27,7 @@ add_library(
     inventVoltage.cpp
     inventVoltageCHIME.cpp
     inventPLMask.cpp
+    N2FringeStop.cpp
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp

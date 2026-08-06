@@ -4,6 +4,8 @@
 #include "cuda_runtime_api.h" // for cudaStreamWaitEvent
 #include "gpuCommand.hpp"     // for gpuCommandType
 
+#include "fmt.hpp" // for format
+
 #include <algorithm> // for copy
 #include <stdexcept> // for runtime_error
 

@@ -33,6 +33,8 @@ telescope:
 
     require_eop: false
 
+    dish_grid_size_x: num_dishes_x
+    dish_grid_size_y: num_dishes_y
     dish_separation_x_m: 6.3    # TODO: check
     dish_separation_y_m: 8.5    # TODO: check
 
@@ -48,6 +50,11 @@ telescope:
       label: HIRAX-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
 {%   endfor %}
 {% endfor %}
+
+    sampling_rate_MHz: adc_frequency / 1.0e+6
+    fft_length: num_samples_per_frame
+    min_science_freq_MHz: 1025 * adc_frequency / num_samples_per_frame / 1.0e+6
+    max_science_freq_MHz: 2048 * adc_frequency / num_samples_per_frame / 1.0e+6
 
 ################################################################################
 
@@ -73,10 +80,10 @@ num_frequencies: 64        # 2048 frequencies / 16 gpus * 50% coverage
 #     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
 # (These particular channels were chosen with a fixed step size between these channel boundaries.)
 frequency_channels: [
-    1024, 1040, 1056, 1072, 1088, 1104, 1120, 1136, 1152, 1168, 1184, 1200, 1216, 1232, 1248, 1264,
-    1280, 1296, 1312, 1328, 1344, 1360, 1376, 1392, 1408, 1424, 1440, 1456, 1472, 1488, 1504, 1520,
-    1536, 1552, 1568, 1584, 1600, 1616, 1632, 1648, 1664, 1680, 1696, 1712, 1728, 1744, 1760, 1776,
-    1792, 1808, 1824, 1840, 1856, 1872, 1888, 1904, 1920, 1936, 1952, 1968, 1984, 2000, 2016, 2032,
+    1025, 1041, 1057, 1073, 1089, 1105, 1121, 1137, 1153, 1169, 1185, 1201, 1217, 1233, 1249, 1265,
+    1281, 1297, 1313, 1329, 1345, 1361, 1377, 1393, 1409, 1425, 1441, 1457, 1473, 1489, 1505, 1521,
+    1537, 1553, 1569, 1585, 1601, 1617, 1633, 1649, 1665, 1681, 1697, 1713, 1729, 1745, 1761, 1777,
+    1793, 1809, 1825, 1841, 1857, 1873, 1889, 1905, 1921, 1937, 1953, 1969, 1985, 2001, 2017, 2033,
 ]
 
 ################################################################################
@@ -90,15 +97,23 @@ num_times: 16384                # frame length is 16384 * 2.56 us = 41.94304 ms
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["P", "D"]
+    dimscalings: [1, 1]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+    value_type: uint1x8
+    extents: [num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask"
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
@@ -106,9 +121,13 @@ host_pl_mask_ringbuffer:
     metadata_pool: main_pool
 
 host_pl_expanded_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    value_type: uint1x8
+    extents: [num_times / 64, num_frequencies, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask_exp"
+    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
+    dimscalings: [64, 1, 1, 8, 8]
     metadata_pool: main_pool
 host_pl_expanded_mask_ringbuffer:
     kotekan_buffer: ring
@@ -116,9 +135,13 @@ host_pl_expanded_mask_ringbuffer:
     metadata_pool: main_pool
 
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
     metadata_pool: main_pool
 host_voltage_ringbuffer:
     kotekan_buffer: ring

@@ -1,25 +1,28 @@
 #include "N2TimeDownsample.hpp"
 
-#include "CHORDTelescope.hpp"    // for EOP, CHORDTelescope, eop_null
 #include "Config.hpp"            // for Config
+#include "FrameDesc.hpp"         // for FrameDesc
 #include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Util.hpp"            // for cfloat, frameID
+#include "N2Util.hpp"            // for frameID, modulo
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
+#include "Telescope.hpp"         // for Telescope, ElementOrder
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
+#include "geoUtil.hpp"           // for vec3d_t
+#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, ERROR
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
-#include "timeUtil.hpp"          // for get_ERA_from_UT1, get_UT1_from_ERA
+#include "timeUtil.hpp"          // for EOP, get_ERA_from_UT1, get_UT1_from_ERA, eop_null
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, equal, max
+#include <algorithm>  // for equal
 #include <complex>    // for complex, operator*, conj
 #include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
 #include <stdexcept>  // for runtime_error
-#include <stdint.h>   // for uint32_t, int64_t, int32_t
+#include <stdint.h>   // for uint32_t, int64_t, uint64_t, int32_t
+#include <time.h>     // for timespec
 #include <vector>     // for vector
 
 #define GIGA 1'000'000'000L
@@ -43,8 +46,8 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
     out_buf->register_producer(unique_name);
 
     // Validate that input and output buffers have compatible N2 frame descriptors
-    auto in_desc = in_buf->get_frame_description();
-    auto out_desc = out_buf->get_frame_description();
+    auto in_desc = in_buf->get_frame_desc();
+    auto out_desc = out_buf->get_frame_desc();
     if (!in_desc || !out_desc) {
         FATAL_ERROR("N2TimeDownsample: Input and output buffers must have frame descriptors set");
     }
@@ -59,8 +62,11 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
 
     do_fringestop = config.get_default<bool>(unique_name, "do_fringestop", true);
 
-    num_elements = 0;
+    num_elements = config.get<size_t>(unique_name, "num_elements");
     nprod = 0;
+
+    feed_positions_m = Telescope::instance().get_feed_positions_m(
+        num_elements, Telescope::instance().fiducial_element_order());
 }
 
 void N2TimeDownsample::main_thread() {
@@ -87,7 +93,7 @@ void N2TimeDownsample::main_thread() {
     auto& skipped_frame_counter = Metrics::instance().add_counter(
         "kotekan_timedownsample_skipped_frame_total", unique_name, {"freq_id", "reason"});
 
-    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+    const Telescope& tel = Telescope::instance();
 
 
     // Calculate the startup (FPGA seq = 0) EOP and ERA index, for absolute time indexing
@@ -100,9 +106,8 @@ void N2TimeDownsample::main_thread() {
 
     uint64_t prev_abs_time_idx = 0;
 
-    // Make an array to hold the per-dish phases.
-    int num_dishes = tel.get_num_dishes();
-    std::vector<std::complex<float>> fringe_phase(num_dishes, 1.0);
+    // Make an array to hold the per-element phases.
+    std::vector<std::complex<float>> fringe_phase(num_elements, 1.0);
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -122,7 +127,6 @@ void N2TimeDownsample::main_thread() {
             freq_id = frame.freq_id;
             freq_MHz = frame.freq_MHz;
             nprod = frame.num_prod;
-            num_elements = frame.num_elements;
             num_eigenvectors = frame.num_ev;
 
             era_bin_idx = (uint32_t)(frame.bin_eop.ERA_deg / era_bin_width);
@@ -213,8 +217,8 @@ void N2TimeDownsample::main_thread() {
             output_frame.bin_eop = eop_target;
             output_frame.bin_start_ERA_deg = era_deg_lo;
             output_frame.bin_end_ERA_deg = era_deg_hi;
-            output_frame.bin_start_ERAL = -1; // TODO: update
-            output_frame.bin_end_ERAL = -1;   // TODO: update
+            output_frame.bin_start_ERAL_deg = -1; // TODO: update
+            output_frame.bin_end_ERAL_deg = -1;   // TODO: update
 
             // Set the output absolute time index, from the difference between the current ERA bin
             // and the ERA bin at startup
@@ -240,9 +244,9 @@ void N2TimeDownsample::main_thread() {
 
             if (do_fringestop) {
                 // Get the per-dish fringestopping phases.
-                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m,
+                                              fringe_phase);
 
-                // This indexing requires the el_id = (n_dish)*pol_id + dish_id
                 size_t idx = 0;
                 for (size_t i = 0; i < num_elements; i++) {
                     for (size_t j = i; j < num_elements; j++) {
@@ -251,9 +255,7 @@ void N2TimeDownsample::main_thread() {
                         //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
                         //                   = V_ij * Phase_i * conj(Phase_j)
 
-                        size_t d_i = i % num_dishes;
-                        size_t d_j = j % num_dishes;
-                        output_frame.vis[idx] *= fringe_phase[d_i] * std::conj(fringe_phase[d_j]);
+                        output_frame.vis[idx] *= fringe_phase[i] * std::conj(fringe_phase[j]);
 
                         idx++;
                     }
@@ -268,8 +270,7 @@ void N2TimeDownsample::main_thread() {
                     // have 0 phase in first element, so ensure the first
                     // element in each is unchanged.
                     int k = i * num_elements + j;
-                    size_t d_j = j % num_dishes;
-                    output_frame.evec[k] *= fringe_phase[d_j] * std::conj(fringe_phase[0]);
+                    output_frame.evec[k] *= fringe_phase[j] * std::conj(fringe_phase[0]);
                     output_frame.evec[k] *= output_frame.n_valid_fpga_ticks;
                 }
             }
@@ -290,18 +291,16 @@ void N2TimeDownsample::main_thread() {
 
             // Recalculate fringestop phases
             if (do_fringestop)
-                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m,
+                                              fringe_phase);
             // Accumulate contents of buffer
             size_t idx = 0;
             for (size_t i = 0; i < num_elements; i++) {
                 for (size_t j = i; j < num_elements; j++) {
 
-                    size_t d_i = i % num_dishes;
-                    size_t d_j = j % num_dishes;
-
                     // Weight by number of valid samples and include a fringe-stopping phase
                     // (will be 1.0 if do_fringestop is false)
-                    std::complex<float> w = (fringe_phase[d_i] * std::conj(fringe_phase[d_j]))
+                    std::complex<float> w = (fringe_phase[i] * std::conj(fringe_phase[j]))
                                             * ((float)frame.n_valid_fpga_ticks);
 
                     // Accumulate
@@ -319,9 +318,8 @@ void N2TimeDownsample::main_thread() {
                 output_frame.eval[i] += frame.eval[i] * frame.n_valid_fpga_ticks;
                 for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
-                    size_t d_j = j % num_dishes;
                     // Ensure 1st element of each evec doesn't get a phase.
-                    std::complex<float> phase = fringe_phase[d_j] * std::conj(fringe_phase[0]);
+                    std::complex<float> phase = fringe_phase[j] * std::conj(fringe_phase[0]);
                     output_frame.evec[k] +=
                         frame.evec[k] * phase * ((float)frame.n_valid_fpga_ticks);
                 }

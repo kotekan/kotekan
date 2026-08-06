@@ -3,7 +3,7 @@
 #include "backtrace.hpp"          // for request_backtraces
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
-#include "kotekanLogging.hpp"     // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
+#include "kotekanLogging.hpp"     // for logLevel, ERROR_NON_OO, INFO_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
 #include "prometheusMetrics.hpp"  // for Metrics, Gauge
@@ -35,7 +35,6 @@
 #include <strings.h>   // for strcasecmp
 #include <sys/wait.h>  // for waitpid
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
-#include <thread>      // for thread, get_id
 #include <type_traits> // for underlying_type
 #include <unistd.h>    // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
 #include <utility>     // for pair
@@ -116,7 +115,7 @@ if file_ext != ".j2":
                 "yamllint",
                 "-d",
                 "{extends: relaxed, \
-                                     rules: {line-length: {max: 100}, \
+                                     rules: {line-length: disable, \
                                             commas: disable, \
                                             brackets: disable, \
                                             trailing-spaces: {level: warning}}}",
@@ -417,6 +416,16 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
 
     if (dump_config)
         config.dump_config();
+
+    // When enabled, record which config leaf items get read (and by which
+    // path) so a usage summary can be logged at shutdown (see ~kotekanMode).
+    // The level (bool or "info"/"warn"/"error"/"fatal_error") sets the report
+    // severity; "fatal_error" fails kotekan if anything went unused. Turned on
+    // here, before any values are read, so the summary is complete.
+    if (config.exists("/", "log_config_usage"))
+        config.set_usage_report_level(
+            Config::parse_usage_report_level(config.get_value("/", "log_config_usage")));
+
     update_log_levels(config);
 
     request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));

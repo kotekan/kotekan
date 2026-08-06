@@ -4,20 +4,34 @@
  *  - cudaFRBBeamReformer : public cudaCommand
  */
 
-#include "Config.hpp" // for Config
-#include "NDArrayBuffer.hpp"
-#include "NDArrayRingBuffer.hpp"
-#include "cudaCommand.hpp" // for cudaCommand, REGISTER_CUDA_COMMAND
-#include "div.hpp"
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for float16_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, read_descriptor_t, extent_t
+#include "Symbol.hpp"              // for Symbol
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cuda_fp16.h"             // for __half
+#include "div.hpp"                 // for mod
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR, FATAL_ERROR
 
-#include <array>
-#include <cassert>
-#include <cstdlib>
-#include <cublas_api.h>   // for cublasContext, cublasHandle_t
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <array>          // for array
+#include <cassert>        // for assert
+#include <cstddef>        // for ptrdiff_t
+#include <cstdlib>        // for abort
+#include <cublas_api.h>   // for cublasGetStatusString, CUBLAS_STATUS_SUCCESS, cublasH...
 #include <cublas_v2.h>    // for cublasCreate, cublasDestroy, cublasSetStream
-#include <driver_types.h> // for cudaEvent_t
-#include <string>
-#include <vector>
+#include <driver_types.h> // for cudaEvent_t, CUevent_st, CUstream_st
+#include <functional>     // for function
+#include <memory>         // for shared_ptr, __shared_ptr_access
+#include <string>         // for basic_string, allocator, operator==, string
+#include <vector>         // for vector
 
 using kotekan::mod;
 
@@ -44,6 +58,8 @@ public:
 
 private:
     const bool poison_buffers;
+
+    const int frb_downsampling_factor;
 
     const int frb1_max_num_times;
     const int frb1_max_num_frequencies;
@@ -80,6 +96,8 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
+    frb_downsampling_factor(config.get<int>(unique_name, "frb_downsampling_factor")),
+
     frb1_max_num_times(config.get<int>(unique_name, "frb1_max_num_times")),
     frb1_max_num_frequencies(config.get<int>(unique_name, "frb1_max_num_frequencies")),
     frb1_num_beams_P(config.get<int>(unique_name, "frb1_num_beams_P")),
@@ -96,16 +114,18 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
     frb2_weights_buffer(frb2_weights_name, "W2",
                         std::array<std::ptrdiff_t, 4>{frb2_num_frequencies, frb2_num_beams,
                                                       frb1_num_beams_Q, frb1_num_beams_P},
-                        std::array<std::string, 4>{"Fbar", "R", "beamQ", "beamP"}, *this,
-                        buffer_type_t::do_once),
+                        std::array<std::string, 4>{"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1},
+                        *this, buffer_type_t::do_once),
     frb1_beams_buffer(frb1_beams_name, "I",
                       std::array<std::ptrdiff_t, 4>{frb1_max_num_times, frb1_max_num_frequencies,
                                                     frb1_num_beams_Q, frb1_num_beams_P},
-                      std::array<std::string, 4>{"Ttilde", "Fbar", "beamQ", "beamP"}, *this),
+                      std::array<std::string, 4>{"Ttilde", "Fbar", "beamQ", "beamP"},
+                      {frb_downsampling_factor, 1, 1, 1}, *this),
     frb2_beams_buffer(
         frb2_beams_name, "I2",
         std::array<std::ptrdiff_t, 4>{1, frb2_num_beams, frb2_num_frequencies, frb2_num_times},
-        std::array<std::string, 4>{"Ttildehi256", "R", "Fbar", "Ttildelo256"}, *this),
+        std::array<std::string, 4>{"Ttildehi256", "R", "Fbar", "Ttildelo256"},
+        {frb_downsampling_factor * frb2_num_times, 1, 1, frb_downsampling_factor}, *this),
 
     did_set_metadata(false)
 

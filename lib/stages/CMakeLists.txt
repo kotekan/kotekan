@@ -10,7 +10,9 @@ add_library(
     computeDualpolPower.cpp
     fullPacketDump.cpp
     pulsarPostProcess.cpp
-    ReadGain.cpp
+    loadFeedGains.cpp
+    processFeedGains.cpp
+    processFRBFeedGains.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
     networkPowerStream.cpp
@@ -40,6 +42,9 @@ add_library(
     bufferSend.cpp
     bufferRecv.cpp
     simpleAutocorr.cpp
+    SampleAutocorr.cpp
+    SimpleCrosscorr.cpp
+    SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
@@ -69,9 +74,11 @@ add_library(
     InputSubset.cpp
     setScatterIndices.cpp
     UpchannelizationSchedule.cpp
+    setBBBeams.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp
     setFRB1Phase.cpp
+    setFRBBeams.cpp
     calcFRB2Weights.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
@@ -85,6 +92,7 @@ add_library(
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
     lostSamplesToN2Counts.cpp
+    rfiBroadcast.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -104,7 +112,6 @@ add_library(
     ExampleDotProduct.cpp
     N2Accumulate.cpp
     N2TimeDownsample.cpp
-    N2FringeStop.cpp
     TransposeBasebandArray.cpp
     SubsetBaseband.cpp
     dropAllFrames.cpp
@@ -121,8 +128,12 @@ target_include_directories(kotekan_stages PRIVATE .)
 if(LIBAIRSPY_FOUND)
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
-    target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
+    if(FFTW_FOUND)
+        target_sources(kotekan_stages PRIVATE AirspyAlign.cpp)
+        target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
+        target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
+    endif()
 endif()
 
 if(FFTW_FOUND)
@@ -149,8 +160,11 @@ if(HDF5_FOUND
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
                                                  HighFive::HighFive)
-    # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
-    target_link_libraries(kotekan_stages PRIVATE atomic)
+    # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms (not
+    # needed on macOS where atomics are built into the compiler runtime)
+    if(NOT APPLE)
+        target_link_libraries(kotekan_stages PRIVATE atomic)
+    endif()
 endif()
 
 if(${USE_ZARR})

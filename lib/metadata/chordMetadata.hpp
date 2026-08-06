@@ -1,15 +1,15 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include "CHORDTelescope.hpp" // for dish_index_t
-#include "DataType.hpp"       // for type_to_string, type_total_bytes, DataType
-#include "NDArray.hpp"        // for GenericNDArray
-#include "Telescope.hpp"      // for Telescope, stream_t
-#include "buffer.hpp"         // for Buffer
+#include "DataType.hpp"  // for type_to_string, type_total_bytes, DataType
+#include "NDArray.hpp"   // for GenericNDArray
+#include "Telescope.hpp" // for Telescope, stream_t
+#include "buffer.hpp"    // for Buffer
 
+#include <array>      // for array
 #include <cassert>    // for assert
 #include <cstddef>    // for size_t, ptrdiff_t
-#include <cstdint>    // for int64_t, int32_t, uint32_t, uint64_t
+#include <cstdint>    // for int32_t, uint32_t, int64_t, uint64_t
 #include <memory>     // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
 #include <mutex>      // for mutex, lock_guard
 #include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
@@ -23,7 +23,7 @@
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include "fmt/format.h"     // for compile_string_to_view
+#include "fmt.hpp"          // for compile_string_to_view
 #include "json.hpp"         // for basic_json, json
 #include "jsonMetadata.hpp" // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
 
@@ -32,7 +32,7 @@
 #pragma pack()
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 4096;
+const int CHORD_META_MAX_FREQ = 12288;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
@@ -91,6 +91,7 @@ public:
     int dims;
     int dim[CHORD_META_MAX_DIM];
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
+    int64_t dim_scaling[CHORD_META_MAX_DIM];
     // The stride counts elements, not bytes
     int64_t stride[CHORD_META_MAX_DIM];
     // The offset counts elements, not bytes
@@ -99,18 +100,6 @@ public:
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
         return type_total_bytes(type) * stride[0];
-    }
-
-    // Dish layout
-    int ndishes;                                  // number of dishes
-    int n_dish_locations_ew, n_dish_locations_ns; // number of possible dish locations
-    dish_index_t* dish_index; // [non-owning pointer] dish index for a possible dish location, or -1
-    dish_index_t get_dish_index(int dish_loc_ew, int dish_loc_ns) const {
-        // The east-west dish index runs faster because this is the
-        // convenient way to specify dish indices in a YAML file
-        assert(dish_loc_ew >= 0 && dish_loc_ew < n_dish_locations_ew);
-        assert(dish_loc_ns >= 0 && dish_loc_ns < n_dish_locations_ns);
-        return dish_index[dish_loc_ew + n_dish_locations_ew * dish_loc_ns];
     }
 
     std::string get_dimension_name(size_t i) const {
@@ -131,7 +120,7 @@ public:
         return s.str();
     }
 
-    void set_array_dimension(int dim, int size, const std::string& name) {
+    void set_array_dimension(int dim, int size, const std::string& name, int64_t scaling) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
         // GCC helpfully tries to warn us that the destination string may end up not
@@ -142,6 +131,7 @@ public:
 #endif
         strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
 #pragma GCC diagnostic pop
+        this->dim_scaling[dim] = scaling;
     }
 
     void set_strides_simple() {

@@ -55,14 +55,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     out_buf->register_producer(unique_name);
 
     // Get N2 parameters from the buffer's frame descriptor (set by bufferFactory)
-    auto frame_desc = out_buf->get_frame_description();
-    if (!frame_desc) {
-        FATAL_ERROR("Buffer {:s} does not have a frame descriptor set", out_buf->buffer_name);
-    }
-    auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(frame_desc);
-    if (!n2_desc) {
-        FATAL_ERROR("Buffer {:s} does not have an N2FrameDesc", out_buf->buffer_name);
-    }
+    auto n2_desc = out_buf->require_frame_desc<kotekan::N2FrameDesc>();
     num_elements = n2_desc->get_num_elements();
     num_eigenvectors = n2_desc->get_num_ev();
     n2_layout = n2_desc->get_n2_layout();
@@ -205,12 +198,12 @@ void FakeN2::main_thread() {
 
             struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq));
             meta->bin_start_ERA_deg = bin_start_eop.ERA_deg;
-            meta->bin_start_ERAL = -1;
+            meta->bin_start_ERAL_deg = tel.get_ERAL_deg(bin_start_eop);
 
             struct EOP bin_end_eop =
                 tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq + delta_seq));
             meta->bin_end_ERA_deg = bin_end_eop.ERA_deg;
-            meta->bin_end_ERAL = -1;
+            meta->bin_end_ERAL_deg = tel.get_ERAL_deg(bin_end_eop);
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}", num_elements,
@@ -322,8 +315,8 @@ ReplaceN2::ReplaceN2(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
 
     // Validate that input and output buffers have compatible N2 frame descriptors
-    auto in_desc = in_buf->get_frame_description();
-    auto out_desc = out_buf->get_frame_description();
+    auto in_desc = in_buf->get_frame_desc();
+    auto out_desc = out_buf->get_frame_desc();
     if (!in_desc || !out_desc) {
         FATAL_ERROR("ReplaceN2: Input and output buffers must have frame descriptors set");
     }

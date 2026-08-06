@@ -1,18 +1,29 @@
-#include "Config.hpp"
-#include "DataType.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "bufferContainer.hpp"
-#include "cudaQuantizeKernel4.hpp"
-#include "cudaUtils.hpp"
+// Test 4-bit FRB beam quantizer for CHORD
 
-#include <algorithm>
-#include <cassert>
-#include <cfloat>
-#include <cmath>
-#include <cstdlib>
-#include <string>
-#include <vector>
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for int4x2_t, float16_t
+#include "Stage.hpp"               // for Stage
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaQuantizeKernel4.hpp" // for cpu_quantize4, gpu_quantize4
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_fp16.h"             // for __half, __half::operator float
+#include "cuda_runtime.h"          // for cudaMalloc
+#include "cuda_runtime_api.h"      // for cudaMemcpy
+#include "driver_types.h"          // for cudaMemcpyKind
+#include "errors.h"                // for TEST_PASSED
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for fill, fill_n
+#include <cassert>    // for assert
+#include <cfloat>     // for FLT_MAX
+#include <cmath>      // for fabs, isfinite, fmax, isnan, fmin, sqrt
+#include <cstdlib>    // for abort
+#include <functional> // for function
+#include <string>     // for allocator, string
+#include <vector>     // for vector
 
 class testQuantizeKernel4 : public kotekan::Stage {
 public:
@@ -65,13 +76,13 @@ public:
                 case 5:
                     return 0.5f * x + 0.5f * x * x * x + 10 * (time % 23 == 0);
                 case 6:
-                    return 10000.0f * time; // large but not infinity
+                    return 1000.0f * time; // large but not infinity
                 case 7:
-                    return 100000.0f * time; // some values are infinity
+                    return 10000.0f * time; // some values are infinity
                 case 8:
-                    return time / 10000.0f; // small, but 1/x is less than infinity
+                    return time / 1000.0f; // small, but 1/x is less than infinity
                 case 9:
-                    return time / 100000.0f; // small, and some 1/x are infinity
+                    return time / 10000.0f; // small, and some 1/x are infinity
                 case 10:
                     return 0.5f * x + 0.5f * x * x * x + (time % 23 == 0 ? 0.0f / 0.0f : 0.0f);
             }
@@ -198,7 +209,8 @@ public:
                                 // Handle non-finite inputs
                                 if (may_overflow && offset == 0.0f && scale == 0.0f)
                                     isgood = true;
-                                if (scale_may_collapse && scale == 0.0f)
+                                if (scale_may_collapse && scale == 0.0f && i != -8
+                                    && !isnan(expected_x))
                                     isgood = true;
                                 if (!isgood)
                                     FATAL_ERROR("Found inaccurate value: "

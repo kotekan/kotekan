@@ -10,6 +10,7 @@
 #include "ringbuffer.hpp"          // for RingBuffer
 
 #include <stddef.h> // for size_t
+#include <stdint.h> // for int64_t
 #include <string>   // for string, basic_string
 #include <vector>   // for vector
 

@@ -9,6 +9,7 @@
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
+#include "Telescope.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
@@ -177,6 +178,10 @@ private:
         2,
         576,
     };
+    static constexpr std::array<std::ptrdiff_t, S_rank> S_dimscalings = {
+        1,
+        1,
+    };
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -190,11 +195,6 @@ private:
     };
     static constexpr std::ptrdiff_t S_length = S_strides[S_rank];
     static constexpr std::ptrdiff_t S_length_in_bytes = type_total_bytes(S_type) * S_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::S == args::I
-                      ? true
-                      : S_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // W: frb_phase_name
     static constexpr const char* W_quantity = "W";
@@ -204,14 +204,17 @@ private:
         W_index_dishM,
         W_index_dishN,
         W_index_P,
-        W_index_F,
+        W_index_Fbar,
         W_rank,
     };
     static constexpr std::array<const char*, W_rank> W_labels = {
-        "C", "dishM", "dishN", "P", "F",
+        "C", "dishM", "dishN", "P", "Fbar",
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
         2, 24, 24, 2, 128,
+    };
+    static constexpr std::array<std::ptrdiff_t, W_rank> W_dimscalings = {
+        1, 1, 1, 1, 1,
     };
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -221,15 +224,10 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, W_rank + 1> W_strides = {
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
-        W_calc_stride(W_index_P), W_calc_stride(W_index_F),     W_calc_stride(W_rank),
+        W_calc_stride(W_index_P), W_calc_stride(W_index_Fbar),  W_calc_stride(W_rank),
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::W == args::I
-                      ? true
-                      : W_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -253,6 +251,12 @@ private:
         128,
         2048,
     };
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_dimscalings = {
+        1,
+        1,
+        1,
+        16,
+    };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -267,12 +271,6 @@ private:
     static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
     static constexpr std::ptrdiff_t Ebar_length_in_bytes =
         type_total_bytes(Ebar_type) * Ebar_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::Ebar == args::I
-                      ? true
-                      : Ebar_length_in_bytes
-                            <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // I: frb_beamgrid_name
     static constexpr const char* I_quantity = "I";
@@ -296,6 +294,12 @@ private:
         512,
         1024,
     };
+    static constexpr std::array<std::ptrdiff_t, I_rank> I_dimscalings = {
+        1,
+        1,
+        1,
+        192,
+    };
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -308,11 +312,6 @@ private:
     };
     static constexpr std::ptrdiff_t I_length = I_strides[I_rank];
     static constexpr std::ptrdiff_t I_length_in_bytes = type_total_bytes(I_type) * I_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::I == args::I
-                      ? true
-                      : I_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -333,6 +332,11 @@ private:
         24,
         128,
     };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
+    };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -348,12 +352,6 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::info == args::I
-                      ? true
-                      : info_length_in_bytes
-                            <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
@@ -410,12 +408,16 @@ cudaFRBBeamformer_chord_U16::cudaFRBBeamformer_chord_U16(Config& config,
     I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), *this),
+    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), reverse(S_dimscalings),
+             *this),
     host_S_buffer(S_length), W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels),
-                                      *this, buffer_type_t::do_once),
-    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
-    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+                                      reverse(W_dimscalings), *this, buffer_type_t::do_once),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
+                reverse(Ebar_dimscalings), *this),
+    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), reverse(I_dimscalings),
+             *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
@@ -441,15 +443,16 @@ cudaFRBBeamformer_chord_U16::cudaFRBBeamformer_chord_U16(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/FRBBeamformer_chord_U16.ptx", {kernel_symbol}, opts,
                          "FRBBeamformer_chord_U16_");
-    }
+    });
 }
 
 cudaFRBBeamformer_chord_U16::~cudaFRBBeamformer_chord_U16() {}
@@ -571,10 +574,8 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew <= cuda_dish_layout_M);
-        assert(Ebar_meta->n_dish_locations_ns <= cuda_dish_layout_N);
-        assert(Ebar_meta->dish_index);
+        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
+        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
@@ -722,30 +723,74 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
         // S maps dishes to locations.
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
+
+        const Telescope& tel = Telescope::instance();
+
+        // First obtain from the Telescope the grid indices of every dish in the input data.
+        // The input order is a Beamformer type (P slow, D fast), so the first num_dishes
+        // entries will contain the grid indices for all connected dishes.
+        std::vector<grid_idx_2d_t> grid_indices =
+            tel.get_main_array_grid_indices(cuda_number_of_dishes, tel.fiducial_element_order());
+
+        // Now build:
+        // 1) a table of grid locations populated with the index of the dish at that location,
+        //      or -1 if it is unfilled.
+        // 2) a list of dish indices which do *not* correspond to dishes on the grid. This includes
+        //      dishes in the input array (with d < cuda_num_dishes) and "surplus" dishes used to
+        //      fill out the array (since dish_layout_M * dish_layout_N may be > num_dishes)
+        int array_dish_count = 0;
+        std::vector<int> dish_index_at_loc(cuda_dish_layout_M * cuda_dish_layout_N, -1);
+        std::vector<int> surplus_dishes{};
+        for (int d = 0; d < cuda_number_of_dishes; ++d) {
+            const grid_idx_2d_t grid_idx = grid_indices.at(d);
+            // Non-array dishes (e.g. RFI antennae) have grid indices -1.  Skip them.
+            if (grid_idx.at(0) < 0 || grid_idx.at(1) < 0) {
+                surplus_dishes.push_back(d);
+                continue;
+            }
+            // Assign a 1D address for this dish location. M/X fast, N/Y slow.
+            const int loc_idx = grid_idx.at(0) + cuda_dish_layout_M * grid_idx.at(1);
+            // Fill it with this dish index.
+            dish_index_at_loc.at(loc_idx) = d;
+            ++array_dish_count;
+        }
+        for (int d = cuda_number_of_dishes; d < cuda_dish_layout_M * cuda_dish_layout_N; ++d) {
+            surplus_dishes.push_back(d);
+        }
+        assert(array_dish_count + surplus_dishes.size() == cuda_dish_layout_M * cuda_dish_layout_N);
+
+        // Finally we can build the host_S_buffer.  First initialize with -1 as a sentinel.
         for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
             host_S_buffer.at(s) = -1;
-        int surplus_dish_index = cuda_number_of_dishes;
+        // Loop through grid locations and assign dish indices.
+        size_t surplus_idx = 0;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                const bool have_dish_index =
-                    locM < Ebar_meta->n_dish_locations_ew && locN < Ebar_meta->n_dish_locations_ns;
-                const int dish_index = have_dish_index ? Ebar_meta->get_dish_index(locM, locN) : -1;
+                // Calculate location idx as above, M fast, N slow
+                const int loc_idx = locM + cuda_dish_layout_M * locN;
+                // The dish at this position, or -1 if unoccupied
+                const int dish_index = dish_index_at_loc.at(loc_idx);
+
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
                     host_S_buffer.at(2 * dish_index + 0) = locM;
                     host_S_buffer.at(2 * dish_index + 1) = locN;
                 } else {
                     // This location is empty, assign it a surplus dish index
+                    const int surplus_dish_index = surplus_dishes.at(surplus_idx);
                     host_S_buffer.at(2 * surplus_dish_index + 0) = locM;
                     host_S_buffer.at(2 * surplus_dish_index + 1) = locN;
-                    ++surplus_dish_index;
+                    ++surplus_idx;
                 }
             }
         }
-        assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
+        // Confirm we used all surplus dishes.
+        assert(surplus_idx == surplus_dishes.size());
+        // Confirm the grid is filled.
         for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
             assert(host_S_buffer.at(s) >= 0);
 
+        // Done! Copy to the GPU.
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
                                          cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 

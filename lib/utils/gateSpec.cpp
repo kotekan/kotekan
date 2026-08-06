@@ -6,6 +6,7 @@
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <exception> // for exception
+#include <json.hpp>  // for json_ref, json
 #include <time.h>    // for timespec
 #include <utility>   // for move
 

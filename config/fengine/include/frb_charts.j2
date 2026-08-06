@@ -1,0 +1,216 @@
+# -*-yaml-*-
+
+# CHARTS FRB beamformer setup
+
+################################################################################
+
+# cudaQuantize requires `frb_num_output_times` to be a multiple of 256
+frb_downsampling_factor: 320
+frb_num_output_times: 256
+frb1_num_beams_P: 2 * num_dishes_x
+frb1_num_beams_Q: 2 * num_dishes_y
+frb1_input_scale: 1.0 / 16
+
+frb2_num_beams_x: 8
+frb2_num_beams_y: 8
+frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
+frb2_beam_separation_x: 40.0 / 8
+frb2_beam_separation_y: 40.0 / 8
+
+frb_chunk_size: 256
+
+################################################################################
+
+# Buffers
+
+# Phases
+
+host_frb1_U32_phase_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float16
+    extents: [upchan_U32_max_num_channels * 32, num_polarizations, num_dishes_y, num_dishes_x, num_components]
+    quantity_name: "W"
+    dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
+    dimscalings: [1, 1, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_frb2_beam_positions_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float32
+    extents: [frb2_num_beams, 2]
+    quantity_name: "frb2_beam_positions"
+    dimnames: ["R", "X/Y"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
+host_frb2_beam_ids_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: uint64
+    extents: [frb2_num_beams]
+    quantity_name: "frb2_beam_ids"
+    dimnames: ["R"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+host_frb2_weights_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float16
+    extents: [upchan_all_max_output_channel - upchan_all_min_output_channel, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "W2"
+    dimnames: ["Fbar", "R", "beamQ", "beamP"]
+    dimscalings: [1, 1, 1, 1]
+    metadata_pool: main_pool
+
+# Beams
+
+host_frb1_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+    value_type: float16
+    extents: [frb_num_output_times, upchan_all_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "I"
+    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+    dimscalings: [frb_downsampling_factor, 1, 1, 1]
+    metadata_pool: main_pool
+host_frb1_beams_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+    metadata_pool: main_pool
+
+host_frb2_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: sizeof_float16 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
+    value_type: float16
+    extents: [1, frb2_num_beams, upchan_all_max_output_channel - upchan_all_min_output_channel, frb_num_output_times]
+    quantity_name: "I2"
+    dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+    dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
+    metadata_pool: main_pool
+
+#TODO host_frb3_beams_buffer:
+#TODO     kotekan_buffer: standard
+#TODO     num_frames: buffer_depth
+#TODO     # `1/2` because the output is of type `int4`
+#TODO     frame_size: frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / 2
+#TODO     metadata_pool: main_pool
+#TODO 
+#TODO host_frb3_beams_offsetscale_buffer:
+#TODO     kotekan_buffer: standard
+#TODO     num_frames: buffer_depth
+#TODO     # the output is quantized in chunks of `frb_chunk_size`
+#TODO     frame_size: sizeof_float16 * 2 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
+#TODO     metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+# FRB 1
+
+run_set_frb1_U32_phase:
+    kotekan_stage: setFRB1Phase
+    upchan_factor: 32
+    upchan_min_channel: upchan_U32_min_channel
+    upchan_max_channel: upchan_U32_max_channel
+    upchan_max_num_channels: upchan_U32_max_num_channels
+    frb1_phase: host_frb1_U32_phase_buffer
+
+run_frb1_U32:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_U32_voltage_ringbuffer: host_upchan_U32_voltage_ringbuffer
+            host_frb1_U32_phase_buffer: host_frb1_U32_phase_buffer
+        out_buffers:
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_frb1_U32_phase_buffer
+          gpu_mem: frb1_U32_phase_buffer
+        - name: cudaSyncInput
+        - name: cudaFRBBeamformer_charts_U32
+          voltage_name: upchan_U32_voltage
+          frb_phase_name: frb1_U32_phase
+          frb_beamgrid_name: frb1_beams
+          Fbar_in_min: 0
+          Fbar_in_max: upchan_U32_max_output_channel - upchan_U32_min_output_channel
+          Fbar_out_min: upchan_U32_min_output_channel
+          Fbar_out_max: upchan_U32_max_output_channel
+
+# FRB 2 and 3
+
+run_set_frb2_beams:
+    kotekan_stage: setFRBBeams
+    out_pos_buf: host_frb2_beam_positions_buffer
+    out_id_buf: host_frb2_beam_ids_buffer
+    mode: grid_degrees
+    num_beams: frb2_num_beams
+    num_x: frb2_num_beams_x
+    num_y: frb2_num_beams_y
+    x_min: -frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
+    x_max: frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
+    y_min: -frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
+    y_max: frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
+
+run_calc_frb2_weights:
+    kotekan_stage: calcFRB2Weights
+    frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+    frb2_beam_positions: host_frb2_beam_positions_buffer
+    frb2_weights: host_frb2_weights_buffer
+    num_threads: 32
+
+run_frb23:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+            host_frb2_weights_buffer: host_frb2_weights_buffer
+        out_buffers:
+            host_frb2_beams_buffer: host_frb2_beams_buffer
+            #TODO host_frb3_beams_buffer: host_frb3_beams_buffer
+            #TODO host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_frb2_weights_buffer
+          gpu_mem: frb2_weights_buffer
+        - name: cudaSyncInput
+        - name: cudaFRBBeamReformer
+          frb1_max_num_frequencies: upchan_all_max_num_output_channels
+          frb1_max_num_times: buffer_depth * frb_num_output_times
+          frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+          frb2_num_times: frb_num_output_times
+          in_signal: host_frb1_beams_ringbuffer
+          frb1_beams_name: frb1_beams
+          frb2_weights_name: frb2_weights
+          frb2_beams_name: frb2_beams
+        #TODO - name: cudaQuantize4
+        #TODO   # the output is quantized in chunks of `frb_chunk_size`
+        #TODO   num_beams: frb2_num_beams
+        #TODO   num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+        #TODO   num_times: frb_num_output_times
+        #TODO   stddev_cutoff: 3.0
+        #TODO   gpu_mem_input: frb2_beams
+        #TODO   gpu_mem_output: frb3_beams
+        #TODO   gpu_mem_offsetscale: frb3_beams_offsetscale
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          # TODO: Don't do this in production
+          gpu_mem: frb2_beams_buffer
+          out_buf: host_frb2_beams_buffer
+        #TODO - name: cudaOutputData
+        #TODO   gpu_mem: frb3_beams_buffer
+        #TODO   out_buf: host_frb3_beams_buffer
+        #TODO - name: cudaOutputData
+        #TODO   gpu_mem: frb3_beams_offsetscale_buffer
+        #TODO   out_buf: host_frb3_beams_offsetscale_buffer

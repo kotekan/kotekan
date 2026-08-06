@@ -3,6 +3,8 @@
 
 #include "Config.hpp"    // for Config
 #include "Telescope.hpp" // for freq_id_t, stream_t, Telescope
+#include "geoUtil.hpp"   // for GeoFrame
+#include "visUtil.hpp"   // for input_ctype
 
 #include <stdint.h> // for uint32_t, uint8_t, uint64_t
 #include <string>   // for string, basic_string
@@ -22,7 +24,7 @@
  * @conf  query_gps       bool.    Should the telescope object get the GPS from a remote source
  *                                 if not available, or false, will try to retrieve from config.
  * @conf  gps_host        string.  The GPS server IP address
- * @conf  gps_port        uint.    The port number on the GPS server
+ * @conf  gps_port        uint.    The port number on the GPS server. Default: 54321
  * @conf  gps_endpoint    string.  The endpoint with the GPS time
  **/
 class ICETelescope : public Telescope {
@@ -43,6 +45,17 @@ public:
     int64_t to_time_ns(uint64_t seq) const override;
     uint64_t to_seq(timespec time) const override;
     uint64_t seq_length_nsec() const override;
+
+    ElementOrder fiducial_element_order() const override;
+    station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const override;
+    uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const override;
+    grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const override;
+    vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
+    double get_feed_separation_x_m() const override;
+    double get_feed_separation_y_m() const override;
+    uint64_t get_grid_size_x() const override;
+    uint64_t get_grid_size_y() const override;
+    vec3d_t get_phase_center_in_grid_frame() const override;
 
 protected:
     /**
@@ -81,6 +94,37 @@ protected:
      */
     void set_gps(const std::string& host, const uint32_t port, const std::string& path);
 
+    static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
+
+    void decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization,
+                           uint64_t& dish) const;
+    station_id_t encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish) const;
+
+    /**
+     * @brief Parse the reordering configuration section
+     * @param config    Configuration handle.
+     * @param base_path Path into YAML file to search from.
+     * @param num_elements Total number of inputs (2048 for production CHIME)
+     * @return          Tuple containing a vector of the input reorder map, and a
+     *                  vector of the input labels for the index map.
+     */
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    parse_reorder_default(const kotekan::Config& config, const std::string& path,
+                          uint64_t num_elements);
+
+    static std::vector<station_id_t>
+    invert_reorder_table(const std::vector<uint32_t>& input_reorder);
+
+    /// Number of elements (2048 for production CHIME)
+    const uint64_t _num_polarizations;
+    const uint64_t _num_dishes;
+    const uint64_t _num_elements;
+    const uint64_t _num_cylinders;
+    const uint64_t _num_dishes_per_cylinder;
+
+    const double _feed_separation_x_m;
+    const double _feed_separation_y_m;
+
     // The number of frequencies per stream
     uint32_t _num_freq_per_stream;
 
@@ -93,11 +137,13 @@ protected:
     /// Should we try to get the GPS time from remote server
     bool _query_gps;
 
-    /// The GPS server IP address
+    /// The GPS server IP address. Resolved from the block named by
+    /// /<path>/gps_host_info; left empty when that key is absent (in which
+    /// case @c _query_gps must also be false).
     std::string _gps_host;
 
-    /// The port number on the GPS server
-    uint32_t _gps_port;
+    /// The port number on the GPS server. Same lookup as @c _gps_host.
+    uint32_t _gps_port = 0;
 
     /// The endpoint with the GPS time
     std::string _gps_endpoint;
@@ -107,10 +153,31 @@ protected:
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
 
+    /// Encodes CHIMECorrelator order
+    std::vector<uint32_t> _input_reorder;
+    /// The inputs index map
+    std::vector<input_ctype> _input_map;
+    /// Encodes inverse CHIMECorrelator order
+    std::vector<station_id_t> _correlator_stations;
+
+    std::vector<vec2d_t> _feed_positions_2d;
+
     // A forwarding constructor, such that derived classes can skip the main
     // ICETelescope constructor but still construct the Telescope class
     template<typename... Args>
-    ICETelescope(Args&&... args) : Telescope(std::forward<Args>(args)...){};
+    ICETelescope(uint64_t num_polarizations, uint64_t num_dishes, uint64_t num_cylinders,
+                 double feed_sep_x, double feed_sep_y, Args&&... args) :
+        Telescope(std::forward<Args>(args)...), _num_polarizations(num_polarizations),
+        _num_dishes(num_dishes), _num_elements(num_polarizations * num_dishes),
+        _num_cylinders(num_cylinders), _num_dishes_per_cylinder(num_dishes / num_cylinders),
+        _feed_separation_x_m(feed_sep_x), _feed_separation_y_m(feed_sep_y){};
+
+private:
+    static std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(nlohmann::json j);
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    parse_reorder(nlohmann::json& j);
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    default_reorder(size_t num_elements);
 };
 
 

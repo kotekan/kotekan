@@ -6,11 +6,10 @@
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for beamState, freqState, subfreqState
 
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
-#include "json.hpp"     // for basic_json, json
+#include "fmt.hpp"  // for format, compile_string_to_view, fmt
+#include "json.hpp" // for basic_json, json
 
-#include <algorithm>  // for max
+#include <algorithm>  // for copy, max
 #include <assert.h>   // for assert
 #include <cstdio>     // for remove
 #include <errno.h>    // for errno

@@ -6,12 +6,17 @@
 #include "metadata.hpp"       // for metadataObject
 #include "visUtil.hpp"        // for frameID, modulo
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt, format_string
 
+#include <assert.h>   // for assert
+#include <chrono>     // for duration, time_point, time_point_cast, nanoseconds, operator+
 #include <cstring>    // for memcpy
 #include <functional> // for bind, function
-#include <stdexcept>  // for runtime_error, invalid_argument
-#include <time.h>     // for clock_gettime
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint8_t
+#include <time.h>     // for time_t, timespec
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;
@@ -131,11 +136,11 @@ void bufferQuiet::main_thread() {
                 // this just copies the shared pointer, and is only valid since
                 // a frame description must never change
             }
-            const auto in_frame_desc = in_buf->get_frame_description();
+            const auto in_frame_desc = in_buf->get_frame_desc();
             if (in_frame_desc) {
-                out_buf->set_frame_desc(in_frame_desc);
+                out_buf->require_frame_desc(in_frame_desc);
             } else {
-                assert(!out_buf->get_frame_description());
+                assert(!out_buf->get_frame_desc());
             }
 
             DEBUG("Releasing frame... in_frame_id: {:d}, in_frame_hold_ctr: {:d}, "

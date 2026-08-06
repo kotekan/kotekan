@@ -1,5 +1,6 @@
 #include "cudaCopyFromRingbuffer.hpp"
 
+#include "NDArray.hpp"        // for GenericNDArray
 #include "Symbol.hpp"         // for Symbol
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
@@ -9,7 +10,6 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm>   // for max
 #include <assert.h>    // for assert
 #include <cstddef>     // for ptrdiff_t
 #include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
@@ -177,10 +177,12 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
             dimnames.push_back(
                 std::string(out_meta->dim_name[d],
                             strnlen(out_meta->dim_name[d], sizeof(out_meta->dim_name[d]))));
-        out_buffer->allocate_ndarray_frame_desc(out_meta->type, out_meta->get_name(), extents,
-                                                dimnames);
+        std::vector<std::ptrdiff_t> dimscalings(out_meta->dim_scaling,
+                                                out_meta->dim_scaling + out_meta->dims);
+        out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+            out_meta->type, out_meta->get_name(), extents, dimnames, dimscalings));
         /* test that things are consistent */
-        out_meta->check_frame_desc(out_buffer->get_ndarray_frame_desc());
+        out_meta->check_frame_desc(out_buffer->get_frame_desc<kotekan::GenericNDArray>());
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;

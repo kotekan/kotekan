@@ -4,8 +4,10 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "div.hpp"             // for num_triangle_blocks
 #include "restServer.hpp"      // for restServer, HTTP_RESPONSE, connectionInstance
 
+#include "fmt.hpp"  // for format
 #include "json.hpp" // for json_ref, json
 
 #include <cstdio>      // for fwrite, fflush, popen, FILE
@@ -96,7 +98,7 @@ void pyPlotN2::make_plot(void) {
     { // N^2
         uint num_elements = config.get<uint>(unique_name, "num_elements");
         uint block_dim = 32;
-        uint num_blocks = (num_elements / block_dim) * (num_elements / block_dim + 1) / 2;
+        uint num_blocks = kotekan::num_triangle_blocks(num_elements, block_dim);
         uint block_size = block_dim * block_dim * 2; // real, complex
 
         usleep(10000);

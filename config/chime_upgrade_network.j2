@@ -20,7 +20,6 @@ type: config
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
-num_elements: 2048
 num_freq_host_buf: 1
 num_freq_gpu_buf: 16
 samples_per_frame: 16384
@@ -34,13 +33,28 @@ sizeof_float: 4
 sizeof_int: 4
 sizeof_short: 2
 
+{% set num_polarizations = 2 %}
+{% set num_dishes = 1024 %}
+{% set num_elements = num_polarizations * num_dishes %}
+
+num_polarizations: {{ num_polarizations }}
+num_dishes: {{ num_dishes }}
+num_elements: {{ num_elements }}
+
 use_hugepages: true
+
+# Single source of truth for the upstream FPGA controller's REST interface.
+# Referenced by /telescope/{gps,frequency_map}_host_info.
+fpga_controller:
+  host: 10.1.13.1
+  port: 54321
 
 # Telescope
 telescope:
   name: CHIMETelescope
   require_gps: true
   query_gps: true # GPS time is provided via coco
+  gps_host_info: /fpga_controller
   query_frequency_map: true # Frequency map is provided via coco
   require_frequency_map: true # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
@@ -104,7 +118,9 @@ dpdk:
   max_rx_pkt_len: 5000
   # Set to true when using a switch to replicate packets
   using_switch: true
-  alignment: samples_per_frame * 4
+  alignment: samples_per_frame
+  alignment_startup_delay: 20.0
+  lcore_start_delay: 1.0
   # List of PCIe devices we don't want to attach too
   # Required to exclude the ConnectX 6 Lx output NICs.
   # Excluded devices are listed by their PCIe address. 

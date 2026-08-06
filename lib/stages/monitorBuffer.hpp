@@ -13,8 +13,9 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <string> // for string
-#include <vector> // for vector
+#include <stdint.h> // for uint32_t, uint64_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 
 /**

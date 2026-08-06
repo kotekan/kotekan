@@ -13,7 +13,6 @@
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt
 #include "json.hpp" // for iter_impl, json
 
-#include <algorithm> // for max
 #include <stddef.h>  // for size_t
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair, move

@@ -44,41 +44,42 @@ GIGA: 1000000000
 start_time_s: 1760000000
 
 telescope:
-  name: CHORDTelescope
-  origin_itrs_lat_deg: 50.0
-  origin_itrs_lon_deg: -120.0
-  dish_coelev_deg: 90.0
-  grid_x_axis: [1.0, 0.0, 0.0]
-  grid_y_axis: [0.0, 1.0, 0.0]
-  dish_elev_axis: [1.0, 0.0, 0.0]
-  dish_vert_axis: [0.0, 0.0, 1.0]
-  require_gps: False
-  eop_updatable_config: /earth_rotation_data
-  num_dishes_x: 22
-  num_dishes_y: 48
-  dish_inputs: []
+    name: CHORDTelescope
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    require_gps: false
+    eop_updatable_config: /earth_rotation_data
+    dish_grid_size_x: 22
+    dish_grid_size_y: 48
+    dish_inputs: []
 
 freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 gps_time:
-  frame0_nano: start_time_s * GIGA
+    frame0_nano: start_time_s * GIGA
 
 earth_rotation_data:
-  kotekan_update_endpoint: json
-  earth_orientation_parameter_table: [
-    {
-      t_inst_ns: 1750000000000000000,
-      delta_UT1_inst: 0.5,
-      xp_as: 0.1,
-      yp_as: 0.2
-    }, {
-      t_inst_ns: 1770000000000000000,
-      delta_UT1_inst: -0.5,
-      xp_as: 0.3,
-      yp_as: 0.4
-    }]
+    kotekan_update_endpoint: json
+    # yamlfix:off
+    earth_orientation_parameter_table: [
+      {
+        t_inst_ns: 1750000000000000000,
+        delta_UT1_inst: 0.5,
+        xp_as: 0.1,
+        yp_as: 0.2
+      }, {
+        t_inst_ns: 1770000000000000000,
+        delta_UT1_inst: -0.5,
+        xp_as: 0.3,
+        yp_as: 0.4
+      }]
+    # yamlfix:on
 
-  
 
 # Pool
 main_pool:
@@ -90,33 +91,43 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 fake_correlation_buffer:
-    kotekan_buffer: standard
+    # num_elements=2048: corr_lin_blocks=num_elements/16=128, vis_num_blocks=128*129/2=8256.
+    # testN2kGen, testLostCountsGen, and N2Accumulate all use num_elements/16, so the
+    # producer and consumer agree on the block count.
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 fake_counts_buffer:
-    kotekan_buffer: standard
+    # num_elements=2048: count_lin_blocks=(num_elements/8)/8=32, counts_num_blocks=32*33/2=528.
+    # testN2kGen, testLostCountsGen (in_buf validator), and N2Accumulate all use (num_elements/8)/8.
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 fake_rficounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_plcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_rfiframemask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 n2_buffer:
@@ -132,11 +143,11 @@ gen_fake_corr_counts:
     out_counts_buf: fake_counts_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
-    correlation_value: [ 1, -1 ]
+    correlation_value: [1, -1]
     counts_value: sub_integration_ntime
     counts_min: 0
     counts_max: sub_integration_ntime
-    mul_correlation_by_counts: True
+    mul_correlation_by_counts: true
     num_frames: frames_to_generate
     repeat_count: repeat
 
@@ -180,17 +191,18 @@ N2_accumulate:
     in_plcounts_buf: fake_plcounts_buffer
     in_rfiframemask_buf: fake_rfiframemask_buffer
     out_buf: n2_buffer
+    input_order: CHORDBeamformer
     num_freq_per_n2k_frame: num_local_freq
-    packet_loss_is_scalar: True
+    packet_loss_is_scalar: true
     variance_mode: EvenOddPosDef
     num_workers: 2
     output_batch_size: 8
-    do_fringestop: True
-    profile_info: True
-    debug_accum_mode: False
+    do_fringestop: true
+    profile_info: true
+    debug_accum_mode: false
 
 eat_n2:
-  kotekan_stage: dropAllFrames
-  cpu_affinity: [12]
-  in_buf: n2_buffer
-  max_frames: n2_frames
+    kotekan_stage: dropAllFrames
+    cpu_affinity: [12]
+    in_buf: n2_buffer
+    max_frames: n2_frames

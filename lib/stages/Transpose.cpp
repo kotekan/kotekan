@@ -18,6 +18,7 @@
 #include <algorithm>  // for copy
 #include <functional> // for bind, function
 #include <future>     // for async, future, future_status
+#include <json.hpp>   // for basic_json
 #include <map>        // for map
 #include <stdexcept>  // for out_of_range
 #include <stdint.h>   // for uint32_t, uint64_t

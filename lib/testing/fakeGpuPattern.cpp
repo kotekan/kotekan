@@ -2,6 +2,7 @@
 
 #include "Config.hpp"        // for Config
 #include "chordMetadata.hpp" // for chordMetadata
+#include "div.hpp"           // for num_triangle_blocks
 #include "visUtil.hpp"       // for prod_index
 
 #include "fmt.hpp"      // for compile_string_to_view
@@ -42,8 +43,7 @@ void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadat
     (void)freq_id;
     (void)frame_number;
 
-    unsigned int nb1 = _num_elements / _block_size;
-    unsigned int num_blocks = nb1 * (nb1 + 1) / 2;
+    unsigned int num_blocks = kotekan::num_triangle_blocks(_num_elements, _block_size);
 
     DEBUG2("Block size %i, num blocks %i", _block_size, num_blocks);
 

@@ -2,16 +2,15 @@
 
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
+#include "cuda_runtime_api.h" // for cudaMemcpyAsync, cudaHostGetFlags, cudaHostUnregister
 #include "gpuCommand.hpp"     // for gpuCommandType
 #include "kotekanLogging.hpp" // for DEBUG
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm>   // for max
 #include <assert.h>    // for assert
-#include <cstddef>     // for size_t, ptrdiff_t
-#include <memory>      // for allocator, shared_ptr, __shared_ptr_access, dynamic_pointe...
+#include <cstddef>     // for ptrdiff_t
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
 #include <optional>    // for optional
 #include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint8_t

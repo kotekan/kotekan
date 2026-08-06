@@ -72,9 +72,9 @@ end
 # Base.sinc isn't inlined, probably too complex
 @fastmath @inline sinc1(x) = iszero(x) ? one(x) : sinpi(x) / (pi * x)
 
-# sinc-Hanning weight function, eqn. (11), with `N = U+2`
+# sinc-Hanning weight function, eqn. (11), with `N = U+1`
 @fastmath @inline function Wkernel(s, M, U)
-    s′ = (2i32 * s - (M * U - 1i32)) / Float32(2 * (M * U + 1))  # normalized to (-1/2; +1/2)
+    s′ = (2i32 * s - (M * U - 1i32)) / Float32(2 * (M * U)) # normalized to (-1/2; +1/2)
     return cospi(s′)^2 * sinc1(M * s′)
 end
 
@@ -104,16 +104,7 @@ elseif U == 4
 elseif U == 8
     const W = 8
     const B = 4
-elseif U == 16
-    const W = 16
-    const B = 2
-elseif U == 32
-    const W = 16
-    const B = 2
-elseif U == 64
-    const W = 16
-    const B = 2
-elseif U == 128
+elseif 16 <= U <= 128
     const W = 16
     const B = 2
 else
@@ -997,9 +988,6 @@ function upchan!(emitter)
     merge!(emitter, :Γ³, [:Γ³re, :Γ³im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
     # Why do we need this? `mma_row_col_m16n8k16_f16!` should skip this tag if not present.
     merge!(emitter, :Γ³, [:Γ³, :Γ³], Dish(:dish, 1, 2) => Register(:dish, 1, 2))
-    for bit in 5:Ubits
-        merge!(emitter, :Γ³, [:Γ³, :Γ³], make_register_pair(dish_polr[bit + 1]))
-    end
     if U ≥ 128
         merge!(emitter, :Γ³, [:Γ³, :Γ³], Time(:time, 1, 2) => Register(:time, 1, 2))
     end
@@ -1999,7 +1987,7 @@ function fix_ptx_kernel()
                     "name" => "G",
                     "kotekan_name" => "upchan_U$(U)_gain_name",
                     "type" => "float16",
-                    "axes" => [Dict("label" => "Fbar", "length" => F̄)],
+                    "axes" => [Dict("label" => "Fbar", "length" => F̄, "dimscaling" => 1)],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
@@ -2010,10 +1998,10 @@ function fix_ptx_kernel()
                     "kotekan_name" => "voltage_name",
                     "type" => "int4x2_swapped_withoffset",
                     "axes" => [
-                        Dict("label" => "D", "length" => D),
-                        Dict("label" => "P", "length" => P),
-                        Dict("label" => "F", "length" => F),
-                        Dict("label" => "T", "length" => T),
+                        Dict("label" => "D", "length" => D, "dimscaling" => 1),
+                        Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                        Dict("label" => "F", "length" => F, "dimscaling" => 1),
+                        Dict("label" => "T", "length" => T, "dimscaling" => 1),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2025,10 +2013,10 @@ function fix_ptx_kernel()
                     "kotekan_name" => "upchan_U$(U)_voltage_name",
                     "type" => "int4x2_swapped_withoffset",
                     "axes" => [
-                        Dict("label" => "D", "length" => D),
-                        Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => F̄),
-                        Dict("label" => "Tbar", "length" => idiv(T, U)),
+                        Dict("label" => "D", "length" => D, "dimscaling" => 1),
+                        Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                        Dict("label" => "Fbar", "length" => F̄, "dimscaling" => 1),
+                        Dict("label" => "Tbar", "length" => idiv(T, U), "dimscaling" => U),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
@@ -2040,9 +2028,9 @@ function fix_ptx_kernel()
                     "kotekan_name" => "gpu_mem_info",
                     "type" => "int32",
                     "axes" => [
-                        Dict("label" => "thread", "length" => num_threads),
-                        Dict("label" => "warp", "length" => num_warps),
-                        Dict("label" => "block", "length" => num_blocks),
+                        Dict("label" => "thread", "length" => num_threads, "dimscaling" => 1),
+                        Dict("label" => "warp", "length" => num_warps, "dimscaling" => 1),
+                        Dict("label" => "block", "length" => num_blocks, "dimscaling" => 1),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => false,

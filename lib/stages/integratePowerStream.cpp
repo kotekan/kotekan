@@ -6,6 +6,8 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "powerStreamUtil.hpp" // for IntensityPacketHeader
 
+#include "fmt.hpp" // for format
+
 #include <functional>  // for bind, function
 #include <stdint.h>    // for uint8_t
 #include <stdlib.h>    // for malloc, calloc

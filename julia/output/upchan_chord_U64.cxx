@@ -21,6 +21,7 @@
 #include <cstring>
 #include <fmt.hpp>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -145,6 +146,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, G_rank> G_lengths = {
         256,
     };
+    static constexpr std::array<std::ptrdiff_t, G_rank> G_dimscalings = {
+        1,
+    };
     static constexpr auto G_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -157,7 +161,6 @@ private:
     };
     static constexpr std::ptrdiff_t G_length = G_strides[G_rank];
     static constexpr std::ptrdiff_t G_length_in_bytes = type_total_bytes(G_type) * G_length;
-    static_assert(G_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -181,6 +184,12 @@ private:
         48,
         32768,
     };
+    static constexpr std::array<std::ptrdiff_t, E_rank> E_dimscalings = {
+        1,
+        1,
+        1,
+        1,
+    };
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -193,7 +202,6 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
     static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
-    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: upchan_U64_voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -217,6 +225,12 @@ private:
         256,
         512,
     };
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_dimscalings = {
+        1,
+        1,
+        1,
+        64,
+    };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -231,7 +245,6 @@ private:
     static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
     static constexpr std::ptrdiff_t Ebar_length_in_bytes =
         type_total_bytes(Ebar_type) * Ebar_length;
-    static_assert(Ebar_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -252,6 +265,11 @@ private:
         16,
         384,
     };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
+    };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -267,7 +285,6 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
@@ -307,11 +324,14 @@ cudaUpchannelizer_chord_U64::cudaUpchannelizer_chord_U64(Config& config,
     Ebar_name(config.get<std::string>(unique_name, "upchan_U64_voltage_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    G_buffer(G_name, G_quantity, reverse(G_lengths), reverse(G_labels), *this,
-             buffer_type_t::do_once),
-    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
-    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+    G_buffer(G_name, G_quantity, reverse(G_lengths), reverse(G_labels), reverse(G_dimscalings),
+             *this, buffer_type_t::do_once),
+    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
+             *this),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
+                reverse(Ebar_dimscalings), *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     dummy() // avoid trailing comma
@@ -331,15 +351,16 @@ cudaUpchannelizer_chord_U64::cudaUpchannelizer_chord_U64(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage needs to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/Upchannelizer_chord_U64.ptx", {kernel_symbol}, opts,
                          "Upchannelizer_chord_U64_");
-    }
+    });
 }
 
 cudaUpchannelizer_chord_U64::~cudaUpchannelizer_chord_U64() {}
@@ -352,8 +373,8 @@ cudaUpchannelizer_chord_U64::num_consumed_elements(std::int64_t num_available_el
 }
 std::int64_t
 cudaUpchannelizer_chord_U64::num_produced_elements(std::int64_t num_available_elements) const {
-    assert(num_consumed_elements(num_available_elements) % cuda_upchannelization_factor == 0);
-    return num_consumed_elements(num_available_elements) / cuda_upchannelization_factor;
+    return div_noremainder(num_consumed_elements(num_available_elements),
+                           cuda_upchannelization_factor);
 }
 
 std::int64_t
@@ -520,7 +541,7 @@ cudaEvent_t cudaUpchannelizer_chord_U64::execute(cudaPipelineState& /*pipestate*
     // Copy inputs to device memory
 
     if (poison_buffers) {
-        Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.set_to_poison(0x00, 0, cuda_upchannelization_factor * (Fmax - Fmin));
         info_buffer.set_to_poison(0xff);
 
         // Initialize host-side buffer arrays
@@ -579,7 +600,7 @@ cudaEvent_t cudaUpchannelizer_chord_U64::execute(cudaPipelineState& /*pipestate*
             }
         }
 
-        Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.check_for_poison(0x00, 0, cuda_upchannelization_factor * (Fmax - Fmin));
     } // if (poison_buffers)
 
     return record_end_event();

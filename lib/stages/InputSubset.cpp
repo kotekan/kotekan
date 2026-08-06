@@ -11,10 +11,9 @@
 #include "visBuffer.hpp"       // for VisFrameView, VisField
 #include "visUtil.hpp"         // for input_ctype, prod_ctype, frameID, modulo
 
-#include "fmt.hpp"      // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view, format
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for max
 #include <complex>    // for complex
 #include <functional> // for bind, function
 #include <stddef.h>   // for size_t

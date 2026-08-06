@@ -22,6 +22,7 @@
 #include <fmt.hpp>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -122,6 +123,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
         2, 64, 16, 2, 384,
     };
+    static constexpr std::array<std::ptrdiff_t, A_rank> A_dimscalings = {
+        1, 1, 1, 1, 1,
+    };
     static constexpr auto A_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -134,7 +138,6 @@ private:
     };
     static constexpr std::ptrdiff_t A_length = A_strides[A_rank];
     static constexpr std::ptrdiff_t A_length_in_bytes = type_total_bytes(A_type) * A_length;
-    static_assert(A_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -158,6 +161,12 @@ private:
         384,
         32768,
     };
+    static constexpr std::array<std::ptrdiff_t, E_rank> E_dimscalings = {
+        1,
+        1,
+        1,
+        1,
+    };
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -170,7 +179,6 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
     static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
-    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // s: bb_shift_name
     static constexpr const char* s_quantity = "s";
@@ -191,6 +199,11 @@ private:
         2,
         384,
     };
+    static constexpr std::array<std::ptrdiff_t, s_rank> s_dimscalings = {
+        1,
+        1,
+        1,
+    };
     static constexpr auto s_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -205,7 +218,6 @@ private:
     };
     static constexpr std::ptrdiff_t s_length = s_strides[s_rank];
     static constexpr std::ptrdiff_t s_length_in_bytes = type_total_bytes(s_type) * s_length;
-    static_assert(s_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // J: bb_beams_name
     static constexpr const char* J_quantity = "J";
@@ -224,6 +236,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
         8192, 2, 384, 16, 1,
     };
+    static constexpr std::array<std::ptrdiff_t, J_rank> J_dimscalings = {
+        1, 1, 1, 1, 8192,
+    };
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -236,7 +251,6 @@ private:
     };
     static constexpr std::ptrdiff_t J_length = J_strides[J_rank];
     static constexpr std::ptrdiff_t J_length_in_bytes = type_total_bytes(J_type) * J_length;
-    static_assert(J_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -257,6 +271,11 @@ private:
         4,
         384,
     };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
+    };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -272,7 +291,6 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // log: gpu_mem_log
     static constexpr const char* log_quantity = "log";
@@ -287,6 +305,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, log_rank> log_lengths = {
         384,
     };
+    static constexpr std::array<std::ptrdiff_t, log_rank> log_dimscalings = {
+        1,
+    };
     static constexpr auto log_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -299,7 +320,6 @@ private:
     };
     static constexpr std::ptrdiff_t log_length = log_strides[log_rank];
     static constexpr std::ptrdiff_t log_length_in_bytes = type_total_bytes(log_type) * log_length;
-    static_assert(log_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
@@ -344,15 +364,18 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
     J_name(config.get<std::string>(unique_name, "bb_beams_name")),
     info_name(unique_name + "/gpu_mem_info"), log_name(unique_name + "/gpu_mem_log"),
 
-    A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels), *this,
-             buffer_type_t::do_once),
-    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
-    s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), *this,
-             buffer_type_t::do_once),
-    J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
-    host_info_buffer(info_length),
-    log_buffer(log_name, log_quantity, reverse(log_lengths), reverse(log_labels), *this),
+    A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels), reverse(A_dimscalings),
+             *this, buffer_type_t::do_once),
+    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
+             *this),
+    s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), reverse(s_dimscalings),
+             *this, buffer_type_t::do_once),
+    J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), reverse(J_dimscalings),
+             *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
+    host_info_buffer(info_length), log_buffer(log_name, log_quantity, reverse(log_lengths),
+                                              reverse(log_labels), reverse(log_dimscalings), *this),
     host_log_buffer(log_length),
 
     dummy() // avoid trailing comma
@@ -380,15 +403,16 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage needs to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/BasebandBeamformer_pathfinder.ptx", {kernel_symbol},
                          opts, "BasebandBeamformer_pathfinder_");
-    }
+    });
 }
 
 cudaBasebandBeamformer_pathfinder::~cudaBasebandBeamformer_pathfinder() {}

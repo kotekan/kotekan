@@ -42,7 +42,7 @@ jobs:
   # Build/push Docker images via reusable workflow
   iwyu-build-docker:
     permissions: write-all
-    uses: ./.github/workflows/build_push_docker.yml
+    uses: ./.github/workflows/build_push_docker.yaml
     # For IWYU we don't override build_branch; the reusable workflow
     # will choose a tag based on event / Dockerfile changes.
     # with:
@@ -54,10 +54,10 @@ jobs:
     needs: iwyu-build-docker
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}

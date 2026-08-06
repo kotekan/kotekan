@@ -12,12 +12,16 @@
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "timeUtil.hpp"          // for EOP
 
-#include <cstdint> // for int64_t, int32_t
-#include <string>  // for string
-#include <vector>  // for vector
+#include <complex>  // for complex
+#include <cstdint>  // for int64_t, int32_t, uint64_t, uint32_t
+#include <iosfwd>   // for ostream
+#include <json.hpp> // for json
+#include <string>   // for string
+#include <time.h>   // for timespec
+#include <vector>   // for vector
 
 using N2::frameID;
 
@@ -248,8 +252,7 @@ private:
     const int64_t _num_dishes;        ///< Total number of telescope elements (~2 * num dishes)
     const int64_t _num_elements;      ///< Total number of telescope elements (~2 * num dishes)
 
-    const int _num_workers;       ///< number of OpenMP threads to use to process data
-    const int _output_batch_size; ///< number of OpenMP threads to use to process data
+    const int _num_workers; ///< number of OpenMP threads to use to process data
 
     const bool _do_fringestop; ///< Whether to fringestop
     const N2VarianceMode _variance_mode;
@@ -288,13 +291,20 @@ private:
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
 
+
     // The telescope
     const Telescope& _tel;
 
-    // Reference to the prometheus metric that we will use for counting skipped
-    // frames
-    // TODO ...
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& skipped_frame_counter;
+    const std::vector<vec3d_t>
+        _feed_positions_m; ///< The position of each element in the telescope grid frame
+    static constexpr std::complex<float> _sentinel_phase =
+        std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
+
+    // Prometheus metric for tracking valid and flagged sample counts
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_valid_gauge;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_pl_gauge;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_rfi_gauge;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_rfi_only_gauge;
 };
 
 #endif

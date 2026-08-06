@@ -12,7 +12,7 @@
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, equal, max
+#include <algorithm>  // for equal
 #include <complex>    // for complex
 #include <functional> // for bind, function
 #include <stdexcept>  // for runtime_error

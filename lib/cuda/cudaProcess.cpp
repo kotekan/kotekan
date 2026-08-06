@@ -12,9 +12,8 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm> // for fill, max
-#include <mutex>     // for recursive_mutex, lock_guard
-#include <stdint.h>  // for uint32_t, int32_t
+#include <mutex>    // for recursive_mutex, lock_guard
+#include <stdint.h> // for uint32_t, int32_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

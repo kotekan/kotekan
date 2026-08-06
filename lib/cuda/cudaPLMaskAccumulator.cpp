@@ -1,8 +1,8 @@
 #include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for int4x2_swapped_withoffset_t, uint1x8_t
+#include "DataType.hpp"            // for uint1x8_t
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, read_descriptor_t, extent_t
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
@@ -10,17 +10,17 @@
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
 #include "div.hpp"                 // for div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
-#include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel, launch_s12_kernel
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, DEBUG
+#include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel
 
-#include <algorithm>          // for min
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <array>              // for array
 #include <cassert>            // for assert
-#include <cstddef>            // for ptrdiff_t, size_t
-#include <cstdint>            // for uint64_t, uint8_t
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for uint64_t
 #include <cuda_runtime_api.h> // for cudaStreamSynchronize
-#include <driver_types.h>     // for CUstream_st, cudaEvent_t, CUevent_st
-#include <fmt.hpp>            // for compile_string_to_view
+#include <driver_types.h>     // for cudaEvent_t, CUevent_st, CUstream_st
 #include <functional>         // for function
 #include <memory>             // for allocator, shared_ptr, __shared_ptr_access
 #include <string>             // for basic_string, string
@@ -123,11 +123,13 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
             std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 2 * 64),
                                           div_noremainder(num_frequencies, 4), num_polarizations,
                                           div_noremainder(num_dishes, 8), 64 / 8},
-            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
+            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16},
+            *this),
     pl_counts(pl_counts_name, "pl_counts",
               std::array<std::ptrdiff_t, 4>{num_subintegrations, num_frequencies, num_polarizations,
                                             num_dishes},
-              std::array<std::string, 4>{"Tc", "F", "P", "D"}, *this)
+              std::array<std::string, 4>{"Tc", "F", "P", "D"}, {sub_integration_ntime, 1, 1, 1},
+              *this)
 //
 {
     // For pl_mask_T128_sample_bytes

@@ -11,10 +11,10 @@
 #include "visBuffer.hpp"       // for VisFrameView, VisField
 #include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo
 
-#include "fmt.hpp"      // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view, format
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for max, copy, binary_search, sort
+#include <algorithm>  // for copy, binary_search, sort
 #include <complex>    // for complex
 #include <functional> // for bind, function
 #include <future>     // for future, async

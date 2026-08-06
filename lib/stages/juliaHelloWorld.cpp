@@ -3,13 +3,14 @@
 #include <julia.h> // for jl_value_t, jl_box_float64, jl_call, jl_eval_string, jl_g...
 #pragma GCC diagnostic pop
 
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <Config.hpp>          // for Config
 #include <Stage.hpp>           // for Stage
 #include <StageFactory.hpp>    // for REGISTER_KOTEKAN_STAGE
 #include <bufferContainer.hpp> // for bufferContainer
 #include <cassert>             // for assert
 #include <errors.h>            // for exit_kotekan, ReturnCode
-#include <fmt.hpp>             // for compile_string_to_view
 #include <functional>          // for function
 #include <juliaManager.hpp>    // for juliaCall, juliaShutdown, juliaStartup
 #include <kotekanLogging.hpp>  // for INFO

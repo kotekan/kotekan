@@ -1,13 +1,14 @@
-#include "CHORDTelescope.hpp"      // for EOP
+#include "CHORDTelescope.hpp"      // for CHORDTelescope
 #include "Config.hpp"              // for Config
 #include "DataType.hpp"            // for DataType, type_to_string
+#include "ICETelescope.hpp"        // for ICETelescope
 #include "N2FrameView.hpp"         // for N2FrameView
 #include "N2Metadata.hpp"          // for metadata_is_N2
 #include "NDArray.hpp"             // for GenericNDArray
 #include "Stage.hpp"               // for Stage
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"              // for Symbol
-#include "Telescope.hpp"           //
+#include "Telescope.hpp"           // for Telescope
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata, metadata_is_chord, get_c...
@@ -16,29 +17,38 @@
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR, WARN, INFO
 #include "metadata.hpp"            // for metadataObject
 #include "prometheusMetrics.hpp"   // for Metrics, Gauge
-#include "timeUtil.hpp"            //
+#include "timeUtil.hpp"            // for EOP
 #include "visUtil.hpp"             // for current_time
 #include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
-#include <algorithm>             // for max, min
-#include <array>                 // for array
-#include <atomic>                // for __atomic_base, atomic
-#include <cassert>               // for assert
-#include <cstddef>               // for size_t, ptrdiff_t
-#include <cstdint>               // for uint8_t, int64_t, uint32_t
-#include <errno.h>               // for errno, EEXIST, EISDIR
-#include <fmt.hpp>               // for compile_string_to_view
-#include <functional>            // for function
-#include <gsl-lite.hpp>          // for span
-#include <highfive/highfive.hpp> //
-#include <iomanip>               // for operator<<, setfill, setw
-#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>               // for basic_ostream, operator<<, basic_ostrin...
-#include <string.h>              // for strerror
-#include <string>                // for basic_string, char_traits, string, oper...
-#include <sys/stat.h>            // for mkdir
-#include <unistd.h>              // for gethostname
-#include <vector>                // for vector
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>                             // for max, min
+#include <array>                                 // for array
+#include <atomic>                                // for __atomic_base, atomic
+#include <cassert>                               // for assert
+#include <cstddef>                               // for size_t
+#include <cstdint>                               // for int64_t, uint8_t, uint32_t
+#include <errno.h>                               // for errno, EEXIST, EISDIR
+#include <functional>                            // for function
+#include <gsl-lite.hpp>                          // for span
+#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>               // for DataType
+#include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, File::...
+#include <highfive/H5Object.hpp>                 // for hsize_t, H5Z_FLAG_MANDATORY
+#include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
+#include <highfive/H5Selection.hpp>              // for SliceTraits::write_raw, Selection, Slic...
+#include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Prop...
+#include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getSpace
+#include <iomanip>                               // for operator<<, setfill, setw
+#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
+#include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <string.h>                              // for strerror
+#include <string>                                // for basic_string, char_traits, string, oper...
+#include <sys/stat.h>                            // for mkdir
+#include <unistd.h>                              // for gethostname
+#include <vector>                                // for vector
 
 
 using namespace hdf5;
@@ -74,6 +84,10 @@ using namespace HighFive;
  * @metric kotekan_hdf5filewrite_write_time_seconds
  *         The write time to write out the last frame.
  *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/hdf5_frames.rst. Any change to the
+ *       datasets or attributes written by this stage should be reflected there.
+ *
  * @author Erik Schnetter
  **/
 class hdf5FileWrite : public kotekan::Stage {
@@ -86,11 +100,15 @@ class hdf5FileWrite : public kotekan::Stage {
     const int host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
 
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
+    const bool use_compression = config.get_default<bool>(unique_name, "use_compression", true);
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
     const int64_t write_x_frames = config.get_default<int64_t>(unique_name, "write_x_frames", -1);
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
+
+    const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
+    const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
 
     Buffer* const buffer;
 
@@ -166,6 +184,42 @@ public:
     }
 
     /**
+     * @brief Write the telescope metadata
+     *
+     * @param node   The HDF5 object (file, group, dataset, etc.) where the metadata should be
+     *               attached
+     */
+    template<typename Node>
+    void write_telescope_metadata(Node& node) {
+        const auto& telescope = Telescope::instance();
+
+        node.createAttribute("telescope_name", telescope.get_name());
+        node.createAttribute("seq_length_nsec", telescope.seq_length_nsec());
+        node.createAttribute("gps_time_enabled", telescope.gps_time_enabled());
+        node.createAttribute("num_polarizations", num_polarizations);
+        node.createAttribute("num_dishes", num_dishes);
+        node.createAttribute("itrs_lat_deg", telescope.get_itrs_lat_deg());
+        node.createAttribute("itrs_lon_deg", telescope.get_itrs_lon_deg());
+        node.createAttribute("grid_orientation", telescope.get_grid_orientation());
+        node.createAttribute("grid_size_x", telescope.get_grid_size_x());
+        node.createAttribute("grid_size_y", telescope.get_grid_size_y());
+        node.createAttribute("feed_separation_x_m", telescope.get_feed_separation_x_m());
+        node.createAttribute("feed_separation_y_m", telescope.get_feed_separation_y_m());
+
+        // Flatten to proper HDF5 multi-dimensional arrays
+        const auto& dish_grid_indices =
+            telescope.get_main_array_grid_indices(num_dishes, telescope.fiducial_element_order());
+        node.createAttribute("dish_grid_indices", DataSpace({dish_grid_indices.size(), 2}),
+                             create_datatype<std::int64_t>())
+            .write_raw(reinterpret_cast<const std::int64_t*>(dish_grid_indices.data()));
+        const auto& feed_positions_m =
+            telescope.get_feed_positions_m(num_dishes, telescope.fiducial_element_order());
+        node.createAttribute("feed_positions_m", DataSpace({feed_positions_m.size(), 3}),
+                             create_datatype<double>())
+            .write_raw(reinterpret_cast<const double*>(feed_positions_m.data()));
+    }
+
+    /**
      * @brief Create and write a file for a frame with chordMetadata
      *
      * @param full_path The full path, including file name, for the file.
@@ -226,32 +280,30 @@ public:
             }
             (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
 
-            // // Enable compression
-            // constexpr int blosc_compression_level = 9;
-            // const std::vector<unsigned int> blosc_flags{
-            //     blosc_compression_level,
-            //     BLOSC_SHUFFLE_BIT,
-            //     BLOSC_COMPRESS_ZSTD,
-            // };
-            // props.add(H5Pset_filter, H5Z_BLOSC, H5Z_FLAG_MANDATORY, blosc_flags.size(),
-            //           blosc_flags.data());
-            constexpr int bitshuffle_compression_level = 9;
-            const std::vector<unsigned int> bitshuffle_flags{
-                BITSHUFFLE_BLOCKSIZE_AUTO,
-                BITSHUFFLE_COMPRESS_ZSTD,
-                bitshuffle_compression_level,
-            };
-            props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bitshuffle_flags.size(),
-                      bitshuffle_flags.data());
+            if (use_compression) {
+                // // Enable compression
+                // constexpr int blosc_compression_level = 9;
+                // const std::vector<unsigned int> blosc_flags{
+                //     blosc_compression_level,
+                //     BLOSC_SHUFFLE_BIT,
+                //     BLOSC_COMPRESS_ZSTD,
+                // };
+                // props.add(H5Pset_filter, H5Z_BLOSC, H5Z_FLAG_MANDATORY, blosc_flags.size(),
+                //           blosc_flags.data());
+                constexpr int bitshuffle_compression_level = 9;
+                const std::vector<unsigned int> bitshuffle_flags{
+                    BITSHUFFLE_BLOCKSIZE_AUTO,
+                    BITSHUFFLE_COMPRESS_ZSTD,
+                    bitshuffle_compression_level,
+                };
+                props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                          bitshuffle_flags.size(), bitshuffle_flags.data());
+            }
 
             // Create dataset
             auto dataset = file.createDataSet(file_name, space, type, props);
 
             // Write metadata (attributes)
-
-            dataset.createAttribute("telescope_name", telescope.get_name());
-            dataset.createAttribute("seq_length_nsec", telescope.seq_length_nsec());
-            dataset.createAttribute("gps_time_enabled", telescope.gps_time_enabled());
 
             dataset.createAttribute("chord_metadata_version", chord_metadata_version);
             dataset.createAttribute("name", meta->get_name());
@@ -260,6 +312,9 @@ public:
             const auto dimnames = frame_desc->get_dimnames();
             std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
             dataset.createAttribute("dim_names", dim_names);
+            const auto dimscalings = frame_desc->get_dimscalings();
+            std::vector<std::ptrdiff_t> dim_scalings(dimscalings.begin(), dimscalings.end());
+            dataset.createAttribute("dim_scalings", dim_scalings);
 
             if (meta->has_fpga_seq_num()) {
                 dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());
@@ -288,20 +343,7 @@ public:
                 dataset.createAttribute("rfi_frame_excision_thresholds",
                                         meta->get_rfi_frame_excision_thresholds());
 
-            if (meta->ndishes >= 0) {
-                dataset.createAttribute("ndishes", meta->ndishes);
-                // const DataSpace space{std::size_t(meta->n_dish_locations_ns),
-                //                       std::size_t(meta->n_dish_locations_ew)};
-                // auto attr = dataset.createAttribute<int>("dish_index", space);
-                // attr.write(meta->dish_index);
-                dataset.createAttribute("n_dish_locations_ns", meta->n_dish_locations_ns);
-                dataset.createAttribute("n_dish_locations_ew", meta->n_dish_locations_ew);
-                dataset.createAttribute(
-                    "dish_index",
-                    std::vector<int>(meta->dish_index,
-                                     meta->dish_index
-                                         + meta->n_dish_locations_ns * meta->n_dish_locations_ew));
-            }
+            write_telescope_metadata(dataset);
 
             if (create_single_file) {
                 // Start SWMR mode
@@ -366,7 +408,6 @@ public:
         const std::vector<size_t> gain_dims({frame.num_elements, 2});
         const std::vector<size_t> radiometer_chi2_dims({3}); // 3 pol pairs XX, XY, YY
 
-
         // Create dataspaces
         const DataSpace vis_space(vis_dims);
         const DataSpace weight_space(weight_dims);
@@ -416,7 +457,6 @@ public:
         radiometer_chi2_dset.write_raw(frame.radiometer_chi2.data(), float_type);
 
         // Set metadata as file-level attributes
-        file.createAttribute("num_elements", frame.num_elements);
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
         file.createAttribute("freq_id", frame.freq_id);
@@ -437,8 +477,8 @@ public:
         file.createAttribute("bin_eop.yp_as", frame.bin_eop.yp_as);
         file.createAttribute("bin_start_ERA_deg", frame.bin_start_ERA_deg);
         file.createAttribute("bin_end_ERA_deg", frame.bin_end_ERA_deg);
-        file.createAttribute("bin_start_ERAL", frame.bin_start_ERAL);
-        file.createAttribute("bin_end_ERAL", frame.bin_end_ERAL);
+        file.createAttribute("bin_start_ERAL_deg", frame.bin_start_ERAL_deg);
+        file.createAttribute("bin_end_ERAL_deg", frame.bin_end_ERAL_deg);
         file.createAttribute("fpga_start_tick", frame.fpga_start_tick);
         file.createAttribute("frame_start_time_ns", frame.frame_start_time_ns);
         file.createAttribute("frame_length_fpga_ticks", frame.frame_length_fpga_ticks);
@@ -450,6 +490,8 @@ public:
         file.createAttribute("rfi_frame_excision_num", frame.rfi_frame_excision_num);
         file.createAttribute("rfi_frame_excision_threshold", frame.rfi_frame_excision_threshold);
         file.createAttribute("rfi_frame_excision_fraction", frame.rfi_frame_excision_fraction);
+
+        write_telescope_metadata(file);
     }
 
     /**
@@ -554,8 +596,12 @@ public:
                     assert(metadata_is_chord(mc));
                     const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
                     const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                        buffer->get_ndarray_frame_desc();
-                    assert(frame_desc);
+                        buffer->get_frame_desc<kotekan::GenericNDArray>();
+                    if (!frame_desc)
+                        FATAL_ERROR(
+                            "Buffer \"{:s}\" has no NDArray frame descriptor; hdf5FileWrite "
+                            "needs one to write CHORD-metadata frames",
+                            buffer->buffer_name);
                     write_chord(frame, meta, frame_desc, frame_counter);
                 } else if (metadata_is_N2(mc)) {
                     assert(metadata_is_N2(mc));

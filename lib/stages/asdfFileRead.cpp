@@ -1,9 +1,11 @@
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <Config.hpp>            // for Config
 #include <DataType.hpp>          // for string_to_type, type_to_string, DataType
+#include <NDArray.hpp>           // for GenericNDArray
 #include <Stage.hpp>             // for Stage
 #include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
 #include <Symbol.hpp>            // for Symbol
-#include <algorithm>             // for max
 #include <array>                 // for array
 #include <asdf/asdf.hxx>         // for asdf
 #include <asdf/config.hxx>       // for ASDF_CHECK_VERSION
@@ -19,7 +21,6 @@
 #include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint32_t, uint8_t
 #include <cstring>               // for memcpy, strncpy
-#include <fmt.hpp>               // for compile_string_to_view
 #include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
 #include <functional>            // for function
 #include <iomanip>               // for operator<<, setfill, setw
@@ -224,11 +225,21 @@ public:
                         const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
                         dimnames.push_back(dim_name);
                     }
-                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames);
+                    DEBUG("[{:s}/{:d}] group0->at(\"dim_scalings\")", buffer->buffer_name,
+                          frame_counter);
+                    const auto dim_scalings = group->at("dim_scalings")->get_maybe_sequence();
+                    assert(dim_scalings);
+                    std::vector<std::ptrdiff_t> dimscalings;
+                    for (size_t d = 0; d < dimensions.size(); ++d) {
+                        const std::ptrdiff_t dim_scaling =
+                            dim_scalings->at(d)->get_maybe_int().value();
+                        dimscalings.push_back(dim_scaling);
+                    }
+                    buffer->require_frame_desc(kotekan::GenericNDArray::describe(
+                        value_type, name, dimensions, dimnames, dimscalings));
                     /* test that things are consistent */
-                    meta->check_frame_desc(buffer->get_ndarray_frame_desc());
+                    meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
                 }
-
 
                 const std::ptrdiff_t data_size = npoints * datatype_size;
                 DEBUG("[{:s}/{:d}] data_size={} datatype->type_size={} meta->stride[0]={} "
@@ -329,42 +340,6 @@ public:
                         group->at("time_downsampling_fpga")->get_maybe_int().value();
                     meta->set_time_downsampling_fpga(time_downsampling_fpga);
                     assert(meta->get_time_downsampling_fpga() > 0);
-                }
-            }
-
-            {
-                if (group->count("ndishes")) {
-                    DEBUG("[{:s}/{:d}] group0->at(\"ndishes\")", buffer->buffer_name,
-                          frame_counter);
-                    const auto ndishes = group->at("ndishes")->get_maybe_int().value();
-                    meta->ndishes = ndishes;
-                    assert(meta->ndishes >= 0);
-                } else {
-                    meta->ndishes = -1;
-                }
-            }
-
-            {
-                if (group->count("dish_index")) {
-                    DEBUG("[{:s}/{:d}] group0->at(\"dish_index\")", buffer->buffer_name,
-                          frame_counter);
-                    const auto dish_index = group->at("dish_index")->get_maybe_ndarray();
-                    assert(dish_index);
-                    const auto dimensions = dish_index->get_shape();
-                    assert(dimensions.size() == 2);
-                    meta->n_dish_locations_ns = dimensions.at(0);
-                    meta->n_dish_locations_ew = dimensions.at(1);
-                    assert(meta->n_dish_locations_ns >= 0);
-                    assert(meta->n_dish_locations_ew >= 0);
-                    meta->dish_index =
-                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-                    const auto data = dish_index->get_data();
-                    const size_t bytes = sizeof(dish_index_t) * meta->n_dish_locations_ns
-                                         * meta->n_dish_locations_ew;
-                    assert(data->nbytes() == bytes);
-                    std::memcpy(meta->dish_index, data->ptr(), data->nbytes());
-                } else {
-                    meta->dish_index = nullptr;
                 }
             }
 

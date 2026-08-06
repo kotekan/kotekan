@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import concurrent.futures
 import pytest
 import os
@@ -45,7 +38,8 @@ def test_send_receive(tmpdir_factory):
 
     receiver = runner.KotekanStageTester(
         "bufferRecv",
-        {},
+        # Disable the config tracker; shutdown in this test happens too quickly.
+        {"use_config_tracker": False},
         None,
         write_buffer,
         params_kotekan,
@@ -72,7 +66,11 @@ def test_send_receive(tmpdir_factory):
             wait=False,
         )
         sender = runner.KotekanStageTester(
-            "bufferSend", {}, fakevis_buffer, None, params_kotekan
+            "bufferSend",
+            {"use_config_tracker": False},
+            fakevis_buffer,
+            None,
+            params_kotekan,
         )
 
         # TODO: network buffer processes should use in_buf and out_buf to please the test framework

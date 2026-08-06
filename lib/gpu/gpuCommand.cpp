@@ -5,8 +5,7 @@
 
 #include "fmt.hpp" // for format, format_string
 
-#include <algorithm> // for max
-#include <vector>    // for vector
+#include <vector> // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

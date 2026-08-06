@@ -1,0 +1,33 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a CHARTS test
+#
+################################################################################
+
+---
+log_level: debug
+poison_buffers: true
+
+run_buffer_status:
+    kotekan_stage: bufferStatus
+    time_delay: 10.0e+6         # in μs
+
+input_dir: data/fengine_charts_init
+base_dir: data/fengine_charts
+prefix_hostname: false
+prefix_host_rank: true
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_charts.j2" %}
+
+{% include "include/rfi_charts.j2" %}
+{% include "include/n2k_charts.j2" %}
+{% include "include/bb_charts.j2" %}
+{% include "include/upchan_charts.j2" %}
+{% include "include/frb_charts.j2" %}
+
+{% include "include/input_charts.j2" %}
+{% include "include/output_charts.j2" %}
+...

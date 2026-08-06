@@ -16,11 +16,12 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
-#include <algorithm>  // for copy, equal, max
+#include <algorithm>  // for equal
+#include <assert.h>   // for assert
 #include <exception>  // for exception
 #include <functional> // for bind, function
 #include <stdexcept>  // for runtime_error
-#include <time.h>     // for timespec
+#include <time.h>     // for time, time_t, timespec
 #include <utility>    // for pair
 #include <vector>     // for vector
 

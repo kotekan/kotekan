@@ -47,7 +47,52 @@ if("${USE_LAPACK_BLAZE}" STREQUAL "AUTO" OR "${USE_LAPACK_BLAZE}" STREQUAL "ON")
 
     if(_missing_lapack_blaze STREQUAL "")
         add_definitions(-DBLAZE_BLAS_MODE=1)
-        add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
+        # Inform Blaze that the underlying BLAS is single-threaded. Large
+        # matrix multiplications then use Blaze's own OpenMP parallelization
+        # instead of dispatching directly to BLAS, which allows each stage's
+        # OpenMP thread team to inherit the stage's CPU affinity and confines
+        # the parallel work to its assigned cores. The eigen source files
+        # call openblas_set_num_threads(1) at startup to enforce this.
+        add_definitions(-DBLAZE_BLAS_IS_PARALLEL=0)
+
+        # Patch Blaze's ParallelSection and SerialSection headers at configure
+        # time. Both use a process-wide static flag to detect nested parallel
+        # calls within a single thread. When two eigen stages enter Blaze's
+        # shared-memory parallel code concurrently, the shared flag triggers a
+        # spurious "Nested parallel sections detected" exception. We rewrite
+        # the two flag declarations as thread_local and place the patched
+        # headers ahead of the system Blaze install on the include path; the
+        # remainder of Blaze is used unchanged. If a future Blaze release
+        # alters the declaration the regular expression will not match and
+        # configure stops with an explicit error rather than silently falling
+        # back to the unpatched header.
+        set(_blaze_override_dir "${CMAKE_BINARY_DIR}/blaze_overrides")
+        file(MAKE_DIRECTORY "${_blaze_override_dir}/blaze/math/smp")
+        foreach(_hdr ParallelSection.h SerialSection.h)
+            set(_src "${BLAZE_PATH}/blaze/math/smp/${_hdr}")
+            file(READ "${_src}" _content)
+            string(REGEX REPLACE
+                "static bool active_"
+                "static thread_local bool active_"
+                _patched "${_content}")
+            string(REGEX REPLACE
+                "(\n|^)bool ([A-Za-z]+Section)<T>::active_ = false;"
+                "\\1thread_local bool \\2<T>::active_ = false;"
+                _patched "${_patched}")
+            if(_content STREQUAL _patched)
+                message(FATAL_ERROR
+                    "Could not patch Blaze header ${_hdr} at ${_src}: the "
+                    "expected flag declaration was not found. The upstream "
+                    "header may have changed; update the regular expression "
+                    "in cmake/Features/FeatureMath.cmake.")
+            endif()
+            file(WRITE "${_blaze_override_dir}/blaze/math/smp/${_hdr}" "${_patched}")
+        endforeach()
+        # Add the override directory ahead of the system Blaze install so the
+        # patched headers shadow the originals throughout the project.
+        include_directories(BEFORE SYSTEM "${_blaze_override_dir}")
+        # Blaze internally includes cblas.h; ensure it can find the LAPACKE headers.
+        include_directories(SYSTEM ${LAPACKE_INCLUDE_DIRS})
 
         if("${USE_LAPACK_BLAZE}" STREQUAL "AUTO")
             set(LAPACK_BLAZE_REASON "auto-detected")

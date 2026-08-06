@@ -72,6 +72,14 @@ protected:
     const kotekan::FrameInfo* active_f0 = nullptr;
     const kotekan::FrameInfo* active_f1 = nullptr;
 
+    /// Sample-based FPGA seq monotonicity check. At each sample the seq must
+    /// be strictly greater than the previous sample's, otherwise we treat it
+    /// as an FPGA reset and shut down. Sampled every @c _seq_check_interval
+    /// packets, which at typical CRS packet rates is roughly once per second.
+    static constexpr uint64_t _seq_check_interval = 500000;
+    uint64_t _last_check_seq = 0;
+    uint64_t _seq_check_packet_count = 0;
+
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
                                      uint16_t source_id);
@@ -153,6 +161,20 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     uint16_t source_id =
         get_crs_packet_source_id(mbuf).slot_id + 16 * get_crs_packet_source_id(mbuf).crate_id;
     uint64_t seq_num = get_crs_packet_seq_num(mbuf);
+
+    // Sample-based FPGA seq monotonicity check: at each sample boundary the
+    // current seq must be strictly greater than the previous sample's,
+    // otherwise the FPGA likely reset.
+    if (unlikely(++_seq_check_packet_count >= _seq_check_interval)) {
+        if (unlikely(_last_check_seq != 0 && seq_num < _last_check_seq)) {
+            FATAL_ERROR("Port: {:d}, Worker: {:d}; CRS FPGA seq went backwards ({:d} -> {:d}), "
+                        "controller likely reset, kotekan stopping...",
+                        port, worker_id, _last_check_seq, seq_num);
+            return -1;
+        }
+        _last_check_seq = seq_num;
+        _seq_check_packet_count = 0;
+    }
 
     if (unlikely(first_run)) {
 

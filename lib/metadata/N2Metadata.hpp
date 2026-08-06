@@ -1,25 +1,27 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "Config.hpp"   // for Config
-#include "N2Layout.hpp" // for N2Layout
+#include "Config.hpp"    // for Config
+#include "FrameDesc.hpp" // for FrameDesc
+#include "Hash.hpp"      // for Hash
 #include "N2Metadata.hpp"
 #include "buffer.hpp"         // for Buffer
-#include "chordMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
-#include "timeUtil.hpp"       // for EOP
+#include "timeUtil.hpp"       // for EOP, eop_null
 
-#include "fmt.hpp"  // for compile_string_to_view
-#include "json.hpp" // for json
+#include "fmt.hpp"          // for compile_string_to_view
+#include "json.hpp"         // for json
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 using kotekan::Config;
 
+#include <array>    // for array
 #include <assert.h> // for assert
 #include <memory>   // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
 #include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t, uint64_t
+#include <stdint.h> // for uint64_t, int32_t, uint32_t
 #include <string>   // for operator==, char_traits, basic_string
 #include <vector>   // for vector
 
@@ -39,10 +41,10 @@ struct N2MetadataFormat {
     /// Earth Orientation Parameters within an integration/accumulation bin
     struct EOP bin_eop = eop_null;
     // bin start/end info for convenience
-    double bin_start_ERA_deg = 0.0; /// Earth Rotation Angle at start of bin
-    double bin_end_ERA_deg = 0.0;   /// Earth Rotation Angle at end of bin
-    double bin_start_ERAL = 0.0;    /// local apparent sidereal time (nanoseconds) at start of bin
-    double bin_end_ERAL = 0.0;      /// local apparent sidereal time (nanoseconds) at end of bin
+    double bin_start_ERA_deg = 0.0;  /// Earth Rotation Angle at start of bin
+    double bin_end_ERA_deg = 0.0;    /// Earth Rotation Angle at end of bin
+    double bin_start_ERAL_deg = 0.0; /// local apparent sidereal time (nanoseconds) at start of bin
+    double bin_end_ERAL_deg = 0.0;   /// local apparent sidereal time (nanoseconds) at end of bin
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick = 0;

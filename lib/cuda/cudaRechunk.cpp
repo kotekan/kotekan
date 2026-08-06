@@ -7,9 +7,8 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm> // for max
-#include <assert.h>  // for assert
-#include <tuple>     // for tuple, make_tuple
+#include <assert.h> // for assert
+#include <tuple>    // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -2,25 +2,26 @@
 
 #include "BeamMetadata.hpp"    // for BeamMetadata
 #include "Config.hpp"          // for Config
-#include "HFBFrameView.hpp"    // for HFBFrameView, HFBMetadata
-#include "N2FrameView.hpp"     // for N2FrameView
+#include "HFBMetadata.hpp"     // for HFBMetadata
+#include "N2Metadata.hpp"      // for N2Metadata
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, metadata_is_chord
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
-#include "visBuffer.hpp"       // for VisFrameView, VisMetadata, metadata_is_vis
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "visBuffer.hpp"       // for VisMetadata
 
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <functional> // for bind, function
-#include <memory>     // for shared_ptr, dynamic_pointer_cast
+#include <memory>     // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
 #include <stdlib.h>   // for llabs
 #include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
-#include <tuple>      // for get
-#include <utility>    // for pair, make_pair
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

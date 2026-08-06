@@ -6,8 +6,9 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <string> // for string
-#include <vector> // for vector
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @brief Converts CHIME lost samples and rfi masks to counts expected by N2Accumulate

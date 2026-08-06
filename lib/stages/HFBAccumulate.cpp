@@ -15,7 +15,7 @@
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for fill, max, transform
+#include <algorithm>  // for fill, transform
 #include <cmath>      // for pow
 #include <cstring>    // for memcpy, size_t
 #include <functional> // for bind, function

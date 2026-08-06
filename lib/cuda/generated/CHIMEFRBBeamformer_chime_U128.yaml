@@ -9,13 +9,13 @@ kernel-description:
   design-parameters:
     beam-layout: [512, 8]
     dish-layout: [256, 4]
-    downsampling-factor: 512
+    downsampling-factor: 128
     number-of-complex-components: 2
     number-of-dishes: 1024
     number-of-frequencies: 2048
     number-of-polarizations: 2
     number-of-timesamples: 512
-    output-gain: 0.000244140625
+    output-gain: 0.0009765625
     sampling-time-μsec: 2.56
     upchannelization-factor: 128
   compile-parameters:
@@ -55,7 +55,7 @@ kernel-description:
       intent: out
       type: Float16
       indices: [beamP, beamQ, Fbar, Tbar]
-      shape: [512, 8, 2048, 4]
+      shape: [512, 8, 2048, 80]
       strides: [1, 512, 4096, 8388608]
     - name: "info"
       intent: out

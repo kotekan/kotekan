@@ -4,7 +4,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <bits/chrono.h>               // for operator+, seconds, system_clock
+#include <chrono>                      // for operator+, seconds, system_clock
 #include <condition_variable>          // for condition_variable
 #include <cstring>                     // for memcpy
 #include <event2/buffer.h>             // for iovec, evbuffer_iovec, evbuffer, evbuffer_peek
@@ -16,6 +16,7 @@
 #include <event2/keyvalq_struct.h>     // for evkeyvalq
 #include <event2/thread.h>             // for evthread_use_pthreads
 #include <evhttp.h>                    // for evhttp_request
+#include <json.hpp>                    // for json
 #include <pthread.h>                   // for pthread_setname_np
 #include <stdlib.h>                    // for free, malloc
 #include <sys/time.h>                  // for timeval
@@ -94,6 +95,7 @@ void restClient::event_thread() {
         return;
     }
     _base = event_base_new_with_config(ev_config);
+    event_config_free(ev_config);
     if (!_base) {
         FATAL_ERROR_NON_OO("restClient: Failure creating new event_base.");
         return;

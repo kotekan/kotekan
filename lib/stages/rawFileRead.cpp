@@ -4,7 +4,8 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for INFO, ERROR, FATAL_ERROR
+#include "errors.h"            // for exit_kotekan, ReturnCode
+#include "kotekanLogging.hpp"  // for INFO, ERROR
 #include "metadata.hpp"        // for metadataObject
 
 #include "fmt.hpp" // for compile_string_to_view

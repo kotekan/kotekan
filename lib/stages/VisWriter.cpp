@@ -17,7 +17,7 @@
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for ts_to_double, freq_ctype, time_ctype
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view, format
 
 #include <future>      // for async, future
 #include <map>         // for map

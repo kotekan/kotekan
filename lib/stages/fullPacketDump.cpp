@@ -12,6 +12,7 @@
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
 #include <functional> // for bind, function, _1, _2
+#include <json.hpp>   // for json
 #include <stdio.h>    // for snprintf, size_t
 #include <stdlib.h>   // for exit, free, malloc
 #include <string.h>   // for memcpy

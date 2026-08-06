@@ -13,7 +13,7 @@
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging, DEBUG
 #include "visUtil.hpp"        // for time_ctype, operator<
 
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <cstdint>    // for uint32_t
 #include <functional> // for function

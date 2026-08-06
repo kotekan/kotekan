@@ -1,12 +1,5 @@
 """Read an N2Buffer dump into python.
 """
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import ctypes
 import os
 import io
@@ -29,8 +22,8 @@ class N2Metadata(ctypes.Structure):
         ("bin_eop", telescope.EOP),
         ("bin_start_ERA_deg", ctypes.c_double),
         ("bin_end_ERA_deg", ctypes.c_double),
-        ("bin_start_ERAL", ctypes.c_double),
-        ("bin_end_ERAL", ctypes.c_double),
+        ("bin_start_ERAL_deg", ctypes.c_double),
+        ("bin_end_ERAL_deg", ctypes.c_double),
         # FPGA timing
         ("fpga_start_tick", ctypes.c_uint64),
         ("frame_start_time_ns", ctypes.c_uint64),

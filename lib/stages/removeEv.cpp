@@ -10,6 +10,8 @@
 #include "visBuffer.hpp"       // for VisField, VisFrameView
 #include "visUtil.hpp"         // for frameID, modulo
 
+#include "fmt.hpp" // for format
+
 #include <functional> // for bind, function
 #include <set>        // for set
 #include <utility>    // for pair

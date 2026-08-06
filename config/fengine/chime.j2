@@ -10,6 +10,12 @@
 log_level: debug
 poison_buffers: true
 
+run_buffer_status:
+    kotekan_stage: bufferStatus
+    time_delay: 10.0e+6         # in μs
+
+join_timeout: 600
+
 input_dir: data/fengine_chime_init
 base_dir: data/fengine_chime
 prefix_hostname: false
@@ -24,6 +30,8 @@ prefix_host_rank: true
 {% include "include/bb_chime.j2" %}
 {% include "include/upchan_chime.j2" %}
 {% include "include/frb_chime.j2" %}
+{% include "include/upchan_hfb_chime.j2" %}
+{% include "include/hfb_chime.j2" %}
 
 {% include "include/input_chime.j2" %}
 {% include "include/output_chime.j2" %}

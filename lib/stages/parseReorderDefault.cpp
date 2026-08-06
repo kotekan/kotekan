@@ -1,17 +1,27 @@
 #include "parseReorderDefault.hpp"
 
-#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope, ElementOrder
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
+#include "visUtil.hpp"         // for get_cylinder_to_beamformer_reorder_table, parse_reorder_d...
 
-#include <assert.h>  // for assert
-#include <stdint.h>  // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
-#include <string>    // for std::string
-#include <strings.h> // for bzero
-#include <unistd.h>  // for sleep
-#include <vector>    // for vector
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for find
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for invalid_argument
+#include <stdint.h>   // for int32_t
+#include <string>     // for basic_string, allocator, operator!=, operator==, string
+#include <tuple>      // for get
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;
@@ -25,25 +35,41 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
     Stage(config, unique_name, buffer_container,
           std::bind(&parseReorderDefault::main_thread, this)),
     _out_buf(get_buffer("out_buf")), _name(config.get<std::string>(unique_name, "name")),
-    _input_reorder(std::get<0>(parse_reorder_default(config, unique_name))),
-    _invert_mapping(config.get_default<bool>(unique_name, "invert_mapping", true)),
+    _input_order(config.get_default<ElementOrder>(unique_name, "input_order",
+                                                  ElementOrder::CHIMECorrelator)),
+    _output_order(
+        config.get_default<ElementOrder>(unique_name, "output_order", ElementOrder::CHIMECylinder)),
     _num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     _num_dishes(config.get<int>(unique_name, "num_dishes")) {
     _out_buf->register_producer(unique_name);
 
-    if (_out_buf->frame_size != _input_reorder.size() * sizeof(_input_reorder[0])) {
-        throw std::invalid_argument("parseReorderDefault: incorrect frame size");
+#if 0 // this is what it should be
+    if (_input_order == ElementOrder::CHIMECorrelator) {
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int32, _name, {_num_polarizations * _num_dishes}, {"E"}, {1}));
+    } else if (_input_order == ElementOrder::CHIMECylinder) {
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int32, _name,
+            {_num_chime_cylinders, _num_polarizations, _num_dishes / _num_chime_cylinders},
+            {"D", "P", "D"}, {_num_dishes / _num_chime_cylinders, 1, 1}));
+    } else if (_input_order == ElementOrder::CHIMEBeamformer) {
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
+    } else {
+        FATAL_ERROR("Unexpected input_order {:s}", _input_order);
     }
-
-    // TODO: this is not quite correct. Really if going to cylinder order
-    // the array is {4,2,256} {"C", "P", "D"}
-    _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name, {_num_polarizations, _num_dishes},
-                                          {"P", "D"});
+#else
+    // xpose2048 expects its input in correlator order {"E"} and will produce output in beamformer
+    // order {"P", "D"}.
+    _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
+#endif
 }
-
 
 void parseReorderDefault::main_thread() {
     int abs_frame_id = 0;
+
+    const Telescope& tel = Telescope::instance();
 
     bool first_time = true;
     while (!stop_thread) {
@@ -59,18 +85,16 @@ void parseReorderDefault::main_thread() {
         if (frame == nullptr)
             break;
 
-        for (size_t i = 0; i < _input_reorder.size(); ++i) {
-            if (_invert_mapping) {
-                // the (ptrdiff_t) cast is just there to pacify a warning about
-                // comparing unsigned >= 0 being always true. The assert is to
-                // future proof this in case anyone ever changes the type of
-                // _input_reorder to be signed.
-                assert((ptrdiff_t)_input_reorder.at(i) >= 0
-                       && _input_reorder.at(i) < _input_reorder.size());
-                frame[_input_reorder.at(i)] = static_cast<int32_t>(i);
-            } else {
-                frame[i] = _input_reorder.at(i);
-            }
+        // TODO: This is probably somewhat inefficient. Might be better to build
+        // a conversion table from the beginning.
+        // TODO: This assumes the station IDs are consecutive and begin at 0,
+        // which restricts this stage to CHIME orderings.
+        for (int st_idx = 0; st_idx < _num_polarizations * _num_dishes; ++st_idx) {
+            // indexed by input_index, returns output_index
+            const station_id_t station_id = static_cast<station_id_t>(st_idx);
+            const int input_idx = tel.station_id_to_element_index(station_id, _input_order);
+            const int output_idx = tel.station_id_to_element_index(station_id, _output_order);
+            frame[input_idx] = static_cast<int32_t>(output_idx);
         }
 
         _out_buf->allocate_new_metadata_object(frame_id);
@@ -78,8 +102,8 @@ void parseReorderDefault::main_thread() {
 
         chordmeta->set_frame_counter(0); // these do not actually change with time
 
-        chordmeta->set_from_frame_desc(_out_buf->get_ndarray_frame_desc());
-        chordmeta->check_frame_desc(_out_buf->get_ndarray_frame_desc());
+        chordmeta->set_from_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
+        chordmeta->check_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         _out_buf->mark_frame_full(unique_name, frame_id);
 

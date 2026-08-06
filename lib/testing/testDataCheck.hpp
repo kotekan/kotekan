@@ -491,20 +491,6 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                         first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
                         second_buf_id);
 
-    // int ndishes;                                  // number of dishes
-    CHECK_META_SCALAR_INT_DIRECT(ndishes, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
-
-    // int n_dish_locations_ew, n_dish_locations_ns; // number of possible dish locations
-    CHECK_META_SCALAR_INT_DIRECT(n_dish_locations_ew, meta1, meta2, num_errors,
-                                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
-                                 second_buf_id);
-    CHECK_META_SCALAR_INT_DIRECT(n_dish_locations_ns, meta1, meta2, num_errors,
-                                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
-                                 second_buf_id);
-
-    // TODO: int* dish_index; // [non-owning pointer] dish index for a possible dish location, or -1
-
     return num_errors;
 }
 

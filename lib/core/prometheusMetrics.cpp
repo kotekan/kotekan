@@ -136,7 +136,8 @@ Metrics& Metrics::instance() {
 
 
 Metrics::~Metrics() {
-    restServer::instance().remove_get_callback("/metrics");
+    if (restServer::is_alive())
+        restServer::instance().remove_get_callback("/metrics");
 }
 
 string Metrics::serialize() {

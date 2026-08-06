@@ -2,6 +2,7 @@
 #define DIV_HPP
 
 #include <cassert>
+#include <stdexcept>
 
 namespace kotekan {
 
@@ -24,6 +25,30 @@ auto div_noremainder(T x, U y) {
     assert(x % y == 0);
     auto r = x / y;
     return r;
+}
+
+// Calculate `ceil(x / y)`, i.e. the number of size-`y` blocks needed to tile `x`
+template<typename T, typename U>
+constexpr auto div_ceil(T x, U y) {
+    if (y == 0)
+        throw std::invalid_argument("div_ceil: y must be nonzero");
+    assert(x >= 0);
+    assert(y > 0);
+    // Unlike `(x - 1) / y + 1` this is correct for x == 0 (no unsigned
+    // wraparound), and unlike `(x + y - 1) / y` it cannot overflow.
+    auto r = x / y + (x % y != 0 ? 1 : 0);
+    assert(r * y >= x && (r == 0 || (r - 1) * y < x));
+    return r;
+}
+
+// Number of blocks in a blocked triangular (e.g. visibility) matrix:
+// an `n` x `n` matrix tiled by `block` x `block` blocks, keeping only the
+// blocks on one side of the diagonal, has nb * (nb + 1) / 2 blocks for
+// nb = div_ceil(n, block) blocks per side.
+template<typename T, typename U>
+constexpr auto num_triangle_blocks(T n, U block) {
+    auto nb = div_ceil(n, block);
+    return nb * (nb + 1) / 2;
 }
 
 // Calculate `x div y`

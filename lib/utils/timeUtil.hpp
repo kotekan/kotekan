@@ -32,11 +32,12 @@ back to UT1.
 #ifndef TIME_UTIL_HPP
 #define TIME_UTIL_HPP
 
-#include "fmt.hpp"
 #include "json.hpp" // for json
 
-#include <inttypes.h>
-#include <time.h> // for timespec
+#include <inttypes.h> // for int64_t
+#include <iosfwd>     // for ostream
+#include <string>     // for string
+#include <time.h>     // for timespec
 
 
 /**

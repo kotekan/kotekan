@@ -57,8 +57,8 @@ extern int _global_log_level;
 extern int __enable_syslog;
 
 // to store error messages before exiting with error code
-extern char __err_msg[1024];
-extern const int __max_log_msg_len;
+#define MAX_LOG_MSG_LEN 1024
+extern char __err_msg[MAX_LOG_MSG_LEN];
 
 void internal_logging_f(int log, const char* format, ...);
 void exit_kotekan(enum ReturnCode code);

@@ -8,16 +8,18 @@
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
 #include "div.hpp"                 // for div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 #include "n2k/rfi_kernels.hpp"     // for launch_s012_station_downsample_kernel
+
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <algorithm>          // for min
 #include <array>              // for array
+#include <assert.h>           // for assert
 #include <cstddef>            // for ptrdiff_t
 #include <cstdint>            // for uint64_t, int8_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaStreamSynchronize
 #include <driver_types.h>     // for cudaEvent_t, CUevent_st, CUstream_st
-#include <fmt.hpp>            // for compile_string_to_view
 #include <functional>         // for function
 #include <memory>             // for allocator, shared_ptr
 #include <string>             // for basic_string, string
@@ -66,6 +68,7 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
+    const int rfi_downsampling_factor;
     const int rfi_num_times;
     const bool poison_buffers;
 
@@ -93,6 +96,7 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
+    rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
@@ -101,14 +105,16 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     rfi_S012tilde_name(config.get<std::string>(unique_name, "rfi_S012tilde_name")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
+            std::array<std::string, 2>{"P", "D"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this),
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"},
+             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this),
     rfi_S012tilde(rfi_S012tilde_name, "S012tilde",
                   std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
-                  std::array<std::string, 3>{"Trfi", "F", "S"}, *this)
+                  std::array<std::string, 3>{"Trfi", "F", "S"},
+                  std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor, 1, 1}, *this)
 //
 {
     if (num_times % rfi_num_times != 0)

@@ -8,7 +8,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <arpa/inet.h>  // for inet_addr, htons
+#include <arpa/inet.h>  // for htons, inet_addr
 #include <errno.h>      // for errno
 #include <functional>   // for bind, function
 #include <netinet/in.h> // for sockaddr_in, in_addr

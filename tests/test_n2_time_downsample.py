@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import pytest
 import numpy as np
 from astropy.time import Time, TimeDelta
@@ -50,6 +43,7 @@ fake_params = {
 downsamp_params = {
     "num_bins_per_rotation": n_bins_per_rot,
     "max_age": 2 * T_rot_sec / n_bins_per_rot,
+    "input_order": "CHORDBeamformer",
 }
 
 global_params = {
@@ -84,8 +78,8 @@ global_params = {
         "dish_elev_axis": [1, 0, 0],
         "dish_vert_axis": [0, 0, 1],
         "dish_coelev_deg": 0.0,
-        "num_dishes_x": 22,
-        "num_dishes_y": 24,
+        "dish_grid_size_x": 22,
+        "dish_grid_size_y": 24,
         "eop_updatable_config": "/earth_rotation_data",
         "dish_inputs": [],
     },

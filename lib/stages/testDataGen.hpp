@@ -90,7 +90,6 @@ private:
     std::string rest_mode;
     int num_frames;
     bool _reuse_random;
-    bool set_dish_index;
     size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;
@@ -99,6 +98,7 @@ private:
     std::string _name;
     std::vector<int> _array_shape;
     std::vector<std::string> _dim_name;
+    std::vector<std::ptrdiff_t> _dim_scaling;
     std::vector<uint32_t> _manual_freq_ids;
     int _meta_time_downsample_factor;
 

@@ -1,0 +1,20 @@
+# If a pull request to the development branch was closed and merged,
+# then rebuild the Docker image if there were changes to it
+
+name: kotekan-docker-image-merge-build
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - develop
+
+jobs:
+  build-docker-on-merge:
+    # Only run if the PR was actually merged (not just closed)
+    if: ${{ github.event.pull_request.merged == true }}
+    uses: ./.github/workflows/build_push_docker.yaml
+    # No build_branch here: let build_push_docker.yaml decide tags
+    # based on base/head and whether the Dockerfile changed.
+    # with:
+    #   build_branch: ${{ github.event.pull_request.base.ref }}

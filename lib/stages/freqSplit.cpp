@@ -11,9 +11,8 @@
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for freq_ctype
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view, format
 
-#include <algorithm>  // for max
 #include <functional> // for bind, function
 #include <memory>     // for make_unique
 #include <stddef.h>   // for size_t

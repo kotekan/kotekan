@@ -1,7 +1,8 @@
 #include "testXpose.hpp"
 
 #include "Config.hpp"          // for Config
-#include "Metadata.hpp"        // for GenericNDArray
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "NDMetadata.hpp"      // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -53,9 +54,10 @@ testXpose::testXpose(Config& config, const std::string& unique_name,
                     out_xposed_buf->frame_size,
                     num_times * num_xposed_frequencies * num_polarizations * num_dishes
                         * sizeof(uint8_t));
-    out_xposed_buf->allocate_ndarray_frame_desc(
+    out_xposed_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {num_times, num_xposed_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
+        {num_times, num_xposed_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"},
+        {1, 1, 1, 1}));
 
     scatter_indices_buf = get_buffer("scatter_indices_buf");
     scatter_indices_buf->register_producer(unique_name);
@@ -65,8 +67,8 @@ testXpose::testXpose(Config& config, const std::string& unique_name,
                     num_polarizations * num_dishes * sizeof(int32_t));
     // TODO: this is not quite correct. Really if going to cylinder order
     // the array is {4,2,256} {"C", "P", "D"}
-    scatter_indices_buf->allocate_ndarray_frame_desc(kotekan::int32, "scatter_indices",
-                                                     {num_polarizations, num_dishes}, {"P", "D"});
+    scatter_indices_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"}, {1, 1}));
 
     // Register as producer for all xpose2048 input buffers
     json bufs = config.get_value(unique_name, "out_bufs");
@@ -74,9 +76,10 @@ testXpose::testXpose(Config& config, const std::string& unique_name,
         Buffer* buf = buffer_container.get_buffer(it.value().get<std::string>());
         out_bufs.push_back(buf);
         buf->register_producer(unique_name);
-        buf->allocate_ndarray_frame_desc(
+        buf->require_frame_desc(kotekan::GenericNDArray::describe(
             kotekan::int4x2_swapped_withoffset, "E",
-            {num_frequencies, num_times, num_polarizations * num_dishes}, {"F", "T", "E"});
+            {num_frequencies, num_times, num_polarizations * num_dishes}, {"F", "T", "E"},
+            {1, 1, 1}));
         if (buf->frame_size
             != num_polarizations * num_dishes * num_times * num_frequencies * sizeof(uint8_t))
             FATAL_ERROR("Input samples bufferer {:s} has unexpected size {:d} instead of {:d}",
@@ -119,8 +122,10 @@ void testXpose::main_thread() {
     scatter_indices_buf->allocate_new_metadata_object(scatter_indices_id);
     auto scatter_indices_meta = get_chord_metadata(scatter_indices_buf, scatter_indices_id);
     scatter_indices_meta->set_fpga_seq_num(0);
-    scatter_indices_meta->set_from_frame_desc(scatter_indices_buf->get_ndarray_frame_desc());
-    scatter_indices_meta->check_frame_desc(scatter_indices_buf->get_ndarray_frame_desc());
+    scatter_indices_meta->set_from_frame_desc(
+        scatter_indices_buf->get_frame_desc<kotekan::GenericNDArray>());
+    scatter_indices_meta->check_frame_desc(
+        scatter_indices_buf->get_frame_desc<kotekan::GenericNDArray>());
     scatter_indices_buf->mark_frame_full(unique_name, scatter_indices_id);
 
     // for each time
@@ -188,8 +193,10 @@ void testXpose::main_thread() {
             std::vector<int> coarse_freq(num_frequencies);
             std::iota(coarse_freq.begin(), coarse_freq.end(), buf_num * num_frequencies);
             out_meta->set_coarse_freq(coarse_freq);
-            out_meta->set_from_frame_desc(out_bufs.at(buf_num)->get_ndarray_frame_desc());
-            out_meta->check_frame_desc(out_bufs.at(buf_num)->get_ndarray_frame_desc());
+            out_meta->set_from_frame_desc(
+                out_bufs.at(buf_num)->get_frame_desc<kotekan::GenericNDArray>());
+            out_meta->check_frame_desc(
+                out_bufs.at(buf_num)->get_frame_desc<kotekan::GenericNDArray>());
             out_bufs.at(buf_num)->mark_frame_full(unique_name, out_id);
         }
 
@@ -202,8 +209,10 @@ void testXpose::main_thread() {
         std::vector<int> coarse_freq(num_xposed_frequencies);
         std::iota(coarse_freq.begin(), coarse_freq.end(), 0);
         out_xposed_meta->set_coarse_freq(coarse_freq);
-        out_xposed_meta->set_from_frame_desc(out_xposed_buf->get_ndarray_frame_desc());
-        out_xposed_meta->check_frame_desc(out_xposed_buf->get_ndarray_frame_desc());
+        out_xposed_meta->set_from_frame_desc(
+            out_xposed_buf->get_frame_desc<kotekan::GenericNDArray>());
+        out_xposed_meta->check_frame_desc(
+            out_xposed_buf->get_frame_desc<kotekan::GenericNDArray>());
         out_xposed_buf->mark_frame_full(unique_name, out_xposed_id);
 
         out_xposed_id += 1;

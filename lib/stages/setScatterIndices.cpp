@@ -1,16 +1,22 @@
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp" // for Config
+#include "NDArray.hpp"
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include <cassert>
-#include <cstdint>
-#include <string>
-#include <unistd.h>
-#include <vector>
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <cassert>    // for assert
+#include <cstddef>    // for ptrdiff_t
+#include <cstdint>    // for int32_t
+#include <functional> // for function
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <string>     // for basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 class setScatterIndices : public kotekan::Stage {
     // Telescope layout
@@ -59,12 +65,13 @@ public:
                == sizeof(std::int32_t) * num_polarizations * num_dishes);
 
         // Set metadata
-        scatter_indices_buffer->allocate_ndarray_frame_desc<std::int32_t, 2>(
-            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"});
+        scatter_indices_buffer->require_frame_desc(kotekan::NDArray<std::int32_t, 2>::describe(
+            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"}, {1, 1}));
         scatter_indices_buffer->allocate_new_metadata_object(frame_id);
         const auto& scatter_indices_meta =
             get_chord_metadata(scatter_indices_buffer->get_metadata(frame_id));
-        scatter_indices_meta->set_from_frame_desc(scatter_indices_buffer->get_ndarray_frame_desc());
+        scatter_indices_meta->set_from_frame_desc(
+            scatter_indices_buffer->get_frame_desc<kotekan::GenericNDArray>());
         // scatter_indices_meta->set_fpga_seq_num(0);           // ???
         // scatter_indices_meta->set_time_downsampling_fpga(1); // ???
 

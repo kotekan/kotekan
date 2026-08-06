@@ -7,7 +7,6 @@
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt
 #include "json.hpp" // for json, basic_json, iter_impl
 
-#include <algorithm>  // for max
 #include <cstring>    // for memcpy
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr

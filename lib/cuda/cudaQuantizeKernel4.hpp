@@ -1,3 +1,5 @@
+// 4-bit FRB beam quantizer for CHORD
+
 #ifndef CUDA_QUANTIZE_KERNEL_4_HPP
 #define CUDA_QUANTIZE_KERNEL_4_HPP
 

@@ -10,6 +10,8 @@ if not runner.has_hdf5():
 
 parseReorderDefault_params = {
     "out_buf": "reorder_buffer",
+    "input_order": "CHIMECorrelator",
+    "output_order": "CHIMEBeamformer",
     "name": "scatter_indices",
 }
 
@@ -20,12 +22,16 @@ global_params = {
     "num_elements": 2048,
     "num_dishes": 1024,
     "num_polarizations": 2,
+    "num_cylinders": 4,
     # KotekanStageTester adds a "main_pool" section
     # Buffers
     "reorder_buffer": {
-        "kotekan_buffer": "standard",
+        "kotekan_buffer": "ndarray",
         "num_frames": 1,
-        "frame_size": 2048 * 4,
+        "value_type": "int32",
+        "quantity_name": "scatter_indices",
+        "extents": ["num_polarizations", "num_dishes"],
+        "dimnames": ["P", "D"],
         "metadata_pool": "main_pool",
     },
     # dump to disk to inspect manually
@@ -36,6 +42,7 @@ global_params = {
         "max_frames": "1",
         "file_name": "reorder_buffer",
         "in_buf": "reorder_buffer",
+        "input_order": "CHIMEBeamformer",
     },
     "input_reorder": None,  # set by Python code
 }
@@ -71,12 +78,12 @@ def scatter_indices(tmpdir_factory):
     )
     test.run()
 
-    yield h5py.File(fname, "r")["reorder_buffer"], adc_ids
+    yield h5py.File(fname, "r")["reorder_buffer"], station_ids, adc_ids
 
 
 def test_scatter_indices(scatter_indices):
 
-    reorder_buffer, adc_ids = scatter_indices
+    reorder_buffer, station_ids, adc_ids = scatter_indices
 
     # metadata and array description
     assert reorder_buffer.attrs["name"] == "scatter_indices"
@@ -86,10 +93,17 @@ def test_scatter_indices(scatter_indices):
     assert reorder_buffer.dtype == np.int32
 
     # payload
-    inverse_mapping = np.empty_like(reorder_buffer)
-    inverse_mapping[:] = -1
+    mapping = np.empty_like(reorder_buffer)
+    mapping[:] = -1
     for el in range(2048):
         adc_id = adc_ids[el]
-        inverse_mapping[adc_id // 1024][adc_id % 1024] = el
-    assert np.all(inverse_mapping != -1)
-    assert np.all(inverse_mapping == reorder_buffer)
+        station_id = station_ids[el]
+        # beamformer order from station_id (cylinder order index)
+        cylinder = station_id // 512
+        polarization = (station_id % 512) // 256
+        dish = (station_id % 512) % 256
+        mapping[adc_id // 1024][adc_id % 1024] = (
+            polarization * 1024 + cylinder * 256 + dish
+        )
+    assert np.all(mapping != -1)
+    assert np.all(mapping == reorder_buffer)

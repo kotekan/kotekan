@@ -9,6 +9,7 @@
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
+#include "Telescope.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
@@ -22,6 +23,7 @@
 #include <cstring>
 #include <fmt.hpp>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -76,13 +78,13 @@ private:
     static constexpr int cuda_dish_layout_M = 256;
     static constexpr int cuda_dish_layout_N = 4;
     static constexpr int cuda_upchannelization_factor = 128;
-    static constexpr int cuda_downsampling_factor = 512;
+    static constexpr int cuda_downsampling_factor = 128;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 1024;
     static constexpr int cuda_number_of_frequencies = 2048;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 512;
-    static constexpr int cuda_granularity_number_of_timesamples = 512;
+    static constexpr int cuda_granularity_number_of_timesamples = 128;
 
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
@@ -132,14 +134,17 @@ private:
         W_index_dishM,
         W_index_dishN,
         W_index_P,
-        W_index_F,
+        W_index_Fbar,
         W_rank,
     };
     static constexpr std::array<const char*, W_rank> W_labels = {
-        "C", "dishM", "dishN", "P", "F",
+        "C", "dishM", "dishN", "P", "Fbar",
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
         2, 256, 4, 2, 2048,
+    };
+    static constexpr std::array<std::ptrdiff_t, W_rank> W_dimscalings = {
+        1, 1, 1, 1, 1,
     };
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -149,15 +154,10 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, W_rank + 1> W_strides = {
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
-        W_calc_stride(W_index_P), W_calc_stride(W_index_F),     W_calc_stride(W_rank),
+        W_calc_stride(W_index_P), W_calc_stride(W_index_Fbar),  W_calc_stride(W_rank),
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::W == args::I
-                      ? true
-                      : W_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -181,6 +181,12 @@ private:
         2048,
         512,
     };
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_dimscalings = {
+        1,
+        1,
+        1,
+        128,
+    };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -195,12 +201,6 @@ private:
     static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
     static constexpr std::ptrdiff_t Ebar_length_in_bytes =
         type_total_bytes(Ebar_type) * Ebar_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::Ebar == args::I
-                      ? true
-                      : Ebar_length_in_bytes
-                            <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // I: frb_beamgrid_name
     static constexpr const char* I_quantity = "I";
@@ -222,7 +222,13 @@ private:
         512,
         8,
         2048,
-        4,
+        80,
+    };
+    static constexpr std::array<std::ptrdiff_t, I_rank> I_dimscalings = {
+        1,
+        1,
+        1,
+        16384,
     };
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -236,11 +242,6 @@ private:
     };
     static constexpr std::ptrdiff_t I_length = I_strides[I_rank];
     static constexpr std::ptrdiff_t I_length_in_bytes = type_total_bytes(I_type) * I_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::I == args::I
-                      ? true
-                      : I_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -261,6 +262,11 @@ private:
         8,
         2048,
     };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
+    };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -276,12 +282,6 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::info == args::I
-                      ? true
-                      : info_length_in_bytes
-                            <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
@@ -322,11 +322,14 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
     I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels), *this,
-             buffer_type_t::do_once),
-    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
-    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+    W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels), reverse(W_dimscalings),
+             *this),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
+                reverse(Ebar_dimscalings), *this),
+    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), reverse(I_dimscalings),
+             *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     did_set_metadata(false) {
@@ -345,15 +348,16 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/CHIMEFRBBeamformer_chime_U128.ptx", {kernel_symbol},
                          opts, "CHIMEFRBBeamformer_chime_U128_");
-    }
+    });
 }
 
 cudaCHIMEFRBBeamformer_chime_U128::~cudaCHIMEFRBBeamformer_chime_U128() {}
@@ -471,10 +475,8 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-        assert(Ebar_meta->dish_index);
+        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_N);
+        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_M);
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();

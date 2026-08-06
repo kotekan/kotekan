@@ -14,7 +14,6 @@
 #include "fmt.hpp"  // for format, format_string
 #include "json.hpp" // for json
 
-#include <algorithm> // for max
 #include <cmath>     // for acos, cos
 #include <map>       // for map
 #include <mutex>     // for mutex

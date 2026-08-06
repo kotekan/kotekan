@@ -7,8 +7,7 @@
 
 #include "fmt.hpp" // for format, format_string
 
-#include <algorithm>   // for max
-#include <memory>      // for allocator, shared_ptr
+#include <memory>      // for shared_ptr
 #include <stdint.h>    // for uint8_t
 #include <sys/types.h> // for uint, size_t
 #include <tuple>       // for tuple, make_tuple

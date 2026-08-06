@@ -8,7 +8,6 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <functional> // for bind, function
 #include <pthread.h>  // for pthread_setaffinity_np

@@ -1,0 +1,15 @@
+# Python dependencies for the browser viewer (python/scripts/js_viewer).
+#
+# Kept separate from the core python/requirements.txt: the viewer is an
+# optional component and twisted/autobahn are not needed by the rest of
+# kotekan. Install into the interpreter you point VIEWER_PYTHON at:
+#     pip install -r requirements.txt
+#
+# livebeam_server.py:
+numpy
+autobahn
+twisted
+zope.interface
+
+# Only for the optional --ccera-pointing helper (ccera_rest.py):
+#   pip install tornado astropy

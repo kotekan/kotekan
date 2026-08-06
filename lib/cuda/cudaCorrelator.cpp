@@ -7,19 +7,19 @@
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for div_noremainder, mod
+#include "div.hpp"                 // for div_noremainder, mod, num_triangle_blocks
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/Correlator.hpp"      // for Correlator
 
-#include <algorithm>          // for max
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <array>              // for array
 #include <cassert>            // for assert
 #include <chordMetadata.hpp>  // for chordMetadata
 #include <cstddef>            // for ptrdiff_t
 #include <cstdint>            // for int32_t, int8_t, uint32_t
 #include <cuda_runtime_api.h> // for cudaGetLastError
-#include <fmt.hpp>            // for compile_string_to_view
 #include <functional>         // for function
 #include <memory>             // for shared_ptr, __shared_ptr_access
 #include <stdexcept>          // for runtime_error
@@ -30,6 +30,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::div_noremainder;
 using kotekan::mod;
+using kotekan::num_triangle_blocks;
 
 REGISTER_CUDA_COMMAND(cudaCorrelator);
 
@@ -49,22 +50,24 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
-            std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
+            std::array<std::string, 4>{"T", "F", "P", "D"},
+            std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this),
     rfi_RFImask(_rfi_RFImask_name, "RFImask",
                 std::array<std::ptrdiff_t, 3>{_buffer_depth * div_noremainder(_num_times, 8 * 128),
                                               _num_local_freq, 128},
-                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"},
+                std::array<std::ptrdiff_t, 3>{1024, 1, 8}, *this),
     n2k_correlation([&]() {
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
         const int blocksize = 16;
-        const int linear_num_blocks = (_num_elements + 1) / blocksize;
-        const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
+        const int triangle_num_blocks = num_triangle_blocks(_num_elements, blocksize);
         const std::array<std::ptrdiff_t, 6> n2k_lengths{
             num_subintegrations, _num_local_freq, triangle_num_blocks, blocksize, blocksize, 2};
         const std::array<std::string, 6> n2k_dimnames{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"};
+        const std::array<std::ptrdiff_t, 6> n2k_dimscalings{_sub_integration_ntime, 1, 16, 1, 1, 1};
         return NDArrayBuffer<std::int32_t, 6>(_n2k_correlation_name, "n2k_correlation", n2k_lengths,
-                                              n2k_dimnames, *this);
+                                              n2k_dimnames, n2k_dimscalings, *this);
     }()),
     n2correlator(_num_elements, _num_local_freq) {
     if (_num_times % _sub_integration_ntime)

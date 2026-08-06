@@ -11,12 +11,13 @@
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
 #include "visBuffer.hpp"         // for VisFrameView, VisField
-#include "visUtil.hpp"           // for modulo, current_time, rstack_ctype, frameID, prod_ctype
+#include "visUtil.hpp"           // for current_time, rstack_ctype, prod_ctype
 
-#include "fmt.hpp"      // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view, format
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, max, fill, equal
+#include <algorithm>  // for fill, equal, min
+#include <chrono>     // for milliseconds
 #include <complex>    // for complex, conj, norm
 #include <functional> // for function, bind, placeholders
 #include <future>     // for async, future
@@ -43,9 +44,9 @@ baselineCompression::baselineCompression(Config& config, const std::string& uniq
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&baselineCompression::main_thread, this)),
-    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")), frame_id_in(in_buf),
-    frame_id_out(out_buf), compression_residuals_metric(Metrics::instance().add_gauge(
-                               "kotekan_baselinecompression_residuals", unique_name, {"freq_id"})),
+    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")),
+    compression_residuals_metric(Metrics::instance().add_gauge(
+        "kotekan_baselinecompression_residuals", unique_name, {"freq_id"})),
     compression_time_seconds_metric(Metrics::instance().add_gauge(
         "kotekan_baselinecompression_time_seconds", unique_name, {"thread_id"})),
     compression_frame_counter(Metrics::instance().add_counter(
@@ -140,24 +141,27 @@ void baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
 
 void baselineCompression::compress_thread(uint32_t thread_id) {
 
-    int input_frame_id;
-    int output_frame_id;
-
-    // Get the current values of the shared frame IDs.
-    {
-        std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
-        output_frame_id = frame_id_out++;
-        input_frame_id = frame_id_in++;
-    }
-
-    // Wait for the input buffer to be filled with data
-    // in order to get dataset ID
-    if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
-        return;
-    }
-    auto input_frame = VisFrameView(in_buf, input_frame_id);
+    const uint32_t in_frames = in_buf->num_frames;
+    const uint32_t out_frames = out_buf->num_frames;
+    // Never let the claim cursor run more than a ring's worth ahead of the
+    // oldest uncommitted frame, so every in-flight frame maps to a distinct
+    // input and output slot.
+    const uint64_t window = std::min(in_frames, out_frames);
 
     while (!stop_thread) {
+
+        // Claim the next frame in order (bounded window).
+        uint64_t seq;
+        {
+            std::unique_lock<std::mutex> lock_frame_ids(m_frame_ids);
+            while (claim - commit >= window && !stop_thread)
+                frame_cv.wait_for(lock_frame_ids, std::chrono::milliseconds(100));
+            if (stop_thread)
+                break;
+            seq = claim++;
+        }
+        int input_frame_id = seq % in_frames;
+        int output_frame_id = seq % out_frames;
 
         // Wait for the input buffer to be filled with data
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
@@ -273,10 +277,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             normt += norm;
         }
 
-        // Mark the buffers and move on
-        out_buf->mark_frame_full(unique_name, output_frame_id);
-        in_buf->mark_frame_empty(unique_name, input_frame_id);
-
         // Calculate residuals (return zero if no data for this freq)
         float residual = (normt != 0.0) ? (vart / normt) : 0.0;
 
@@ -286,11 +286,20 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         compression_time_seconds_metric.labels({std::to_string(thread_id)}).set(elapsed);
         compression_frame_counter.labels({std::to_string(thread_id)}).inc();
 
-        // Get the current values of the shared frame IDs and increment them.
+        // Publish strictly in claim order: mark the output full and release the
+        // input only when it is this frame's turn, so the output stream stays in
+        // input order and a slot is never reused by two threads at once.
+        {
+            std::unique_lock<std::mutex> lock_frame_ids(m_frame_ids);
+            while (commit != seq && !stop_thread)
+                frame_cv.wait_for(lock_frame_ids, std::chrono::milliseconds(100));
+        }
+        out_buf->mark_frame_full(unique_name, output_frame_id);
+        in_buf->mark_frame_empty(unique_name, input_frame_id);
         {
             std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
-            output_frame_id = frame_id_out++;
-            input_frame_id = frame_id_in++;
+            commit++;
+            frame_cv.notify_all();
         }
 
         DEBUG("Compression time {:.4f}", elapsed);

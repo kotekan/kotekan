@@ -4,6 +4,8 @@
 #include "buffer.hpp"        // for Buffer
 #include "chordMetadata.hpp" // for get_chord_metadata, chordMetadata
 
+#include "fmt.hpp" // for format
+
 #include <functional>  // for bind, function
 #include <memory>      // for __shared_ptr_access, shared_ptr
 #include <stdexcept>   // for runtime_error

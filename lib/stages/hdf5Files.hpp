@@ -3,15 +3,16 @@
 
 #include "DataType.hpp" // for DataType, float16_t
 
-#include <array> // for array
-#include <highfive/highfive.hpp>
+#include <array>                         // for array
+#include <highfive/H5DataType.hpp>       // for AtomicType, DataType, H5T_NATIVE_FLOAT
+#include <highfive/bits/h5t_wrapper.hpp> // for h5t_copy, h5t_set_ebias, h5t_set_fields, h5t_se...
 
 namespace hdf5 {
 
 // The version number of the CHORD metadata format in HDF5 files.
 // This uses semver: A file with version X.Y can be read by software
 // that understands X.Z even when Y > Z.
-constexpr std::array<int, 2> chord_metadata_version{1, 0};
+constexpr std::array<int, 2> chord_metadata_version{2, 0};
 
 // Bitshuffle flags
 constexpr unsigned int H5Z_BLOSC = 32001;      // blosc filter id

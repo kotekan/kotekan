@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # verify_cuda_rfi_sktilde.yaml
@@ -5,18 +6,15 @@
 # Config to test the cuda RFI SKtilde kernel & wrapper
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
-cpu_affinity: [0,]
+cpu_affinity: [0]
 sizeof_float: 4
-sizeof_int: 4
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
@@ -36,11 +34,20 @@ rfi_downsampling_factor: 256
 # The other thresholds are also set wide, because their effect is multiplicative.
 # A mu range of [2, 80] and min_good_frac of 0.25 only gives 60% good SK, the
 # rest are 0'd.
-rfi_sk_rfimask_sigmas: 2000.0 
+rfi_sk_rfimask_sigmas: 2000.0
 rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
 rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
 rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
 rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
+
+updatable_config:
+    bad_inputs:
+        kotekan_update_endpoint: json
+        # yamlfix:off
+        bad_inputs: [3, 12, 46, 47, 48, 84, 99, 107, 120]
+        # yamlfix:on
+        start_time: 1535048997.
+        update_id: "initial_flags"
 
 # Pool
 main_pool:
@@ -50,45 +57,52 @@ main_pool:
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: num_elements
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_sktilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
 
 host_rfi_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 simulated_rfi_sk_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_float
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 simulated_rfi_sktilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
 
 simulated_rfi_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 
@@ -117,14 +131,11 @@ gen_rfi_s012:
     downsampling_factor: rfi_downsampling_factor
     num_frames: 2 * buffer_depth
 
-gen_bf_mask:
-    type: random8
-    kotekan_stage: testDataGen
+set_bf_mask:
+    kotekan_stage: bufferBadInputs
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
-    name: "bf_mask"
-    array_shape: [2, 64 ]
-    dim_name: ["P", "D" ]
-    num_frames: 1 
 
 run_send_rfi_s012:
     gpu_0:
@@ -135,12 +146,12 @@ run_send_rfi_s012:
         out_buffers:
             host_rfi_s012_ringbuffer_out: host_rfi_s012_ringbuffer
         commands:
-        - name: cudaCopyToRingbuffer
-          input_size: samples_per_data_set / rfi_downsampling_factor * num_local_freq * 3 * num_elements * sizeof_long
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_rfi_s012_buffer_in
-          signal_buf: host_rfi_s012_ringbuffer_out
-          gpu_mem_output: rfi_s012_buffer
+            - name: cudaCopyToRingbuffer
+              input_size: samples_per_data_set / rfi_downsampling_factor * num_local_freq * 3 * num_elements * sizeof_long
+              ring_buffer_size: buffer_depth * input_size
+              in_buf: host_rfi_s012_buffer_in
+              signal_buf: host_rfi_s012_ringbuffer_out
+              gpu_mem_output: rfi_s012_buffer
 
 run_rfi_sktilde:
     log_level: DEBUG
@@ -154,19 +165,19 @@ run_rfi_sktilde:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
             host_rfi_mask_ringbuffer: host_rfi_mask_ringbuffer
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
-        - name: cudaRFISKtilde
-          rfi_S012_name: rfi_s012
-          bf_mask_name: bf_mask
-          rfi_SKtilde_name: rfi_sktilde
-          rfi_RFImask_name: rfi_mask
-          num_times: samples_per_data_set
-          num_frequencies: num_local_freq
-          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+            - name: cudaInputData
+              do_once: false
+              in_buf: host_bf_mask_buffer
+              gpu_mem: bf_mask_buffer
+            - name: cudaSyncInput
+            - name: cudaRFISKtilde
+              rfi_S012_name: rfi_s012
+              bf_mask_name: bf_mask
+              rfi_SKtilde_name: rfi_sktilde
+              rfi_RFImask_name: rfi_mask
+              num_times: samples_per_data_set
+              num_frequencies: num_local_freq
+              rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 
 run_recv_rfi_sktilde:
     gpu_0:
@@ -177,12 +188,12 @@ run_recv_rfi_sktilde:
         out_buffers:
             host_rfi_sktilde_buffer_out: host_rfi_sktilde_buffer
         commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_sktilde_ringbuffer_in
-          gpu_mem_input: rfi_sktilde_buffer
-          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_rfi_sktilde_buffer_out
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_rfi_sktilde_ringbuffer_in
+              gpu_mem_input: rfi_sktilde_buffer
+              output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float
+              ring_buffer_size: buffer_depth * output_size
+              out_buf: host_rfi_sktilde_buffer_out
 
 run_recv_rfi_mask:
     gpu_0:
@@ -193,12 +204,12 @@ run_recv_rfi_mask:
         out_buffers:
             host_rfi_mask_buffer_out: host_rfi_mask_buffer
         commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_mask_ringbuffer_in
-          gpu_mem_input: rfi_mask_buffer
-          output_size: samples_per_data_set * num_local_freq / 8
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_rfi_mask_buffer_out
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_rfi_mask_ringbuffer_in
+              gpu_mem_input: rfi_mask_buffer
+              output_size: samples_per_data_set * num_local_freq / 8
+              ring_buffer_size: buffer_depth * output_size
+              out_buf: host_rfi_mask_buffer_out
 
 
 cpu_rfi_sktilde:
@@ -213,18 +224,19 @@ cpu_rfi_sktilde:
 
 
 check_rfi_sktilde_data:
-  kotekan_stage: testDataCheckFloat
-  first_buf: host_rfi_sktilde_buffer
-  second_buf: simulated_rfi_sktilde_buffer
-  max_num_errors_logged: 64
-  epsilon: 1.0e-6
-  num_frames_to_test: 2 * buffer_depth
-  check_metadata: True
+    kotekan_stage: testDataCheckFloat
+    first_buf: host_rfi_sktilde_buffer
+    second_buf: simulated_rfi_sktilde_buffer
+    max_num_errors_logged: 64
+    epsilon: 1.0e-6
+    num_frames_to_test: 2 * buffer_depth
+    check_metadata: true
 
 check_rfi_rfimask_data:
-  kotekan_stage: testDataCheckUchar
-  first_buf: host_rfi_mask_buffer
-  second_buf: simulated_rfi_mask_buffer
-  max_num_errors_logged: 64
-  num_frames_to_test: 2 * buffer_depth
-  check_metadata: True
+    kotekan_stage: testDataCheckUchar
+    first_buf: host_rfi_mask_buffer
+    second_buf: simulated_rfi_mask_buffer
+    max_num_errors_logged: 64
+    num_frames_to_test: 2 * buffer_depth
+    check_metadata: true
+log_config_usage: fatal_error

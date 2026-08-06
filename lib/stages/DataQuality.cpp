@@ -10,10 +10,10 @@
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, rstack_ctype, modulo
 
-#include "fmt.hpp"      // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view, format
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, equal, max
+#include <algorithm>  // for equal
 #include <cmath>      // for pow
 #include <functional> // for bind, function
 #include <set>        // for set
