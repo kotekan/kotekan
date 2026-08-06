@@ -364,7 +364,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
     return blocks, record_floats, n_elem
 
 
-def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
+def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
     """GNSS path B (--n2-dual): one GPU's cudaGnssInject + cudaCorrelatorDual process.
 
     Consumes the GPU voltage ring that run_send_voltage feeds (which --n2-dual keeps).
@@ -407,6 +407,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
     # control block = the same minus the corr array.
     ctl_bytes = (48 + 8 * 16 + 64 * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
     record_floats = 26 + n_live * 12
+    # frames are samples_per_data_set hops; the tracker splits them into records. Taken from
+    # the BASE config (production owns it), passed in rather than guessed.
+    n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
 
     blocks = {
         tiles_buf: {
@@ -495,6 +498,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
             "metadata_pool": "gnss_pool",
             "num_frames": args.buffer_depth,
             "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
+            # dump a path-B record frame over REST without a rawFileWrite (see the tap buffers)
+            "peek_hold": True,
         },
         # M5 CONSUMER: tiles + control -> the epl layout the SHIPPED assembler eats.
         f"{pre}n2assemble_tiles": {
@@ -522,9 +527,39 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
+        # PATH B'S OWN COMBINER. Gives the path-B record stream a REST endpoint
+        # (/gnssN_n2combine/get_status, /get_records) so path A and path B can be compared
+        # LIVE on the same node, same sky, same PRNs -- which is the M5 validation and stays
+        # useful afterwards. integration_length is scaled by n_rec because path B emits ONE
+        # record per frame where the tracker emits n_rec, so this keeps the same WALL-CLOCK
+        # deep window rather than the same record count.
+        f"{pre}n2cmb_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
+        },
+        f"{pre}n2combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "in_bufs": [n2rec_buf],
+            "out_buf": f"{pre}n2cmb_buf",
+            "n_prn": n_prn,
+            "n_elements": n_live,
+            "integration_length": max(4, args.integration_length // n_rec_per_frame),
+            "integration_mode": "rolling",
+            "deep_coherent": True,
+            "deep_rate_search": True,
+            "deep_rate_min_q": 10.0,
+            "phase_track": args.phase_track,
+            "fft_len": cfg["fengine"]["fft_length"],
+            "record_export": 128,
+            "phase_dump_prns": [],
+            "phase_dump_path": f"/tmp/gnss_n2phase_{node}_{gpu}.txt",
+            "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
+        },
         f"{pre}n2sink": (
             {"kotekan_stage": "rawFileWrite",
-             "in_buf": n2rec_buf,
+             "in_buf": f"{pre}n2cmb_buf",
              "base_dir": args.record_dir or rt["record_dir"],
              "file_name": f"{node}_gnss{gpu}_n2rec",
              "file_ext": "raw",
@@ -535,7 +570,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
              "cpu_affinity": [cores[(gpu + 7) % len(cores)]]}
             if args.n2_dump else
             {"kotekan_stage": "dropAllFrames",
-             "in_buf": n2rec_buf}),
+             "in_buf": f"{pre}n2cmb_buf"}),
     }
     return blocks
 
@@ -1212,7 +1247,8 @@ def main():
             freq_ids=[f for f, _ in pairs])
         if args.n2_dual:
             blocks.update(build_n2dual_branch(cfg, args.node, gpu, [i for _, i in pairs],
-                                              [f for f, _ in pairs], args))
+                                              [f for f, _ in pairs], args,
+                                              out.get("samples_per_data_set", 8192)))
         if args.combine_gpus and gpu != 0:
             # GPU 0's combiner consumed this GPU's rec_buf too, so its own combiner would be a
             # duplicate reader of the same stream -- two stages competing for one buffer, each
