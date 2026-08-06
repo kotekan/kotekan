@@ -136,12 +136,34 @@ honest MRC gain over the reference element is **~2.1×, NOT √32**. Some feeds 
 frame to frame against 2–12% typical. Not a bug in the pipeline; it bounds every sensitivity
 claim made with it.
 
-### A4. F-engine channel availability away from 1176.45 MHz — THE gate on new bands
-Every GNSS band is inside CHORD's first Nyquist zone (3.2 GS/s → 1600 MHz), so the code tables are
-not the constraint. The constraint is whether the F-engine will deliver comb channels at those
-bins, and how much aperture each band gets (today: 7 channels × 195.3 kHz = 1.37 MHz, 6.7% of the
-L5 lobe). **Answer this before choosing the second band.** Note 1176.45 MHz is simultaneously GPS
-L5, Galileo E5a and BeiDou B2a, so ~100 codes are reachable with no new channels at all.
+### A4. Band coverage — ANSWERED 2026-08-06, and it changes the plan
+The whole **300–1500 MHz** band is already distributed across the 8 test nodes. So coverage
+exists TODAY for everything except the L1-ish top:
+
+    GPS L5 / Gal E5a / BDS B2a   1176.45   ✓  (running)
+    GLONASS L3OC                 1202.03   ✓
+    Gal E5b / BDS B2b            1207.14   ✓
+    GPS L2 / L2C                 1227.60   ✓
+    GLONASS L2                   ~1246     ✓
+    BDS B3I                      1268.52   ✓
+    Gal E6                       1278.75   ✓
+    BDS B1I                      1561.10   ✗  above 1500
+    GPS L1 / Gal E1 / BDS B1C    1575.42   ✗  above 1500
+
+**⚠️ ASSUME NO PATTERN OR CONTINUITY in the frequency→node/GPU assignment.** A band's channels
+may land on arbitrary nodes and arbitrary GPUs, in arbitrary order. Consequences:
+
+* `chan_ids` must stay fully general — arbitrary, sparse, unsorted. This is why the merge kept
+  our constructor over the prototype's `(n_chan, chan_offset)`; a contiguous range cannot express
+  the assignment and silently builds every replica at the band centre (the original lock blocker).
+* A "band" is NOT a node-local object. The per-node covering set for a given signal has to be
+  DERIVED from the live assignment, not configured by hand or assumed contiguous — and a node may
+  hold channels from several bands at once, or none from a band it is nominally serving.
+* The fleet combine already spans nodes, so this is mostly a config-generation problem: the
+  generator needs the actual assignment as input.
+
+Open: where the authoritative frequency→node map comes from, and whether it is stable across
+F-engine restarts. That is the remaining question, not the coverage.
 
 ---
 
