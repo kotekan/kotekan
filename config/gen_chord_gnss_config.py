@@ -558,7 +558,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
         },
         f"{pre}n2combine": {
             "kotekan_stage": "GnssCoherentCombiner",
-            "in_bufs": [n2rec_buf],
+            # MIRROR PATH A's MERGE. With --combine-gpus the tracker's combiner takes BOTH
+            # GPUs' records (14 channels); a path-B combiner on one GPU's records (7) is not
+            # comparable -- it showed up as a clean factor-2 energy deficit that looked like a
+            # scale bug and was not one. Same in_bufs shape as gnssN_combine, so GPU 1's
+            # path-B combiner is dropped alongside the tracker's below.
+            "in_bufs": ([n2rec_buf, f"gnss{1 - gpu}_n2rec_buf"]
+                        if (args.combine_gpus and gpu == 0) else [n2rec_buf]),
             "out_buf": f"{pre}n2cmb_buf",
             "n_prn": n_prn,
             "n_elements": n_live,
@@ -1273,7 +1279,8 @@ def main():
             # seeing half the frames. Drop it and its record stage; the merged output is written
             # by gnss0_record. The BUFFER stays: gnss1_rec_buf is still produced, just consumed
             # by the other branch.
-            for k in (f"gnss{gpu}_combine", f"gnss{gpu}_record", f"gnss{gpu}_cmb_buf"):
+            for k in (f"gnss{gpu}_combine", f"gnss{gpu}_record", f"gnss{gpu}_cmb_buf",
+                      f"gnss{gpu}_n2combine", f"gnss{gpu}_n2cmb_buf", f"gnss{gpu}_n2sink"):
                 blocks.pop(k, None)
         out.update(blocks)
 
