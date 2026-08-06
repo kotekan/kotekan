@@ -1211,6 +1211,39 @@ n2skyab did that and reported 5-90x. Comparing the 32-element VECTORS removes k 
 as a bonus needs no correct seed: identical inputs must agree even on noise (PRN 2, stale seed
 cp=0, still gives 0.985).
 
+### 11.11 M5 DESIGN: the consumer, and why it needs the replica energy
+
+GOAL: path B produces a frame in the EXISTING epl layout (gnssGpuChain.hpp: FrameHdr +
+window_start[MAX_REC] + PrnCtl[MAX_REC][n_prn] + corr[jobs][chan][elem] + energy[jobs][chan]),
+so the SHIPPED GnssGpuRecordAssemble consumes it unchanged. The assembler is header-driven --
+it never reads hops_per_record -- which is what makes this a drop-in.
+
+THE SCALE, and it is not optional. Measured in the A/B (11.9): V = s*corr_A and
+M^2 = s^2*E_R, so V/M^2 = amplitude_A / s. The pack normalizes every lane to a CONSTANT
+energy (measured: M^2 diagonals agree within 1% across all PRNs), i.e. s ~ 1/sqrt(E_R), so
+V/M^2 carries a spurious sqrt(E_R) per (lane, channel). Feeding that to the assembler would
+WEIGHT THE CHANNEL COMBINE BY THE PFB RESPONSE instead of by SNR. The fix needs the true
+replica energy E_R, which launch_waveform already computes and the injector already has:
+
+    corr_out   = V                (the mixed tile, orientation: path A == V with conj_replica)
+    energy_out = M^2 / s          (then corr/energy = s*V/M^2 = amplitude_A exactly)
+
+SHAPE: cudaGnssInject writes the control block ITSELF -- FrameHdr, window_start, PrnCtl and the
+energy rows are all things it already knows (it builds the specs and gets the energy array back
+from launch_waveform). That is the same _ctl_stage pattern cudaGnssChordTrack uses. The consumer
+then only has to gather corr from the tiles. Division of labour:
+
+    cudaGnssInject      -> gnssN_n2ctl_buf   (hdr + winstart + PrnCtl + energy, ~10 kB/frame)
+    cudaCorrelatorDual  -> gnssN_n2tiles_buf (the mixed + M^2 tiles, 0.75 MB/frame)
+    GnssN2RecordAssemble (new host stage) -> epl-format frame -> the EXISTING assembler
+
+CADENCE: with sub_integration_ntime = 8192 (production shape, Keith's call) the N^2 emits ONE
+visibility per 41.94 ms frame, so path-B records are FRAME-LENGTH -- 4x the tracker's 2048-hop
+record. The replica is phase-continuous across the record boundaries inside a frame (each
+record's seed is propagated deterministically), so the frame-integrated tile is a coherent
+4-record sum, not a smear. n_rec = 1 in the emitted header. Downstream tolerance of the longer
+record is the open item to check first (combiner integration_length, the broker's revisit).
+
 ### 11.10 Two statistics that are BLIND on CHORD (do not reuse them)
 
 1. |P|/rms(E,L) per channel. Measured from the M^2 block: <E,P> = <P,L> = <E,L> = 0.97 at
