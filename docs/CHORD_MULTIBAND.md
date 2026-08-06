@@ -145,8 +145,15 @@ Clean, with one real finding.
    design bound exactly: CS100(PRN 1) sums to -8, predicted overlay-blind despread
    |sum|/100 = 0.080, measured 0.080018.
 2. [done -- §5] Hardcode audit.
-3. Config generator: `signals` list in `chord_gnss_node.yaml` → one tracker/inject branch
-   per signal on the shared comb; constellation-suffixed buffer names.
+3. [DONE 2026-08-06] Config generator `--extra-signal NAME:PRNS` (repeatable): one full
+   tracker chain per signal, tagged from the signal name (`gnss0_e5a_*`). Same-carrier
+   chains SHARE the primary's voltage tap (kotekan buffers are per-consumer); a new
+   carrier opens its own. No search feed for extra chains (§5). Per-chain core rotation --
+   without it all three chains landed their cudaProcess on one core. Verified: byte-
+   identical output on four nodes × four flag sets when no extra signal is given;
+   `--check-config` clean; `--dry-run` constructs every stage (an unknown signal FATALs
+   there, so the new banks really were built) and the residual no-producer list is
+   identical to the single-signal baseline.
 4. [DONE 2026-08-06] `scripts/gnss/e2e` closure per new signal: `--signal` flag added
    (tracker name; search primary derived by stripping `_NH`/`_CS`; overlay count from the
    code-length ratio, cross-checked against the bank). The `_CS` signals REFUSE the blind
@@ -155,8 +162,13 @@ Clean, with one real finding.
    shipped GnssCudaDespread on the 1,023,000-chip banks, noiseless AND at --noise 30
    --quantize (deep fold snr 24.3/8 rec, 12.5/4 rec). L5 regression unchanged: 2-node comb
    12.8 chips (the documented grating lobe), 8-node comb +0.373 chips.
-5. Broker: instance-per-constellation (airspy pattern) with dead-reckon seeding; the
-   Galileo/BeiDou ephemeris fetch already exists from the tri-constellation nights.
+5. [DONE 2026-08-06] Broker: `scripts/gnss/broker_up_extra.sh {e5a|b2a}`, one instance per
+   constellation beside the GPS one. NO broker code was needed -- every knob already
+   existed (`--constellation/--dr-constellation {G,E,C}`, `--long-code-segments/-epoch-s`,
+   `--nh-overlay-len`, empty `--detectors` = "purely model-primary ... the CHORD
+   configuration"), and `gnss_ephemeris.py` already applies BDT = GPST − 14 s. Verified
+   offline: both brokers start, fetch live BRDC (33 Galileo / 38 BeiDou-3 sats) and arm
+   BRDC cp seeding with 0 detectors. Two defects found and fixed on the way -- see §7.
 
 **Phase 1 -- F-engine back.** FIRST the two owed path-B measurements (freq map in situ,
 combiner coh_frac -- one `--n2-debug` run, §11.13 of gnss_gpu_search.md; do not let this
@@ -175,7 +187,33 @@ L3OC (overlapping comb) and B3I/E6 (overlapping pair).
 per-satellite carriers -- per-sat combs on a stride-16 grid is its own study). All
 L1-band signals: out of the science band, permanently.
 
-## 7. Costs and risks
+## 7. Defects found while building Phase 0
+
+Three, all latent, all of the same shape: a constant or a promise that was correct for the
+signal it was written for and silently wrong for the next one.
+
+1. **The long-code segment step was still L2C's.** `LC_EPOCH`/`LC_SEG` were parameterised
+   in an earlier pass, but the segment-search correction still multiplied by a hardcoded
+   `0.020` s and the search spiral still spanned ±37 of 75 segments. On any other signal a
+   correction of ±1 moved the anchor by 20 segments and the spiral searched 3.7× more space
+   than exists (L5 NH20: 1 ms segments, 20 of them). Dormant because the correction is 0
+   unless `--cl-autoseg` engages -- "a working launch latches 0 and is untouched". Now
+   derived from the two parameters; reproduces L2C's 20 ms / ±37 exactly.
+2. **The clock-prime log line promised a self-correction that cannot happen.** It said
+   "EMA refines from the first lock" unconditionally, but the solve draws its residuals
+   from `best`, which is filled *only* from `/get_detections`. In the model-primary
+   configuration (no detectors -- which is exactly what E5a/B2a run) the EMA never executes
+   and the primed constant stands for the whole run. The message now states which case it
+   is in. This one mattered: believing it would mean shipping a wrong receiver clock
+   indefinitely and reading the result as a bad instrumental delay.
+3. **Every extra chain landed its stages on the primary's cores** -- see §6 item 3.
+
+Consequence for operations: **the extra chains' receiver clock must be primed from the GPS
+broker** (`--dr-clock-chips`). It transfers exactly, because E5a/B2a share L5's carrier and
+therefore the same cable, F-engine pipeline and PFB group delay -- but it does NOT transfer
+across a retune (E5b) and does not survive an F-engine restart.
+
+## 8. Costs and risks
 
 - **Synthesis scales per PRN** and is the known limiter (docs/gnss_gpu_search.md §10) --
   multi-constellation multiplies PRN count, which is an argument for riding **path B**

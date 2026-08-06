@@ -2518,8 +2518,15 @@ def main(argv=None):
                     # but nothing tracks until something seeds it. The airspy node breaks that
                     # circle with its search stage; a GPS-disciplined F-engine breaks it with
                     # arithmetic instead, because the receiver clock offset is known a priori.
-                    # The live EMA below still refines this from the moment the first satellite
-                    # locks, so a wrong constant self-corrects rather than persisting.
+                    # The live EMA below refines this from the moment the first satellite locks
+                    # -- BUT ONLY IF THIS BROKER HAS DETECTORS. The solve takes its residuals
+                    # from `best`, which is filled exclusively from /get_detections, so with
+                    # --detectors empty (the model-primary configuration the multi-constellation
+                    # chains run: E5a/B2a have no blind acquisition at all, see
+                    # docs/CHORD_MULTIBAND.md) `offs` is always empty, the EMA never runs, and
+                    # the primed constant stands for the whole run. Say which case we are in:
+                    # "self-corrects" is a promise the detector-less configuration cannot keep,
+                    # and believing it would mean shipping a wrong clock indefinitely.
                     dr_state["clk"] = args.dr_clock_chips % float(args.code_length)
                     dr_state["clk_t"] = time.time()
                     if args.dr_clock_drift is not None:
@@ -2527,8 +2534,11 @@ def main(argv=None):
                         _log("dead-reckon: clock DRIFT primed %+.4f chips/s"
                              % dr_state["drift"])
                     _log("dead-reckon: receiver clock PRIMED %.2f chips = %.3f us (no search "
-                         "stage; EMA refines from the first lock)"
-                         % (dr_state["clk"], dr_state["clk"] / args.chip_rate_hz * 1e6))
+                         "stage; %s)"
+                         % (dr_state["clk"], dr_state["clk"] / args.chip_rate_hz * 1e6,
+                            "EMA refines from the first lock" if detectors else
+                            "NO detectors: this value is FIXED for the run -- prime it from a "
+                            "same-band broker that has one"))
                 _log("dead-reckon: BRDC cp seeding armed (%s, repin %.0f s%s)"
                      % (args.dr_constellation, args.dr_repin_s,
                         ", DRY RUN" if args.dr_dry_run else ""))
@@ -2557,7 +2567,16 @@ def main(argv=None):
     # discipline, verify + lockout, never averaged. A working launch latches 0 on the
     # first check and is untouched.
     cl_segsearch = {"corr": 0, "idx": 0, "latched": False, "t_step": 0.0}
-    _clseg_spiral = [0] + [v for n in range(1, 38) for v in (-n, n)]
+    # ONE SEGMENT of the long code, in seconds, and a spiral that covers the whole segment
+    # space. Both used to be L2C CL's (0.020 s; +-37 of 75 segments) even after LC_EPOCH/
+    # LC_SEG were parameterised -- the epoch became generic while the STEP stayed L2C's, so
+    # on any other signal a correction of +-1 moved the anchor by 20 segments and the spiral
+    # searched 3.7x more space than exists (L5 NH20: 1 ms segments, only 20 of them). Latent
+    # rather than harmless: corr is 0 unless --cl-autoseg actually engages, which is why a
+    # working launch never showed it. Derive both.
+    CL_SEG_S = float(args.long_code_epoch_s) / max(int(args.long_code_segments), 1)
+    _clseg_spiral = ([0] + [v for n in range(1, int(args.long_code_segments) // 2 + 1)
+                            for v in (-n, n)])[:max(int(args.long_code_segments), 1)]
     xband = resolve_prefix(args.xband_combiner, base) if args.xband_combiner else None
     _xb_resid = []   # rolling cross-band prediction residuals (Hz), shadow accumulation
     _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
@@ -5779,7 +5798,7 @@ def main(argv=None):
                 # LC_EPOCH/LC_SEG replaced the hardcoded 1.5 s / 75 segments so the CL assist
                 # is not L2C-CL-only. Defaults are 1.5/75, so this is a no-op on the prototype.
                 t_sv = (utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
-                        + cl_segsearch["corr"] * 0.020)
+                        + cl_segsearch["corr"] * CL_SEG_S)
                 cl_chips = (t_sv % LC_EPOCH) * args.chip_rate_hz
                 cp_cm = d["code_phase_chips"] % CODE_LEN
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
@@ -5876,7 +5895,7 @@ def main(argv=None):
                             _log("CL SEG-SEARCH LATCHED: correction %+d segment(s) "
                                  "(compensating a %+.0f ms utc0_sample0 anchor error); "
                                  "%d/%d strong sats green"
-                                 % (cl_segsearch["corr"], -cl_segsearch["corr"] * 20.0,
+                                 % (cl_segsearch["corr"], -cl_segsearch["corr"] * CL_SEG_S * 1e3,
                                     len(_green), len(_strong)))
                         elif (len(_strong) >= 2 and not _green
                               and _nowv - cl_segsearch["t_step"] > args.cl_autoseg_dwell):
