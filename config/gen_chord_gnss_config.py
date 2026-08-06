@@ -110,6 +110,12 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             "num_frames": args.buffer_depth,
             # [hop][chan][elem], one byte per complex sample
             "frame_size": f"samples_per_data_set * {n_chan} * {n_elem}",
+            # peek_hold: keep the newest full frame until the next lands, so
+            # /buffer/<name>/frame can dump the ACTUAL 4+4b bytes the tracker despreads.
+            # Costs one frame slot. Added 2026-08-06 while chasing a node that despread
+            # noise for every PRN with correct records and correct replicas -- the one
+            # thing there was no way to inspect was the data itself.
+            "peek_hold": True,
         },
         rec_buf: {
             "kotekan_buffer": "standard",

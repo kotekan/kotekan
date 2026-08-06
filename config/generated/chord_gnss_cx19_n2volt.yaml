@@ -1,5 +1,5 @@
-# GENERATED (bisection): plain GNSS + run_send_voltage ONLY, no path-B stages.
-# Isolates the restored 402 MB/frame voltage upload + GPU ring from path B's kernels.
+# GENERATED (bisection+diagnostic): plain GNSS + run_send_voltage ONLY, no path-B stages,
+# with peek_hold on the tap buffers so /buffer/gnss{0,1}_volt_buf/frame dumps real bytes.
 buffer_depth: 4
 config_tracker:
   enabled: true
@@ -316,6 +316,7 @@ gnss0_volt_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+  peek_hold: true
 gnss1_assemble:
   cpu_affinity:
   - 63
@@ -432,6 +433,7 @@ gnss1_volt_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+  peek_hold: true
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120
