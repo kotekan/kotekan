@@ -142,18 +142,31 @@ void GnssN2RecordAssemble::main_thread() {
                     const double rms = (e0 > 0.0) ? std::sqrt(e0 / (double)_hops_per_record) : 0.0;
                     const double s = (rms > 0.0) ? 7.0 / (3.0 * rms) : 0.0;
 
-                    // energy = M^2 / s  =>  corr/energy is the TRUE amplitude (see the header).
-                    oenergy[orow * n_chan + c] = (s > 0.0) ? m2 / s : 0.0;
+                    // ABSOLUTE UNITS, not just the right ratio. Emitting corr = V and
+                    // energy = M^2/s gives the correct AMPLITUDE (corr/energy) but leaves both
+                    // scaled by s -- measured 2026-08-06: path B's record energy came out
+                    // 0.0015 of path A's, a constant ~640x, which is exactly s. The combiner
+                    // uses energy as an ML combining weight, so it must be the PHYSICAL replica
+                    // energy. Divide the CORRELATION by s instead and emit E_R as-is; then both
+                    // fields match the tracker's units, not just their quotient.
+                    //
+                    // NB s comes from record 0 (the frozen frame-wide quantizer scale) while
+                    // the energy is THIS record's -- they are different rows on purpose.
+                    const double e_rec = ienergy[(size_t)(in0.job0 + t) * n_chan + c];
+                    oenergy[orow * n_chan + c] = e_rec;
+                    (void)m2;
 
                     for (int e = 0; e < _n_live; ++e) {
                         const int jhi = e >> 4, jlo = e & 15;
                         const int mix_k = (ihi - _na16) * _nlive16 + jhi;
                         const int32_t* tv =
                             slice + (size_t)mix_k * 512 + 32 * ilo + 2 * jlo;
-                        // Orientation: conj_replica ON => path A == V directly.
+                        // Orientation: conj_replica ON => path A == V directly. /s puts the
+                        // correlation in the tracker's absolute units (see the energy note).
                         const size_t oi = ((orow * n_chan + c) * (size_t)_n_live + e) * 2;
-                        ocorr[oi + 0] = (double)tv[0];
-                        ocorr[oi + 1] = (double)tv[1];
+                        const double inv_s = (s > 0.0) ? 1.0 / s : 0.0;
+                        ocorr[oi + 0] = (double)tv[0] * inv_s;
+                        ocorr[oi + 1] = (double)tv[1] * inv_s;
                     }
                 }
             }

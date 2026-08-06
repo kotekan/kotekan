@@ -341,7 +341,8 @@ gnss0_n2dual:
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss0_inject/get_trim
     voltage_name: voltage
-  - gnss_local_channels: *id002
+  - gnss_freq_map: true
+    gnss_local_channels: *id002
     gnss_tiles_name: gnss_tiles
     n2k_correlation_name: correlation
     name: cudaCorrelatorDual
@@ -602,7 +603,8 @@ gnss1_n2dual:
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss1_inject/get_trim
     voltage_name: voltage
-  - gnss_local_channels: *id004
+  - gnss_freq_map: true
+    gnss_local_channels: *id004
     gnss_tiles_name: gnss_tiles
     n2k_correlation_name: correlation
     name: cudaCorrelatorDual

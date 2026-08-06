@@ -475,6 +475,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  # Production runs rfi_first_stage_excision_enabled: false -- its correlator
                  # sees an all-good mask too, so this is behavior-identical, not approximate.
                  "rfi_all_pass": True,
+                 # FREQ MAP: compute the mixed + synthetic blocks over ONLY the comb (7 of 384).
+                 # Measured 2.90x -> 1.21x stock N^2 (scripts/gnss/n2timing), bitwise-verified
+                 # against the full launch (n2dualtest gate [6]). The AA block is NOT computed
+                 # in this mode, so the standard N^2 pass-through is unavailable -- fine here,
+                 # since this dev config drops run_n2k anyway.
+                 "gnss_freq_map": True,
                  "n2k_correlation_name": "correlation",
                  "gnss_tiles_name": "gnss_tiles",
                  "num_synth": num_synth,

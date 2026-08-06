@@ -34,12 +34,15 @@ REGISTER_CUDA_COMMAND(cudaCorrelatorDual);
 // the synthetic triangle. Must match the consumer's recomputation -- documented in the hpp.
 static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& chans,
                                               int num_elements, int num_synth,
-                                              int num_live_elements) {
+                                              int num_live_elements, bool compacted = false) {
+    // compacted: with a freq map the kernel writes slice k for chans[k], so the gather must
+    // index by k, not by the real channel number.
     std::vector<int2> sel;
     const int na16 = num_elements / 16;
     const int nt16 = (num_elements + num_synth) / 16;
     const int nlive16 = (num_live_elements + 15) / 16;
-    for (std::int32_t f : chans) {
+    for (size_t ci = 0; ci < chans.size(); ci++) {
+        const std::int32_t f = compacted ? (std::int32_t)ci : chans[ci];
         for (int ihi = na16; ihi < nt16; ihi++)
             for (int jhi = 0; jhi < nlive16; jhi++)
                 sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + jhi)});
@@ -71,7 +74,8 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
     _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name,
                                                                "gnss_local_channels")),
     _tile_sel(build_tile_selection(_gnss_local_channels, _num_elements, _num_synth,
-                                   _num_live_elements)),
+                                   _num_live_elements,
+                                   config.get_default<bool>(unique_name, "gnss_freq_map", false))),
     _rfi_all_pass(config.get_default<bool>(unique_name, "rfi_all_pass", false)),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
@@ -102,7 +106,23 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         return NDArrayBuffer<std::int32_t, 6>(_gnss_tiles_name, "gnss_n2_tiles", lengths, dimnames,
                                               dimscalings, *this);
     }()),
-    dual_correlator(_num_elements, _num_synth, _num_local_freq) {
+    dual_correlator(n2k_dual::DualCorrelatorParams(
+        _num_elements, _num_synth, _num_local_freq,
+        // FREQ-MAP MODE: compute the mixed + synthetic blocks over ONLY the GNSS comb. The
+        // antenna (AA) block is production's N^2, which this dev config does not consume, so
+        // restricting to MIXED|BB is what makes the map worth 2.90x -> 1.21x stock N^2
+        // (n2timing). With gnss_freq_map false the launch is the full triangle over every
+        // channel and the N^2 prefix stays available for the standard pipeline.
+        config.get_default<bool>(unique_name, "gnss_freq_map", false)
+            ? (n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB)
+            : n2k_dual::BLOCK_MASK_ALL,
+        config.get_default<bool>(unique_name, "gnss_freq_map", false)
+            ? std::vector<int>(config.get<std::vector<std::int32_t>>(unique_name,
+                                                                    "gnss_local_channels").begin(),
+                               config.get<std::vector<std::int32_t>>(unique_name,
+                                                                     "gnss_local_channels").end())
+            : std::vector<int>{})),
+    _freq_map_mode(config.get_default<bool>(unique_name, "gnss_freq_map", false)) {
     if (_num_times % _sub_integration_ntime)
         throw std::runtime_error(
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
@@ -268,7 +288,10 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
 
     // The extended triangle, per frame slot; never leaves the GPU.
     const auto& dp = dual_correlator.params;
-    const size_t vis_len = (size_t)num_subintegrations * dp.vmat_tstride * sizeof(std::int32_t);
+    // With a freq map the triangle is compacted to the comb, so vmat_tstride (nfreq-based)
+    // is not the per-subintegration stride any more.
+    const size_t vis_tstride = (size_t)dp.n_freq_out * dp.vmat_fstride;
+    const size_t vis_len = (size_t)num_subintegrations * vis_tstride * sizeof(std::int32_t);
     std::int32_t* const d_vis = (std::int32_t*)device.get_gpu_memory_array(
         unique_name + "_vis", pipestate.gpu_frame_id, _gpu_buffer_depth, vis_len);
 
@@ -283,8 +306,10 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
                            _sub_integration_ntime, stream, false);
 
     // SPLIT 1: the pure-antenna block is a verbatim prefix of each (t,f) slice -- one strided
-    // copy into the standard-layout output. Width = the antenna triangle, src pitch = the
-    // extended one.
+    // copy into the standard-layout output. SKIPPED in freq-map mode: the AA block is not
+    // computed there (MIXED|BB only) and the surviving channels are the comb, not all of them,
+    // so there is no standard N^2 to pass through.
+    if (!_freq_map_mode) {
     const size_t width_bytes =
         (size_t)num_triangle_blocks(_num_elements, 16) * 512 * sizeof(std::int32_t);
     const size_t src_pitch = (size_t)dp.vmat_fstride * sizeof(std::int32_t);
@@ -292,11 +317,12 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
                                        src_pitch, width_bytes,
                                        (size_t)num_subintegrations * _num_local_freq,
                                        cudaMemcpyDeviceToDevice, stream));
+    }
 
     // SPLIT 2: the GNSS tiles of the comb channels only.
     CHECK_CUDA_ERROR(gnss_cuda::launch_gather_gnss_tiles(
         d_vis, d_sel, (int)_tile_sel.size(), num_subintegrations, dp.vmat_fstride,
-        dp.vmat_tstride, gnss_tiles.get_ndarray().data(), stream));
+        (int)vis_tstride, gnss_tiles.get_ndarray().data(), stream));
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 

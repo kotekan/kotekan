@@ -111,6 +111,12 @@ private:
 
     /// Cuda kernel wrapper object (the two-input clone; n2k itself is untouched).
     n2k_dual::DualCorrelator dual_correlator;
+
+    /// gnss_freq_map: compute MIXED|BB over ONLY the comb channels. vis_out is then compacted
+    /// to those channels and the AA (antenna) block is NOT computed -- so the standard N^2
+    /// pass-through is unavailable in this mode. 2.90x -> 1.21x stock N^2 (n2timing).
+    /// Declared AFTER dual_correlator: it is initialized after it (-Werror=reorder).
+    const bool _freq_map_mode;
 };
 
 namespace gnss_cuda {
