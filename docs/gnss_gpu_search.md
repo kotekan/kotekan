@@ -1069,10 +1069,47 @@ Gates (all on cx19 A40):
   `gnssRecord.hpp` and on `launch_waveform`'s wave param. 10.6b-style sorted-hop storage is
   disallowed.
 
-Remaining: **M4** -- `cudaCorrelatorDual` kotekan wrapper (voltage ring + synth ring input,
-GPU-side split: N^2 prefix -> standard `correlation_buffer` unchanged, mixed+M^2 gather for the
-7 GNSS channels -> small host buffer), the `cudaGnssInject` producer (frame-cadence seeds ->
-`launch_waveform` n_hops=8192 -> pack_quantize44 into the synth ring), config wiring on cx19,
-SK/RFI invariance + N^2 on/off invariance checks. **M5** -- consumer stage -> frame-length
-records -> assembler/broker (survey hops_per_record assumptions first).
+### 11.7 M4 BUILT AND SMOKE-PROVEN ON cx19 (2026-08-06, fake-input; live start pending)
+
+The kotekan integration exists and ran end to end on cx19's GPUs at production shape:
+
+* `lib/cuda/cudaCorrelatorDual.{hpp,cpp}` -- clone-wrapper (cudaCorrelator untouched): voltage
+  ring + a per-frame-slot synth array (named gpu mem `gnss_synth`, 0x88-filled at
+  construction, NO ring semantics -- see below), n2k_dual launch, GPU-side split: N^2 prefix
+  -> standard `correlation_buffer` via one cudaMemcpy2DAsync (downstream shape-identical),
+  mixed+M^2 tiles of the comb channels -> ~0.75 MB `gnss_tiles` output
+  (`cudaGnssN2Gather.cu`); the 107 MB extended triangle never leaves the GPU.
+  `rfi_all_pass: true` = constant all-ones mask, behavior-identical to production (which runs
+  first-stage excision OFF).
+* `lib/stages/gnss/cudaGnssInject.{hpp,cpp}` -- ordered BEFORE the correlator in the same
+  cudaProcess/stream; that ordering is the whole synchronization story. Consumes the voltage
+  ring for its TIME REFERENCE only (FATALs if `time_downsampling_fpga != 1` rather than
+  inject at a wrong code phase). Seeds via the tracker's own state class
+  (`cudaGnssInjectState`, endpoints `/gnssN_inject/set_seeds`; `snapshot_seeds` factored so
+  TTL semantics cannot fork; `propagate_seed` already shared). Synthesis per record (4x2048,
+  `GnssCudaDespread::enqueue_waveform`) -- replicas bit-identical to the tracker's for the
+  same seeds. Pack: `launch_pack44`, lane = 4*prn_slot + E/P/L/P_HEAD (STABLE identity),
+  head lane zeroed at m_head, scale 7/(3*rms) from the energy rows, clamp [-7,7]; consumers
+  normalize by the M^2 diagonal so the scale cancels.
+* Config: generator `--n2-dual` (+`--n2-dump`) -- keeps `run_send_voltage`, adds the per-GPU
+  `gnssN_n2dual` process; `config/generated/chord_gnss_cx19_n2dual.yaml` written (tracker
+  blocks verified identical to the live config). Broker: cx19's `gnss{0..1}_inject` added to
+  `broker_up.sh`'s tracker list -- same payload, zero broker code change.
+
+**Fake-input smoke (testDataGen at [8192][384][2][64], isolated: REST 12055, no aggregator
+sends, records to scratch):** constructed and ran on BOTH GPUs. Pre-seed the gathered tiles
+were ALL-ZERO (0x88 background + addressing clean); after POSTing a PRN-3 seed to
+`/gnss0_inject/set_seeds`: lanes 0-3 live in the mixed tile, BB diagonal = lane energies
+(purely real, as V_ii must be), P_HEAD at 55% of P (the per-record head fraction over 4
+records), unseeded lanes exactly zero, frame exactly as sparse as it should be.
+
+Remaining for M4 sign-off (needs a sudo node start): live run on sky under
+`chord_gnss_cx19_n2dual.yaml` (`GNSS_CFG=... node_up.sh cx19`), broker restart with the
+inject endpoints, then the A/B: mixed tiles vs the path-A tracker's EPL on the same seeds
+(conjugate + normalize by M^2 diag; run with `code_trim: false` on the tracker -- the
+injector applies no trim), and the sky-sign check of the conjugation orientation.
+Startup datapoint: tracker + injector each build a replica bank -- construction is ~2x
+(minutes at 32 PRNs); consider sharing the bank between the two states later.
+**M5** -- consumer stage -> frame-length records -> assembler/broker (survey
+hops_per_record assumptions first).
 
