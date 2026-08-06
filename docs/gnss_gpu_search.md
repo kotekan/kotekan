@@ -892,10 +892,23 @@ interleave cut requests and sectors 33% for an 8% gain. fp16 cut sectors only 9%
 Load sectors do not order the results; they anti-correlate with them.
 
 **DRAM bytes do.** fp32 moves 245 MB in 536 us = 457 GB/s, ~66% of the A40's 696 GB/s. fp16 wins
-because it halves the TABLE, not because it coalesces. And hop-sorting loses because it scatters
-the STORES -- `wave[...][mh]` with a permuted `mh` puts 32 lanes at 32 offsets, 7.9 -> 31.4
-sectors per store request -- which drives DRAM from 245 to 300 MB. It bought L1 coalescing that
-was never the constraint and paid for it in DRAM write traffic that is.
+because it halves the TABLE, not because it coalesces.
+
+**Where the stores are** (asked, and the count identifies itself): they are the `wave` writes in
+the kernel body, plus the energy rows. At 11 jobs x 7 chan x 2048 hops,
+`3*11*7*2048 = 473,088` wave stores / 32 lanes = 14,784 warp requests, plus `4*11*7 = 308` energy
+requests = **15,092, exactly the measured ST req**. Nothing else stores, and the Phi tables are
+built on the host and uploaded OUTSIDE the timed region. Hop-sorting changes no output structure
+-- every element lands at the same address and the contents are bit-identical -- it changes which
+LANE writes which element, so a warp's 32 stores go from contiguous (256 B = 8 sectors) to 32
+scattered offsets in the 2048-element row (31.4 sectors).
+
+⚠️ **PARTIALLY ATTRIBUTED, do not quote this as settled.** The scattered stores are real but do
+NOT account for the whole DRAM increase: 473,396 - 118,580 = 354,816 extra store sectors is ~11 MB,
+or ~23 MB if every one costs a write-allocate read-modify-write, against an observed 245 -> 300 MB
+(+55 MB). And hop-sorting has FEWER load sectors (113M vs 298M) while moving MORE DRAM, which
+means the reordering hurt reuse somewhere between L1 and DRAM. The missing ~30 MB is unexplained;
+`lts__t_sector_hit_rate` on the two variants is the next counter to pull.
 
 **So the lever is DRAM FOOTPRINT.** fp16 (1.27-1.37x) is right for the right reason. The
 interleave changes no bytes and duly did nothing. Anything that shrinks the resident table helps;
