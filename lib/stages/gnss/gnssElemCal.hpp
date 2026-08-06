@@ -132,6 +132,36 @@ public:
         return A * std::polar(1.0, -std::arg(B)) / _wsum;
     }
 
+    /// The integrating half's genie: A derotated by the TRUE phase instead of by arg(B).
+    ///
+    /// ⚠️ THIS, not the full-aperture genie, is the bound @ref combine_split must not beat. The
+    /// split integrates ONE HALF and only references the other, so its ceiling is that half's
+    /// SNR -- and genie_full/sqrt(2) equals it only if the two halves are balanced in SNR^2,
+    /// which an array with a 14 dB gain spread is not. Comparing against the full genie is what
+    /// made the split look like it beat perfect knowledge.
+    cd combine_half_genie(const cd* g, double true_phase) const {
+        if (_wsum <= 0.0 || _split_ok == 0)
+            return cd(0.0, 0.0);
+        cd A(0.0, 0.0);
+        for (int e = 0; e < _n; ++e)
+            if (!_half[(size_t)e])
+                A += std::conj(_w[(size_t)e]) * g[(size_t)e];
+        return A * std::polar(1.0, -true_phase) / _wsum;
+    }
+
+    /// Fraction of the array's total MRC weight held by the INTEGRATING half (A). 0.5 = balanced.
+    /// @p square selects |w|^2 (which is what sets each half's SNR^2) rather than |w|.
+    double half_weight_frac(bool square = true) const {
+        double a = 0.0, t = 0.0;
+        for (int e = 0; e < _n; ++e) {
+            const double m = square ? std::norm(_w[(size_t)e]) : std::abs(_w[(size_t)e]);
+            t += m;
+            if (!_half[(size_t)e])
+                a += m;
+        }
+        return t > 0.0 ? a / t : 0.0;
+    }
+
     /// Per-element gate diagnostics (offline tools; see the gate in rebuild_weights). @p rho2 is
     /// the squared correlation of this element with its leave-one-out reference, @p thresh the
     /// significance bar it must clear, @p mag the resulting MRC weight magnitude (0 = gated out).

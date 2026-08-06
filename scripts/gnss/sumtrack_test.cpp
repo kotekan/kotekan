@@ -21,6 +21,7 @@
 #include <complex>
 #include <cstdio>
 #include <random>
+#include <algorithm>
 #include <vector>
 
 using cd = std::complex<double>;
@@ -173,10 +174,10 @@ int main() {
     printf("%22s %9s %9s %9s %9s %9s\n", "case", "straight", "temporal", "split-ap", "genie",
            "thermal");
     auto run_sky = [&](double sky_sig, int n_osc, double osc_excess, double s_elem,
-                       const char* label) {
+                       const char* label, bool diag_on = false, int seed = 4242) {
         const int NE2 = 32, NLIVE = 8, NREC2 = 128 + 20000; // 2000 records of cal warm-up
         const double DT2 = 0.0105;
-        std::mt19937 rng(4242);
+        std::mt19937 rng((unsigned)seed);
         std::normal_distribution<double> g(0.0, 1.0);
         std::uniform_real_distribution<double> ua(0.4, 1.4), up(0.0, 2.0 * M_PI);
         std::vector<cd> gains((size_t)NE2, cd(0.0, 0.0));
@@ -188,6 +189,8 @@ int main() {
         gnss::ElemCal cal(NE2, 0, 5.0, 0.02);
         std::vector<cd> gp((size_t)NE2);
         std::vector<cd> raw, sky, genie;
+        std::vector<std::vector<cd>> hist; // per-record element vectors, for the shuffled null
+        std::vector<cd> halfg;             // the INTEGRATING half's genie -- the real bound
         for (int k = 0; k < NREC2; ++k) {
             const double phi_sky = sky_sig * g(rng); // WHITE in time, common to all elements
             const cd sig = s_elem * std::polar(1.0, phi_sky);
@@ -199,6 +202,8 @@ int main() {
                 raw.push_back(h);
                 sky.push_back(cal.combine_split(gp.data()));
                 genie.push_back(h * std::polar(1.0, -phi_sky));
+                hist.push_back(std::vector<cd>(gp.begin(), gp.end()));
+                halfg.push_back(cal.combine_half_genie(gp.data(), phi_sky));
             }
             cal.update(gp.data(), DT2);
         }
@@ -206,11 +211,62 @@ int main() {
             printf("  %-20s (cal never warmed)\n", label);
             return;
         }
+        // SHUFFLED NULL (docs/gnss_phase_estimator_traps.md): re-run combine_split on records
+        // whose per-element histories have been permuted INDEPENDENTLY per element. Amplitudes
+        // and gains are untouched; the per-record COMMON phase -- the only thing there is to
+        // recover -- is destroyed. A sound estimator must collapse to the incoherent floor here.
+        // Shuffle, never roll: a roll leaves a shared ramp intact.
+        std::vector<cd> nullv;
+        {
+            std::mt19937 sh(999);
+            const int NR = (int)hist.size();
+            std::vector<std::vector<int>> perm((size_t)NE2, std::vector<int>((size_t)NR));
+            for (int e = 0; e < NE2; ++e) {
+                for (int k = 0; k < NR; ++k) perm[(size_t)e][(size_t)k] = k;
+                std::shuffle(perm[(size_t)e].begin(), perm[(size_t)e].end(), sh);
+            }
+            std::vector<cd> tmp((size_t)NE2);
+            for (int k = 0; k < NR; ++k) {
+                for (int e = 0; e < NE2; ++e)
+                    tmp[(size_t)e] = hist[(size_t)perm[(size_t)e][(size_t)k]][(size_t)e];
+                nullv.push_back(cal.combine_split(tmp.data()));
+            }
+        }
         std::vector<cd> tr;
         gnss::phase_track_loo(raw, 2, tr);
         printf("%22s %9.1f %9.1f %9.1f %9.1f %9s\n", label, gnss::coherent_sum(raw).snr,
                gnss::coherent_sum(tr).snr, gnss::coherent_sum(sky).snr,
                gnss::coherent_sum(genie).snr, "--");
+        printf("      half-genie %6.1f (THE bound) | split/half %.3f | null %4.1f | "
+               "wfrac(A) |w| %.3f |w|^2 %.3f\n",
+               gnss::coherent_sum(halfg).snr,
+               gnss::coherent_sum(sky).snr / gnss::coherent_sum(halfg).snr,
+               gnss::coherent_sum(nullv).snr, cal.half_weight_frac(false),
+               cal.half_weight_frac(true));
+        if (diag_on) {
+            // A TRUE genie leaves every record on a common phase. If it does not, it is not a
+            // genie -- and then the "you may not beat it" rule is being applied to the wrong bar.
+            auto spread = [](const std::vector<cd>& v, const char* nm) {
+                cd M(0.0, 0.0);
+                for (const cd& x : v) M += x;
+                const double a0 = std::arg(M);
+                double s1 = 0.0, s2 = 0.0, amp = 0.0;
+                for (const cd& x : v) {
+                    double d = std::arg(x) - a0;
+                    while (d > M_PI) d -= 2.0 * M_PI;
+                    while (d < -M_PI) d += 2.0 * M_PI;
+                    s1 += d; s2 += d * d; amp += std::abs(x);
+                }
+                const double n = (double)v.size();
+                printf("      %-6s |mean|=%9.3f  <|x|>=%9.3f  arg spread=%6.3f rad  bias=%+6.3f\n",
+                       nm, std::abs(M) / n, amp / n, std::sqrt(s2 / n - (s1 / n) * (s1 / n)),
+                       s1 / n);
+            };
+            spread(raw, "raw"); spread(sky, "split"); spread(genie, "genie");
+            double rho2, th, mag; int live = 0;
+            for (int e = 0; e < NE2; ++e) { cal.diag(e, rho2, th, mag); if (mag > 0.0) ++live; }
+            printf("      cal: %d live elements\n", live);
+        }
     };
     // s_elem sweep: the split-aperture correction only helps when the REFERENCE half has a
     // per-record SNR comfortably above 1, since arg(B) is the phase estimate. Live CHORD runs at
@@ -221,7 +277,17 @@ int main() {
     printf("%22s %9s %9s %9s %9s\n", "-- live CHORD level --", "", "", "", "");
     run_sky(0.0,  0, 1.0, 3.00, "live, no sky:");
     run_sky(0.75, 0, 1.0, 3.00, "live, 0.75 rad:");
-    run_sky(0.75, 2, 3.0, 3.00, "live, 0.75 + 2 osc:");
-    run_sky(1.20, 2, 3.0, 3.00, "live, 1.20 + 2 osc:");
+    run_sky(0.75, 2, 3.0, 3.00, "live, 0.75 + 2 osc:", true);
+    run_sky(1.20, 2, 3.0, 3.00, "live, 1.20 + 2 osc:", true);
+    // Seed sweep: the array GAIN realisation changes with the seed, and it moves the genie by a
+    // factor of 3 -- far more than anything being compared. One seed cannot support a conclusion
+    // here, which is how "the genie moves with the injected amplitude" got recorded from seed
+    // 4242 alone (7 of 8 other seeds show <7% between 0.75 and 1.20 rad).
+    printf("%22s\n", "-- seed sweep: split vs its OWN bound --");
+    for (int sd = 1; sd <= 8; ++sd) {
+        char lb[64];
+        snprintf(lb, sizeof lb, "1.20 seed %d:", sd);
+        run_sky(1.20, 2, 3.0, 3.00, lb, false, sd);
+    }
     return 0;
 }

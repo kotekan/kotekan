@@ -17,15 +17,47 @@ Last reconciled: **2026-08-06 02:0x UTC**, against session tasks #6–#20.
 
 ## 🔴 Blocking
 
-### B1. Split-aperture genie anomaly — blocks `sky_deep`
-On synthetic data at 1.20 rad injected phase the split rung reads **28.4 against a GENIE of
-20.5**, and the genie itself moves with the injected amplitude (41.5 at 0.75 rad) when it should
-be invariant. An estimator that beats perfect knowledge is not understood. Suspect the harness
-first: the genie's dependence on `sky_sig` is the part that makes no sense, and `sumtrack_test`
-part C shares its RNG stream between the phase draw and the noise draws. **Do NOT enable
-`sky_deep` until this is closed.** Everything else about the split aperture is verified — at the
-live operating point it takes 13.7 → 30.0 against a genie of 41.5, and the no-sky control
-confirms the honest price is exactly √2 (40.8 → 28.2). Detail: `CHORD_GNSS_STATE.md` §8.22.3.
+### B1. Split-aperture "beats the genie" — DIAGNOSED 2026-08-06. Not an estimator fault.
+**The estimator is sound. The bound it was judged against was the wrong one, and the split itself
+is degenerate.** Three separate findings, all measured (`scripts/gnss/sumtrack_test`):
+
+**1. The genie does NOT move with the injected amplitude.** Across 8 seeds, genie at 0.75 rad vs
+1.20 rad: 72.7/70.7, 75.3/71.8, 52.1/54.6, 42.0/39.3, 55.9/56.9, 23.0/21.6, 38.8/39.8 — under 7%
+in seven of eight. Only seed 4242 (41.7 → 20.5) shows the effect the original entry described,
+and **that is the seed the entry was written from**. A phase common to all elements factors out of
+a linear combine, so invariance is what theory predicts; the harness just has enormous
+realisation variance (the genie ranges 19.7–71.8 across seeds, because each seed draws a new array
+GAIN realisation). One seed cannot support a conclusion here.
+
+**2. THE SPLIT IS NOT SPLITTING.** `rebuild_split` balances the two halves by `Σ|w|`, but each
+half's SNR² goes as `Σ|w|²`. At the live operating point one element carries ~5× the summed
+weight of all the others, so the greedy largest-first assignment cannot balance even `Σ|w|`
+(0.834), and in SNR² terms the integrating half A holds **99.3–99.8%**. Half B — the phase
+REFERENCE — holds ~0.5% of the array's SNR². Consequences:
+* The √2 price of the one-way split is never paid: A is effectively the whole array.
+* `arg(B)` is a near-noise phase reference, so the correction is far weaker than intended, and
+  the disjoint-halves protection against self-reference is nominal rather than real.
+* The weak rows in the same test balance fine (0.491) — this only bites at the live gain spread,
+  which is why it was never visible.
+
+**3. The bound was the FULL-aperture genie; the split's ceiling is the HALF-aperture genie.**
+Against the correct bound (`ElemCal::combine_half_genie`, added for this) the split is
+**0.92–0.95 in every case** — comfortably below it, no self-reference. And the full genie is
+sometimes WORSE than the half genie (20.5 vs 30.6 at 1.20 rad) because the full combine includes
+half B, which at the live point holds the oscillating excess-noise feeds; the split drops them.
+So the split legitimately exceeds the full genie without exceeding anything it should not.
+
+Shuffled null behaves correctly throughout: equal to the split with no sky (29.9 vs 28.2 —
+nothing to destroy), and collapsing to 12.1 / 6.5 as the sky phase grows while the split holds
+~29. The estimator is recovering real common phase. Note the null cannot be driven to ~1 here:
+`e^{iφ}` has a non-zero mean `e^{-σ²/2}` that is common across elements and survives any shuffle.
+
+**⚠️ `sky_deep` is still NOT cleared** — but the reason has changed. There is no bound violation
+to explain. What must be fixed first is finding 2: make `rebuild_split` balance `Σ|w|²`, and
+decide what to do when a single element dominates so far that no partition balances (cap the
+dominant weight, or declare the split unavailable and fall back). Until then the split rung is
+running with a ~0.5%-weight phase reference and its apparent performance is coming from
+integrating the whole array, not from the correction.
 
 ### B2. CUDA acquire declines a valid blind Doppler grid — blocks the blind slot
 `GnssCudaAcquire::set_doppler_grid` hard-rejects grids that are not bin-aligned, and the blind
