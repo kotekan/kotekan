@@ -401,7 +401,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args):
         f"{pre}n2dual": {
             "kotekan_stage": "cudaProcess",
             "gpu_id": gpu,
-            "cpu_affinity": [cores[(gpu + 5) % len(cores)]],
+            # NEVER share a core with a TRACKER cudaProcess. The tracker uses
+            # cores[(gpu+6)%n] (= 60, 61 on the deployed pool), and the naive
+            # cores[(gpu+5)%n] put gnss1_n2dual on 60 -- the same core as gnss0_gpu, i.e. two
+            # heavy GPU-submission loops (one of them driving a 3.1 ms N^2 plus synthesis) on
+            # one core. The light stages in this config do share cores, and always have; two
+            # cudaProcess stages must not. Explicit, not arithmetic, so it stays checkable.
+            "cpu_affinity": [cores[(5 - 2 * gpu) % len(cores)]],
             "in_buffers": {"host_voltage_ringbuffer": ring},
             "out_buffers": {"host_gnss_tiles": tiles_buf},
             "commands": [
