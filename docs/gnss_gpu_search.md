@@ -958,3 +958,76 @@ about a kernel; the black-box ladder cost most of a day and got the mechanism ba
 6. **Traffic engineering -- mostly spent.** 24 re-walks -> 2 (block width + gather fusion, 7.6x).
    We sit 2-4x above the pure-traffic floor; that is all that is left there.
 
+## 11. NEXT BIG JOB: fold the correlation into CHORD's N^2 kernel
+
+Scoped 2026-08-06. This is the framework doc's **"path B"** (`gnss_chord_framework.md`, referenced
+from `cudaGnssChordDespread.hpp`'s header); everything shipped so far is "path A", the standalone
+`launch_correlate_nm`. **Start this with a full context window -- it is a bigger job than anything
+in section 10.**
+
+### 11.1 The shape
+
+Extend CHORD's existing N^2 correlator to take TWO inputs and split its output:
+
+    in:   antennas  [N, t]        the real voltages, as today
+          synthetic [M, t]        our replicas, injected as extra "antennas"
+    out:  (N+M)^2  ->  split kernel  ->  N^2   pass to the STANDARD pipeline, untouched
+                                        N x M  ours: the despread correlations
+                                        M^2    ours: the replica energies / cross-terms
+
+Why it is worth it: the N^2 kernel already loads every antenna voltage once and is heavily
+optimised. Path A re-loads the voltage in `launch_correlate_nm`; path B does not load it at all.
+The M^2 block also gives the replica cross-terms `<R_P,R_E>`/`<R_P,R_L>` for free -- the peel's
+analytic add-back currently computes those separately (`XC` in `gnss_despread_kernel`).
+
+### 11.2 What this does and does NOT save
+
+⚠️ Measured, so nobody re-derives it: **synthesis is 73-89% of the tracker kernel and N^2 CANNOT
+absorb it.** N^2 knows nothing about GNSS codes; the replicas must still be synthesised by
+`launch_waveform` and handed over. Folding the correlation in recovers the CORRELATION only --
+0.313 ms of a 1.15 ms kernel at 7 spec (27%), or ~11% at the older 11-spec measurement. The
+synthesis cost problem (section 10) is untouched by this and stays the scaling limiter.
+
+So path B is about (a) not loading the voltage twice, (b) riding the optimised (N+M)^2 kernel
+instead of maintaining our own correlator, and (c) getting M^2 free. It is an ARCHITECTURE win,
+not a synthesis-cost win.
+
+### 11.3 ⚠️ THE HOP-ORDER CONTRACT (surfaced 2026-08-06, and it now has teeth)
+
+`wave` is `[3*n_job][n_chan][n_hops]` and there has always been an IMPLICIT contract that hop `mh`
+lives at index `mh`. Nothing states it; both kernels just assume it.
+
+Section 10.6b wanted to break that contract (store in sorted-hop order to coalesce the scattered
+store, 7.9 -> 31.4 sectors/request). That is safe between OUR two kernels -- the correlator's
+`wave` read is a broadcast and its data read only row-selects, so a permuted `mh` is free on both
+sides. **It is NOT safe once the consumer is CHORD's N^2 kernel**, which has its own time-axis
+conventions and is not ours to permute.
+
+**Decide the contract BEFORE building path B**, and write it down in `gnssRecord.hpp` next to the
+row definitions. Options: (a) keep hop order as an invariant and fix the scattered store with a
+shared-memory exchange inside the synthesis kernel (24 KB, self-contained, no downstream change);
+(b) permit a permutation and carry it explicitly as part of the interface. (a) is the safe default
+and is why 10.6b lists SMEM first.
+
+### 11.4 Starting points
+
+* `lib/cuda/cudaGnssChordDespread.{hpp,cu}` -- the header explains why the split exists and what
+  path B changes ("only the CONSUMER changes -- from launch_correlate_nm to synthetic lanes").
+* `gnssRecord.hpp` -- the record schema does NOT change under path B: N x M is the element blocks,
+  M^2 is the header energies. That is the division path B gets for free.
+* `lib/stages/gnss/GnssGpuRecordAssemble.cpp` -- consumes the correlations today.
+* The N^2 kernel itself lives in the CHORD/kotekan correlator tree (`lib/cuda/`, n2k), NOT in the
+  GNSS stages. Read it first; the two-input extension is its constraint, not ours.
+
+### 11.5 Open questions to settle first
+
+1. Does the N^2 kernel's input layout admit extra "antennas" without a copy? If the synthetic
+   lanes have to be interleaved into the antenna buffer, that is a memcpy of the voltage-sized
+   array and it eats the saving.
+2. M is per-PRN-per-trial (3 rows x n_prn) and N is 32 today, 512 at full CHORD. At 100 codes M is
+   300 -- LARGER than N. `(N+M)^2` is then dominated by M^2, which we mostly do not want. Check
+   whether the kernel can be told to skip the M^2 block, or whether M^2's cost is acceptable.
+3. Precision: the N^2 kernel's accumulator format vs the double accumulators the despread uses.
+4. Cadence: N^2 runs on the standard pipeline's frame cadence; the tracker runs per record. Are
+   they the same? If not, who re-blocks?
+
