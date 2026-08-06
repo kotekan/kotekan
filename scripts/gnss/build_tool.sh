@@ -21,7 +21,7 @@ INC="-I$K/lib/stages/. -I$K/lib/stages/gnss -I/usr/include/gdal -I/usr/local/cud
  -isystem $B/blaze_overrides -isystem /usr/include/libairspy -isystem /usr/include/hdf5/serial
  -isystem $K/external/fmt -isystem $K/external/gsl -isystem $K/external/json
  -isystem $K/external/ksgpu/include/. -isystem $K/external/ksgpu/. -isystem $K/external/n2k/include
- -isystem $K/external/n2k"
+ -isystem $K/external/n2k -isystem $K/external/n2k_dual/include"
 DEF="-DBLAZE_BLAS_IS_PARALLEL=0 -DBLAZE_BLAS_MODE=1 -DCL_TARGET_OPENCL_VERSION=220 -DGNSS_CUDA=1
  -DWITH_AIRSPY -DWITH_ASDF_CXX -DWITH_CUDA -DWITH_FFTW -DWITH_GDAL -DWITH_HDF5 -DWITH_OMP -DWITH_SSL"
 FLAGS="-fopenmp -fcx-limited-range -O3 -DNDEBUG -std=c++17 -march=native -mtune=native -D_GNU_SOURCE"
@@ -39,8 +39,15 @@ for l in lib/stages/libkotekan_stages.a lib/utils/libkotekan_utils.a lib/core/li
     [ -f "$B/$l" ] && LIBS="$LIBS $B/$l"
 done
 
+# The n2k correlator libs are SHARED; link + rpath them when the tree has them (tools that
+# don't use them are unaffected -- lazy binding).
+RPATHS=""
+for l in external/n2k/libn2k.so external/n2k_dual/libn2k_dual.so; do
+    [ -f "$B/$l" ] && LIBS="$LIBS $B/$l" && RPATHS="$RPATHS -Wl,-rpath,$B/$(dirname $l)"
+done
+
 /usr/bin/c++ -fopenmp -O3 "$S/$N.$H.o" -o "$S/$N.$H" \
-  -L/usr/local/cuda/targets/x86_64-linux/lib \
+  -L/usr/local/cuda/targets/x86_64-linux/lib $RPATHS \
   -Wl,--start-group \
   $LIBS \
   -Wl,--end-group \
