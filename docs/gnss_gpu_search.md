@@ -1103,6 +1103,42 @@ were ALL-ZERO (0x88 background + addressing clean); after POSTing a PRN-3 seed t
 (purely real, as V_ii must be), P_HEAD at 55% of P (the per-record head fraction over 4
 records), unseeded lanes exactly zero, frame exactly as sparse as it should be.
 
+### 11.8 ⚠️ BLOCKER (2026-08-06): path B running DEGRADES path A on the same node
+
+Measured on sky, controlled (same node, same PRN, minutes apart, peers as reference):
+
+    cx19 + path B   PRN10 amplitude 1.2e-05  coh_frac 0.09  deep_snr 2.1-2.8
+    cx19 plain      PRN10 amplitude 9.2e-05  coh_frac 0.76  deep_snr 13.05
+    cx27 / cx43     PRN10 amplitude 1.2e-04  coh_frac 0.76-0.78  deep_snr 13.4-14.0
+
+cx19 on the plain config reaches deep_snr 13.05 at **adr_lock_s = 23 SECONDS**, so this is not
+warm-up: the relevant constants are elem_sum_tau_s 5 s (warm ~15 s) and the deep window 1.05 s.
+With path B it sat at 2.x for 25 minutes. Not the tile dump either -- the non-dump n2dual run
+was equally degraded.
+
+SYMPTOM SHAPE, which is the lead: amplitude down 7.7x AND coh_frac collapsed. 1/sqrt(32) = 5.7x
+is exactly the elem_sum MRC falling back to reference-element-only, and BOTH that calibration
+and the coherent integration need a CONTINUOUS record stream -- so record discontinuity explains
+both, where mere GPU slowness explains neither. But `kotekan_gnss_tap_dropped_frames_total` was
+10 over 25 min (static), so the discontinuity is NOT the tap valve. Unexplained.
+
+Candidate mechanisms, none yet measured:
+  * `--n2-dual` restores `run_send_voltage` -- the 402 MB/frame (9.6 GB/s PCIe per GPU) upload
+    the GNSS configs deliberately drop. Most suspicious single difference.
+  * the injector duplicates synthesis (tracker + injector both run launch_waveform).
+  * the dual correlator's 3.1 ms kernel serialising against the tracker's on one GPU.
+
+NEXT DIAGNOSTIC (do this before any more sky time): bring cx19 up on the n2dual config with
+`log_kernel_split: true` and the cudaProcess `log_profiling`, and watch the RECORD SEQUENCE for
+gaps (GnssGpuRecordAssemble / the combiner's record export) rather than the tap counter. If
+records are contiguous, the mechanism is not discontinuity and the amplitude/coherence
+collapse needs a different explanation.
+
+Until this is understood, path B is NOT deployable alongside a working tracker, and the on-sky
+A/B (11.7) cannot be measured -- the reference chain is degraded by the thing being tested.
+
+### 11.7 (continued) Remaining for M4 sign-off
+
 Remaining for M4 sign-off (needs a sudo node start): live run on sky under
 `chord_gnss_cx19_n2dual.yaml` (`GNSS_CFG=... node_up.sh cx19`), broker restart with the
 inject endpoints, then the A/B: mixed tiles vs the path-A tracker's EPL on the same seeds
