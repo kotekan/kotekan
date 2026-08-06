@@ -848,6 +848,32 @@ was reported as "the kernel is not I/O bound", which is the OPPOSITE of the trut
 flag now prints a MODE banner, and every edit script asserts before writing. **If a ceiling test
 reports exactly the baseline, suspect the harness before the hardware.**
 
+### 10.6b Hop-sorting: NOT DEMONSTRATED (0.81-0.86x as implemented)
+
+Sort each job's hops by fractional code phase and give thread lane `m` hop `perm[m]`. The premise
+is sound and still unrefuted: `base = frac(C_P)*inv_cps` is FIXED per hop for the whole chip loop
+while the `d*kf` term is common to every lane, so the lanes' order in the window never changes --
+sorting should put a warp's 32 lanes inside ~313*32/2048 ~ 5 entries instead of all 313.
+
+    jobs      fp32     hop-sorted   hop-sorted+fp16   fp16      ceiling
+      11    0.5366 ms  0.6216 (0.86x)  0.4795 (1.12x)  0.3917 (1.37x)  0.2311 (2.32x)
+     100    4.3708 ms  5.4194 (0.81x)  4.1945 (1.04x)  3.4329 (1.27x)  2.0535 (2.13x)
+
+**Slower, consistently -- and it also removes most of fp16's benefit** (1.04x combined against
+1.27x for fp16 alone), which says the loss is something the sorting ADDS rather than a failure of
+the clustering. Two candidates, neither eliminated:
+
+1. **A dependent global load at the head of every hop.** `p.hop_perm[b*n_hops + mh_i]` must
+   complete before `n_m`, `C_P`, `base` and therefore the entire 212-step chain can start. With
+   only 2 hops per thread there is almost nothing to overlap that latency against. Fixable:
+   preload the permutation into registers or shared memory before the hop loop.
+2. **The `wave` writes become scattered.** `wave[...][mh]` with permuted `mh` puts a warp's 32
+   lanes at 32 scattered offsets in a 16 KB row, 3 trials per hop. Estimated at ~1% of the read
+   traffic, so probably not the whole story, but it is real.
+
+So this is NOT a refutation of the idea -- it is one implementation of it, measured, and it lost.
+Anyone retrying should fix (1) first and re-measure before touching anything else.
+
 ### 10.7 Levers, ranked, with what is measured vs speculative
 
 

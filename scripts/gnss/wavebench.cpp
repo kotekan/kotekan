@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -67,6 +68,10 @@ int main(int argc, char** argv) {
             share_phi = 1;
         else if (a == "--phi16")
             phi16 = 1; // store Phi as __half2: half the bytes, SAME number of scattered requests
+        else if (a == "--hopsort")
+            phi16 = 5; // sort hops by fractional code phase so a warp's lanes read adjacent Phi
+        else if (a == "--hopsort16")
+            phi16 = 6; // hop-sorted AND fp16
         else if (a == "--ilv")
             phi16 = 4; // interleave PhiA/PhiB into one float4 table
         else if (a == "--noload")
@@ -121,10 +126,10 @@ int main(int argc, char** argv) {
     std::vector<float4> junk4(phi_n);
     for (size_t k = 0; k < phi_n; ++k)
         junk4[k] = make_float4(junk[k].x, junk[k].y, junk[k].y, junk[k].x);
-    const size_t elem = (phi16 == 1)   ? sizeof(__half2)
+    const size_t elem = (phi16 == 1 || phi16 == 6) ? sizeof(__half2)
                         : (phi16 == 4) ? sizeof(float4)
                                        : sizeof(float2);
-    const void* src = (phi16 == 1)   ? (const void*)junk16.data()
+    const void* src = (phi16 == 1 || phi16 == 6) ? (const void*)junk16.data()
                       : (phi16 == 4) ? (const void*)junk4.data()
                                      : (const void*)junk.data();
     for (int b = 0; b < n_job; ++b) {
@@ -174,6 +179,41 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(d_jobs, h_jobs.data(), n_job * sizeof(gnss_cuda::DespreadJob),
                   cudaMemcpyHostToDevice));
 
+    // ---- hop permutation. base = frac(cp0 + n_m*cps) * inv_cps is FIXED per hop for the whole
+    // chip loop, and every lane shares the d*kf term, so sorting hops by base puts a warp's 32
+    // lanes inside ~n_hops/32 of the window instead of spanning all of it.
+    int* d_perm = nullptr;
+    if (phi16 == 5 || phi16 == 6) {
+        std::vector<int> perm((size_t)n_job * N_HOPS);
+        for (int b = 0; b < n_job; ++b) {
+            const double c0 = h_jobs[b].cp0, cs = h_jobs[b].cps, ics = h_jobs[b].inv_cps;
+            std::vector<std::pair<double, int>> key((size_t)N_HOPS);
+            for (int mh = 0; mh < N_HOPS; ++mh) {
+                const long long n_m = p.n0 + (long long)mh * FFT_LEN;
+                const double C = c0 + (double)n_m * cs;
+                key[(size_t)mh] = {(C - std::floor(C)) * ics, mh};
+            }
+            std::sort(key.begin(), key.end());
+            for (int mh = 0; mh < N_HOPS; ++mh)
+                perm[(size_t)b * N_HOPS + mh] = key[(size_t)mh].second;
+        }
+        // it MUST be a permutation, or hops are dropped/duplicated and `wave` is silently wrong
+        for (int b = 0; b < n_job; ++b) {
+            std::vector<char> seen((size_t)N_HOPS, 0);
+            for (int mh = 0; mh < N_HOPS; ++mh)
+                seen[(size_t)perm[(size_t)b * N_HOPS + mh]] = 1;
+            for (int mh = 0; mh < N_HOPS; ++mh)
+                if (!seen[(size_t)mh]) {
+                    fprintf(stderr, "hop_perm is not a permutation (job %d)\n", b);
+                    exit(1);
+                }
+        }
+        CK(cudaMalloc(&d_perm, perm.size() * sizeof(int)));
+        CK(cudaMemcpy(d_perm, perm.data(), perm.size() * sizeof(int), cudaMemcpyHostToDevice));
+        p.hop_perm = d_perm;
+        printf("hop_perm built and verified for %d jobs x %d hops\n", n_job, N_HOPS);
+    }
+
     float2* d_wave = nullptr;
     double* d_energy = nullptr;
     const size_t wave_n = (size_t)3 * n_job * n_chan * N_HOPS;
@@ -195,6 +235,8 @@ int main(int argc, char** argv) {
         printf("*** MODE: %s\n", phi16 == 1 ? "fp16 Phi" :
                                  phi16 == 2 ? "ABLATION, load address collapsed to 0" :
                                  phi16 == 4 ? "INTERLEAVED float4 Phi (one 16 B load)" :
+                                 phi16 == 5 ? "HOP-SORTED lane->hop mapping" :
+                                 phi16 == 6 ? "HOP-SORTED + fp16" :
                                               "fp32 via the isolated timing block");
         CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
                                             1024, 1, phi16 == 3 ? 0 : phi16, 0));

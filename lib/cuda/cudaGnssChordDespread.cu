@@ -28,7 +28,8 @@ using gnss_cuda::cmulf;
 /// FUSE3 walks the chip loop ONCE for all three E/P/L trials (@ref gnss_cuda::chip_gather3)
 /// instead of three times. Bit-identical either way; it trades registers for DRAM traffic, and
 /// registers are what cap MAXT, so the two knobs pull against each other.
-template<int MAXT, bool FUSE3, class PHI = float2, bool ABL_NOLOAD = false, bool ILV = false>
+template<int MAXT, bool FUSE3, class PHI = float2, bool ABL_NOLOAD = false, bool ILV = false,
+         bool HOPPERM = false>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
@@ -53,7 +54,8 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
                           : (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
     const PHI* phiB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
 
-    for (int mh = m; mh < p.n_hops; mh += blockDim.x) {
+    for (int mh_i = m; mh_i < p.n_hops; mh_i += blockDim.x) {
+        const int mh = HOPPERM ? p.hop_perm[(size_t)b * p.n_hops + mh_i] : mh_i;
         // An uncovered channel still has to WRITE its replica rows -- the correlator reads the
         // wave array unconditionally, and a stale/uninitialised sample would contribute garbage
         // rather than nothing. Zero is the correct replica for a channel this PRN does not
@@ -276,6 +278,16 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
     // BENCH ONLY: fp16 Phi. job.phiA/phiB then point at __half2 tables (the struct field type is
     // a lie the caller opts into). Answers whether the kernel is byte-limited or request-limited;
     // production never takes this path.
+    if (phi16 == 5) { // BENCH: hop-sorted lane->hop mapping (coalesces the Phi gather)
+        gnss_waveform_kernel<1024, true, float2, false, false, true>
+            <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
+        return cudaGetLastError();
+    }
+    if (phi16 == 6) { // BENCH: hop-sorted AND fp16
+        gnss_waveform_kernel<1024, true, __half2, false, false, true>
+            <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
+        return cudaGetLastError();
+    }
     if (phi16 == 4) { // BENCH: interleaved float4 Phi -- one 16 B load instead of two 8 B
         gnss_waveform_kernel<1024, true, float2, false, true>
             <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);

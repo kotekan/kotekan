@@ -101,6 +101,14 @@ struct DespreadParams {
                        ///< 2026-07-30 -- see GnssChordDequantize.cpp for the evidence). A flag
                        ///< here rather than in gnss44: the airspy chain uses gnss44 as a matched
                        ///< encoder/decoder PAIR, which must stay self-consistent.
+    /// BENCH: [n_job][n_hops] permutation of the hop index. Thread lane m processes
+    /// hop_perm[b*n_hops + m] instead of m. Sorting hops by their FRACTIONAL code phase puts a
+    /// warp's 32 lanes inside ~5 Phi entries instead of ~313, because the per-lane offset
+    /// base = frac(C_P)*inv_cps is FIXED for the whole chip loop while the d*kf term is common
+    /// to every lane -- so the lanes' relative order in the window never changes, it only slides.
+    /// null = identity. `wave` is unaffected (each hop's sample depends only on that hop); only
+    /// the ENERGY reduction's lane grouping moves.
+    const int* hop_perm = nullptr;
     int data_stride; ///< row stride (hops) of the [n_chan][*] data array: n_hops for a packed
                      ///< per-record staging buffer, or the ring length when a window is read in
                      ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,
