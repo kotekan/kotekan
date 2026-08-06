@@ -266,6 +266,7 @@ gnss0_n2dual:
     - 6036
     - 6052
     - 6068
+    conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
     gnss_local_channels: &id002
@@ -456,6 +457,7 @@ gnss1_n2dual:
     - 6044
     - 6060
     - 6076
+    conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
     gnss_local_channels: &id004
