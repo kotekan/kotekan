@@ -61,6 +61,15 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     const int n_rec = S.n_hops_frame / S.hops_per_record;
     _h_slot2spec.assign((size_t)n_rec * S.n_prn, -1);
 
+    // M5 control block: the epl layout minus corr (see the header). Sized for the worst case
+    // (every PRN active in every record), which is what gnss_gpu::max_jobs already encodes.
+    _mem_ctl = config.get_default<std::string>(unique_name, "gnss_ctl_name", "gnss_n2ctl");
+    _ctl_off_energy = gnss_gpu::off_prnctl()
+                      + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * S.n_prn;
+    _ctl_bytes = _ctl_off_energy
+                 + sizeof(double) * gnss_gpu::max_jobs(S.n_prn, gnss_gpu::ROWS_PLAIN) * S.n_chan;
+    _ctl_stage.resize(_ctl_bytes);
+
     set_command_type(gpuCommandType::KERNEL);
     // The F-engine conjugation is absorbed by conjugating the REPLICA (launch_pack44) -- the
     // N^2 kernel has no conj_data flag and its antenna input is production's. This MUST match
@@ -127,6 +136,13 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         (size_t)3 * S.n_prn * S.n_chan * S.hops_per_record * sizeof(float2));
     auto* d_energy = (double*)device.get_gpu_memory(
         unique_name + "_energy", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
+    // FRAME-CONSTANT QUANTIZER SCALE. The N^2 integrates the whole frame, so the tile is
+    // sum_r s_r * corr_r -- only a SINGLE s factors out. Freeze record 0's energy and hand it
+    // to every record's pack, making V = s * corr_frame exactly, which is what lets the
+    // consumer undo the scale with one number (11.11). Without this the scale varies record to
+    // record and the recovered amplitude is only approximately right.
+    auto* d_energy0 = (double*)device.get_gpu_memory(
+        unique_name + "_energy0", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
     auto* d_chan_map =
         (int*)device.get_gpu_memory(unique_name + "_chan_map", (size_t)S.n_chan * sizeof(int));
     if (!_uploaded_static) {
@@ -136,9 +152,26 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         _uploaded_static = true;
     }
 
+    auto* d_ctl = (char*)device.get_gpu_memory_array(_mem_ctl, pipestate.gpu_frame_id,
+                                                     _gpu_buffer_depth, _ctl_bytes);
+
     const size_t synth_len = (size_t)_num_times * _num_local_freq * _num_synth;
     auto* d_synth = (unsigned char*)device.get_gpu_memory_array(
         _gnss_synth_name, pipestate.gpu_frame_id, _gpu_buffer_depth, synth_len);
+
+    // Control block for this frame (M5). Zeroed each frame: a PRN that just set must read as
+    // run=0, never as last frame's contents.
+    std::memset(_ctl_stage.data(), 0, _ctl_stage.size());
+    auto* hdr = (gnss_gpu::FrameHdr*)_ctl_stage.data();
+    auto* winstart = (int64_t*)(_ctl_stage.data() + gnss_gpu::off_winstart());
+    auto* pctl = (gnss_gpu::PrnCtl*)(_ctl_stage.data() + gnss_gpu::off_prnctl());
+    auto* ctl_energy = (double*)(_ctl_stage.data() + _ctl_off_energy);
+    hdr->n_rec = n_rec;
+    hdr->n_prn = S.n_prn;
+    hdr->n_chan = S.n_chan;
+    hdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
+    hdr->seq0 = hop0_frame * (long long)S.fft_len;
+    hdr->utc0 = S.frame0_utc;
 
     std::vector<int> expired;
     const std::vector<cudaGnssChordTrackState::Seed> seeds = S.snapshot_seeds(expired);
@@ -179,6 +212,21 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             sp.ctrim_hz = sd.ctrim_hz;
             sp.covering = S.covering;
 
+            // PrnCtl, same contract as cudaGnssChordTrack's pass-1 block so the SHIPPED
+            // assembler can consume path B unchanged. job0 indexes the 4 rows (E/P/L/PH) this
+            // spec will occupy in the consumer's corr/energy arrays.
+            gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
+            c.run = 1;
+            c.reanchored = 0;
+            c.job0 = (n_jobs_frame + (int)specs.size()) * gnss_gpu::ROWS_PLAIN;
+            c.fcar_report = (float)pr.doppler_hz;
+            c.n_owned = (float)S.n_chan;
+            c.cp_seed = pr.cp;
+            c.f_nco = sd.ctrim_hz;
+            c.chan_mask = (S.n_chan >= 64) ? ~0ULL : ((1ULL << S.n_chan) - 1ULL);
+            c.energy_scale = 1.0;
+            c.fcar = S.f_offset_hz + pr.doppler_hz;
+
             slot2spec[p] = (int)specs.size();
             specs.push_back(sp);
         }
@@ -192,19 +240,44 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                                          (size_t)S.n_prn * sizeof(int), cudaMemcpyHostToDevice,
                                          stream));
 
+        winstart[r] = wstart;
+
         gnss_cuda::DespreadJob* d_jobs_r = d_jobs + (size_t)r * S.n_prn;
-        if (!specs.empty())
+        if (!specs.empty()) {
             S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy,
                                          (void*)stream);
+            // The consumer needs the TRUE replica energy to undo the pack's per-lane scale
+            // (11.11): the quantizer normalizes every lane to a constant M^2, so V/M^2 alone
+            // carries a spurious sqrt(E_R) that would weight the channel combine by the PFB
+            // response instead of by SNR. D2D on the stream -- no sync, no host round trip.
+            // Freeze record 0's energy as the frame's quantizer reference (see d_energy0).
+            if (r == 0)
+                CHECK_CUDA_ERROR(cudaMemcpyAsync(
+                    d_energy0, d_energy,
+                    (size_t)gnss_gpu::ROWS_PLAIN * specs.size() * S.n_chan * sizeof(double),
+                    cudaMemcpyDeviceToDevice, stream));
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(
+                d_ctl + _ctl_off_energy
+                    + (size_t)n_jobs_frame * gnss_gpu::ROWS_PLAIN * S.n_chan * sizeof(double),
+                d_energy,
+                (size_t)gnss_gpu::ROWS_PLAIN * specs.size() * S.n_chan * sizeof(double),
+                cudaMemcpyDeviceToDevice, stream));
+        }
         n_jobs_frame += (int)specs.size();
 
         unsigned char* d_synth_rec =
             d_synth + (size_t)r * S.hops_per_record * _num_local_freq * _num_synth;
         CHECK_CUDA_ERROR(gnss_cuda::launch_pack44(
-            d_wave, d_energy, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn, S.n_chan,
+            d_wave, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn, S.n_chan,
             S.hops_per_record, d_chan_map, _num_local_freq, _num_synth, S._conjugate,
             d_synth_rec, stream));
     }
+
+    hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;
+    // Header + winstart + PrnCtl only: the energy rows were already written D2D above, so this
+    // must NOT overwrite them.
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(d_ctl, _ctl_stage.data(), _ctl_off_energy,
+                                     cudaMemcpyHostToDevice, stream));
 
     if ((++_frames & 0xFF) == 1)
         INFO("cudaGnssInject: frame hop0 {:d}, {:d} active PRNs, {:d} jobs across {:d} records",

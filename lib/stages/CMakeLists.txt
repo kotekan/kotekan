@@ -177,6 +177,7 @@ if(FFTW_FOUND)
                 gnss/GnssChordVoltageTap.cpp
                 gnss/cudaGnssChordTrack.cpp
                 gnss/cudaGnssInject.cpp
+                gnss/GnssN2RecordAssemble.cpp
                 gnss/GnssChordDequantize.cpp
                 gnss/GnssChanAlignMerge.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})

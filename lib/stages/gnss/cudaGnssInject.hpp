@@ -100,6 +100,18 @@ private:
     std::vector<int> _h_slot2spec; ///< staging, [n_rec][n_prn]
     bool _uploaded_static = false;
     uint64_t _frames = 0;
+
+    /// M5: the epl-format CONTROL BLOCK this command publishes for the path-B consumer --
+    /// [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn][energy x jobs x n_chan],
+    /// i.e. the shipped gnssGpuChain.hpp layout MINUS the corr array, which the consumer fills
+    /// from the N^2 tiles. Everything here is already known to the injector (it builds the
+    /// specs and gets `energy` back from launch_waveform), and the energy rows are what let the
+    /// consumer undo the pack's per-lane scale -- see docs/gnss_gpu_search.md 11.11.
+    std::string _mem_ctl;
+    std::vector<char> _ctl_stage;
+    size_t _ctl_bytes = 0;
+    /// Byte offset of the energy array within the control block.
+    size_t _ctl_off_energy = 0;
 };
 
 #endif // CUDA_GNSS_INJECT_HPP
