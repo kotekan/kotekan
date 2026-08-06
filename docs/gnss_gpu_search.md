@@ -1103,7 +1103,7 @@ were ALL-ZERO (0x88 background + addressing clean); after POSTing a PRN-3 seed t
 (purely real, as V_ii must be), P_HEAD at 55% of P (the per-record head fraction over 4
 records), unseeded lanes exactly zero, frame exactly as sparse as it should be.
 
-### 11.8 ⚠️ BLOCKER (2026-08-06): path B running DEGRADES path A on the same node
+### 11.8 SOLVED (2026-08-06): the CHORD tracker never waited for its H2D copy
 
 Measured on sky, controlled (same node, same PRN, minutes apart, peers as reference):
 
@@ -1134,8 +1134,34 @@ gaps (GnssGpuRecordAssemble / the combiner's record export) rather than the tap 
 records are contiguous, the mechanism is not discontinuity and the amplitude/coherence
 collapse needs a different explanation.
 
-Until this is understood, path B is NOT deployable alongside a working tracker, and the on-sky
-A/B (11.7) cannot be measured -- the reference chain is degraded by the thing being tested.
+**ROOT CAUSE, and it was never path B.** `cudaInputData` is COPY_IN -> stream 0;
+`cudaGnssChordTrack` is KERNEL -> stream 2 (`cudaCommand::set_command_type`). The only thing
+ordering the despread after the frame's upload is `cudaStreamWaitEvent(stream, pre_events[0])`,
+and this stage threw the events away with `(void)pre_events`. Its airspy sibling
+`cudaGnssTrack` has always done the wait -- exactly the drift `cudaGnssChordTrack`'s header
+warns about. Latent for months because stream 0 is otherwise idle in the GNSS-only configs, so
+the 1.8 MB tap copy always beat the kernel; `run_send_voltage`'s 402 MB/frame on the same copy
+engine delayed it past the launch and the tracker despread the PREVIOUS frame's voltage against
+THIS frame's replicas.
+
+CONFIRMED ON SKY, same n2volt config that reproduced the failure:
+
+    cx19 before  top deep_snr 1.8   max amplitude 1.69e-05  coh 0.09
+    cx19 after   top deep_snr 11.8  max amplitude 2.19e-04  coh 0.72
+    cx27/43/44   top deep_snr 12.9-13.1  max amplitude 2.0-2.1e-04  coh 0.76-0.77
+
+(cx19's amplitude is the HIGHEST of the four; its deep_snr/coh trail only because it was minutes
+into lock against the others' hours.)
+
+**The diagnostic lesson.** Every input checked out -- records 100% contiguous, hops correct,
+replica energy stable to 0.2%, absolute hop within one frame of the fleet, and the voltage bytes
+statistically identical to a healthy node (rms 1.797 vs 1.787 lsb, dumped via the `peek_hold`
+added for this). Data right + replica right + time right + result noise => the two never met.
+When every input is verified and the output is uncorrelated, stop testing inputs and look at the
+ORDERING between them.
+
+Any new cudaCommand consuming a COPY_IN buffer must honour `pre_events[0]`. `(void)pre_events`
+in a KERNEL command is a bug unless everything it reads is written on its own stream.
 
 ### 11.7 (continued) Remaining for M4 sign-off
 
