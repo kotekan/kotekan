@@ -24,12 +24,15 @@ static int count_enabled_blocks(int ntiles_1d, int ntiles_a, int block_class_mas
 
 
 DualCorrelatorParams::DualCorrelatorParams(int nstations_a_, int nstations_b_, int nfreq_,
-                                           int block_class_mask_) :
+                                           int block_class_mask_,
+                                           const std::vector<int>& freq_map_) :
     nstations_a(nstations_a_),
     nstations_b(nstations_b_),
     nstations(nstations_a_ + nstations_b_),
     nfreq(nfreq_),
     block_class_mask(block_class_mask_),
+    freq_map(freq_map_),
+    n_freq_out(freq_map_.empty() ? nfreq_ : (int)freq_map_.size()),
     emat_fstride_a(nstations_a / 4),               // int32 stride, not bytes
     emat_tstride_a(nfreq * emat_fstride_a),        // int32 stride, not bytes
     emat_fstride_b(nstations_b / 4),               // int32 stride, not bytes
@@ -53,6 +56,10 @@ DualCorrelatorParams::DualCorrelatorParams(int nstations_a_, int nstations_b_, i
     if (nstations_b % DualCorrelatorParams::ns_divisor)
         throw runtime_error("n2k_dual: expected nstations_b(=" + to_str(nstations_b)
                             + ") to be a multiple of " + to_str(DualCorrelatorParams::ns_divisor));
+    for (int f : freq_map)
+        if (f < 0 || f >= nfreq)
+            throw runtime_error("n2k_dual: freq_map entry " + to_str(f)
+                                + " outside [0, nfreq=" + to_str(nfreq) + ")");
     if ((block_class_mask & BLOCK_MASK_ALL) == 0)
         throw runtime_error("n2k_dual: block_class_mask(=" + to_str(block_class_mask)
                             + ") enables no block classes");
@@ -67,6 +74,13 @@ DualCorrelator::DualCorrelator(const DualCorrelatorParams& params_) : params(par
 {
     CUDA_CALL(cudaGetDevice(&this->cuda_device));
     this->precomputed_offsets = precompute_offsets(params);
+    if (!params.freq_map.empty()) {
+        Array<int> fm({(int)params.freq_map.size()}, af_rhost);
+        for (size_t i = 0; i < params.freq_map.size(); i++)
+            fm.at({(int)i}) = params.freq_map[i];
+        fm = fm.to_gpu();
+        this->d_freq_map = std::static_pointer_cast<int>(fm.base);
+    }
     this->kernel = get_kernel(params.nstations, params.nfreq);
 }
 
@@ -98,7 +112,7 @@ void DualCorrelator::launch(int* vis_out, const int8_t* e_in_a, const int8_t* e_
 
     dim3 nblocks;
     nblocks.x = params.threadblocks_per_freq;
-    nblocks.y = params.nfreq;
+    nblocks.y = params.n_freq_out;
     nblocks.z = nt_outer;
 
     int nthreads = DualCorrelatorParams::threads_per_block;
@@ -106,7 +120,8 @@ void DualCorrelator::launch(int* vis_out, const int8_t* e_in_a, const int8_t* e_
     const int* poffsets = this->precomputed_offsets.get();
 
     kernel<<<nblocks, nthreads, shmem_nbytes, stream>>>(vis_out, e_in_a, e_in_b, rfimask, poffsets,
-                                                        nt_inner, nt_outer);
+                                                        this->d_freq_map.get(),
+                                                        params.n_freq_out, nt_inner, nt_outer);
     CUDA_PEEK("DualCorrelator::launch");
 
     if (sync)
@@ -143,8 +158,9 @@ void DualCorrelator::launch(Array<int>& vis_out, const Array<int8_t>& e_in_a,
         throw runtime_error(ss.str());
     }
 
-    bool vflag1 = vis_out.shape_equals({nt_outer, nfreq, vmat_ntiles, 16, 16, 2});
-    bool vflag2 = vis_out.shape_equals({nfreq, vmat_ntiles, 16, 16, 2});
+    const int nfout = params.n_freq_out;
+    bool vflag1 = vis_out.shape_equals({nt_outer, nfout, vmat_ntiles, 16, 16, 2});
+    bool vflag2 = vis_out.shape_equals({nfout, vmat_ntiles, 16, 16, 2});
     bool vshape_ok = vflag1 || (vflag2 && (nt_outer == 1));
 
     if (!vshape_ok) {

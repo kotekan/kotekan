@@ -523,7 +523,8 @@ struct DualCorrelatorKernel
 
 
     static __device__ void kernel_body(int* dst, const int8_t* srcA, const int8_t* srcB,
-                                       const uint* rfimask, const int* ptable, int nt_inner,
+                                       const uint* rfimask, const int* ptable,
+                                       const int* freq_map, int n_freq_out, int nt_inner,
                                        int nt_outer)
     {
         extern __shared__ int shmem[];
@@ -553,7 +554,12 @@ struct DualCorrelatorKernel
         // select costs nothing in the load loop. The per-frequency stride is ts/NF (exact:
         // ts = NF * (ns_input/4)), strength-reduced since NF is a template constant.
 
-        const int f = blockIdx.y; // frequency index
+        // FREQUENCY MAP. Without it blockIdx.y IS the channel and this is the old behaviour.
+        // With it, a launch covers only the channels the caller names -- the GNSS comb is 7 of
+        // 384, and the mixed/BB blocks on the other 377 correlate synthetic lanes that are all
+        // zero. f_in addresses the VOLTAGE and the RFI MASK (real channel); blockIdx.y indexes
+        // the COMPACTED output, so vis_out carries n_freq_out slices, not NF.
+        const int f = freq_map ? freq_map[blockIdx.y] : blockIdx.y; // real channel
         const int n = blockDim.x; // ptable stride (for length-8 axis)
         const int i = blockIdx.x * (DualCorrelatorParams::ptable_nrows * blockDim.x) + threadIdx.x;
 
@@ -617,7 +623,7 @@ struct DualCorrelatorKernel
 
         // Write visibility matrix to global memory.
         // The 'vp_tf' pointer has (t,f) offsets applied, but no (i,j) offsets (even per-block offsets)
-        int* vp_tf = dst + long(touter * NF + f) * vmat_fstride;
+        int* vp_tf = dst + long(touter * n_freq_out + blockIdx.y) * vmat_fstride;
 
         int vi_warp = ptable[i + 4 * n];
         int vk_warp = ptable[i + 5 * n];
@@ -639,9 +645,11 @@ struct DualCorrelatorKernel
 template<int NS, int NF>
 __global__ void __launch_bounds__(DualCorrelatorParams::threads_per_block, 1)
     n2k_dual_kernel(int* dst, const int8_t* srcA, const int8_t* srcB, const uint* rfimask,
-                    const int* ptable, int ntime, int nt_outer)
+                    const int* ptable, const int* freq_map, int n_freq_out, int ntime,
+                    int nt_outer)
 {
-    DualCorrelatorKernel<NS, NF>::kernel_body(dst, srcA, srcB, rfimask, ptable, ntime, nt_outer);
+    DualCorrelatorKernel<NS, NF>::kernel_body(dst, srcA, srcB, rfimask, ptable, freq_map,
+                                              n_freq_out, ntime, nt_outer);
 }
 
 

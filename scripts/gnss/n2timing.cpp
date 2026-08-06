@@ -119,7 +119,27 @@ int main(int argc, char** argv) {
         dmask.launch(v_dual, dA, dB, drm, 1, NT_INNER, nullptr, false);
     });
 
-    // [4] proxy for the frequency map: same per-block work, comb-sized block count.
+    // [4] THE REAL FREQUENCY MAP: MIXED|BB over just the GNSS comb, at the deployed nfreq.
+    // This is no longer a proxy -- it is the launch path B would actually use.
+    {
+        std::vector<int> comb;
+        for (int k = 0; k < 7; k++)
+            comb.push_back(277 + k); // cx19 GPU0's local comb indices
+        n2k_dual::DualCorrelatorParams pc(NSA, NSB, NF,
+                                          n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB,
+                                          comb);
+        n2k_dual::DualCorrelator dcomb(pc);
+        int* v_comb;
+        CK(cudaMalloc(&v_comb, (size_t)comb.size() * ntiles(NSA + NSB) * 512 * 4));
+        const double t_comb = bench("[4] dual   MIXED|BB over the 7-channel COMB (freq map)",
+                                    [&] {
+            dcomb.launch(v_comb, dA, dB, drm, 1, NT_INNER, nullptr, false);
+        });
+        printf("\n    stock + comb-only path B : %.3f ms = %.2fx stock  (+%.3f ms marginal)\n",
+               t_stock + t_comb, (t_stock + t_comb) / t_stock, t_comb);
+    }
+
+    // [5] old proxy, kept for continuity with the 2026-08-06 numbers.
     const size_t nrm_s = (size_t)NF_SMALL * (NT_INNER / 32);
     uint* drm_s;
     CK(cudaMalloc(&drm_s, nrm_s * 4));
@@ -129,7 +149,7 @@ int main(int argc, char** argv) {
     n2k_dual::DualCorrelatorParams ps(NSA, NSB, NF_SMALL,
                                       n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB);
     n2k_dual::DualCorrelator dsmall(ps);
-    const double t_small = bench("[4] dual   MIXED|BB only, 8 freqs (freq-map PROXY)", [&] {
+    const double t_small = bench("[5] dual   MIXED|BB only, 8 freqs (old PROXY)", [&] {
         dsmall.launch(v_small, dA, dB, drm_s, 1, NT_INNER, nullptr, false);
     });
 

@@ -278,6 +278,45 @@ int main(int argc, char** argv) {
         fails += report("[5] class-mask MIXED|BB vs full, bitwise", st);
     }
 
+    // [6] FREQUENCY MAP: a launch over a SUBSET of channels must reproduce the full launch's
+    // tiles for exactly those channels, in the order named. Deliberately out of order and
+    // non-contiguous -- an identity-ish map would pass even if the mapping were ignored.
+    {
+        const std::vector<int> fmap{5, 2, 7, 0};
+        n2k_dual::DualCorrelatorParams pf(NSA, NSB, NF, n2k_dual::BLOCK_MASK_ALL, fmap);
+        n2k_dual::DualCorrelator dmap(pf);
+        const size_t nvis_f = (size_t)NT_OUTER * fmap.size() * ntiles(NS) * 512;
+        int* vf = nullptr;
+        CK(cudaMalloc(&vf, nvis_f * 4));
+        CK(cudaMemset(vf, 0xa5, nvis_f * 4));
+        dmap.launch(vf, da, db, drm, NT_OUTER, NT_INNER, nullptr, true);
+        std::vector<int> hvf(nvis_f);
+        CK(cudaMemcpy(hvf.data(), vf, nvis_f * 4, cudaMemcpyDeviceToHost));
+
+        CmpStats st;
+        const size_t fstride = (size_t)ntiles(NS) * 512;
+        for (int t = 0; t < NT_OUTER; t++)
+            for (size_t k = 0; k < fmap.size(); k++) {
+                const int* got = hvf.data() + ((size_t)t * fmap.size() + k) * fstride;
+                const int* want = hvd.data() + ((size_t)t * NF + fmap[k]) * fstride;
+                for (int ihi = 0; ihi < NS / 16; ihi++)
+                    for (int jhi = 0; jhi <= ihi; jhi++) {
+                        size_t to = 512 * ((size_t)ihi * (ihi + 1) / 2 + jhi);
+                        for (int ilo = 0; ilo < 16; ilo++)
+                            for (int jlo = 0; jlo < 16; jlo++) {
+                                if (16 * ihi + ilo < 16 * jhi + jlo)
+                                    continue;
+                                size_t o = to + 32 * ilo + 2 * jlo;
+                                st.checked += 2;
+                                for (int c2 = 0; c2 < 2; c2++)
+                                    if (got[o + c2] != want[o + c2])
+                                        st.bad++;
+                            }
+                    }
+            }
+        fails += report("[6] freq_map {5,2,7,0} vs full, bitwise", st);
+    }
+
     printf(fails ? "*** %d comparison(s) FAILED\n" : "ALL PASS\n", fails);
     return fails ? 1 : 0;
 }

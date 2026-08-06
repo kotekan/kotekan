@@ -89,14 +89,23 @@ struct DualCorrelatorParams
     //   nfreq = number of frequency channels (per GPU)
     //   block_class_mask = which block classes to compute (default: all)
 
+    /// @param freq_map optional list of INPUT channel indices to compute. Empty = all nfreq,
+    ///        i.e. today's behaviour. Non-empty: the launch covers only those channels and
+    ///        vis_out carries freq_map.size() slices in THAT order, not nfreq. The GNSS comb is
+    ///        7 channels of 384, and the mixed/BB blocks on the other 377 correlate synthetic
+    ///        lanes that are identically zero -- this is the lever that takes path B from
+    ///        2.97x stock N^2 to ~1.2x (see docs/gnss_gpu_search.md 11.2).
     DualCorrelatorParams(int nstations_a, int nstations_b, int nfreq,
-                         int block_class_mask = BLOCK_MASK_ALL);
+                         int block_class_mask = BLOCK_MASK_ALL,
+                         const std::vector<int>& freq_map = {});
 
     const int nstations_a;
     const int nstations_b;
     const int nstations; // total = nstations_a + nstations_b
-    const int nfreq;
+    const int nfreq;          ///< INPUT channels (addressing + rfimask); compile-time NF
     const int block_class_mask;
+    const std::vector<int> freq_map; ///< input channels computed; empty = all
+    const int n_freq_out;     ///< vis_out slices = freq_map.size(), or nfreq if empty
 
     // Derived parameters (computed in constructor, or compile-time constants).
 
@@ -205,14 +214,15 @@ public:
     const DualCorrelatorParams params;
 
     // Kernel args are (dst, srcA, srcB, rfimask, ptable, nt_inner, nt_outer).
-    using kernel_t = void (*)(int*, const int8_t*, const int8_t*, const uint*, const int*, int,
-                              int);
+    using kernel_t = void (*)(int*, const int8_t*, const int8_t*, const uint*, const int*,
+                              const int*, int, int, int);
 
 protected:
     int cuda_device;
 
-    // Persists in GPU memory for the lifetime of the DualCorrelator object.
+    // Persist in GPU memory for the lifetime of the DualCorrelator object.
     std::shared_ptr<int> precomputed_offsets;
+    std::shared_ptr<int> d_freq_map; ///< null when freq_map is empty
 
     kernel_t kernel;
 };
