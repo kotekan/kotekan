@@ -25,7 +25,10 @@ using gnss_cuda::cmulf;
 /// past 512 threads. Naming the bound lets ptxas trade registers for the width, and the width is
 /// what sets the DRAM traffic (see WAVE_THREADS). Whether that trade wins is a measurement, so
 /// both instantiations exist and scripts/gnss/wavebench.cpp compares them.
-template<int MAXT>
+/// FUSE3 walks the chip loop ONCE for all three E/P/L trials (@ref gnss_cuda::chip_gather3)
+/// instead of three times. Bit-identical either way; it trades registers for DRAM traffic, and
+/// registers are what cap MAXT, so the two knobs pull against each other.
+template<int MAXT, bool FUSE3>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
@@ -88,21 +91,49 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
 
         // Trial order {P, E, L} as in the fused kernel -- kept so the arithmetic matches even
         // though nothing here needs the prompt in hand first.
+        //
+        // ⚠️ THE TWO BRANCHES DUPLICATE THE CARRIER/WRITE/ENERGY BLOCK ON PURPOSE. Hoisting it
+        // into one loop fed by a float2 gA[3] array -- the obvious tidy-up, and the first thing
+        // written here -- moved the FUSE3=false path's codegen and broke bit-identity with
+        // gnss_despread_kernel by 3.1e-07, on the UNFUSED path, where nothing should have
+        // changed at all. The split-vs-fused test caught it; the bench could not, because it
+        // compares this kernel against itself. Keep the else branch textually what it was.
+        if (FUSE3) {
+            // Same three code phases in the same order, one walk of the chip loop.
+            const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
+            float2 sA[3], sB[3];
+            gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf,
+                                    code, phiA, phiB, ks, kf, Cs, sA, sB);
 #pragma unroll
-        for (int tt = 0; tt < 3; ++tt) {
-            const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> cp0 / cp0-ds / cp0+ds
-            float2 sA, sB;
-            chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
-                        phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
-            const float2 t1 = cmulf(pa, sA);
-            const float2 t2 = cmulf(pb, sB);
-            const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
-            wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh] = r;
+            for (int tt = 0; tt < 3; ++tt) {
+                const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2;
+                const float2 t1 = cmulf(pa, sA[tt]);
+                const float2 t2 = cmulf(pb, sB[tt]);
+                const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
+                wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh] = r;
 
-            const double ee = (double)(r.x * r.x + r.y * r.y);
-            e[t] += ee;
-            if (t == 1 && in_head)
-                e[3] += ee;
+                const double ee = (double)(r.x * r.x + r.y * r.y);
+                e[t] += ee;
+                if (t == 1 && in_head)
+                    e[3] += ee;
+            }
+        } else {
+#pragma unroll
+            for (int tt = 0; tt < 3; ++tt) {
+                const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> cp0 / cp0-ds / cp0+ds
+                float2 sA, sB;
+                chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code,
+                            phiA, phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
+                const float2 t1 = cmulf(pa, sA);
+                const float2 t2 = cmulf(pb, sB);
+                const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
+                wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh] = r;
+
+                const double ee = (double)(r.x * r.x + r.y * r.y);
+                e[t] += ee;
+                if (t == 1 && in_head)
+                    e[3] += ee;
+            }
         }
     }
 
@@ -215,7 +246,8 @@ namespace gnss_cuda {
 
 cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, int n_job,
                                   int n_chan, const DespreadParams& p, float2* wave, double* energy,
-                                  int threads_hint, cudaStream_t stream) {
+                                  int threads_hint, int fuse3, cudaStream_t stream) {
+    const bool fuse = fuse3 < 0 ? WAVE_FUSE3 : (fuse3 != 0);
     int cap = threads_hint > 0 ? threads_hint : WAVE_THREADS;
     if (cap > 1024)
         cap = 1024; // sh_e is sized for this
@@ -235,24 +267,35 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
     };
     const dim3 grid(n_job, n_chan);
     if (threads > 512) {
-        static const int kmax = ceiling((const void*)gnss_waveform_kernel<1024>);
-        if (threads <= kmax) {
-            gnss_waveform_kernel<1024><<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+        static const int kmaxF = ceiling((const void*)gnss_waveform_kernel<1024, true>);
+        static const int kmaxU = ceiling((const void*)gnss_waveform_kernel<1024, false>);
+        if (threads <= (fuse ? kmaxF : kmaxU)) {
+            if (fuse)
+                gnss_waveform_kernel<1024, true>
+                    <<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+            else
+                gnss_waveform_kernel<1024, false>
+                    <<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
             return cudaGetLastError();
         }
         threads = 512;
     }
-    static const int kmax5 = ceiling((const void*)gnss_waveform_kernel<512>);
-    if (threads > kmax5)
-        threads = kmax5;
-    gnss_waveform_kernel<512><<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+    static const int k5F = ceiling((const void*)gnss_waveform_kernel<512, true>);
+    static const int k5U = ceiling((const void*)gnss_waveform_kernel<512, false>);
+    const int k5 = fuse ? k5F : k5U;
+    if (threads > k5)
+        threads = k5;
+    if (fuse)
+        gnss_waveform_kernel<512, true><<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
+    else
+        gnss_waveform_kernel<512, false><<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
     return cudaGetLastError();
 }
 
 cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream) {
-    return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, stream);
+    return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, -1, stream);
 }
 
 cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_scale,

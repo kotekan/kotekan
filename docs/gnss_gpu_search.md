@@ -626,14 +626,86 @@ Note the unit test does NOT gate the width: at its 125 hops the block is 64 thre
 launch is byte-for-byte what it always was. The bit-identity check that matters is the bench's,
 over all 4.6M samples at 2048 hops.
 
-### 9.11 What is left, in order
+### 9.11 Trial fusion: the last factor of 3, and it holds -- 7.6x total
 
-1. **Revert `despread_max_chips` to 0** -- 9.9 makes the full filter span cheaper than today's
-   truncated one. Removes a known-lossy approximation for free.
-2. **Fuse the three E/P/L trials into one chip loop.** The last factor of 3 in the re-walk count.
-   The three trials' windows at chip `d` overlap (they differ by `ds*inv_cps` ~ 156 entries of a
-   313-entry window), so one pass could serve all three -- but it costs registers, and registers
-   are exactly what caps the width. Might net 6 -> 4 re-walks rather than 6 -> 2. Bench it before
-   building it.
-3. The ~2.5x of tracker saturation still unexplained by the seed latch (see 9.4), which needs a
+`chip_gather3` walks the chip loop once for all three E/P/L trials. It works because the three
+trials' taps at chip `d` are NEIGHBOURS: each `t(u,d) = d*ks + floor(base_u + d*kf) + 1` with
+`base_u` in `[0, inv_cps)` -- a fractional part, so the trial offset moves the tap inside a ~625
+entry window rather than to a different part of the slice. Issued together they share L1 lines;
+issued a whole 689 KB slice apart, as three separate calls are, they cannot.
+
+Measured on cx19 (contended -- see the caveat below), 11 PRNs x 7 chan x 140 chips:
+
+                       re-walks       ms      vs 256/3-gather
+    3-gather   256        24        2.985        1.00x
+    3-gather   512        12        1.482        1.92x
+    3-gather  1024         6        0.781        3.65x
+    fused      256         8        1.036        2.75x
+    fused      512         4        0.618        4.61x
+    fused     1024         2        0.375        7.61x     <- shipped
+
+The two knobs do NOT simply multiply: fused-1024 spills (104 B stores, 72 B loads) where
+3-gather-1024 does not, and it wins anyway. Fused-512 (96 registers, no spill) beats
+3-gather-1024, so if a future edit pushes the spill further, dropping to 512 is the fallback and
+costs 1.6x rather than everything. Holds across the envelope: at 50-200 PRNs it is 14-16x over
+the original.
+
+**⚠️ THE `cmulf` TRAP -- this is the part worth remembering.** Switching the fusion on made the
+split-vs-fused test report 3.078e-07 where it had always reported exactly 0. The obvious suspect
+was the new gather, and it was innocent: an isolated A/B of `chip_gather` x3 against
+`chip_gather3` on identical inputs, over 4096 code phases x 4 geometries (including a small-Lf
+one where the clamps actually fire), found ZERO mismatches. The culprit was `cmulf`, untouched,
+several lines downstream -- written as `a.x*b.x - a.y*b.y` it is ptxas's choice whether to
+contract to fmaf, and it took that choice differently once the surrounding code changed shape.
+Both `cmulf` and `chip_gather`'s accumulate are now pinned to explicit `fmaf`, which removes the
+freedom. Pinning `cmulf` is not quite a no-op -- it moves the replica ~1 ulp and the GPU-vs-CPU
+agreement in the test IMPROVES (5.400e-07 -> 5.276e-07, peel residual 2.461e-07 -> 2.454e-07, and
+the peel cross-term perturbation 1.914e-07 -> exactly 0). Every exactness gate is back at 0.
+
+**And note which instrument caught it.** Not the bench -- the bench compares this kernel against
+itself, so a change that moves BOTH paths is invisible to it by construction. The first version
+of this work also hoisted the carrier/write/energy block into a shared loop, which broke the
+UNFUSED path's bit-identity, and the bench called that bit-identical too. Only the unit test,
+which compares against the untouched `gnss_despread_kernel`, could see either. The else branch in
+`gnss_waveform_kernel` now duplicates eight lines on purpose, with a comment saying why.
+
+### 9.12 Scaling to the full GNSS sky
+
+Synthesis, one A40, 7 channels, 140 chips, fused/1024. Contended numbers corrected by the
+11-PRN calibration (0.930 contended vs 0.684 idle = 0.735); duty is against the 10.486 ms record
+period:
+
+    codes     idle-equiv ms    duty      vs the original 256/3-gather
+      11          0.375        3.6%          7.6x
+      50          1.46        13.9%         14.3x
+     100          2.73        26.0%         14.2x
+     200          5.44        51.9%         14.2x
+
+Below ~12 codes the GPU is not full: at 1024 threads and 64 registers a block owns a whole SM, so
+84 SMs / 7 channels = 12 PRNs before it saturates, and everything under that is nearly free.
+Above it the cost is linear at ~0.027 ms per code.
+
+Adding the correlation kernel (0.313 ms at 7 spec, saturating past ~12 then ~0.026 ms/code --
+ESTIMATED, wavebench does not measure it): **100 codes ~5.3 ms/record (~51% duty), 200 codes
+~10.6 ms (~101%)**. Before this work, 200 codes would have been ~134 ms -- 13x over real time.
+
+**What "100 codes" means physically.** `f_offset_hz` is 1176.45 MHz, which is simultaneously GPS
+L5, Galileo E5a and BeiDou B2a, all 10.23 Mcps, all the same Lf/n_chips geometry. So ~100 codes
+(≈32 GPS + 36 Galileo + 35 BeiDou) is a pure `n_prn` scale-up **in the 7 channels that already
+exist** -- no new bandwidth, no new PFB, just more entries in the replica bank. 200 means a second
+band (L1/E1/B1), which is a second channel set and a second tracker instance: it doubles
+everything rather than extending the PRN loop.
+
+### 9.13 What is left, in order
+
+1. **Revert `despread_max_chips` to 0** -- 9.9/9.11 make the full 212-chip span cheaper than
+   today's truncated one. Removes a known-lossy approximation. Costs 1.42x at scale (212 vs 140
+   chips), which at 100 codes is 2.73 -> 3.9 ms and still comfortable.
+2. **`chip_gather3` in the FUSED despread kernel too.** `gnss_despread_kernel` still makes three
+   separate gathers, and it is what the search's `refine_peak_cuda` and the airspy path run. Same
+   argument, same win, and the pinning work is already done. NOT attempted here.
+3. **Phi rebuild cost at 100-200 codes.** `hoprate_filter` builds 917k `std::exp` per PRN per
+   rebuild, single-threaded, and `refresh_hz` 100 means every PRN rebuilds every ~110 s at L5
+   Doppler rates. At 200 codes that is ~1.8 rebuilds/s. Probably fine; UNMEASURED.
+4. The ~2.5x of tracker saturation still unexplained by the seed latch (see 9.4), which needs a
    PRN sweep rather than the two-point fit it currently rests on.

@@ -145,12 +145,13 @@ int main(int argc, char** argv) {
     cudaEvent_t e0, e1;
     CK(cudaEventCreate(&e0));
     CK(cudaEventCreate(&e1));
-    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0));
+    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0,
+                                        0));
     CK(cudaDeviceSynchronize());
     CK(cudaEventRecord(e0, 0));
     for (int it = 0; it < iters; ++it)
         CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256,
-                                            0));
+                                            0, 0));
     CK(cudaEventRecord(e1, 0));
     CK(cudaDeviceSynchronize());
     float ms = 0.f;
@@ -176,40 +177,49 @@ int main(int argc, char** argv) {
     const size_t en_n = (size_t)4 * n_job * n_chan;
     std::vector<float2> ref(wave_n);
     std::vector<double> eref(en_n), egot(en_n);
-    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0));
+    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0,
+                                        0));
     CK(cudaDeviceSynchronize());
     CK(cudaMemcpy(ref.data(), d_wave, wave_n * sizeof(float2), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(eref.data(), d_energy, en_n * sizeof(double), cudaMemcpyDeviceToHost));
     std::vector<float2> got(wave_n);
-    printf("\nblock-width sweep (grid %d x %d):\n", n_job, n_chan);
-    for (int w : {256, 512, 1024}) {
-        CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, w,
-                                            0));
-        CK(cudaDeviceSynchronize());
-        CK(cudaMemcpy(got.data(), d_wave, wave_n * sizeof(float2), cudaMemcpyDeviceToHost));
-        CK(cudaMemcpy(egot.data(), d_energy, en_n * sizeof(double), cudaMemcpyDeviceToHost));
-        size_t bad = 0;
-        for (size_t k = 0; k < wave_n; ++k)
-            if (got[k].x != ref[k].x || got[k].y != ref[k].y)
-                ++bad;
-        double emax = 0.0;
-        for (size_t k = 0; k < en_n; ++k)
-            if (eref[k] != 0.0)
-                emax = std::max(emax, std::fabs(egot[k] - eref[k]) / std::fabs(eref[k]));
-        CK(cudaEventRecord(e0, 0));
-        for (int it = 0; it < iters; ++it)
+    // BOTH knobs, swept together. The block width and the trial fusion each cut the re-walk
+    // count, but the fusion costs registers and registers are what cap the width, so the winner
+    // is a corner of the 2D grid and not the product of two 1D wins.
+    printf("\nre-walk sweep (grid %d x %d):  re-walks = trials x hop passes\n", n_job, n_chan);
+    for (int fuse : {0, 1}) {
+        for (int w : {256, 512, 1024}) {
             CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
-                                                w, 0));
-        CK(cudaEventRecord(e1, 0));
-        CK(cudaDeviceSynchronize());
-        float mw = 0.f;
-        CK(cudaEventElapsedTime(&mw, e0, e1));
-        mw /= iters;
-        const int passes = (N_HOPS + w - 1) / w;
-        // wave must be BIT-identical (each hop's sample depends only on that hop); energy may
-        // move in the last ulp, because the width is the reduction's lane count.
-        printf("   %4d threads  %2d hop passes  %8.4f ms  %5.2fx   wave %-13s energy rel %.2e\n", w,
-               passes, mw, ms / mw, bad ? "MISMATCH ***" : "bit-identical", emax);
+                                                w, fuse, 0));
+            CK(cudaDeviceSynchronize());
+            CK(cudaMemcpy(got.data(), d_wave, wave_n * sizeof(float2), cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(egot.data(), d_energy, en_n * sizeof(double), cudaMemcpyDeviceToHost));
+            size_t bad = 0;
+            for (size_t k = 0; k < wave_n; ++k)
+                if (got[k].x != ref[k].x || got[k].y != ref[k].y)
+                    ++bad;
+            double emax = 0.0;
+            for (size_t k = 0; k < en_n; ++k)
+                if (eref[k] != 0.0)
+                    emax = std::max(emax, std::fabs(egot[k] - eref[k]) / std::fabs(eref[k]));
+            CK(cudaEventRecord(e0, 0));
+            for (int it = 0; it < iters; ++it)
+                CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave,
+                                                    d_energy, w, fuse, 0));
+            CK(cudaEventRecord(e1, 0));
+            CK(cudaDeviceSynchronize());
+            float mw = 0.f;
+            CK(cudaEventElapsedTime(&mw, e0, e1));
+            mw /= iters;
+            const int passes = (N_HOPS + w - 1) / w;
+            // wave must be BIT-identical -- the width only moves which thread computes a hop, and
+            // the fusion only interleaves three independent accumulations. Energy may move in the
+            // last ulp under a width change, because the width IS the reduction's lane count.
+            printf("   %s %4d threads  %2d re-walks  %8.4f ms  %5.2fx   wave %-13s energy rel "
+                   "%.2e\n",
+                   fuse ? "fused  " : "3-gather", w, (fuse ? 1 : 3) * passes, mw, ms / mw,
+                   bad ? "MISMATCH ***" : "bit-identical", emax);
+        }
     }
 
     // Traffic accounting, from the access pattern rather than from a counter: per block, per

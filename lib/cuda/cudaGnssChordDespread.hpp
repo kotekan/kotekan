@@ -88,13 +88,24 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream);
 
-/// @ref launch_waveform with the block width overridden (0 = @ref WAVE_THREADS). BENCH ONLY --
-/// the width changes the ENERGY summation order (lane L sums hops L, L+W, L+2W, ... and then a
-/// W-lane tree), so two widths agree to rounding, not bit-for-bit. The replica samples in @c wave
-/// are unaffected: each hop's sample depends only on that hop.
+/// Walk the chip loop ONCE for all three E/P/L trials instead of three times -- the other half of
+/// the re-walk count @ref WAVE_THREADS attacks. Bit-identical, but it costs registers, and
+/// registers are what cap the block width, so the two knobs pull against each other. See
+/// gnss_cuda::chip_gather3 and scripts/gnss/wavebench.cpp for which setting wins where.
+static constexpr bool WAVE_FUSE3 = true;
+
+/// @ref launch_waveform with the block width and the trial fusion overridden. BENCH ONLY.
+///
+/// @param threads_hint block width, 0 = @ref WAVE_THREADS. The width changes the ENERGY
+///        summation order (lane L sums hops L, L+W, L+2W, ... then a W-lane tree), so two widths
+///        agree to rounding, not bit-for-bit. @c wave is unaffected -- each hop's replica sample
+///        depends only on that hop.
+/// @param fuse3 -1 = @ref WAVE_FUSE3, 0 = three separate gathers, 1 = fused. Bit-identical either
+///        way, energy included: each trial's accumulation over chips is untouched, only the
+///        interleaving of the three moves.
 cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, int n_job,
                                   int n_chan, const DespreadParams& p, float2* wave, double* energy,
-                                  int threads_hint, cudaStream_t stream);
+                                  int threads_hint, int fuse3, cudaStream_t stream);
 
 /**
  * @brief Correlate N antenna voltages against the M generated references.

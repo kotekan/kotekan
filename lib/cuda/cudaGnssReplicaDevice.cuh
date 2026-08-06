@@ -23,8 +23,21 @@
 #include <math.h>
 
 namespace gnss_cuda {
+/// Complex multiply, with the multiply-adds PINNED to fmaf.
+///
+/// Written as the plain expression `a.x*b.x - a.y*b.y` it is ptxas's choice whether to contract,
+/// and it takes that choice differently depending on the surrounding code -- which is invisible
+/// until two call sites that must agree bit-for-bit stop agreeing. That happened: fusing the
+/// E/P/L gathers moved this function's contraction and the split-vs-fused test went from 0 to
+/// 3.1e-07 with the gather itself proven identical (an isolated A/B of chip_gather vs
+/// chip_gather3 over 4096 phases x 4 geometries found zero mismatches -- it was never the
+/// gather). Naming the operation removes the freedom.
+///
+/// NOT quite a no-op: it moves the replica by ~1 ulp, and the GPU-vs-CPU agreement in
+/// cudaGnssDespreadTest improves slightly with it (5.400e-07 -> 5.276e-07, peel residual
+/// 2.461e-07 -> 2.454e-07). Both call sites move together, so every exactness gate stays at 0.
 __device__ inline float2 cmulf(float2 a, float2 b) {
-    return make_float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+    return make_float2(fmaf(a.x, b.x, -(a.y * b.y)), fmaf(a.x, b.y, a.y * b.x));
 }
 
 /// Chip gather over the filter span at absolute code phase @c C:
@@ -105,14 +118,89 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
         const float2 cA = phiA[t];
         const float2 cB = phiB[t];
         const float cv = (float)code[job_code_offset + idx];
-        sA.x += cv * (cA.x - pA.x);
-        sA.y += cv * (cA.y - pA.y);
-        sB.x += cv * (cB.x - pB.x);
-        sB.y += cv * (cB.y - pB.y);
+        // fmaf EXPLICITLY, not `s += cv * (c - p)`. With the plain expression whether ptxas
+        // contracts the multiply-add is a SCHEDULING decision, and it takes it differently in
+        // this function than in chip_gather3 -- which showed up as the split-vs-fused test
+        // reporting 3.1e-07 the moment the fused gather was switched on, with no other symptom.
+        // Naming the operation makes the two agree by construction rather than by luck. This is
+        // a no-op against the old codegen here (verified: the test still reports exactly 0).
+        sA.x = fmaf(cv, cA.x - pA.x, sA.x);
+        sA.y = fmaf(cv, cA.y - pA.y, sA.y);
+        sB.x = fmaf(cv, cB.x - pB.x, sB.x);
+        sB.y = fmaf(cv, cB.y - pB.y, sB.y);
         pA = cA;
         pB = cB;
         if (--idx < 0)
             idx += job_code_len;
+    }
+}
+
+/// THREE code phases in ONE walk of the chip loop -- the E/P/L trials fused.
+///
+/// WHY. A block owns one (PRN, channel) Phi slice and re-walks it once per hop pass and once per
+/// trial (see WAVE_THREADS). The block width killed the hop-pass factor; this is the trial one.
+/// It is worth trying because the three trials' taps at chip @c d are NEIGHBOURS, not scattered:
+/// each `t(u,d) = d*ks + floor(base_u + d*kf) + 1` with `base_u` in [0, inv_cps), so the three
+/// land inside a window of about `inv_cps + ds*inv_cps` entries -- ~625 of them at CHORD against
+/// the 313 one trial spans. Issued together they share L1 lines; issued a whole 689 KB slice
+/// apart, as three separate @ref chip_gather calls are, they cannot.
+///
+/// It is BIT-IDENTICAL to three @ref chip_gather calls: each trial's own accumulation over @c d
+/// is untouched and the three never interact. Only the interleaving changes.
+///
+/// ⚠️ IT COSTS REGISTERS -- three live (sA, sB, pA, pB, idx, f, khi_base) states instead of one,
+/// and registers are exactly what caps the block width. Fusing and widening pull against each
+/// other, so which wins is a MEASUREMENT (scripts/gnss/wavebench.cpp), not a deduction.
+__device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
+                                    int job_n_chips, int Lf, const int8_t* __restrict__ code,
+                                    const float2* __restrict__ phiA,
+                                    const float2* __restrict__ phiB, int ks, float kf,
+                                    const double C[3], float2 sA[3], float2 sB[3]) {
+    int idx[3], khi_base[3];
+    float f[3];
+    float2 pA[3], pB[3];
+#pragma unroll
+    for (int u = 0; u < 3; ++u) {
+        // Line-for-line chip_gather's prologue. Kept that way on purpose: the two must agree
+        // bit-for-bit, and the cheapest way to keep that true is for the code to look the same.
+        const long long chip0 = (long long)floor(C[u]);
+        const double phi = C[u] - (double)chip0;
+        sA[u] = make_float2(0.f, 0.f);
+        sB[u] = make_float2(0.f, 0.f);
+        const double base = phi * job_inv_cps;
+        long long i0 = chip0 % (long long)job_code_len;
+        if (i0 < 0)
+            i0 += job_code_len;
+        idx[u] = (int)i0;
+        const int prev_khi = -ks + (int)floorf((float)base - kf);
+        f[u] = (float)base;
+        khi_base[u] = 0;
+        int t_prev = prev_khi + 1;
+        t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
+        pA[u] = phiA[t_prev];
+        pB[u] = phiB[t_prev];
+    }
+    for (int d = 0; d < job_n_chips; ++d) {
+#pragma unroll
+        for (int u = 0; u < 3; ++u) {
+            int t = khi_base[u] + (int)floorf(f[u]) + 1;
+            t = t < 0 ? 0 : (t > Lf ? Lf : t);
+            f[u] += kf;
+            khi_base[u] += ks;
+            const float2 cA = phiA[t];
+            const float2 cB = phiB[t];
+            const float cv = (float)code[job_code_offset + idx[u]];
+            // fmaf explicitly -- see the note in chip_gather. This is the half of the pair that
+            // made it matter.
+            sA[u].x = fmaf(cv, cA.x - pA[u].x, sA[u].x);
+            sA[u].y = fmaf(cv, cA.y - pA[u].y, sA[u].y);
+            sB[u].x = fmaf(cv, cB.x - pB[u].x, sB[u].x);
+            sB[u].y = fmaf(cv, cB.y - pB[u].y, sB[u].y);
+            pA[u] = cA;
+            pB[u] = cB;
+            if (--idx[u] < 0)
+                idx[u] += job_code_len;
+        }
     }
 }
 
