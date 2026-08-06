@@ -53,6 +53,18 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
     return sel;
 }
 
+// The comb as a freq map, or empty when the map is off.
+// NB build this from ONE config.get -- taking begin() and end() from two separate calls gives
+// iterators into two different temporaries, which is a garbage range (kotekan died at startup
+// with "cannot create std::vector larger than max_size").
+static std::vector<int> freq_map_for(Config& config, const std::string& unique_name) {
+    if (!config.get_default<bool>(unique_name, "gnss_freq_map", false))
+        return {};
+    const std::vector<std::int32_t> chans =
+        config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels");
+    return std::vector<int>(chans.begin(), chans.end());
+}
+
 cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers, cudaDeviceInterface& device,
                                        const int inst) :
@@ -116,12 +128,7 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         config.get_default<bool>(unique_name, "gnss_freq_map", false)
             ? (n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB)
             : n2k_dual::BLOCK_MASK_ALL,
-        config.get_default<bool>(unique_name, "gnss_freq_map", false)
-            ? std::vector<int>(config.get<std::vector<std::int32_t>>(unique_name,
-                                                                    "gnss_local_channels").begin(),
-                               config.get<std::vector<std::int32_t>>(unique_name,
-                                                                     "gnss_local_channels").end())
-            : std::vector<int>{})),
+        freq_map_for(config, unique_name))),
     _freq_map_mode(config.get_default<bool>(unique_name, "gnss_freq_map", false)) {
     if (_num_times % _sub_integration_ntime)
         throw std::runtime_error(
