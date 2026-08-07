@@ -74,7 +74,41 @@ Comb-sharing bonuses for later phases: the L3OC comb overlaps the E5b comb over
 6128..6207, and the E6 comb overlaps B3I's over 6521..6547 -- a widened tap serves both
 of each pair.
 
-## 3. Why E5b-Q over L2C as the second band
+## 3. Why E5b-Q over L2C as the second band -- and how E5a/E5b relate
+
+**They do NOT share a code.** E5a-Q and E5b-Q are both 10230 chips at 10.23 Mcps with
+per-PRN CS100 secondaries, but the primary tables are entirely different (verified by
+inspection: E5a PRN 1 begins `83F6F69D…`, E5b PRN 1 `CFF914EE…`; the ICD gives E5b its own
+register polynomials and X2 start values). What they share is the **satellite**: E5a and E5b
+are the two sidebands of Galileo's composite E5 AltBOC(15,10), transmitted together by every
+Galileo bird, 30.69 MHz apart.
+
+Nor is the instrument seeing them through one wide passband. The F-engine digitizes
+0--1600 MHz so both are *available*, but a tracker chain taps a specific stride-16 comb: E5a
+at freq_id 5971..6076, E5b at 6128..6233, with 51 channels of untapped band between. They are
+two combs, two taps, two chains.
+
+**Should they be processed jointly? No -- and deliberately not.** There are two ways to
+"operate together":
+
+- *Coherent AltBOC*: treat E5 as one 51 MHz signal. This is the high-precision-ranging
+  answer -- AltBOC's correlation peak is far sharper than BPSK(10)'s. It is the wrong answer
+  **here**: it would require modelling the composite modulation across a 30 MHz gap with
+  correct relative phase, and, decisively, it would average the two sidebands' responses
+  together. Our measurand IS how the beam changes with frequency; coherent combination
+  destroys that by construction.
+- *Shared knowledge at the broker* (the right answer): one satellite, one orbit, one clock.
+  An E5b chain can be seeded from the same ephemeris and the same receiver clock, and a
+  satellite already locked on E5a tells the E5b chain exactly where to look -- the code
+  phases differ only by the different code tables and a small differential instrumental
+  delay. Independent chains, common sky model.
+
+So the two frequencies stay separate on purpose: same satellite, same sightline, same second,
+two frequencies 30.69 MHz apart. That is a chromatic beam measurement with the pointing held
+fixed for free -- which is precisely what the roadmap's "split the frequency axis back out"
+note is asking for.
+
+### The band comparison
 
 Identical chip rate, code length, primary period, and record geometry to E5a-Q; identical
 per-PRN CS100 secondary shape, so ALL Phase-0 machinery (§4) transfers verbatim -- only
@@ -121,12 +155,21 @@ Clean, with one real finding.
 - **The Doppler-aiding ratio** (5094.9 chips/Hz) is derived (chip_rate·t/carrier), never
   a literal -- and is numerically identical for E5a/B2a anyway (same carrier, same chip
   rate).
-- **FINDING -- blind search cannot see per-PRN secondaries.** The bank's overlay slot is
-  single-sequence by design and its name ladder deliberately skips per-PRN signals
-  (`gnssChannelizedReplica.cpp:220-248`), so for `GAL_E5A_Q` the slot falls through
-  empty, `secondary_length()` returns 0, and `nh_search` silently degrades to a no-op
-  (`GnssChannelizedSearch.cpp:222`, it INFO-logs this). Multi-period blind acquisition of
-  E5a/B2a therefore does not exist today. Two ways out:
+- **FINDING -- the deployed search cannot blind-acquire a per-PRN secondary.** Two facts
+  compose. (a) The search's coherent window is a full replica period: at CHORD that is
+  3125 hops = **16 primary code periods**, so it spans 16 secondary chips and decoheres
+  unless the overlay alignment is known -- which is exactly why `nh_search` scans NH20's 20
+  alignments for GPS L5. (b) The bank's overlay slot is single-sequence by design and its
+  name ladder deliberately skips per-PRN signals (`gnssChannelizedReplica.cpp:220-248`), so
+  for `GAL_E5A_Q` it falls through empty, `secondary_length()` returns 0, and `nh_search`
+  silently degrades to a no-op (`GnssChannelizedSearch.cpp:222`, INFO-logged).
+
+  Note precisely what this does and does not say. It is NOT that the primary is
+  unacquirable in principle -- a **~1 ms sub-window spans one secondary chip, a constant
+  sign that |D|² cannot see**, which is the whole basis of the ms-split acquire. But
+  `ms_split_accumulate` lives only in `scripts/gnss/e2e.cpp`; it is NOT wired into
+  `GnssChannelizedSearch`, so it is a harness experiment, not a deployable path. For the
+  system as it ships, blind acquisition of E5a/B2a does not exist. Three ways out:
   1. **Dead-reckon seeding (chosen)**: GPS L5 lock has already measured the instrumental
      delay and the clock; E5a/B2a cp + CS phase are then predictable from ephemeris +
      constellation time to well inside the DLL pull-in. No bank change, no 100-alignment
@@ -134,6 +177,20 @@ Clean, with one real finding.
   2. Per-PRN secondary slot in the bank (per-p `_secondary`, as `_full_code` already is):
      mechanical but touches the search-critical path. Only if dead-reckoning proves
      insufficient on sky.
+  3. **Productize the ms-split acquire** into `GnssChannelizedSearch`: overlay-blind by
+     construction, so it needs no per-PRN slot to FIND the peak, and the period is then
+     recovered by a postfix of 100 single despreads at the one known phase -- which the
+     baked `_CS` banks built here can already do. This is the route that would give
+     E5a/B2a a genuine search rather than a model, and it is the same route that would
+     let the fleet acquire without GPS present at all.
+
+**How the prototype avoided all of this:** it did not bootstrap E5a from another signal --
+it acquired it directly, on the bare `GAL_E5A_Q` primary, because an airspy record was
+`hops_per_record: 1000` = **exactly one 1 ms code period**, so the CS100 chip was a constant
+sign within every record and the overlay was wiped downstream by the combiner
+(`secondary_overlay: E5A_CS100`). That is the record==period coincidence again: it silently
+made the acquisition, the record and the wipe all correct at once, and CHORD's 10.49-period
+record breaks all three together.
 
 ## 6. Phased plan
 
@@ -175,9 +232,19 @@ combiner coh_frac -- one `--n2-debug` run, §11.13 of gnss_gpu_search.md; do not
 queue-jump them). Then E5a-Q on cx19 against predicted Galileo transits; per-element A/B
 machinery transfers unchanged.
 
-**Phase 2.** BDS_B2A_P, same channels. Watch the path-B lane budget: 4 lanes/PRN × 32
-slots = NSB 128; tri-constellation visible ≈ 25-30 sats fits with thin margin, NSB=256
-(one new kernel instantiation) is the documented mechanical escape.
+**Phase 2.** BDS_B2A_P, same channels.
+
+⚠️ **PATH B IS NOT MULTI-SIGNAL.** Everything in Phase 0 extends **path A** -- the voltage
+tap → `cudaGnssChordTrack` chain. `build_n2dual_branch()` still reads `args.prns` and the
+primary `signals.tracker`, so `--n2-dual --extra-signal` today produces three tracker chains
+and ONE path-B injector, still on GPS L5. Extending it is a separate piece of work whose
+shape is already known: the injector is per-signal (its own seeds, its own replica bank), and
+the lane budget is the binding constraint -- 4 lanes/PRN against NSB=128 is 32 PRN slots
+TOTAL across all constellations, so tri-constellation at ~25-30 visible sats fits only with
+thin margin. NSB=256 (one new kernel instantiation) is the documented mechanical escape. This
+matters for ordering: path B is where multi-constellation eventually wants to live, because
+its marginal cost per PRN is the injector (~2.4 ms/frame indicative) rather than a whole
+tracker instance (~17.9 ms).
 
 **Phase 3.** Second band: E5b-Q comb (6128..6232), new taps + branch, machinery from
 Phase 0 verbatim; two-frequency beam chromaticity from every Galileo pass. Then optionally
@@ -206,12 +273,22 @@ signal it was written for and silently wrong for the next one.
    and the primed constant stands for the whole run. The message now states which case it
    is in. This one mattered: believing it would mean shipping a wrong receiver clock
    indefinitely and reading the result as a bad instrumental delay.
-3. **Every extra chain landed its stages on the primary's cores** -- see §6 item 3.
+3. **Every extra chain landed its stages on the primary's cores** -- see §6 item 3. Filed as
+   HYGIENE, not a fix: a cudaProcess thread mostly blocks on GPU completion, and the earlier
+   core collision (gnss1_n2dual/gnss0_gpu, 2026-08-06) was investigated OUT as the cause of
+   the degradation it was found near. The rotation buys determinism, nothing more.
 
 Consequence for operations: **the extra chains' receiver clock must be primed from the GPS
-broker** (`--dr-clock-chips`). It transfers exactly, because E5a/B2a share L5's carrier and
-therefore the same cable, F-engine pipeline and PFB group delay -- but it does NOT transfer
-across a retune (E5b) and does not survive an F-engine restart.
+broker** (`--dr-clock-chips`), and it does not survive an F-engine restart.
+
+How far it transfers: to E5a/B2a **exactly** (same 1176.45 MHz carrier -- same cable, same
+F-engine path, same PFB group delay). To **E5b, very probably too**, and an earlier draft of
+this doc was wrong to say otherwise: it claimed the clock "does not transfer across a retune",
+which is airspy thinking. CHORD does not downconvert or retune at all -- the RFSoC samples
+0--1600 MHz directly, so 1207.14 MHz comes off the same cable and the same ADC as 1176.45.
+What differs is cable dispersion over 30.7 MHz and any differential filter delay: expected
+well under a chip (97.75 ns), but MEASURED-UNKNOWN. Treat a GPS-primed E5b clock as a good
+starting guess to be confirmed by its own integrity residual, not as a transferred constant.
 
 ## 8. Costs and risks
 

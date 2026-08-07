@@ -171,12 +171,19 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
     tag = chain["tag"] if chain else ""
     pre = f"gnss{gpu}{tag}_"
 
-    # PER-CHAIN CORE ROTATION. Every affinity below is cores[(gpu + k) % len], which is a
-    # function of the STAGE and the GPU only -- so without a rotation each extra chain lands
-    # its cudaProcess on the same core as the primary's, its combiner on the same core as the
-    # primary's, and so on. That is not a theoretical tidiness point: gnss1_n2dual sharing
-    # core 60 with gnss0_gpu was a real bug found on 2026-08-06. The rotation is 3 per chain
-    # because 3 is coprime to the 10-core pool, so N chains walk N distinct cores per stage.
+    # PER-CHAIN CORE ROTATION. Every affinity below is cores[(gpu + k) % len], a function of
+    # the STAGE and the GPU only, so without a rotation every chain stacks its cudaProcess on
+    # one core, its combiner on another, and so on. The rotation spreads them: 3 per chain,
+    # coprime to the 10-core pool, so N chains walk N distinct cores per stage.
+    #
+    # HONEST STATUS OF THE JUSTIFICATION: this is hygiene, NOT a known-harmful bug being
+    # fixed. A cudaProcess thread mostly blocks on GPU completion rather than burning CPU, so
+    # co-scheduling several is probably fine. An earlier collision (gnss1_n2dual on core 60
+    # with gnss0_gpu) was fixed on 2026-08-06 and INVESTIGATED OUT as the cause of the
+    # degradation it was found near -- the real cause was elsewhere. Do not cite it as
+    # evidence that stacking hurts; it is evidence that it can look guilty. The rotation costs
+    # nothing and makes the assignment deterministic, which is the whole claim.
+    #
     # It does NOT create free cores -- a multi-chain node oversubscribes a 10-core pool, and
     # main() prints the resulting load so it is a stated cost rather than a surprise.
     rot = 3 * (chain["ord"] if chain else 0)
