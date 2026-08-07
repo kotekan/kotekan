@@ -1440,3 +1440,38 @@ SNR to path A's:
 NOT YET MEASURED: why the q ratio (3-7x) is larger than the channel-count ratio alone would
 predict (sqrt(2)). `amp_snr` is only 17-29% lower on path B, which does not obviously explain
 a 3x q deficit. Worth understanding before assuming the merge alone fixes it.
+
+### 11.14.2  NEXT SESSION: raise path B's per-record SNR by combining wider (via the broker)
+
+KV's direction, 2026-08-07: do the coherent combination not just across the two GPUs but
+**across NODES, and possibly across ELEMENTS**, to drive the noise down. That is the right
+shape for the defect in 11.14.1 -- path B does not need a better rate search, it needs
+records the existing rate search can qualify (q > 10; it sits at 4.5-11.4).
+
+**The plumbing already exists, which is the good news.** The broker
+(`gps_distributed_broker.py`) already performs cross-node coherent combination:
+`fleet_coherent()` aligns each instance's exported records by `pow_hop` and forms a one-way
+S/R split (signal half integrated, reference half only referenced, to avoid self-reference),
+and `_coherent_sum()` scores it. It is fed by each combiner's `/get_records` export
+(`record_export: integration_length + 28`) -- the very endpoint used to diagnose 11.14.1.
+So a path-B fleet combine is mostly a matter of pointing that machinery at the
+`*_n2combine` endpoints alongside (or instead of) the path-A ones.
+
+Order of attack, cheapest first:
+
+1. **Across GPUs** (14 channels instead of 7). Config-shaped, but a previous attempt to
+   mirror path A's `--combine-gpus` merge into path B STALLED the combiner (GPU0 buf full
+   4/4 at acq=0, record step 2048 -> 67584, ~97% loss) and was reverted. Understand that
+   stall first -- it is a buffer/cadence interaction, not a correctness one.
+2. **Across nodes**, via the broker's `fleet_coherent`. Six instances of 7 channels is the
+   8.8 dB the fleet was always worth; it is also the configuration in which `coh_frac`
+   becomes a fleet number rather than a per-GPU one.
+3. **Across elements** -- the records already carry the per-element block
+   (`ELEM_FLOATS`, 12 floats/element), and `elem_sum` already does the within-node
+   calibrated MRC. Combining elements coherently ACROSS nodes needs the per-element sky
+   phase, which is what `gnssElemCal` / the `REC_SKY_*` slots exist for.
+
+**Before any of it, close the open question in 11.14.1:** the q ratio is 3-7x while
+`amp_snr` differs by only 17-29%, and channel count alone predicts sqrt(2). If that gap is
+not understood, step 1 may land at q ~ 6 -- still under the gate -- and look like a failure
+of the whole approach when it is not.
