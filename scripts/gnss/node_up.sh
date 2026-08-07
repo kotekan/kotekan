@@ -10,10 +10,16 @@
 # The exec path must be ABSOLUTE: systemd-run does not resolve a relative one against
 # --working-directory, and the failure mode is a unit that starts and immediately dies.
 #
-# usage:  node_up.sh <node> [up|down|status]      default: up
+# usage:  node_up.sh <node> [up|down|restart|status]      default: up
 #         node_up.sh cx51
 #         node_up.sh cx51 status
 #         for n in cx42 cx43 cx44 cx47 cx51 cx52; do scripts/gnss/node_up.sh $n; done
+#         for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/node_up.sh $n restart; done
+#
+# USE `restart` RATHER THAN down-then-up. sudo's credential cache is per-TTY and `ssh -t`
+# allocates a fresh one each call, so a down loop followed by an up loop prompts for the
+# password TWICE PER NODE -- twelve prompts to cycle six nodes. `restart` does the stop and the
+# systemd-run inside ONE ssh session, so it is one prompt per node and one loop.
 #
 #   env:  GNSS_BIN  binary            (default build/kotekan/kotekan)
 #         GNSS_CFG  config            (default config/generated/chord_gnss_<node>.yaml)
@@ -48,6 +54,41 @@ ACT=${2:-up}
 CFG=${GNSS_CFG:-$K/config/generated/chord_gnss_$N.yaml}
 LOG=${GNSS_LOG:-/tmp/gnss_node.log}
 
+# --- shared by `up` and `restart` -------------------------------------------------------------
+# One copy of the preflight and one copy of the systemd-run line, so the two actions can never
+# drift apart -- a `restart` that started the node differently from `up` would be a nasty thing
+# to debug at 2am.
+preflight() {
+    # FAIL LOUDLY ON A MISSING CONFIG OR BINARY. The systemd-run below is guarded by
+    # `test -r '$CFG' && ...`, and a failing test short-circuits the whole chain SILENTLY:
+    # the command returns instantly, prints nothing, creates no unit, and `systemctl status`
+    # then says "could not be found". That is indistinguishable from a dozen other failures.
+    # It cost several rounds of restarts on 2026-08-07, when a config path was pasted with a
+    # literal "..." in it. Check here, where we can say which path was wrong. These are LOCAL
+    # checks of an NFS-shared tree, which is the same filesystem the node will read.
+    if [ ! -r "$CFG" ]; then
+        echo "FAILED: config not readable: $CFG" >&2
+        echo "  (a relative or elided path? GNSS_CFG must be absolute)" >&2
+        exit 1
+    fi
+    if [ ! -x "$BIN" ]; then
+        echo "FAILED: binary not executable: $BIN" >&2
+        exit 1
+    fi
+}
+
+# The record dir is node-local (NOT the NFS home) and rawFileWrite fails on a missing one.
+# `systemctl stop` on a transient unit usually removes it, but a stopped-or-failed unit can
+# stay LOADED, and then systemd-run refuses the name: "Unit gnss-node.service was already
+# loaded or has a fragment file". reset-failed clears it; harmless when there is nothing to
+# clear, hence the `|| true`.
+REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+      test -r '$CFG' && sudo systemd-run --unit=gnss-node \
+        --working-directory=$K \
+        --property=StandardOutput=append:$LOG \
+        --property=StandardError=append:$LOG \
+        '$BIN' --config '$CFG' --bind-address 0.0.0.0:12049"
+
 case "$ACT" in
   status)
     # `systemctl is-active` EXITS NON-ZERO for a stopped unit, so a bare `|| echo unreachable`
@@ -61,32 +102,24 @@ case "$ACT" in
     echo "note: the unit is transient -- it is now GONE. Use '$0 $N' to bring it back."
     ;;
   up)
-    # FAIL LOUDLY ON A MISSING CONFIG OR BINARY. The systemd-run below is guarded by
-    # `test -r '$CFG' && ...`, and a failing test short-circuits the whole chain SILENTLY:
-    # the command returns instantly, prints nothing, creates no unit, and `systemctl status`
-    # then says "could not be found". That is indistinguishable from a dozen other failures.
-    # It cost several rounds of restarts on 2026-08-07, when a config path was pasted with a
-    # literal "..." in it. Check here, where we can say which path was wrong.
-    if [ ! -r "$CFG" ]; then
-        echo "FAILED: config not readable: $CFG" >&2
-        echo "  (a relative or elided path? GNSS_CFG must be absolute)" >&2
-        exit 1
-    fi
-    if [ ! -x "$BIN" ]; then
-        echo "FAILED: binary not executable: $BIN" >&2
-        exit 1
-    fi
-    # The record dir is node-local (NOT the NFS home) and rawFileWrite fails on a missing one.
-    # `systemctl stop` on a transient unit usually removes it, but a stopped-or-failed unit can
-    # stay LOADED, and then systemd-run refuses the name: "Unit gnss-node.service was already
-    # loaded or has a fragment file". reset-failed clears it; harmless when there is nothing to
-    # clear, hence the `|| true`.
-    ssh -t "$N" "mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
-      test -r '$CFG' && sudo systemd-run --unit=gnss-node \
-        --working-directory=$K \
-        --property=StandardOutput=append:$LOG \
-        --property=StandardError=append:$LOG \
-        '$BIN' --config '$CFG' --bind-address 0.0.0.0:12049" \
+    preflight
+    ssh -t "$N" "$REMOTE_UP" \
+      && sleep 3 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node
+    ;;
+  restart)
+    # STOP AND START IN ONE SSH SESSION -- the entire point. sudo's credential cache is keyed to
+    # the TTY, `ssh -t` allocates a new one per call, so `down` then `up` is two passwords per
+    # node. Here the stop and the systemd-run share one session and one prompt.
+    #
+    # The stop is `|| true` on purpose: the unit is TRANSIENT, so on a node that is already down
+    # it does not exist and `systemctl stop` exits non-zero. That is the normal case for a node
+    # that crashed, not an error, and must not abort the start that follows.
+    #
+    # Preflight BEFORE stopping. Checking afterwards would take a healthy node down and then
+    # refuse to bring it back because of a typo in GNSS_CFG -- the one outcome worse than not
+    # restarting at all.
+    preflight
+    ssh -t "$N" "sudo systemctl stop gnss-node 2>/dev/null || true; $REMOTE_UP" \
       && sleep 3 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node
     ;;
   debug)
@@ -111,5 +144,5 @@ case "$ACT" in
   up-premerge)
     GNSS_BIN=$PREMERGE exec "$0" "$N" up
     ;;
-  *) echo "unknown action '$ACT' (up|down|status|debug|up-premerge)"; exit 2 ;;
+  *) echo "unknown action '$ACT' (up|down|restart|status|debug|up-premerge)"; exit 2 ;;
 esac
