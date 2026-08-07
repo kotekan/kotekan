@@ -12,6 +12,8 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 
+#include <atomic> // for atomic (live element selection)
+#include <mutex>  // for mutex (element_power snapshot)
 #include <string>
 #include <vector>
 
@@ -70,7 +72,21 @@ private:
 
     std::vector<int> _chan_ids;
     int _n_elements;
-    int _element_offset;
+    /// LIVE-SETTABLE via POST <unique_name>/set_element {"element": N}. Antennas come and go
+    /// (2026-08-07: element 0, the search's reference, was dark and the whole acquisition chain
+    /// read zeros for a session), and re-picking one should not need a regenerate + a six-node
+    /// restart. Atomic because the REST thread writes it while main_thread reads it per frame;
+    /// a torn read is impossible for an int, and a frame straddling a change is harmless -- the
+    /// consumer re-derives everything per frame.
+    std::atomic<int> _element_offset;
+
+    /// Per-element mean power from the last frame, for GET <unique_name>/element_power.
+    /// Indexed by ABSOLUTE element (0.._frame_elem_stride), so it answers "where should the tap
+    /// point?" rather than describing only what it currently taps.
+    std::mutex _pow_lock;
+    std::vector<double> _elem_power;
+    long _pow_frames = 0;
+    static constexpr int _pow_stride = 32; ///< sample every Nth hop (0.2% of the frame)
     int _frame_chan_stride;
     int _frame_elem_stride;
     int _n_hops;
