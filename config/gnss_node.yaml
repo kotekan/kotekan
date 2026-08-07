@@ -68,7 +68,11 @@ shared:
   code_doppler_sign: 1.0
   n_channels: 10
   channel_offset: 0
-  record_floats: 24
+  # MIRRORS gnss::RECORD_FLOATS (lib/stages/gnss/gnssRecord.hpp). The generators now READ the
+  # header (config/gnss_record_layout.py) and override this, so it is documentation rather than
+  # the source of truth -- kept in step so a human reading the yaml is not misled. It was 24
+  # against a header saying 26 from the CHORD merge until 2026-08-07, which FATAL'd 34 stages.
+  record_floats: 26
   doppler_margin_hz: 250000.0
 
   # CHORD 4+4b point: noise rms scaled to 2.1 LSB (1.5/component). 07-17/19: the cold-soak

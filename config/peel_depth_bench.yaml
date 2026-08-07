@@ -41,7 +41,7 @@ code_doppler_sign: 1.0
 doppler_margin_hz: 250000.0
 hops_per_record: 1000
 n_prn: 32
-record_floats: 24
+record_floats: 26
 cpu_affinity: [0, 1, 2, 3]
 
 gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }

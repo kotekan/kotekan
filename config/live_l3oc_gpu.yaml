@@ -59,7 +59,7 @@ f_offset: 5.0e6  # LO on carrier, Fs/4 (same front-end model as every other band
 signal: GLO_L3OC_P
 code_doppler_sign: 1.0
 n_prn: 63
-record_floats: 24
+record_floats: 26
 doppler_margin_hz: 250000.0
 acquire_snr: 6.0
 acquire_windows: 200

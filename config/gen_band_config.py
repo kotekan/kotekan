@@ -28,6 +28,8 @@ import sys
 
 import yaml
 
+from gnss_record_layout import record_floats
+
 CONF = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -321,6 +323,12 @@ def record_stage(band, chain, prefix):
 
 def build_band(node, band_id):
     sh = node["shared"]
+    # RECORD WIDTH COMES FROM THE C++ HEADER, not from the yaml. gnss_node.yaml's
+    # `record_floats` used to be an independent literal, and when gnss::RECORD_FLOATS went
+    # 24 -> 26 the two silently disagreed: 34 stages FATAL'd at construction on a frame 256 B
+    # per PRN too small. Overriding here means the yaml value can never be the stale one --
+    # the header is the single definition, as the stages' own guards assume.
+    sh = dict(sh, record_floats=record_floats())
     band = dict(node["bands"][band_id])
     band["_shared"] = sh
     chains = band["chains"]

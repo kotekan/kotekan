@@ -41,6 +41,7 @@ sys.path.insert(0, CONF)
 
 from chord_band_plan import (all_band_channels, covering_channels,  # noqa: E402
                              node_channels, signal_table)
+from gnss_record_layout import record_stride  # noqa: E402
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
@@ -208,9 +209,11 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
     prns = chain["prns"] if chain else args.prns
     carrier_hz = chain["carrier_hz"] if chain else float(sig["carrier_hz"])
 
-    # Record frames carry the element axis: RECORD_FLOATS + n_elem*ELEM_FLOATS per PRN
-    # (gnssRecord.hpp record_stride()). Kept in one place; the stages assert against it.
-    record_floats = 26 + n_elem * 12
+    # Record frames carry the element axis: RECORD_FLOATS + n_elem*ELEM_FLOATS per PRN.
+    # READ FROM gnssRecord.hpp, not restated here: this used to be the literal `26 + n_elem*12`
+    # under a comment claiming it was "kept in one place", which is exactly the drift that broke
+    # the airspy configs when RECORD_FLOATS went 24 -> 26 (34 stages FATAL at construction).
+    record_floats = record_stride(n_elem)
     n_prn = len(prns)
 
     blocks = {}

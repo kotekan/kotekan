@@ -36,7 +36,7 @@ signal: GPS_L2C_CM
 code_doppler_sign: 1.0
 clock_profile: { name: auto }
 n_prn: 32
-record_floats: 24
+record_floats: 26
 doppler_margin_hz: 250000.0
 acquire_snr: 8.0
 acquire_windows: 40
