@@ -1939,6 +1939,29 @@ def main(argv=None):
                          "sats, against a shuffled-null floor of ~4. Costs one extra REST poll "
                          "per combiner and ~0.2 s per cycle; publishes into the coherent fields "
                          "the FleetPublisher previously had to take best-of-one-instance.")
+    ap.add_argument("--n2-combiners", default="",
+                    help="CROSS-NODE COHERENT COMBINE FOR PATH B: comma-separated *_n2combine "
+                         "endpoints ({a..b} ranges expanded), run through the SAME "
+                         "fleet_coherent as --dll-combiners but kept as a separate population "
+                         "so the two paths stay independently measurable. Empty = off.\n"
+                         "\n"
+                         "This is not an optimisation, it is how path B works at scale. A node "
+                         "holds every 8th science channel and each GPU a stride-16 comb, so one "
+                         "instance sees 7 of the 105 channels under the L5 lobe -- and on a "
+                         "NARROW signal (L2C, E5b) at full CHORD a node may hold ONE channel. "
+                         "The fleet combine is then the measurement, not an improvement to it.\n"
+                         "\n"
+                         "KNOWN LIMIT, and it is the thing to watch as channels get scarcer: "
+                         "fleet_coherent needs each instance to have enough SNR to MEASURE the "
+                         "alignment phase, not just to contribute power. At 9.25/record that is "
+                         "a 0.11 rad estimate and the alignment is exact; as per-instance SNR "
+                         "approaches 1/record the cross-product that rotates instance i onto the "
+                         "reference becomes noise, and the combine degrades toward an incoherent "
+                         "sum rather than failing loudly. The fix at that point is the ELEMENT "
+                         "axis (gnssElemCal / elem_sum), which is what makes the estimate local "
+                         "again at full CHORD -- fewer channels per node, far more elements. "
+                         "Judge it by per_inst against the shuffled-null floor, never by the "
+                         "fleet total alone.")
     ap.add_argument("--coh-min-instances", type=int, default=3,
                     help="fleet coherent: instances that must see a PRN before it is combined. "
                          "Below this the PRN keeps its single-instance coherent numbers.")
@@ -2408,6 +2431,11 @@ def main(argv=None):
     # source for everything else (amplitudes, drop decisions, nav bits) -- this list only feeds
     # the code loop, so a chain that does not set it is bit-for-bit unchanged.
     dll_combiners = parse_endpoints(args.dll_combiners, base) if args.dll_combiners else []
+    # PATH B's own population, deliberately parallel and deliberately separate: same estimator,
+    # different record stream, so the two fleet numbers can be compared rather than blended.
+    # These endpoints feed NO loop -- fleet_coherent is an observable -- so an n2 chain that is
+    # down, restarting, or absent costs a log line and nothing else.
+    n2_combiners = parse_endpoints(args.n2_combiners, base) if args.n2_combiners else []
     # Integer hop tolerance, derived once from the record geometry. Kept as an int so every
     # comparison downstream is integer arithmetic on the F-engine's own counter.
     dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
@@ -5087,6 +5115,45 @@ def main(argv=None):
                                           seed=int(time.time()))
                 except Exception as e:
                     _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
+            # PATH B, same estimator, separate population. Reported side by side rather than
+            # merged: blending the two streams would make the very comparison this exists to
+            # support impossible, and their per-record noise is NOT independent (both despread
+            # the same antenna voltages), so a merged sum would not buy the sqrt(2) it appears
+            # to. Publishes nothing and touches no loop.
+            fcoh_n2 = {}
+            if args.fleet_coherent and n2_combiners:
+                try:
+                    fcoh_n2 = fleet_coherent(n2_combiners, args.coh_min_instances,
+                                             args.coh_min_records, prns=set(seeds) or None,
+                                             log=None, floor_margin=args.coh_floor_margin,
+                                             seed=int(time.time()))
+                except Exception as e:
+                    _log_rl("fleet-coh-n2", "fleet coherent (path B): skipped (%s)" % e)
+            if fcoh or fcoh_n2:
+                # One line, both paths, only PRNs one of them actually detected. per_inst is
+                # printed alongside the fleet number because the fleet total alone cannot
+                # distinguish "the combine worked" from "one instance was already strong".
+                rows = []
+                for prn in sorted(set(fcoh) | set(fcoh_n2)):
+                    a, b = fcoh.get(prn), fcoh_n2.get(prn)
+                    if not ((a and a.get("present")) or (b and b.get("present"))):
+                        continue
+
+                    def _f(v):
+                        # per_inst is url -> deep_snr (a FLOAT, not a row); best_inst_snr is
+                        # already reduced for us. '*' marks a value that did NOT clear the
+                        # shuffled-null floor -- printed anyway, because a number just under
+                        # the bar is the useful one when judging whether a fleet is big enough.
+                        if not v:
+                            return "--"
+                        return "%.0f/%d%s (best inst %.0f, floor %.1f)" % (
+                            v.get("deep_snr", 0.0), v.get("n_src", 0),
+                            "" if v.get("present") else "*", v.get("best_inst_snr", 0.0),
+                            v.get("floor", 0.0))
+
+                    rows.append("PRN %d A %s | B %s" % (prn, _f(a), _f(b)))
+                if rows:
+                    _log("FLEET-COH: " + "; ".join(rows))
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
