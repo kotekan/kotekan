@@ -1136,6 +1136,13 @@ def main():
                          "(~17 MB/s -- short captures only, 1 GB/min) instead of dropAllFrames")
     ap.add_argument("--keep-n2", action="store_true",
                     help="retain the science pipeline alongside the GNSS branch")
+    ap.add_argument("--frame0-nano", type=int, default=None, metavar="NS",
+                    help="start WITHOUT chive: supply the F-engine frame-0 time (int64 ns) "
+                         "instead of querying chive:54321, and drop config_tracker (same "
+                         "service). Get the value from any RUNNING node -- it is array-wide: "
+                         "curl -s http://cx27:12049/telescope/time0_ns . require_gps stays TRUE, "
+                         "so a missing/bad value still FATALs rather than silently falling back "
+                         "to host wall clock. For dev use during a timing-service outage.")
     ap.add_argument("--prns", type=int, nargs="*", default=list(range(1, 33)))
     ap.add_argument("--extra-signal", action="append", default=[], metavar="NAME:PRNS",
                     help="add a SECOND tracker chain for another signal, e.g. "
@@ -1312,6 +1319,34 @@ def main():
     # night). Override rather than inherit, and say so in the emitted config.
     if isinstance(out.get("telescope"), dict) and "dish_coelev_deg" in out["telescope"]:
         out["telescope"]["dish_coelev_deg"] = args.dish_coelev_deg
+
+    # --frame0-nano: START WITHOUT chive's timing service.
+    #
+    # kotekan requires a GPS time at STARTUP (CHORDTelescope), which makes chive:54321 a hard
+    # dependency of every config -- so when the F-engine team pulled that service on 2026-08-06
+    # cx19 could not start at all, while the five nodes that were ALREADY RUNNING carried on
+    # tracking normally (it is a startup-only dependency). That asymmetry is the whole problem:
+    # the instrument is fine, the data is fine, and the dev node is locked out.
+    #
+    # The value is recoverable WITHOUT chive, because every running node serves the same
+    # array-wide frame 0 at telescope/time0_ns. Read it from a live node and pass it here:
+    #     curl -s http://cx27:12049/telescope/time0_ns
+    #
+    # NOTE WHAT THIS DOES NOT DO: `require_gps` stays TRUE. The FATAL fires when NO time was
+    # found, and set_gps_time_params_from_config sets gps_enabled from this block -- so a
+    # missing or malformed value still dies loudly instead of silently falling back to host
+    # wall clock (which would stamp every record ~13 days wrong and look like a clock bug).
+    # We are supplying the answer from a verified second source, not disabling the check.
+    #
+    # config_tracker is dropped for the same outage: it GETs 10.222.0.54:54321/config, the same
+    # service, and its failure is fatal at construction.
+    if args.frame0_nano:
+        out.setdefault("telescope", {})["query_gps"] = False
+        out["gps_time"] = {"frame0_nano": int(args.frame0_nano)}
+        out.pop("config_tracker", None)
+        for _k, _v in out.items():
+            if isinstance(_v, dict) and "use_config_tracker" in _v:
+                _v["use_config_tracker"] = False
 
     sig = cfg["signals"]
     chans = covering_channels(node_channels(cfg, args.node), float(sig["carrier_hz"]),
