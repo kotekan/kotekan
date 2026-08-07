@@ -61,6 +61,21 @@ case "$ACT" in
     echo "note: the unit is transient -- it is now GONE. Use '$0 $N' to bring it back."
     ;;
   up)
+    # FAIL LOUDLY ON A MISSING CONFIG OR BINARY. The systemd-run below is guarded by
+    # `test -r '$CFG' && ...`, and a failing test short-circuits the whole chain SILENTLY:
+    # the command returns instantly, prints nothing, creates no unit, and `systemctl status`
+    # then says "could not be found". That is indistinguishable from a dozen other failures.
+    # It cost several rounds of restarts on 2026-08-07, when a config path was pasted with a
+    # literal "..." in it. Check here, where we can say which path was wrong.
+    if [ ! -r "$CFG" ]; then
+        echo "FAILED: config not readable: $CFG" >&2
+        echo "  (a relative or elided path? GNSS_CFG must be absolute)" >&2
+        exit 1
+    fi
+    if [ ! -x "$BIN" ]; then
+        echo "FAILED: binary not executable: $BIN" >&2
+        exit 1
+    fi
     # The record dir is node-local (NOT the NFS home) and rawFileWrite fails on a missing one.
     # `systemctl stop` on a transient unit usually removes it, but a stopped-or-failed unit can
     # stay LOADED, and then systemd-run refuses the name: "Unit gnss-node.service was already
