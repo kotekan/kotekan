@@ -141,6 +141,7 @@ fpga_controller:
 frame_arrival_period: 5.12e-6 * 8192
 gnss0_assemble:
   chan_dump_decim: 10
+  chan_dump_path: /tmp/gnss_chan_phase_cx19_0a.txt
   chan_dump_prn: 3
   cpu_affinity:
   - 62
@@ -262,6 +263,7 @@ gnss0_gpu:
     gnss_epl_out: gnss0_epl_buf
 gnss0_n2assemble:
   chan_dump_decim: 10
+  chan_dump_path: /tmp/gnss_chan_phase_cx19_0b.txt
   chan_dump_prn: 3
   cpu_affinity:
   - 31
@@ -462,6 +464,7 @@ gnss0_volt_buf:
   peek_hold: true
 gnss1_assemble:
   chan_dump_decim: 10
+  chan_dump_path: /tmp/gnss_chan_phase_cx19_1a.txt
   chan_dump_prn: 3
   cpu_affinity:
   - 63
@@ -526,6 +529,7 @@ gnss1_gpu:
     gnss_epl_out: gnss1_epl_buf
 gnss1_n2assemble:
   chan_dump_decim: 10
+  chan_dump_path: /tmp/gnss_chan_phase_cx19_1b.txt
   chan_dump_prn: 3
   cpu_affinity:
   - 57

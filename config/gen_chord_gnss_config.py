@@ -373,6 +373,11 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # exactly what the sum hides.
             "chan_dump_prn": args.chan_dump_prn,
             "chan_dump_decim": args.chan_dump_decim,
+            # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
+            # interleave: 1.2% of lines came out torn, and worse, BOTH chains label their
+            # channels 0..6 locally, so a shared file cannot be demultiplexed at all -- grouping
+            # by utc silently mixes two different combs. Found the hard way 2026-08-07.
+            "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}a{tag}.txt",
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [core(gpu + 8)],
         },
@@ -704,6 +709,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
             # exactly what the sum hides.
             "chan_dump_prn": args.chan_dump_prn,
             "chan_dump_decim": args.chan_dump_decim,
+            # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
+            # interleave: 1.2% of lines came out torn, and worse, BOTH chains label their
+            # channels 0..6 locally, so a shared file cannot be demultiplexed at all -- grouping
+            # by utc silently mixes two different combs. Found the hard way 2026-08-07.
+            "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}b.txt",
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
