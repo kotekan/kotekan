@@ -96,6 +96,15 @@ std::vector<int> energy_covering(const std::vector<std::vector<cf>>& repl) {
     return cov;
 }
 
+// THE TWO HELPERS BELOW ARE DIFFERENT ANALYSIS BANKS, and the acquire's fine-lag axis runs
+// the opposite way in each -- so every call below states which one it means via
+// gnss::FINE_LAG_SIGN_*. This is not bookkeeping: `stft` folds OLDEST-first, which matches no
+// deployed channelizer, while `analyze_fftwe` reproduces fftwEngine (newest-first pfb_push),
+// which is what the airspy chain runs AND what ChannelizedReplicaBank builds CHORD's replica
+// with. Passing the default (PFB) to an stft-built surface reads the fine lag backwards and
+// lands ~2*fine samples off; before 2026-08-07 these calls were unqualified and the mismatch
+// looked like an acquire regression.
+//
 // Analyze with fftwEngine's exact PFB convention: newest-first pfb_push,
 // pfb_fold, forward DFT, then fftshift. Warmed from the (periodic) tail so the
 // first hop is circular-correct, matching the core's circular correlation.
@@ -182,7 +191,8 @@ BOOST_AUTO_TEST_CASE(recovers_code_phase_and_doppler) {
     const auto cov = energy_covering(repl0);
 
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
-    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN);
+    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
+                                       gnss::FINE_LAG_SIGN_NATURAL);
 
     BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop), 100.0); // sub-grid refine: within half a 200 Hz cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP); // within one chip
@@ -225,12 +235,14 @@ BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     const auto cov = energy_covering(repl0);
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
 
-    auto rw = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN);
+    auto rw = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
+                                       gnss::FINE_LAG_SIGN_NATURAL);
 
     gnss::AcquireWorkspace ws;
     std::vector<double> surf;
     const auto dims = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surf, ws);
-    auto rs = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
+    auto rs = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
+                                        gnss::FINE_LAG_SIGN_NATURAL);
 
     BOOST_CHECK_EQUAL(dims.n_dop, (int)grid.size());
     BOOST_CHECK_EQUAL(dims.Mp, M); // repl0 hop-period
@@ -349,8 +361,12 @@ BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
                 wide[((size_t)d * Mp + q) * sph + s] = surf[((long)d * Mp + q) * 10 + (s % 10)];
 
     const gnss::AcquisitionSurface wide_dims{nd, Mp, sph, sph};
-    const auto r_red = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
-    const auto r_wide = gnss::channelized_peak(wide, wide_dims, grid, FS, CHIP_RATE, CODE_LEN);
+    const auto r_red = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
+                                        gnss::FINE_LAG_SIGN_NATURAL);
+    // BOTH sides take the same sign: this case compares a reduced surface against the tiled-out
+    // wide one, so it is convention-agnostic -- but only if the two agree.
+    const auto r_wide = gnss::channelized_peak(wide, wide_dims, grid, FS, CHIP_RATE, CODE_LEN,
+                                               gnss::FINE_LAG_SIGN_NATURAL);
     BOOST_CHECK_EQUAL(r_red.peak_tau_samples, r_wide.peak_tau_samples);
     BOOST_CHECK_EQUAL(r_red.doppler_hz, r_wide.doppler_hz);
     BOOST_CHECK_CLOSE(r_red.snr, r_wide.snr, 1e-9);
@@ -377,8 +393,10 @@ BOOST_AUTO_TEST_CASE(accumulation_scales_surface_linearly) {
     for (int k = 0; k < K; ++k)
         dimsK = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surfK, ws);
 
-    auto r1 = gnss::channelized_peak(surf1, dims1, grid, FS, CHIP_RATE, CODE_LEN);
-    auto rK = gnss::channelized_peak(surfK, dimsK, grid, FS, CHIP_RATE, CODE_LEN);
+    auto r1 = gnss::channelized_peak(surf1, dims1, grid, FS, CHIP_RATE, CODE_LEN,
+                                        gnss::FINE_LAG_SIGN_NATURAL);
+    auto rK = gnss::channelized_peak(surfK, dimsK, grid, FS, CHIP_RATE, CODE_LEN,
+                                        gnss::FINE_LAG_SIGN_NATURAL);
 
     BOOST_CHECK_EQUAL(rK.peak_tau_samples, r1.peak_tau_samples);
     BOOST_CHECK_EQUAL(rK.doppler_hz, r1.doppler_hz);
@@ -418,7 +436,8 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
             tau1 = gnss::channelized_peak(s1, dims, grid, FS, CHIP_RATE, CODE_LEN).peak_tau_samples;
         }
     }
-    auto rK = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
+    auto rK = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
+                                        gnss::FINE_LAG_SIGN_NATURAL);
 
     BOOST_CHECK_GT(std::abs(tau1 - true_tau), (long)SP);      // single window: misses
     BOOST_CHECK_LT(std::abs(rK.doppler_hz - true_dop), 100.0); // K windows: Doppler right (sub-grid refine)

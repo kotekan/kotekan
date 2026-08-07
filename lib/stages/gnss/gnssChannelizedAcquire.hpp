@@ -108,6 +108,21 @@ struct AcquisitionSurface {
     long size() const { return (long)n_dop * Mp * fine(); }
 };
 
+/// Which way the FINE-lag axis runs, relative to the coarse (hop) axis: +1 same sense, -1
+/// opposite. THIS IS A PROPERTY OF THE ANALYSIS BANK, not of the acquire, which is why it is
+/// a parameter and not a constant.
+///
+/// -1 (the default) is the convention of every DEPLOYED front end: CHORD's F-engine as modelled
+/// by ChannelizedReplicaBank, and the airspy chain's fftwEngine -- both fold newest-first
+/// (dsp::pfb_push) into an r2c transform, and, decisively, the replica that BOTH paths correlate
+/// against is built by that same bank. +1 is for a bank that folds oldest-first.
+///
+/// Getting it wrong is nearly invisible: the coarse phase is only a SEED for refine_peak, so a
+/// refine with a full-hop span silently absorbs the error. It shows up when the span is tightened
+/// -- at CHORD's shipped refine_span 512 the wrong sign costs +8..+19 chips (measured 2026-08-07).
+constexpr int FINE_LAG_SIGN_PFB = -1;   ///< newest-first fold (both deployed banks)
+constexpr int FINE_LAG_SIGN_NATURAL = +1; ///< oldest-first fold
+
 /**
  * Search the (code phase, Doppler) surface from channelized voltages.
  *
@@ -138,7 +153,8 @@ channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch
                     const std::vector<std::vector<std::complex<float>>>& repl0_ch,
                     const std::vector<int>& covering, const std::vector<double>& doppler_grid,
                     double sample_rate, double chip_rate, int num_chan, long code_length,
-                    const std::vector<int>& chan_freq = {}, int samples_per_hop = 0);
+                    const std::vector<int>& chan_freq = {}, int samples_per_hop = 0,
+                    int fine_lag_sign = FINE_LAG_SIGN_PFB);
 
 /**
  * Add one data window's |D|^2 acquisition surface into @c surf (incoherent
@@ -248,10 +264,13 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
 AcquisitionSurface surface_dims(const std::vector<int>& chan_freq, int samples_per_hop, int n_dop,
                                 int Mp, int fine_step);
 
+
+
 AcquisitionResult channelized_peak(const std::vector<double>& surf,
                                    const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
-                                   double chip_rate, long code_length);
+                                   double chip_rate, long code_length,
+                                   int fine_lag_sign = FINE_LAG_SIGN_PFB);
 
 /// The second half of @ref channelized_peak: everything after the surface scan.
 ///
@@ -271,7 +290,8 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                                       const std::vector<double>& doppler_grid, double sample_rate,
                                       double chip_rate, long code_length, double peak, double mean,
                                       int best_d, int best_q, int best_i,
-                                      const std::vector<double>& dop_peak);
+                                      const std::vector<double>& dop_peak,
+                                      int fine_lag_sign = FINE_LAG_SIGN_PFB);
 
 /// Peak-pick an ms-split surface. NOT channelized_peak: that one's tau -> code-phase mapping
 /// silently assumes two things the shipped geometry arranges and the ms-split cannot.

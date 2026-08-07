@@ -530,7 +530,7 @@ AcquisitionResult ms_split_peak(const std::vector<double>& surf, const Acquisiti
 
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
-                                   double chip_rate, long code_length) {
+                                   double chip_rate, long code_length, int fine_lag_sign) {
     AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0};
     double surf_sum = 0.0;
     long surf_n = 0;
@@ -570,14 +570,14 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     // produces the same reduction on the device, calls THIS rather than growing a second copy.
     const double mean0 = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
     return peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, best.peak,
-                               mean0, best_d, best_q, best_i, dop_peak);
+                               mean0, best_d, best_q, best_i, dop_peak, fine_lag_sign);
 }
 
 AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                                       const std::vector<double>& doppler_grid, double sample_rate,
                                       double chip_rate, long code_length, double peak, double mean,
                                       int best_d, int best_q, int best_i,
-                                      const std::vector<double>& dop_peak) {
+                                      const std::vector<double>& dop_peak, int fine_lag_sign) {
     AcquisitionResult best{0.0, 0.0, 0, peak, 0.0};
     best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
     // Sub-grid Doppler refine: the correlation-vs-Doppler peak is smooth but sampled on a
@@ -620,11 +620,28 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
     // Fold by the axis's STORED period, not sph: when the covering comb shares a factor g with
     // sph the surface holds only sph/g columns (the grating-lobe redundancy), and folding by sph
     // would step outside the data. At g = 1 (the 8-node comb) the two are the same.
+    // WHICH WAY THE FINE AXIS RUNS IS A PROPERTY OF THE ANALYSIS BANK, not of this code, so it
+    // is a parameter (@c fine_lag_sign) rather than a constant. Both DEPLOYED front ends fold
+    // newest-first (dsp::pfb_push): CHORD's F-engine as modelled by ChannelizedReplicaBank, and
+    // the airspy chain's fftwEngine -- and, decisively, the replica that BOTH correlate against
+    // is built by that same bank. For them the fine half runs opposite to the coarse half, hence
+    // the -1 default. A bank that folds oldest-first needs +1.
+    //
+    // Measured on both geometries 2026-08-07, after the airspy side reported two failing
+    // ground-truth tests and proposed reverting to +1 globally:
+    //   * CHORD, e2e at the SHIPPED refine_span 512: -1 gives +0.04 chips, +1 gives +8..+19.
+    //     (At a full-hop span both are sub-chip -- the refine hides it, which is exactly why
+    //     this was invisible for so long. Do not re-measure with a wide span and conclude the
+    //     sign is free.)
+    //   * test_gnss_channelized_acquire splits cleanly: `recovers_with_fftwengine_convention`,
+    //     which models the DEPLOYED fold, passes only at -1; the two tests built on the file's
+    //     hand-rolled oldest-first `stft` helper pass only at +1. Nothing deploys that helper's
+    //     convention, so the tests now state which one they mean.
     const int fine_period = (dims.s_stored > 0) ? dims.s_stored : dims.sph;
     long fine = (long)best_i * (long)(dims.s_step > 0 ? dims.s_step : 1);
     if (fine > fine_period / 2)
         fine -= fine_period;
-    const long best_tau = (long)best_q * (long)dims.sph - fine;
+    const long best_tau = (long)best_q * (long)dims.sph + (long)fine_lag_sign * fine;
     const long Ns = (long)dims.Mp * dims.sph;
     best.peak_tau_samples = ((Ns - best_tau) % Ns + Ns) % Ns;
     const double chips = (double)best.peak_tau_samples * chip_rate / sample_rate;
@@ -639,13 +656,14 @@ channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch
                     const std::vector<std::vector<std::complex<float>>>& repl0_ch,
                     const std::vector<int>& covering, const std::vector<double>& doppler_grid,
                     double sample_rate, double chip_rate, int num_chan, long code_length,
-                    const std::vector<int>& chan_freq, int samples_per_hop) {
+                    const std::vector<int>& chan_freq, int samples_per_hop, int fine_lag_sign) {
     // Single-window acquire = one accumulation + reduce (local FFT workspace).
     std::vector<double> surf;
     AcquireWorkspace ws;
     const auto dims = channelized_accumulate(data_ch, repl0_ch, covering, doppler_grid, sample_rate,
                                              num_chan, surf, ws, chan_freq, samples_per_hop);
-    return channelized_peak(surf, dims, doppler_grid, sample_rate, chip_rate, code_length);
+    return channelized_peak(surf, dims, doppler_grid, sample_rate, chip_rate, code_length,
+                            fine_lag_sign);
 }
 
 } // namespace gnss
