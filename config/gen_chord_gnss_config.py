@@ -1139,10 +1139,18 @@ def main():
     ap.add_argument("--frame0-nano", type=int, default=None, metavar="NS",
                     help="start WITHOUT chive: supply the F-engine frame-0 time (int64 ns) "
                          "instead of querying chive:54321, and drop config_tracker (same "
-                         "service). Get the value from any RUNNING node -- it is array-wide: "
-                         "curl -s http://cx27:12049/telescope/time0_ns . require_gps stays TRUE, "
-                         "so a missing/bad value still FATALs rather than silently falling back "
-                         "to host wall clock. For dev use during a timing-service outage.")
+                         "service). Get the value from a node that is CURRENTLY PROCESSING "
+                         "DATA: curl -s http://cx27:12049/telescope/time0_ns . require_gps "
+                         "stays TRUE, so a missing/bad value still FATALs rather than silently "
+                         "falling back to host wall clock. "
+                         "*** VALID ONLY WHILE THE F-ENGINE KEEPS COUNTING. *** frame 0 is "
+                         "re-established by an F-engine restart or firmware/mode change, and "
+                         "every node CACHES it at startup -- so a value read from a running "
+                         "node proves only what the F-engine was doing when THAT node started, "
+                         "not what it is doing now. Re-read it after any F-engine restart. "
+                         "Using a stale one fails SILENTLY: records carry the wrong epoch, the "
+                         "seeds predict the wrong code phase, and every PRN despreads noise "
+                         "while looking like a clock or geometry bug.")
     ap.add_argument("--prns", type=int, nargs="*", default=list(range(1, 33)))
     ap.add_argument("--extra-signal", action="append", default=[], metavar="NAME:PRNS",
                     help="add a SECOND tracker chain for another signal, e.g. "
@@ -1331,6 +1339,21 @@ def main():
     # The value is recoverable WITHOUT chive, because every running node serves the same
     # array-wide frame 0 at telescope/time0_ns. Read it from a live node and pass it here:
     #     curl -s http://cx27:12049/telescope/time0_ns
+    #
+    # WHAT THAT VALUE DOES AND DOES NOT PROVE (learned the embarrassing way, 2026-08-07).
+    # Nodes CACHE time0 at startup. Reading the same value from three running nodes shows they
+    # all started against the same F-engine frame 0 -- it is NOT evidence the F-engine is
+    # running now, and it was wrongly cited as such here. On that morning all five surviving
+    # nodes were serving FROZEN status (deep_snr, adr_lock_s and record counts bit-identical
+    # across a 25 s poll, and identical between nodes to 12 significant figures) because the
+    # F-engine was still in its dev mode with the links up and no data flowing. ALWAYS poll a
+    # counter twice before calling a fleet healthy.
+    #
+    # So this flag is valid only while the F-engine keeps counting from the same frame 0. A
+    # restart or mode/firmware change re-establishes it, every cached copy goes stale at once
+    # (including the other nodes'), and a stale epoch fails SILENTLY -- wrong record stamps,
+    # wrong predicted code phase, every PRN despreading noise while it reads as a clock bug.
+    # After any F-engine restart: re-read time0 from chive, or from a node started SINCE.
     #
     # NOTE WHAT THIS DOES NOT DO: `require_gps` stays TRUE. The FATAL fires when NO time was
     # found, and set_gps_time_params_from_config sets gps_enabled from this block -- so a
