@@ -180,7 +180,7 @@ gnss0_assemble:
   - 30
   - 31
   - 32
-  reference_element: 13
+  reference_element: 0
   sample_rate: 3200000000.0
 gnss0_cmb_buf:
   frame_size: 32 * 410 * sizeof_float32
@@ -292,7 +292,7 @@ gnss0_srch_tap:
   - 283
   cpu_affinity:
   - 24
-  element_offset: 13
+  element_offset: 0
   fft_length: 16384
   frame_chan_stride: num_local_freq
   frame_elem_stride: num_elements
@@ -327,7 +327,7 @@ gnss1_assemble:
   n_elements: 32
   out_buf: gnss1_rec_buf
   prns: *id001
-  reference_element: 13
+  reference_element: 0
   sample_rate: 3200000000.0
 gnss1_cmb_buf:
   frame_size: 32 * 410 * sizeof_float32
@@ -441,7 +441,7 @@ gnss1_srch_tap:
   - 283
   cpu_affinity:
   - 31
-  element_offset: 13
+  element_offset: 0
   fft_length: 16384
   frame_chan_stride: num_local_freq
   frame_elem_stride: num_elements
