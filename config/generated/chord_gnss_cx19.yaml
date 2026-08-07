@@ -230,7 +230,7 @@ gnss0_gpu:
     elem_stride: 32
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1784941003.0000029
+    frame0_utc: 1786131189.0000029
     frame_chan_stride: 7
     gpu_mem_input: gnss0_voltage
     gpu_mem_output: gnss0_epl
@@ -355,7 +355,7 @@ gnss1_gpu:
     elem_stride: 32
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1784941003.0000029
+    frame0_utc: 1786131189.0000029
     frame_chan_stride: 7
     gpu_mem_input: gnss1_voltage
     gpu_mem_output: gnss1_epl
