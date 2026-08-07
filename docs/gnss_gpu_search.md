@@ -1475,3 +1475,80 @@ Order of attack, cheapest first:
 `amp_snr` differs by only 17-29%, and channel count alone predicts sqrt(2). If that gap is
 not understood, step 1 may land at q ~ 6 -- still under the gate -- and look like a failure
 of the whole approach when it is not.
+
+### 11.14.3  SOLVED (2026-08-07): the q gap was the TIME BASE, not sensitivity
+
+11.14.1 left one thing open -- "the q ratio is 3-7x while `amp_snr` differs by only 17-29%,
+and channel count alone predicts sqrt(2)" -- and warned that combining wider might land at
+q ~ 6 and look like a failure of the whole approach. It would have. The gap was not
+sensitivity at all, and no amount of combining would have closed it.
+
+**Path B's records were stamped with HOST WALL CLOCK.** `gen_chord_gnss_config.py` passes
+`frame0_utc` to `cudaGnssChordTrack` and never passed it to `cudaGnssInject`. With
+`utc0 = 0`, `GnssGpuRecordAssemble` fell back to `system_clock::now()` -- *per record* -- and
+that stage emits `hops_per_record` records back to back, so the four sub-records of a frame
+landed MICROSECONDS apart instead of 10.49 ms apart. `rate_search` works in UTC and takes
+`dt` = the MINIMUM consecutive spacing, so those microseconds became its integer grid and the
+records were scattered across the transform.
+
+How it was located, in three measurements rather than an argument:
+
+  1. The two paths' EXPORTED records are the same stream (PRN 1: |v| 2.061e-4 vs 2.041e-4,
+     phase step -0.638 vs -0.637 rad).
+  2. Re-running `rate_search`'s exact arithmetic on those records over the HOP grid gives
+     q 24.10 for path B against 26.01 for path A -- a ratio of 1.08, not 5. So the records
+     were never the problem, and whatever the stage was transforming was not them.
+  3. The only other input is the time base: `utc - hop*5.12us` is EXACTLY constant on path A
+     (spread 0.0 s over 34k polls) and wanders 45 ms -- 4.3 record periods -- on path B.
+
+Simulating a wall-clock stamp on path B's own records reproduces the symptom exactly: q 20-24
+on the true grid, 2.5-11.5 on a wall-clock one, against the 4.5-11.4 the stage reported.
+
+**The diagnostic that generalises.** `amp_snr` was healthy (71-83% of path A) throughout, and
+that is what sent us looking for sensitivity for a day and a half. But amplitude is a
+PER-RECORD estimator and uses no time base at all; the rate search, `coherence_s` and the
+carrier fit are CROSS-RECORD estimators and all read UTC. The set that failed was exactly the
+set sharing one input. When some estimators on the same data are fine and others are not,
+intersect their inputs before reaching for a physical explanation -- the answer is usually a
+shared input, not a shared physics.
+
+**Result after the fix** (cx19, both GPUs, same PRNs, same moment):
+
+| PRN | A rate_q | A coh | A deep | B rate_q | B coh | B deep |
+|---|---|---|---|---|---|---|
+| 1 | 40.26 | 0.945 | 29.6 | 36.30 | 0.942 | 29.1 |
+| 3 | 34.30 | 0.946 | 29.7 | 29.16 | 0.937 | 27.5 |
+
+`deep_rate_hz` agrees to four decimals (+43.8695, +47.4458 Hz) -- the two paths now find the
+same rate, not merely a comparable one. deep_snr ratio 0.983 and 0.927; GPU1's independent
+7-channel combiner reads 37.51 / 0.941 / 28.5 and 31.46 / 0.934 / 26.7. **Path B's deep fold
+works.** Every gate in section 11 is now met.
+
+Residual, and it is the sqrt(2) that was always expected: PRN 6 clears on path A (q 13.02,
+coh 0.825) and not on path B (q 2.88). Path A merges both GPUs' 14 channels; each path-B
+combiner sees 7. That is the real case for combining wider -- see 11.14.2 -- but it is now a
+marginal-satellite improvement rather than the difference between working and not.
+
+**SECOND DEFECT, found on the way and still worth acting on.**
+`config/chord_gnss_node.yaml` carried `frame0_utc 1784941003.000002861` while every running
+node served `1786131189.000002870`: the F-engine epoch was **13.78 days stale**, from a
+bring-up on 07-24, so path A had been stamping every record almost two weeks in the past.
+Invisible downstream because every cross-record estimator uses DIFFERENCES and a
+uniformly-wrong epoch stays uniform -- the fleet locked normally on it throughout. What it
+costs anything ABSOLUTE (bit prediction, ephemeris-anchored code phase) has NOT been measured
+and should not be assumed to be nothing.
+
+Updated, and `gen_chord_gnss_config.py` now cross-checks the yaml against the running fleet's
+`telescope/time0_ns` and refuses to emit a config that disagrees (advisory when nothing
+answers; it also reports nodes disagreeing with EACH OTHER, which means some started either
+side of an F-engine restart and none of them is authoritative). `--frame0-nano` now overrides
+the record epoch too -- it previously fixed only the telescope's startup GPS time and left the
+assembler stamping from the stale yaml, which is the exact silent failure that flag exists to
+prevent. `GnssGpuRecordAssemble`'s unanchored fallback now latches the host clock ONCE and
+extrapolates by `wstart`: same origin as before, but a uniform grid, plus a rate-limited WARN.
+
+**NOTE: the other five nodes' generated configs still carry the stale epoch.** Regenerating
+them is a fleet restart and has not been done.
+
+`scripts/gnss/qgap.py` factors q = peak/median side by side (peak, median, sqrt(L), |v|, and
+the grid itself) so the next such gap is attributed rather than assumed.
