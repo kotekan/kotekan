@@ -255,3 +255,31 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_l1cp_pilot_long_window) {
     BOOST_CHECK_CLOSE(res.amplitude, S, 10.0);  // deep |A| ~ pilot amplitude
     BOOST_CHECK_GT(res.snr, 10.0);              // strongly significant after the long coherent sum
 }
+
+// A residual that has been ANNIHILATED BY CONSTRUCTION must not read as infinite SNR.
+// Live 2026-08-07 the viewer showed a PRN at 6.93e16 sigma with coh_frac 0.13, wandering
+// between PRNs. Cause: every statistic here guarded its divide with `noise_sum > 0.0`, which
+// catches only bit-identical records -- while records phase-aligned to DOUBLE PRECISION (what a
+// derotation leaves) give ~1e-17 and sail through. Both ends are pinned here: exactly-identical
+// records were always handled, near-degenerate ones were not.
+BOOST_AUTO_TEST_CASE(degenerate_residual_does_not_explode) {
+    using cd = std::complex<double>;
+    std::vector<cd> ident(8, cd(1.0, 0.0));            // bit-identical: residual exactly 0
+    BOOST_CHECK_EQUAL(gnss::coherent_sum(ident).snr, 0.0);
+
+    std::vector<cd> aligned;                            // aligned to ~1e-17: the real case
+    for (int i = 0; i < 8; ++i)
+        aligned.push_back(cd(1.0, 1e-17 * (i - 3.5)));
+    const double snr = gnss::coherent_sum(aligned).snr;
+    BOOST_TEST_MESSAGE("near-degenerate snr = " << snr);
+    BOOST_CHECK_EQUAL(snr, 0.0);
+
+    // ...and a genuine signal is untouched: 8 records at ~10:1 per-record SNR must still score.
+    std::vector<cd> real_sig;
+    for (int i = 0; i < 8; ++i)
+        real_sig.push_back(cd(1.0, 0.1 * ((i % 3) - 1)));
+    const double good = gnss::coherent_sum(real_sig).snr;
+    BOOST_TEST_MESSAGE("healthy snr = " << good);
+    BOOST_CHECK_GT(good, 3.0);
+    BOOST_CHECK_LT(good, 1e3);
+}

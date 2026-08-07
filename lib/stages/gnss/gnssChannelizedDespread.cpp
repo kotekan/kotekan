@@ -39,6 +39,35 @@ DespreadResult channelized_despread(const std::vector<std::vector<std::complex<f
     return r;
 }
 
+/// Coherent SNR from a rotated sum and its orthogonal residual, with the DEGENERATE case
+/// rejected instead of divided by.
+///
+/// Every statistic in this file forms `mag / noise_sum`, where noise_sum is the residual
+/// orthogonal to the rotated sum, and every one of them used to guard with `noise_sum > 0.0`.
+/// That catches only the EXACTLY-zero case -- records bit-identical -- and that is not the case
+/// that occurs. Records phase-aligned to within DOUBLE PRECISION, which is what a derotation
+/// leaves behind and what these statistics are handed after phase_track_loo, give a residual of
+/// ~1e-17 rather than 0. It passes the test, and the result is mag/1e-17 ~ 1e17 sigma.
+///
+/// Seen live 2026-08-07: the viewer showed a PRN at 6.93e16 sigma with coh_frac 0.13, wandering
+/// between PRNs. Reproduced exactly -- 8 records with imaginary parts at the 1e-17 level give
+/// 1.2e17, while the bit-identical case correctly returns 0.
+///
+/// The floor sits far above machine epsilon and far below anything physical: even a 60 dB record
+/// has an orthogonal residual ~1e-3 of mag, so a residual under 1e-12*mag means the imaginary
+/// parts were ANNIHILATED BY CONSTRUCTION, not measured. Fail closed (0.0, the same "cannot
+/// compute" convention as nrec < 2) rather than emit a number that the candidate selection
+/// upstream will maximise over and then believe.
+///
+/// NOTE this bounds the SYMPTOM, not the cause. Scoring a derotated candidate by the very
+/// residual its derotation removed is self-reference, and taking the best of several such
+/// candidates rectifies noise. That is a separate and still-open design question; do not read
+/// this guard as settling it.
+static double residual_snr(double mag, double noise_sum, int nrec) {
+    const double degen = mag * std::sqrt((double)std::max(nrec, 1)) * 1e-12;
+    return (noise_sum > degen) ? mag / noise_sum : 0.0;
+}
+
 OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
                                const std::vector<double>& utc, const std::vector<int8_t>& overlay,
                                const std::vector<std::complex<double>>* head) {
@@ -108,7 +137,7 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
     }
     const double noise_sum = std::sqrt(noise2); // noise std of the coherent sum
     out.amplitude = best_mag / (double)nrec;     // coherent mean of the overlay-corrected A
-    out.snr = noise_sum > 0.0 ? best_mag / noise_sum : 0.0;
+    out.snr = residual_snr(best_mag, noise_sum, nrec);
     out.phase = best_phase;
     return out;
 }
@@ -187,7 +216,7 @@ OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
     }
     const double noise_sum = std::sqrt(noise2);
     out.amplitude = mag / (double)nrec;
-    out.snr = noise_sum > 0.0 ? mag / noise_sum : 0.0;
+    out.snr = residual_snr(mag, noise_sum, nrec);
     out.phase = 0; // no alignment searched, hence no extreme-value bias in the floor
     return out;
 }
@@ -261,7 +290,7 @@ OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
     }
     const double noise_sum = std::sqrt(noise2);
     out.amplitude = mag / (double)nrec;
-    out.snr = noise_sum > 0.0 ? mag / noise_sum : 0.0;
+    out.snr = residual_snr(mag, noise_sum, nrec);
     out.phase = ((phase % L) + L) % L;
     return out;
 }
