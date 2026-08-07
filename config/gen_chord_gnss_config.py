@@ -709,15 +709,26 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
         },
         f"{pre}n2combine": {
             "kotekan_stage": "GnssCoherentCombiner",
-            # ONE GPU PER PATH-B COMBINER, deliberately NOT mirroring the tracker's
-            # --combine-gpus merge. Tried that (402d2a6c4) so the energies would be directly
-            # comparable; it STALLS: the combiner drained GPU 1's stream to acq=3 while GPU 0's
-            # sat full=4/4 at acq=0, i.e. the two path-B record streams do not align for the
-            # merge the way the tracker's do. Not worth chasing for a cosmetic factor -- path B
-            # then covers 7 channels against the tracker's merged 14, so its record ENERGY is
-            # ~0.5x path A's BY CONSTRUCTION (measured 0.485-0.523 across 9 PRNs). Normalize
-            # for it when comparing; amplitude and phase are unaffected.
-            "in_bufs": [n2rec_buf],
+            # --n2-combine-gpus: GPU 0's path-B combiner takes BOTH streams and GPU 1's is
+            # dropped, exactly as --combine-gpus does for the tracker.
+            #
+            # THE EARLIER STALL WAS THE CLOCK, NOT THE STREAMS. An attempt at this merge
+            # (402d2a6c4) stalled -- GPU 1's stream drained to acq=3 while GPU 0's sat full=4/4
+            # at acq=0 -- and was reverted with the conclusion that "the two path-B record
+            # streams do not align for the merge the way the tracker's do". They didn't, but the
+            # reason was upstream: path B's records carried HOST WALL CLOCK (11.14.3), and
+            # GnssCoherentCombiner's multi-input realign loop aligns streams by RECORD_UTC_SLOT
+            # with a HALF-RECORD tolerance -- 5.24 ms against stamps that wandered 45 ms. The
+            # two streams could never satisfy it, so the loop burned its 64-iteration guard
+            # every frame advancing one input and never the other. That is the observed
+            # signature exactly. With frame0_utc supplied both assemblers derive UTC from the
+            # same anchor and the same wstart, so equal windows now compare EQUAL, not merely
+            # close.
+            #
+            # Kept as its own flag rather than folded into --combine-gpus so the single-GPU
+            # combiner stays available as the control for the A/B in 11.14.
+            "in_bufs": ([n2rec_buf, f"gnss{1 - gpu}_n2rec_buf"]
+                        if (args.n2_combine_gpus and gpu == 0) else [n2rec_buf]),
             "out_buf": f"{pre}n2cmb_buf",
             "n_prn": n_prn,
             "n_elements": n_live,
@@ -1270,6 +1281,19 @@ def main():
                          "noise fit and the carrier loop has nothing to lock to (STATE 8.12). "
                          "GPU 1's combiner and record stage are dropped; the merged pair is "
                          "written by gnss0_record.")
+    ap.add_argument("--n2-combine-gpus", action="store_true",
+                    help="the same merge for PATH B: one GnssCoherentCombiner over both GPUs' "
+                         "n2rec streams (14 channels, +3 dB per record) instead of one per GPU. "
+                         "Separate from --combine-gpus so the per-GPU path-B combiner stays "
+                         "available as the control for the path A/B comparison. "
+                         "An earlier attempt at this STALLED (GPU 1 drained to acq=3 while "
+                         "GPU 0 sat full=4/4 at acq=0) and was reverted; the cause was not the "
+                         "streams but the CLOCK -- path B's records carried host wall clock, and "
+                         "the combiner's multi-input realign loop aligns by RECORD_UTC_SLOT to "
+                         "half a record (5.24 ms) against stamps that wandered 45 ms, so it "
+                         "burned its 64-iteration guard every frame. Fixed 2026-08-07 (11.14.3); "
+                         "both assemblers now derive UTC from one anchor and equal windows "
+                         "compare EQUAL. gnss1_n2combine and its buffer are dropped.")
     ap.add_argument("--dish-coelev-deg", type=float, default=-8.59,
                     help="dish pointing co-elevation (degrees from vertical, negative = south), "
                          "OVERRIDING whatever the production base carries. Bases have been "
@@ -1596,9 +1620,18 @@ def main():
             # seeing half the frames. Drop it and its record stage; the merged output is written
             # by gnss0_record. The BUFFER stays: gnss1_rec_buf is still produced, just consumed
             # by the other branch.
-            # NB the path-B combiner is per-GPU (see its in_bufs note), so it is NOT dropped
-            # here alongside the tracker's.
+            # NB the path-B combiner has its OWN flag (--n2-combine-gpus), handled just below,
+            # so it is not dropped here alongside the tracker's.
             for k in (f"gnss{gpu}_combine", f"gnss{gpu}_record", f"gnss{gpu}_cmb_buf"):
+                blocks.pop(k, None)
+
+        if args.n2_combine_gpus and gpu != 0:
+            # Same duplicate-reader problem as the tracker's: GPU 0's path-B combiner already
+            # consumes this GPU's n2rec_buf, so leaving this one in place would give two stages
+            # one stream and each would see half the frames. The BUFFER stays -- gnss1_n2rec_buf
+            # is still produced, just consumed by the other branch -- and so does its sink, which
+            # reads n2cmb_buf and would dangle otherwise.
+            for k in (f"gnss{gpu}_n2combine", f"gnss{gpu}_n2cmb_buf", f"gnss{gpu}_n2sink"):
                 blocks.pop(k, None)
         out.update(blocks)
 
