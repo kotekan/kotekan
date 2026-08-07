@@ -1393,3 +1393,50 @@ search being handed something it can derotate?
 
 Everything else in path B is validated: 6 bitwise kernel gates, on-sky A/B 0.989, M5 drop-in
 to the shipped assembler unchanged, frequency map 0.075 ms.
+
+### 11.14.1  The coh_frac defect, diagnosed: the rate-search GATE, not the despread
+
+Located 2026-08-07 by comparing the two combiners' exported per-record data and status side
+by side on cx19, same PRNs, same moment.
+
+**It is not path B's despread, records, or phase.** The exported per-record complex prompts
+are the SAME in both paths (PRN 28: |v| 1.78e-04 both; phase step -0.704 +- 0.373 rad vs
+-0.706 +- 0.408), consistent with the on-sky A/B at |corr| 0.989. BOTH paths' raw records
+rotate hard -- about -0.7 rad per record -- so BOTH have raw coherence ~0.03. Path A only
+reaches 0.95 because the DEEP RATE SEARCH derotates them.
+
+**Path B's rate search never fires.** `deep_rate_hz` is 0.0000 on every path-B PRN, and its
+`coh_frac` is exactly the un-derotated raw value.
+
+**Why: it fails its own quality gate.** `deep_rate_min_q` is 10.0, and:
+
+| PRN | A: deep_rate_q | A coh | B: deep_rate_q | B coh |
+|---|---|---|---|---|
+| 32 | 29.09 | 0.960 | 11.42 | 0.042 |
+| 26 | 29.93 | 0.954 | 11.37 | 0.006 |
+| 28 | 38.29 | 0.950 |  7.92 | 0.021 |
+| 4  | 34.93 | 0.957 |  4.50 | 0.022 |
+| 1  | 36.07 | 0.956 |  4.49 | 0.028 |
+
+Path A sits at 29-38, well clear; path B at 4.5-11.4, straddling the threshold. The
+mechanism is confirmed by the tell: the only two path-B PRNs that clear the gate (32 and 26,
+q 11.4) are the only two with nonzero `coherence_s` (1.02). **The gate is working as
+designed** -- it was calibrated against noise (2.8-6.1) versus signal (17.9-22.0), and path
+B lands in between.
+
+**So the fix is per-record SNR, not the gate.** Lowering `deep_rate_min_q` to admit
+q ~ 4.5 would drop it into the noise band the gate exists to reject, and the rate search
+would start rectifying noise -- the failure mode that made every ladder rung read the
+Rayleigh value before the gate was added. The honest fix is to raise path B's per-record
+SNR to path A's:
+
+  * Path A's combiner merges BOTH GPUs (`--combine-gpus`, 14 channels); path B's takes one
+    (7). That is the leading candidate and it is a config-shaped change -- but note a
+    previous attempt to mirror the merge STALLED the path-B combiner (GPU0 buf full 4/4 at
+    acq=0, record step 2048 -> 67584, ~97% loss) and was reverted, so it needs the stall
+    understood first, not just re-applied.
+  * Or lengthen path B's integration so the rate spectrum has more to work with.
+
+NOT YET MEASURED: why the q ratio (3-7x) is larger than the channel-count ratio alone would
+predict (sqrt(2)). `amp_snr` is only 17-29% lower on path B, which does not obviously explain
+a 3x q deficit. Worth understanding before assuming the merge alone fixes it.
