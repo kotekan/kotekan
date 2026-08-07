@@ -6,9 +6,12 @@
 #include "prometheusMetrics.hpp" // for Metrics
 #include "visUtil.hpp"           // for frameID
 
+#include <algorithm> // for min, max
+#include <chrono>    // for the warn rate limit
 #include <complex> // for complex
 #include <cstring> // for memcpy
 #include <numeric> // for accumulate
+#include <string>  // for string (the rate-limited warn helper)
 
 using kotekan::Config;
 using kotekan::bufferContainer;
@@ -66,6 +69,28 @@ void GnssChanAlignMerge::main_thread() {
     std::vector<uint8_t*> frames(n_in, nullptr);
     std::vector<int64_t> seqs(n_in, 0);
 
+    // CONTROLLER-RESET GUARD. The alignment below advances every input to the MAXIMUM sequence
+    // currently held, which is right for a lagging sender and catastrophic for an F-engine that
+    // has restarted: fpga_seq_num goes back to ~0, so a feed still delivering pre-reset frames
+    // pins `target` at a value the post-reset feeds can never reach, and the merge waits
+    // forever. Nothing in the loop can tell that apart from "one sender is slow".
+    //
+    // The node ingest already refuses this case loudly ("CRS FPGA seq went backwards ...
+    // controller likely reset, kotekan stopping") -- the aggregator had no equivalent, which is
+    // how it sat through an F-engine restart on 2026-08-07 looking healthy while producing
+    // nothing. Detect BOTH shapes: a single feed jumping backwards, and a spread across feeds
+    // too large to be sender lag.
+    std::vector<int64_t> last_seq(n_in, -1);
+    double last_warn = 0.0;
+    const auto warn_rate_limited = [&](const std::string& msg) {
+        const double now = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (now - last_warn < 10.0)
+            return;
+        last_warn = now;
+        WARN("GnssChanAlignMerge[{:s}]: {:s}", unique_name, msg);
+    };
+
     auto acquire = [&](int i) -> bool {
         frames[i] = in_bufs[i]->wait_for_full_frame(unique_name, in_ids[i]);
         if (frames[i] == nullptr)
@@ -79,6 +104,35 @@ void GnssChanAlignMerge::main_thread() {
             return false;
         }
         seqs[i] = (int64_t)get_gnss_chan_metadata(in_bufs[i], in_ids[i])->sample_seq;
+
+        // (a) THIS feed went backwards. Sender restarts are normal and land near where they
+        // left off; a controller reset drops the counter by orders of magnitude. Threshold at
+        // one frame's worth of samples so ordinary reordering is not reported.
+        if (last_seq[i] >= 0 && seqs[i] < last_seq[i])
+            warn_rate_limited(fmt::format(
+                "input {:d} sample_seq went BACKWARDS {:d} -> {:d} ({:+.3g} samples). The "
+                "F-engine controller has restarted. This stage aligns to the MAXIMUM sequence "
+                "held, so feeds still delivering pre-reset frames will pin the target where the "
+                "post-reset feeds can never reach it and the merge will stall silently. Restart "
+                "the aggregator (and any node still on the old epoch).",
+                i, last_seq[i], seqs[i], (double)(seqs[i] - last_seq[i])));
+        last_seq[i] = seqs[i];
+
+        // (b) The feeds DISAGREE by more than lag can explain. A slow sender is behind by
+        // frames; a straddled reset puts feeds ~an F-engine uptime apart. 2^40 samples is
+        // ~1.6 h at 3.2 GS/s -- far beyond any buffering, far below the ~3.7e15 seen when a
+        // 13-day uptime resets.
+        int64_t lo = seqs[0], hi = seqs[0];
+        for (int k = 1; k < n_in; ++k) {
+            lo = std::min(lo, seqs[k]);
+            hi = std::max(hi, seqs[k]);
+        }
+        if (hi - lo > (int64_t)1 << 40)
+            warn_rate_limited(fmt::format(
+                "inputs span {:.3g} samples (min {:d}, max {:d}) -- too far apart to be sender "
+                "lag. Some feeds are pre-reset and some post-reset; the merge cannot align them "
+                "and is producing nothing. Restart the aggregator.",
+                (double)(hi - lo), lo, hi));
         return true;
     };
 
