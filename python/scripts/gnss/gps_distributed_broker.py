@@ -732,7 +732,23 @@ def _coherent_sum(a):
         noise2 += im * im
     denom = math.sqrt(noise2)
     tot_abs = sum(abs(x) for x in a)
-    return (mag / denom if denom > 0.0 else 0.0), mag / n, (mag / tot_abs if tot_abs > 0 else 0.0)
+    # DEGENERATE-RESIDUAL GUARD -- mirrors gnss::residual_snr in gnssChannelizedDespread.cpp,
+    # and MUST stay mirrored (this docstring promises the two statistics are identical).
+    #
+    # `denom > 0.0` catches only an exactly-zero residual, which is not the case that occurs.
+    # A series aligned to within DOUBLE PRECISION gives ~1e-17 and sails through, returning
+    # mag/1e-17 ~ 1e17. This path is MORE exposed than the C++ one, not less: both callers
+    # above build their series by derotating with a unit-modulus reference
+    # (s * conj(r)/|r|, and x * conj(rest)/|rest| per instance), so the products are nearly
+    # REAL BY CONSTRUCTION and the orthogonal component is the very thing that derotation
+    # removed. Seen live 2026-08-07: the viewer, which reads this fleet merge on :12060,
+    # showed 6.93e16 sigma with coh_frac 0.13 and kept doing so after the C++ guard shipped --
+    # because the number on screen comes from HERE, not from a node.
+    #
+    # Floor far above machine epsilon, far below anything physical: a 60 dB record has an
+    # orthogonal residual ~1e-3 of mag. Fail closed (0.0), matching n < 2.
+    degen = mag * math.sqrt(n) * 1e-12
+    return (mag / denom if denom > degen else 0.0), mag / n, (mag / tot_abs if tot_abs > 0 else 0.0)
 
 
 def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
