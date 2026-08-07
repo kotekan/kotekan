@@ -180,7 +180,7 @@ gnss0_assemble:
   - 30
   - 31
   - 32
-  reference_element: 0
+  reference_element: 13
   sample_rate: 3200000000.0
 gnss0_cmb_buf:
   frame_size: 32 * 410 * sizeof_float32
@@ -237,7 +237,6 @@ gnss0_gpu:
     hops_per_record: 2048
     n_channels: 7
     n_elements: 32
-    despread_max_chips: 0
     name: cudaGnssChordTrack
     prns: *id001
     sample_rate: 3200000000.0
@@ -296,7 +295,7 @@ gnss0_srch_tap:
   - 283
   cpu_affinity:
   - 24
-  element_offset: 0
+  element_offset: 13
   fft_length: 16384
   frame_chan_stride: num_local_freq
   frame_elem_stride: num_elements
@@ -321,6 +320,7 @@ gnss0_volt_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+  peek_hold: true
 gnss1_assemble:
   cpu_affinity:
   - 63
@@ -330,7 +330,7 @@ gnss1_assemble:
   n_elements: 32
   out_buf: gnss1_rec_buf
   prns: *id001
-  reference_element: 0
+  reference_element: 13
   sample_rate: 3200000000.0
 gnss1_epl_buf:
   frame_size: 6422704
@@ -361,7 +361,6 @@ gnss1_gpu:
     hops_per_record: 2048
     n_channels: 6
     n_elements: 32
-    despread_max_chips: 0
     name: cudaGnssChordTrack
     prns: *id001
     sample_rate: 3200000000.0
@@ -411,7 +410,7 @@ gnss1_srch_tap:
   - 282
   cpu_affinity:
   - 31
-  element_offset: 0
+  element_offset: 13
   fft_length: 16384
   frame_chan_stride: num_local_freq
   frame_elem_stride: num_elements
@@ -436,6 +435,7 @@ gnss1_volt_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+  peek_hold: true
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120
