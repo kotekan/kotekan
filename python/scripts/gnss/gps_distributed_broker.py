@@ -2566,6 +2566,8 @@ def main(argv=None):
     # HIGH, and USB latency only makes anchors late), and LATCH on green -- the class-2
     # discipline, verify + lockout, never averaged. A working launch latches 0 on the
     # first check and is untouched.
+    _anchor_seen = [0.0]   # frame0 as first latched (see the re-check in the cycle loop)
+    _anchor_chk = [0.0]    # wall time of the last anchor re-read
     cl_segsearch = {"corr": 0, "idx": 0, "latched": False, "t_step": 0.0}
     # ONE SEGMENT of the long code, in seconds, and a spiral that covers the whole segment
     # space. Both used to be L2C CL's (0.020 s; +-37 of 75 segments) even after LC_EPOCH/
@@ -3577,6 +3579,35 @@ def main(argv=None):
         # Capture time anchor: wall-clock UTC of capture sample 0 (airspy stamps it at its
         # first USB callback; /adcstat serves it). 0.0 until the stream starts -- retry
         # lazily. Used by the CL time-assist and the dead-reckoned cp seeding.
+        # THE ANCHOR IS LATCHED (`not utc0_sample0` above): fetched once and kept for the whole
+        # run. That is right for a stable F-engine and WRONG ACROSS AN F-ENGINE RESTART, which
+        # re-establishes frame 0 -- and the failure is silent. On 2026-08-07 the F-engine came
+        # back with a frame 0 13.587 days later than before; cx19 restarted and took the new
+        # epoch, the broker kept the old one, and every seed was 13.587 days wrong. What that
+        # looks like from outside is "nothing locks, deep_snr ~1.5" -- i.e. a tracker or geometry
+        # problem, not a stale anchor. So: re-read periodically and SAY SO, loudly, every cycle.
+        #
+        # Deliberately does NOT re-anchor itself. A changed frame 0 also invalidates the epoch
+        # every NODE cached at ITS startup, so the correct response is to restart the fleet and
+        # the broker together; silently re-anchoring here would fix the broker's arithmetic while
+        # leaving the nodes wrong, and hide the condition that requires the operator.
+        # time.time() rather than the loop's now_w: that is assigned LATER in the cycle
+        # (line ~4756), so using it here is a NameError on the first pass.
+        _now_anchor = time.time()
+        if args.time0_endpoint and utc0_sample0 and _now_anchor - _anchor_chk[0] > 60.0:
+            _anchor_chk[0] = _now_anchor
+            try:
+                _fresh = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
+                               .get("time0_ns", 0.0)) / 1e9
+                if _fresh and abs(_fresh - utc0_sample0) > 1e-3:
+                    _log("*** TIME ANCHOR CHANGED: frame0 was %.9f, endpoint now reports %.9f "
+                         "(%+.3f days). The F-engine has been restarted. EVERY SEED THIS BROKER "
+                         "SENDS IS WRONG BY THAT AMOUNT, and every node still running cached the "
+                         "old epoch too. Restart the nodes AND this broker."
+                         % (utc0_sample0, _fresh, (_fresh - utc0_sample0) / 86400.0))
+            except Exception:
+                pass   # endpoint down is the normal outage case, already logged elsewhere
+
         if (args.cl_assist or args.cl_tracker or dr_state is not None) and not utc0_sample0:
             try:
                 if args.time0_endpoint:
@@ -3591,6 +3622,7 @@ def main(argv=None):
                     if utc0_sample0:
                         _log("time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
                              % utc0_sample0)
+                        _anchor_seen[0] = utc0_sample0
                 else:
                     utc0_sample0 = float(
                         _get("%s/%s/adcstat" % (base, args.adc_stage)).get("utc0_sample0", 0.0))
