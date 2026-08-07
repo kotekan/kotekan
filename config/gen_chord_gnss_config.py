@@ -367,6 +367,12 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # is bootstrap MRC from the satellite itself; until warm (~3 tau) the output is
             # byte-identical to reference-element-only.
             "elem_sum": args.elem_sum,
+            # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Off by default. The cross-channel sum
+            # inside this stage is the ONE combine step the broker can never undo, so whether it
+            # is lossless is a question only the per-channel phases can answer -- and they are
+            # exactly what the sum hides.
+            "chan_dump_prn": args.chan_dump_prn,
+            "chan_dump_decim": args.chan_dump_decim,
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [core(gpu + 8)],
         },
@@ -692,6 +698,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
             "n_elements": n_live,
             "reference_element": args.reference_element,
             "elem_sum": args.elem_sum,
+            # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Off by default. The cross-channel sum
+            # inside this stage is the ONE combine step the broker can never undo, so whether it
+            # is lossless is a question only the per-channel phases can answer -- and they are
+            # exactly what the sum hides.
+            "chan_dump_prn": args.chan_dump_prn,
+            "chan_dump_decim": args.chan_dump_decim,
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
@@ -1233,6 +1245,28 @@ def main():
                     help="antenna whose correlation fills the record HEADER -- the broker's DLL "
                          "and carrier loop reference (and, with --elem-sum, the phase anchor of "
                          "the calibrated sum)")
+    ap.add_argument("--chan-dump-prn", type=int, default=-1, metavar="PRN",
+                    help="DIAGNOSTIC: dump the per-channel PROMPT correlation for this PRN "
+                         "(-1 = off) to chan_dump_path, one line per covering channel per "
+                         "dumped record: 'utc ch corr_re corr_im energy', raw and "
+                         "pre-NCO-rotation so the CROSS-CHANNEL RELATIVE PHASES are the "
+                         "observable.\n"
+                         "\n"
+                         "WHY IT MATTERS BEYOND ITS ORIGINAL USE (the 2026-07-21 ADR-wander "
+                         "hunt, where a narrow 5-channel set wandered 5-6x worse than the full "
+                         "10): the cross-channel sum in GnssGpuRecordAssemble is the one "
+                         "combining step downstream can NEVER undo. Instances, GPUs and nodes "
+                         "all stay separable to the broker; channels do not. So if a phase "
+                         "varies across FREQUENCY -- a residual code delay tau shows up as a "
+                         "ramp 2*pi*df*tau, and 0.1 chip over a 7-channel stride-16 comb "
+                         "(~18.75 MHz) is already 1.15 rad -- that coherence is lost inside "
+                         "this sum and no amount of fleet combining recovers it. This dump is "
+                         "how you find out whether it is happening before rebuilding the record "
+                         "format to carry channels.\n"
+                         "\n"
+                         "~60 KB/s at chan_dump_decim 10; raise the decimation for a long run.")
+    ap.add_argument("--chan-dump-decim", type=int, default=10, metavar="N",
+                    help="with --chan-dump-prn: dump every Nth record of that PRN.")
     ap.add_argument("--elem-sum", action=argparse.BooleanOptionalAction, default=True,
                     help="record HEADER = self-calibrated weighted mean over ALL elements "
                          "(bootstrap MRC, reference-anchored phase, 'one element' scale) instead "
