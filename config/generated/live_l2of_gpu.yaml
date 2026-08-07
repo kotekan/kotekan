@@ -52,7 +52,7 @@ f_offset: 5.0e6  # LO on the k=0 nominal carrier, Fs/4; per-PRN offsets ride on 
 signal: GLO_L2OF
 code_doppler_sign: 1.0
 n_prn: 28
-record_floats: 24
+record_floats: 26
 doppler_margin_hz: 250000.0
 acquire_snr: 4.0
 acquire_windows: 200

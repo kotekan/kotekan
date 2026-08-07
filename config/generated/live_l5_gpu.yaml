@@ -53,7 +53,7 @@ f_offset: 5.0e6  # LO on carrier, Fs/4 (same front-end model as L1/L2C)
 signal: GPS_L5_Q
 code_doppler_sign: 1.0
 n_prn: 32
-record_floats: 24
+record_floats: 26
 doppler_margin_hz: 250000.0
 acquire_snr: 8.0
 acquire_windows: 100
