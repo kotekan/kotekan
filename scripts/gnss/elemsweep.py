@@ -28,7 +28,8 @@ import urllib.request
 
 NODES = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
 PORT = 12049
-AGG = "cf06:12050"
+AGG_HOST = "cf06"
+AGG_LOG = "/tmp/gnss_agg_final.log"
 TAPS = ["gnss0_srch_tap", "gnss1_srch_tap"]
 
 
@@ -91,17 +92,27 @@ def set_element(nodes, elem):
     return ok
 
 
-def search_snr(samples=6, gap=5.0):
-    """Best pass SNR and the aggregator's own pure-noise ceiling, over a few passes."""
+def search_snr(samples=6, gap=5.0, log=AGG_LOG, host=AGG_HOST):
+    """Best pass SNR and the aggregator's own pure-noise ceiling.
+
+    Parsed from the aggregator's LOG, not a REST endpoint: GnssChannelizedSearch reports this
+    as "pass best snr N (PRN p, nh k/20), threshold T, pure-noise ceiling ~C" and exposes no
+    equivalent endpoint. An earlier version of this script invented /gps_search/get_status and
+    would have scored every candidate NaN -- check the schema exists before trusting a number
+    that came out of it.
+    """
+    import re
+    import subprocess
     best, ceil = [], []
+    pat = re.compile(r"pass best snr ([\d.]+).*?pure-noise ceiling ~([\d.]+)")
     for _ in range(samples):
         try:
-            d = _get("http://%s/gps_search/get_status" % AGG)
-            if isinstance(d, dict):
-                if "best_snr" in d:
-                    best.append(float(d["best_snr"]))
-                if "noise_ceiling" in d:
-                    ceil.append(float(d["noise_ceiling"]))
+            out = subprocess.run(["ssh", "-o", "ConnectTimeout=5", host,
+                                  "tail -40 %s" % log], capture_output=True, text=True,
+                                 timeout=20).stdout
+            for m in pat.finditer(out):
+                best.append(float(m.group(1)))
+                ceil.append(float(m.group(2)))
         except Exception:
             pass
         time.sleep(gap)

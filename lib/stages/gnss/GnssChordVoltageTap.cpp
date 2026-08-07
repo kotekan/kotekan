@@ -58,7 +58,7 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
     // self-oscillating amplifier is loud, not silent, so a healthy-looking power is necessary
     // and not sufficient -- judge a candidate by the SEARCH SNR it yields, not by this number.
     kotekan::restServer::instance().register_post_callback(
-        "/" + unique_name + "/set_element",
+        unique_name + "/set_element",
         [this, unique_name](kotekan::connectionInstance& conn, nlohmann::json& json) {
             int e;
             try {
@@ -85,7 +85,7 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
         });
 
     kotekan::restServer::instance().register_get_callback(
-        "/" + unique_name + "/element_power",
+        unique_name + "/element_power",
         [this](kotekan::connectionInstance& conn) {
             nlohmann::json r;
             std::lock_guard<std::mutex> lk(_pow_lock);
