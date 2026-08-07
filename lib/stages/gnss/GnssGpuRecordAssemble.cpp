@@ -122,16 +122,45 @@ void GnssGpuRecordAssemble::main_thread() {
                                                + off_energy(n_prn, n_chan, n_rows_spec,
                                                             (_n_elements > 0) ? _n_elements : 1));
 
+        // NO ABSOLUTE ANCHOR? SAY SO, AND STILL EMIT A UNIFORM GRID. The old fallback stamped
+        // system_clock::now() PER RECORD, and that silently broke every cross-record estimator
+        // downstream: this stage emits hdr.n_rec records back to back, so on CHORD the four
+        // sub-records of a frame were stamped microseconds apart instead of 10.49 ms apart.
+        // GnssCoherentCombiner's rate search takes dt = the MINIMUM consecutive spacing and
+        // builds an integer grid from it, so those microseconds became the grid and the records
+        // were scattered across the transform. Cost, measured on cx19 2026-08-07: path B's
+        // deep_rate_q read 4.5-11.4 against path A's 27-38 on IDENTICAL per-record data, failing
+        // the q >= 10 gate, and coh_frac sat at 0.02-0.10 against 0.93-0.97 -- diagnosed for a
+        // day and a half as a sensitivity problem because amp_snr, which uses no time base at
+        // all, was a healthy 71-83% of path A throughout.
+        //
+        // Latching the anchor once and extrapolating by wstart keeps the same host-clock origin
+        // (no worse than before for anything reading absolute time) and makes the grid exactly
+        // uniform (no jitter at all for anything reading differences). The warning still fires,
+        // because a host clock is not a GPS clock and the config should carry frame0_utc.
+        if (hdr.utc0 <= 0.0 && hdr.n_rec > 0) {
+            if (_wall_anchor == 0.0) {
+                const double now = std::chrono::duration<double>(
+                                       std::chrono::system_clock::now().time_since_epoch())
+                                       .count();
+                _wall_anchor = now - (double)winstart[0] / _sample_rate;
+            }
+            if ((_no_utc0_frames++ % 2000) == 0)
+                WARN("GnssGpuRecordAssemble: producer sent no frame0_utc -- record UTC is the "
+                     "HOST clock anchored once at startup, not GPS time ({:d} frames). Absolute "
+                     "time is only as good as this host's clock; add frame0_utc to the producer "
+                     "stage's config. ({:d} records/frame, so a per-record stamp would not even "
+                     "be uniform.)",
+                     _no_utc0_frames, hdr.n_rec);
+        }
+
         for (int r = 0; r < hdr.n_rec && !stop_thread; ++r) {
             float* out = (float*)out_buf->wait_for_empty_frame(unique_name, frame_out);
             if (out == nullptr)
                 return;
             const int64_t wstart = winstart[r];
-            const double utc =
-                (hdr.utc0 > 0.0) ? hdr.utc0 + (double)wstart / _sample_rate
-                                 : std::chrono::duration<double>(
-                                       std::chrono::system_clock::now().time_since_epoch())
-                                       .count();
+            const double utc = ((hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor)
+                               + (double)wstart / _sample_rate;
 
             for (int p = 0; p < n_prn; ++p) {
                 const int rec_stride = gnss::record_stride(_n_elements);

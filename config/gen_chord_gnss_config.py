@@ -592,7 +592,24 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  "fft_length": cfg["fengine"]["fft_length"],
                  "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
                  "seed_endpoint": f"/{pre}inject/set_seeds",
-                 "trim_endpoint": f"/{pre}inject/get_trim"},
+                 "trim_endpoint": f"/{pre}inject/get_trim",
+                 # THE SAME F-ENGINE ANCHOR THE TRACKER GETS, AND NOT OPTIONAL. This one
+                 # missing key was the whole of the 11.14.1 coh_frac defect. Without it
+                 # cudaGnssInject writes utc0 = 0, GnssGpuRecordAssemble falls back to HOST
+                 # WALL CLOCK, and every path-B record is stamped at the instant it was
+                 # assembled -- so the four sub-records of a frame land microseconds apart
+                 # instead of 10.49 ms apart. The combiner's rate search works in UTC, takes
+                 # dt = the MINIMUM consecutive spacing, and therefore built its integer grid
+                 # on those microseconds: the records were scrambled across the transform and
+                 # q fell from ~22 to 4.5-11.4, straight through the q >= 10 gate. Measured
+                 # 2026-08-07: utc - hop*5.12us was constant to 0.0 s on path A and wandered
+                 # 45 ms (4.3 record periods) on path B.
+                 #
+                 # NB the amplitude estimators never noticed -- amp_snr was 71-83% of path A
+                 # throughout -- because they are per-record and use no time base at all. Only
+                 # the cross-record estimators (rate search, coherence_s, carrier fit) read
+                 # UTC, which is exactly the set that failed.
+                 "frame0_utc": float(cfg["fengine"].get("frame0_utc", 0.0))},
                 {"name": "cudaCorrelatorDual",
                  # ONE VISIBILITY PER RECORD, not per frame. Measured 2026-08-06: with the
                  # frame-length window path B's amplitude was 0.55 of path A's, because the
@@ -1100,6 +1117,43 @@ def build_search_instance(cfg, node, per_gpu, args, port):
     return out
 
 
+def live_frame0_utc(cfg, args, timeout=3.0):
+    """The F-engine epoch as the RUNNING FLEET reports it, or None if nobody answers.
+
+    Every kotekan serves its cached frame 0 at telescope/time0_ns. Nodes CACHE it at startup, so
+    this reports what the F-engine was doing when each node started -- which is exactly the
+    question here ("is the checked-in value still the live one?") and NOT a liveness check on the
+    F-engine. Nodes that started either side of an F-engine restart therefore disagree, and that
+    disagreement is itself the answer: no single value is current, so return None and let the
+    caller warn rather than silently pick one.
+    """
+    import urllib.request
+
+    # The node's OWN rest port -- 12049. (The +1 seen elsewhere in this file belongs to the
+    # second GPU chain's endpoints, not to the telescope block, which only one server carries.)
+    port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"]
+    seen = {}
+    for node in cfg["nodes"]:
+        try:
+            url = f"http://{node}:{port}/telescope/time0_ns"
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                ns = int(json.load(r)["time0_ns"])
+            seen.setdefault(ns, []).append(node)
+        except Exception:
+            continue
+    if not seen:
+        return None
+    if len(seen) > 1:
+        print("  WARNING   running nodes disagree about frame 0 -- some started either side of "
+              "an F-engine restart, so none of them is authoritative:")
+        for ns, nodes in sorted(seen.items()):
+            print("              %.9f  %s" % (ns * 1e-9, ", ".join(sorted(nodes))))
+        print("            Re-read it from chive, or restart the stragglers, before trusting "
+              "any record stamp.")
+        return None
+    return next(iter(seen)) * 1e-9
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1312,6 +1366,44 @@ def main():
         cfg = yaml.safe_load(fh)
     if args.node not in cfg["nodes"]:
         raise SystemExit(f"unknown node {args.node}")
+
+    # THE F-ENGINE EPOCH IS A LIVE VALUE, AND A STALE ONE FAILS SILENTLY. frame0_utc is the UTC
+    # of the F-engine's absolute sample 0; every record is stamped frame0_utc + wstart/rate, and
+    # an F-engine restart re-establishes frame 0. chord_gnss_node.yaml carries a checked-in
+    # value, so it goes stale the moment the F-engine comes back -- and nothing downstream
+    # complains, because every cross-record estimator uses DIFFERENCES and a uniformly-wrong
+    # epoch is uniform. Found 2026-08-07 while chasing the path-B q gap: the file still held
+    # 1784941003.000002861 from a bring-up 13.78 DAYS earlier while every running node served
+    # 1786131189.000002870. Path A had been stamping every record 13.78 days in the past for
+    # as long as that was true.
+    #
+    # So: ask a node that is actually running, and refuse to emit a config that disagrees with
+    # it. Advisory when nothing answers (the F-engine and chive have both been down this week
+    # and the generator must still work), hard error when something does -- a mismatch is
+    # always a real staleness, never noise.
+    live_t0 = live_frame0_utc(cfg, args)
+    if live_t0 is not None:
+        have = float(cfg["fengine"].get("frame0_utc", 0.0))
+        if abs(have - live_t0) > 1e-3:
+            raise SystemExit(
+                f"frame0_utc in {args.node_file} is {have:.9f} but the running fleet serves "
+                f"{live_t0:.9f} ({abs(have - live_t0) / 86400.0:.2f} days apart).\n"
+                f"The F-engine has been restarted since that value was written. Records would "
+                f"carry the wrong epoch and nothing downstream would say so.\n"
+                f"Fix it:  sed -i 's/^  frame0_utc: .*/  frame0_utc: {live_t0:.9f}/' "
+                f"{args.node_file}\n"
+                f"(or pass --frame0-nano to override both this and the telescope block.)")
+    elif not args.frame0_nano:
+        print("  WARNING   no running node answered telescope/time0_ns -- frame0_utc "
+              f"{float(cfg['fengine'].get('frame0_utc', 0.0)):.6f} is UNVERIFIED. If the "
+              "F-engine has restarted since it was written, every record stamp is wrong.")
+
+    # --frame0-nano overrides the RECORD EPOCH too, not just the telescope's startup GPS time.
+    # Those are two different consumers of one number and supplying only the first leaves the
+    # assembler stamping records from the stale yaml -- the exact silent failure the flag exists
+    # to avoid.
+    if args.frame0_nano:
+        cfg["fengine"]["frame0_utc"] = args.frame0_nano * 1e-9
 
     with open(args.base) as fh:
         base = json.load(fh) if args.base.endswith(".json") else yaml.safe_load(fh)

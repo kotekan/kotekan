@@ -40,6 +40,17 @@ private:
     std::vector<int> _prns;
     double _sample_rate;
 
+    /// WALL-CLOCK FALLBACK, LATCHED ONCE (see main_thread). When the producer supplies no
+    /// frame0_utc the records have no absolute anchor, and the old fallback stamped
+    /// `system_clock::now()` per record -- which on CHORD puts the four sub-records of a frame
+    /// microseconds apart instead of 10.49 ms, because they are assembled back to back. That is
+    /// not a small error: every CROSS-RECORD estimator in GnssCoherentCombiner works in UTC and
+    /// derives its grid from the MINIMUM consecutive spacing, so a burst of near-equal stamps
+    /// scrambles the record order inside the transform. Anchoring once and extrapolating by
+    /// wstart keeps the same (host-clock) origin while making the grid exactly uniform.
+    double _wall_anchor = 0.0; ///< now() - wstart/rate at the first unanchored frame; 0 = unset
+    uint64_t _no_utc0_frames = 0; ///< frames stamped from the fallback (for the rate-limited warn)
+
     /// Element axis (CHORD). 0 = single-antenna airspy layout, byte-for-byte.
     int _n_elements = 0;
     /// Which antenna the record HEADER's correlation slots carry -- the broker's loop reference.

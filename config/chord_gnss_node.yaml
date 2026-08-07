@@ -28,8 +28,12 @@ fengine:
   # telescope/time0_ns endpoint. Records are stamped frame0_utc + wstart/sample_rate; with
   # it 0 the assembler falls back to HOST wall clock at assembly time, which is unusable for
   # comparing a record against the model (100 ms of stamp error = 1e6 chips of code phase).
-  # Re-read it after any F-engine restart -- it changes.
-  frame0_utc: 1784941003.000002861
+  # Re-read it after any F-engine restart -- it changes. The generator now CHECKS this against
+  # the running fleet's telescope/time0_ns and refuses to emit a config that disagrees, because
+  # a stale epoch is invisible downstream: every cross-record estimator uses differences, so a
+  # uniformly-wrong epoch stays uniform and nothing complains. This value sat 13.78 days stale
+  # from 2026-07-24 until 2026-08-07 and no measurement ever flagged it.
+  frame0_utc: 1786131189.000002870
   pfb_taps: 4                   # "Ntaps=4-tap Hamming window ... 18-bit coefficient resolution"
   pfb_window: hamming
   pfb_critically_sampled: true  # CASPER pfb_fir_real block
