@@ -163,9 +163,11 @@ protected:
  * @conf   num_mem_channels Int. Default 4     The number of system memory channels
  * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
  * @conf   pcie_block_list  Array of strings.  List of PCIe devices to block DPDK from using.
- * @conf   lcore_start_delay Int. Default 40   Seconds to wait after port start before the
- *                                             lcore RX loop begins. Required on E810 NICs
- *                                             to allow ports to become ready.
+ * @conf   max_link_start_delay Int. Default 40 Max seconds to wait for each port's link to
+ *                                             come up before the lcore RX loop begins.
+ *                                             Startup fails if a link is still down after
+ *                                             this. Required on E810 NICs, which report a
+ *                                             port as started before it is actually ready.
  *
  * @author Andre Renard
  */
