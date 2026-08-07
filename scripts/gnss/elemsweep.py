@@ -119,14 +119,81 @@ def search_snr(samples=6, gap=5.0, log=AGG_LOG, host=AGG_HOST):
     return (max(best) if best else float("nan"), max(ceil) if ceil else float("nan"))
 
 
+def health_table(node, prns_used=4):
+    """Per-element CORRELATION-PER-NOISE -- the only per-element health measure that survives
+    an oscillating amplifier.
+
+    POWER CANNOT DO THIS, and 2026-08-07 proved it the expensive way. All sixteen connected
+    elements sat at power 5.1-7.2, indistinguishable; ranked by correlation/sqrt(power) they
+    split into two clean populations a factor of 6.4 apart -- nine healthy, seven with normal
+    power and almost no GPS in them, which is exactly what a self-oscillating amp looks like.
+    The reference element had been chosen by power that morning and turned out to be the WORST
+    of the sixteen; the best was element 0. Restoring it took fleet deep_snr from ~3 to ~232.
+
+    correlation comes from the combiner records (per-element prompt |P|, averaged over the few
+    strongest PRNs so one bad satellite cannot set the ranking); noise comes from the tap's
+    element_power. The ratio is a per-element SNR proxy: signal amplitude over noise amplitude.
+    """
+    import subprocess
+    import tempfile
+    import numpy as np
+
+    pw = _get("http://%s:%d/gnss0_tap/element_power" % (node, PORT))["element_power"]
+    name = subprocess.run(["ssh", "-o", "ConnectTimeout=8", node,
+                           "ls -t /tmp/gnss/ | grep gnss0_cmb | head -1"],
+                          capture_output=True, text=True, timeout=30).stdout.strip()
+    if not name:
+        print("no combiner record on %s -- is the chain running?" % node, file=sys.stderr)
+        return
+    tmp = tempfile.NamedTemporaryFile(suffix=".raw", delete=False)
+    subprocess.run(["scp", "-q", "-o", "ConnectTimeout=8",
+                    "%s:/tmp/gnss/%s" % (node, name), tmp.name], timeout=60)
+
+    STR = 26 + 32 * 12          # RECORD_FLOATS + n_elem*ELEM_FLOATS (gnssRecord.hpp)
+    a = np.fromfile(tmp.name, dtype=np.float32)[1:]   # 1-float file header
+    r = a[:32 * STR].reshape(32, STR)
+    m = np.zeros((32, 32))
+    for p in range(32):
+        for e in range(32):
+            b = 26 + e * 12
+            m[p, e] = np.hypot(r[p, b], r[p, b + 1])
+    strongest = np.argsort(-m.sum(axis=1))[:prns_used]
+    sig = m[strongest].mean(axis=0)
+
+    print("per-element health on %s (record %s, mean of the %d strongest PRNs)" %
+          (node, name.split("_")[-1], prns_used))
+    print("  POWER CANNOT SEE THIS: an oscillating amp is loud and carries no GPS.\n")
+    print("  %-5s %10s %12s %14s" % ("elem", "power", "|P| corr", "corr/sqrt(pw)"))
+    rank = []
+    for e in range(16):
+        h = sig[e] / (pw[e] ** 0.5) if pw[e] > 0.1 else 0.0
+        rank.append((h, e))
+        print("  %-5d %10.2f %12.3e %14.3e" % (e, pw[e], sig[e], h))
+    rank.sort(reverse=True)
+    good = [e for h, e in rank if h > 0.4 * rank[0][0]]
+    print()
+    print("  healthiest : " + ", ".join("elem %d (%.2e)" % (e, h) for h, e in rank[:5]))
+    print("  weakest    : " + ", ".join("elem %d (%.2e)" % (e, h) for h, e in rank[-4:]))
+    print("  within 2.5x of the best (usable): %s" % sorted(good))
+    print("\n  Pick the reference from the top of this list, NOT from the power table.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--nodes", nargs="*", default=NODES)
     ap.add_argument("--set", type=int, default=None, help="point every search tap at this element")
     ap.add_argument("--sweep", default=None, help="comma-separated elements to rank by search SNR")
+    ap.add_argument("--health", nargs="?", const=NODES[0], default=None, metavar="NODE",
+                    help="rank elements by CORRELATION-PER-NOISE from a combiner record -- the "
+                         "measure that distinguishes a healthy feed from an oscillating amp, "
+                         "which power cannot. Needs the chain running and writing records.")
     ap.add_argument("--dwell", type=float, default=90.0,
                     help="seconds to hold each candidate before scoring (default 90)")
     a = ap.parse_args()
+
+    if a.health:
+        health_table(a.health)
+        return
 
     if a.set is not None:
         print("setting search element -> %d" % a.set)
