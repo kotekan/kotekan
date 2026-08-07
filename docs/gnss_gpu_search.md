@@ -1346,3 +1346,50 @@ Startup datapoint: tracker + injector each build a replica bank -- construction 
 **M5** -- consumer stage -> frame-length records -> assembler/broker (survey
 hops_per_record assumptions first).
 
+## 11.14  BOTH OWED NUMBERS TAKEN (2026-08-07) -- and coh_frac is the open defect
+
+Measured on a correctly-weighted array with the fleet locked at deep 232-276 / coh_frac
+0.999, after a day in which three F-engine bring-ups delivered, in order: zeros, bad
+weights, and finally good data. Nothing below was measurable before that.
+
+**1. Frequency map, in situ.** `cudaCorrelatorDual` = **0.075 ms/frame** on both GPUs --
+0.2% of the 41.94 ms frame, and 3x better than the ~0.22 ms `n2timing` projected. The
+correlator is no longer the cost: `cudaGnssInject` at 2.296/2.387 ms is **31x** more
+expensive than the correlation it feeds. Any further path-B optimisation belongs in the
+injector.
+
+**2. On-sky A/B, 13 simultaneously tracked PRNs.** `n2sky_fetch.py` captures the real
+voltage frame the tracker despread plus its seeds; `n2skyab` runs BOTH paths over the
+identical bytes, so any difference is purely path B. 39 (PRN,tap) pairs: |corr| mean
+**0.9892**, median 0.9880, range 0.9837-0.9976; |phase| mean 6.6 mrad, max 20.1 mrad.
+(1.000 = exact reproduction, 0.177 = 1/sqrt(32) = unrelated.) Stronger evidence than the
+earlier synthetic check, because it is live sky with 13 satellites at once.
+
+**3. coh_frac on the per-GPU path-B combiner -- MEASURED, AND IT FAILS.** Same PRNs, same
+moment, cx19:
+
+| PRN | A deep | A coh | A amp | B deep | B coh | B amp |
+|---|---|---|---|---|---|---|
+| 26 | 39.3 | 0.968 | 68.90 | 1.4 | 0.098 | 48.95 |
+| 28 | 26.8 | 0.933 | 89.11 | 0.3 | 0.019 | 74.02 |
+| 3  | 25.8 | 0.928 | 20.15 | 0.3 | 0.021 | 12.91 |
+| 32 | 26.9 | 0.937 |  7.54 | 0.6 | 0.044 |  5.92 |
+
+The two columns that matter say different things. **Per-record despread is GOOD** --
+`amp_snr` is 71-83% of path A, consistent with the 0.989 A/B. **Cross-record coherence
+collapses** -- `coh_frac` 0.02-0.10 against 0.91-0.97. Every record is individually right
+and they do not add.
+
+It is INTERMITTENT: PRN 4 read coh 0.904 on path B two minutes earlier. That rules out a
+constant offset and points at phase CONTINUITY between records.
+
+**Hypothesis, untested, recorded so it is not re-derived:** path A derotates each record by
+the tracker's commanded carrier-phase increment (`REC_CPHASE`, slot 15, an increment by
+design). Path B's records are assembled from N^2 tiles and carry no equivalent, so the deep
+fold integrates a rotating phasor -- the same family as the 2026-08-04 open-loop carrier
+defect, whose fix was exactly to derotate before summing. First checks: does
+`GnssN2RecordAssemble` populate the phase-increment slots at all, and is the combiner's rate
+search being handed something it can derotate?
+
+Everything else in path B is validated: 6 bitwise kernel gates, on-sky A/B 0.989, M5 drop-in
+to the shipped assembler unchanged, frequency map 0.075 ms.
