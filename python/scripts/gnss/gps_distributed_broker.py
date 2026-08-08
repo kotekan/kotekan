@@ -5045,41 +5045,55 @@ def main(argv=None):
                             continue
                         if best_sib is None or float(rec.get("t", 0)) > float(best_sib[0]):
                             best_sib = (rec.get("t", 0), rec, dr)
-                    # QUALITY GATE. Freshness is not sufficiency: a sibling that restarted a
-                    # minute ago publishes a clock every cycle, on time, and bouncing by
-                    # thousands of chips. Measured 2026-08-08, minutes after a GPS-broker
-                    # restart: chips 8690 -> 2787 -> 9382, n=5 with untrusted=5, integ_mad 2754
-                    # chips. Adopting that is strictly WORSE than holding a stale primed
-                    # constant, because it moves every cycle.
+                    # QUALITY GATE: JUDGE THE CLOCK BY WATCHING IT, not by the sibling's
+                    # aggregate quality fields. Two earlier versions of this gate were wrong in
+                    # opposite directions and both cost time:
                     #
-                    # The record already carries the signals to refuse on -- n, untrusted,
-                    # integ_mad_chips -- which is exactly what receiver_state's docstring means
-                    # by "the richest quality signal in the system is a satellite COUNT, used
-                    # for thresholding, never for weighting". Use them:
-                    #   * every satellite untrusted  -> the model is not tracking, refuse
-                    #   * scatter above a chip       -> not a clock, refuse
-                    # A refused sibling leaves the primed value in place and says so.
+                    #   * age alone -> adopted a clock bouncing 8690 -> 2787 -> 9382 chips
+                    #     minutes after the sibling restarted.
+                    #   * `untrusted >= n` -> refuses forever. Those count DIFFERENT
+                    #     populations: n = len(_ir), the satellites contributing an integrity
+                    #     residual THIS cycle; untrusted = len(dr_untrusted), the persistent
+                    #     demoted set. untrusted > n is normal after a restart, not impossible,
+                    #     and comparing them is meaningless.
+                    #   * integ_mad_chips > 1.0 -> also refuses a good clock. That MAD is taken
+                    #     over a mixed population including badly-tracked satellites; measured
+                    #     2026-08-08 it sat at 3.3-3.9 chips while the CLOCK ITSELF was stable
+                    #     to 0.2 chips across consecutive reads.
+                    #
+                    # So gate on the quantity being adopted: has it stopped moving? Two reads a
+                    # cycle apart answer that directly, in seconds, with no appeal to anyone's
+                    # self-reported quality. A converged clock moves by its drift; a
+                    # non-converged one moves by thousands of chips.
                     if best_sib is not None:
                         _, rec, dr = best_sib
-                        _n = dr.get("n") or 0
-                        _unt = dr.get("untrusted")
-                        _mad = dr.get("integ_mad_chips")
-                        _why = None
-                        if _n and _unt is not None and _unt >= _n:
-                            _why = "all %d sat(s) untrusted" % _n
-                        elif _mad is not None and _mad > args.dr_clock_adopt_max_mad_chips:
-                            _why = ("scatter %.1f chips > %.1f"
-                                    % (_mad, args.dr_clock_adopt_max_mad_chips))
-                        if _why:
-                            _log_rl("clkadopt-q",
-                                    "dead-reckon: REFUSED sibling '%s' clock (%s) -- holding "
-                                    "%.2f chips. A converging sibling publishes on time and is "
-                                    "still wrong; freshness is not sufficiency."
-                                    % (rec.get("chain", "?"), _why,
-                                       dr_state["clk"] if dr_state.get("clk") is not None
-                                       else float("nan")))
+                        _cand = float(dr["chips"]) % CODE_LEN
+                        _prev = dr_state.get("adopt_prev")
+                        if _prev is None:
+                            dr_state["adopt_prev"] = (_cand, t0)
+                            _log_rl("clkadopt-watch",
+                                    "dead-reckon: watching sibling '%s' clock %.2f chips -- "
+                                    "adopting once a second read confirms it is not moving "
+                                    "(one cycle, not a burn-in)" % (rec.get("chain", "?"), _cand))
                             best_sib = None
                             _refused = True
+                        else:
+                            _pc, _pt = _prev
+                            _dt = max(t0 - _pt, 1e-6)
+                            _move = abs(((_cand - _pc + CODE_LEN / 2) % CODE_LEN)
+                                        - CODE_LEN / 2) / _dt
+                            dr_state["adopt_prev"] = (_cand, t0)
+                            if _move > args.dr_clock_adopt_max_slew:
+                                _log_rl("clkadopt-q",
+                                        "dead-reckon: REFUSED sibling '%s' clock -- moving "
+                                        "%.1f chips/s (limit %.1f). It has not converged; "
+                                        "holding %.2f chips."
+                                        % (rec.get("chain", "?"), _move,
+                                           args.dr_clock_adopt_max_slew,
+                                           dr_state["clk"] if dr_state.get("clk") is not None
+                                           else float("nan")))
+                                best_sib = None
+                                _refused = True
                     if best_sib is not None:
                         _, rec, dr = best_sib
                         new_clk = float(dr["chips"]) % CODE_LEN
