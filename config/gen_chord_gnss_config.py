@@ -72,6 +72,11 @@ N2_STAGE_PREFIXES = (
     "run_send_pl_mask", "set_bf_mask", "run_send_voltage",
 )
 
+# --n2-primary: path B IS the science pipeline, so the consumers of the N^2 output stay. Only
+# run_n2k itself goes -- cudaCorrelatorDual computes the same prefix and ships it on the same
+# leg. Anything reading host_correlation_buffer must therefore survive the drop above.
+N2_PRIMARY_KEEP = ("n2_accumulate", "eigencalc", "n2_subset", "buffer_send_n2")
+
 
 def gpu_of_channel(cfg, node, freq_id):
     """Which of the node's two GPUs (0/1) holds this freq_id, and its index in that comb."""
@@ -575,7 +580,16 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
             # cudaProcess stages must not. Explicit, not arithmetic, so it stays checkable.
             "cpu_affinity": [cores[(5 - 2 * gpu) % len(cores)]],
             "in_buffers": {"host_voltage_ringbuffer": ring},
-            "out_buffers": {"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf},
+            # --n2-primary: the N^2 PREFIX leaves the GPU on the standard leg, so
+            # host_correlation_buffer{,_1} -> N2Accumulate -> the science pipeline is fed by
+            # cudaCorrelatorDual instead of by the (dropped) run_n2k. The prefix is bit-identical
+            # to cudaCorrelator's by construction -- triangular tile packing orders by ihi, so
+            # tiles 0..35 of the extended triangle ARE the pure-128 output (n2dualtest gate [3]).
+            "out_buffers": ({"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf,
+                             "host_correlation": "host_correlation_buffer"
+                                                 + ("" if gpu == 0 else "_1")}
+                            if args.n2_primary else
+                            {"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf}),
             "commands": [
                 # ORDER MATTERS: the injector's pack lands on the same stream before the
                 # correlator's kernel reads the synth array -- that ordering is the entire
@@ -655,7 +669,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  # needs measuring rather than extrapolating. vis_len scales with
                  # dp.n_freq_out automatically (7 -> 384, ~428 MB per frame slot), so no buffer
                  # config changes with the mode.
-                 "gnss_freq_map": not args.n2_full_freq,
+                 "gnss_freq_map": not (args.n2_full_freq or args.n2_primary),
                  "n2k_correlation_name": "correlation",
                  "gnss_tiles_name": "gnss_tiles",
                  "num_synth": num_synth,
@@ -671,7 +685,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                 {"name": "cudaOutputData",
                  "gpu_mem": "gnss_n2ctl",
                  "out_buf": "host_gnss_n2ctl"},
-            ],
+            ] + ([
+                # Byte-for-byte the third command of production's run_n2k gpu_N block, so the
+                # science consumer sees the identical buffer contract it does today.
+                {"name": "cudaOutputData",
+                 "gpu_mem": "correlation_buffer",
+                 "out_buf": "host_correlation"},
+            ] if args.n2_primary else []),
         },
         ctl_buf: {
             "kotekan_buffer": "standard",
@@ -1240,6 +1260,19 @@ def main():
                          "computed there. Costs more -- how much is the open question this flag "
                          "exists to answer (offline: +2.00 ms full vs +0.22 ms mapped; in situ "
                          "the mapped launch runs 0.076 ms).")
+    ap.add_argument("--n2-primary", action="store_true",
+                    help="PATH B AS THE SCIENCE PIPELINE. Implies --n2-full-freq (the N^2 "
+                         "pass-through needs the AA block, which freq-map mode never computes), "
+                         "keeps host_correlation_buffer{,_1} and the N^2 consumers "
+                         "(n2_accumulate, eigencalc, n2_subset, buffer_send_n2), and adds the "
+                         "standard cudaOutputData leg so cudaCorrelatorDual feeds them in place "
+                         "of the dropped run_n2k. The prefix is bit-identical to cudaCorrelator's "
+                         "(n2dualtest gate [3]) -- but VERIFY IT LIVE with injection on vs off "
+                         "before trusting the science output, not just via the unit gate.\n"
+                         "\n"
+                         "Measured on cx19 2026-08-08, 200 frames: cudaCorrelatorDual runs "
+                         "3.698 ms/frame full versus 0.076 ms mapped, and cudaGnssInject 2.443 "
+                         "ms, against cudaGnssChordTrack's 17.771 ms for the path it replaces.")
     ap.add_argument("--keep-n2", action="store_true",
                     help="retain the science pipeline alongside the GNSS branch")
     ap.add_argument("--frame0-nano", type=int, default=None, metavar="NS",
@@ -1634,7 +1667,8 @@ def main():
         if args.disable_outputs and key.startswith("buffer_send"):
             del out[key]
             dropped.append(key)
-        elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES):
+        elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES) \
+                and not (args.n2_primary and key.startswith(N2_PRIMARY_KEEP)):
             # --n2-dual: run_send_voltage survives (the dual correlator consumes the GPU
             # voltage ring it feeds); run_n2k itself is still dropped -- cudaCorrelatorDual
             # replaces it and keeps the N^2 prefix on-GPU.
@@ -1642,7 +1676,7 @@ def main():
                 continue
             del out[key]
             dropped.append(key)
-        elif args.n2_dual and key.startswith("host_correlation_buffer"):
+        elif args.n2_dual and not args.n2_primary and key.startswith("host_correlation_buffer"):
             # Nothing produces or consumes it in this mode (no cudaOutputData for the N^2
             # prefix in dev); leaving it would just allocate dead host memory.
             del out[key]
