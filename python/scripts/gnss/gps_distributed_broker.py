@@ -4384,11 +4384,27 @@ def main(argv=None, rx=None, publisher=None):
                             # round-trip 1e-4 chips, re-anchor continuity 0.0 even across a
                             # Doppler change; see the selftest). The model side is the same
                             # sum the birth cp0 uses, BEFORE back-referencing.
+                            #
+                            # ⚠️ EVERY TERM AT THE SAME EPOCH: t_h = h1/hps, the ROUNDED
+                            # hop's time -- never t_now_abs. The physical code phase runs at
+                            # ~52.4 chips per hop, so comparing a model evaluated at
+                            # t_now_abs against a held phase evaluated at h1/hps injects
+                            # (t_now_abs*hps - h1) * 52.4 = up to +-26 chips of PHANTOM
+                            # difference from the sub-hop rounding alone. Caught on the
+                            # first live cycle (2026-08-09 23:04): every fresh B2a seed
+                            # reported model-held = +23.335 chips two seconds after birth,
+                            # identical across PRNs -- rounding, wearing the clock's
+                            # common-mode costume. (Birth gets away with mixing t_now_abs
+                            # and a rounded ref_hop because there the SAME t builds the
+                            # subtraction, so the skew cancels against the tracker's
+                            # back-reference to first order. A cross-epoch DIFFERENCE has no
+                            # such cancellation.)
                             h1 = int(round(t_now_abs * args.hops_per_sec))
+                            t_h = h1 / args.hops_per_sec
                             _held = dr_seed_phys(
                                 seeds[prn], h1, args.hops_per_sec, args.chip_rate_hz,
                                 args.carrier_hz, args.code_doppler_sign, _DR_MOD)
-                            _model = (cp_predicted(v, t_now_abs) + clk_now) % _DR_MOD
+                            _model = (cp_predicted(v, t_h) + clk_now) % _DR_MOD
                             _dcp = ((_model - _held + _DR_MOD / 2.0) % _DR_MOD
                                     ) - _DR_MOD / 2.0
                             _step = max(-_DR_SLEW_CAP,
@@ -4402,7 +4418,7 @@ def main(argv=None, rx=None, publisher=None):
                             seeds[prn] = {
                                 "doppler_hz": dop_seed,
                                 "code_phase_chips": dr_cp0(
-                                    _held + _step, t_now_abs, dop_seed,
+                                    _held + _step, t_h, dop_seed,
                                     args.chip_rate_hz, args.carrier_hz,
                                     args.code_doppler_sign, _DR_MOD),
                                 "code_phase_rate": cp_rate_from_code_bias(
