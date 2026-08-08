@@ -71,6 +71,10 @@ private:
     std::vector<int> _in_chans; ///< channels per input
     int _out_chan = 0;          ///< sum of _in_chans
     int _n_hops = 0;
+    /// Seconds to wait on one input before declaring it ABSENT and zeroing its channels.
+    /// 0 = block forever (historical). A config declaring more inputs than there are running
+    /// nodes otherwise stalls the whole aggregator silently -- see main_thread.
+    double _input_timeout_s = 5.0;
 };
 
 #endif // GNSS_CHAN_ALIGN_MERGE_HPP

@@ -5034,6 +5034,7 @@ def main(argv=None):
                     # number measured by a chain that can measure it, and averaging two siblings'
                     # copies of the same quantity would just average their noise back in.
                     best_sib = None
+                    _refused = False
                     for rec in sibs:
                         # GROUP NAME IS "rxclock", read off a live state file rather than
                         # inferred from the observe() call site -- the first attempt guessed
@@ -5078,6 +5079,7 @@ def main(argv=None):
                                        dr_state["clk"] if dr_state.get("clk") is not None
                                        else float("nan")))
                             best_sib = None
+                            _refused = True
                     if best_sib is not None:
                         _, rec, dr = best_sib
                         new_clk = float(dr["chips"]) % CODE_LEN
@@ -5102,7 +5104,11 @@ def main(argv=None):
                         else:
                             _log_rl("clkadopt", "dead-reckon: clock adopted %.2f chips from "
                                                 "'%s' (steady)" % (new_clk, rec.get("chain", "?")))
-                    elif args.dr_clock_adopt:
+                    elif args.dr_clock_adopt and not _refused:
+                        # NOT after a quality refusal -- that path logs its own reason. Saying
+                        # "no fresh sibling" when a sibling was found and REJECTED describes the
+                        # wrong failure, and the two want opposite responses: absent means check
+                        # the publisher, rejected means wait for it to converge.
                         _log_rl("clkadopt-none",
                                 "dead-reckon: --dr-clock-adopt found no fresh sibling for dongle "
                                 "'%s' in %s (<%.0f s) -- HOLDING the primed clock %.2f chips, "
