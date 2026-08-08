@@ -1465,11 +1465,22 @@ def main(argv=None, rx=None, publisher=None):
     # ONE PORT FOR EVERY CHAIN (task #27 M6). The driver passes a shared publisher in and
     # this chain claims a slot on it; standing alone, the chain binds its own port exactly
     # as before. Either way `publisher` below is a per-chain view with the old interface.
+    # What a VIEWER needs to draw this chain without a static table: constellation, a
+    # human label, the record length, and whether a search feeds it. All of it is already
+    # known here -- the descriptor came from gnssSignal.hpp -- so publish it rather than
+    # making the browser guess from stage names.
+    _pub_desc = {"constellation": args.constellation or args.dr_constellation,
+                 "carrier_hz": args.carrier_hz, "code_length": args.code_length,
+                 "t_rec": args.code_length / args.chip_rate_hz,
+                 "has_search": bool(detectors), "n_trackers": len(trackers),
+                 "sigid": _sig.primary if args.signal else None,
+                 "label": _sig.label if args.signal else chain_id,
+                 "short": _sig.short if args.signal else chain_id}
     if publisher is not None:
-        publisher = publisher.register(chain_id, args.signal, band_id)
+        publisher = publisher.register(chain_id, args.signal, band_id, _pub_desc)
     elif args.publish_port:
         publisher = FleetPublisher(args.publish_port, _log).register(
-            chain_id, args.signal, band_id)
+            chain_id, args.signal, band_id, _pub_desc)
     else:
         publisher = None
     cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None

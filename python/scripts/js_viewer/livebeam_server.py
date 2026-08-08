@@ -930,6 +930,59 @@ def _signal_descriptors():
     return out
 
 
+
+def discover_broker_chains(host, port, timeout=3.0):
+    """Ask a BROKER publisher what chains it is actually running (task #27 M6).
+
+    Returns the viewer's chain dicts, or None on any failure so the caller keeps its
+    existing behaviour.
+
+    WHY THIS EXISTS. discover_signals() below reconstructs the signal table from KOTEKAN's
+    /config, which a broker publisher does not serve -- so a viewer pointed at a broker port
+    silently fell back to the static airspy table and polled stage names that have never
+    existed on CHORD (gal_search, gal_combiner, airspy_in). The symptom reaching the user
+    was a CORS error, which is three layers away from the cause.
+
+    The broker knows every chain it runs, its constellation, its band and its record length,
+    because those came from lib/stages/gnss/gnssSignal.hpp. Asking IT is both simpler and
+    honest: what the viewer draws is then what is actually being tracked, not what a table
+    written for a different instrument says should be.
+
+    The stage names it returns are CHAIN IDS, which the publisher accepts as a path segment
+    (/gps_l5/get_status) -- so one viewer instance polls every constellation on one port.
+    """
+    import json as _json
+    import urllib.request as _u
+    if host in ("0.0.0.0", "", "::"):
+        host = "127.0.0.1"
+    try:
+        with _u.urlopen("http://%s:%d/get_chains" % (host, port), timeout=timeout) as r:
+            raw = _json.load(r)
+    except Exception as e:  # noqa: BLE001 -- any failure -> caller falls back
+        log_.info("broker chain discovery: %s:%d/get_chains unavailable (%s)", host, port, e)
+        return None
+    if not isinstance(raw, list) or not raw:
+        return None
+    out = []
+    for c in raw:
+        chain = c.get("chain")
+        if not chain:
+            continue
+        out.append({"tag": c.get("constellation") or "G",
+                    "band": (c.get("band") or "").replace("MHz", ""),
+                    "col": c.get("short") or chain,
+                    "name": c.get("label") or chain,
+                    "sigid": c.get("sigid"),
+                    # BOTH point at the chain id: the publisher serves merged detections and
+                    # merged status on one port and filters on the path segment.
+                    "combiner": chain,
+                    "search": chain if c.get("has_search") else None,
+                    "t_rec": float(c.get("t_rec") or 1e-3),
+                    "peel": False})
+    log_.info("broker chain discovery: %d chain(s) from %s:%d -- %s",
+              len(out), host, port, ", ".join(c["col"] for c in out))
+    return out or None
+
 def discover_signals(host, rest_port, timeout=3.0):
     """Reconstruct the UNIFIED_SIGNALS table from kotekan's running /config. Returns the list, or
     None on any failure (fetch/parse/empty) so main() keeps the static UNIFIED_SIGNALS fallback."""
@@ -1144,7 +1197,8 @@ class WsPortResource(resource.Resource):
 
     isLeaf = True
 
-    def __init__(self, ws_port, band="l1", consts="G,E,C", stage_prefix="", unified=False):
+    def __init__(self, ws_port, band="l1", consts="G,E,C", stage_prefix="", unified=False,
+                 broker_chains=None):
         resource.Resource.__init__(self)
         self.ws_port = ws_port
         self.band = band
@@ -1181,6 +1235,11 @@ class WsPortResource(resource.Resource):
                 # in gnss_node.yaml so it keeps the un-prefixed gps_* stage names the primary
                 # broker needs, even though the SIGNAL is GLONASS. Hence gps_*, not glo_*.
                 "R": ("gps_search", "gps_combiner")}
+        if broker_chains:
+            # WHAT IS RUNNING BEATS WHAT THE TABLE SAYS. One entry per live broker chain,
+            # every constellation, one viewer instance, one port.
+            self.chains = [dict(c) for c in broker_chains]
+            return
         self.chains = []
         for c in table:
             if c["tag"] not in tags:
@@ -1849,8 +1908,15 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
+    # ONE VIEWER, EVERY CONSTELLATION (task #27 M6). If the rest port is a BROKER publisher
+    # it can name its own chains; if it is a kotekan node it cannot, and we fall through to
+    # the band/constellation table exactly as before. Trying and falling back beats a flag,
+    # because the failure it replaces was SILENT: a viewer pointed at a broker port used to
+    # poll airspy-era stage names and report the result as a CORS error.
+    _bchains = discover_broker_chains(args.kotekan_host, args.kotekan_rest_port)
     root.putChild(b"wsport", WsPortResource(args.ws_port, args.band, args.gps_constellations,
-                                            args.stage_prefix, unified=args.unified))
+                                            args.stage_prefix, unified=args.unified,
+                                            broker_chains=_bchains))
 
     # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
     # one dir up (python/scripts); add it to the path so the worker thread can

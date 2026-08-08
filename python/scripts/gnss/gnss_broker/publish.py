@@ -122,7 +122,17 @@ class FleetPublisher:
                                 want = seg
                                 break
                     ids = [want] if want in pub._chains else list(pub._order)
-                    if p.endswith("get_detections"):
+                    if p.endswith("get_chains"):
+                        # DISCOVERY. The viewer's own discover_signals() reads kotekan's
+                        # /config, which a broker publisher does not serve -- so it fell
+                        # back to a static PROTOTYPE table and asked for stage names that
+                        # have never existed on CHORD (gal_search, gal_combiner,
+                        # airspy_in). The broker already knows every chain it runs, its
+                        # constellation, band and record length; publishing that lets ONE
+                        # viewer instance build its table from what is actually running.
+                        body = json.dumps([pub._chains[c]["desc"]
+                                           for c in pub._order]).encode()
+                    elif p.endswith("get_detections"):
                         body = json.dumps(pub._collect(ids, "dets")).encode()
                     elif p.endswith("get_status"):
                         body = json.dumps(pub._collect(ids, "rows")).encode()
@@ -209,7 +219,7 @@ class FleetPublisher:
             "POST /set_carrier_trim {\"hz\": x} -- diagnostic open-loop trim)" % port)
 
     # -- multi-chain plumbing (task #27 M6) ---------------------------------------------
-    def register(self, chain, signal=None, band=None):
+    def register(self, chain, signal=None, band=None, meta=None):
         """Claim a slot on this port and get a handle that looks like the old publisher.
 
         Returns a per-chain VIEW rather than self, so every existing call site --
@@ -219,7 +229,9 @@ class FleetPublisher:
             if chain not in self._chains:
                 self._chains[chain] = {"rows": [], "dets": [], "meta": {},
                                        "ctl": {"carrier_trim_const": None},
-                                       "sig": signal, "band": band}
+                                       "sig": signal, "band": band,
+                                       "desc": dict(meta or {}, chain=chain,
+                                                    signal=signal, band=band)}
                 self._order.append(chain)
         return _ChainView(self, chain)
 

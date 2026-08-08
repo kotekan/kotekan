@@ -126,6 +126,30 @@ class SignalDef(object):
         E5a, which really are the same 1176.45 MHz hardware, share one key."""
         return "%.2fMHz" % (self.carrier_hz / 1e6)
 
+    # Human names, derived from the descriptor rather than typed a second time. A viewer
+    # that draws "gps_l5 GPS_L5_Q" is showing its plumbing; these come from the same source
+    # as every other constant, so a new signal is named correctly the day it is added.
+    _SYS_NAME = {"GPS": "GPS", "GAL": "Galileo", "BDS": "BeiDou", "GLO": "GLONASS"}
+
+    @property
+    def short(self):
+        """Column-header form: L5-Q, E5a-Q, B2a-P, L2C-CM, L1CA, L3OC-P.
+
+        ⚠️ ONLY the a/b band suffix lowercases, and only after a digit: E5A->E5a, B2B->B2b.
+        A blanket "first letter up, rest down" looks tidier and is wrong -- it produces L2c,
+        B1c, L1ca, L3oc, none of which is how anyone writes these signals. The descriptor
+        names are already correct; leave them alone except where convention differs."""
+        out = []
+        for p in self.primary.split("_")[1:]:
+            m = re.match(r"^([A-Z]\d)([AB])$", p)
+            out.append(m.group(1) + m.group(2).lower() if m else p)
+        return "-".join(out)
+
+    @property
+    def label(self):
+        """Table form: 'GPS L5-Q', 'Galileo E5a-Q'."""
+        return "%s %s" % (self._SYS_NAME.get(self.primary.split("_")[0], "?"), self.short)
+
     @property
     def q_alias_hz(self):
         """Search-Doppler record-alias quantum, 1/(2*t_rec)."""
