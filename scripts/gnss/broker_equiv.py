@@ -44,10 +44,59 @@ BROKER = os.path.join(K, "python", "scripts", "gnss", "gps_distributed_broker.py
 PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
 
 
+FIXTURES = os.path.join(K, "scripts", "gnss", "fixtures")
+
+
 def _open(path):
     """Transcripts of a real fleet are ~1.3 MB per cycle, so they live gzipped and OUTSIDE
     the repo -- only the digest is versioned. Read either form transparently."""
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
+
+
+def _gold_path(transcript):
+    """THE GOLDEN DIGEST LIVES IN THE REPO, ALWAYS -- never beside the transcript.
+
+    ⚠️ THIS WAS A REAL SILENT FAILURE (found 2026-08-08). The golden used to be
+    `transcript + ".digest"`, which for the on-sky fixtures put it on NFS at
+    /home/kvand/gnss/fixtures/ -- OUTSIDE git. `bless` wrote there, `check` read there, and
+    the copy under scripts/gnss/fixtures/ was a hand-made mirror. The E5a mirror was
+    committed carrying 776c70ff..., a number that NO commit in the history reproduces:
+    blessed from a dirty tree, then the tree moved before the commit landed. The gate was
+    green-or-red against a phantom for its whole life.
+
+    A gate's expectation is source. Put it under version control and the failure cannot
+    recur -- a stale golden becomes a diff in `git status` instead of a file nobody looks at.
+    """
+    return os.path.join(FIXTURES, os.path.basename(transcript) + ".digest")
+
+
+def _tree_state():
+    """(sha, dirty) of the tree that a digest is being blessed from.
+
+    A digest is a claim about code. Recording WHICH code makes a stale golden diagnosable in
+    one line instead of three worktree replays, and a dirty tree is recorded as dirty
+    because a bless from uncommitted work describes something unreproducible.
+    """
+    def _git(*a):
+        try:
+            return subprocess.run(["git"] + list(a), cwd=K, capture_output=True,
+                                  text=True).stdout.strip()
+        except Exception:
+            return ""
+    sha = _git("rev-parse", "--short", "HEAD") or "unknown"
+    # The harness counts too: `replay` builds the argv, so a change here can move the digest
+    # every bit as much as a change in the broker.
+    dirty = bool(_git("status", "--porcelain", "--", BROKER, os.path.abspath(__file__),
+                      os.path.join(K, "python", "scripts", "gnss", "gnss_broker")))
+    return sha, dirty
+
+
+def _read_gold(path):
+    """First token is the digest; the rest of the line is provenance. Old single-token
+    goldens still read correctly."""
+    with open(path) as f:
+        head = f.readline().split()
+    return (head[0] if head else ""), " ".join(head[1:])
 
 
 def _header_argv(path):
@@ -120,7 +169,7 @@ def main():
     ap.add_argument("rest", nargs=argparse.REMAINDER,
                     help="for `record`: the broker flags to run under, after a bare --")
     a = ap.parse_args()
-    gold = a.transcript + ".digest"
+    gold = _gold_path(a.transcript)
 
     if a.action == "record":
         flags = [x for x in a.rest if x != "--"]
@@ -144,22 +193,31 @@ def main():
 
     if a.action == "bless":
         d, _ = replay(a.transcript)
+        sha, dirty = _tree_state()
+        prov = "blessed-at %s%s" % (sha, " DIRTY" if dirty else "")
         with open(gold, "w") as f:
-            f.write(d + "\n")
-        print("blessed %s = %s" % (os.path.basename(gold), d))
+            f.write("%s  %s\n" % (d, prov))
+        print("blessed %s = %s (%s)" % (os.path.basename(gold), d, prov))
+        if dirty:
+            print("⚠️  BLESSED FROM A DIRTY TREE. This digest describes uncommitted broker\n"
+                  "    code, so nothing in git reproduces it. Commit the broker change and\n"
+                  "    re-bless, or the gate guards a phantom (that is exactly how the E5a\n"
+                  "    golden was born).", file=sys.stderr)
         return
 
     if a.action == "check":
         if not os.path.exists(gold):
             sys.exit("no golden digest at %s -- run `bless` first" % gold)
-        want = open(gold).read().strip()
+        want, prov = _read_gold(gold)
         got, err = replay(a.transcript)
         if got == want:
-            print("EQUIVALENT  %s" % got)
+            print("EQUIVALENT  %s%s" % (got, "  [%s]" % prov if prov else ""))
             return
         sys.stderr.write(err[-4000:] + "\n")
-        sys.exit("DIGEST MOVED\n  golden %s\n  now    %s\nThe POST stream changed: the "
-                 "refactor is not behaviour-preserving." % (want, got))
+        sys.exit("DIGEST MOVED\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
+                 "refactor is not behaviour-preserving.\nIf the change is intended, "
+                 "`bless` FROM A CLEAN TREE and commit the .digest with the code."
+                 % (want, "  [%s]" % prov if prov else "", got))
 
     if a.action == "selftest":
         n, _, _ = _census(a.transcript)

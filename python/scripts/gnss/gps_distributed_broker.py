@@ -922,7 +922,10 @@ def main(argv=None, rx=None, publisher=None):
                          "stage breaks that circle. With a GPS-disciplined F-engine the offset "
                          "is known a priori (0 plus a fixed instrumental/cable delay), so pass "
                          "0.0 to start and calibrate the constant later from the measured "
-                         "integrity residual, which the broker logs every cycle.")
+                         "integrity residual, which the broker logs every cycle. THE PRIME IS "
+                         "A SEED, NOT A MEASUREMENT: a chain with detectors REPLACES it with "
+                         "its first multi-sat solve rather than EMA-ing toward one, so a wrong "
+                         "prime costs one cycle rather than ~20.")
     ap.add_argument("--seed-doppler", default="auto", choices=("auto", "det"),
                     help="which Doppler the SEED carries. 'auto' (default, unchanged) prefers "
                          "the almanac/DR model + solved clock bias, which is smooth and owns "
@@ -1622,6 +1625,18 @@ def main(argv=None, rx=None, publisher=None):
                     # and believing it would mean shipping a wrong clock indefinitely.
                     dr_state["clk"] = args.dr_clock_chips % float(args.code_length)
                     dr_state["clk_t"] = _now()
+                    # ⚠️ A PRIME IS NOT A MEASUREMENT, AND THE EMA MUST NOT TREAT IT AS ONE.
+                    # The bootstrap below snaps `clk` to the first solved median (`raw`) only
+                    # when clk is None -- so priming, which exists purely to let a
+                    # detector-less chain seed at all, ALSO silenced the snap on the chain
+                    # that can measure. gps_l5 then EMA'd in from 0.0 at alpha=0.2 per cycle:
+                    # measured on sky 2026-08-08, 0 -> 54.6 -> 74.0 -> ... -> 151 chips over
+                    # ~40 s (0.8^n, the alpha exactly), during which EVERY satellite's
+                    # integrity residual reads BAD by the walk-in error itself (+117..+125 at
+                    # clk=29.97) and every co-hosted chain adopts a moving target. This flag
+                    # keeps the prime for seeding and hands the clock back to the first real
+                    # measurement.
+                    dr_state["clk_primed"] = True
                     if args.dr_clock_drift is not None:
                         dr_state["drift"] = float(args.dr_clock_drift)
                         _log("dead-reckon: clock DRIFT primed %+.4f chips/s"
@@ -1629,9 +1644,10 @@ def main(argv=None, rx=None, publisher=None):
                     _log("dead-reckon: receiver clock PRIMED %.2f chips = %.3f us (no search "
                          "stage; %s)"
                          % (dr_state["clk"], dr_state["clk"] / args.chip_rate_hz * 1e6,
-                            "EMA refines from the first lock" if detectors else
-                            "NO detectors: this value is FIXED for the run -- prime it from a "
-                            "same-band broker that has one"))
+                            "REPLACED outright by the first multi-sat solve" if detectors else
+                            "NO detectors: this value stands until a same-band chain "
+                            "contributes one (--dr-clock-adopt), and is FIXED for the run "
+                            "without that"))
                 _log("dead-reckon: BRDC cp seeding armed (%s, repin %.0f s%s)"
                      % (args.dr_constellation, args.dr_repin_s,
                         ", DRY RUN" if args.dr_dry_run else ""))
@@ -4030,11 +4046,20 @@ def main(argv=None, rx=None, publisher=None):
                                              else dr_state["drift"]
                                              + 0.05 * (d_est - dr_state["drift"]))
                     dr_state["raw_prev"] = (raw, now_w)
-                    if dr_state["clk"] is None:
+                    # SNAP ON THE FIRST MEASUREMENT, whether or not a prime is standing.
+                    # `raw` is a circular median over >= --dr-min-sats satellites, so it is a
+                    # measurement of the same quantity the prime guessed; EMA-ing from the
+                    # guess buys nothing but the walk-in. Snapping lands within the median's
+                    # own scatter (a few chips at 6 sats) on cycle one instead of ~20 cycles.
+                    if dr_state["clk"] is None or dr_state.pop("clk_primed", False):
+                        was = dr_state["clk"]
                         dr_state["clk"] = raw
                         _log("dead-reckon: receiver clock BOOTSTRAP %.2f chips = %.3f us "
-                             "(mod %.0f ms; %d sats)"
-                             % (raw, raw / args.chip_rate_hz * 1e6, t_code * 1e3, len(offs)))
+                             "(mod %.0f ms; %d sats%s)"
+                             % (raw, raw / args.chip_rate_hz * 1e6, t_code * 1e3, len(offs),
+                                "" if was is None else
+                                "; REPLACES the %.2f-chip prime -- a prime is a seed, not a "
+                                "measurement" % was))
                     else:
                         clk = (dr_state["clk"]
                                + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
@@ -4074,6 +4099,10 @@ def main(argv=None, rx=None, publisher=None):
                              % (float(_rx_sib.value), _rx_sib.src, band_id))
                     dr_state["clk"] = float(_rx_sib.value) % CODE_LEN
                     dr_state["clk_t"] = _rx_sib.t
+                    # An adopted clock IS a measurement -- the sibling measured it -- so the
+                    # prime is spent. If this chain ever gains detectors it should refine by
+                    # EMA from here, not snap away from a good number.
+                    dr_state.pop("clk_primed", None)
                     if _rx_sib.extra.get("drift") is not None:
                         dr_state["drift"] = float(_rx_sib.extra["drift"])
                 elif _rx_sib is not None:
