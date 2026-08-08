@@ -1434,6 +1434,7 @@ run_n2k:
       host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
       host_voltage_ringbuffer: host_voltage_ringbuffer
     kotekan_stage: cudaProcess
+    log_level: INFO
     out_buffers:
       host_correlation: host_correlation_buffer
   gpu_1:
@@ -1455,6 +1456,7 @@ run_n2k:
       host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
       host_voltage_ringbuffer: host_voltage_ringbuffer_1
     kotekan_stage: cudaProcess
+    log_level: INFO
     out_buffers:
       host_correlation: host_correlation_buffer_1
 run_pl_corr:

@@ -1552,3 +1552,65 @@ them is a fleet restart and has not been done.
 
 `scripts/gnss/qgap.py` factors q = peak/median side by side (peak, median, sqrt(L), |v|, and
 the grid itself) so the next such gap is attributed rather than assumed.
+
+## 11.15  THE N^2 ARCHITECTURE: three options, measured (2026-08-08)
+
+KV's question -- "are we producing an extended (N+M)^2 across all 768 freqs/node, or
+full-efficiency N^2 on 761 plus (N+M)^2 on 7?" -- is the one that decides this, and it turns
+on a property of the kernel rather than of the config. **`freq_map` and `block_class_mask` are
+both GLOBAL to a launch** in n2k_dual. "AA on every frequency, MIXED|BB on the comb" is
+therefore not expressible as one launch, however the flags are set.
+
+The three block classes partition the extended triangle exactly -- AA (antenna x antenna),
+MIXED (antenna x replica), BB (replica x replica) -- so any correct scheme computes each
+exactly once. The options differ only in how they cover the frequency axis.
+
+| | what runs | GNSS cost/frame | science N^2 |
+|---|---|---|---|
+| **A. path A today** | production N^2, all freqs + `cudaGnssChordTrack` | **17.712 ms** | production's, untouched |
+| **B. coexistence** | production N^2, all freqs + dual in FREQ-MAP mode (MIXED\|BB, 7 chan) | **2.512 ms** | production's, untouched |
+| **C. replacement** | dual in FULL mode (all 384 local freqs, NS=256), run_n2k dropped | **6.141 ms** | dual's prefix, needs validation |
+
+All measured on cx19, 200-800 frame averages: `cudaGnssChordTrack` 17.712, `cudaGnssInject`
+2.435, `cudaCorrelatorDual` 0.077 mapped / 3.698 full.
+
+**Coexistence (B) wins, and not narrowly.** It is 7x cheaper than path A on the GNSS branch and
+2.4x cheaper than replacement, and it leaves the science correlator BIT-IDENTICAL by
+construction -- it is the same stage, untouched, not a reimplementation whose output has to be
+proven equivalent. Option C's whole extra cost is waste: full mode computes the extended
+triangle on ALL 384 local frequencies, and on 377 of them the M half is entirely zeros.
+
+**No double counting in B.** Freq-map mode passes `BLOCK_MASK_MIXED | BLOCK_MASK_BB` -- AA is
+explicitly excluded, with the source comment "the antenna (AA) block is production's N^2". So
+AA comes once from `cudaCorrelator` on all 384 channels, MIXED and BB once from
+`cudaCorrelatorDual` on 7. The only redundancy is a DATA LOAD: the mixed blocks need the
+antenna panels for those 7 channels, so 7/384 = 1.8% of the antenna voltages are read twice.
+That is most of why the mapped launch costs 0.077 ms rather than nothing.
+
+The property that blocks C is exactly the property that makes B safe: freq-map mode cannot
+feed the science pipeline BECAUSE it never computes AA, which is also why it cannot collide
+with the correlator that does.
+
+**Measured working, cx19 2026-08-08.** Both correlators on one GPU, N2Accumulate live and
+accumulating, path B matching path A on the same sky: PRN 21 A 25.6/0.925 vs B 25.2/0.924,
+PRN 8 A 24.9/0.922 vs B 25.6/0.928, PRN 9 A 23.7/0.917 vs B 24.0/0.919. Tap drops 7-8 frames
+total, 0 on the search taps.
+
+**Config:** `--n2-dual --keep-n2` (NOT `--n2-primary`). Two things are load-bearing and were
+each found by a failure:
+  * the dual needs its OWN gpu array name. Both correlators allocate
+    `<n2k_correlation_name>_buffer` sized from their own station count -- 28,311,552 B at
+    NS=128 against 113,246,208 B at NS=256 -- and sharing "correlation" is a hard startup
+    failure that presents as an ACTIVE unit with zero packets moving.
+  * `host_correlation_buffer` must survive under `--keep-n2`; it was being dropped for any
+    `--n2-dual` config, which left run_n2k pointing at a deleted buffer.
+
+**STILL NOT MEASURED: bare N^2's own per-frame time.** `--n2-debug` only raised the log level
+on the GNSS blocks, so `cudaCorrelator` emits no timing line and the marginal cost of the GNSS
+extension remains an estimate (~1/3 of 3.698 ms by block count, i.e. bare ~1.2 ms, consistent
+with n2timing's offline +2.00 ms). run_n2k now gets INFO too, so the next restart closes it.
+
+**NOT SETTLED (KV, 2026-08-08): "I'm not sure that's quite the right architecture."** Recorded
+as measured options, not as a decision. What B does not address: it still runs two cudaProcess
+stages per GPU, still synthesises replicas at 2.435 ms (64x the correlation it feeds, and the
+real remaining cost), and still leaves the GNSS comb's antenna voltages read twice.

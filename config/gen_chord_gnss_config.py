@@ -1771,6 +1771,13 @@ def main():
 
     if getattr(args, "n2_debug", False):
         out["log_level"] = "INFO"
+        # run_n2k too, when it survives: it is the ONLY way to get bare N^2's per-frame time,
+        # and without it the coexistence comparison has a hole exactly where the interesting
+        # number is. Costs one INFO block per GPU frame, same as the GNSS chains already emit.
+        if "run_n2k" in out:
+            for g in ("gpu_0", "gpu_1"):
+                if g in out["run_n2k"]:
+                    out["run_n2k"][g]["log_level"] = "INFO"
         for g in (0, 1):
             for blk in (f"gnss{g}_gpu", f"gnss{g}_n2dual"):
                 if blk in out:
