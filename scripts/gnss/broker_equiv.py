@@ -167,21 +167,36 @@ def main():
                      "  %s\n  %s\nSomething outside the transcript is leaking in (a clock, "
                      "an unseeded RNG, a set iteration)." % (d1, d2))
         print("determinism OK   %s  (%d cycles, %d posts)" % (d1, n["now"], n["post"]))
-        # The gate must be able to FAIL. Perturb the loop gains by one part in a million --
-        # far below anything physical (0.25 -> 0.25000025) and require the digest to move.
+        # The gate must be able to FAIL. Nudge each knob by one part in a million -- far
+        # below anything physical (0.25 -> 0.25000025) -- and require the digest to move.
         #
-        # ⚠️ NOT 1e-12, which was the first attempt and reported GATE IS BLIND. That is not
-        # a blind gate, it is arithmetic: a 1e-12 relative nudge to a gain of 0.25 moves a
-        # ~0.01-chip trim by 1e-14, and the trim lands on a code phase of ~5000 chips where
-        # a double's own resolution is ~1e-12. The perturbation vanished BELOW the number it
-        # was being added to. A sensitivity test has to clear the representation of the
-        # quantity it perturbs, or it measures float precision rather than the gate.
-        d3, _ = replay(a.transcript, env={"GNSS_BROKER_EQUIV_PERTURB": "1e-6"})
-        if d3 == d1:
-            sys.exit("GATE IS BLIND: a 1e-12 perturbation of the loop gains did not move the "
-                     "digest. Either the transcript never reaches the loops, or the posts do "
-                     "not depend on them. This gate would pass a broken refactor.")
-        print("sensitivity OK   perturbed -> %s" % d3)
+        # SEVERAL KNOBS, NOT ONE, because a fixture only covers what it runs: the synthetic
+        # fleet exercises the DLL, while the e2e fixture (real GPU, known truth) runs with
+        # --dll-gain 0 and is purely a seed-arithmetic test. Perturbing only the loop gains
+        # there reports GATE IS BLIND when the truth is "this fixture does not cover the
+        # loops". So: report WHICH knobs move it -- that is a direct read on coverage.
+        #
+        # ⚠️ AND NOT 1e-12, which was the first attempt and cried blind on the synthetic
+        # fixture too. That was not blindness, it was arithmetic: 1e-12 on a gain of 0.25
+        # moves a ~0.01-chip trim by 1e-14, landing on a code phase of ~5000 chips where a
+        # double resolves ~1e-12. The perturbation vanished BELOW the number it was added
+        # to. A sensitivity test must clear the representation of what it perturbs.
+        moved = []
+        for knob in ("carrier_hz", "hops_per_sec", "dll_gain", "carrier_gain",
+                     "code_bias_alpha", "bias_alpha"):
+            d3, _ = replay(a.transcript,
+                           env={"GNSS_BROKER_EQUIV_PERTURB": "%s:1e-6" % knob})
+            if d3 != d1:
+                moved.append(knob)
+        if not moved:
+            sys.exit("GATE IS BLIND: no knob moved the digest. The transcript's POSTs do "
+                     "not depend on anything this broker computes -- it is inert, and this "
+                     "gate would pass a broken refactor.")
+        print("sensitivity OK   moved by: %s" % ", ".join(moved))
+        skipped = [k for k in ("dll_gain", "carrier_gain", "code_bias_alpha", "bias_alpha")
+                   if k not in moved]
+        if skipped:
+            print("coverage NOTE    this fixture does NOT reach: %s" % ", ".join(skipped))
         print("\nGATE GOOD.")
         return
 

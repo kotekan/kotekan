@@ -219,8 +219,10 @@ Transcripts to capture (all offline-capable, none needs the F-engine):
    adoption. Capturable now against the current (dark) fleet.
 3. **`e2e_broker.py`** — synthetic detections with known truth, `--passes 5` so `cp_hist`
    and `fit_cp_rate` actually run. The only transcript that exercises phase 5's rate fit.
-4. **`config/replay_bench_leg.sh`** — the airspy L2C replay, which is the only chain that
-   exercises `--cl-tracker`, `--cl-autoseg` and the CM/CL sibling machinery.
+4. **The CM/CL sibling chain** (`--cl-tracker`, `--cl-autoseg`) — used by
+   `config/run_live.sh`. ⚠️ NOT by `replay_bench_leg.sh`, which runs GPS L1 C/A + BeiDou
+   B1C and no CL; and the airspy replay benches cannot run on CHORD hardware at all
+   (`/home/lwlab/...`, `build_cuda/`, `/tmp/gpsin*` — none present). Checked 2026-08-08.
 
 ⚠️ **A transcript captured against a dead fleet proves less than it appears to.** Before
 trusting one, confirm its POST stream is non-trivial: distinct PRNs, changing

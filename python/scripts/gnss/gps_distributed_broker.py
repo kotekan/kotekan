@@ -1374,12 +1374,18 @@ def main(argv=None, rx=None):
         # TEST-ONLY, and only under replay: scripts/gnss/broker_equiv.py's `selftest` needs
         # to prove the gate CAN fail, so it asks for a perturbation far below anything
         # physical and requires the digest to move. A gate that cannot fail is not a gate.
-        _eps = os.environ.get("GNSS_BROKER_EQUIV_PERTURB")
-        if _eps:
-            _f = 1.0 + float(_eps)
-            args.dll_gain *= _f
-            args.carrier_gain *= _f
-            args.code_bias_alpha *= _f
+        # Which knob, and by how much: "dll_gain:1e-6". Different fixtures exercise
+        # different code, so one fixed knob cannot serve them all -- the synthetic fleet
+        # runs the DLL, while the e2e fixture (real GPU, known truth) runs --dll-gain 0 and
+        # is entirely a seed-arithmetic test. The harness tries several and reports which
+        # ones move the digest, which is a direct read on what the fixture COVERS.
+        _pert = os.environ.get("GNSS_BROKER_EQUIV_PERTURB")
+        if _pert:
+            _knob, _, _eps = _pert.partition(":")
+            _f = 1.0 + float(_eps or "1e-6")
+            if not hasattr(args, _knob):
+                sys.exit("perturb: no such argument %r" % _knob)
+            setattr(args, _knob, getattr(args, _knob) * _f)
 
     # AFTER the transcript is open, or the tick would neither be recorded nor replayed.
     # The SETUP phase reads the clock too (warm-start file stamps, the almanac epoch
