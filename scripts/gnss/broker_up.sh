@@ -39,11 +39,20 @@
 # it is wrong for a satellite already locked. The standing residual (~24 Hz) is NOT changed by
 # this -- that is a separate, still-open defect (STATE 8.20.3).
 #
-# NB: --nh-overlay-len 20 below is GPS L5 Q5's NH20. The broker's default is 1800 (B1C) and
-# getting it wrong does not error -- the alignment is computed mod the wrong length, so the hint
-# narrows the search to an effectively RANDOM alignment (observed: offset 1015, where the only
-# legal values are 0..19). And do NOT put comments between the continued lines below: a comment
-# on a backslash-joined line terminates the command, silently dropping every argument after it.
+# --signal gps_l5 REPLACES the six constants that used to be typed here by hand (constellation,
+# carrier, chip rate, code length, long-code segments+epoch, overlay length). They are now
+# derived from lib/stages/gnss/gnssSignal.hpp -- the same descriptors the trackers' replica bank
+# is built from -- so the broker and the thing it is seeding cannot disagree.
+#
+# This was never cosmetic. --nh-overlay-len is GPS L5 Q5's NH20 and the broker's DEFAULT is
+# 1800 (B1C): getting it wrong does not error, the alignment is computed mod the wrong length
+# and the hint narrows the search to an effectively RANDOM alignment (observed: offset 1015,
+# where the only legal values are 0..19). Same class as the E5a long-code defect of 2026-08-08.
+# To re-check the mapping, put the old flags back alongside --signal: a disagreement is now a
+# hard error naming both numbers (that is how this substitution was verified).
+#
+# And do NOT put comments between the continued lines below: a comment on a backslash-joined
+# line terminates the command, silently dropping every argument after it.
 #
 # RUNS ON cf06 since 2026-08-04 (with the aggregator): --rest-url must name a real NODE, so
 # it points at cx19 rather than localhost -- cf06 runs no gnss node of its own. --detectors
@@ -81,13 +90,11 @@ http://127.0.0.1:12099/sink_track" \
     --dll-combiners "${MERGED}${SPLIT}" \
     --publish-port 12060 \
     --carrier-from-code \
-    --nh-overlay-len 20 \
     --nh-hint --nh-hint-span 2 \
     --almanac --almanac-source brdc --dead-reckon --narrow-search \
     --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
-    --constellation G --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 \
-    --code-length 10230 --hops-per-sec 195312.5 \
-    --cl-assist --long-code-segments 20 --long-code-epoch-s 0.02 \
+    --signal gps_l5 --hops-per-sec 195312.5 \
+    --cl-assist \
     --seed-doppler auto --acquire-snr 30 \
     --dll-gain 0.25 --carrier-gain 0.0 \
     --code-bias-alpha 0.05 --code-bias-min-sats 2 \

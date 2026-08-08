@@ -79,6 +79,7 @@ from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent,
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
+from gnss_broker import signals                            # noqa: E402
 from gnss_broker.sky import (                 # noqa: E402
     brdc_predict, visible_prns, _dh_dpos,
     _cnav_brdc_xcheck, _cnav2_brdc_xcheck, _inav_brdc_xcheck, _lnav_brdc_xcheck,
@@ -86,6 +87,15 @@ from gnss_broker.sky import (                 # noqa: E402
 )
 
 def main(argv=None):
+    # `--signal help` before the parser, because --trackers is required and listing the
+    # known signals must not depend on being able to name a fleet first.
+    if "help" in (argv if argv is not None else sys.argv[1:]):
+        _a = list(argv if argv is not None else sys.argv[1:])
+        if "--signal" in _a and _a.index("--signal") + 1 < len(_a) \
+                and _a[_a.index("--signal") + 1] == "help":
+            print("known signals (derived from lib/stages/gnss/gnssSignal.hpp):\n"
+                  + signals.describe())
+            return
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rest-url", default="http://localhost:12048",
@@ -1285,6 +1295,18 @@ def main(argv=None):
                          "decode (LNAV / CNAV / CNAV-2).")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
+    # -- named signals (task #27 M2); see gnss_broker/signals.py --------------------------
+    ap.add_argument("--signal", default=None, metavar="KEY",
+                    help="name the chain instead of retyping its twelve constants: "
+                         "`--signal gps_l5` sets carrier/chip rate/code length/long-code "
+                         "segments+epoch/overlay length/constellation from "
+                         "lib/stages/gnss/gnssSignal.hpp, which is what the trackers' "
+                         "replica bank is actually built from. Every one of those flags "
+                         "fails SILENTLY when mistyped (a wrong overlay length puts the "
+                         "seed in a random one of N periods and errors nowhere), which is "
+                         "why naming beats typing. An explicit flag that DISAGREES with "
+                         "the named signal is a hard error, never a silent override. "
+                         "`--signal help` lists them.")
     # -- the refactor gate (task #27 M0); see the _Transcript note at the top of this file --
     ap.add_argument("--transcript-write", default=None, metavar="FILE",
                     help="record every clock read, GET and POST to FILE (JSONL) while running "
@@ -1296,6 +1318,40 @@ def main(argv=None):
                          "clock. The POST stream this produces is the equivalence gate -- see "
                          "scripts/gnss/broker_equiv.py.")
     args = ap.parse_args(argv)
+    _raw_argv = list(argv if argv is not None else sys.argv[1:])
+    if args.signal:
+        try:
+            _sig = signals.get(args.signal)
+        except (KeyError, ValueError, RuntimeError) as e:
+            ap.error("--signal: %s" % e)
+        # dest -> the value the named signal implies. Anything the caller gave EXPLICITLY
+        # wins only if it agrees; a disagreement is an error naming both numbers, because
+        # the whole point of naming a signal is that these constants stop being retyped.
+        _implied = {
+            "carrier_hz": _sig.carrier_hz, "chip_rate_hz": _sig.chip_rate_hz,
+            "code_length": float(_sig.code_length),
+            "long_code_segments": _sig.long_code_segments,
+            "long_code_epoch_s": _sig.long_code_epoch_s,
+            "nh_overlay_len": _sig.nh_overlay_len,
+            "constellation": _sig.constellation, "dr_constellation": _sig.constellation,
+        }
+        if _sig.min_prn is not None:
+            _implied["dr_min_prn"] = _sig.min_prn
+        for _dest, _want in _implied.items():
+            _flag = "--" + _dest.replace("_", "-")
+            _given = any(a == _flag or a.startswith(_flag + "=") for a in _raw_argv)
+            if not _given:
+                setattr(args, _dest, _want)
+                continue
+            _have = getattr(args, _dest)
+            _same = (abs(_have - _want) <= 1e-9 * max(1.0, abs(_want))
+                     if isinstance(_want, float) else _have == _want)
+            if not _same:
+                ap.error("%s %r contradicts --signal %s, which implies %r. One of them is "
+                         "wrong and neither would have errored on its own -- fix the "
+                         "command rather than letting a silent override pick."
+                         % (_flag, _have, args.signal, _want))
+        _log("signal %s: %r" % (args.signal, _sig))
     if args.transcript_write and args.transcript_read:
         ap.error("--transcript-write and --transcript-read are mutually exclusive")
     if args.transcript_write:

@@ -43,11 +43,11 @@ cd "$K"
 
 CHAIN="${1:-}"; shift || true
 case "$CHAIN" in
-    e5a) SYS=E; PORT=12061; PRNARG="" ;;
+    e5a) SIGNAL=gal_e5a; PORT=12061 ;;
     # BDS-3 only: B2a does not exist on the BDS-2 birds C1-C18 (they broadcast B1I at
     # 1561 MHz, which is not even in the science band). The broker defaults --dr-min-prn to
     # 19 for C, so this is belt-and-braces, stated rather than relied upon.
-    b2a) SYS=C; PORT=12062; PRNARG="--dr-min-prn 19" ;;
+    b2a) SIGNAL=bds_b2a; PORT=12062 ;;
     *)   echo "usage: $0 <e5a|b2a> [extra broker args...]" >&2; exit 2 ;;
 esac
 
@@ -72,10 +72,15 @@ for n in cx19 cx27 cx42 cx43 cx44 cx51; do
     TRK="${TRK:+$TRK,}http://$n:12049/gnss{0..1}_${CHAIN}_inject"
 done
 
-# --long-code-{segments,epoch-s} 100 / 0.1 and --nh-overlay-len 100 are the CS100 secondary
-# baked into the tracker's 1023000-chip code (GAL_E5A_Q_CS / BDS_B2A_P_CS). Getting these
-# wrong does not error: the overlay period is computed mod the wrong length and the seed lands
-# in an effectively random one of the 100 periods.
+# --signal REPLACES the nine constants that used to be typed here (constellation, carrier,
+# chip rate, code length, long-code segments+epoch, overlay length, and B2a's BDS-3-only
+# --dr-min-prn 19). They now come from lib/stages/gnss/gnssSignal.hpp, which is where the
+# tracker's own replica descriptors live: gal_e5a resolves to GAL_E5A_Q / GAL_E5A_Q_CS and
+# derives the CS100 secondary from the pair rather than trusting a human to retype 100 twice.
+#
+# This file's own warning is why: "getting these wrong does not error -- the overlay period is
+# computed mod the wrong length and the seed lands in an effectively random one of the 100
+# periods". That is precisely the shape of the 2026-08-08 E5a defect.
 exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
     --rest-url http://cx19:12049 \
     --trackers "$TRK" \
@@ -84,14 +89,11 @@ exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
     --n2-combiners "$CMB" \
     --publish-port $PORT \
     --carrier-from-code \
-    --nh-overlay-len 100 \
     --almanac --almanac-source brdc --dead-reckon \
     --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
     --dr-clock-adopt --state-read-dir /tmp/gnss_state --state-dongle l5 \
-    --constellation $SYS --dr-constellation $SYS $PRNARG \
-    --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 \
-    --code-length 10230 --hops-per-sec 195312.5 \
-    --cl-assist --long-code-segments 100 --long-code-epoch-s 0.1 \
+    --signal $SIGNAL --hops-per-sec 195312.5 \
+    --cl-assist \
     --seed-doppler auto \
     --dll-gain 0.25 --carrier-gain 0.0 \
     --code-bias-alpha 0.05 --code-bias-min-sats 2 \
