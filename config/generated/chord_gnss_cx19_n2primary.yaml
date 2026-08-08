@@ -130,34 +130,6 @@ earth_rotation_data:
     xp_as: 0.220596
     yp_as: 0.362205
   kotekan_update_endpoint: json
-eigencalc:
-  cpu_affinity:
-  - 10
-  in_buf: n2_subset_buffer
-  kotekan_stage: EigenN2Iter
-  krylov: 2
-  max_iterations: 10
-  num_blaze_workers: 1
-  num_ev: num_ev_to_calculate
-  num_ev_conv: 2
-  out_buf: n2_eigen_buffer
-  subspace: 2
-  tol_eval: 0.0001
-  tol_evec: 0.001
-eigencalc_1:
-  cpu_affinity:
-  - 30
-  in_buf: n2_subset_buffer_1
-  kotekan_stage: EigenN2Iter
-  krylov: 2
-  max_iterations: 10
-  num_blaze_workers: 1
-  num_ev: num_ev_to_calculate
-  num_ev_conv: 2
-  out_buf: n2_eigen_buffer_1
-  subspace: 2
-  tol_eval: 0.0001
-  tol_evec: 0.001
 element_long: num_elements / element_short
 element_short: 8
 fpga_controller:
@@ -1141,36 +1113,6 @@ log_level: INFO
 main_pool:
   kotekan_metadata_pool: chordMetadata
   num_metadata_objects: 15 * buffer_depth
-n2_accumulate:
-  accum_0:
-    cpu_affinity:
-    - 9
-    in_buf: host_correlation_buffer
-    in_counts_buf: host_counts_buffer
-    in_plcounts_buf: host_pl_counts_buffer
-    in_rficounts_buf: host_rfi_RFImask_counts_buffer
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
-    kotekan_stage: N2Accumulate
-    out_buf: n2_buffer
-  accum_1:
-    cpu_affinity:
-    - 28
-    in_buf: host_correlation_buffer_1
-    in_counts_buf: host_counts_buffer_1
-    in_plcounts_buf: host_pl_counts_buffer_1
-    in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
-    kotekan_stage: N2Accumulate
-    out_buf: n2_buffer_1
-  bin_in_ERA: true
-  do_fringestop: false
-  input_order: CHORDBeamformer
-  num_bins_per_rotation: 8640
-  num_freq_per_n2k_frame: num_local_freq
-  num_subintegrations_per_bin: 238
-  num_workers: 1
-  packet_loss_is_scalar: true
-  variance_mode: EvenOddPosDef
 n2_buffer:
   kotekan_buffer: N2
   metadata_pool: n2_pool
@@ -1205,34 +1147,6 @@ n2_eigen_buffer_1:
 n2_pool:
   kotekan_metadata_pool: N2Metadata
   num_metadata_objects: 16 * buffer_depth
-n2_subset:
-  cpu_affinity:
-  - 11
-  in_buf: n2_buffer
-  kotekan_stage: N2Subset
-  out_buf: n2_subset_buffer
-n2_subset_1:
-  cpu_affinity:
-  - 29
-  in_buf: n2_buffer_1
-  kotekan_stage: N2Subset
-  out_buf: n2_subset_buffer_1
-n2_subset_buffer:
-  kotekan_buffer: N2
-  metadata_pool: n2_pool
-  n2_layout: FullUpperTri
-  num_elements: 32
-  num_ev: 0
-  num_frames: buffer_depth * num_local_freq
-  peek_hold: true
-n2_subset_buffer_1:
-  kotekan_buffer: N2
-  metadata_pool: n2_pool
-  n2_layout: FullUpperTri
-  num_elements: 32
-  num_ev: 0
-  num_frames: buffer_depth * num_local_freq
-  peek_hold: true
 network_input_buffers:
   frame_size: dpdk_output_frame_size
   metadata_pool: main_pool

@@ -72,10 +72,22 @@ N2_STAGE_PREFIXES = (
     "run_send_pl_mask", "set_bf_mask", "run_send_voltage",
 )
 
-# --n2-primary: path B IS the science pipeline, so the consumers of the N^2 output stay. Only
-# run_n2k itself goes -- cudaCorrelatorDual computes the same prefix and ships it on the same
-# leg. Anything reading host_correlation_buffer must therefore survive the drop above.
-N2_PRIMARY_KEEP = ("n2_accumulate", "eigencalc", "n2_subset", "buffer_send_n2")
+# --n2-primary REPLACES run_n2k and nothing else. cudaCorrelatorDual computes the identical N^2
+# prefix and ships it on the identical leg, so run_n2k must go or two stages produce one buffer.
+#
+# WHICH CONSUMERS SURVIVE IS --keep-n2's JOB, not this flag's, and the two compose. That split is
+# forced by the captured base rather than chosen: N2Accumulate does not consume correlations
+# alone -- each accum_N also takes counts, PL counts, RFI counts and the RFI frame mask -- and
+# that chain is HEADLESS here. PL_mask_compactor -> host_pl_mask_buffer -> count_PL ->
+# host_pl_counts_buffer -> n2_accumulate, but PL_mask_compactor's own input
+# host_pl_mask_exp_buffer has NO PRODUCER ANYWHERE IN THE BASE (verified 2026-08-08); in the real
+# deployment it arrives over the network from a stage the capture does not include.
+#
+# So on a dev node the science consumers CANNOT be fed, whatever this flag does:
+#   --n2-primary            -> the prefix is produced and exported to host_correlation_buffer,
+#                              with no consumers. This is the configuration for VALIDATING it
+#                              against cudaCorrelator, which is what has to happen first anyway.
+#   --n2-primary --keep-n2  -> the full chain, for a deployment where the PL/RFI feeds exist.
 
 
 def gpu_of_channel(cfg, node, freq_id):
@@ -1667,8 +1679,13 @@ def main():
         if args.disable_outputs and key.startswith("buffer_send"):
             del out[key]
             dropped.append(key)
-        elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES) \
-                and not (args.n2_primary and key.startswith(N2_PRIMARY_KEEP)):
+        elif args.n2_primary and key.startswith("run_n2k"):
+            # Replaced, in both --keep-n2 modes: cudaCorrelatorDual produces the same prefix on
+            # the same leg, and leaving run_n2k in place would give host_correlation_buffer two
+            # producers.
+            del out[key]
+            dropped.append(key)
+        elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES):
             # --n2-dual: run_send_voltage survives (the dual correlator consumes the GPU
             # voltage ring it feeds); run_n2k itself is still dropped -- cudaCorrelatorDual
             # replaces it and keeps the N^2 prefix on-GPU.
