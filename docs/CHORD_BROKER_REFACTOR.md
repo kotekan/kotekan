@@ -1,6 +1,21 @@
 # One broker, many signals — the unification plan (task #27)
 
-Status: M0-M2 LANDED 2026-08-08 (ee70428e1, 6b3936421, 8ceace0d2); M3 onward re-planned, see the note above M3. Authority for the refactor; update as milestones land.
+Status: **M0-M5 LANDED 2026-08-08.** One process now runs every signal, sharing the time
+anchor, the BRDC store and both halves of the receiver clock. Remaining: M6 (one publisher
+port / one viewer) and M7 (flag audit); M8 (readability) is optional.
+
+    M0 ee70428e1  the equivalence gate
+    M1 6b3936421  1382 stateless lines -> gnss_broker/
+    M2 8ceace0d2  --signal, parsed from gnssSignal.hpp
+    3ccf71463     re-plan: the closure is already the Chain object
+    M3 cf0d18c4b  the shared Receiver (+ a defect in M0's own clock)
+    M4/M5 4534a6de0  scripts/gnss/broker_multi.py -- one process, many signals
+
+RUN IT:  scripts/gnss/broker_multi.py config/gnss_chains_chord.yaml
+GATE IT: scripts/gnss/broker_equiv.py check scripts/gnss/fixtures/broker_fake_l5.jsonl
+         python/scripts/gnss/gnss_broker/selftest.py
+         (multi-chain smoke test: scripts/gnss/fixtures/README.md)
+ Authority for the refactor; update as milestones land.
 Subject: `python/scripts/gnss/gps_distributed_broker.py`, 6411 lines.
 
 ---
@@ -298,10 +313,21 @@ change to either half's contents.
 `--dr-clock-adopt` becomes a no-op between co-hosted chains and E5a's seeds are unchanged
 with the file transport removed.
 
-### M6 — one publisher, one viewer
-One `--publish-port`, rows keyed by chain id, schema extended with `chain`/`signal`/`band`.
-Viewer shows per-constellation sub-tables (the prototype's layout; KV notes the panel
-already does this there). Retires the second viewer instance.
+### M6 — one publisher, one viewer  (NEXT, not yet done)
+Today each chain still binds its own `--publish-port` (12060 GPS, 12061 E5a) — which works
+unchanged inside one process, so this is an improvement rather than a blocker.
+
+⚠️ **Do not simply merge the ports.** Established while scoping this: the viewer discovers
+its signal table from **kotekan's `/config`** (`livebeam_server.discover_signals`, walking
+`GnssChannelizedSearch` / `cudaGnssTrack` entries), and consumes the broker's publisher as
+if it were *one combiner* — `FleetPublisher`'s docstring says so explicitly ("rows carry the
+field names `GnssCoherentCombiner::get_status` uses, so the viewer's `signal_metrics()`
+consumes them unchanged"). An unfiltered merged `/get_status` would hand it two
+constellations' PRNs in one table.
+
+So: one publisher, rows tagged `chain`/`signal`/`band`, and `/get_status?chain=<key>`
+filtered — the filtered form keeps today's viewer working byte-for-byte while an updated
+panel takes the lot. Then retire the second viewer instance.
 
 ### M7 — the flag audit
 Only now, and separately. Census the 175 flags against every live caller
