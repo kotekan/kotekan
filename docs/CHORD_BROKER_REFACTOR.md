@@ -1,6 +1,6 @@
 # One broker, many signals — the unification plan (task #27)
 
-Status: PLAN, 2026-08-08. Authority for the refactor; update as milestones land.
+Status: M0-M2 LANDED 2026-08-08 (ee70428e1, 6b3936421, 8ceace0d2); M3 onward re-planned, see the note above M3. Authority for the refactor; update as milestones land.
 Subject: `python/scripts/gnss/gps_distributed_broker.py`, 6411 lines.
 
 ---
@@ -249,45 +249,61 @@ of the 100 periods". A named signal cannot be typo'd into a different code lengt
 **Verify:** hash green with the legacy flags; and `--signal gps_l5q` alone reproduces the
 same hash as `broker_up.sh`'s twelve explicit flags.
 
-### M3 — `Chain` state object
-Mechanical: the ~110 per-chain closure locals become attributes of one `Chain`. Includes
-the `dr_state` split (§2.1). Enormous diff, zero semantics.
-**Verify:** hash green on all four transcripts.
+### ⚠️ M3 onward were re-planned after M2. THE CLOSURE IS ALREADY THE CHAIN OBJECT.
 
-### M4 — split the cycle into phase methods
-The 16 phases of §2.2 become methods, each taking `(self, shared, t)`. The 3252-line loop
-becomes a 40-line driver over named steps. Target: no module over ~700 lines.
-**Verify:** hash green. This is the milestone that makes the file maintainable, and it is
-worthless without M0.
+The original M3 was "move the ~110 per-chain closure locals into a `Chain` class", on the
+assumption that unification needed an explicit state object. It does not, and the
+assumption was expensive in the wrong direction.
 
-### M5 — shared services
-`Sky`, `ReceiverClock` (carrier at receiver scope, code per band), `TimeAnchor`,
-`EphemerisStore`, `NavDecoders` become explicit objects constructed once. Chains
-*contribute* observations and *consume* a per-cycle snapshot. The file transport
-(`receiver_state.py`) stays for genuinely cross-process consumers (the airspy benches) and
-becomes an export, not a channel.
-**Verify:** hash green single-chain — one chain contributing to and consuming from a shared
-clock must behave identically to one chain owning it.
+`main()` is a closure whose locals are *exactly* one chain's state — that is what a closure
+is. Running N chains in one process therefore does not require converting 110 names to
+attributes; it requires calling the closure N times, in N threads, and reaching in to share
+the ~20 names that are genuinely receiver-scope. **20 targeted redirections instead of 110
+blind ones, for the same result.**
 
-### M6 — the multi-chain driver
-* Config: a chain list (YAML, or repeatable `--chain`), plus receiver-scope settings.
-* Cycle: receiver phases once → snapshot → chains in a thread pool → fold contributions in
-  fixed chain order → publish → sleep.
-* Threads, not sequential: ~25 HTTP requests per chain per cycle at a 2 s interval, with
-  5 s timeouts. Sequential across four chains blows the budget. Shared state is
-  read-only during the fan-out; the fold is single-threaded and ordered, so the
-  transcript hash stays deterministic.
+The 110-name conversion and the phase split are still worth doing — a 3252-line loop body
+is not maintainable — but they are *readability* work that can proceed incrementally
+afterwards, behind the same gate, and they are no longer on the critical path to the thing
+task #27 actually asks for. Demoted to M8.
+
+This also explains why `--cl-tracker` looks the way it does (§1.3): someone already needed
+a second chain and, with no driver to add one to, hand-rolled a partial one inside the
+loop. The driver is the missing piece, not the state object.
+
+### M3 — extract the SHARED state (the ~20 names of §2.1)
+`Receiver`: time anchor, Sky (BRDC/almanac/visibility), `ReceiverClock` (carrier-side at
+receiver scope, code-side per band), `EphemerisStore`. The closure's reads and writes of
+`utc0_sample0`, `brdc_alm`, `clock_bias_ema`, `code_bias_ema` and `dr_state["clk"]/["drift"]`
+redirect to it. Includes the `dr_state` split — the highest-value single change in the
+refactor, and the seam `--dr-clock-adopt` currently papers over.
+**Verify:** hash green. One chain owning its own receiver state must be byte-identical to
+one chain contributing to and consuming from a shared one.
+
+### M4 — `build_args(argv)` + `run_chain(args, rx)`
+Split `main()` at the seam that already exists: 1200 lines of argparse, then the chain. No
+change to either half's contents.
+**Verify:** hash green; `main()` is `run_chain(build_args(argv), Receiver(...))`.
+
+### M5 — the driver
+* Config: a chain list (repeatable `--chain KEY:endpoints`, or YAML), plus receiver-scope
+  settings (site, `hops_per_sec`, time0 endpoint).
+* One `Receiver`, N `run_chain` threads. Threads, not sequential: ~25 HTTP requests per
+  chain per cycle against a 2 s interval and 5 s timeouts — sequential across four chains
+  blows the budget.
+* Shared state is read-through-snapshot during a cycle; contributions fold back in fixed
+  chain order, so replay stays deterministic.
 * Absorb `--cl-tracker` as an ordinary chain.
-**Verify:** two chains in one process reproduce the concatenation of two single-chain
-transcript hashes; `--dr-clock-adopt` becomes a no-op between co-hosted chains and the E5a
-chain's seeds are unchanged with the file transport removed.
+* Per-chain transcript streams (M0's `_Transcript` is single-owner by design).
+**Verify:** two chains in one process reproduce the two single-chain digests;
+`--dr-clock-adopt` becomes a no-op between co-hosted chains and E5a's seeds are unchanged
+with the file transport removed.
 
-### M7 — one publisher, one viewer
+### M6 — one publisher, one viewer
 One `--publish-port`, rows keyed by chain id, schema extended with `chain`/`signal`/`band`.
 Viewer shows per-constellation sub-tables (the prototype's layout; KV notes the panel
 already does this there). Retires the second viewer instance.
 
-### M8 — the flag audit
+### M7 — the flag audit
 Only now, and separately. Census the 175 flags against every live caller
 (`broker_up.sh`, `broker_up_extra.sh`, `config/replay_*.sh`, `run_live.sh`,
 `run_trim_bench.sh`, `e2e_broker.py`, `peel_bench_broker.py`). Retire what nothing sets and
@@ -296,6 +312,12 @@ mechanisms are documented precisely so nobody rebuilds them (`--trim-precomp`, A
 v1/v2, the CL k-scan's falsified segment mode). Delete code, keep history.
 
 ---
+
+### M8 — readability: the state object and the phase split
+Demoted from the critical path (see the note above M3), still wanted. The ~110 per-chain
+closure locals become attributes of a `Chain`; the 16 phases of 2.2 become methods, each
+taking `(self, rx, t)`; the 3252-line loop body becomes a driver over named steps with no
+module over ~700 lines. Behind the same gate, incrementally, one phase at a time.
 
 ## 5. Target layout
 
