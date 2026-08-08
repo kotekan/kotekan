@@ -1868,3 +1868,49 @@ what we think it is?" had no answer — and the honest answer to "can we rebuild
 
 **If you cannot name the inputs, you do not have an artifact; you have a souvenir.** Stamp the
 recipe into the thing, keep the expectation in git, and give the check a way to fail.
+
+## 11.19  SEED CONTINUITY BEATS SEED FRESHNESS (2026-08-09, a fix reverted)
+
+KV: Galileo E4 locks, the Doppler goes flat, C/N₀ and significance decay, lock breaks, it
+reseeds at a different Doppler, repeats. I found the broker's hold-on-lock gate skipping the
+reseed of any PRN above `--lock-snr` — "the DLL owns the residual now" — which is true for a
+search-fed chain and false for a model-primary one, where nothing owns Doppler. I made the
+hold conditional on a Doppler owner existing, so E5a repinned every `--dr-repin-s` = 10 s.
+
+**It made E5a dramatically worse, and KV caught it from the viewer within minutes.** Measured
+on E4, 1 Hz sampling, ~100 s each side:
+
+| | median `deep_snr` | min→max | deep uncertified |
+|---|---|---|---|
+| 10 s repin ("the fix") | **16.7** | 49× | 21% |
+| seed held (reverted) | **221.2** | 1.4× | 0% |
+
+Reverted in `606648df9`. E5a returned to a steady 190–260 immediately.
+
+**WHY: RE-ANCHORING IS NOT FREE.** Each repin rebuilds `cp0` from
+`cp_predicted(...) + clk_now` — and `clk_now` is the dead-reckon clock EMA, which wanders
+~±1 chip (measured 149.45–151.82 over minutes). A frozen seed hides that jitter completely:
+`propagate_seed` advances it smoothly and the 1.05 s coherent fold and 100-record deep sum
+integrate cleanly. Refreshing every 10 s injects the clock estimator's noise straight into the
+code phase as a step, and the fold never gets a clean interval. **The tracker's own
+propagation is quieter than the model that produced the seed.**
+
+So the freeze is not a defect — it is load-bearing, and the comment I overrode was right.
+
+⚠️ **AND MY OWN PHASE ANALYSIS SAID THE FIX WAS INNOCENT.** Binning `deep_snr` by
+age-since-repin gave a flat curve (15.9, 18.2, 18.9, 18.6, 16.7, 19.3, 18.5, 16.7) and I
+read that as "not repin-locked". Wrong signature: the damage does not *recover* within 10 s,
+so it never sawtooths — it just holds the whole series down. **A periodic insult whose
+recovery time exceeds its period looks aperiodic.** The test that worked was the crude one:
+turn it off and compare distributions.
+
+**THE ORIGINAL SYMPTOM IS THEREFORE STILL UNEXPLAINED.** What is now known:
+
+* the Doppler staircase in the viewer is the *seed*, not the tracker (§11.18 addendum) —
+  cosmetic, and both values are published now;
+* the tracker's `dop_rate` feed-forward works and always did;
+* holding the seed is correct, not a bug;
+* so the decay-then-reseed cycle needs a different cause. Candidates not yet separated: the
+  beam (E4 at elev 86° sits ~8.6° off a boresight 8.59° S of zenith — task #11), and slow
+  model/clock error that only a *smoothed* correction should chase. What it is NOT is seed
+  staleness.
