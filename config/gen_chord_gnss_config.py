@@ -1669,6 +1669,29 @@ def main():
             if isinstance(_v, dict) and "use_config_tracker" in _v:
                 _v["use_config_tracker"] = False
 
+    # WIDEN THE STARTUP FETCH BUDGET (2026-08-08). chord_pathfinder.j2 -- production's
+    # template, not ours to change -- ships upstream_fetch_retries 2 / timeout 10 s, and
+    # ConfigTracker's failure is FATAL at construction. Against the real service that is far
+    # too tight.
+    #
+    # MEASURED, 20 sequential GETs of chive:54321/config at ~1/s, right after the F-engine
+    # came back: median 6 ms, p90 6.5 s, MAX 16.2 s. Bimodal, because fpga_master is a
+    # single-threaded asyncio server whose per-second metrics gather now does real register
+    # reads over 16 live boards (while the boards were dark it failed instantly and the
+    # server looked fast). A request landing in a gather window waits it out.
+    #
+    # Consequence: a fleet restart was a coin flip. On 2026-08-08 five of six nodes died with
+    # "failed to GET FPGA config after 2 retries" while cx42, started BETWEEN two of the
+    # failures, came up fine -- so it reads like a node-specific fault rather than a timeout,
+    # which is exactly how it wasted an hour.
+    #
+    # 5 x 30 s bounds the worst case at 150 s before a genuinely-down chive is declared, vs
+    # ~20 s before. That is the right trade: a slow start is recoverable, a fleet that
+    # half-starts is not. Startup only -- nothing here runs in steady state.
+    if "config_tracker" in out and isinstance(out["config_tracker"], dict):
+        out["config_tracker"]["upstream_fetch_retries"] = 5
+        out["config_tracker"]["upstream_fetch_timeout_seconds"] = 30
+
     sig = cfg["signals"]
     chans = covering_channels(node_channels(cfg, args.node), float(sig["carrier_hz"]),
                               float(sig["chip_rate_hz"]), float(sig["max_doppler_hz"]))

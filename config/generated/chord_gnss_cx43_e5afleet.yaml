@@ -32,8 +32,8 @@ compute_RFI_frame_mask_1:
 config_tracker:
   enabled: true
   fpga_host_info: /fpga_controller
-  upstream_fetch_retries: 2
-  upstream_fetch_timeout_seconds: 10
+  upstream_fetch_retries: 5
+  upstream_fetch_timeout_seconds: 30
 count_PL:
   in_buf: host_pl_mask_buffer
   kotekan_stage: CountLostPLSamplesScalar
