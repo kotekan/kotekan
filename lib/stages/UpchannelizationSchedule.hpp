@@ -69,12 +69,13 @@ public:
     UpchannelizationSchedule& operator=(const UpchannelizationSchedule&) = delete;
     UpchannelizationSchedule& operator=(UpchannelizationSchedule&&) = delete;
 
-    UpchannelizationSchedule(kotekan::Config& config, const std::string& unique_name = "", const std::vector<int>& coarse_freq = std::vector<int>());
+    UpchannelizationSchedule(kotekan::Config& config, const std::string& unique_name = "",
+                             const std::vector<int>& coarse_freq = std::vector<int>());
 
     // Get the singleton instance
-    static const UpchannelizationSchedule& instance(kotekan::Config& config,
-                                                    const std::string& unique_name = "",
-                                                    const std::vector<int>& coarse_freq = std::vector<int>());
+    static const UpchannelizationSchedule&
+    instance(kotekan::Config& config, const std::string& unique_name = "",
+             const std::vector<int>& coarse_freq = std::vector<int>());
 
     // The coarse frequency channels handled by this X-Engine
     // instance. This maps "channel index" to "channel".

@@ -185,9 +185,9 @@ UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
     assert(invariant());
 }
 
-const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Config& config,
-                                                                   const std::string& unique_name,
-                                                                   const std::vector<int>& coarse_freq) {
+const UpchannelizationSchedule&
+UpchannelizationSchedule::instance(kotekan::Config& config, const std::string& unique_name,
+                                   const std::vector<int>& coarse_freq) {
     static std::map<std::string, UpchannelizationSchedule> the_instances;
     static std::mutex the_mutex;
 

@@ -65,12 +65,13 @@ public:
             return;
 
         // Upchannelization schedule
-        uint8_t const * const metadata_frame = metadata_buffer->wait_for_full_frame(unique_name, 0);
-        if(metadata_frame == nullptr)
+        uint8_t const* const metadata_frame = metadata_buffer->wait_for_full_frame(unique_name, 0);
+        if (metadata_frame == nullptr)
             return;
         const auto& upchan_schedule = *[&]() {
             const auto coarse_freq = get_chord_metadata(metadata_buffer, 0)->get_coarse_freq();
-            return &UpchannelizationSchedule::instance(config, upchannelization_schedule_name, coarse_freq);
+            return &UpchannelizationSchedule::instance(config, upchannelization_schedule_name,
+                                                       coarse_freq);
         }();
         metadata_buffer->mark_frame_empty(unique_name, 0);
         metadata_buffer->unregister_consumer(unique_name);
