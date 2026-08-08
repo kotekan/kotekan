@@ -1475,7 +1475,8 @@ def main(argv=None, rx=None, publisher=None):
                  "has_search": bool(detectors), "n_trackers": len(trackers),
                  "sigid": _sig.primary if args.signal else None,
                  "label": _sig.label if args.signal else chain_id,
-                 "short": _sig.short if args.signal else chain_id}
+                 "short": _sig.short if args.signal else chain_id,
+                 "rf_band": _sig.rf_band if args.signal else band_id}
     if publisher is not None:
         publisher = publisher.register(chain_id, args.signal, band_id, _pub_desc)
     elif args.publish_port:

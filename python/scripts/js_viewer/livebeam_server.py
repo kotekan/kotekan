@@ -969,7 +969,9 @@ def discover_broker_chains(host, port, timeout=3.0):
         if not chain:
             continue
         out.append({"tag": c.get("constellation") or "G",
-                    "band": (c.get("band") or "").replace("MHz", ""),
+                    # RF band (L1/L2/L5), NOT the signal name -- it is the table's
+                    # column, and GPS L5-Q and Galileo E5a-Q belong in the SAME one.
+                    "band": c.get("rf_band") or (c.get("band") or "").replace("MHz", ""),
                     "col": c.get("short") or chain,
                     "name": c.get("label") or chain,
                     "sigid": c.get("sigid"),
@@ -978,6 +980,7 @@ def discover_broker_chains(host, port, timeout=3.0):
                     "combiner": chain,
                     "search": chain if c.get("has_search") else None,
                     "t_rec": float(c.get("t_rec") or 1e-3),
+                    "carrier_mhz": float(c.get("carrier_hz") or 0.0) / 1e6,
                     "peel": False})
     log_.info("broker chain discovery: %d chain(s) from %s:%d -- %s",
               len(out), host, port, ", ".join(c["col"] for c in out))
@@ -1208,13 +1211,31 @@ class WsPortResource(resource.Resource):
         # is still emitted (the sky legend + per-constellation colours read it), one entry per
         # CONSTELLATION rather than per band.
         if unified:
-            self.signals = [dict(s) for s in UNIFIED_SIGNALS]
-            self.rf_bands = [dict(b) for b in UNIFIED_RF_BANDS]
+            # BROKER-DISCOVERED INVENTORY WINS. In unified mode the client draws from
+            # `signals` (a sub-table per constellation, a column per RF band), not from
+            # `chains` -- so pointing the chain discovery at `chains` alone left the panel
+            # rendering the static AIRSPY inventory while claiming to be unified. Feed the
+            # live chains in here too, and derive the band selector from the bands they
+            # actually occupy rather than from a list of front ends CHORD does not have.
+            if broker_chains:
+                self.signals = [dict(c) for c in broker_chains]
+                _bands, _seen = [], set()
+                for c in broker_chains:
+                    if c["band"] not in _seen:
+                        _seen.add(c["band"])
+                        _bands.append({"band": c["band"], "ws_port": ws_port,
+                                       "airspy": None,
+                                       "label": ("%s \u00b7 %.2f MHz"
+                                                 % (c["band"], c.get("carrier_mhz") or 0.0))})
+                self.rf_bands = _bands
+            else:
+                self.signals = [dict(s) for s in UNIFIED_SIGNALS]
+                self.rf_bands = [dict(b) for b in UNIFIED_RF_BANDS]
             # Attach the transmitting-PRN list per signal so the table can say
             # "not transmitted" instead of "not detected". Computed once here (cheap: one
             # cached-file parse), empty when unavailable -> client keeps today's behaviour.
             self.capability = _gps_signal_capability()
-            self.chains = [{"tag": "G", "name": "GPS",     "color": "#4d9de0"},
+            _legend = [{"tag": "G", "name": "GPS",     "color": "#4d9de0"},
                            {"tag": "E", "name": "Galileo", "color": "#e8923c"},
                            {"tag": "C", "name": "BeiDou",  "color": "#d64550"},
                            # GLONASS (2026-08-04): violet, distinct from the G/E/C palette and
@@ -1222,6 +1243,13 @@ class WsPortResource(resource.Resource):
                            # orbital SLOT numbers, which is what the L3OC code index turned out
                            # to be -- so tag+prn keys GLONASS satellites the same way as the rest.
                            {"tag": "R", "name": "GLONASS", "color": "#9b6fd6"}]
+            # Only the constellations actually being tracked: an empty sub-table for a
+            # constellation this instrument cannot see reads as "nothing detected" rather
+            # than "not configured", which is the same confusion the static table caused.
+            if broker_chains:
+                _live = {c["tag"] for c in broker_chains}
+                _legend = [g for g in _legend if g["tag"] in _live]
+            self.chains = _legend
             return
         tags = [t.strip() for t in consts.split(",") if t.strip()]
         table = BAND_CHAINS.get(band, BAND_CHAINS["l1"])

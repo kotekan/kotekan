@@ -8,6 +8,11 @@
 # on ONE port and filters on a path segment, so one viewer polls /gps_l5/get_status and
 # /gal_e5a/get_status against the same origin.
 #
+# --unified IS THE PROTOTYPE'S PANEL: a sub-table per constellation, a column per RF BAND,
+# and metric toggles above the table. In that mode the client draws from `signals`, not from
+# `chains`, so feeding chain discovery into `chains` alone left the panel rendering the old
+# static airspy inventory while claiming to be unified. Both are broker-fed now.
+#
 # THE CHAIN TABLE COMES FROM THE BROKER, not from a flag and not from a static table.
 # livebeam_server calls discover_broker_chains() against --kotekan-rest-port; the broker
 # answers /get_chains with what it is actually running, including the constellation, the
@@ -41,7 +46,7 @@ nohup setsid $PY -u livebeam_server.py \
     --http-port "$PORT" --ws-port 8539 \
     --kotekan-rest-port "$REST" \
     --lat 49.32075144444 --lon -119.62081125 --alt 545 \
-    --band l5 \
+    --band l5 --unified \
     "$@" > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 6

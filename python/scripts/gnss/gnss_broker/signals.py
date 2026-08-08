@@ -118,6 +118,32 @@ class SignalDef(object):
         self.nh_overlay_len = sec or self.long_code_segments
 
     # -- derived, so no caller recomputes them differently -------------------------
+    # RF band names, keyed by carrier to 10 kHz. This is the COLUMN a viewer groups by, and
+    # it is NOT the signal's own name: Galileo E5a and GPS L5 are both the L5 band (they
+    # share 1176.45 MHz, which is the whole reason they share a receiver), while E5a-Q and
+    # L5-Q are different signals within it. Getting this wrong puts every signal in its own
+    # column and defeats the point of the table.
+    _RF_BAND = {
+        1575.42: "L1",     # GPS L1 C/A + L1C, Galileo E1, BeiDou B1C
+        1227.60: "L2",     # GPS L2C
+        1176.45: "L5",     # GPS L5, Galileo E5a, BeiDou B2a  <- CHORD's band today
+        1207.14: "E5b",    # Galileo E5b, BeiDou B2b/B2I
+        1278.75: "E6",     # Galileo E6
+        1268.52: "B3",     # BeiDou B3I
+        1202.025: "L3",    # GLONASS L3OC
+        1561.098: "B1I",   # BeiDou B1I (BDS-2, outside CHORD's band)
+        1246.00: "G2",     # GLONASS L2OF
+        1248.06: "G2",     # GLONASS L2OC
+    }
+
+    @property
+    def rf_band(self):
+        """The front-end band this signal sits in -- L1, L2, L5, ... Falls back to the
+        carrier in MHz so an unmapped signal is still grouped consistently rather than
+        silently merged with something else."""
+        mhz = round(self.carrier_hz / 1e6, 3)
+        return self._RF_BAND.get(mhz, "%.2fMHz" % mhz)
+
     @property
     def band(self):
         """The CODE-clock scope: cable + PFB group delay are per carrier, so a code bias
