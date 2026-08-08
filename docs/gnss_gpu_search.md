@@ -1765,3 +1765,80 @@ Contained fix in `Receiver`: persist on contribute, prime on construct. **NEXT.*
 
 Common shape: each was found by looking at the thing that SHIPS rather than the thing I
 edited, and none was catchable by the equivalence gate.
+
+## 11.18  ARTIFACTS WITHOUT PROVENANCE (2026-08-09)
+
+Three findings in one morning, and they are the same finding: **an artifact whose inputs are
+not recorded cannot be checked, and stops being trustworthy without ever announcing it.**
+
+### 11.18.1  The dead-reckon clock EMA'd in from zero (task #28, fixed)
+
+`--dr-clock-chips` exists so a detector-less chain can seed at all. The bootstrap that snaps
+the clock to the first solved median only fired when the clock was `None` — so **priming
+also silenced the snap on the chain that can measure**. `gps_l5` then EMA'd in from 0.0 at
+α=0.2 per cycle: measured on sky, 0 → 54.6 → 74.0 → … → 151 chips over ~40 s, exactly 0.8ⁿ.
+
+The cost was not slow convergence. Replaying the on-sky fixture, the first solve reported
+29.81 chips with **every** satellite's integrity residual +114…+125 `BAD`, and all seven then
+went `MODEL-UNTRUSTED` and fell back to the search Doppler — the model abandoned wholesale
+for an error the broker had itself introduced. `raw` is a circular median over ≥`--dr-min-sats`
+satellites, i.e. a measurement of the quantity the prime guessed, so snapping to it lands
+inside the median's own scatter on cycle one.
+
+Deployed and verified on sky: **BOOTSTRAP 149.67 chips 0.8 s after process start**, E5a
+adopting it 64 ms later, against ~42 s before. Settled behaviour is unchanged (149.4–151.8 at
+30 s cadence, drift converged to +0.003 chips/s) — the fix removes a transient, it does not
+move the answer.
+
+### 11.18.2  The equivalence gate's golden digest lived outside git
+
+`check` compared against `<transcript>.digest`, which for the on-sky fixtures is
+`/home/kvand/gnss/fixtures/` on NFS — *outside version control* — with a hand-made mirror
+under `scripts/gnss/fixtures/`. The mirror drifted. The E5a golden was committed carrying
+`776c70ff…`, **a number no commit in the history reproduces**: replaying at the very commit
+that added it gives `5fc7770a…`. It was blessed from a dirty tree that moved before the
+commit landed, so that gate ran against a phantom for its entire life — and neither green nor
+red would have meant anything.
+
+Goldens now resolve into the repo unconditionally, and `bless` stamps the commit it ran at
+plus a `DIRTY` flag it shouts about. A stale golden is now a diff in `git status`.
+
+⚠️ **A gate's expectation is source code.** If it lives where `git status` cannot see it, it
+is not an expectation — it is a note.
+
+### 11.18.3  The fleet's generator flags existed only in a shell history
+
+`gen_chord_gnss_config.py` takes ~48 flags; its header recorded node, base *basename*, and
+signal. The set that built the six live node configs was written down nowhere. Regenerating a
+node meant guessing flags typed days earlier, so in practice nobody regenerated — they
+hand-patched files stamped `DO NOT HAND-EDIT`, which is exactly how cx19/cx51 (one merged
+combiner) drifted from the other four (two), a split `gnss_chains_chord.yaml` still carries a
+special case for.
+
+Recovered by diffing candidate outputs against the committed files until all six came back
+byte-identical — 1183 diff lines, then 4, then 0:
+
+    --keep-n2 --n2-dual --n2-dump --search-host 10.222.3.6 (cf06)
+    --extra-signal GAL_E5A_Q_CS:<32 Galileo PRNs>
+    --search-port-base 11040 + 2*node_index      # NOT arbitrary: the aggregator
+                                                 # addresses feeds node-major, GPU-minor
+    --combine-gpus on cx19 and cx51 only
+
+**The base mattered as much as the flags.** The generator *injects into* production's config,
+so the base is a real input — and the one all six were built from survived only by luck in
+`session_artifacts_20260730/`. A base re-captured on a different day silently produces a
+different fleet. Now pinned at `config/base/live_config_20260730.json` and referenced by hash.
+
+Now: the header carries the full argv and the base's sha256;
+`config/gnss_fleet_chord.yaml` holds the fleet's flags in one versioned file; and
+`scripts/gnss/gen_fleet.py --check` regenerates into memory and compares byte-for-byte
+(exit 1 on drift, verified to fail on both a hand-edit and an unregenerated manifest change).
+
+### 11.18.4  The rule
+
+Each of these was *deterministic and working*. None was a bug in the physics. In each case an
+output had been separated from the inputs that produced it, so the question "is this still
+what we think it is?" had no answer — and the honest answer to "can we rebuild this?" was no.
+
+**If you cannot name the inputs, you do not have an artifact; you have a souvenir.** Stamp the
+recipe into the thing, keep the expectation in git, and give the check a way to fail.
