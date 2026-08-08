@@ -11,6 +11,18 @@ port / one viewer) and M7 (flag audit); M8 (readability) is optional.
     M3 cf0d18c4b  the shared Receiver (+ a defect in M0's own clock)
     M4/M5 4534a6de0  scripts/gnss/broker_multi.py -- one process, many signals
 
+**DEPLOYED ON SKY 2026-08-08 18:38 UTC.** One process (PID 2739598 on cf06) runs GPS L5 and
+Galileo E5a together, replacing broker_up.sh + broker_up_extra.sh. Evidence of sharing, live:
+
+    [gal_e5a] time anchor: frame0 = 1786209501.000002861   <- ONE fetch, both chains
+    [gps_l5]  time anchor: frame0 = 1786209501.000002861
+    [driver]  receiver: anchor=... (gal_e5a), brdc=1 store(s)
+    [gal_e5a] dead-reckon: clock ADOPTED 54.61 chips from in-process chain 'gps_l5'
+              (same band 1176.45MHz, NO FILE TRANSPORT)
+
+Gated before deployment against BOTH on-sky transcripts, byte-identical to the
+single-chain path: GPS L5 86e8ad5b (56 cycles, 934 posts), Gal E5a 776c70ff (41/468).
+
 RUN IT:  scripts/gnss/broker_multi.py config/gnss_chains_chord.yaml
 GATE IT: scripts/gnss/broker_equiv.py check scripts/gnss/fixtures/broker_fake_l5.jsonl
          python/scripts/gnss/gnss_broker/selftest.py
