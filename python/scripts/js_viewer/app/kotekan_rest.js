@@ -40,6 +40,12 @@ export class KotekanRest {
     }
 
     resolveStage(stage) {
+        // A NULL STAGE MUST NOT THROW. stageGet() is called inside Promise.all([...])
+        // argument lists, so a synchronous TypeError here escapes the whole refresh() and
+        // leaves its _inflight guard set -- the panel then renders once and freezes
+        // FOREVER, with no error visible in the UI. CHORD has no airspy front end, so
+        // rf_bands[].airspy is legitimately null there (2026-08-08).
+        if (!stage) return stage;
         if (!this._stages || this._stages.has(stage)) return stage;
         const alt = stage.startsWith("gps_") ? stage.slice(4) : `gps_${stage}`;
         return this._stages.has(alt) ? alt : stage;

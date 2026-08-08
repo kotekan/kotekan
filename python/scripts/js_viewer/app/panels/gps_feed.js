@@ -217,7 +217,9 @@ export class GpsFeed {
         }
         Promise.all([
             fetch("/gps_sky").then(r => r.ok ? r.json() : null).catch(() => null),
-            jget(k.stageGet(adcStage, "adcstat")),
+            // No airspy stage -> no ADC health to poll. CHORD's front end is the F-engine,
+            // which exposes none of this; skip rather than fabricate a request.
+            adcStage ? jget(k.stageGet(adcStage, "adcstat")) : Promise.resolve(null),
             k.metrics(),
             ...per_unit,
         ]).then(([sky, adc, metrics, ...res]) => {
