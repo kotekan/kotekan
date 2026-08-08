@@ -142,7 +142,7 @@ frame_arrival_period: 5.12e-6 * 8192
 gnss0_assemble:
   chan_dump_decim: 10
   chan_dump_path: /tmp/gnss_chan_phase_cx19_0a.txt
-  chan_dump_prn: 3
+  chan_dump_prn: 4
   cpu_affinity:
   - 62
   elem_sum: true
@@ -208,7 +208,12 @@ gnss0_combine:
   out_buf: gnss0_cmb_buf
   phase_dump_path: /tmp/gnss_phase_dump_cx19_0.txt
   phase_dump_prns:
-  - 3
+  - 1
+  - 4
+  - 6
+  - 9
+  - 26
+  - 28
   phase_track: false
   record_export: 128
 gnss0_epl_buf:
@@ -265,7 +270,7 @@ gnss0_gpu:
 gnss0_n2assemble:
   chan_dump_decim: 10
   chan_dump_path: /tmp/gnss_chan_phase_cx19_0b.txt
-  chan_dump_prn: 3
+  chan_dump_prn: 4
   cpu_affinity:
   - 31
   elem_sum: true
@@ -466,7 +471,7 @@ gnss0_volt_buf:
 gnss1_assemble:
   chan_dump_decim: 10
   chan_dump_path: /tmp/gnss_chan_phase_cx19_1a.txt
-  chan_dump_prn: 3
+  chan_dump_prn: 4
   cpu_affinity:
   - 63
   elem_sum: true
@@ -531,7 +536,7 @@ gnss1_gpu:
 gnss1_n2assemble:
   chan_dump_decim: 10
   chan_dump_path: /tmp/gnss_chan_phase_cx19_1b.txt
-  chan_dump_prn: 3
+  chan_dump_prn: 4
   cpu_affinity:
   - 57
   elem_sum: true
