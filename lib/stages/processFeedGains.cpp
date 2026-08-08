@@ -202,7 +202,10 @@ void processFeedGains::main_thread() {
             return;
         }
 
-        assert(mask_received && std::all_of(gains_received.begin(), gains_received.end(), [](bool b){return b;}) && !set_coarse_freqs_once);
+        assert(
+            mask_received
+            && std::all_of(gains_received.begin(), gains_received.end(), [](bool b) { return b; })
+            && !set_coarse_freqs_once);
 
         // Set metadata from the frame desc, and other metadata
         out_buf->allocate_new_metadata_object(out_buf_frame_id);
