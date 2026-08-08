@@ -1614,3 +1614,64 @@ with n2timing's offline +2.00 ms). run_n2k now gets INFO too, so the next restar
 as measured options, not as a decision. What B does not address: it still runs two cudaProcess
 stages per GPU, still synthesises replicas at 2.435 ms (64x the correlation it feeds, and the
 real remaining cost), and still leaves the GNSS comb's antenna voltages read twice.
+
+## 11.16  E5a FIRST LIGHT + THE DAY THE EPOCH MOVED (2026-08-08)
+
+**E5a first light stands: E7 at deep_snr 19.5** (|A| 4.24e-05) on cx19 at 02:37, against
+1.0-2.2 for every other Galileo PRN. Galileo E5a detected on sky through the baked per-PRN
+CS100 codes, on path B, at 2.5 ms/frame. Captured by live polling -- NOT recorded, which is
+the first lesson below.
+
+**PATH B IS MULTI-SIGNAL** (4ab10dac8): `build_n2dual_branch()` takes a `chain` like path A
+does, so `--extra-signal` gets its own inject + correlator instead of a 17.7 ms path-A
+tracker. One full chain per signal rather than shared lanes: no CUDA change (every GPU array
+name was already config-settable) and one extra mapped launch, 0.077 ms. The GPU array names
+MUST be tagged -- `get_gpu_memory_array` is scoped per DEVICE, so two GPUs never collided on
+the untagged defaults but two SIGNALS on one GPU do, and the failure is an active unit with no
+data moving.
+
+**THE E5a DEFECT, root-caused and fixed** (cc6385448): the dead-reckon model reduced code
+phase mod ONE PRIMARY PERIOD, so no seed could carry a secondary segment and every replica
+landed in a random one of 100 CS periods. Also always wrong for GPS, masked by the blind
+search re-seeding with a measured `nh`. Seeds now span the full 1,023,000-chip code. **Whether
+the predicted segment is CORRECT is unvalidated** -- the scan needs live sky.
+
+**THE `--cl-assist` DEAD BRANCH.** The time-assist route for the long-code segment lives
+inside a loop over `/get_detections`, so a detector-less chain -- the only kind that needs it
+-- can never reach it. The model underneath is fixed; the branch should move out or go.
+
+**AGGREGATOR RESILIENCE** (a99ba2ca3): `agg_merge` waited on all 12 declared inputs, so
+running fewer nodes than the config declares blocked it in `wait_for_full_frame` FOREVER --
+alive, log frozen, serving a pre-restart detection cache (PRN 1 at snr 1057 for a satellite 70
+deg BELOW the horizon). Everything downstream followed: seeds for satellites on the far side
+of the Earth, a poisoned code-bias solve, a receiver clock bouncing 8690 -> 2787 -> 9382
+chips, every sat "untrusted", nothing acquiring on either band. It read as a broken F-engine
+or frontend; the elements were fine throughout. An input silent for `input_timeout_s` (5 s) is
+now ABSENT: its channels are ZEROED (never reused -- stale samples correlate against the wrong
+epoch and would manufacture detections) and the merge continues. Proven live.
+
+**CLOCK ADOPTION** (3a61764e2, cc6385448): `--dr-clock-adopt` reads the receiver clock from a
+band sibling's `receiver_state` file every cycle instead of a hand-pasted `--dr-clock-chips`
+that dies at every F-engine restart. Gate on whether the clock is MOVING (two reads a cycle
+apart), NOT on the sibling's own quality fields: `integ_mad_chips` read 3.3-3.9 while the
+clock was stable to 0.2, and `untrusted` counts a persistent set not comparable to `n`.
+
+**THE EPOCH MOVED TWICE.** The F-engine re-established frame 0 at 1786167610 (from
+1786131189). The generator's cross-check caught it and refused to emit, naming the
+disagreement between nodes started either side. Regenerating the fleet and restarting is what
+brought GPS back.
+
+**OPERATIONAL TRAPS, all paid for today:**
+  * `pgrep -f "constellation E"` MATCHES YOUR OWN SSH COMMAND LINE. It reports the broker up
+    forever and `pkill -9` kills your own connection. Match on `/proc/PID/cmdline`.
+  * The aggregator runs `build_nodpdk/kotekan/kotekan`, NOT `build/`. Building and
+    `strings`-verifying the wrong tree deployed nothing, twice.
+  * `--n2-dump` writes COMBINER records (~52 KB/window), not the 17 MB/s tiles. Without it a
+    transit is unrecoverable: the 03:58 E30 pass at 2.5 deg from boresight flowed through a
+    `dropAllFrames` sink and is gone.
+  * Before any scan, POST two very different inputs and confirm the readout MOVES. Two
+    100-point segment scans measured a frozen combiner; the same "top segment" in both runs
+    was one stuck number twice.
+  * chive at 14:04: host pings, port 54321 completes a TCP handshake, GET/POST return nothing.
+    WEDGED, not down -- and last confirmed answering at 13:30 (cx44/cx51 started with
+    require_gps true). Our total load on it: ~30 startup queries plus ~10 manual probes.
