@@ -5028,7 +5028,11 @@ def main(argv=None):
                     # copies of the same quantity would just average their noise back in.
                     best_sib = None
                     for rec in sibs:
-                        dr = (rec.get("dr") or {})
+                        # GROUP NAME IS "rxclock", read off a live state file rather than
+                        # inferred from the observe() call site -- the first attempt guessed
+                        # "dr" from the surrounding variable names and silently found nothing,
+                        # logging "no fresh sibling" while a perfectly good record sat there.
+                        dr = (rec.get("rxclock") or {})
                         if dr.get("chips") is None:
                             continue
                         if best_sib is None or float(rec.get("t", 0)) > float(best_sib[0]):
