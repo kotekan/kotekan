@@ -210,9 +210,6 @@ fpga_controller:
   timing_endpoint: /get-frame0-time
 frame_arrival_period: 5.12e-6 * 8192
 gnss0_assemble:
-  chan_dump_decim: 10
-  chan_dump_path: /tmp/gnss_chan_phase_cx19_0a.txt
-  chan_dump_prn: 4
   cpu_affinity:
   - 62
   elem_sum: true
@@ -220,7 +217,7 @@ gnss0_assemble:
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
   out_buf: gnss0_rec_buf
-  prns: &id001
+  prns: &id003
   - 1
   - 2
   - 3
@@ -277,15 +274,154 @@ gnss0_combine:
   n_prn: 32
   out_buf: gnss0_cmb_buf
   phase_dump_path: /tmp/gnss_phase_dump_cx19_0.txt
-  phase_dump_prns:
-  - 1
-  - 4
-  - 6
-  - 9
-  - 26
-  - 28
+  phase_dump_prns: []
   phase_track: false
   record_export: 128
+gnss0_e5a_n2assemble:
+  cpu_affinity:
+  - 31
+  elem_sum: true
+  in_buf: gnss0_e5a_n2epl_buf
+  kotekan_stage: GnssGpuRecordAssemble
+  n_elements: 32
+  out_buf: gnss0_e5a_n2rec_buf
+  prns: &id001
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 7
+  - 8
+  - 9
+  - 12
+  - 13
+  reference_element: 0
+  sample_rate: 3200000000.0
+gnss0_e5a_n2assemble_tiles:
+  cpu_affinity:
+  - 31
+  ctl_buf: gnss0_e5a_n2ctl_buf
+  hops_per_record: 2048
+  kotekan_stage: GnssN2RecordAssemble
+  n_gnss_channels: 7
+  n_live_elements: 32
+  n_prn: 10
+  num_elements: 128
+  num_synth: 128
+  out_buf: gnss0_e5a_n2epl_buf
+  tiles_buf: gnss0_e5a_n2tiles_buf
+gnss0_e5a_n2cmb_buf:
+  frame_size: 10 * 410 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_e5a_n2combine:
+  cpu_affinity:
+  - 58
+  deep_coherent: true
+  deep_rate_min_q: 10.0
+  deep_rate_search: true
+  fft_len: 16384
+  in_bufs:
+  - gnss0_e5a_n2rec_buf
+  integration_length: 100
+  integration_mode: rolling
+  kotekan_stage: GnssCoherentCombiner
+  n_elements: 32
+  n_prn: 10
+  out_buf: gnss0_e5a_n2cmb_buf
+  phase_dump_path: /tmp/gnss_n2phase_cx19_0.txt
+  phase_dump_prns: []
+  phase_track: false
+  record_export: 128
+gnss0_e5a_n2ctl_buf:
+  frame_size: 46256
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_e5a_n2dual:
+  commands:
+  - channel_ids:
+    - 5972
+    - 5988
+    - 6004
+    - 6020
+    - 6036
+    - 6052
+    - 6068
+    conjugate: true
+    f_offset_hz: 1176450000.0
+    fft_length: 16384
+    frame0_utc: 1786131189.0000029
+    gnss_ctl_name: gnss0_e5a_n2ctl
+    gnss_local_channels: &id002
+    - 277
+    - 278
+    - 279
+    - 280
+    - 281
+    - 282
+    - 283
+    gnss_synth_name: gnss0_e5a_synth
+    hops_per_record: 2048
+    n_channels: 7
+    n_elements: 1
+    name: cudaGnssInject
+    num_synth: 128
+    prns: *id001
+    sample_rate: 3200000000.0
+    seed_endpoint: /gnss0_e5a_inject/set_seeds
+    signal: GAL_E5A_Q_CS
+    trim_endpoint: /gnss0_e5a_inject/get_trim
+    voltage_name: voltage
+  - gnss_freq_map: true
+    gnss_local_channels: *id002
+    gnss_synth_name: gnss0_e5a_synth
+    gnss_tiles_name: gnss0_e5a_tiles
+    n2k_correlation_name: gnss0_e5a_n2corr
+    name: cudaCorrelatorDual
+    num_live_elements: 32
+    num_synth: 128
+    rfi_RFImask_name: rfi_RFImask
+    rfi_all_pass: true
+    sub_integration_ntime: 2048
+    voltage_name: voltage
+  - name: cudaSyncOutput
+  - gpu_mem: gnss0_e5a_tiles_buffer
+    name: cudaOutputData
+    out_buf: host_gnss_tiles
+  - gpu_mem: gnss0_e5a_n2ctl
+    name: cudaOutputData
+    out_buf: host_gnss_n2ctl
+  cpu_affinity:
+  - 62
+  gpu_id: 0
+  in_buffers:
+    host_voltage_ringbuffer: host_voltage_ringbuffer
+  kotekan_stage: cudaProcess
+  out_buffers:
+    host_gnss_n2ctl: gnss0_e5a_n2ctl_buf
+    host_gnss_tiles: gnss0_e5a_n2tiles_buf
+gnss0_e5a_n2epl_buf:
+  frame_size: 2340016
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_e5a_n2rec_buf:
+  frame_size: 10 * 410 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+  peek_hold: true
+gnss0_e5a_n2sink:
+  in_buf: gnss0_e5a_n2cmb_buf
+  kotekan_stage: dropAllFrames
+gnss0_e5a_n2tiles_buf:
+  frame_size: 2981888
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
 gnss0_epl_buf:
   frame_size: 7487664
   kotekan_buffer: standard
@@ -318,7 +454,7 @@ gnss0_gpu:
     n_channels: 7
     n_elements: 32
     name: cudaGnssChordTrack
-    prns: *id001
+    prns: *id003
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_track/set_seeds
     signal: GPS_L5_Q_NH
@@ -338,9 +474,6 @@ gnss0_gpu:
   out_buffers:
     gnss_epl_out: gnss0_epl_buf
 gnss0_n2assemble:
-  chan_dump_decim: 10
-  chan_dump_path: /tmp/gnss_chan_phase_cx19_0b.txt
-  chan_dump_prn: 4
   cpu_affinity:
   - 31
   elem_sum: true
@@ -348,7 +481,7 @@ gnss0_n2assemble:
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
   out_buf: gnss0_n2rec_buf
-  prns: *id001
+  prns: *id003
   reference_element: 0
   sample_rate: 3200000000.0
 gnss0_n2assemble_tiles:
@@ -408,7 +541,7 @@ gnss0_n2dual:
     fft_length: 16384
     frame0_utc: 1786131189.0000029
     gnss_ctl_name: gnss0_n2ctl
-    gnss_local_channels: &id002
+    gnss_local_channels: &id004
     - 277
     - 278
     - 279
@@ -422,14 +555,14 @@ gnss0_n2dual:
     n_elements: 1
     name: cudaGnssInject
     num_synth: 128
-    prns: *id001
+    prns: *id003
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_inject/set_seeds
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss0_inject/get_trim
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id002
+    gnss_local_channels: *id004
     gnss_synth_name: gnss0_synth
     gnss_tiles_name: gnss0_tiles
     n2k_correlation_name: gnss0_n2corr
@@ -505,7 +638,7 @@ gnss0_srch_send:
   server_port: 11040
   use_config_tracker: false
 gnss0_srch_tap:
-  chan_ids: &id003
+  chan_ids: &id005
   - 277
   - 278
   - 279
@@ -524,7 +657,7 @@ gnss0_srch_tap:
   n_elements: 1
   out_buf: gnss0_srch_buf
 gnss0_tap:
-  chan_ids: *id003
+  chan_ids: *id005
   cpu_affinity:
   - 19
   element_offset: 0
@@ -542,9 +675,6 @@ gnss0_volt_buf:
   num_frames: 4
   peek_hold: true
 gnss1_assemble:
-  chan_dump_decim: 10
-  chan_dump_path: /tmp/gnss_chan_phase_cx19_1a.txt
-  chan_dump_prn: 4
   cpu_affinity:
   - 63
   elem_sum: true
@@ -552,9 +682,144 @@ gnss1_assemble:
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
   out_buf: gnss1_rec_buf
+  prns: *id003
+  reference_element: 0
+  sample_rate: 3200000000.0
+gnss1_e5a_n2assemble:
+  cpu_affinity:
+  - 57
+  elem_sum: true
+  in_buf: gnss1_e5a_n2epl_buf
+  kotekan_stage: GnssGpuRecordAssemble
+  n_elements: 32
+  out_buf: gnss1_e5a_n2rec_buf
   prns: *id001
   reference_element: 0
   sample_rate: 3200000000.0
+gnss1_e5a_n2assemble_tiles:
+  cpu_affinity:
+  - 57
+  ctl_buf: gnss1_e5a_n2ctl_buf
+  hops_per_record: 2048
+  kotekan_stage: GnssN2RecordAssemble
+  n_gnss_channels: 7
+  n_live_elements: 32
+  n_prn: 10
+  num_elements: 128
+  num_synth: 128
+  out_buf: gnss1_e5a_n2epl_buf
+  tiles_buf: gnss1_e5a_n2tiles_buf
+gnss1_e5a_n2cmb_buf:
+  frame_size: 10 * 410 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss1_e5a_n2combine:
+  cpu_affinity:
+  - 59
+  deep_coherent: true
+  deep_rate_min_q: 10.0
+  deep_rate_search: true
+  fft_len: 16384
+  in_bufs:
+  - gnss1_e5a_n2rec_buf
+  integration_length: 100
+  integration_mode: rolling
+  kotekan_stage: GnssCoherentCombiner
+  n_elements: 32
+  n_prn: 10
+  out_buf: gnss1_e5a_n2cmb_buf
+  phase_dump_path: /tmp/gnss_n2phase_cx19_1.txt
+  phase_dump_prns: []
+  phase_track: false
+  record_export: 128
+gnss1_e5a_n2ctl_buf:
+  frame_size: 46256
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss1_e5a_n2dual:
+  commands:
+  - channel_ids:
+    - 5980
+    - 5996
+    - 6012
+    - 6028
+    - 6044
+    - 6060
+    - 6076
+    conjugate: true
+    f_offset_hz: 1176450000.0
+    fft_length: 16384
+    frame0_utc: 1786131189.0000029
+    gnss_ctl_name: gnss1_e5a_n2ctl
+    gnss_local_channels: &id006
+    - 277
+    - 278
+    - 279
+    - 280
+    - 281
+    - 282
+    - 283
+    gnss_synth_name: gnss1_e5a_synth
+    hops_per_record: 2048
+    n_channels: 7
+    n_elements: 1
+    name: cudaGnssInject
+    num_synth: 128
+    prns: *id001
+    sample_rate: 3200000000.0
+    seed_endpoint: /gnss1_e5a_inject/set_seeds
+    signal: GAL_E5A_Q_CS
+    trim_endpoint: /gnss1_e5a_inject/get_trim
+    voltage_name: voltage
+  - gnss_freq_map: true
+    gnss_local_channels: *id006
+    gnss_synth_name: gnss1_e5a_synth
+    gnss_tiles_name: gnss1_e5a_tiles
+    n2k_correlation_name: gnss1_e5a_n2corr
+    name: cudaCorrelatorDual
+    num_live_elements: 32
+    num_synth: 128
+    rfi_RFImask_name: rfi_RFImask
+    rfi_all_pass: true
+    sub_integration_ntime: 2048
+    voltage_name: voltage
+  - name: cudaSyncOutput
+  - gpu_mem: gnss1_e5a_tiles_buffer
+    name: cudaOutputData
+    out_buf: host_gnss_tiles
+  - gpu_mem: gnss1_e5a_n2ctl
+    name: cudaOutputData
+    out_buf: host_gnss_n2ctl
+  cpu_affinity:
+  - 60
+  gpu_id: 1
+  in_buffers:
+    host_voltage_ringbuffer: host_voltage_ringbuffer_1
+  kotekan_stage: cudaProcess
+  out_buffers:
+    host_gnss_n2ctl: gnss1_e5a_n2ctl_buf
+    host_gnss_tiles: gnss1_e5a_n2tiles_buf
+gnss1_e5a_n2epl_buf:
+  frame_size: 2340016
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss1_e5a_n2rec_buf:
+  frame_size: 10 * 410 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+  peek_hold: true
+gnss1_e5a_n2sink:
+  in_buf: gnss1_e5a_n2cmb_buf
+  kotekan_stage: dropAllFrames
+gnss1_e5a_n2tiles_buf:
+  frame_size: 2981888
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
 gnss1_epl_buf:
   frame_size: 7487664
   kotekan_buffer: standard
@@ -587,7 +852,7 @@ gnss1_gpu:
     n_channels: 7
     n_elements: 32
     name: cudaGnssChordTrack
-    prns: *id001
+    prns: *id003
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_track/set_seeds
     signal: GPS_L5_Q_NH
@@ -607,9 +872,6 @@ gnss1_gpu:
   out_buffers:
     gnss_epl_out: gnss1_epl_buf
 gnss1_n2assemble:
-  chan_dump_decim: 10
-  chan_dump_path: /tmp/gnss_chan_phase_cx19_1b.txt
-  chan_dump_prn: 4
   cpu_affinity:
   - 57
   elem_sum: true
@@ -617,7 +879,7 @@ gnss1_n2assemble:
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
   out_buf: gnss1_n2rec_buf
-  prns: *id001
+  prns: *id003
   reference_element: 0
   sample_rate: 3200000000.0
 gnss1_n2assemble_tiles:
@@ -677,7 +939,7 @@ gnss1_n2dual:
     fft_length: 16384
     frame0_utc: 1786131189.0000029
     gnss_ctl_name: gnss1_n2ctl
-    gnss_local_channels: &id004
+    gnss_local_channels: &id007
     - 277
     - 278
     - 279
@@ -691,14 +953,14 @@ gnss1_n2dual:
     n_elements: 1
     name: cudaGnssInject
     num_synth: 128
-    prns: *id001
+    prns: *id003
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_inject/set_seeds
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss1_inject/get_trim
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id004
+    gnss_local_channels: *id007
     gnss_synth_name: gnss1_synth
     gnss_tiles_name: gnss1_tiles
     n2k_correlation_name: gnss1_n2corr
@@ -766,7 +1028,7 @@ gnss1_srch_send:
   server_port: 11041
   use_config_tracker: false
 gnss1_srch_tap:
-  chan_ids: &id005
+  chan_ids: &id008
   - 277
   - 278
   - 279
@@ -785,7 +1047,7 @@ gnss1_srch_tap:
   n_elements: 1
   out_buf: gnss1_srch_buf
 gnss1_tap:
-  chan_ids: *id005
+  chan_ids: *id008
   cpu_affinity:
   - 24
   element_offset: 0

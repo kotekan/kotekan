@@ -395,17 +395,20 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # is bootstrap MRC from the satellite itself; until warm (~3 tau) the output is
             # byte-identical to reference-element-only.
             "elem_sum": args.elem_sum,
-            # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Off by default. The cross-channel sum
-            # inside this stage is the ONE combine step the broker can never undo, so whether it
-            # is lossless is a question only the per-channel phases can answer -- and they are
-            # exactly what the sum hides.
-            "chan_dump_prn": args.chan_dump_prn,
-            "chan_dump_decim": args.chan_dump_decim,
+            # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
+            # keys unconditionally changed every production node config by three lines for a
+            # feature that was off, which is exactly the drift that makes "is the deployed
+            # config current?" unanswerable. The cross-channel sum inside this stage is the one
+            # combine step the broker can never undo, so whether it is lossless is a question
+            # only the per-channel phases can answer -- and they are what the sum hides.
+            **({"chan_dump_prn": args.chan_dump_prn,
+                "chan_dump_decim": args.chan_dump_decim,
             # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
             # interleave: 1.2% of lines came out torn, and worse, BOTH chains label their
             # channels 0..6 locally, so a shared file cannot be demultiplexed at all -- grouping
             # by utc silently mixes two different combs. Found the hard way 2026-08-07.
-            "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}a{tag}.txt",
+                "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}a{tag}.txt"}
+               if args.chan_dump_prn >= 0 else {}),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [core(gpu + 8)],
         },
@@ -537,8 +540,28 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
     return blocks, record_floats, n_elem
 
 
-def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
+def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     """GNSS path B (--n2-dual): one GPU's cudaGnssInject + cudaCorrelatorDual process.
+
+    ONE COMPLETE CHAIN PER SIGNAL, exactly as build_gnss_branch does for path A. `chain` is
+    None for the primary and a parse_extra_signals() entry otherwise; every buffer, GPU array
+    and endpoint is tagged from it.
+
+    WHY A FULL PARALLEL CHAIN RATHER THAN SHARED LANES. E5a sits on GPS L5's carrier, so the
+    two signals cover the SAME channels, and one correlator could in principle serve both if
+    the injectors wrote disjoint lane ranges of one synth ring. That needs a lane offset in
+    cudaGnssInject and a merged control block -- two injectors cannot both author the FrameHdr
+    and PrnCtl the assembler reads. A full chain per signal needs no CUDA change at all,
+    because every GPU array name is already config-settable, and it costs one extra mapped
+    correlator launch: 0.077 ms/frame measured. Against path A's 17.712 ms per extra signal
+    that is not a tradeoff worth agonising over, and the shared-lane version stays available
+    later if the lane budget gets tight.
+
+    THE GPU ARRAY NAMES MUST BE TAGGED. get_gpu_memory_array is scoped per DEVICE, so the two
+    GPUs' chains never collided on the untagged defaults ("gnss_synth", "gnss_n2ctl",
+    "gnss_tiles") -- but two SIGNALS on one GPU would, and the failure mode is the one that
+    cost a restart on 2026-08-08: allocation fails, the unit comes up active, and no data
+    moves.
 
     Consumes the GPU voltage ring that run_send_voltage feeds (which --n2-dual keeps).
     The N^2 prefix of the extended triangle stays on-GPU in this mode (no science consumer
@@ -549,9 +572,16 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
     rt = cfg["runtime"]
     arr = cfg["array"]
     cores = rt["cpu_affinity"]
-    pre = f"gnss{gpu}_"
+    tag = chain["tag"] if chain else ""
+    pre = f"gnss{gpu}{tag}_"
     n_chan = len(chan_idx)
-    n_prn = len(args.prns)
+    prns = chain["prns"] if chain else args.prns
+    n_prn = len(prns)
+    # The replica's sky carrier. From the CHAIN, never the primary -- a wrong f_offset builds
+    # every replica in the wrong part of the band and every mixed tile reads noise.
+    carrier_hz = float(chain["carrier_hz"]) if chain else float(sig["carrier_hz"])
+    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
+    ordv = chain["ord"] if chain else 0
     n_live = arr["live_elements"][1] - arr["live_elements"][0] + 1
 
     # Tile count per channel: mixed (synth rows x live-antenna col tiles) + the synthetic
@@ -568,8 +598,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
     tiles_frame_bytes = n_rec_per_frame * n_chan * (mixed + bb) * 512 * 4
 
     if 4 * n_prn > num_synth:
-        raise SystemExit(f"--n2-dual: 4*{n_prn} PRNs exceeds {num_synth} synthetic lanes "
-                         f"(4 lanes per PRN slot); shrink --prns")
+        raise SystemExit(f"--n2-dual{tag}: 4*{n_prn} PRNs exceeds {num_synth} synthetic "
+                         f"lanes (4 lanes per PRN slot). The lane budget is PER CHAIN here "
+                         f"(each signal has its own synth ring), so this one signal is too "
+                         f"wide; across signals the binding limit is GPU memory, 1.61 GB per "
+                         f"ring. Shrink this chain's PRN list, or raise NSB to 256.")
 
     ring = "host_voltage_ringbuffer" + ("" if gpu == 0 else f"_{gpu}")
     tiles_buf = f"{pre}n2tiles_buf"
@@ -601,7 +634,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
             # heavy GPU-submission loops (one of them driving a 3.1 ms N^2 plus synthesis) on
             # one core. The light stages in this config do share cores, and always have; two
             # cudaProcess stages must not. Explicit, not arithmetic, so it stays checkable.
-            "cpu_affinity": [cores[(5 - 2 * gpu) % len(cores)]],
+            "cpu_affinity": [cores[(5 - 2 * gpu + 3 * ordv) % len(cores)]],
             "in_buffers": {"host_voltage_ringbuffer": ring},
             # --n2-primary: the N^2 PREFIX leaves the GPU on the standard leg, so
             # host_correlation_buffer{,_1} -> N2Accumulate -> the science pipeline is fed by
@@ -630,15 +663,19 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  "gnss_local_channels": chan_idx,
                  # cudaGnssInjectState (= the tracker's state class): same seed contract,
                  # same propagation, own endpoints. The broker POSTs the same payload here.
-                 "prns": args.prns,
+                 "prns": prns,
                  "n_channels": n_chan,
                  "n_elements": 1,  # unused by the injector; the state class requires it
                  "channel_ids": freq_ids,  # GLOBAL bins, local order (replica sky freq)
-                 "signal": sig.get("tracker", sig["primary"]),
-                 "f_offset_hz": float(sig["carrier_hz"]),
+                 "signal": track_signal,
+                 "f_offset_hz": carrier_hz,
                  "hops_per_record": args.hops_per_record,
                  "fft_length": cfg["fengine"]["fft_length"],
                  "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
+                 # Per-chain GPU arrays. Untagged they are one namespace per DEVICE, so a
+                 # second signal on the same GPU silently fights the first for the allocation.
+                 "gnss_synth_name": f"{pre}synth",
+                 "gnss_ctl_name": f"{pre}n2ctl",
                  "seed_endpoint": f"/{pre}inject/set_seeds",
                  "trim_endpoint": f"/{pre}inject/get_trim",
                  # THE SAME F-ENGINE ANCHOR THE TRACKER GETS, AND NOT OPTIONAL. This one
@@ -671,6 +708,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  "sub_integration_ntime": args.hops_per_record,
                  "voltage_name": "voltage",
                  "rfi_RFImask_name": "rfi_RFImask",  # unused with rfi_all_pass, key required
+                 "gnss_synth_name": f"{pre}synth",
                  # Production runs rfi_first_stage_excision_enabled: false -- its correlator
                  # sees an all-good mask too, so this is behavior-identical, not approximate.
                  "rfi_all_pass": True,
@@ -707,19 +745,24 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  # freq-map mode), so a private name costs nothing.
                  "n2k_correlation_name": ("correlation" if args.n2_primary
                                           else f"{pre}n2corr"),
-                 "gnss_tiles_name": "gnss_tiles",
+                 "gnss_tiles_name": f"{pre}tiles",
                  "num_synth": num_synth,
                  "num_live_elements": n_live,
                  "gnss_local_channels": chan_idx},
                 {"name": "cudaSyncOutput"},
                 {"name": "cudaOutputData",
-                 "gpu_mem": "gnss_tiles_buffer",
+                 "gpu_mem": f"{pre}tiles_buffer",
                  "out_buf": "host_gnss_tiles"},
                 # M5: the injector's control block (FrameHdr + winstart + PrnCtl + the true
                 # replica energies) -- the epl layout minus corr, which the consumer fills
                 # from the tiles. See docs/gnss_gpu_search.md 11.11.
                 {"name": "cudaOutputData",
-                 "gpu_mem": "gnss_n2ctl",
+                 # NO _buffer SUFFIX. cudaGnssInject allocates this with
+                 # get_gpu_memory_array(_mem_ctl) directly, so the gpu_mem name IS the array
+                 # name -- unlike the tiles and correlation arrays, which go through
+                 # NDArrayBuffer and are addressed as <name>_buffer. The two conventions sit
+                 # three lines apart in this block and do not match.
+                 "gpu_mem": f"{pre}n2ctl",
                  "out_buf": "host_gnss_n2ctl"},
             ] + ([
                 # Byte-for-byte the third command of production's run_n2k gpu_N block, so the
@@ -761,28 +804,31 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
             "n_gnss_channels": n_chan,
             "n_prn": n_prn,
             "hops_per_record": args.hops_per_record,
-            "cpu_affinity": [cores[(gpu + 9) % len(cores)]],
+            "cpu_affinity": [cores[(gpu + 9 + 3 * ordv) % len(cores)]],
         },
         # ... and then the EXISTING record assembler, unchanged.
         f"{pre}n2assemble": {
             "kotekan_stage": "GnssGpuRecordAssemble",
             "in_buf": epl_buf,
             "out_buf": n2rec_buf,
-            "prns": args.prns,
+            "prns": prns,
             "n_elements": n_live,
             "reference_element": args.reference_element,
             "elem_sum": args.elem_sum,
-            # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Off by default. The cross-channel sum
-            # inside this stage is the ONE combine step the broker can never undo, so whether it
-            # is lossless is a question only the per-channel phases can answer -- and they are
-            # exactly what the sum hides.
-            "chan_dump_prn": args.chan_dump_prn,
-            "chan_dump_decim": args.chan_dump_decim,
+            # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
+            # keys unconditionally changed every production node config by three lines for a
+            # feature that was off, which is exactly the drift that makes "is the deployed
+            # config current?" unanswerable. The cross-channel sum inside this stage is the one
+            # combine step the broker can never undo, so whether it is lossless is a question
+            # only the per-channel phases can answer -- and they are what the sum hides.
+            **({"chan_dump_prn": args.chan_dump_prn,
+                "chan_dump_decim": args.chan_dump_decim,
             # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
             # interleave: 1.2% of lines came out torn, and worse, BOTH chains label their
             # channels 0..6 locally, so a shared file cannot be demultiplexed at all -- grouping
             # by utc silently mixes two different combs. Found the hard way 2026-08-07.
-            "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}b.txt",
+                "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}b.txt"}
+               if args.chan_dump_prn >= 0 else {}),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
@@ -1753,9 +1799,24 @@ def main():
                 print(f"  NOTE {ch['signal']}: no covering channels on gpu{gpu}, chain skipped",
                       file=sys.stderr)
                 continue
-            xb, _, _ = build_gnss_branch(cfg, args.node, gpu, [i for _, i in ch_pairs], args,
-                                         freq_ids=[f for f, _ in ch_pairs], chain=ch)
-            blocks.update(xb)
+            if args.n2_dual:
+                # PATH B FOR EXTRA SIGNALS, and path A only for the primary. Building both for
+                # every constellation is what runs the node out of frame: a path-A tracker
+                # chain measures 17.712 ms/frame against path B's 2.512 (inject 2.435 +
+                # mapped correlator 0.077), and cx19 already sits at ~51% of the 41.94 ms
+                # frame with one of each. Two constellations on path A would be ~93%.
+                #
+                # The primary keeps its path-A chain deliberately: it is the reference every
+                # path-B number in section 11 has been judged against, and losing it would
+                # mean validating each new signal against nothing.
+                blocks.update(build_n2dual_branch(cfg, args.node, gpu, [i for _, i in ch_pairs],
+                                                  [f for f, _ in ch_pairs], args,
+                                                  out.get("samples_per_data_set", 8192),
+                                                  chain=ch))
+            else:
+                xb, _, _ = build_gnss_branch(cfg, args.node, gpu, [i for _, i in ch_pairs], args,
+                                             freq_ids=[f for f, _ in ch_pairs], chain=ch)
+                blocks.update(xb)
 
         if args.combine_gpus and gpu != 0:
             # GPU 0's combiner consumed this GPU's rec_buf too, so its own combiner would be a
