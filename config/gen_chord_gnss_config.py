@@ -693,7 +693,20 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  # dp.n_freq_out automatically (7 -> 384, ~428 MB per frame slot), so no buffer
                  # config changes with the mode.
                  "gnss_freq_map": not (args.n2_full_freq or args.n2_primary),
-                 "n2k_correlation_name": "correlation",
+                 # GPU MEMORY NAME, and it must not collide with production's. cudaCorrelator
+                 # and cudaCorrelatorDual both allocate an array called <name>_buffer, sized
+                 # from THEIR OWN station count: 28,311,552 B at NS=128 against 113,246,208 B at
+                 # NS=256. Coexisting under one name is a hard startup failure --
+                 # "get_gpu_memory_array failed: requested name correlation_buffer size 28311552
+                 # ... but existing memory is size 113246208" -- and the node comes up with the
+                 # units active and NO data moving, which reads exactly like a stall.
+                 #
+                 # Only --n2-primary wants production's name, because there run_n2k is dropped
+                 # and the standard cudaOutputData leg has to find this array. Coexisting, the
+                 # dual's copy is never even written (the N^2 pass-through is skipped in
+                 # freq-map mode), so a private name costs nothing.
+                 "n2k_correlation_name": ("correlation" if args.n2_primary
+                                          else f"{pre}n2corr"),
                  "gnss_tiles_name": "gnss_tiles",
                  "num_synth": num_synth,
                  "num_live_elements": n_live,

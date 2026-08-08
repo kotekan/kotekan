@@ -429,7 +429,7 @@ gnss0_n2dual:
   - gnss_freq_map: true
     gnss_local_channels: *id002
     gnss_tiles_name: gnss_tiles
-    n2k_correlation_name: correlation
+    n2k_correlation_name: gnss0_n2corr
     name: cudaCorrelatorDual
     num_live_elements: 32
     num_synth: 128
@@ -695,7 +695,7 @@ gnss1_n2dual:
   - gnss_freq_map: true
     gnss_local_channels: *id004
     gnss_tiles_name: gnss_tiles
-    n2k_correlation_name: correlation
+    n2k_correlation_name: gnss1_n2corr
     name: cudaCorrelatorDual
     num_live_elements: 32
     num_synth: 128
