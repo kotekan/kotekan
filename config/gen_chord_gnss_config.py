@@ -639,10 +639,23 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds):
                  "rfi_all_pass": True,
                  # FREQ MAP: compute the mixed + synthetic blocks over ONLY the comb (7 of 384).
                  # Measured 2.90x -> 1.21x stock N^2 (scripts/gnss/n2timing), bitwise-verified
-                 # against the full launch (n2dualtest gate [6]). The AA block is NOT computed
-                 # in this mode, so the standard N^2 pass-through is unavailable -- fine here,
-                 # since this dev config drops run_n2k anyway.
-                 "gnss_freq_map": True,
+                 # against the full launch (n2dualtest gate [6]), and 0.076 ms/frame in situ.
+                 #
+                 # THE AA BLOCK IS NOT COMPUTED IN THIS MODE, so the standard N^2 pass-through
+                 # is unavailable (cudaCorrelatorDual.cpp: "SPLIT 1 ... SKIPPED in freq-map
+                 # mode"). That is fine for a dev config that drops run_n2k, and it is exactly
+                 # what blocks path B from BEING the science pipeline -- there is no N^2 to
+                 # hand downstream. --n2-full-freq turns it off: the full triangle over every
+                 # frequency, AA included, so the bit-identical prefix copy can feed
+                 # cudaOutputData -> host_correlation_buffer -> N2Accumulate.
+                 #
+                 # Cost is the whole question. n2timing measured the marginal OFFLINE at
+                 # +2.00 ms/frame full versus +0.22 ms with the map; in situ the mapped launch
+                 # came in at 0.076 ms, 3x better than its own projection, so the full number
+                 # needs measuring rather than extrapolating. vis_len scales with
+                 # dp.n_freq_out automatically (7 -> 384, ~428 MB per frame slot), so no buffer
+                 # config changes with the mode.
+                 "gnss_freq_map": not args.n2_full_freq,
                  "n2k_correlation_name": "correlation",
                  "gnss_tiles_name": "gnss_tiles",
                  "num_synth": num_synth,
@@ -1219,6 +1232,14 @@ def main():
     ap.add_argument("--n2-dump", action="store_true",
                     help="with --n2-dual: rawFileWrite the gathered tiles to /tmp/gnss "
                          "(~17 MB/s -- short captures only, 1 GB/min) instead of dropAllFrames")
+    ap.add_argument("--n2-full-freq", action="store_true",
+                    help="cudaCorrelatorDual computes the FULL triangle over every frequency "
+                         "(AA included) instead of the mixed+synthetic blocks over the GNSS comb "
+                         "only. Required for path B to be the SCIENCE pipeline: the N^2 "
+                         "pass-through is skipped in freq-map mode because the AA block is never "
+                         "computed there. Costs more -- how much is the open question this flag "
+                         "exists to answer (offline: +2.00 ms full vs +0.22 ms mapped; in situ "
+                         "the mapped launch runs 0.076 ms).")
     ap.add_argument("--keep-n2", action="store_true",
                     help="retain the science pipeline alongside the GNSS branch")
     ap.add_argument("--frame0-nano", type=int, default=None, metavar="NS",
