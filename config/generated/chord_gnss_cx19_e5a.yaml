@@ -291,11 +291,33 @@ gnss0_e5a_n2assemble:
   - 3
   - 4
   - 5
+  - 6
   - 7
   - 8
   - 9
+  - 10
+  - 11
   - 12
   - 13
+  - 14
+  - 15
+  - 16
+  - 18
+  - 19
+  - 21
+  - 22
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
+  - 33
+  - 34
   reference_element: 0
   sample_rate: 3200000000.0
 gnss0_e5a_n2assemble_tiles:
@@ -306,13 +328,13 @@ gnss0_e5a_n2assemble_tiles:
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
   n_live_elements: 32
-  n_prn: 10
+  n_prn: 32
   num_elements: 128
   num_synth: 128
   out_buf: gnss0_e5a_n2epl_buf
   tiles_buf: gnss0_e5a_n2tiles_buf
 gnss0_e5a_n2cmb_buf:
-  frame_size: 10 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -329,14 +351,14 @@ gnss0_e5a_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 10
+  n_prn: 32
   out_buf: gnss0_e5a_n2cmb_buf
   phase_dump_path: /tmp/gnss_n2phase_cx19_0.txt
   phase_dump_prns: []
   phase_track: false
   record_export: 128
 gnss0_e5a_n2ctl_buf:
-  frame_size: 46256
+  frame_size: 147632
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -404,12 +426,12 @@ gnss0_e5a_n2dual:
     host_gnss_n2ctl: gnss0_e5a_n2ctl_buf
     host_gnss_tiles: gnss0_e5a_n2tiles_buf
 gnss0_e5a_n2epl_buf:
-  frame_size: 2340016
+  frame_size: 7487664
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_n2rec_buf:
-  frame_size: 10 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -704,13 +726,13 @@ gnss1_e5a_n2assemble_tiles:
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
   n_live_elements: 32
-  n_prn: 10
+  n_prn: 32
   num_elements: 128
   num_synth: 128
   out_buf: gnss1_e5a_n2epl_buf
   tiles_buf: gnss1_e5a_n2tiles_buf
 gnss1_e5a_n2cmb_buf:
-  frame_size: 10 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -727,14 +749,14 @@ gnss1_e5a_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 10
+  n_prn: 32
   out_buf: gnss1_e5a_n2cmb_buf
   phase_dump_path: /tmp/gnss_n2phase_cx19_1.txt
   phase_dump_prns: []
   phase_track: false
   record_export: 128
 gnss1_e5a_n2ctl_buf:
-  frame_size: 46256
+  frame_size: 147632
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -802,12 +824,12 @@ gnss1_e5a_n2dual:
     host_gnss_n2ctl: gnss1_e5a_n2ctl_buf
     host_gnss_tiles: gnss1_e5a_n2tiles_buf
 gnss1_e5a_n2epl_buf:
-  frame_size: 2340016
+  frame_size: 7487664
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_n2rec_buf:
-  frame_size: 10 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
