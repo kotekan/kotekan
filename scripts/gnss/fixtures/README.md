@@ -22,11 +22,26 @@ per cycle (the combiner status responses dominate): 73 MB raw, 21 MB gzipped. On
 
 ⚠️⚠️ **THE GOLDEN DIGEST ALWAYS LIVES HERE, next to this README — never beside the blob.**
 It used to be written to `<transcript>.digest`, which for the on-sky fixtures put it on NFS,
-*outside git*, with a hand-made mirror in this directory. The mirror drifted, and the E5a
-one was committed carrying `776c70ff…` — a number **no commit in the history reproduces**
-(replaying at the very commit that added it gives `5fc7770a…`). It was blessed from a dirty
-tree that moved before the commit landed, so that gate compared against a phantom for its
-entire life and nobody could tell, because green and red were equally meaningless.
+*outside git*, with a hand-made mirror in this directory. The mirror drifted silently.
+
+⚠️⚠️⚠️ **THE E5a DIGEST MOVES ON ITS OWN, AND THAT IS NOT A BUG IN YOUR CHANGE.** A
+transcript freezes the *fleet* conversation, but the broadcast ephemeris is fetched by
+`gnss_ephemeris.fetch_brdc` through its own urllib — **not** through `transport.py` — into
+`~/.cache/kotekan_gps`, and it refreshes several times a day. So the digest is a function of
+*(code, transcript, today's ephemeris)*.
+
+Measured 2026-08-09: golden blessed at 20:36, the daily BRDC rewritten at 20:44, and every
+replay after that gave a different digest with **byte-identical code** — one seed's `cp0`
+moved 0.1 chips because a satellite's freshest `toe` changed. (This also retracts the earlier
+claim in this file that the `776c70ff` golden came from a dirty-tree bless. It did not.
+Nothing was ever dirty.)
+
+**A model-primary chain is maximally exposed** — every seed comes from the model. GPS L5 is
+search-anchored and its digest survived the same ephemeris update untouched. If E5a moves and
+L5 does not, suspect the sky before your diff.
+
+`bless` records a BRDC fingerprint and `check` calls out an ephemeris change explicitly.
+Pinning the nav files to make it genuinely hermetic is task #29.
 
 Since 2026-08-08 `bless` resolves the golden to this directory unconditionally and stamps
 the commit it ran at, shouting if the tree was dirty:

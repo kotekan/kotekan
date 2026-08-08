@@ -283,7 +283,23 @@ class FleetPublisher:
                 "amplitude": math.sqrt(max(0.0, v["p_pow"])),
                 "unbiased_amplitude": math.sqrt(max(0.0, v["p_pow"] - p_med)),
                 "dll_disc": v["disc"],
+                # ⚠️ `doppler_hz` IS THE COMMANDED SEED, NOT WHAT THE CORRELATOR RAN AT.
+                # These two differ by the tracker's feed-forward, dop_rate x (seed age), and
+                # the seed changes only when the broker reseeds -- so this field is a STAIRCASE
+                # even while the tracker is following the sky perfectly smoothly.
+                #
+                # THAT COST A WHOLE MISDIAGNOSIS (2026-08-09). The viewer plots this as
+                # "tracked Doppler"; it froze for 12 minutes at a time, and I read it as the
+                # tracker failing to apply dop_rate -- reporting "75 Hz un-applied" that was
+                # really just the seed being stale. Polling the combiner directly showed the
+                # applied Doppler advancing smoothly at the model rate the whole time.
+                #
+                # So publish BOTH, and never make anyone infer the tracker's state from the
+                # broker's own command again. `c` is the best instance's combiner row, whose
+                # doppler_hz is record slot REC_DOPPLER = PrnCtl.fcar_report = the propagated
+                # value the despread actually used.
                 "doppler_hz": sd.get("doppler_hz", c.get("doppler_hz", 0.0)),
+                "doppler_applied_hz": c.get("doppler_hz"),
                 "code_phase_chips": sd.get("code_phase_chips", c.get("code_phase_chips", 0.0)),
                 # fleet-only extras: not in the combiner schema, ignored by older consumers
                 "fleet_q": v["q"], "fleet_q_floor": v["q_floor"],

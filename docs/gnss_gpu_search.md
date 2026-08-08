@@ -1794,17 +1794,43 @@ move the answer.
 
 `check` compared against `<transcript>.digest`, which for the on-sky fixtures is
 `/home/kvand/gnss/fixtures/` on NFS — *outside version control* — with a hand-made mirror
-under `scripts/gnss/fixtures/`. The mirror drifted. The E5a golden was committed carrying
-`776c70ff…`, **a number no commit in the history reproduces**: replaying at the very commit
-that added it gives `5fc7770a…`. It was blessed from a dirty tree that moved before the
-commit landed, so that gate ran against a phantom for its entire life — and neither green nor
-red would have meant anything.
-
-Goldens now resolve into the repo unconditionally, and `bless` stamps the commit it ran at
-plus a `DIRTY` flag it shouts about. A stale golden is now a diff in `git status`.
+under `scripts/gnss/fixtures/`. The mirror drifted. Goldens now resolve into the repo
+unconditionally, and `bless` stamps the commit it ran at plus a `DIRTY` flag it shouts about.
 
 ⚠️ **A gate's expectation is source code.** If it lives where `git status` cannot see it, it
 is not an expectation — it is a note.
+
+### 11.18.2b  …and the reason I gave for it was wrong (same day, retracted)
+
+I wrote above that the E5a golden `776c70ff…` was "blessed from a dirty tree that moved
+before the commit landed." **That is retracted.** No tree was ever dirty. The real cause is
+worse, because it recurs on its own:
+
+**THE GATE HAS A THIRD INPUT, AND IT IS NOT THE TRANSCRIPT.** A transcript freezes the fleet
+conversation, but the broadcast ephemeris is fetched by `gnss_ephemeris.fetch_brdc` through
+its *own* urllib — never through `transport.py` — into `~/.cache/kotekan_gps`, and it
+refreshes several times a day. The digest is a function of *(code, transcript, today's
+ephemeris)*.
+
+Caught red-handed hours later: the E5a golden was blessed at **20:36**, the daily BRDC file
+was rewritten at **20:44**, and every replay after that produced a different digest **with
+byte-identical code** — one seed's `cp0` moved 0.1 chips because a satellite's freshest `toe`
+had changed. I confirmed it by stashing the only edit in the tree and re-running: same new
+digest. The edit was innocent; the sky had moved.
+
+A **model-primary** chain is maximally exposed — every seed comes from the model, so every
+ephemeris update perturbs it. GPS L5 is search-anchored and its digest survived the same
+update untouched. That asymmetry is the tell, and it is why only E5a ever looked haunted.
+
+`bless` now records a BRDC fingerprint alongside the commit, and `check` says so explicitly
+when the ephemeris has moved, so this is self-explaining rather than an afternoon. Making it
+genuinely hermetic means pinning the nav files — task #29.
+
+**The lesson is the one from 11.18.4, turned on me:** I found an artifact whose inputs were
+not all declared, and rather than enumerate them I reached for the most available story.
+"Blessed from a dirty tree" fit the evidence I had and was wrong. An undeclared input does
+not announce itself — that is the definition — so when an artifact moves with no cause,
+enumerate what it actually reads before naming a culprit.
 
 ### 11.18.3  The fleet's generator flags existed only in a shell history
 

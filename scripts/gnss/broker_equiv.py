@@ -91,6 +91,44 @@ def _tree_state():
     return sha, dirty
 
 
+def _brdc_fingerprint():
+    """Short hash of the BRDC nav files the replay will parse.
+
+    ⚠️ THE GATE HAS A THIRD INPUT AND IT IS NOT THE TRANSCRIPT. A transcript freezes the
+    fleet conversation, but the broadcast ephemeris is fetched by gnss_ephemeris.fetch_brdc
+    through its OWN urllib -- not through transport.py -- into ~/.cache/kotekan_gps, and it
+    is refreshed several times a day. So the digest is a function of (code, transcript,
+    TODAY'S EPHEMERIS), and the third term changes on its own.
+
+    Found the hard way 2026-08-09: the E5a golden was blessed at 20:36, the daily BRDC file
+    was rewritten at 20:44, and every replay after that produced a different digest with
+    IDENTICAL code -- one seed's cp0 moved 0.1 chips because a satellite's freshest toe had
+    changed. I had already blamed the earlier instance of this on a dirty-tree bless, which
+    was wrong: no tree was ever dirty, the sky's ephemeris simply moved on.
+
+    A model-primary chain (E5a/B2a) is maximally exposed because EVERY seed comes from the
+    model. GPS L5 is search-anchored and its digest survived the same update.
+
+    Recording the fingerprint does not make the gate hermetic -- pinning the files would (see
+    task #29) -- but it makes a moved digest self-explaining instead of a mystery that costs
+    an afternoon.
+    """
+    cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
+    h = hashlib.sha256()
+    try:
+        for name in sorted(os.listdir(cache)):
+            if not name.endswith((".rnx.gz", ".rnx")):
+                continue
+            p = os.path.join(cache, name)
+            h.update(name.encode())
+            h.update(str(os.path.getsize(p)).encode())
+            with open(p, "rb") as f:
+                h.update(f.read())
+    except Exception:
+        return "none"
+    return h.hexdigest()[:12]
+
+
 def _read_gold(path):
     """First token is the digest; the rest of the line is provenance. Old single-token
     goldens still read correctly."""
@@ -194,7 +232,8 @@ def main():
     if a.action == "bless":
         d, _ = replay(a.transcript)
         sha, dirty = _tree_state()
-        prov = "blessed-at %s%s" % (sha, " DIRTY" if dirty else "")
+        prov = "blessed-at %s%s brdc %s" % (sha, " DIRTY" if dirty else "",
+                                            _brdc_fingerprint())
         with open(gold, "w") as f:
             f.write("%s  %s\n" % (d, prov))
         print("blessed %s = %s (%s)" % (os.path.basename(gold), d, prov))
@@ -214,10 +253,21 @@ def main():
             print("EQUIVALENT  %s%s" % (got, "  [%s]" % prov if prov else ""))
             return
         sys.stderr.write(err[-4000:] + "\n")
+        now_brdc = _brdc_fingerprint()
+        brdc_note = ""
+        if prov and "brdc " in prov and ("brdc %s" % now_brdc) not in prov:
+            brdc_note = (
+                "\n\n⚠️  THE EPHEMERIS MOVED, NOT NECESSARILY THE CODE. This golden was "
+                "blessed against\n    BRDC %s; the cache now hashes %s. The broadcast "
+                "ephemeris is fetched\n    outside the transcript and refreshes several "
+                "times a day, and a MODEL-PRIMARY chain\n    (E5a/B2a) seeds every satellite "
+                "from it -- a changed toe moves a seed's cp0 with no\n    code change at "
+                "all. Check that before concluding anything about the diff."
+                % (prov.split("brdc ")[-1].split()[0], now_brdc))
         sys.exit("DIGEST MOVED\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
                  "refactor is not behaviour-preserving.\nIf the change is intended, "
-                 "`bless` FROM A CLEAN TREE and commit the .digest with the code."
-                 % (want, "  [%s]" % prov if prov else "", got))
+                 "`bless` FROM A CLEAN TREE and commit the .digest with the code.%s"
+                 % (want, "  [%s]" % prov if prov else "", got, brdc_note))
 
     if a.action == "selftest":
         n, _, _ = _census(a.transcript)
