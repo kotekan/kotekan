@@ -33,14 +33,20 @@ OUTDIR = os.path.join(K, "config", "generated")
 
 def flags_from(mapping):
     """Manifest keys -> generator flags, same convention as gnss_chains_chord.yaml:
-    true -> a bare flag, false/None -> omitted, anything else -> --key value."""
+    true -> a bare flag, false/None -> omitted, anything else -> --key value.
+
+    A LIST repeats the flag: `extra-signal: [A, B]` -> `--extra-signal A --extra-signal B`,
+    which is what argparse's action="append" wants. Needed the moment a node carries more
+    than one extra chain (E5a *and* B2a on the same 1176.45 MHz tap).
+    """
     out = []
     for k, v in mapping.items():
         if v is False or v is None:
             continue
-        out.append("--" + k)
-        if v is not True:
-            out.append(str(v))
+        for item in (v if isinstance(v, (list, tuple)) else [v]):
+            out.append("--" + k)
+            if item is not True:
+                out.append(str(item))
     return out
 
 

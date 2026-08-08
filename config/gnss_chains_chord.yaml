@@ -98,12 +98,29 @@ http://cx43:12049/gnss{0..1}_e5a_n2combine,http://cx44:12049/gnss{0..1}_e5a_n2co
 http://cx51:12049/gnss{0..1}_e5a_n2combine"
     n2-combiners: *e5a_cmb
 
-  # BeiDou B2a -- structurally identical to E5a (same 1176.45 MHz, same CS100 secondary).
-  # Commented out until its node chains are generated: pointing at endpoints that do not
-  # exist logs "set_seeds failed" every cycle and is otherwise silent, which is exactly the
-  # quiet degradation to avoid. `signal: bds_b2a` carries the BDS-3-only --dr-min-prn 19.
+  # BeiDou B2a -- structurally identical to E5a: same 1176.45 MHz carrier, same 1023000-chip
+  # code, same 100 ms CS secondary, so it rides the SAME voltage tap and the same clock. Model-
+  # primary for the same reason (a per-PRN secondary has no blind acquisition,
+  # CHORD_MULTIBAND.md 5), hence no detectors and --dr-clock-adopt.
   #
-  # bds_b2a:
-  #   signal: bds_b2a
-  #   trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,..."
-  #   combiner: gnss0_b2a_n2combine
+  # `signal: bds_b2a` implies constellation C AND --dr-min-prn 19: B2a is a BDS-3 signal and
+  # the BDS-2 birds below 19 do not broadcast it. Seeding them would be a confident request for
+  # something that is not on the air.
+  #
+  # ⚠️ THE NODE SIDE IS ONLY 24 PRNs (19-42), NOT the 38 BDS-3 sats in the BRDC: 43-52 and
+  # 56-60 are IGSO/GEO over Asia and never clear the horizon at 49.3N (max elevation < 0 over
+  # a full day). The broker will predict them, find them below the mask, and never seed them --
+  # but the node's lane budget is spent at generation time, so the trim lives in
+  # config/gnss_fleet_chord.yaml.
+  bds_b2a:
+    signal: bds_b2a
+    dr-clock-adopt: true
+    trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,http://cx27:12049/gnss{0..1}_b2a_inject,\
+http://cx42:12049/gnss{0..1}_b2a_inject,http://cx43:12049/gnss{0..1}_b2a_inject,\
+http://cx44:12049/gnss{0..1}_b2a_inject,http://cx51:12049/gnss{0..1}_b2a_inject"
+    combiner: gnss0_b2a_n2combine
+    dll-combiners: &b2a_cmb "http://cx19:12049/gnss{0..1}_b2a_n2combine,\
+http://cx27:12049/gnss{0..1}_b2a_n2combine,http://cx42:12049/gnss{0..1}_b2a_n2combine,\
+http://cx43:12049/gnss{0..1}_b2a_n2combine,http://cx44:12049/gnss{0..1}_b2a_n2combine,\
+http://cx51:12049/gnss{0..1}_b2a_n2combine"
+    n2-combiners: *b2a_cmb

@@ -51,6 +51,16 @@ ACT=${2:-up}
 # DIFFERENT user -- systemd runs the unit as root, and fs.protected_regular=2 refuses root an
 # O_CREAT append onto another user's file in /tmp. That failure surfaces as status=209/STDOUT
 # with nothing else to go on; `sudo rm -f` the stale file first.
+# DEFAULT TO THE CONFIG THE FLEET MANIFEST OWNS, not to a bare chord_gnss_<node>.yaml.
+# The fleet has run on a SUFFIXED config since E5a (_e5afleet, now _multi), so the old default
+# pointed at a stale GPS-only file that still exists and still starts -- the worst kind of
+# wrong, because it comes up healthy and simply lacks two constellations. Every restart has
+# had to carry GNSS_CFG by hand and remember which suffix was current. Ask the manifest.
+# GNSS_CFG still overrides, which is how the profiling/one-off configs are run.
+if [ -z "${GNSS_CFG:-}" ] && [ -f "$K/config/gnss_fleet_chord.yaml" ]; then
+    GNSS_CFG=$(python3 "$K/scripts/gnss/gen_fleet.py" "$K/config/gnss_fleet_chord.yaml" \
+                       --node "$N" --print-path 2>/dev/null || true)
+fi
 CFG=${GNSS_CFG:-$K/config/generated/chord_gnss_$N.yaml}
 LOG=${GNSS_LOG:-/tmp/gnss_node.log}
 

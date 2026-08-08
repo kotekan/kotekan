@@ -26,3 +26,11 @@ chains:
     trackers: http://localhost:12777/e5a_track
     combiner: http://localhost:12777/e5a_combiner
     dr-clock-adopt: true
+  # THREE chains in one process (added when B2a landed): the point is that a THIRD
+  # model-primary chain on the SAME band adopts the same clock and shares the same BRDC parse
+  # -- one store serving G, E and C, which is the whole argument for one broker.
+  bds_b2a:
+    signal: bds_b2a
+    trackers: http://localhost:12777/b2a_track
+    combiner: http://localhost:12777/b2a_combiner
+    dr-clock-adopt: true

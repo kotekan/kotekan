@@ -36,7 +36,12 @@ base: base/live_config_20260730.json
 # built for a single measurement and regenerating them is not a goal. `--check` therefore
 # says nothing about them, which is correct: a gate that reported drift in a file nobody
 # intends to reproduce would train you to ignore it.
-suffix: _e5afleet
+# Renamed from `_e5afleet` when B2a landed (2026-08-09): that name described the ONE extra
+# chain it had at birth, and a config called "e5afleet" that actually carries GPS L5 + Galileo
+# E5a + BeiDou B2a is the kind of stale name this project has already lost hours to. The old
+# files are DELETED rather than left beside these, so a restart that reaches for the old path
+# fails loudly in node_up.sh's preflight instead of quietly bringing a node up without B2a.
+suffix: _multi
 
 common:
   # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
@@ -49,10 +54,22 @@ common:
   # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's
   # answer and would point every node at itself.
   search-host: 10.222.3.6
-  # Galileo E5a as a second tracker chain on the SAME 1176.45 MHz tap (free: same covering
-  # channels as GPS L5, so it shares the voltage tap). PRNs are the Galileo range 1-36 minus
-  # the slots with no active satellite; the count is the path-B lane budget, 4 lanes per PRN.
-  extra-signal: GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+  # Extra tracker chains on the SAME 1176.45 MHz tap. Both are free of an extra voltage tap
+  # (identical covering channels to GPS L5) but each gets its OWN 128-lane synth buffer and
+  # its own dual-correlator pass, so the cost is GPU, not bandwidth.
+  #
+  # ⚠️ THE PRN COUNT IS A HARD BUDGET, NOT A PREFERENCE: 4 lanes per PRN (E, P, L, P_HEAD)
+  # against num_synth 128 means **32 PRNs maximum per chain**. Going over needs NSB=256 and a
+  # second kernel instantiation (docs 11, path-B plan). Both lists below are at or under it.
+  extra-signal:
+    # Galileo: the range 1-36 minus the slots with no active satellite. Exactly 32 -- full.
+    - GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+    # BeiDou B2a. BDS-3 ONLY (PRN >= 19 -- B1I/B2I-era BDS-2 birds do not broadcast B2a), and
+    # further cut to the 24 that ACTUALLY RISE HERE. The BRDC carries 38 BDS-3 PRNs, but
+    # 43-52/56-60 are IGSO/GEO parked over Asia and never clear the horizon at 49.3N/119.6W --
+    # computed over 24 h, max elevation < 0 for every one of them, while 19-42 all reach
+    # 34-88 deg. Seeding a satellite that cannot be there costs 4 lanes and produces noise.
+    - BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 
 nodes:
   # search-port-base is NOT arbitrary: the aggregator addresses feeds at base+i in node-major,
