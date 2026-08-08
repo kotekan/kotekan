@@ -15,14 +15,21 @@
 # broker documents it as "the CHORD configuration", because the station position is known and
 # the F-engine is GPS-disciplined.
 #
-# WHICH MEANS THE CLOCK COMES FROM THE GPS BROKER. With no detections this broker cannot solve
-# its own receiver clock: it uses whatever --dr-clock-chips is primed with, forever. The number
-# to prime it with is the GPS broker's converged clock, and it TRANSFERS EXACTLY -- E5a/B2a sit
-# on L5's 1176.45 MHz carrier, so the cable delay, the F-engine pipeline and the PFB group
-# delay are the same hardware in the same band. It does NOT transfer across a retune (E5b), and
-# it does not survive an F-engine restart. Read it from the GPS broker's log ("clock" in the
-# integrity line) and pass --dr-clock-chips; the 0.0 default below is a COLD START, good to
-# whatever the instrumental constant happens to be, and 0.4 chips is the DLL capture range.
+# THE CLOCK COMES FROM THE GPS BROKER, AND IS NOW ADOPTED RATHER THAN PASTED. With no detections
+# this broker cannot solve its own receiver clock -- `offs` is always empty, so the EMA never
+# runs. It used to hold whatever --dr-clock-chips was primed with FOREVER, read out of the GPS
+# broker's log by a human, wrong after any F-engine restart and silent about it.
+#
+# --dr-clock-adopt below reads it live from the band sibling's receiver-state file every cycle
+# (receiver_state.py, the export that already existed with nothing consuming it). The transfer
+# is EXACT: E5a/B2a sit on L5's 1176.45 MHz carrier, so the cable delay, F-engine pipeline and
+# PFB group delay are the same hardware in the same band -- which is exactly what --state-dongle
+# l5 asserts. It does NOT transfer across a retune (E5b at 1207 MHz has a different group
+# delay), so that dongle key is load-bearing, not decoration.
+#
+# THE GPS BROKER MUST PUBLISH for this to work: give it --state-file /tmp/gnss_state/gps_l5.json
+# --state-dongle l5. Without it this chain logs "no fresh sibling" and holds --dr-clock-chips,
+# i.e. degrades to exactly the old behaviour rather than to something worse.
 #
 # Inter-constellation time is already handled: gnss_ephemeris.py applies BDT = GPST - 14 s to
 # both toc and toe, and Galileo is GPS-aligned. Do not add an offset here.
@@ -80,6 +87,7 @@ exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
     --nh-overlay-len 100 \
     --almanac --almanac-source brdc --dead-reckon \
     --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
+    --dr-clock-adopt --state-read-dir /tmp/gnss_state --state-dongle l5 \
     --constellation $SYS --dr-constellation $SYS $PRNARG \
     --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 \
     --code-length 10230 --hops-per-sec 195312.5 \

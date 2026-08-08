@@ -1387,6 +1387,47 @@ def main(argv=None):
                          "across runs, and warm-start from it: the bias is then SOLVED from "
                          "cycle 1 (narrow margins, seeding enabled immediately). Audit rec D: "
                          "on the GPSDO this is a per-chain constant, not an estimate.")
+    ap.add_argument("--state-read-dir", default=None,
+                    help="directory of sibling receiver-state JSON to READ (--dr-clock-adopt). "
+                         "Defaults to --state-file's directory. Separate because an adopting "
+                         "chain publishes nothing: it contributes no estimate, so requiring it "
+                         "to name a write path just to read one would be backwards.")
+    ap.add_argument("--dr-clock-adopt", action="store_true",
+                    help="ADOPT the receiver clock from a BAND SIBLING instead of holding the "
+                         "primed --dr-clock-chips constant forever. Reads the sibling state "
+                         "files receiver_state.StateWriter already publishes (same --state-dir "
+                         "and --state-dongle scope as --clock-bias-siblings) and refreshes "
+                         "dr_state['clk'] and its drift from the freshest one, every cycle.\n"
+                         "\n"
+                         "WHY: a chain with --detectors EMPTY cannot solve its own clock. The "
+                         "bootstrap takes a median of measured code-phase residuals from "
+                         "/get_detections, so with no detector `offs` is always empty, the EMA "
+                         "never runs, and the primed constant stands for the WHOLE RUN -- which "
+                         "the --dr-clock-chips help already says in as many words. That is "
+                         "every multi-constellation chain (E5a/B2a have no blind acquisition at "
+                         "all), so today the number is read out of the GPS broker's log by a "
+                         "human and pasted in, and it is wrong after any F-engine restart.\n"
+                         "\n"
+                         "THIS IS AN ADOPTION, NOT A FUSION, and that is why it is safe to turn "
+                         "on now while receiver_state's covariance-weighted fuser is still "
+                         "deferred ('score, don't steer'). The adopting chain has NO estimate of "
+                         "its own, so there is nothing to weight and no manufactured agreement "
+                         "-- the failure mode that module's docstring warns about (siblings "
+                         "reading each other, so their spread measures the fusion rather than "
+                         "the estimator) cannot arise. A chain WITH detections ignores this "
+                         "flag; it solves its own.\n"
+                         "\n"
+                         "SCOPE IS THE LO, exactly as receiver_state defines it: E5a and GPS L5 "
+                         "share one carrier, one cable and one F-engine, so the clock transfers "
+                         "EXACTLY. It does NOT transfer across a retune -- E5b at 1207 MHz has a "
+                         "different PFB group delay -- which is why the dongle key gates it and "
+                         "why this must never be pointed across bands.")
+    ap.add_argument("--dr-clock-adopt-max-age-s", type=float, default=60.0,
+                    help="with --dr-clock-adopt: refuse a sibling record older than this. "
+                         "Staleness is a REFUSAL, not a fallback (receiver_state.read_state) -- "
+                         "an old clock is a different epoch's number, and after an F-engine "
+                         "restart it is exactly the wrong one. On refusal the chain keeps what "
+                         "it has and says so.")
     ap.add_argument("--clock-bias-siblings", nargs="*", default=None,
                     help="BAND-SHARED bias (2026-07-22): the other chains' --clock-bias-file "
                          "paths on the SAME band. All chains of a band despread the SAME "
@@ -2641,6 +2682,12 @@ def main(argv=None):
     xband = resolve_prefix(args.xband_combiner, base) if args.xband_combiner else None
     _xb_resid = []   # rolling cross-band prediction residuals (Hz), shadow accumulation
     _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
+    # WHERE SIBLING STATE IS READ FROM. Deliberately independent of --state-file: a chain that
+    # ADOPTS a clock has no reason to publish one (it has no estimate of its own to contribute),
+    # so deriving the read directory from the write path would make --dr-clock-adopt a silent
+    # no-op on exactly the chains that need it. Defaults to the write directory when only that
+    # is given, so the common case needs one flag rather than two.
+    _xb_read_dir = args.state_read_dir or _xb_dir
 
     def _fused_lo_ppm(dongle):
         # this band's own LO comes from _fuse_cached; a sibling's is read fresh from its file
@@ -4960,6 +5007,64 @@ def main(argv=None):
                         step = ((raw - clk + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
                         dr_state["clk"] = (clk + args.dr_clock_alpha * step) % CODE_LEN
                     dr_state["clk_t"] = now_w
+                # ---- ADOPT A BAND SIBLING'S CLOCK (--dr-clock-adopt) -------------------------
+                # Runs AFTER the EMA above on purpose: a chain that solved its own clock this
+                # cycle keeps it, and only a chain that cannot solve one (no detectors -> `offs`
+                # empty -> the block above never ran) takes the sibling's. So enabling the flag
+                # on a detector-bearing chain is a no-op rather than a silent override.
+                if (args.dr_clock_adopt and not offs and _xb_read_dir
+                        and args.state_dongle):
+                    try:
+                        import receiver_state as _rs  # optional module, imported where used
+                        sibs = _rs.read_dongle(
+                            _xb_read_dir, args.state_dongle,
+                            max_age_s=args.dr_clock_adopt_max_age_s, t_now=t0,
+                            exclude=(os.path.basename(args.state_file).rsplit(".", 1)[0]
+                                     if args.state_file else None))
+                    except Exception:
+                        sibs = []
+                    # Freshest wins. Not a weighted mean: this is an adoption of ONE physical
+                    # number measured by a chain that can measure it, and averaging two siblings'
+                    # copies of the same quantity would just average their noise back in.
+                    best_sib = None
+                    for rec in sibs:
+                        dr = (rec.get("dr") or {})
+                        if dr.get("chips") is None:
+                            continue
+                        if best_sib is None or float(rec.get("t", 0)) > float(best_sib[0]):
+                            best_sib = (rec.get("t", 0), rec, dr)
+                    if best_sib is not None:
+                        _, rec, dr = best_sib
+                        new_clk = float(dr["chips"]) % CODE_LEN
+                        prev = dr_state.get("clk")
+                        moved = (abs(((new_clk - prev + CODE_LEN / 2) % CODE_LEN)
+                                     - CODE_LEN / 2) if prev is not None else None)
+                        dr_state["clk"] = new_clk
+                        dr_state["clk_t"] = t0
+                        if dr.get("drift_chips_s") is not None:
+                            dr_state["drift"] = float(dr["drift_chips_s"])
+                        # Loud on a real MOVE, quiet on the steady state. A jump is the
+                        # signature of an F-engine restart re-establishing frame 0, which is
+                        # precisely the event the hand-primed constant used to survive wrongly.
+                        if moved is None or moved > 0.5:
+                            _log("dead-reckon: clock ADOPTED %.2f chips from band sibling "
+                                 "'%s' (%s%s, age %.1f s)"
+                                 % (new_clk, rec.get("chain", "?"),
+                                    "cold" if moved is None else "moved %.2f chips" % moved,
+                                    ", drift %+.4f chips/s" % dr["drift_chips_s"]
+                                    if dr.get("drift_chips_s") is not None else "",
+                                    t0 - float(rec.get("t", t0))))
+                        else:
+                            _log_rl("clkadopt", "dead-reckon: clock adopted %.2f chips from "
+                                                "'%s' (steady)" % (new_clk, rec.get("chain", "?")))
+                    elif args.dr_clock_adopt:
+                        _log_rl("clkadopt-none",
+                                "dead-reckon: --dr-clock-adopt found no fresh sibling for dongle "
+                                "'%s' in %s (<%.0f s) -- HOLDING the primed clock %.2f chips, "
+                                "which does not survive an F-engine restart"
+                                % (args.state_dongle, _xb_read_dir,
+                                   args.dr_clock_adopt_max_age_s,
+                                   dr_state.get("clk") if dr_state.get("clk") is not None else float("nan")))
                 # ---- MODEL-HEALTH GATES (design (b)): the resilience the fence never gave.
                 # A fence on Doppler MOTION cannot detect a model that is simply WRONG -- a
                 # stale ephemeris, a manoeuvre, a bad orbit. These can, and they use signals we
