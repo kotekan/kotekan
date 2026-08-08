@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""The broker refactor's equivalence gate (task #27 M0, docs/CHORD_BROKER_REFACTOR.md).
+
+`gps_distributed_broker.py` is 6400 lines with a 5100-line `main()`, and every comment block
+in it is a scar from a real outage. Restructuring it on inspection is not a plan. So:
+
+  1. RECORD a real run's entire conversation with the world
+         broker_equiv.py record out.jsonl -- <the usual broker flags> --interval 2
+     (or add `--transcript-write out.jsonl` to any existing launch script, which is what you
+     want for the on-sky captures -- it is side-effect-free and costs a JSON line per poll.)
+
+  2. REPLAY it against whatever the code has become, and hash the POST stream
+         broker_equiv.py digest out.jsonl
+
+  3. GATE a refactor: the digest must not move.
+         broker_equiv.py check out.jsonl              # vs out.jsonl.digest
+         broker_equiv.py bless out.jsonl              # record the current digest as golden
+
+The POST stream is the right gate because it is the broker's entire output: seeds to the
+trackers, search commands, nav bits, carrier trim. Two brokers that POST the same bytes in
+the same order ARE the same broker as far as the instrument is concerned.
+
+Byte-identical is a legitimate bar here (contrast the CUDA gates, where fmaf contraction
+moves with kernel shape): Python neither contracts nor reassociates float arithmetic, so a
+pure code move reproduces the numbers exactly. A moved digest is a real change.
+
+  4. SELF-TEST -- because a gate that cannot fail is not a gate:
+         broker_equiv.py selftest out.jsonl
+     replays twice (must agree) and then replays with a one-part-in-1e12 perturbation
+     injected into the loop gains (must DISAGREE). If the perturbed run still matches, the
+     transcript does not exercise the code and the gate is decorative -- see the warning in
+     docs/CHORD_BROKER_REFACTOR.md 3.2 about transcripts captured against a dead fleet.
+"""
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+
+K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BROKER = os.path.join(K, "python", "scripts", "gnss", "gps_distributed_broker.py")
+PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
+
+
+def _header_argv(path):
+    """The recording run's own flags, carried in the transcript's first line."""
+    with open(path) as f:
+        for line in f:
+            if line.strip():
+                r = json.loads(line)
+                if r.get("k") == "argv":
+                    return r["v"]
+                break
+    sys.exit("%s has no argv header -- recorded by a pre-M0 broker?" % path)
+
+
+def _census(path):
+    """What the transcript actually contains. A replay of nothing replays perfectly."""
+    n = {"now": 0, "get": 0, "post": 0}
+    urls, prns = set(), set()
+    with open(path) as f:
+        for line in f:
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            if r["k"] in n:
+                n[r["k"]] += 1
+            if r["k"] == "post":
+                urls.add(r["u"])
+    return n, urls, prns
+
+
+def replay(path, extra=(), env=None):
+    """Run the broker against a transcript; return (digest, stderr)."""
+    argv = _header_argv(path)
+    # --publish-port 0 disables the REST publisher: replays must not fight over a port, and
+    # two of them running concurrently is the normal case when bisecting.
+    argv = _strip(argv, "--publish-port")
+    cmd = ([PY, "-u", BROKER] + argv
+           + ["--transcript-read", path, "--publish-port", "0"] + list(extra))
+    e = dict(os.environ)
+    e.update(env or {})
+    p = subprocess.run(cmd, capture_output=True, text=True, env=e, cwd=K)
+    out = p.stdout.strip().splitlines()
+    if not out:
+        sys.stderr.write(p.stderr[-4000:] + "\n")
+        sys.exit("replay produced no digest (broker exited %d)" % p.returncode)
+    return out[-1].strip(), p.stderr
+
+
+def _strip(argv, flag):
+    keep, skip = [], False
+    for a in argv:
+        if skip:
+            skip = False
+            continue
+        if a == flag:
+            skip = True
+            continue
+        if a.startswith(flag + "="):
+            continue
+        keep.append(a)
+    return keep
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("action", choices=["record", "digest", "check", "bless", "selftest",
+                                       "census"])
+    ap.add_argument("transcript")
+    ap.add_argument("rest", nargs=argparse.REMAINDER,
+                    help="for `record`: the broker flags to run under, after a bare --")
+    a = ap.parse_args()
+    gold = a.transcript + ".digest"
+
+    if a.action == "record":
+        flags = [x for x in a.rest if x != "--"]
+        if not flags:
+            sys.exit("record needs the broker flags: broker_equiv.py record f.jsonl -- --trackers ...")
+        cmd = [PY, "-u", BROKER] + flags + ["--transcript-write", a.transcript]
+        sys.stderr.write("+ %s\n" % " ".join(cmd))
+        raise SystemExit(subprocess.call(cmd, cwd=K))
+
+    if a.action == "census":
+        n, urls, _ = _census(a.transcript)
+        print("cycles(now)=%d  gets=%d  posts=%d" % (n["now"], n["get"], n["post"]))
+        for u in sorted(urls):
+            print("  post ->", u)
+        return
+
+    if a.action == "digest":
+        d, _ = replay(a.transcript)
+        print(d)
+        return
+
+    if a.action == "bless":
+        d, _ = replay(a.transcript)
+        with open(gold, "w") as f:
+            f.write(d + "\n")
+        print("blessed %s = %s" % (os.path.basename(gold), d))
+        return
+
+    if a.action == "check":
+        if not os.path.exists(gold):
+            sys.exit("no golden digest at %s -- run `bless` first" % gold)
+        want = open(gold).read().strip()
+        got, err = replay(a.transcript)
+        if got == want:
+            print("EQUIVALENT  %s" % got)
+            return
+        sys.stderr.write(err[-4000:] + "\n")
+        sys.exit("DIGEST MOVED\n  golden %s\n  now    %s\nThe POST stream changed: the "
+                 "refactor is not behaviour-preserving." % (want, got))
+
+    if a.action == "selftest":
+        n, _, _ = _census(a.transcript)
+        if n["post"] == 0:
+            sys.exit("transcript contains ZERO posts -- it exercises nothing. Capture one "
+                     "against a chain that is actually seeding (see CHORD_BROKER_REFACTOR "
+                     "3.2: a frozen chain replays perfectly and tests nothing).")
+        d1, _ = replay(a.transcript)
+        d2, _ = replay(a.transcript)
+        if d1 != d2:
+            sys.exit("NOT DETERMINISTIC: two replays of the same transcript disagree\n"
+                     "  %s\n  %s\nSomething outside the transcript is leaking in (a clock, "
+                     "an unseeded RNG, a set iteration)." % (d1, d2))
+        print("determinism OK   %s  (%d cycles, %d posts)" % (d1, n["now"], n["post"]))
+        # The gate must be able to FAIL. Perturb the loop gains by one part in a million --
+        # far below anything physical (0.25 -> 0.25000025) and require the digest to move.
+        #
+        # ⚠️ NOT 1e-12, which was the first attempt and reported GATE IS BLIND. That is not
+        # a blind gate, it is arithmetic: a 1e-12 relative nudge to a gain of 0.25 moves a
+        # ~0.01-chip trim by 1e-14, and the trim lands on a code phase of ~5000 chips where
+        # a double's own resolution is ~1e-12. The perturbation vanished BELOW the number it
+        # was being added to. A sensitivity test has to clear the representation of the
+        # quantity it perturbs, or it measures float precision rather than the gate.
+        d3, _ = replay(a.transcript, env={"GNSS_BROKER_EQUIV_PERTURB": "1e-6"})
+        if d3 == d1:
+            sys.exit("GATE IS BLIND: a 1e-12 perturbation of the loop gains did not move the "
+                     "digest. Either the transcript never reaches the loops, or the posts do "
+                     "not depend on them. This gate would pass a broken refactor.")
+        print("sensitivity OK   perturbed -> %s" % d3)
+        print("\nGATE GOOD.")
+        return
+
+
+if __name__ == "__main__":
+    main()

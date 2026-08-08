@@ -34,6 +34,7 @@ the ~0.5 s decorrelation time. REST via stdlib urllib; visibility via skyfield
 """
 
 import argparse
+import hashlib
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import math
@@ -53,17 +54,194 @@ sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(_
 from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name aliasing)
 
 
+# ---------------------------------------------------------------------------------------
+# TRANSCRIPT -- record/replay of every external interaction (task #27 M0, the refactor gate).
+#
+# WHY. This file is 6400 lines, `main()` is 5100 of them, and every comment block in it is a
+# scar from a real outage. It cannot be restructured on inspection. The gate is behavioural
+# equivalence: record one run's entire conversation with the world, replay it against the
+# refactored code, and require the POST stream to come out BYTE-IDENTICAL.
+#
+# Byte-identical is a legitimate bar here, unlike in the CUDA kernels: Python neither
+# contracts nor reassociates float expressions, so a pure code move reproduces arithmetic
+# exactly. A hash mismatch therefore means a real change, never numerical weather.
+#
+# THREE INDEPENDENT STREAMS (`now`, `get`, `post`) rather than one interleaved log. A
+# refactor legitimately reorders WHEN the clock is read relative to a poll; it must not
+# change WHICH endpoints are polled, in what order, or what is posted. Separate streams
+# make the first free and keep the second two strict -- a get that arrives out of order
+# fails on the URL, which is exactly the signal wanted.
+#
+# ONE DELIBERATE BEHAVIOUR CHANGE, and it is the reason `_now()` exists at all: the cycle
+# clock is FROZEN for the duration of a cycle. Until now the ~40 clock reads in one pass
+# drifted apart by however long the pass took, so a gate evaluated late in the cycle used a
+# different "now" than one evaluated early.
+#
+# MEASURED, do not guess (the first draft of this comment said "~0.3 s" from nothing):
+# cf06's live GPS L5 broker, 600 log lines, intra-cycle spread median 0.035 s, p90 1.71 s,
+# max 1.79 s -- against a 2 s interval. So on the real fleet the spread is most of a cycle,
+# not a rounding error. It is still far inside every threshold these gates use (10 s log
+# limits, 60 s anchor re-check, minutes for staleness and watchdogs), and it was never
+# meaningful ordering -- it was whichever endpoints happened to be slow that pass. Freezing
+# makes one cycle evaluate at one instant, which is what all of them meant.
+#
+# The loop's own sleep computation deliberately keeps a REAL clock read (below), so the
+# control cadence is unchanged.
+# ---------------------------------------------------------------------------------------
+
+class _TranscriptDone(Exception):
+    """Replay reached the end of the recording -- a normal, successful termination."""
+
+
+class _Transcript:
+    def __init__(self):
+        self.mode = None          # None (live) | "write" | "read"
+        self._fh = None
+        self._rd = {"now": [], "get": [], "post": []}
+        self._ix = {"now": 0, "get": 0, "post": 0}
+        self._owner = None        # only the main thread is transcribed; see below
+        self._t = None            # the frozen cycle clock
+        self.posts = []           # replay+record: the ordered POST stream (the gate output)
+        self.argv = None          # the recording run's own argv, carried in the header
+
+    # -- lifecycle ------------------------------------------------------------------
+    def open_write(self, path, argv):
+        self.mode, self._owner = "write", threading.get_ident()
+        # LINE-buffered: a recording is normally ended by killing the broker, and a block
+        # buffer would throw away the last few seconds -- or, worse, leave a half-written
+        # JSON line that makes the whole transcript unreadable.
+        self._fh = open(path, "w", buffering=1)
+        # The header carries the recording run's argv so a replay is self-describing: the
+        # harness re-invokes the broker with the SAME flags rather than a human retyping 30
+        # of them and quietly getting one wrong. (broker_up_extra.sh is 12 hand-typed
+        # constants, several of which fail silently when mistyped -- that class of error is
+        # exactly what a gate must not depend on.)
+        self._emit({"k": "argv", "v": list(argv)})
+
+    def open_read(self, path):
+        self.mode, self._owner = "read", threading.get_ident()
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                r = json.loads(line)
+                if r["k"] == "argv":
+                    self.argv = r["v"]
+                else:
+                    self._rd[r["k"]].append(r)
+
+    def close(self):
+        if self._fh:
+            self._fh.close()
+            self._fh = None
+
+    def _mine(self):
+        # The publisher serves HTTP from a daemon thread and reads the clock there. Those
+        # reads are not part of the control flow and must not enter the stream, or the
+        # recording would depend on when a browser happened to poll.
+        return self.mode is not None and threading.get_ident() == self._owner
+
+    def _emit(self, rec):
+        self._fh.write(json.dumps(rec) + "\n")
+
+    def _take(self, kind):
+        i = self._ix[kind]
+        if i >= len(self._rd[kind]):
+            raise _TranscriptDone("%s stream exhausted after %d entries" % (kind, i))
+        self._ix[kind] = i + 1
+        return self._rd[kind][i]
+
+    # -- clock ----------------------------------------------------------------------
+    def tick(self):
+        """Start a new cycle: sample (or replay) the frozen clock."""
+        if self.mode == "read":
+            self._t = self._take("now")["v"]
+        else:
+            self._t = time.time()
+            if self._mine():
+                self._emit({"k": "now", "v": self._t})
+        return self._t
+
+    def now(self):
+        if not self._mine():
+            return time.time()
+        if self._t is None:
+            return self.tick()
+        return self._t
+
+    # -- transport ------------------------------------------------------------------
+    def get(self, url, timeout):
+        if self.mode == "read" and self._mine():
+            r = self._take("get")
+            if r["u"] != url:
+                raise RuntimeError("TRANSCRIPT DIVERGENCE at get #%d: recorded %s, replay "
+                                   "asked for %s" % (self._ix["get"] - 1, r["u"], url))
+            if r.get("e"):
+                raise RuntimeError(r["e"])
+            return r["r"]
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as h:
+                v = json.loads(h.read().decode())
+        except Exception as e:
+            if self._mine() and self.mode == "write":
+                self._emit({"k": "get", "u": url, "r": None, "e": repr(e)})
+            raise
+        if self._mine() and self.mode == "write":
+            self._emit({"k": "get", "u": url, "r": v})
+        return v
+
+    def post(self, url, payload, timeout):
+        # The POST stream IS the gate: capture it in every mode, before any transport can
+        # fail, so a run against a dead fleet still produces a comparable trace.
+        self.posts.append((url, json.dumps(payload, sort_keys=True)))
+        if self.mode == "read" and self._mine():
+            r = self._take("post")
+            if r["u"] != url:
+                raise RuntimeError("TRANSCRIPT DIVERGENCE at post #%d: recorded %s, replay "
+                                   "sent to %s" % (self._ix["post"] - 1, r["u"], url))
+            if r.get("e"):
+                raise RuntimeError(r["e"])
+            return r["s"]
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(url, data=data, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as h:
+                s = h.status
+        except Exception as e:
+            if self._mine() and self.mode == "write":
+                self._emit({"k": "post", "u": url, "s": None, "e": repr(e)})
+            raise
+        if self._mine() and self.mode == "write":
+            self._emit({"k": "post", "u": url, "s": s})
+        return s
+
+    def digest(self):
+        """Hash of the ordered POST stream -- the equivalence gate's single number."""
+        h = hashlib.sha256()
+        for url, body in self.posts:
+            h.update(url.encode())
+            h.update(b"\x00")
+            h.update(body.encode())
+            h.update(b"\n")
+        return h.hexdigest()
+
+
+_TR = _Transcript()
+
+
+def _now():
+    """The frozen cycle clock. See the _Transcript note: one cycle, one instant."""
+    return _TR.now()
+
+
 def _get(url, timeout=5.0):
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    return _TR.get(url, timeout)
 
 
 def _post(url, payload, timeout=5.0):
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=data, method="POST",
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.status
+    return _TR.post(url, payload, timeout)
 
 
 def _log(msg):
@@ -84,7 +262,7 @@ def _log_rl(key, msg, every_s=10.0):
     every_s keeps the journal readable and the history dense enough for every autopsy
     this project has actually run (the 07-18 hunts used >=1 s granularity). EVENT lines
     (HOLD/RELEASE/ESCAPE/REACQ/WATCHDOG/TRANSLATE/fits-changed...) stay unlimited."""
-    now = time.time()
+    now = _now()
     if now - _log_rl_last.get(key, 0.0) >= every_s:
         _log_rl_last[key] = now
         _log(msg)
@@ -702,7 +880,7 @@ class FleetPublisher:
                 self._dets = dets
             self._meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                           "present": sum(1 for r in rows if r["fleet_present"]),
-                          "utc": time.time()}
+                          "utc": _now()}
 
 
 def _coherent_sum(a):
@@ -969,7 +1147,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     (the skyfield path it replaces was heavier).
     """
     ge = state["mod"]
-    now = time.time()
+    now = _now()
     if state["eph"] is None or now - state["eph_t"] > 7200.0:
         # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
         # t_utc so a replay (--almanac-epoch) gets the DAY-MATCHED file -- today's file
@@ -1048,7 +1226,7 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         toe = cnav_eph["toe"]
@@ -1074,7 +1252,7 @@ def _cnav2_brdc_xcheck(brdc_alm, sys, prn, cnav2_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         toe = cnav2_eph["toe"]
@@ -1100,7 +1278,7 @@ def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         t0e = inav_eph["t0e"]
@@ -1128,7 +1306,7 @@ def _lnav_brdc_xcheck(brdc_alm, sys, prn, lnav_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         toe = lnav_eph["toe"]
@@ -1154,7 +1332,7 @@ def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         t0e = fnav_eph["t0e"]
@@ -1180,7 +1358,7 @@ def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         t0e = bcnav2_eph["t_oe"]
@@ -1205,7 +1383,7 @@ def _bcnav3_brdc_xcheck(brdc_alm, sys, prn, bcnav3_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         t0e = bcnav3_eph["t_oe"]
@@ -1230,7 +1408,7 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
             return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
         if be is None:
             return " | BRDC:stale"
         t0e = bcnav1_eph["t_oe"]
@@ -2460,7 +2638,44 @@ def main(argv=None):
                          "decode (LNAV / CNAV / CNAV-2).")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
+    # -- the refactor gate (task #27 M0); see the _Transcript note at the top of this file --
+    ap.add_argument("--transcript-write", default=None, metavar="FILE",
+                    help="record every clock read, GET and POST to FILE (JSONL) while running "
+                         "normally. Cheap and side-effect-free: safe to leave on in production "
+                         "for the minute it takes to capture a golden run.")
+    ap.add_argument("--transcript-read", default=None, metavar="FILE",
+                    help="replay a recorded transcript instead of talking to the fleet, then "
+                         "exit when it is exhausted. No network, no sleeps, deterministic "
+                         "clock. The POST stream this produces is the equivalence gate -- see "
+                         "scripts/gnss/broker_equiv.py.")
     args = ap.parse_args(argv)
+    if args.transcript_write and args.transcript_read:
+        ap.error("--transcript-write and --transcript-read are mutually exclusive")
+    if args.transcript_write:
+        _raw = list(argv if argv is not None else sys.argv[1:])
+        _keep, _skip = [], False
+        for _a in _raw:
+            if _skip:
+                _skip = False
+                continue
+            if _a == "--transcript-write":
+                _skip = True          # drop the flag AND its separate value
+                continue
+            if _a.startswith("--transcript-write="):
+                continue
+            _keep.append(_a)
+        _TR.open_write(args.transcript_write, _keep)
+    elif args.transcript_read:
+        _TR.open_read(args.transcript_read)
+        # TEST-ONLY, and only under replay: scripts/gnss/broker_equiv.py's `selftest` needs
+        # to prove the gate CAN fail, so it asks for a perturbation far below anything
+        # physical and requires the digest to move. A gate that cannot fail is not a gate.
+        _eps = os.environ.get("GNSS_BROKER_EQUIV_PERTURB")
+        if _eps:
+            _f = 1.0 + float(_eps)
+            args.dll_gain *= _f
+            args.carrier_gain *= _f
+            args.code_bias_alpha *= _f
     if args.cl_assist and args.cl_tracker:
         # In-place lift + copied lift together would hand the CM tracker CL-lifted phases:
         # broken CM tracking with no error anywhere downstream. Refuse at the door.
@@ -2479,7 +2694,7 @@ def main(argv=None):
     # active tug toward where the satellite used to be.
     # Assumes the replay paces ~realtime (rawFileRead frame_period_us); pacing error over a
     # few-minute bench is <<1 s, i.e. <1 Hz of Doppler.
-    _alm_clock_offset = (args.almanac_epoch - time.time()) if args.almanac_epoch else 0.0
+    _alm_clock_offset = (args.almanac_epoch - _now()) if args.almanac_epoch else 0.0
     # FILE-POSITION clock (fills in once combiner status flows): wall-rate advance assumes the
     # replay paces at exactly 1.0x, and it does NOT -- measured 0.80x (frame_period_us plus
     # per-frame file-open overhead), so a wall-advancing epoch runs AHEAD of the data by 0.2 s
@@ -2496,7 +2711,7 @@ def main(argv=None):
         if args.almanac_epoch and _alm_file_pos[0] is not None:
             return datetime.fromtimestamp(args.almanac_epoch + _alm_file_pos[0],
                                           tz=timezone.utc)
-        return datetime.fromtimestamp(time.time() + _alm_clock_offset, tz=timezone.utc)
+        return datetime.fromtimestamp(_now() + _alm_clock_offset, tz=timezone.utc)
 
     base = args.rest_url.rstrip("/")
     detectors = parse_endpoints(args.detectors, base)
@@ -2542,7 +2757,7 @@ def main(argv=None):
             when = _alm_now()
             brdc_alm = {"mod": _alm_eph_mod,
                         "eph": _alm_eph_mod.parse_rinex_nav(_alm_eph_mod.fetch_brdc(when)),
-                        "eph_t": time.time()}
+                        "eph_t": _now()}
             n = sum(1 for k in brdc_alm["eph"] if k[0] == alm_sys and k[1] >= alm_min_prn)
             if n == 0:
                 # ★ A PARSE THAT SUCCEEDS WITH ZERO SATS IS A FAILURE, not a result. Only an
@@ -2647,7 +2862,7 @@ def main(argv=None):
                     # "self-corrects" is a promise the detector-less configuration cannot keep,
                     # and believing it would mean shipping a wrong clock indefinitely.
                     dr_state["clk"] = args.dr_clock_chips % float(args.code_length)
-                    dr_state["clk_t"] = time.time()
+                    dr_state["clk_t"] = _now()
                     if args.dr_clock_drift is not None:
                         dr_state["drift"] = float(args.dr_clock_drift)
                         _log("dead-reckon: clock DRIFT primed %+.4f chips/s"
@@ -2711,12 +2926,12 @@ def main(argv=None):
     def _fused_lo_ppm(dongle):
         # this band's own LO comes from _fuse_cached; a sibling's is read fresh from its file
         if state_w is not None and dongle == args.state_dongle:
-            f = _fuse_cached(time.time())
+            f = _fuse_cached(_now())
         elif _xb_dir:
             try:
                 f = receiver_state.fuse_dongle(
                     receiver_state.read_dongle(_xb_dir, dongle, max_age_s=30.0,
-                                               t_now=time.time()),
+                                               t_now=_now()),
                     floor_ppm=0.001, reject_sigma=5.0)
             except Exception:
                 f = None
@@ -2975,7 +3190,7 @@ def main(argv=None):
             pass
     code_bias_cal = code_bias_ema  # l-a calibration reference (None if cold)
     _clk_persist_t = [0.0]         # last clock-bias-file write (10 s rate limit)
-    _bias_meas_t = time.time()     # last multi-sat bias measurement (stale-rescue clock;
+    _bias_meas_t = _now()     # last multi-sat bias measurement (stale-rescue clock;
                                    # birth-stamped so warm-start gets a full grace window)
     bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
     bias_available = False         # is ANY usable bias in hand (own or fused)? S2d gate
@@ -3052,7 +3267,7 @@ def main(argv=None):
             syn = h.get("synced")
             if syn is None:
                 syn = (h.get("words") or 0) > 0 or eph_obj is not None
-            dhw.observe(sig, prn, time.time(), count=cnt, synced=bool(syn),
+            dhw.observe(sig, prn, _now(), count=cnt, synced=bool(syn),
                         eph=(eph_obj is not None), dpos_m=_dh_dpos(xc))
         except Exception:
             pass
@@ -3157,7 +3372,12 @@ def main(argv=None):
                            else "%s ... %s (%d)" % (trackers[0], trackers[-1], len(trackers))))
 
     while True:
-        t0 = time.time()
+        # Start of cycle: sample the frozen cycle clock ONCE (see the _Transcript note).
+        # Every `_now()` below this returns exactly t0, so the whole pass -- every gate,
+        # every age, every EMA -- evaluates at one instant instead of smearing over the
+        # cycle's own processing time.
+        t0 = _TR.tick()
+        t_wall = time.time()   # REAL clock, kept solely for the sleep below
         # 1. collect best-SNR detection per PRN across all detection sources
         best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long, cp_at_ref)
         for d_ep in detectors:
@@ -3310,7 +3530,7 @@ def main(argv=None):
                 try:
                     import gnss_ephemeris as _nh_eph
                     period = args.code_length / args.chip_rate_hz
-                    t_ref = args.almanac_epoch or time.time()
+                    t_ref = args.almanac_epoch or _now()
                     hints = [{"prn": int(p),
                               "nh": int(round((_nh_eph.gpst_of_utc(t_ref)
                                                - v[3] / _nh_eph.C_LIGHT
@@ -3716,9 +3936,10 @@ def main(argv=None):
         # every NODE cached at ITS startup, so the correct response is to restart the fleet and
         # the broker together; silently re-anchoring here would fix the broker's arithmetic while
         # leaving the nodes wrong, and hide the condition that requires the operator.
-        # time.time() rather than the loop's now_w: that is assigned LATER in the cycle
-        # (line ~4756), so using it here is a NameError on the first pass.
-        _now_anchor = time.time()
+        # _now() rather than the loop's now_w: that is assigned LATER in the cycle, so using
+        # it here is a NameError on the first pass. With the cycle clock frozen they are now
+        # the same number anyway -- which is what this always meant.
+        _now_anchor = _now()
         if args.time0_endpoint and utc0_sample0 and _now_anchor - _anchor_chk[0] > 60.0:
             _anchor_chk[0] = _now_anchor
             try:
@@ -3740,7 +3961,7 @@ def main(argv=None):
                     # estimate. time0_ns is the absolute time of fpga_seq_num 0.
                     # NB: NOT `t0` -- that name is the cycle-start timestamp in this loop, and
                     # shadowing it with a nanosecond epoch made the loop's
-                    # `dt = interval - (time.time() - t0)` about 1.8e18 seconds.
+                    # `dt = interval - (_now() - t0)` about 1.8e18 seconds.
                     frame0_ns = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
                                       .get("time0_ns", 0.0))
                     utc0_sample0 = frame0_ns / 1e9
@@ -4435,8 +4656,8 @@ def main(argv=None):
                 # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
                 # I/NAV rides E1B on L1 and E5b-I on the mid band -- SAME message + decoder; label
                 # the decode-health obs by the actual carrier (from the aux combiner name).
-                if inav is not None and time.time() - _inav_log_t[0] > 60.0:
-                    _inav_log_t[0] = time.time()
+                if inav is not None and _now() - _inav_log_t[0] > 60.0:
+                    _inav_log_t[0] = _now()
                     _inav_sig = "GAL_E5BI_INAV" if "e5b" in inav_combiner else "GAL_E1B_INAV"
                     for _p in sorted(inav._p):
                         h = inav.health(_p)
@@ -4467,8 +4688,8 @@ def main(argv=None):
                         _log("F/NAV decoder armed on aux chain %s" % fnav_combiner)
                     fnav.ingest(_p, _r["nav_obs"])
                 # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
-                if fnav is not None and time.time() - _fnav_log_t[0] > 60.0:
-                    _fnav_log_t[0] = time.time()
+                if fnav is not None and _now() - _fnav_log_t[0] > 60.0:
+                    _fnav_log_t[0] = _now()
                     for _p in sorted(fnav._p):
                         h = fnav.health(_p)
                         if not h or not h["words"]:
@@ -4498,8 +4719,8 @@ def main(argv=None):
                         _log("B-CNAV2 decoder armed on aux chain %s" % bcnav2_combiner)
                     bcnav2.ingest(_p, _r["nav_obs"])
                 # 60 s health + BRDC cross-check (alm_sys is 'C' for the BDS broker)
-                if bcnav2 is not None and time.time() - _bcnav2_log_t[0] > 60.0:
-                    _bcnav2_log_t[0] = time.time()
+                if bcnav2 is not None and _now() - _bcnav2_log_t[0] > 60.0:
+                    _bcnav2_log_t[0] = _now()
                     for _p in sorted(bcnav2._p):
                         h = bcnav2.health(_p)
                         if not h or not h["words"]:
@@ -4528,8 +4749,8 @@ def main(argv=None):
                         bcnav1 = Bcnav1Predictor(log=_log)
                         _log("B-CNAV1 decoder armed on aux chain %s" % bcnav1_combiner)
                     bcnav1.ingest(_p, _r["nav_obs"])
-                if bcnav1 is not None and time.time() - _bcnav1_log_t[0] > 60.0:
-                    _bcnav1_log_t[0] = time.time()
+                if bcnav1 is not None and _now() - _bcnav1_log_t[0] > 60.0:
+                    _bcnav1_log_t[0] = _now()
                     for _p in sorted(bcnav1._p):
                         h = bcnav1.health(_p)
                         if not h or not h["words"]:
@@ -4559,8 +4780,8 @@ def main(argv=None):
                         cnav2 = Cnav2Predictor(log=_log)
                         _log("CNAV-2 decoder armed on aux chain %s" % cnav2_combiner)
                     cnav2.ingest(_p, _r["nav_obs"])
-                if cnav2 is not None and time.time() - _cnav2_log_t[0] > 60.0:
-                    _cnav2_log_t[0] = time.time()
+                if cnav2 is not None and _now() - _cnav2_log_t[0] > 60.0:
+                    _cnav2_log_t[0] = _now()
                     for _p in sorted(cnav2._p):
                         h = cnav2.health(_p)
                         if not h or not h["words"]:
@@ -4585,8 +4806,8 @@ def main(argv=None):
                     navbrdc.update(brdc_alm["eph"], pred, navbits)
                 except Exception as e:
                     _log("navbrdc update failed: %s" % e)
-            if navbits is not None and time.time() - navbits_log_t > 60.0:
-                navbits_log_t = time.time()
+            if navbits is not None and _now() - navbits_log_t > 60.0:
+                navbits_log_t = _now()
                 for _p in sorted(navbits._p):
                     h = navbits.health(_p)
                     if not h:
@@ -4641,8 +4862,8 @@ def main(argv=None):
             # the whole decode chain against an outside reference, and is the foundation for
             # eventually trusting live CNAV ephemeris over the 2 h-latency download. Cheap (Kepler
             # propagation, no Viterbi), so it rides the existing 60 s health cadence.
-            if cnav is not None and time.time() - navbits_log_t > 60.0:
-                navbits_log_t = time.time()
+            if cnav is not None and _now() - navbits_log_t > 60.0:
+                navbits_log_t = _now()
                 for _p in sorted(cnav._p):
                     h = cnav.health(_p)
                     if not h:
@@ -4666,8 +4887,8 @@ def main(argv=None):
             # B-CNAV3 decode health (BeiDou B2b PRIMARY chain). Frame decode is convention-complete
             # (LDPC + CRC); the message-type histogram + SOW logged here is exactly what maps the
             # ephemeris field table (Phase 2), after which eph + a BRDC dpos xcheck join (like cnav).
-            if bcnav3 is not None and time.time() - _bcnav3_log_t[0] > 60.0:
-                _bcnav3_log_t[0] = time.time()
+            if bcnav3 is not None and _now() - _bcnav3_log_t[0] > 60.0:
+                _bcnav3_log_t[0] = _now()
                 for _p in sorted(bcnav3._p):
                     h = bcnav3.health(_p)
                     if not h or not h["words"]:
@@ -4880,8 +5101,8 @@ def main(argv=None):
         # (a detection re-anchors via the normal seed loop, which also removes the PRN
         # from the model-owned set below) and integrity check (residuals logged here).
         if (dr_state is not None and args.almanac and pred and utc0_sample0
-                and time.time() >= dr_state["next"]):
-            now_w = time.time()
+                and _now() >= dr_state["next"]):
+            now_w = _now()
             dr_state["next"] = now_w + args.dr_refresh_s
             # THE DEAD-RECKON MODEL MUST WORK AT THE CODE THE TRACKER ACTUALLY DESPREADS.
             # This was CODE_LEN / chip_rate -- ONE PRIMARY PERIOD -- so t0m and every predicted
@@ -4944,8 +5165,8 @@ def main(argv=None):
                             _ents, args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
                             mask_deg=-90.0)
-                        if time.time() - _decfb_log_t[0] > 60.0:
-                            _decfb_log_t[0] = time.time()
+                        if _now() - _decfb_log_t[0] > 60.0:
+                            _decfb_log_t[0] = _now()
                             ab = ""
                             if args.decoded_eph_fallback_force and dr_state["eph"]:
                                 # A/B: compare decoded vs BRDC predict, worst common sat.
@@ -5331,7 +5552,7 @@ def main(argv=None):
                     fcoh = fleet_coherent(dll_combiners, args.coh_min_instances,
                                           args.coh_min_records, prns=set(seeds) or None,
                                           log=None, floor_margin=args.coh_floor_margin,
-                                          seed=int(time.time()))
+                                          seed=int(_now()))
                 except Exception as e:
                     _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
             # PATH B, same estimator, separate population. Reported side by side rather than
@@ -5345,7 +5566,7 @@ def main(argv=None):
                     fcoh_n2 = fleet_coherent(n2_combiners, args.coh_min_instances,
                                              args.coh_min_records, prns=set(seeds) or None,
                                              log=None, floor_margin=args.coh_floor_margin,
-                                             seed=int(time.time()))
+                                             seed=int(_now()))
                 except Exception as e:
                     _log_rl("fleet-coh-n2", "fleet coherent (path B): skipped (%s)" % e)
             if fcoh or fcoh_n2:
@@ -6221,7 +6442,7 @@ def main(argv=None):
                         _green = [prn for prn in _strong
                                   if ((cls_.get(prn) or {}).get("deep_snr") or 0.0)
                                   > ((status.get(prn) or {}).get("deep_snr") or 0.0) / 3.0]
-                        _nowv = time.time()
+                        _nowv = _now()
                         if cl_segsearch["t_step"] == 0.0:
                             cl_segsearch["t_step"] = _nowv
                         elif len(_strong) >= 2 and len(_green) >= 2:
@@ -6311,7 +6532,7 @@ def main(argv=None):
         if state_w is not None:
             try:
                 if dr_state is not None:
-                    _iw = time.time()
+                    _iw = _now()
                     _ir = [v[0] for v in dr_state.get("integ", {}).values()
                            if isinstance(v, (list, tuple)) and _iw - v[1] < 30.0]
                     # ⚠️ CHIPS ARE NOT COMPARABLE ACROSS CHAINS -- a chip is a different
@@ -6402,10 +6623,22 @@ def main(argv=None):
             dhw.flush(t0)
         if args.once:
             return
-        dt = args.interval - (time.time() - t0)
-        if dt > 0:
+        # REAL elapsed time, not the frozen cycle clock: this is the one place in the loop
+        # that must know how long the pass actually took, or the control cadence would
+        # become interval + processing rather than interval.
+        dt = args.interval - (time.time() - t_wall)
+        if dt > 0 and _TR.mode != "read":
             time.sleep(dt)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except _TranscriptDone as e:
+        # Normal, successful end of a replay: the recording ran out. Report the gate's
+        # digest on stdout so a bare `--transcript-read` is useful without the harness.
+        _log("transcript replay complete (%s); %d posts, digest %s"
+             % (e, len(_TR.posts), _TR.digest()))
+        print(_TR.digest())
+    finally:
+        _TR.close()
