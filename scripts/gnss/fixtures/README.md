@@ -12,12 +12,30 @@ legitimately differ. The point of the fixture is that the *input* is frozen.
 |---|---|---|
 | `broker_fake_l5.jsonl` | `broker_fakefleet.py` | detections → seeding → cp currency → status → DLL → seed POST, 60 cycles / 59 posts, GPS L5 geometry |
 | `broker_onsky_l5.jsonl.gz.digest` | live GPS L5, 2026-08-08 18:05 UTC | the real thing: 56 cycles, 1213 gets, **934 posts across 17 endpoints** including `set_doppler_hints` / `set_nh_hint`, the almanac predictor, the dead-reckon seeder and the code-bias pool |
+| `broker_onsky_e5a.jsonl.gz.digest` | live Galileo E5a, 2026-08-08 18:2x UTC | model-primary: 41 cycles, **468 posts**, no detections at all — the dead-reckon seeder and clock adoption, which nothing else reaches |
 
 ⚠️ **The on-sky transcript itself is NOT in the repo** — a minute of real fleet is ~1.3 MB
 per cycle (the combiner status responses dominate): 73 MB raw, 21 MB gzipped. Only the
 **digest** is versioned; the blob lives at
 
     /home/kvand/gnss/fixtures/broker_onsky_l5.jsonl.gz     (NFS, same path on every node)
+
+⚠️⚠️ **THE GOLDEN DIGEST ALWAYS LIVES HERE, next to this README — never beside the blob.**
+It used to be written to `<transcript>.digest`, which for the on-sky fixtures put it on NFS,
+*outside git*, with a hand-made mirror in this directory. The mirror drifted, and the E5a
+one was committed carrying `776c70ff…` — a number **no commit in the history reproduces**
+(replaying at the very commit that added it gives `5fc7770a…`). It was blessed from a dirty
+tree that moved before the commit landed, so that gate compared against a phantom for its
+entire life and nobody could tell, because green and red were equally meaningless.
+
+Since 2026-08-08 `bless` resolves the golden to this directory unconditionally and stamps
+the commit it ran at, shouting if the tree was dirty:
+
+    EQUIVALENT  458afb3e…  [blessed-at 01e777480]
+
+A digest is a claim about code. If you cannot name the commit it describes, it is decoration
+— and **bless from a clean tree, then commit the `.digest` in the same commit as the change
+that moved it.**
 
 `broker_equiv.py` and the broker both read `.gz` transparently, so it is used exactly like
 any other fixture:
@@ -63,8 +81,15 @@ three are cheap the moment their chain is running:
   carrier loop is deliberately OFF in production and no on-sky capture can reach it without
   turning it on. Covering it needs a deliberate `--carrier-gain 0.5` run, which is a
   behaviour change to the instrument, not a recording choice.
-* **E5a model-primary** — same, on `broker_up_extra.sh e5a`. This is the one that exercises
-  the dead-reckon seeder and clock adoption, and it needs no detections.
+* ~~**E5a model-primary**~~ — **DONE 2026-08-08**, and it is the one that exercises the
+  dead-reckon seeder and clock adoption with no detections at all:
+
+      sensitivity OK   moved by: carrier_hz, hops_per_sec
+      coverage NOTE    this fixture does NOT reach: dll_gain, carrier_gain, code_bias_alpha, bias_alpha
+
+  Reaching fewer knobs than the L5 capture is correct, not a defect — a chain with no
+  detections runs no DLL and no code-bias pool. It is the *only* fixture that covers the
+  model-primary spine, which is exactly where #28's cold-start defect lived.
 * **The CM/CL sibling chain** — `--cl-tracker`, which is used by `config/run_live.sh`
   (NOT by `replay_bench_leg.sh`; that runs GPS L1 C/A + BeiDou B1C and no CL at all).
 
