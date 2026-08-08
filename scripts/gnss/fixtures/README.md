@@ -47,3 +47,24 @@ three are cheap the moment their chain is running:
 ⚠️ Before blessing any capture, run `selftest`. A transcript recorded against a dark or
 frozen chain replays perfectly and proves nothing — that trap cost two full scans on
 2026-08-08.
+
+## Multi-chain smoke test (`two_chain_fake.yaml`)
+
+Two chains — GPS L5 with a search, Galileo E5a with none — in one process against the fake
+fleet. This is what proves the M5 driver actually shares, and it needs no F-engine:
+
+    fuser -k 12777/tcp; sleep 1
+    ./broker_fakefleet.py --port 12777 &
+    ./broker_multi.py fixtures/two_chain_fake.yaml     # ~20 s, then Ctrl-C
+
+Look for all four, not just "it ran":
+
+    time anchor ... = <same value>        on BOTH chains  (fetched once, shared)
+    receiver: anchor=<v> (<chain>)        ONE latch, named owner
+    almanac: BRDC (32 G sats) / (33 E sats) with `brdc=1 store(s)` — one parse, two
+                                          constellations, which is the thing two processes
+                                          throw away
+    dead-reckon: clock ADOPTED <n> chips from in-process chain 'gps_l5'  (no file transport)
+
+⚠️ The fake fleet's detections are not physically consistent, so the adopted clock wanders
+between cycles. That is the fixture, not the mechanism — do not read convergence into it.

@@ -1,0 +1,110 @@
+# CHORD GNSS chains -- one broker process, every signal (task #27).
+#
+#   scripts/gnss/broker_multi.py config/gnss_chains_chord.yaml
+#
+# Replaces running scripts/gnss/broker_up.sh and scripts/gnss/broker_up_extra.sh e5a side
+# by side. Those two chains sit on the SAME 1176.45 MHz carrier through the same feed and
+# the same clock; splitting them across processes is what forced the receiver clock through
+# a JSON file, fetched the F-engine time anchor twice, parsed BRDC twice, and needed two
+# viewer instances. See docs/CHORD_BROKER_REFACTOR.md.
+#
+# Every key becomes a broker flag: `dll-gain: 0.25` -> `--dll-gain 0.25`, `true` -> a bare
+# flag, `false`/null -> omitted. So this file reads as the command lines it replaces, and a
+# mistyped key surfaces as argparse's "unrecognized arguments" instead of being ignored.
+#
+# ⚠️ The per-signal constants are NOT here on purpose. `signal: gps_l5` resolves carrier,
+# chip rate, code length, long-code segments+epoch and overlay length from
+# lib/stages/gnss/gnssSignal.hpp -- the same descriptors the trackers' replica bank is built
+# from. Every one of those constants fails SILENTLY when mistyped, and this file is exactly
+# the kind of place a wrong one would live forever.
+
+common:
+  # -- the RECEIVER: one telescope, one site, one F-engine ------------------------------
+  rest-url: http://cx19:12049      # must name a real NODE; cf06 runs no gnss node itself
+  time0-endpoint: telescope/time0_ns
+  hops-per-sec: 195312.5           # F-engine record geometry -- not a signal property
+  lat: 49.32075144444
+  lon: -119.62081125
+  alt: 545
+  mask-deg: 0
+  interval: 2
+
+  # -- shared loop settings (identical in both launch scripts today) ---------------------
+  almanac: true
+  almanac-source: brdc
+  dead-reckon: true
+  dr-clock-chips: 0.0
+  carrier-from-code: true
+  cl-assist: true
+  seed-doppler: auto
+  dll-gain: 0.25
+  carrier-gain: 0.0
+  code-bias-alpha: 0.05
+  code-bias-min-sats: 2
+  fit-gap-s: 3600
+  fit-min-snr: 0
+  bias-min-snr: 60
+  nh-period-offset: 0
+
+chains:
+
+  # GPS L5 -- the only chain with a SEARCH. Its detections are what solve the receiver
+  # clock, which every other chain here now consumes in-process.
+  gps_l5:
+    signal: gps_l5
+    detectors: http://localhost:12050/gps_search
+    trackers: "http://cx19:12049/gnss{0..1}_track,http://cx27:12049/gnss{0..1}_track,\
+http://cx42:12049/gnss{0..1}_track,http://cx43:12049/gnss{0..1}_track,\
+http://cx44:12049/gnss{0..1}_track,http://cx51:12049/gnss{0..1}_track,\
+http://cx19:12049/gnss{0..1}_inject"
+    combiner: gnss0_combine
+    # NOT uniform: cx19 and cx51 were regenerated with --combine-gpus and expose ONE merged
+    # 14-channel combiner; the rest predate it and expose two 7-channel ones. Regenerate all
+    # node configs and this collapses to the {0..1} form everywhere.
+    dll-combiners: "http://cx19:12049/gnss0_combine,http://cx51:12049/gnss0_combine,\
+http://cx27:12049/gnss{0..1}_combine,http://cx42:12049/gnss{0..1}_combine,\
+http://cx43:12049/gnss{0..1}_combine,http://cx44:12049/gnss{0..1}_combine"
+    publish-port: 12060
+    narrow-search: true
+    nh-hint: true
+    nh-hint-span: 2
+    acquire-snr: 30
+    search-margin-wide-hz: 200
+    search-margin-hz: 100
+
+  # Galileo E5a -- path B, and NO DETECTORS by design: E5a-Q carries a PER-PRN secondary,
+  # which the replica bank's single-sequence overlay slot cannot hold, so blind
+  # multi-period acquisition does not exist (CHORD_MULTIBAND.md section 5). Purely
+  # model-primary, every visible satellite seeded from BRDC plus the receiver clock.
+  #
+  # --dr-clock-adopt STAYS -- it is the switch that says "this chain may take a sibling's
+  # clock", and a chain that can solve its own is unaffected by it either way. What is gone
+  # is the PLUMBING it used to need: --state-read-dir /tmp/gnss_state --state-dongle l5
+  # here, and --state-file/--state-dongle on the GPS chain purely to feed this one. gps_l5
+  # is in this process and has already contributed the clock to the Receiver, so the
+  # transfer is an attribute read rather than a JSON file with a flush cadence, an age gate
+  # and a two-read slew test. (Those still exist, unchanged, for cross-PROCESS siblings.)
+  gal_e5a:
+    signal: gal_e5a
+    dr-clock-adopt: true
+    trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
+http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
+http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
+    combiner: gnss0_e5a_n2combine
+    dll-combiners: &e5a_cmb "http://cx19:12049/gnss{0..1}_e5a_n2combine,\
+http://cx27:12049/gnss{0..1}_e5a_n2combine,http://cx42:12049/gnss{0..1}_e5a_n2combine,\
+http://cx43:12049/gnss{0..1}_e5a_n2combine,http://cx44:12049/gnss{0..1}_e5a_n2combine,\
+http://cx51:12049/gnss{0..1}_e5a_n2combine"
+    n2-combiners: *e5a_cmb
+    publish-port: 12061
+
+  # BeiDou B2a -- structurally identical to E5a (same 1176.45 MHz, same CS100 secondary).
+  # Commented out until its node chains are generated: pointing at endpoints that do not
+  # exist logs "set_seeds failed" every cycle and is otherwise silent, which is exactly the
+  # quiet degradation to avoid. `signal: bds_b2a` carries the BDS-3-only --dr-min-prn 19.
+  #
+  # bds_b2a:
+  #   signal: bds_b2a
+  #   trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,..."
+  #   combiner: gnss0_b2a_n2combine
+  #   publish-port: 12062

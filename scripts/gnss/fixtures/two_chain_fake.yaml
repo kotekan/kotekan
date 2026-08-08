@@ -1,0 +1,28 @@
+common:
+  rest-url: http://localhost:12777
+  time0-endpoint: telescope/time0_ns
+  hops-per-sec: 195312.5
+  interval: 0.5
+  dll-gain: 0.25
+  publish-port: 0
+  cl-assist: true
+  dead-reckon: true
+  dr-clock-chips: 0.0
+  almanac: true
+  almanac-source: brdc
+  lat: 49.32075144444
+  lon: -119.62081125
+  alt: 545
+  mask-deg: 0
+chains:
+  gps_l5:
+    signal: gps_l5
+    detectors: http://localhost:12777/gps_search
+    trackers: http://localhost:12777/track
+    combiner: http://localhost:12777/combiner
+    acquire-snr: 12
+  gal_e5a:
+    signal: gal_e5a
+    trackers: http://localhost:12777/e5a_track
+    combiner: http://localhost:12777/e5a_combiner
+    dr-clock-adopt: true
