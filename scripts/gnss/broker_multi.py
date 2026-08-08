@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 
 import yaml                                              # noqa: E402
 import gps_distributed_broker as broker                  # noqa: E402
-from gnss_broker import receiver, transport              # noqa: E402
+from gnss_broker import publish, receiver, transport     # noqa: E402
 
 
 def flags(d):
@@ -76,10 +76,10 @@ def load(path):
     return out
 
 
-def run_chain(name, argv, rx, alive):
+def run_chain(name, argv, rx, alive, pub=None):
     transport.set_log_tag(name)
     try:
-        broker.main(argv, rx=rx)
+        broker.main(argv, rx=rx, publisher=pub)
         transport._log("chain finished (main returned)")
     except transport._TranscriptDone as e:
         # A REPLAY ENDING IS NOT A DEATH. Without this the driver reports "*** CHAIN DIED"
@@ -123,13 +123,31 @@ def main():
 
     rx = receiver.Receiver(log=transport._log)
     transport.set_log_tag("driver")
+    # ONE PUBLISHER FOR THE WHOLE PROCESS (task #27 M6), if any chain asks for a port. The
+    # first --publish-port found wins and the rest are ignored with a note: two ports would
+    # put us straight back to a viewer instance per constellation, which is the thing being
+    # retired. Chains are told apart by /<chain>/get_status or ?chain=<id>.
+    port, owner = None, None
+    for name, argv in chains:
+        if "--publish-port" in argv:
+            p = argv[argv.index("--publish-port") + 1]
+            if port is None and p not in ("0", ""):
+                port, owner = int(p), name
+            elif p not in ("0", "") and int(p) != port:
+                transport._log("chain %s asks for publish-port %s; ignoring -- one process "
+                               "publishes on ONE port (%d, from %s). Select with "
+                               "?chain=%s or /%s/get_status." % (name, p, port, owner,
+                                                                 name, name))
+    pub = publish.FleetPublisher(port, transport._log) if port else None
+    if pub:
+        transport._log("fleet publisher shared by every chain on :%d" % port)
     transport._log("starting %d chain(s): %s"
                    % (len(chains), ", ".join(n for n, _ in chains)))
 
     alive = set(n for n, _ in chains)
     threads = []
     for name, argv in chains:
-        t = threading.Thread(target=run_chain, args=(name, argv + extra, rx, alive),
+        t = threading.Thread(target=run_chain, args=(name, argv + extra, rx, alive, pub),
                              name=name, daemon=True)
         t.start()
         threads.append(t)

@@ -10,6 +10,7 @@ docs/CHORD_BROKER_REFACTOR.md M7. Moved unchanged here so that change is isolate
 import json
 import math
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .transport import _now
@@ -50,6 +51,12 @@ class FleetPublisher:
     """
 
     def __init__(self, port, log):
+        # ONE PORT, MANY CHAINS (task #27 M6). Each registered chain gets its own row/det
+        # store; a request selects one chain or gets them all, tagged. Before this, one
+        # publisher served one chain on one port, which is why CHORD needed a viewer
+        # instance per constellation (12060 GPS, 12061 E5a).
+        self._chains = {}          # chain id -> {"rows", "dets", "meta", "ctl", "sig", "band"}
+        self._order = []           # registration order, so output is deterministic
         self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
         # RUNTIME CONTROL, deliberately narrow. Everything else here is read-only; this one
         # value is writable because the experiment that needs it CANNOT be run any other way.
@@ -93,14 +100,34 @@ class FleetPublisher:
                 # detections here as well makes the broker a single origin for both -- which is
                 # also the right shape: it already merges across all 14 combiners, and a browser
                 # cannot poll 14 origins itself.
+                #
+                # CHAIN SELECTION, two ways, because the consumers differ:
+                #   /get_status?chain=gps_l5   explicit, for anything we write
+                #   /gps_l5/get_status         a PATH SEGMENT naming a chain -- which is what
+                #                              the viewer already emits, since it builds
+                #                              <base>/<stage>/<endpoint> and cannot add a
+                #                              query string. Point its --gps-combiner-stage at
+                #                              a chain id and it filters with no code change.
+                # Neither given -> every chain, each row tagged. With ONE chain registered
+                # that is byte-identical to the old single-chain output plus the tag, so
+                # nothing that exists today has to change at once.
+                raw = self.path.split("?", 1)
+                p = raw[0].rstrip("/")
+                q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
+                want = (q.get("chain") or [None])[0]
                 with pub._lock:
-                    p = self.path.rstrip("/")
+                    if want is None:
+                        for seg in p.strip("/").split("/"):
+                            if seg in pub._chains:
+                                want = seg
+                                break
+                    ids = [want] if want in pub._chains else list(pub._order)
                     if p.endswith("get_detections"):
-                        body = json.dumps(pub._dets).encode()
+                        body = json.dumps(pub._collect(ids, "dets")).encode()
                     elif p.endswith("get_status"):
-                        body = json.dumps(pub._rows).encode()
+                        body = json.dumps(pub._collect(ids, "rows")).encode()
                     else:
-                        body = json.dumps(pub._meta).encode()
+                        body = json.dumps(pub._collect_meta(ids)).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 # The viewer is served from a different origin than this port, and its whole
@@ -115,7 +142,15 @@ class FleetPublisher:
                 # ONLY /set_carrier_trim. Body {"hz": <float>} holds that trim on every seeded
                 # PRN; {"hz": null} releases it back to --carrier-trim-const. Diagnostic: pair
                 # it with --carrier-gain 0 so the loop does not immediately correct the step away.
-                p = self.path.rstrip("/")
+                raw = self.path.split("?", 1)
+                p = raw[0].rstrip("/")
+                q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
+                sel = (q.get("chain") or [None])[0]
+                if sel is None:
+                    for seg in p.strip("/").split("/"):
+                        if seg in pub._chains:
+                            sel = seg
+                            break
                 if not p.endswith("set_carrier_trim"):
                     self.send_response(404)
                     self._cors()
@@ -135,11 +170,31 @@ class FleetPublisher:
                     self.end_headers()
                     self.wfile.write(body)
                     return
+                # A trim is a PER-CHAIN experiment. With one chain registered, name it
+                # implicitly; with several, an unqualified POST would silently step every
+                # signal at once, so require ?chain= and say so.
                 with pub._lock:
-                    pub._ctl["carrier_trim_const"] = hz
-                pub._log("carrier trim const set to %s by REST (diagnostic)"
-                         % ("released" if hz is None else "%+.3f Hz" % hz))
-                body = json.dumps({"carrier_trim_const": hz}).encode()
+                    targets = [sel] if sel in pub._chains else list(pub._order)
+                    if len(targets) > 1:
+                        body = json.dumps({"error": "several chains registered (%s); name "
+                                                    "one with ?chain=<id>"
+                                                    % ", ".join(targets)}).encode()
+                        targets = []
+                    else:
+                        for c in targets:
+                            pub._chains[c]["ctl"]["carrier_trim_const"] = hz
+                        pub._ctl["carrier_trim_const"] = hz
+                        body = json.dumps({"carrier_trim_const": hz,
+                                           "chain": targets[0] if targets else None}).encode()
+                if not targets:
+                    self.send_response(400)
+                    self._cors()
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                pub._log("carrier trim const set to %s by REST on %s (diagnostic)"
+                         % ("released" if hz is None else "%+.3f Hz" % hz, targets[0]))
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self._cors()
@@ -153,13 +208,52 @@ class FleetPublisher:
         log("fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state; "
             "POST /set_carrier_trim {\"hz\": x} -- diagnostic open-loop trim)" % port)
 
-    def carrier_trim_const(self, fallback):
+    # -- multi-chain plumbing (task #27 M6) ---------------------------------------------
+    def register(self, chain, signal=None, band=None):
+        """Claim a slot on this port and get a handle that looks like the old publisher.
+
+        Returns a per-chain VIEW rather than self, so every existing call site --
+        `publisher.update(...)`, `publisher.carrier_trim_const(...)` -- keeps working
+        unchanged whether it is the only chain or one of five."""
+        with self._lock:
+            if chain not in self._chains:
+                self._chains[chain] = {"rows": [], "dets": [], "meta": {},
+                                       "ctl": {"carrier_trim_const": None},
+                                       "sig": signal, "band": band}
+                self._order.append(chain)
+        return _ChainView(self, chain)
+
+    def _collect(self, ids, key):
+        """Rows/detections for `ids`, each tagged with which chain it came from.
+
+        The tag is ADDED, never substituted: the schema stays GnssCoherentCombiner's, so
+        the viewer's signal_metrics() consumes these unchanged and simply ignores three
+        extra keys."""
+        out = []
+        for c in ids:
+            st = self._chains.get(c)
+            if not st:
+                continue
+            for r in st[key]:
+                if isinstance(r, dict):
+                    r = dict(r)
+                    r["chain"], r["signal"], r["band"] = c, st["sig"], st["band"]
+                out.append(r)
+        return out
+
+    def _collect_meta(self, ids):
+        if len(ids) == 1 and ids[0] in self._chains:
+            return self._chains[ids[0]]["meta"]
+        return {"chains": {c: self._chains[c]["meta"] for c in ids if c in self._chains}}
+
+    def carrier_trim_const(self, fallback, chain=None):
         """The REST override if one has been posted, else the command-line value."""
         with self._lock:
-            v = self._ctl["carrier_trim_const"]
+            st = self._chains.get(chain) if chain else None
+            v = st["ctl"]["carrier_trim_const"] if st else self._ctl["carrier_trim_const"]
         return fallback if v is None else v
 
-    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None):
+    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None):
         rows = []
         fcoh = fcoh or {}
         for prn, v in sorted(fleet.items()):
@@ -218,10 +312,38 @@ class FleetPublisher:
                 row.update({"fleet_coh_floor": fc["floor"],
                             "fleet_coh_align": fc["align"]})
             rows.append(row)
+        meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
+                "present": sum(1 for r in rows if r["fleet_present"]),
+                "utc": _now()}
         with self._lock:
-            self._rows = rows
+            st = self._chains.get(chain)
+            if st is not None:
+                st["rows"] = rows
+                if dets is not None:
+                    st["dets"] = dets
+                st["meta"] = meta
+            self._rows = rows          # legacy single-chain mirror
             if dets is not None:
                 self._dets = dets
-            self._meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
-                          "present": sum(1 for r in rows if r["fleet_present"]),
-                          "utc": _now()}
+            self._meta = meta
+
+
+class _ChainView(object):
+    """One chain's handle on a shared publisher.
+
+    Exists so every call site keeps the pre-M6 shape -- `publisher.update(...)`,
+    `publisher.carrier_trim_const(...)` -- whether the process runs one chain or five. The
+    alternative was threading a chain id through the cycle body, which is the 3252 lines
+    this refactor has deliberately not touched."""
+
+    __slots__ = ("_pub", "_chain")
+
+    def __init__(self, pub, chain):
+        self._pub, self._chain = pub, chain
+
+    def update(self, *a, **kw):
+        kw["chain"] = self._chain
+        return self._pub.update(*a, **kw)
+
+    def carrier_trim_const(self, fallback):
+        return self._pub.carrier_trim_const(fallback, chain=self._chain)

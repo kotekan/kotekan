@@ -87,7 +87,7 @@ from gnss_broker.sky import (                 # noqa: E402
     _fnav_brdc_xcheck, _bcnav2_brdc_xcheck, _bcnav3_brdc_xcheck, _bcnav1_brdc_xcheck,
 )
 
-def main(argv=None, rx=None):
+def main(argv=None, rx=None, publisher=None):
     # `--signal help` before the parser, because --trackers is required and listing the
     # known signals must not depend on being able to name a fleet first.
     if "help" in (argv if argv is not None else sys.argv[1:]):
@@ -1462,7 +1462,16 @@ def main(argv=None, rx=None):
     dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
     # Optional REST publication of the fleet-merged state (see FleetPublisher). Started here so
     # a bind failure is fatal at launch rather than silently leaving the viewer with no source.
-    publisher = FleetPublisher(args.publish_port, _log) if args.publish_port else None
+    # ONE PORT FOR EVERY CHAIN (task #27 M6). The driver passes a shared publisher in and
+    # this chain claims a slot on it; standing alone, the chain binds its own port exactly
+    # as before. Either way `publisher` below is a per-chain view with the old interface.
+    if publisher is not None:
+        publisher = publisher.register(chain_id, args.signal, band_id)
+    elif args.publish_port:
+        publisher = FleetPublisher(args.publish_port, _log).register(
+            chain_id, args.signal, band_id)
+    else:
+        publisher = None
     cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
     cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
     cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None

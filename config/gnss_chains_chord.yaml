@@ -28,6 +28,8 @@ common:
   alt: 545
   mask-deg: 0
   interval: 2
+  # ONE PORT FOR EVERY CHAIN (M6). Select with /<chain>/get_status or ?chain=<id>.
+  publish-port: 12060
 
   # -- shared loop settings (identical in both launch scripts today) ---------------------
   almanac: true
@@ -64,7 +66,6 @@ http://cx19:12049/gnss{0..1}_inject"
     dll-combiners: "http://cx19:12049/gnss0_combine,http://cx51:12049/gnss0_combine,\
 http://cx27:12049/gnss{0..1}_combine,http://cx42:12049/gnss{0..1}_combine,\
 http://cx43:12049/gnss{0..1}_combine,http://cx44:12049/gnss{0..1}_combine"
-    publish-port: 12060
     narrow-search: true
     nh-hint: true
     nh-hint-span: 2
@@ -96,7 +97,6 @@ http://cx27:12049/gnss{0..1}_e5a_n2combine,http://cx42:12049/gnss{0..1}_e5a_n2co
 http://cx43:12049/gnss{0..1}_e5a_n2combine,http://cx44:12049/gnss{0..1}_e5a_n2combine,\
 http://cx51:12049/gnss{0..1}_e5a_n2combine"
     n2-combiners: *e5a_cmb
-    publish-port: 12061
 
   # BeiDou B2a -- structurally identical to E5a (same 1176.45 MHz, same CS100 secondary).
   # Commented out until its node chains are generated: pointing at endpoints that do not
@@ -107,4 +107,3 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
   #   signal: bds_b2a
   #   trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,..."
   #   combiner: gnss0_b2a_n2combine
-  #   publish-port: 12062
