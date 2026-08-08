@@ -93,6 +93,7 @@ http://127.0.0.1:12099/sink_track" \
     --nh-hint --nh-hint-span 2 \
     --almanac --almanac-source brdc --dead-reckon --narrow-search \
     --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
+    --state-file /tmp/gnss_state/gps_l5.json --state-dongle l5 \
     --signal gps_l5 --hops-per-sec 195312.5 \
     --cl-assist \
     --seed-doppler auto --acquire-snr 30 \

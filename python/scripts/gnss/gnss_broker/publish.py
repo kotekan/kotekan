@@ -67,6 +67,26 @@ class FleetPublisher:
             def log_message(self, *a):
                 pass  # a browser polls this at 1 Hz; the broker's own log stays readable
 
+            def _cors(self):
+                # ON EVERY RESPONSE, INCLUDING ERRORS. A 404 or a 501 without these headers
+                # reaches the browser as a CORS failure, not as the status it actually is --
+                # so the console says "blocked by CORS policy" when the truth is "no such
+                # endpoint here". That misdirection cost real time on 2026-08-08: the viewer
+                # was asking this port for prototype stage names (gal_search, gal_combiner,
+                # airspy_in) and the reported symptom was CORS rather than 404.
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+            def do_OPTIONS(self):
+                # WITHOUT THIS, BaseHTTPRequestHandler answers 501 with no CORS headers, and
+                # every preflighted request dies. A POST of application/json IS preflighted,
+                # so /set_carrier_trim was unreachable from a browser entirely.
+                self.send_response(204)
+                self._cors()
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
             def do_GET(self):
                 # The viewer builds every URL as <base>/<stage>/<endpoint> from ONE host:port,
                 # so it cannot straddle the search (12050) and this publisher. Serving the raw
@@ -86,7 +106,7 @@ class FleetPublisher:
                 # The viewer is served from a different origin than this port, and its whole
                 # job is to fetch from here -- so say so explicitly rather than leaving the
                 # browser to fail a preflight with nothing in the log.
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors()
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -98,6 +118,7 @@ class FleetPublisher:
                 p = self.path.rstrip("/")
                 if not p.endswith("set_carrier_trim"):
                     self.send_response(404)
+                    self._cors()
                     self.send_header("Content-Length", "0")
                     self.end_headers()
                     return
@@ -109,6 +130,7 @@ class FleetPublisher:
                 except Exception as e:
                     body = json.dumps({"error": str(e)}).encode()
                     self.send_response(400)
+                    self._cors()
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
@@ -120,6 +142,7 @@ class FleetPublisher:
                 body = json.dumps({"carrier_trim_const": hz}).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
+                self._cors()
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
