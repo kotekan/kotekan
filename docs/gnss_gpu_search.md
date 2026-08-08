@@ -1675,3 +1675,93 @@ brought GPS back.
   * chive at 14:04: host pings, port 54321 completes a TCP handshake, GET/POST return nothing.
     WEDGED, not down -- and last confirmed answering at 13:30 (cx44/cx51 started with
     require_gps true). Our total load on it: ~30 startup queries plus ~10 manual probes.
+
+## 11.17  THE F-ENGINE DROPPED OFF THE NETWORK; THE BROKER BECAME ONE (2026-08-08 pm)
+
+### 11.17.1  The outage: sixteen boards left at layer 2
+
+`fpga_master.log` (INFO, in `/mnt/cs00/data/chord_pathfinder_f_engine_data/data/current/`)
+holds the transition. 8.7 hours clean, **zero** precursor errors, then:
+
+    07:20:57  boards 0-11   OSError(113, 'No route to host')     <- instant
+    07:20:59..07:21:05      boards 12-15  TimeoutError            <- 2 s each
+    07:21:05  boards 0-15   Broken pipe                           <- TCP, afterwards
+
+`EHOSTUNREACH` on the **UDP** path is ARP failing: chive asked, nothing answered. The 12/4
+split is ARP CACHE STATE, not two groups of hardware -- twelve had negative entries and
+failed instantly, four had stale-but-valid ones and burned a 2 s timeout. All sixteen left
+in the same second. Hours later `ip neigh` still showed exactly sixteen `FAILED` entries on
+`eno0`/192.168.0.0/24 (the F-engine's private net; 10.222.x is the site LAN, where
+10.222.1.NN = cxNN).
+
+**fpga_master NEVER RECONNECTS.** Zero connect/reconnect/resync lines in 19 minutes; it
+writes to dead sockets forever. So a restart is required regardless of cause -- but it will
+not help while ARP fails, which is the check to run first. A power cycle fixed it.
+
+⚠️ **`get-frame0-time` is 1024 weeks behind and that is EXPECTED.** It reports 2006-12-23
+for a frame 0 of 2026-08-08 -- exactly one GPS week-number rollover epoch (7168 days). The
+last rollover was 2019-04-07 and the next is 2038-11-21, so this is a static decoder
+misconfiguration, NOT an event, and it cannot make a NIC stop answering ARP. CHORD already
+handles it: `auto_correct_gps_week_rollover: true` in every node config, applied in
+`CHORDTelescope::set_gps_time_params_from_remote`. **Trust the NODES' `telescope/time0_ns`,
+never chive's raw JSON.** I raised a false alarm off that endpoint and nearly told the
+F-engine team to fix a non-bug.
+
+New epoch 1786209501.000002870 (2026-08-08 17:18:21 UTC). `frame0_utc` in the six
+`_e5afleet` configs was hand-patched, deliberately: regeneration is not reproducible
+(`live_config.json` gone, production not serving /config on 12048, no record of the
+`--extra-signal`/`--n2-dump` flags those variants were built with). **That flag set still
+needs recovering and writing down.**
+
+### 11.17.2  Node startup is a coin flip, and the fix is a retry
+
+Five of six nodes died with `ConfigTracker: failed to GET FPGA config ... after 2 retries`.
+MEASURED, 20 sequential GETs of `chive:54321/config`: **median 6 ms, p90 6.5 s, max 16.2 s**.
+fpga_master is single-threaded asyncio and its per-second gather now does real register
+reads over 16 LIVE boards -- while they were dark it failed instantly and the server looked
+fast. THE OUTAGE WAS HIDING THE LATENCY.
+
+Not a thundering herd: starts were 9 s apart and cx42 succeeded BETWEEN two failures, which
+reads as a per-node fault and is neither. Fixed both ways: budget 2x10 s -> 5x30 s (in
+`gen_chord_gnss_config.py`, not production's `chord_pathfinder.j2`), and `node_up.sh` now
+starts, **waits on the PORT** (`is-active` goes true the moment systemd-run forks; five
+nodes reported active and then exited), and retries 3x inside ONE ssh session.
+
+### 11.17.3  Task #27 delivered: one broker, one port, one viewer
+
+    scripts/gnss/broker_multi.py config/gnss_chains_chord.yaml
+    scripts/gnss/viewer_up.sh                     ->  http://cf06:8080
+
+M0 gate / M1 extract / M2 `--signal` / M3 Receiver / M4-M5 driver / M6 one port + unified
+viewer. GPS L5 and Galileo E5a run in ONE process sharing one time anchor, one BRDC store
+(32 GPS + 33 Galileo satellites from a single parse) and the receiver clock in-process:
+
+    dead-reckon: clock ADOPTED 54.61 chips from in-process chain 'gps_l5'
+                 (same band 1176.45MHz, NO FILE TRANSPORT)
+
+Gated byte-identical against BOTH on-sky transcripts before deployment (L5 86e8ad5b,
+E5a 776c70ff). A transcript's own argv header converts mechanically into a one-chain YAML,
+so the driver replays exactly the recordings the single-chain broker was gated on.
+
+⚠️ **The dead-reckon clock does NOT warm-start.** Every broker restart re-bootstraps it from
+`--dr-clock-chips 0.0` and it walks in over minutes (observed 4093 -> 209 chips), during
+which any model-primary chain is useless -- it looked like "E5a is broken" twice before I
+read the trend. `clock_bias_file` and `code_bias_file` both persist; this one does not.
+Contained fix in `Receiver`: persist on contribute, prime on construct. **NEXT.**
+
+### 11.17.4  Three defects I shipped and then found
+
+  * **69 MB/hour leak.** `_TR.posts` appended on EVERY post in every mode so a run against a
+    dead fleet would still produce a comparable trace. Nothing drains it, nothing in live
+    mode reads it: 1.6 GB/day, and it would have multiplied by chain count. Instrumentation
+    must be inert when not instrumenting.
+  * **The frozen clock only engaged WHILE RECORDING** -- gated on `_mine()`, i.e. on a
+    transcript being open. A recorder that changes what it records; the gate was comparing
+    two recordings while production did something else.
+  * **A null airspy stage froze the viewer after one render.** CHORD has no airspy, so the
+    broker-derived `rf_bands` carry `airspy: null`; `stageGet(null, ...)` throws
+    SYNCHRONOUSLY inside a `Promise.all([...])` argument list, escaping `refresh()` before
+    `_inflight = false` runs. Panel frozen for the life of the page, no error anywhere.
+
+Common shape: each was found by looking at the thing that SHIPS rather than the thing I
+edited, and none was catchable by the equivalence gate.
