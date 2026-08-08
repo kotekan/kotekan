@@ -64,7 +64,11 @@ class _Transcript:
         self._rd = {"now": [], "get": [], "post": []}
         self._ix = {"now": 0, "get": 0, "post": 0}
         self._owner = None        # only the main thread is transcribed; see below
-        self._t = None            # the frozen cycle clock
+        # PER THREAD, not per process (task #27 M5). One process now runs several chains
+        # in several threads, each on its own cycle; a shared frozen clock would have chain
+        # B silently stamping chain A's cycle with B's instant -- and the failure would look
+        # like clock jitter, not like a data race.
+        self._t = threading.local()
         self.posts = []           # replay+record: the ordered POST stream (the gate output)
         self.argv = None          # the recording run's own argv, carried in the header
 
@@ -120,19 +124,27 @@ class _Transcript:
     def tick(self):
         """Start a new cycle: sample (or replay) the frozen clock."""
         if self.mode == "read":
-            self._t = self._take("now")["v"]
+            self._t.v = self._take("now")["v"]
         else:
-            self._t = time.time()
+            self._t.v = time.time()
             if self._mine():
-                self._emit({"k": "now", "v": self._t})
-        return self._t
+                self._emit({"k": "now", "v": self._t.v})
+        return self._t.v
 
     def now(self):
-        if not self._mine():
-            return time.time()
-        if self._t is None:
-            return self.tick()
-        return self._t
+        # ⚠️ THE FROZEN CLOCK APPLIES IN EVERY MODE, INCLUDING LIVE. The first version of
+        # this gated on `_mine()`, i.e. on a transcript being open -- so production kept a
+        # live clock and only a RECORDING froze it. That is the one thing a recorder must
+        # never do: the transcript would then describe a run that never happens, and the
+        # gate would be measuring the instrumentation. Caught 2026-08-08 while making the
+        # clock thread-local for M5.
+        #
+        # The discriminator is not "is a transcript open" but "is this a thread that runs
+        # cycles". A chain thread calls tick() and gets its own frozen instant; the
+        # publisher's HTTP thread never does, so `v` is unset there and it reads the real
+        # clock -- which is right, since its timestamps are not part of any cycle.
+        v = getattr(self._t, "v", None)
+        return time.time() if v is None else v
 
     # -- transport ------------------------------------------------------------------
     def get(self, url, timeout):
@@ -208,14 +220,33 @@ def _post(url, payload, timeout=5.0):
     return _TR.post(url, payload, timeout)
 
 
+# PER-CHAIN LOG TAG (task #27 M5). One process now runs several chains in several threads,
+# and their log lines interleave. Without a tag the journal becomes unreadable at exactly
+# the moment it matters most -- and worse, plausibly misreadable: "DLL: PRN 3 disc +0.012"
+# means something different on L5 than on E5a, and nothing in the line says which. Set per
+# thread, so a chain tags itself once and every _log below it inherits it.
+#
+# Empty by default, so a single-chain run's output is byte-identical to before -- the
+# equivalence gate covers POSTs, not stderr, and a silently reformatted log is exactly the
+# kind of change that makes an old autopsy grep stop matching.
+_tag = threading.local()
+
+
+def set_log_tag(tag):
+    _tag.v = (" " + tag) if tag else ""
+
+
 def _log(msg):
     # Timestamped (2026-07-19): every autopsy this week had to reconstruct event times by
     # correlating line numbers against the status stream -- the 07-18 carrier-latch hunt
     # lost an hour to it. Wall-clock, subsecond: cheap, greppable, sortable.
-    print("[broker %s] %s" % (datetime.now().strftime("%H:%M:%S.%f")[:-3], msg),
+    print("[broker%s %s] %s" % (getattr(_tag, "v", ""),
+                                datetime.now().strftime("%H:%M:%S.%f")[:-3], msg),
           file=sys.stderr, flush=True)
 
 
+# Rate-limit keys are per THREAD as well: two chains sharing one key would silence each
+# other's lines at random, which reads as "that chain stopped logging".
 _log_rl_last = {}
 
 
@@ -227,6 +258,7 @@ def _log_rl(key, msg, every_s=10.0):
     this project has actually run (the 07-18 hunts used >=1 s granularity). EVENT lines
     (HOLD/RELEASE/ESCAPE/REACQ/WATCHDOG/TRANSLATE/fits-changed...) stay unlimited."""
     now = _now()
+    key = (getattr(_tag, "v", ""), key)   # see _log_rl_last: per-chain, not shared
     if now - _log_rl_last.get(key, 0.0) >= every_s:
         _log_rl_last[key] = now
         _log(msg)

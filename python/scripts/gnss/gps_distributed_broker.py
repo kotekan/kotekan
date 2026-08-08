@@ -80,13 +80,14 @@ from gnss_broker.fleet import (               # noqa: E402
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker import signals                            # noqa: E402
+from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.sky import (                 # noqa: E402
     brdc_predict, visible_prns, _dh_dpos,
     _cnav_brdc_xcheck, _cnav2_brdc_xcheck, _inav_brdc_xcheck, _lnav_brdc_xcheck,
     _fnav_brdc_xcheck, _bcnav2_brdc_xcheck, _bcnav3_brdc_xcheck, _bcnav1_brdc_xcheck,
 )
 
-def main(argv=None):
+def main(argv=None, rx=None):
     # `--signal help` before the parser, because --trackers is required and listing the
     # known signals must not depend on being able to name a fleet first.
     if "help" in (argv if argv is not None else sys.argv[1:]):
@@ -1379,6 +1380,13 @@ def main(argv=None):
             args.dll_gain *= _f
             args.carrier_gain *= _f
             args.code_bias_alpha *= _f
+
+    # AFTER the transcript is open, or the tick would neither be recorded nor replayed.
+    # The SETUP phase reads the clock too (warm-start file stamps, the almanac epoch
+    # offset, _bias_meas_t). Tick once here so setup runs at one frozen instant like every
+    # cycle does, and so a recording captures it explicitly rather than by whichever
+    # _now() happened to land first.
+    _TR.tick()
     if args.cl_assist and args.cl_tracker:
         # In-place lift + copied lift together would hand the CM tracker CL-lifted phases:
         # broken CM tracking with no error anywhere downstream. Refuse at the door.
@@ -1415,6 +1423,20 @@ def main(argv=None):
             return datetime.fromtimestamp(args.almanac_epoch + _alm_file_pos[0],
                                           tz=timezone.utc)
         return datetime.fromtimestamp(_now() + _alm_clock_offset, tz=timezone.utc)
+
+    # ---- RECEIVER SCOPE (task #27 M3) --------------------------------------------------
+    # What every chain on this telescope shares: the F-engine time anchor, the BRDC store,
+    # and the two halves of the receiver clock. `rx` is passed in by the multi-chain driver
+    # (M5); standing alone, a chain owns a private one and every contribute/consume pair
+    # below degenerates to the chain talking to itself -- which is exactly why M3 leaves
+    # single-chain behaviour byte-identical.
+    rx = rx if rx is not None else receiver.Receiver(log=_log)
+    # WHO this chain is, and WHICH band it measures the code clock in. The band key is the
+    # carrier to 10 kHz, so GPS L5 and Galileo E5a -- genuinely the same 1176.45 MHz
+    # hardware -- share one code-clock scope, while a retune to E5b at 1207 MHz does not.
+    chain_id = args.signal or ("%s@%.2fMHz" % (args.constellation or args.dr_constellation,
+                                               args.carrier_hz / 1e6))
+    band_id = "%.2fMHz" % (args.carrier_hz / 1e6)
 
     base = args.rest_url.rstrip("/")
     detectors = parse_endpoints(args.detectors, base)
@@ -1458,9 +1480,16 @@ def main(argv=None):
         try:
             import gnss_ephemeris as _alm_eph_mod
             when = _alm_now()
-            brdc_alm = {"mod": _alm_eph_mod,
-                        "eph": _alm_eph_mod.parse_rinex_nav(_alm_eph_mod.fetch_brdc(when)),
-                        "eph_t": _now()}
+            # THROUGH THE RECEIVER (task #27 M3). The parse is MULTI-SYSTEM -- entries are
+            # keyed (sys, prn) and every consumer filters at predict time -- so one store
+            # serves GPS, Galileo and BeiDou together. Today each broker parses its own copy
+            # of the same file and throws the other constellations away. Keyed by the day so
+            # a replayed epoch and a live one do not share a store.
+            brdc_alm = rx.brdc(
+                ("brdc", when.strftime("%Y-%j")),
+                lambda: {"mod": _alm_eph_mod,
+                         "eph": _alm_eph_mod.parse_rinex_nav(_alm_eph_mod.fetch_brdc(when)),
+                         "eph_t": _now()})
             n = sum(1 for k in brdc_alm["eph"] if k[0] == alm_sys and k[1] >= alm_min_prn)
             if n == 0:
                 # ★ A PARSE THAT SUCCEEDS WITH ZERO SATS IS A FAILURE, not a result. Only an
@@ -2356,6 +2385,11 @@ def main(argv=None):
                     clock_bias_ema += args.bias_alpha * (raw_bias - clock_bias_ema)
                 _bias_meas_t = t0
                 clock_bias = clock_bias_ema
+                # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
+                # error -- so every co-hosted chain can have this without solving it. A
+                # chain that HAS its own estimate never reads back, which is why publishing
+                # here cannot change single-chain behaviour.
+                rx.contribute_carrier_bias(chain_id, clock_bias_ema, len(resid), t0)
                 # `alarming` (TIGHT bar) gates the PERSIST only -- conservative: never write a
                 # walking bias to the cal file (the 2026-07-20 GPSDO-walk-poisoning guard).
                 alarming = (clock_bias_cal is not None
@@ -2665,16 +2699,24 @@ def main(argv=None):
                     # NB: NOT `t0` -- that name is the cycle-start timestamp in this loop, and
                     # shadowing it with a nanosecond epoch made the loop's
                     # `dt = interval - (_now() - t0)` about 1.8e18 seconds.
-                    frame0_ns = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
-                                      .get("time0_ns", 0.0))
-                    utc0_sample0 = frame0_ns / 1e9
+                    #
+                    # THROUGH THE RECEIVER (task #27 M3): frame 0 is a property of the
+                    # INSTRUMENT, not of a signal, so it is fetched at most once per process
+                    # however many chains want it. Two brokers latching it independently can
+                    # straddle an F-engine restart and disagree forever, each certain.
+                    utc0_sample0 = rx.time_anchor(
+                        lambda: float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
+                                      .get("time0_ns", 0.0)) / 1e9,
+                        chain_id) or 0.0
                     if utc0_sample0:
                         _log("time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
                              % utc0_sample0)
                         _anchor_seen[0] = utc0_sample0
                 else:
-                    utc0_sample0 = float(
-                        _get("%s/%s/adcstat" % (base, args.adc_stage)).get("utc0_sample0", 0.0))
+                    utc0_sample0 = rx.time_anchor(
+                        lambda: float(_get("%s/%s/adcstat" % (base, args.adc_stage))
+                                      .get("utc0_sample0", 0.0)),
+                        chain_id) or 0.0
                     if utc0_sample0:
                         _log("CL time-assist: capture sample-0 UTC anchor %.3f" % utc0_sample0)
             except Exception as e:
@@ -3972,12 +4014,51 @@ def main(argv=None):
                         step = ((raw - clk + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
                         dr_state["clk"] = (clk + args.dr_clock_alpha * step) % CODE_LEN
                     dr_state["clk_t"] = now_w
+                    # CONTRIBUTE (task #27 M3). THIS IS THE SEAM --dr-clock-adopt PAPERS
+                    # OVER: dr_state straddles the boundary -- clk and drift are the
+                    # RECEIVER's, seeded/pin/pd are this chain's per-PRN bookkeeping. A
+                    # co-hosted chain with no detectors reads this directly instead of a
+                    # JSON file written at flush cadence and gated on a two-read slew test.
+                    # Carried WITH its code length, because chips are modular and a value
+                    # mod 10230 is meaningless to a 1023000-chip code.
+                    rx.contribute_dr_clock(chain_id, band_id, dr_state["clk"],
+                                           dr_state.get("drift"), now_w, CODE_LEN)
                 # ---- ADOPT A BAND SIBLING'S CLOCK (--dr-clock-adopt) -------------------------
                 # Runs AFTER the EMA above on purpose: a chain that solved its own clock this
                 # cycle keeps it, and only a chain that cannot solve one (no detectors -> `offs`
                 # empty -> the block above never ran) takes the sibling's. So enabling the flag
                 # on a detector-bearing chain is a no-op rather than a silent override.
-                if (args.dr_clock_adopt and not offs and _xb_read_dir
+                #
+                # IN-PROCESS SIBLING FIRST (task #27 M3). A chain co-hosted in this process
+                # has already CONTRIBUTED its clock to the Receiver, so there is nothing to
+                # serialise, flush, age or slew-test: the number is the same object the
+                # sibling is using this cycle. The file route below stays for genuinely
+                # cross-process siblings (the airspy benches, and a transitional split
+                # deployment) and is unchanged. With one chain the lookup returns None and
+                # this branch does not exist.
+                _rx_sib = (rx.dr_clock(band_id, exclude=chain_id, t_now=t0)
+                           if (args.dr_clock_adopt and not offs) else None)
+                if _rx_sib is not None and _rx_sib.extra.get("code_length") == CODE_LEN:
+                    if dr_state.get("clk") is None or abs(
+                            ((float(_rx_sib.value) - dr_state["clk"] + CODE_LEN / 2)
+                             % CODE_LEN) - CODE_LEN / 2) > 0.5:
+                        _log("dead-reckon: clock ADOPTED %.2f chips from in-process chain "
+                             "'%s' (same band %s, no file transport)"
+                             % (float(_rx_sib.value), _rx_sib.src, band_id))
+                    dr_state["clk"] = float(_rx_sib.value) % CODE_LEN
+                    dr_state["clk_t"] = _rx_sib.t
+                    if _rx_sib.extra.get("drift") is not None:
+                        dr_state["drift"] = float(_rx_sib.extra["drift"])
+                elif _rx_sib is not None:
+                    # Same band, different code length: the chips are modular in a different
+                    # period, so the number is numerically fine and physically meaningless.
+                    # Refuse loudly rather than adopt a plausible wrong value.
+                    _log_rl("clkadopt-len",
+                            "dead-reckon: chain '%s' publishes a clock mod %.0f chips but "
+                            "this chain's code is %.0f -- NOT adoptable across code lengths"
+                            % (_rx_sib.src, _rx_sib.extra.get("code_length") or -1, CODE_LEN),
+                            every_s=60.0)
+                if (_rx_sib is None and args.dr_clock_adopt and not offs and _xb_read_dir
                         and args.state_dongle):
                     try:
                         import receiver_state as _rs  # optional module, imported where used
@@ -4803,6 +4884,11 @@ def main(argv=None):
                         "sats, EMA a=%.2f)"
                         % (code_bias_ema * 1e6, raw_cb * 1e6, len(la_samples),
                            args.code_bias_alpha))
+                # CONTRIBUTE (task #27 M3). PER BAND, not receiver-wide: cable and PFB group
+                # delay are per carrier, so this number does not survive a retune. That is
+                # exactly what --state-dongle asserts by hand today.
+                rx.contribute_code_bias(chain_id, band_id, code_bias_ema,
+                                        len(la_samples), t0)
                 if args.code_bias_file:
                     try:
                         with open(args.code_bias_file, "w") as f:
