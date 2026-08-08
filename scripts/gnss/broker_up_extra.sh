@@ -48,15 +48,21 @@ esac
 # configs with the MATCHING --extra-signal before running this: these endpoints exist only if
 # the chain was generated (a missing one logs "set_seeds ... failed" every cycle and is
 # otherwise benign, so a typo here degrades quietly -- check the endpoints once by hand).
-MERGED="http://cx19:12049/gnss0_${CHAIN}_combine,http://cx51:12049/gnss0_${CHAIN}_combine"
-SPLIT=""
-for n in cx27 cx42 cx43 cx44; do
-    SPLIT="$SPLIT,http://$n:12049/gnss{0..1}_${CHAIN}_combine"
-done
-
+# PATH B ENDPOINTS. Extra signals are path-B chains as of 2026-08-08 (gen_chord_gnss_config.py
+# gives --extra-signal its own cudaGnssInject + cudaCorrelatorDual rather than a path-A tracker),
+# so the seed sink is `_inject` and the combiner is `_n2combine`. A path-A tracker chain for an
+# extra signal no longer exists, and pointing at `_track`/`_combine` would POST seeds into
+# nothing every cycle -- which logs and is otherwise silent, exactly the quiet degradation this
+# file warns about below.
+#
+# Path B is per GPU with no --combine-gpus collapse (measured worth 0.997 and it costs
+# instances, gnss_gpu_search.md 11.15), so EVERY node contributes both GPUs -- there is no
+# merged/split split to mirror here as there is for the GPS chain.
+CMB=""
 TRK=""
 for n in cx19 cx27 cx42 cx43 cx44 cx51; do
-    TRK="${TRK:+$TRK,}http://$n:12049/gnss{0..1}_${CHAIN}_track"
+    CMB="${CMB:+$CMB,}http://$n:12049/gnss{0..1}_${CHAIN}_n2combine"
+    TRK="${TRK:+$TRK,}http://$n:12049/gnss{0..1}_${CHAIN}_inject"
 done
 
 # --long-code-{segments,epoch-s} 100 / 0.1 and --nh-overlay-len 100 are the CS100 secondary
@@ -66,8 +72,9 @@ done
 exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
     --rest-url http://cx19:12049 \
     --trackers "$TRK" \
-    --combiner "gnss0_${CHAIN}_combine" \
-    --dll-combiners "${MERGED}${SPLIT}" \
+    --combiner "gnss0_${CHAIN}_n2combine" \
+    --dll-combiners "$CMB" \
+    --n2-combiners "$CMB" \
     --publish-port $PORT \
     --carrier-from-code \
     --nh-overlay-len 100 \
