@@ -11,6 +11,21 @@ legitimately differ. The point of the fixture is that the *input* is frozen.
 | fixture | source | covers |
 |---|---|---|
 | `broker_fake_l5.jsonl` | `broker_fakefleet.py` | detections → seeding → cp currency → status → DLL → seed POST, 60 cycles / 59 posts, GPS L5 geometry |
+| `broker_onsky_l5.jsonl.gz.digest` | live GPS L5, 2026-08-08 18:05 UTC | the real thing: 56 cycles, 1213 gets, **934 posts across 17 endpoints** including `set_doppler_hints` / `set_nh_hint`, the almanac predictor, the dead-reckon seeder and the code-bias pool |
+
+⚠️ **The on-sky transcript itself is NOT in the repo** — a minute of real fleet is ~1.3 MB
+per cycle (the combiner status responses dominate): 73 MB raw, 21 MB gzipped. Only the
+**digest** is versioned; the blob lives at
+
+    /home/kvand/gnss/fixtures/broker_onsky_l5.jsonl.gz     (NFS, same path on every node)
+
+`broker_equiv.py` and the broker both read `.gz` transparently, so it is used exactly like
+any other fixture:
+
+    broker_equiv.py check /home/kvand/gnss/fixtures/broker_onsky_l5.jsonl.gz
+
+If that blob is ever lost, re-capture (below) and re-bless — the old digest is then dead,
+which is correct: it described a recording that no longer exists.
 
 Re-capture (only when the fixture must deliberately change — say a new phase needs
 coverage). Note the ports: the fake fleet is deterministic in content, so the only thing a
@@ -37,8 +52,17 @@ almanac/BRDC predictor, the dead-reckon seeder, the carrier loop (`--carrier-gai
 CHORD), the nav-bit path, or the CM/CL sibling chain. Those need real captures, and all
 three are cheap the moment their chain is running:
 
-* **GPS L5 on sky** — add `--transcript-write /tmp/l5.jsonl` to `broker_up.sh`, let it run
-  a minute, kill it. Needs the F-engine.
+* ~~**GPS L5 on sky**~~ — **DONE 2026-08-08.** Captured with
+  `broker_restart.sh --transcript-write /tmp/l5_onsky.jsonl` while PRN 10 was at deep 242
+  and ten PRNs were active. It closes two of the three coverage gaps:
+
+      sensitivity OK   moved by: carrier_hz, hops_per_sec, dll_gain, code_bias_alpha, bias_alpha
+      coverage NOTE    this fixture does NOT reach: carrier_gain
+
+  **`carrier_gain` is not a fixture gap** — `broker_up.sh` runs `--carrier-gain 0.0`, so the
+  carrier loop is deliberately OFF in production and no on-sky capture can reach it without
+  turning it on. Covering it needs a deliberate `--carrier-gain 0.5` run, which is a
+  behaviour change to the instrument, not a recording choice.
 * **E5a model-primary** — same, on `broker_up_extra.sh e5a`. This is the one that exercises
   the dead-reckon seeder and clock adoption, and it needs no detections.
 * **The CM/CL sibling chain** — `--cl-tracker`, which is used by `config/run_live.sh`

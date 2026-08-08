@@ -32,6 +32,7 @@ pure code move reproduces the numbers exactly. A moved digest is a real change.
      docs/CHORD_BROKER_REFACTOR.md 3.2 about transcripts captured against a dead fleet.
 """
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -43,9 +44,15 @@ BROKER = os.path.join(K, "python", "scripts", "gnss", "gps_distributed_broker.py
 PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
 
 
+def _open(path):
+    """Transcripts of a real fleet are ~1.3 MB per cycle, so they live gzipped and OUTSIDE
+    the repo -- only the digest is versioned. Read either form transparently."""
+    return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
+
+
 def _header_argv(path):
     """The recording run's own flags, carried in the transcript's first line."""
-    with open(path) as f:
+    with _open(path) as f:
         for line in f:
             if line.strip():
                 r = json.loads(line)
@@ -59,7 +66,7 @@ def _census(path):
     """What the transcript actually contains. A replay of nothing replays perfectly."""
     n = {"now": 0, "get": 0, "post": 0}
     urls, prns = set(), set()
-    with open(path) as f:
+    with _open(path) as f:
         for line in f:
             if not line.strip():
                 continue

@@ -89,6 +89,45 @@ REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/nu
         --property=StandardError=append:$LOG \
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12049"
 
+# ---------------------------------------------------------------------------------------
+# START, THEN VERIFY, THEN RETRY -- because starting is not deterministic (2026-08-08).
+#
+# kotekan's ConfigTracker GETs chive:54321/config at construction and its failure is FATAL.
+# That service is a single-threaded asyncio server whose per-second metrics gather does real
+# register reads over 16 live boards, so /config is BIMODAL: measured over 20 sequential
+# requests, median 6 ms, p90 6.5 s, max 16.2 s. Whether a given node starts depends on
+# whether its request lands in a gather window.
+#
+# Measured cost of not doing this: a six-node restart took three passes. First pass 1 of 6
+# came up; second pass (20 s apart) 4 of 6; a third for the stragglers. And the failure mode
+# LIES -- one node succeeded between two failures, which reads as a per-node fault rather
+# than a timeout, so the obvious diagnosis is the wrong one.
+#
+# THE OPERATOR IS NOT A RETRY LOOP. The retry lives inside ONE ssh session on purpose: sudo's
+# credential cache is per-TTY, so retrying out here would cost a password per attempt --
+# exactly what the `restart` action exists to avoid.
+#
+# WAIT ON THE PORT, NOT ON THE UNIT. `systemctl is-active` goes active the moment systemd-run
+# forks, long before kotekan has bound 12049 or fetched anything; on 2026-08-08 five nodes
+# reported active and then exited. The REST port answering is the first honest evidence the
+# process got past ConfigTracker. And if the unit DIES, stop waiting immediately rather than
+# burning the budget -- fail fast on death, wait patiently while alive.
+REMOTE_START_VERIFY="for attempt in 1 2 3; do \
+      sudo systemctl stop gnss-node 2>/dev/null || true; sleep 1; \
+      $REMOTE_UP || { echo \"node_up: config unreadable\"; exit 2; }; \
+      ok=0; \
+      for i in \$(seq 1 100); do \
+        if curl -sf -m 2 -o /dev/null http://localhost:12049/telescope/time0_ns 2>/dev/null; \
+          then ok=1; break; fi; \
+        systemctl is-active --quiet gnss-node || break; \
+        sleep 2; \
+      done; \
+      if [ \$ok = 1 ]; then echo \"node_up: up on attempt \$attempt\"; exit 0; fi; \
+      echo \"node_up: attempt \$attempt did not reach :12049 -- retrying\"; \
+    done; \
+    echo \"node_up: FAILED after 3 attempts; last 15 log lines:\"; tail -15 '$LOG'; exit 1"
+# ---------------------------------------------------------------------------------------
+
 case "$ACT" in
   status)
     # `systemctl is-active` EXITS NON-ZERO for a stopped unit, so a bare `|| echo unreachable`
@@ -103,8 +142,7 @@ case "$ACT" in
     ;;
   up)
     preflight
-    ssh -t "$N" "$REMOTE_UP" \
-      && sleep 3 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node
+    ssh -t "$N" "$REMOTE_START_VERIFY"
     ;;
   restart)
     # STOP AND START IN ONE SSH SESSION -- the entire point. sudo's credential cache is keyed to
@@ -119,8 +157,7 @@ case "$ACT" in
     # refuse to bring it back because of a typo in GNSS_CFG -- the one outcome worse than not
     # restarting at all.
     preflight
-    ssh -t "$N" "sudo systemctl stop gnss-node 2>/dev/null || true; $REMOTE_UP" \
-      && sleep 3 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node
+    ssh -t "$N" "$REMOTE_START_VERIFY"
     ;;
   debug)
     # Run the POST-MERGE binary under gdb so a crash leaves a full backtrace instead of just an

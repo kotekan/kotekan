@@ -4,6 +4,7 @@ Extracted verbatim from gps_distributed_broker.py (task #27 M1). Nothing here ho
 per-signal or per-chain state, which is exactly why it can move first: the unified broker
 needs one copy of it, not one per constellation.
 """
+import gzip
 import hashlib
 import json
 import os
@@ -88,7 +89,12 @@ class _Transcript:
 
     def open_read(self, path):
         self.mode, self._owner = "read", threading.get_ident()
-        with open(path) as f:
+        # .gz transparently: an on-sky transcript is ~1.3 MB per cycle (the combiner status
+        # responses are the bulk), so a minute of real fleet is ~73 MB raw and ~21 MB
+        # compressed. Those live outside git -- the DIGEST is what gets versioned -- and
+        # reading them compressed keeps that practical.
+        opener = gzip.open if path.endswith(".gz") else open
+        with opener(path, "rt") as f:
             for line in f:
                 line = line.strip()
                 if not line:
