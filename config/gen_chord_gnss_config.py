@@ -88,6 +88,17 @@ N2_STAGE_PREFIXES = (
 #                              with no consumers. This is the configuration for VALIDATING it
 #                              against cudaCorrelator, which is what has to happen first anyway.
 #   --n2-primary --keep-n2  -> the full chain, for a deployment where the PL/RFI feeds exist.
+#
+# BUT PREFER --n2-dual --keep-n2 (no --n2-primary) FOR PRODUCTION. n2k_dual's freq_map and
+# block_class_mask are BOTH global to a launch, so "AA on every frequency + MIXED|BB on the comb"
+# is not expressible as one launch -- full mode computes the extended (N+M)^2 on ALL 384 local
+# frequencies, and on 377 of them the M half is entirely zeros. Measured cost of that waste:
+# 3.698 ms/frame against 0.076 ms for the mapped launch.
+#
+# TWO launches express it exactly, and the first one already exists: production's cudaCorrelator
+# (bare N^2, NS=128, every frequency) plus cudaCorrelatorDual in FREQ-MAP mode (MIXED|BB, 7
+# channels). They do not collide -- the mapped launch never writes the standard output, because
+# the AA block it would copy is not computed. Cost is bare N^2 + 0.076 ms instead of 3.698 ms.
 
 
 def gpu_of_channel(cfg, node, freq_id):
@@ -1693,7 +1704,8 @@ def main():
                 continue
             del out[key]
             dropped.append(key)
-        elif args.n2_dual and not args.n2_primary and key.startswith("host_correlation_buffer"):
+        elif (args.n2_dual and not args.n2_primary and not args.keep_n2
+              and key.startswith("host_correlation_buffer")):
             # Nothing produces or consumes it in this mode (no cudaOutputData for the N^2
             # prefix in dev); leaving it would just allocate dead host memory.
             del out[key]
