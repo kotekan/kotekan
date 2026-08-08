@@ -75,6 +75,30 @@ preflight() {
         echo "FAILED: binary not executable: $BIN" >&2
         exit 1
     fi
+    # PROVENANCE, NOT CORRECTNESS -- a WARNING, never a refusal. If this config is one the
+    # fleet manifest owns, say whether it still matches. A node started from a config nobody
+    # can regenerate has no explanation available when it later misbehaves, and that is
+    # exactly the state all six nodes were in through 2026-08-08.
+    #
+    # It does not block: bringing a node up from a deliberately hand-rolled config (a
+    # profiling run, a one-off) is legitimate and common, and a preflight that refused it
+    # would just get bypassed -- at which point it protects nothing.
+    #
+    # Ask the manifest WHICH file it owns for this node rather than guessing from $N: the
+    # suffix (_e5afleet today) lives in the manifest, so a hand-rolled config for the same
+    # node must not be judged against the fleet one -- that would report a mismatch for a file
+    # the manifest has no opinion about, which is worse than saying nothing.
+    local MAN="$K/config/gnss_fleet_chord.yaml" OWNED
+    if [ -f "$MAN" ]; then
+        OWNED=$(python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --print-path 2>/dev/null)
+        if [ -n "$OWNED" ] && [ "$OWNED" = "$CFG" ] && \
+           ! python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --check >/dev/null 2>&1
+        then
+            echo "⚠️  $CFG no longer matches config/gnss_fleet_chord.yaml." >&2
+            echo "    Starting it anyway. To see what moved:" >&2
+            echo "      scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --node $N --check" >&2
+        fi
+    fi
 }
 
 # The record dir is node-local (NOT the NFS home) and rawFileWrite fails on a missing one.

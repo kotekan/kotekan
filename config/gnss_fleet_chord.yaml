@@ -1,0 +1,72 @@
+# CHORD GNSS node configs -- the WHOLE fleet's generator flags, in one versioned file.
+#
+#   scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml            # write them
+#   scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --check    # verify, write nothing
+#
+# WHY THIS EXISTS. `gen_chord_gnss_config.py` takes ~48 flags, and until 2026-08-09 the set
+# that produced the running fleet was recorded NOWHERE: not in the generated header, not in
+# a script, not in a commit message. Six configs the instrument ran on all day were, in
+# practice, unreproducible -- so every change to a node was a hand-patch of a generated file
+# stamped "DO NOT HAND-EDIT", which is how the two combiner shapes below drifted apart in the
+# first place. Recovering the flags took an hour of diffing candidate outputs against the
+# committed files. A file like this would have taken a minute.
+#
+# THE RULE: if a node's config changes, it changes HERE and is regenerated. `--check` is what
+# makes that enforceable -- it regenerates into memory and compares, so a hand-edit or a
+# generator change shows up as a red gate instead of a silent divergence.
+#
+# Keys become flags exactly as in config/gnss_chains_chord.yaml: `keep-n2: true` -> a bare
+# `--keep-n2`, `search-port-base: 11040` -> `--search-port-base 11040`, false/null -> omitted.
+# Same convention, so a mistyped key surfaces as argparse's "unrecognized arguments".
+
+# ⚠️ THE BASE IS PINNED, AND THAT IS DELIBERATE. The generator INJECTS into production's
+# config rather than restating it, so the base is a real input -- and a base re-captured from
+# a running node on a different day silently produces a different fleet. This snapshot is the
+# one all six live configs were built from (sha256 ccf62befb3a4189f...); it came from
+# /home/kvand/gnss/session_artifacts_20260730/data/live_config.json, which survived only by
+# luck. Re-capture deliberately (`curl -s http://cx19:12048/config`), commit the new base
+# under config/base/ with its date, and point this key at it -- never in place.
+base: base/live_config_20260730.json
+
+# Where the generated files land: config/generated/chord_gnss_<node><suffix>.yaml
+#
+# ⚠️ THIS MANIFEST OWNS THE LIVE FLEET AND NOTHING ELSE. config/generated/ also holds ~20
+# one-off dev variants (_prof, _n2debug, _chandump, the aggregator and search instances,
+# and the pre-E5a chord_gnss_<node>.yaml). Those are deliberately unowned -- they were
+# built for a single measurement and regenerating them is not a goal. `--check` therefore
+# says nothing about them, which is correct: a gate that reported drift in a file nobody
+# intends to reproduce would train you to ignore it.
+suffix: _e5afleet
+
+common:
+  # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
+  # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
+  keep-n2: true
+  n2-dual: true
+  # Writes the COMBINER records (~52 KB/window), not the 17 MB/s tiles, so a transit can be
+  # analysed after the fact. Its absence is why the 03:58 E30 pass was lost on 2026-08-07.
+  n2-dump: true
+  # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's
+  # answer and would point every node at itself.
+  search-host: 10.222.3.6
+  # Galileo E5a as a second tracker chain on the SAME 1176.45 MHz tap (free: same covering
+  # channels as GPS L5, so it shares the voltage tap). PRNs are the Galileo range 1-36 minus
+  # the slots with no active satellite; the count is the path-B lane budget, 4 lanes per PRN.
+  extra-signal: GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+
+nodes:
+  # search-port-base is NOT arbitrary: the aggregator addresses feeds at base+i in node-major,
+  # GPU-minor order, so these must stay 2 apart and in this sequence or the search instance
+  # reads the wrong node's comb.
+  #
+  # combine-gpus is the ONE genuine inconsistency in the live fleet: cx19 and cx51 expose a
+  # single merged 14-channel combiner, the other four expose two 7-channel ones, because the
+  # four predate the flag. config/gnss_chains_chord.yaml carries a matching special case in
+  # its dll-combiners list. Setting it everywhere collapses both -- but it is a real change to
+  # what the trackers publish, so it wants a deliberate restart, not a quiet edit.
+  cx19: {search-port-base: 11040, combine-gpus: true}
+  cx27: {search-port-base: 11042}
+  cx42: {search-port-base: 11044}
+  cx43: {search-port-base: 11046}
+  cx44: {search-port-base: 11048}
+  cx51: {search-port-base: 11050, combine-gpus: true}
