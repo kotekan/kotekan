@@ -1422,6 +1422,13 @@ def main(argv=None):
                          "EXACTLY. It does NOT transfer across a retune -- E5b at 1207 MHz has a "
                          "different PFB group delay -- which is why the dongle key gates it and "
                          "why this must never be pointed across bands.")
+    ap.add_argument("--dr-clock-adopt-max-mad-chips", type=float, default=1.0,
+                    help="with --dr-clock-adopt: refuse a sibling whose receiver-clock scatter "
+                         "(integ_mad_chips) exceeds this, or whose satellites are ALL untrusted. "
+                         "A sibling that restarted recently publishes a fresh record every cycle "
+                         "and a clock that moves by thousands of chips -- adopting it is worse "
+                         "than holding a stale constant. Default 1.0 chip: a converged receiver "
+                         "clock sits far inside that, and the DLL capture range is 0.4.")
     ap.add_argument("--dr-clock-adopt-max-age-s", type=float, default=60.0,
                     help="with --dr-clock-adopt: refuse a sibling record older than this. "
                          "Staleness is a REFUSAL, not a fallback (receiver_state.read_state) -- "
@@ -5037,6 +5044,40 @@ def main(argv=None):
                             continue
                         if best_sib is None or float(rec.get("t", 0)) > float(best_sib[0]):
                             best_sib = (rec.get("t", 0), rec, dr)
+                    # QUALITY GATE. Freshness is not sufficiency: a sibling that restarted a
+                    # minute ago publishes a clock every cycle, on time, and bouncing by
+                    # thousands of chips. Measured 2026-08-08, minutes after a GPS-broker
+                    # restart: chips 8690 -> 2787 -> 9382, n=5 with untrusted=5, integ_mad 2754
+                    # chips. Adopting that is strictly WORSE than holding a stale primed
+                    # constant, because it moves every cycle.
+                    #
+                    # The record already carries the signals to refuse on -- n, untrusted,
+                    # integ_mad_chips -- which is exactly what receiver_state's docstring means
+                    # by "the richest quality signal in the system is a satellite COUNT, used
+                    # for thresholding, never for weighting". Use them:
+                    #   * every satellite untrusted  -> the model is not tracking, refuse
+                    #   * scatter above a chip       -> not a clock, refuse
+                    # A refused sibling leaves the primed value in place and says so.
+                    if best_sib is not None:
+                        _, rec, dr = best_sib
+                        _n = dr.get("n") or 0
+                        _unt = dr.get("untrusted")
+                        _mad = dr.get("integ_mad_chips")
+                        _why = None
+                        if _n and _unt is not None and _unt >= _n:
+                            _why = "all %d sat(s) untrusted" % _n
+                        elif _mad is not None and _mad > args.dr_clock_adopt_max_mad_chips:
+                            _why = ("scatter %.1f chips > %.1f"
+                                    % (_mad, args.dr_clock_adopt_max_mad_chips))
+                        if _why:
+                            _log_rl("clkadopt-q",
+                                    "dead-reckon: REFUSED sibling '%s' clock (%s) -- holding "
+                                    "%.2f chips. A converging sibling publishes on time and is "
+                                    "still wrong; freshness is not sufficiency."
+                                    % (rec.get("chain", "?"), _why,
+                                       dr_state["clk"] if dr_state.get("clk") is not None
+                                       else float("nan")))
+                            best_sib = None
                     if best_sib is not None:
                         _, rec, dr = best_sib
                         new_clk = float(dr["chips"]) % CODE_LEN
