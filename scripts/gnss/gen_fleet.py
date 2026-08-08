@@ -107,13 +107,28 @@ def main():
         # generator writes its human summary to stderr, so stdout is the file exactly.
         p = subprocess.run(cmd, capture_output=True, text=True, cwd=K)
         if p.returncode != 0:
+            # ⚠️ EXIT 2, NOT 1. Exit 1 means "the config differs from the manifest" and
+            # nothing else; a generator that failed to RUN has said nothing about the config.
+            # Conflating them made node_up.sh's preflight report "does not match
+            # config/gnss_fleet_chord.yaml" on cx27/cx42/cx51 on 2026-08-09 while all six were
+            # byte-identical -- a confident, specific, wrong claim that sent KV hunting a
+            # config problem that did not exist. A checker that cannot run must say so.
             sys.stderr.write(p.stderr[-3000:] + "\n")
-            sys.exit("generator failed for %s" % node)
+            sys.stderr.write("generator failed for %s (exit %d)\n" % (node, p.returncode))
+            raise SystemExit(2)
         text = p.stdout
 
         if not a.check:
-            with open(out, "w") as f:
+            # ATOMIC: a sibling .tmp then os.replace. A plain open(out,"w") leaves a window
+            # where a concurrent reader -- node_up.sh's preflight, another --check, or kotekan
+            # itself starting -- sees a TRUNCATED config. It reads as a difference, so the
+            # preflight reports "no longer matches the manifest" about a file that is merely
+            # half-written. Same fix and same reason as gnss_ephemeris._atomic_write_bytes,
+            # which exists because readers were catching half-written BRDC gzips.
+            tmp = out + ".tmp"
+            with open(tmp, "w") as f:
                 f.write(text)
+            os.replace(tmp, out)
             written.append(os.path.relpath(out, K))
             continue
 

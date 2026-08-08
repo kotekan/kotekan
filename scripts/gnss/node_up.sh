@@ -98,15 +98,28 @@ preflight() {
     # suffix (_e5afleet today) lives in the manifest, so a hand-rolled config for the same
     # node must not be judged against the fleet one -- that would report a mismatch for a file
     # the manifest has no opinion about, which is worse than saying nothing.
-    local MAN="$K/config/gnss_fleet_chord.yaml" OWNED
+    # ⚠️ DISTINGUISH "THE CONFIG DIFFERS" FROM "THE CHECKER BROKE". The first version of this
+    # treated ANY non-zero exit as a mismatch, so a missing PyYAML, a generator traceback or a
+    # host without the right python3 all reported "does not match config/gnss_fleet_chord.yaml"
+    # -- a confident, specific, WRONG claim about the config. It fired on cx27/cx42/cx51 on
+    # 2026-08-09 while all six configs were in fact byte-identical to the manifest, which sent
+    # KV looking for a config problem that did not exist. gen_fleet exits 1 ONLY for a real
+    # difference, so anything else is the tool failing and must say so in its own words.
+    local MAN="$K/config/gnss_fleet_chord.yaml" OWNED RC OUT
     if [ -f "$MAN" ]; then
         OWNED=$(python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --print-path 2>/dev/null)
-        if [ -n "$OWNED" ] && [ "$OWNED" = "$CFG" ] && \
-           ! python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --check >/dev/null 2>&1
-        then
-            echo "⚠️  $CFG no longer matches config/gnss_fleet_chord.yaml." >&2
-            echo "    Starting it anyway. To see what moved:" >&2
-            echo "      scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --node $N --check" >&2
+        if [ -n "$OWNED" ] && [ "$OWNED" = "$CFG" ]; then
+            OUT=$(python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --check 2>&1)
+            RC=$?
+            if [ "$RC" -eq 1 ]; then
+                echo "⚠️  $CFG no longer matches config/gnss_fleet_chord.yaml." >&2
+                echo "$OUT" | sed 's/^/    /' >&2
+                echo "    Starting it anyway (regenerate: scripts/gnss/gen_fleet.py $MAN)" >&2
+            elif [ "$RC" -ne 0 ]; then
+                echo "note: could not VERIFY $CFG against the manifest (checker exited $RC)." >&2
+                echo "      This says nothing about the config -- the check itself failed:" >&2
+                echo "$OUT" | tail -3 | sed 's/^/      /' >&2
+            fi
         fi
     fi
 }
