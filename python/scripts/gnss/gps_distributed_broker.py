@@ -4302,7 +4302,31 @@ def main(argv=None, rx=None, publisher=None):
                             continue
                         if prn in seeds and prn not in dr_state["seeded"]:
                             continue  # search-anchored coast: not ours to touch
-                        if (prn in seeds
+                        # HOLD ON LOCK -- BUT ONLY IF SOMETHING ELSE OWNS THE DOPPLER.
+                        #
+                        # "the DLL owns the residual now" is true for a SEARCH-FED chain: the
+                        # DLL owns the code residual and the search re-measures Doppler every
+                        # pass, so holding the model seed off a locked sat is right. On a
+                        # MODEL-PRIMARY chain (E5a/B2a: --detectors empty by design, blind
+                        # acquisition structurally impossible -- CHORD_MULTIBAND.md 5) there is
+                        # no search, and CHORD runs --carrier-gain 0.0, so the DLL owns ONLY
+                        # the code residual and NOTHING owns Doppler. Holding then pins the
+                        # seed to a ref_hop minutes in the past while the sky moves.
+                        #
+                        # MEASURED ON SKY 2026-08-09, Galileo E4: the seed froze at 557.880 Hz
+                        # for 750 s while the model walked -0.270 Hz/s; deep_snr decayed
+                        # 724 -> 46, lock broke, and the reseed stepped -200.4 Hz -- within 1%
+                        # of the -202 Hz the model had moved meanwhile. A limit cycle: lock,
+                        # freeze, decay, drop, reseed, repeat, every ~5 minutes, forever.
+                        # The tracker's own Seed struct documents the contract this violates:
+                        # "the broker owns these and refreshes them every cycle, so there is no
+                        # frozen-seed state to age or unfreeze here."
+                        #
+                        # So: hold only when a Doppler owner EXISTS. --dr-repin-s still bounds
+                        # the rate (10 s), and a refresh costs nothing on path B, which has no
+                        # DLL loop to reset (the injector's /get_trim reports enabled: false).
+                        _dop_owner = bool(detectors) or args.carrier_gain > 0.0
+                        if (prn in seeds and _dop_owner
                                 and sig_of(status.get(prn, {})) >= args.lock_snr):
                             continue  # sub-threshold LOCK: the DLL owns the residual now
                         if (prn in dr_state["seeded"]
@@ -4333,8 +4357,18 @@ def main(argv=None, rx=None, publisher=None):
                         if prn not in seeds:
                             _log("dead-reckon SEED PRN %d (elev %.0f, cp0 %.1f, dop %+.0f,"
                                  " rate %+.2f)" % (prn, v["el"], cp0, dop_seed, drate))
-                        dll_trim.pop(prn, None)  # any old trim served the OLD anchor
-                        dll_last.pop(prn, None)
+                        # A MODEL REPIN IS NOT A NEW ANCHOR. Dropping the trim is right when
+                        # the anchor comes from a fresh MEASUREMENT (a search detection lands
+                        # somewhere the old sub-chip residual says nothing about). A repin of a
+                        # sat we were already model-seeding is the SAME trajectory re-evaluated
+                        # at a later epoch, so the model-vs-truth residual the trim encodes is
+                        # exactly as valid as it was a moment ago -- and keeping it is what
+                        # makes the 10 s repin above safe. Popping it every repin would reset
+                        # the E5a DLL forever and quietly retire the code loop on every
+                        # model-primary chain: the Doppler fix would have cost the code loop.
+                        if prn not in dr_state["seeded"]:
+                            dll_trim.pop(prn, None)  # any old trim served the OLD anchor
+                            dll_last.pop(prn, None)
                         seeds[prn] = {
                             "doppler_hz": dop_seed, "code_phase_chips": cp0,
                             "code_phase_rate": cp_rate_from_code_bias(
