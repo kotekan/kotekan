@@ -73,7 +73,7 @@ from gnss_broker.transport import (           # noqa: E402
 )
 from gnss_broker.fits import (                # noqa: E402
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
-    cp_rate_from_code_bias,
+    cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
 from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent,
@@ -3915,6 +3915,13 @@ def main(argv=None, rx=None, publisher=None):
             # The seed is reduced at the SAME length the prediction was: one constant, used
             # twice, so they cannot drift apart.
             _DR_MOD = (LC_SEG * CODE_LEN) if args.dr_long_code else CODE_LEN
+            # Layer-2 slew constants (task #30). CAP: 0.05 chips per 2 s cycle = 0.025
+            # chips/s of correction authority -- above the 0.003-0.02 chips/s drift band
+            # measured on sky, an order below the 0.25-chip DLL trims a fold tolerates, and
+            # 20x below the ~1-chip clock-EMA jitter the reverted 10 s repin injected whole.
+            # K: first-order low-pass; with the cap it bounds, it is deliberately unfussy.
+            _DR_SLEW_CAP = 0.05
+            _DR_SLEW_K = 0.25
             if dr_state["eph"] is None or now_w - dr_state["eph_t"] > 7200:
                 try:
                     dr_state["eph"] = dr_eph_mod.parse_rinex_nav(dr_eph_mod.fetch_brdc())
@@ -3933,7 +3940,28 @@ def main(argv=None, rx=None, publisher=None):
                 tag = args.dr_constellation
                 t_now_abs = now_w - utc0_sample0
                 la = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
-                      else (code_bias_ema or 0.0))
+                      else (code_bias_ema if code_bias_ema is not None else None))
+                # TASK #30, LAYER 1: A DETECTOR-LESS CHAIN CANNOT MEASURE (l-a) -- BORROW THE
+                # BAND SIBLING'S. code_bias_ema fills only from this chain's own cp-fit pool,
+                # which needs detections, so on E5a/B2a it stayed None and every dead-reckon
+                # seed shipped code_phase_rate = 0.0 (visible in SEEDDBG). The receiver code
+                # clock is PER BAND, not per chain -- gps_l5 measures it continuously on the
+                # same 1176.45 MHz and has contributed it to the Receiver since M3, but
+                # rx.code_bias() had NO consumer until now. The unmodeled rate this leaves is
+                # ~0.003-0.01 chips/s, which walks the prompt through the +-1 chip correlation
+                # window in 3-11 minutes: measured on sky as E5a's rise-peak-fall deep_snr
+                # envelope with the fleet disc railed at +0.7 and E >> L. Rates are SMOOTH --
+                # this is the correction that cannot inject a step, unlike the reverted repin.
+                if la is None:
+                    _sh_cb = rx.code_bias(band_id, exclude=chain_id, t_now=now_w)
+                    if _sh_cb is not None:
+                        la = float(_sh_cb.value)
+                        _log_rl("la-adopt",
+                                "dead-reckon: (l-a) %+.4f ppm ADOPTED from in-process chain "
+                                "'%s' (same band %s) -> seeds carry the code-clock rate"
+                                % (la * 1e6, _sh_cb.src, band_id), every_s=300.0)
+                    else:
+                        la = 0.0
                 # clock drift (chips/s): EMPIRICAL from consecutive raw solves (EMA'd
                 # below), falling back to the f_chip*(l-a) model until measured -- the
                 # modeled value left a persistent EMA lag (~0.6 chips at first deploy),
@@ -4302,10 +4330,30 @@ def main(argv=None, rx=None, publisher=None):
                             continue
                         if prn in seeds and prn not in dr_state["seeded"]:
                             continue  # search-anchored coast: not ours to touch
-                        if (prn in seeds
+                        # TASK #30, LAYER 2: A LOCKED MODEL-PRIMARY SAT GETS A SLEWED REFRESH,
+                        # not a hold and not a repin. Both extremes are measured failures:
+                        #   HOLD  (search-fed logic on a chain with no search): the model's
+                        #         residual code rate is unmodeled, so the prompt drifts through
+                        #         the +-1 chip window in 3-11 min -- the rise-peak-fall deep_snr
+                        #         envelope, fleet disc railed +0.7, E >> L, lock lost, reseed.
+                        #   REPIN (8c7d176b3, reverted): re-anchoring from clk_now every 10 s
+                        #         injects the clock EMA's ~+-1 chip jitter as code-phase STEPS;
+                        #         median deep_snr fell 221 -> 17 and 21% of deep folds lost
+                        #         certification. Seed continuity beats seed freshness.
+                        # The slew keeps continuity AND tracks the model: converge the seed's
+                        # physical code phase toward the live model at <= _DR_SLEW_CAP chips
+                        # per cycle (0.025 chips/s at 2 s -- above every drift measured, an
+                        # order below the 0.25-chip DLL trims the GPS fold shrugs off), with
+                        # gain _DR_SLEW_K low-passing the clock EMA jitter the repin injected
+                        # raw. Search-FED chains keep the plain hold: their DLL owns code and
+                        # their search owns Doppler, and their digest is the control.
+                        _slew = (prn in seeds and not detectors
+                                 and prn in dr_state["seeded"]
+                                 and sig_of(status.get(prn, {})) >= args.lock_snr)
+                        if (not _slew and prn in seeds
                                 and sig_of(status.get(prn, {})) >= args.lock_snr):
                             continue  # sub-threshold LOCK: the DLL owns the residual now
-                        if (prn in dr_state["seeded"]
+                        if (not _slew and prn in dr_state["seeded"]
                                 and now_w - dr_state["pin"].get(prn, 0.0) < args.dr_repin_s):
                             continue
                         # doppler + rate from BRDC range-rate (NOT the TLE pred: the BDS
@@ -4329,6 +4377,44 @@ def main(argv=None, rx=None, publisher=None):
                         if args.dr_dry_run:
                             planned.append("PRN %d el %.0f cp0 %.1f dop %+.0f rate %+.2f"
                                            % (prn, v["el"], cp0, dop_seed, drate))
+                            continue
+                        if _slew:
+                            # Where the TRACKER's propagation puts this seed right now
+                            # (dr_seed_phys inverts the currency + extrapolation exactly --
+                            # round-trip 1e-4 chips, re-anchor continuity 0.0 even across a
+                            # Doppler change; see the selftest). The model side is the same
+                            # sum the birth cp0 uses, BEFORE back-referencing.
+                            h1 = int(round(t_now_abs * args.hops_per_sec))
+                            _held = dr_seed_phys(
+                                seeds[prn], h1, args.hops_per_sec, args.chip_rate_hz,
+                                args.carrier_hz, args.code_doppler_sign, _DR_MOD)
+                            _model = (cp_predicted(v, t_now_abs) + clk_now) % _DR_MOD
+                            _dcp = ((_model - _held + _DR_MOD / 2.0) % _DR_MOD
+                                    ) - _DR_MOD / 2.0
+                            _step = max(-_DR_SLEW_CAP,
+                                        min(_DR_SLEW_CAP, _DR_SLEW_K * _dcp))
+                            # Re-anchor at h1 with the FRESH model doppler/rate (kills the
+                            # dt^2 linearization error a held seed accumulates) but at the
+                            # HELD phase plus the bounded step -- never at the model's own
+                            # phase, which carries the clock EMA jitter raw. NOT popping
+                            # dll_trim: same trajectory, later epoch; the trim's residual is
+                            # still valid (the lesson of the reverted repin).
+                            seeds[prn] = {
+                                "doppler_hz": dop_seed,
+                                "code_phase_chips": dr_cp0(
+                                    _held + _step, t_now_abs, dop_seed,
+                                    args.chip_rate_hz, args.carrier_hz,
+                                    args.code_doppler_sign, _DR_MOD),
+                                "code_phase_rate": cp_rate_from_code_bias(
+                                    dop_seed, la, args.hops_per_sec,
+                                    args.chip_rate_hz, args.carrier_hz),
+                                "ref_hop": h1, "doppler_rate_hz_s": drate}
+                            dr_state["pin"][prn] = now_w
+                            _log_rl("drslew-%d" % prn,
+                                    "dead-reckon SLEW PRN %d: model-held %+.3f chips, "
+                                    "step %+.3f (cap %.2f), dop %+.0f rate %+.2f"
+                                    % (prn, _dcp, _step, _DR_SLEW_CAP, dop_seed, drate),
+                                    every_s=120.0)
                             continue
                         if prn not in seeds:
                             _log("dead-reckon SEED PRN %d (elev %.0f, cp0 %.1f, dop %+.0f,"

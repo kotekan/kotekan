@@ -225,3 +225,44 @@ def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier
     doppler_hz/carrier_hz kept in the signature for call-site stability; unused."""
     del doppler_hz, carrier_hz  # residual convention: geometry is already fed forward
     return code_bias * chip_hz / hops_per_sec
+
+
+# --- dead-reckon seed currency (task #30) -----------------------------------------------
+#
+# The two directions of the SAME mapping, kept adjacent so they cannot drift apart. The
+# broker's dead-reckon seeder built cp0 inline (the dr_cp0 formula below) while nothing ever
+# computed the inverse -- so when #30 needed "where does the TRACKER think the code is right
+# now", there was no function to ask. These mirror gnss::propagate_seed's phase model
+# line-for-line (gnssSeedTransport.cpp): the sample-0 back-reference scales the nominal
+# advance by the code Doppler over the WHOLE time since sample 0, cp_rate is the residual
+# clock slope in chips/HOP (see cp_rate_from_code_bias above), and the quadratic term is
+# 0.5*(f_chip/f_carrier)*dop_rate*dt^2 from the seed's reference hop.
+
+def dr_cp0(phys_chips, t_abs, doppler_hz, chip_hz, carrier_hz, code_doppler_sign, mod):
+    """Physical code phase (incl. receiver clock) at t_abs -> the sample-0 seed currency.
+
+    This IS the dead-reckon seeder's birth formula, extracted verbatim: subtract the
+    Doppler-scaled nominal advance since sample 0. `t_abs` is seconds since sample 0 and
+    must be the same instant the seed's ref_hop encodes (ref_hop = round(t_abs * hps));
+    the sub-hop rounding cancels because the physical phase and the back-reference advance
+    at the same rate to first order."""
+    return (phys_chips
+            - t_abs * chip_hz * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)) % mod
+
+
+def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod):
+    """Physical code phase (chips, mod `mod`) the TRACKER's propagation implies at hop h1.
+
+    The exact inverse of dr_cp0 plus the tracker's own extrapolation terms, i.e. what
+    gnss::propagate_seed will hand the despread at h1 for this seed: the back-reference
+    undone at the SEED's Doppler (the mapping is defined by the doppler the seed carries,
+    not the doppler the sky has -- the cp-currency rule), the residual clock slope, and the
+    dop_rate quadratic. Used by the slewed refresh to measure how far the live model has
+    walked away from what a held seed is actually despreading at."""
+    t1 = h1 / hops_per_sec
+    dt = (h1 - seed["ref_hop"]) / hops_per_sec
+    return (seed["code_phase_chips"]
+            + t1 * chip_hz * (1.0 + code_doppler_sign * seed["doppler_hz"] / carrier_hz)
+            + seed.get("code_phase_rate", 0.0) * (h1 - seed["ref_hop"])
+            + 0.5 * (chip_hz / carrier_hz)
+              * seed.get("doppler_rate_hz_s", 0.0) * dt * dt) % mod

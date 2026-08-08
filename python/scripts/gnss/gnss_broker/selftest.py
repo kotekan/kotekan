@@ -124,6 +124,56 @@ check("gps_l5 and gal_e5a share a band (same 1176.45 MHz hardware)",
 check("gal_e5b is a DIFFERENT band (retune -> different group delay)",
       signals.get("gal_e5b").band != signals.get("gal_e5a").band)
 
+# -- dead-reckon seed currency (task #30) -------------------------------------------------
+# The slewed refresh depends on two properties of dr_cp0/dr_seed_phys and dies silently
+# without either: (1) they are exact inverses, so "where does the tracker think the code is"
+# is answerable; (2) re-anchoring a seed at a later hop WITH A DIFFERENT DOPPLER moves the
+# implied physical phase by exactly zero -- the property the reverted 10 s repin lacked and
+# the whole reason the slew is safe to run every cycle. Deterministic PRNG: this is a gate.
+import random as _rnd
+
+from fits import dr_cp0, dr_seed_phys  # noqa: E402
+
+_rnd.seed(30)
+_CHIP, _FC, _S, _HPS, _MOD = 10.23e6, 1176.45e6, -1.0, 195312.5, 1023000.0
+_w_rt = _w_cont = 0.0
+for _ in range(500):
+    _phys = _rnd.uniform(0, _MOD)
+    _t = _rnd.uniform(1e3, 2e5)
+    _dop = _rnd.uniform(-4000, 4000)
+    _h0 = int(round(_t * _HPS))
+    _sd = {"code_phase_chips": dr_cp0(_phys, _h0 / _HPS, _dop, _CHIP, _FC, _S, _MOD),
+           "ref_hop": _h0, "doppler_hz": _dop,
+           "code_phase_rate": _rnd.uniform(-1e-4, 1e-4),
+           "doppler_rate_hz_s": _rnd.uniform(-0.5, 0.5)}
+    _e = abs((((dr_seed_phys(_sd, _h0, _HPS, _CHIP, _FC, _S, _MOD) - _phys)
+               + _MOD / 2) % _MOD) - _MOD / 2)
+    _w_rt = max(_w_rt, _e)
+check("dr currency round-trips (dr_seed_phys inverts dr_cp0 at birth)", _w_rt < 1e-3,
+      "worst %.3e chips over 500 trials" % _w_rt)
+# continuity: roll to h1 at a CHANGED doppler; implied phys at h1 must not move at all
+_rnd.seed(31)
+_w_cont = 0.0
+for _ in range(500):
+    _phys = _rnd.uniform(0, _MOD)
+    _t = _rnd.uniform(1e3, 2e5)
+    _dop = _rnd.uniform(-4000, 4000)
+    _dop2 = _dop + _rnd.uniform(-2, 2)
+    _h0 = int(round(_t * _HPS))
+    _h1 = _h0 + int(_rnd.uniform(1, 600) * _HPS)
+    _sd = {"code_phase_chips": dr_cp0(_phys, _h0 / _HPS, _dop, _CHIP, _FC, _S, _MOD),
+           "ref_hop": _h0, "doppler_hz": _dop,
+           "code_phase_rate": _rnd.uniform(-1e-4, 1e-4),
+           "doppler_rate_hz_s": _rnd.uniform(-0.5, 0.5)}
+    _p1 = dr_seed_phys(_sd, _h1, _HPS, _CHIP, _FC, _S, _MOD)
+    _sd2 = {"code_phase_chips": dr_cp0(_p1, _h1 / _HPS, _dop2, _CHIP, _FC, _S, _MOD),
+            "ref_hop": _h1, "doppler_hz": _dop2,
+            "code_phase_rate": 0.0, "doppler_rate_hz_s": 0.0}
+    _p1b = dr_seed_phys(_sd2, _h1, _HPS, _CHIP, _FC, _S, _MOD)
+    _w_cont = max(_w_cont, abs((((_p1b - _p1) + _MOD / 2) % _MOD) - _MOD / 2))
+check("dr slew re-anchor is CONTINUOUS across a Doppler change", _w_cont < 1e-6,
+      "worst %.3e chips over 500 trials" % _w_cont)
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)
