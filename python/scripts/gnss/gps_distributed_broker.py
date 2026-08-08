@@ -1422,6 +1422,16 @@ def main(argv=None):
                          "EXACTLY. It does NOT transfer across a retune -- E5b at 1207 MHz has a "
                          "different PFB group delay -- which is why the dongle key gates it and "
                          "why this must never be pointed across bands.")
+    ap.add_argument("--dr-long-code", action=argparse.BooleanOptionalAction, default=True,
+                    help="dead-reckon the code phase at the FULL secondary-overlaid code length "
+                         "(--long-code-segments * code length) rather than one primary period. "
+                         "Required for any chain without a blind search: E5a/B2a carry per-PRN "
+                         "secondaries, so nothing measures the segment and the model must supply "
+                         "it. With this off (the historical behaviour) every dead-reckoned seed "
+                         "lands in segment 0 -- correct 1 time in LC_SEG, which for E5a's CS100 "
+                         "is 1 in 100. GPS masked the bug because its blind search re-seeds with "
+                         "a measured nh. Needs absolute time to half a primary period (0.5 ms); "
+                         "the GPS-disciplined anchor is microsecond-class.")
     ap.add_argument("--dr-clock-adopt-max-slew", type=float, default=2.0,
                     help="with --dr-clock-adopt: refuse a sibling whose clock is MOVING faster "
                          "than this (chips/s), measured across two consecutive reads one cycle "
@@ -4873,7 +4883,29 @@ def main(argv=None):
                 and time.time() >= dr_state["next"]):
             now_w = time.time()
             dr_state["next"] = now_w + args.dr_refresh_s
-            t_code = CODE_LEN / args.chip_rate_hz
+            # THE DEAD-RECKON MODEL MUST WORK AT THE CODE THE TRACKER ACTUALLY DESPREADS.
+            # This was CODE_LEN / chip_rate -- ONE PRIMARY PERIOD -- so t0m and every predicted
+            # phase were reduced mod 1 ms and the secondary segment was discarded before a seed
+            # was ever built. A dead-reckoned PRN therefore always landed in segment 0: right
+            # 1 time in LC_SEG.
+            #
+            # GPS survives that because the BLIND SEARCH re-seeds it with a measured `nh`, so
+            # the model's missing segment is overwritten before it matters. E5a/B2a have no
+            # blind search at all (per-PRN secondaries, CHORD_MULTIBAND.md section 5) -- the
+            # dead-reckon seed IS the answer -- so for them this modulo is the whole bug:
+            # measured 2026-08-08, every E5a seed had code_phase_chips < 10230 against a
+            # 1,023,000-chip code, i.e. 1-in-100 of the right CS period, i.e. noise.
+            #
+            # Reducing mod the LONG period instead keeps the numbers small enough for double
+            # precision (the reason the reduction exists) while carrying the segment. Placing
+            # it needs absolute time to half a primary period, 0.5 ms; the F-engine anchor is
+            # GPS-disciplined to microseconds and BRDC range/clock are nanosecond-class, so
+            # there are three orders of margin.
+            t_code = (LC_SEG * CODE_LEN) / args.chip_rate_hz if args.dr_long_code \
+                     else CODE_LEN / args.chip_rate_hz
+            # The seed is reduced at the SAME length the prediction was: one constant, used
+            # twice, so they cannot drift apart.
+            _DR_MOD = (LC_SEG * CODE_LEN) if args.dr_long_code else CODE_LEN
             if dr_state["eph"] is None or now_w - dr_state["eph_t"] > 7200:
                 try:
                     dr_state["eph"] = dr_eph_mod.parse_rinex_nav(dr_eph_mod.fetch_brdc())
@@ -5232,7 +5264,7 @@ def main(argv=None):
                         cp0 = ((cp_predicted(v, t_now_abs) + clk_now)
                                - t_now_abs * args.chip_rate_hz
                                  * (1.0 + args.code_doppler_sign
-                                    * dop_seed / args.carrier_hz)) % CODE_LEN
+                                    * dop_seed / args.carrier_hz)) % _DR_MOD
                         if args.dr_dry_run:
                             planned.append("PRN %d el %.0f cp0 %.1f dop %+.0f rate %+.2f"
                                            % (prn, v["el"], cp0, dop_seed, drate))
