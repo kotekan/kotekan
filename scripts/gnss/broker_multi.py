@@ -81,6 +81,14 @@ def run_chain(name, argv, rx, alive):
     try:
         broker.main(argv, rx=rx)
         transport._log("chain finished (main returned)")
+    except transport._TranscriptDone as e:
+        # A REPLAY ENDING IS NOT A DEATH. Without this the driver reports "*** CHAIN DIED"
+        # on a perfectly successful gate run -- and, worse, prints no digest, so the driver
+        # itself cannot be gated against a recording. That is exactly backwards: the piece
+        # with the new concurrency is the piece most in need of the gate.
+        transport._log("transcript replay complete (%s); %d posts, digest %s"
+                       % (e, len(transport._TR.posts), transport._TR.digest()))
+        print(transport._TR.digest())
     except SystemExit as e:
         # argparse's ap.error() lands here. In a thread it would otherwise be invisible.
         transport._log("*** CHAIN REFUSED TO START: %s. Its signal is DARK; the others "

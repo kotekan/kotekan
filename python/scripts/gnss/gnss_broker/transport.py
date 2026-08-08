@@ -174,9 +174,17 @@ class _Transcript:
         return v
 
     def post(self, url, payload, timeout):
-        # The POST stream IS the gate: capture it in every mode, before any transport can
-        # fail, so a run against a dead fleet still produces a comparable trace.
-        self.posts.append((url, json.dumps(payload, sort_keys=True)))
+        # The POST stream IS the gate: captured BEFORE any transport can fail, so a run
+        # against a dead fleet still produces a comparable trace.
+        #
+        # ⚠️ ONLY WHILE A TRANSCRIPT IS OPEN. The first version appended unconditionally and
+        # nothing ever drains it, so a live broker grew this list forever: MEASURED at
+        # 69 MB/hour on the CHORD GPS chain (1.6 GB/day, and it would have multiplied by
+        # chain count under broker_multi.py). Nothing in live mode ever reads `posts` --
+        # digest() is only called by the harness, which always has a transcript open -- so
+        # gating on mode costs the gate nothing.
+        if self.mode is not None:
+            self.posts.append((url, json.dumps(payload, sort_keys=True)))
         if self.mode == "read" and self._mine():
             r = self._take("post")
             if r["u"] != url:
