@@ -1422,13 +1422,15 @@ def main(argv=None):
                          "EXACTLY. It does NOT transfer across a retune -- E5b at 1207 MHz has a "
                          "different PFB group delay -- which is why the dongle key gates it and "
                          "why this must never be pointed across bands.")
-    ap.add_argument("--dr-clock-adopt-max-mad-chips", type=float, default=1.0,
-                    help="with --dr-clock-adopt: refuse a sibling whose receiver-clock scatter "
-                         "(integ_mad_chips) exceeds this, or whose satellites are ALL untrusted. "
-                         "A sibling that restarted recently publishes a fresh record every cycle "
-                         "and a clock that moves by thousands of chips -- adopting it is worse "
-                         "than holding a stale constant. Default 1.0 chip: a converged receiver "
-                         "clock sits far inside that, and the DLL capture range is 0.4.")
+    ap.add_argument("--dr-clock-adopt-max-slew", type=float, default=2.0,
+                    help="with --dr-clock-adopt: refuse a sibling whose clock is MOVING faster "
+                         "than this (chips/s), measured across two consecutive reads one cycle "
+                         "apart. Deliberately NOT the sibling's own quality fields: "
+                         "integ_mad_chips is a MAD over a mixed satellite population and read "
+                         "3.3-3.9 chips while the clock itself was stable to 0.2 (2026-08-08), "
+                         "and `untrusted` counts a persistent demoted set not comparable to `n`. "
+                         "Watching the number is the honest test. Default 2.0 chips/s: real "
+                         "drift is ~0.02, a non-converged estimate moves by thousands.")
     ap.add_argument("--dr-clock-adopt-max-age-s", type=float, default=60.0,
                     help="with --dr-clock-adopt: refuse a sibling record older than this. "
                          "Staleness is a REFUSAL, not a fallback (receiver_state.read_state) -- "
