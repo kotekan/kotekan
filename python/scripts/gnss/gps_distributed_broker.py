@@ -4297,7 +4297,46 @@ def main(argv=None, rx=None, publisher=None):
                 # this branch does not exist.
                 _rx_sib = (rx.dr_clock(band_id, exclude=chain_id, t_now=t0)
                            if (args.dr_clock_adopt and not offs) else None)
-                if _rx_sib is not None and _rx_sib.extra.get("code_length") == CODE_LEN:
+                # CROSS-BAND BOOTSTRAP (task #34). Without this a band whose chains all lack
+                # detectors NEVER gets a clock: measured on sky, gal_e5b and bds_b2b sat at the
+                # startup prime of 0.00 chips while gps_l5 had bootstrapped 150.74 and both
+                # 1176.45 siblings had adopted it. 150 chips of error against a +-1 chip peak,
+                # so dll_disc read -0.0008 (despreading noise) where E5a railed at -0.59.
+                #
+                # Layer 2 (the cross-band RATE) was necessary and NOT sufficient, and the
+                # distinction is the whole point: a rate keeps you on the peak, a phase puts
+                # you there. With the clock 150 chips out there is no peak to hold.
+                #
+                # ⚠️ THE ADOPTED PHASE CARRIES tau_band -- that is accepted, not overlooked. It
+                # replaces a 150-chip error with a tau_band-sized one, which is inside the
+                # DLL's pull-in, and the loop's steady-state residual then IS tau_band. The
+                # per-band scoping exists to protect that measurement, and by blocking the
+                # bootstrap it was the reason the measurement could never be made. Logged as
+                # BOOTSTRAP, never as "ADOPTED ... same band", so the log distinguishes a
+                # borrowed phase from a measured one.
+                #
+                # MODULUS: a clock may be reduced to a SHORTER code (150.74 mod 10230 is
+                # well-defined) but never lengthened -- a value known mod 10230 says nothing
+                # about which of the 100 periods of a 1023000-chip code it sits in. So a donor
+                # whose code is shorter than ours is refused, which is the same-length guard
+                # generalised rather than dropped.
+                _rx_xband = False
+                if _rx_sib is None and args.dr_clock_adopt and not offs:
+                    _cand = rx.dr_clock_any_band(exclude=chain_id, t_now=t0)
+                    if _cand is not None and (_cand.extra.get("code_length") or 0) >= CODE_LEN:
+                        _rx_sib, _rx_xband = _cand, True
+                if _rx_sib is not None and _rx_xband:
+                    _v = float(_rx_sib.value) % CODE_LEN
+                    if dr_state.get("clk") is None or abs(
+                            ((_v - dr_state["clk"] + CODE_LEN / 2) % CODE_LEN)
+                            - CODE_LEN / 2) > 0.5:
+                        _log("dead-reckon: clock BOOTSTRAP %.2f chips from in-process chain "
+                             "'%s' (CROSS-BAND -- carries tau_band; the DLL residual IS that "
+                             "measurement)" % (_v, _rx_sib.src))
+                    dr_state["clk"] = _v
+                    dr_state["clk_t"] = _rx_sib.t
+                    dr_state.pop("clk_primed", None)
+                elif _rx_sib is not None and _rx_sib.extra.get("code_length") == CODE_LEN:
                     if dr_state.get("clk") is None or abs(
                             ((float(_rx_sib.value) - dr_state["clk"] + CODE_LEN / 2)
                              % CODE_LEN) - CODE_LEN / 2) > 0.5:

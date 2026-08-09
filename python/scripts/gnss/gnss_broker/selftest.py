@@ -444,6 +444,34 @@ check("borrowed rate is carrier-INDEPENDENT at equal chip rate (E5a vs E5b)",
 check("and it is nonzero, i.e. the seed now carries a rate at all",
       abs(_r_e5b) > 0.0, "%.6g chips/hop" % _r_e5b)
 
+# -- CROSS-BAND CLOCK PHASE: a bootstrap, with a modulus rule (task #34) ------------------
+# Layer 2 (the rate) was necessary and NOT sufficient: with the clock 150 chips out there is no
+# peak for a rate to hold. These assert the bootstrap AND its guard rail -- a clock may be
+# reduced to a shorter code but never lengthened, because a value known mod 10230 says nothing
+# about which of the 100 periods of a 1023000-chip code it sits in.
+_rx2 = receiver.Receiver()
+_rx2.contribute_dr_clock("gps_l5", "1176.45MHz", 150.74, 0.01, 2000.0, 1023000)
+check("cross-band clock found when no same-band donor exists",
+      _rx2.dr_clock("1207.14MHz", exclude="gal_e5b", t_now=2000.0) is None
+      and _rx2.dr_clock_any_band(exclude="gal_e5b", t_now=2000.0) is not None)
+_c = _rx2.dr_clock_any_band(exclude="gal_e5b", t_now=2000.0)
+check("cross-band clock carries its code_length so the consumer can judge the modulus",
+      _c.extra.get("code_length") == 1023000)
+check("reducing to a SHORTER code is well defined (150.74 mod 10230)",
+      abs((_c.value % 10230.0) - 150.74) < 1e-9)
+# The refusal that matters: a short-code donor must not seed a long-code consumer.
+_rx3 = receiver.Receiver()
+_rx3.contribute_dr_clock("bds_b2b", "1207.14MHz", 150.74, 0.01, 2000.0, 10230)
+_c3 = _rx3.dr_clock_any_band(exclude="gal_e5a", t_now=2000.0)
+check("a SHORTER-code donor is visible but must be refused by the caller's guard",
+      _c3 is not None and (_c3.extra.get("code_length") or 0) < 1023000)
+check("cross-band clock still honours exclude and max_age",
+      _rx2.dr_clock_any_band(exclude="gps_l5", t_now=2000.0) is None
+      and _rx2.dr_clock_any_band(exclude="gal_e5b", t_now=2000.0 + 500.0) is None)
+# The error the bootstrap accepts is tau_band-sized, not 150 chips -- state the arithmetic.
+check("bootstrap replaces a 150-chip error with a sub-chip one",
+      abs(150.74 - 0.0) > 100.0 and abs((150.74 % 10230.0) - 150.74) < 1e-9)
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)

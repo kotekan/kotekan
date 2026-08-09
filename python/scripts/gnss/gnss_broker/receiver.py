@@ -213,6 +213,32 @@ class Receiver(object):
     def dr_clock(self, band, exclude=None, max_age_s=120.0, t_now=None):
         return self._best(self._dr, exclude, max_age_s, t_now, key2=band)
 
+    def dr_clock_any_band(self, exclude=None, max_age_s=120.0, t_now=None):
+        """The dead-reckon clock PHASE from any band -- a BOOTSTRAP PRIOR, not a measurement.
+
+        ⚠️ THIS ONE REALLY IS APPROXIMATE, unlike code_bias_any_band. The receiver clock is a
+        receiver property and is common to every band, but the number stored here is a code
+        PHASE, so a consumer in another band inherits the donor's group delay: the adopted
+        value is off by exactly `tau_band`, the per-carrier instrumental delay difference (plus
+        an ionospheric term, which is tiny -- 40.3*TEC/c*(1/fa^2-1/fb^2) is ~0.005 chips per
+        10 TECU between the E5 sidebands).
+
+        WHY THAT IS THE RIGHT TRADE. The alternative is what the second band actually did all
+        day: sit at the startup prime of 0.00 chips while the true receiver clock was ~150.7,
+        i.e. 150 chips of code-phase error against a +-1 chip correlation peak. Nothing can
+        track through that, so nothing ever measured tau_band, so the per-band scoping that
+        exists to PROTECT tau_band was the reason it stayed unmeasurable. Borrowing the phase
+        replaces a 150-chip error with a tau_band-sized one, which is inside the DLL's pull-in,
+        and the loop's steady-state residual then IS tau_band -- the measurement we wanted.
+
+        So this is explicitly a BOOTSTRAP: it gets a cold band onto the peak, and the residual
+        it leaves behind is the science. The caller must log it as borrowed and must not treat
+        the adopted value as a measurement of this band's clock (dr_state keeps `clk_primed`
+        semantics accordingly). Task #34; superseded by the joint solve (#33), where tau_band
+        is a declared state and this stops being a bootstrap problem at all.
+        """
+        return self._best(self._dr, exclude, max_age_s, t_now, key2=None)
+
     # -- internals ----------------------------------------------------------------------
     def _best(self, store, exclude, max_age_s, t_now, key2):
         with self._lock:
