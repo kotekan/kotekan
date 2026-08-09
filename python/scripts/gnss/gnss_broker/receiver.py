@@ -61,6 +61,25 @@ class Receiver(object):
         self._carrier = {}             # chain -> _Shared (Hz, receiver scope)
         self._code = {}                # (band, chain) -> _Shared (dimensionless l-a)
         self._dr = {}                  # (band, chain) -> _Shared (chips, + drift in extra)
+        self._joint = {}               # band -> JointReceiverState (P2a, shadow)
+
+    # -- the joint receiver state (task #33 P2a) ------------------------------------------
+    def joint(self, band, **kw):
+        """The ONE [clk, clk_rate, b_sat[i]] solve for this band, shared by every chain.
+
+        Receiver scope by the same physics as dr_clock: one F-engine, one reference, and a
+        code clock that is per BAND because cable and PFB group delay do not survive a
+        retune. On CHORD all three deployed chains (GPS L5, Galileo E5a, BeiDou B2a) sit at
+        1176.45 MHz, so all three feed one state -- which is the point: the gauge's 1/N leak
+        shrinks and the clock stops being one constellation's private median.
+
+        Created on first use so a process that never enables the shadow never imports numpy.
+        """
+        from .state_filter import JointReceiverState
+        with self._lock:
+            if band not in self._joint:
+                self._joint[band] = JointReceiverState(**kw)
+            return self._joint[band]
 
     # -- time anchor --------------------------------------------------------------------
     def time_anchor(self, fetch, chain):

@@ -786,6 +786,24 @@ def main(argv=None, rx=None, publisher=None):
                          "no loop. Empty = off, and every recorded transcript replays "
                          "byte-identically (replay is strict-ordered; this flag not being in "
                          "an old transcript's argv is what keeps the new GETs out of replay).")
+    ap.add_argument("--joint-shadow", action="store_true",
+                    help="P2a (task #33, docs/CHORD_JOINT_TRACKING.md section 3a): run the "
+                         "JOINT receiver-state solve -- one [clk, clk_rate, b_sat[i]] "
+                         "estimated together from the dead-reckon integrity residuals, "
+                         "receiver-scope so all three constellations feed ONE clock -- and "
+                         "LOG it beside the circular-median clock it is meant to replace. "
+                         "Consumed by nothing: this flag cannot change a seed, a POST or a "
+                         "transcript digest, by construction. The comparison it exists to "
+                         "make: the median treats the +-3-7 chip per-sat spread (docs "
+                         "11.22) as error to be gated on; the joint solve reads the same "
+                         "numbers as clock PLUS per-sat bias. If the biases hold steady "
+                         "while the clock stays smooth, the revised P2 is right and the "
+                         "consumers can start switching one per commit (P2b).")
+    ap.add_argument("--joint-sigma", type=float, default=0.3,
+                    help="measurement sigma (chips) for --joint-shadow. The search cp noise "
+                         "is 0.03-0.5 chips per-sat-conditions; 0.3 is the middle of that "
+                         "and NOT tuned against the answer -- the state's own covariance "
+                         "reports whether it was right.")
     ap.add_argument("--bsat-gain", type=float, default=0.02,
                     help="Per-cycle gain of the b_sat loop (task #33): the per-satellite "
                          "path-bias filter fed by the fleet phase-slope tau. 0 disables the "
@@ -4099,6 +4117,26 @@ def main(argv=None, rx=None, publisher=None):
                            + drift * (t_now_abs - t_i)) % CODE_LEN
                     offs.append((prn, d_i))
                 dr_state["offs_t"] = now_w  # freshness stamp for the referee's integrity veto
+                # -- P2a SHADOW: the joint receiver-state solve (task #33, section 3a) ----
+                # `offs` IS the measurement, and always was. d_i = clk + b_i: the physical
+                # code phase the search measured, minus the pure model, with no clock
+                # removed. Today the next 40 lines take its circular median as the clock
+                # and treat the per-sat spread (+-3-7 chips, docs 11.22) as an error to be
+                # gated on; the joint solve reads the SAME numbers as clock PLUS per-sat
+                # bias and estimates both, separated by process noise rather than by a
+                # threshold. Shadow: logged beside the median it will replace, consumed by
+                # NOTHING, so every transcript digest is untouched.
+                if args.joint_shadow and offs:
+                    try:
+                        _js = rx.joint(band_id, code_len=CODE_LEN)
+                        _js.cycle([((tag, p), d, args.joint_sigma) for p, d in offs],
+                                  t_now_abs)
+                        if now_w >= dr_state.get("joint_log_next", 0.0):
+                            dr_state["joint_log_next"] = now_w + 30.0
+                            _log("JOINT[shadow] " + _js.summary(t_now_abs))
+                    except Exception as e:      # shadow must never take the broker down
+                        _log_rl("jointerr", "JOINT[shadow] disabled this cycle: %s" % e,
+                                every_s=300.0)
                 if len(offs) >= args.dr_min_sats:
                     ref = offs[0][1]
                     cen = sorted(((d - ref + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
