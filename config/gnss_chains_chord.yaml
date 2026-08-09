@@ -55,23 +55,44 @@ chains:
   gps_l5:
     signal: gps_l5
     detectors: http://localhost:12050/gps_search
-    trackers: "http://cx19:12049/gnss{0..1}_track,http://cx27:12049/gnss{0..1}_track,\
-http://cx42:12049/gnss{0..1}_track,http://cx43:12049/gnss{0..1}_track,\
-http://cx44:12049/gnss{0..1}_track,http://cx51:12049/gnss{0..1}_track,\
-http://cx19:12049/gnss{0..1}_inject"
-    combiner: gnss0_combine
+    # -- PATH B (task #26, 2026-08-09). GPS L5 ran on BOTH paths simultaneously: path A
+    # (gnss*_track / gnss*_assemble / gnss*_combine) and a fully-built path B
+    # (gnss*_inject / gnss*_n2assemble / gnss*_n2combine). Measured, path A costs 7x path B
+    # per tracker kernel, so that duplicate was the single largest GPU consumer on every
+    # node -- ~7 of ~10 units, which is what kept the fleet at 62-79% with only three
+    # chains and made a second band look unaffordable.
+    #
+    # The record-cadence worry from the path-B plan does NOT apply to this deployment: the
+    # plan describes sub_integration_ntime 8192 (frame-length records), but the generator
+    # drives BOTH paths from --hops-per-record, and every stage in the live config -- path A
+    # and path B alike -- reads 2048. Same cadence, so --coh-min-records, the DLL hop window
+    # and fit-gap all see exactly what they saw before. Path B at this cadence is already
+    # proven in production by E5a/B2a, which have run on nothing else.
+    trackers: "http://cx19:12049/gnss{0..1}_inject,\
+http://cx27:12049/gnss{0..1}_inject,\
+http://cx42:12049/gnss{0..1}_inject,\
+http://cx43:12049/gnss{0..1}_inject,\
+http://cx44:12049/gnss{0..1}_inject,\
+http://cx51:12049/gnss{0..1}_inject"
+    combiner: gnss0_n2combine
     # NOT uniform: cx19 and cx51 were regenerated with --combine-gpus and expose ONE merged
     # 14-channel combiner; the rest predate it and expose two 7-channel ones. Regenerate all
     # node configs and this collapses to the {0..1} form everywhere.
-    dll-combiners: "http://cx19:12049/gnss0_combine,http://cx51:12049/gnss0_combine,\
-http://cx27:12049/gnss{0..1}_combine,http://cx42:12049/gnss{0..1}_combine,\
-http://cx43:12049/gnss{0..1}_combine,http://cx44:12049/gnss{0..1}_combine"
+    # Path B's combiners are uniform {0..1} on every node -- the --combine-gpus asymmetry
+    # that forced the hand-written list below was a path-A artefact and dies with it.
+    dll-combiners: &l5_cmb "http://cx19:12049/gnss{0..1}_n2combine,\
+http://cx27:12049/gnss{0..1}_n2combine,\
+http://cx42:12049/gnss{0..1}_n2combine,\
+http://cx43:12049/gnss{0..1}_n2combine,\
+http://cx44:12049/gnss{0..1}_n2combine,\
+http://cx51:12049/gnss{0..1}_n2combine"
+    n2-combiners: *l5_cmb
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
-    # Path A's assemblers; same node set as the trackers.
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_assemble,http://cx27:12049/gnss{0..1}_assemble,\
-http://cx42:12049/gnss{0..1}_assemble,http://cx43:12049/gnss{0..1}_assemble,\
-http://cx44:12049/gnss{0..1}_assemble,http://cx51:12049/gnss{0..1}_assemble"
+    # Path B's assemblers; same node set as the trackers.
+    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_n2assemble,http://cx27:12049/gnss{0..1}_n2assemble,\
+http://cx42:12049/gnss{0..1}_n2assemble,http://cx43:12049/gnss{0..1}_n2assemble,\
+http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     nh-hint: true
     nh-hint-span: 2
     acquire-snr: 30
