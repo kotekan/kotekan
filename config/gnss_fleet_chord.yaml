@@ -71,6 +71,39 @@ common:
     # 34-88 deg. Seeding a satellite that cannot be there costs 4 lanes and produces noise.
     - BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 
+    # -- 1207.14 MHz: THE SECOND BAND (2026-08-09) -------------------------------------
+    # Everything above sits at 1176.45 MHz, so until now the instrument has been
+    # single-band and `tau_band` -- a declared state in the joint solve
+    # (docs/CHORD_JOINT_TRACKING.md) -- has been unobservable by construction. These two
+    # chains are the leverage: SAME satellites, SAME rays, DIFFERENT carrier.
+    #
+    # THIS COSTS NO BANDWIDTH AND NO RETUNE. The science band is freq_id 1536..7679 =
+    # 300.0..1499.8 MHz, and every node already holds 768 channels spread across all of it,
+    # so 1207.14 MHz is ALREADY ARRIVING -- the fleet lobe there is 106 channels, exactly as
+    # at 1176.45. (The F-engine digitises to 1600 MHz; 300-1500 is the science SELECTION.
+    # L1/E1/B1C at 1575.42 is outside that selection, not outside the digitiser -- KV is
+    # negotiating to have it passed through, so do not write L1 off as unreachable.)
+    #
+    # ⚠️ PRN LISTS ARE A DELIBERATE FIRST-CUT BUDGET, NOT THE INTENDED FINAL SET. The two
+    # GPUs per node already run at 62-79% with three chains; adding two more at the 32/24
+    # counts above would ask for roughly double the live tracker load and saturate them.
+    # These short lists are spread across orbital slots so something is always up. GROW THEM
+    # AFTER MEASURING the actual delta -- and note that P3 (retiring the E/L lanes) halves
+    # the per-PRN synthesis cost, which is the real unlock for full-count multi-band.
+    #
+    # GAL_E5B_Q is a PILOT with a per-PRN CS100 secondary -- structurally identical to
+    # E5A_Q, so it uses the baked-CS dead-reckon path that already works, and needs no
+    # nav-bit wipe.
+    - GAL_E5B_Q:1,5,9,13,19,23,27,31
+    # BDS_B2B_I is the PPP-B2b DATA channel and has NO secondary overlay at all
+    # (secondary_length=0: B-CNAV3 runs 1000 sps = one symbol per 1 ms code period). That
+    # makes it the most SEARCHABLE signal in the descriptor set -- no per-PRN CS to hunt --
+    # and the natural first candidate if we want a searcher that is not GPS. But it is
+    # data-only, so coherent integration past 1 ms needs nav-bit wipe, which
+    # cudaGnssChordTrack does not have yet (task #31). Expect it to TRACK with modest deep
+    # until that lands; it is here for the band, not yet for the sensitivity.
+    - BDS_B2B_I:19,23,27,31,35,39
+
 nodes:
   # search-port-base is NOT arbitrary: the aggregator addresses feeds at base+i in node-major,
   # GPU-minor order, so these must stay 2 apart and in this sequence or the search instance

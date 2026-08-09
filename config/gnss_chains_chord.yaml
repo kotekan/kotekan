@@ -137,3 +137,80 @@ http://cx27:12049/gnss{0..1}_b2a_n2combine,http://cx42:12049/gnss{0..1}_b2a_n2co
 http://cx43:12049/gnss{0..1}_b2a_n2combine,http://cx44:12049/gnss{0..1}_b2a_n2combine,\
 http://cx51:12049/gnss{0..1}_b2a_n2combine"
     n2-combiners: *b2a_cmb
+
+  # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
+  # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
+  # carrier, which is the entire point. Until these chains existed the instrument was
+  # single-band, so `tau_band` (a declared state of the joint solve) had nothing to
+  # measure it with, and a per-satellite bias could not be told apart from a per-BAND
+  # instrumental delay. Same satellites, same rays, different carrier: the difference IS
+  # the discriminator.
+  # E5b-Q is a PILOT with a per-PRN CS100 secondary -- structurally identical to E5a-Q, so
+  # it rides the baked-CS dead-reckon path that already works and needs no nav-bit wipe.
+  # `dr-clock-adopt` because, like every model-primary chain, it runs no detectors and
+  # consumes the receiver clock GPS solves (receiver.py: ONE clock, and now genuinely
+  # across two bands -- the code clock is per BAND by doctrine, and this is the first
+  # configuration that can actually test that claim rather than assert it).
+  gal_e5b:
+    signal: gal_e5b
+    dr-clock-adopt: true
+    trackers: "http://cx19:12049/gnss{0..1}_e5b_inject,\
+http://cx27:12049/gnss{0..1}_e5b_inject,\
+http://cx42:12049/gnss{0..1}_e5b_inject,\
+http://cx43:12049/gnss{0..1}_e5b_inject,\
+http://cx44:12049/gnss{0..1}_e5b_inject,\
+http://cx51:12049/gnss{0..1}_e5b_inject"
+    combiner: gnss0_e5b_n2combine
+    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_e5b_n2assemble,\
+http://cx27:12049/gnss{0..1}_e5b_n2assemble,\
+http://cx42:12049/gnss{0..1}_e5b_n2assemble,\
+http://cx43:12049/gnss{0..1}_e5b_n2assemble,\
+http://cx44:12049/gnss{0..1}_e5b_n2assemble,\
+http://cx51:12049/gnss{0..1}_e5b_n2assemble"
+    dll-combiners: &e5b_cmb "http://cx19:12049/gnss{0..1}_e5b_n2combine,\
+http://cx27:12049/gnss{0..1}_e5b_n2combine,\
+http://cx42:12049/gnss{0..1}_e5b_n2combine,\
+http://cx43:12049/gnss{0..1}_e5b_n2combine,\
+http://cx44:12049/gnss{0..1}_e5b_n2combine,\
+http://cx51:12049/gnss{0..1}_e5b_n2combine"
+    n2-combiners: *e5b_cmb
+
+  # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
+  # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
+  # carrier, which is the entire point. Until these chains existed the instrument was
+  # single-band, so `tau_band` (a declared state of the joint solve) had nothing to
+  # measure it with, and a per-satellite bias could not be told apart from a per-BAND
+  # instrumental delay. Same satellites, same rays, different carrier: the difference IS
+  # the discriminator.
+  # B2b-I is the PPP-B2b DATA channel: secondary_length = 0, no overlay at all (B-CNAV3
+  # runs 1000 sps = exactly one symbol per 1 ms code period). That makes it the most
+  # SEARCHABLE signal in the descriptor set -- there is no per-PRN CS to hunt, which is
+  # precisely what makes E5a-Q/B2a-P structurally un-searchable -- and so the natural
+  # first candidate for a searcher that is not GPS.
+  # ⚠️ BUT IT IS DATA-ONLY: coherent integration past 1 ms needs nav-bit wipe, which
+  # cudaGnssChordTrack does not have (task #31). Expect it to TRACK with modest deep until
+  # that lands. It is here for the BAND, not yet for the sensitivity -- judge it on
+  # tau/lock, not on deep_snr, and do not "fix" a low deep that is simply this.
+  bds_b2b:
+    signal: bds_b2b
+    dr-clock-adopt: true
+    trackers: "http://cx19:12049/gnss{0..1}_b2b_inject,\
+http://cx27:12049/gnss{0..1}_b2b_inject,\
+http://cx42:12049/gnss{0..1}_b2b_inject,\
+http://cx43:12049/gnss{0..1}_b2b_inject,\
+http://cx44:12049/gnss{0..1}_b2b_inject,\
+http://cx51:12049/gnss{0..1}_b2b_inject"
+    combiner: gnss0_b2b_n2combine
+    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_b2b_n2assemble,\
+http://cx27:12049/gnss{0..1}_b2b_n2assemble,\
+http://cx42:12049/gnss{0..1}_b2b_n2assemble,\
+http://cx43:12049/gnss{0..1}_b2b_n2assemble,\
+http://cx44:12049/gnss{0..1}_b2b_n2assemble,\
+http://cx51:12049/gnss{0..1}_b2b_n2assemble"
+    dll-combiners: &b2b_cmb "http://cx19:12049/gnss{0..1}_b2b_n2combine,\
+http://cx27:12049/gnss{0..1}_b2b_n2combine,\
+http://cx42:12049/gnss{0..1}_b2b_n2combine,\
+http://cx43:12049/gnss{0..1}_b2b_n2combine,\
+http://cx44:12049/gnss{0..1}_b2b_n2combine,\
+http://cx51:12049/gnss{0..1}_b2b_n2combine"
+    n2-combiners: *b2b_cmb
