@@ -102,25 +102,48 @@ http://cx42:12049/gnss{0..1}_track,\
 http://cx43:12049/gnss{0..1}_track,\
 http://cx44:12049/gnss{0..1}_track,\
 http://cx51:12049/gnss{0..1}_track"
-    combiner: gnss0_n2combine
-    # NOT uniform: cx19 and cx51 were regenerated with --combine-gpus and expose ONE merged
-    # 14-channel combiner; the rest predate it and expose two 7-channel ones. Regenerate all
-    # node configs and this collapses to the {0..1} form everywhere.
-    # Path B's combiners are uniform {0..1} on every node -- the --combine-gpus asymmetry
-    # that forced the hand-written list below was a path-A artefact and dies with it.
-    dll-combiners: &l5_cmb "http://cx19:12049/gnss{0..1}_n2combine,\
+    # ⚠️ THE PUBLISHED PATH IS BACK ON PATH A (task #35, 2026-08-09) -- this is what the
+    # VIEWER shows. `dll-combiners` is the population fleet_coherent publishes from and the
+    # one the fleet DLL closes on; `n2-combiners` is a second population that, by explicit
+    # design, "publishes nothing and touches no loop" (gps_distributed_broker.py ~4665). So
+    # pointing the first at path A and leaving the second on path B puts path A on the viewer
+    # AND makes the broker log a genuine A-vs-B line every cycle, on the same seeds, same sky,
+    # same instant -- the "FLEET-COH: PRN n A ... | B ..." rows. Watch those, not just the
+    # viewer: they are the paired comparison, and the viewer alone cannot be one.
+    #
+    # Per-hop the two engines already measured equivalent (|B|/|A| 0.99-1.03, complex corr
+    # 0.95-0.9993 -- docs section 11.25), so the expectation is that the viewer looks the SAME.
+    # If it does not, that is the informative outcome and it means the difference lives
+    # downstream of the records, in what each combiner population feeds the publish path --
+    # NOT in the correlation, which has been compared sample-for-sample.
+    combiner: gnss0_combine
+    # ⚠️ NOT UNIFORM, AND THE ASYMMETRY IS LOAD-BEARING. cx19 and cx51 were generated with
+    # --combine-gpus, so on those two nodes path A's GPU-1 combiner IS NOT INSTANTIATED --
+    # gnss0_combine there is one merged 14-channel instance covering both GPUs. Writing
+    # gnss{0..1}_combine for all six would point 2 of 12 URLs at stages that do not exist, and
+    # fleet_coherent treats an unreachable instance as "skipped, never fatal" -- so it would
+    # silently run on 10 while looking like 12. Verified against the generated configs before
+    # this was written: cx19 and cx51 expose gnss0_combine only, the other four expose both.
+    # (The ASSEMBLERS are not affected -- --combine-gpus drops the combiner, not the assembler
+    # -- so spectrum-endpoints below is uniform {0..1} on all six. Also verified.)
+    dll-combiners: "http://cx19:12049/gnss0_combine,http://cx51:12049/gnss0_combine,\
+http://cx27:12049/gnss{0..1}_combine,http://cx42:12049/gnss{0..1}_combine,\
+http://cx43:12049/gnss{0..1}_combine,http://cx44:12049/gnss{0..1}_combine"
+    # Path B, kept as the SHADOW population so the comparison survives the repoint. Uniform
+    # {0..1} on every node: path B builds one combiner per GPU everywhere, which is why the
+    # --combine-gpus asymmetry above does not appear here.
+    n2-combiners: "http://cx19:12049/gnss{0..1}_n2combine,\
 http://cx27:12049/gnss{0..1}_n2combine,\
 http://cx42:12049/gnss{0..1}_n2combine,\
 http://cx43:12049/gnss{0..1}_n2combine,\
 http://cx44:12049/gnss{0..1}_n2combine,\
 http://cx51:12049/gnss{0..1}_n2combine"
-    n2-combiners: *l5_cmb
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
-    # Path B's assemblers; same node set as the trackers.
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_n2assemble,http://cx27:12049/gnss{0..1}_n2assemble,\
-http://cx42:12049/gnss{0..1}_n2assemble,http://cx43:12049/gnss{0..1}_n2assemble,\
-http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
+    # Path A's assemblers, to match the published path above.
+    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_assemble,http://cx27:12049/gnss{0..1}_assemble,\
+http://cx42:12049/gnss{0..1}_assemble,http://cx43:12049/gnss{0..1}_assemble,\
+http://cx44:12049/gnss{0..1}_assemble,http://cx51:12049/gnss{0..1}_assemble"
     nh-hint: true
     nh-hint-span: 2
     acquire-snr: 30
