@@ -55,22 +55,7 @@ common:
   # built alongside path A but taps the voltage buffer directly, and it is what detects GPS
   # and so solves the clock for all five chains. Flip this off to get path A back for
   # single-signal debugging.
-  #
-  # ⚠️ TEMPORARILY OFF -- PATH A IS BACK, ON PURPOSE (task #35, 2026-08-09). GPS C/N0 got
-  # NOISIER after the path-B swap. "The two paths are statistically identical on equivalent
-  # inputs" is a claim this project has only ever checked with single-PRN spot values (PRN
-  # 10 deep 88.9 vs path A, above) -- never as a DISTRIBUTION, which is the only form in
-  # which "noisier" is even a statement. So path A comes back as a PASSIVE REFERENCE: the
-  # broker seeds both paths in the same iteration with the same payload (see the gps_l5
-  # `trackers` list in config/gnss_chains_chord.yaml), and still closes its loop on path B
-  # alone -- so the reference cannot perturb the thing it is measuring. Set back to `true`
-  # and drop the path-A endpoints from that list once #35 has a verdict.
-  #
-  # THE GPU COST IS A WASH, which is why this is safe to leave up: dropping the two
-  # 1207.14 MHz chains below frees 2 x 2.512 ms/frame and path A costs 17.712, so a node
-  # goes from 5 path-B chains (12.56 ms) to 3 path-B + 1 path-A (25.25 ms) -- which is
-  # exactly the profile every node ran all week, before 122fb91a3.
-  no-path-a: false
+  no-path-a: true
   # Writes the COMBINER records (~52 KB/window), not the 17 MB/s tiles, so a transit can be
   # analysed after the fact. Its absence is why the 03:58 E30 pass was lost on 2026-08-07.
   n2-dump: true
@@ -120,15 +105,7 @@ common:
     # the real per-PRN CS100 overlay flips sign every millisecond, so coherent integration
     # past 1 ms cancels itself. Same reason E5a and B2a use _CS above -- which is exactly
     # what the two lines above should have told me before I wrote the bare name (#34).
-    # ⚠️ BOTH 1207.14 MHz CHAINS ARE PARKED FOR TASK #35 (2026-08-09), NOT ABANDONED.
-    # They are commented out rather than deleted so that restoring them is a two-line
-    # revert with the PRN lists intact -- those lists are a measured budget (see the
-    # paragraph above), not something to re-derive. They read deep 2-3 (i.e. noise) and
-    # are still under investigation as #34, so parking them costs no measurement, while
-    # the 2 x 2.512 ms/frame they free is what pays for path A's 17.712 alongside the
-    # three chains that ARE producing science. Uncomment both, with the matching chains
-    # in config/gnss_chains_chord.yaml, when #35 reports.
-    # - GAL_E5B_Q_CS:1,5,9,13,19,23,27,31
+    - GAL_E5B_Q_CS:1,5,9,13,19,23,27,31
     # BDS_B2B_I is the PPP-B2b DATA channel and has NO secondary overlay at all
     # (secondary_length=0: B-CNAV3 runs 1000 sps = one symbol per 1 ms code period). That
     # makes it the most SEARCHABLE signal in the descriptor set -- no per-PRN CS to hunt --
@@ -136,21 +113,36 @@ common:
     # data-only, so coherent integration past 1 ms needs nav-bit wipe, which
     # cudaGnssChordTrack does not have yet (task #31). Expect it to TRACK with modest deep
     # until that lands; it is here for the band, not yet for the sensitivity.
-    # - BDS_B2B_I:19,23,27,31,35,39
+    - BDS_B2B_I:19,23,27,31,35,39
 
 nodes:
   # search-port-base is NOT arbitrary: the aggregator addresses feeds at base+i in node-major,
   # GPU-minor order, so these must stay 2 apart and in this sequence or the search instance
   # reads the wrong node's comb.
   #
-  # combine-gpus is the ONE genuine inconsistency in the live fleet: cx19 and cx51 expose a
-  # single merged 14-channel combiner, the other four expose two 7-channel ones, because the
-  # four predate the flag. config/gnss_chains_chord.yaml carries a matching special case in
-  # its dll-combiners list. Setting it everywhere collapses both -- but it is a real change to
-  # what the trackers publish, so it wants a deliberate restart, not a quiet edit.
-  cx19: {search-port-base: 11040, combine-gpus: true}
+  # combine-gpus is GONE from cx19 and cx51 (KV, 2026-08-09), and the fleet is now UNIFORM:
+  # every node exposes two per-GPU combiners, on both paths.
+  #
+  # WHY IT WAS ALWAYS WRONG FOR THIS ARCHITECTURE, not merely inconsistent. The flag merged
+  # GPU 0 and GPU 1 into ONE 14-channel path-A combiner. The whole point of the current design
+  # is to ship per-channel results from every instance back to the broker so it can fit a
+  # phase SLOPE across frequency (task #32 / CHORD_JOINT_TRACKING.md P1) -- and a merge is the
+  # one operation the broker can never undo. Collapsing two instances into one also throws
+  # away the axis fleet_coherent needs most: instances are what give the leave-one-out
+  # reference and the one-way S/R split something to work with, which is why the weak PRNs
+  # measured BETTER split than merged (PRN 3: 5.2 vs 4.0; PRN 7: 3.4 vs 2.5) while the median
+  # fleet ratio was 0.997 -- i.e. the merge bought nothing and cost the margins.
+  #
+  # It was already a dead letter in practice: --no-path-a means path A's combiner is not
+  # instantiated at all, and path B has always built one combiner per GPU on every node. So
+  # this removal changes no running stage today -- it removes a trap. While it was set, the
+  # natural-looking `gnss{0..1}_combine` in a chain file silently pointed 2 of 12 URLs at
+  # stages that did not exist on those two nodes, and fleet_coherent skips an unreachable
+  # instance without failing. scripts/gnss/check_chain_endpoints.py now catches that class,
+  # but not having the asymmetry at all is better than catching it.
+  cx19: {search-port-base: 11040}
   cx27: {search-port-base: 11042}
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
   cx44: {search-port-base: 11048}
-  cx51: {search-port-base: 11050, combine-gpus: true}
+  cx51: {search-port-base: 11050}

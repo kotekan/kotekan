@@ -2245,3 +2245,49 @@ dominate here, cf. the 10 s re-pin that cut deep_snr 221 -> 17) or fleet_coheren
 one-way split, whose `rebuild_split` is already known to be unbalanced in sum|w|^2 (task #6).
 The model-primary chains are the control worth exploiting: E5a/B2a run no search and held
 coh_frac sd 0.001–0.012 against GPS's 0.11–0.14 on the same engine and the same nodes.
+
+## 11.26 "E5b and B2b are tracking nicely" — they were their E5a/B2a partners
+
+Reported from the viewer while both 1207.14 MHz chains were COMMENTED OUT of the config and
+their node stages returned 404. The tell that opened it was KV's own aside: the two new
+signals showed "almost uniformly identical significance" to their E5a/B2a partners.
+**Identical numbers from two supposedly independent measurements is never the good news it
+looks like** — the first question is always "are these the same number arriving twice?"
+
+They were. `publish.py`'s router did:
+
+    ids = [want] if want in pub._chains else list(pub._order)
+
+which conflates two unrelated requests: "no selector — give me everything" (correct) and
+"give me chain X" where X is not running (must not answer with every OTHER chain's rows).
+Measured: with the two chains removed, `/gal_e5b/get_status`, `/bds_b2b/get_status`,
+`/nonsense_chain/get_status` and `/zzz/get_status` all returned the SAME 28 rows —
+byte-identical, the concatenation of gps_l5 (10) + gal_e5a (9) + bds_b2a (9), with PRNs 8 and
+24 appearing twice. The viewer keys one column per chain and fetches `<chain>/get_status`
+trusting it to be filtered (`discover_broker_chains` sets `combiner` = the chain id), so the
+fall-through populated the E5b column with E5a's satellites.
+
+**TWO FAULTS STACKED, and only the pair produced the illusion.** The viewer builds its signal
+table from `get_chains` ONCE at startup, so it still held E5b/B2b columns from before the
+chains were dropped; the broker then answered those requests with someone else's data. Either
+alone is visible — a stale column with no data, or a 404 — but together they manufacture a
+confident, wrong result. **Restart the viewer after changing the chain set.**
+
+Fixed to 404 (not an empty list): `gps_feed.js` already documents "a 404 on a missing
+gal_/bds_ stage just skips that chain", so the column disappears rather than going quietly
+blank, and the body names the chains that DO exist. Nine routing cases regression-tested
+offline, including `?chain=` and `get_detections`.
+
+⚠️ **THIS INVALIDATES VIEWER-SOURCED E5b/B2b OBSERVATIONS**, in both directions — a
+"tracking" reading was another chain's, and the earlier "deep 2-3" readings need re-taking
+against the node combiners now that the endpoint cannot lie. #34 is still open and the
+band-blind e2e gate (11.24) is still its first job.
+
+Also landed with this: `--combine-gpus` is gone from cx19/cx51, so the fleet is uniform. It
+merged two instances into one 14-channel path-A combiner, and a merge is the one operation
+the broker can never undo — which is exactly backwards for a design whose point is shipping
+per-channel results up for a phase-slope fit (task #32). It also cost the margins it claimed
+to help: weak PRNs measured BETTER split than merged (PRN 3: 5.2 vs 4.0) at a median fleet
+ratio of 0.997, because instances are what the leave-one-out reference and the one-way split
+have to work with. Under --no-path-a it was already a dead letter; removing it deletes the
+asymmetry that let `gnss{0..1}_combine` silently address 2 non-existent stages.

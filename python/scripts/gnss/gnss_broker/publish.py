@@ -115,13 +115,40 @@ class FleetPublisher:
                 p = raw[0].rstrip("/")
                 q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
                 want = (q.get("chain") or [None])[0]
+                segs = [s for s in p.strip("/").split("/") if s]
+                # ⚠️ AN UNKNOWN CHAIN MUST NOT FALL THROUGH TO THE MERGED TABLE. The old code
+                # was `ids = [want] if want in _chains else list(_order)`, which conflated two
+                # completely different requests: "no selector -- give me everything" (correct)
+                # and "give me chain X" where X is not running (must not silently answer with
+                # every OTHER chain's rows). The viewer keys one column per chain and fetches
+                # <chain>/get_status trusting it to be filtered (livebeam_server's
+                # discover_broker_chains sets combiner = the chain id, and gps_feed.js hangs
+                # metrics off that key), so the fall-through populated a column with another
+                # signal's satellites.
+                #
+                # MEASURED 2026-08-09, and it is why this is a 404 and not a tidy-up: with the
+                # two 1207.14 MHz chains removed from the config, /gal_e5b/get_status,
+                # /bds_b2b/get_status, /nonsense_chain/get_status and /zzz/get_status all
+                # returned the SAME 28 rows -- byte-identical, the concatenation of gps_l5 (10)
+                # + gal_e5a (9) + bds_b2a (9), PRNs 8 and 24 appearing twice. On the viewer that
+                # read as "E5b and B2b are tracking nicely, with almost uniformly identical
+                # significance to their E5a/B2a partners". They were their E5a/B2a partners.
+                # Identical numbers from two independent measurements is never the good news it
+                # looks like.
+                #
+                # 404 rather than an empty list, because gps_feed.js already documents "a 404 on
+                # a missing gal_/bds_ stage just skips that chain" -- so the column goes away
+                # instead of going quietly blank, and curl says which chains DO exist.
+                _EPS = ("get_status", "get_detections", "get_chains")
+                asked = want
+                if asked is None and len(segs) >= 2 and segs[-1] in _EPS:
+                    asked = segs[-2]
+                unknown = None
                 with pub._lock:
-                    if want is None:
-                        for seg in p.strip("/").split("/"):
-                            if seg in pub._chains:
-                                want = seg
-                                break
-                    ids = [want] if want in pub._chains else list(pub._order)
+                    if (asked is not None and asked not in pub._chains
+                            and not p.endswith("get_chains")):
+                        unknown = (asked, list(pub._order))
+                    ids = [asked] if asked in pub._chains else list(pub._order)
                     if p.endswith("get_chains"):
                         # DISCOVERY. The viewer's own discover_signals() reads kotekan's
                         # /config, which a broker publisher does not serve -- so it fell
@@ -138,7 +165,11 @@ class FleetPublisher:
                         body = json.dumps(pub._collect(ids, "rows")).encode()
                     else:
                         body = json.dumps(pub._collect_meta(ids)).encode()
-                self.send_response(200)
+                if unknown is not None:
+                    body = json.dumps({"error": "unknown chain",
+                                       "asked": unknown[0],
+                                       "chains": unknown[1]}).encode()
+                self.send_response(404 if unknown is not None else 200)
                 self.send_header("Content-Type", "application/json")
                 # The viewer is served from a different origin than this port, and its whole
                 # job is to fetch from here -- so say so explicitly rather than leaving the
