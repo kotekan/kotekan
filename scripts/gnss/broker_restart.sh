@@ -36,6 +36,21 @@ if [ ! -r "$CHAINS" ]; then
     exit 1
 fi
 
+# THIS SCRIPT ACTS ON THE HOST IT RUNS ON -- and the pkill below only reaches LOCAL
+# processes. Run casually from a dev node it starts a SECOND broker beside the real one
+# and the fleet has two masters silently fighting over every seed (hit 2026-08-09 from
+# cx19: six minutes of seed churn before the duplicate was noticed; the local pkill had
+# nothing to kill, the health check saw the new local process, everything looked green).
+# So: refuse anywhere but the canonical broker host unless explicitly overridden.
+HOST=${GNSS_BROKER_HOST:-cf06}
+if [ "$(hostname -s)" != "$HOST" ]; then
+    echo "REFUSING: this restarts the broker ON $(hostname -s), but the broker host is" >&2
+    echo "$HOST -- the pkill cannot reach a broker running there, so this would START A" >&2
+    echo "SECOND ONE. Use:  ssh $HOST '$0${*:+ $*}'   (or set GNSS_BROKER_HOST to" >&2
+    echo "$(hostname -s) if you truly mean to run a broker here)." >&2
+    exit 1
+fi
+
 # Both names, because a tree mid-transition can have either running: broker_multi is the
 # driver, gps_distributed_broker the single-chain process it replaced.
 pkill -f "[b]roker_multi.py" 2>/dev/null || true

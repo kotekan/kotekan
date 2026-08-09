@@ -1949,3 +1949,76 @@ ephemeris, the stdout warnings, the τ discrepancy now pending — is an artifac
 from one of its inputs. The joint-tracking plan is, at bottom, the same fix applied to the
 instrument itself: make the state explicit, declare every measurement feeding it, and gate
 each connection.
+
+## 11.21  THE TAU EXPERIMENT: THE PLANT WAS THE PATIENT (2026-08-09 night)
+
+The experiment that was supposed to settle a bookkeeping question (does the slope-fit τ
+step by −b when b is applied? — the P2 gate from 11.20) instead found that the question
+was about the wrong thing entirely. Three broker restarts, three 30-minute collected legs
+(data + collector + analysis: `/home/kvand/gnss/fixtures/tau_experiment_20260809/`).
+
+**Leg 1 (b-loop on, watch the reconvergence).** τ-vs-b regression during the ramp:
+slope **+1** on every sat of all three chains (B2a 39 +0.99±0.18, E5a 5 +0.96±0.14 over
+a 0.88-chip b span). Not −1 (sound convergence), not 0 (broken reference). Two static
+checks acquitted the measurement itself: τ anti-correlates with the fleet disc on 24/24
+sats (the DLL trim's serve sign is the known-good convention, so τ's sign is consistent
+with correct application), and τ reverses through zero when b overshoots — a
+stale-reference runaway cannot reverse. The +1 is closed-loop *dynamics*: a slow limit
+cycle with τ and b in phase.
+
+**The raw series is the finding.** E5a PRN 5: b swings +0.64 → −0.39 over ~10 min, the
+DLL trim swings ±1.1 **in phase** (corr +0.65 — the "two integrators trading DC" model
+predicted anti-phase and is falsified), their sum swings ±1.4 chips, the disc rails at
+±0.98 alternately, deep collapses to ~20 at the extremes and spikes to ~1300 at the
+crossings. The tracker orbits the peak with a ~600 s period.
+
+**Leg 2 (--bsat-gain 0, the causality control).** Oscillation unchanged with b frozen at
+exactly 0: E5a/B2a trims ±0.8–1.1 (rms 0.2–0.5), disc railed 10–50% of samples. GPS
+same ~600 s period at ~1/3 amplitude, strongly common-mode within the chain. **b was a
+follower, not the cause** — and #30's E4 signature ("peak swept in 3–11 min") is this
+same oscillation, pre-dating P2 entirely. The reseed symptom was cured; the sweep never was.
+
+**Exonerated, with the evidence:**
+- the b_sat loop (leg 2);
+- the dead-reckon clock EMA (rms 0.4 chips post-startup; corr −0.08 vs the GPS trim
+  common mode, +0.18/+0.25 vs the model-primary trim/τ common mode — too weak to drive
+  ±1 chip);
+- the pooled l-a EMA (leg 3, `--code-bias-force 0.001`: trim rms medians E5a 0.23→0.28,
+  B2a 0.26→0.19, GPS 0.12→0.08 — a wash), despite the seductive numerology (EMA a=0.05
+  per 30 s = 600 s time constant = the period; noise ±0.07 chips/s = 14× the slew's max
+  correction rate);
+- cf06 wall time (chrony: 47 µs RMS, skew 0.005 ppm);
+- a fixed plant delay (τ never anti-correlates with lagged trim beyond −0.17 at any lag
+  0–300 s; τ *leads* trim, trim is its leaky integral — both loops chase an external
+  disturbance neither closes).
+
+**The surviving structural clue:** pairwise trim(t) correlations match the sign of
+dop_i × dop_j *within* a chain (10/13) and **anti-match across the E5a/B2a pair**
+(13/17) — the disturbance couples through a `doppler_sign × dop`-scaled term, i.e. the
+code-Doppler currency machinery, with the chains' sign conventions flipping the
+cross-correlation. The magnitude requires an effective timebase inconsistency of tens of
+ms, which no physical clock here exhibits — pointing at a *bookkeeping* mismatch between
+the broker's model of seed propagation (`dr_seed_phys`, selftested against its own
+inverse only) and what the C++ tracker actually runs, amplified by t_abs × chip ×
+dop/f_c (at 3 h of F-engine uptime, 0.01 Hz of inconsistency = 1 chip).
+
+**The instrument for next session** (correlation forensics is saturated): log, per
+record, the tracker's reported cp against dr_seed_phys's prediction for the same hop —
+a direct measurement of the propagation mismatch, per sat, no inference. The slew's
+"model-held" residual is this quantity's per-cycle shadow and already shows ~+0.1-chip
+common-mode instants across chains.
+
+**What this means for P2:** the gate is resolved in τ's favor — the measurement is
+sound. But the plan inverts: the clock/rate states are not *gated on* fixing the
+oscillation, they *are* the fix. The plant's state today is smeared across five ad-hoc
+estimators (trim, slew, l-a EMA, clock EMA, per-sat cp-fits), each partially observing
+the same physical state through its own noise, none owning it. P2 proper — one filter,
+fed by the fleet τ (whose common mode across sats at ±3 kHz of Doppler separates clock
+from clock-rate in one shot) — replaces the machinery that is oscillating. P3 (retire
+the E/L trim) stops the double-integration on arrival.
+
+Deployed state after the night: broker restored to defaults (b on, la EMA live) —
+tonight's flags were diagnostics, not fixes. `--bsat-gain` (e3e61f861) stays as the
+control knob. One operational trap fixed in passing: `broker_restart.sh` restarts on the
+invoking host; run from cx19 it started a SECOND broker beside cf06's and the fleet had
+two masters for six minutes (the leg-1 confound window, marked in the README).
