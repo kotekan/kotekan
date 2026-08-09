@@ -169,3 +169,39 @@ strictly better than per-sat biases and folds into P4's calibration work.
   * fleet_coherent's self-reference lessons apply verbatim to the slope fit: the fold's
     floor must be MEASURED on a channel-shuffled null each cycle, never assumed, and any
     derotation must be leave-one-out. (See the docstrings in fleet.py; they are the spec.)
+
+### 3b. P2a SHADOW RESULT ON SKY (2026-08-09, 25 min, GPS L5, 7 sats)
+
+The go/no-go for the whole revision was: **do the biases hold steady while the clock stays
+smooth?** They do.
+
+    CLOCK  mean +149.51 chips, sd 0.31 over 25 min          (median clock, same data: 152.7)
+    RATE   mean +0.00038 chips/s, sd 0.00102 = 1e-4 ppm     (l-a EMA scatter: 0.007 ppm)
+    BIASES sd about a linear trend, per sat:
+           G11 0.049   G26 0.180   G21 0.182   G18 0.184   G20 0.184   G23 0.200   G25 0.202
+           drift rates -0.047 .. +0.025 chips/min; spans 0.3-1.9 chips
+    3943 updates, 0 innovation rejections.
+
+Reading it:
+
+  * **The +-3-7 chip model error decomposes cleanly** into one smooth clock plus per-sat
+    biases stable to ~0.2 chips around a drift of at most 0.05 chips/min. A bias needs 20
+    minutes to move one chip; the DLL pull-in is +-1 chip and the peak is ~0.5 wide. So it
+    IS a nuisance state, exactly as section 3a claims, and the fast dynamics stay shared.
+  * **clk_rate is 70x quieter than the l-a EMA it replaces**, on sky (the offline
+    prediction was 200x against synthetic noise; 70x against the real thing). This is the
+    single clearest argument for P2b's first consumer switch.
+  * **The joint clock sits ~3 chips below the median clock, and that is arithmetic, not
+    disagreement**: the biases are skewed (-5.4 .. +4.1), so their median (+2.5) is not
+    their mean (0 by gauge). Median-clock = joint-clock + median(b) = 149.5 + 2.5 = 152.0
+    vs the 152.7 logged. The old clock was never "the clock" -- it was the clock plus
+    whichever satellite happened to sit in the middle of the bias distribution, which is
+    why it moved whenever the constellation changed.
+  * **Zero rejections in 3943 updates**: the innovation gate is not doing hidden work, so
+    these numbers are the raw behaviour.
+
+KNOWN CAVEAT, carry into P2b: the filter is OVERCONFIDENT -- reported sigma_clk 0.038
+against an actual scatter of 0.31, a factor of 8. Either q_clk is too tight or the 0.3-chip
+measurement sigma is optimistic (per-sat errors are almost certainly correlated cycle to
+cycle rather than white). Harmless while nothing consumes the covariance; it must be fixed
+BEFORE any consumer gates on sigma, or the gate will be 8x too tight.
