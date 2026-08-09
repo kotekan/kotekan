@@ -2022,3 +2022,59 @@ tonight's flags were diagnostics, not fixes. `--bsat-gain` (e3e61f861) stays as 
 control knob. One operational trap fixed in passing: `broker_restart.sh` restarts on the
 invoking host; run from cx19 it started a SECOND broker beside cf06's and the fleet had
 two masters for six minutes (the leg-1 confound window, marked in the README).
+
+## 11.22  THE MODEL HALF (2026-08-09 morning): the integrity monitor was shouting
+
+Follow-up to 11.21, before building anything. Two results, one demolition of my own plan:
+
+**The planned live instrument was a tautology.** REC_CP — the per-record cp the combiners
+report — is `propagate_seed`'s own output (`c.cp_seed = pr.cp`,
+cudaGnssChordTrack.cpp:575). Comparing it against `dr_seed_phys` tests nothing but the
+python-vs-C++ arithmetic, which a term-by-term diff settles without sky:
+`dr_seed_phys ≡ propagate_seed` — the hop-reference constants cancel between dr_cp0 and
+dr_seed_phys, the linear advance matches (both hold the SEED's Doppler over dh), and the
+quad denominators agree because CHORD's f_offset IS the carrier (generator line 346). The
+transport half is clean. Verify what runs — but also verify what a proposed instrument
+can distinguish before building it.
+
+**The model half was already instrumented, and it is chips-wrong.** The GPS integrity
+residual (search-measured cp vs BRDC model, solved clock removed, documented "normally
+±0.2 chips") reads per-sat **±1–6 chips**, quasi-static over hours, drifting
+monotonically through each pass with a per-sat sign: PRN 14 walked +1.8 → −4.8 across
+its descent (80°→1°); PRN 1 sat at −3.5 → −6; PRN 20 at +1.3 → +4.5; PRN 30 stayed
+within ±0.6 the whole time. 861 log lines over 7.5 h
+(fixtures/tau_experiment_20260809/integ.txt), weak-sat garbage (rms 300–3000, the
+documented snr<60 failure) clipped at |v|<20.
+
+This closes 11.21's mechanism: **E5a/B2a slave to this model with no search referee —
+the slew drags every seed toward a per-sat-wrong model at ≤0.005 chips/s while the trim
+drags the replica back to the sky at its own gain; two actuators, two different targets,
+one knob = the ~600 s relaxation oscillation.** GPS escapes because its seeds are
+search-anchored; its integrity monitor logs the model error and nothing downstream cares.
+And b_sat as deployed cannot absorb it by design: clamp 1.0, innovation gate 1.0, fit
+scan span ±2 — all sized for iono, facing a multi-chip error.
+
+**What the error is NOT (each falsified today):** a common epoch offset (within-sat
+regression of residual on range-rate: strong per-sat correlations, up to |0.96|, but
+MIXED slope signs — a common δt gives one slope); atmosphere alone (same-elevation sats
+differ 20×: PRN 8 −4.6 @ 20° vs PRN 30 −0.25 @ 19°; elevation corr is real but moderate,
+−0.39); BRDC orbit quality (~1 m = 0.03 chips); the ephemeris code missing standard
+physics (Sagnac, light-time, af0/af1/af2, relativistic term all present and correct —
+missing only TGD/iono/tropo, worst-case ~1–2 chips at low elevation).
+
+**Prime suspect, shaped exactly right:** a Doppler mismatch inside the search currency
+round trip. cp_loc reconstructs the physical phase as
+`cp + t_i·chip·(1 + s·dop/f_c)` (broker:4085) — if the dop used here differs from the
+dop the search used in its own forward sample-0 back-reference by δ, the error is
+`t_i·chip·s·δ/f_c` with t_i the F-ENGINE UPTIME: at 10 h, 10 mHz of δ = 3.5 chips.
+Per-sat sign (δ is a per-sat estimator difference), slow drift (δ evolves with
+conditions), uptime-amplified. And these residuals feed the CLOCK SOLVE (circular
+median), so every chain inherits the pollution. This is the same disease as 11.13's
+±26-chip epoch trap, one layer deeper.
+
+**Next instrument (small, logging only):** per detection, log the dop the search's
+forward back-reference used and the dop cp_loc's inverse uses. Any mismatch × uptime
+must reproduce the integrity residual sat-by-sat. If confirmed: fix the round trip,
+re-measure integrity (expect ±0.2), and only then judge whether the model can hold
+E5a/B2a — the oscillation, P1's "iono" biases, and the b_sat design question may all
+collapse into this one fix.
