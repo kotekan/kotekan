@@ -33,7 +33,7 @@ fengine:
   # a stale epoch is invisible downstream: every cross-record estimator uses differences, so a
   # uniformly-wrong epoch stays uniform and nothing complains. This value sat 13.78 days stale
   # from 2026-07-24 until 2026-08-07 and no measurement ever flagged it.
-  frame0_utc: 1786209501.000002870
+  frame0_utc: 1786285988.000002870
   pfb_taps: 4                   # "Ntaps=4-tap Hamming window ... 18-bit coefficient resolution"
   pfb_window: hamming
   pfb_critically_sampled: true  # CASPER pfb_fir_real block

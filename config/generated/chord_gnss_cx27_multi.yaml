@@ -359,7 +359,7 @@ gnss0_b2a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     gnss_ctl_name: gnss0_b2a_n2ctl
     gnss_local_channels: &id003
     - 278
@@ -555,7 +555,7 @@ gnss0_e5a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     gnss_ctl_name: gnss0_e5a_n2ctl
     gnss_local_channels: &id006
     - 278
@@ -651,7 +651,7 @@ gnss0_gpu:
     elem_stride: 32
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     frame_chan_stride: 6
     gpu_mem_input: gnss0_voltage
     gpu_mem_output: gnss0_epl
@@ -743,7 +743,7 @@ gnss0_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     gnss_ctl_name: gnss0_n2ctl
     gnss_local_channels: &id009
     - 278
@@ -967,7 +967,7 @@ gnss1_b2a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     gnss_ctl_name: gnss1_b2a_n2ctl
     gnss_local_channels: &id012
     - 277
@@ -1133,7 +1133,7 @@ gnss1_e5a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     gnss_ctl_name: gnss1_e5a_n2ctl
     gnss_local_channels: &id015
     - 277
@@ -1231,7 +1231,7 @@ gnss1_gpu:
     elem_stride: 32
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     frame_chan_stride: 7
     gpu_mem_input: gnss1_voltage
     gpu_mem_output: gnss1_epl
@@ -1324,7 +1324,7 @@ gnss1_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1786209501.0000029
+    frame0_utc: 1786285988.0000029
     gnss_ctl_name: gnss1_n2ctl
     gnss_local_channels: &id017
     - 277
