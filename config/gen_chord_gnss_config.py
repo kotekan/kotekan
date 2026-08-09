@@ -180,6 +180,46 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             "carrier_hz": s["carrier_hz"], "chip_rate_hz": s["chip_rate_hz"],
             "chans": chans, "shares_tap": chans == primary_chans,
         })
+
+    # -- SIDEBAND PARTNERS MUST CARRY THE SAME PRNs, and this is an identity, not a policy --
+    #
+    # Galileo E5 is ONE AltBOC(15,10) transmission centred at 1191.795 MHz; E5a (1176.45) and
+    # E5b (1207.14) are its lower and upper sidebands, generated coherently by one modulator on
+    # one spacecraft. BeiDou B2 is the same shape (ACE-BOC(15,10), same centre). So there is no
+    # such thing as a satellite that broadcasts E5a but not E5b: a PRN present on one sideband
+    # is present on the other BY CONSTRUCTION.
+    #
+    # WHY IT IS CHECKED RATHER THAN TRUSTED. E5b shipped with 8 PRNs chosen to "spread across
+    # orbital slots so something is always up" -- a sensible rule for an independent chain, and
+    # the wrong rule for a sideband. It overlapped E5a's live detections in exactly ONE PRN, and
+    # that one read deep 3.2 on E5a (noise), while E5a's real detections (PRN 26 at 255.8, PRN
+    # 29 at 72.4) were not seeded on E5b at all. The chain could not have produced a positive
+    # result, so "E5b reads noise" was indistinguishable from "E5b is broken" for a full day.
+    #
+    # It also destroys the measurement the second band exists for: tau_band (per-BAND
+    # instrumental delay) is separable from b_sat (per-SATELLITE bias) only by observing ONE ray
+    # on TWO carriers. Disjoint seed lists make that unobservable however correct the code is.
+    SIDEBAND_PARTNERS = [("GAL_E5A_Q", "GAL_E5B_Q"), ("BDS_B2A_P", "BDS_B2B_I")]
+    def _base(n):
+        return n[:-3] if n.endswith("_CS") else n
+    by_base = {}
+    for c in chains:
+        by_base.setdefault(_base(c["signal"]), c)
+    for lo, hi in SIDEBAND_PARTNERS:
+        a, b = by_base.get(lo), by_base.get(hi)
+        if not a or not b:
+            continue  # only one sideband configured -- nothing to compare
+        if sorted(a["prns"]) != sorted(b["prns"]):
+            only_a = sorted(set(a["prns"]) - set(b["prns"]))
+            only_b = sorted(set(b["prns"]) - set(a["prns"]))
+            raise SystemExit(
+                "--extra-signal %s / %s are the two SIDEBANDS of one AltBOC transmission from "
+                "the same satellite, so their PRN lists must be identical.\n"
+                "  only on %s: %s\n  only on %s: %s\n"
+                "A PRN seeded on one sideband and not the other cannot contribute to tau_band, "
+                "and a sideband seeded with satellites its partner is not tracking cannot be "
+                "told apart from a broken chain."
+                % (a["signal"], b["signal"], a["signal"], only_a, b["signal"], only_b))
     return chains
 
 
