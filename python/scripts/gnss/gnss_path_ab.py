@@ -65,6 +65,63 @@ def per_record(us):
                 "energy_rel_sd": st.pstdev([x[3] for x in rec])/st.mean([x[3] for x in rec])})
     return out
 
+def per_hop(nodes=UNIFORM):
+    """LAYER 0 -- THE DECISIVE ONE. Compare the two engines on the SAME HOPS.
+
+    Every softer layer compares two DISTRIBUTIONS, and a distribution is confounded by
+    whatever window each path happened to be holding and by the sky moving underneath it
+    (satellites transit CHORD's beam fast enough that a PRN can move 10x in 45 minutes --
+    which is what a whole afternoon of "the system regressed" turned out to be). `hop` is an
+    exact integer index into the F-engine stream, so intersecting on it pins both engines to
+    the identical input samples, on the identical GPU, at the identical sky instant. There is
+    nothing left for a confounder to hide in.
+
+      |B|/|A| per hop  -- a gain or normalisation difference is an offset; a quantisation
+                          loss is a median below 1.
+      complex corr     -- |<B conj A>| / sqrt(<|A|^2><|B|^2>). THIS is the number that settles
+                          "statistically identical": both paths correlate the SAME antenna
+                          voltages, so even a noise-dominated record must agree unless the two
+                          engines used different REPLICAS. Path B's only intrinsic difference
+                          is 4-bit replica quantisation, which predicts corr ~0.9995 flat in
+                          signal strength -- so a corr that DROPS with strength is not
+                          quantisation and means the seeds differed.
+      dphase           -- a constant offset is a convention (path B stores synth on the row
+                          side, so a conjugate is expected); SCATTER in it is not.
+    """
+    out = []
+    for n in nodes:
+        for g in (0, 1):
+            def grab(stage):
+                try:
+                    with urllib.request.urlopen(
+                            "http://%s:12049/gnss%d_%s/get_records" % (n, g, stage), timeout=6) as r:
+                        return {rr["prn"]: {int(x[0]): complex(x[1], x[2])
+                                            for x in rr["records"] if x[3] > 0}
+                                for rr in json.load(r)}
+                except Exception:
+                    return {}
+            A, B = grab("combine"), grab("n2combine")
+            for prn in sorted(set(A) & set(B)):
+                hops = sorted(set(A[prn]) & set(B[prn]))
+                if len(hops) < 20:
+                    continue
+                a = [A[prn][h] for h in hops]; b = [B[prn][h] for h in hops]
+                cr = sum(y * x.conjugate() for x, y in zip(a, b))
+                na = math.sqrt(sum(abs(x) ** 2 for x in a))
+                nb = math.sqrt(sum(abs(y) ** 2 for y in b))
+                out.append((n, g, prn, len(hops),
+                            st.median([abs(y) / abs(x) for x, y in zip(a, b) if abs(x) > 0]),
+                            abs(cr) / (na * nb) if na * nb > 0 else 0.0,
+                            __import__("cmath").phase(cr)))
+    return out
+
+print("=== LAYER 0: per-hop, same instance, same hops (the decisive comparison) ===")
+print("%-6s %3s %3s | %5s | %7s | %8s | %8s" % ("node", "gpu", "prn", "nhop", "|B|/|A|", "corr", "dphase"))
+for n, g, prn, nh, ratio, corr, dph in per_hop():
+    print("%-6s %3d %3d | %5d | %7.3f | %8.4f | %+8.3f%s" % (
+        n, g, prn, nh, ratio, corr, dph, "" if corr > 0.95 else "   <-- engines disagree"))
+print()
+
 hist = {"A": {}, "B": {}}
 rec1 = {"A": {}, "B": {}}
 with open(OUT, "w") as f:

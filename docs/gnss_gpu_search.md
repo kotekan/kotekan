@@ -2197,3 +2197,51 @@ ms/frame duplicate, keeping the search leg, which is built in the same function 
 the voltage buffer directly and feeds the detector that solves the clock for all five
 chains. nvidia-smi read 77–83% afterwards, which proves nothing — it is a busy-fraction,
 not throughput; the real measurement wants the `_prof` frame timing.
+
+## 11.25 Path A vs path B, measured as a distribution: the engines are equivalent
+
+GPS C/N0 read noisier after the path-B swap, so path A came back as a PASSIVE reference arm
+(task #35): both paths in gps_l5's `trackers` list, so the broker seeds them with one payload
+per iteration, while `combiner`/`dll-combiners`/`n2-combiners` stayed on path B so the flying
+loop was untouched. Tool: `python/scripts/gnss/gnss_path_ab.py`.
+
+**VERDICT: path B is not the cause.** The decisive layer is per-HOP, not per-distribution.
+`hop` is an exact integer index into the F-engine stream, so intersecting the two paths'
+exports on it pins both engines to the identical input samples on the identical GPU at the
+identical instant — there is nothing left for a confounder to hide in. Over every
+well-tracked PRN on cx27/42/43/44: |B|/|A| = 0.99–1.03 and complex correlation 0.95–0.9993.
+On cx42/0, where the two paths reported bit-identical seeds, 0.9959–0.9993. The scatter that
+prompted the investigation is present in path A at the same size, measured in the same
+minutes: B/A scatter ratios 0.90–1.17, coh_frac means within 0.07.
+
+Three of my own hypotheses died here, and each cost less than the last:
+
+1. **The fleet-coherent record margin (#10) is NOT it.** 12 instances answered every poll in
+   0.10 s with window skew 12–16 records and 112–124 common hops of 128, against
+   `min_records=32`. Bounded at ~2.5% of deep_snr, not 30%.
+2. **The residual A-vs-B disagreements are a 180° AMBIGUITY, not a defect.** They appear only
+   on weak/fading satellites, sit at dphase = ±π with 80–92% of records flipped, and leave
+   |B|/|A| ~ 1. Each path resolves the overlay phase independently; fleet_coherent's
+   per-instance alignment (rotate onto the reference by arg(<A conj A_ref>)) absorbs a global
+   sign, so it costs nothing.
+3. **It does not track the NH20 overlay.** Correlation against NH20 parity (3906.25 hops =
+   1.9073 records) is 0.02–0.16, and scanning ~880 trial periods returns inconsistent winners
+   (1850 to 11475 hops) at 0.24–0.35 — the signature of overfitting, not a period.
+
+⚠️ **THE SKY MOVES FASTER THAN THE INVESTIGATION.** Two readings 45 minutes apart on the same
+endpoint had PRN 27 up 4.5x and PRNs 8/10/23 down 10–16x, with per-record scatter going
+8% -> 50%. That is a satellite transiting CHORD's beam, and it looks exactly like a
+system-wide regression. It is why the comparator polls both paths back-to-back (sky motion
+moves both arms and cancels) and why raw `sd` is the wrong statistic while sources rise and
+set. Related trap in the same session: the first A/B ran 90 s after the broker restart, with
+`n_src=6` while the fleet was still coming up — and an A/B run at deep_snr 5–15 is a WEAK
+test, because at low SNR both arms look alike and "identical" comes cheap. Check uptime and
+n_src before believing an equivalence result.
+
+**STILL OPEN — the noise itself is real.** deep_snr scatters ~100% (drift-immune) on BOTH
+engines with n_src and n_rec pinned, so it is neither the correlator nor the record supply.
+That leaves upstream of both (seed/search churn — and seed continuity is already known to
+dominate here, cf. the 10 s re-pin that cut deep_snr 221 -> 17) or fleet_coherent's own
+one-way split, whose `rebuild_split` is already known to be unbalanced in sum|w|^2 (task #6).
+The model-primary chains are the control worth exploiting: E5a/B2a run no search and held
+coh_frac sd 0.001–0.012 against GPS's 0.11–0.14 on the same engine and the same nodes.
