@@ -99,13 +99,33 @@ common:
     # AFTER MEASURING the actual delta -- and note that P3 (retiring the E/L lanes) halves
     # the per-PRN synthesis cost, which is the real unlock for full-count multi-band.
     #
+    # ⚠️ MIRRORS ITS BAND SIBLING'S LIST, AND THAT IS NOT A CONVENIENCE (2026-08-09, #34).
+    # The first list here was 8 PRNs "spread across orbital slots so something is always up".
+    # Measured on sky the moment the endpoint stopped lying: of those 8, exactly ONE (13) was
+    # also being published by E5a -- and E5a read PRN 13 at deep 3.2, coh 0.24, i.e. NOISE on
+    # the chain that demonstrably works. Meanwhile E5a's real detections that minute were PRN
+    # 26 (deep 255.8, coh 1.00) and PRN 29 (72.4, 0.99), NEITHER of which E5b was seeding. So
+    # "E5b reads noise" was consistent with a broken chain AND with a chain that had never
+    # been given a detectable satellite, and the two were indistinguishable by construction.
+    #
+    # THE POINT OF THE SECOND BAND IS THE SAME SATELLITE AT A DIFFERENT CARRIER. tau_band is a
+    # per-BAND instrumental delay separated from a per-SAT bias only by observing one ray on
+    # two carriers; a seed list disjoint from its sibling's cannot measure that no matter how
+    # correct the code is. So these lists mirror E5A/B2A exactly and should be kept in step
+    # with them -- if a satellite is worth tracking at 1176.45 it is worth tracking at 1207.14.
+    #
+    # LANE BUDGET: still 4 lanes/PRN against num_synth 128, so still 32 PRNs max per chain.
+    # 32 and 24 match the siblings and are at/under it. GPU: path A is gone, so a node runs 5
+    # path-B chains at ~12.6 of 41.94 ms/frame; the added PRNs are ~+3 ms on that estimate,
+    # not measured -- check the _prof frame timing before growing anything further.
+    #
     # GAL_E5B_Q_CS -- the BAKED variant, and the _CS suffix is load-bearing. Deployed
     # first as plain GAL_E5B_Q, it read NOISE on sky (deep 2-3 against E5a's 96 on the same
     # fleet in the same minute): the bare descriptor despreads only the 1 ms primary while
     # the real per-PRN CS100 overlay flips sign every millisecond, so coherent integration
     # past 1 ms cancels itself. Same reason E5a and B2a use _CS above -- which is exactly
     # what the two lines above should have told me before I wrote the bare name (#34).
-    - GAL_E5B_Q_CS:1,5,9,13,19,23,27,31
+    - GAL_E5B_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
     # BDS_B2B_I is the PPP-B2b DATA channel and has NO secondary overlay at all
     # (secondary_length=0: B-CNAV3 runs 1000 sps = one symbol per 1 ms code period). That
     # makes it the most SEARCHABLE signal in the descriptor set -- no per-PRN CS to hunt --
@@ -113,7 +133,7 @@ common:
     # data-only, so coherent integration past 1 ms needs nav-bit wipe, which
     # cudaGnssChordTrack does not have yet (task #31). Expect it to TRACK with modest deep
     # until that lands; it is here for the band, not yet for the sensitivity.
-    - BDS_B2B_I:19,23,27,31,35,39
+    - BDS_B2B_I:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 
 nodes:
   # search-port-base is NOT arbitrary: the aggregator addresses feeds at base+i in node-major,
