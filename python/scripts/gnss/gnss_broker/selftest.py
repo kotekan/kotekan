@@ -271,6 +271,22 @@ check("JointReceiverState gauge holds mean(b) at zero",
       abs(sum(_js.bias(k) for k in _TB) / len(_TB)) < 0.05,
       "mean b %+.4f" % (sum(_js.bias(k) for k in _TB) / len(_TB)))
 
+# BIRTH: the clock's ABSOLUTE value must survive the first cycle. The first version put
+# the whole offset into b0 by hand, and the gauge -- seeing no cross-covariance to a
+# newborn row -- sheared it back out of the biases without depositing it in clk, so the
+# state read `clk +0.000 +- 200` with the biases spread +-4.7. It ground its way back over
+# ~400 cycles, which also means a clock near L/2 would have converged to a WRAPPED ALIAS.
+# Caught on the first line of on-sky shadow output, not by this file; hence this check.
+_rnd.seed(4242)
+_jb = JointReceiverState()
+_jb.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], 2.0)
+check("the clock's absolute value survives satellite BIRTH",
+      abs(_jb.clk - 151.0) < 1.5, "clk %+.2f after one cycle (want ~151)" % _jb.clk)
+_jw2 = JointReceiverState(code_len=10230.0)
+_jw2.cycle([(k, 5100.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], 2.0)
+check("birth near L/2 does not converge to a wrapped alias",
+      abs(_jw2.wrap(_jw2.clk - 5100.0)) < 1.5, "clk %+.1f (want ~5100)" % _jw2.clk)
+
 # THE SPLIT IS BANDWIDTH. A COMMON step must land in clk (fast, shared); a PER-SAT step
 # must land in that sat's b (slow, private). Getting this backwards is exactly the
 # misspecification that makes the plant oscillate.

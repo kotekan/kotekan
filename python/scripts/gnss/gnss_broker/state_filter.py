@@ -262,10 +262,21 @@ class JointReceiverState:
             return None
         self.predict(t_now)
         if key not in self._idx:
-            self._add(key, self.wrap(y_chips - self.x[0]), t_now)
-            self._n[key] = 1
-            self.n_updates += 1
-            return 0.0
+            # BIRTH THROUGH THE COVARIANCE, not by hand. The obvious version -- set
+            # b0 = y - clk and return -- puts the whole offset into the bias, and since a
+            # newborn row has ZERO cross-covariance with clk, the mean(b)=0 gauge then
+            # shears that offset straight back out of the biases without ever depositing it
+            # in the clock. Deployed 2026-08-09 and caught on the first shadow line: six
+            # sats born at once, biases spread +-4.7 chips, and `clk +0.000 +- 200` -- the
+            # clock's absolute value simply lost. It recovered over ~400 cycles by grinding
+            # a 151-chip innovation down, which is both slow and a wrap hazard: at a clock
+            # near L/2 that innovation folds and the filter converges to an ALIAS.
+            # Adding the row at b0 = 0 with its prior sigma and running a normal update
+            # instead lets the gains do it: sigma_clk0 >> sigma_b0 means the first
+            # satellite's innovation lands ~entirely in clk (the clock is what is unknown),
+            # while later ones -- facing an already-determined clock -- land in their own
+            # bias. Same intent, correct mechanism, no special case.
+            self._add(key, 0.0, t_now)
         i = self._idx[key]
         H = np.zeros(self.x.size)
         H[0] = 1.0
