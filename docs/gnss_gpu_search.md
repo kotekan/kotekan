@@ -2139,3 +2139,61 @@ consumer on plausibility before the first switch — not after.
 The l−a-is-80×-biased finding from 11.22bis stands independently: it was measured against
 the clock's own trend, not through this consumer, and it is why the switch is still worth
 making once the state has soaked.
+
+## 11.24  SECOND BAND, AND THREE GATES THAT COULD NOT FAIL (2026-08-09 pm)
+
+Galileo E5b-Q + BeiDou B2b-I at 1207.14 MHz — the instrument's first second band, and a
+config change rather than a retune: the science band is freq_id 1536–7679 (300.0–1499.8
+MHz) and every node already holds 768 channels across all of it, so the new stages get a
+106-channel fleet lobe exactly like 1176.45. (The F-engine digitises to 1600 MHz; 300–1500
+is the science SELECTION, so L1 at 1575.42 is outside the selection, not the digitiser —
+passthrough is being negotiated, so L1 is not unreachable.)
+
+It is plumbed end to end — channels, stages, chains, broker, viewer — and it does not
+track: E5b/B2b read deep 2–3 while GPS/E5a/B2a read 83/237/321 on the same fleet.
+
+**Why that is still open, and what was eliminated.** The baked-CS descriptor
+`GAL_E5B_Q_CS` was missing and is now built (the CS100 tables and an `e5bq_secondary()`
+accessor had been sitting in `galileoE5bCode.cpp` all along); it is deployed and running.
+The offline harness closes the E5b chain to 0.000 chips. And an appealing wrong answer was
+retracted: reading "E5b amplitude below E5a's noise floor" as a dark band and proposing an
+analog fault. **Cross-band power comparison is invalid on CHORD** — the per-channel
+PFB→4+4b digital gain differs and oscillating amps add power, so high power can read low.
+The band is full of signal (KV).
+
+**THE HEADLINE IS THE GATES.** Three in one day, each unable to detect the fault class it
+guarded:
+
+  * **The manifest check could never pass.** The provenance header embedded `--out`, but
+    `gen_fleet` writes with it and checks by regenerating without it, so every config
+    differed from its own regeneration by two header lines. That is the "does not match the
+    manifest" warning on every node restart. A morning diagnosis found a DIFFERENT real
+    cause (generator warnings to stdout, which IS the config) and stopped there.
+  * **The e2e harness is band-blind.** `e2e.cpp:114` hardcodes `f_offset = 1176.45e6` and
+    builds the synthetic sky AND the replica at that value, so it is self-consistent at any
+    carrier. Asked to validate a 1207.14 MHz signal it ran that signal's CODE at L5's
+    CARRIER and returned 0.000 chips. The multi-band plan has, in effect, no offline gate.
+  * **The viewer's signal discovery pattern-matched a stage that no longer exists.** It
+    built its column table by scanning `/config` for `cudaGnssTrack`; retiring path A
+    removed the last one, so it fell back to a hardcoded L5-only literal while the broker
+    published all five chains correctly.
+
+The rule, stated once: **before trusting a gate, ask what it CANNOT see — does it vary the
+axis you are about to change?** A gate that holds the carrier, the output path or the stage
+name fixed is blind along exactly that axis, which is usually the axis the new work moves.
+
+**Also landed, and already earning:** a plausibility bound on the dead-reckon clock DRIFT
+(`--dr-max-drift-chips-s`). The estimate is a difference of two clock solves, so every node
+restart entered as motion that never happened (+223 chips/s measured), and at α=0.05/30 s
+the poison bled off over ~10 minutes while sweeping every model-primary seed off peak —
+E5a 96→5 and B2a 227→18 while GPS, search-anchored, sat at 352 in the same minute. True
+drift here is ~4e-4 chips/s. 14 rejections logged in the first 20 minutes and the clock
+holds +0.016 chips/s. Same lesson as the joint consumer's bound: **a consumer must never
+hand the instrument a physically impossible number because an estimator produced it.**
+
+**Path A is retired** (task #26): GPS L5 moved onto path B (validated on sky — same bias
+structure, clock within 0.6 chips) and `--no-path-a` stops instantiating the 17.712
+ms/frame duplicate, keeping the search leg, which is built in the same function but taps
+the voltage buffer directly and feeds the detector that solves the clock for all five
+chains. nvidia-smi read 77–83% afterwards, which proves nothing — it is a busy-fraction,
+not throughput; the real measurement wants the `_prof` frame timing.
