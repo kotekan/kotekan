@@ -73,6 +73,55 @@ Weighted least squares / Kalman over x, cycle cadence, in the broker:
   * per-sat innovation gating replaces the per-sat quality-gate zoo: a sat whose residual
     diverges is flagged and COASTED ON THE STATE, not dropped.
 
+### 3a. REVISION 2026-08-09: b_sat is a first-class state, and the split is BANDWIDTH
+
+What forced the revision (docs/gnss_gpu_search.md §11.21–11.22, task #33): the BRDC model
+is per-satellite wrong by **±3–7 chips** on fresh detections — measured against the search
+on GPS, quasi-static, drifting monotonically through a pass, cause still open (candidate:
+per-direction instrumental delay; back-burnered until other bands make it attackable).
+That error is NOT common-mode: no clock, clock-rate or band-delay value absorbs it.
+
+Two consequences, both structural:
+
+**(1) A state of only shared parameters is misspecified**, and the current system already
+demonstrates what misspecification costs. Nothing can represent the per-sat residual, so
+two actuators fight over it: the #30 slew pushes each seed toward the model while the DLL
+trim pushes the replica back toward the sky. That beat IS the ~600 s limit cycle (trim
+±1.1 chips, disc railed 10–50% of samples, deep 20↔1300) — the drift KV kept seeing on E4,
+and the sweep #30 never actually cured. Adding more SHARED states cannot fix it. The
+residual has per-satellite structure and must be representable, or something downstream
+keeps absorbing it badly.
+
+**(2) The vector-tracking win is bandwidth, not parameter count.** What carries a fading
+satellite is that the FAST dynamics are shared: clock, clock rate, and the geometry from
+ephemeris. A per-sat term bounded at a chip or two and moving on MINUTE timescales adds
+essentially no fast bandwidth — it is a nuisance parameter, not a tracking loop. The
+effective unknown count for the dynamics that hold lock stays at three or four. This is
+the standard precise-positioning structure (shared clock + per-satellite biases), and the
+two designs are separated by one measurable test:
+
+> Take a satellite to no usable SNR. If its replica keeps moving with the shared clock
+> state while its bias holds frozen at its last strong value, the architecture is right.
+> If it drifts, it was tracking itself and the ensemble was decorative.
+
+**Rejected alternative, recorded so it is not re-proposed:** "anchor each sat to its own
+held track, propagated forward." That gives every satellite its own fast dynamics and
+fails the test above — a fading sat has nothing to ride. It was proposed on 2026-08-09
+and withdrawn the same day.
+
+**b_sat and clk are degenerate at a single epoch** — N satellites, N+2 unknowns, N
+measurements — and the ONLY thing separating them is that the clock moves fast and the
+biases do not. That separation is process noise, i.e. a filter. **So P2 cannot be staged
+into "biases first, clock later": that estimates biases with no clock removed, which is
+precisely today's failure.** One joint solve, or nothing.
+
+**The biases are a measurement campaign, not the end state.** If the model error is
+directional (elevation correlates at −0.39, but same-elevation sats differ 20×, so
+elevation alone is not it), the per-sat table is the data from which a shared few-parameter
+direction map is fitted — which then PREDICTS the bias for a satellite never yet tracked,
+at birth, and collapses N nuisance parameters back into a handful of shared ones. That is
+strictly better than per-sat biases and folds into P4's calibration work.
+
 ## 4. Phases
 
   P1  Per-channel spectrum export from the path-B assembler + fleet-level slope fit in the
@@ -84,6 +133,20 @@ Weighted least squares / Kalman over x, cycle cadence, in the broker:
       The per-sat b_sat absorbs what the #30 slew institutionalizes today (holding the seed
       at a model that is biased by iono). Gate: transcripts + e2e closure + on-sky A/B
       against the #30 baseline numbers (reseeds/30 min, deep stability).
+      REVISED 2026-08-09 (§3a): ONE joint solve — clk, clk_rate and b_sat[i] estimated
+      together from the fleet τ, separated by process noise, never staged. b_sat's range
+      is sized for the MEASURED model error (chips), not for iono (0.1–0.3), and is seeded
+      at birth from the first strong τ rather than walked in at loop gain. Success
+      criterion, and the reason this kills the limit cycle rather than damping it: the slew
+      and the trim acquire ONE target — `model + clk + clk_rate·Δt + b_sat` — so the trim's
+      residual collapses to noise. Steps:
+        P2a  Joint solve in SHADOW: logged beside the five estimators it replaces (l−a EMA,
+             clock EMA, per-sat cp-fits, plus the trim's and slew's implicit states),
+             consumed by nothing. Compare on sky.
+        P2b  Switch consumers ONE PER COMMIT: l−a EMA → clk_rate, clock EMA → clk, slew
+             target → state. Each with its own transcript + A/B.
+        P2c  The weak-sat test above, deliberately: mask a strong sat's measurements and
+             confirm it coasts on the state rather than drifting.
   P3  Retire E/L lanes (keep P + P_HEAD): path B goes 4 → 2 lanes/PRN — DOUBLE the PRN
       budget per chain (E5a is at 128/128) or half the synthesis cost, the scaling
       limiter. Do this BEFORE #31's data channels and new bands.
@@ -97,7 +160,8 @@ Weighted least squares / Kalman over x, cycle cadence, in the broker:
 ## 5. Non-goals and guards
 
   * No new per-sat loops, and no further investment in the #30 slew beyond its P2
-    replacement.
+    replacement. b_sat is NOT an exception: it is a slow bounded nuisance state inside the
+    joint solve, never a per-sat loop with its own bandwidth (§3a).
   * The airspy prototype keeps its per-sat architecture untouched.
   * Every phase gates on the broker transcript machinery; P1 by construction changes no
     POST. The known gate caveat: the E5a digest also moves when the sky's ephemeris does
