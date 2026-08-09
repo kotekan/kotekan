@@ -218,6 +218,29 @@ _p = _spec_synth(0.31)
 check("spectrum delay fit is deterministic",
       fit_spectrum_delay(_p, _CHIPR, _W) == fit_spectrum_delay(_p, _CHIPR, _W))
 
+# -- SatBiasFilter (task #33, P2 step 1) --------------------------------------------------
+# The b_sat loop's four contractual behaviours, each traceable to a measured P1 caveat:
+# converge to a constant bias through realistic noise; REJECT lobe captures at +-3.27
+# outright (never average them in); stop APPLYING (not remembering) a stale bias; and
+# refuse thin fleets, whose fits scattered 3x wider during the rolling restart.
+from gnss_broker.state_filter import SatBiasFilter  # noqa: E402
+
+_rnd.seed(33)
+_bf = SatBiasFilter(gain=0.02, innovation_max=1.0, max_age_s=600.0, min_inst=6)
+_t = 0.0
+for _ in range(600):  # ~20 min at 2 s: P1's own measurement span
+    _t += 2.0
+    _bf.update(3, 0.081 + _rnd.gauss(0, 0.35), 12, _t)   # E5a PRN 3, as measured
+check("SatBiasFilter converges to the P1-measured bias",
+      abs(_bf.get(3, _t) - 0.081) < 0.03, "%.4f vs +0.081" % _bf.get(3, _t))
+_rej0 = _bf.rejected
+_ok = _bf.update(3, 3.27 + 0.081, 12, _t)   # a lobe capture, exactly one comb spacing off
+check("SatBiasFilter rejects a lobe capture via the innovation gate",
+      (not _ok) and _bf.rejected == _rej0 + 1 and abs(_bf.get(3, _t) - 0.081) < 0.03)
+check("SatBiasFilter refuses a thin fleet", not _bf.update(3, 0.08, 4, _t))
+check("SatBiasFilter stops APPLYING a stale bias but remembers it",
+      _bf.get(3, _t + 601.0) == 0.0 and "3:" in _bf.summary(_t + 601.0))
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)

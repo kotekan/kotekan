@@ -81,6 +81,7 @@ from gnss_broker.fleet import (               # noqa: E402
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
+from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
 from gnss_broker.sky import (                 # noqa: E402
     brdc_predict, visible_prns, _dh_dpos,
     _cnav_brdc_xcheck, _cnav2_brdc_xcheck, _inav_brdc_xcheck, _lnav_brdc_xcheck,
@@ -1613,6 +1614,13 @@ def main(argv=None, rx=None, publisher=None):
                  % (args.signal_capability, _e))
 
     dr_state = None
+    # PER-SAT SLOW BIAS b_sat (task #33, P2 step 1): the first receiver-state loop closed on
+    # the P1 slope-fit. Chain-LOCAL on purpose -- PRN namespaces differ per constellation, so
+    # unlike the clock this is not receiver-scope. Fed only from presence-gated tau (below);
+    # consumed by the dead-reckon model at both its sites. With no --spectrum-endpoints
+    # (every recorded transcript) it never updates and get() returns exactly 0.0, so the
+    # consumption sites add a float zero and the replay digests are untouched.
+    bsat = SatBiasFilter()
     if args.dead_reckon:
         if not args.almanac:
             _log("--dead-reckon needs --almanac; disabling")
@@ -4384,7 +4392,13 @@ def main(argv=None, rx=None, publisher=None):
                                      / dr_eph_mod.C_LIGHT * args.carrier_hz)
                         # inverse of cp_loc above: physical cp -> sample-0 cp0 removes the
                         # nominal advance AND the code-Doppler drift (the seed currency)
-                        cp0 = ((cp_predicted(v, t_now_abs) + clk_now)
+                        # + b_sat (task #33): the per-sat slow bias the P1 fit measures --
+                        # iono/tropo/BRDC, the term holding seeds at a model that is right
+                        # about the orbit and wrong about the path. tau is sky-minus-replica,
+                        # so the replica moves BY tau to meet the sky: phys + b. Zero until
+                        # the fit has fed it (and exactly 0.0 in every transcript replay).
+                        cp0 = ((cp_predicted(v, t_now_abs) + clk_now
+                                + bsat.get(prn, now_w))
                                - t_now_abs * args.chip_rate_hz
                                  * (1.0 + args.code_doppler_sign
                                     * dop_seed / args.carrier_hz)) % _DR_MOD
@@ -4418,7 +4432,8 @@ def main(argv=None, rx=None, publisher=None):
                             _held = dr_seed_phys(
                                 seeds[prn], h1, args.hops_per_sec, args.chip_rate_hz,
                                 args.carrier_hz, args.code_doppler_sign, _DR_MOD)
-                            _model = (cp_predicted(v, t_h) + clk_now) % _DR_MOD
+                            _model = (cp_predicted(v, t_h) + clk_now
+                                      + bsat.get(prn, now_w)) % _DR_MOD
                             _dcp = ((_model - _held + _DR_MOD / 2.0) % _DR_MOD
                                     ) - _DR_MOD / 2.0
                             _step = max(-_DR_SLEW_CAP,
@@ -4575,6 +4590,14 @@ def main(argv=None, rx=None, publisher=None):
                         % (prn, v["tau_chips"], v["peak"] / max(v["floor"], 1e-12),
                            v["n_pts"], v["n_inst"])
                         for prn, v in sorted(spec_fit.items())), every_s=30.0)
+                    # FEED b_sat (task #33). Presence-gated by the same lock metric the
+                    # reseed logic trusts (deep-certified sig), because P1 measured weak-sat
+                    # tau to be self-reference-biased toward zero -- a weak "tau ~ 0" is not
+                    # a measurement. The filter adds its own thin-fleet and lobe gates.
+                    for prn, v in spec_fit.items():
+                        if sig_of(status.get(prn, {})) >= args.lock_snr:
+                            bsat.update(prn, v["tau_chips"], v["n_inst"], t0)
+                    _log_rl("bsat", "BSAT: " + bsat.summary(t0), every_s=60.0)
                     # Ride the fleet dict into the publisher: the viewer/status row grows
                     # spec_tau_chips + spec_peak_ratio next to the disc it will one day
                     # replace. EXISTING rows only -- publisher.update() indexes fleet rows'
@@ -4584,6 +4607,7 @@ def main(argv=None, rx=None, publisher=None):
                         if prn in fleet:
                             fleet[prn]["spec_tau"] = v["tau_chips"]
                             fleet[prn]["spec_ratio"] = v["peak"] / max(v["floor"], 1e-12)
+                            fleet[prn]["bsat"] = bsat.get(prn, t0)
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
