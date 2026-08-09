@@ -4231,6 +4231,62 @@ def main(argv=None, rx=None, publisher=None):
                     except Exception as e:      # shadow must never take the broker down
                         _log_rl("jointerr", "JOINT[shadow] disabled this cycle: %s" % e,
                                 every_s=300.0)
+                # -- P3: THE MODEL-PRIMARY MEASUREMENT (task #33) ------------------------
+                # Everything above needs `offs`, which only a chain with DETECTIONS has. So
+                # until now only GPS fed the joint state -- 4 shadow lines against 0 for every
+                # model-primary chain -- and with one band contributing there was no second
+                # band for tau_band to be a delay AGAINST. This is the other half of the same
+                # measurement, and the plan has specified it since section 3a:
+                #
+                #     y_i = (where the replica actually is) - (pure model, no clock, no bias)
+                #         = dr_seed_phys(seed) + dll_trim - cp_predicted
+                #
+                # dr_seed_phys is the tracker's own phase model evaluated at h1 (the same
+                # function the slew block uses to ask "where does the tracker think the code
+                # is"), dll_trim is the fleet loop's standing correction to it, and
+                # cp_predicted is BRDC geometry alone. The difference satisfies the identical
+                # y_i = clk + b_i + tau_band as the search-anchored form, which is what makes
+                # two seeding disciplines poolable into one state at all.
+                #
+                # SEEDS ARE LAST CYCLE'S HERE, deliberately: this runs before the seed loop
+                # rebuilds them, and "where the replica actually is" IS the seed the trackers
+                # are flying right now. Reading a seed the broker has not yet shipped would
+                # measure an intention rather than the instrument.
+                #
+                # No SNR gate to mirror -- a model-primary chain has no detection SNR. The
+                # protection is the filter's own innovation gate plus birth_max, which is why
+                # those were built with an escape hatch.
+                elif args.joint_shadow and seeds and not offs:
+                    try:
+                        _js = rx.joint_receiver(band_id, CODE_LEN)
+                        _h1 = int(round(t_now_abs * args.hops_per_sec))
+                        _th = _h1 / args.hops_per_sec
+                        _mm = []
+                        for _prn, _sd in seeds.items():
+                            _v = pd.get((tag, _prn))
+                            if _v is None or "ref_hop" not in _sd:
+                                continue
+                            _held = dr_seed_phys(_sd, _h1, args.hops_per_sec,
+                                                 args.chip_rate_hz, args.carrier_hz,
+                                                 args.code_doppler_sign, _DR_MOD)
+                            _y = ((_held + dll_trim.get(_prn, 0.0)
+                                   - cp_predicted(_v, _th)) % _DR_MOD)
+                            _mm.append(((tag, _prn), _y, args.joint_sigma, band_id))
+                        if _mm:
+                            _js.cycle(_mm, t_now_abs)
+                        if now_w >= dr_state.get("joint_log_next", 0.0):
+                            dr_state["joint_log_next"] = now_w + 30.0
+                            _tb = "".join(
+                                "  tau[%s] %+.3f+-%.3f (dual %d)"
+                                % (_b, _js.tau(_b), _js.tau_sigma(_b),
+                                   _js.tau_observability(_b))
+                                for _b in sorted(_js._band_idx))
+                            _amb = "  ⚠AMBIGUOUS(clk near wrap)" if rx.joint_ambiguous() else ""
+                            _log("JOINT[shadow] " + _js.summary(t_now_abs) + _tb + _amb)
+                    except Exception as e:
+                        _log_rl("jointerr-mp",
+                                "JOINT[shadow] model-primary feed skipped: %s" % e,
+                                every_s=300.0)
                 if len(offs) >= args.dr_min_sats:
                     ref = offs[0][1]
                     cen = sorted(((d - ref + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
