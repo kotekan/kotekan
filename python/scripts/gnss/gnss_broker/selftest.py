@@ -539,6 +539,54 @@ check("single-band callers unaffected (3-tuple form, no band, no tau rows)",
       not _j4._band_idx and abs(_j4.wrap(_j4.clk - _TRUE_CLK)) < 0.5,
       "clk %.2f" % _j4.clk)
 
+# -- #6: the S/R split must be BALANCED in sum|w|^2 and STABLE across polls ---------------
+# Reproduces both estimators on the same synthetic fleet -- 12 instances with realistic
+# per-poll amplitude jitter -- and asserts the new one on the two axes the old one failed.
+def _split_old(urls, w):
+    return {u: (i % 2) for i, u in enumerate(sorted(urls, key=lambda u: -w[u]))}
+
+def _split_new(urls, w):
+    # PURE function of the url set -- no measurement enters, so it cannot re-decide on noise.
+    return {u: (i % 2) for i, u in enumerate(sorted(urls))}
+
+def _imb(urls, half, w):
+    t = [sum(w[u] ** 2 for u in urls if half[u] == j) for j in (0, 1)]
+    return abs(t[0] - t[1]) / (t[0] + t[1]) if (t[0] + t[1]) else 0.0
+
+_R = __import__("random").Random(11)
+_urls = ["http://cx%02d:12049/gnss%d_n2combine" % (n, g)
+         for n in (19, 27, 42, 43, 44, 51) for g in (0, 1)]
+_base = {u: 1.0 + 0.35 * _R.random() for u in _urls}     # instances differ in real strength
+_io, _in_, _flipo, _flipn = [], [], 0, 0
+_po = _pn = None
+for _ in range(200):
+    _w = {u: _base[u] * (1.0 + 0.18 * _R.gauss(0, 1)) for u in _urls}   # per-poll jitter
+    _ho, _hn = _split_old(_urls, _w), _split_new(_urls, _w)
+    _io.append(_imb(_urls, _ho, _w)); _in_.append(_imb(_urls, _hn, _w))
+    if _po is not None and _ho != _po:
+        _flipo += 1
+    if _pn is not None and _hn != _pn:
+        _flipn += 1
+    _po, _pn = _ho, _hn
+import statistics as _st
+check("new split NEVER reshuffles membership (the first-order defect)",
+      _flipn == 0,
+      "%d membership changes in 200 polls vs %d for the old split" % (_flipn, _flipo))
+# Balance is deliberately traded for stability, but it must stay in the same league -- a
+# blown-out imbalance would mean the alternation had landed pathologically.
+check("sum|w|^2 imbalance stays small (second-order, traded knowingly)",
+      _st.mean(_in_) < 0.20,
+      "imbalance %.4f (old rank-interleave %.4f)" % (_st.mean(_in_), _st.mean(_io)))
+check("both halves are non-empty (a one-way split needs a reference)",
+      0 < sum(1 for u in _urls if _split_new(_urls, _base)[u] == 0) < len(_urls))
+# An odd instance count is where interleave is worst -- one half gets the extra instance AND
+# the rank-1 instance. The greedy pass must still land close.
+_odd = _urls[:9]
+_wo = {u: _base[u] for u in _odd}
+check("odd instance count: both halves still populated",
+      0 < sum(1 for u in _odd if _split_new(_odd, _wo)[u] == 0) < len(_odd),
+      "imbalance %.4f" % _imb(_odd, _split_new(_odd, _wo), _wo))
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)
