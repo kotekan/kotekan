@@ -306,6 +306,10 @@ class FleetPublisher:
                 # replace, so the two can be judged against each other on sky.
                 "spec_tau_chips": v.get("spec_tau"),
                 "spec_peak_ratio": v.get("spec_ratio"),
+                # The b_sat actually being APPLIED to this sat's seeds (0 = none/stale) --
+                # published so the closed loop's health is checkable from outside: b_sat
+                # should hold near the P1 open-loop means while spec_tau collapses to 0.
+                "bsat_chips": v.get("bsat"),
                 "code_phase_chips": sd.get("code_phase_chips", c.get("code_phase_chips", 0.0)),
                 # fleet-only extras: not in the combiner schema, ignored by older consumers
                 "fleet_q": v["q"], "fleet_q_floor": v["q_floor"],
