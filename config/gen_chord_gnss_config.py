@@ -1303,12 +1303,23 @@ def live_frame0_utc(cfg, args, timeout=3.0):
     if not seen:
         return None
     if len(seen) > 1:
+        # ⚠️ STDERR, NEVER STDOUT. Without --out the generated CONFIG is stdout -- that is
+        # how gen_fleet's --check compares byte-for-byte without touching the tree -- so a
+        # warning printed here lands INSIDE the config text. This is a LIVE-FLEET probe
+        # inside what every consumer treats as a pure function of (base, flags): during a
+        # rolling restart the probe sees a node either down or freshly up with no anchor,
+        # emits these lines, and --check reports "does not match the manifest" about six
+        # byte-identical configs. That exact false alarm fired on cx27/cx42/cx51 during the
+        # 2026-08-09 B2a rollout (misdiagnosed then as a checker transient) and AGAIN,
+        # legibly this time, during the #32 rollout -- same lesson as the ephemeris pin: an
+        # undeclared input does not announce itself.
         print("  WARNING   running nodes disagree about frame 0 -- some started either side of "
-              "an F-engine restart, so none of them is authoritative:")
+              "an F-engine restart, so none of them is authoritative:", file=sys.stderr)
         for ns, nodes in sorted(seen.items()):
-            print("              %.9f  %s" % (ns * 1e-9, ", ".join(sorted(nodes))))
+            print("              %.9f  %s" % (ns * 1e-9, ", ".join(sorted(nodes))),
+                  file=sys.stderr)
         print("            Re-read it from chive, or restart the stragglers, before trusting "
-              "any record stamp.")
+              "any record stamp.", file=sys.stderr)
         return None
     return next(iter(seen)) * 1e-9
 
@@ -1613,9 +1624,12 @@ def main():
                 f"{args.node_file}\n"
                 f"(or pass --frame0-nano to override both this and the telescope block.)")
     elif not args.frame0_nano:
+        # stderr for the same reason as the frame0-disagreement warning above: stdout IS the
+        # config when --out is absent, and this fires whenever the fleet is mid-restart.
         print("  WARNING   no running node answered telescope/time0_ns -- frame0_utc "
               f"{float(cfg['fengine'].get('frame0_utc', 0.0)):.6f} is UNVERIFIED. If the "
-              "F-engine has restarted since it was written, every record stamp is wrong.")
+              "F-engine has restarted since it was written, every record stamp is wrong.",
+              file=sys.stderr)
 
     # --frame0-nano overrides the RECORD EPOCH too, not just the telescope's startup GPS time.
     # Those are two different consumers of one number and supplying only the first leaves the
