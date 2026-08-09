@@ -1901,11 +1901,33 @@ def main():
     # literal if /config is unreachable (kotekan not up yet, wrong port, ...). Reassigning the
     # module global is enough: _gps_signal_capability() and WsPortResource read it at call time.
     # Done after logging is configured so the discovery summary lands in the viewer log.
+    # THE BROKER IS ASKED FIRST, and it is the better source of the two by construction:
+    # it reports the chains it is ACTUALLY RUNNING, with constellation, carrier, record
+    # length and whether a search feeds each -- while discover_signals() below INFERS the
+    # same table by pattern-matching kotekan's /config for `cudaGnssTrack` commands.
+    #
+    # That inference broke the day path A was retired (task #26, 2026-08-09). With the
+    # primary chain moved onto path B there are no cudaGnssTrack commands left to find, so
+    # discovery logged "using static table" and silently fell back to a hardcoded L5-only
+    # literal -- and Galileo E5b and BeiDou B2b, which the broker was publishing correctly
+    # and this very function was already discovering two hundred lines below, had NO COLUMNS
+    # in the table. Inferring the running configuration from the shape of an implementation
+    # detail is exactly the kind of coupling that breaks when the implementation moves;
+    # asking the process that owns the answer does not.
+    #
+    # discover_signals() stays as the fallback: it is the only source when pointed at a
+    # kotekan NODE rather than a broker (the airspy prototype, and any single-node debug
+    # session), which is a case the broker endpoint cannot serve at all.
+    _bchains = discover_broker_chains(args.kotekan_host, args.kotekan_rest_port)
     if args.unified:
-        discovered = discover_signals(args.kotekan_host, args.kotekan_rest_port)
+        discovered = _bchains or discover_signals(args.kotekan_host,
+                                                  args.kotekan_rest_port)
         if discovered:
             global UNIFIED_SIGNALS
             UNIFIED_SIGNALS = discovered
+            log_.info("signal table: %d row(s) from %s -- %s", len(discovered),
+                      "the BROKER" if _bchains else "kotekan /config",
+                      ", ".join("%s/%s" % (r.get("band"), r.get("col")) for r in discovered))
         # Backfill "sys" (the satellite's real constellation) on whichever list we ended up
         # with, so the static fallback behaves identically to the discovered one. Derived from
         # the signal id's prefix where there is one, else the display tag.
@@ -1955,7 +1977,8 @@ def main():
     # the band/constellation table exactly as before. Trying and falling back beats a flag,
     # because the failure it replaces was SILENT: a viewer pointed at a broker port used to
     # poll airspy-era stage names and report the result as a CORS error.
-    _bchains = discover_broker_chains(args.kotekan_host, args.kotekan_rest_port)
+    # _bchains was fetched once, up where the signal table is built -- re-asking here would
+    # be a second round trip for an answer we already have, and could disagree with it.
     root.putChild(b"wsport", WsPortResource(args.ws_port, args.band, args.gps_constellations,
                                             args.stage_prefix, unified=args.unified,
                                             broker_chains=_bchains))
