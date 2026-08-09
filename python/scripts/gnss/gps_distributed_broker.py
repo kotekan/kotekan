@@ -806,10 +806,21 @@ def main(argv=None, rx=None, publisher=None):
                          "clk_rate instead of the l-a EMA -- which measured ~80x biased, "
                          "see the call site), later 'clock' and 'bias'. Implies "
                          "--joint-shadow.")
+    ap.add_argument("--joint-min-snr", type=float, default=60.0,
+                    help="minimum detection SNR for a residual to enter the JOINT solve. "
+                         "The default matches --period-check-snr, whose docstring records "
+                         "the measurement: below it a detection's phase is noise with "
+                         "~2000-chip residuals. Ungated, ONE such detection walked the "
+                         "state to -0.028 ppm on 2026-08-09 (docs 11.23).")
     ap.add_argument("--joint-min-sats", type=int, default=4,
                     help="a JOINT consumer refuses to act on a state carrying fewer than "
                          "this many satellites: with the mean(b)=0 gauge a thin fleet lets "
                          "one satellite's bias leak into the clock at 1/N.")
+    ap.add_argument("--joint-max-rate-ppm", type=float, default=0.01,
+                    help="a JOINT rate consumer REFUSES a |clk_rate| beyond this (ppm) and "
+                         "falls back to the l-a EMA. CHORD's reference is GPS-disciplined "
+                         "and measures 4e-5 ppm, so 0.01 is ~250x headroom and still "
+                         "refuses the -0.028 ppm runaway that froze the trackers.")
     ap.add_argument("--joint-sigma", type=float, default=0.3,
                     help="measurement sigma (chips) for --joint-shadow. The search cp noise "
                          "is 0.03-0.5 chips per-sat-conditions; 0.3 is the middle of that "
@@ -4153,7 +4164,16 @@ def main(argv=None, rx=None, publisher=None):
                 if args.joint_shadow and offs:
                     try:
                         _js = rx.joint(band_id, code_len=CODE_LEN)
-                        _js.cycle([((tag, p), d, args.joint_sigma) for p, d in offs],
+                        # SNR GATE, caller-side. The broker's own comment 60 lines up
+                        # measures it: below --period-check-snr a detection's phase is
+                        # noise, "~2000-chip within-period residuals against a few chips
+                        # above it". The estimator this replaces was a circular MEDIAN and
+                        # shrugged those off; a mean-gauged filter cannot, and feeding them
+                        # ungated on 2026-08-09 walked the clock rate to -0.028 ppm and put
+                        # 17 chips/min of fictitious drift into every unlocked seed.
+                        _snr = {p: v[0] for p, v in best.items()}
+                        _js.cycle([((tag, p), d, args.joint_sigma) for p, d in offs
+                                   if _snr.get(p, 0.0) >= args.joint_min_snr],
                                   t_now_abs)
                         if now_w >= dr_state.get("joint_log_next", 0.0):
                             dr_state["joint_log_next"] = now_w + 30.0
@@ -5245,7 +5265,15 @@ def main(argv=None, rx=None, publisher=None):
         # tested a correct rate at all.
         if "rate" in joint_consume:
             _jr = _joint_state(rx, band_id, args)
-            if _jr is not None and len(_jr._idx) >= args.joint_min_sats:
+            _ppm = (_jr.clk_rate / args.chip_rate_hz * 1e6) if _jr is not None else None
+            # PLAUSIBILITY BOUND, and the incident's most transferable lesson: a consumer
+            # must never hand a physically impossible number to the instrument just because
+            # an estimator produced it. CHORD's reference is GPS-disciplined; the measured
+            # code-rate offset is 4e-5 ppm. The runaway that froze the trackers published
+            # -0.028 ppm -- 700x the truth and trivially refusable right here, no matter
+            # what went wrong upstream.
+            if (_jr is not None and len(_jr._idx) >= args.joint_min_sats
+                    and abs(_ppm) <= args.joint_max_rate_ppm):
                 cb_to_seed = _jr.clk_rate / args.chip_rate_hz
                 _log_rl("jointrate", "code-rate clock from the JOINT state: %+.5f ppm "
                                      "(l-a EMA says %+.5f)"

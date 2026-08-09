@@ -132,6 +132,15 @@ class JointReceiverState:
     Modulo: every innovation is wrapped into (-L/2, L/2]. The state itself is unwrapped, so
     clk_rate sees a continuous clock.
 
+    ⚠️ ROBUSTNESS IS NOT OPTIONAL HERE, AND IT WAS LEARNED THE EXPENSIVE WAY. This state
+    replaces a CIRCULAR MEDIAN, which is outlier-proof by construction; the gauge above is a
+    MEAN, which is not. Deployed on 2026-08-09 with no input quality gate, innov_max=None
+    and a birth path that bypassed gating, it took ONE weak-sat detection -- the broker's own
+    comments document snr<60 giving ~2000-chip residuals -- to walk clk_rate to +0.074 ppm
+    in 60 s. On sky it reached -0.028 ppm and fed every unlocked seed 17 chips/min of
+    fictitious drift. THE LESSON: when replacing a robust estimator with an efficient one,
+    the robustness has to be re-supplied explicitly, or it is simply gone.
+
     KNOWN AND INTENDED -- THE GAUGE LEAKS 1/N. One satellite whose true bias moves by d
     shifts the fleet mean by d/N, so the gauge moves clk by d/N and every other bias by
     -d/N (measured in the selftest: d = 2.0 chips over 6 sats -> dclk = 0.30). This is not
@@ -143,7 +152,9 @@ class JointReceiverState:
 
     def __init__(self, code_len=10230.0, sigma_clk0=200.0, sigma_rate0=1.0,
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013,
-                 gauge_sigma=0.1, max_age_s=900.0, innov_max=None):
+                 gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
+                 reject_escape=5,
+                 birth_max=50.0, gauge_max_b=60.0):
         import numpy as np
         self._np = np
         self.L = float(code_len)
@@ -164,7 +175,13 @@ class JointReceiverState:
         self.q_b = float(q_b)          # per-sat bias walk: SLOW is the whole point
         self.gauge_sigma = float(gauge_sigma)
         self.max_age_s = float(max_age_s)
-        self.innov_max = innov_max     # None = no gate (shadow mode sees everything)
+        # ROBUSTNESS, ALL THREE FROM ONE INCIDENT (2026-08-09, see the class note below).
+        self.innov_max = innov_max     # absolute garbage ceiling (chips), any state
+        self.innov_nsigma = innov_nsigma  # and the UNCERTAINTY-SCALED gate that does the work
+        self.reject_escape = reject_escape  # consecutive rejections before we believe reality
+        self._rej_run = {}             # key -> consecutive rejections
+        self.birth_max = birth_max     # refuse to BIRTH a sat implausibly far from clk
+        self.gauge_max_b = gauge_max_b # a wild bias does not get a vote in the gauge
         self.x = np.zeros(2)           # [clk chips, clk_rate chips/s]
         self.P = np.diag([sigma_clk0 ** 2, sigma_rate0 ** 2])
         self._idx = {}                 # key -> row in x
@@ -186,6 +203,7 @@ class JointReceiverState:
         self._idx[key] = i
         self._t_seen[key] = t_now
         self._n[key] = 0
+        self._membership_changed()
         return i
 
     def _drop(self, keys):
@@ -201,8 +219,19 @@ class JointReceiverState:
         self.P = self.P[np.ix_(keep, keep)]
         for k in keys:
             del self._idx[k], self._t_seen[k], self._n[k]
+            self._rej_run.pop(k, None)
         order = sorted(self._idx.items(), key=lambda kv: kv[1])
         self._idx = {k: 2 + n for n, (k, _) in enumerate(order)}
+        self._membership_changed()
+
+    def _membership_changed(self):
+        """A satellite joining or leaving changes WHICH sats the mean(b)=0 gauge averages
+        over, so the gauge legitimately steps clk (~1 chip at 6 sats -- measured). That step
+        is a GAUGE artefact, not clock motion, and must not be differentiated into clk_rate:
+        untreated it spikes the rate ~0.005 chips/s per event, which is 12x the true value.
+        Break the correlation and widen the clock so the step is absorbed as offset."""
+        self.P[0, 1] = self.P[1, 0] = 0.0
+        self.P[0, 0] += 4.0
 
     # -- filter ------------------------------------------------------------------
     def predict(self, t_now):
@@ -261,7 +290,8 @@ class JointReceiverState:
         if not (math.isfinite(y_chips) and sigma_chips > 0.0):
             return None
         self.predict(t_now)
-        if key not in self._idx:
+        born = key not in self._idx
+        if born:
             # BIRTH THROUGH THE COVARIANCE, not by hand. The obvious version -- set
             # b0 = y - clk and return -- puts the whole offset into the bias, and since a
             # newborn row has ZERO cross-covariance with clk, the mean(b)=0 gauge then
@@ -276,15 +306,56 @@ class JointReceiverState:
             # satellite's innovation lands ~entirely in clk (the clock is what is unknown),
             # while later ones -- facing an already-determined clock -- land in their own
             # bias. Same intent, correct mechanism, no special case.
+            # BIRTH WINDOW. Birth is the one path with no innovation to gate on, which is
+            # exactly how the 2026-08-09 incident got in. Once the clock is determined,
+            # refuse a newborn whose measurement is implausibly far from it: a real bias is
+            # chips, a weak-sat detection is hundreds. While the clock is still unknown
+            # (large P00) everything is accepted, because that is the bootstrap.
+            if (self.birth_max is not None and len(self._idx) >= 2
+                    and self.P[0, 0] < 100.0
+                    and abs(self.wrap(y_chips - self.x[0])) > self.birth_max):
+                self.rejected += 1
+                return None
             self._add(key, 0.0, t_now)
         i = self._idx[key]
         H = np.zeros(self.x.size)
         H[0] = 1.0
         H[i] = 1.0
         innov = self.wrap(y_chips - float(H @ self.x))
-        if self.innov_max is not None and abs(innov) > self.innov_max:
-            self.rejected += 1
-            return None
+        # NOT on the birth cycle: a newborn sits at b=0, so its innovation is the WHOLE
+        # measurement (~the clock, 151 chips here) and any physical gate would reject it --
+        # which is precisely what happened when innov_max was first given a finite value:
+        # every satellite was born and then immediately refused, and the filter read zero
+        # forever. Birth is vetted by birth_max above; the innovation gate is for sats that
+        # already have a state to be inconsistent with.
+        # THE GATE IS NORMALIZED, not absolute. A fixed chip bound cannot be both tight
+        # enough to catch garbage on a converged state and loose enough to let a legitimate
+        # innovation through after a gap -- set to 30 chips it evicted the ENTIRE state
+        # after a 900 s outage, because the clock's extrapolated uncertainty had genuinely
+        # grown past the bound and every satellite was refused, then aged out. Scaling by
+        # sqrt(S) is the filter saying "I no longer know where the clock is", which is the
+        # correct response to an outage. The absolute innov_max stays as a garbage ceiling.
+        if not born:
+            PH_ = self.P @ H
+            S_ = float(H @ PH_ + sigma_chips ** 2)
+            z_ = abs(innov) / math.sqrt(S_) if S_ > 0 else 0.0
+            _bad = z_ > self.innov_nsigma or (self.innov_max is not None
+                                              and abs(innov) > self.innov_max)
+            if _bad:
+                # ESCAPE HATCH. A gate with no way out is a deadlock: a genuine step (a
+                # clock event, a re-anchor) is rejected, so the state never follows it, so
+                # every subsequent measurement is rejected too -- forever. Garbage is
+                # sporadic; a real move is PERSISTENT. After reject_escape consecutive
+                # rejections for the same satellite, believe the world rather than the
+                # state, and inflate the covariance so the correction is taken quickly.
+                self._rej_run[key] = self._rej_run.get(key, 0) + 1
+                if self._rej_run[key] < self.reject_escape:
+                    self.rejected += 1
+                    return None
+                self.P[0, 0] += 25.0
+                self.P[i, i] += 25.0
+                self.P[0, 1] = self.P[1, 0] = 0.0
+        self._rej_run.pop(key, None)
         z = self._scalar_update(H, innov, sigma_chips ** 2)
         self._t_seen[key] = t_now
         self._n[key] = self._n.get(key, 0) + 1
@@ -293,12 +364,17 @@ class JointReceiverState:
 
     def gauge(self):
         """Pin the unobservable common mode: mean(b over active sats) = 0."""
-        if len(self._idx) < 2:
-            return
         np = self._np
+        # A wild bias gets no vote. The gauge is a MEAN, and the estimator it replaces was a
+        # circular MEDIAN -- robust by construction. Carrying the mean over without carrying
+        # the robustness is what let one bad detection move the clock (see the class note).
+        use = [i for i in self._idx.values()
+               if self.gauge_max_b is None or abs(self.x[i]) <= self.gauge_max_b]
+        if len(use) < 2:
+            return
         H = np.zeros(self.x.size)
-        for i in self._idx.values():
-            H[i] = 1.0 / len(self._idx)
+        for i in use:
+            H[i] = 1.0 / len(use)
         self._scalar_update(H, -float(H @ self.x), self.gauge_sigma ** 2)
 
     def cycle(self, measurements, t_now):

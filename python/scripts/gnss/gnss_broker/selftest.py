@@ -338,6 +338,68 @@ check("clk_rate is observable from the fleet, unbiased",
 check("clk_rate is quieter than the l-a EMA it replaces",
       _sr < 0.0015, "sd %.5f chips/s (l-a EMA scatter was 0.07)" % _sr)
 
+# ROBUSTNESS. These reproduce the 2026-08-09 production incident directly: the filter
+# replaced a circular MEDIAN (outlier-proof) with a MEAN-gauged solve (not), and one
+# weak-sat detection -- the broker documents snr<60 giving ~2000-chip residuals -- walked
+# clk_rate to +0.074 ppm in 60 s, which then fed every unlocked seed 17 chips/min of
+# fictitious code drift. Each guard gets a check that FAILS without it.
+_rnd.seed(808)
+_jr2 = JointReceiverState()
+_t2 = 0.0
+for _ in range(400):
+    _t2 += 2.0
+    _jr2.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t2)
+_clk_ok, _rate_ok = _jr2.clk, _jr2.clk_rate
+_t2 += 2.0
+_jr2.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()]
+           + [(("G", 99), 151.0 + 1800.0, 0.3)], _t2)          # the garbage detection
+for _ in range(30):
+    _t2 += 2.0
+    _jr2.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t2)
+check("ONE garbage detection cannot move the clock (birth window)",
+      abs(_jr2.clk - _clk_ok) < 1.0 and ("G", 99) not in _jr2._idx,
+      "clk %+.2f -> %+.2f, born=%s" % (_clk_ok, _jr2.clk, ("G", 99) in _jr2._idx))
+check("ONE garbage detection cannot move clk_rate",
+      abs(_jr2.clk_rate - _rate_ok) < 0.002,
+      "rate %+.5f -> %+.5f chips/s (incident reached +0.76)" % (_rate_ok, _jr2.clk_rate))
+# An ESTABLISHED sat throwing an outlier is the innovation gate's job.
+_rej0 = _jr2.rejected
+_t2 += 2.0
+_jr2.cycle([(("G", 11), 151.0 + 900.0, 0.3)], _t2)
+check("an established satellite's outlier is rejected, not averaged in",
+      _jr2.rejected > _rej0 and abs(_jr2.clk - _clk_ok) < 1.0)
+# Membership churn must not masquerade as clock rate.
+_rnd.seed(809)
+_jm = JointReceiverState()
+_t3 = 0.0
+for _ in range(400):
+    _t3 += 2.0
+    _jm.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t3)
+_gone = {("G", 11)}
+_rmax = 0.0
+for _ in range(700):        # let it age out, then keep running
+    _t3 += 2.0
+    _jm.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3)
+               for k, b in _TB.items() if k not in _gone], _t3)
+    _rmax = max(_rmax, abs(_jm.clk_rate))
+check("a satellite SETTING does not masquerade as clock rate",
+      _rmax < 0.002, "peak |rate| %.5f chips/s during the gauge re-reference" % _rmax)
+
+# The gate must not DEADLOCK. A genuine step (clock event, re-anchor) is rejected by a
+# normalized gate, so without an escape the state never follows it and every later
+# measurement is rejected too -- forever. Garbage is sporadic; a real move persists.
+_rnd.seed(811)
+_jd = JointReceiverState()
+_t4 = 0.0
+for _ in range(400):
+    _t4 += 2.0
+    _jd.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t4)
+for _ in range(60):                       # the clock STEPS 40 chips and stays there
+    _t4 += 2.0
+    _jd.cycle([(k, 191.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t4)
+check("the filter recovers from a genuine STEP (gate has an escape)",
+      abs(_jd.clk - 191.0) < 1.0, "clk %+.2f after a 40-chip step (want ~191)" % _jd.clk)
+
 # Modulo: y arrives mod the code length, so a measurement that wraps must not explode.
 _jw = JointReceiverState(code_len=10230.0)
 _jw.cycle([(("G", 1), 10229.8, 0.3), (("G", 2), 10229.9, 0.3)], 1.0)

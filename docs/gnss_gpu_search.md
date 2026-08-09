@@ -2078,3 +2078,64 @@ must reproduce the integrity residual sat-by-sat. If confirmed: fix the round tr
 re-measure integrity (expect ±0.2), and only then judge whether the model can hold
 E5a/B2a — the oscillation, P1's "iono" biases, and the b_sat design question may all
 collapse into this one fix.
+
+## 11.23  THE CONSUMER THAT FROZE THE TRACKERS (2026-08-09) — robustness is not free
+
+P2b's first consumer switch (joint `clk_rate` replacing the l−a EMA as the seeded code
+rate) ran for ~7 minutes before KV reported every tracker frozen. Reverted to shadow-only
+within a minute; the fleet recovered immediately (E5a deep back to 147/111/72).
+
+**What it published:** `-0.02796 ppm` = −0.286 chips/s = **17 chips/min of fictitious code
+drift into every unlocked seed**, against a truth of +0.00004 ppm. 700× out.
+
+**Root cause, reproduced offline in one line:** the joint state replaced a CIRCULAR MEDIAN,
+which is outlier-proof by construction, with a MEAN-gauged Kalman solve, which is not — and
+I carried none of the robustness across. It was fed every dead-reckon integrity residual
+with no SNR gate, `innov_max=None`, and a birth path that bypassed gating entirely. The
+broker's own comments, sixty lines above the feed site, already say that below
+`--period-check-snr` a detection's phase is noise with "~2000-chip within-period
+residuals". Injecting ONE such measurement into a converged filter offline:
+
+    clean                      clk +150.446   rate −0.00013 chips/s
+    +1 detection 1800 off      clk +162.293   rate +0.14676
+    +60 s later                clk +251.909   rate +0.76166  (= +0.074 ppm, still climbing)
+
+Same mechanism, same order as sky. The gauge is a mean over the active satellites, so one
+wild bias moves the clock by 1/N of it, and the filter differentiates that motion into
+clk_rate — which the consumer then applied to every seed.
+
+**A second, independent contributor, also reproduced:** a satellite SETTING changes *which*
+satellites the mean(b)=0 gauge averages over, stepping clk by ~1 chip at six sats. That is
+a gauge artefact, not clock motion, and it was being differentiated into clk_rate at
+~0.005 chips/s per event — 12× the true value, on its own enough to matter.
+
+**Fixed, each with a regression check that fails without it:**
+  * SNR gate at the feed site (the threshold the broker already documents);
+  * birth window — birth is the one path with no innovation to gate on, which is exactly
+    how this got in;
+  * innovation gate scaled by `sqrt(S)`, NOT an absolute chip bound. Set absolute at 30
+    chips it evicted the entire state after a 900 s outage: the clock's extrapolated
+    uncertainty had legitimately grown past the bound, so every satellite was refused and
+    then aged out. Scaling by the filter's own uncertainty is it saying "I no longer know
+    where the clock is", which is the correct response to an outage;
+  * an escape hatch after N consecutive rejections — a gate with no way out is a deadlock:
+    a genuine step is rejected, so the state never follows it, so everything after is
+    rejected too, forever. Garbage is sporadic; a real move persists;
+  * gauge ignores wild biases, and membership changes decorrelate clk from clk_rate;
+  * **a plausibility bound in the CONSUMER** — the most transferable lesson. A consumer must
+    never hand a physically impossible number to the instrument because an estimator
+    produced it. The reference is GPS-disciplined and measures 4e-5 ppm; refusing anything
+    beyond 0.01 ppm would have caught this at the point of use no matter what went wrong
+    upstream, and cost nothing.
+
+**The judgement error worth keeping.** The shadow ran 25 minutes and every number in it was
+good — which I read as "validated" and KV's "swap it live" as licence to switch a consumer
+in the same motion. But a shadow only exercises the estimator on the data it happened to
+see; it says nothing about the tails, and a consumer is where tails become the instrument's
+problem. What the shadow measured (the estimator is right on average) was never the
+question a consumer asks (is it NEVER catastrophically wrong). Shadow longer, and gate the
+consumer on plausibility before the first switch — not after.
+
+The l−a-is-80×-biased finding from 11.22bis stands independently: it was measured against
+the clock's own trend, not through this consumer, and it is why the switch is still worth
+making once the state has soaked.
