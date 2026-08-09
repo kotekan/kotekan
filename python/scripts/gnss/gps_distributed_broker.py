@@ -76,7 +76,7 @@ from gnss_broker.fits import (                # noqa: E402
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
 from gnss_broker.fleet import (               # noqa: E402
-    fleet_dll, _coherent_sum, fleet_coherent,
+    fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fit_spectrum_delay,
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker import signals                            # noqa: E402
@@ -773,6 +773,18 @@ def main(argv=None, rx=None, publisher=None):
                          "sigma/(T*sqrt(N/12)), so at ~1.5 Hz detection scatter 4 points over "
                          "44 s give ~0.06 Hz/s and 8 over 88 s ~0.02 Hz/s, against BRDC's "
                          "measured 0.108 Hz/s error. A short baseline fits noise.")
+    ap.add_argument("--spectrum-endpoints", default="",
+                    help="FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md "
+                         "P1): comma-separated GnssGpuRecordAssemble endpoints ({a..b} ranges "
+                         "expanded) whose /get_spectrum -- the per-channel prompt sums BEFORE "
+                         "the cross-channel combine -- feed the joint (tau, phi_i) fit. A "
+                         "delay is a phase ramp across frequency; the fleet's UNION of combs "
+                         "is what suppresses the 3.27-chip grating lobes a single instance's "
+                         "stride-16 comb cannot resolve. MEASUREMENT ONLY today: logged as "
+                         "SPEC-FIT and published as spec_tau_chips/spec_peak_ratio, feeding "
+                         "no loop. Empty = off, and every recorded transcript replays "
+                         "byte-identically (replay is strict-ordered; this flag not being in "
+                         "an old transcript's argv is what keeps the new GETs out of replay).")
     ap.add_argument("--dll-combiners", default="",
                     help="FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md): comma-separated "
                          "combiner endpoints ({a..b} ranges expanded) whose RAW Early/Prompt/"
@@ -1460,6 +1472,8 @@ def main(argv=None, rx=None, publisher=None):
     # These endpoints feed NO loop -- fleet_coherent is an observable -- so an n2 chain that is
     # down, restarting, or absent costs a log line and nothing else.
     n2_combiners = parse_endpoints(args.n2_combiners, base) if args.n2_combiners else []
+    spectrum_endpoints = (parse_endpoints(args.spectrum_endpoints, base)
+                          if args.spectrum_endpoints else [])
     # Integer hop tolerance, derived once from the record geometry. Kept as an int so every
     # comparison downstream is integer arithmetic on the F-engine's own counter.
     dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
@@ -4536,6 +4550,40 @@ def main(argv=None, rx=None, publisher=None):
                     rows.append("PRN %d A %s | B %s" % (prn, _f(a), _f(b)))
                 if rows:
                     _log("FLEET-COH: " + "; ".join(rows))
+            # FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md P1).
+            # MEASUREMENT ONLY: touches no seed and no loop -- it is logged and published so
+            # it can be judged against the disc, the E/L asymmetry and GPS's search-measured
+            # code phase BEFORE anything consumes it (the #30 rule: measure the statistic
+            # before the loop). Gated on its OWN flag, which is what keeps every recorded
+            # transcript replaying byte-identically: replay is strict-ordered, an
+            # unrecorded GET is a TRANSCRIPT DIVERGENCE, and old transcripts' argv does not
+            # carry --spectrum-endpoints, so replays never issue the new polls.
+            spec_fit = {}
+            if spectrum_endpoints:
+                try:
+                    _spec = fleet_spectrum(spectrum_endpoints, prns=set(seeds) or None)
+                    for prn, pts in _spec.items():
+                        r = fit_spectrum_delay(pts, args.chip_rate_hz, args.hops_per_sec)
+                        if r is not None:
+                            spec_fit[prn] = {"tau_chips": r[0], "peak": r[1],
+                                             "floor": r[2], "n_pts": r[3], "n_inst": r[4]}
+                except Exception as e:
+                    _log_rl("fleet-spec", "fleet spectrum: skipped this cycle (%s)" % e)
+                if spec_fit:
+                    _log_rl("specfit", "SPEC-FIT: " + "; ".join(
+                        "PRN %d tau %+.3f chips (p/f %.1fx, %d ch/%d inst)"
+                        % (prn, v["tau_chips"], v["peak"] / max(v["floor"], 1e-12),
+                           v["n_pts"], v["n_inst"])
+                        for prn, v in sorted(spec_fit.items())), every_s=30.0)
+                    # Ride the fleet dict into the publisher: the viewer/status row grows
+                    # spec_tau_chips + spec_peak_ratio next to the disc it will one day
+                    # replace. EXISTING rows only -- publisher.update() indexes fleet rows'
+                    # p_pow/disc/q directly, so a bare fit-only row would crash it; a PRN
+                    # the DLL poll missed this cycle is still in the SPEC-FIT log line.
+                    for prn, v in spec_fit.items():
+                        if prn in fleet:
+                            fleet[prn]["spec_tau"] = v["tau_chips"]
+                            fleet[prn]["spec_ratio"] = v["peak"] / max(v["floor"], 1e-12)
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the

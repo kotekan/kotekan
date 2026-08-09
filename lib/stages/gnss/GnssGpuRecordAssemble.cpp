@@ -5,6 +5,7 @@
 #include "visUtil.hpp" // for frameID
 #include "gnssGpuChain.hpp"
 #include "gnssRecord.hpp"
+#include "json.hpp" // for the /get_spectrum reply
 
 #include <algorithm>
 #include <chrono>
@@ -80,6 +81,26 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _a_prev.assign(n, {0.0, 0.0});
     _a_prev_ok.assign(n, 0);
     _wstart_prev.assign(n, 0);
+    // PER-CHANNEL PROMPT SPECTRUM (hpp note; task #32). Keyed on `channel_ids` being present:
+    // the generator wires the same per-GPU freq_id list the despread runs, so the export knows
+    // which sky frequency each channel index is. No channel_ids (airspy, legacy configs) ->
+    // fully inert: no accumulation, and the endpoint answers with an explanatory error rather
+    // than not existing, so a mis-wired poller sees WHY instead of a bare 404.
+    _spec_freq_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+    if (!_spec_freq_ids.empty()) {
+        const size_t nc = _spec_freq_ids.size();
+        _spec_re.assign((size_t)n * nc, 0.0);
+        _spec_im.assign((size_t)n * nc, 0.0);
+        _spec_energy.assign((size_t)n * nc, 0.0);
+        _spec_nrec.assign(n, 0);
+        _spec_scratch.assign((size_t)std::max(1, _n_elements), {0.0, 0.0});
+        INFO("per-channel spectrum export ON: {:d} channels, freq_id {:d}..{:d}",
+             (int)nc, _spec_freq_ids.front(), _spec_freq_ids.back());
+    }
+    using namespace std::placeholders;
+    kotekan::restServer::instance().register_get_callback(
+        unique_name + "/get_spectrum",
+        std::bind(&GnssGpuRecordAssemble::spectrum_callback, this, _1));
 }
 
 GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
@@ -339,6 +360,41 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[3] = (float)g_corr.real();
                 rec[4] = (float)g_corr.imag();
                 rec[5] = (float)e3[1];
+                // PER-CHANNEL PROMPT SPECTRUM accumulation (hpp note; task #32). Same source
+                // as the chan_dump above (trial 1 = PROMPT, per channel, pre-sum), same
+                // element combination as the header (cal when warm, else the reference
+                // element), and the SAME `rot` the record's prompt just got -- one common
+                // phase per record, so the accumulation doesn't wind with the residual
+                // carrier while the cross-channel RELATIVE phases (the delay observable)
+                // pass through untouched. Only the covering-mask channels accumulate;
+                // masked-off ones stay identically zero and the consumer skips zero-energy.
+                if (!_spec_freq_ids.empty() && (int)_spec_freq_ids.size() == n_chan) {
+                    const size_t prow = (size_t)(c.job0 + 1) * n_chan;
+                    std::lock_guard<std::mutex> lk(_spec_mtx);
+                    for (int ch = 0; ch < n_chan; ++ch) {
+                        if (!((c.chan_mask >> ch) & 1ULL))
+                            continue;
+                        std::complex<double> g;
+                        const size_t base = (prow + ch) * n_e;
+                        if (_elem_sum && _cal[p].warm()) {
+                            for (int el = 0; el < n_e; ++el)
+                                _spec_scratch[el] = {corr[2 * (base + el)],
+                                                     corr[2 * (base + el) + 1]};
+                            g = _cal[p].combine(_spec_scratch.data());
+                        } else {
+                            g = {corr[2 * (base + ref_e)], corr[2 * (base + ref_e) + 1]};
+                        }
+                        g *= rot;
+                        const size_t k = (size_t)p * n_chan + ch;
+                        _spec_re[k] += g.real();
+                        _spec_im[k] += g.imag();
+                        _spec_energy[k] += energy[prow + ch];
+                    }
+                    _spec_nrec[p] += 1;
+                    if (_spec_w0 < 0)
+                        _spec_w0 = wstart;
+                    _spec_w1 = wstart;
+                }
                 // Head segment: SAME NCO rotation as the prompt (it is the same correlation,
                 // restricted to the hops before the code-period boundary), so head + tail
                 // reconstructs P exactly and the combiner can wipe each side with its own
@@ -434,4 +490,60 @@ void GnssGpuRecordAssemble::main_thread() {
         in_buf->mark_frame_empty(unique_name, frame_in);
         frame_in++;
     }
+}
+
+void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn) {
+    // Snapshot + RESET under the lock, serialize outside it. Reset-on-read makes successive
+    // polls independent windows -- exactly what the broker's stability statistics want -- and
+    // means one slow poller can never watch a window grow unboundedly. One consumer (the
+    // broker) is the design; a second poller would halve everyone's windows, visibly (each
+    // reply carries its own span), not silently.
+    if (_spec_freq_ids.empty()) {
+        conn.send_error("per-channel spectrum export is OFF: this stage's config has no "
+                        "'channel_ids' (regenerate the node config with a "
+                        "gen_chord_gnss_config.py that wires it -- task #32)",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const size_t nc = _spec_freq_ids.size();
+    std::vector<double> re, im, en;
+    std::vector<int> nrec;
+    int64_t w0, w1;
+    {
+        std::lock_guard<std::mutex> lk(_spec_mtx);
+        re.swap(_spec_re);
+        im.swap(_spec_im);
+        en.swap(_spec_energy);
+        nrec.swap(_spec_nrec);
+        w0 = _spec_w0;
+        w1 = _spec_w1;
+        _spec_re.assign((size_t)_prns.size() * nc, 0.0);
+        _spec_im.assign((size_t)_prns.size() * nc, 0.0);
+        _spec_energy.assign((size_t)_prns.size() * nc, 0.0);
+        _spec_nrec.assign(_prns.size(), 0);
+        _spec_w0 = _spec_w1 = -1;
+    }
+    nlohmann::json reply;
+    reply["freq_ids"] = _spec_freq_ids;
+    reply["sample_rate"] = _sample_rate;
+    reply["wstart0"] = w0; // absolute sample of the first / last record in this window --
+    reply["wstart1"] = w1; // the cross-instance alignment key, same clock as fleet hops
+    nlohmann::json prns = nlohmann::json::array();
+    for (size_t p = 0; p < _prns.size(); ++p) {
+        if (nrec[p] <= 0)
+            continue; // silence, not zeros (get_records convention)
+        nlohmann::json chans = nlohmann::json::array();
+        for (size_t ch = 0; ch < nc; ++ch) {
+            const size_t k = p * nc + ch;
+            // Energy-normalized like get_records' re/im: A = G/E is directly comparable
+            // across instances, and E rides along as the ML combining weight.
+            if (en[k] > 0.0)
+                chans.push_back({re[k] / en[k], im[k] / en[k], en[k]});
+            else
+                chans.push_back({0.0, 0.0, 0.0}); // masked-off channel: weight 0, skipped
+        }
+        prns.push_back({{"prn", _prns[p]}, {"n_rec", nrec[p]}, {"chan", chans}});
+    }
+    reply["prns"] = prns;
+    conn.send_json_reply(reply);
 }

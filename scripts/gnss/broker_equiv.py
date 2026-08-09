@@ -42,6 +42,10 @@ import sys
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BROKER = os.path.join(K, "python", "scripts", "gnss", "gps_distributed_broker.py")
 PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
+# The pinned nav snapshot every replay runs against. Blob-side like the transcripts (NFS,
+# not in git -- ~3.5 MB); the DIGEST records its fingerprint, so `git status` cannot see it
+# drift but `check` can and says so.
+BRDC_PIN = os.environ.get("GNSS_BRDC_PIN", "/home/kvand/gnss/fixtures/brdc_pin")
 
 
 FIXTURES = os.path.join(K, "scripts", "gnss", "fixtures")
@@ -113,7 +117,7 @@ def _brdc_fingerprint():
     task #29) -- but it makes a moved digest self-explaining instead of a mystery that costs
     an afternoon.
     """
-    cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
+    cache = BRDC_PIN  # what replays READ -- never the live cache, which refreshes daily
     h = hashlib.sha256()
     try:
         for name in sorted(os.listdir(cache)):
@@ -174,6 +178,13 @@ def replay(path, extra=(), env=None):
     cmd = ([PY, "-u", BROKER] + argv
            + ["--transcript-read", path, "--publish-port", "0"] + list(extra))
     e = dict(os.environ)
+    # PIN THE SKY (task #29). The ephemeris is a replay input every bit as much as the
+    # transcript: gnss_ephemeris.fetch_brdc pulls it through its own urllib into a cache that
+    # refreshes several times a day, and it moved the on-sky digests twice in two days with
+    # byte-identical code -- the second time because midnight UTC rolled the day-of-year
+    # mid-review. Replays read exactly the nav files in the pinned snapshot, so the digest is
+    # a function of (code, transcript) and nothing else.
+    e["GNSS_BRDC_DIR"] = BRDC_PIN
     e.update(env or {})
     p = subprocess.run(cmd, capture_output=True, text=True, env=e, cwd=K)
     out = p.stdout.strip().splitlines()

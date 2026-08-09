@@ -67,6 +67,11 @@ http://cx19:12049/gnss{0..1}_inject"
 http://cx27:12049/gnss{0..1}_combine,http://cx42:12049/gnss{0..1}_combine,\
 http://cx43:12049/gnss{0..1}_combine,http://cx44:12049/gnss{0..1}_combine"
     narrow-search: true
+    # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
+    # Path A's assemblers; same node set as the trackers.
+    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_assemble,http://cx27:12049/gnss{0..1}_assemble,\
+http://cx42:12049/gnss{0..1}_assemble,http://cx43:12049/gnss{0..1}_assemble,\
+http://cx44:12049/gnss{0..1}_assemble,http://cx51:12049/gnss{0..1}_assemble"
     nh-hint: true
     nh-hint-span: 2
     acquire-snr: 30
@@ -92,6 +97,10 @@ http://cx43:12049/gnss{0..1}_combine,http://cx44:12049/gnss{0..1}_combine"
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
     combiner: gnss0_e5a_n2combine
+    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_e5a_n2assemble,\
+http://cx27:12049/gnss{0..1}_e5a_n2assemble,http://cx42:12049/gnss{0..1}_e5a_n2assemble,\
+http://cx43:12049/gnss{0..1}_e5a_n2assemble,http://cx44:12049/gnss{0..1}_e5a_n2assemble,\
+http://cx51:12049/gnss{0..1}_e5a_n2assemble"
     dll-combiners: &e5a_cmb "http://cx19:12049/gnss{0..1}_e5a_n2combine,\
 http://cx27:12049/gnss{0..1}_e5a_n2combine,http://cx42:12049/gnss{0..1}_e5a_n2combine,\
 http://cx43:12049/gnss{0..1}_e5a_n2combine,http://cx44:12049/gnss{0..1}_e5a_n2combine,\
@@ -119,6 +128,10 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
 http://cx42:12049/gnss{0..1}_b2a_inject,http://cx43:12049/gnss{0..1}_b2a_inject,\
 http://cx44:12049/gnss{0..1}_b2a_inject,http://cx51:12049/gnss{0..1}_b2a_inject"
     combiner: gnss0_b2a_n2combine
+    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_b2a_n2assemble,\
+http://cx27:12049/gnss{0..1}_b2a_n2assemble,http://cx42:12049/gnss{0..1}_b2a_n2assemble,\
+http://cx43:12049/gnss{0..1}_b2a_n2assemble,http://cx44:12049/gnss{0..1}_b2a_n2assemble,\
+http://cx51:12049/gnss{0..1}_b2a_n2assemble"
     dll-combiners: &b2a_cmb "http://cx19:12049/gnss{0..1}_b2a_n2combine,\
 http://cx27:12049/gnss{0..1}_b2a_n2combine,http://cx42:12049/gnss{0..1}_b2a_n2combine,\
 http://cx43:12049/gnss{0..1}_b2a_n2combine,http://cx44:12049/gnss{0..1}_b2a_n2combine,\

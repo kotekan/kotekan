@@ -6,8 +6,10 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "gnssElemCal.hpp"
+#include "restServer.hpp"
 
 #include <complex>
+#include <mutex>
 #include <vector>
 
 /**
@@ -98,6 +100,27 @@ private:
     int _chan_dump_decim = 10; ///< dump every Nth record of that PRN
     long long _chan_dump_ctr = 0;
     FILE* _chan_dump = nullptr;
+
+    /// PER-CHANNEL PROMPT SPECTRUM (task #32, docs/CHORD_JOINT_TRACKING.md P1). The general
+    /// form of the chan_dump above: for EVERY PRN, accumulate the NCO-derotated, element-
+    /// combined prompt per covering channel over a window, and serve it on
+    /// `<unique_name>/get_spectrum` (snapshot + reset per GET, so successive polls are
+    /// independent windows). A delay is a phase ramp across frequency, and this is the
+    /// sufficient statistic for the fleet-level phase-slope delay fit in the broker --
+    /// per-(PRN, channel) complex sums, ~4 kB per poll, never per-element data (the 30 Gbps
+    /// full-CHORD trap). The derotation is the SAME `rot` the record's prompt gets, one
+    /// common phase per record: it stops the residual-carrier winding across the window
+    /// without touching the cross-channel RELATIVE phases, which are the observable.
+    /// Enabled by the presence of `channel_ids` in the config (the generator wires the same
+    /// per-GPU list the despread runs); absent -> fully inert, airspy/legacy byte-identical.
+    std::vector<int> _spec_freq_ids;             ///< [n_chan] F-engine freq_id per channel
+    std::vector<double> _spec_re, _spec_im;      ///< [n_prn * n_chan] accumulated prompt
+    std::vector<double> _spec_energy;            ///< [n_prn * n_chan] accumulated replica energy
+    std::vector<int> _spec_nrec;                 ///< [n_prn] records accumulated
+    int64_t _spec_w0 = -1, _spec_w1 = -1;        ///< window sample span (wstart of first/last)
+    std::mutex _spec_mtx;                        ///< guards _spec_* between main_thread and REST
+    std::vector<std::complex<double>> _spec_scratch; ///< [n_elem] per-channel cal-combine input
+    void spectrum_callback(kotekan::connectionInstance& conn);
 };
 
 #endif

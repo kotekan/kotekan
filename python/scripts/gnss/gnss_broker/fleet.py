@@ -418,3 +418,135 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
             % (len(out), sum(1 for v in out.values() if v["present"]), best, b["deep_snr"],
                floor, b["best_inst_snr"], b["n_src"], b["n_rec"], b["align"], b["coh_frac"]))
     return out
+
+
+# --- fleet phase-slope delay fit (task #32, docs/CHORD_JOINT_TRACKING.md P1) --------------
+#
+# A delay is a phase ramp across frequency: dphi/df = -2*pi*tau. The per-channel prompts
+# (GnssGpuRecordAssemble /get_spectrum -- NCO-derotated, element-combined, window-summed)
+# contain the full-band delay at matched-filter precision, sigma_tau ~ 1/(2*pi*beta_rms*SNR).
+# E/P/L keeps three lag samples of this spectrum; the E5a disc rails because per narrow
+# channel E ~ P ~ L -- a slope fit is immune to that entirely.
+#
+# THE SPARSE-COMB HAZARD, and why this is a FLEET fit: one instance's 7 channels at
+# 3.125 MHz stride alias at 3.27 chips (the measured tracker grating lobes). The defence is
+# the union of combs -- 79 unique channels with different per-node offsets -- which is
+# exactly how the search beat the same lobes. Two consequences baked into the code below:
+#   * instances carry unknown constant phases phi_i (different NCO histories), solved
+#     JOINTLY with tau by alternation: given tau, phi_i = arg sum_{c in i} E_c A_c
+#     e^{+i 2 pi f_c tau}; given phi_i, one coherent fold over ALL channels. A few rounds
+#     from tau = 0 converge, because a locked seed is already within ~1 chip.
+#   * ⚠️ magnitude-per-instance summing does NOT work: |.| erases exactly the
+#     cross-instance phase that discriminates the true peak from the comb lobes.
+#
+# THE FLOOR IS MEASURED, NEVER ASSUMED (fleet_coherent's rule): the identical fold runs on
+# a null where each instance's channel->value assignment is shuffled -- real amplitudes,
+# real comb, the frequency-phase association (the entire thing the fit locks onto)
+# destroyed. A tau is reported only against that floor, and the caller sees both.
+
+def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
+                       coarse_step_chips=0.02, rounds=4, rng=None):
+    """Joint (tau, phi_i) fit. `points` = [(freq_id, complex A, energy, inst_key)].
+
+    Returns (tau_chips, peak, floor, n_pts, n_inst) -- tau of the correlation peak RELATIVE
+    to the replica placement (positive = the sky's code arrives LATER than the replica
+    models), the fold magnitude at the peak, the shuffled-null floor from the same points,
+    and the sizes. Pure function: deterministic given `rng` (a random.Random), stdlib only.
+    """
+    import cmath
+    import random as _random
+
+    if len(points) < 3:
+        return None
+    insts = {}
+    for fid, a, en, key in points:
+        if en > 0.0 and (a.real != 0.0 or a.imag != 0.0):
+            insts.setdefault(key, []).append((fid, a, en))
+    insts = {k: v for k, v in insts.items() if len(v) >= 2}
+    if not insts or sum(len(v) for v in insts.values()) < 3:
+        return None
+    # Weights: energy is the ML combining weight (A = G/E has variance ~1/E), same
+    # convention as fleet_coherent. Precompute E*A per point; phases fold around f*tau.
+    f0 = min(fid for v in insts.values() for fid, _, _ in v)
+
+    def scan(store, taus, phi):
+        best_tau, best_mag = None, -1.0
+        for tau_s in taus:
+            total = 0.0j
+            for k, v in store.items():
+                s = 0.0j
+                for fid, a, en in v:
+                    s += en * a * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz
+                                            * tau_s)
+                total += s * cmath.exp(-1j * phi.get(k, 0.0))
+            m = abs(total)
+            if m > best_mag:
+                best_mag, best_tau = m, tau_s
+        return best_tau, best_mag
+
+    def solve_phi(store, tau_s):
+        phi = {}
+        for k, v in store.items():
+            s = 0.0j
+            for fid, a, en in v:
+                s += en * a * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * tau_s)
+            if abs(s) > 0.0:
+                phi[k] = cmath.phase(s)
+        return phi
+
+    def run(store):
+        span_s = span_chips / chip_rate_hz
+        step_s = coarse_step_chips / chip_rate_hz
+        n = max(3, int(round(2.0 * span_s / step_s)) + 1)
+        taus = [-span_s + i * (2.0 * span_s / (n - 1)) for i in range(n)]
+        tau, phi = 0.0, {}
+        for _ in range(rounds):
+            phi = solve_phi(store, tau)
+            tau, mag = scan(store, taus, phi)
+            # zoom: next round scans +-3 coarse steps around the peak at 1/10 step
+            taus = [tau + (i - 15) * step_s / 5.0 for i in range(31)]
+        return tau, mag
+
+    tau_s, peak = run(insts)
+    # Shuffled null: same instances, same freqs, values reassigned within each instance.
+    rng = rng or _random.Random(0xC0DE)
+    null_store = {}
+    for k, v in insts.items():
+        vals = [(a, en) for _, a, en in v]
+        rng.shuffle(vals)
+        null_store[k] = [(fid, a, en) for (fid, _, _), (a, en) in zip(v, vals)]
+    _, floor = run(null_store)
+    return (tau_s * chip_rate_hz, peak, floor, sum(len(v) for v in insts.values()),
+            len(insts))
+
+
+def fleet_spectrum(endpoints, prns=None):
+    """Poll every instance's /get_spectrum; return {prn: [(freq_id, A, energy, inst_key)]}.
+
+    Windows are NOT record-aligned across instances -- unlike fleet_coherent, a window-summed
+    spectrum cannot be, and does not need to be: the per-instance phi_i solved in the fit
+    absorbs any window-offset phase, and tau is quasi-static over the poll interval. Each
+    reply is that instance's accumulation since ITS last poll (snapshot + reset per GET), so
+    one poller (the broker) sees disjoint windows; do not add a second poller.
+    """
+    out = {}
+    for url in endpoints:
+        try:
+            r = _get("%s/get_spectrum" % url)
+        except Exception as e:
+            _log_rl("fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e))
+            continue
+        fids = r.get("freq_ids") or []
+        for row in r.get("prns") or []:
+            prn = int(row.get("prn", -1))
+            if prn <= 0 or (prns is not None and prn not in prns):
+                continue
+            ch = row.get("chan") or []
+            pts = out.setdefault(prn, [])
+            for i, fid in enumerate(fids):
+                if i >= len(ch):
+                    break
+                re_, im_, en = ch[i]
+                if en > 0.0:
+                    pts.append((int(fid), complex(re_, im_), float(en), url))
+    return out

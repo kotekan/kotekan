@@ -389,6 +389,13 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             "out_buf": rec_buf,
             "prns": prns,
             "n_elements": n_elem,
+            # PER-CHANNEL SPECTRUM EXPORT (task #32, docs/CHORD_JOINT_TRACKING.md P1): the
+            # same GLOBAL-bin list the despread command runs, so /get_spectrum can label each
+            # channel with its sky frequency. A delay is a phase ramp across frequency; this
+            # stage's cross-channel sum is the one combine the broker can never undo, and
+            # this key is what lets it see the spectrum BEFORE the sum -- as sufficient
+            # statistics (per-PRN-per-channel sums), never per-element streams.
+            "channel_ids": list(freq_ids if freq_ids is not None else chan_idx),
             "reference_element": args.reference_element,
             # SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp, STATE 8.21.5). The header
             # correlation slots carry the calibrated weighted mean over all elements instead of
@@ -816,6 +823,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "out_buf": n2rec_buf,
             "prns": prns,
             "n_elements": n_live,
+            # Task #32: sky-frequency labels for /get_spectrum -- see the path-A assemble
+            # block's comment; same list the inject command despreads.
+            "channel_ids": freq_ids,
             "reference_element": args.reference_element,
             "elem_sum": args.elem_sum,
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the

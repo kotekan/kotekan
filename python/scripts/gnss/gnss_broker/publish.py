@@ -300,6 +300,12 @@ class FleetPublisher:
                 # value the despread actually used.
                 "doppler_hz": sd.get("doppler_hz", c.get("doppler_hz", 0.0)),
                 "doppler_applied_hz": c.get("doppler_hz"),
+                # Fleet phase-slope delay fit (task #32): tau of the correlation peak
+                # RELATIVE to the replica placement, from the cross-channel phase ramp.
+                # Measurement-only today -- published next to the disc it is intended to
+                # replace, so the two can be judged against each other on sky.
+                "spec_tau_chips": v.get("spec_tau"),
+                "spec_peak_ratio": v.get("spec_ratio"),
                 "code_phase_chips": sd.get("code_phase_chips", c.get("code_phase_chips", 0.0)),
                 # fleet-only extras: not in the combiner schema, ignored by older consumers
                 "fleet_q": v["q"], "fleet_q_floor": v["q_floor"],

@@ -174,6 +174,50 @@ for _ in range(500):
 check("dr slew re-anchor is CONTINUOUS across a Doppler change", _w_cont < 1e-6,
       "worst %.3e chips over 500 trials" % _w_cont)
 
+# -- fleet phase-slope delay fit (task #32) -----------------------------------------------
+# The fitter must (1) recover a known delay with the right SIGN and milli-chip accuracy from
+# the REAL fleet comb geometry (stride-16 with per-node offsets -- the union is what beats
+# the 3.27-chip grating lobes), (2) read peak/floor ~1 on pure noise, and (3) be
+# deterministic (it feeds a digest-gated process; a wandering fit would look like broker
+# non-determinism three layers away).
+import cmath as _cm
+
+from gnss_broker.fleet import fit_spectrum_delay  # noqa: E402
+
+_CHIPR, _W = 10.23e6, 195312.5
+_COMBS = [[5972 + 16 * i for i in range(7)], [5980 + 16 * i for i in range(7)],
+          [5975 + 16 * i for i in range(7)], [5983 + 16 * i for i in range(7)],
+          [5978 + 16 * i for i in range(7)], [5986 + 16 * i for i in range(7)]]
+_rnd.seed(32)
+
+
+def _spec_synth(tau_chips, snr=30.0):
+    tau_s = tau_chips / _CHIPR
+    pts = []
+    for k, fids in enumerate(_COMBS):
+        ph = _rnd.uniform(0, 2 * _cm.pi)   # unknown per-instance phase, always present
+        for fid in fids:
+            a = _cm.exp(-2j * _cm.pi * fid * _W * tau_s + 1j * ph)
+            a += complex(_rnd.gauss(0, 1 / snr), _rnd.gauss(0, 1 / snr))
+            pts.append((fid, a, 1.0, "inst%d" % k))
+    return pts
+
+
+_worst = 0.0
+for _truth in (-1.2, -0.4, 0.0, 0.31, 0.8, 1.5):
+    _r = fit_spectrum_delay(_spec_synth(_truth), _CHIPR, _W)
+    _worst = max(_worst, abs(_r[0] - _truth))
+check("spectrum delay fit recovers sign+magnitude on the real comb", _worst < 0.02,
+      "worst |tau err| %.4f chips over 6 truths in [-1.2, +1.5]" % _worst)
+_noise = [(fid, complex(_rnd.gauss(0, 1), _rnd.gauss(0, 1)), 1.0, "i%d" % k)
+          for k, c in enumerate(_COMBS) for fid in c]
+_rn = fit_spectrum_delay(_noise, _CHIPR, _W)
+check("spectrum delay fit reads peak/floor ~1 on pure noise",
+      _rn[1] / max(_rn[2], 1e-12) < 1.5, "%.2f" % (_rn[1] / max(_rn[2], 1e-12)))
+_p = _spec_synth(0.31)
+check("spectrum delay fit is deterministic",
+      fit_spectrum_delay(_p, _CHIPR, _W) == fit_spectrum_delay(_p, _CHIPR, _W))
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)

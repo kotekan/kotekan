@@ -191,6 +191,14 @@ def fetch_brdc(when=None, cache_dir=CACHE):
     merges them PER-PRN (freshest toe per PRN wins, union of records), so no single frozen
     product can starve a PRN another source carries fresh.
 
+    ⚠️ GNSS_BRDC_DIR PINS THE SKY (task #29). When set, return exactly the nav files in that
+    directory -- no cache, no network, no date logic. This is what makes the broker
+    equivalence gate hermetic: a transcript replay is a claim about CODE, but the ephemeris
+    is an input too, refreshed several times a day, and it moved the on-sky digests TWICE in
+    two days with byte-identical code (docs/gnss_gpu_search.md 11.18.2b -- the second time
+    was midnight UTC rolling the day-of-year during a review of unrelated work). Replays run
+    against a committed-by-hash snapshot; live brokers never set this and keep the fresh sky.
+
     Historically this returned one path chosen by a fragile single-file fallback: prefer the
     merged daily, and only if IT was globally stale (>2.5 h) borrow the station-hourly instead.
     That failed on a PARTIAL freeze -- 2026-07-22 BKG's daily froze at 08:00 UTC, so the code
@@ -198,6 +206,14 @@ def fetch_brdc(when=None, cache_dir=CACHE):
     all, while the CDDIS daily (fresh C39 to 16:00) sat unused in cache -> C31/C39 showed 'el --'
     despite strong tracking. Now every source contributes and the merge picks each PRN's freshest
     record. Callers all do parse_rinex_nav(fetch_brdc()), which accepts a list transparently."""
+    pin = os.environ.get("GNSS_BRDC_DIR")
+    if pin:
+        pinned = sorted(os.path.join(pin, f) for f in os.listdir(pin)
+                        if f.endswith((".rnx", ".rnx.gz")))
+        if not pinned:
+            raise RuntimeError("GNSS_BRDC_DIR=%s contains no .rnx/.rnx.gz nav files -- a "
+                               "pinned replay must not fall through to the live sky" % pin)
+        return pinned
     when = when or datetime.now(timezone.utc)
     primary = _fetch_brdc_merged(when, cache_dir)   # authoritative daily (keeps prev-day safety)
     srcs = [primary]
