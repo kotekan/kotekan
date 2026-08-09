@@ -799,6 +799,15 @@ def main(argv=None, rx=None, publisher=None):
                          "numbers as clock PLUS per-sat bias. If the biases hold steady "
                          "while the clock stays smooth, the revised P2 is right and the "
                          "consumers can start switching one per commit (P2b).")
+    ap.add_argument("--dr-max-drift-chips-s", type=float, default=1.0,
+                    help="reject a dead-reckon clock DRIFT estimate beyond this (chips/s). "
+                         "The estimate is a difference of two clock solves, so any "
+                         "discontinuity -- a node or F-engine restart -- enters as motion "
+                         "that never happened, and the a=0.05 EMA then bleeds it off over "
+                         "~10 min while sweeping every model-primary seed off peak. The "
+                         "true drift is ~4e-4 chips/s on this GPS-disciplined clock, so 1.0 "
+                         "rejects nothing real (2026-08-09: +223 and -36 chips/s observed "
+                         "after node restarts).")
     ap.add_argument("--joint-consume", default="",
                     help="P2b: comma-separated JOINT-state consumers to switch LIVE, one "
                          "name per commit so each is A/B-able on its own. Empty (default) "
@@ -4194,9 +4203,31 @@ def main(argv=None, rx=None, publisher=None):
                     if prev_raw is not None and 0.5 < now_w - prev_raw[1] < 30.0                             and args.dr_clock_drift is None:
                         d_est = (((raw - prev_raw[0] + CODE_LEN / 2) % CODE_LEN)
                                  - CODE_LEN / 2) / (now_w - prev_raw[1])
-                        dr_state["drift"] = (d_est if dr_state.get("drift") is None
-                                             else dr_state["drift"]
-                                             + 0.05 * (d_est - dr_state["drift"]))
+                        # PLAUSIBILITY BOUND. d_est is a DIFFERENCE OF TWO CLOCK SOLVES, so
+                        # anything that displaces the solve -- a node restart, an F-engine
+                        # restart, detections straddling either -- lands here as clock
+                        # "motion" that never happened. Measured 2026-08-09: every node
+                        # restart poisoned this EMA (+223 chips/s once, -36 another), and
+                        # because the EMA is a=0.05 at ~30 s the poison then bleeds off over
+                        # ~10 MINUTES, during which `drift` sweeps every model-primary seed
+                        # off its peak. GPS survives (search-anchored); E5a/B2a/E5b/B2b do
+                        # not -- E5a measured 96 -> 5 while GPS sat at 352 in the same
+                        # minute. The bound is physics, not tuning: this clock is
+                        # GPS-disciplined and its true drift is ~4e-4 chips/s (the joint
+                        # state measures it), while the noisiest legitimate estimator we
+                        # have scatters +-0.07. A whole chip per second is ~2500x the truth
+                        # and 14x that scatter, so nothing real is being rejected.
+                        if abs(d_est) > args.dr_max_drift_chips_s:
+                            _log_rl("driftrej",
+                                    "clock drift estimate %+.1f chips/s REJECTED (bound "
+                                    "%.2f): the solve jumped, the clock did not -- holding "
+                                    "drift %+.4f" % (d_est, args.dr_max_drift_chips_s,
+                                                     dr_state.get("drift") or 0.0),
+                                    every_s=30.0)
+                        else:
+                            dr_state["drift"] = (d_est if dr_state.get("drift") is None
+                                                 else dr_state["drift"]
+                                                 + 0.05 * (d_est - dr_state["drift"]))
                     dr_state["raw_prev"] = (raw, now_w)
                     # SNAP ON THE FIRST MEASUREMENT, whether or not a prime is standing.
                     # `raw` is a circular median over >= --dr-min-sats satellites, so it is a

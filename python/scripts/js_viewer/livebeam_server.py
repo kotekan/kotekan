@@ -971,7 +971,21 @@ def discover_broker_chains(host, port, timeout=3.0):
         out.append({"tag": c.get("constellation") or "G",
                     # RF band (L1/L2/L5), NOT the signal name -- it is the table's
                     # column, and GPS L5-Q and Galileo E5a-Q belong in the SAME one.
-                    "band": c.get("rf_band") or (c.get("band") or "").replace("MHz", ""),
+                    #
+                    # ⚠️ THE BROKER'S rf_band IS A DIFFERENT TAXONOMY AND MUST BE VALIDATED,
+                    # not trusted. It names the band physically -- "E5b", "B3", "L3", "E6" --
+                    # while this table has exactly three COLUMN GROUPS, and _band_of() below
+                    # already declares the intent: 1.20-1.40 GHz (L2C, E5b/B2b, B3I, E6)
+                    # groups under 'L2'. Taking the string raw put Galileo E5b and BeiDou
+                    # B2b in a group named "E5b" that band_rank has never heard of, so both
+                    # signals were discovered, polled, and then silently dropped from the
+                    # table -- the viewer showed NO COLUMNS for a band that was tracking
+                    # end to end (2026-08-09). Anything unrecognised falls back to the
+                    # carrier, which is the one input that cannot be out of step; this also
+                    # makes B3I, L3OC and L1 land correctly the day they arrive.
+                    "band": (c.get("rf_band")
+                             if c.get("rf_band") in ("L1", "L2", "L5")
+                             else _band_of(float(c.get("carrier_hz") or 0.0))),
                     "col": c.get("short") or chain,
                     "name": c.get("label") or chain,
                     "sigid": c.get("sigid"),
