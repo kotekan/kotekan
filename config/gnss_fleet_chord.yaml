@@ -48,6 +48,14 @@ common:
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
   keep-n2: true
   n2-dual: true
+  # PATH A OFF (task #26, 2026-08-09). The primary chain's path-A tracker is not
+  # instantiated: the broker seeds gnss*_inject and reads gnss*_n2combine, validated on sky
+  # before this landed (PRN 10 deep 88.9, same bias structure as path A, clk within 0.6
+  # chips). Worth 17.712 of ~20.2 ms/frame per GPU. The SEARCH leg is untouched -- it is
+  # built alongside path A but taps the voltage buffer directly, and it is what detects GPS
+  # and so solves the clock for all five chains. Flip this off to get path A back for
+  # single-signal debugging.
+  no-path-a: true
   # Writes the COMBINER records (~52 KB/window), not the 17 MB/s tiles, so a transit can be
   # analysed after the fact. Its absence is why the 03:58 E30 pass was lost on 2026-08-07.
   n2-dump: true

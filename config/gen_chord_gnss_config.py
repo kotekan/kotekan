@@ -547,6 +547,26 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             "cpu_affinity": [core(gpu + 4)],
         },
     })
+    # -- --no-path-a: drop the path-A TRACKER, keep the search leg (task #26) -------------
+    # Path A costs 17.712 ms/frame against path B's 2.512 (the numbers in the caller's note),
+    # so on a node running both it is ~7/10 of the GNSS budget -- and once the broker seeds
+    # gnss*_inject instead of gnss*_track, every one of those milliseconds buys nothing.
+    #
+    # ⚠️ WHAT MUST SURVIVE, AND WHY IT IS NOT OBVIOUS: `srch_tap`/`srch_send` are built in
+    # THIS function but are NOT part of path A. They tap `host_voltage_buffer_{gpu}`
+    # directly and ship to the aggregator's search, which is what detects GPS, which is what
+    # solves the receiver clock that every other chain consumes in-process. Deleting this
+    # whole branch would therefore take down all five chains, not one. Path B is unaffected
+    # either way: it reads the voltage RINGBUFFER, never path A's tap.
+    #
+    # Kept available deliberately (KV): path A is the reference every path-B number in
+    # section 11 was judged against, so single-signal debugging still wants it. This is a
+    # flag, not a deletion.
+    if getattr(args, "no_path_a", False) and not chain:
+        for _k in (tap_out, f"{pre}tap", f"{pre}epl_buf", rec_buf,
+                   f"{pre}gpu", f"{pre}assemble", f"{pre}combine", f"{pre}record"):
+            blocks.pop(_k, None)
+
     return blocks, record_floats, n_elem
 
 
@@ -1379,6 +1399,15 @@ def main():
                          "Measured on cx19 2026-08-08, 200 frames: cudaCorrelatorDual runs "
                          "3.698 ms/frame full versus 0.076 ms mapped, and cudaGnssInject 2.443 "
                          "ms, against cudaGnssChordTrack's 17.771 ms for the path it replaces.")
+    ap.add_argument("--no-path-a", action="store_true",
+                    help="Do not instantiate the path-A tracker for the PRIMARY chain "
+                         "(gnss*_gpu / _assemble / _combine / _record / _tap). Requires the "
+                         "broker to seed gnss*_inject and read gnss*_n2combine instead -- see "
+                         "config/gnss_chains_chord.yaml, where gps_l5 was switched on "
+                         "2026-08-09. The SEARCH leg (srch_tap/srch_send) is built in the same "
+                         "function and is KEPT: it feeds the aggregator's detector, which "
+                         "solves the clock for every chain. Path A measures 17.712 ms/frame "
+                         "vs path B's 2.512, so this is ~7/10 of the GNSS frame budget back.")
     ap.add_argument("--keep-n2", action="store_true",
                     help="retain the science pipeline alongside the GNSS branch")
     ap.add_argument("--frame0-nano", type=int, default=None, metavar="NS",
