@@ -2291,3 +2291,42 @@ to help: weak PRNs measured BETTER split than merged (PRN 3: 5.2 vs 4.0) at a me
 ratio of 0.997, because instances are what the leave-one-out reference and the one-way split
 have to work with. Under --no-path-a it was already a dead letter; removing it deletes the
 asymmetry that let `gnss{0..1}_combine` silently address 2 non-existent stages.
+
+## 11.27 The e2e band gate: half un-blinded, and the half that is left
+
+`--f-offset` is now a flag (it was a struct field hardcoded at 1176.45e6), and giving it
+recentres BOTH channel combs on the new carrier unless `--t-chan0`/`--s-chan0` pin them --
+because moving the carrier alone would put the replica at 1207.14 MHz and the channels at
+1176.45, a "failure" that says nothing. The recentring reproduces the node grid: members stay
+congruent to the default comb's phase mod stride, centre = nearest such bin to the carrier.
+
+Verified against config/chord_band_plan.py's covering_channels:
+  * L5  1176.45 MHz -> bin 6023.4240 (+0.4240 off centre) -> comb 5972..6068, i.e. the
+    historical default REPRODUCED EXACTLY, and `--f-offset 1176.45e6` returns 12.815 chips,
+    bit-identical to the no-flag run. A new knob that changes the baseline is a new bug.
+  * E5b 1207.14 MHz -> bin 6180.5568 (-0.4432) -> comb 6132..6228, inside the fleet's real
+    covering set 6128..6233.
+
+**RESULT: GAL_E5B_Q_CS closes to 0.000 chips at its own carrier**, against GAL_E5A_Q_CS's
+0.000 at 1176.45 as the matched control (same baked-CS family, different band). So the
+descriptor, the CS100 bake, the replica synthesis, the despread and the record assembly are
+all correct at 1207.14 MHz, and nothing in the replica math is carrier-dependent in a broken
+way. Two hypotheses died on the way there, both cheap: `covering_bins` uses the same
+open-interval overlap test as production (no rounding), and the carrier enters as a full-rate
+phase `2*pi*(carrier+doppler)/fs` -- there is no carrier->bin conversion to get wrong, so the
++0.424/-0.443 opposite-sign grating position is NOT a floor()-vs-round() trap. The generator's
+channel indexing is also consistent: the primary's `per_gpu` and an extra chain's
+`gpu_pairs_for` both go through `gpu_of_channel`, so a non-`shares_tap` chain gets the same
+comb-index convention as the primary.
+
+⚠️ **THE GATE IS STILL BAND-BLIND IN ONE AXIS, and the blind spot MOVED rather than closed.**
+Run E5b's carrier with the comb PINNED to L5's channels -- a flat contradiction -- and it
+still returns 0.000. Reason: e2e:937 builds the synthetic sky with the SAME bank and the SAME
+comb that e2e:909 despreads with, so the channel indices cancel on both sides and never enter
+the physics independently. **The 0.000 above therefore validates the CODE at 1207.14 MHz; it
+does NOT validate the channel mapping.** Closing that needs the sky built independently --
+placed at absolute sky frequencies and channelized -- which is a real change, not a flag.
+Until then the channel mapping can only be judged on live data.
+
+So: the offline chain is exonerated for E5b, and the fault is in the live path -- config
+wiring, node channel selection, or seeding.

@@ -182,6 +182,10 @@ static void usage() {
         "  --t-stride N       TRACKER comb stride (default 16 = one GPU's comb; 1 = contiguous)\n"
         "  --t-nchan N        tracker channel count (default 7)\n"
         "  --t-chan0 N        tracker comb first channel (default 5972)\n"
+        "  --f-offset HZ      CARRIER, and the band under test. Recentres both combs on it\n"
+        "                     unless --t-chan0/--s-chan0 pin them. Without this the harness\n"
+        "                     is band-blind: it builds sky AND replica at 1176.45e6, so it is\n"
+        "                     self-consistent at any carrier (docs 11.24).\n"
         "  --s-nchan N        search channel count (default 27; 106 for the 8-node agg)\n"
         "  --s-chan0 N        search comb first channel (default 5972)\n"
         "  --noise R          add complex Gaussian noise, std = R x signal rms (0 = noiseless)\n"
@@ -243,6 +247,10 @@ static bool seed_field(const std::string& blob, int prn, const char* key, double
 
 int main(int argc, char** argv) {
     Opt o;
+    // Whether the caller PINNED these, as opposed to inheriting the L5 defaults. --f-offset
+    // recentres the combs on the new carrier, but only over defaults -- an explicit --t-chan0
+    // must always win, or a deliberate "carrier here, comb there" test becomes unexpressible.
+    int f_offset_set = 0, t_chan0_set = 0, s_chan0_set = 0;
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
         auto next_d = [&]() { return atof(argv[++i]); };
@@ -277,10 +285,10 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
         else if (arg_eq(a, "--t-stride")) o.t_stride = next_i();
         else if (arg_eq(a, "--t-nchan")) o.t_nchan = next_i();
-        else if (arg_eq(a, "--t-chan0")) o.t_chan0 = next_i();
+        else if (arg_eq(a, "--t-chan0")) { o.t_chan0 = next_i(); t_chan0_set = 1; }
         else if (arg_eq(a, "--s-stride")) o.s_stride = next_i();
         else if (arg_eq(a, "--s-nchan")) o.s_nchan = next_i();
-        else if (arg_eq(a, "--s-chan0")) o.s_chan0 = next_i();
+        else if (arg_eq(a, "--s-chan0")) { o.s_chan0 = next_i(); s_chan0_set = 1; }
         else if (arg_eq(a, "--dump-mssplit")) o.dump_ms = argv[++i];
         else if (arg_eq(a, "--noise")) o.noise = next_d();
         else if (arg_eq(a, "--trials")) o.trials = next_i();
@@ -289,10 +297,59 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--quantize")) o.quantize = 1;
         else if (arg_eq(a, "--skip-search")) o.skip_search = 1;
         else if (arg_eq(a, "--code-doppler-sign")) o.code_doppler_sign = next_d();
+        else if (arg_eq(a, "--f-offset")) { o.f_offset = next_d(); f_offset_set = 1; }
         else { printf("unknown option %s\n", a); usage(); return 2; }
     }
 
     const int FFT = 2 * o.spectrum_length;
+
+    // -- BAND: recentre the combs on the carrier ------------------------------------------
+    //
+    // ⚠️ THIS HARNESS WAS BAND-BLIND, AND THAT IS THE WHOLE POINT OF THIS BLOCK. f_offset was
+    // a struct field with no flag, hardcoded at 1176.45e6, and it built the synthetic sky AND
+    // the replica at that one value -- so it was self-consistent at ANY carrier. Asked to
+    // validate GAL_E5B_Q_CS (1207.14 MHz) it ran that signal's CODE at L5's CARRIER and
+    // returned a triumphant 0.000 chips. It could not detect a band-dependent fault, which is
+    // the entire fault class a second band introduces (docs/gnss_gpu_search.md 11.24).
+    //
+    // Moving the carrier alone is NOT enough and would be a worse trap than the original: the
+    // channel combs default to L5's (t_chan0 5972), so a bare --f-offset would put the replica
+    // at 1207.14 MHz and the channels at 1176.45 MHz -- zero overlap, zero correlation, and a
+    // "failure" that says nothing about the signal. So the combs FOLLOW the carrier unless the
+    // caller pins them explicitly, which keeps --f-offset a statement about the BAND rather
+    // than about one of the four numbers a band is made of.
+    //
+    // The recentring reproduces the node grid rather than inventing one: comb members satisfy
+    // freq_id % stride == (default chan0) % stride, so the comb stays on the channels a node
+    // actually holds, and the centre is the NEAREST such bin to the carrier. Checked against
+    // config/chord_band_plan.py's covering_channels for both bands: L5 1176.45 MHz -> bin
+    // 6023.4240 -> centre 6020 -> chan0 5972 (the historical default, reproduced exactly), and
+    // E5b 1207.14 MHz -> bin 6180.5568 -> centre 6180 -> chan0 6132, inside the fleet's real
+    // covering set 6128..6233.
+    //
+    // NOTE the two carriers sit +0.4240 and -0.4432 channels off their nearest centre -- same
+    // size, OPPOSITE SIGN. That is deliberate to preserve here: it is exactly the asymmetry a
+    // floor()-vs-round() bug anywhere in a carrier->bin conversion would expose, being exact
+    // for L5 and a whole channel (195.3 kHz) wrong for E5b.
+    if (f_offset_set) {
+        const double bin_w = o.sample_rate / (double)FFT;
+        auto recentre = [&](int chan0, int stride, int nchan) {
+            const int phase = ((chan0 % stride) + stride) % stride;
+            const double carrier_bin = o.f_offset / bin_w;
+            // nearest bin congruent to `phase` (mod stride)
+            const long k = lround((carrier_bin - (double)phase) / (double)stride);
+            const long centre = (long)phase + k * (long)stride;
+            return (int)(centre - (long)stride * (long)(nchan / 2));
+        };
+        if (!t_chan0_set) o.t_chan0 = recentre(o.t_chan0, o.t_stride, o.t_nchan);
+        if (!s_chan0_set) o.s_chan0 = recentre(o.s_chan0, o.s_stride, o.s_nchan);
+        printf("band: f_offset %.6f MHz -> carrier bin %.4f (%+.4f ch off centre); "
+               "tracker comb %d..%d step %d, search comb %d..%d step %d\n",
+               o.f_offset / 1e6, o.f_offset / bin_w,
+               o.f_offset / bin_w - (double)llround(o.f_offset / bin_w),
+               o.t_chan0, o.t_chan0 + o.t_stride * (o.t_nchan - 1), o.t_stride,
+               o.s_chan0, o.s_chan0 + o.s_stride * (o.s_nchan - 1), o.s_stride);
+    }
     if (o.refine_span <= 0)
         o.refine_span = FFT; // the stage's own default
     const long long W0 = o.hop0 * (long long)FFT;
