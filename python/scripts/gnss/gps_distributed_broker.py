@@ -4070,11 +4070,21 @@ def main(argv=None, rx=None, publisher=None):
                 # minus the prediction, epoch-normalized to now (the offset drifts at
                 # f_chip*(l-a)); the circular median over sats is the receiver clock.
                 offs = []
+                # DETECTION AGE per sat (task #33, docs 11.22 follow-up). The epoch
+                # normalization below ages each latched detection by drift*(t_now - t_i)
+                # with drift = f_chip*(l-a): the l-a EMA's measured noise is +-0.05-0.07
+                # chips/s, and detections latch for up to the 1276 s per-PRN revisit --
+                # so the normalization term can carry CHIPS of error that scale with THIS
+                # SAT'S staleness. Logged next to each residual so "integrity" can be
+                # judged against age: residuals that grow with age are measuring the
+                # normalization, not the sky.
+                det_age = {}
                 for prn, (snr, dop, cp, ref_hop, _nh, _cpl, _car) in sorted(best.items()):
                     v = pd.get((tag, prn))
                     if v is None:
                         continue
                     t_i = ref_hop / args.hops_per_sec
+                    det_age[prn] = t_now_abs - t_i
                     # The search's sample-0 back-reference subtracts BOTH the nominal code
                     # advance (t*f_chip mod L -- the 'off' term) and the code-Doppler drift;
                     # add BOTH back. Omitting the nominal term hid inside the solved clock
@@ -4332,7 +4342,8 @@ def main(argv=None, rx=None, publisher=None):
                                  % (prn_i, r_i))
                 if dr_state["clk"] is not None and offs and now_w >= dr_state["log_next"]:
                     dr_state["log_next"] = now_w + 30.0
-                    resid = ["PRN %d %+.2f%s" % (p, r, " BAD" if abs(r) > 1.0 else "")
+                    resid = ["PRN %d %+.2f a%.0f%s" % (p, r, det_age.get(p, -1),
+                                                       " BAD" if abs(r) > 1.0 else "")
                              for p, d in offs
                              for r in [((d - dr_state["clk"] + CODE_LEN / 2) % CODE_LEN)
                                        - CODE_LEN / 2]]
