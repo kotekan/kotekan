@@ -799,6 +799,17 @@ def main(argv=None, rx=None, publisher=None):
                          "numbers as clock PLUS per-sat bias. If the biases hold steady "
                          "while the clock stays smooth, the revised P2 is right and the "
                          "consumers can start switching one per commit (P2b).")
+    ap.add_argument("--joint-consume", default="",
+                    help="P2b: comma-separated JOINT-state consumers to switch LIVE, one "
+                         "name per commit so each is A/B-able on its own. Empty (default) "
+                         "= pure shadow. Names: 'rate' (seeded code-rate clock from "
+                         "clk_rate instead of the l-a EMA -- which measured ~80x biased, "
+                         "see the call site), later 'clock' and 'bias'. Implies "
+                         "--joint-shadow.")
+    ap.add_argument("--joint-min-sats", type=int, default=4,
+                    help="a JOINT consumer refuses to act on a state carrying fewer than "
+                         "this many satellites: with the mean(b)=0 gauge a thin fleet lets "
+                         "one satellite's bias leak into the clock at 1/N.")
     ap.add_argument("--joint-sigma", type=float, default=0.3,
                     help="measurement sigma (chips) for --joint-shadow. The search cp noise "
                          "is 0.03-0.5 chips per-sat-conditions; 0.3 is the middle of that "
@@ -1487,6 +1498,8 @@ def main(argv=None, rx=None, publisher=None):
     chain_id = args.signal or ("%s@%.2fMHz" % (args.constellation or args.dr_constellation,
                                                args.carrier_hz / 1e6))
     band_id = "%.2fMHz" % (args.carrier_hz / 1e6)
+    if args.joint_consume and not args.joint_shadow:
+        args.joint_shadow = True   # a consumer without the solve running would read zeros
 
     base = args.rest_url.rstrip("/")
     detectors = parse_endpoints(args.detectors, base)
@@ -1649,6 +1662,17 @@ def main(argv=None, rx=None, publisher=None):
     # (every recorded transcript) it never updates and get() returns exactly 0.0, so the
     # consumption sites add a float zero and the replay digests are untouched.
     bsat = SatBiasFilter(gain=args.bsat_gain)
+    joint_consume = {c.strip() for c in args.joint_consume.split(",") if c.strip()}
+
+    def _joint_state(rx_, band, a):
+        """The joint state IF it is fit to be consumed, else None (never raises: a consumer
+        must degrade to the old estimator, not take the broker down)."""
+        try:
+            js = rx_.joint(band, code_len=CODE_LEN)
+            return js if len(js._idx) >= a.joint_min_sats else None
+        except Exception:
+            return None
+
     if args.dead_reckon:
         if not args.almanac:
             _log("--dead-reckon needs --almanac; disabling")
@@ -5204,6 +5228,29 @@ def main(argv=None, rx=None, publisher=None):
                 pass
         cb_to_seed = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
                       else code_bias_ema)
+        # -- P2b CONSUMER 1: the code-rate clock comes from the joint state --------------
+        # l-a and the joint clk_rate are THE SAME QUANTITY (cp_rate_from_code_bias is
+        # exactly f_chip*(l-a), i.e. the clock's drift in chips/s), which makes them
+        # directly comparable -- and on 2026-08-09 they disagreed by ~80x. The l-a EMA read
+        # +0.003 ppm, predicting 0.031 chips/s = +47 chips of clock drift across a 25-min
+        # window in which the clock demonstrably moved +0.21 chips. The joint state read
+        # +0.00038 chips/s, which matches the measured trend. So this switch is not the
+        # noise reduction it was scoped as (70x quieter, real but secondary) -- it removes a
+        # BIAS that has been seeding every unlocked satellite with ~1.8 chips/min of
+        # fictitious code drift. Held sats were spared only because the l-a seeding skips
+        # them (`if prn in cp_held: continue` below), which is why this survived so long.
+        #
+        # It also retires the --code-bias-force diagnostic's verdict: that test pinned l-a
+        # to 0.001 ppm and read "a wash", but 0.001 ppm is still 25x the truth, so it never
+        # tested a correct rate at all.
+        if "rate" in joint_consume:
+            _jr = _joint_state(rx, band_id, args)
+            if _jr is not None and len(_jr._idx) >= args.joint_min_sats:
+                cb_to_seed = _jr.clk_rate / args.chip_rate_hz
+                _log_rl("jointrate", "code-rate clock from the JOINT state: %+.5f ppm "
+                                     "(l-a EMA says %+.5f)"
+                        % (cb_to_seed * 1e6,
+                           (code_bias_ema or 0.0) * 1e6), every_s=60.0)
         if cb_to_seed is not None:
             n_seeded = 0
             for prn, seed in seeds.items():

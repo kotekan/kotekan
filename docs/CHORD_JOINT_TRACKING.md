@@ -51,7 +51,10 @@ instances, different offsets per node) fills the comb. Two consequences:
     ⚠️ Magnitude-per-instance summing does NOT work: |·| erases exactly the cross-instance
     phase that discriminates the true peak from the 3.27-chip lobes.
 
-**Where the data comes from — and the bandwidth rule.** Per-channel prompts do not currently
+**Where the data comes from — and the shipping rule.** (KV 2026-08-09: the ~30 Gbps figure
+is not a hard wall — the real constraint is that the broker is PYTHON, and it acquires more
+data every time a band or a chain is added. Collapsing over elements before shipping is the
+right call for that reason, not for link capacity.) Per-channel prompts do not currently
 leave the GPU: path A's despread sums channels in the kernel. Path B's assembler
 (`GnssGpuRecordAssemble`) consumes per-channel × per-element visibilities in HOST memory
 before summing — the export is a host-side accumulation there, no kernel change. Ship
@@ -92,13 +95,22 @@ and the sweep #30 never actually cured. Adding more SHARED states cannot fix it.
 residual has per-satellite structure and must be representable, or something downstream
 keeps absorbing it badly.
 
-**(2) The vector-tracking win is bandwidth, not parameter count.** What carries a fading
-satellite is that the FAST dynamics are shared: clock, clock rate, and the geometry from
-ephemeris. A per-sat term bounded at a chip or two and moving on MINUTE timescales adds
-essentially no fast bandwidth — it is a nuisance parameter, not a tracking loop. The
-effective unknown count for the dynamics that hold lock stays at three or four. This is
-the standard precise-positioning structure (shared clock + per-satellite biases), and the
-two designs are separated by one measurable test:
+**(2) The win is FEWER FITS, and mostly because of slower timescales** (KV's framing, and
+the correct one — an earlier draft of this section said "bandwidth, not parameter count",
+which gestures at the same thing but hides the economics). What a parameter costs is not
+its existence but the degrees of freedom it eats, and that scales with how FAST it varies:
+over an observation window T, a state with correlation time τ_c consumes ~T/τ_c degrees of
+freedom. So N per-satellite loops running at seconds are expensive, while N per-satellite
+biases drifting over minutes-to-hours are nearly free — the same data buys far more
+constraint per parameter. Measured here: b_sat moves at ≤0.05 chips/min (§3b), against the
+per-sat DLL trim it replaces, which swung ±1.1 chips on a ~600 s cycle. Slower state,
+fewer fits, more signal per degree of freedom.
+
+That is also why the ensemble still carries a fading satellite: the FAST dynamics — clock,
+clock rate, ephemeris geometry — are shared and estimated from everyone, while the per-sat
+term is too slow to have gone anywhere while the sat was dark. It is a nuisance parameter,
+not a tracking loop. This is the standard precise-positioning structure (shared clock +
+per-satellite biases), and the two designs are separated by one measurable test:
 
 > Take a satellite to no usable SNR. If its replica keeps moving with the shared clock
 > state while its bias holds frozen at its last strong value, the architecture is right.
