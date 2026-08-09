@@ -318,6 +318,20 @@ inline constexpr SignalDescriptor GAL_E5B_Q = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
 };
 
+/// Galileo E5b-Q with its per-PRN CS100 secondary BAKED INTO THE CODE: 1023000 chips /
+/// 100 ms -- structurally identical to GAL_E5A_Q_CS above, and needed for exactly the same
+/// reason. A tracker handed the bare GAL_E5B_Q despreads only the 1 ms primary while the
+/// real overlay flips sign in a per-PRN pattern every millisecond, so coherent integration
+/// past 1 ms cancels itself and deep never rises out of the noise -- measured on sky
+/// 2026-08-09, deep 2-3 against E5a's 96 on the same fleet in the same minute (task #34).
+/// The CS100 table is galileoE5bCode's e5bq_secondary(); the bake is bake_secondary().
+inline constexpr SignalDescriptor GAL_E5B_Q_CS = {
+    "GAL_E5B_Q_CS", 1207.14e6, 10.23e6, 1023000, 100e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
 /// Galileo E5b-I (1207.14 MHz) -- the E5b DATA channel carrying I/NAV (the SAME message as
 /// E1-B): same 10230-chip primary at 1 ms (its own X2 start table), a 4-chip CS4 secondary
 /// shared by all sats. I/NAV is 125 bps through the rate-1/2 FEC = 250 sps, so a symbol is
@@ -471,7 +485,7 @@ inline constexpr SignalDescriptor GLO_L2OC_P = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GPS_L5_Q_NH,
-          &GAL_E1C, &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_Q_CS, &GAL_E5A_I,
+          &GAL_E1C, &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_Q_CS, &GAL_E5A_I, &GAL_E5B_Q_CS,
           &BDS_B2A_P, &BDS_B2A_P_CS,
           &BDS_B2A_D, &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B,
           &BDS_B1I, &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D, &GLO_L2OF, &GLO_L2OC_P})

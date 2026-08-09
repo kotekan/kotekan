@@ -81,7 +81,7 @@ _CHAINS = {
     "gps_l5":    ("GPS_L5_Q",    "GPS_L5_Q_NH",    None),
     "gal_e1c":   ("GAL_E1C",     None,             None),
     "gal_e5a":   ("GAL_E5A_Q",   "GAL_E5A_Q_CS",   None),
-    "gal_e5b":   ("GAL_E5B_Q",   None,             None),
+    "gal_e5b":   ("GAL_E5B_Q",   "GAL_E5B_Q_CS",   None),
     "gal_e6":    ("GAL_E6_C",    None,             None),
     "bds_b1c":   ("BDS_B1C_P",   None,             19),
     "bds_b2a":   ("BDS_B2A_P",   "BDS_B2A_P_CS",   19),

@@ -10,8 +10,8 @@
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
 #       BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
-#       --extra-signal GAL_E5B_Q:1,5,9,13,19,23,27,31 --extra-signal BDS_B2B_I:19,23,27,31,35,39
-#       --search-port-base 11040 --combine-gpus
+#       --extra-signal GAL_E5B_Q_CS:1,5,9,13,19,23,27,31 --extra-signal
+#       BDS_B2B_I:19,23,27,31,35,39 --search-port-base 11040 --combine-gpus
 # Prefer `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml`, which holds the
 # whole fleet's flags in one versioned file and can --check them against these.
 # Edit config/chord_gnss_node.yaml and regenerate instead of hand-editing here.
@@ -807,7 +807,7 @@ gnss0_e5b_n2dual:
     prns: *id011
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_e5b_inject/set_seeds
-    signal: GAL_E5B_Q
+    signal: GAL_E5B_Q_CS
     trim_endpoint: /gnss0_e5b_inject/get_trim
     voltage_name: voltage
   - gnss_freq_map: true
@@ -1579,7 +1579,7 @@ gnss1_e5b_n2dual:
     prns: *id011
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_e5b_inject/set_seeds
-    signal: GAL_E5B_Q
+    signal: GAL_E5B_Q_CS
     trim_endpoint: /gnss1_e5b_inject/get_trim
     voltage_name: voltage
   - gnss_freq_map: true

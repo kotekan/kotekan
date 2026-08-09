@@ -99,10 +99,13 @@ common:
     # AFTER MEASURING the actual delta -- and note that P3 (retiring the E/L lanes) halves
     # the per-PRN synthesis cost, which is the real unlock for full-count multi-band.
     #
-    # GAL_E5B_Q is a PILOT with a per-PRN CS100 secondary -- structurally identical to
-    # E5A_Q, so it uses the baked-CS dead-reckon path that already works, and needs no
-    # nav-bit wipe.
-    - GAL_E5B_Q:1,5,9,13,19,23,27,31
+    # GAL_E5B_Q_CS -- the BAKED variant, and the _CS suffix is load-bearing. Deployed
+    # first as plain GAL_E5B_Q, it read NOISE on sky (deep 2-3 against E5a's 96 on the same
+    # fleet in the same minute): the bare descriptor despreads only the 1 ms primary while
+    # the real per-PRN CS100 overlay flips sign every millisecond, so coherent integration
+    # past 1 ms cancels itself. Same reason E5a and B2a use _CS above -- which is exactly
+    # what the two lines above should have told me before I wrote the bare name (#34).
+    - GAL_E5B_Q_CS:1,5,9,13,19,23,27,31
     # BDS_B2B_I is the PPP-B2b DATA channel and has NO secondary overlay at all
     # (secondary_length=0: B-CNAV3 runs 1000 sps = one symbol per 1 ms code period). That
     # makes it the most SEARCHABLE signal in the descriptor set -- no per-PRN CS to hunt --

@@ -170,6 +170,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = galileo::generate_e5bq_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GAL_E5B_Q_CS") // per-PRN CS100 baked in, exactly as GAL_E5A_Q_CS above
+        return bake_secondary(galileo::generate_e5bq_code(prn), galileo::e5bq_secondary(prn));
     if (name == "GAL_E5B_I") {
         auto a = galileo::generate_e5bi_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
