@@ -241,6 +241,98 @@ check("SatBiasFilter refuses a thin fleet", not _bf.update(3, 0.08, 4, _t))
 check("SatBiasFilter stops APPLYING a stale bias but remembers it",
       _bf.get(3, _t + 601.0) == 0.0 and "3:" in _bf.summary(_t + 601.0))
 
+# -- JointReceiverState (task #33, P2a: the REVISION) --------------------------------------
+# CHORD_JOINT_TRACKING section 3a's contract. These are not "does the maths run" checks --
+# each is one of the claims the revision makes about WHY a joint solve beats the staged
+# design it replaces, written so that a regression toward per-sat tracking fails loudly.
+from gnss_broker.state_filter import JointReceiverState  # noqa: E402
+
+def _run(js, truth_clk, truth_b, t0, n, dt=2.0, sigma=0.30, skip=(), rate=0.0):
+    """Feed synthetic y_i = clk(t) + b_i + noise for a fleet of sats."""
+    t = t0
+    for _ in range(n):
+        t += dt
+        clk = truth_clk + rate * (t - t0)
+        _run.clk = clk
+        js.cycle([(k, clk + b + _rnd.gauss(0, sigma), sigma)
+                  for k, b in truth_b.items() if k not in skip], t)
+    return t
+
+_rnd.seed(3311)
+_TB = {("E", 3): +2.9, ("E", 5): -3.4, ("E", 31): +0.8, ("C", 39): -1.7,
+       ("G", 14): +4.1, ("G", 21): -2.7}          # chips: the MEASURED model-error scale
+_js = JointReceiverState(q_b=0.013, gauge_sigma=0.1)
+_t = _run(_js, 151.0, _TB, 0.0, 400)              # ~13 min at 2 s
+# The gauge defines clk as the fleet mean, so compare clk+b_i per sat, not clk alone.
+_err = max(abs(_js.predicted(k) - (151.0 + b)) for k, b in _TB.items())
+check("JointReceiverState recovers clk+b_sat at the chips-wrong model scale",
+      _err < 0.25, "worst %.3f chips over %d sats" % (_err, len(_TB)))
+check("JointReceiverState gauge holds mean(b) at zero",
+      abs(sum(_js.bias(k) for k in _TB) / len(_TB)) < 0.05,
+      "mean b %+.4f" % (sum(_js.bias(k) for k in _TB) / len(_TB)))
+
+# THE SPLIT IS BANDWIDTH. A COMMON step must land in clk (fast, shared); a PER-SAT step
+# must land in that sat's b (slow, private). Getting this backwards is exactly the
+# misspecification that makes the plant oscillate.
+_b_before = {k: _js.bias(k) for k in _TB}
+_t = _run(_js, 156.0, _TB, _t, 120)               # +5 chips common
+check("a COMMON offset moves clk, not the biases",
+      abs(_js.clk - 156.0) < 0.4
+      and max(abs(_js.bias(k) - _b_before[k]) for k in _TB) < 0.5,
+      "clk %+.2f (want 156), worst db %.2f"
+      % (_js.clk, max(abs(_js.bias(k) - _b_before[k]) for k in _TB)))
+_clk_before = _js.clk
+_TB2 = dict(_TB); _TB2[("E", 3)] += 2.0           # ONE sat walks 2 chips
+_t = _run(_js, 156.0, _TB2, _t, 300)
+check("a PER-SAT offset moves that bias, not the clock",
+      abs(_js.bias(("E", 3)) - _b_before[("E", 3)] - 2.0) < 0.6
+      and abs(_js.clk - _clk_before) < 0.5,
+      "db %.2f (want 2.0), dclk %.2f"
+      % (_js.bias(("E", 3)) - _b_before[("E", 3)], _js.clk - _clk_before))
+
+# THE DISCRIMINATING TEST (section 3a): take a sat to no usable SNR and stop feeding it.
+# Its replica must keep moving with the SHARED clock while its bias holds -- that is the
+# property the rejected "anchor each sat to its own track" design does not have.
+_rnd.seed(77)
+_jc = JointReceiverState(q_b=0.013)
+_t = _run(_jc, 151.0, _TB, 0.0, 400)
+_t = _run(_jc, 151.0, _TB, _t, 300, rate=0.01, skip={("E", 5)})   # clock walks 6 chips
+_truth_5 = _run.clk + _TB[("E", 5)]
+check("a satellite with NO measurements coasts on the shared clock",
+      abs(_jc.predicted(("E", 5)) - _truth_5) < 0.5,
+      "coast error %.3f chips after 600 s dark, clock moved %.1f"
+      % (_jc.predicted(("E", 5)) - _truth_5, _run.clk - 151.0))
+# clk_rate: check the PAIR (unbiased AND quiet). A Kalman velocity is noisy by
+# construction, so a single instantaneous sample against a tight bar tests luck -- the
+# first version of this check failed at 2 sigma on a correct filter. Average over a
+# window for the mean, and measure the scatter separately, because the scatter is the
+# quantity that decides whether this state can replace the l-a EMA at all.
+from math import sqrt as _msqrt
+_rates = []
+_t0r, _clk0r = _t, _run.clk        # CONTINUE the ramp; a fresh origin per step is no ramp
+for _ in range(300):
+    _t += 2.0
+    _clkr = _clk0r + 0.01 * (_t - _t0r)
+    _jc.cycle([(k, _clkr + b + _rnd.gauss(0, 0.30), 0.30) for k, b in _TB.items()], _t)
+    _rates.append(_jc.clk_rate)
+_mr = sum(_rates) / len(_rates)
+_sr = _msqrt(sum((r - _mr) ** 2 for r in _rates) / len(_rates))
+check("clk_rate is observable from the fleet, unbiased",
+      abs(_mr - 0.01) < 0.0015, "%.5f vs 0.01000 chips/s" % _mr)
+check("clk_rate is quieter than the l-a EMA it replaces",
+      _sr < 0.0015, "sd %.5f chips/s (l-a EMA scatter was 0.07)" % _sr)
+
+# Modulo: y arrives mod the code length, so a measurement that wraps must not explode.
+_jw = JointReceiverState(code_len=10230.0)
+_jw.cycle([(("G", 1), 10229.8, 0.3), (("G", 2), 10229.9, 0.3)], 1.0)
+_jw.cycle([(("G", 1), 0.2, 0.3), (("G", 2), 0.3, 0.3)], 3.0)     # wrapped past L
+check("JointReceiverState wraps innovations across the code-length boundary",
+      abs(_jw.wrap(_jw.clk - 10230.0)) < 1.0 or abs(_jw.clk) < 1.0,
+      "clk %+.2f" % _jw.clk)
+_jw.cycle([(("G", 1), 0.25, 0.3)], 3.0 + 901.0)                  # PRN 2 goes stale
+check("a stale satellite leaves the state (and stops voting in the gauge)",
+      ("G", 2) not in _jw._idx and ("G", 1) in _jw._idx)
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)
