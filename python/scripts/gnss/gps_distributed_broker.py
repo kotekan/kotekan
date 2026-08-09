@@ -786,6 +786,16 @@ def main(argv=None, rx=None, publisher=None):
                          "no loop. Empty = off, and every recorded transcript replays "
                          "byte-identically (replay is strict-ordered; this flag not being in "
                          "an old transcript's argv is what keeps the new GETs out of replay).")
+    ap.add_argument("--bsat-gain", type=float, default=0.02,
+                    help="Per-cycle gain of the b_sat loop (task #33): the per-satellite "
+                         "path-bias filter fed by the fleet phase-slope tau. 0 disables the "
+                         "UPDATES (b freezes at 0 / its last value) while the fit and its "
+                         "publishing keep running -- the control setting for the oscillation "
+                         "causality experiment: the 2026-08-09 tau test found the closed "
+                         "system limit-cycling at ~10 min with the DLL trim swinging IN "
+                         "PHASE with b (corr +0.65, trim +-1.1 chips vs b +-0.5), so 'does "
+                         "the plant oscillate with b frozen?' is what separates 'b causes "
+                         "it' from 'b follows a pre-existing trim/slew oscillation'.")
     ap.add_argument("--dll-combiners", default="",
                     help="FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md): comma-separated "
                          "combiner endpoints ({a..b} ranges expanded) whose RAW Early/Prompt/"
@@ -1620,7 +1630,7 @@ def main(argv=None, rx=None, publisher=None):
     # consumed by the dead-reckon model at both its sites. With no --spectrum-endpoints
     # (every recorded transcript) it never updates and get() returns exactly 0.0, so the
     # consumption sites add a float zero and the replay digests are untouched.
-    bsat = SatBiasFilter()
+    bsat = SatBiasFilter(gain=args.bsat_gain)
     if args.dead_reckon:
         if not args.almanac:
             _log("--dead-reckon needs --almanac; disabling")
