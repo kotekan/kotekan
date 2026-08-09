@@ -1914,3 +1914,38 @@ turn it off and compare distributions.
   beam (E4 at elev 86° sits ~8.6° off a boresight 8.59° S of zenith — task #11), and slow
   model/clock error that only a *smoothed* correction should chase. What it is NOT is seed
   staleness.
+
+## 11.20  THE NIGHT THE ARCHITECTURE CHANGED (2026-08-09/10)
+
+KV stepped back from the E5a lock-cycling and asked the structural question: are we using
+the correlation data — [PRN][E,P,L][subband][element][time] — anywhere near optimally? The
+answer was no, and the unified answer is **vector tracking**: docs/CHORD_JOINT_TRACKING.md
+is the plan of record. This section is only the index of what landed that night; the plan
+doc, tasks #32/#33 and the memory carry the detail.
+
+  * **P1 — the fleet phase-slope delay fit — built, deployed, validated on sky in one
+    session** (`c9fc4ba10`). Per-channel prompt spectra now leave both GPU paths
+    (`/get_spectrum` on every assembler, sufficient statistics only); the broker fits
+    (τ, φ_i) jointly per sat across the fleet's union comb. Verdict: GPS's search-anchored
+    sats read zero to ±0.03 chips (the built-in truth check); per-sat biases DETECTED at
+    5–7σ on E5a/B2a — iono-sized, stationary; τ anti-correlates with (E−L)/(E+L)
+    everywhere it should. Full table in task #32.
+  * **P2 step 1 — the b_sat loop — closed the same night** (`be59e75c5`). SatBiasFilter,
+    three gates each traceable to a measured P1 caveat. E/L asymmetries collapsed to ~0 on
+    every marquee sat (E5a 3: −0.486 → −0.014); deep regressed nowhere; b converged to
+    P1's open-loop means and held. All pinned transcripts byte-identical throughout.
+  * **⚠️ The open question that gates the clock states**: the τ residual did NOT close
+    numerically (E5a 3 still reads +0.089 with b = +0.061 applied) and B2a 39 shows the
+    mirror (τ ≈ 0, E/L +0.55). Two estimators of one offset disagreeing in both directions
+    means one is not measuring what its name says. The discriminating experiment and the
+    three candidate mechanisms are in task #33.
+  * En route, two more undeclared-input kills: the ephemeris pin (#29 — the midnight UTC
+    day-roll moved both on-sky digests under a clean tree) and the generator's fleet-probe
+    warnings printing into stdout — the true cause of BOTH rounds of "does not match the
+    manifest" restart false alarms (`292347dd3`).
+
+The week's through-line, stated once: every one of these — the phantom golden, the
+ephemeris, the stdout warnings, the τ discrepancy now pending — is an artifact separated
+from one of its inputs. The joint-tracking plan is, at bottom, the same fix applied to the
+instrument itself: make the state explicit, declare every measurement feeding it, and gate
+each connection.
