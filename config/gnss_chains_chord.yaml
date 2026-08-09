@@ -68,12 +68,40 @@ chains:
     # and path B alike -- reads 2048. Same cadence, so --coh-min-records, the DLL hop window
     # and fit-gap all see exactly what they saw before. Path B at this cadence is already
     # proven in production by E5a/B2a, which have run on nothing else.
+    # ⚠️ BOTH PATHS ARE SEEDED HERE, DELIBERATELY (task #35, 2026-08-09) -- and this list
+    # is the whole reason the A/B is a fair one. The broker POSTs ONE payload per iteration
+    # to every URL below (gps_distributed_broker.py:5475), so gnss*_track and gnss*_inject
+    # receive the SAME cp, the SAME Doppler and the SAME carrier trim at the SAME instant,
+    # against the same voltage ring. That makes the correlation ENGINE the only difference
+    # between the two record streams -- which is exactly the claim under test. Two separate
+    # broker chains would NOT do this: each would run its own DLL and its own seed history,
+    # so any difference would be confounded by two loops that had drifted apart.
+    #
+    # PATH A IS PASSIVE. It appears in `trackers` and NOWHERE ELSE: `combiner`,
+    # `dll-combiners`, `n2-combiners` and `spectrum-endpoints` all stay on path B, so the
+    # loop that is actually flying the instrument is bit-for-bit the one that has been
+    # flying it since 122fb91a3. Path A just despreads alongside and exposes its records at
+    # /gnssN_combine/get_records for the comparator to read. It cannot move the trim: the
+    # broker never GETs trim from these URLs (trim_endpoint is node-local config), and
+    # path A's own trim_gain is 0 -- the fleet DLL owns the code loop.
+    #
+    # COMPARE ON cx27/cx42/cx43/cx44, NOT cx19/cx51. The latter two were generated with
+    # --combine-gpus, so their path-A combiner merges both GPUs into one 14-channel
+    # instance while path B stays uniformly 7 -- different aperture, different noise, and a
+    # difference that has nothing to do with the engine. The four uniform nodes give a
+    # true 7-channel-vs-7-channel pairing.
     trackers: "http://cx19:12049/gnss{0..1}_inject,\
 http://cx27:12049/gnss{0..1}_inject,\
 http://cx42:12049/gnss{0..1}_inject,\
 http://cx43:12049/gnss{0..1}_inject,\
 http://cx44:12049/gnss{0..1}_inject,\
-http://cx51:12049/gnss{0..1}_inject"
+http://cx51:12049/gnss{0..1}_inject,\
+http://cx19:12049/gnss{0..1}_track,\
+http://cx27:12049/gnss{0..1}_track,\
+http://cx42:12049/gnss{0..1}_track,\
+http://cx43:12049/gnss{0..1}_track,\
+http://cx44:12049/gnss{0..1}_track,\
+http://cx51:12049/gnss{0..1}_track"
     combiner: gnss0_n2combine
     # NOT uniform: cx19 and cx51 were regenerated with --combine-gpus and expose ONE merged
     # 14-channel combiner; the rest predate it and expose two 7-channel ones. Regenerate all
@@ -159,79 +187,98 @@ http://cx43:12049/gnss{0..1}_b2a_n2combine,http://cx44:12049/gnss{0..1}_b2a_n2co
 http://cx51:12049/gnss{0..1}_b2a_n2combine"
     n2-combiners: *b2a_cmb
 
-  # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
-  # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
-  # carrier, which is the entire point. Until these chains existed the instrument was
-  # single-band, so `tau_band` (a declared state of the joint solve) had nothing to
-  # measure it with, and a per-satellite bias could not be told apart from a per-BAND
-  # instrumental delay. Same satellites, same rays, different carrier: the difference IS
-  # the discriminator.
-  # E5b-Q is a PILOT with a per-PRN CS100 secondary -- structurally identical to E5a-Q, so
-  # it rides the baked-CS dead-reckon path that already works and needs no nav-bit wipe.
-  # `dr-clock-adopt` because, like every model-primary chain, it runs no detectors and
-  # consumes the receiver clock GPS solves (receiver.py: ONE clock, and now genuinely
-  # across two bands -- the code clock is per BAND by doctrine, and this is the first
-  # configuration that can actually test that claim rather than assert it).
-  gal_e5b:
-    signal: gal_e5b
-    dr-clock-adopt: true
-    trackers: "http://cx19:12049/gnss{0..1}_e5b_inject,\
-http://cx27:12049/gnss{0..1}_e5b_inject,\
-http://cx42:12049/gnss{0..1}_e5b_inject,\
-http://cx43:12049/gnss{0..1}_e5b_inject,\
-http://cx44:12049/gnss{0..1}_e5b_inject,\
-http://cx51:12049/gnss{0..1}_e5b_inject"
-    combiner: gnss0_e5b_n2combine
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx27:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx42:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx43:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx44:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx51:12049/gnss{0..1}_e5b_n2assemble"
-    dll-combiners: &e5b_cmb "http://cx19:12049/gnss{0..1}_e5b_n2combine,\
-http://cx27:12049/gnss{0..1}_e5b_n2combine,\
-http://cx42:12049/gnss{0..1}_e5b_n2combine,\
-http://cx43:12049/gnss{0..1}_e5b_n2combine,\
-http://cx44:12049/gnss{0..1}_e5b_n2combine,\
-http://cx51:12049/gnss{0..1}_e5b_n2combine"
-    n2-combiners: *e5b_cmb
-
-  # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
-  # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
-  # carrier, which is the entire point. Until these chains existed the instrument was
-  # single-band, so `tau_band` (a declared state of the joint solve) had nothing to
-  # measure it with, and a per-satellite bias could not be told apart from a per-BAND
-  # instrumental delay. Same satellites, same rays, different carrier: the difference IS
-  # the discriminator.
-  # B2b-I is the PPP-B2b DATA channel: secondary_length = 0, no overlay at all (B-CNAV3
-  # runs 1000 sps = exactly one symbol per 1 ms code period). That makes it the most
-  # SEARCHABLE signal in the descriptor set -- there is no per-PRN CS to hunt, which is
-  # precisely what makes E5a-Q/B2a-P structurally un-searchable -- and so the natural
-  # first candidate for a searcher that is not GPS.
-  # ⚠️ BUT IT IS DATA-ONLY: coherent integration past 1 ms needs nav-bit wipe, which
-  # cudaGnssChordTrack does not have (task #31). Expect it to TRACK with modest deep until
-  # that lands. It is here for the BAND, not yet for the sensitivity -- judge it on
-  # tau/lock, not on deep_snr, and do not "fix" a low deep that is simply this.
-  bds_b2b:
-    signal: bds_b2b
-    dr-clock-adopt: true
-    trackers: "http://cx19:12049/gnss{0..1}_b2b_inject,\
-http://cx27:12049/gnss{0..1}_b2b_inject,\
-http://cx42:12049/gnss{0..1}_b2b_inject,\
-http://cx43:12049/gnss{0..1}_b2b_inject,\
-http://cx44:12049/gnss{0..1}_b2b_inject,\
-http://cx51:12049/gnss{0..1}_b2b_inject"
-    combiner: gnss0_b2b_n2combine
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx27:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx42:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx43:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx44:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx51:12049/gnss{0..1}_b2b_n2assemble"
-    dll-combiners: &b2b_cmb "http://cx19:12049/gnss{0..1}_b2b_n2combine,\
-http://cx27:12049/gnss{0..1}_b2b_n2combine,\
-http://cx42:12049/gnss{0..1}_b2b_n2combine,\
-http://cx43:12049/gnss{0..1}_b2b_n2combine,\
-http://cx44:12049/gnss{0..1}_b2b_n2combine,\
-http://cx51:12049/gnss{0..1}_b2b_n2combine"
-    n2-combiners: *b2b_cmb
+  # ==================================================================================
+  # ⚠️ THE SECOND BAND IS PARKED FOR TASK #35 -- COMMENTED OUT, NOT DELETED (2026-08-09).
+  #
+  # Both 1207.14 MHz chains below are commented out wholesale while GPS L5's C/N0 noise is
+  # under investigation. Two reasons they are parked rather than left running:
+  #
+  #   1. GPU. Path A is back alongside path B on gps_l5 as the reference arm of the A/B
+  #      (see that chain's `trackers` note), and path A costs 17.712 ms/frame against path
+  #      B's 2.512. Dropping these two chains frees exactly the 5.02 ms that pays for it,
+  #      returning every node to the load profile it ran all week.
+  #   2. They measure nothing today. Both read deep 2-3 -- noise -- and why is task #34.
+  #      A chain that is not yet producing science is the right thing to park first.
+  #
+  # They MUST come back with the matching `extra-signal` lines in
+  # config/gnss_fleet_chord.yaml: the node side allocates the lanes, this side seeds them,
+  # and restoring one without the other gives a chain that seeds endpoints no node built
+  # (or lanes nobody seeds) -- which fails as silence, not as an error.
+  # ==================================================================================
+  #   # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
+  #   # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
+  #   # carrier, which is the entire point. Until these chains existed the instrument was
+  #   # single-band, so `tau_band` (a declared state of the joint solve) had nothing to
+  #   # measure it with, and a per-satellite bias could not be told apart from a per-BAND
+  #   # instrumental delay. Same satellites, same rays, different carrier: the difference IS
+  #   # the discriminator.
+  #   # E5b-Q is a PILOT with a per-PRN CS100 secondary -- structurally identical to E5a-Q, so
+  #   # it rides the baked-CS dead-reckon path that already works and needs no nav-bit wipe.
+  #   # `dr-clock-adopt` because, like every model-primary chain, it runs no detectors and
+  #   # consumes the receiver clock GPS solves (receiver.py: ONE clock, and now genuinely
+  #   # across two bands -- the code clock is per BAND by doctrine, and this is the first
+  #   # configuration that can actually test that claim rather than assert it).
+  #   gal_e5b:
+  #     signal: gal_e5b
+  #     dr-clock-adopt: true
+  #     trackers: "http://cx19:12049/gnss{0..1}_e5b_inject,\
+  # http://cx27:12049/gnss{0..1}_e5b_inject,\
+  # http://cx42:12049/gnss{0..1}_e5b_inject,\
+  # http://cx43:12049/gnss{0..1}_e5b_inject,\
+  # http://cx44:12049/gnss{0..1}_e5b_inject,\
+  # http://cx51:12049/gnss{0..1}_e5b_inject"
+  #     combiner: gnss0_e5b_n2combine
+  #     spectrum-endpoints: "http://cx19:12049/gnss{0..1}_e5b_n2assemble,\
+  # http://cx27:12049/gnss{0..1}_e5b_n2assemble,\
+  # http://cx42:12049/gnss{0..1}_e5b_n2assemble,\
+  # http://cx43:12049/gnss{0..1}_e5b_n2assemble,\
+  # http://cx44:12049/gnss{0..1}_e5b_n2assemble,\
+  # http://cx51:12049/gnss{0..1}_e5b_n2assemble"
+  #     dll-combiners: &e5b_cmb "http://cx19:12049/gnss{0..1}_e5b_n2combine,\
+  # http://cx27:12049/gnss{0..1}_e5b_n2combine,\
+  # http://cx42:12049/gnss{0..1}_e5b_n2combine,\
+  # http://cx43:12049/gnss{0..1}_e5b_n2combine,\
+  # http://cx44:12049/gnss{0..1}_e5b_n2combine,\
+  # http://cx51:12049/gnss{0..1}_e5b_n2combine"
+  #     n2-combiners: *e5b_cmb
+  #
+  #   # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
+  #   # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
+  #   # carrier, which is the entire point. Until these chains existed the instrument was
+  #   # single-band, so `tau_band` (a declared state of the joint solve) had nothing to
+  #   # measure it with, and a per-satellite bias could not be told apart from a per-BAND
+  #   # instrumental delay. Same satellites, same rays, different carrier: the difference IS
+  #   # the discriminator.
+  #   # B2b-I is the PPP-B2b DATA channel: secondary_length = 0, no overlay at all (B-CNAV3
+  #   # runs 1000 sps = exactly one symbol per 1 ms code period). That makes it the most
+  #   # SEARCHABLE signal in the descriptor set -- there is no per-PRN CS to hunt, which is
+  #   # precisely what makes E5a-Q/B2a-P structurally un-searchable -- and so the natural
+  #   # first candidate for a searcher that is not GPS.
+  #   # ⚠️ BUT IT IS DATA-ONLY: coherent integration past 1 ms needs nav-bit wipe, which
+  #   # cudaGnssChordTrack does not have (task #31). Expect it to TRACK with modest deep until
+  #   # that lands. It is here for the BAND, not yet for the sensitivity -- judge it on
+  #   # tau/lock, not on deep_snr, and do not "fix" a low deep that is simply this.
+  #   bds_b2b:
+  #     signal: bds_b2b
+  #     dr-clock-adopt: true
+  #     trackers: "http://cx19:12049/gnss{0..1}_b2b_inject,\
+  # http://cx27:12049/gnss{0..1}_b2b_inject,\
+  # http://cx42:12049/gnss{0..1}_b2b_inject,\
+  # http://cx43:12049/gnss{0..1}_b2b_inject,\
+  # http://cx44:12049/gnss{0..1}_b2b_inject,\
+  # http://cx51:12049/gnss{0..1}_b2b_inject"
+  #     combiner: gnss0_b2b_n2combine
+  #     spectrum-endpoints: "http://cx19:12049/gnss{0..1}_b2b_n2assemble,\
+  # http://cx27:12049/gnss{0..1}_b2b_n2assemble,\
+  # http://cx42:12049/gnss{0..1}_b2b_n2assemble,\
+  # http://cx43:12049/gnss{0..1}_b2b_n2assemble,\
+  # http://cx44:12049/gnss{0..1}_b2b_n2assemble,\
+  # http://cx51:12049/gnss{0..1}_b2b_n2assemble"
+  #     dll-combiners: &b2b_cmb "http://cx19:12049/gnss{0..1}_b2b_n2combine,\
+  # http://cx27:12049/gnss{0..1}_b2b_n2combine,\
+  # http://cx42:12049/gnss{0..1}_b2b_n2combine,\
+  # http://cx43:12049/gnss{0..1}_b2b_n2combine,\
+  # http://cx44:12049/gnss{0..1}_b2b_n2combine,\
+  # http://cx51:12049/gnss{0..1}_b2b_n2combine"
+  #     n2-combiners: *b2b_cmb
+  #
