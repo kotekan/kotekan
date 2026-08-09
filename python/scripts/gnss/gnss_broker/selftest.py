@@ -411,6 +411,39 @@ _jw.cycle([(("G", 1), 0.25, 0.3)], 3.0 + 901.0)                  # PRN 2 goes st
 check("a stale satellite leaves the state (and stops voting in the gauge)",
       ("G", 2) not in _jw._idx and ("G", 1) in _jw._idx)
 
+# -- CROSS-BAND (l-a): the rate is receiver-wide, the phase is not (task #34) -------------
+# The per-band gate on code_bias is a BOOTSTRAP TRAP for any band with no chain that can solve
+# its own clock, and 1207.14 MHz was exactly that: gal_e5b/bds_b2b adopted (l-a) zero times
+# while their 1176.45 siblings adopted it 102/107 times, leaving code_phase_rate = 0.0 on all
+# 19 PRNs and the code loop open. These assert the fix AND its limit -- the rate crosses bands,
+# the PHASE must not, because a per-band phase offset IS tau_band.
+_rx = receiver.Receiver()
+_rx.contribute_code_bias("gps_l5", "1176.45MHz", 1.5e-6, 6, 1000.0)
+check("same-band (l-a) still preferred",
+      _rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0).value == 1.5e-6)
+check("a band with NO contributor gets nothing from the band-scoped lookup",
+      _rx.code_bias("1207.14MHz", exclude="gal_e5b", t_now=1000.0) is None)
+_any = _rx.code_bias_any_band(exclude="gal_e5b", t_now=1000.0)
+check("cross-band (l-a) fallback finds the other band's rate",
+      _any is not None and _any.value == 1.5e-6, "src %s" % (_any.src if _any else "-"))
+check("cross-band fallback still honours `exclude`",
+      _rx.code_bias_any_band(exclude="gps_l5", t_now=1000.0) is None)
+check("cross-band fallback still honours max_age_s",
+      _rx.code_bias_any_band(exclude="gal_e5b", t_now=1000.0 + 500.0) is None)
+# The PHASE stays per band -- adopting it across carriers would inject tau_band itself.
+_rx.contribute_dr_clock("gps_l5", "1176.45MHz", 151.0, 0.01, 1000.0, 1023000)
+check("dr_clock (the code PHASE) is still band-scoped -- tau_band is not borrowable",
+      _rx.dr_clock("1207.14MHz", exclude="gal_e5b", t_now=1000.0) is None
+      and _rx.dr_clock("1176.45MHz", exclude="gal_e5a", t_now=1000.0) is not None)
+# And the consumer's arithmetic: a fractional-frequency bias -> chips/hop, chip-rate scaled.
+from gnss_broker.fits import cp_rate_from_code_bias      # noqa: E402
+_r_e5a = cp_rate_from_code_bias(0.0, 1.5e-6, 195312.5, 10.23e6, 1176.45e6)
+_r_e5b = cp_rate_from_code_bias(0.0, 1.5e-6, 195312.5, 10.23e6, 1207.14e6)
+check("borrowed rate is carrier-INDEPENDENT at equal chip rate (E5a vs E5b)",
+      _r_e5a == _r_e5b, "%.6g vs %.6g chips/hop" % (_r_e5a, _r_e5b))
+check("and it is nonzero, i.e. the seed now carries a rate at all",
+      abs(_r_e5b) > 0.0, "%.6g chips/hop" % _r_e5b)
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)

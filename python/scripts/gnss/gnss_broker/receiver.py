@@ -158,6 +158,38 @@ class Receiver(object):
     def code_bias(self, band, exclude=None, max_age_s=120.0, t_now=None):
         return self._best(self._code, exclude, max_age_s, t_now, key2=band)
 
+    def code_bias_any_band(self, exclude=None, max_age_s=120.0, t_now=None):
+        """(l-a) from ANY band -- the clock RATE is receiver-wide even though the PHASE is not.
+
+        ⚠️ READ THIS BEFORE USING IT FOR ANYTHING ELSE. `contribute_code_bias` is keyed per band
+        because group delay is per carrier, and that is right for the code PHASE: a signal at
+        1207.14 MHz arrives through a different filter chain than one at 1176.45 and sits at a
+        different delay (`tau_band`). But the value stored here is a FRACTIONAL FREQUENCY --
+        dimensionless, consumed as `code_bias * chip_hz / hops_per_sec` -- and tau_band is a
+        CONSTANT offset whose time derivative is zero. A per-band delay therefore contributes
+        NOTHING to the rate, so the rate is a property of the receiver, not of the band.
+
+        WHY IT HAD TO EXIST (task #34, 2026-08-09). The per-band gate is a bootstrap trap for
+        any band that cannot solve its own clock. Measured on sky: gal_e5a and bds_b2a adopted
+        the clock 102 and 107 times from gps_l5 on the same 1176.45 MHz, while gal_e5b and
+        bds_b2b -- the first chains at 1207.14 -- adopted it ZERO times, ever, and sat at the
+        startup "PRIMED 0.00 chips" value. That left code_phase_rate = 0.0 on all 19 of their
+        PRNs, so the fleet DLL logged "no live code_phase_rate, holding trim" and never closed,
+        the code phase walked open-loop at ~0.003-0.01 chips/s (the #30 rate), the instances
+        drifted apart from each other (fleet_coh_align 0.16 against 0.51 on the working bands),
+        the fleet-coherent combine never cleared its floor (fleet_present 0/19), and every
+        published number fell back to a single instance. The loop closes on itself: no clock ->
+        no rate -> no lock -> no detections -> no measured (l-a) -> no clock.
+
+        It is also self-defeating: `tau_band` is unobservable until the second band tracks, and
+        the second band could not track because nothing supplied a band-offset clock.
+
+        THE PHASE IS STILL PER BAND and this does not change that -- `dr_clock` keeps its band
+        key, and adopting a code PHASE across carriers would inject exactly the tau_band offset
+        we are trying to measure. This is the rate only.
+        """
+        return self._best(self._code, exclude, max_age_s, t_now, key2=None)
+
     def contribute_dr_clock(self, chain, band, chips, drift, t, code_length):
         """Publish the dead-reckon receiver clock (chips, mod the code period) + drift.
 

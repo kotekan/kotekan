@@ -4048,12 +4048,36 @@ def main(argv=None, rx=None, publisher=None):
                 # this is the correction that cannot inject a step, unlike the reverted repin.
                 if la is None:
                     _sh_cb = rx.code_bias(band_id, exclude=chain_id, t_now=now_w)
+                    _sh_band = band_id
+                    # LAYER 2 (task #34): FALL BACK ACROSS THE BAND. The same-band lookup above
+                    # is a bootstrap trap for a band with no chain that can solve its own clock,
+                    # and 1207.14 MHz was exactly that: gal_e5b and bds_b2b adopted (l-a) ZERO
+                    # times while their 1176.45 siblings adopted it 102 and 107 times, so all 19
+                    # of their PRNs shipped code_phase_rate = 0.0 and walked open-loop.
+                    #
+                    # This is SOUND, not a compromise, and the reason is that (l-a) is a
+                    # FRACTIONAL FREQUENCY: tau_band -- the per-carrier group delay that makes
+                    # the code PHASE band-specific -- is a CONSTANT, and a constant contributes
+                    # nothing to a rate. See Receiver.code_bias_any_band. The code PHASE keeps
+                    # its per-band scoping (dr_clock is untouched); adopting a phase across
+                    # carriers would inject the very tau_band offset the second band exists to
+                    # measure.
+                    #
+                    # Logged distinctly from the same-band case: "cross-band" in the message is
+                    # how you tell, from the log alone, that a chain is running on a borrowed
+                    # rate rather than one measured in its own band.
+                    if _sh_cb is None:
+                        _sh_cb = rx.code_bias_any_band(exclude=chain_id, t_now=now_w)
+                        _sh_band = "cross-band"
                     if _sh_cb is not None:
                         la = float(_sh_cb.value)
                         _log_rl("la-adopt",
                                 "dead-reckon: (l-a) %+.4f ppm ADOPTED from in-process chain "
-                                "'%s' (same band %s) -> seeds carry the code-clock rate"
-                                % (la * 1e6, _sh_cb.src, band_id), every_s=300.0)
+                                "'%s' (%s %s) -> seeds carry the code-clock rate"
+                                % (la * 1e6, _sh_cb.src,
+                                   "same band" if _sh_band == band_id else "CROSS-BAND, rate only;",
+                                   _sh_band if _sh_band == band_id else "phase stays per-band"),
+                                every_s=300.0)
                     else:
                         la = 0.0
                 # clock drift (chips/s): EMPIRICAL from consecutive raw solves (EMA'd
