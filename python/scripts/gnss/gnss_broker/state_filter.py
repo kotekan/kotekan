@@ -154,7 +154,8 @@ class JointReceiverState:
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013,
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5,
-                 birth_max=50.0, gauge_max_b=60.0):
+                 birth_max=50.0, gauge_max_b=60.0,
+                 ref_band=None, sigma_tau0=20.0, q_tau=1e-5):
         import numpy as np
         self._np = np
         self.L = float(code_len)
@@ -182,6 +183,34 @@ class JointReceiverState:
         self._rej_run = {}             # key -> consecutive rejections
         self.birth_max = birth_max     # refuse to BIRTH a sat implausibly far from clk
         self.gauge_max_b = gauge_max_b # a wild bias does not get a vote in the gauge
+        # -- tau_band (P3): the per-BAND group delay, a DECLARED STATE ------------------
+        # y_i = clk + b_i + tau_band(beta) + noise. Without a tau state the per-band delay
+        # has nowhere to live, so it lands in b_sat -- and b_sat is per SATELLITE, so a sat
+        # seen in two bands gets two irreconcilable biases and the filter splits the
+        # difference. That is not a modelling nicety: it is why the second band needed a
+        # hand-wired cross-band clock BOOTSTRAP to track at all (task #34). Here the offset
+        # is estimated instead of borrowed.
+        #
+        # GAUGE: the reference band has NO ROW and is pinned at tau = 0 by construction, so
+        # `clk` means "the clock at the reference band" and every other tau is a DIFFERENTIAL
+        # delay -- which is the physically meaningful, measurable quantity. Without that pin
+        # clk and the taus are exactly degenerate (add c to clk, subtract c from every tau).
+        #
+        # OBSERVABILITY: tau_beta separates from b_sat ONLY through satellites seen in BOTH
+        # bands. One ray, two carriers -- which is precisely what an AltBOC sideband pair
+        # gives for free, and precisely what the disjoint E5a/E5b PRN lists destroyed before
+        # they were made an identity. With no dual-band satellite the two are degenerate and
+        # this filter will say so rather than invent a split (see `tau_observability`).
+        #
+        # q_tau is TINY: cable and filter delays drift on hours, not seconds (section 3a's
+        # timescale table). It is a state that costs almost no degrees of freedom, which is
+        # the whole DOF argument for putting it here rather than fitting it per epoch.
+        self.ref_band = ref_band       # None -> the first band seen becomes the reference
+        self.sigma_tau0 = float(sigma_tau0)
+        self.q_tau = float(q_tau)
+        self._band_idx = {}            # band -> row in x (the reference band has none)
+        self._band_seen = {}           # band -> last time a measurement carried it
+        self._dual = {}                # sat key -> set of bands it has been measured in
         self.x = np.zeros(2)           # [clk chips, clk_rate chips/s]
         self.P = np.diag([sigma_clk0 ** 2, sigma_rate0 ** 2])
         self._idx = {}                 # key -> row in x
@@ -206,6 +235,25 @@ class JointReceiverState:
         self._membership_changed()
         return i
 
+    def _add_band(self, band, t_now):
+        """Give a band its own tau row. The FIRST band seen becomes the reference and gets
+        no row at all -- that is the gauge, not an optimisation."""
+        np = self._np
+        if self.ref_band is None:
+            self.ref_band = band
+        if band == self.ref_band or band in self._band_idx:
+            self._band_seen[band] = t_now
+            return self._band_idx.get(band)
+        i = self.x.size
+        self.x = np.append(self.x, 0.0)
+        P = np.zeros((i + 1, i + 1))
+        P[:i, :i] = self.P
+        P[i, i] = self.sigma_tau0 ** 2
+        self.P = P
+        self._band_idx[band] = i
+        self._band_seen[band] = t_now
+        return i
+
     def _drop(self, keys):
         """Remove stale sats. Their rows leave the state entirely -- a sat that has not
         been measured in max_age_s must not keep voting in the gauge, which would drag the
@@ -220,8 +268,14 @@ class JointReceiverState:
         for k in keys:
             del self._idx[k], self._t_seen[k], self._n[k]
             self._rej_run.pop(k, None)
-        order = sorted(self._idx.items(), key=lambda kv: kv[1])
-        self._idx = {k: 2 + n for n, (k, _) in enumerate(order)}
+        # Reindex from the SURVIVING ROW ORDER, not from a hardcoded base of 2. The old
+        # form assumed every row past clk_rate was a satellite; tau_band rows share that
+        # space now, and a base-2 renumber would silently alias a band onto a satellite.
+        remap = {old_row: new_row for new_row, old_row in enumerate(keep)}
+        self._idx = {k: remap[i] for k, i in self._idx.items() if i in remap}
+        self._band_idx = {b: remap[i] for b, i in self._band_idx.items() if i in remap}
+        for k in keys:
+            self._dual.pop(k, None)
         self._membership_changed()
 
     def _membership_changed(self):
@@ -258,8 +312,14 @@ class JointReceiverState:
         self.P[1, 0] += qr * dt ** 2 / 2.0
         self.P[1, 1] += qr * dt
         if n > 2:
-            idx = np.arange(2, n)
-            self.P[idx, idx] += self.q_b ** 2 * dt
+            brows = set(self._band_idx.values())
+            srows = [i for i in range(2, n) if i not in brows]
+            if srows:
+                idx = np.array(srows)
+                self.P[idx, idx] += self.q_b ** 2 * dt
+            for i in brows:
+                # hours-timescale state: q_tau is ~100x below q_b on purpose
+                self.P[i, i] += self.q_tau ** 2 * dt
 
     def _scalar_update(self, H, y, R):
         """One scalar measurement, innovation already wrapped by the caller."""
@@ -281,7 +341,7 @@ class JointReceiverState:
     def wrap(self, v):
         return ((v + self.L / 2.0) % self.L) - self.L / 2.0
 
-    def update(self, key, y_chips, sigma_chips, t_now):
+    def update(self, key, y_chips, sigma_chips, t_now, band=None):
         """Feed one y_i = clk + b_i observation. Returns the normalized innovation, or
         None if rejected/deferred. A NEW satellite is BORN AT ITS MEASUREMENT (b0 = y - clk)
         rather than walked in from zero at loop gain: the model error it must absorb is
@@ -290,6 +350,13 @@ class JointReceiverState:
         if not (math.isfinite(y_chips) and sigma_chips > 0.0):
             return None
         self.predict(t_now)
+        # Resolve this measurement's band BEFORE the birth gate: a satellite first seen in a
+        # non-reference band is offset by tau, and judging its plausibility against the bare
+        # clock would reject exactly the newcomers a second band brings in.
+        _tau_row = self._add_band(band, t_now) if band is not None else None
+        _tau_val = float(self.x[_tau_row]) if _tau_row is not None else 0.0
+        if band is not None:
+            self._dual.setdefault(key, set()).add(band)
         born = key not in self._idx
         if born:
             # BIRTH THROUGH THE COVARIANCE, not by hand. The obvious version -- set
@@ -313,7 +380,7 @@ class JointReceiverState:
             # (large P00) everything is accepted, because that is the bootstrap.
             if (self.birth_max is not None and len(self._idx) >= 2
                     and self.P[0, 0] < 100.0
-                    and abs(self.wrap(y_chips - self.x[0])) > self.birth_max):
+                    and abs(self.wrap(y_chips - self.x[0] - _tau_val)) > self.birth_max):
                 self.rejected += 1
                 return None
             self._add(key, 0.0, t_now)
@@ -321,6 +388,11 @@ class JointReceiverState:
         H = np.zeros(self.x.size)
         H[0] = 1.0
         H[i] = 1.0
+        # y_i = clk + b_i + tau_band. The reference band has NO row (tau == 0 by the gauge),
+        # so this term simply does not appear for it -- which is what makes `clk` mean "the
+        # clock at the reference band" rather than an unpinned average of both.
+        if _tau_row is not None:
+            H[_tau_row] = 1.0
         innov = self.wrap(y_chips - float(H @ self.x))
         # NOT on the birth cycle: a newborn sits at b=0, so its innovation is the WHOLE
         # measurement (~the clock, 151 chips here) and any physical gate would reject it --
@@ -384,8 +456,12 @@ class JointReceiverState:
         accepted."""
         self.predict(t_now)
         n_ok = 0
-        for key, y, sig in measurements:
-            if self.update(key, y, sig, t_now) is not None:
+        for m in measurements:
+            # (key, y, sigma) or (key, y, sigma, band) -- the 3-tuple form is the
+            # single-band caller and keeps working unchanged.
+            key, y, sig = m[0], m[1], m[2]
+            band = m[3] if len(m) > 3 else None
+            if self.update(key, y, sig, t_now, band=band) is not None:
                 n_ok += 1
         self.gauge()
         self._drop([k for k, t in self._t_seen.items()
@@ -393,6 +469,29 @@ class JointReceiverState:
         return n_ok
 
     # -- readout -----------------------------------------------------------------
+    def tau(self, band):
+        """Differential group delay of `band` against the reference band, chips. 0 for the
+        reference (it has no row -- that is the gauge, not a special case)."""
+        i = self._band_idx.get(band)
+        return 0.0 if i is None else float(self.x[i])
+
+    def tau_sigma(self, band):
+        i = self._band_idx.get(band)
+        return 0.0 if i is None else float(self._np.sqrt(max(self.P[i, i], 0.0)))
+
+    def tau_observability(self, band):
+        """How many satellites have been measured in BOTH this band and the reference.
+
+        tau_band separates from b_sat ONLY through dual-band satellites -- one ray, two
+        carriers. With zero of them the two are exactly degenerate and any tau this filter
+        reports is an artefact of the priors, so a consumer must check this before believing
+        the number. This is the quantity that the disjoint E5a/E5b PRN lists drove to zero
+        while every individual chain looked healthy."""
+        if band == self.ref_band or self.ref_band is None:
+            return len(self._dual)
+        return sum(1 for bands in self._dual.values()
+                   if band in bands and self.ref_band in bands)
+
     @property
     def clk(self):
         return float(self.x[0])

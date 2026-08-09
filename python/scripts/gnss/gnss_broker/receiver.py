@@ -81,6 +81,46 @@ class Receiver(object):
                 self._joint[band] = JointReceiverState(**kw)
             return self._joint[band]
 
+    def joint_receiver(self, band, code_len, **kw):
+        """P3: ONE joint state for the WHOLE RECEIVER, with band as a measurement label.
+
+        `joint()` above keys a separate state per band, which is what P2 needed and what P3
+        must undo: two independent states cannot estimate the offset BETWEEN them. Here every
+        band feeds one filter and the per-band group delay becomes `tau_band`, a declared
+        state -- so the second band's clock is ESTIMATED rather than borrowed, which is what
+        the cross-band bootstrap in the dead-reckon seeder is standing in for today (#34).
+
+        ⚠️ THE MODULUS IS THE CATCH, and it is why this takes a code_len argument rather than
+        inheriting one. Chains here carry different code periods -- GPS L5 NH 204600 chips
+        (20 ms), E5a/B2a CS100 1023000 (100 ms), B2b 10230 (1 ms) -- and a shared state has
+        ONE wrap. A measurement from a 10230-chip chain is only known mod 10230, so the state
+        must wrap at the SMALLEST contributing period or it would treat an aliased value as a
+        real excursion. We therefore take the running minimum and REBUILD if a shorter-code
+        chain joins later; the clock is ~151 chips, comfortably inside 10230, and
+        `joint_ambiguous()` below is the guard that says so out loud if that stops being true.
+
+        Same argument as the clock adoption's modulus rule: reducing to a shorter period is
+        well defined, lengthening is not.
+        """
+        from .state_filter import JointReceiverState
+        with self._lock:
+            cur = self._joint.get("__receiver__")
+            if cur is None or float(code_len) < cur.L:
+                kw = dict(kw)
+                kw["code_len"] = float(code_len) if cur is None else min(float(code_len), cur.L)
+                kw.setdefault("ref_band", band)
+                self._joint["__receiver__"] = JointReceiverState(**kw)
+            return self._joint["__receiver__"]
+
+    def joint_ambiguous(self):
+        """True when the receiver clock has grown close enough to the state's wrap that a
+        measurement from the shortest-code chain could be aliased. A consumer must not
+        believe tau_band (or clk) while this holds -- it is the modular-arithmetic twin of
+        the 'a value mod 10230 means nothing to a 1023000-chip chain' guard."""
+        with self._lock:
+            st = self._joint.get("__receiver__")
+            return bool(st is not None and abs(st.clk) > 0.4 * st.L)
+
     # -- time anchor --------------------------------------------------------------------
     def time_anchor(self, fetch, chain):
         """The F-engine's frame-0 UTC, fetched at most ONCE per process.

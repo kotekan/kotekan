@@ -4196,7 +4196,12 @@ def main(argv=None, rx=None, publisher=None):
                 # NOTHING, so every transcript digest is untouched.
                 if args.joint_shadow and offs:
                     try:
-                        _js = rx.joint(band_id, code_len=CODE_LEN)
+                        # P3: ONE state for the whole receiver, band carried as a
+                        # measurement LABEL rather than as a separate filter. Two per-band
+                        # states cannot estimate the offset between them, which is exactly
+                        # why the second band needed a hand-wired cross-band clock bootstrap
+                        # (#34) -- tau_band now has somewhere to live.
+                        _js = rx.joint_receiver(band_id, CODE_LEN)
                         # SNR GATE, caller-side. The broker's own comment 60 lines up
                         # measures it: below --period-check-snr a detection's phase is
                         # noise, "~2000-chip within-period residuals against a few chips
@@ -4205,12 +4210,24 @@ def main(argv=None, rx=None, publisher=None):
                         # ungated on 2026-08-09 walked the clock rate to -0.028 ppm and put
                         # 17 chips/min of fictitious drift into every unlocked seed.
                         _snr = {p: v[0] for p, v in best.items()}
-                        _js.cycle([((tag, p), d, args.joint_sigma) for p, d in offs
+                        _js.cycle([((tag, p), d, args.joint_sigma, band_id)
+                                   for p, d in offs
                                    if _snr.get(p, 0.0) >= args.joint_min_snr],
                                   t_now_abs)
                         if now_w >= dr_state.get("joint_log_next", 0.0):
                             dr_state["joint_log_next"] = now_w + 30.0
-                            _log("JOINT[shadow] " + _js.summary(t_now_abs))
+                            # tau_band is reported WITH its observability count, never alone.
+                            # It separates from b_sat only through satellites seen in BOTH
+                            # bands, so a tau printed next to "dual 0" is an artefact of the
+                            # priors -- which is precisely the state the disjoint E5a/E5b PRN
+                            # lists put the instrument in while every chain looked healthy.
+                            _tb = "".join(
+                                "  tau[%s] %+.3f+-%.3f (dual %d)"
+                                % (_b, _js.tau(_b), _js.tau_sigma(_b),
+                                   _js.tau_observability(_b))
+                                for _b in sorted(_js._band_idx))
+                            _amb = "  ⚠AMBIGUOUS(clk near wrap)" if rx.joint_ambiguous() else ""
+                            _log("JOINT[shadow] " + _js.summary(t_now_abs) + _tb + _amb)
                     except Exception as e:      # shadow must never take the broker down
                         _log_rl("jointerr", "JOINT[shadow] disabled this cycle: %s" % e,
                                 every_s=300.0)

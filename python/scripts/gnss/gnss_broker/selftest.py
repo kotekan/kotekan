@@ -472,6 +472,73 @@ check("cross-band clock still honours exclude and max_age",
 check("bootstrap replaces a 150-chip error with a sub-chip one",
       abs(150.74 - 0.0) > 100.0 and abs((150.74 % 10230.0) - 150.74) < 1e-9)
 
+# -- P3: tau_band as a DECLARED STATE (task #33 / #34) ------------------------------------
+# The measurement is y_i = clk + b_i + tau_band(beta). These assert that the filter SPLITS a
+# per-band offset from per-satellite biases, that it needs dual-band satellites to do so, and
+# that it says so when it cannot -- the failure this project just spent a day on was a
+# configuration where the split was unobservable while every chain looked healthy.
+from gnss_broker.state_filter import JointReceiverState as _JRS   # noqa: E402
+_REF, _B2 = "1176.45MHz", "1207.14MHz"
+_TRUE_CLK, _TRUE_TAU = 151.0, 3.5
+_BI = {("E", 7): +2.0, ("E", 8): -1.5, ("E", 12): +0.5, ("E", 19): -1.0, ("E", 26): +0.7}
+_rndj = __import__("random").Random(7)
+
+def _meas(t, bands_for):
+    out = []
+    for k, b in _BI.items():
+        for beta in bands_for(k):
+            tau = 0.0 if beta == _REF else _TRUE_TAU
+            out.append((k, _TRUE_CLK + b + tau + _rndj.gauss(0, 0.05), 0.3, beta))
+    return out
+
+# (a) DUAL-BAND sats present -> tau is observable and must be recovered, not absorbed into b.
+_j = _JRS(code_len=1023000.0, ref_band=_REF)
+for _i in range(400):
+    _j.cycle(_meas(_i * 2.0, lambda k: (_REF, _B2)), 1000.0 + _i * 2.0)
+check("tau_band recovered from dual-band sats",
+      abs(_j.tau(_B2) - _TRUE_TAU) < 0.4, "tau %+.3f (true %+.2f)" % (_j.tau(_B2), _TRUE_TAU))
+check("the reference band is pinned at exactly 0 (the gauge)", _j.tau(_REF) == 0.0)
+check("clk lands at the reference band's clock, not an average of the two",
+      abs(_j.wrap(_j.clk - _TRUE_CLK)) < 0.5, "clk %.2f (true %.1f)" % (_j.clk, _TRUE_CLK))
+check("biases stay per-SATELLITE and do not absorb the band offset",
+      max(abs(_j.bias(k) - b) for k, b in _BI.items()) < 0.6,
+      "worst %+.3f" % max(abs(_j.bias(k) - b) for k, b in _BI.items()))
+check("tau_observability counts the dual-band sats", _j.tau_observability(_B2) == len(_BI))
+
+# (b) DISJOINT sats per band -> tau is NOT observable. The filter must report zero
+#     observability rather than manufacture a split (this was the E5a/E5b PRN-list bug).
+_split = {("E", 7), ("E", 8)}
+_j2 = _JRS(code_len=1023000.0, ref_band=_REF)
+for _i in range(200):
+    _j2.cycle(_meas(_i * 2.0, lambda k: (_REF,) if k in _split else (_B2,)),
+              1000.0 + _i * 2.0)
+check("with DISJOINT per-band sats the filter reports tau unobservable",
+      _j2.tau_observability(_B2) == 0, "dual-band sats %d" % _j2.tau_observability(_B2))
+
+# (c) a band row must survive satellite churn -- _drop reindexes by surviving row order
+_j3 = _JRS(code_len=1023000.0, ref_band=_REF, max_age_s=10.0)
+for _i in range(60):
+    _j3.cycle(_meas(_i * 2.0, lambda k: (_REF, _B2)), 1000.0 + _i * 2.0)
+_tau_before = _j3.tau(_B2)
+for _i in range(30):                     # only two sats keep reporting; the rest expire
+    _j3.cycle([m for m in _meas(_i * 2.0, lambda k: (_REF, _B2)) if m[0] in _split],
+              1200.0 + _i * 2.0)
+check("tau_band row survives satellite expiry (reindex is layout-generic)",
+      _B2 in _j3._band_idx and abs(_j3.tau(_B2) - _tau_before) < 1.5,
+      "tau %+.3f -> %+.3f" % (_tau_before, _j3.tau(_B2)))
+check("and no satellite row aliased onto the band row after the drop",
+      len(set(list(_j3._idx.values()) + list(_j3._band_idx.values())))
+      == len(_j3._idx) + len(_j3._band_idx))
+
+# (d) single-band operation is untouched -- the 3-tuple cycle() form still works
+_j4 = _JRS(code_len=1023000.0)
+for _i in range(200):
+    _j4.cycle([(k, _TRUE_CLK + b + _rndj.gauss(0, 0.05), 0.3) for k, b in _BI.items()],
+              1000.0 + _i * 2.0)
+check("single-band callers unaffected (3-tuple form, no band, no tau rows)",
+      not _j4._band_idx and abs(_j4.wrap(_j4.clk - _TRUE_CLK)) < 0.5,
+      "clk %.2f" % _j4.clk)
+
 print("\n%d/%d checks passed" % (0 if FAIL else 1, 1) if False else
       ("FAILED: %s" % ", ".join(FAIL)) if FAIL else "\nALL CHECKS PASSED")
 sys.exit(1 if FAIL else 0)
