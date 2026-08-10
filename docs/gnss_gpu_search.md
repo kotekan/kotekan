@@ -2383,3 +2383,113 @@ RECOMMENDATION: B2b is capped, not blocked -- it tracks, and it feeds tau_band a
 The Galileo pilot-vs-pilot pair already delivers the second-band science at full coherence, so
 this is not on the tau_band critical path. Do the encoder when B2b's 7.5x is worth it, and do it
 as a replica bake, not a correlator rewrite.
+
+## 11.29 One ordinary satellite destroyed the joint state (2026-08-10) — and nothing noticed
+
+The GPS-only joint state ran healthy for eight hours after the 02:17 restart: clk 148–151
+chips, sigma 0.05–0.16, mean(b) ≈ 0.00, max|b| ~3.5–5.7, rejection 267/21900 = 1.2%. At
+10:22, in a single 30 s step, clk went **+150.167 → −1242.456** and PRN 25's bias **+1.16 →
+−1395.59**. Same six satellites, no birth, no drop, and exactly ONE rejection in that step:
+the update that wrecked the state was *accepted*.
+
+**PRN 25 was not setting.** Its elevation went 45° → 65°, *rising*. It transited out of the
+primary beam — deep_snr 30 → 2.4, coh_frac 0.94 → 0.19, and `code_phase_chips` jumping
+randomly across the full 10230-chip code (42745, 434, 81964, 3536, …). That is the ordinary
+behaviour of a 2.9° beam on a transit instrument, several times a day, every day. It is not
+an exotic input and must not be treated as one.
+
+### The chain, all four links verified
+
+1. **The input gate read the wrong number.** `--joint-min-snr 60` is applied to the *search*
+   SNR carried in `best`, not the tracker's `deep_snr`/`coh_frac`. Detections latch for up to
+   the 1276 s per-PRN revisit, so PRN 25 kept presenting the strong SNR of its last good scan
+   while its tracker output was already noise.
+2. **The escape hatch tested persistence, not consistency.** `reject_escape=5` encoded
+   "garbage is sporadic, a real move is PERSISTENT" — but it counted consecutive rejections
+   and never asked whether the rejected measurements agreed with *each other*. Five uniform
+   draws from a 10230-chip code are perfectly persistent and mutually meaningless.
+3. **The escape bypassed its own ceiling.** `innov_max=200` is documented as "absolute garbage
+   ceiling, any state", but it only participated in deciding `_bad`; once the run count was
+   exhausted control fell through to `_scalar_update` with the innovation unbounded.
+4. **Then the gauge switched itself off.** The corrupted clk made every *other* satellite's
+   innovations large, so they escaped too and ran to ~+130. Once fewer than two biases were
+   within `gauge_max_b=60` **of zero**, `gauge()` hit `if len(use) < 2: return` and became a
+   silent no-op for fifty minutes. With the common mode unpinned, sigma_clk grew 0.09 → 2.9.
+
+### The part that matters: it was invisible
+
+At 11:12 the state read `clk +50.789` with biases `+101.82 / +97.75 / +96.85 / +94.67`. Every
+consumer reads **clk + b_i**, and `50.8 + 97 ≈ 148` — the right answer. Code-phase predictions
+were correct all morning. Only the *decomposition* died.
+
+That is a direct blocker for **P2b**, whose entire purpose is to make consumers fly on `clk`
+and `clk_rate` individually. Had P2b landed the previous evening this would have shipped as a
+silent 99-chip error rather than a shadow-mode curiosity. It is also the second instance in
+two days (after the ungated model-primary feed) of the same failure shape: *a state that looks
+healthy in aggregate can be internally broken*. The first was filed as a one-off; it was not.
+
+### The fixes
+
+* **Escape on CONSISTENCY, not persistence.** The run must agree with itself within
+  `escape_spread` (default 5 chips). Five noise draws landing that close has probability
+  ~1e-8; a genuine re-anchor does it every time. Because the test is strong it can be trusted
+  with large innovations, so there is deliberately **no** magnitude ceiling — a consistent
+  1400-chip move is a real re-anchor and must be followed; an inconsistent one is noise at any
+  magnitude. This preserves the deadlock escape the hatch exists for.
+* **Consistency is tested on the MEASUREMENT y, not the innovation.** An innovation is y minus
+  a *moving* state. Measured: clean sigma-0.3 measurements produced a 20-chip innovation
+  spread purely from the state sliding underneath them during a rejection run, which would
+  block the hatch exactly when a real re-anchor needs it. y is what the satellite said.
+* **Gauge inliers relative to the MEDIAN, not zero.** Measuring |b_i| against zero assumes the
+  biases are already centred — the very thing the gauge exists to enforce. The median is always
+  an inlier of itself so the set is never empty; a single wild sat is still excluded exactly as
+  before; and a uniformly displaced state is now self-healing.
+* **Gate on tracker quality** (`--joint-min-deep-snr 10`, `--joint-min-coh-frac 0.3`) on BOTH
+  feeds. Thresholds measured, not guessed: over 6827 GPS rows the population is sharply
+  bimodal — noise at deep_snr 2–3 / coh_frac 0.2, signal at 24+ / 0.92+ — so 10 sits in the
+  empty gap and admits 70.5%. This is also the gate the **model-primary** feed was waiting on,
+  so `--joint-model-primary` becomes safe to enable, which is what makes `tau_band` observable
+  at all.
+* **The escape now logs.** It previously fired completely silently; the single most damaging
+  update of the day left no trace but its consequences.
+
+`python/scripts/gnss/test_state_filter.py` reproduces both halves and is **verified to fail
+against the pre-fix filter** (clk +1781 vs a true +148 on a noise satellite; a gauge that does
+not pin at all).
+
+## 11.30 tau_band without the filter: the sidebands measure it directly
+
+The overnight run could not answer tau from the joint solve — it was GPS-only (model-primary
+off), and tau separates from b_sat *only* through satellites seen in both bands, so the tau row
+never existed. But `SPEC-FIT` (the P1 phase-slope fit) is per-PRN **per chain** and independent
+of the joint filter, and the joint state is shadow — consumed by nothing — so the 10:22
+corruption never touched tracking. Differencing the two sidebands of the same satellite gives
+tau_band with the satellite, the geometry and the receiver clock all common-mode:
+
+| pair | fits | sats | tau | per-sat scatter |
+|---|---|---|---|---|
+| **E5b − E5a** (pilot vs pilot) | 7022 | 24 | **+0.59 ± 0.63 ns** | 3.08 ns |
+| B2b − B2a (pilot vs **data**) | 5917 | 23 | −6.26 ± 1.33 ns | 6.37 ns |
+
+**The error bar is from satellite scatter, not fit count.** 7022 fits 30 s apart on 24
+satellites are not 7022 independent samples; a receiver group delay is common to every
+satellite, so the spread of per-satellite medians is the honest uncertainty (cf. §11.21, where
+a sem computed from a correlated series produced a fictitious drift).
+
+Galileo is the clean measurement — both sidebands are pilots — and **+0.59 ± 0.63 ns is
+consistent with zero and with the joint filter's −1.03 ns**, independently confirming the
+physically important claim: the inter-band delay is of order a nanosecond.
+
+BeiDou is **not** like-for-like (B2a pilot against B2b data), and its per-satellite medians
+range −17.6 to +3.5 ns. A receiver group delay is common to all satellites *by construction*,
+so 20 ns of per-satellite structure cannot be tau_band — it is satellite differential code
+bias plus the pilot/data asymmetry. Quoting −6.26 ns as "the BeiDou tau" would be reading a
+satellite property as a receiver one.
+
+**An apparent drift across the night was the changing sky.** Split at 10:22 the Galileo median
+moved +0.39 → +3.91 ns, but the two windows saw 24 and 11 satellites; restricted to the 8
+satellites present in *both*, the change is **+1.37 ± 3.30 ns** — consistent with zero. Pair
+the arms in satellite before reading a difference as time evolution.
+
+Note also that every SPEC-FIT tau is ~0.01–0.1 chips, so the still-open **~1.8-chip inter-band
+discrepancy is not in the group delay** — it lives somewhere in code phase / epoch, not here.
