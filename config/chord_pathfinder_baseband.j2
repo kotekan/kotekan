@@ -52,6 +52,16 @@
 # correlation frames needed to form one output N2 frame
 {% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
 
+# element_blocks_subset: which 8-element blocks of the 128-element frame each SubsetBaseband
+# keeps.  Both NUMA domains record the same inputs, they differ only in frequency.
+{% set element_blocks_subset = [0, 1, 2, 3] %}
+
+# Elements surviving the subset, and the trailing extent of the subset buffers.
+# SubsetBaseband describes its output as [T, F, 2, num_elements_out/2] and fatally checks the
+# out_buf frame size against it, so these must be derived from element_blocks_subset rather
+# than hard coded.
+{% set num_subset_elements = element_blocks_subset|length * 8 %}
+
 # num_capture_frames: DPDK frames to record before the capture stops.
 # The pipeline is 1:1 from the network input buffer through to hdf5FileWrite, so this is also
 # the number of frames written out (~42 ms / ~96 MiB of subset data each).
@@ -222,12 +232,22 @@ host_voltage_buffer_1:
     numa_node: 1
 
 
-# Subset Buffers (note size must match parameters in SubsetBaseband
+# Subset Buffers, one per NUMA domain.
+# The extents must match what SubsetBaseband produces, which is why the trailing element
+# extent is derived from element_blocks_subset above.
 subset_voltage_buffer_0:
     kotekan_buffer: ndarray
-    extents: [samples_per_data_set, num_local_freq, 2, 16]
+    extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_elements // 2 }}]
     value_type: int4x2_swapped_withoffset
     numa_node: 0
+    num_frames: 20
+    metadata_pool: main_pool
+
+subset_voltage_buffer_1:
+    kotekan_buffer: ndarray
+    extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_elements // 2 }}]
+    value_type: int4x2_swapped_withoffset
+    numa_node: 1
     num_frames: 20
     metadata_pool: main_pool
 
@@ -322,7 +342,12 @@ dpdk:
     # down to the nearest frame edge, so all workers start on the same frame. It must be at
     # least 1 minute in the future, and a start more than 12 hours out only warns.
     # Commented out means start at the first frame edge ~2 s after packets begin arriving.
-    capture_start_time_utc: "2026-08-10 18:43:00"
+    # Worth keeping set while recording both NUMA domains: it is the only way the port 0 and
+    # port 1 workers are guaranteed the same start seq, and hence the two writers the same
+    # timestamped folder. Unscheduled, their starts can differ by one frame (~42 ms), which
+    # now and then rounds to two different folder names. Harmless for merging (point
+    # merge_baseband_freq.py at /scratch/baseband and it recurses into both), but untidy.
+    capture_start_time_utc: "2026-08-10 20:24:00"
     #
     # capture_n_frames: stop after this many frames, 0 = record until kotekan is stopped.
     capture_n_frames: {{ num_capture_frames }}
@@ -464,9 +489,28 @@ subset_baseband_0:
     timesamples_per_frame: samples_per_data_set
     in_buf: host_voltage_buffer_0
     out_buf: subset_voltage_buffer_0
-    element_blocks_subset: [0, 2]
+    element_blocks_subset: {{ element_blocks_subset }}
     log_level: info
 
+# Same subset on the NUMA 1 half of the band. The default cpu_affinity is a NUMA 0 core
+# list, which would read this domain's ~96 MiB frames across the socket link, so pin the
+# NUMA 1 stages to free cores on node 1 (16-31; 16-18 and 20-23 are taken by the packet
+# mask, transposes, frame service and DPDK lcores).
+subset_baseband_1:
+    kotekan_stage: SubsetBaseband
+    cpu_affinity: [24, 25, 26, 27, 28, 29, 30, 31]
+    timesamples_per_frame: samples_per_data_set
+    in_buf: host_voltage_buffer_1
+    out_buf: subset_voltage_buffer_1
+    element_blocks_subset: {{ element_blocks_subset }}
+    log_level: info
+
+# The two writers share a base_dir and a timestamped capture folder, so they need
+# distinct file names. prefix_host_rank prepends "x<frequency_pool_rank:04d>_", giving
+# <host>_x0000_baseband_subset.*.h5 and <host>_x0001_baseband_subset.*.h5. The dataset
+# name inside the files stays "baseband_subset" for both, which is what
+# python/scripts/merge_baseband_freq.py expects when it stitches the halves back
+# together by their coarse_freq attributes.
 hdf5_write_baseband_0:
     kotekan_stage: hdf5FileWrite
     in_buf: subset_voltage_buffer_0
@@ -476,6 +520,9 @@ hdf5_write_baseband_0:
     # /scratch/baseband/20260811T031500Z/
     timestamp_subdir: true
     file_name: baseband_subset
+    prefix_host_rank: true
+    frequency_pool_rank: 0
+    frequency_pool_size: 2
     # Capture this many frames (~42 ms / ~96 MiB each), then shut down kotekan.
     # Matches the DPDK stage's capture_n_frames, so the writer flushes everything the
     # capture produced and then exits.
@@ -483,6 +530,21 @@ hdf5_write_baseband_0:
     # Frames appended to each file before rolling over to a new one
     frames_per_file: 10
     # bitshuffle+zstd cannot keep up with the full subset data rate
+    use_compression: false
+    log_level: info
+
+hdf5_write_baseband_1:
+    kotekan_stage: hdf5FileWrite
+    cpu_affinity: [24, 25, 26, 27, 28, 29, 30, 31]
+    in_buf: subset_voltage_buffer_1
+    base_dir: /scratch/baseband
+    timestamp_subdir: true
+    file_name: baseband_subset
+    prefix_host_rank: true
+    frequency_pool_rank: 1
+    frequency_pool_size: 2
+    max_frames: {{ num_capture_frames }}
+    frames_per_file: 10
     use_compression: false
     log_level: info
 
