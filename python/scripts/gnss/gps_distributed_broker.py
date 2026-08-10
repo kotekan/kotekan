@@ -863,6 +863,25 @@ def main(argv=None, rx=None, publisher=None):
                          "the measurement: below it a detection's phase is noise with "
                          "~2000-chip residuals. Ungated, ONE such detection walked the "
                          "state to -0.028 ppm on 2026-08-09 (docs 11.23).")
+    ap.add_argument("--joint-min-deep-snr", type=float, default=10.0,
+                    help="minimum TRACKER significance (deep_snr, floor-cleared) for a "
+                         "residual to enter the joint solve. --joint-min-snr gates on the "
+                         "SEARCH SNR carried in `best`, which is a different and much "
+                         "staler number: detections latch for up to the 1276 s per-PRN "
+                         "revisit, so a satellite that has left the beam keeps presenting "
+                         "the strong SNR of its last good scan while its tracker output is "
+                         "already noise. That is exactly how PRN 25 got in on 2026-08-10 -- "
+                         "elevation RISING 45->65 deg (it transited out of the beam, it did "
+                         "not set), deep_snr 30->2.4, coh_frac 0.94->0.19, code phase "
+                         "uniform over the 10230-chip code -- and destroyed the state. "
+                         "MEASURED, not guessed: over 6827 GPS rows the population is "
+                         "sharply bimodal, noise at deep_snr 2-3 / coh_frac 0.2 and signal "
+                         "at 24+ / 0.92+; 10 sits in the empty gap and admits 70.5%%.")
+    ap.add_argument("--joint-min-coh-frac", type=float, default=0.3,
+                    help="minimum coherent fraction for a residual to enter the joint solve. "
+                         "Nearly redundant with --joint-min-deep-snr (both gates select the "
+                         "same 70.5%% of rows, which is the two measuring the same physics) "
+                         "and kept as a cheap independent guard, not as a second opinion.")
     ap.add_argument("--joint-min-sats", type=int, default=4,
                     help="a JOINT consumer refuses to act on a state carrying fewer than "
                          "this many satellites: with the mean(b)=0 gauge a thin fleet lets "
@@ -4259,6 +4278,29 @@ def main(argv=None, rx=None, publisher=None):
                 # bias and estimates both, separated by process noise rather than by a
                 # threshold. Shadow: logged beside the median it will replace, consumed by
                 # NOTHING, so every transcript digest is untouched.
+
+                def _track_ok(_p):
+                    """Is the TRACKER seeing this satellite RIGHT NOW?
+
+                    --joint-min-snr gates on the SEARCH SNR carried in `best`, which answers
+                    a different question: 'was there a detection', and a latched detection
+                    keeps answering yes for up to the 1276 s per-PRN revisit after the sky
+                    has moved on. On 2026-08-10 PRN 25 transited out of the primary beam
+                    (elevation RISING 45->65 deg) and kept presenting its last good scan's
+                    SNR while its tracker output was already uniform noise over the code;
+                    that measurement destroyed the joint state. The tracker's own view is
+                    the one the measurement actually depends on.
+
+                    deep_snr counts only when floor-cleared (coherence_s > 0), matching
+                    sig_of(): a floored deep sits near 7 on pure noise and would otherwise
+                    clear a 10-chip bar on nothing at all."""
+                    _row = status.get(_p) or {}
+                    if float(_row.get("coherence_s", 0) or 0) <= 0.0:
+                        return False
+                    return (float(_row.get("deep_snr", 0) or 0) >= args.joint_min_deep_snr
+                            and float(_row.get("coh_frac", 0) or 0)
+                            >= args.joint_min_coh_frac)
+
                 if args.joint_shadow and offs:
                     try:
                         # P3: ONE state for the whole receiver, band carried as a
@@ -4282,8 +4324,16 @@ def main(argv=None, rx=None, publisher=None):
                         _js.cycle([((tag, p), d, args.joint_sigma, band_id)
                                    for p, d in offs
                                    if _snr.get(p, 0.0) >= args.joint_min_snr
+                                   and _track_ok(p)
                                    and not _p2c_hold(_js, (tag, p))],
                                   t_now_abs)
+                        # The filter has no logger; drain what it wants an operator to see.
+                        # An escape or an incoherent run is a tracking event worth a line --
+                        # on 2026-08-10 the single most damaging update of the day fired
+                        # completely silently and was only found by its consequences.
+                        for _n in _js.drain_notes():
+                            _log_rl("joint-note", "JOINT %s: %s" % (band_id, _n),
+                                    every_s=10.0)
                         for _p, _d in offs:
                             if _p2c_hold(_js, (tag, _p)):
                                 _r = _js.wrap(_d - _js.predicted((tag, _p)) - _js.tau(band_id))
@@ -4346,6 +4396,15 @@ def main(argv=None, rx=None, publisher=None):
                         for _prn, _sd in seeds.items():
                             _v = pd.get((tag, _prn))
                             if _v is None or "ref_hop" not in _sd:
+                                continue
+                            # THE GATE THIS FEED NEVER HAD. A dead-reckoned seed carries no
+                            # detection SNR, which is why it was originally fed ungated --
+                            # but "no detection SNR" is not "no quality signal": the tracker
+                            # says plainly whether it is seeing anything. Without this the
+                            # feed offers EVERY seeded satellite every cycle, including ones
+                            # despreading pure noise, and on 2026-08-09 it walked clk to
+                            # +445 against a true ~150 with 67-82% of updates rejected.
+                            if not _track_ok(_prn):
                                 continue
                             _held = dr_seed_phys(_sd, _h1, args.hops_per_sec,
                                                  args.chip_rate_hz, args.carrier_hz,
