@@ -1703,11 +1703,28 @@ def main(argv=None, rx=None, publisher=None):
     # consumption sites add a float zero and the replay digests are untouched.
     bsat = SatBiasFilter(gain=args.bsat_gain)
     joint_consume = {c.strip() for c in args.joint_consume.split(",") if c.strip()}
-    joint_mask = {int(x) for x in args.joint_mask_prn.replace(" ", "").split(",") if x}
+    # ⚠️ CONSTELLATION-QUALIFIED, and this cost a void first run (2026-08-10). The joint state
+    # is keyed (constellation, prn) because GPS 4, Galileo 4 and BeiDou 4 are three unrelated
+    # spacecraft. A bare "--joint-mask-prn 4" matched the PRN NUMBER on every chain, so masking
+    # one vetted GPS satellite silently also masked two Galileo/BeiDou ones nobody had looked
+    # at -- and the residual that came back was theirs, not the one under test. A bare number
+    # is now REFUSED rather than guessed at: the test is about a specific satellite.
+    joint_mask = set()
+    for _tok in args.joint_mask_prn.replace(" ", "").upper().split(","):
+        if not _tok:
+            continue
+        if _tok[0].isalpha():
+            joint_mask.add((_tok[0], int(_tok[1:])))
+        else:
+            raise SystemExit(
+                "--joint-mask-prn %r: qualify the PRN with its constellation (G4, E12, C33). "
+                "GPS 4, Galileo 4 and BeiDou 4 are different satellites and a bare number "
+                "masks all three -- which is how the first P2c run measured a satellite that "
+                "was never chosen." % _tok)
 
     def _p2c_hold(js, key):
         """True once this sat is BOTH masked and established -- see --joint-mask-after."""
-        return (key[1] in joint_mask and key in js._idx
+        return (key in joint_mask and key in js._idx
                 and js._n.get(key, 0) >= args.joint_mask_after)
 
     def _joint_state(rx_, band, a):
