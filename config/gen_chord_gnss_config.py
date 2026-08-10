@@ -553,6 +553,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # straight sum under the same estimator (the floor pays the selection). Exports
             # coh_frac -- the chopping-independent coherence measure -- beside deep_snr.
             "phase_track": args.phase_track,
+            "sky_deep": args.sky_deep,
             # Hops per record frame: turns the frame metadata's sample_seq into the absolute HOP
             # index, which is what the seed (ref_hop), the replica generators and the search all
             # speak. Published as pow_hop so the broker can group EVERY node's E/L powers by an
@@ -947,6 +948,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "deep_rate_search": True,
             "deep_rate_min_q": 10.0,
             "phase_track": args.phase_track,
+            "sky_deep": args.sky_deep,
             "fft_len": cfg["fengine"]["fft_length"],
             "record_export": 128,
             "phase_dump_prns": [],
@@ -1506,6 +1508,21 @@ def main():
                          "~60 KB/s at chan_dump_decim 10; raise the decimation for a long run.")
     ap.add_argument("--chan-dump-decim", type=int, default=10, metavar="N",
                     help="with --chan-dump-prn: dump every Nth record of that PRN.")
+    ap.add_argument("--sky-deep", action=argparse.BooleanOptionalAction, default=False,
+                    help="combiner: score the SKY-PHASE-CORRECTED prompt (record slots 24/25, "
+                         "gnssElemCal's leave-one-out element derotation) as a deep-fold "
+                         "candidate rung. Gated off on 2026-08-05 because the split-aperture "
+                         "estimator appeared to beat a genie; RESOLVED 2026-08-10: that was a "
+                         "comparator error (the split's honest bound is the HALF-aperture "
+                         "genie, and against it the split reads 0.84-0.95 in every seed, "
+                         "anomaly case included, with the null fail-closed at 4.5-7.8 vs "
+                         "27-63 on signal). ON SKY the slots hold phase-coherence 0.92-0.96 "
+                         "over 120 s of sparse samples where the raw prompt sits at the "
+                         "random-walk floor, amplitude-neutral (|sky|/|raw| ~ 1), weak sats "
+                         "failing soft -- measured 2026-08-10 with elem_sum live. The rung "
+                         "competes under the same measured floor as every other candidate, "
+                         "so a cold or bad cal loses on merit rather than corrupting the "
+                         "fold (docs 11.32).")
     ap.add_argument("--elem-sum", action=argparse.BooleanOptionalAction, default=True,
                     help="record HEADER = self-calibrated weighted mean over ALL elements "
                          "(bootstrap MRC, reference-anchored phase, 'one element' scale) instead "
