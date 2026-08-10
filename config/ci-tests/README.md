@@ -4,10 +4,10 @@ Config files in this directory are intended to be run as part of CI. The `run_te
 
 ## Usage
 
-Any mix of directories and individual YAML configs can be given:
+Any mix of directories and individual configs can be given. Directories are searched for `.yaml`, `.yml` and `.j2` configs; an individual config can be given regardless of its extension.
 
 ```bash
-./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir|test_config.yaml>...
+./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir|test_config>...
 ```
 
 **Examples:**
