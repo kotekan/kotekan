@@ -55,11 +55,6 @@ chains:
   gps_l5:
     signal: gps_l5
     detectors: http://localhost:12050/gps_search
-    # 11 of 29 GPS tracker slots were spent on satellites that CANNOT broadcast L5
-    # (measured overnight 2026-08-10: every non-IIF/III PRN sat at the noise floor all
-    # night). L5 is IIF+; the block filter reads Celestrak once at startup and fails OPEN
-    # (a network hiccup disables the filter rather than darking the chain).
-    signal-capability: GPS_L5_Q
     # -- PATH B (task #26, 2026-08-09). GPS L5 ran on BOTH paths simultaneously: path A
     # (gnss*_track / gnss*_assemble / gnss*_combine) and a fully-built path B
     # (gnss*_inject / gnss*_n2assemble / gnss*_n2combine). Measured, path A costs 7x path B
