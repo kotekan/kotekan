@@ -300,10 +300,26 @@ the genuinely common part. (a) is most of the win and does not need the filter.
 
 ⚠️ **DO NOT REACH FOR `carrier_hz_resid` AS THE MEASUREMENT.** It is documented in the broker's
 own flag help as SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on noise) -- it is noise,
-and a filter fed by it would estimate nothing while looking healthy. The candidate measurement
-is the deep fold's own `deep_rate_hz` (the rate search's argmax, with `deep_rate_q` as its
-quality), which is a direct estimate of the residual frequency across the fold. Per the #30
-rule it gets characterised on-signal vs on-noise BEFORE any loop consumes it.
+and a filter fed by it would estimate nothing while looking healthy.
+
+**CORRECTION 2026-08-10, and it changes the plan: `deep_rate_hz` IS ALREADY CHARACTERISED AND
+ALREADY PLUMBED.** `--carrier-source` has defaulted to `rate` since 2026-08-04, and its flag
+help records the #30 characterisation already done: peak/median **17.9-22.0 on signal vs
+2.8-6.1 on noise**, precision **pinned to ~0.2 Hz by split-half on strong sats**, with a hard
+quality gate `--carrier-rate-min-q 10.0`. So the measurement for `f_carrier` exists, is
+validated on-signal vs on-noise, is bounded, and is gated. It does NOT need a new
+characterisation pass.
+
+What is missing is not the measurement but the CONSUMER: `carrier-gain: 0.0` in
+`gnss_chains_chord.yaml` turns the shared carrier loop off entirely. So a validated ~0.2 Hz
+carrier-rate measurement is being computed every emit on every chain and thrown away, while
+the replica's carrier phase runs open-loop from the seed. THAT is the more likely first lever
+than anything in the filter, and it is a config change.
+
+⚠️ Before touching it: 0.478 Hz of GPS seed jitter is ~2.4x the 0.2 Hz the rate measurement
+can resolve, so the loop can see it. But a 10 s seed re-pin once cut deep_snr 221 -> 17
+(continuity beat freshness), so bring the gain up from zero deliberately and A/B it, rather
+than assuming a disabled loop was disabled by accident -- find out WHY it is 0.0 first.
 
 **STILL OPEN, and not to be papered over:**
   * GPS's raw `p_pow` is ALREADY 2.78 dB against 0.43-0.94 elsewhere -- noisier BEFORE the

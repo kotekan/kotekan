@@ -235,13 +235,14 @@ class JointReceiverState:
         # averages it. Fixing GPS's seed is a separate, larger win and needs no filter.
         # Do not read a healthy f_carrier as evidence that the seed problem is gone.
         #
-        # ⚠️ THE MEASUREMENT IS THE HARD PART. carrier_hz_resid is NOT usable: the broker's
-        # own flag help documents it SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on
-        # noise). Feeding it here would produce a confident, meaningless estimate -- the
-        # exact failure mode of a self-referential phase estimator, which shows up in the
-        # VARIANCE and not the mean. deep_rate_hz (with deep_rate_q as its quality) is the
-        # candidate, and per the #30 rule it gets characterised on-signal vs on-noise
-        # BEFORE any loop consumes this state.
+        # THE MEASUREMENT. Feed `deep_rate_hz`, NOT `carrier_hz_resid`. carrier_hz_resid is
+        # documented SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on noise), so a
+        # filter fed by it produces a confident, meaningless estimate -- the failure mode of
+        # a self-referential phase estimator, which shows up in the VARIANCE, not the mean.
+        # deep_rate_hz is already characterised (--carrier-source rate, default since
+        # 2026-08-04): peak/median 17.9-22.0 on signal vs 2.8-6.1 on noise, precision ~0.2 Hz
+        # by split-half on strong sats, with the gate --carrier-rate-min-q 10.0. Pass that
+        # gate's q as the quality cut and ~0.2 Hz as sigma_hz.
         self.sigma_fcar0 = float(sigma_fcar0)
         self.q_fcar = float(q_fcar)    # Hz per sqrt(s); a GPSDO-disciplined LO, so SLOW
         self._fcar_idx = None          # row in x, or None until the first carrier update
