@@ -1673,13 +1673,11 @@ FRB:
 
     run_calc_frb2_weights:
 ###
-        kotekan_stage: calcFRB2Weights
-        cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+        kotekan_stage: cudaCalcFRB2Weights
         frb2_num_frequencies: upchan_U16_max_num_output_channels
         frb2_beam_positions: host_frb2_beam_positions_buffer
         frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
-        num_threads: 32
 ###
 #{#
         kotekan_stage: hdf5FileRead
