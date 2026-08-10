@@ -56,6 +56,7 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
     # a node down for maintenance must cost sensitivity, never the loop.
     rows = {}
     best_coh = {}   # prn -> ((deep_snr, amp_snr), row, url): strongest instance's COHERENT view
+    coh_cleared = {}  # prn -> floor-cleared per-instance deep_snrs, for the quadrature fallback
     for url in endpoints:
         try:
             got = _get("%s/get_status" % url)
@@ -90,6 +91,24 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
             key = (float(r.get("deep_snr", 0.0)), float(r.get("amp_snr", 0.0)))
             if prn not in best_coh or key > best_coh[prn][0]:
                 best_coh[prn] = (key, r, url)
+            # QUADRATURE FALLBACK input (2026-08-10). When fleet_coherent does not engage,
+            # the served deep_snr used to be this argmax -- which sits a measured 4.9 dB
+            # BELOW the fleet value, so the published series stepped 5-8 dB every time the
+            # fleet gate flickered, and at the observed 20-70% duty that mixture alone
+            # contributed ~3.5 dB of scatter (the C/N0 regression, docs 11.31).
+            # sqrt(sum snr_i^2) over floor-cleared instances is the significance of the
+            # incoherent power sum, and it lands at the fleet level (measured -0.7..+2.0 dB
+            # over 5 strong PRNs) -- CONTINUITY is what it buys; it is NOT quieter than the
+            # argmax within-state (5.0 vs 3.5 dB -- no scalar beats coherent combining, the
+            # engagement rate is the real fix, task #10).
+            # THE FLOOR-CLEARED GATE IS LOAD-BEARING: a floored deep reads ~7 on pure
+            # noise, so an ungated quadrature over 12 instances would read sqrt(12)*7 ~ 24
+            # and manufacture a detection from nothing. coherence_s > 0 is the same rule
+            # sig_of() applies, and with it the noise PRNs (0-1 cleared instances) reduce
+            # to the argmax exactly (verified on 113 polls, fixtures/fleetcap_20260810).
+            if (float(r.get("coherence_s", 0.0) or 0.0) > 0.0
+                    and float(r.get("deep_snr", 0.0)) > 0.0):
+                coh_cleared.setdefault(prn, []).append(float(r["deep_snr"]))
     out = {}
     for prn, rs in rows.items():
         # Instances free-run, so their emit phases differ by up to one emit period: take the
@@ -107,10 +126,16 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
         if E + L <= 0.0:
             continue
         bc = best_coh.get(prn)
+        _cl = coh_cleared.get(prn) or []
         out[prn] = {"disc": (E - L) / (E + L),
                     # the strongest instance's coherent row + which node it came from
                     "coh_row": bc[1] if bc else None,
                     "coh_src": bc[2] if bc else None,
+                    # quadrature over floor-cleared instances (see the comment at the
+                    # accumulator); None when < 2 instances cleared -- then the argmax IS
+                    # the honest answer and the publisher keeps it.
+                    "coh_quad": (sum(x * x for x in _cl) ** 0.5, len(_cl))
+                                if len(_cl) >= 2 else None,
                     # q = 2P/(E+L): 1.0 with no peak (all three taps equal noise power), 4.0 at
                     # a clean lock with 0.5-chip spacing. The three powers are built identically
                     # by the combiner (|sum of subband correlations|^2 / energy^2), which is what

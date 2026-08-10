@@ -375,11 +375,27 @@ class FleetPublisher:
                     # visible in the same row rather than inferred across restarts.
                     "fleet_coh_best_inst": fc["best_inst_snr"],
                 })
-            elif fc:
-                # Measured and rejected: publish the floor it failed against, so "no fleet
-                # number" is distinguishable from "fleet never looked at this PRN".
-                row.update({"fleet_coh_floor": fc["floor"],
-                            "fleet_coh_align": fc["align"]})
+            else:
+                if fc:
+                    # Measured and rejected: publish the floor it failed against, so "no
+                    # fleet number" is distinguishable from "fleet never looked at this PRN".
+                    row.update({"fleet_coh_floor": fc["floor"],
+                                "fleet_coh_align": fc["align"]})
+                # QUADRATURE FALLBACK (2026-08-10, docs 11.31). The argmax this replaces sat
+                # a measured 4.9 dB below the fleet value, so every fleet-gate flicker
+                # stepped the published series 5-8 dB -- and at the observed 20-70% duty
+                # that mixture alone contributed ~3.5 dB of C/N0 scatter. The quadrature
+                # lands at the fleet level (-0.7..+2.0 dB over 5 strong PRNs), making the
+                # series CONTINUOUS across the gate. It is not quieter within-state than
+                # the argmax (no scalar is; the engagement rate is the real fix, #10) --
+                # continuity is what it buys. The argmax stays published alongside so the
+                # A/B lives in the row, and coh_src says which population produced the
+                # number ('quad:N' vs a URL).
+                _q = v.get("coh_quad")
+                row["coh_best_inst_snr"] = c.get("deep_snr")
+                if _q is not None:
+                    row.update({"deep_snr": _q[0],
+                                "coh_src": "quad:%d" % _q[1]})
             rows.append(row)
         meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                 "present": sum(1 for r in rows if r["fleet_present"]),
