@@ -739,6 +739,18 @@ def main(argv=None, rx=None, publisher=None):
                          "satellites, so this fills quickly. Counts distinct detections, not "
                          "cycles: re-counting an unchanged detection every --interval made "
                          "this measure UPTIME rather than evidence (fixed 2026-08-10).")
+    ap.add_argument("--dr-max-solve-mad-chips", type=float, default=100.0,
+                    help="refuse the receiver-clock solve when the per-satellite offsets "
+                         "scatter by more than this (MAD, chips). A circular median over "
+                         "--dr-min-sats satellites is a MEASUREMENT only if its inputs "
+                         "agree; on a starved fleet the detections are noise, scatter "
+                         "~uniformly over the code, and their median is an arbitrary number "
+                         "that used to be snapped straight into the clock and shipped as "
+                         "every seed. Not a tuning knob -- real offsets cluster inside ~+-10 "
+                         "chips against a uniform-noise MAD of ~2557 on a 10230-chip code. "
+                         "Refusing leaves the clock UNSET, which is strictly better than "
+                         "wrong: a wrong clock also acquires nothing, and additionally "
+                         "poisons the search hints that would have recovered it (docs 11.33).")
     ap.add_argument("--nh-hint-max-age-s", type=float, default=600.0,
                     help="drop nh-offset samples older than this, and stop hinting entirely "
                          "when fewer than --nh-hint-min-samples remain. THE HINT MUST BE ABLE "
@@ -4520,6 +4532,37 @@ def main(argv=None, rx=None, publisher=None):
                     cen = sorted(((d - ref + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
                                  for _, d in offs)
                     raw = (cen[len(cen) // 2] + ref) % CODE_LEN
+                    # DO THE SATELLITES AGREE? A median over >= dr_min_sats is only a
+                    # measurement if its inputs cluster. Detections from a starved fleet are
+                    # noise, their offsets scatter ~uniformly over CODE_LEN, and the circular
+                    # median of that is an arbitrary number -- which was then accepted
+                    # unconditionally, snapped straight into dr_state["clk"], and shipped as
+                    # every satellite's seed.
+                    #
+                    # THAT IS THE OTHER HALF OF THE 2026-08-10 LOOP (docs 11.33): a wrong
+                    # clock produced wrong seeds and wrong hints, which prevented the
+                    # detections that would have corrected it, and the only escape was the
+                    # clock random-walking back onto truth (6996 -> 5095 -> 1797 -> 1555 ->
+                    # 9210 -> 134 chips over ~15 min, then a snap to 150.8 and lock). Three
+                    # broker restarts that afternoon each re-rolled this dice on a thin fleet.
+                    #
+                    # THE SEPARATION IS ENORMOUS, so the bound is not a tuning knob: real
+                    # per-sat offsets cluster inside ~+-10 chips (the joint state measures the
+                    # biases at +-5, docs 11.22 quotes +-3-7), while uniform noise over a
+                    # 10230-chip code has a MAD of ~2557. Anything from 50 to 500 separates
+                    # them; 100 is the middle of that range in log terms.
+                    _mad = sorted(abs(c - cen[len(cen) // 2]) for c in cen)[len(cen) // 2]
+                    if _mad > args.dr_max_solve_mad_chips:
+                        _log_rl("clkmad",
+                                "clock solve REFUSED: %d sats scatter MAD %.0f chips (bound "
+                                "%.0f) -- this is a median over NOISE, not a measurement; "
+                                "holding clk %s"
+                                % (len(offs), _mad, args.dr_max_solve_mad_chips,
+                                   ("%.2f" % dr_state["clk"]) if dr_state.get("clk")
+                                   is not None else "UNSET"),
+                                every_s=30.0)
+                        raw = None
+                if len(offs) >= args.dr_min_sats and raw is not None:
                     prev_raw = dr_state.get("raw_prev")
                     # A primed drift is authoritative (the GPSDO rate is a band constant):
                     # never EMA it toward pair-differences of solutions built from UNCHANGED
