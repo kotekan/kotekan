@@ -2330,3 +2330,56 @@ Until then the channel mapping can only be judged on live data.
 
 So: the offline chain is exonerated for E5b, and the fault is in the live path -- config
 wiring, node channel selection, or seeding.
+
+## 11.28 Task #31 restated: B2b nav wipe is a REPLICA problem, not a correlator problem
+
+#31 ("wire in the pilots' partners") badly understates B2b, and the measurement now says by how
+much. Over the 3.3 h soak, matched PRNs, median deep_snr:
+
+    B2a (pilot) / B2b (data)  =  7.47      (5.8-8.5 across all 7 matched PRNs)
+    E5a (pilot) / E5b (pilot) =  0.99      <- the control: same two carriers, no deficit
+
+So the band is fine and the entire gap is data-vs-pilot. 7.5x is the N^(1/4)-vs-sqrt(N) squaring
+loss for combining 1 ms chunks incoherently (1000^(1/4) = 5.6 predicted; the excess is the
+bit-phase search and the ladder's floor). ⚠️ `coherence_s` does NOT contradict this and must not
+be read as if it did: B2b certifies 0.524 s while accumulating 7.5x less signal, because that
+field reports WHICH RUNG THE LADDER SELECTED, not the coherent gain achieved. Reading it as
+"half the window, so sqrt(2)" is an error this section exists to prevent -- it was made, and
+briefly published, on 2026-08-09.
+
+**THE OBVIOUS FIX IS THE EXPENSIVE ONE.** Wiping at 1 ms means the despread emitting ~10.5
+partials per record (2048 hops = 10.4858 ms) on 195.3125-hop boundaries that do not align to
+hops, plus a bit-decision layer -- ~10x the output rate from the kernel that is already the
+scaling limiter. `navwipe_bit_records` in GnssCoherentCombiner CANNOT express it: it counts
+RECORDS PER BIT, which requires a record shorter than a symbol. That holds on the airspy
+prototype (record = 1 code period = 1 ms = 1 symbol) and on GPS L1 C/A here (50 sps -> 0.52
+symbols/record, so it would port fine the day L1 arrives), and it fails on B2b at 1000 sps.
+Another instance of the record==period coincidence.
+
+**THE CHEAPER PATH IS PREDICTION, AND MOST OF THE PIECES EXIST.** If the transmitted symbols are
+known, they can be BAKED INTO THE REPLICA exactly as the CS100 secondary already is -- and then
+the correlator does not change at all. What is predictable:
+  * the 22-symbol PRN framesync -- `beidou_bcnav3.preamble_for(prn)` today, always known;
+  * SOW and the time fields -- exactly;
+  * ephemeris/clock message types -- from BRDC, and they REPEAT UNCHANGED within a validity
+    period, which is the whole reason this is tractable;
+  * LDPC parity and CRC-24Q -- deterministic once the 486 data bits are known, so free.
+Not predictable: the message-type schedule, integrity/ionospheric/EOP content, anything
+real-time.
+
+⚠️ **PARTIAL PREDICTION IS NEARLY WORTHLESS HERE, so do not start with the easy 2.2%.** Known
+symbols only help where they are CONTIGUOUS AND DENSE: the framesync alone is 22 ms per second,
+a 2.2% duty cycle, so integrating only there throws away 98% of the energy and loses to the
+incoherent sum it replaces. The value is close to all-or-nothing -- whole frames, or nothing.
+
+WHAT IS MISSING is the ENCODE direction: beidou_bcnav3.py is decode-only (decode_nb_ldpc,
+check_crc, parse_bcnav3_ephemeris). Prediction needs a GF(64) NB-LDPC(162,81) ENCODER (deriving
+G from the shipped H is real work) plus a bit-field packer to reconstruct the exact 486 bits
+from BRDC. Then the cost moves to REGENERATION: a nav-baked code is 10.23 M chips per PRN per
+second and changes every second, against today's static 1.023 M-chip CS100 -- a host-side
+regeneration and upload problem, not a kernel one, which is a far better place for it.
+
+RECOMMENDATION: B2b is capped, not blocked -- it tracks, and it feeds tau_band alongside B2a.
+The Galileo pilot-vs-pilot pair already delivers the second-band science at full coherence, so
+this is not on the tau_band critical path. Do the encoder when B2b's 7.5x is worth it, and do it
+as a replica bake, not a correlator rewrite.
