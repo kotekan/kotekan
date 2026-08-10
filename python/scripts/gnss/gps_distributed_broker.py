@@ -4901,24 +4901,37 @@ def main(argv=None, rx=None, publisher=None):
                                  if (_jr3 is not None and (tag, prn) in _jr3._idx)
                                  else None)
                         if _joff is not None:
-                            # PLAUSIBILITY BOUND, the transferable lesson from consumer 1:
-                            # never hand the instrument a physically impossible number just
-                            # because an estimator produced it. Both offsets describe the
-                            # same receiver, so they must agree to within a few chips; a
-                            # large gap means one is broken, and the legacy path is the one
-                            # with years behind it.
-                            _d3 = ((_joff - _leg_off + _DR_MOD / 2.0) % _DR_MOD) - _DR_MOD / 2.0
+                            # ⚠️ WRAP AT THE MODULUS THE TWO ACTUALLY SHARE, AND APPLY THE
+                            # RESULT AS A DELTA. clk_now is reduced mod CODE_LEN (10230 for
+                            # L5) and so is the joint clk, but the SEED lives mod _DR_MOD
+                            # (204600 with --dr-long-code -- 20 primary periods). Three
+                            # consequences, all learned the hard way today:
+                            #   * wrapping the difference at _DR_MOD does not fold out a
+                            #     CODE_LEN wrap, so when clk_now crosses zero the shadow
+                            #     read -10058 chips of "disagreement" on every satellite at
+                            #     once (observed 16:58, and the giveaway was that it was
+                            #     COMMON to all six -- a per-sat estimator error cannot be);
+                            #   * the plausibility bound would then REFUSE the joint offset
+                            #     for the whole wrap neighbourhood -- a gate failing
+                            #     periodically for a reason unrelated to estimator health;
+                            #   * and SUBSTITUTING _joff for _leg_off would displace the
+                            #     seed by a whole primary period, because the two are only
+                            #     equivalent mod CODE_LEN while the seed cares mod _DR_MOD.
+                            # So the joint state contributes only the SMALL correction it
+                            # actually measures, and the legacy path keeps ownership of
+                            # which long-code segment we are in.
+                            _d3 = ((_joff - _leg_off + CODE_LEN / 2.0) % CODE_LEN) - CODE_LEN / 2.0
                             _ok3 = abs(_d3) <= args.joint_slew_max_chips
                             _log_rl("jslew-%d" % prn,
                                     "SEED-OFFSET PRN %d (%s): joint %+.3f vs legacy %+.3f "
-                                    "chips (diff %+.3f, sigma %.3f)%s"
+                                    "chips (diff %+.3f mod %.0f, sigma %.3f)%s"
                                     % (prn, "slew" if _slew else "cp0", _joff, _leg_off,
-                                       _d3, _jr3.sigma((tag, prn)) or 0.0,
+                                       _d3, CODE_LEN, _jr3.sigma((tag, prn)) or 0.0,
                                        "" if _ok3 else "  REFUSED (> %.1f chips)"
                                        % args.joint_slew_max_chips),
                                     every_s=60.0)
                             if "slew" in joint_consume and _ok3:
-                                _off = _joff
+                                _off = _leg_off + _d3
                         cp0 = ((cp_predicted(v, t_now_abs) + _off)
                                - t_now_abs * args.chip_rate_hz
                                  * (1.0 + args.code_doppler_sign
