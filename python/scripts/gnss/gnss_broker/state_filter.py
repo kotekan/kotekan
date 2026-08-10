@@ -154,7 +154,7 @@ class JointReceiverState:
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013,
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5, escape_spread=5.0,
-                 birth_max=50.0, gauge_max_b=60.0,
+                 birth_max=50.0, gauge_max_b=60.0, escape_max_step=100.0,
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
                  sigma_fcar0=50.0, q_fcar=0.01):
         import numpy as np
@@ -186,6 +186,12 @@ class JointReceiverState:
         # agrees with itself, not merely that it is long (2026-08-10; see update()).
         self._rej_hist = {}            # key -> recent rejected innovations (rolling)
         self.escape_spread = float(escape_spread)
+        # An escape may believe a run that AGREES; it may not believe one that is
+        # physically impossible. Same separation argument as the clock solve's MAD
+        # bound: real per-sat offsets cluster inside ~+-10 chips while a wrap alias is
+        # thousands, so anything from 50 to 500 separates them.
+        self.escape_max_step = float(escape_max_step)
+        self.diverged = False   # latched: an escape was refused as non-physical
         self.escapes = 0
         self.birth_max = birth_max     # refuse to BIRTH a sat implausibly far from clk
         self.gauge_max_b = gauge_max_b # a wild bias does not get a vote in the gauge
@@ -540,6 +546,30 @@ class JointReceiverState:
                                    "this sat is feeding noise"
                                    % (self._key_str(key), self._rej_run[key], spread,
                                       self.escape_spread))
+                    return None
+                # HOW BIG A STEP IS THE RUN ASKING US TO BELIEVE? The consistency test above
+                # only asks whether the rejected measurements agree with EACH OTHER. They
+                # can agree perfectly and still imply a step that is not physical: on a
+                # 10230-chip code, a jump of thousands is a WRAP ALIAS, not a clock. Once
+                # believed it is applied at near-unit gain (P[0,0] += 25 against R = 0.09),
+                # so the state moves by essentially the whole innovation -- and then every
+                # subsequent measurement disagrees, producing more runs, more escapes, and a
+                # free-running state.
+                #
+                # MEASURED 2026-08-10 22:22-22:45 UTC: escapes believing -2766, +4521 and
+                # +2669 chip steps drove clk to +169517 chips at a rate of +127.66 chips/s
+                # (12.5 ppm, against a GPS-disciplined truth of 4e-5 ppm), b_sat to +-300
+                # chips, and 1050 rejections against 280 updates -- the filter deaf and
+                # free-running, 90 s after a clean start.
+                if abs(innov) > self.escape_max_step:
+                    self.rejected += 1
+                    self.diverged = True
+                    self._note("ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips but "
+                               "implying a %+.1f chip step (bound %.0f on a %.0f-chip code) "
+                               "-- that is a wrap alias, not a clock. The STATE is wrong, "
+                               "not the sky; it needs a re-bootstrap, not a jump"
+                               % (self._key_str(key), self._rej_run[key], spread, innov,
+                                  self.escape_max_step, self.L))
                     return None
                 self._note("ESCAPE %s: %d consecutive rejections agreeing to %.2f chips "
                            "-- believing a %+.1f chip step and inflating P"
