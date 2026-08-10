@@ -1785,9 +1785,25 @@ def main(argv=None, rx=None, publisher=None):
 
     def _joint_state(rx_, band, a):
         """The joint state IF it is fit to be consumed, else None (never raises: a consumer
-        must degrade to the old estimator, not take the broker down)."""
+        must degrade to the old estimator, not take the broker down).
+
+        ⚠️ joint_receiver(), NOT joint(). THE READER AND THE WRITER MUST NAME THE SAME
+        OBJECT. There are two states on the Receiver: joint(band) keys one per BAND (P2),
+        joint_receiver() keys the single receiver-wide one (P3, the one with tau_band). The
+        solve writes to joint_receiver(); this read used joint(), which is created EMPTY on
+        first access and populated by nothing. So every P2b consumer -- all of them go
+        through here -- was wired to a dead object: len(_idx) is 0, it never clears
+        joint_min_sats, this returns None, and the caller silently falls back to the legacy
+        estimator. FOREVER, and without a single log line, because falling back is the
+        designed behaviour when the state is not yet fit to consume.
+
+        That is the failure mode to watch for when a refactor introduces a second object
+        with a near-identical name: consumer 1 has been "live" in the sense of being written
+        and reviewed since 2026-08-09 and could never once have fired. Found 2026-08-10 only
+        because consumer 3's shadow log printed nothing and the reason had to be chased
+        (docs 11.31)."""
         try:
-            js = rx_.joint(band, code_len=CODE_LEN)
+            js = rx_.joint_receiver(band, CODE_LEN)
             return js if len(js._idx) >= a.joint_min_sats else None
         except Exception:
             return None
@@ -4769,6 +4785,35 @@ def main(argv=None, rx=None, publisher=None):
                 if dr_state["clk"] is not None:
                     clk_now = (dr_state["clk"]
                                + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
+                    # -- P2b CONSUMER 3, THE SHADOW ARM -------------------------------------
+                    # Compare the two offset ESTIMATORS directly, over every satellite the
+                    # joint state holds, independent of whether any seeding path ran this
+                    # cycle. The first cut logged inside the seeding loop and printed
+                    # nothing, because that loop skips `prn in best` -- every DETECTED
+                    # satellite -- while the joint state is fed from `best` and so holds
+                    # only detected satellites. The two sets are very nearly disjoint by
+                    # construction, and the overlap is only the handful in transition, so a
+                    # comparison gated on the loop measures the transition rate rather than
+                    # the estimators. An A/B must not depend on which code path happened to
+                    # execute.
+                    _jr3 = _joint_state(rx, band_id, args)
+                    if _jr3 is not None and now_w >= dr_state.get("jslew_log_next", 0.0):
+                        dr_state["jslew_log_next"] = now_w + 30.0
+                        _cmp = []
+                        for (_ct, _p) in list(_jr3._idx):
+                            if _ct != tag:
+                                continue
+                            _lo = clk_now + bsat.get(_p, now_w)
+                            _jo = _jr3.predicted((_ct, _p))
+                            _dd = ((_jo - _lo + _DR_MOD / 2.0) % _DR_MOD) - _DR_MOD / 2.0
+                            _cmp.append((_p, _dd, _jr3.sigma((_ct, _p)) or 0.0))
+                        if _cmp:
+                            _cmp.sort(key=lambda x: -abs(x[1]))
+                            _log("SEED-OFFSET %s: joint-vs-legacy over %d sat(s), "
+                                 "median %+.3f chips | %s"
+                                 % (band_id, len(_cmp),
+                                    sorted(abs(c[1]) for c in _cmp)[len(_cmp) // 2],
+                                    " ".join("PRN%d %+.2f(s%.2f)" % c for c in _cmp[:6])))
                     planned = []
                     for (ctag, prn), v in sorted(pd.items()):
                         # SIGNAL CAPABILITY first (see --dr-min-prn / --signal-capability): a
