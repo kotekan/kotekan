@@ -78,7 +78,8 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
     num_frequencies = config.get<int>(unique_name, "num_frequencies");
 
     assert(samples_per_packet == _timesamples_per_frb_packet);
-    assert(packets_per_stream == 8); // as in CHIME production, more here, but will chunk up like this
+    assert(packets_per_stream
+           == 8); // as in CHIME production, more here, but will chunk up like this
 
     assert(num_frequencies % _nfreq_coarse == 0);
     if (_ping_dead_threshold != std::chrono::seconds::zero()) {
@@ -156,7 +157,8 @@ void frbNetworkSend::main_thread() {
     uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
     if (beams_buffer == nullptr)
         return;
-    float16_t* offsetscale_buffer = (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
+    float16_t* offsetscale_buffer =
+        (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
     if (offsetscale_buffer == nullptr)
         return;
 
@@ -166,8 +168,10 @@ void frbNetworkSend::main_thread() {
     const auto offsetscale_frame_desc = offsetscale_buf->get_frame_desc<kotekan::GenericNDArray>();
 
     // check that we have cast to the correct type
-    assert(kotekan::GetDataType_v<std::remove_reference_t<decltype(*beams_buffer)>> == beams_frame_desc->get_value_datatype());
-    assert(kotekan::GetDataType_v<std::remove_reference_t<decltype(*offsetscale_buffer)>> == offsetscale_frame_desc->get_value_datatype());
+    assert(kotekan::GetDataType_v<std::remove_reference_t<decltype(*beams_buffer)>>
+           == beams_frame_desc->get_value_datatype());
+    assert(kotekan::GetDataType_v<std::remove_reference_t<decltype(*offsetscale_buffer)>>
+           == offsetscale_frame_desc->get_value_datatype());
 
     // 384 is integration factor and 2560 fpga sampling time in ns
     const uint32_t fpga_ns = tel.seq_length_nsec();
@@ -186,17 +190,21 @@ void frbNetworkSend::main_thread() {
     in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::DataType::uint8, "I3",
         std::vector<ptrdiff_t>{1, _total_nbeams / _nbeams, num_frequencies / _nfreq_coarse,
-         16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse,
-         _factor_upchan_out, _timesamples_per_frb_packet},
-        std::vector<kotekan::Symbol>{"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "Fbarlo16", "Ttildelo16"},
-        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16, 1, 16, 1, 1}));
+                               16 /*TODO: get from option? */, _nbeams, _nfreq_coarse,
+                               _factor_upchan_out, _timesamples_per_frb_packet},
+        std::vector<kotekan::Symbol>{"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4",
+                                     "Fbar16_lo4", "Fbarlo16", "Ttildelo16"},
+        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16,
+                               1, 16, 1, 1}));
 
     offsetscale_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::DataType::float16, "I3_offsetscale",
         std::vector<ptrdiff_t>{1, _total_nbeams / _nbeams, num_frequencies / _nfreq_coarse,
-         16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse, 2},
-        std::vector<kotekan::Symbol>{"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"},
-        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16, 1, 16, 1}));
+                               16 /*TODO: get from option? */, _nbeams, _nfreq_coarse, 2},
+        std::vector<kotekan::Symbol>{"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4",
+                                     "Fbar16_lo4", "offset/scale"},
+        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16,
+                               1, 16, 1}));
 
     // waiting for at least two frames for the buffer to fill up takes care of the random delay at
     // the start.
@@ -285,144 +293,160 @@ void frbNetworkSend::main_thread() {
         DEBUG("Beam offset: {:d}", local_beam_offset);
 
         // r4 is e_stream (or link) below
-        for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse; ++fbar64) // TODO: think about swapping this with the ttilde16_low16_by_packets_per_stream loop to keep all frequencies closer together in the network stream
-        for (int ttilde16_low16_by_packets_per_stream = 0; ttilde16_low16_by_packets_per_stream < 16/packets_per_stream; ++ttilde16_low16_by_packets_per_stream)
-        for (int frame = 0; frame < packets_per_stream; frame++) {
-              const int nstreams = _total_nbeams / _nbeams;
-              assert(nstreams == 256); 
-              for (int stream = 0; stream < nstreams; stream++) {
-                  int e_stream =
-                      (my_sequence_id + stream)
-                      % (_total_nbeams
-                         / _nbeams); // making sure no two nodes send packets to same L1 node
-                  assert(_total_nbeams / _nbeams == nstreams);
-                  CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
+        for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse;
+             ++fbar64) // TODO: think about swapping this with the
+                       // ttilde16_low16_by_packets_per_stream loop to keep all frequencies closer
+                       // together in the network stream
+            for (int ttilde16_low16_by_packets_per_stream = 0;
+                 ttilde16_low16_by_packets_per_stream < 16 / packets_per_stream;
+                 ++ttilde16_low16_by_packets_per_stream)
+                for (int frame = 0; frame < packets_per_stream; frame++) {
+                    const int nstreams = _total_nbeams / _nbeams;
+                    assert(nstreams == 256);
+                    for (int stream = 0; stream < nstreams; stream++) {
+                        int e_stream =
+                            (my_sequence_id + stream)
+                            % (_total_nbeams
+                               / _nbeams); // making sure no two nodes send packets to same L1 node
+                        assert(_total_nbeams / _nbeams == nstreams);
+                        CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
 
-                  for (int link = 0; link < number_of_l1_links; link++) {
-                      if (e_stream
-                          == local_beam_offset / 4 + link) { // RH: not sure what the `/4` means.
-                          DestIpSocket& dst = stream_dest.at(link);
-                          if (dst.active
-                              && (_ping_dead_threshold == std::chrono::seconds::zero()
-                                  || dst.live)) {
+                        for (int link = 0; link < number_of_l1_links; link++) {
+                            if (e_stream
+                                == local_beam_offset / 4
+                                       + link) { // RH: not sure what the `/4` means.
+                                DestIpSocket& dst = stream_dest.at(link);
+                                if (dst.active
+                                    && (_ping_dead_threshold == std::chrono::seconds::zero()
+                                        || dst.live)) {
 
-                              const int r4 = e_stream;
-                              const int ttilde16_low16 = ttilde16_low16_by_packets_per_stream * packets_per_stream + frame;
-                              const int frb_packet_num =
-                                r4 * num_frequencies / _nfreq_coarse * 16 +
-                                fbar64 * 16 +
-                                ttilde16_low16;
+                                    const int r4 = e_stream;
+                                    const int ttilde16_low16 =
+                                        ttilde16_low16_by_packets_per_stream * packets_per_stream
+                                        + frame;
+                                    const int frb_packet_num =
+                                        r4 * num_frequencies / _nfreq_coarse * 16 + fbar64 * 16
+                                        + ttilde16_low16;
 
-                              // TODO: this is mostly constant and could be mostly
-                              // moved outside of this inner loop
-                              static_assert(sizeof(FRBHeader) == 32);
-                              const size_t variable_size_part =
-                                  sizeof(uint16_t) * _nbeams +       // beam_ids
-                                  sizeof(uint16_t) * _nfreq_coarse + // coarse_freq_ids
-                                  // TODO: see how the quantizer generates these
-                                  sizeof(float) * _nbeams * _nfreq_coarse + // scale
-                                  sizeof(float) * _nbeams * _nfreq_coarse;  // offset
-                              std::vector<char> header_buf(sizeof(FRBHeader)
-                                                           + variable_size_part);
+                                    // TODO: this is mostly constant and could be mostly
+                                    // moved outside of this inner loop
+                                    static_assert(sizeof(FRBHeader) == 32);
+                                    const size_t variable_size_part =
+                                        sizeof(uint16_t) * _nbeams +       // beam_ids
+                                        sizeof(uint16_t) * _nfreq_coarse + // coarse_freq_ids
+                                        // TODO: see how the quantizer generates these
+                                        sizeof(float) * _nbeams * _nfreq_coarse + // scale
+                                        sizeof(float) * _nbeams * _nfreq_coarse;  // offset
+                                    std::vector<char> header_buf(sizeof(FRBHeader)
+                                                                 + variable_size_part);
 
-                              FRBHeader& header(
-                                  *reinterpret_cast<FRBHeader*>(&header_buf.front()));
-                              header = FRBHeader{
-                                  .protocol_version = 2,
-                                  .data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out
-                                                 * _timesamples_per_frb_packet,
-                                  .fpga_counts_per_sample =
-                                      static_cast<uint16_t>(time_downsampling_fpga),
-                                  .fpga0_ns = static_cast<uint64_t>(
-                                      tel.to_time_ns(0)), // a constant over the run
-                                  .fpga_count =
-                                      metadata->get_fpga_seq_num()
-                                      + frame * _timesamples_per_frb_packet
-                                            * static_cast<uint64_t>(time_downsampling_fpga),
-                                  .nbeams = _nbeams,
-                                  .nfreq_coarse = _nfreq_coarse, // 4
-                                  .nupfreq = _factor_upchan_out,
-                                  .ntsamp = _timesamples_per_frb_packet};
+                                    FRBHeader& header(
+                                        *reinterpret_cast<FRBHeader*>(&header_buf.front()));
+                                    header = FRBHeader{
+                                        .protocol_version = 2,
+                                        .data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out
+                                                       * _timesamples_per_frb_packet,
+                                        .fpga_counts_per_sample =
+                                            static_cast<uint16_t>(time_downsampling_fpga),
+                                        .fpga0_ns = static_cast<uint64_t>(
+                                            tel.to_time_ns(0)), // a constant over the run
+                                        .fpga_count =
+                                            metadata->get_fpga_seq_num()
+                                            + frame * _timesamples_per_frb_packet
+                                                  * static_cast<uint64_t>(time_downsampling_fpga),
+                                        .nbeams = _nbeams,
+                                        .nfreq_coarse = _nfreq_coarse, // 4
+                                        .nupfreq = _factor_upchan_out,
+                                        .ntsamp = _timesamples_per_frb_packet};
 
-                              uint16_t* beam_ids = reinterpret_cast<uint16_t*>(&header + 1);
-                              // beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
-                              for(int b = 0; b < _nbeams; ++b) {
-                                const int beam_id = e_stream * _nbeams + b;
-                                beam_ids[b] =  (beam_id) % 256 + (int((beam_id) / 256) * 1000);
-                              }
+                                    uint16_t* beam_ids = reinterpret_cast<uint16_t*>(&header + 1);
+                                    // beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
+                                    for (int b = 0; b < _nbeams; ++b) {
+                                        const int beam_id = e_stream * _nbeams + b;
+                                        beam_ids[b] =
+                                            (beam_id) % 256 + (int((beam_id) / 256) * 1000);
+                                    }
 
-                              uint16_t* coarse_freq_ids =
-                                  reinterpret_cast<uint16_t*>(beam_ids + _nbeams);
-                              // for unchannelized data coarse_freq holds the
-                              // source frequency for each fine channel, so
-                              // repeats _factor_upchan_out times
-                              for(int f = 0; f < _nfreq_coarse; ++f) {
-                                  coarse_freq_ids[f] = in_coarse_freq.at((fbar64 * _nfreq_coarse + f) * _factor_upchan_out);
-                                  for(int ff = 0; ff < _factor_upchan_out; ++ff) {
-                                      assert(coarse_freq_ids[f] == in_coarse_freq.at((fbar64 * _nfreq_coarse + f) * _factor_upchan_out + ff));
-                                  }
-                              }
+                                    uint16_t* coarse_freq_ids =
+                                        reinterpret_cast<uint16_t*>(beam_ids + _nbeams);
+                                    // for unchannelized data coarse_freq holds the
+                                    // source frequency for each fine channel, so
+                                    // repeats _factor_upchan_out times
+                                    for (int f = 0; f < _nfreq_coarse; ++f) {
+                                        coarse_freq_ids[f] = in_coarse_freq.at(
+                                            (fbar64 * _nfreq_coarse + f) * _factor_upchan_out);
+                                        for (int ff = 0; ff < _factor_upchan_out; ++ff) {
+                                            assert(coarse_freq_ids[f]
+                                                   == in_coarse_freq.at((fbar64 * _nfreq_coarse + f)
+                                                                            * _factor_upchan_out
+                                                                        + ff));
+                                        }
+                                    }
 
-                              float* scale =
-                                  reinterpret_cast<float*>(coarse_freq_ids + _nfreq_coarse);
-                              float* offset =
-                                  reinterpret_cast<float*>(scale + _nbeams * _nfreq_coarse);
-                              for (int b = 0; b < _nbeams; ++b) {
-                                  for (int f = 0; f < _nfreq_coarse; ++f) {
-                                      const size_t idx_out = b * _nfreq_coarse + f;
-                                      const size_t idx_in = frb_packet_num * _nbeams * _nfreq_coarse + idx_out;
-                                      assert(idx_out < _nbeams * _nfreq_coarse);
-                                      assert(idx_in < offsetscale_buf->frame_size / sizeof(*offsetscale_buffer) / 2);
+                                    float* scale =
+                                        reinterpret_cast<float*>(coarse_freq_ids + _nfreq_coarse);
+                                    float* offset =
+                                        reinterpret_cast<float*>(scale + _nbeams * _nfreq_coarse);
+                                    for (int b = 0; b < _nbeams; ++b) {
+                                        for (int f = 0; f < _nfreq_coarse; ++f) {
+                                            const size_t idx_out = b * _nfreq_coarse + f;
+                                            const size_t idx_in =
+                                                frb_packet_num * _nbeams * _nfreq_coarse + idx_out;
+                                            assert(idx_out < _nbeams * _nfreq_coarse);
+                                            assert(idx_in < offsetscale_buf->frame_size
+                                                                / sizeof(*offsetscale_buffer) / 2);
 
-                                      offset[idx_out] =
-                                          static_cast<float>(offsetscale_buffer[2 * idx_in + 0]);
-                                      scale[idx_out] =
-                                          static_cast<float>(offsetscale_buffer[2 * idx_in + 1]);
-                                  }
-                              }
+                                            offset[idx_out] = static_cast<float>(
+                                                offsetscale_buffer[2 * idx_in + 0]);
+                                            scale[idx_out] = static_cast<float>(
+                                                offsetscale_buffer[2 * idx_in + 1]);
+                                        }
+                                    }
 
-                              assert(reinterpret_cast<char*>(offset + _nbeams * _nfreq_coarse)
-                                     == &*header_buf.cend());
+                                    assert(reinterpret_cast<char*>(offset + _nbeams * _nfreq_coarse)
+                                           == &*header_buf.cend());
 
-                              struct iovec msg_iov[2] = {
-                                  {.iov_base = header_buf.data(), .iov_len = header_buf.size()},
-                                  {.iov_base =
-                                       &beams_buffer[frb_packet_num * header.data_nbytes],
-                                   .iov_len = static_cast<size_t>(header.data_nbytes)},
-                              };
-                              struct msghdr hdr = {.msg_name = (void*)&dst.addr,
-                                                   .msg_namelen = sizeof(dst.addr),
-                                                   .msg_iov = msg_iov,
-                                                   .msg_iovlen =
-                                                       sizeof(msg_iov) / sizeof(msg_iov[0]),
-                                                   .msg_control = nullptr,
-                                                   .msg_controllen = 0,
-                                                   .msg_flags = 0};
-                              ssize_t expected_send_len = 0;
-                              for(size_t i = 0; i < hdr.msg_iovlen; ++i)
-                                  expected_send_len += hdr.msg_iov[i].iov_len;
+                                    struct iovec msg_iov[2] = {
+                                        {.iov_base = header_buf.data(),
+                                         .iov_len = header_buf.size()},
+                                        {.iov_base =
+                                             &beams_buffer[frb_packet_num * header.data_nbytes],
+                                         .iov_len = static_cast<size_t>(header.data_nbytes)},
+                                    };
+                                    struct msghdr hdr = {.msg_name = (void*)&dst.addr,
+                                                         .msg_namelen = sizeof(dst.addr),
+                                                         .msg_iov = msg_iov,
+                                                         .msg_iovlen =
+                                                             sizeof(msg_iov) / sizeof(msg_iov[0]),
+                                                         .msg_control = nullptr,
+                                                         .msg_controllen = 0,
+                                                         .msg_flags = 0};
+                                    ssize_t expected_send_len = 0;
+                                    for (size_t i = 0; i < hdr.msg_iovlen; ++i)
+                                        expected_send_len += hdr.msg_iov[i].iov_len;
 
-                              const ssize_t send_len =
-                                  sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
-                              if (send_len != expected_send_len) {
-                                  char ip_addr[64] = "<unknown>";
-                                  ERROR("Error sending to {:s}: {:d}",
-                                        inet_ntop(AF_INET, hdr.msg_name, ip_addr, sizeof(ip_addr)),
-                                        send_len);
-                              }
-                          }
-                      }
-                  }
-                  // TODO: this may need adjustment since we are sending more data
-                  long wait_per_packet = (long)(50000);
+                                    const ssize_t send_len =
+                                        sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
+                                    if (send_len != expected_send_len) {
+                                        char ip_addr[64] = "<unknown>";
+                                        ERROR("Error sending to {:s}: {:d}",
+                                              inet_ntop(AF_INET, hdr.msg_name, ip_addr,
+                                                        sizeof(ip_addr)),
+                                              send_len);
+                                    }
+                                }
+                            }
+                        }
+                        // TODO: this may need adjustment since we are sending more data
+                        long wait_per_packet = (long)(50000);
 
-                  // 61521.25 is the theoretical seperation of packets in ns
-                  // I have used 58880 for convinence and also hope this will take care for
-                  // any clock glitches.
+                        // 61521.25 is the theoretical seperation of packets in ns
+                        // I have used 58880 for convinence and also hope this will take care for
+                        // any clock glitches.
 
-                  add_nsec(t1, wait_per_packet);
-            }
-        }
+                        add_nsec(t1, wait_per_packet);
+                    }
+                }
 
         in_buf->mark_frame_empty(unique_name, frame_id);
         offsetscale_buf->mark_frame_empty(unique_name, frame_id);

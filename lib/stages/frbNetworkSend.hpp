@@ -108,13 +108,13 @@ private:
         /// Regular constructor used with data from the config file
         DestIpSocket(std::string host, sockaddr_in addr, int s, bool active = true) :
             host(std::move(host)), addr(std::move(addr)), sending_socket(s), active(active),
-            live(false) {};
+            live(false){};
 
 
         /// Move constructor is necessary for inserting into standard containers
         DestIpSocket(DestIpSocket&& other) :
             host(std::move(other.host)), addr(std::move(other.addr)),
-            sending_socket(other.sending_socket), active(other.active), live(other.live.load()) {};
+            sending_socket(other.sending_socket), active(other.active), live(other.live.load()){};
 
         //@{
         /// host address as a std::string and a `sockaddr` structure

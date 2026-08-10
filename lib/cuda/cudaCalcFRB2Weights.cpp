@@ -78,8 +78,7 @@ public:
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         frb2_beam_positions_buffer(get_buffer("frb2_beam_positions")),
-        W2_buffer(get_buffer("frb2_weights")),
-        metadata_buffer(get_buffer("metadata"))
+        W2_buffer(get_buffer("frb2_weights")), metadata_buffer(get_buffer("metadata"))
     //
     {
         assert(frb2_beam_positions_buffer);
@@ -111,12 +110,13 @@ public:
         const Telescope& telescope = Telescope::instance();
 
         // Upchannelization schedule
-        uint8_t const * const metadata_frame = metadata_buffer->wait_for_full_frame(unique_name, 0);
-        if(metadata_frame == nullptr)
+        uint8_t const* const metadata_frame = metadata_buffer->wait_for_full_frame(unique_name, 0);
+        if (metadata_frame == nullptr)
             return;
         const auto& upchan_schedule = *[&]() {
             const auto coarse_freq = get_chord_metadata(metadata_buffer, 0)->get_coarse_freq();
-            return &UpchannelizationSchedule::instance(config, upchannelization_schedule_name, coarse_freq);
+            return &UpchannelizationSchedule::instance(config, upchannelization_schedule_name,
+                                                       coarse_freq);
         }();
         metadata_buffer->mark_frame_empty(unique_name, 0);
         metadata_buffer->unregister_consumer(unique_name);

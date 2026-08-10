@@ -219,7 +219,7 @@ host_dummy_voltage_buffer:
     kotekan_buffer: ndarray
     num_frames: 1
     value_type: int4x2_swapped_withoffset
-    extents: [1, 1, 1 ]
+    extents: [1, 1, 1]
     quantity_name: "E"
     dimnames: ["F", "T", "E"]
     dimscalings: [1, 1, 1]
@@ -231,7 +231,7 @@ run_set_dummy_voltage:
     value: 0x88
     array_shape: [1, 1, 1]
     dim_scaling: [1, 1, 1]
-    dim_name: [ "F", "T", "E" ]
+    dim_name: ["F", "T", "E"]
     num_local_freq: 4 # len of frequency_channels
     manual_freq_ids: *frequency_channels_list
     out_buf: host_dummy_voltage_buffer
