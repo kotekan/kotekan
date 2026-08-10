@@ -734,8 +734,22 @@ def main(argv=None, rx=None, publisher=None):
                          "own nh_hint_span; this only sizes the LOG. The +-2 spread on a "
                          "deterministic quantity is an OPEN anomaly, not an accepted tolerance.")
     ap.add_argument("--nh-hint-min-samples", type=int, default=6,
-                    help="detections pooled before the nh offset is trusted and hints are sent. "
-                         "The constant is common to all satellites, so this fills quickly.")
+                    help="DISTINCT detections (by ref_hop) pooled before the nh offset is "
+                         "trusted and hints are sent. The constant is common to all "
+                         "satellites, so this fills quickly. Counts distinct detections, not "
+                         "cycles: re-counting an unchanged detection every --interval made "
+                         "this measure UPTIME rather than evidence (fixed 2026-08-10).")
+    ap.add_argument("--nh-hint-max-age-s", type=float, default=600.0,
+                    help="drop nh-offset samples older than this, and stop hinting entirely "
+                         "when fewer than --nh-hint-min-samples remain. THE HINT MUST BE ABLE "
+                         "TO EXPIRE. It narrows the search to +-nh_hint_span of 20 overlay "
+                         "phases, so a WRONG offset points the scan away from the signal and "
+                         "no detection can arrive to correct it -- a closed loop whose only "
+                         "escape was the code clock random-walking back onto truth by chance "
+                         "(observed 2026-08-10: ~15 min of self-reinforcing outage that read "
+                         "as a frontend sensitivity loss, docs 11.33). Default 600 s is ~half "
+                         "the 1276 s per-PRN revisit, so a healthy fleet always has fresh "
+                         "samples and only a genuinely starved one widens.")
     ap.add_argument("--publish-port", type=int, default=0,
                     help="serve the FLEET-MERGED per-PRN state on this port (0 = off): "
                          "GET /get_status returns rows in GnssCoherentCombiner's schema, so "
@@ -1994,7 +2008,10 @@ def main(argv=None, rx=None, publisher=None):
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
     last_dets = []      # most recent raw /get_detections, re-served by the publisher so
                         # the viewer has ONE origin for both search and combiner data
-    nh_off_hist = []    # pooled (predicted - reported) samples: ONE receiver-clock constant
+    nh_off_hist = []    # pooled (t, predicted - reported): ONE receiver-clock constant.
+                        # TIMESTAMPED so the offset can EXPIRE -- see the accumulator.
+    nh_last_rh = {}     # prn -> ref_hop already folded in, so a stale detection cannot be
+                        # re-counted every cycle and fake a full window of agreement
     nh_offset = [None]  # the calibrated constant, once enough samples agree
     nh_seen = {}        # prn -> (nh, ref_hop) last REPORTED by the search: calibrates the offset
                         # as its own alignment hint, so nothing external has to be trusted
@@ -2851,18 +2868,48 @@ def main(argv=None, rx=None, publisher=None):
                         return int(round((_nh2.gpst_of_utc(_t) - _v[3] / _nh2.C_LIGHT
                                           + (_v[4] if len(_v) > 4 else 0.0)) / _per)) % args.nh_overlay_len
                     # (a) re-measure the constant from every fresh detection we have
+                    #
+                    # ⚠️ "FRESH" MEANS A NEW DETECTION, NOT A NEW CYCLE. This loop used to
+                    # append every nh_seen entry every cycle, so an unchanged detection was
+                    # re-appended every --interval seconds and the 64-sample window filled
+                    # with the SAME value repeated. nh_hint_min_samples then read that as 64
+                    # independent confirmations of an offset that might rest on one stale
+                    # detection -- a sample count that measures uptime rather than evidence.
+                    # ref_hop identifies the detection, so admit a PRN only when its ref_hop
+                    # has actually moved.
+                    #
+                    # AND THE HISTORY AGES. The comment at nh_seen's refresh says a wrong hint
+                    # is "recoverable -- the hint expires and the full scan returns", but
+                    # nothing implemented that expiry: nh_offset kept its last value forever
+                    # and the ±2-of-20 narrowing kept being pushed. That closes a loop with no
+                    # restoring force -- bad clock -> bad hint -> search narrowed onto the
+                    # wrong overlay phase -> no detections -> the clock cannot be re-solved --
+                    # and the only escape is the code clock random-walking back onto truth by
+                    # chance. Observed 2026-08-10 17:06-17:21: the clock wandered
+                    # 6996 -> 5095 -> 1797 -> 1555 -> 9210 -> 134 chips and only then snapped
+                    # to 150.8 and locked, ~15 min of a self-reinforcing outage that read as a
+                    # frontend sensitivity loss (docs 11.33).
                     for _p, (_nh, _rh) in nh_seen.items():
-                        if _p not in pred:
+                        if _p not in pred or nh_last_rh.get(_p) == _rh:
                             continue
+                        nh_last_rh[_p] = _rh
                         _t = utc0_sample0 + _rh / args.hops_per_sec
-                        nh_off_hist.append((_pred_nh(_p, _t) - _nh) % args.nh_overlay_len)
+                        nh_off_hist.append((t0, (_pred_nh(_p, _t) - _nh) % args.nh_overlay_len))
                     del nh_off_hist[:-64]
+                    _fresh = [o for (_ts, o) in nh_off_hist
+                              if t0 - _ts <= args.nh_hint_max_age_s]
+                    if len(_fresh) < args.nh_hint_min_samples and nh_offset[0] is not None:
+                        _log("nh hint EXPIRED: %d sample(s) inside %.0f s (need %d) -- "
+                             "dropping the offset so the search widens instead of staying "
+                             "narrowed on a stale one"
+                             % (len(_fresh), args.nh_hint_max_age_s, args.nh_hint_min_samples))
+                        nh_offset[0] = None
                     # (b) circular median: the offsets cluster, so rotate to the mode before
                     # taking it, or a cluster straddling the 0/20 wrap averages to nonsense.
-                    if len(nh_off_hist) >= args.nh_hint_min_samples:
-                        _mode = max(set(nh_off_hist), key=nh_off_hist.count)
+                    if len(_fresh) >= args.nh_hint_min_samples:
+                        _mode = max(set(_fresh), key=_fresh.count)
                         _rot = [((o - _mode + args.nh_overlay_len // 2) % args.nh_overlay_len)
-                                - args.nh_overlay_len // 2 for o in nh_off_hist]
+                                - args.nh_overlay_len // 2 for o in _fresh]
                         _rot.sort()
                         nh_offset[0] = (_mode + _rot[len(_rot) // 2]) % args.nh_overlay_len
                     # (c) hint EVERY visible sat, detected or not, at a hop the stage can
@@ -2874,7 +2921,7 @@ def main(argv=None, rx=None, publisher=None):
                                          ref_hop=_rh_now)
                                     for _p in pred if pred[_p][2] >= args.mask_deg]
                         _log_rl("nhhint", "nh hint: offset %d (%d samples) -> %d sat(s), span %d"
-                                % (nh_offset[0], len(nh_off_hist), len(nh_hints),
+                                % (nh_offset[0], len(_fresh), len(nh_hints),
                                    args.nh_hint_span), every_s=60.0)
                 except Exception as e:
                     _log_rl("nhhint-err", "nh hint failed: %s" % e, every_s=60.0)
