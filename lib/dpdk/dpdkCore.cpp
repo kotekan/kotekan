@@ -33,7 +33,6 @@
 #include <stdio.h>                 // for fprintf, NULL, size_t, stderr
 #include <stdlib.h>                // for free, malloc
 #include <string.h>                // for memset
-#include <time.h>                  // for clock_gettime, timespec
 #include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
 #include <vector>                  // for vector
@@ -377,7 +376,10 @@ void dpdkCore::main_thread() {
         uint32_t waited_ms = 0;
         memset(&link, 0, sizeof(link));
         while (waited_ms < max_wait_ms) {
-            rte_eth_link_get_nowait(port, &link);
+            int ret = rte_eth_link_get_nowait(port, &link);
+            if (ret < 0)
+                FATAL_ERROR("Port {:d}: failed to get link status, error: {:s}", port,
+                            rte_strerror(-ret));
             if (link.link_status == RTE_ETH_LINK_UP)
                 break;
             usleep(link_check_interval_ms * 1000);
@@ -417,6 +419,11 @@ void dpdkCore::main_thread() {
 
     // Wait for the lcores to join
     rte_eal_mp_wait_lcore();
+
+    // Note this only ends the DPDK stage. When the workers stop themselves (e.g. after
+    // capturing `capture_n_frames` frames) the rest of kotekan keeps running so that the
+    // downstream stages can flush what they have.
+    INFO("DPDK packet capture stopped, all lcores have exited.");
 }
 
 void dpdkCore::update_port_stats() {
@@ -580,14 +587,6 @@ int dpdkCore::lcore_rx(void* args) {
         throw std::runtime_error("lcore mapping error");
     }
 
-    {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        fprintf(stderr, "lcore_rx thread started: lcore %u, time %ld.%09ld\n", lcore,
-                (long)ts.tv_sec, (long)ts.tv_nsec);
-    }
-
-
     // If we have no map for this lcore, it must be a worker lcore.
     if (lcore >= core->lcore_port_list.size()) {
         uint32_t worker_id = lcore - core->lcore_port_list.size();
@@ -617,6 +616,9 @@ int dpdkCore::lcore_rx(void* args) {
         INFO_NON_OO("Exiting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
         core->active_workers--;
         if (core->active_workers == 0) {
+            // The last worker stopped, so bring down the distributor lcores and the stage's
+            // main thread too. This does not stop kotekan itself.
+            INFO_NON_OO("All DPDK workers have stopped, shutting down the DPDK stage.");
             core->stop_thread = true;
         }
         return 0;

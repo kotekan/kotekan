@@ -52,6 +52,13 @@
 # correlation frames needed to form one output N2 frame
 {% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
 
+# num_capture_frames: DPDK frames to record before the capture stops.
+# The pipeline is 1:1 from the network input buffer through to hdf5FileWrite, so this is also
+# the number of frames written out (~42 ms / ~96 MiB of subset data each).
+# The DPDK threads exit once these frames have been handed off, leaving the rest of kotekan
+# running so the file writer can flush; the writer then shuts kotekan down.
+{% set num_capture_frames = 100 %}
+
 # RFI Detection Parameters
 {% set rfi_downsampling_factor = 256 %}
 {% set rfi_second_downsampling_factor = 32 %}
@@ -101,6 +108,13 @@ time_long: samples_per_data_set / time_short
 element_short: 8
 element_long: num_elements / element_short
 
+fpga_controller:
+    host: "chive"
+    port: 54321
+    config_endpoint: /config
+    timing_endpoint: /get-frame0-time
+    gains_endpoint: /get-current-gain-file
+
 telescope:
     name: CHORDTelescope
     sampling_rate_MHz: {{ sampling_rate_MHz }}
@@ -127,8 +141,8 @@ telescope:
     dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
     check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
 
-    num_dishes_x: 8
-    num_dishes_y: 12
+    dish_grid_size_x: 8
+    dish_grid_size_y: 12
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
     dish_inputs: [
@@ -140,11 +154,9 @@ telescope:
         {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
     ]
 
-    require_gps: True
+    require_gps: False
     query_gps: True
-    gps_host: "chive"
-    gps_port: 54321
-    gps_endpoint: "/get-frame0-time"
+    gps_host_info: /fpga_controller
     auto_correct_gps_week_rollover: True
 
     eop_updatable_config: /earth_rotation_data
@@ -163,23 +175,15 @@ n2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 16 * buffer_depth
 
-# Bad feed mask - marks which feeds to exclude from RFI calculations
-# Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
-host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
-    metadata_pool: main_pool
-
 # Buffers
 network_input_buffers:
-    log_level: info
     num_frames: host_side_buffer_depth
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
-    
-    # The workers share an output buffer
+
+    # The workers share an output buffer.
+    # Fed by dpdkCore (crs16BoardCaptureWorker handler) -> leave standard.
     network_input_buffer_0:
         zero_new_frames: true
         numa_node: 0
@@ -190,19 +194,39 @@ network_input_buffers:
         numa_node: 1
         zero_value: 0x88
         kotekan_buffer: standard
-    # Main voltage buffer after transpose
-    host_voltage_buffer_0:
-        kotekan_buffer: standard
-        numa_node: 0
-    host_voltage_buffer_1:
-        kotekan_buffer: standard
-        numa_node: 1
+
+# Main voltage buffer after transpose.
+# Produced by TransposeBasebandArray: int4x2_swapped_withoffset "E"
+# [timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 384, 2, 64].
+# The stage uses compile-time macros NUM_LOCAL_FREQ=384, NUM_ELEMENTS=128 (it fatally checks the
+# config num_local_freq/num_elements equal them); this config sets num_local_freq=384,
+# num_elements=128, so the static extents below are valid. These live outside the
+# network_input_buffers group: that group's frame_size is for the dpdk buffers, while
+# ndarray buffers derive their size from the descriptor.
+host_voltage_buffer_0:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
+    metadata_pool: main_pool
+    use_hugepages: true
+    numa_node: 0
+
+host_voltage_buffer_1:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
+    metadata_pool: main_pool
+    use_hugepages: true
+    numa_node: 1
 
 
 # Subset Buffers (note size must match parameters in SubsetBaseband
 subset_voltage_buffer_0:
-    kotekan_buffer: standard
-    frame_size: samples_per_data_set * 1 * 8
+    kotekan_buffer: ndarray
+    extents: [samples_per_data_set, num_local_freq, 2, 16]
+    value_type: int4x2_swapped_withoffset
     numa_node: 0
     num_frames: 20
     metadata_pool: main_pool
@@ -229,34 +253,45 @@ packet_receipt_bitmap_buffers:
         kotekan_buffer: standard
         numa_node: 1
 
+# This is the RFI Mask recieved from the GPU, that was applied to produce n2k_correlation & n2k_counts.
+# It contains the mask computed by SKtilde (all-good if rfi_first_stage_excision_enabled is false).
+# GPU output (cudaCopyFromRingbuffer of rfi_RFImask) and consumed by RfiMaskSum:
+# uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 1
     metadata_pool: main_pool
 
-# Note this is the expanded version of the pl_mask, which is used for correlator input
+# Note this is the expanded version of the pl_mask, produced by ProcessPacketMask (pl_mask_buf).
+# It will be compressed to the normal PL mask before being sent to the GPU.
+# uint1x8 "pl_mask_exp" [samples_per_data_set/64, num_local_freq, 2, num_elements/8/2, 8]
+# {Thi64, F, P, D8, Tlo64}.
 host_pl_mask_exp_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
     metadata_pool: main_pool
 
 host_pl_mask_exp_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
     metadata_pool: main_pool
     numa_node: 1
 
@@ -280,6 +315,17 @@ dpdk:
     max_link_start_delay: 10
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4
+    # Capture scheduling. Both options are read by every capture worker below.
+    #
+    # capture_start_time_utc: hold off until this UTC wall clock time. The time is turned into
+    # an FPGA seq number using the F-engine's GPS time (never the system clock) and rounded
+    # down to the nearest frame edge, so all workers start on the same frame. It must be at
+    # least 1 minute in the future, and a start more than 12 hours out only warns.
+    # Commented out means start at the first frame edge ~2 s after packets begin arriving.
+    capture_start_time_utc: "2026-08-10 18:43:00"
+    #
+    # capture_n_frames: stop after this many frames, 0 = record until kotekan is stopped.
+    capture_n_frames: {{ num_capture_frames }}
     # List of PCIe addresses to block from DPDK use
     pcie_block_list:
         - "0000:37:00.0"
@@ -418,11 +464,26 @@ subset_baseband_0:
     timesamples_per_frame: samples_per_data_set
     in_buf: host_voltage_buffer_0
     out_buf: subset_voltage_buffer_0
-    element_blocks_subset: [0]
-    coarse_freq_subset: 
-{%- for id in range(2000, 2015) %}
-        - {{ id }}
-{%- endfor %} 
+    element_blocks_subset: [0, 2]
+    log_level: info
+
+hdf5_write_baseband_0:
+    kotekan_stage: hdf5FileWrite
+    in_buf: subset_voltage_buffer_0
+    base_dir: /scratch/baseband
+    # Put each capture in its own base_dir/<UTC start time> folder, created on the first
+    # frame and named from that frame's FPGA seq number, e.g.
+    # /scratch/baseband/20260811T031500Z/
+    timestamp_subdir: true
+    file_name: baseband_subset
+    # Capture this many frames (~42 ms / ~96 MiB each), then shut down kotekan.
+    # Matches the DPDK stage's capture_n_frames, so the writer flushes everything the
+    # capture produced and then exits.
+    max_frames: {{ num_capture_frames }}
+    # Frames appended to each file before rolling over to a new one
+    frames_per_file: 10
+    # bitshuffle+zstd cannot keep up with the full subset data rate
+    use_compression: false
     log_level: info
 
 hex_dump_0:

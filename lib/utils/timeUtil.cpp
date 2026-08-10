@@ -2,10 +2,15 @@
 
 #include "fmt.hpp" // for format, format_string
 
-#include <assert.h> // for assert
-#include <json.hpp> // for json, basic_json
-#include <math.h>   // for round
-#include <ostream>  // for basic_ostream
+#include <assert.h>  // for assert
+#include <cmath>     // for llround
+#include <json.hpp>  // for json, basic_json
+#include <math.h>    // for round
+#include <ostream>   // for basic_ostream
+#include <stdexcept> // for invalid_argument
+#include <string.h>  // for memset
+#include <string>    // for string, stod
+#include <time.h>    // for strptime, timegm, gmtime_r, strftime, tm, time_t
 
 const __int128 era_A = 77'905'727'326'400'000L;
 const __int128 era_B = 100'273'781'191'135'448L;
@@ -30,6 +35,93 @@ timespec nanosec_i64_to_timespec(int64_t ns) {
     }
 
     return {.tv_sec = (time_t)t_s, .tv_nsec = t_ns};
+}
+
+int64_t utc_string_to_nanosec_i64(const std::string& time_str) {
+
+    // Trim surrounding whitespace, and an optional trailing "Z" (Zulu, i.e. UTC).
+    const size_t first = time_str.find_first_not_of(" \t");
+    if (first == std::string::npos)
+        throw std::invalid_argument("Cannot parse an empty string as a UTC timestamp");
+    std::string str = time_str.substr(first, time_str.find_last_not_of(" \t") - first + 1);
+    if (str.back() == 'Z' || str.back() == 'z')
+        str.pop_back();
+
+    // Split off an optional fractional second; strptime cannot parse it.
+    int64_t frac_ns = 0;
+    const size_t dot = str.find('.');
+    if (dot != std::string::npos) {
+        try {
+            frac_ns = (int64_t)std::llround(std::stod(str.substr(dot)) * GIGA);
+        } catch (const std::exception&) {
+            throw std::invalid_argument(
+                fmt::format(fmt("Could not parse the fractional second in the UTC timestamp "
+                                "'{:s}'"),
+                            time_str));
+        }
+        str.erase(dot);
+    }
+
+    // Both the ISO-8601 "T" separator and a plain space are accepted.
+    struct tm tm_time;
+    memset(&tm_time, 0, sizeof(tm_time));
+    const char* rest = strptime(str.c_str(), "%Y-%m-%dT%H:%M:%S", &tm_time);
+    if (rest == nullptr) {
+        memset(&tm_time, 0, sizeof(tm_time));
+        rest = strptime(str.c_str(), "%Y-%m-%d %H:%M:%S", &tm_time);
+    }
+    if (rest == nullptr || *rest != '\0')
+        throw std::invalid_argument(
+            fmt::format(fmt("Could not parse '{:s}' as a UTC timestamp; expected a value like "
+                            "'2026-01-31 18:45:00'"),
+                        time_str));
+
+    // timegm() interprets the broken down time as UTC; mktime() would apply the local timezone.
+    const time_t t = timegm(&tm_time);
+    if (t == (time_t)-1)
+        throw std::invalid_argument(
+            fmt::format(fmt("The UTC timestamp '{:s}' is not a representable time"), time_str));
+
+    return (int64_t)t * GIGA + frac_ns;
+}
+
+std::string nanosec_i64_to_utc_string(int64_t t_ns) {
+
+    const timespec t = nanosec_i64_to_timespec(t_ns);
+
+    struct tm tm_time;
+    const time_t t_s = (time_t)t.tv_sec;
+    if (gmtime_r(&t_s, &tm_time) == nullptr)
+        return fmt::format(fmt("<unrepresentable time: {:d} ns>"), t_ns);
+
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_time);
+
+    return fmt::format(fmt("{:s}.{:03d} UTC"), buf, (int)(t.tv_nsec / 1'000'000L));
+}
+
+std::string nanosec_i64_to_utc_string(int64_t t_ns, const std::string& strftime_format) {
+
+    const timespec t = nanosec_i64_to_timespec(t_ns);
+
+    struct tm tm_time;
+    const time_t t_s = (time_t)t.tv_sec;
+    if (gmtime_r(&t_s, &tm_time) == nullptr)
+        return "";
+
+    char buf[256];
+    const size_t len = strftime(buf, sizeof(buf), strftime_format.c_str(), &tm_time);
+
+    return std::string(buf, len);
+}
+
+std::string format_duration_ns(int64_t duration_ns) {
+
+    const bool negative = duration_ns < 0;
+    const int64_t total_s = (negative ? -duration_ns : duration_ns) / GIGA;
+
+    return fmt::format(fmt("{:s}{:d}h {:02d}m {:02d}s"), negative ? "-" : "", total_s / 3600,
+                       (total_s % 3600) / 60, total_s % 60);
 }
 
 int64_t get_UT1_from_time(const timespec& t, double delta_UT1_inst) {

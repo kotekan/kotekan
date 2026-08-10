@@ -8,6 +8,8 @@
 #include <boost/test/included/unit_test.hpp>
 #include <filesystem>
 #include <inttypes.h>
+#include <stdexcept>
+#include <string.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -424,4 +426,56 @@ BOOST_AUTO_TEST_CASE(_eop_comp_ut1) {
                 BOOST_CHECK(!EOP_comp_ut1(eop1, eop2));
         }
     }
+}
+
+BOOST_AUTO_TEST_CASE(_utc_string_to_nanosec) {
+
+    // 2026-01-31 18:45:00 UTC == 1769884.. seconds; check against timegm directly so the
+    // test does not depend on the local timezone.
+    struct tm ref;
+    memset(&ref, 0, sizeof(ref));
+    ref.tm_year = 2026 - 1900;
+    ref.tm_mon = 0;
+    ref.tm_mday = 31;
+    ref.tm_hour = 18;
+    ref.tm_min = 45;
+    ref.tm_sec = 0;
+    const int64_t expected = (int64_t)timegm(&ref) * 1000000000L;
+
+    // All of these spellings mean the same instant.
+    BOOST_CHECK_EQUAL(utc_string_to_nanosec_i64("2026-01-31 18:45:00"), expected);
+    BOOST_CHECK_EQUAL(utc_string_to_nanosec_i64("2026-01-31T18:45:00"), expected);
+    BOOST_CHECK_EQUAL(utc_string_to_nanosec_i64("2026-01-31T18:45:00Z"), expected);
+    BOOST_CHECK_EQUAL(utc_string_to_nanosec_i64("  2026-01-31 18:45:00  "), expected);
+    BOOST_CHECK_EQUAL(utc_string_to_nanosec_i64("2026-01-31T18:45:00.250Z"), expected + 250000000L);
+
+    // The UNIX epoch itself.
+    BOOST_CHECK_EQUAL(utc_string_to_nanosec_i64("1970-01-01 00:00:00"), 0);
+
+    // Malformed values must throw rather than silently produce a time.
+    BOOST_CHECK_THROW(utc_string_to_nanosec_i64(""), std::invalid_argument);
+    BOOST_CHECK_THROW(utc_string_to_nanosec_i64("not a time"), std::invalid_argument);
+    BOOST_CHECK_THROW(utc_string_to_nanosec_i64("2026-01-31"), std::invalid_argument);
+    BOOST_CHECK_THROW(utc_string_to_nanosec_i64("2026-01-31 18:45:00 extra"),
+                      std::invalid_argument);
+}
+
+BOOST_AUTO_TEST_CASE(_nanosec_to_utc_string) {
+
+    BOOST_CHECK_EQUAL(nanosec_i64_to_utc_string(0), "1970-01-01 00:00:00.000 UTC");
+
+    // Round trips back through the parser.
+    const int64_t t_ns = utc_string_to_nanosec_i64("2026-01-31T18:45:00.250Z");
+    BOOST_CHECK_EQUAL(nanosec_i64_to_utc_string(t_ns), "2026-01-31 18:45:00.250 UTC");
+    BOOST_CHECK_EQUAL(utc_string_to_nanosec_i64(nanosec_i64_to_utc_string(t_ns).substr(0, 23)),
+                      t_ns);
+}
+
+BOOST_AUTO_TEST_CASE(_format_duration) {
+
+    BOOST_CHECK_EQUAL(format_duration_ns(0), "0h 00m 00s");
+    BOOST_CHECK_EQUAL(format_duration_ns(59L * 1000000000L), "0h 00m 59s");
+    BOOST_CHECK_EQUAL(format_duration_ns(3661L * 1000000000L), "1h 01m 01s");
+    BOOST_CHECK_EQUAL(format_duration_ns(13L * 3600L * 1000000000L), "13h 00m 00s");
+    BOOST_CHECK_EQUAL(format_duration_ns(-90L * 1000000000L), "-0h 01m 30s");
 }

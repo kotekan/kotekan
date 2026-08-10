@@ -169,6 +169,22 @@ protected:
  *                                             this. Required on E810 NICs, which report a
  *                                             port as started before it is actually ready.
  *
+ * @par Scheduling a capture
+ * The capture workers (e.g. @c crs16BoardCaptureWorker) read the two options below. They can
+ * be set on each worker individually, or, more usually, once here on the stage so that every
+ * worker shares them.
+ * @conf   capture_start_time_utc String. Default "" (start as soon as packets flow).
+ *                                             UTC time at which capture should start, e.g.
+ *                                             "2026-01-31 18:45:00". Converted to an FPGA
+ *                                             sequence number via the F-engine's GPS time
+ *                                             (not the system clock) and rounded down to the
+ *                                             nearest frame edge. Must be at least one minute
+ *                                             in the future; more than 12 hours out warns.
+ * @conf   capture_n_frames Int. Default 0 (unlimited). Stop capturing after this many frames.
+ *                                             The lcores and this stage's main thread exit,
+ *                                             but kotekan keeps running so that downstream
+ *                                             stages can flush their data.
+ *
  * @author Andre Renard
  */
 class dpdkCore : public kotekan::Stage {

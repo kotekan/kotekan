@@ -171,10 +171,13 @@ void SubsetBaseband::main_thread() {
                     num_elements_out, num_freq_out));
             }
 
-            out_buf->allocate_ndarray_frame_desc(
+            // The output shape depends on the freq intersection, which is only known
+            // once the first input frame arrives, so this stage originates the
+            // descriptor rather than requiring one from the config.
+            out_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
                 kotekan::int4x2_swapped_withoffset, "E",
                 {timesamples_per_frame, num_freq_out, 2, num_elements_out / 2},
-                {"T", "F", "P", "D"});
+                {"T", "F", "P", "D"}, {1, 1, 1, 1}));
 
             out_time_stride = (size_t)num_freq_out * out_freq_stride;
             initialized_ = true;
@@ -230,10 +233,10 @@ void SubsetBaseband::main_thread() {
         out_meta->type = kotekan::int4x2_swapped_withoffset;
         out_meta->dims = 4;
         out_meta->set_name("E");
-        out_meta->set_array_dimension(0, timesamples_per_frame, "T");
-        out_meta->set_array_dimension(1, num_freq_out, "F");
-        out_meta->set_array_dimension(2, 2, "P");
-        out_meta->set_array_dimension(3, num_elements_out / 2, "D");
+        out_meta->set_array_dimension(0, timesamples_per_frame, "T", 1);
+        out_meta->set_array_dimension(1, num_freq_out, "F", 1);
+        out_meta->set_array_dimension(2, 2, "P", 1);
+        out_meta->set_array_dimension(3, num_elements_out / 2, "D", 1);
         out_meta->set_strides_simple();
 
         out_meta->set_coarse_freq(out_coarse_freq_);

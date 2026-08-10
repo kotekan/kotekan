@@ -27,6 +27,7 @@
 #include <array>                                 // for array
 #include <atomic>                                // for __atomic_base, atomic
 #include <cassert>                               // for assert
+#include <cctype>                                // for isspace
 #include <cstddef>                               // for size_t
 #include <cstdint>                               // for int64_t, uint8_t, uint32_t
 #include <errno.h>                               // for errno, EEXIST, EISDIR
@@ -44,6 +45,7 @@
 #include <iomanip>                               // for operator<<, setfill, setw
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <stdexcept>                             // for invalid_argument
 #include <string.h>                              // for strerror
 #include <string>                                // for basic_string, char_traits, string, oper...
 #include <sys/stat.h>                            // for mkdir
@@ -64,6 +66,16 @@ using namespace HighFive;
  *     @buffer_metadata chord or N2
  *
  * @conf base_dir  String. Directory to write into.
+ * @conf timestamp_subdir  Bool. Default false. Write into a
+ *       `base_dir/<capture start time>` sub-directory, created if it does not exist.
+ *       The name is the UTC capture start time, taken from the FPGA sequence number in
+ *       the first frame's metadata, so it needs no configuring and matches the data.
+ *       It is resolved once, on the first frame, so a run's files all land together.
+ *       The time is rounded to the nearest second, because a capture scheduled on a
+ *       whole second starts at the frame edge just before it.
+ * @conf timestamp_subdir_format  String. Default "%Y%m%dT%H%M%SZ" (e.g.
+ *       `20260131T184500Z`). strftime(3) format for the sub-directory name. Must not
+ *       contain a path separator, and any whitespace it produces is stripped.
  * @conf file_name String. Base filename to write.
  * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
  *       true.
@@ -75,6 +87,9 @@ using namespace HighFive;
  * @conf skip_writing  Bool. Do not actually write anything. Default:
  *       false.
  * @conf create_single_file Bool. Write all data to one single file.
+ * @conf frames_per_file  Int. Append this many frames to each file before rolling
+ *       over to a new one (CHORD metadata only). Default: 1 (one file per frame).
+ *       Mutually exclusive with create_single_file.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
  *       Default: -1 (disabled).
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
@@ -93,6 +108,9 @@ using namespace HighFive;
 class hdf5FileWrite : public kotekan::Stage {
 
     const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
+    const bool timestamp_subdir = config.get_default<bool>(unique_name, "timestamp_subdir", false);
+    const std::string timestamp_subdir_format =
+        config.get_default<std::string>(unique_name, "timestamp_subdir_format", "%Y%m%dT%H%M%SZ");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     const bool prefix_host_rank = config.get_default<bool>(unique_name, "prefix_host_rank", false);
@@ -104,6 +122,8 @@ class hdf5FileWrite : public kotekan::Stage {
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
+    const std::int64_t frames_per_file =
+        config.get_default<std::int64_t>(unique_name, "frames_per_file", 1);
     const int64_t write_x_frames = config.get_default<int64_t>(unique_name, "write_x_frames", -1);
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
 
@@ -112,7 +132,16 @@ class hdf5FileWrite : public kotekan::Stage {
 
     Buffer* const buffer;
 
-    std::shared_ptr<File> the_single_file;
+    // The directory the files are actually written into. Equal to base_dir unless
+    // timestamp_subdir is set, in which case resolve_output_dir() appends the capture
+    // start time on the first frame.
+    std::string output_dir = base_dir;
+    bool output_dir_resolved = false;
+
+    // The currently open output file (the single file, or a multi-frame file still
+    // being filled) and the number of frames written to it so far.
+    std::shared_ptr<File> current_file;
+    std::int64_t frames_in_current_file = 0;
 
 public:
     hdf5FileWrite(kotekan::Config& config, const std::string& unique_name,
@@ -123,6 +152,13 @@ public:
               }),
         buffer(get_buffer("in_buf")) {
 
+        if (frames_per_file < 1)
+            throw std::invalid_argument(fmt::format(
+                fmt("hdf5FileWrite: frames_per_file ({:d}) must be >= 1"), frames_per_file));
+        if (create_single_file && frames_per_file != 1)
+            throw std::invalid_argument(
+                "hdf5FileWrite: create_single_file and frames_per_file are mutually exclusive");
+
         if (max_frames >= 0)
             ++waiting_for_max_frames;
 
@@ -131,12 +167,73 @@ public:
 
     virtual ~hdf5FileWrite() {}
 
+    /**
+     * @brief Work out which directory this run's files go in, from the first frame.
+     *
+     * With timestamp_subdir set the output goes in a per-capture sub-directory of
+     * base_dir named after the UTC time of the first frame. Called for every frame but
+     * only does anything on the first one, so that a run does not straddle directories
+     * if it happens to cross a second boundary.
+     *
+     * @param fpga_seq_num The FPGA sequence number from the first frame's metadata.
+     * @param seq_valid False if the frame carries no sequence number, in which case there
+     *        is no capture time to name a directory after and base_dir is used as-is.
+     */
+    void resolve_output_dir(const std::int64_t fpga_seq_num, const bool seq_valid) {
+        // Resolve on the very first frame, whatever it holds, so that a run cannot end up
+        // split across two directories.
+        if (output_dir_resolved)
+            return;
+        output_dir_resolved = true;
+
+        if (!timestamp_subdir)
+            return;
+
+        if (!seq_valid) {
+            WARN("timestamp_subdir is set, but the first frame of buffer \"{:s}\" carries no FPGA "
+                 "sequence number, so there is no capture time to name a directory after. "
+                 "Writing directly into \"{:s}\".",
+                 buffer->buffer_name, base_dir);
+            return;
+        }
+
+        // Round to the nearest second: a capture scheduled for a whole second starts at
+        // the frame edge just before it, which would otherwise name the directory for the
+        // previous second.
+        const std::int64_t t_ns = Telescope::instance().to_time_ns((std::uint64_t)fpga_seq_num);
+        const std::int64_t t_rounded_ns = ((t_ns + 500'000'000L) / 1'000'000'000L) * 1'000'000'000L;
+
+        std::string dir_name = nanosec_i64_to_utc_string(t_rounded_ns, timestamp_subdir_format);
+
+        // The name is a single path component, so drop anything that would break that.
+        // Whitespace goes too, both because timestamps like "2026-01-31 18:45:00" are
+        // awkward in paths and because the format is meant to avoid it in the first place.
+        dir_name.erase(std::remove_if(dir_name.begin(), dir_name.end(),
+                                      [](unsigned char c) { return std::isspace(c) || c == '/'; }),
+                       dir_name.end());
+
+        if (dir_name.empty())
+            FATAL_ERROR("timestamp_subdir_format \"{:s}\" produced an empty directory name for "
+                        "fpga seq {:d}",
+                        timestamp_subdir_format, fpga_seq_num);
+
+        output_dir = base_dir + "/" + dir_name;
+        INFO("Writing this capture into \"{:s}\" (fpga seq {:d}, {:s})", output_dir, fpga_seq_num,
+             nanosec_i64_to_utc_string(t_ns));
+    }
+
+    /// Create a directory, tolerating one that already exists.
+    void make_directory(const std::string& path) const {
+        if (mkdir(path.c_str(), 0777) && errno != EEXIST && errno != EISDIR)
+            FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", path, strerror(errno));
+    }
+
     // Create the HDF5 file.
     // Determine the file name, and create the containing directory if necessary.
     std::shared_ptr<File> create_file(const std::int64_t frame_counter) const {
         // Define file name
         std::ostringstream buf;
-        buf << base_dir << "/";
+        buf << output_dir << "/";
         if (prefix_hostname) {
             char hostname[256];
             gethostname(hostname, sizeof hostname);
@@ -162,14 +259,11 @@ public:
         buf << ".h5";
         const std::string full_path = buf.str();
 
-        // Create directory if necessary
-        int ierr = mkdir(base_dir.c_str(), 0777);
-        if (ierr) {
-            if (errno != EEXIST && errno != EISDIR) {
-                const char* const msg = strerror(errno);
-                FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
-            }
-        }
+        // Create the directories if necessary, base_dir first so that the per-capture
+        // sub-directory can be made inside a base_dir that does not exist yet.
+        make_directory(base_dir);
+        if (output_dir != base_dir)
+            make_directory(output_dir);
 
         // Create HDF5 file
         FileAccessProps fapl;
@@ -233,20 +327,27 @@ public:
                      const std::int64_t frame_counter) {
         const auto& telescope = Telescope::instance();
 
+        resolve_output_dir(meta->has_fpga_seq_num() ? meta->get_fpga_seq_num() : 0,
+                           meta->has_fpga_seq_num());
+
         std::shared_ptr<File> fileptr;
         bool do_create_dataset = false; // Whether to create the dataset and write the attributes
         if (create_single_file) {
             // Create only a single file
-            if (!the_single_file) {
-                the_single_file = create_file(-1);
+            if (!current_file) {
+                current_file = create_file(-1);
                 do_create_dataset = true;
             }
-            fileptr = the_single_file;
         } else {
-            // Create a new file for every frame
-            fileptr = create_file(frame_counter);
-            do_create_dataset = true;
+            // Start a new file when none is open. It is named after the first frame
+            // it holds and closes once frames_per_file frames have been written.
+            if (!current_file) {
+                current_file = create_file(frame_counter);
+                frames_in_current_file = 0;
+                do_create_dataset = true;
+            }
         }
+        fileptr = current_file;
         auto& file = *fileptr;
 
         if (do_create_dataset) {
@@ -345,8 +446,8 @@ public:
 
             write_telescope_metadata(dataset);
 
-            if (create_single_file) {
-                // Start SWMR mode
+            if (create_single_file || frames_per_file > 1) {
+                // Start SWMR mode on files that stay open across frames
                 // (Can only do that after creating the dataset and writing all attributes.)
                 file.flush(); // for good measure
                 file.startSWMRWrite();
@@ -378,9 +479,11 @@ public:
         // Write data
         hyperslab.write_raw(frame, type);
 
-        // Only flush when writing to a single file. Otherwise we'll close the file anyway so we
-        // don't need to flush.
-        if (create_single_file) {
+        // Close a multi-frame file once its quota is reached (closing flushes it);
+        // flush files that stay open so SWMR readers see the new frame.
+        if (!create_single_file && ++frames_in_current_file >= frames_per_file) {
+            current_file.reset();
+        } else {
             // dataset.flush();
             file.flush();
         }
@@ -394,6 +497,11 @@ public:
      */
     void write_n2(const N2FrameView& frame, const std::int64_t frame_counter) {
         DEBUG("Writing N2 frame seq: {:d}", frame.fpga_start_tick);
+
+        if (frames_per_file != 1)
+            FATAL_ERROR("frames_per_file is only supported for CHORD-metadata buffers");
+
+        resolve_output_dir(frame.fpga_start_tick, true);
 
         std::shared_ptr<File> fileptr = create_file(frame_counter);
         auto& file = *fileptr;
@@ -629,7 +737,7 @@ public:
         } // for
 
         // Close file if necessary
-        the_single_file.reset();
+        current_file.reset();
 
         if (max_frames >= 0) {
             // Unregister to allow the pipeline to continue, unless I'm the last

@@ -58,6 +58,50 @@ int64_t timespec_to_nanosec_i64(const timespec& t);
 timespec nanosec_i64_to_timespec(int64_t t);
 
 /**
+ * @brief   Parse a UTC timestamp string into a count of nanoseconds since the UNIX epoch.
+ *
+ * Accepts ISO-8601-like timestamps of the form `YYYY-MM-DD HH:MM:SS`, with either a space or a
+ * `T` separating the date and the time, an optional fractional second, and an optional trailing
+ * `Z`.  The timestamp is always interpreted as UTC, regardless of the system's local timezone.
+ *
+ * @param   time_str    The timestamp to parse, e.g. `2026-01-31T18:45:00Z`.
+ * @return  The time in nanoseconds since 1970-01-01 00:00:00 UTC.
+ * @throws  std::invalid_argument if the string is not a valid timestamp.
+ */
+int64_t utc_string_to_nanosec_i64(const std::string& time_str);
+
+/**
+ * @brief   Format a count of nanoseconds since the UNIX epoch as a UTC timestamp string.
+ *
+ * The inverse of @c utc_string_to_nanosec_i64, with millisecond resolution.
+ *
+ * @param   t_ns    The time in nanoseconds since 1970-01-01 00:00:00 UTC.
+ * @return  The timestamp, e.g. `2026-01-31 18:45:00.000 UTC`.
+ */
+std::string nanosec_i64_to_utc_string(int64_t t_ns);
+
+/**
+ * @brief   Format a count of nanoseconds since the UNIX epoch with a strftime format string.
+ *
+ * Useful for building file and directory names from an instrument time, e.g. the default
+ * `%Y%m%dT%H%M%SZ` gives `20260131T184500Z`.  The time is broken down as UTC.
+ *
+ * @param   t_ns    The time in nanoseconds since 1970-01-01 00:00:00 UTC.
+ * @param   strftime_format The format to use, see strftime(3). Sub-second digits are not
+ *          available; truncate or round before calling if that matters.
+ * @return  The formatted time, or an empty string if the format produced no output.
+ */
+std::string nanosec_i64_to_utc_string(int64_t t_ns, const std::string& strftime_format);
+
+/**
+ * @brief   Format a duration in nanoseconds as a human readable string.
+ *
+ * @param   duration_ns The duration in nanoseconds. Negative durations are prefixed with `-`.
+ * @return  The duration, e.g. `13h 03m 21s`.
+ */
+std::string format_duration_ns(int64_t duration_ns);
+
+/**
  * @brief   Compute UT1 time (J2000(UT1) epoch, nanoseconds) from instrument time.
  * @param   t The instrument time to convert, const reference timespec
  * @param   delta_UT1_inst Value of UT1-INST at t, seconds
