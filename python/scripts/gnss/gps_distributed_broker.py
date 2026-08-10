@@ -739,6 +739,26 @@ def main(argv=None, rx=None, publisher=None):
                          "satellites, so this fills quickly. Counts distinct detections, not "
                          "cycles: re-counting an unchanged detection every --interval made "
                          "this measure UPTIME rather than evidence (fixed 2026-08-10).")
+    ap.add_argument("--joint-p2c-rotate", action="store_true",
+                    help="P2c, SELF-DRIVING. Withhold the best-established satellite from the "
+                         "joint solve, coast it for --joint-p2c-hold-s, log the "
+                         "residual-vs-age curve, release, and rotate to one not tested "
+                         "recently. Supersedes hand-picking a PRN with --joint-mask-prn, "
+                         "which is a sample of ONE satellite at ONE geometry: on a transit "
+                         "instrument the first two runs disagreed outright (flat -0.19+-0.44 "
+                         "chips over 848 s, then -2.70 over 900 s on the same satellite) and "
+                         "a third produced nothing because the named PRN had set. What this "
+                         "accumulates instead is a DISTRIBUTION over satellites and "
+                         "elevations -- and the residual's growth with age IS the b_sat "
+                         "random walk, so it MEASURES q_b (currently the guessed 0.013).")
+    ap.add_argument("--joint-p2c-hold-s", type=float, default=600.0,
+                    help="how long each P2c coast runs. ⚠️ Must stay below the state's "
+                         "max_age_s (900 s): a withheld satellite is not fed, so _t_seen "
+                         "stops advancing and _drop() evicts it -- a hold at or beyond that "
+                         "would end every coast by eviction and report nothing.")
+    ap.add_argument("--joint-p2c-skip", type=int, default=4,
+                    help="how many recently-tested satellites to skip when rotating, so the "
+                         "sample spans the fleet instead of re-testing the strongest sat.")
     ap.add_argument("--dr-max-solve-mad-chips", type=float, default=100.0,
                     help="refuse the receiver-clock solve when the per-satellite offsets "
                          "scatter by more than this (MAD, chips). A circular median over "
@@ -1804,8 +1824,88 @@ def main(argv=None, rx=None, publisher=None):
                 "masks all three -- which is how the first P2c run measured a satellite that "
                 "was never chosen." % _tok)
 
+    # -- P2C, THE ROTATING FORM (2026-08-10) ------------------------------------------------
+    # A hand-picked PRN is a sample of ONE satellite at ONE geometry, and on a transit
+    # instrument the sky moves out from under it within the hour. That is not a hypothetical:
+    # the first two P2c runs disagreed outright -- run 1 coasted flat (-0.19 +- 0.44 chips
+    # over 848 s), run 2 drifted to -2.70 over 900 s on the SAME satellite hours later -- and
+    # a third produced nothing at all because the named PRN had set and was no longer in the
+    # state. Two anecdotes and a null are not an acceptance test for the architecture.
+    #
+    # So the test drives itself: withhold the best-established satellite, coast it for
+    # --joint-p2c-hold-s, record the residual-vs-age curve, release, rotate to one not
+    # recently tested. What accumulates is a DISTRIBUTION across satellites and elevations.
+    #
+    # AND IT MEASURES q_b, which is the point beyond pass/fail. The coast residual's growth
+    # with age IS the b_sat random walk this filter assumes; q_b = 0.013 is currently a guess
+    # and run 2's drift says it is probably wrong. Rotation turns the least-justified
+    # parameter in the state into a measured one.
+    p2c = {"key": None, "t0": 0.0, "samples": [], "history": [], "n0": 0}
+
+    def _p2c_pick(js):
+        """The most-established satellite not tested in the last few rotations."""
+        cand = [(js._n.get(k, 0), k) for k in js._idx
+                if js._n.get(k, 0) >= args.joint_mask_after]
+        if not cand:
+            return None
+        recent = {h["key"] for h in p2c["history"][-args.joint_p2c_skip:]}
+        fresh = [c for c in cand if c[1] not in recent]
+        return max(fresh or cand)[1]
+
+    def _p2c_summary(js, t_now, why):
+        """Close out one coast and log its residual-vs-age curve."""
+        s = p2c["samples"]
+        key = p2c["key"]
+        if s:
+            band = [(lo, hi, [r for a, r in s if lo <= a < hi])
+                    for lo, hi in ((0, 200), (200, 400), (400, 600), (600, 1200))]
+            txt = " ".join("%d-%ds %+.2f(n%d)" % (lo, hi, statistics.fmean(v), len(v))
+                           for lo, hi, v in band if v)
+            _log("P2C %s END (%s): %d samples over %.0f s | %s | final b %+.3f sigma %.3f"
+                 % (_p2c_name(key), why, len(s), s[-1][0], txt,
+                    js.bias(key) if key in js._idx else float("nan"),
+                    js.sigma(key) if key in js._idx else float("nan")))
+            p2c["history"].append({"key": key, "n": len(s), "age": s[-1][0],
+                                   "resid": [r for _, r in s], "why": why})
+        else:
+            _log("P2C %s END (%s): no samples" % (_p2c_name(key), why))
+            p2c["history"].append({"key": key, "n": 0, "age": 0.0, "resid": [], "why": why})
+        p2c["key"] = None
+        p2c["samples"] = []
+
+    def _p2c_name(key):
+        try:
+            return "%s%d" % (key[0][0].upper(), key[1])
+        except Exception:
+            return str(key)
+
+    def _p2c_tick(js, t_now):
+        """Advance the rotation: start a coast, or end one that is done or has lost its sat."""
+        if not args.joint_p2c_rotate or js is None:
+            return
+        if p2c["key"] is None:
+            k = _p2c_pick(js)
+            if k is not None:
+                p2c.update(key=k, t0=t_now, samples=[], n0=js._n.get(k, 0))
+                _log("P2C %s START: withholding after %d accepted updates (b %+.3f, "
+                     "sigma %.3f) -- coasting %.0f s"
+                     % (_p2c_name(k), p2c["n0"], js.bias(k), js.sigma(k),
+                        args.joint_p2c_hold_s))
+            return
+        # ⚠️ THE SAT CAN AGE OUT FROM UNDER THE TEST. A withheld satellite is not fed, so
+        # its _t_seen stops advancing and _drop() evicts it after max_age_s (900 s). A hold
+        # at or beyond that would end every coast by eviction and silently report nothing --
+        # so the default hold is 600 s, and eviction is reported as its own outcome rather
+        # than looking like a completed test.
+        if p2c["key"] not in js._idx:
+            _p2c_summary(js, t_now, "sat dropped from state")
+        elif t_now - p2c["t0"] >= args.joint_p2c_hold_s:
+            _p2c_summary(js, t_now, "hold complete")
+
     def _p2c_hold(js, key):
         """True once this sat is BOTH masked and established -- see --joint-mask-after."""
+        if args.joint_p2c_rotate:
+            return key == p2c["key"] and key in js._idx
         return (key in joint_mask and key in js._idx
                 and js._n.get(key, 0) >= args.joint_mask_after)
 
@@ -4424,9 +4524,12 @@ def main(argv=None, rx=None, publisher=None):
                         for _n in _js.drain_notes():
                             _log_rl("joint-note", "JOINT %s: %s" % (band_id, _n),
                                     every_s=10.0)
+                        _p2c_tick(_js, t_now_abs)
                         for _p, _d in offs:
                             if _p2c_hold(_js, (tag, _p)):
                                 _r = _js.wrap(_d - _js.predicted((tag, _p)) - _js.tau(band_id))
+                                if p2c["key"] == (tag, _p):
+                                    p2c["samples"].append((t_now_abs - p2c["t0"], _r))
                                 _log_rl("p2c-%d" % _p,
                                         "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f chips "
                                         "(b %+.3f, sigma %.3f, tau %+.4f) -- flat = the state "
@@ -4504,6 +4607,8 @@ def main(argv=None, rx=None, publisher=None):
                             if _p2c_hold(_js, (tag, _prn)):
                                 if True:
                                     _r = _js.wrap(_y - _js.predicted((tag, _prn)) - _js.tau(band_id))
+                                    if p2c["key"] == (tag, _prn):
+                                        p2c["samples"].append((t_now_abs - p2c["t0"], _r))
                                     _log_rl("p2c-%d" % _prn,
                                             "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f "
                                             "chips (b %+.3f, tau %+.4f)"
