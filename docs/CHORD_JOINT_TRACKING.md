@@ -217,3 +217,41 @@ against an actual scatter of 0.31, a factor of 8. Either q_clk is too tight or t
 measurement sigma is optimistic (per-sat errors are almost certainly correlated cycle to
 cycle rather than white). Harmless while nothing consumes the covariance; it must be fixed
 BEFORE any consumer gates on sigma, or the gate will be 8x too tight.
+
+### 3c. tau_band LANDED, AND IT IS PART OF P2 (2026-08-09/10)
+
+⚠️ NAMING CORRECTION: three commits on 2026-08-09 label the tau_band work "P3". That is wrong.
+`tau_band` has been in the state vector `x` since section 1; implementing it completes a piece
+of **P2's filter**. **P3 is retiring the E/L lanes** and is untouched.
+
+WHAT IS DONE. tau_band is a declared state with the reference band pinned at 0 as the gauge
+(without that pin clk and the taus are exactly degenerate). One receiver-wide joint solve
+replaces the per-band states -- two independent states cannot estimate the offset between them,
+which is why the second band needed hand-wired cross-band bootstraps to track at all (#34). The
+model-primary measurement (`dr_seed_phys + dll_trim - cp_predicted`) now feeds it, so all five
+chains contribute where only GPS did.
+
+FIRST RESULT ON SKY, 3.3 h soak: **tau(1207.14 vs 1176.45) = -0.0106 chips = -1.03 ns**, sd
+0.0055 over the 2.1 h after convergence, no drift, from ~20 dual-band satellites. So the
+second-band group delay is ~1 ns and STATIC at this precision -- which retroactively explains
+why borrowing the phase across bands works: the bootstrap was accurate to a nanosecond.
+
+⚠️ tau_observability() counts the DUAL-BAND satellites and the shadow line prints "(dual N)"
+beside every tau. tau separates from b_sat ONLY through satellites seen in both bands, so a tau
+printed next to "dual 0" is an artefact of the priors. That is not hypothetical: disjoint
+E5a/E5b PRN lists put the instrument in exactly that state for a day (#34).
+
+TWO MEASURED CAVEATS, both to carry into P2b:
+  * The covariance is ~2x overconfident on tau (reported 0.0027 against a measured 0.0055).
+    Smaller than the sigma_clk caveat in 3b, same direction, same cause.
+  * Do NOT fit a trend across the filter's convergence. The first hour is a settling exponential
+    from the 20-chip prior; a least-squares line through it reported "-0.124 chips/hour,
+    DRIFTING" when the converged answer is static. The lag-1 autocorrelation is 0.999, so ~1000
+    readings are worth about ONE independent sample -- window the series, never fit it whole.
+
+STILL OPEN IN P2: everything is SHADOW, consumed by nothing. P2b (switch consumers one per
+commit: l-a EMA -> clk_rate, clock EMA -> clk, slew target -> state) and P2c (the weak-sat
+coast test) are the remaining work, and P2b is where the value and the risk both are -- the
+first attempt froze the trackers and was reverted (11.23). The two cross-band bootstraps wired
+on 2026-08-09 are SCAFFOLDING that P2b should retire: once the joint solve owns the clock and
+tau_band, a cold band needs no borrowed phase at all.
