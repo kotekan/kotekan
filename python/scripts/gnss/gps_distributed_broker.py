@@ -5298,6 +5298,30 @@ def main(argv=None, rx=None, publisher=None):
                     rows.append("PRN %d A %s | B %s" % (prn, _f(a), _f(b)))
                 if rows:
                     _log("FLEET-COH: " + "; ".join(rows))
+                # FLEET-INST (task #40). The FLEET-COH line reduces 12 instances to a max,
+                # and a max cannot separate a COMMON fluctuation (sky, or the shared broker
+                # seed -- the two surviving suspects for the level-proportional scatter)
+                # from independent per-instance noise. Log every instance's own deep snr
+                # plus the alignment, so the common/independent split is computable per
+                # emit offline. Path A only -- path B's per_inst rides the same dict if
+                # ever needed. Instance order is SORTED BY URL, stable across polls, so a
+                # column in the log is a node/GPU throughout.
+                for prn in sorted(fcoh):
+                    v = fcoh[prn]
+                    pi = v.get("per_inst") or {}
+                    if len(pi) < 2:
+                        continue
+
+                    def _tag(u):
+                        # http://cx19:12049/gnss1_n2combine -> cx19/1. Values are TAGGED
+                        # rather than positional so a missing instance cannot shift the
+                        # columns of every instance after it.
+                        m = re.search(r"//(\w+):\d+/\w*?(\d)[^/]*$", u)
+                        return "%s/%s" % (m.group(1), m.group(2)) if m else u[-12:]
+
+                    _log("FLEET-INST: PRN %d align %.3f n_rec %d %s"
+                         % (prn, v.get("align", 0.0), v.get("n_rec", 0),
+                            " ".join("%s=%.1f" % (_tag(u), pi[u]) for u in sorted(pi))))
             # FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md P1).
             # MEASUREMENT ONLY: touches no seed and no loop -- it is logged and published so
             # it can be judged against the disc, the E/L asymmetry and GPS's search-measured
