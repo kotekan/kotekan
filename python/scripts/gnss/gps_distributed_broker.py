@@ -4271,13 +4271,14 @@ def main(argv=None, rx=None, publisher=None):
                                   t_now_abs)
                         for _p, _d in offs:
                             if _p2c_hold(_js, (tag, _p)):
-                                _r = _js.wrap(_d - _js.predicted((tag, _p)))
+                                _r = _js.wrap(_d - _js.predicted((tag, _p)) - _js.tau(band_id))
                                 _log_rl("p2c-%d" % _p,
-                                        "P2C PRN %d MASKED %.0fs: coast residual %+.3f chips "
-                                        "(b %+.3f, sigma %.3f) -- flat = the state carries "
-                                        "it, drifting = it does not"
-                                        % (_p, _js.age((tag, _p), t_now_abs) or 0.0, _r,
-                                           _js.bias((tag, _p)), _js.sigma((tag, _p))),
+                                        "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f chips "
+                                        "(b %+.3f, sigma %.3f, tau %+.4f) -- flat = the state "
+                                        "carries it"
+                                        % (band_id, _p, _js.age((tag, _p), t_now_abs) or 0.0,
+                                           _r, _js.bias((tag, _p)), _js.sigma((tag, _p)),
+                                           _js.tau(band_id)),
                                         every_s=30.0)
                         if now_w >= dr_state.get("joint_log_next", 0.0):
                             dr_state["joint_log_next"] = now_w + 30.0
@@ -4338,12 +4339,13 @@ def main(argv=None, rx=None, publisher=None):
                                    - cp_predicted(_v, _th)) % _DR_MOD)
                             if _p2c_hold(_js, (tag, _prn)):
                                 if True:
-                                    _r = _js.wrap(_y - _js.predicted((tag, _prn)))
+                                    _r = _js.wrap(_y - _js.predicted((tag, _prn)) - _js.tau(band_id))
                                     _log_rl("p2c-%d" % _prn,
-                                            "P2C PRN %d MASKED %.0fs: coast residual %+.3f "
-                                            "chips (b %+.3f)"
-                                            % (_prn, _js.age((tag, _prn), t_now_abs) or 0.0,
-                                               _r, _js.bias((tag, _prn))), every_s=30.0)
+                                            "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f "
+                                            "chips (b %+.3f, tau %+.4f)"
+                                            % (band_id, _prn,
+                                               _js.age((tag, _prn), t_now_abs) or 0.0,
+                                               _r, _js.bias((tag, _prn)), _js.tau(band_id)), every_s=30.0)
                                 continue
                             _mm.append(((tag, _prn), _y, args.joint_sigma, band_id))
                         if _mm:
