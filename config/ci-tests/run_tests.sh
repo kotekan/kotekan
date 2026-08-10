@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Runs Kotekan tests from a directory of YAML configs with timeout protection.
+# Runs Kotekan tests from directories of YAML configs and/or individual YAML
+# configs, with timeout protection.
 # Tracks pass/fail/timeout status and provides a summary at the end.
-# Usage: ./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir>
+# Usage: ./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir|test_config.yaml>...
 
 # Check if required arguments are provided
 if [ $# -lt 3 ]; then
-  echo "Usage: $0 <kotekan_binary> <timeout_duration> <test_config_dir>"
+  echo "Usage: $0 <kotekan_binary> <timeout_duration> <test_config_dir|test_config.yaml>..."
   echo "Example: $0 ./build-2404/kotekan/kotekan 2m config/ci-tests"
+  echo "Example: $0 ./build-2404/kotekan/kotekan 2m config/ci-tests/cpu_batch/foo.yaml"
   exit 1
 fi
 
 KOTEKAN_BINARY="$1"
 TIMEOUT_DURATION="$2"
-TEST_CONFIG_DIR="$3"
+shift 2
 
 format_duration() {
   local total_seconds=$1
@@ -35,9 +37,23 @@ if [ ! -f "$KOTEKAN_BINARY" ]; then
   exit 1
 fi
 
-# Verify test config directory exists
-if [ ! -d "$TEST_CONFIG_DIR" ]; then
-  echo "Error: Test config directory not found at $TEST_CONFIG_DIR"
+# Collect the configs to run: every *.yaml in a directory argument, or the file itself
+CONFIG_FILES=()
+for target in "$@"; do
+  if [ -d "$target" ]; then
+    for config_file in "$target"/*.yaml; do
+      [ -f "$config_file" ] && CONFIG_FILES+=("$config_file")
+    done
+  elif [ -f "$target" ]; then
+    CONFIG_FILES+=("$target")
+  else
+    echo "Error: Test config not found at $target"
+    exit 1
+  fi
+done
+
+if [ ${#CONFIG_FILES[@]} -eq 0 ]; then
+  echo "Error: No YAML configs found in $*"
   exit 1
 fi
 
@@ -52,7 +68,7 @@ TIMED_OUT_TEST_TIMES=()
 TIMED_OUT_TEST_EXIT_CODES=()
 
 # Run tests
-for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
+for config_file in "${CONFIG_FILES[@]}"; do
   echo "Running test with config: $config_file"
   
   # Run the test with timeout
