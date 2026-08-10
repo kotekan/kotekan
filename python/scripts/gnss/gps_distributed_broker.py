@@ -4832,8 +4832,49 @@ def main(argv=None, rx=None, publisher=None):
                         # about the orbit and wrong about the path. tau is sky-minus-replica,
                         # so the replica moves BY tau to meet the sky: phys + b. Zero until
                         # the fit has fed it (and exactly 0.0 in every transcript replay).
-                        cp0 = ((cp_predicted(v, t_now_abs) + clk_now
-                                + bsat.get(prn, now_w))
+                        # -- P2b CONSUMER 3: the clock+bias offset, ONE definition for both
+                        # the birth/re-pin phase (cp0, below) and the slew target (_model,
+                        # further down). They are the same physical quantity -- "what to add
+                        # to the pure model for this satellite" -- and must not be able to
+                        # disagree.
+                        #
+                        # ⚠️ WHICH CHAINS REACH WHICH PATH, because it decides what this
+                        # consumer can be tested on at all. The slew path requires `not
+                        # detectors`, so ONLY the model-primary chains (E5a/E5b/B2a/B2b)
+                        # slew; search-fed GPS takes cp0 at birth and re-pin and is then
+                        # skipped entirely once locked ("the DLL owns the residual now").
+                        # But the joint state is fed ONLY by search-anchored chains, so it
+                        # contains ONLY GPS satellites unless --joint-model-primary is on.
+                        # Scoped to the slew path alone this consumer could therefore NEVER
+                        # FIRE: the chains that slew have no satellites in the state, and
+                        # the chain with satellites in the state does not slew. Covering
+                        # cp0 as well is what gives it a live arm today, on GPS births.
+                        _leg_off = clk_now + bsat.get(prn, now_w)
+                        _off = _leg_off
+                        _jr3 = _joint_state(rx, band_id, args)
+                        _joff = (_jr3.predicted((tag, prn))
+                                 if (_jr3 is not None and (tag, prn) in _jr3._idx)
+                                 else None)
+                        if _joff is not None:
+                            # PLAUSIBILITY BOUND, the transferable lesson from consumer 1:
+                            # never hand the instrument a physically impossible number just
+                            # because an estimator produced it. Both offsets describe the
+                            # same receiver, so they must agree to within a few chips; a
+                            # large gap means one is broken, and the legacy path is the one
+                            # with years behind it.
+                            _d3 = ((_joff - _leg_off + _DR_MOD / 2.0) % _DR_MOD) - _DR_MOD / 2.0
+                            _ok3 = abs(_d3) <= args.joint_slew_max_chips
+                            _log_rl("jslew-%d" % prn,
+                                    "SEED-OFFSET PRN %d (%s): joint %+.3f vs legacy %+.3f "
+                                    "chips (diff %+.3f, sigma %.3f)%s"
+                                    % (prn, "slew" if _slew else "cp0", _joff, _leg_off,
+                                       _d3, _jr3.sigma((tag, prn)) or 0.0,
+                                       "" if _ok3 else "  REFUSED (> %.1f chips)"
+                                       % args.joint_slew_max_chips),
+                                    every_s=60.0)
+                            if "slew" in joint_consume and _ok3:
+                                _off = _joff
+                        cp0 = ((cp_predicted(v, t_now_abs) + _off)
                                - t_now_abs * args.chip_rate_hz
                                  * (1.0 + args.code_doppler_sign
                                     * dop_seed / args.carrier_hz)) % _DR_MOD
@@ -4867,51 +4908,11 @@ def main(argv=None, rx=None, publisher=None):
                             _held = dr_seed_phys(
                                 seeds[prn], h1, args.hops_per_sec, args.chip_rate_hz,
                                 args.carrier_hz, args.code_doppler_sign, _DR_MOD)
-                            # -- P2b CONSUMER 3: the SLEW TARGET's clock+bias --------------
-                            # The target is model + clk + b_sat, and b_sat is precisely "how
-                            # wrong the pure model is for THIS satellite". That matters more
-                            # than the noise argument the other consumers rest on: the ~600 s
-                            # plant oscillation was diagnosed as slew-to-model fighting
-                            # trim-to-sky with the model per-sat +-1-6 chips out, so a better
-                            # b_sat attacks the oscillation at its source rather than damping
-                            # it. Today's term comes from the EMA SatBiasFilter, which
-                            # estimates biases with a gain and a clamp; the joint state
-                            # estimates them WITH the clock, separated by process noise.
-                            #
-                            # THIS IS THE HALF OF THE STATE P2c ACTUALLY VALIDATED. The coast
-                            # residual it measures is y - predicted(clk + b_sat) -- the very
-                            # sum consumed here -- and it read -0.19 +- 0.44 chips over 14
-                            # minutes with the filter's own sigma (0.454) matching the
-                            # realised scatter (0.441). It is also the SAFE half: on
-                            # 2026-08-10 clk alone was 99 chips wrong while clk + b_i stayed
-                            # correct throughout, which is exactly why nothing downstream
-                            # noticed. A consumer of the sum survives a gauge collapse that
-                            # would wreck a consumer of clk alone (docs 11.29).
-                            _leg_off = clk_now + bsat.get(prn, now_w)
-                            _off = _leg_off
-                            _jr3 = _joint_state(rx, band_id, args)
-                            _joff = (_jr3.predicted((tag, prn))
-                                     if (_jr3 is not None and (tag, prn) in _jr3._idx)
-                                     else None)
-                            if _joff is not None:
-                                # PLAUSIBILITY BOUND, the transferable lesson from consumer 1:
-                                # never hand the instrument a physically impossible number
-                                # just because an estimator produced it. The two offsets
-                                # describe the same receiver, so they must agree to within a
-                                # few chips; a large disagreement means one of them is broken
-                                # and the legacy path is the one with years behind it.
-                                _d3 = ((_joff - _leg_off + _DR_MOD / 2.0) % _DR_MOD) - _DR_MOD / 2.0
-                                _ok3 = abs(_d3) <= args.joint_slew_max_chips
-                                _log_rl("jslew-%d" % prn,
-                                        "SLEW-TARGET PRN %d: joint %+.3f vs legacy %+.3f "
-                                        "chips (diff %+.3f, sigma %.3f)%s"
-                                        % (prn, _joff, _leg_off, _d3,
-                                           _jr3.sigma((tag, prn)) or 0.0,
-                                           "" if _ok3 else "  REFUSED (> %.1f chips)"
-                                           % args.joint_slew_max_chips),
-                                        every_s=60.0)
-                                if "slew" in joint_consume and _ok3:
-                                    _off = _joff
+                            # The clock+bias offset is _off, computed once above so the birth
+                            # phase and the slew target cannot disagree. b_sat is "how wrong
+                            # the pure model is for THIS satellite", which is why this is the
+                            # consumer aimed at the ~600 s plant oscillation (slew-to-model
+                            # fighting trim-to-sky, with the model per-sat +-1-6 chips out).
                             _model = (cp_predicted(v, t_h) + _off) % _DR_MOD
                             _dcp = ((_model - _held + _DR_MOD / 2.0) % _DR_MOD
                                     ) - _DR_MOD / 2.0
