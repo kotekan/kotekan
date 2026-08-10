@@ -827,6 +827,21 @@ def main(argv=None, rx=None, publisher=None):
                          "masked sat is still SEEDED normally, so nothing on sky changes. "
                          "Mask a STRONG sat -- masking a weak one tests nothing, since its "
                          "own measurements were not holding it up anyway.")
+    ap.add_argument("--joint-model-primary", action="store_true",
+                    help="Feed MODEL-PRIMARY chains (E5a/B2a/E5b/B2b) into the joint solve. "
+                         "⚠️ DEFAULT OFF AFTER A MEASURED REGRESSION (2026-08-10). The "
+                         "model-primary measurement carries NO QUALITY GATE -- a detection has "
+                         "an SNR to threshold on, a dead-reckoned seed does not -- so a "
+                         "satellite whose tracker has not converged contributes a y of hundreds "
+                         "of chips. birth_max does not stop it: that gate is conditioned on "
+                         "P[0,0] < 100, which is false for minutes after a restart, so early "
+                         "births are unvetted. Measured with it on: clk walked to +445 chips "
+                         "against a true ~150, biases reached -427/-330/+281 where they should "
+                         "be a few, tau_band blew to +792 chips, and 67-82% of updates were "
+                         "rejected. It looked healthy for the first hour only because the "
+                         "satellites then up happened to be good; the failure arrives with the "
+                         "next rise. Re-enable once the measurement is gated on tracking "
+                         "quality (deep_snr/coh_frac), which is what #33 P2b needs anyway.")
     ap.add_argument("--joint-mask-after", type=int, default=50,
                     help="P2c: engage --joint-mask-prn only once that satellite has this many "
                          "ACCEPTED updates. Masking from startup is a vacuous test -- the sat "
@@ -4322,7 +4337,7 @@ def main(argv=None, rx=None, publisher=None):
                 # No SNR gate to mirror -- a model-primary chain has no detection SNR. The
                 # protection is the filter's own innovation gate plus birth_max, which is why
                 # those were built with an escape hatch.
-                elif args.joint_shadow and seeds and not offs:
+                elif args.joint_model_primary and args.joint_shadow and seeds and not offs:
                     try:
                         _js = rx.joint_receiver(band_id, CODE_LEN)
                         _h1 = int(round(t_now_abs * args.hops_per_sec))
