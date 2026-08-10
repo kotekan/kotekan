@@ -153,7 +153,7 @@ class JointReceiverState:
     def __init__(self, code_len=10230.0, sigma_clk0=200.0, sigma_rate0=1.0,
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013,
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
-                 reject_escape=5,
+                 reject_escape=5, escape_spread=5.0,
                  birth_max=50.0, gauge_max_b=60.0,
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5):
         import numpy as np
@@ -181,8 +181,18 @@ class JointReceiverState:
         self.innov_nsigma = innov_nsigma  # and the UNCERTAINTY-SCALED gate that does the work
         self.reject_escape = reject_escape  # consecutive rejections before we believe reality
         self._rej_run = {}             # key -> consecutive rejections
+        # ...and the innovations THEMSELVES, because the escape hatch tests whether the run
+        # agrees with itself, not merely that it is long (2026-08-10; see update()).
+        self._rej_hist = {}            # key -> recent rejected innovations (rolling)
+        self.escape_spread = float(escape_spread)
+        self.escapes = 0
         self.birth_max = birth_max     # refuse to BIRTH a sat implausibly far from clk
         self.gauge_max_b = gauge_max_b # a wild bias does not get a vote in the gauge
+        # Events worth an operator's attention (escapes, incoherent runs, gauge fallbacks).
+        # The filter has no logger of its own, so it queues one-line notes and the broker
+        # drains them. The single most damaging event of 2026-08-10 fired SILENTLY.
+        self.notes = []
+        self.gauge_fallbacks = 0
         # -- tau_band (P3): the per-BAND group delay, a DECLARED STATE ------------------
         # y_i = clk + b_i + tau_band(beta) + noise. Without a tau state the per-band delay
         # has nowhere to live, so it lands in b_sat -- and b_sat is per SATELLITE, so a sat
@@ -254,6 +264,25 @@ class JointReceiverState:
         self._band_seen[band] = t_now
         return i
 
+    @staticmethod
+    def _key_str(key):
+        """(tag, prn) -> 'G25'. Keys are chain-tagged tuples; notes want the sat."""
+        try:
+            return "%s%d" % (key[0][0].upper(), int(key[1]))
+        except Exception:
+            return str(key)
+
+    def _note(self, msg):
+        """Queue a one-line operator note; the broker drains `notes` each cycle. Bounded, so
+        a pathological chain cannot grow this without limit."""
+        self.notes.append(msg)
+        if len(self.notes) > 200:
+            del self.notes[:-200]
+
+    def drain_notes(self):
+        out, self.notes = self.notes, []
+        return out
+
     def _drop(self, keys):
         """Remove stale sats. Their rows leave the state entirely -- a sat that has not
         been measured in max_age_s must not keep voting in the gauge, which would drag the
@@ -268,6 +297,7 @@ class JointReceiverState:
         for k in keys:
             del self._idx[k], self._t_seen[k], self._n[k]
             self._rej_run.pop(k, None)
+            self._rej_hist.pop(k, None)
         # Reindex from the SURVIVING ROW ORDER, not from a hardcoded base of 2. The old
         # form assumed every row past clk_rate was a satellite; tau_band rows share that
         # space now, and a base-2 renumber would silently alias a band onto a satellite.
@@ -416,17 +446,71 @@ class JointReceiverState:
             if _bad:
                 # ESCAPE HATCH. A gate with no way out is a deadlock: a genuine step (a
                 # clock event, a re-anchor) is rejected, so the state never follows it, so
-                # every subsequent measurement is rejected too -- forever. Garbage is
-                # sporadic; a real move is PERSISTENT. After reject_escape consecutive
-                # rejections for the same satellite, believe the world rather than the
+                # every subsequent measurement is rejected too -- forever. After
+                # reject_escape consecutive rejections, believe the world rather than the
                 # state, and inflate the covariance so the correction is taken quickly.
+                #
+                # PERSISTENCE IS NOT ENOUGH, and assuming it was cost the whole state on
+                # 2026-08-10. The original test counted consecutive rejections and never
+                # asked whether the rejected measurements agreed with EACH OTHER. PRN 25
+                # transited out of the primary beam (elevation RISING 45->65 deg, deep_snr
+                # 30->2.4, coh_frac 0.94->0.19) and its code phase became uniform noise over
+                # the 10230-chip code. Five uniform draws are perfectly "persistent" and
+                # mutually meaningless: the hatch believed a -1396-chip innovation, which
+                # corrupted clk, which made every OTHER sat's innovation large, which
+                # escaped them too, until the gauge had no inliers left and switched itself
+                # off (see gauge()). The observable clk + b_i stayed correct throughout,
+                # so nothing downstream noticed for 50 minutes.
+                #
+                # A REAL move is CONSISTENT: the state is not moving (every measurement is
+                # being rejected), so a genuine re-anchor gives the same innovation every
+                # time. Noise does not. Requiring the run to agree with itself within
+                # escape_spread is a far stronger discriminator than any magnitude bound --
+                # five uniform draws landing within 5 chips of each other has probability
+                # ~(2*5/10230)^4 ~ 1e-8 -- and because it is strong, it can be trusted with
+                # LARGE innovations, which keeps the deadlock escape this hatch exists for.
+                # That is why there is deliberately no absolute ceiling here: a consistent
+                # 1400-chip move is a real re-anchor and must be followed; an inconsistent
+                # one is noise at any magnitude.
+                # CONSISTENCY IS TESTED ON THE MEASUREMENT y, NOT ON THE INNOVATION, and the
+                # difference is not pedantry. An innovation is y minus a MOVING state: while
+                # a run of rejections is in progress the gauge and the process model keep
+                # shifting x, so a satellite reporting the same thing every time produces
+                # innovations that drift apart. Measured: clean sigma-0.3 measurements gave
+                # an innovation spread of 20 chips purely because the state was sliding
+                # underneath them, which would block the hatch exactly when a real re-anchor
+                # needs it. y is what the satellite actually said; two honest measurements of
+                # a static truth agree no matter what the filter did in between.
+                hist = self._rej_hist.setdefault(key, [])
+                hist.append(y_chips)
+                if len(hist) > self.reject_escape:
+                    del hist[:-self.reject_escape]
                 self._rej_run[key] = self._rej_run.get(key, 0) + 1
-                if self._rej_run[key] < self.reject_escape:
+                spread = None
+                if len(hist) >= self.reject_escape:
+                    # circular spread about the run's first sample, so a cluster straddling
+                    # +-L/2 is not read as maximally scattered
+                    spread = max(abs(self.wrap(v - hist[0])) for v in hist)
+                if spread is None or spread > self.escape_spread:
                     self.rejected += 1
+                    if spread is not None:
+                        # The run is long but INCOHERENT: this satellite is feeding noise,
+                        # which is a tracking failure and not a state failure. Say so --
+                        # silence here is what let the 2026-08-10 event pass unremarked.
+                        self._note("REJECT-RUN %s: %d consecutive, spread %.1f chips "
+                                   "(> escape_spread %.1f) -- incoherent, NOT believed; "
+                                   "this sat is feeding noise"
+                                   % (self._key_str(key), self._rej_run[key], spread,
+                                      self.escape_spread))
                     return None
+                self._note("ESCAPE %s: %d consecutive rejections agreeing to %.2f chips "
+                           "-- believing a %+.1f chip step and inflating P"
+                           % (self._key_str(key), self._rej_run[key], spread, innov))
+                self.escapes += 1
                 self.P[0, 0] += 25.0
                 self.P[i, i] += 25.0
                 self.P[0, 1] = self.P[1, 0] = 0.0
+        self._rej_hist.pop(key, None)
         self._rej_run.pop(key, None)
         z = self._scalar_update(H, innov, sigma_chips ** 2)
         self._t_seen[key] = t_now
@@ -440,10 +524,36 @@ class JointReceiverState:
         # A wild bias gets no vote. The gauge is a MEAN, and the estimator it replaces was a
         # circular MEDIAN -- robust by construction. Carrying the mean over without carrying
         # the robustness is what let one bad detection move the clock (see the class note).
-        use = [i for i in self._idx.values()
-               if self.gauge_max_b is None or abs(self.x[i]) <= self.gauge_max_b]
-        if len(use) < 2:
+        #
+        # INLIERS ARE RELATIVE TO THE MEDIAN, NOT TO ZERO, and that is the whole robustness
+        # argument rather than a detail. Measuring |b_i| against zero silently assumes the
+        # biases are ALREADY centred -- i.e. it assumes the very thing the gauge exists to
+        # enforce. When that assumption failed on 2026-08-10 (every bias driven to ~+97 by a
+        # corrupted clk) the inlier set came back EMPTY, `len(use) < 2` returned early, and
+        # the gauge quietly stopped running for 50 minutes. A gauge that switches itself off
+        # exactly when the state most needs pinning is worse than none, because the common
+        # mode is then unobservable and clk drifts freely while clk + b_i stays right --
+        # invisible to every consumer that reads the sum.
+        #
+        # The median is always an inlier of itself, so this set is never empty; with a
+        # single wild sat it excludes exactly that sat, as before; and with the state
+        # uniformly displaced it includes everything and pulls the whole comb back. That
+        # last case is self-healing, which the zero-centred form could not be.
+        idx = list(self._idx.values())
+        if len(idx) < 2:
             return
+        b = [float(self.x[i]) for i in idx]
+        med = float(np.median(b))
+        use = [i for i in idx
+               if self.gauge_max_b is None or abs(float(self.x[i]) - med) <= self.gauge_max_b]
+        if len(use) < 2:
+            # Cannot happen with the median centre (the median's own neighbours are always
+            # within range), but if it ever does, that is an alarm and not a reason to skip:
+            # pin on everything rather than leave the common mode floating.
+            self.gauge_fallbacks += 1
+            self._note("GAUGE: only %d inlier(s) of %d about median %+.2f -- pinning on ALL"
+                       % (len(use), len(idx), med))
+            use = idx
         H = np.zeros(self.x.size)
         for i in use:
             H[i] = 1.0 / len(use)
