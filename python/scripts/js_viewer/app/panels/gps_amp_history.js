@@ -172,7 +172,13 @@ export class GpsAmpHistoryPanel {
                     this.meta.set(key, {label: r.id + " · " + sg.col, col: sg.col,
                                         band: GpsAmpHistoryPanel.BAND_KEY[sg.band] || "l1",
                                         tag: r.tag});
-                    this._push(key, m, now, null);   // per-signal search SNR n/a
+                    // Search SNR IS per-signal now: gps_feed stashes each detection's snr at
+                    // sig_by[key].snr and carries it onto the metrics object, precisely so
+                    // "strong in search, wrong downstream" stays visible. This passed null
+                    // instead, so the snr mode rendered an empty plot in unified mode -- the
+                    // only mode the viewer runs in. (undefined for a signal with no blind
+                    // acquisition at all, e.g. E5a/B2a, which is a genuine gap, not a zero.)
+                    this._push(key, m, now, m.snr != null ? m.snr : null);
                 }
             } else {
                 // No despread this emit -> a GAP, not a zero. (A tracked-but-silent sat

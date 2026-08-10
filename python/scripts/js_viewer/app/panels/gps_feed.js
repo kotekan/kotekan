@@ -50,23 +50,44 @@ export let RF_BANDS = null;
 // -> every cell is treated as capable, i.e. exactly the old behaviour: we never claim a
 // satellite is incapable on the strength of information we could not obtain.
 export let CAPABILITY = null;
+/// Every PRN the block map has an opinion about. A PRN outside this set is UNKNOWN -- see
+/// not_transmitted(). The server sends it as caps._prns; without it we fall back to the
+/// union of the per-signal sets, which is the same thing whenever any signal is unfiltered.
+export let CAPABILITY_PRNS = null;
 export function configure_signals(sigs, rf, caps) {
     if (!Array.isArray(sigs) || !sigs.length) { SIGNALS = null; return; }
     SIGNALS = sigs.map(s => Object.assign({key: s.combiner}, s));
     RF_BANDS = Array.isArray(rf) && rf.length ? rf : null;
     CAPABILITY = null;
+    CAPABILITY_PRNS = null;
     if (caps && typeof caps === "object") {
         const by_key = {};
         for (const s of SIGNALS)
             if (s.sigid && Array.isArray(caps[s.sigid]))
                 by_key[s.key] = new Set(caps[s.sigid]);
-        if (Object.keys(by_key).length) CAPABILITY = by_key;
+        if (Object.keys(by_key).length) {
+            CAPABILITY = by_key;
+            CAPABILITY_PRNS = Array.isArray(caps._prns) && caps._prns.length
+                ? new Set(caps._prns)
+                : new Set([].concat(...Object.values(by_key).map(s => [...s])));
+        }
     }
     if (_active_feed) _active_feed._reconfigure();
 }
 /// true when `prn` is known NOT to transmit the signal `key`. False when capable OR unknown.
+///
+/// ⚠️ ABSENT IS UNKNOWN, NOT INCAPABLE. A PRN missing from the block map has to fall through
+/// as capable, or missing DATA becomes a positive CLAIM -- which is the one thing the
+/// CAPABILITY docstring above says this must never do. It did exactly that: PRN 2 is absent
+/// from the cached TLE (so are 1 and 8), and the table marked it "not broadcast by this
+/// satellite" while the blind search was detecting it at 28 sigma on its own ephemeris
+/// Doppler (+1122 measured vs +1122 predicted, 2026-08-10). CAPABILITY_PRNS is the set of
+/// PRNs the map actually knows about; anything outside it is unknown and renders as
+/// "no detection" rather than "not transmitted".
 export function not_transmitted(key, prn) {
-    return !!(CAPABILITY && CAPABILITY[key] && !CAPABILITY[key].has(prn));
+    if (!(CAPABILITY && CAPABILITY[key])) return false;
+    if (CAPABILITY_PRNS && !CAPABILITY_PRNS.has(prn)) return false;   // absent => unknown
+    return !CAPABILITY[key].has(prn);
 }
 
 // One combiner get_status record -> the derived per-signal metrics the panels display. Pulled
@@ -346,6 +367,11 @@ export class GpsFeed {
                             r.dop = m.dop; r.amp = m.amp;
                         }
                         if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) r.cn0 = m.cn0;
+                        // ...and the COHERENT one alongside, or the table's C/N0-coh column
+                        // and its sort would read empty in flat mode while the unified cells
+                        // showed values. Both are row summaries = best signal, same rule.
+                        if (m.cn0_coh != null && (r.cn0_coh == null || m.cn0_coh > r.cn0_coh))
+                            r.cn0_coh = m.cn0_coh;
                     }
             }
         } else {

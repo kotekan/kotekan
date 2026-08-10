@@ -1104,9 +1104,19 @@ def _gps_signal_capability():
         convention that rots when it exists in two places.
       * The PRN -> block map is parsed from the CACHED Celestrak TLE names
         (~/.cache/kotekan_gps/tle_gps-ops.txt, written by the brokers), so the viewer needs no
-        network and no skyfield. Block is METADATA, not orbital state: a stale TLE gives stale
-        ORBITS but the block of a launched satellite never changes, so an old cache is fine
-        here even though it would not be for visibility.
+        network and no skyfield.
+
+    ⚠️ AND THE CACHE MUST BE FRESH, which this originally argued it need not be: "block is
+    METADATA, not orbital state -- the block of a launched satellite never changes, so an old
+    cache is fine". The premise is true and the conclusion does not follow. A PRN is a SLOT,
+    not a property of a satellite: when a bird is decommissioned its PRN is reissued to a new
+    one, so the PRN -> block MAP rots even though no satellite's block ever changes. Measured
+    2026-08-10 on an 11-day-old cache: PRN 22 was listed as GPS BIIR-5 (a 2003 Block IIR, no
+    L5) while the blind search detected it on L5 at 35 sigma on its own ephemeris Doppler
+    (-623 measured vs -615 predicted), and PRNs 1, 2 and 8 were absent from the file entirely.
+    Stale negatives are worse than no data here, because the table renders them as fact -- and
+    the same map feeds the broker's --signal-capability, where it would have stopped seeding
+    two working satellites. So: refuse a cache older than MAX_AGE_DAYS and say so.
     Returns {} on any failure -- the client then falls back to today's behaviour (everything
     unknown reads as "no detection"), which is the safe direction: never claim a satellite is
     incapable when we could not check.
@@ -1117,6 +1127,16 @@ def _gps_signal_capability():
                                         "..", "gnss"))
         from gps_beamtrack import _signal_block_filter
         tle = os.path.expanduser("~/.cache/kotekan_gps/tle_gps-ops.txt")
+        MAX_AGE_DAYS = 7.0
+        age_d = (time.time() - os.path.getmtime(tle)) / 86400.0
+        if age_d > MAX_AGE_DAYS:
+            log_.warning(
+                "GPS block map DISABLED: %s is %.1f days old (max %.0f). A PRN is a slot, "
+                "not a satellite -- a reissued PRN makes a stale map assert the wrong block, "
+                "and the table would render that as fact. Refresh the cache (any broker with "
+                "--almanac writes it) to get not-transmitted marking back.", tle, age_d,
+                MAX_AGE_DAYS)
+            return {}
         blocks = {}
         with open(tle) as fh:
             for ln in fh:
@@ -1133,9 +1153,14 @@ def _gps_signal_capability():
             f = _signal_block_filter(sid)
             caps[sid] = sorted(blocks) if f is None else sorted(p for p, b in blocks.items()
                                                                 if f(b))
+        # WHICH PRNs THE MAP ACTUALLY KNOWS. Without this the client cannot tell "this block
+        # does not carry that signal" from "this PRN is not in the file", and it rendered the
+        # second as the first -- PRN 2 is absent from the cache and was marked "not broadcast"
+        # while being tracked at 28 sigma.
+        caps["_prns"] = sorted(blocks)
         return caps
     except Exception as e:
-        logger.warning("GPS signal capability unavailable (%s); "
+        log_.warning("GPS signal capability unavailable (%s); "
                        "table cannot distinguish not-transmitted from not-detected", e)
         return {}
 

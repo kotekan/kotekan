@@ -34,7 +34,19 @@ const METRICS = {
     // signal (L2C-CL, L5-I): those are seeded from a sibling and never searched.
     snr:  {label: "SNR",  field: "snr",     unit: "σ",
            fmt: m => m && m.snr ? m.snr.toFixed(0) : null},
-    cn0:  {label: "C/N0", field: "cn0",     unit: "dB-Hz",
+    // TWO C/N0 ESTIMATORS, NAMED. This column was labelled a bare "C/N0" and carried the
+    // INCOHERENT one, which is by far the less sensitive of the two -- and the table's `sig`
+    // column shows the deep COHERENT value, so the two disagreed with nothing on screen
+    // saying why. Measured live 2026-08-10, GPS L5, one emit: the incoherent estimator was
+    // defined for 4 of 10 satellites (it needs amplitude > unbiased_amplitude > 0, and
+    // unbiased_amplitude floors at exactly 0 for anything at or below the fleet's noise
+    // median) while the coherent one was defined for ALL TEN -- 28.6 to 48.9 dB-Hz. It also
+    // returned -6.9 dB-Hz for PRN 23, which is not a physical C/N0. Both are offered now,
+    // labelled, with the coherent one first because it is the one that reports on the
+    // instrument's actual sensitivity.
+    cn0_coh: {label: "C/N0 coh", field: "cn0_coh", unit: "dB-Hz",
+              fmt: m => m && m.cn0_coh != null ? m.cn0_coh.toFixed(0) : null},
+    cn0:  {label: "C/N0 inc", field: "cn0",     unit: "dB-Hz",
            fmt: m => m && m.cn0 != null ? m.cn0.toFixed(0) : null},
     sig:  {label: "sig",  field: "sig",     unit: "σ",
            fmt: m => m && m.sig ? m.sig.toFixed(0) : null},
@@ -70,9 +82,16 @@ const COLS = [
      tip: "elevation (deg)"},
     {key: "snr",  label: "SNR",  align: "right", dir: -1,
      tip: "search detection significance (sigma above the acquire grid noise)"},
-    {key: "cn0",  label: "C/N0", align: "right", dir: -1,
-     tip: "incoherent C/N0 (dB-Hz, pipeline zero-point): needs only 1 record "
-          + "of coherence -- the beam-map observable"},
+    {key: "cn0_coh", label: "C/N0 coh", align: "right", dir: -1,
+     tip: "COHERENT C/N0 (dB-Hz) = 20log10(deep_snr) - 10log10(T_coh): the deep "
+          + "estimator, defined wherever the deep fold cleared its floor. Far more "
+          + "sensitive than the incoherent column beside it -- measured 10/10 "
+          + "satellites vs 4/10 on the same emit"},
+    {key: "cn0",  label: "C/N0 inc", align: "right", dir: -1,
+     tip: "INCOHERENT C/N0 (dB-Hz, pipeline zero-point): needs only 1 record of "
+          + "coherence -- the beam-map observable. Undefined (—) once "
+          + "unbiased_amplitude floors at 0, i.e. for any satellite at or below the "
+          + "fleet's noise median, which is most of them"},
     {key: "sig",  label: "sig",  align: "right", dir: -1,
      tip: "combined significance = signal / its uncertainty (sigma above "
           + "noise, deep nav-wiped when available): >>1 real, ~1 noise"},
@@ -93,7 +112,11 @@ export class GpsTablePanel {
         this.has_site = !!has_site;
         this.sort = {key: "id", dir: 1};      // stable default: constellation+PRN
         this.usort = {key: "el", dir: -1};    // unified default: highest sat first
-        this.metric = "cn0";                  // unified cell metric
+        // Default to the COHERENT C/N0: the incoherent one was the silent default and is
+        // defined for a minority of satellites (4 of 10 on the measured emit), which is how
+        // a table of blank cells sat next to a `sig` column full of robust detections.
+        // A stored preference still wins (see the restore below).
+        this.metric = "cn0_coh";              // unified cell metric
         try {
             const p = JSON.parse(localStorage.getItem(PREFS_KEY));
             if (p && p.sort && COLS.some(c => c.key === p.sort.key)) this.sort = p.sort;
@@ -427,6 +450,7 @@ export class GpsTablePanel {
                 id: dot + "<b>" + r.id + "</b>",
                 el: r.el != null ? r.el.toFixed(0) + "°" : "—",
                 snr: r.snr != null ? r.snr.toFixed(1) : "—",
+                cn0_coh: r.cn0_coh != null ? r.cn0_coh.toFixed(1) : "—",
                 cn0: r.cn0 != null ? r.cn0.toFixed(1) : "—",
                 sig,
                 coh_s: r.coh_s != null && r.coh_s > 0 ? r.coh_s.toFixed(2) : "—",
