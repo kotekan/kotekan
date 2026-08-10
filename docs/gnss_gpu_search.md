@@ -2543,3 +2543,61 @@ operating point), which lifts exactly those satellites over exactly that thresho
 attacking the serving-layer mixture (11.31) from the engagement side while the quadrature
 fallback handles the non-engaged side. Enabled fleet-wide in the manifest; merit-gated (the
 rung pays the same measured floor as every candidate); rides the next node restart.
+
+## 11.33 The self-reinforcing outage: a hint that could not expire (2026-08-10)
+
+Between 17:06 and 17:21 the instrument lost and recovered ~36 dB of search sensitivity with
+no frontend fault. KV recognised the shape instantly from the airspy prototype: *a clock
+drifting randomly until it happens to lock onto a signal.* That is exactly what it was, and
+the loop is ours.
+
+### The loop
+
+    bad clock  ->  bad seeds AND bad search hints  ->  search narrowed onto the WRONG
+    overlay phase  ->  no detections  ->  the clock cannot be re-solved  ->  bad clock
+
+There is no restoring force anywhere in it. The only escape is the dead-reckon clock
+random-walking back onto truth by chance, which is why recovery takes ~15-25 minutes rather
+than seconds. Measured, from the broker's own log:
+
+    17:08  6996.32      bootstrap, badly wrong        17:17  9209.55
+    17:10  5095.55                                    17:19   134.67   <- lands, by chance
+    17:12  1796.80      random-walking                17:21   150.84   <- snaps
+    17:15  1555.47                                    17:23   150.17   <- locked
+
+Search best-pass SNR over the same window fell 1465 -> 41 and recovered to 1871, with the
+measured pure-noise ceiling steady at ~17 throughout. The frontend never moved.
+
+### Two defects, at the two ends
+
+**The hint could not expire.** `set_nh_hint` narrows the search to ±`nh_hint_span` of 20
+overlay phases. `nh_seen`'s own comment claims a wrong hint is "recoverable -- the hint
+expires and the full scan returns", but no expiry was implemented: `nh_offset` kept its last
+value indefinitely. Worse, the accumulator re-appended every `nh_seen` entry on every cycle,
+so ONE unchanged detection filled the 64-sample window in ~2 minutes and
+`nh_hint_min_samples` read it as 64 independent confirmations -- **a sample count that
+measured uptime, not evidence.** Now: admission keyed on `ref_hop` (distinct detections
+only), samples timestamped, and the offset dropped when fewer than `min_samples` remain
+inside `--nh-hint-max-age-s` (600 s, ~half the per-PRN revisit).
+
+**The clock solve did not check agreement.** The bootstrap took a circular median over
+`--dr-min-sats` detections and accepted it unconditionally -- but a median is a measurement
+only if its inputs cluster, and a starved fleet's detections scatter ~uniformly. Verified
+numerically: real offsets (biases ~±5 chips) give a MAD of 2.2-3.0 with p95 ≈ 5.2, uniform
+noise over a 10230-chip code gives 1523-2151 with p5 ≈ 451. `--dr-max-solve-mad-chips`
+(100) sits between them with two decades of margin either side. Refusing leaves the clock
+UNSET, which is strictly better than wrong: a wrong clock acquires nothing either, *and*
+poisons the hints that would have recovered it.
+
+### What this corrects
+
+Earlier the same day I argued the sensitivity loss had to be upstream, on the grounds that
+the search is independent of the broker. **It is not** -- the broker hints it, in Doppler
+and in overlay phase. The false premise came from reading `--detectors` as a one-way feed;
+`set_doppler_hints` / `set_nh_hint` run the other way every cycle. With that corrected, the
+frontend is not implicated by this episode at all.
+
+Also operational, until the guards have soak time: **do not restart the broker into a thin
+fleet.** Each restart discards a good clock and re-rolls the bootstrap. Three restarts that
+afternoon produced 8608, 6996 and 5095 chips against a true ~150 -- the fix is the guard
+above, but the habit was mine.
