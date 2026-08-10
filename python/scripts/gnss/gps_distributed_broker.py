@@ -813,7 +813,12 @@ def main(argv=None, rx=None, publisher=None):
                          "name per commit so each is A/B-able on its own. Empty (default) "
                          "= pure shadow. Names: 'rate' (seeded code-rate clock from "
                          "clk_rate instead of the l-a EMA -- which measured ~80x biased, "
-                         "see the call site), later 'clock' and 'bias'. Implies "
+                         "see the call site); 'slew' (the dead-reckon SLEW TARGET's "
+                         "clock+bias offset from clk + b_sat instead of the clock EMA plus "
+                         "the SatBiasFilter -- the half of the state P2c validates, and the "
+                         "half that survived the 2026-08-10 gauge collapse); later 'clock'. "
+                         "The shadow comparison for each is logged whether or not it is "
+                         "consumed, so the A/B exists before the switch. Implies "
                          "--joint-shadow.")
     ap.add_argument("--joint-mask-prn", default="",
                     help="P2c, THE DISCRIMINATING TEST FOR THE ARCHITECTURE: comma-separated "
@@ -882,6 +887,16 @@ def main(argv=None, rx=None, publisher=None):
                          "Nearly redundant with --joint-min-deep-snr (both gates select the "
                          "same 70.5%% of rows, which is the two measuring the same physics) "
                          "and kept as a cheap independent guard, not as a second opinion.")
+    ap.add_argument("--joint-slew-max-chips", type=float, default=5.0,
+                    help="P2b consumer 3: refuse the joint slew target if it disagrees with "
+                         "the legacy (clock EMA + SatBiasFilter) target by more than this. "
+                         "Both describe the same receiver, so a few chips is the whole "
+                         "plausible range -- b_sat runs +-3-6 chips and the clock is common "
+                         "to both. A larger gap means one estimator is broken, and the "
+                         "legacy path is the one with years behind it. Same discipline as "
+                         "--joint-max-rate-ppm on consumer 1, which would have refused the "
+                         "-0.028 ppm runaway that froze the trackers no matter what went "
+                         "wrong upstream.")
     ap.add_argument("--joint-min-sats", type=int, default=4,
                     help="a JOINT consumer refuses to act on a state carrying fewer than "
                          "this many satellites: with the mean(b)=0 gauge a thin fleet lets "
@@ -4852,8 +4867,52 @@ def main(argv=None, rx=None, publisher=None):
                             _held = dr_seed_phys(
                                 seeds[prn], h1, args.hops_per_sec, args.chip_rate_hz,
                                 args.carrier_hz, args.code_doppler_sign, _DR_MOD)
-                            _model = (cp_predicted(v, t_h) + clk_now
-                                      + bsat.get(prn, now_w)) % _DR_MOD
+                            # -- P2b CONSUMER 3: the SLEW TARGET's clock+bias --------------
+                            # The target is model + clk + b_sat, and b_sat is precisely "how
+                            # wrong the pure model is for THIS satellite". That matters more
+                            # than the noise argument the other consumers rest on: the ~600 s
+                            # plant oscillation was diagnosed as slew-to-model fighting
+                            # trim-to-sky with the model per-sat +-1-6 chips out, so a better
+                            # b_sat attacks the oscillation at its source rather than damping
+                            # it. Today's term comes from the EMA SatBiasFilter, which
+                            # estimates biases with a gain and a clamp; the joint state
+                            # estimates them WITH the clock, separated by process noise.
+                            #
+                            # THIS IS THE HALF OF THE STATE P2c ACTUALLY VALIDATED. The coast
+                            # residual it measures is y - predicted(clk + b_sat) -- the very
+                            # sum consumed here -- and it read -0.19 +- 0.44 chips over 14
+                            # minutes with the filter's own sigma (0.454) matching the
+                            # realised scatter (0.441). It is also the SAFE half: on
+                            # 2026-08-10 clk alone was 99 chips wrong while clk + b_i stayed
+                            # correct throughout, which is exactly why nothing downstream
+                            # noticed. A consumer of the sum survives a gauge collapse that
+                            # would wreck a consumer of clk alone (docs 11.29).
+                            _leg_off = clk_now + bsat.get(prn, now_w)
+                            _off = _leg_off
+                            _jr3 = _joint_state(rx, band_id, args)
+                            _joff = (_jr3.predicted((tag, prn))
+                                     if (_jr3 is not None and (tag, prn) in _jr3._idx)
+                                     else None)
+                            if _joff is not None:
+                                # PLAUSIBILITY BOUND, the transferable lesson from consumer 1:
+                                # never hand the instrument a physically impossible number
+                                # just because an estimator produced it. The two offsets
+                                # describe the same receiver, so they must agree to within a
+                                # few chips; a large disagreement means one of them is broken
+                                # and the legacy path is the one with years behind it.
+                                _d3 = ((_joff - _leg_off + _DR_MOD / 2.0) % _DR_MOD) - _DR_MOD / 2.0
+                                _ok3 = abs(_d3) <= args.joint_slew_max_chips
+                                _log_rl("jslew-%d" % prn,
+                                        "SLEW-TARGET PRN %d: joint %+.3f vs legacy %+.3f "
+                                        "chips (diff %+.3f, sigma %.3f)%s"
+                                        % (prn, _joff, _leg_off, _d3,
+                                           _jr3.sigma((tag, prn)) or 0.0,
+                                           "" if _ok3 else "  REFUSED (> %.1f chips)"
+                                           % args.joint_slew_max_chips),
+                                        every_s=60.0)
+                                if "slew" in joint_consume and _ok3:
+                                    _off = _joff
+                            _model = (cp_predicted(v, t_h) + _off) % _DR_MOD
                             _dcp = ((_model - _held + _DR_MOD / 2.0) % _DR_MOD
                                     ) - _DR_MOD / 2.0
                             _step = max(-_DR_SLEW_CAP,
