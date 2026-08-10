@@ -88,6 +88,36 @@ from gnss_broker.sky import (                 # noqa: E402
     _fnav_brdc_xcheck, _bcnav2_brdc_xcheck, _bcnav3_brdc_xcheck, _bcnav1_brdc_xcheck,
 )
 
+
+def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len):
+    """Split clock-solve offsets into (keep, drop) on per-satellite CONTINUITY.
+
+    `offs` is [(prn, d_i)] where d_i = clk + b_i: the receiver clock plus that
+    satellite's per-sat bias. BOTH terms are stable -- clk drifts ~4e-4 chips/s and
+    b_i is a constant of +-3-7 chips -- so a real satellite's d_i moves far less than
+    10 chips between cycles, while a noise or cross-correlation track scatters
+    ~uniformly over the code and jumps by thousands.
+
+    `hist` is {prn: (t, d_i)} from the previous cycle and IS MUTATED here (every
+    satellite's current value is recorded, including dropped ones -- a track that
+    settles down must be able to rejoin).
+
+    A satellite with no fresh history is always kept: the test needs two cycles, and
+    refusing first sightings would stall the bootstrap.
+    """
+    keep, drop = [], []
+    for prn, d in offs:
+        prev = hist.get(prn)
+        hist[prn] = (now_w, d)
+        if prev is not None and now_w - prev[0] <= max_age_s:
+            jump = abs(((d - prev[1] + code_len / 2.0) % code_len) - code_len / 2.0)
+            if jump > bound_chips:
+                drop.append((prn, jump))
+                continue
+        keep.append((prn, d))
+    return keep, drop
+
+
 def main(argv=None, rx=None, publisher=None):
     # `--signal help` before the parser, because --trackers is required and listing the
     # known signals must not depend on being able to name a fleet first.
@@ -771,6 +801,34 @@ def main(argv=None, rx=None, publisher=None):
                          "Refusing leaves the clock UNSET, which is strictly better than "
                          "wrong: a wrong clock also acquires nothing, and additionally "
                          "poisons the search hints that would have recovered it (docs 11.33).")
+    ap.add_argument("--dr-solve-refused-rebootstrap-s", type=float, default=300.0,
+                    help="after the clock solve has been REFUSED continuously for this long, "
+                         "force a one-shot re-bootstrap (clear the held clock and let the "
+                         "next median snap). 0 disables. THE REFUSAL GUARD IS A LATCH "
+                         "WITHOUT THIS: MEASURED 2026-08-10, one non-L5 PRN poisoned the "
+                         "median at 19:39, the clock froze at 19:47 and never re-solved, "
+                         "because the scatter that triggers the refusal is itself sustained "
+                         "BY the frozen clock (the model drifts off the sky, every sat reads "
+                         "as noise, MAD stays at 2045). Before the guard existed this same "
+                         "failure random-walked out in ~15-20 min (docs 11.33); the guard "
+                         "stopped the corruption and removed the escape with it. A forced "
+                         "re-roll is explicitly a RE-ROLL, not a measurement -- it restores "
+                         "the random walk rather than pretending to solve.")
+    ap.add_argument("--dr-max-off-jump-chips", type=float, default=100.0,
+                    help="exclude a satellite from the receiver-clock solve when its offset "
+                         "jumps by more than this between consecutive cycles. d_i = clk + "
+                         "b_i, and BOTH terms are stable (clk drifts ~4e-4 chips/s, b_i is a "
+                         "per-sat constant of +-3-7 chips), so a real satellite moves far "
+                         "less than 10 chips per cycle while a noise or cross-correlation "
+                         "track scatters ~uniformly over the code. Same physics as "
+                         "--dr-max-solve-mad-chips, applied per satellite instead of to the "
+                         "population, so ONE bad track is dropped instead of the whole solve "
+                         "being refused. 0 disables.")
+    ap.add_argument("--dr-off-jump-max-age-s", type=float, default=120.0,
+                    help="ignore the --dr-max-off-jump-chips test when the previous cycle's "
+                         "offset for that satellite is older than this: across a long gap "
+                         "the clock really can have moved, so a stale comparison would "
+                         "reject a satellite that is fine.")
     ap.add_argument("--nh-hint-max-age-s", type=float, default=600.0,
                     help="drop nh-offset samples older than this, and stop hinting entirely "
                          "when fewer than --nh-hint-min-samples remain. THE HINT MUST BE ABLE "
@@ -4458,6 +4516,40 @@ def main(argv=None, rx=None, publisher=None):
                     d_i = (cp_loc - cp_predicted(v, t_i)
                            + drift * (t_now_abs - t_i)) % CODE_LEN
                     offs.append((prn, d_i))
+                # ERRATIC-TRACK GUARD (#39). A satellite whose solve offset JUMPS between
+                # consecutive cycles is not measuring anything: d_i = clk + b_i and both
+                # terms are stable, so a real satellite moves far less than 10 chips per
+                # cycle. MEASURED 2026-08-10: PRN 2 -- which is not L5-capable, so this was
+                # a noise or cross-correlation track -- entered at -3226 chips and then read
+                # +2430 +2997 -4988 +3024 -4193 +2897 +1297 +3231 on successive cycles while
+                # every real satellite sat at 1-6. It dragged the median, the clock latched
+                # at 19:47, fleet-coherent alignment collapsed 0.86 -> 0.15 and engagement
+                # went to zero. Catching it HERE means one satellite is dropped instead of
+                # the whole solve being refused, which is what makes the refusal guard a
+                # last resort rather than the first line.
+                if args.dr_max_off_jump_chips > 0.0 and offs:
+                    _keep, _drop = split_erratic_offsets(
+                        offs, dr_state.setdefault("off_hist", {}), now_w,
+                        args.dr_max_off_jump_chips, args.dr_off_jump_max_age_s, CODE_LEN)
+                    if _drop and len(_keep) >= args.dr_min_sats:
+                        offs = _keep
+                        _log_rl("offjump",
+                                "clock solve: EXCLUDED %s -- offset jumped %s chips since "
+                                "the last cycle (bound %.0f). d_i = clk + b_i, both stable, "
+                                "so this is not a measurement"
+                                % (", ".join("PRN %d" % p for p, _ in _drop),
+                                   ", ".join("%.0f" % j for _, j in _drop),
+                                   args.dr_max_off_jump_chips), every_s=60.0)
+                    elif _drop:
+                        # DROPPING THEM WOULD STARVE THE SOLVE. Say so rather than silently
+                        # keeping them: if EVERY satellite jumped, the clock itself moved
+                        # (or the model did), and that is a different fault from one bad
+                        # track -- the MAD guard below is the right net for it.
+                        _log_rl("offjumpkeep",
+                                "clock solve: %d PRN(s) jumped but excluding them leaves "
+                                "%d < --dr-min-sats %d -- keeping all; if this persists the "
+                                "CLOCK moved, not one track"
+                                % (len(_drop), len(_keep), args.dr_min_sats), every_s=60.0)
                 dr_state["offs_t"] = now_w  # freshness stamp for the referee's integrity veto
                 # -- P2a SHADOW: the joint receiver-state solve (task #33, section 3a) ----
                 # `offs` IS the measurement, and always was. d_i = clk + b_i: the physical
@@ -4658,15 +4750,49 @@ def main(argv=None, rx=None, publisher=None):
                     # them; 100 is the middle of that range in log terms.
                     _mad = sorted(abs(c - cen[len(cen) // 2]) for c in cen)[len(cen) // 2]
                     if _mad > args.dr_max_solve_mad_chips:
-                        _log_rl("clkmad",
-                                "clock solve REFUSED: %d sats scatter MAD %.0f chips (bound "
-                                "%.0f) -- this is a median over NOISE, not a measurement; "
-                                "holding clk %s"
-                                % (len(offs), _mad, args.dr_max_solve_mad_chips,
-                                   ("%.2f" % dr_state["clk"]) if dr_state.get("clk")
-                                   is not None else "UNSET"),
-                                every_s=30.0)
-                        raw = None
+                        # HOW LONG HAVE WE BEEN REFUSING? The guard alone is a LATCH: the
+                        # scatter that triggers it is sustained by the very clock it is
+                        # protecting, so once the model has drifted off the sky every
+                        # satellite reads as noise and MAD never comes back down on its own
+                        # (measured 2045 against a bound of 100, for 14 minutes, until the
+                        # run was stopped). Escaping needs a deliberate re-roll.
+                        _since = dr_state.get("mad_refused_since")
+                        if _since is None:
+                            _since = dr_state["mad_refused_since"] = now_w
+                        _held_s = now_w - _since
+                        if (args.dr_solve_refused_rebootstrap_s > 0.0
+                                and _held_s >= args.dr_solve_refused_rebootstrap_s):
+                            # FORCED RE-BOOTSTRAP. Clearing clk sends the next accepted
+                            # median through the BOOTSTRAP branch below, which snaps rather
+                            # than EMAs. This is a re-roll, NOT a measurement -- it restores
+                            # the random walk that used to escape this state in ~15-20 min
+                            # and that the guard removed. raw is deliberately left standing.
+                            _log("clock solve REFUSED for %.0f s (MAD %.0f, bound %.0f) -- "
+                                 "FORCING A RE-BOOTSTRAP off %d sats. This is a RE-ROLL, not "
+                                 "a measurement: holding a clock the sky disagrees with is "
+                                 "self-sustaining, so a fresh draw is strictly better than a "
+                                 "latch. Was %s"
+                                 % (_held_s, _mad, args.dr_max_solve_mad_chips, len(offs),
+                                    ("%.2f chips" % dr_state["clk"])
+                                    if dr_state.get("clk") is not None else "UNSET"))
+                            dr_state["clk"] = None
+                            dr_state.pop("raw_prev", None)
+                            dr_state["off_hist"] = {}
+                            dr_state["mad_refused_since"] = None
+                        else:
+                            _log_rl("clkmad",
+                                    "clock solve REFUSED: %d sats scatter MAD %.0f chips "
+                                    "(bound %.0f) -- this is a median over NOISE, not a "
+                                    "measurement; holding clk %s (%.0f s, re-bootstrap at "
+                                    "%.0f s)"
+                                    % (len(offs), _mad, args.dr_max_solve_mad_chips,
+                                       ("%.2f" % dr_state["clk"]) if dr_state.get("clk")
+                                       is not None else "UNSET", _held_s,
+                                       args.dr_solve_refused_rebootstrap_s),
+                                    every_s=30.0)
+                            raw = None
+                    else:
+                        dr_state["mad_refused_since"] = None
                 if len(offs) >= args.dr_min_sats and raw is not None:
                     prev_raw = dr_state.get("raw_prev")
                     # A primed drift is authoritative (the GPSDO rate is a band constant):
