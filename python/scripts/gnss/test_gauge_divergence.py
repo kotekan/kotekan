@@ -136,5 +136,56 @@ class TestEscapeStepBound(unittest.TestCase):
         self.assertLess(abs(f.clk_rate), 1.0,
                         "clk_rate ran to %+.3f chips/s through a refused escape"
                         % f.clk_rate)
+
+
+class TestMassBirth(unittest.TestCase):
+    """THE SKY INCIDENT (22:23): six sats born inside one cycle window while every
+    measurement steps +9 chips coherently. The filter must take the step as a clock
+    OFFSET, never as a RATE -- a common-mode jump across all satellites is by
+    construction not a frequency."""
+
+    def _incident(self, **kw):
+        f = JointReceiverState(code_len=10230.0, **kw)
+        for c in range(30):                                   # settle: 6 sats, clk 150
+            f.cycle([(k, TRUE_CLK + b, 0.3, "l5") for k, b in sorted(BIASES.items())],
+                    c * 2.0)
+        newborns = {("G", 40 + i): 2.0 - i for i in range(6)}
+        for c in range(30, 90):                               # +9 common step AND 6 births
+            ms = [(k, TRUE_CLK + 9.0 + b, 0.3, "l5") for k, b in sorted(BIASES.items())]
+            ms += [(k, TRUE_CLK + 9.0 + b, 0.3, "l5") for k, b in sorted(newborns.items())]
+            f.cycle(ms, c * 2.0)
+        return f
+
+    def test_offset_not_rate(self):
+        f = self._incident()
+        self.assertLess(abs(f.clk_rate), 0.05,
+                        "a common-mode step became a rate: %+.4f chips/s" % f.clk_rate)
+
+    def test_clk_lands_on_the_new_value(self):
+        f = self._incident()
+        self.assertAlmostEqual(f.clk, TRUE_CLK + 9.0, delta=4.0,
+                               msg="clk %.1f did not absorb the +9 step" % f.clk)
+
+    def test_no_divergence_flag_and_few_rejections(self):
+        f = self._incident()
+        self.assertFalse(f.diverged, "the incident latched `diverged`")
+        total = f.n_updates + f.rejected
+        self.assertLess(f.rejected / float(total), 0.25,
+                        "rejected %d/%d through the birth event" % (f.rejected, total))
+
+    def test_rate_ceiling_is_enforced_directly(self):
+        """Even if some path manufactures a wild rate, the state must refuse to carry it:
+        the reference is GPS-disciplined and 1 chip/s is 0.1 ppm = 2500x the truth."""
+        f = JointReceiverState(code_len=10230.0)
+        f.cycle([(k, TRUE_CLK + b, 0.3, "l5") for k, b in sorted(BIASES.items())], 0.0)
+        f.x[1] = 13.45                                        # inject the sky's value
+        f.cycle([(k, TRUE_CLK + b, 0.3, "l5") for k, b in sorted(BIASES.items())], 2.0)
+        self.assertLessEqual(abs(f.clk_rate), 1.0,
+                             "rate %+.2f chips/s carried through a cycle unclamped"
+                             % f.clk_rate)
+        self.assertTrue(any("RATE" in n.upper() for n in f.notes),
+                        "a clamped rate must be announced")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

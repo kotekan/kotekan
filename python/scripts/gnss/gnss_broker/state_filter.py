@@ -154,7 +154,7 @@ class JointReceiverState:
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013,
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5, escape_spread=5.0,
-                 birth_max=50.0, gauge_max_b=60.0, escape_max_step=100.0,
+                 birth_max=50.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
                  sigma_fcar0=50.0, q_fcar=0.01):
         import numpy as np
@@ -191,6 +191,7 @@ class JointReceiverState:
         # bound: real per-sat offsets cluster inside ~+-10 chips while a wrap alias is
         # thousands, so anything from 50 to 500 separates them.
         self.escape_max_step = float(escape_max_step)
+        self.rate_max = float(rate_max)   # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
         self.diverged = False   # latched: an escape was refused as non-physical
         self.escapes = 0
         self.birth_max = birth_max     # refuse to BIRTH a sat implausibly far from clk
@@ -642,6 +643,25 @@ class JointReceiverState:
             if self.update(key, y, sig, t_now, band=band) is not None:
                 n_ok += 1
         self.gauge()
+        # PHYSICAL RATE CEILING (2026-08-10 divergence). The reference is GPS-disciplined:
+        # measured truth ~4e-4 chips/s, the noisiest legitimate estimator scatters +-0.07.
+        # rate_max = 1.0 chips/s (0.1 ppm) is 2500x the truth, so nothing real is clamped --
+        # same separation argument as the broker's --dr-max-drift-chips-s, which is the
+        # bound that stopped this incident's 12.5 ppm from ever reaching a seed. The state
+        # must refuse to CARRY an impossible rate, not merely refuse to publish it: rate
+        # multiplies dt in every predict, so a wild value corrupts clk within seconds and
+        # then every innovation wraps. Clamp AND widen P[1,1] so the rate re-learns from
+        # measurements instead of trusting the clamped value.
+        if abs(float(self.x[1])) > self.rate_max:
+            _was = float(self.x[1])
+            self.x[1] = self.rate_max if _was > 0 else -self.rate_max
+            self.P[1, 1] += _was ** 2
+            self.P[0, 1] = self.P[1, 0] = 0.0
+            self.diverged = True
+            self._note("RATE CLAMPED %+.3f -> %+.1f chips/s (bound %.1f = 0.1 ppm, "
+                       "2500x the GPSDO truth): a common-mode step is an OFFSET, never a "
+                       "frequency -- the state was diverging" % (_was, float(self.x[1]),
+                                                                 self.rate_max))
         self._drop([k for k, t in self._t_seen.items()
                     if (t_now - t) > self.max_age_s])
         return n_ok
