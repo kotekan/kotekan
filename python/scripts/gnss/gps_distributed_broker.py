@@ -827,14 +827,21 @@ def main(argv=None, rx=None, publisher=None):
                          "masked sat is still SEEDED normally, so nothing on sky changes. "
                          "Mask a STRONG sat -- masking a weak one tests nothing, since its "
                          "own measurements were not holding it up anyway.")
-    ap.add_argument("--joint-mask-after", type=int, default=200,
+    ap.add_argument("--joint-mask-after", type=int, default=50,
                     help="P2c: engage --joint-mask-prn only once that satellite has this many "
                          "ACCEPTED updates. Masking from startup is a vacuous test -- the sat "
                          "is never born into the state, so there is no b_sat to freeze and "
                          "nothing to coast on. It must be established FIRST and withheld "
                          "after, which is the whole point: we are testing whether the state "
-                         "REMEMBERS a satellite, not whether it can invent one. At the 2 s "
-                         "loop 200 updates is ~7 min.")
+                         "REMEMBERS a satellite, not whether it can invent one. "
+                         "⚠️ THE TWO SEEDING DISCIPLINES FEED AT VERY DIFFERENT RATES, which is "
+                         "why this defaults low: a model-primary chain offers every seeded sat "
+                         "EVERY cycle, so the count accrues in seconds, while a search-anchored "
+                         "GPS sat only enters when a detection clears --joint-min-snr and can "
+                         "take hours. Calibrated on the wrong path a threshold either fires "
+                         "instantly or never -- 200 fired in 6 s on Galileo and had not fired "
+                         "on GPS in 14 min. 50 is reachable on both and ample to establish a "
+                         "bias (sigma_b0 10 against a 0.3-chip measurement converges in tens).")
     ap.add_argument("--joint-min-snr", type=float, default=60.0,
                     help="minimum detection SNR for a residual to enter the JOINT solve. "
                          "The default matches --period-check-snr, whose docstring records "
