@@ -155,7 +155,8 @@ class JointReceiverState:
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5, escape_spread=5.0,
                  birth_max=50.0, gauge_max_b=60.0,
-                 ref_band=None, sigma_tau0=20.0, q_tau=1e-5):
+                 ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
+                 sigma_fcar0=50.0, q_fcar=0.01):
         import numpy as np
         self._np = np
         self.L = float(code_len)
@@ -221,6 +222,31 @@ class JointReceiverState:
         self._band_idx = {}            # band -> row in x (the reference band has none)
         self._band_seen = {}           # band -> last time a measurement carried it
         self._dual = {}                # sat key -> set of bands it has been measured in
+        # -- f_carrier (P2, 2026-08-10): the RECEIVER-WIDE carrier frequency offset -------
+        # Declared as the 3rd element of x in CHORD_JOINT_TRACKING.md section 1 and never
+        # built until now. It is created LAZILY, on the first carrier measurement, so a
+        # chain that never feeds one keeps the exact state layout (and transcript digests)
+        # it had before.
+        #
+        # WHAT IT IS, AND WHAT IT IS NOT. This is ONE offset shared by every satellite --
+        # the right shape for an LO error. The 0.478 Hz seed jitter measured on GPS
+        # (section 3d) is PER-SATELLITE, injected by the search -> clock-solve -> seed path,
+        # and this state cannot absorb that: a common state fitted to per-sat noise just
+        # averages it. Fixing GPS's seed is a separate, larger win and needs no filter.
+        # Do not read a healthy f_carrier as evidence that the seed problem is gone.
+        #
+        # ⚠️ THE MEASUREMENT IS THE HARD PART. carrier_hz_resid is NOT usable: the broker's
+        # own flag help documents it SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on
+        # noise). Feeding it here would produce a confident, meaningless estimate -- the
+        # exact failure mode of a self-referential phase estimator, which shows up in the
+        # VARIANCE and not the mean. deep_rate_hz (with deep_rate_q as its quality) is the
+        # candidate, and per the #30 rule it gets characterised on-signal vs on-noise
+        # BEFORE any loop consumes this state.
+        self.sigma_fcar0 = float(sigma_fcar0)
+        self.q_fcar = float(q_fcar)    # Hz per sqrt(s); a GPSDO-disciplined LO, so SLOW
+        self._fcar_idx = None          # row in x, or None until the first carrier update
+        self.n_fcar = 0                # accepted carrier measurements
+        self.fcar_rejected = 0
         self.x = np.zeros(2)           # [clk chips, clk_rate chips/s]
         self.P = np.diag([sigma_clk0 ** 2, sigma_rate0 ** 2])
         self._idx = {}                 # key -> row in x
@@ -304,6 +330,10 @@ class JointReceiverState:
         remap = {old_row: new_row for new_row, old_row in enumerate(keep)}
         self._idx = {k: remap[i] for k, i in self._idx.items() if i in remap}
         self._band_idx = {b: remap[i] for b, i in self._band_idx.items() if i in remap}
+        # f_carrier rides the same remap. Missing this is how a receiver-wide state silently
+        # aliases onto a satellite's bias row the first time a sat ages out.
+        if self._fcar_idx is not None:
+            self._fcar_idx = remap.get(self._fcar_idx)
         for k in keys:
             self._dual.pop(k, None)
         self._membership_changed()
@@ -343,13 +373,20 @@ class JointReceiverState:
         self.P[1, 1] += qr * dt
         if n > 2:
             brows = set(self._band_idx.values())
-            srows = [i for i in range(2, n) if i not in brows]
+            # The f_carrier row is NOT a satellite bias and must not collect q_b -- it is
+            # in Hz, not chips, and q_b would inflate it by ~1000x its own process noise.
+            other = set(brows)
+            if self._fcar_idx is not None:
+                other.add(self._fcar_idx)
+            srows = [i for i in range(2, n) if i not in other]
             if srows:
                 idx = np.array(srows)
                 self.P[idx, idx] += self.q_b ** 2 * dt
             for i in brows:
                 # hours-timescale state: q_tau is ~100x below q_b on purpose
                 self.P[i, i] += self.q_tau ** 2 * dt
+            if self._fcar_idx is not None:
+                self.P[self._fcar_idx, self._fcar_idx] += self.q_fcar ** 2 * dt
 
     def _scalar_update(self, H, y, R):
         """One scalar measurement, innovation already wrapped by the caller."""
@@ -579,6 +616,66 @@ class JointReceiverState:
         return n_ok
 
     # -- readout -----------------------------------------------------------------
+    def _add_fcar(self):
+        """Give f_carrier its own row, lazily. Chains that never feed a carrier measurement
+        keep the exact state layout they had before this existed."""
+        np = self._np
+        i = self.x.size
+        self.x = np.append(self.x, 0.0)
+        P = np.zeros((i + 1, i + 1))
+        P[:i, :i] = self.P
+        P[i, i] = self.sigma_fcar0 ** 2
+        self.P = P
+        self._fcar_idx = i
+        return i
+
+    def update_carrier(self, y_hz, t_now, sigma_hz=1.0):
+        """One carrier-frequency measurement, in Hz, common to every satellite.
+
+        SEPARATE FROM update() ON PURPOSE. The code measurement is modular (chips on a
+        10230-chip code, wrapped) and carries a per-sat bias; this one is neither -- Hz do
+        not wrap and there is no per-sat carrier state to share the residual with. Folding
+        them into one path would mean wrapping a frequency, which is silently wrong rather
+        than loudly wrong.
+
+        Returns the accepted innovation (Hz), or None if the measurement was gated out.
+        """
+        self.predict(t_now)
+        if self._fcar_idx is None:
+            # BIRTH ON THE FIRST MEASUREMENT rather than walking in from 0 at loop gain --
+            # the same rule the sat biases use. sigma_fcar0 is wide enough that this lands
+            # inside its own uncertainty on cycle one.
+            self._add_fcar()
+            self.x[self._fcar_idx] = float(y_hz)
+            self.n_fcar = 1
+            return 0.0
+        np = self._np
+        H = np.zeros(self.x.size)
+        H[self._fcar_idx] = 1.0
+        innov = float(y_hz) - float(H @ self.x)
+        var = float(H @ self.P @ H) + float(sigma_hz) ** 2
+        # Same two-part gate as the code path: an uncertainty-scaled test that does the work,
+        # under an absolute ceiling so a wild value cannot ride a wide P through it.
+        if var > 0.0 and abs(innov) > self.innov_nsigma * var ** 0.5:
+            self.fcar_rejected += 1
+            self._note("f_carrier REJECT: innov %+.3f Hz vs %.1f-sigma bar %.3f"
+                       % (innov, self.innov_nsigma, self.innov_nsigma * var ** 0.5))
+            return None
+        self._scalar_update(H, innov, float(sigma_hz) ** 2)
+        self.n_fcar += 1
+        return innov
+
+    def f_carrier(self):
+        """Receiver-wide carrier frequency offset (Hz). 0.0 before any measurement."""
+        return float(self.x[self._fcar_idx]) if self._fcar_idx is not None else 0.0
+
+    def f_carrier_sigma(self):
+        """Its 1-sigma uncertainty (Hz). inf before any measurement -- an UNMEASURED state
+        must not read as a confident zero, which is how a dead feed passes for a healthy one."""
+        if self._fcar_idx is None:
+            return float("inf")
+        return float(self.P[self._fcar_idx, self._fcar_idx]) ** 0.5
+
     def tau(self, band):
         """Differential group delay of `band` against the reference band, chips. 0 for the
         reference (it has no row -- that is the gauge, not a special case)."""
