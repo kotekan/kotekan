@@ -190,16 +190,11 @@ public:
             // with the feed grid array and are also orthogonal. This makes the
             // vectors very simple, with a single component in the x and y directions
             // respectively.
-            //
-            // TODO: When `frb1_swap_MN` is true, the N axis is the geographic x
-            // (east-west) direction, so `sigmaN_x` arguably should be
-            // `get_feed_separation_x_m()`. The value below matches the CPU stage
-            // calcFRB2Weights; review with the CHIME team before changing either.
             const float sigmaM_x = frb1_swap_MN ? 0 : telescope.get_feed_separation_x_m();
             const float sigmaM_y = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
             const float sigmaM_z = 0;
 
-            const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
+            const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_x_m() : 0;
             const float sigmaN_y = frb1_swap_MN ? 0 : telescope.get_feed_separation_y_m();
             const float sigmaN_z = 0;
 
