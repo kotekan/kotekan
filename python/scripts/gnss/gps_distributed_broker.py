@@ -5083,10 +5083,19 @@ def main(argv=None, rx=None, publisher=None):
                             dr_bad[prn_i] = 0          # hysteresis: restore well INSIDE
                         if (dr_bad.get(prn_i, 0) >= 3) and prn_i not in dr_untrusted:
                             dr_untrusted[prn_i] = why
-                            _log("MODEL-UNTRUSTED PRN %d (%s, 3 consecutive) -> falling back "
-                                 "to the SEARCH-measured Doppler for this sat (seamless: a "
-                                 "source change is just another currency translation)"
-                                 % (prn_i, why))
+                            # ⚠️ THIS MESSAGE USED TO SAY "falling back to the SEARCH-measured
+                            # Doppler", which is not what happens under the default
+                            # --seed-doppler auto: the seed loop skips the v_dr branch for an
+                            # untrusted sat and lands on `pred` (the almanac predictor, which
+                            # is BRDC too when --almanac-source brdc), NOT on the search's
+                            # `dop`. The search Doppler reaches the seed only with
+                            # --seed-doppler det. Corrected 2026-08-10 while tracing where
+                            # GPS's carrier seed picks up its jitter -- a log line that names
+                            # the wrong source sends the next reader to the wrong code.
+                            _log("MODEL-UNTRUSTED PRN %d (%s, 3 consecutive) -> Doppler source "
+                                 "falls back dr -> %s for this sat"
+                                 % (prn_i, why,
+                                    "pred (almanac)" if args.seed_doppler != "det" else "det"))
                         elif dr_bad.get(prn_i, 0) == 0 and prn_i in dr_untrusted:
                             del dr_untrusted[prn_i]
                             _log("MODEL-TRUSTED again PRN %d (integrity %+.2f chips)"

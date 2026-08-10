@@ -258,3 +258,63 @@ coast test) are the remaining work, and P2b is where the value and the risk both
 first attempt froze the trackers and was reverted (11.23). The two cross-band bootstraps wired
 on 2026-08-09 are SCAFFOLDING that P2b should retire: once the joint solve owns the clock and
 tau_band, a cold band needs no borrowed phase at all.
+
+### 3d. f_carrier IS THE MISSING STATE, AND IT IS WORTH ~5.5 dB ON EVERY GPS SATELLITE (2026-08-10)
+
+`f_carrier` has been the third element of `x` since section 1. It has never been implemented:
+`state_filter.py` carries `[clk, clk_rate] + tau_band[] + b_sat[]` and the string `f_carrier`
+appears in it zero times. P2 built the CODE-PHASE half of the architecture and left the
+CARRIER half on paper. This section is the measurement that says the carrier half is not a
+refinement.
+
+**MEASURED, 2026-08-10 21:35-22:05, by polling all 12 combiners on all five chains directly
+and comparing two statistics on the SAME instances at the SAME emits:**
+
+| chain | raw `p_pow` sigma1 | `deep_snr` sigma1 | deep-stage inflation | seed dop jitter | `coh_frac` |
+|---|---|---|---|---|---|
+| **gps_l5**  | **2.78 dB** | **8.33 dB** | **+5.55 dB** | **0.478 Hz** | **0.846** |
+| gal_e5a | 0.94 | 1.33 | +0.40 | 0.002 | 0.942 |
+| bds_b2a | 0.64 | 1.41 | +0.77 | 0.005 | 0.931 |
+| gal_e5b | 0.54 | 0.90 | +0.36 | 0.003 | 0.966 |
+| bds_b2b | 0.43 | 0.90 | +0.47 | 0.006 | 0.913 |
+
+Coherent integration over ~100 records should REDUCE fractional scatter. On GPS it makes it
+3x worse. The arithmetic closes: the deep fold is T = 1.0486 s, so a commanded-frequency error
+of 0.478 Hz is `dF*T = 0.50 cycles` of phase ramp across the fold, and the coherence loss
+`|sinc(dF*T)|` is 0.64 there -- swinging between ~1 and ~0 as dF varies emit to emit. That is a
+multiplicative, several-dB, per-emit fluctuation present on ONE chain. `coh_frac` says the same
+thing independently: 0.846 on GPS against 0.91-0.97 everywhere else.
+
+**THE CONTROL GROUP HAS BEEN RUNNING IN PRODUCTION ALL ALONG.** E5a/E5b/B2a/B2b are already
+exactly "BRDC + fitted bootstrap terms" -- pure model, adopted clock, no per-satellite measured
+Doppler anywhere -- because they have no detectors by design. They come in 100x smoother.
+gps_l5 is the single chain that departs from the architecture (it is the only one with
+`detectors:`), and it is the only one with the problem. The four-chain A/B for KV's proposal
+already exists; we had just never read it that way.
+
+**WHY THIS IS NOT ONLY "ADD A STATE".** `f_carrier` as declared is ONE receiver-wide frequency
+offset, which is the right shape for the LO. GPS's jitter is per-satellite, injected by the
+search -> clock-solve -> seed path. So the work is two-part: (a) cut GPS's carrier seed over to
+`model + clk_rate` the way the other four chains already work, and (b) let `f_carrier` absorb
+the genuinely common part. (a) is most of the win and does not need the filter.
+
+⚠️ **DO NOT REACH FOR `carrier_hz_resid` AS THE MEASUREMENT.** It is documented in the broker's
+own flag help as SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on noise) -- it is noise,
+and a filter fed by it would estimate nothing while looking healthy. The candidate measurement
+is the deep fold's own `deep_rate_hz` (the rate search's argmax, with `deep_rate_q` as its
+quality), which is a direct estimate of the residual frequency across the fold. Per the #30
+rule it gets characterised on-signal vs on-noise BEFORE any loop consumes it.
+
+**STILL OPEN, and not to be papered over:**
+  * GPS's raw `p_pow` is ALREADY 2.78 dB against 0.43-0.94 elsewhere -- noisier BEFORE the
+    fold. The phase-ramp story explains the +5.55 dB inflation, not that input excess.
+  * The proximate source of the ~0.29 Hz GPS-wide jitter floor is NOT localised. Model-trust
+    demotion is not it: four of five tracked sats sit at 0.29-0.30 Hz on 1-5 flips (PRN 26 is
+    0.777 on 23, so demotion adds on top of the floor rather than causing it).
+  * `deep_rate_q` is systematically LOWER on GPS (7.1-18.0) than on B2a (19.4-34.1). A noisier
+    argmax over the rate search's up-to-4096 bins is a second candidate mechanism for a
+    per-emit varying residual, independent of the seed. Discriminate before building.
+  * `carrier-gain: 0.0` in `gnss_chains_chord.yaml` -- the carrier loop is open, so nothing
+    absorbs any of this downstream. Note the standing result that a 10 s seed re-pin cut
+    deep_snr 221 -> 17 and was reverted: seed CONTINUITY beat freshness. The fix is to make
+    GPS's seed as smooth as the model-primary chains', not to chase the sky faster.
