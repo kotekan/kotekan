@@ -98,6 +98,14 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     acquire-snr: 30
     search-margin-wide-hz: 200
     search-margin-hz: 100
+    # ONLY THIS CHAIN NEEDS IT, because only this chain has detectors: the integrity check
+    # that populates dr_untrusted needs measured code phases, so on E5a/B2a/E5b/B2b it never
+    # fires and their Doppler already comes straight from BRDC every cycle. That is exactly
+    # why those four sit at 0.002-0.006 Hz of commanded-Doppler jitter while gps_l5 carries
+    # 0.478 Hz -- and why gps_l5's deep fold inflates scatter +5.55 dB against their
+    # +0.36..+0.77 (docs/CHORD_JOINT_TRACKING.md 3d). This makes GPS's Doppler behave like
+    # theirs. Revert by deleting this line.
+    dr-doppler-ignores-integrity: true
 
   # Galileo E5a -- path B, and NO DETECTORS by design: E5a-Q carries a PER-PRN secondary,
   # which the replica bank's single-sequence overlay slot cannot hold, so blind

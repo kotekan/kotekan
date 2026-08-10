@@ -1178,6 +1178,25 @@ def main(argv=None, rx=None, publisher=None):
                          "A SEED, NOT A MEASUREMENT: a chain with detectors REPLACES it with "
                          "its first multi-sat solve rather than EMA-ing toward one, so a wrong "
                          "prime costs one cycle rather than ~20.")
+    ap.add_argument("--dr-doppler-ignores-integrity", action="store_true",
+                    help="keep the BRDC (dead-reckon) Doppler for a satellite that is "
+                         "MODEL-UNTRUSTED because of its CODE-PHASE integrity residual. A "
+                         "stale ephemeris still demotes the Doppler -- that reason is real "
+                         "for both quantities -- but an integrity residual is not: "
+                         "--dr-max-integrity-chips defaults to 1.0 chip (~30 m), which is "
+                         "ordinary iono plus b_sat, and it says nothing about the RANGE RATE "
+                         "from the same orbit. Demoting the Doppler for it switches the seed "
+                         "between two BRDC evaluations (dr and pred) every time a satellite "
+                         "flips trust, and the seed is the replica's carrier phase. MEASURED "
+                         "2026-08-10: gps_l5 -- the only chain with detectors, so the only "
+                         "one where this fires at all -- carries 0.478 Hz of commanded-"
+                         "Doppler jitter against 0.002-0.006 Hz on the four model-primary "
+                         "chains, and over the 1.0486 s deep fold 0.478 Hz is 0.50 cycles of "
+                         "phase ramp: |sinc| = 0.64, swinging emit to emit. Its deep fold "
+                         "inflates sample-to-sample scatter by +5.55 dB where the others "
+                         "manage +0.36..+0.77 (docs CHORD_JOINT_TRACKING.md 3d). NOTE this "
+                         "addresses the DEMOTION-linked part; a ~0.29 Hz GPS-wide floor "
+                         "remains and is NOT explained by trust flips.")
     ap.add_argument("--seed-doppler", default="auto", choices=("auto", "det"),
                     help="which Doppler the SEED carries. 'auto' (default, unchanged) prefers "
                          "the almanac/DR model + solved clock bias, which is smooth and owns "
@@ -3229,10 +3248,28 @@ def main(argv=None, rx=None, publisher=None):
             # that owns the undetected sats. Mixing sources stepped the seed doppler by
             # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
             # = the whole E1 hold fence; observed E32 RELEASE ddop -25, 2026-07-13).
-            if v_dr is not None and prn not in dr_untrusted:
-                _dop_src = "dr"
+            # THE DOPPLER AND THE CODE PHASE DO NOT HAVE TO SHARE A TRUST DECISION.
+            # dr_untrusted is set for two unlike reasons: a stale ephemeris (the orbit
+            # itself is doubtful -- true for range AND range-rate) or a code-phase
+            # integrity residual over --dr-max-integrity-chips (1.0 chip ~ 30 m, which is
+            # ordinary iono + b_sat and says nothing about the range rate). Under
+            # --dr-doppler-ignores-integrity only the first demotes the Doppler, so a
+            # satellite flipping trust no longer switches its seed between two BRDC
+            # evaluations -- and the seed IS the replica's carrier phase.
+            _unt = dr_untrusted.get(prn)
+            _dop_trusted = (_unt is None
+                            or (args.dr_doppler_ignores_integrity
+                                and not str(_unt).startswith("ephemeris")))
+            if v_dr is not None and _dop_trusted:
+                _dop_src = "dr" if _unt is None else "dr(code-untrusted)"
                 seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / C_LIGHT
                                                  * args.carrier_hz) + clock_bias)
+                if _unt is not None:
+                    _log_rl("dopkeep-%d" % prn,
+                            "PRN %d: code model untrusted (%s) but KEEPING the BRDC Doppler "
+                            "-- an integrity residual is a code-phase statement, and "
+                            "switching the seed switches the replica's carrier phase"
+                            % (prn, _unt), every_s=120.0)
             # ...unless the measured Doppler is explicitly preferred (--seed-doppler det). Last
             # word, so it overrides the model AND the DR: those two exist to keep the seed
             # smooth and to own undetected sats, but neither helps a sat we HAVE measured, and
