@@ -26,8 +26,6 @@ log_level: info
 {% set fake_upchan_voltage = False %}
 {% set do_once_and_dump = False %}
 {% set send_baseband = False %}
-# use do_once_and_dump to generate this file
-{% set read_frb2_weights_from_file = True %}
 
 {% set num_polarizations = 2 %}
 {% set num_dishes = 1024 %}
@@ -1647,22 +1645,12 @@ FRB:
         do_once: true
 
     run_calc_frb2_weights:
-###
-{%- if not read_frb2_weights_from_file %}
         kotekan_stage: cudaCalcFRB2Weights
-        cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
         frb2_num_frequencies: upchan_U16_max_num_output_channels
         frb2_beam_positions: host_frb2_beam_positions_buffer
         frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
         metadata: host_rfi_RFImask_buffer
-{%- else %}
-        kotekan_stage: hdf5FileRead
-        input_dir: frb_weights
-        do_once: true
-        out_buf: host_frb2_weights_buffer
-        file_name: host_frb2_weights_buffer
-{%- endif %}
 
     run_frb23:
         gpu_0:
