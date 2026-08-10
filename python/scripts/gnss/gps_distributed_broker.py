@@ -815,6 +815,26 @@ def main(argv=None, rx=None, publisher=None):
                          "clk_rate instead of the l-a EMA -- which measured ~80x biased, "
                          "see the call site), later 'clock' and 'bias'. Implies "
                          "--joint-shadow.")
+    ap.add_argument("--joint-mask-prn", default="",
+                    help="P2c, THE DISCRIMINATING TEST FOR THE ARCHITECTURE: comma-separated "
+                         "PRNs whose measurements are WITHHELD from the joint solve while "
+                         "their residual is still logged. Vector tracking's claim is that a "
+                         "satellite rides the SHARED receiver state -- so a masked sat must "
+                         "COAST on clk + clk_rate*dt with its b_sat frozen, and its "
+                         "predicted-minus-actual must stay flat. If it drifts instead, the "
+                         "state is not carrying it and the per-sat loops are doing the work "
+                         "the joint solve claims to have replaced. Measurement-only: the "
+                         "masked sat is still SEEDED normally, so nothing on sky changes. "
+                         "Mask a STRONG sat -- masking a weak one tests nothing, since its "
+                         "own measurements were not holding it up anyway.")
+    ap.add_argument("--joint-mask-after", type=int, default=200,
+                    help="P2c: engage --joint-mask-prn only once that satellite has this many "
+                         "ACCEPTED updates. Masking from startup is a vacuous test -- the sat "
+                         "is never born into the state, so there is no b_sat to freeze and "
+                         "nothing to coast on. It must be established FIRST and withheld "
+                         "after, which is the whole point: we are testing whether the state "
+                         "REMEMBERS a satellite, not whether it can invent one. At the 2 s "
+                         "loop 200 updates is ~7 min.")
     ap.add_argument("--joint-min-snr", type=float, default=60.0,
                     help="minimum detection SNR for a residual to enter the JOINT solve. "
                          "The default matches --period-check-snr, whose docstring records "
@@ -1683,6 +1703,12 @@ def main(argv=None, rx=None, publisher=None):
     # consumption sites add a float zero and the replay digests are untouched.
     bsat = SatBiasFilter(gain=args.bsat_gain)
     joint_consume = {c.strip() for c in args.joint_consume.split(",") if c.strip()}
+    joint_mask = {int(x) for x in args.joint_mask_prn.replace(" ", "").split(",") if x}
+
+    def _p2c_hold(js, key):
+        """True once this sat is BOTH masked and established -- see --joint-mask-after."""
+        return (key[1] in joint_mask and key in js._idx
+                and js._n.get(key, 0) >= args.joint_mask_after)
 
     def _joint_state(rx_, band, a):
         """The joint state IF it is fit to be consumed, else None (never raises: a consumer
@@ -4210,10 +4236,25 @@ def main(argv=None, rx=None, publisher=None):
                         # ungated on 2026-08-09 walked the clock rate to -0.028 ppm and put
                         # 17 chips/min of fictitious drift into every unlocked seed.
                         _snr = {p: v[0] for p, v in best.items()}
+                        # P2c: withhold the masked sats, then ask the state where it thinks
+                        # they are. `predicted` is clk + b_i, so the residual below is exactly
+                        # "what the shared state got wrong about a satellite it is no longer
+                        # being told about".
                         _js.cycle([((tag, p), d, args.joint_sigma, band_id)
                                    for p, d in offs
-                                   if _snr.get(p, 0.0) >= args.joint_min_snr],
+                                   if _snr.get(p, 0.0) >= args.joint_min_snr
+                                   and not _p2c_hold(_js, (tag, p))],
                                   t_now_abs)
+                        for _p, _d in offs:
+                            if _p2c_hold(_js, (tag, _p)):
+                                _r = _js.wrap(_d - _js.predicted((tag, _p)))
+                                _log_rl("p2c-%d" % _p,
+                                        "P2C PRN %d MASKED %.0fs: coast residual %+.3f chips "
+                                        "(b %+.3f, sigma %.3f) -- flat = the state carries "
+                                        "it, drifting = it does not"
+                                        % (_p, _js.age((tag, _p), t_now_abs) or 0.0, _r,
+                                           _js.bias((tag, _p)), _js.sigma((tag, _p))),
+                                        every_s=30.0)
                         if now_w >= dr_state.get("joint_log_next", 0.0):
                             dr_state["joint_log_next"] = now_w + 30.0
                             # tau_band is reported WITH its observability count, never alone.
@@ -4271,6 +4312,15 @@ def main(argv=None, rx=None, publisher=None):
                                                  args.code_doppler_sign, _DR_MOD)
                             _y = ((_held + dll_trim.get(_prn, 0.0)
                                    - cp_predicted(_v, _th)) % _DR_MOD)
+                            if _p2c_hold(_js, (tag, _prn)):
+                                if True:
+                                    _r = _js.wrap(_y - _js.predicted((tag, _prn)))
+                                    _log_rl("p2c-%d" % _prn,
+                                            "P2C PRN %d MASKED %.0fs: coast residual %+.3f "
+                                            "chips (b %+.3f)"
+                                            % (_prn, _js.age((tag, _prn), t_now_abs) or 0.0,
+                                               _r, _js.bias((tag, _prn))), every_s=30.0)
+                                continue
                             _mm.append(((tag, _prn), _y, args.joint_sigma, band_id))
                         if _mm:
                             _js.cycle(_mm, t_now_abs)
