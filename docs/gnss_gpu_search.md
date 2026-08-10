@@ -2493,3 +2493,53 @@ the arms in satellite before reading a difference as time evolution.
 
 Note also that every SPEC-FIT tau is ~0.01–0.1 chips, so the still-open **~1.8-chip inter-band
 discrepancy is not in the group delay** — it lives somewhere in code phase / epoch, not here.
+
+## 11.32 The sum-over-elements was half-enabled, and the gated half is the lever (2026-08-10)
+
+KV asked what it would take to pull the element sum forward to boost tracking. The answer
+split in two:
+
+**`elem_sum` has been live since 2026-08-05.** The assembler self-calibrates per-element
+phases from the satellite (bootstrap MRC, fixed reference element, median weight for the
+reference) and writes the calibrated weighted sum into the header prompt -- so every consumer
+has been reading the element sum all along.
+
+**`sky_deep` was the gated half**: the deep fold reading the SKY-CORRECTED prompt (slots
+24/25 -- each element derotated by the leave-one-out phase of the others, killing the
+~0.75 rad per-record common sky phase). Gated on 2026-08-05 because the split-aperture
+estimator read 28.4 against a genie of 20.5 at 1.2 rad injected phase -- beating perfect
+knowledge, therefore not understood, therefore not believed.
+
+### The re-judge (task #6)
+
+The anomaly was a COMPARATOR ERROR. B1's diagnosis: the split-aperture estimator integrates
+one half of the aperture against the other half's phase, so its honest bound is the
+HALF-aperture genie, not the full one. Re-run with the corrected bound, the split reads
+0.84-0.95 of its own bound in every seed -- including the exact anomaly case -- and the
+"impossible" number was the full genie's own seed noise at high injected phase (21.6-71.8
+across seeds). The null stays fail-closed (4.5-7.8 vs 27-63 on signal). Residual: the weight
+split is degenerate at the live operating point (one element holds ~99% of sum|w|^2), which
+costs ~10% of the bound and is a later balance improvement, not a correctness issue.
+
+### On-sky verification, before enabling
+
+The slots are written regardless of the gate, so the claim was measurable with no restart:
+80 sparse samples over ~120 s per PRN,
+
+    PRN 24: raw phase-coherence 0.150 -> sky 0.964      PRN 23: 0.053 -> 0.960
+    PRN  8: 0.078 -> 0.921                              PRN 10: 0.093 -> 0.918
+    |sky|/|raw| ~ 0.9-1.1 (a rotation, not a gain); weak sats fail soft to ~0.1-0.2.
+
+Phase-stable over TWO MINUTES against a raw prompt at the random-walk floor. That exceeds
+the original claim: the corrected stream does not just fix the 1.05 s fold, it makes much
+longer coherent integration reachable with no rate search at all.
+
+### Why this is the system lever
+
+The #10 decomposition showed fleet-combine failures are 40% floor-REJECTIONS (vs 6%
+overlap-gate skips): the cross-instance alignment needs per-instance SNR, and mid
+satellites sit below it. sky_deep raises per-instance deep ~7 dB (13.7 -> 30.0 at the live
+operating point), which lifts exactly those satellites over exactly that threshold --
+attacking the serving-layer mixture (11.31) from the engagement side while the quadrature
+fallback handles the non-engaged side. Enabled fleet-wide in the manifest; merit-gated (the
+rung pays the same measured floor as every candidate); rides the next node restart.
