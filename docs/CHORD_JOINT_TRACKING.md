@@ -220,9 +220,12 @@ BEFORE any consumer gates on sigma, or the gate will be 8x too tight.
 
 ### 3c. tau_band LANDED, AND IT IS PART OF P2 (2026-08-09/10)
 
-⚠️ NAMING CORRECTION: three commits on 2026-08-09 label the tau_band work "P3". That is wrong.
-`tau_band` has been in the state vector `x` since section 1; implementing it completes a piece
-of **P2's filter**. **P3 is retiring the E/L lanes** and is untouched.
+⚠️ NAMING CORRECTION: two commits originally labelled the tau_band work "P3" (the subjects now
+read "task #33 P2:"; they were reworded in place on 2026-08-10, message-only, trees unchanged).
+`tau_band` has been in the state vector `x` since section 1, so implementing it completes a
+piece of **P2's filter**. **P3 is retiring the E/L lanes** and is untouched. Recorded rather
+than quietly fixed because a phase label is how this plan is navigated, and a doc that says P3
+is done when P3 has not started is worse than no doc.
 
 WHAT IS DONE. tau_band is a declared state with the reference band pinned at 0 as the gauge
 (without that pin clk and the taus are exactly degenerate). One receiver-wide joint solve
