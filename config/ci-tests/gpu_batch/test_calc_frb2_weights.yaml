@@ -22,7 +22,7 @@ frb2_num_beams_y: 16
 frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
 
 # Upchannelization schedule: 4 coarse channels, each upchannelized by 8
-frequency_channels: [1000, 2000, 3000, 4000]
+frequency_channels: &frequency_channels_list [1000, 2000, 3000, 4000]
 upchan_factors: [8]
 # ranges are [min, max)
 upchan_channel_ranges:
@@ -214,6 +214,28 @@ host_frb2_weights_gpu_buffer:
     dimscalings: [1, 1, 1, 1]
     metadata_pool: main_pool
 
+# only used to get coarse frequencies from
+host_dummy_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: int4x2_swapped_withoffset
+    extents: [1, 1, 1]
+    quantity_name: "E"
+    dimnames: ["F", "T", "E"]
+    dimscalings: [1, 1, 1]
+    metadata_pool: main_pool
+
+run_set_dummy_voltage:
+    kotekan_stage: testDataGen
+    type: const_offset
+    value: 0x88
+    array_shape: [1, 1, 1]
+    dim_scaling: [1, 1, 1]
+    dim_name: ["F", "T", "E"]
+    num_local_freq: 4 # len of frequency_channels
+    manual_freq_ids: *frequency_channels_list
+    out_buf: host_dummy_voltage_buffer
+
 # Stages
 run_set_frb_beams:
     kotekan_stage: setFRBBeams
@@ -233,11 +255,13 @@ run_calc_frb2_weights_cpu:
     frb2_beam_positions: host_frb2_beam_positions_buffer
     frb2_weights: host_frb2_weights_cpu_buffer
     num_threads: 4
+    metadata: host_dummy_voltage_buffer
 
 run_calc_frb2_weights_gpu:
     kotekan_stage: cudaCalcFRB2Weights
     frb2_beam_positions: host_frb2_beam_positions_buffer
     frb2_weights: host_frb2_weights_gpu_buffer
+    metadata: host_dummy_voltage_buffer
 
 run_test_calc_frb2_weights:
     kotekan_stage: testCalcFRB2Weights
