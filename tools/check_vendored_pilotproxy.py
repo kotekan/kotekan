@@ -49,15 +49,36 @@ def check_offline(manifest: dict) -> list[str]:
             continue
         got = digest(path)
         if got != want:
-            problems.append(f"{name}: digest mismatch\n    manifest {want}\n    on disk  {got}")
+            problems.append(
+                f"{name}: digest mismatch\n    manifest {want}\n    on disk  {got}"
+            )
     listed = set(manifest["files"])
     # Non-upstream files legitimately live alongside the vendored ones:
-    # the kotekan-side vendor docs/manifest, the build glue, and the copy of
-    # the upstream repository's LICENSE.
-    allowed_extra = {"README.md", "VENDOR.json", "CMakeLists.txt", "LICENSE"}
+    # the kotekan-side vendor docs/manifest, the build glue, the copy of the
+    # upstream repository's LICENSE, and the COMMIT pin (the external/
+    # convention shared with ksgpu and n2k).
+    allowed_extra = {"README.md", "VENDOR.json", "CMakeLists.txt", "LICENSE", "COMMIT"}
     for path in sorted(VENDOR_DIR.iterdir()):
-        if path.is_file() and path.name not in listed and path.name not in allowed_extra:
-            problems.append(f"{path.name}: present in vendor dir but not in the manifest")
+        if (
+            path.is_file()
+            and path.name not in listed
+            and path.name not in allowed_extra
+        ):
+            problems.append(
+                f"{path.name}: present in vendor dir but not in the manifest"
+            )
+    # The COMMIT file follows the external/ convention (ksgpu, n2k) and must
+    # agree with the manifest so the two pins cannot drift apart.
+    commit_file = VENDOR_DIR / "COMMIT"
+    if not commit_file.is_file():
+        problems.append(
+            "COMMIT: missing (expected 'This is git commit <upstream_commit>')"
+        )
+    elif manifest["upstream_commit"] not in commit_file.read_text():
+        problems.append(
+            f"COMMIT: does not name the manifest's upstream_commit "
+            f"{manifest['upstream_commit']}"
+        )
     return problems
 
 
@@ -70,16 +91,28 @@ def check_fetch(manifest: dict) -> list[str]:
         try:
             subprocess.run(["git", "init", "--quiet", str(work)], check=True)
             subprocess.run(
-                ["git", "-C", str(work), "fetch", "--quiet", "--depth", "1",
-                 manifest["upstream_repo"], manifest["upstream_commit"]],
+                [
+                    "git",
+                    "-C",
+                    str(work),
+                    "fetch",
+                    "--quiet",
+                    "--depth",
+                    "1",
+                    manifest["upstream_repo"],
+                    manifest["upstream_commit"],
+                ],
                 check=True,
             )
             subprocess.run(
-                ["git", "-C", str(work), "checkout", "--quiet", "FETCH_HEAD"], check=True
+                ["git", "-C", str(work), "checkout", "--quiet", "FETCH_HEAD"],
+                check=True,
             )
         except subprocess.CalledProcessError as exc:
-            return [f"could not fetch {manifest['upstream_repo']} "
-                    f"at {manifest['upstream_commit']}: {exc}"]
+            return [
+                f"could not fetch {manifest['upstream_repo']} "
+                f"at {manifest['upstream_commit']}: {exc}"
+            ]
         subdir = work / manifest["upstream_subdir"]
         for name in manifest["files"]:
             upstream_file = subdir / name
@@ -87,15 +120,21 @@ def check_fetch(manifest: dict) -> list[str]:
                 problems.append(f"{name}: not present upstream at the pinned commit")
                 continue
             if digest(upstream_file) != digest(VENDOR_DIR / name):
-                problems.append(f"{name}: vendored copy differs from upstream at the pinned commit")
+                problems.append(
+                    f"{name}: vendored copy differs from upstream at the pinned commit"
+                )
     return problems
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--fetch", action="store_true",
-                        help="also diff against upstream at the pinned commit (needs network)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--fetch",
+        action="store_true",
+        help="also diff against upstream at the pinned commit (needs network)",
+    )
     args = parser.parse_args()
 
     if not MANIFEST.is_file():
@@ -108,17 +147,25 @@ def main() -> int:
         problems += check_fetch(manifest)
 
     if problems:
-        print("FAIL: vendored PilotProxy core does not match its manifest", file=sys.stderr)
+        print(
+            "FAIL: vendored PilotProxy core does not match its manifest",
+            file=sys.stderr,
+        )
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
-        print("\nVendored files are byte-identical copies of upstream and must not be edited\n"
-              "in place. Fix upstream (%s), then re-vendor and refresh\n"
-              "external/pilotproxy/VENDOR.json." % manifest["upstream_repo"], file=sys.stderr)
+        print(
+            "\nVendored files are byte-identical copies of upstream and must not be edited\n"
+            "in place. Fix upstream (%s), then re-vendor and refresh\n"
+            "external/pilotproxy/VENDOR.json." % manifest["upstream_repo"],
+            file=sys.stderr,
+        )
         return 1
 
     scope = "manifest + upstream" if args.fetch else "manifest"
-    print(f"OK: {len(manifest['files'])} vendored files match the {scope} "
-          f"({manifest['upstream_repo']} @ {manifest['upstream_commit'][:12]})")
+    print(
+        f"OK: {len(manifest['files'])} vendored files match the {scope} "
+        f"({manifest['upstream_repo']} @ {manifest['upstream_commit'][:12]})"
+    )
     return 0
 
 
