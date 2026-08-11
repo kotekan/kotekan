@@ -1002,6 +1002,29 @@ def main(argv=None, rx=None, publisher=None):
                          "masked sat is still SEEDED normally, so nothing on sky changes. "
                          "Mask a STRONG sat -- masking a weak one tests nothing, since its "
                          "own measurements were not holding it up anyway.")
+    ap.add_argument("--dr-slew-cap-acq", type=float, default=0.0,
+                    help="Per-event slew ceiling (chips) for a seed that is still FAR from "
+                         "its target -- acquisition authority. Falls back to --dr-slew-cap "
+                         "(0.05) once within --dr-slew-near-chips, so an established, "
+                         "converged track keeps today's restraint. 0 disables. ⚠️ THE FLAT "
+                         "CAP IS WHY P2b's SLEW CONSUMER WAS UNOBSERVABLE: 47%% of steps sat "
+                         "exactly on it while satellites 5-8 chips out closed at 0.05 a go "
+                         "every 10-30 s -- of order an HOUR, against a ~600 s oscillation. "
+                         "Moving the TARGET does nothing while the step is railed. Keep this "
+                         "at or below the E/P/L span (~0.5): past that the seed outruns the "
+                         "loop that must follow it (the reverted 10 s re-pin, deep_snr "
+                         "221 -> 17).")
+    ap.add_argument("--dr-slew-near-chips", type=float, default=0.2,
+                    help="Inside this distance the seed has arrived and the flat "
+                         "--dr-slew-cap applies. Distance rather than track AGE is the "
+                         "maturity test on purpose: it re-arms when an established track "
+                         "drifts off, which is exactly the ~600 s oscillation case an "
+                         "age-based schedule would lock in.")
+    ap.add_argument("--dr-slew-trust-sigma", type=float, default=0.5,
+                    help="Only move at the acquisition ceiling toward a target known this "
+                         "well (chips, 1-sigma on the joint clk+b_sat for that satellite). "
+                         "A trust GATE, not a multiplier -- scaling the cap by n x sigma is "
+                         "inverted, it makes a better-measured offset move slower.")
     ap.add_argument("--joint-model-primary", action="store_true",
                     help="Feed MODEL-PRIMARY chains (E5a/B2a/E5b/B2b) into the joint solve. "
                          "⚠️ DEFAULT OFF AFTER A MEASURED REGRESSION (2026-08-10). The "
@@ -5420,6 +5443,7 @@ def main(argv=None, rx=None, publisher=None):
                         # cp0 as well is what gives it a live arm today, on GPS births.
                         _leg_off = clk_now + bsat.get(prn, now_w)
                         _off = _leg_off
+                        _off_sigma = None      # set only when a JOINT offset is adopted
                         _jr3 = _joint_state(rx, band_id, args)
                         _joff = (_jr3.predicted((tag, prn))
                                  if (_jr3 is not None and (tag, prn) in _jr3._idx)
@@ -5456,6 +5480,8 @@ def main(argv=None, rx=None, publisher=None):
                                     every_s=60.0)
                             if "slew" in joint_consume and _ok3:
                                 _off = _leg_off + _d3
+                                # ...and how well we know it, for the rate limit below.
+                                _off_sigma = _jr3.sigma((tag, prn))
                         cp0 = ((cp_predicted(v, t_now_abs) + _off)
                                - t_now_abs * args.chip_rate_hz
                                  * (1.0 + args.code_doppler_sign
@@ -5498,8 +5524,57 @@ def main(argv=None, rx=None, publisher=None):
                             _model = (cp_predicted(v, t_h) + _off) % _DR_MOD
                             _dcp = ((_model - _held + _DR_MOD / 2.0) % _DR_MOD
                                     ) - _DR_MOD / 2.0
-                            _step = max(-_DR_SLEW_CAP,
-                                        min(_DR_SLEW_CAP, _DR_SLEW_K * _dcp))
+                            # ── THE RATE LIMIT, AND WHY IT IS THE WHOLE STORY ──
+                            # _DR_SLEW_CAP is 0.05 chips per event and 47% of steps sat
+                            # exactly on it: satellites 5-8 chips from their model were
+                            # being corrected at 0.05 a go, every 10-30 s -- of order an
+                            # HOUR to close, against a ~600 s oscillation. The seed can
+                            # never reach the model within a cycle, so the plant is a
+                            # rate-limited integrator chasing a moving multi-chip error: a
+                            # limit cycle almost by construction, and a better account of
+                            # the ~600 s oscillation than "slew fights trim".
+                            #
+                            # It also made P2b's slew consumer UNOBSERVABLE. For a
+                            # satellite already railed at the cap, moving the target by
+                            # +3-8 chips leaves the step at +-0.05 in the same direction --
+                            # identical seed behaviour before and after, which is exactly
+                            # what the viewer showed. Measured 2026-08-11 16:52, and
+                            # visible in the FIRST log line read that morning (PRN 35:
+                            # model-held -10.571 chips, step -0.050). Dividing the two
+                            # numbers in any log line would have found it.
+                            #
+                            # ACQUISITION AUTHORITY, TRACKING RESTRAINT. A seed that is
+                            # far from its target needs the authority to pull in; one that
+                            # has arrived must not be yanked around by noise. So the
+                            # ceiling slides with DISTANCE, and drops back to the flat cap
+                            # once the seed is within dr_slew_near_chips.
+                            #
+                            # KEYED ON DISTANCE, NOT ON TRACK AGE, though "new satellites
+                            # slew hard, established ones tighten" is the behaviour either
+                            # would give -- because a new seed IS the far one. Distance
+                            # re-arms and age does not, and that difference is the whole
+                            # point here: the ~600 s oscillation happens on ESTABLISHED
+                            # tracks that have drifted off. An age schedule would tighten
+                            # exactly those satellites and then deny them the correction
+                            # they need, locking in the limit cycle it was meant to break.
+                            #
+                            # SIGMA IS A TRUST GATE, NOT A MULTIPLIER. The first cut scaled
+                            # the cap as n x sigma, borrowed from the escape guard -- but
+                            # there sigma bounds the size of a CLAIM, while here it is the
+                            # precision of a KNOWN target, so proportional scaling made a
+                            # well-measured offset move SLOWER. Inverted. What sigma
+                            # actually decides is whether to trust the target enough to
+                            # move fast toward it at all; past dr_slew_trust_sigma we keep
+                            # the crawl. An offset with no sigma (no joint state, or
+                            # refused) is untrusted by construction.
+                            _cap = _DR_SLEW_CAP
+                            if (args.dr_slew_cap_acq > _DR_SLEW_CAP
+                                    and _off_sigma is not None
+                                    and math.isfinite(_off_sigma)
+                                    and _off_sigma <= args.dr_slew_trust_sigma
+                                    and abs(_dcp) > args.dr_slew_near_chips):
+                                _cap = args.dr_slew_cap_acq
+                            _step = max(-_cap, min(_cap, _DR_SLEW_K * _dcp))
                             # Re-anchor at h1 with the FRESH model doppler/rate (kills the
                             # dt^2 linearization error a held seed accumulates) but at the
                             # HELD phase plus the bounded step -- never at the model's own
@@ -5520,7 +5595,7 @@ def main(argv=None, rx=None, publisher=None):
                             _log_rl("drslew-%d" % prn,
                                     "dead-reckon SLEW PRN %d: model-held %+.3f chips, "
                                     "step %+.3f (cap %.2f), dop %+.0f rate %+.2f"
-                                    % (prn, _dcp, _step, _DR_SLEW_CAP, dop_seed, drate),
+                                    % (prn, _dcp, _step, _cap, dop_seed, drate),
                                     every_s=120.0)
                             continue
                         if prn not in seeds:

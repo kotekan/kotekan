@@ -240,6 +240,21 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # REVERT IS THIS ONE LINE. Per-sat fallback beyond --joint-slew-max-chips 5.0 already
     # applies, so a bad offset is refused per satellite rather than shipped.
     joint-consume: slew
+    # ...AND UNRAIL THE RATE LIMIT, or the line above cannot show anything. The flat
+    # 0.05 chips/event cap had 47% of steps sitting exactly on it while satellites were
+    # 5-8 chips from their model -- of order an hour to close, against a ~600 s
+    # oscillation -- so moving the target changed the step not at all.
+    #
+    # ACQUISITION AUTHORITY, TRACKING RESTRAINT (KV's design): a seed far from its target
+    # may move at 0.5 chips/event (the E/P/L span), and reverts to the 0.05 crawl once
+    # inside 0.2 chips. Keyed on DISTANCE rather than track age so it re-arms when an
+    # established track drifts off -- which is the oscillation case itself, and the one an
+    # age-based schedule would tighten and then strand.
+    #
+    # DELIBERATELY NOT SET ON gal_e5b / bds_b2a: they are the control arms.
+    dr-slew-cap-acq: 0.5
+    dr-slew-near-chips: 0.2
+    dr-slew-trust-sigma: 0.5
 
   # BeiDou B2a -- structurally identical to E5a: same 1176.45 MHz carrier, same 1023000-chip
   # code, same 100 ms CS secondary, so it rides the SAME voltage tap and the same clock. Model-
