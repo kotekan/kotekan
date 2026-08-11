@@ -119,8 +119,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # 6 min): per-PRN joint-vs-legacy stable and chips-scale (PRN26 -3.4..-5.0, PRN6
     # +3.3..+4.7, PRN4 -1.44..-1.65 at sigma 0.09), median +1.4..+2.8. Per-sat REFUSED
     # fallback beyond --joint-slew-max-chips 5.0. Motivation: G4's search-anchored cp
-    # wanders chips-scale between passes (disc railed at 0.94, level swinging 16-49 dB);
-    # the model-primary chains never do this because their cp is slewed to the model.
+    # wanders chips-scale between passes (disc railed at 0.94, level swinging 16-49 dB).
+    # ⚠️ THE SECOND HALF OF THAT MOTIVATION WAS WRONG and is retracted (2026-08-11): it
+    # said "the model-primary chains never do this because their cp is slewed to the
+    # model", generalising from G4 alone. The population statistic says the opposite --
+    # railed-discriminator fraction at MATCHED C/N0 (38-41 dB-Hz) is 2-3% on search-
+    # anchored gps_l5 (PRN 10, 23) against 55-58% on gal_e5a PRN 25 and bds_b2a PRN 22.
+    # The model-primary chains do it MORE, by 20x, and that is what the E5a feed below is
+    # meant to attack. The gate that qualified this consumer on GPS stands on its own
+    # measurements and is unaffected.
     joint-consume: rate,slew
     # PER-SUBBAND ARCHIVE (task #25). fleet_spectrum already computes per-channel,
     # per-instance amplitudes for the tau fit and then discards them; this persists the
@@ -158,6 +165,48 @@ http://cx27:12049/gnss{0..1}_e5a_n2combine,http://cx42:12049/gnss{0..1}_e5a_n2co
 http://cx43:12049/gnss{0..1}_e5a_n2combine,http://cx44:12049/gnss{0..1}_e5a_n2combine,\
 http://cx51:12049/gnss{0..1}_e5a_n2combine"
     n2-combiners: *e5a_cmb
+    # ── P2b STEP 1 for the model-primary chains (task #33), 2026-08-11 ──────────────────
+    # FEED ONLY. There is deliberately no `joint-consume` here: this puts E5a's satellites
+    # INTO the shared receiver state and changes no seed. Consume is a separate commit,
+    # gated on what this measures.
+    #
+    # WHY FEED FIRST, AND WHY THIS ORDER. Adding `joint-consume: slew` here without this
+    # line would be a test that cannot succeed. The slew path requires `not detectors`, so
+    # only the model-primary chains reach it -- but the joint state is fed exclusively by
+    # search-anchored chains unless --joint-model-primary is set, so every (tag, prn) on
+    # this chain misses _idx, _joff comes back None, and the consumer silently never fires.
+    # Verified on sky before writing this: the state held n=5 sats, ALL of them G.
+    #
+    # WHAT RE-OPENED IT. --joint-model-primary was turned off 2026-08-10 02:17 (53a94cae2)
+    # after a measured regression -- clk walked to +445 chips against a true ~150, biases
+    # -427/-330/+281, tau_band +792, 67-82% of updates rejected -- because the model-primary
+    # measurement had NO quality gate (a detection has an SNR to threshold on, a
+    # dead-reckoned seed does not). That gate landed 9 hours later in 2d5bccacd: _track_ok
+    # requires coherence_s > 0 AND deep_snr >= --joint-min-deep-snr (10) AND coh_frac >=
+    # --joint-min-coh-frac (0.3). The stated precondition for re-enabling is therefore met;
+    # the flag was simply never flipped back. (Its --help still claims the gate does not
+    # exist. Fixed in the same commit as this line.)
+    #
+    # ⚠️ THE SHARED-STATE EXPOSURE, because "feed only" is not the same as "cannot reach
+    # sky". joint_receiver() is ONE `__receiver__` object for the whole process, and gps_l5
+    # CONSUMES it (rate + slew). So a state corrupted by this feed does have a path to the
+    # GPS seeds. Two things bound it: the consumers' own plausibility gates
+    # (--joint-slew-max-chips 5.0, --joint-max-rate-ppm) refuse an implausible offset rather
+    # than apply it, and GPS's own SEED-OFFSET lines print REFUSED when that happens -- so
+    # the early-warning signal is free and already in the log. Watch it.
+    #
+    # ⚠️ AND THE RISK THAT IS NOT BOUNDED: mass birth. This admits ~11 Galileo satellites at
+    # once, and the filter's known divergence trigger is exactly that (6 sats in 13 s stepped
+    # everything ~9 chips; _membership_changed() is sized for ONE join, #39). escape_max_step
+    # and rate_max bound the damage but the trigger is still unconfirmed. If the first
+    # minutes look wrong, delete these two lines -- that is the whole revert.
+    #
+    # WHAT THIS IS FOR: the 15-25 dB C/N0 fades on this chain are the prompt tap walking off
+    # the correlation peak ((E+L)/2P = 3.27 in the faded quartile vs 0.312 bright), and the
+    # railed-discriminator fraction is 55-58% here against 2-3% on search-anchored GPS at
+    # MATCHED brightness. Those two numbers are the before/after metric for consume.
+    joint-shadow: true
+    joint-model-primary: true
 
   # BeiDou B2a -- structurally identical to E5a: same 1176.45 MHz carrier, same 1023000-chip
   # code, same 100 ms CS secondary, so it rides the SAME voltage tap and the same clock. Model-

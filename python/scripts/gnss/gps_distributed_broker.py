@@ -1016,7 +1016,18 @@ def main(argv=None, rx=None, publisher=None):
                          "rejected. It looked healthy for the first hour only because the "
                          "satellites then up happened to be good; the failure arrives with the "
                          "next rise. Re-enable once the measurement is gated on tracking "
-                         "quality (deep_snr/coh_frac), which is what #33 P2b needs anyway.")
+                         "quality (deep_snr/coh_frac), which is what #33 P2b needs anyway. "
+                         "── THAT PRECONDITION IS NOW MET (2026-08-11). The gate landed in "
+                         "2d5bccacd, 9 h after this default was set: _track_ok requires "
+                         "coherence_s > 0 AND deep_snr >= --joint-min-deep-snr AND coh_frac "
+                         ">= --joint-min-coh-frac, and it is applied to THIS feed. The text "
+                         "above is kept because it is the reason the flag exists, not because "
+                         "the gate is still missing -- read as-is it says 'do not turn this "
+                         "on', which is no longer the advice. Still default-off because the "
+                         "remaining risk is different and unbounded: this admits ~11 sats at "
+                         "once per chain, and mass birth is the filter's known divergence "
+                         "trigger (#39). Enable ONE chain at a time and watch the first "
+                         "minutes; the state is shared, so gps_l5's consumers see it too.")
     ap.add_argument("--joint-mask-after", type=int, default=50,
                     help="P2c: engage --joint-mask-prn only once that satellite has this many "
                          "ACCEPTED updates. Masking from startup is a vacuous test -- the sat "
