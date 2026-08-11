@@ -5720,6 +5720,18 @@ def main(argv=None, rx=None, publisher=None):
                 # -- the standing ~24 Hz per-sat residual (STATE 8.20.3), not the LO.
                 # Require a real cross-sat median and log the spread, which is the
                 # per-sat-vs-common diagnostic this feed exists to provide.
+                # Per-sat values logged EVERY poll (2026-08-11, KV): the breakdown that
+                # resolved the "per-sat tens-of-Hz" mystery needed exactly this series --
+                # instances agree to 0.05 Hz while the value hops 15-39 Hz between polls,
+                # i.e. WRONG-BIN capture aliased into the +-47.7 Hz record-rate window
+                # (NH20 sidebands at +-50 alias to -+45.4), coherent across the fleet
+                # because every instance folds the same records. Not carrier physics.
+                if _fr_resid:
+                    _log_rl("jfcar-sat",
+                            "JFCAR-SAT: %s (alias window +-%.1f Hz)"
+                            % (" ".join("%d:%+.1f" % (p_, r_) for p_, r_
+                                        in sorted(_fr_resid.items())),
+                               0.5 * args.hops_per_sec / 2048.0), every_s=30.0)
                 if _fr_cons is not None and len(_fr_resid) >= 3:
                     _vals = sorted(_fr_resid.values())
                     _sprd = _vals[-1] - _vals[0]
