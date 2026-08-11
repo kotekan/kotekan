@@ -104,6 +104,9 @@ private:
     /// Number of elements in the output buffer
     uint32_t out_num_values;
 
+    /// Whether or not to conjugate the gains
+    bool conj;
+
     /// Fixed buffers used to hold gains separately from the kotekan buffers
     std::vector<float16_t> gain_store_buf;
     std::vector<uint8_t> mask_store_buf;
