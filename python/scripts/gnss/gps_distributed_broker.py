@@ -1146,6 +1146,17 @@ def main(argv=None, rx=None, publisher=None):
                     help="a JOINT consumer refuses to act on a state carrying fewer than "
                          "this many satellites: with the mean(b)=0 gauge a thin fleet lets "
                          "one satellite's bias leak into the clock at 1/N.")
+    ap.add_argument("--joint-clk-max-chips", type=float, default=5.0,
+                    help="P2b consumer 'clk': refuse the joint CLOCK if it disagrees with "
+                         "the legacy median by more than this. The median's measured "
+                         "churn oscillation is +-1-2 chips (the very thing being "
+                         "replaced), so 5 keeps the whole plausible envelope while "
+                         "refusing a wrap alias or a diverged filter.")
+    ap.add_argument("--joint-clk-max-sigma", type=float, default=0.5,
+                    help="P2b consumer 'clk': refuse a joint clock with 1-sigma above "
+                         "this (chips). P grows while the state is unfed, so this one "
+                         "gate covers estimator health AND staleness; healthy runs "
+                         "measure 0.05-0.08.")
     ap.add_argument("--joint-max-rate-ppm", type=float, default=0.01,
                     help="a JOINT rate consumer REFUSES a |clk_rate| beyond this (ppm) and "
                          "falls back to the l-a EMA. CHORD's reference is GPS-disciplined "
@@ -5420,12 +5431,58 @@ def main(argv=None, rx=None, publisher=None):
                 if dr_state["clk"] is not None:
                     clk_now = (dr_state["clk"]
                                + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
+                    # -- P2b CONSUMER "clk" (2026-08-11, the decay root's fix) -------------
+                    # clk_now above is the circular MEDIAN of per-sat offsets whose per-sat
+                    # biases span ~11 chips; with 4-7 sats in the solve, every membership
+                    # change steps it 1-2 chips, and the set churns on the search's revisit
+                    # timescale -- measured 22:20-22:50: a +-1-2 chip ~600 s oscillation
+                    # that dragged every model-primary seed off-peak together while the
+                    # JOINT filter (clk + per-sat b estimated jointly) read the same clock
+                    # FLAT to +-0.3 (gnss_broker_20260811_drclk.log, DRCLK vs JOINT).
+                    #
+                    # So on chains that opt in (`joint-consume: clk`), replace the LEVEL
+                    # with the joint clock, applied as a WRAPPED DELTA to the median (the
+                    # lesson of the slew consumer: the two agree only mod CODE_LEN, and the
+                    # legacy path keeps ownership of the long-code segment). Stateless per
+                    # cycle -- nothing is written back to dr_state, so a refused/degraded
+                    # joint falls back to the median seamlessly on the next cycle.
+                    #
+                    # GATES: --joint-min-sats in the state (a thin fleet lets one bias leak
+                    # into the clock), sigma bound (P grows while unfed, so ONE gate covers both
+                    # estimator health and staleness), and a delta bound against wrap
+                    # aliases / a diverged filter. The log line prints BOTH clocks every
+                    # time so the counterfactual median stays visible on the treated chain
+                    # -- a consumer whose firing cannot be seen is how this month's gates
+                    # failed.
+                    if "clk" in joint_consume:
+                        _jrC = _joint_state(rx, band_id, args)
+                        if _jrC is not None and len(_jrC._idx) >= args.joint_min_sats:
+                            _jsigC = _jrC.sigma() or float("inf")
+                            _jdC = ((_jrC.clk - clk_now + CODE_LEN / 2.0) % CODE_LEN
+                                    ) - CODE_LEN / 2.0
+                            _jokC = (_jsigC <= args.joint_clk_max_sigma
+                                     and abs(_jdC) <= args.joint_clk_max_chips)
+                            _log_rl("jclk",
+                                    "JOINT-CLK: legacy %.3f joint %.3f chips (delta %+.3f,"
+                                    " sigma %.3f, n %d) -> %s"
+                                    % (clk_now, _jrC.clk % CODE_LEN, _jdC, _jsigC,
+                                       len(_jrC._idx),
+                                       "ADOPTED" if _jokC else
+                                       "REFUSED (bounds %.1f chips / %.2f sigma)"
+                                       % (args.joint_clk_max_chips,
+                                          args.joint_clk_max_sigma)),
+                                    every_s=30.0)
+                            if _jokC:
+                                clk_now = (clk_now + _jdC) % CODE_LEN
                     # DRCLK (2026-08-11): the "dead-reckon clock ..." line above is gated on
                     # `offs`, i.e. on this chain having its OWN detections -- so the four
                     # model-primary chains, the ones whose seeds ride clk_now raw, never log
                     # the clock they are consuming. This line is the missing term in the
                     # commanded = cp_predicted + clk_now + b_sat + trim decomposition of the
-                    # per-sat disc walk (BSAT and DLL lines carry the other two).
+                    # per-sat disc walk (BSAT and DLL lines carry the other two). Logged
+                    # AFTER the joint-clk adoption on purpose: DRCLK is the clock the seeds
+                    # actually consume; the JOINT-CLK line above keeps the pre-adoption
+                    # median visible.
                     _log_rl("drclk",
                             "DRCLK clk_now %.3f chips drift %+.4f chips/s (la %+.4f ppm)"
                             % (clk_now, dr_state.get("drift") or 0.0, la * 1e6),

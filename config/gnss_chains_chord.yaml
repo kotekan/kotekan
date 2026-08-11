@@ -268,7 +268,22 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # bright-quartile (E+L)/2P stays near 0.5-0.6 past the ~20-30 min mark while gal_e5b
     # climbs toward 1.0. If BOTH decay alike, the slew is exonerated and the decay lives
     # upstream in seed generation.
-    dr-slew-cap: 0.0
+    #
+    # OUTCOME (2026-08-11 19:00-19:56): both arms decayed alike -- SLEW EXONERATED, arm
+    # removed (dr-slew-cap: 0.0 deleted). The "upstream" turned out to be the CLOCK:
+    # clk_now is a circular median over 4-7 sats spanning ~11 chips of per-sat bias, and
+    # membership churn steps it 1-2 chips at ~600 s (fixtures/20260811_clock_investigation,
+    # memory chord-clock-median-churn). Hence:
+    #
+    # P2b CONSUMER "clk" (2026-08-11 ~23:20, THE TREATED ARM). Replace the median clock
+    # LEVEL with the joint filter's -- measured FLAT (+-0.3 chips) through a full median
+    # oscillation on 2026-08-11 22:20-22:50. The joint state is fed by gps_l5 (same
+    # 1176.45 band, in-process). CONTROLS: bds_b2a (same band, same joint state available,
+    # NOT consuming) and gal_e5b/bds_b2b (1207 band, no joint feed, inherit the median via
+    # the band hand-carry). JUDGE on DRCLK flatness + disc/rail%, treated vs bds_b2a at
+    # matched time-since-restart -- NOT on C/N0 through the restart transient. Revert by
+    # deleting this line.
+    joint-consume: clk
     # ...AND UNRAIL THE RATE LIMIT, or the line above cannot show anything. The flat
     # 0.05 chips/event cap had 47% of steps sitting exactly on it while satellites were
     # 5-8 chips from their model -- of order an hour to close, against a ~600 s
