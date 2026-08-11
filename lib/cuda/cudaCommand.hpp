@@ -121,6 +121,19 @@ public:
 protected:
     void set_command_type(const gpuCommandType& type);
 
+    /**
+     * @brief Page-locks (registers) every frame of a host buffer with the CUDA runtime.
+     *
+     * The frames belong to the buffer as a whole, and a buffer's frame count is
+     * independent of the number of command instances (@c _gpu_buffer_depth), so
+     * this is a no-op for instances other than 0.  Frames that are already
+     * registered are left alone.
+     */
+    void register_host_buffer(Buffer* buf);
+
+    /// Counterpart to @c register_host_buffer; unregisters every frame of @c buf.
+    void unregister_host_buffer(Buffer* buf);
+
     // For subclassers to call to create & record a GPU starting event, IFF profiling is on.
     void record_start_event();
 

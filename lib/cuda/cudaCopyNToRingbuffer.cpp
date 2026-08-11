@@ -64,12 +64,7 @@ cudaCopyNToRingbuffer::cudaCopyNToRingbuffer(Config& config, const std::string& 
 cudaCopyNToRingbuffer::~cudaCopyNToRingbuffer() {
     for (auto buf : in_buffers) {
         assert(buf);
-        if (buf->frame_size) {
-            uint flags;
-            if (cudaSuccess == cudaHostGetFlags(&flags, buf->frames[instance_num])) {
-                CHECK_CUDA_ERROR(cudaHostUnregister(buf->frames[instance_num]));
-            }
-        }
+        unregister_host_buffer(buf);
     }
 }
 

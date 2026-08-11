@@ -46,15 +46,7 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     if (instance_num == 0)
         output_buffer->register_producer(unique_name);
 
-    if (output_buffer->frame_size) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue
-            == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
-            CHECK_CUDA_ERROR(cudaHostRegister(output_buffer->frames[instance_num],
-                                              output_buffer->frame_size, 0));
-        }
-    }
+    register_host_buffer(output_buffer);
 
     if (output_buffer->frame_size == 0) {
         _gpu_mem = "";
@@ -68,13 +60,7 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
 }
 
 cudaOutputData::~cudaOutputData() {
-    if (output_buffer->frame_size) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[instance_num]));
-        }
-    }
+    unregister_host_buffer(output_buffer);
 }
 
 int cudaOutputData::wait_on_precondition() {
