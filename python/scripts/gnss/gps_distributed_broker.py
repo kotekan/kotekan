@@ -5687,6 +5687,36 @@ def main(argv=None, rx=None, publisher=None):
         # vector-averaged over the emit window at FULL-BAND SNR (the whole point -- per-channel
         # amplitude gates would exclude exactly the weak-band cases this loop exists for);
         # the clamp bounds any noise walk.
+        # f_carrier FEED (task #33, 2026-08-11). rate_residuals -- the validated carrier
+        # measurement (split-half ~0.2 Hz on strong sats, wrong-bin defence, q gate) --
+        # used to run ONLY inside the carrier_gain > 0 branch below. With the gain at its
+        # default 0.0 the measurement was never even computed: the joint state's f_carrier
+        # had a characterised input that no code path produced. Harvest it whenever the
+        # joint shadow is on, and feed the fleet CONSENSUS -- the quality-weighted common
+        # mode across PRNs, which is exactly the receiver-wide offset f_carrier models.
+        # Per-sat residuals stay with the (still-off) trim loop; feeding them here would
+        # average per-sat noise into a common state (the 3d scope warning).
+        # MEASUREMENT-ONLY: touches no seed, no trim, no loop. sigma 0.5 Hz -- looser than
+        # the 0.2 Hz split-half bound because the consensus mixes sat qualities.
+        if args.joint_shadow and args.carrier_source == "rate" and args.carrier_gain <= 0.0:
+            try:
+                _fr_resid, _fr_cons = rate_residuals(
+                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, None,
+                    prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap,
+                    prev_val=rate_prev_val, max_step=args.carrier_rate_max_step,
+                    unit_hop=rate_unit_hop)
+                if _fr_cons is not None:
+                    _jfc = _joint_state(rx, band_id, args)
+                    if _jfc is not None:
+                        _jfc.update_carrier(_fr_cons, t_now_abs, sigma_hz=0.5)
+                        _log_rl("jfcar",
+                                "JOINT f_carrier %+.3f+-%.3f Hz (fed consensus %+.3f from "
+                                "%d gated sat(s); n=%d rej=%d)"
+                                % (_jfc.f_carrier(), _jfc.f_carrier_sigma(), _fr_cons,
+                                   len(_fr_resid), _jfc.n_fcar, _jfc.fcar_rejected),
+                                every_s=60.0)
+            except Exception as e:
+                _log_rl("jfcar-err", "f_carrier feed skipped: %s" % e, every_s=300.0)
         if args.carrier_gain > 0.0:
             for _p in [p for p in _trim_force if p in seeds]:
                 car_trim[_p] = _trim_force.pop(_p)
