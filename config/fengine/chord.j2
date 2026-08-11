@@ -28,6 +28,10 @@ prefix_host_rank: true
 {% include "include/upchan_chord.j2" %}
 {% include "include/frb_chord.j2" %}
 
+# DTV pilot-tone detector (PilotProxy). Requires a runtime weight bundle on
+# disk (see include/dtv_chord.j2 for the export command); uncomment to run.
+# {% include "include/dtv_chord.j2" %}
+
 {% include "include/input_chord.j2" %}
 {% include "include/output_chord.j2" %}
 ...
