@@ -207,6 +207,39 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # MATCHED brightness. Those two numbers are the before/after metric for consume.
     joint-shadow: true
     joint-model-primary: true
+    # ── P2b STEP 2: CONSUME (2026-08-11 16:2x) ─────────────────────────────────────────
+    # THE FIRST THING TODAY THAT CHANGES A SEED. Everything above is measurement; this
+    # line makes the seed's clock+bias offset come from the joint clk + b_sat instead of
+    # the clock EMA + SatBiasFilter, per satellite.
+    #
+    # WHY NOW, and not four hours ago when it was first proposed: the state was not fit to
+    # consume. It held n=5 satellites, all GPS, so on this chain every (tag, prn) missed
+    # _idx and the consumer could not have fired at all; then with the feed on it sat at
+    # clk = -1.2 against a true +151 with 100% of updates rejected, and the 9 Galileo
+    # b_sat were degenerate at +0.44 +- 0.005 -- consuming THAT would have handed every
+    # satellite the same offset, which is exactly the per-sat correction this is for.
+    # Fixed by 3afff78b9 (warm start + corroborated escape). State as deployed:
+    # clk +151.24 +- 0.063, 72% accepted, Galileo b_sat spread 1.63 chips over 7 sats.
+    #
+    # WHAT IT IS AIMED AT: the ~600 s plant oscillation. Live E/P/L on E16 caught a full
+    # cycle -- the correlation peak walks prompt -> late -> clean OUT of the E/P/L span
+    # (all three taps collapse, deep_snr 95 -> 15) -> back in on early -> prompt, with disc
+    # sweeping -0.97 to +0.85 through zero. The "bi-stable" C/N0 is that sweep sampled
+    # through the prompt tap: high only during the passage through alignment. Slew-to-model
+    # fighting trim-to-sky, and b_sat is the term that makes the model right per satellite.
+    #
+    # THE CONTROL ARM IS gal_e5b, DELIBERATELY LEFT ALONE. It tracks the SAME satellites on
+    # the other band and does not consume, so E16-on-E5a vs E16-on-E5b is a paired A/B at
+    # the same instant on the same sky -- which a before/after across a restart is not
+    # (the sky moves faster than the investigation). bds_b2a is a second control.
+    # Pre-registered baseline 15:57-16:20 UTC, median over sats, rail% / low-state%:
+    #     gal_e5a (treated)  2.5 / 25.1      gal_e5b (control)  7.9 / 31.5
+    #     bds_b2a (control) 10.4 / 25.3      -- scratchpad baseline.txt
+    # Judge on the DIFFERENCE of differences, never on the treated arm alone.
+    #
+    # REVERT IS THIS ONE LINE. Per-sat fallback beyond --joint-slew-max-chips 5.0 already
+    # applies, so a bad offset is refused per satellite rather than shipped.
+    joint-consume: slew
 
   # BeiDou B2a -- structurally identical to E5a: same 1176.45 MHz carrier, same 1023000-chip
   # code, same 100 ms CS secondary, so it rides the SAME voltage tap and the same clock. Model-
