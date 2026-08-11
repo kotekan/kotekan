@@ -114,7 +114,14 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # a 35 Hz-spread raw solve is the measured GPS seed-jitter floor. The consumer has
     # its own plausibility bound (--joint-max-rate-ppm) and falls back to the EMA when
     # the joint state is thin or implausible. Revert by deleting this line.
-    joint-consume: rate
+    # P2b CONSUMER 2 (slew) added 2026-08-11 00:4x: the seed's clock+bias offset from
+    # clk + b_sat instead of the clock EMA + SatBiasFilter. Gate (12 SEED-OFFSET lines,
+    # 6 min): per-PRN joint-vs-legacy stable and chips-scale (PRN26 -3.4..-5.0, PRN6
+    # +3.3..+4.7, PRN4 -1.44..-1.65 at sigma 0.09), median +1.4..+2.8. Per-sat REFUSED
+    # fallback beyond --joint-slew-max-chips 5.0. Motivation: G4's search-anchored cp
+    # wanders chips-scale between passes (disc railed at 0.94, level swinging 16-49 dB);
+    # the model-primary chains never do this because their cp is slewed to the model.
+    joint-consume: rate,slew
 
   # Galileo E5a -- path B, and NO DETECTORS by design: E5a-Q carries a PER-PRN secondary,
   # which the replica bank's single-sequence overlay slot cannot hold, so blind
