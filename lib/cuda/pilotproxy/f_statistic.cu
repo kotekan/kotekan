@@ -35,6 +35,9 @@
  */
 
 #include "config.h"
+
+#define FX_TW_MASTER_NO_HOST_ARRAY
+#include "fxfft_master_twiddle.h"
 #include "f_statistic.h"
 
 #include <cuda_runtime.h>
@@ -1191,42 +1194,15 @@ kernel_write_num_den_mask_threshold_half_rational(
 #define FSTAT_FXFFT_SHIFT 15
 #define FSTAT_FXFFT_ROUND (1LL << 14)
 
-/* Frozen Q15 twiddle table: W[k] ~ e^{-2 pi i k / 256}. Literal constants,
- * never runtime trigonometry; identical to fxfft.py TWIDDLE_Q15. */
-__device__ __constant__ int fstat_fxfft_twiddle_q15[128][2] = {
-    {32768, 0}, {32758, -804}, {32729, -1608}, {32679, -2411},
-    {32610, -3212}, {32522, -4011}, {32413, -4808}, {32286, -5602},
-    {32138, -6393}, {31972, -7180}, {31786, -7962}, {31581, -8740},
-    {31357, -9512}, {31114, -10279}, {30853, -11039}, {30572, -11793},
-    {30274, -12540}, {29957, -13279}, {29622, -14010}, {29269, -14733},
-    {28899, -15447}, {28511, -16151}, {28106, -16846}, {27684, -17531},
-    {27246, -18205}, {26791, -18868}, {26320, -19520}, {25833, -20160},
-    {25330, -20788}, {24812, -21403}, {24279, -22006}, {23732, -22595},
-    {23170, -23170}, {22595, -23732}, {22006, -24279}, {21403, -24812},
-    {20788, -25330}, {20160, -25833}, {19520, -26320}, {18868, -26791},
-    {18205, -27246}, {17531, -27684}, {16846, -28106}, {16151, -28511},
-    {15447, -28899}, {14733, -29269}, {14010, -29622}, {13279, -29957},
-    {12540, -30274}, {11793, -30572}, {11039, -30853}, {10279, -31114},
-    {9512, -31357}, {8740, -31581}, {7962, -31786}, {7180, -31972},
-    {6393, -32138}, {5602, -32286}, {4808, -32413}, {4011, -32522},
-    {3212, -32610}, {2411, -32679}, {1608, -32729}, {804, -32758},
-    {0, -32768}, {-804, -32758}, {-1608, -32729}, {-2411, -32679},
-    {-3212, -32610}, {-4011, -32522}, {-4808, -32413}, {-5602, -32286},
-    {-6393, -32138}, {-7180, -31972}, {-7962, -31786}, {-8740, -31581},
-    {-9512, -31357}, {-10279, -31114}, {-11039, -30853}, {-11793, -30572},
-    {-12540, -30274}, {-13279, -29957}, {-14010, -29622}, {-14733, -29269},
-    {-15447, -28899}, {-16151, -28511}, {-16846, -28106}, {-17531, -27684},
-    {-18205, -27246}, {-18868, -26791}, {-19520, -26320}, {-20160, -25833},
-    {-20788, -25330}, {-21403, -24812}, {-22006, -24279}, {-22595, -23732},
-    {-23170, -23170}, {-23732, -22595}, {-24279, -22006}, {-24812, -21403},
-    {-25330, -20788}, {-25833, -20160}, {-26320, -19520}, {-26791, -18868},
-    {-27246, -18205}, {-27684, -17531}, {-28106, -16846}, {-28511, -16151},
-    {-28899, -15447}, {-29269, -14733}, {-29622, -14010}, {-29957, -13279},
-    {-30274, -12540}, {-30572, -11793}, {-30853, -11039}, {-31114, -10279},
-    {-31357, -9512}, {-31581, -8740}, {-31786, -7962}, {-31972, -7180},
-    {-32138, -6393}, {-32286, -5602}, {-32413, -4808}, {-32522, -4011},
-    {-32610, -3212}, {-32679, -2411}, {-32729, -1608}, {-32758, -804},
-};
+/* Q15 twiddles, shared with the Python reference and the C reference via the
+ * generated master table (tools/emit_fxfft_tables.py). Literal constants,
+ * never runtime trigonometry. A length-n radix-2 DIT reads
+ * master[t << (FX_MASTER_LOG2 - stage)]; the decimation stride folds into the
+ * shift, so at FSTAT_FINE_NUM_BINS = 256 the entries selected are exactly the
+ * ones the frozen 128-entry fxfft256 v1 table held -- identical integers, not
+ * a re-derivation. Constant-bank cost is FX_MASTER_HALF * 8 = 8 KiB. */
+__device__ __constant__ int fstat_fxfft_twiddle_q15[FX_MASTER_HALF][2] =
+    FX_TW_MASTER_INIT;
 
 __device__ __forceinline__ int fstat_fxfft_round15(long long v)
 {
@@ -1234,11 +1210,11 @@ __device__ __forceinline__ int fstat_fxfft_round15(long long v)
     return static_cast<int>((v + FSTAT_FXFFT_ROUND) >> FSTAT_FXFFT_SHIFT);
 }
 
-__device__ __forceinline__ unsigned fstat_fxfft_bitrev8(unsigned i)
+__device__ __forceinline__ unsigned fstat_fxfft_bitrev(unsigned i)
 {
     unsigned r = 0;
-    for (unsigned k = 0; k < 8u; ++k) {
-        r |= ((i >> k) & 1u) << (7u - k);
+    for (unsigned k = 0; k < (unsigned)FSTAT_FINE_LOG2; ++k) {
+        r |= ((i >> k) & 1u) << ((unsigned)FSTAT_FINE_LOG2 - 1u - k);
     }
     return r;
 }
@@ -1256,7 +1232,7 @@ __device__ void fstat_fxfft256_device(
     int x[FSTAT_FINE_NUM_BINS][2])
 {
     for (unsigned i = 0; i < FSTAT_FINE_NUM_BINS; ++i) {
-        const unsigned s = fstat_fxfft_bitrev8(i);
+        const unsigned s = fstat_fxfft_bitrev(i);
         if (s < FSTAT_FINE_WINDOWS_PER_STREAM) {
             x[i][0] = src[2u * s];
             x[i][1] = src[2u * s + 1u];
@@ -1265,12 +1241,12 @@ __device__ void fstat_fxfft256_device(
             x[i][1] = 0;
         }
     }
-    for (unsigned stage = 1; stage <= 8u; ++stage) {
+    for (unsigned stage = 1; stage <= (unsigned)FSTAT_FINE_LOG2; ++stage) {
         const unsigned m = 1u << stage;
         const unsigned half = m >> 1;
         for (unsigned j0 = 0; j0 < FSTAT_FINE_NUM_BINS; j0 += m) {
             for (unsigned t = 0; t < half; ++t) {
-                const int* w = fstat_fxfft_twiddle_q15[t << (8u - stage)];
+                const int* w = fstat_fxfft_twiddle_q15[t << ((unsigned)FX_MASTER_LOG2 - stage)];
                 const long long c = w[0];
                 const long long sn = w[1];
                 const long long br = x[j0 + t + half][0];
@@ -1482,7 +1458,6 @@ kernel_fused_fine(
     }
 
     const int tid = threadIdx.x;
-    const int wpt = FSTAT_FINE_WINDOWS_PER_STREAM / blockDim.x;  /* windows per thread */
 
     __shared__ int s_z[FSTAT_NUM_WEIGHT_TERMS][FSTAT_FINE_WINDOWS_PER_STREAM][2];
     __shared__ int s_fft[FSTAT_FINE_NUM_BINS][2];
@@ -1500,9 +1475,19 @@ kernel_fused_fine(
     const int* weight_lanes = W_Lanes;
     #endif
 
-    /* Phase 1: row sums for this stream's windows (each thread owns
-     * `wpt` whole windows; no cross-thread reduction), accumulating the
-     * exact per-thread marginal partial from the same registers. */
+    /* Phase 1: row sums for this stream's windows (each thread owns whole
+     * windows; no cross-thread reduction), accumulating the exact per-thread
+     * marginal partial from the same registers.
+     *
+     * The window axis is walked with a thread-stride loop, matching the tap
+     * loop of the staged kernels and the RowSumsTap loop below. The previous
+     * form derived a per-thread window count by integer division, which
+     * silently truncated when the window count was not a multiple of the
+     * block size and computed nothing at all when it was smaller. Striding
+     * removes both requirements and leaves the emitted bits unchanged: s_z is
+     * indexed by window, so which thread produces a window does not affect
+     * shared-memory contents, and the marginal partials are reduced by integer
+     * addition, which is associative and commutative. */
     long long part[FSTAT_NUM_WEIGHT_TERMS];
     #pragma unroll
     for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
@@ -1513,8 +1498,7 @@ kernel_fused_fine(
         static_cast<size_t>(detector_rows_per_block) * FSTAT_DETECTOR_WINDOW_SAMPLES;
     const InputType* Xb = X + batch_stride * static_cast<size_t>(b);
 
-    for (int q = 0; q < wpt; ++q) {
-        const int w = tid * wpt + q;                       /* window in stream */
+    for (int w = tid; w < FSTAT_FINE_WINDOWS_PER_STREAM; w += blockDim.x) {
         const int m = s * FSTAT_FINE_WINDOWS_PER_STREAM + w;  /* detector row */
 
         int2 dot[FSTAT_NUM_WEIGHT_TERMS];
@@ -1600,7 +1584,7 @@ kernel_fused_fine(
     for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
         __syncthreads();
         for (int i = tid; i < FSTAT_FINE_NUM_BINS; i += blockDim.x) {
-            const unsigned src = fstat_fxfft_bitrev8(static_cast<unsigned>(i));
+            const unsigned src = fstat_fxfft_bitrev(static_cast<unsigned>(i));
             if (src < FSTAT_FINE_WINDOWS_PER_STREAM) {
                 s_fft[i][0] = s_z[n][src][0];
                 s_fft[i][1] = s_z[n][src][1];
@@ -1610,7 +1594,7 @@ kernel_fused_fine(
             }
         }
         __syncthreads();
-        for (unsigned stage = 1; stage <= 8u; ++stage) {
+        for (unsigned stage = 1; stage <= (unsigned)FSTAT_FINE_LOG2; ++stage) {
             const unsigned m2 = 1u << stage;
             const unsigned half = m2 >> 1;
             for (unsigned bf = tid; bf < FSTAT_FINE_NUM_BINS / 2u; bf += blockDim.x) {
@@ -1618,7 +1602,7 @@ kernel_fused_fine(
                 const unsigned t = bf % half;
                 const unsigned i0 = g * m2 + t;
                 const unsigned i1 = i0 + half;
-                const int* tw = fstat_fxfft_twiddle_q15[t << (8u - stage)];
+                const int* tw = fstat_fxfft_twiddle_q15[t << ((unsigned)FX_MASTER_LOG2 - stage)];
                 const long long c = tw[0];
                 const long long sn = tw[1];
                 const long long br = s_fft[i1][0];

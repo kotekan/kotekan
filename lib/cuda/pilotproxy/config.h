@@ -93,6 +93,17 @@
     (FSTAT_FINE_PAD_FACTOR * FSTAT_FINE_WINDOWS_PER_STREAM)
 
 /**
+ * Radix-2 stage count of the fine transform, log2(FSTAT_FINE_NUM_BINS).
+ *
+ * Set alongside FSTAT_FINE_WINDOWS_PER_STREAM; the relation is asserted below.
+ * The transform reads twiddles from the shared master table, so a stage indexes
+ * it as `t << (FX_MASTER_LOG2 - stage)`: the decimation stride folds into the
+ * shift, and at FSTAT_FINE_NUM_BINS = 256 that selects exactly the entries the
+ * frozen fxfft256 v1 table held.
+ */
+#define FSTAT_FINE_LOG2 8
+
+/**
  * Reference-bin offset used to construct the three detector weight terms.
  *
  * The weight terms are:
@@ -174,11 +185,18 @@ typedef int8_t InputType;
 #define FSTAT_SAMPLE_BITS_PER_COMPONENT (sizeof(InputType) * 4)
 
 /**
- * Fixed-point bit-growth model for the locked int4, K=128 detector.
+ * Fixed-point bit-growth model for the int4 detector datapath.
  *
  * One complex product component is the sum/difference of two int4xint4
- * products: 4 + 4 + 1 = 9 bits. Accumulating 128 taps adds 7 guard bits,
- * so completed real/imaginary dot-product components require 16 bits.
+ * products: 4 + 4 + 1 = 9 bits. Accumulating K taps adds log2(K) guard bits,
+ * so completed real/imaginary dot-product components require 9 + log2(K)
+ * bits. At the deployed K = 128 that is 16 bits, which is why the row sums
+ * fit an int16 range even though they are stored as int32 -- a property
+ * worth keeping in view, since shared-memory footprint scales with the
+ * window count and this is the lever that halves it.
+ *
+ * FSTAT_DOT_ACCUM_GUARD_BITS must track FSTAT_DETECTOR_WINDOW_SAMPLES; the
+ * relation is asserted below rather than left as a coincidence.
  */
 #define FSTAT_INT4_COMPONENT_BITS 4
 #define FSTAT_COMPLEX_PRODUCT_COMPONENT_BITS \
@@ -187,22 +205,105 @@ typedef int8_t InputType;
 #define FSTAT_COMPLEX_DOT_COMPONENT_BITS \
     (FSTAT_COMPLEX_PRODUCT_COMPONENT_BITS + FSTAT_DOT_ACCUM_GUARD_BITS)
 
+/**
+ * Worst-case magnitude bounds used by the static assertions below.
+ *
+ * Samples lie in [-8, 7] and quantized weight components in [-7, 7] (the
+ * receiver's 15-level mid-tread quantizer emits only [-7, 7]); these bounds
+ * conservatively admit the full two's-complement range on both, so one
+ * complex-product component is bounded by 8*8 + 8*8 = 128 and a completed
+ * K-tap dot-product component by 128*K.
+ *
+ * Note the conservatism is load-bearing at the boundary: the true weight
+ * bound (7) gives 112*K and admits K = 256, while this bound gives 128*K
+ * and rules it out by a single unit at the coarse |z|^2 assertion.
+ */
+#define FSTAT_MAX_SAMPLE_COMPONENT 8
+#define FSTAT_MAX_PRODUCT_COMPONENT \
+    (2 * FSTAT_MAX_SAMPLE_COMPONENT * FSTAT_MAX_SAMPLE_COMPONENT)
+#define FSTAT_MAX_ROW_SUM_COMPONENT \
+    ((long long)FSTAT_MAX_PRODUCT_COMPONENT * FSTAT_DETECTOR_WINDOW_SAMPLES)
+
 /** DP4A consumes two packed complex samples per tap pair. */
 #define FSTAT_DP4A_TAP_PAIRS (FSTAT_DETECTOR_WINDOW_SAMPLES / 2)
 
 #ifdef __cplusplus
+namespace fstat_geometry {
+
+/** Compile-time integer log2 for exact powers of two. */
+constexpr int log2_exact(long long v) {
+    return v <= 1 ? 0 : 1 + log2_exact(v / 2);
+}
+constexpr bool is_pow2(long long v) {
+    return v > 0 && (v & (v - 1)) == 0;
+}
+
+/**
+ * Worst-case infinity-norm growth of one fxfft radix-2 butterfly:
+ * |a +- W*b| <= |a| + |W||b| with |W| <= 1 + 2^-15 after Q15 rounding, so a
+ * stage maps the working norm M -> (1 + sqrt(2) + 2^-15) M + 1. sqrt(2) is
+ * bounded from above by 1.41422 to keep the result conservative.
+ */
+constexpr double kButterflyGrowth = 1.0 + 1.41422 + (1.0 / 32768.0);
+constexpr double growth_after(int stages) {
+    return stages == 0 ? 1.0 : kButterflyGrowth * growth_after(stages - 1) + 1.0;
+}
+
+constexpr int kFineStages = log2_exact(FSTAT_FINE_NUM_BINS);
+/** Post-transform bin magnitude, bounded by the triangle inequality. */
+constexpr double kMaxBinMagnitude =
+    static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT) * FSTAT_FINE_WINDOWS_PER_STREAM;
+
+} // namespace fstat_geometry
+
+/* --- geometry consistency ------------------------------------------------ */
 static_assert(
-    FSTAT_DETECTOR_WINDOW_SAMPLES == 128,
-    "Production detector is locked to detector_window_samples=128.");
+    fstat_geometry::is_pow2(FSTAT_DETECTOR_WINDOW_SAMPLES)
+        && FSTAT_DETECTOR_WINDOW_SAMPLES >= 2,
+    "detector_window_samples must be a power of two >= 2.");
 static_assert(
     FSTAT_SAMPLE_BITS_PER_COMPONENT == FSTAT_INT4_COMPONENT_BITS,
     "Production detector uses packed complex int4 samples and weights.");
 static_assert(
-    FSTAT_DP4A_TAP_PAIRS == 64,
-    "detector_window_samples=128 should produce 64 DP4A tap pairs.");
+    FSTAT_DP4A_TAP_PAIRS * 2 == FSTAT_DETECTOR_WINDOW_SAMPLES,
+    "DP4A tap pairs must be exactly detector_window_samples/2.");
 static_assert(
-    FSTAT_COMPLEX_DOT_COMPONENT_BITS == 16,
-    "Bit-growth model should give int16 real/imag dot-product components.");
+    (1 << FSTAT_DOT_ACCUM_GUARD_BITS) == FSTAT_DETECTOR_WINDOW_SAMPLES,
+    "FSTAT_DOT_ACCUM_GUARD_BITS must equal log2(detector_window_samples); "
+    "update it whenever the window length changes.");
+static_assert(
+    fstat_geometry::is_pow2(FSTAT_FINE_NUM_BINS),
+    "Fine transform length must be a power of two.");
+static_assert(
+    FSTAT_FINE_NUM_BINS == FSTAT_FINE_PAD_FACTOR * FSTAT_FINE_WINDOWS_PER_STREAM,
+    "Fine bin count must be pad_factor * windows_per_stream.");
+static_assert(
+    (1 << FSTAT_FINE_LOG2) == FSTAT_FINE_NUM_BINS,
+    "FSTAT_FINE_LOG2 must equal log2(FSTAT_FINE_NUM_BINS); update it whenever "
+    "the fine transform length changes.");
+
+/* --- no-overflow closure, derived per geometry ---------------------------- */
+static_assert(
+    FSTAT_MAX_ROW_SUM_COMPONENT <= 2147483647LL,
+    "Completed dot-product components must fit the int32 row-sum storage.");
+static_assert(
+    2.0 * static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT)
+            * static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT)
+        <= 2147483647.0,
+    "Coarse |z|^2 must fit int32; reduce detector_window_samples or widen the "
+    "squared-magnitude accumulator.");
+static_assert(
+    static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT)
+            * fstat_geometry::growth_after(fstat_geometry::kFineStages)
+        <= 2147483647.0,
+    "fxfft working values must stay inside int32 across all butterfly stages; "
+    "the admissible input norm falls as 2^31 / growth^stages, so this bound "
+    "tightens every time the transform length doubles.");
+static_assert(
+    2.0 * fstat_geometry::kMaxBinMagnitude * fstat_geometry::kMaxBinMagnitude
+            * 65536.0
+        <= 18446744073709551615.0,
+    "Feed-summed fine power must fit uint64 for stream counts up to 65536.");
 #endif
 
 /* ===========================================================================
