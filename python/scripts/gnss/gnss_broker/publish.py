@@ -431,15 +431,30 @@ class FleetPublisher:
             # the fleet actually summed, the instance value over the instance's own ladder
             # pick. t_rec is derived from the instance row rather than hardcoded, so a
             # different record geometry cannot silently desynchronise this.
-            _t_rec = None
-            if c.get("coherence_s") and c.get("deep_records"):
-                _t_rec = float(c["coherence_s"]) / float(c["deep_records"])
-            if fc and fc.get("present") and fc.get("n_rec") and _t_rec:
-                _bi, _T = fc["best_inst_snr"], fc["n_rec"] * _t_rec
-            else:
-                _bi, _T = c.get("deep_snr"), float(c.get("coherence_s") or 0.0)
+            # ONE ESTIMATOR, UNCONDITIONALLY: the best single instance's own deep SNR over
+            # its own coherent span. Not the fleet value when the fleet gate happens to
+            # pass and the instance value when it does not -- that is a switch between two
+            # populations, and MEASURED 2026-08-11 on PRN 21 the two sit ~8-17 dB apart
+            # (best_inst 7.4-37.6 with the gate open, 67-82 with it closed), which is the
+            # bimodal switching KV identified in the served series.
+            #
+            # THE FLEET'S COHERENT GAIN DOES NOT BELONG IN A C/N0. C/N0 is a property of
+            # the signal and the receiver's sensitivity, not of how many nodes were
+            # summed; combining N instances raises the DETECTION SIGNIFICANCE, which is
+            # what deep_snr is for and what the gates consume. Publishing the fleet gain
+            # here made a satellite's radiometry depend on the fleet's engagement state --
+            # the same category error as the sqrt(N) quadrature inflation this field was
+            # introduced to remove (docs 11.31), just one layer further in.
+            #
+            # `c` is the best instance's own combiner row, so snr and span are the same
+            # integration by construction and no pairing can drift.
+            _bi = c.get("deep_snr")
+            _T = float(c.get("coherence_s") or 0.0)
             row["cn0_coh_db"] = (20.0 * math.log10(_bi) - 10.0 * math.log10(_T)
                                  if (_bi and _bi > 0.0 and _T > 0.0) else None)
+            # The fleet's view stays published beside it (deep_snr / coh_src /
+            # fleet_coh_best_inst), so the gain is still visible -- just not conflated
+            # with the radiometry.
             rows.append(row)
         meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                 "present": sum(1 for r in rows if r["fleet_present"]),
