@@ -1,0 +1,24 @@
+---
+# Standalone test of the PilotProxy DTV detector datapath: the
+# testPilotProxyDetector stage invents voltage/weight data, runs the packer
+# GPU kernel plus the vendored F-statistic CUDA library (lib/cuda/pilotproxy),
+# and compares every product bit-for-bit against the CPU references (packer
+# oracle, vendored integer references, the frozen fxfft256 v1 FFT, and a
+# bit-exact port of pilot-proxy's fine decision v1).
+# All test parameters are hard-coded in the stage, so no config is required
+# beyond the stage itself.
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0]
+
+# Required by the default telescope setup (the stage itself reads no config).
+num_polarizations: 2
+num_dishes: 512
+
+test_pilotproxy_detector:
+    kotekan_stage: testPilotProxyDetector
+    # Safety cap for the GPU-vs-CPU sweep in debug builds.
+    join_timeout: 120
+log_config_usage: fatal_error
