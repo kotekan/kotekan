@@ -4707,7 +4707,15 @@ def main(argv=None, rx=None, publisher=None):
                         # states cannot estimate the offset between them, which is exactly
                         # why the second band needed a hand-wired cross-band clock bootstrap
                         # (#34) -- tau_band now has somewhere to live.
-                        _js = rx.joint_receiver(band_id, CODE_LEN)
+                        # WARM START (2026-08-11): hand the filter the legacy clock at
+                        # CREATION. Born at 0 against a true ~151 chips, every measurement
+                        # lands beyond escape_max_step and the escape hatch refuses the
+                        # correction as non-physical -- 100% rejection, forever (observed
+                        # 15:25 UTC: 34 rejections agreeing to 0.22 chips, all implying
+                        # +151.7, all refused). Only read on creation, so this cannot fight
+                        # the filter once it is running. #28's lesson, applied one filter on.
+                        _js = rx.joint_receiver(band_id, CODE_LEN,
+                                                clk0=float(dr_state.get("clk") or 0.0))
                         # SNR GATE, caller-side. The broker's own comment 60 lines up
                         # measures it: below --period-check-snr a detection's phase is
                         # noise, "~2000-chip within-period residuals against a few chips
@@ -4791,7 +4799,8 @@ def main(argv=None, rx=None, publisher=None):
                 # those were built with an escape hatch.
                 elif args.joint_model_primary and args.joint_shadow and seeds and not offs:
                     try:
-                        _js = rx.joint_receiver(band_id, CODE_LEN)
+                        _js = rx.joint_receiver(band_id, CODE_LEN,   # warm start, see above
+                                                clk0=float(dr_state.get("clk") or 0.0))
                         _h1 = int(round(t_now_abs * args.hops_per_sec))
                         _th = _h1 / args.hops_per_sec
                         _mm = []

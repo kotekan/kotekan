@@ -156,7 +156,8 @@ class JointReceiverState:
                  reject_escape=5, escape_spread=5.0,
                  birth_max=50.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
-                 sigma_fcar0=50.0, q_fcar=0.01):
+                 sigma_fcar0=50.0, q_fcar=0.01,
+                 clk0=0.0, escape_min_sats=3):
         import numpy as np
         self._np = np
         self.L = float(code_len)
@@ -191,6 +192,28 @@ class JointReceiverState:
         # bound: real per-sat offsets cluster inside ~+-10 chips while a wrap alias is
         # thousands, so anything from 50 to 500 separates them.
         self.escape_max_step = float(escape_max_step)
+        # ...UNLESS THE EVIDENCE IS EXTRAORDINARY. escape_max_step is a flat ceiling, and a
+        # flat ceiling cannot express "I would believe this if enough independent things
+        # said it". The per-satellite consistency test above is weaker than it looks: it
+        # asks whether ONE satellite agrees with ITSELF, and _rej_hist is keyed per
+        # satellite, so a single sat feeding coherent nonsense clears it alone. That is
+        # precisely how PRN 25 -- transited out of the beam, code phase uniform over 10230
+        # chips -- talked the filter into a -1396 chip step on 2026-08-10 with nothing to
+        # contradict it.
+        #
+        # Independent satellites are the axis that test is missing. Their code phases share
+        # exactly one thing, the receiver clock, so a step that MANY of them report at once
+        # is a clock event almost by definition, while noise has no reason to agree across
+        # satellites at all. So a step beyond escape_max_step may still be believed, but
+        # only with corroboration: escape_min_sats DISTINCT satellites, each with its own
+        # self-consistent run, all implying the same step to within escape_spread.
+        #
+        # This is the "extraordinary claims" rule with the count done on the right noun.
+        # Thirty rejections from nine satellites in thirty seconds are not thirty
+        # independent samples -- they are nine satellites and a correlation time -- so the
+        # evidence is counted in SATELLITES, never in samples.
+        self.escape_min_sats = int(escape_min_sats)
+        self._rej_band = {}            # key -> band of its rejected run, for the corroboration
         self.rate_max = float(rate_max)   # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
         self.diverged = False   # latched: an escape was refused as non-physical
         self.escapes = 0
@@ -256,6 +279,25 @@ class JointReceiverState:
         self.n_fcar = 0                # accepted carrier measurements
         self.fcar_rejected = 0
         self.x = np.zeros(2)           # [clk chips, clk_rate chips/s]
+        # WARM START (2026-08-11). Starting at 0 when the receiver clock is ~151 chips is
+        # not a neutral prior, it is a DEADLOCK: every measurement then arrives ~151 chips
+        # out, which is beyond escape_max_step (100), so the escape hatch refuses the
+        # correction as "a wrap alias, not a clock" and the state rejects 100% of updates
+        # forever, sitting at clk ~ -1 and sliding. Observed on sky 2026-08-11 15:25 UTC:
+        # 34 rejections agreeing to 0.22 chips, all implying +151.7, all refused.
+        #
+        # The bound is not wrong in KIND -- the clock IS physically bounded, so a
+        # thousand-chip step really is noise -- it was simply set below the very quantity
+        # it guards. Whoever creates this state already has a perfectly good clock estimate
+        # (the legacy dead-reckon solve); handing it over costs nothing and removes the
+        # cold-start case entirely, so the escape machinery below is left to handle only
+        # the hard case it was written for: a state poisoned in flight.
+        #
+        # Exactly the lesson of #28, which fixed this same shape for the dead-reckon clock:
+        # a filter that re-bootstraps from 0 on every restart is one restart away from
+        # measuring nothing. clk0=0.0 keeps the old behaviour for callers that have no
+        # estimate to offer.
+        self.x[0] = float(clk0)
         self.P = np.diag([sigma_clk0 ** 2, sigma_rate0 ** 2])
         self._idx = {}                 # key -> row in x
         self._t_seen = {}              # key -> last accepted measurement time
@@ -332,6 +374,7 @@ class JointReceiverState:
             del self._idx[k], self._t_seen[k], self._n[k]
             self._rej_run.pop(k, None)
             self._rej_hist.pop(k, None)
+            self._rej_band.pop(k, None)
         # Reindex from the SURVIVING ROW ORDER, not from a hardcoded base of 2. The old
         # form assumed every row past clk_rate was a satellite; tau_band rows share that
         # space now, and a base-2 renumber would silently alias a band onto a satellite.
@@ -528,6 +571,7 @@ class JointReceiverState:
                 # a static truth agree no matter what the filter did in between.
                 hist = self._rej_hist.setdefault(key, [])
                 hist.append(y_chips)
+                self._rej_band[key] = band   # so _corroborators can remove its tau
                 if len(hist) > self.reject_escape:
                     del hist[:-self.reject_escape]
                 self._rej_run[key] = self._rej_run.get(key, 0) + 1
@@ -563,15 +607,31 @@ class JointReceiverState:
                 # chips, and 1050 rejections against 280 updates -- the filter deaf and
                 # free-running, 90 s after a clean start.
                 if abs(innov) > self.escape_max_step:
-                    self.rejected += 1
-                    self.diverged = True
-                    self._note("ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips but "
-                               "implying a %+.1f chip step (bound %.0f on a %.0f-chip code) "
-                               "-- that is a wrap alias, not a clock. The STATE is wrong, "
-                               "not the sky; it needs a re-bootstrap, not a jump"
-                               % (self._key_str(key), self._rej_run[key], spread, innov,
-                                  self.escape_max_step, self.L))
-                    return None
+                    # EXTRAORDINARY CLAIM -> EXTRAORDINARY EVIDENCE. Count how many OTHER
+                    # satellites are independently asking for the SAME step right now.
+                    # Every implied step is recomputed here, at this instant, against the
+                    # current state -- so they are all referred to one epoch and the
+                    # "innovations drift while the state slides" problem that forced the
+                    # spread test onto y does not arise for the comparison BETWEEN sats.
+                    _corr = self._corroborators(key, innov)
+                    if _corr + 1 < self.escape_min_sats:
+                        self.rejected += 1
+                        self.diverged = True
+                        self._note("ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips "
+                                   "but implying a %+.1f chip step (bound %.0f on a %.0f-chip "
+                                   "code) and only %d/%d satellites agree -- one satellite's "
+                                   "self-consistency is not evidence about the CLOCK. The "
+                                   "STATE may still be wrong; corroboration, or a warm start, "
+                                   "is the way out -- not a jump on one sat's word"
+                                   % (self._key_str(key), self._rej_run[key], spread, innov,
+                                      self.escape_max_step, self.L, _corr + 1,
+                                      self.escape_min_sats))
+                        return None
+                    self._note("ESCAPE CORROBORATED %s: %+.1f chip step exceeds the %.0f "
+                               "bound, but %d satellites independently agree to within %.1f "
+                               "chips -- that is a clock event, not one sat's noise"
+                               % (self._key_str(key), innov, self.escape_max_step,
+                                  _corr + 1, self.escape_spread))
                 self._note("ESCAPE %s: %d consecutive rejections agreeing to %.2f chips "
                            "-- believing a %+.1f chip step and inflating P"
                            % (self._key_str(key), self._rej_run[key], spread, innov))
@@ -581,6 +641,7 @@ class JointReceiverState:
                 self.P[0, 1] = self.P[1, 0] = 0.0
         self._rej_hist.pop(key, None)
         self._rej_run.pop(key, None)
+        self._rej_band.pop(key, None)
         z = self._scalar_update(H, innov, sigma_chips ** 2)
         self._t_seen[key] = t_now
         self._n[key] = self._n.get(key, 0) + 1
@@ -627,6 +688,32 @@ class JointReceiverState:
         for i in use:
             H[i] = 1.0 / len(use)
         self._scalar_update(H, -float(H @ self.x), self.gauge_sigma ** 2)
+
+    def _corroborators(self, key, innov):
+        """How many OTHER satellites have a self-consistent rejection run implying the SAME
+        step as `innov`, right now.
+
+        The discriminator the per-satellite test cannot provide. Independent satellites
+        share exactly one term -- the receiver clock -- so agreement ACROSS them is evidence
+        about the clock, while a single satellite agreeing with itself is evidence only that
+        its own measurement is repeatable (uniform noise over the code is repeatable in
+        exactly the wrong way, which is what cost the state on 2026-08-10).
+
+        Only fully-formed runs vote: a satellite must have reject_escape samples and pass
+        the same escape_spread coherence test as the caller. Its own band's tau is removed,
+        so a second band's group delay is not mistaken for disagreement.
+        """
+        n = 0
+        for k2, h2 in self._rej_hist.items():
+            if k2 == key or len(h2) < self.reject_escape:
+                continue
+            if max(abs(self.wrap(v - h2[0])) for v in h2) > self.escape_spread:
+                continue          # that sat is feeding noise; it gets no vote
+            innov2 = self.wrap(h2[-1] - self.predicted(k2)
+                               - self.tau(self._rej_band.get(k2)))
+            if abs(self.wrap(innov2 - innov)) <= self.escape_spread:
+                n += 1
+        return n
 
     def cycle(self, measurements, t_now):
         """predict -> updates -> gauge -> expire, in the one order that is correct.
