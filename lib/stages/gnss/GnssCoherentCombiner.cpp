@@ -269,6 +269,10 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // PHASE-RATE SEARCH. Default OFF: it changes what deep_snr means (a max over rates rather
     // than a straight sum), so a config that has not opted in keeps the old, comparable number.
     _deep_rate = config.get_default<bool>(unique_name, "deep_rate_search", false);
+    // Cap on the rate-search argmax (Hz); <=0 restores the full alias window. See the
+    // comment at rate_search -- 5 Hz admits any real seed/ramp residual (seeds are good
+    // to ~1 Hz) while excluding the +-45.4 Hz aliased NH20 sidebands it kept folding at.
+    _deep_rate_max_hz = config.get_default<double>(unique_name, "deep_rate_max_hz", 5.0);
     _deep_rate_min_q = config.get_default<double>(unique_name, "deep_rate_min_q", 10.0);
     _st_deep_rate.assign(_n_prn, 0.0f);
     _st_deep_rate_q.assign(_n_prn, 0.0f);
@@ -1002,7 +1006,17 @@ void GnssCoherentCombiner::main_thread() {
         // series lands on a uniform grid with holes, and a hole contributes exactly zero. dt is
         // the MINIMUM consecutive spacing, not the mean -- with gaps the mean is not the record
         // period, and a wrong dt rescales every frequency in the answer.
-        auto rate_search = [](const std::vector<std::complex<double>>& x,
+        // deep_rate_max_hz (task #40, 2026-08-11): the argmax used to run over the FULL
+        // record-rate alias window (+-47.7 Hz at 2048-hop records). Measured on sky: all
+        // 12 instances picked the SAME wrong bin (cross-instance sd 0.04-0.11 Hz) while
+        // the pick hopped 15-39 Hz between emits, hugging +-46 -- the NH20 overlay's
+        // +-50 Hz sidebands aliased to -+45.4. The fold APPLIES the pick, so a sideband
+        // emit reports the sideband's amplitude, dB down, fleet-wide: the common-mode
+        // level scatter. A tracked seed is good to ~1 Hz; bins beyond the cap cannot win.
+        // The floor/q stay full-band so q keeps its calibrated meaning (17.9-22 signal
+        // vs 2.8-6.1 noise).
+        const double rate_max_hz = _deep_rate_max_hz;
+        auto rate_search = [rate_max_hz](const std::vector<std::complex<double>>& x,
                               const std::vector<double>& u, double& best_f, double& q) {
             best_f = 0.0;
             q = 0.0;
@@ -1038,7 +1052,18 @@ void GnssCoherentCombiner::main_thread() {
                     acc += x[k] * tw[(size_t)(((long long)i * m[k]) % (long long)nb)];
                 mag[i] = std::abs(acc);
             }
-            const size_t ip = (size_t)(std::max_element(mag.begin(), mag.end()) - mag.begin());
+            size_t ip = 0;
+            double best_m = -1.0;
+            for (size_t i = 0; i < nb; ++i) {
+                const double fr = (double)i / (double)nb;
+                const double f_i = (fr < 0.5 ? fr : fr - 1.0) / dt;
+                if (rate_max_hz > 0.0 && std::abs(f_i) > rate_max_hz)
+                    continue; // outside the physical window: may set the floor, cannot win
+                if (mag[i] > best_m) {
+                    best_m = mag[i];
+                    ip = i;
+                }
+            }
             std::vector<double> srt(mag);
             std::nth_element(srt.begin(), srt.begin() + nb / 2, srt.end());
             const double med = srt[nb / 2];

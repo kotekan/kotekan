@@ -395,6 +395,7 @@ private:
     /// PHASE-RATE SEARCH before the deep coherent sum (see the _deep_plain branch). Off by
     /// default; _deep_rate_min_q is the peak/median the search must reach to be believed.
     bool _deep_rate = false;
+    double _deep_rate_max_hz;
     double _deep_rate_min_q = 10.0;
     std::vector<float> _st_deep_rate, _st_deep_rate_q;
 
