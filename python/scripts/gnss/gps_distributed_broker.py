@@ -4827,7 +4827,75 @@ def main(argv=None, rx=None, publisher=None):
                                 continue
                             _mm.append(((tag, _prn), _y, args.joint_sigma, band_id))
                         if _mm:
-                            _js.cycle(_mm, t_now_abs)
+                            # ── JFEED: THE FORK THIS EXISTS TO SETTLE (task #33, 2026-08-11)
+                            # Turning this feed on gave 9 Galileo b_sat all equal to +0.44
+                            # (0.01 chip spread) against 8.9 chips across 3 GPS ones. Two
+                            # explanations need opposite fixes and the log could not tell
+                            # them apart, because cycle() returns only a COUNT and update()
+                            # returns None on reject -- every per-satellite fact was thrown
+                            # away at the call site:
+                            #
+                            #   (a) DEGENERATE AT SOURCE. y = dr_seed_phys(seed) + dll_trim
+                            #       - cp_predicted, and on a model-primary chain the seed is
+                            #       itself BUILT from model + clock -- so y may just report
+                            #       back the clock that built it, carrying no per-sat
+                            #       information. Self-reference: right in the mean, wrong in
+                            #       the variance. Signature: spread(y - clk) ~ 0.
+                            #   (b) DISTINCT BUT REJECTED. The measurements differ per sat,
+                            #       the innovation gate throws them out, and b_sat stays
+                            #       frozen at its birth value while clk drags it along.
+                            #       Signature: spread(y - clk) is chips-scale, |r| large,
+                            #       acc low.
+                            #
+                            # So log the RAW y, the innovation r the gate actually tests,
+                            # and the accepted count -- all three before/around the update,
+                            # since predicted() moves once cycle() runs. Costs one line per
+                            # 10 s and touches no control flow.
+                            _diag = None
+                            if now_w >= dr_state.get("jfeed_log_next", 0.0):
+                                dr_state["jfeed_log_next"] = now_w + 10.0
+                                _diag = [(_k[1], _yy,
+                                          _js.wrap(_yy - _js.predicted(_k) - _js.tau(_bd)),
+                                          _js.bias(_k))
+                                         for _k, _yy, _sg, _bd in _mm]
+                                # TERM DECOMPOSITION. The innovation came back at a common
+                                # -135 chips on every satellite with y ramping 0.15 chips/s
+                                # (300x the clock rate), so the question is no longer "which
+                                # satellite" but "which TERM of y". Print the three summands
+                                # against the LEGACY offset the same chain is successfully
+                                # seeding from -- E5a tracks fine at deep_snr 80+, so the
+                                # legacy number is the working reference and y has to be
+                                # compared to it, not to zero.
+                                _dk = _mm[0][0]
+                                _dsd = seeds.get(_dk[1]) or {}
+                                _dv = pd.get(_dk)
+                                if _dv is not None and "ref_hop" in _dsd:
+                                    _dheld = dr_seed_phys(_dsd, _h1, args.hops_per_sec,
+                                                          args.chip_rate_hz, args.carrier_hz,
+                                                          args.code_doppler_sign, _DR_MOD)
+                                    _dcp = cp_predicted(_dv, _th)
+                                    _log("JFEED-TERMS %s PRN %d: held %+.3f  dll_trim %+.3f"
+                                         "  cp_pred %+.3f  -> y %+.3f (mod %.0f) | legacy "
+                                         "clk %+.3f + b %+.3f = %+.3f | joint clk %+.3f"
+                                         % (band_id, _dk[1], _dheld,
+                                            dll_trim.get(_dk[1], 0.0), _dcp,
+                                            ((_dheld + dll_trim.get(_dk[1], 0.0) - _dcp)
+                                             % _DR_MOD), _DR_MOD,
+                                            clk_now, bsat.get(_dk[1], now_w),
+                                            clk_now + bsat.get(_dk[1], now_w), _js.clk))
+                            _nok = _js.cycle(_mm, t_now_abs)
+                            if _diag:
+                                _ys = [_js.wrap(d[1] - _js.clk) for d in _diag]
+                                _sp = max(_ys) - min(_ys)
+                                _log("JFEED %s: %d meas, %d accepted (%.0f%%)  "
+                                     "spread(y-clk) %.4f chips  -> %s | %s"
+                                     % (band_id, len(_mm), _nok,
+                                        100.0 * _nok / max(1, len(_mm)), _sp,
+                                        "DEGENERATE (no per-sat info)" if _sp < 0.05
+                                        else "per-sat info PRESENT",
+                                        " ".join("%s%d y%+.3f r%+.3f b%+.3f"
+                                                 % (tag, p, y, r, b)
+                                                 for p, y, r, b in sorted(_diag))))
                         if now_w >= dr_state.get("joint_log_next", 0.0):
                             dr_state["joint_log_next"] = now_w + 30.0
                             _tb = "".join(
