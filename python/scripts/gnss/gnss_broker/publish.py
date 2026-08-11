@@ -411,11 +411,35 @@ class FleetPublisher:
             # CONSTRUCTION -- it never switches population. The fleet's coherent gain
             # stays visible in deep_snr + coh_src, which remain untouched: deep_snr is a
             # detection SIGNIFICANCE and gates consume it; this field is the radiometry.
-            _bi = (fc.get("best_inst_snr") if (fc and fc.get("present"))
-                   else c.get("deep_snr")) or 0.0
-            _T = float(c.get("coherence_s") or 0.0)
+            # ⚠️ THE NUMERATOR AND THE DENOMINATOR MUST DESCRIBE THE SAME INTEGRATION.
+            # This is a C/N0, i.e. amplitude-SNR^2 per unit time, so pairing an SNR
+            # measured over N records with a span measured over M != N records is not an
+            # approximation -- it is a different quantity, and it JUMPS whenever either
+            # count changes.
+            #
+            # MEASURED 2026-08-11 on PRN 21: `coherence_s` is the best INSTANCE's ladder
+            # pick and hops 12 / 25 / 50 / 100 records poll to poll, while
+            # `fleet_coh_best_inst` is integrated over `fleet_coh_records` (42, 52, ...).
+            # The four rungs put -10log10(T) at -0.21 / +2.81 / +5.81 / +9.00 dB, so the
+            # pairing alone injects up to 9.2 dB of DISCRETE steps -- observed 41.6 ->
+            # 33.6 -> 22.8 -> 40.5 dB-Hz within 30 s on an unchanging satellite. That
+            # bimodal "switch" is the last of the C/N0 scatter (KV spotted the shape:
+            # discrete transitions, not a continuous multiplicative scaling, which is what
+            # sent this hunt after gain-like mechanisms for a day).
+            #
+            # So take each estimator WITH ITS OWN span: the fleet value over the records
+            # the fleet actually summed, the instance value over the instance's own ladder
+            # pick. t_rec is derived from the instance row rather than hardcoded, so a
+            # different record geometry cannot silently desynchronise this.
+            _t_rec = None
+            if c.get("coherence_s") and c.get("deep_records"):
+                _t_rec = float(c["coherence_s"]) / float(c["deep_records"])
+            if fc and fc.get("present") and fc.get("n_rec") and _t_rec:
+                _bi, _T = fc["best_inst_snr"], fc["n_rec"] * _t_rec
+            else:
+                _bi, _T = c.get("deep_snr"), float(c.get("coherence_s") or 0.0)
             row["cn0_coh_db"] = (20.0 * math.log10(_bi) - 10.0 * math.log10(_T)
-                                 if (_bi > 0.0 and _T > 0.0) else None)
+                                 if (_bi and _bi > 0.0 and _T > 0.0) else None)
             rows.append(row)
         meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                 "present": sum(1 for r in rows if r["fleet_present"]),
