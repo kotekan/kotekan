@@ -205,8 +205,14 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # the correlation peak ((E+L)/2P = 3.27 in the faded quartile vs 0.312 bright), and the
     # railed-discriminator fraction is 55-58% here against 2-3% on search-anchored GPS at
     # MATCHED brightness. Those two numbers are the before/after metric for consume.
-    joint-shadow: true
-    joint-model-primary: true
+    # ⚠️ JOINT FEED + CONSUME TURNED OFF 2026-08-11 18:5x, to make the slew arm below a
+    # ONE-VARIABLE test. Both were unvalidated: the feed's b_sat came up degenerate until
+    # the warm start (3afff78b9), and the consumer was provably invisible behind the slew
+    # rate limit (47% of steps railed at 0.05 chips/event), so nothing here was ever shown
+    # to help. Leaving them on would make gal_e5a differ from its control in two ways.
+    # Re-enable together, and only with a measurement that can see them.
+    # joint-shadow: true
+    # joint-model-primary: true
     # ── P2b STEP 2: CONSUME (2026-08-11 16:2x) ─────────────────────────────────────────
     # THE FIRST THING TODAY THAT CHANGES A SEED. Everything above is measurement; this
     # line makes the seed's clock+bias offset come from the joint clk + b_sat instead of
@@ -239,7 +245,30 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     #
     # REVERT IS THIS ONE LINE. Per-sat fallback beyond --joint-slew-max-chips 5.0 already
     # applies, so a bad offset is refused per satellite rather than shipped.
-    joint-consume: slew
+    # joint-consume: slew        (off with the feed above -- see the note)
+    #
+    # ── THE SLEW ARM (2026-08-11 18:5x) ───────────────────────────────────────────────
+    # SLEWING OFF. The seed is still re-anchored every cycle at a fresh epoch with fresh
+    # model Doppler; only its PHASE is left where the loop put it, never dragged toward
+    # the model.
+    #
+    # THE QUESTION: a broker restart transiently fixes every chain for ~20-30 min and then
+    # it decays, and the decay is the seeds progressively losing peak alignment -- measured,
+    # E/P/L bright-quartile shape goes 0.51-0.62 (a proper peak) to ~1.0 (never on peak).
+    # Meanwhile tracking is HEALTHY while seeds sit 234-307 chips from the model and
+    # degrades as they ARRIVE on it. If that is causal, the model is wrong and the slew is
+    # what walks good seeds onto it -- so removing the slew should stop the decay.
+    #
+    # CONTROL IS gal_e5b, UNTOUCHED: the same satellites on the other band, so the sky is
+    # held constant by construction and the two chains are compared at MATCHED
+    # time-since-restart. That is what makes this immune to the restart transient, which
+    # invalidated every before/after A/B attempted today.
+    #
+    # PREDICTION, RECORDED BEFORE THE RUN: if the slew is the cause, gal_e5a's
+    # bright-quartile (E+L)/2P stays near 0.5-0.6 past the ~20-30 min mark while gal_e5b
+    # climbs toward 1.0. If BOTH decay alike, the slew is exonerated and the decay lives
+    # upstream in seed generation.
+    dr-slew-cap: 0.0
     # ...AND UNRAIL THE RATE LIMIT, or the line above cannot show anything. The flat
     # 0.05 chips/event cap had 47% of steps sitting exactly on it while satellites were
     # 5-8 chips from their model -- of order an hour to close, against a ~600 s
