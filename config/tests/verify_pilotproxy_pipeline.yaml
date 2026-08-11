@@ -108,6 +108,10 @@ dump_voltage:
     file_ext: "raw"
     prefix_hostname: false
     num_frames_per_file: 1
+    # testDataGen attaches an NDArray frame descriptor even to standard
+    # buffers; we only want the raw bytes (the verifier knows the layout).
+    ignore_ndarray_frame_desc: true
+    exit_after_n_files: 8           # = num_gen_frames
 
 run_send_voltage:
     gpu_0:
@@ -157,6 +161,9 @@ dump_dtv_powers:
     file_ext: "raw"
     prefix_hostname: false
     num_frames_per_file: 1
+    # cudaOutputData attaches an NDArray frame descriptor; raw bytes only.
+    ignore_ndarray_frame_desc: true
+    exit_after_n_files: 4           # = num_gen_frames / 2 detector blocks
 
 dump_dtv_mask:
     kotekan_stage: rawFileWrite
@@ -165,6 +172,9 @@ dump_dtv_mask:
     file_ext: "raw"
     prefix_hostname: false
     num_frames_per_file: 1
-    # num_gen_frames / 2 detector blocks, then exit kotekan cleanly.
-    exit_after_n_files: 4
+    # cudaOutputData attaches an NDArray frame descriptor; raw bytes only.
+    ignore_ndarray_frame_desc: true
+    # All three dumpers carry exit_after_n_files, so kotekan exits cleanly
+    # only once every dump (8 voltage + 4 powers + 4 mask files) is on disk.
+    exit_after_n_files: 4           # = num_gen_frames / 2 detector blocks
 log_config_usage: fatal_error

@@ -23,6 +23,10 @@
  * @conf file_ext  String. File extension.
  * @conf num_frames_per_file Int. No of frames to write into a single file.
  * @conf exit_after_n_files  Int. Stop writing after this many files, Default 0 = unlimited files.
+ * @conf ignore_ndarray_frame_desc Bool. Default false. Write the raw frame bytes even if the
+ *       frames carry a dynamically attached NDArray frame descriptor. The descriptor itself is
+ *       still not serialized, so the reader must know the array layout by other means (e.g.
+ *       from the config that produced the dump).
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds
@@ -50,6 +54,8 @@ private:
     uint32_t _exit_after_n_files;
     // Prefix file name with hostname or not
     bool _prefix_hostname;
+    // Dump raw frame bytes even if an NDArray frame descriptor is attached
+    bool _ignore_ndarray_frame_desc;
 };
 
 #endif

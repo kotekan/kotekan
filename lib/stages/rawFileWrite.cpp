@@ -45,6 +45,8 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     _exit_after_n_files = config.get_default<uint32_t>(unique_name, "exit_after_n_files", 0);
+    _ignore_ndarray_frame_desc =
+        config.get_default<bool>(unique_name, "ignore_ndarray_frame_desc", false);
 
     if (_exit_after_n_files > 0)
         waiting_for_max_frames++;
@@ -76,10 +78,11 @@ void rawFileWrite::main_thread() {
             break;
 
         // Check for NDArray on first frame (after producer may have set the descriptor)
-        if (buf->get_frame_desc<kotekan::GenericNDArray>()) {
+        if (buf->get_frame_desc<kotekan::GenericNDArray>() && !_ignore_ndarray_frame_desc) {
             FATAL_ERROR(
                 "rawFileWrite does not support NDArray buffers. The NDArray frame descriptor "
-                "is set dynamically and will not be written to the file.");
+                "is set dynamically and will not be written to the file. Set "
+                "ignore_ndarray_frame_desc to dump the raw frame bytes anyway.");
         }
 
         // Start timing the write time
