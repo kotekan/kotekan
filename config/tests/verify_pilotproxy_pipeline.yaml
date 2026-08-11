@@ -18,13 +18,13 @@
 # runtime bundle and compares bit-for-bit.
 #
 # Requires a PilotProxy runtime bundle on disk (default
-# data/pilotproxy_bundle; see config/fengine/include/dtv_chord.j2 for the
-# export command) and an output directory (default data/pilotproxy_verify):
+# fake_data/pilotproxy_bundle; see config/fengine/include/dtv_chord.j2 for the
+# export command) and an output directory (default fake_data/pilotproxy_verify):
 #
-#   mkdir -p data/pilotproxy_verify
+#   mkdir -p fake_data/pilotproxy_verify
 #   ./kotekan -c config/tests/verify_pilotproxy_pipeline.yaml
 #   python3 tools/verify_pilotproxy_pipeline.py \
-#       --dump-dir data/pilotproxy_verify --bundle-dir data/pilotproxy_bundle
+#       --dump-dir fake_data/pilotproxy_verify --bundle-dir fake_data/pilotproxy_bundle
 #
 # This descends from the file-based fstat testbench workflow in the earlier
 # djgormley/kotekan feat/fstat integration (gen inputs -> run pipeline ->
@@ -50,9 +50,9 @@ num_gen_frames: 8                # -> 4 detector blocks
 
 # Output directory for the raw dumps (inherited by the rawFileWrite stages)
 # and the PilotProxy runtime-bundle files (inherited by the detector).
-base_dir: "data/pilotproxy_verify"
-pilot_profiles_path: "data/pilotproxy_bundle/pilot_profiles.json"
-weights_path: "data/pilotproxy_bundle/weights.bin"
+base_dir: "fake_data/pilotproxy_verify"
+pilot_profiles_path: "fake_data/pilotproxy_bundle/pilot_profiles.json"
+weights_path: "fake_data/pilotproxy_bundle/weights.bin"
 
 main_pool:
     kotekan_metadata_pool: chordMetadata

@@ -26,7 +26,7 @@ detector contract (external/pilotproxy/f_statistic.h):
 
 Usage:
     python3 tools/verify_pilotproxy_pipeline.py \
-        --dump-dir data/pilotproxy_verify --bundle-dir data/pilotproxy_bundle
+        --dump-dir fake_data/pilotproxy_verify --bundle-dir fake_data/pilotproxy_bundle
 
 Exit code 0 on bit-exact agreement, 1 otherwise.
 """
@@ -106,8 +106,8 @@ def expected_powers(real, imag, weights_packed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dump-dir", default="data/pilotproxy_verify")
-    parser.add_argument("--bundle-dir", default="data/pilotproxy_bundle")
+    parser.add_argument("--dump-dir", default="fake_data/pilotproxy_verify")
+    parser.add_argument("--bundle-dir", default="fake_data/pilotproxy_bundle")
     args = parser.parse_args()
 
     with open(os.path.join(args.bundle_dir, "pilot_profiles.json")) as f:
