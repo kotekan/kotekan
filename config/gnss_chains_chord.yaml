@@ -106,6 +106,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # +0.36..+0.77 (docs/CHORD_JOINT_TRACKING.md 3d). This makes GPS's Doppler behave like
     # theirs. Revert by deleting this line.
     dr-doppler-ignores-integrity: true
+    # P2b CONSUMER 1 of 3 (task #33), enabled 2026-08-11 00:1x after the shadow
+    # re-qualified post-divergence-fix: 36 min, clk 150.8 sigma ~0.07 stable, rate
+    # +-0.0006 chips/s, 14/2198 rejections (0.64%), b_sat +-5, zero guard firings,
+    # through the 6->11 mass-birth wave. Replaces the l-a EMA as the seeded code-rate
+    # clock -- the EMA measured ~80x biased (call site) and its a=0.05 stepping against
+    # a 35 Hz-spread raw solve is the measured GPS seed-jitter floor. The consumer has
+    # its own plausibility bound (--joint-max-rate-ppm) and falls back to the EMA when
+    # the joint state is thin or implausible. Revert by deleting this line.
+    joint-consume: rate
 
   # Galileo E5a -- path B, and NO DETECTORS by design: E5a-Q carries a PER-PRN secondary,
   # which the replica bank's single-sequence overlay slot cannot hold, so blind
