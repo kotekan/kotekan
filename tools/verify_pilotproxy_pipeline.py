@@ -7,7 +7,7 @@ expected uint64 coarse power sums and the coarse rational mask from the
 dumped voltage and the PilotProxy runtime bundle, and compares bit-for-bit.
 
 The recomputation is self-contained (numpy only) and mirrors the locked
-detector contract (lib/cuda/pilotproxy/f_statistic.h):
+detector contract (external/pilotproxy/f_statistic.h):
 
 - voltage bytes are int4x2_swapped_withoffset: stored = value + 8 per
   nibble, imaginary low nibble, real high nibble (decoding nibble - 8 is

@@ -203,7 +203,7 @@ private:
 /**
  * @class cudaPilotProxyDetector
  * @brief cudaCommand running the PilotProxy ATSC DTV pilot-tone F-statistic
- * detector (vendored in lib/cuda/pilotproxy) on CHORD voltage data.
+ * detector (vendored in external/pilotproxy) on CHORD voltage data.
  *
  * @author Dylan Gormley (PilotProxy detector core); kotekan stage authored
  *         for the pilot-proxy <-> kotekan integration.

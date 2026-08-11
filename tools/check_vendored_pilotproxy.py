@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Verify the vendored PilotProxy detector core against its upstream manifest.
 
-The PilotProxy core under lib/cuda/pilotproxy/ is vendored byte-for-byte from
+The PilotProxy core under external/pilotproxy/ is vendored byte-for-byte from
 WVURAIL/pilot-proxy so that re-vendoring is a pure copy + hash comparison
-(see lib/cuda/pilotproxy/README.md and .clang-format-ignore). This script turns
-that promise into a check.
+(see external/pilotproxy/README.md; tools/lint.sh prunes external/, so the
+copies are never reformatted). This script turns that promise into a check.
 
 Two modes:
 
   --offline (default in CI without network)
       Recompute the digest of each vendored file and compare it to
-      lib/cuda/pilotproxy/VENDOR.json. Catches local edits to vendored files.
+      external/pilotproxy/VENDOR.json. Catches local edits to vendored files.
 
   --fetch
       Additionally clone upstream at the pinned commit and diff the vendored
@@ -32,7 +32,7 @@ import sys
 import tempfile
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-VENDOR_DIR = REPO_ROOT / "lib" / "cuda" / "pilotproxy"
+VENDOR_DIR = REPO_ROOT / "external" / "pilotproxy"
 MANIFEST = VENDOR_DIR / "VENDOR.json"
 
 
@@ -51,8 +51,10 @@ def check_offline(manifest: dict) -> list[str]:
         if got != want:
             problems.append(f"{name}: digest mismatch\n    manifest {want}\n    on disk  {got}")
     listed = set(manifest["files"])
-    # Non-upstream files legitimately live alongside the vendored ones.
-    allowed_extra = {"README.md", "VENDOR.json"}
+    # Non-upstream files legitimately live alongside the vendored ones:
+    # the kotekan-side vendor docs/manifest, the build glue, and the copy of
+    # the upstream repository's LICENSE.
+    allowed_extra = {"README.md", "VENDOR.json", "CMakeLists.txt", "LICENSE"}
     for path in sorted(VENDOR_DIR.iterdir()):
         if path.is_file() and path.name not in listed and path.name not in allowed_extra:
             problems.append(f"{path.name}: present in vendor dir but not in the manifest")
@@ -111,7 +113,7 @@ def main() -> int:
             print(f"  - {p}", file=sys.stderr)
         print("\nVendored files are byte-identical copies of upstream and must not be edited\n"
               "in place. Fix upstream (%s), then re-vendor and refresh\n"
-              "lib/cuda/pilotproxy/VENDOR.json." % manifest["upstream_repo"], file=sys.stderr)
+              "external/pilotproxy/VENDOR.json." % manifest["upstream_repo"], file=sys.stderr)
         return 1
 
     scope = "manifest + upstream" if args.fetch else "manifest"

@@ -6,9 +6,10 @@ kotekan stage.
 
 - Upstream repository: https://github.com/WVURAIL/pilot-proxy
 - Upstream directory: `cuda/`
-- Vendored from upstream commit: `d3051e0` (kernel core 2.3.0), plus the
-  `FXFFT256_REF_NO_MAIN` guard submitted upstream in the same integration
-  patch series.
+- Vendored from upstream commit: see `VENDOR.json`, which pins the full
+  commit hash and the per-file digests (kernel core 2.3.x line, including
+  the `FXFFT256_REF_NO_MAIN` guard); `tools/check_vendored_pilotproxy.py`
+  verifies them.
 - Files (verbatim copies of the upstream files):
   - `config.h` — compile-time kernel configuration (K=128, 3 weight terms,
     packed complex int4, DP4A, uint64 power accumulation).
@@ -29,11 +30,19 @@ Local modifications: none. Do not edit these files here; changes belong
 upstream in pilot-proxy (the detector contract is frozen and validated by
 the upstream test suite, including golden vectors for the FFT and
 bit-equality tests for the fused mask epilogue). To update, copy the files
-from a new upstream commit and record the commit hash above. The top-level
-`.clang-format-ignore` excludes this directory so the copies stay
+from a new upstream commit and refresh `VENDOR.json`. `tools/lint.sh`
+prunes `external/`, so the copies are never reformatted and stay
 byte-identical to upstream (re-vendoring remains a pure copy + hash
-comparison); pilot-proxy is MIT-licensed (see the "Included Libraries"
-section of the repository LICENSE).
+comparison). pilot-proxy is MIT-licensed: `LICENSE` in this directory is
+the upstream license text, and the repository-level LICENSE lists the core
+under "Included Libraries".
+
+Kotekan-side files in this directory (not upstream copies): this README,
+`VENDOR.json`, `COMMIT` (the one-line upstream pin in the same format as
+`external/ksgpu` and `external/n2k`; the check script requires it to agree
+with `VENDOR.json`), `CMakeLists.txt` (build glue; the core builds as the
+static library `pilotproxy`, linked into consumers via `libexternal`), and
+`LICENSE`.
 
 Notes for kotekan integration:
 

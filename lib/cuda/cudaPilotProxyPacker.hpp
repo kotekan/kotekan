@@ -4,7 +4,7 @@
 // ([T, F, P, D] int4x2_swapped_withoffset bytes), converts each byte from
 // offset-binary to the PilotProxy kernel's two's-complement packed complex
 // int4 layout, and materializes the row-major detector-matrix view expected
-// by the vendored F-statistic kernel (lib/cuda/pilotproxy/f_statistic.h):
+// by the vendored F-statistic kernel (external/pilotproxy/f_statistic.h):
 //
 //     packed_out[(s * windows + w) * K + k]
 //         = voltage[(pos + w*K + k') mod ring, f, p, d] XOR 0x88

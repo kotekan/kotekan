@@ -37,7 +37,7 @@ THE SOFTWARE.
 ===== PilotProxy ATSC DTV pilot-tone detector core =====
 
 Files:
-  lib/cuda/pilotproxy/*
+  external/pilotproxy/*
 
 ===
 PilotProxy: ATSC DTV pilot-tone F-statistic detector
