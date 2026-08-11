@@ -151,88 +151,74 @@ class TestErraticGuard(unittest.TestCase):
 
 
 
-class TestDopplerLever(unittest.TestCase):
-    """The guard's original premise was FALSE, and these pin the correction.
+class TestDopplerEmbedCancellation(unittest.TestCase):
+    """Pins the 2026-08-11 evening correction, which RETRACTED the same afternoon's
+    "Doppler lever" version of this guard.
 
-    d_i is not clk + b_i. It carries the detection's Doppler multiplied by t_i, and t_i is
-    seconds since F-engine SAMPLE 0 -- 193,674 s on 2026-08-11, giving 1684 chips per Hz.
-    So the 100-chip bound was a 0.059 Hz bound, and the search's own Doppler moves several
-    Hz between passes. MEASURED on sky: 54 ejections in 55 min, median jump 2278 chips,
-    every one mapping to an ordinary Doppler step -- and the ejected satellites were
-    STRONGER than the fleet median (deep_snr 81 vs 52) with none inside 120 s of a re-seed.
-    They were tracking perfectly and were thrown out of the clock solve anyway.
+    The lever arithmetic (t_i * chip_rate / carrier ~ 1684 chips/Hz at 2.24 days of run
+    age) is real, but it appears in the search's published cp0 with a MINUS sign
+    (gnssSeedTransport.cpp detection_phase: cp0 = best_cp - off - drift) and in the
+    broker's cp_loc with a PLUS sign, same dop, same ref_hop -- so raw d_i never carried
+    it at all. MEASURED live 2026-08-11: cp_loc continuity over 1423 consecutive
+    detections is median 0.27 chips with Doppler jitter of +-60 Hz pass to pass.
+
+    The lever-subtracting guard therefore RE-INTRODUCED the term: (d - lev) stepped
+    1696 chips per Hz of Doppler re-estimate, flagged every satellite every cycle, hit
+    the min-sats floor and kept everything -- a silent no-op, live for ~2.5 h, and the
+    "before/after" measurement used to justify it was made against that no-op.
+    (Same class as the gates in [a-gate-that-cannot-fail]: it could not NOT fire.)
     """
 
-    T_I = 193674.0          # s since sample 0, as measured
+    T_I = 195032.0          # s since sample 0, as measured 2026-08-11 20:43
     CHIP = 10.23e6
     CARR = 1176.45e6
-    LEV = T_I * CHIP / CARR   # ~1684 chips per Hz
+    LEV = T_I * CHIP / CARR   # ~1696 chips per Hz
 
-    def lever(self, prn, dop):
-        return {prn: self.T_I * self.CHIP * 1.0 * dop / self.CARR}
+    def test_the_embed_cancels_in_cp_loc(self):
+        """The whole argument in one assertion: build cp0 the way the search does,
+        reconstruct cp_loc the way the broker does, step the Doppler estimate by an
+        ordinary pass-to-pass jitter, and cp_loc must not move."""
+        best_cp = 4321.0                       # physical phase at the snapshot start
+        for dop in (1000.0, 1061.0, 875.5, 1125.0):   # +-60-125 Hz pass jitter
+            t_i = self.T_I
+            cp0 = (best_cp - t_i * self.CHIP * (1.0 + dop / self.CARR)) % CODE_LEN
+            cp_loc = (cp0 + t_i * self.CHIP * (1.0 + dop / self.CARR)) % CODE_LEN
+            err = ((cp_loc - best_cp + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
+            self.assertLess(abs(err), 1e-3,
+                            "the embed failed to cancel at dop %.1f" % dop)
 
-    def test_the_lever_is_what_we_measured(self):
-        self.assertAlmostEqual(self.LEV, 1684.0, delta=5.0)
-        self.assertAlmostEqual(100.0 / self.LEV, 0.059, delta=0.002,
-                               msg="the 100-chip bound should be ~0.06 Hz")
-
-    def test_a_doppler_step_no_longer_ejects_a_good_satellite(self):
-        """THE BUG. A satellite whose Doppler estimate moves 1.5 Hz -- utterly ordinary --
-        shifts d_i by ~2500 chips with clk and b_i both perfectly constant."""
+    def test_an_ordinary_doppler_step_does_not_eject(self):
+        """A 1.5 Hz Doppler re-estimate leaves d_i untouched (the embed cancels), so the
+        plain guard keeps the satellite. This is what the lever version got wrong: it
+        subtracted the lever from a quantity that never contained it."""
         hist = {}
-        d0, dop0 = 150.0, 1000.0
-        d1 = (d0 + self.LEV * 1.5) % CODE_LEN          # same clk+b_i, Doppler moved 1.5 Hz
-        split_erratic_offsets([(5, d0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN,
-                              lever=self.lever(5, dop0))
-        keep, drop = split_erratic_offsets([(5, d1)], hist, 30.0, BOUND, MAX_AGE, CODE_LEN,
-                                           lever=self.lever(5, dop0 + 1.5))
-        self.assertEqual(drop, [], "a 1.5 Hz Doppler step ejected a healthy satellite")
+        split_erratic_offsets([(5, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN)
+        # same clk + b_i; the Doppler moved 1.5 Hz and d_i therefore did NOT move
+        keep, drop = split_erratic_offsets([(5, 150.4)], hist, 30.0, BOUND,
+                                           MAX_AGE, CODE_LEN)
+        self.assertEqual(drop, [])
         self.assertEqual([p for p, _ in keep], [5])
 
-    def test_a_real_code_jump_is_STILL_caught(self):
-        """The guard must not be defanged: with the Doppler term identical, a genuine
-        code discontinuity is exactly what it is there to catch (the PRN 2 incident)."""
+    def test_the_lever_guard_would_have_flagged_everyone(self):
+        """The failure mode of the retracted version, kept as a spec of what NOT to
+        rebuild: subtracting a per-cycle lever from a lever-free d_i steps the tested
+        quantity by ~1696 chips/Hz of ddop, over the 100-chip bound for any
+        ddop > 0.059 Hz -- and pass-to-pass ddop is tens of Hz."""
+        ddop = 1.5                                    # an UNREMARKABLE step
+        stepped = abs(self.LEV * ddop)                # what (d - lev) moved by
+        self.assertGreater(stepped, 20.0 * BOUND,
+                           "1.5 Hz should overwhelm the bound 20x over")
+        self.assertLess(100.0 / self.LEV, 0.06,
+                        "the bound in Doppler units was ~0.059 Hz -- unmeetable")
+
+    def test_a_real_code_jump_is_still_caught(self):
+        """The PRN 2 incident remains the guard's reason to exist."""
         hist = {}
-        split_erratic_offsets([(2, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN,
-                              lever=self.lever(2, 1000.0))
+        split_erratic_offsets([(2, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN)
         keep, drop = split_erratic_offsets([(2, 150.0 + 2430.0)], hist, 30.0, BOUND,
-                                           MAX_AGE, CODE_LEN, lever=self.lever(2, 1000.0))
-        self.assertEqual([p for p, _ in drop], [2], "a real 2430-chip jump was not caught")
+                                           MAX_AGE, CODE_LEN)
+        self.assertEqual([p for p, _ in drop], [2])
         self.assertEqual(keep, [])
-
-    def test_doppler_step_AND_code_jump_is_caught(self):
-        """Removing the Doppler term must not let a real jump hide behind one."""
-        hist = {}
-        split_erratic_offsets([(9, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN,
-                              lever=self.lever(9, 1000.0))
-        d1 = (150.0 + self.LEV * 1.5 + 2000.0) % CODE_LEN
-        _, drop = split_erratic_offsets([(9, d1)], hist, 30.0, BOUND, MAX_AGE, CODE_LEN,
-                                        lever=self.lever(9, 1001.5))
-        self.assertEqual([p for p, _ in drop], [9])
-        self.assertAlmostEqual(drop[0][1], 2000.0, delta=1.0,
-                               msg="the reported jump should be the CODE part alone")
-
-    def test_old_behaviour_without_lever(self):
-        """lever=None must reproduce the pre-fix behaviour exactly, so the 8 original
-        tests remain a valid description of the unlevered path."""
-        hist = {}
-        split_erratic_offsets([(3, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN)
-        _, drop = split_erratic_offsets([(3, 150.0 + 2500.0)], hist, 30.0, BOUND,
-                                        MAX_AGE, CODE_LEN)
-        self.assertEqual([p for p, _ in drop], [3])
-
-    def test_history_carries_the_lever_across_a_gap(self):
-        """A satellite that goes stale and returns must not be judged against a lever from
-        a different Doppler epoch -- it is kept (no fresh history), and the NEW lever is
-        what the next cycle differences against."""
-        hist = {}
-        split_erratic_offsets([(4, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN,
-                              lever=self.lever(4, 1000.0))
-        keep, drop = split_erratic_offsets([(4, 8000.0)], hist, MAX_AGE + 1.0, BOUND,
-                                           MAX_AGE, CODE_LEN, lever=self.lever(4, 2000.0))
-        self.assertEqual(drop, [], "a stale satellite must rejoin, not be judged")
-        self.assertEqual(hist[4][2], self.lever(4, 2000.0)[4],
-                         "history must record the NEW lever")
 
 
 if __name__ == "__main__":
