@@ -252,9 +252,25 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # age-based schedule would tighten and then strand.
     #
     # DELIBERATELY NOT SET ON gal_e5b / bds_b2a: they are the control arms.
-    dr-slew-cap-acq: 0.5
-    dr-slew-near-chips: 0.2
-    dr-slew-trust-sigma: 0.5
+    # ⚠️ REVERTED 2026-08-11 18:00, ~30 min after deploy. The trust gate only opened once
+    # the joint state converged, so the acquisition ceiling began engaging at 17:30 -- 22
+    # MINUTES after the restart that shipped it (0/64 events at cap 0.5 in the 17:20 bin,
+    # 39/151 in the 17:30 bin), and slew events per bin jumped 64 -> 151. KV independently
+    # reported every Galileo and BeiDou satellite degrading "~30 min ago" and asked whether
+    # it was the last broker restart: it was the change from that restart, acting late.
+    #
+    # THE LESSON IS THE DELAY, not the ceiling. A gated change does not take effect when
+    # you deploy it -- it takes effect when its gate opens, which here was tied to filter
+    # convergence and therefore invisible in the first minutes of watching. I checked at
+    # 17:10 and 17:12, saw 0% engagement, and read that as "deployed but not yet active"
+    # rather than as "the experiment has not started". Watch until the gate OPENS.
+    #
+    # Re-enable behind a measurement of what 0.5 chips/event does to a LOCKED tracker --
+    # the reverted 10 s re-pin (deep_snr 221 -> 17) says that limit exists for a reason,
+    # and 0.5 was picked from the E/P/L span rather than from anything measured here.
+    # dr-slew-cap-acq: 0.5
+    # dr-slew-near-chips: 0.2
+    # dr-slew-trust-sigma: 0.5
 
   # BeiDou B2a -- structurally identical to E5a: same 1176.45 MHz carrier, same 1023000-chip
   # code, same 100 ms CS secondary, so it rides the SAME voltage tap and the same clock. Model-
