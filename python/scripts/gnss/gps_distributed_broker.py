@@ -4688,6 +4688,7 @@ def main(argv=None, rx=None, publisher=None):
                 # normalization, not the sky.
                 det_age = {}
                 off_lever = {}
+                off_inputs = {}
                 for prn, (snr, dop, cp, ref_hop, _nh, _cpl, _car) in sorted(best.items()):
                     v = pd.get((tag, prn))
                     if v is None:
@@ -4707,6 +4708,14 @@ def main(argv=None, rx=None, publisher=None):
                     d_i = (cp_loc - cp_predicted(v, t_i)
                            + drift * (t_now_abs - t_i)) % CODE_LEN
                     offs.append((prn, d_i))
+                    # WHICH INPUT MOVED. Removing the Doppler lever from the continuity
+                    # test changed the ejection rate not at all (4 per 11 min before and
+                    # after), so the jumps are NOT the detection Doppler -- and the
+                    # "every jump maps to a plausible Doppler step" check that suggested
+                    # they were is circular: at 1684 chips/Hz ANY jump in 0..L/2 maps to
+                    # 0-3 Hz. Record the three raw inputs so the next cycle can say which
+                    # of them actually changed, instead of guessing again.
+                    off_inputs[prn] = (cp, t_i, dop)
                     # HOW MUCH OF d_i IS JUST THIS DETECTION'S DOPPLER. t_i is absolute
                     # (since F-engine sample 0, ~2.24 days by 2026-08-11), so this term is
                     # ~1684 chips per Hz -- it dominates every cycle-to-cycle change and is
@@ -4730,6 +4739,24 @@ def main(argv=None, rx=None, publisher=None):
                         offs, dr_state.setdefault("off_hist", {}), now_w,
                         args.dr_max_off_jump_chips, args.dr_off_jump_max_age_s, CODE_LEN,
                         lever=off_lever)
+                    if _drop:
+                        _prevI = dr_state.setdefault("off_inputs_prev", {})
+                        _det = []
+                        for _p, _j in _drop:
+                            # NOT `_now`: that name is a FUNCTION in this scope, and
+                            # assigning it here made every reference to _now() in main()
+                            # a local-before-assignment -- the broker died on startup at
+                            # a line 2000 lines away from this one.
+                            _cur = off_inputs.get(_p)
+                            _was = _prevI.get(_p)
+                            if _cur and _was:
+                                _det.append("PRN %d: dcp %+.1f  dt_i %+.3fs  ddop %+.3fHz"
+                                            % (_p, _cur[0] - _was[0], _cur[1] - _was[1],
+                                               _cur[2] - _was[2]))
+                        if _det:
+                            _log_rl("offjumpwhy", "clock solve: WHAT MOVED -- " +
+                                    " | ".join(_det), every_s=60.0)
+                    dr_state["off_inputs_prev"] = dict(off_inputs)
                     if _drop and len(_keep) >= args.dr_min_sats:
                         offs = _keep
                         _log_rl("offjump",
