@@ -2705,6 +2705,11 @@ def main(argv=None, rx=None, publisher=None):
     _log("trackers: %s" % (trackers if len(trackers) <= 6
                            else "%s ... %s (%d)" % (trackers[0], trackers[-1], len(trackers))))
 
+    # SEED CURRENCY AUDIT state (#39 follow-up): last SHIPPED tuple per PRN, so each POST
+    # can be compared against the previous one in physical units. Keys are the 5 fields
+    # dr_seed_phys consumes -- nav_bits etc. are deliberately not retained.
+    seed_audit_prev = {}
+
     while True:
         # Start of cycle: sample the frozen cycle clock ONCE (see the _Transcript note).
         # Every `_now()` below this returns exactly t0, so the whole pass -- every gate,
@@ -6671,6 +6676,64 @@ def main(argv=None, rx=None, publisher=None):
             for d in payload:
                 if str(d["prn"]) in os.environ["GNSS_SEED_DEBUG"].split(","):
                     _log("SEEDDBG %s" % json.dumps(d, sort_keys=True))
+        # SEED CURRENCY AUDIT (#39 follow-up, 2026-08-11 -- the per-seed dop log). The
+        # question this answers: does the (cp0, dop, rate, ref_hop) tuple we SHIP imply
+        # the same physical code phase as the previous tuple we shipped for the same
+        # satellite? The tracker re-pins on every POST, so the wrapped difference of
+        # dr_seed_phys(prev) and dr_seed_phys(new) at the new ref_hop IS the physical
+        # step the tracker's despread experiences -- across EVERY mutation path (birth,
+        # slew, trim, nh/CM lifts, coast), not just the slew path the selftest pins.
+        # A currency leak -- cp built with one dop, shipped beside another -- shows up
+        # here as steps of t_abs*chip_rate/carrier ~ 1696 chips per Hz of mismatch
+        # (which is why the equivalent-Hz figure is printed: sub-chip consistency
+        # needs the dop bookkeeping good to ~0.6 mHz at 2.24 days of F-engine age).
+        # Legitimate steps are the slew caps (0.05/0.5), DLL trim increments, and
+        # escapes/re-anchors; anything chips-scale outside those is the leak we have
+        # been hunting all day. Audits mod the seed's own long-code modulus so whole
+        # code-period assignment flips (#41 class) are visible too.
+        _aud_mod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
+        _aud_steps = []
+        for d in payload:
+            _h_new = int(d.get("ref_hop", 0) or 0)
+            _prevA = seed_audit_prev.get(d["prn"])
+            if _h_new > 0 and all(k in d for k in ("code_phase_chips", "doppler_hz")):
+                seed_audit_prev[d["prn"]] = {
+                    k: d[k] for k in ("code_phase_chips", "doppler_hz",
+                                      "code_phase_rate", "ref_hop",
+                                      "doppler_rate_hz_s") if k in d}
+            if (_prevA is None or _h_new <= 0 or _h_new < int(_prevA["ref_hop"])
+                    or _h_new - int(_prevA["ref_hop"]) > 600 * args.hops_per_sec):
+                continue
+            _ph_prev = dr_seed_phys(_prevA, _h_new, args.hops_per_sec,
+                                    args.chip_rate_hz, args.carrier_hz,
+                                    args.code_doppler_sign, _aud_mod)
+            _ph_new = dr_seed_phys(d, _h_new, args.hops_per_sec,
+                                   args.chip_rate_hz, args.carrier_hz,
+                                   args.code_doppler_sign, _aud_mod)
+            _stp = ((_ph_new - _ph_prev + _aud_mod / 2.0) % _aud_mod) - _aud_mod / 2.0
+            _ddopA = d["doppler_hz"] - _prevA["doppler_hz"]
+            _dtA = (_h_new - int(_prevA["ref_hop"])) / args.hops_per_sec
+            _aud_steps.append((abs(_stp), d["prn"], _stp, _ddopA, _dtA))
+            if abs(_stp) > 5.0:
+                _lev_hz = _stp / max(1.0, (_h_new / args.hops_per_sec)
+                                     * args.chip_rate_hz / args.carrier_hz)
+                _log("SEEDAUDIT STEP PRN %d: %+.2f chips (= %+.4f Hz x lever) "
+                     "ddop %+.3f Hz dt %.1f s trim %+.3f"
+                     % (d["prn"], _stp, _lev_hz, _ddopA, _dtA,
+                        dll_trim.get(d["prn"], 0.0)))
+        for _pA in list(seed_audit_prev):
+            if _pA not in seeds:
+                del seed_audit_prev[_pA]
+        if _aud_steps:
+            _aud_steps.sort()
+            _n = len(_aud_steps)
+            _wA, _wp, _ws, _wd, _wt = _aud_steps[-1]
+            _log_rl("seedaudit",
+                    "SEEDAUDIT n=%d |step| med %.3f p90 %.3f max %.3f chips "
+                    "(PRN %d: %+.3f, ddop %+.3f Hz, dt %.1f s)"
+                    % (_n, _aud_steps[_n // 2][0],
+                       _aud_steps[min(_n - 1, int(_n * 0.9))][0],
+                       _wA, _wp, _ws, _wd, _wt), every_s=60.0)
         ok = 0
         for t_ep in trackers:
             try:
