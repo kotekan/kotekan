@@ -143,16 +143,36 @@ def make_spectrum_writer(path_tmpl, log=None):
     return _write
 
 
-def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len):
+def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len,
+                          lever=None):
     """Split clock-solve offsets into (keep, drop) on per-satellite CONTINUITY.
 
-    `offs` is [(prn, d_i)] where d_i = clk + b_i: the receiver clock plus that
-    satellite's per-sat bias. BOTH terms are stable -- clk drifts ~4e-4 chips/s and
-    b_i is a constant of +-3-7 chips -- so a real satellite's d_i moves far less than
-    10 chips between cycles, while a noise or cross-correlation track scatters
-    ~uniformly over the code and jumps by thousands.
+    `offs` is [(prn, d_i)] where d_i = clk + b_i + (a Doppler term, see below).
 
-    `hist` is {prn: (t, d_i)} from the previous cycle and IS MUTATED here (every
+    ⚠️ THE PREMISE THIS FUNCTION SHIPPED WITH WAS FALSE, and it is the reason for
+    `lever`. The original docstring said "d_i = clk + b_i, BOTH terms are stable, so a
+    real satellite's d_i moves far less than 10 chips between cycles". It is not:
+
+        cp_loc = (cp + t_i * chip_rate * (1 + sign * dop / carrier)) % code_len
+
+    carries the detection's Doppler multiplied by t_i, and t_i is seconds since F-engine
+    SAMPLE 0 -- 193,674 s (2.24 days) on 2026-08-11. That is
+
+        d(d_i)/d(dop) = t_i * chip_rate / carrier = 1684 chips per Hz
+
+    so the 100-chip bound was a bound of 0.059 Hz, and the search's own detection Doppler
+    steps several Hz between passes (~10,000 chips, more than a whole code period, which
+    wraps d_i to ~uniform). MEASURED: 54 ejections in 55 min, median jump 2278 chips, and
+    every one maps onto an ordinary Doppler step (146 chips = 0.09 Hz, 4661 = 2.77 Hz).
+    The ejected satellites were STRONGER than the fleet median (deep_snr 81 vs 52, none
+    below 15) and none was within 120 s of a re-seed -- they were tracking perfectly.
+
+    `lever` is {prn: chips of d_i explained by that detection's Doppler}, i.e.
+    t_i * chip_rate * sign * dop / carrier. The continuity test runs on d_i MINUS that
+    term, which is the part that genuinely is clk + b_i and genuinely is stable. Pass
+    None to get the old behaviour (the test then runs on raw d_i).
+
+    `hist` is {prn: (t, d_i, lever_i)} from the previous cycle and IS MUTATED here (every
     satellite's current value is recorded, including dropped ones -- a track that
     settles down must be able to rejoin).
 
@@ -161,10 +181,16 @@ def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len):
     """
     keep, drop = [], []
     for prn, d in offs:
+        lev = float((lever or {}).get(prn, 0.0))
         prev = hist.get(prn)
-        hist[prn] = (now_w, d)
+        hist[prn] = (now_w, d, lev)
         if prev is not None and now_w - prev[0] <= max_age_s:
-            jump = abs(((d - prev[1] + code_len / 2.0) % code_len) - code_len / 2.0)
+            # Compare like with like: remove each cycle's own Doppler term before
+            # differencing, so a satellite that merely re-estimated its Doppler is not
+            # mistaken for one that lost the code.
+            prev_lev = prev[2] if len(prev) > 2 else 0.0
+            delta = (d - lev) - (prev[1] - prev_lev)
+            jump = abs(((delta + code_len / 2.0) % code_len) - code_len / 2.0)
             if jump > bound_chips:
                 drop.append((prn, jump))
                 continue
@@ -4661,6 +4687,7 @@ def main(argv=None, rx=None, publisher=None):
                 # judged against age: residuals that grow with age are measuring the
                 # normalization, not the sky.
                 det_age = {}
+                off_lever = {}
                 for prn, (snr, dop, cp, ref_hop, _nh, _cpl, _car) in sorted(best.items()):
                     v = pd.get((tag, prn))
                     if v is None:
@@ -4680,6 +4707,13 @@ def main(argv=None, rx=None, publisher=None):
                     d_i = (cp_loc - cp_predicted(v, t_i)
                            + drift * (t_now_abs - t_i)) % CODE_LEN
                     offs.append((prn, d_i))
+                    # HOW MUCH OF d_i IS JUST THIS DETECTION'S DOPPLER. t_i is absolute
+                    # (since F-engine sample 0, ~2.24 days by 2026-08-11), so this term is
+                    # ~1684 chips per Hz -- it dominates every cycle-to-cycle change and is
+                    # NOT part of clk + b_i. Recorded so the continuity guard can difference
+                    # it out instead of mistaking a re-estimated Doppler for a lost code.
+                    off_lever[prn] = (t_i * args.chip_rate_hz
+                                      * args.code_doppler_sign * dop / args.carrier_hz)
                 # ERRATIC-TRACK GUARD (#39). A satellite whose solve offset JUMPS between
                 # consecutive cycles is not measuring anything: d_i = clk + b_i and both
                 # terms are stable, so a real satellite moves far less than 10 chips per
@@ -4694,16 +4728,21 @@ def main(argv=None, rx=None, publisher=None):
                 if args.dr_max_off_jump_chips > 0.0 and offs:
                     _keep, _drop = split_erratic_offsets(
                         offs, dr_state.setdefault("off_hist", {}), now_w,
-                        args.dr_max_off_jump_chips, args.dr_off_jump_max_age_s, CODE_LEN)
+                        args.dr_max_off_jump_chips, args.dr_off_jump_max_age_s, CODE_LEN,
+                        lever=off_lever)
                     if _drop and len(_keep) >= args.dr_min_sats:
                         offs = _keep
                         _log_rl("offjump",
                                 "clock solve: EXCLUDED %s -- offset jumped %s chips since "
-                                "the last cycle (bound %.0f). d_i = clk + b_i, both stable, "
-                                "so this is not a measurement"
+                                "the last cycle (bound %.0f) AFTER removing each "
+                                "detection's Doppler term. That term is ~%.0f chips/Hz here "
+                                "(t_i = %.0f s since sample 0), so this is a genuine code "
+                                "discontinuity and not a re-estimated Doppler"
                                 % (", ".join("PRN %d" % p for p, _ in _drop),
                                    ", ".join("%.0f" % j for _, j in _drop),
-                                   args.dr_max_off_jump_chips), every_s=60.0)
+                                   args.dr_max_off_jump_chips,
+                                   t_now_abs * args.chip_rate_hz / args.carrier_hz,
+                                   t_now_abs), every_s=60.0)
                     elif _drop:
                         # DROPPING THEM WOULD STARVE THE SOLVE. Say so rather than silently
                         # keeping them: if EVERY satellite jumped, the clock itself moved
