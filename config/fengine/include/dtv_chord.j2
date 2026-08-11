@@ -23,9 +23,26 @@
 #   pilot-proxy validate-runtime-weight-bundle --bundle-dir <dtv_runtime_bundle_dir>
 #
 # For the ATSC 14-36 pilot range the bundle covers CHORD coarse channels
-# (freq_ids) 2408-3084 (470.3-602.3 MHz); one detector block is
-# samples_per_detector_frame = 16384 samples = 2 GPU frames = 83.88608 ms,
-# giving the frozen 128 windows/stream fine-reduction geometry.
+# (freq_ids) 2408-3084 (470.3-602.3 MHz).
+#
+# Frame geometry. Three distinct "frames" are involved; keep them separate:
+#   * channelized sample  5.12 us on CHORD's 195.3125 kHz coarse raster
+#                         (2.56 us on CHIME's 390.625 kHz raster)
+#   * GPU ring frame      num_times = 8192 samples = 41.94304 ms; the
+#                         producer's ring advance unit, not a decision unit
+#   * detector block      samples_per_detector_frame = 16384 samples
+#                         = 83.88608 ms = two GPU ring frames
+#
+# The detector block is the decision unit: one mask bit per block per
+# channel. It yields windows_per_stream = 16384 / detector_window_samples
+# = 128, the frozen fine-reduction transform length
+# (FSTAT_FINE_WINDOWS_PER_STREAM).
+#
+# NOTE: CHORD's visibility integration (n2k_samples_per_data_set) is 8192
+# samples, so one mask currently spans exactly two integrations. Moving to
+# 1:1 alignment means samples_per_detector_frame = 8192, which requires a
+# matching detector_window_samples = 64 in the compiled core to keep
+# windows_per_stream = 128; the two must change together.
 
 {% if dtv_runtime_bundle_dir is not defined %}
 {% set dtv_runtime_bundle_dir = "data/pilotproxy_bundle" %}
@@ -73,9 +90,12 @@ run_dtv_detector:
           voltage_name: voltage
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
-          # Upstream ring advance unit (samples per producer GPU frame).
-          # One detector decision per 16384 samples (2 GPU frames); the
-          # frozen fine-transform geometry (128 windows/stream).
+          # Decision unit: one mask bit per this many channelized samples,
+          # per channel. 16384 samples = 83.88608 ms = two 8192-sample GPU
+          # ring frames. Must be a multiple of the compiled core's
+          # detector_window_samples, and the quotient (windows_per_stream)
+          # must equal FSTAT_FINE_WINDOWS_PER_STREAM or the fine CFAR path
+          # is unavailable -- see decision_mode below.
           samples_per_detector_frame: 16384
           # "auto": fine designated-set CFAR mask for channels whose bundle
           # fine_calibration.status is "calibrated", coarse rational mask

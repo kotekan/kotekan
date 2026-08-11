@@ -405,10 +405,22 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
 
     int fine_windows = 0;
     FStat_GetFineSpecs(&fine_windows, nullptr, nullptr);
+    // A geometry mismatch silently demotes every calibrated channel to the coarse
+    // positive-excess mask. That rule is a survey flag, not a science decision: on
+    // archival CHIME data it fires on ~44% of frames during a verified
+    // transmitter-off epoch, against ~2% for the calibrated fine rule. Demoting to
+    // it without an operator asking is not an acceptable unattended outcome, so
+    // "auto" refuses to start. Selecting the coarse path must be deliberate.
     if (decision_mode == "auto" && windows_per_stream != fine_windows)
-        INFO("samples_per_detector_frame ({:d}) gives {:d} windows/stream, not the frozen fine "
-             "transform length {:d}; calibrated channels will fall back to the coarse mask",
-             samples_per_detector_frame, windows_per_stream, fine_windows);
+        FATAL_ERROR("samples_per_detector_frame ({:d}) / detector_window_samples ({:d}) gives "
+                    "{:d} windows/stream, but the compiled core's frozen fine-transform length "
+                    "is {:d}. In decision_mode \"auto\" the fine CFAR path is unavailable at "
+                    "this geometry. Set samples_per_detector_frame to a multiple of {:d} that "
+                    "yields {:d} windows/stream (i.e. {:d}), or set decision_mode: \"coarse\" "
+                    "to accept the positive-excess survey flag explicitly.",
+                    samples_per_detector_frame, detector_window_samples, windows_per_stream,
+                    fine_windows, detector_window_samples, fine_windows,
+                    fine_windows * detector_window_samples);
 
     voltage.register_consumer();
     dtv_mask.register_producer();
