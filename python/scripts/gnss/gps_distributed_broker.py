@@ -5420,6 +5420,16 @@ def main(argv=None, rx=None, publisher=None):
                 if dr_state["clk"] is not None:
                     clk_now = (dr_state["clk"]
                                + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
+                    # DRCLK (2026-08-11): the "dead-reckon clock ..." line above is gated on
+                    # `offs`, i.e. on this chain having its OWN detections -- so the four
+                    # model-primary chains, the ones whose seeds ride clk_now raw, never log
+                    # the clock they are consuming. This line is the missing term in the
+                    # commanded = cp_predicted + clk_now + b_sat + trim decomposition of the
+                    # per-sat disc walk (BSAT and DLL lines carry the other two).
+                    _log_rl("drclk",
+                            "DRCLK clk_now %.3f chips drift %+.4f chips/s (la %+.4f ppm)"
+                            % (clk_now, dr_state.get("drift") or 0.0, la * 1e6),
+                            every_s=30.0)
                     # -- P2b CONSUMER 3, THE SHADOW ARM -------------------------------------
                     # Compare the two offset ESTIMATORS directly, over every satellite the
                     # joint state holds, independent of whether any seeding path ran this
