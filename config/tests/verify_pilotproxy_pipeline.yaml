@@ -101,6 +101,11 @@ gen_voltage:
     manual_freq_ids: [2408, 1600, 2623, 4000]
     meta_time_downsample_factor: 1
 
+# The dumps use rawFileWrite (exact raw bytes) rather than the hdf5FileWrite
+# stage with its self-describing frame metadata: the offline verifier's contract
+# is to recompute every product bit-for-bit from the dumped bytes plus the
+# runtime bundle, with the layout pinned by this config, and the raw dump
+# keeps the harness free of an HDF5 read dependency.
 dump_voltage:
     kotekan_stage: rawFileWrite
     in_buf: host_voltage_buffer
