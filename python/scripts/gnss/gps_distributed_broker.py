@@ -434,7 +434,7 @@ def main(argv=None, rx=None, publisher=None):
                          "LO estimate EXACTLY when this chain has no estimate of its own "
                          "(cold start, below min-sats, warm-start file lost). The original "
                          "always-on scope was tried and REVERTED the same day -- car_trim "
-                         "rose 30-36% at matched node age, because the LO is a CONSTANT and "
+                         "rose 30-36%% at matched node age, because the LO is a CONSTANT and "
                          "the chain's own EMA (minutes of time-averaging) beats one cycle "
                          "of cross-chain averaging; rescored against the EMA, fusion lost "
                          "7 of 8 chains. In the rescue case there is no EMA to lose to, and "
@@ -894,7 +894,11 @@ def main(argv=None, rx=None, publisher=None):
                          "rebuilt from the parts, the parts can never be recovered from a "
                          "combined number, so the archive stores parts and every combine "
                          "(beam map, band health, per-element gain) is an offline function "
-                         "of them. %Y/%m/%d are expanded, so a long run rolls by day.")
+                         "of them. %%Y/%%m/%%d are expanded, so a long run rolls by day. "
+                         "(The %% are DOUBLED because argparse runs help through percent-format: "
+                         "a bare %%Y here makes --help itself crash with 'unsupported format "
+                         "character', which is how this file's --help was dead from the #25 "
+                         "commit until 2026-08-11 -- and --help is how anyone finds a flag.)")
     ap.add_argument("--nh-hint-max-age-s", type=float, default=600.0,
                     help="drop nh-offset samples older than this, and stop hinting entirely "
                          "when fewer than --nh-hint-min-samples remain. THE HINT MUST BE ABLE "
@@ -1002,6 +1006,19 @@ def main(argv=None, rx=None, publisher=None):
                          "masked sat is still SEEDED normally, so nothing on sky changes. "
                          "Mask a STRONG sat -- masking a weak one tests nothing, since its "
                          "own measurements were not holding it up anyway.")
+    ap.add_argument("--dr-slew-cap", type=float, default=0.05,
+                    help="Per-event ceiling (chips) on the dead-reckon slew -- how far a "
+                         "seed may be dragged toward the model in one cycle. ⚠️ 0 DISABLES "
+                         "SLEWING: the seed is still re-anchored at a fresh epoch with fresh "
+                         "Doppler, but its PHASE is left where the loop put it, never pulled "
+                         "toward the model. That is a real experiment, not a degradation: on "
+                         "2026-08-11 tracking was healthy while seeds sat 234-307 chips from "
+                         "the model and degraded as they ARRIVED on it, which would mean the "
+                         "seed is right and the model is wrong. Run it on ONE chain against "
+                         "an otherwise identical sibling (gal_e5a vs gal_e5b sees the same "
+                         "satellites on a different band) and compare decay at MATCHED "
+                         "time-since-restart -- a restart transiently fixes every chain for "
+                         "~20-30 min, so before/after across one is not evidence.")
     ap.add_argument("--dr-slew-cap-acq", type=float, default=0.0,
                     help="Per-event slew ceiling (chips) for a seed that is still FAR from "
                          "its target -- acquisition authority. Falls back to --dr-slew-cap "
@@ -1035,7 +1052,7 @@ def main(argv=None, rx=None, publisher=None):
                          "P[0,0] < 100, which is false for minutes after a restart, so early "
                          "births are unvetted. Measured with it on: clk walked to +445 chips "
                          "against a true ~150, biases reached -427/-330/+281 where they should "
-                         "be a few, tau_band blew to +792 chips, and 67-82% of updates were "
+                         "be a few, tau_band blew to +792 chips, and 67-82%% of updates were "
                          "rejected. It looked healthy for the first hour only because the "
                          "satellites then up happened to be good; the failure arrives with the "
                          "next rise. Re-enable once the measurement is gated on tracking "
@@ -1224,7 +1241,7 @@ def main(argv=None, rx=None, publisher=None):
                          "total (0.917 at 2x6 down to 0.611 at 12x1, same total SNR) because "
                          "each alignment is estimated from one instance's data. It is a "
                          "per-instance diagnostic, NOT a health metric for the combine -- "
-                         "deep_snr over those same four partitions is flat to 2%.")
+                         "deep_snr over those same four partitions is flat to 2%%.")
     ap.add_argument("--coh-min-instances", type=int, default=3,
                     help="fleet coherent: instances that must see a PRN before it is combined. "
                          "Below this the PRN keeps its single-instance coherent numbers.")
@@ -4486,7 +4503,14 @@ def main(argv=None, rx=None, publisher=None):
             # measured on sky, an order below the 0.25-chip DLL trims a fold tolerates, and
             # 20x below the ~1-chip clock-EMA jitter the reverted 10 s repin injected whole.
             # K: first-order low-pass; with the cap it bounds, it is deliberately unfussy.
-            _DR_SLEW_CAP = 0.05
+            # The per-event slew rate limit. 0.05 chips was hardcoded here and is the
+            # single most consequential constant in the seeding path (see the call site):
+            # at 0.05 a go, every 10-30 s, a satellite 5-8 chips from its model takes of
+            # order an HOUR to arrive. A flag because the decisive experiment is
+            # --dr-slew-cap 0 -- slewing OFF, the seed left where the loop put it -- which
+            # is the one arm nobody has run and the one that separates "the seed is wrong"
+            # from "the model is wrong and the slew drags good seeds onto it".
+            _DR_SLEW_CAP = args.dr_slew_cap
             _DR_SLEW_K = 0.25
             if dr_state["eph"] is None or now_w - dr_state["eph_t"] > 7200:
                 try:
