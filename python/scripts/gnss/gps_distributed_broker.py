@@ -5698,7 +5698,16 @@ def main(argv=None, rx=None, publisher=None):
         # average per-sat noise into a common state (the 3d scope warning).
         # MEASUREMENT-ONLY: touches no seed, no trim, no loop. sigma 0.5 Hz -- looser than
         # the 0.2 Hz split-half bound because the consensus mixes sat qualities.
-        if args.joint_shadow and args.carrier_source == "rate" and args.carrier_gain <= 0.0:
+        # ⚠️ ONE CHAIN FEEDS, measured on first light (01:03): the five chains' consensuses
+        # disagreed by tens of Hz (e5b +41, e5a -10, gps +44) because deep_rate_hz is the
+        # residual AFTER each chain's own applied seed Doppler, and the chains apply
+        # DIFFERENT clock biases (GPS solves one; the model-primary chains hold 0). Fed
+        # jointly, the state was yanked between definitions and the gate rejected 23/min.
+        # Scope to the detector chain (gps_l5): its carrier bias is actually solved, so
+        # its consensus is the best-defined "LO minus solved bias" residual. A per-band
+        # f_carrier (tau_band-style) is the eventual right shape if other chains need it.
+        if (args.joint_shadow and args.detectors and args.carrier_source == "rate"
+                and args.carrier_gain <= 0.0):
             try:
                 _fr_resid, _fr_cons = rate_residuals(
                     status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, None,
