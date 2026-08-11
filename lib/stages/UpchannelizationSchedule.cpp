@@ -190,9 +190,11 @@ UpchannelizationSchedule::instance(kotekan::Config& config, const std::string& u
     const UpchannelizationSchedule& the_instance =
         the_instances.try_emplace(unique_name, config, unique_name, coarse_freq).first->second;
     if (!(the_instance.frequency_channels == coarse_freq)) {
-      const std::string coarse_freq_str = fmt::format("{:s}", fmt::join(coarse_freq, ","));
-      const std::string frequency_channels_str = fmt::format("{:s}", fmt::join(the_instance.frequency_channels, ","));
-      FATAL_ERROR_NON_OO("Frequency channels [{:s}] and [{:s}] do not match", coarse_freq_str, frequency_channels_str);
+        const std::string coarse_freq_str = fmt::format("{:s}", fmt::join(coarse_freq, ","));
+        const std::string frequency_channels_str =
+            fmt::format("{:s}", fmt::join(the_instance.frequency_channels, ","));
+        FATAL_ERROR_NON_OO("Frequency channels [{:s}] and [{:s}] do not match", coarse_freq_str,
+                           frequency_channels_str);
     }
     return the_instance;
 }
