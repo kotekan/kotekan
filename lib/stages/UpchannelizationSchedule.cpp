@@ -8,11 +8,6 @@
 #include <mutex>
 #include <sstream> // for basic_ostream, basic_ostringstream, operator<<, basic_ostream::...
 
-std::vector<int> UpchannelizationSchedule::make_frequency_channels() const {
-    const auto frequency_channels = config.get<std::vector<int>>(unique_name, "frequency_channels");
-    return frequency_channels;
-}
-
 std::map<int, int> UpchannelizationSchedule::make_frequency_channels_to_indices() const {
     std::map<int, int> channels_to_indices;
     for (std::size_t index = 0; index < frequency_channels.size(); ++index)
@@ -172,7 +167,7 @@ UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
     //
     unique_name(unique_name), config(config),
     //
-    frequency_channels(coarse_freq.size() ? coarse_freq : make_frequency_channels()),
+    frequency_channels(coarse_freq),
     frequency_channels_to_indices(make_frequency_channels_to_indices()),
     //
     upchan_factors(make_upchan_factors()),
