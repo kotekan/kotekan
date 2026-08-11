@@ -396,6 +396,26 @@ class FleetPublisher:
                 if _q is not None:
                     row.update({"deep_snr": _q[0],
                                 "coh_src": "quad:%d" % _q[1]})
+            # C/N0, PUBLISHED RATHER THAN DERIVED (task #35, 2026-08-11). The viewer used
+            # to compute 20log10(deep_snr) - 10log10(coherence_s), which is only valid
+            # when deep_snr is ONE instance's amplitude SNR. It is not: the fleet override
+            # and the quadrature fallback serve two estimators with different
+            # normalisations into that same field (quad inflates by exactly 10log10(N) =
+            # 10.8 dB at N=12; measured +8.72 dB vs the best instance against the fleet's
+            # +0.79), so every fleet<->quad flip stepped the displayed value ~8 dB and at
+            # ~50% duty that mixture WAS the "C/N0 scatter" (docs 11.31, the 2026-08-10
+            # G32-vs-E32 investigation).
+            #
+            # Definition: the BEST SINGLE INSTANCE's deep SNR over its own coherent span.
+            # One estimator, one normalisation, continuous across serving states BY
+            # CONSTRUCTION -- it never switches population. The fleet's coherent gain
+            # stays visible in deep_snr + coh_src, which remain untouched: deep_snr is a
+            # detection SIGNIFICANCE and gates consume it; this field is the radiometry.
+            _bi = (fc.get("best_inst_snr") if (fc and fc.get("present"))
+                   else c.get("deep_snr")) or 0.0
+            _T = float(c.get("coherence_s") or 0.0)
+            row["cn0_coh_db"] = (20.0 * math.log10(_bi) - 10.0 * math.log10(_T)
+                                 if (_bi > 0.0 and _T > 0.0) else None)
             rows.append(row)
         meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                 "present": sum(1 for r in rows if r["fleet_present"]),

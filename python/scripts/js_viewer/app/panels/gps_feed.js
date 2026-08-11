@@ -106,8 +106,15 @@ export function signal_metrics(s, t_rec) {
     // floor (coherence_s > 0); a floored deep (~7-12 sigma) is noise wearing a lock's clothes.
     m.sig = (s.coherence_s || 0) > 0
         ? Math.max(s.deep_snr || 0, s.amp_snr || 0) : (s.amp_snr || 0);
-    // coherent C/N0 (dB-Hz) = 10 log10(deep_snr^2 / T_coh), defined only where certified.
-    if (m.coh_s > 0 && m.deep_snr > 0)
+    // coherent C/N0 (dB-Hz): PREFER the broker-published cn0_coh_db (task #35) -- the
+    // best single instance over its own span, one estimator, one normalisation. The
+    // local derivation from deep_snr is WRONG whenever the broker serves the fleet
+    // override or the quadrature fallback (quad inflates by 10log10(N) ~ 10.8 dB, and
+    // every fleet<->quad flip stepped this display ~8 dB -- the measured bulk of the
+    // "C/N0 scatter", docs 11.31). Kept only as a fallback for pre-#35 brokers.
+    if (s.cn0_coh_db != null)
+        m.cn0_coh = s.cn0_coh_db;
+    else if (m.coh_s > 0 && m.deep_snr > 0)
         m.cn0_coh = 20 * Math.log10(m.deep_snr) - 10 * Math.log10(m.coh_s);
     // incoherent C/N0 (dB-Hz, pipeline zero-point): x = u^2/(a^2-u^2), density x/t_rec.
     const a = s.amplitude || 0, u = s.unbiased_amplitude || 0;
