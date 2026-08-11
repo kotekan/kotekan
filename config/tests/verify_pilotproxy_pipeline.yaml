@@ -37,6 +37,8 @@ log_level: INFO
 
 buffer_depth: 4
 cpu_affinity: [0, 1]
+frame_arrival_period: 5.12e-6 * num_times
+samples_per_data_set: num_times
 
 # Small geometry: full logical structure, cheap offline verification.
 num_times: 8192                  # voltage samples per generated frame
@@ -137,8 +139,6 @@ run_dtv_detector:
           voltage_name: voltage
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
-          num_times: num_times
-          samples_per_detector_frame: samples_per_detector_frame
           num_frequencies: num_local_freq
           decision_mode: coarse
           # pilot_profiles_path / weights_path inherited from the top level

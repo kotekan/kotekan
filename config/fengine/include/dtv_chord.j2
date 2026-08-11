@@ -74,11 +74,9 @@ run_dtv_detector:
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
           # Upstream ring advance unit (samples per producer GPU frame).
-          num_times: num_times
           # One detector decision per 16384 samples (2 GPU frames); the
           # frozen fine-transform geometry (128 windows/stream).
           samples_per_detector_frame: 16384
-          num_frequencies: num_frequencies
           # "auto": fine designated-set CFAR mask for channels whose bundle
           # fine_calibration.status is "calibrated", coarse rational mask
           # otherwise. "coarse" forces the coarse mask everywhere.
