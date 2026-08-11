@@ -342,7 +342,7 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
     static std::once_flag build_ptx_flag;
     std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
-            "--gpu-name=sm_86",
+            "--gpu-name=sm_89",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/Transpose2048_chime.ptx", {kernel_symbol}, opts,

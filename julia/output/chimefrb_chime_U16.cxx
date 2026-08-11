@@ -352,7 +352,7 @@ cudaCHIMEFRBBeamformer_chime_U16::cudaCHIMEFRBBeamformer_chime_U16(Config& confi
     static std::once_flag build_ptx_flag;
     std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
-            "--gpu-name=sm_86",
+            "--gpu-name=sm_89",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/CHIMEFRBBeamformer_chime_U16.ptx", {kernel_symbol},
