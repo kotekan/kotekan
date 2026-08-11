@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -115,6 +116,48 @@ class TestSpectrumArchive(unittest.TestCase):
         for prn, pts in SPEC.items():
             got = sum(r["energy"] for r in rows if r["prn"] == prn)
             self.assertAlmostEqual(got, sum(x[2] for x in pts), places=9)
+
+
+
+
+class TestArchiveEpoch(unittest.TestCase):
+    """The archive must be JOINABLE with the observables record, which means UTC.
+
+    Caught on first deployment: the call site passed `t_now_abs` -- seconds since the
+    F-engine's sample-0 anchor, not a Unix epoch -- and the first file was named
+    gps_l5_19700102.jsonl with every row stamped in 1970. A per-subband archive that
+    cannot be joined to az/el is not a beam-map input.
+    """
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_filename_and_rows_use_the_utc_passed_in(self):
+        p = os.path.join(self.d, "spec_%Y%m%d.jsonl")
+        t = 1786400000.0
+        want = "spec_%s.jsonl" % time.strftime("%Y%m%d", time.gmtime(t))
+        make_spectrum_writer(p)(t, "b", SPEC, t_rx=1234.5)
+        files = os.listdir(self.d)
+        self.assertEqual(files, [want],
+                         "filename did not use the UTC passed in: %r" % files)
+        r = json.loads(open(os.path.join(self.d, files[0])).readline())
+        self.assertAlmostEqual(r["t"], t, places=3)
+        self.assertGreater(r["t"], 1.7e9, "row timestamp is not a plausible Unix epoch")
+
+    def test_receiver_relative_time_is_kept_alongside(self):
+        """t_rx is what code phases are referenced to -- keep it, just don't name files by it."""
+        p = os.path.join(self.d, "spec.jsonl")
+        make_spectrum_writer(p)(1786400000.0, "b", SPEC, t_rx=1234.5)
+        r = json.loads(open(p).readline())
+        self.assertAlmostEqual(r["t_rx"], 1234.5, places=3)
+
+    def test_t_rx_optional(self):
+        p = os.path.join(self.d, "spec.jsonl")
+        make_spectrum_writer(p)(1786400000.0, "b", SPEC)
+        self.assertIsNone(json.loads(open(p).readline())["t_rx"])
 
 
 if __name__ == "__main__":

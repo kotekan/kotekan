@@ -104,7 +104,7 @@ def make_spectrum_writer(path_tmpl, log=None):
     import time as _time
     state = {"path": None, "fh": None}
 
-    def _write(t_utc, band, spec):
+    def _write(t_utc, band, spec, t_rx=None):
         path = _time.strftime(path_tmpl, _time.gmtime(t_utc))
         if path != state["path"]:
             if state["fh"] is not None:
@@ -125,7 +125,8 @@ def make_spectrum_writer(path_tmpl, log=None):
                 state["fh"].write(json.dumps(
                     {"t": round(float(t_utc), 3), "band": band, "prn": int(prn),
                      "freq_id": int(fid), "inst": str(inst),
-                     "amp": float(amp), "energy": float(energy)}) + "\n")
+                     "amp": float(amp), "energy": float(energy),
+                     "t_rx": (round(float(t_rx), 3) if t_rx is not None else None)}) + "\n")
                 n += 1
         state["fh"].flush()
         return n
@@ -5583,7 +5584,14 @@ def main(argv=None, rx=None, publisher=None):
                     # this axis rather than a central estimator over it.
                     if _spec_writer is not None:
                         try:
-                            _n = _spec_writer(t_now_abs, band_id, _spec)
+                            # WALL CLOCK for the archive, not t_now_abs -- the latter is
+                            # seconds since the F-engine's sample-0 anchor (now_w -
+                            # utc0_sample0), so using it named the first file
+                            # gps_l5_19700102.jsonl and would have made every row
+                            # unjoinable with the observables record. The receiver-relative
+                            # time is kept alongside, since it is the one the code phases
+                            # are referenced to.
+                            _n = _spec_writer(now_w, band_id, _spec, t_rx=t_now_abs)
                             _log_rl("specarch",
                                     "SPEC-ARCHIVE: %d point(s) this poll -> %s"
                                     % (_n, args.spectrum_archive), every_s=300.0)
