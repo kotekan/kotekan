@@ -5714,15 +5714,24 @@ def main(argv=None, rx=None, publisher=None):
                     prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap,
                     prev_val=rate_prev_val, max_step=args.carrier_rate_max_step,
                     unit_hop=rate_unit_hop)
-                if _fr_cons is not None:
+                # A consensus over 1-2 sats is a rotating PER-SAT sample, not a common
+                # mode: measured 01:05-01:08, successive "consensuses" swung -29.6 ->
+                # -14.3 -> +38.6 -> +18.3 Hz as different single sats passed the q gate
+                # -- the standing ~24 Hz per-sat residual (STATE 8.20.3), not the LO.
+                # Require a real cross-sat median and log the spread, which is the
+                # per-sat-vs-common diagnostic this feed exists to provide.
+                if _fr_cons is not None and len(_fr_resid) >= 3:
+                    _vals = sorted(_fr_resid.values())
+                    _sprd = _vals[-1] - _vals[0]
                     _jfc = _joint_state(rx, band_id, args)
                     if _jfc is not None:
-                        _jfc.update_carrier(_fr_cons, t_now_abs, sigma_hz=0.5)
+                        _jfc.update_carrier(_fr_cons, t_now_abs,
+                                            sigma_hz=max(0.5, _sprd / 2.0))
                         _log_rl("jfcar",
-                                "JOINT f_carrier %+.3f+-%.3f Hz (fed consensus %+.3f from "
-                                "%d gated sat(s); n=%d rej=%d)"
+                                "JOINT f_carrier %+.3f+-%.3f Hz (consensus %+.3f, %d sats, "
+                                "per-sat spread %.1f Hz; n=%d rej=%d)"
                                 % (_jfc.f_carrier(), _jfc.f_carrier_sigma(), _fr_cons,
-                                   len(_fr_resid), _jfc.n_fcar, _jfc.fcar_rejected),
+                                   len(_fr_resid), _sprd, _jfc.n_fcar, _jfc.fcar_rejected),
                                 every_s=60.0)
             except Exception as e:
                 _log_rl("jfcar-err", "f_carrier feed skipped: %s" % e, every_s=300.0)
