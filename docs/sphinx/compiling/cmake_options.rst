@@ -71,7 +71,7 @@ Core & Runtime Features
 - ``PILOTPROXY_EXPORT_BUNDLE`` (``OFF``): Export and validate the PilotProxy DTV runtime weight
   bundle into ``<build>/pilotproxy_bundle`` as part of the build (requires the ``pilot-proxy``
   CLI; ``AUTO`` exports only when the CLI is found). Production deployments should pin a released
-  bundle instead -- the bundle is survey calibration data, not a build product.
+  bundle instead, since the bundle is survey calibration data rather than a build product.
 - ``NO_MEMLOCK`` (``OFF``): Define ``WITH_NO_MEMLOCK`` to skip memory locking and related policy calls,
   which can be necessary in containerised or restricted environments.
 

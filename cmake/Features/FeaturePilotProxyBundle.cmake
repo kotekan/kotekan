@@ -15,8 +15,9 @@
 # of the pip-installed package.
 #
 # Production note: the runtime bundle is survey calibration data (thresholds, anchors, per-epoch
-# fine-calibration status), not a pure build product. Sites should pin a released, validated bundle
-# via dtv_runtime_bundle_dir; this target exists so development and test builds are self-contained.
+# fine-calibration status) rather than a pure build product. Sites should pin a released, validated
+# bundle via dtv_runtime_bundle_dir. This target exists so development and test builds are
+# self-contained.
 
 if(NOT "${PILOTPROXY_EXPORT_BUNDLE}" STREQUAL "OFF")
     find_program(PILOTPROXY_CLI pilot-proxy)

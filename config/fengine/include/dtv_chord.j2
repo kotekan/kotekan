@@ -27,8 +27,8 @@
 # PATH, and the bundle lands in <build>/pilotproxy_bundle (see
 # cmake/Features/FeaturePilotProxyBundle.cmake; export + validation take
 # seconds). Production deployments should keep pinning a released bundle
-# via dtv_runtime_bundle_dir: the bundle is survey calibration data with
-# epoch semantics, not a build product.
+# via dtv_runtime_bundle_dir. The bundle is survey calibration data with
+# epoch semantics rather than a build product.
 #
 # For the ATSC 14-36 pilot range the bundle covers CHORD coarse channels
 # (freq_ids) 2408-3084 (470.3-602.3 MHz).
@@ -37,7 +37,7 @@
 #   * channelized sample  5.12 us on CHORD's 195.3125 kHz coarse raster
 #                         (2.56 us on CHIME's 390.625 kHz raster)
 #   * GPU ring frame      num_times = 8192 samples = 41.94304 ms; the
-#                         producer's ring advance unit, not a decision unit
+#                         producer's ring advance unit rather than a decision unit
 #   * detector block      samples_per_detector_frame = 16384 samples
 #                         = 83.88608 ms = two GPU ring frames
 #
@@ -103,7 +103,7 @@ run_dtv_detector:
           # ring frames. Must be a multiple of the compiled core's
           # detector_window_samples, and the quotient (windows_per_stream)
           # must equal FSTAT_FINE_WINDOWS_PER_STREAM or the fine CFAR path
-          # is unavailable -- see decision_mode below.
+          # is unavailable; see decision_mode below.
           samples_per_detector_frame: 16384
           # "auto": fine designated-set CFAR mask for channels whose bundle
           # fine_calibration.status is "calibrated", coarse rational mask

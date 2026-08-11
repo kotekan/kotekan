@@ -4,7 +4,7 @@
 The PilotProxy core under external/pilotproxy/ is vendored byte-for-byte from
 WVURAIL/pilot-proxy so that re-vendoring is a pure copy + hash comparison
 (see external/pilotproxy/README.md; tools/lint.sh prunes external/, so the
-copies are never reformatted). This script turns that promise into a check.
+copies are never reformatted). This script enforces it.
 
 Two modes:
 

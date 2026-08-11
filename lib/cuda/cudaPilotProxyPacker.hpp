@@ -17,7 +17,7 @@
  * detector_window_samples, and <tt>k' = k</tt> or <tt>k' = K-1-k</tt>
  * (@c time_reverse_windows). The reversal is the adapter flip assumed by
  * post-spectral-sense weight banks (<tt>exp(-2j*pi*f*k)</tt> templates in
- * the true-sense raw frame): the runtime bundle requests it via
+ * the true-sense raw frame). The runtime bundle requests it via
  * @c input_preprocessing, and CHORD bundles set it true despite the upright
  * spectral sense. The XOR flips both nibble sign bits: kotekan's
  * @c int4x2_swapped_withoffset stores value+8 per nibble with the imaginary
@@ -75,8 +75,9 @@ void launch_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage
  * @brief CPU reference for @c launch_pilotproxy_pack (same arguments, minus
  * the CUDA stream; host pointers).
  *
- * The slow, obviously-correct oracle used by testPilotProxyDetector; if the
- * GPU kernel disagrees with it, the GPU kernel is wrong.
+ * The slow, straightforward CPU oracle used by testPilotProxyDetector. If
+ * the GPU kernel disagrees with this reference, the GPU kernel is at
+ * fault.
  */
 void cpu_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage_ring,
                          std::ptrdiff_t num_dishes, std::ptrdiff_t num_polarizations,

@@ -2,7 +2,8 @@
 # in this directory; the sources are byte-identical copies of https://github.com/WVURAIL/pilot-proxy
 # cuda/).
 #
-# This CMakeLists.txt is kotekan-side integration glue, not part of the vendored upstream file set.
+# This CMakeLists.txt is kotekan-side integration glue rather than part of the vendored upstream
+# file set.
 project(pilotproxy CXX CUDA)
 
 # Same default as lib/cuda: A40 / sm_86. The variable set inside lib/cuda is directory-scoped and

@@ -205,8 +205,7 @@ private:
  * @brief cudaCommand running the PilotProxy ATSC DTV pilot-tone F-statistic
  * detector (vendored in external/pilotproxy) on CHORD voltage data.
  *
- * @author Dylan Gormley (PilotProxy detector core); kotekan stage authored
- *         for the pilot-proxy <-> kotekan integration.
+ * @author Dylan Gormley
  *
  * Consumes the [T, F, P, D] int4x2_swapped_withoffset voltage ring buffer.
  * At the first processed block the stage reads the chordMetadata
@@ -230,7 +229,7 @@ private:
  *  1. packs the channel's [T, P, D] slice into the kernel's row-major
  *     detector matrix (offset-binary -> two's-complement via XOR 0x88;
  *     stream s = p * num_dishes + d; per-window time reversal when the
- *     bundle's input_preprocessing requests it -- true for CHORD bundles,
+ *     bundle's input_preprocessing requests it (true for CHORD bundles,
  *     whose post-spectral-sense weight templates assume the flip);
  *  2. runs the vendored F-statistic kernel: the fused fine designated-set
  *     CFAR mask (`FStat_Compute_FusedFineMask_U64`, kernel core 2.3.0) when
@@ -243,10 +242,10 @@ private:
  *     marginals (target, lower ref, upper ref) in `dtv_powers` for
  *     validation against the Python reference path.
  *
- * The vendored library executes on the legacy default CUDA stream; the
- * stage brackets it with events against kotekan's stream (and the legacy
- * default stream's implicit synchronization with blocking streams makes
- * this doubly safe).
+ * The vendored library executes on the legacy default CUDA stream, so the
+ * stage brackets it with events against kotekan's stream. The legacy
+ * default stream's implicit synchronization with blocking streams would
+ * order this anyway; the events make the ordering explicit.
  *
  * @par GPU Memory
  * @gpu_mem Input voltage
@@ -406,11 +405,12 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     int fine_windows = 0;
     FStat_GetFineSpecs(&fine_windows, nullptr, nullptr);
     // A geometry mismatch silently demotes every calibrated channel to the coarse
-    // positive-excess mask. That rule is a survey flag, not a science decision: on
-    // archival CHIME data it fires on ~44% of frames during a verified
-    // transmitter-off epoch, against ~2% for the calibrated fine rule. Demoting to
-    // it without an operator asking is not an acceptable unattended outcome, so
-    // "auto" refuses to start. Selecting the coarse path must be deliberate.
+    // positive-excess mask. That rule is a low-overhead survey flag rather than a
+    // science decision. On archival CHIME data it fires on roughly 44% of frames
+    // during a verified transmitter-off epoch, against roughly 2% for the
+    // calibrated fine rule. Demoting to it without an operator asking is not an
+    // acceptable unattended outcome, so "auto" refuses to start and the coarse
+    // path must be selected deliberately.
     if (decision_mode == "auto" && windows_per_stream != fine_windows)
         FATAL_ERROR("samples_per_detector_frame ({:d}) / detector_window_samples ({:d}) gives "
                     "{:d} windows/stream, but the compiled core's frozen fine-transform length "

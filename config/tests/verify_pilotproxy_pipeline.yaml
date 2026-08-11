@@ -102,9 +102,9 @@ gen_voltage:
     meta_time_downsample_factor: 1
 
 # The dumps use rawFileWrite (exact raw bytes) rather than the hdf5FileWrite
-# stage with its self-describing frame metadata: the offline verifier's contract
-# is to recompute every product bit-for-bit from the dumped bytes plus the
-# runtime bundle, with the layout pinned by this config, and the raw dump
+# stage with its self-describing frame metadata. The offline verifier
+# recomputes every product bit-for-bit from the dumped bytes plus the
+# runtime bundle, the layout is pinned by this config, and the raw dump
 # keeps the harness free of an HDF5 read dependency.
 dump_voltage:
     kotekan_stage: rawFileWrite
