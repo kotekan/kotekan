@@ -21,10 +21,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gps_distributed_broker import make_spectrum_writer   # noqa: E402
 
 # fleet_spectrum's shape: {prn: [(freq_id, amplitude, energy, instance)]}
+# fleet_spectrum's amplitude is COMPLEX (the delay fit reads its phase ramp).
 SPEC = {
-    11: [(0, 1.5, 2.25, "cx19/0"), (1, 1.4, 1.96, "cx19/0"),
-         (0, 1.6, 2.56, "cx27/1"), (1, 1.3, 1.69, "cx27/1")],
-    21: [(0, 0.8, 0.64, "cx19/0"), (3, 0.9, 0.81, "cx42/1")],
+    11: [(0, 1.5 + 0.5j, 2.25, "cx19/0"), (1, 1.4 - 0.2j, 1.96, "cx19/0"),
+         (0, 1.6 + 0.1j, 2.56, "cx27/1"), (1, 1.3 + 0.3j, 1.69, "cx27/1")],
+    21: [(0, 0.8 - 0.4j, 0.64, "cx19/0"), (3, 0.9 + 0.6j, 0.81, "cx42/1")],
 }
 
 
@@ -63,7 +64,9 @@ class TestSpectrumArchive(unittest.TestCase):
         make_spectrum_writer(p)(1786400000.0, "b", SPEC)
         r = [x for x in self._rows(p) if x["prn"] == 11 and x["freq_id"] == 0
              and x["inst"] == "cx19/0"][0]
-        self.assertAlmostEqual(r["amp"], 1.5, places=9)
+        self.assertAlmostEqual(r["re"], 1.5, places=9)
+        self.assertAlmostEqual(r["im"], 0.5, places=9)
+        self.assertAlmostEqual(r["amp"], abs(1.5 + 0.5j), places=9)
         self.assertAlmostEqual(r["energy"], 2.25, places=9)
         self.assertEqual(r["band"], "b")
 
@@ -104,9 +107,21 @@ class TestSpectrumArchive(unittest.TestCase):
         """A future field appended to the point tuple must not silently drop the row."""
         p = os.path.join(self.d, "spec.jsonl")
         w = make_spectrum_writer(p)
-        n = w(1786400000.0, "b", {7: [(2, 1.1, 1.21, "cx19/0", "extra", 42)]})
+        n = w(1786400000.0, "b", {7: [(2, 1.1 + 0j, 1.21, "cx19/0", "extra", 42)]})
         self.assertEqual(n, 1)
         self.assertEqual(self._rows(p)[0]["freq_id"], 2)
+
+    def test_phase_survives(self):
+        """The delay fit reads the PHASE ramp across frequency, so abs() would destroy
+        exactly what the archive exists to preserve -- the archive must be able to
+        reproduce its own tau."""
+        import cmath
+        p = os.path.join(self.d, "spec.jsonl")
+        make_spectrum_writer(p)(1786400000.0, "b", SPEC)
+        for r in self._rows(p):
+            src = [x for x in SPEC[r["prn"]] if x[0] == r["freq_id"] and x[3] == r["inst"]][0]
+            self.assertAlmostEqual(cmath.phase(complex(r["re"], r["im"])),
+                                   cmath.phase(src[1]), places=9)
 
     def test_combined_value_is_recoverable_from_the_parts(self):
         """The archive's whole justification, asserted rather than assumed."""

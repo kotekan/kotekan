@@ -122,10 +122,19 @@ def make_spectrum_writer(path_tmpl, log=None):
                 # (freq_id, amplitude, energy, instance) -- tolerate a longer tuple so a
                 # future field cannot silently truncate the archive.
                 fid, amp, energy, inst = p[0], p[1], p[2], p[3]
+                # AMPLITUDE IS COMPLEX. fit_spectrum_delay takes tau from the PHASE ramp
+                # across frequency, so the per-channel value is a visibility, not a
+                # magnitude -- storing abs() would throw away exactly the quantity the
+                # delay fit exists to measure, and would make the archive unable to
+                # reproduce its own tau. Store both parts; magnitude is a function of
+                # them, they are not a function of magnitude.
+                _re, _im = (float(amp.real), float(amp.imag)) if isinstance(amp, complex) \
+                    else (float(amp), 0.0)
                 state["fh"].write(json.dumps(
                     {"t": round(float(t_utc), 3), "band": band, "prn": int(prn),
                      "freq_id": int(fid), "inst": str(inst),
-                     "amp": float(amp), "energy": float(energy),
+                     "re": _re, "im": _im, "amp": (_re * _re + _im * _im) ** 0.5,
+                     "energy": float(energy),
                      "t_rx": (round(float(t_rx), 3) if t_rx is not None else None)}) + "\n")
                 n += 1
         state["fh"].flush()
