@@ -89,6 +89,50 @@ from gnss_broker.sky import (                 # noqa: E402
 )
 
 
+def make_spectrum_writer(path_tmpl, log=None):
+    """Append-only JSONL writer for the raw per-channel spectrum (task #25).
+
+    Returns f(t_utc, band, spec) -> n_points_written, or None when archiving is off.
+    `spec` is fleet_spectrum's {prn: [(freq_id, A, energy, inst_key)]}.
+
+    The file handle is reopened when the expanded path changes, so %Y/%m/%d roll a long
+    run by day without a restart. Failures are the CALLER's to log and must never take
+    the broker down -- an archive is a by-product, not a dependency.
+    """
+    if not path_tmpl:
+        return None
+    import time as _time
+    state = {"path": None, "fh": None}
+
+    def _write(t_utc, band, spec):
+        path = _time.strftime(path_tmpl, _time.gmtime(t_utc))
+        if path != state["path"]:
+            if state["fh"] is not None:
+                state["fh"].close()
+            d = os.path.dirname(path)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            state["fh"] = open(path, "a")
+            state["path"] = path
+            if log:
+                log("SPEC-ARCHIVE: writing raw per-channel spectra -> %s" % path)
+        n = 0
+        for prn, pts in sorted(spec.items()):
+            for p in pts:
+                # (freq_id, amplitude, energy, instance) -- tolerate a longer tuple so a
+                # future field cannot silently truncate the archive.
+                fid, amp, energy, inst = p[0], p[1], p[2], p[3]
+                state["fh"].write(json.dumps(
+                    {"t": round(float(t_utc), 3), "band": band, "prn": int(prn),
+                     "freq_id": int(fid), "inst": str(inst),
+                     "amp": float(amp), "energy": float(energy)}) + "\n")
+                n += 1
+        state["fh"].flush()
+        return n
+
+    return _write
+
+
 def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len):
     """Split clock-solve offsets into (keep, drop) on per-satellite CONTINUITY.
 
@@ -829,6 +873,18 @@ def main(argv=None, rx=None, publisher=None):
                          "offset for that satellite is older than this: across a long gap "
                          "the clock really can have moved, so a stale comparison would "
                          "reject a satellite that is fine.")
+    ap.add_argument("--spectrum-archive", default="",
+                    help="write the RAW per-channel spectrum points to this JSONL (task "
+                         "#25). fleet_spectrum already returns (freq_id, amplitude, energy, "
+                         "instance) per PRN and today every point is collapsed to one tau "
+                         "and discarded; this persists them BEFORE the collapse. One line "
+                         "per (prn, channel, instance) per poll -- a few kB/poll, no "
+                         "recomputation, no node-side change. Empty = off. THE PER-SUBBAND "
+                         "AXIS IS THE SCIENCE PRODUCT: a combined number can always be "
+                         "rebuilt from the parts, the parts can never be recovered from a "
+                         "combined number, so the archive stores parts and every combine "
+                         "(beam map, band health, per-element gain) is an offline function "
+                         "of them. %Y/%m/%d are expanded, so a long run rolls by day.")
     ap.add_argument("--nh-hint-max-age-s", type=float, default=600.0,
                     help="drop nh-offset samples older than this, and stop hinting entirely "
                          "when fewer than --nh-hint-min-samples remain. THE HINT MUST BE ABLE "
@@ -1735,6 +1791,9 @@ def main(argv=None, rx=None, publisher=None):
     n2_combiners = parse_endpoints(args.n2_combiners, base) if args.n2_combiners else []
     spectrum_endpoints = (parse_endpoints(args.spectrum_endpoints, base)
                           if args.spectrum_endpoints else [])
+    # Per-subband archive (task #25). Created once; None when --spectrum-archive is unset,
+    # which is the only condition the call site checks.
+    _spec_writer = make_spectrum_writer(args.spectrum_archive, log=_log)
     # Integer hop tolerance, derived once from the record geometry. Kept as an int so every
     # comparison downstream is integer arithmetic on the F-engine's own counter.
     dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
@@ -5506,6 +5565,31 @@ def main(argv=None, rx=None, publisher=None):
             if spectrum_endpoints:
                 try:
                     _spec = fleet_spectrum(spectrum_endpoints, prns=set(seeds) or None)
+                    # PER-SUBBAND ARCHIVE (task #25, 2026-08-11). fleet_spectrum ALREADY
+                    # returns (freq_id, amplitude, energy, instance) per PRN -- the
+                    # per-frequency x per-element product the science side wants -- and
+                    # until now every one of those points was collapsed to a single tau by
+                    # fit_spectrum_delay and then discarded. This writes the RAW points,
+                    # before any collapse. Nothing is recomputed: the cost is one line per
+                    # (prn, channel, instance) per poll, a few kB, and no node-side change.
+                    #
+                    # Deliberately RAW, matching the observables record's contract: no
+                    # clock removed, no combine, no normalisation. A per-subband beam map,
+                    # a per-element gain solve and the band-health summary are all
+                    # functions of these rows, computed offline where they can be redone
+                    # when the model improves -- and a COMBINED number can always be
+                    # rebuilt from the parts, while parts can never be recovered from a
+                    # combined number. That asymmetry is the whole argument for storing
+                    # this axis rather than a central estimator over it.
+                    if _spec_writer is not None:
+                        try:
+                            _n = _spec_writer(t_now_abs, band_id, _spec)
+                            _log_rl("specarch",
+                                    "SPEC-ARCHIVE: %d point(s) this poll -> %s"
+                                    % (_n, args.spectrum_archive), every_s=300.0)
+                        except Exception as e:
+                            _log_rl("specarch-err",
+                                    "spectrum archive write failed: %s" % e, every_s=120.0)
                     for prn, pts in _spec.items():
                         r = fit_spectrum_delay(pts, args.chip_rate_hz, args.hops_per_sec)
                         if r is not None:

@@ -122,6 +122,13 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # wanders chips-scale between passes (disc railed at 0.94, level swinging 16-49 dB);
     # the model-primary chains never do this because their cp is slewed to the model.
     joint-consume: rate,slew
+    # PER-SUBBAND ARCHIVE (task #25). fleet_spectrum already computes per-channel,
+    # per-instance amplitudes for the tau fit and then discards them; this persists the
+    # raw points before the collapse. The per-freq x per-element axis IS the science
+    # product -- a combined number rebuilds from the parts, never the reverse -- and every
+    # combine (beam map, band health, per-element gain) becomes an offline function of it.
+    # A few kB/poll, no recomputation, no node-side change. Rolls by UTC day.
+    spectrum-archive: /home/kvand/gnss/fixtures/spectra/gps_l5_%Y%m%d.jsonl
 
   # Galileo E5a -- path B, and NO DETECTORS by design: E5a-Q carries a PER-PRN secondary,
   # which the replica bank's single-sequence overlay slot cannot hold, so blind
