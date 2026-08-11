@@ -133,8 +133,11 @@ private:
                            std::istreambuf_iterator<char>());
 
         // The bundle records whether detector windows must be time-reversed
-        // before the kernel (inverted-sense receivers). CHORD bundles are
-        // upright: false.
+        // before the kernel. Post-spectral-sense weight banks synthesize
+        // exp(-2j*pi*f*k) templates in the true-sense raw frame and assume
+        // this adapter flip, so CHORD bundles set it TRUE despite the
+        // upright spectral sense (pilot-proxy explicit-baseband-frame
+        // contract; see tests/core/test_chord_tone_injection.py upstream).
         const auto& preprocessing = pilot_profiles.at("input_preprocessing");
         time_reverse_windows =
             preprocessing.at("time_reverse_detector_windows_before_kernel").get<bool>();
@@ -228,8 +231,9 @@ private:
  *
  *  1. packs the channel's [T, P, D] slice into the kernel's row-major
  *     detector matrix (offset-binary -> two's-complement via XOR 0x88;
- *     stream s = p * num_dishes + d; optional per-window time reversal for
- *     inverted-sense receivers -- false for CHORD);
+ *     stream s = p * num_dishes + d; per-window time reversal when the
+ *     bundle's input_preprocessing requests it -- true for CHORD bundles,
+ *     whose post-spectral-sense weight templates assume the flip);
  *  2. runs the vendored F-statistic kernel: the fused fine designated-set
  *     CFAR mask (`FStat_Compute_FusedFineMask_U64`, kernel core 2.3.0) when
  *     the channel's bundle `fine_calibration.status` is "calibrated" and

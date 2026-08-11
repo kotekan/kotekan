@@ -13,7 +13,10 @@ detector contract (lib/cuda/pilotproxy/f_statistic.h):
   nibble, imaginary low nibble, real high nibble (decoding nibble - 8 is
   exactly the stage's XOR 0x88 conversion);
 - detector rows: stream s = p * num_dishes + d (P outer, D inner), windows
-  of K = 128 consecutive samples per stream;
+  of K = 128 consecutive samples per stream; each window is time-reversed
+  when the bundle's input_preprocessing requests it (CHORD bundles set
+  time_reverse_detector_windows_before_kernel = true: post-spectral-sense
+  weight templates assume the adapter flip);
 - weights: packed two's-complement int4, real high nibble; the kernel dot
   product multiplies samples by conj(weight);
 - P[term] = sum over rows |row . conj(w_term)|^2, exact integers;
@@ -71,7 +74,7 @@ def sign_extend_nibble_twos(nibble):
     return ((nibble.astype(np.int16) & 0xF) ^ 8) - 8
 
 
-def detector_rows_from_voltage(block_bytes, freq_index):
+def detector_rows_from_voltage(block_bytes, freq_index, time_reverse_windows):
     """[T, F, P, D] offset-binary bytes -> (re, im) int16 arrays of shape
     [rows, K] in the kernel's row-major stream-major order."""
     arr = block_bytes.reshape(BLOCK_SAMPLES, NUM_FREQ, NUM_POL, NUM_DISHES)
@@ -79,6 +82,8 @@ def detector_rows_from_voltage(block_bytes, freq_index):
     # streams [S, T] with s = p * D + d, then rows [S * W, K]
     streams = channel.transpose(1, 2, 0).reshape(NUM_POL * NUM_DISHES, BLOCK_SAMPLES)
     rows = streams.reshape(-1, BLOCK_SAMPLES // K, K).reshape(-1, K)
+    if time_reverse_windows:
+        rows = rows[:, ::-1]  # adapter flip assumed by the weight templates
     real = ((rows.astype(np.int16) >> 4) & 0xF) - 8  # offset-binary decode
     imag = (rows.astype(np.int16) & 0xF) - 8
     return real, imag
@@ -113,6 +118,15 @@ def main():
         pilot_profiles = json.load(f)
     with open(os.path.join(args.bundle_dir, "weights.bin"), "rb") as f:
         weight_bank = f.read()
+    time_reverse_windows = bool(
+        pilot_profiles["input_preprocessing"][
+            "time_reverse_detector_windows_before_kernel"
+        ]
+    )
+    print(
+        "bundle input_preprocessing: time_reverse_detector_windows_before_kernel =",
+        time_reverse_windows,
+    )
     profiles_by_id = {
         row["chord_channel_id"]: row
         for row in pilot_profiles["profiles"]
@@ -155,7 +169,9 @@ def main():
             else:
                 offset = profile["weight_bank_offset_bytes"]
                 nbytes = profile["weight_bank_nbytes"]
-                real, imag = detector_rows_from_voltage(block_bytes, f)
+                real, imag = detector_rows_from_voltage(
+                    block_bytes, f, time_reverse_windows
+                )
                 want_powers = expected_powers(
                     real, imag, weight_bank[offset : offset + nbytes]
                 )

@@ -10,8 +10,11 @@
 //         = voltage[(pos + w*K + k') mod ring, f, p, d] XOR 0x88
 //
 // with stream s = p * num_dishes + d, K = detector_window_samples, and
-// k' = k (upright spectral sense) or k' = K-1-k (time_reverse_windows, for
-// inverted-sense receivers such as CHIME). The XOR flips both nibble sign
+// k' = k or k' = K-1-k (time_reverse_windows). The reversal is the adapter
+// flip assumed by post-spectral-sense weight banks (exp(-2j*pi*f*k)
+// templates in the true-sense raw frame): the runtime bundle requests it
+// via input_preprocessing, and CHORD bundles set it true despite the
+// upright spectral sense. The XOR flips both nibble sign
 // bits: kotekan's int4x2_swapped_withoffset stores value+8 per nibble with
 // the imaginary component in the low nibble and the real component in the
 // high nibble, which is the PilotProxy contract's component order, so the
@@ -45,8 +48,9 @@
 //   ringbuf_pos_t    - logical start position in time samples (wrapped
 //                      internally with the power-of-two mask)
 //   detector_window_samples - K (128 for the locked detector)
-//   time_reverse_windows    - reverse each K-sample window (inverted-sense
-//                             receivers; false for CHORD)
+//   time_reverse_windows    - reverse each K-sample window (the adapter flip
+//                             assumed by post-spectral-sense weight banks;
+//                             true for CHORD runtime bundles)
 //   stream           - CUDA stream to launch on
 void launch_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage_ring,
                             std::ptrdiff_t num_dishes, std::ptrdiff_t num_polarizations,
