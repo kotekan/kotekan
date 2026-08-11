@@ -1,21 +1,20 @@
-#include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for int4x2_swapped_withoffset_t
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, read_descriptor_t
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chordMetadata.hpp"       // for chordMetadata
-#include "cudaCommand.hpp"         // for cudaCommand, cudaCommandState, ...
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "Config.hpp"               // for Config
+#include "DataType.hpp"             // for int4x2_swapped_withoffset_t
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, read_descriptor_t
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata
+#include "cudaCommand.hpp"          // for cudaCommand, cudaCommandState, ...
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
 #include "cudaPilotProxyPacker.hpp" // for launch_pilotproxy_pack
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO, DEBUG
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for FATAL_ERROR, INFO, DEBUG
+#include "pilotproxy/f_statistic.h" // for FStat_* (vendored PilotProxy kernel)
 
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
-
-#include "pilotproxy/f_statistic.h" // for FStat_* (vendored PilotProxy kernel)
 
 #include <array>              // for array
 #include <cassert>            // for assert
@@ -85,11 +84,11 @@ public:
 
     /// A bundle profile bound to a local frequency index at first frame.
     struct BoundChannel {
-        int freq_index = -1;                        // local F index on this node
+        int freq_index = -1; // local F index on this node
         const PilotChannelProfile* profile = nullptr;
         bool use_fine_mask = false;
-        void* fstat_handle = nullptr;               // FStat_Create handle (d_in bound)
-        std::int8_t* d_packed = nullptr;            // this channel's packed staging region
+        void* fstat_handle = nullptr;    // FStat_Create handle (d_in bound)
+        std::int8_t* d_packed = nullptr; // this channel's packed staging region
     };
 
     enum class RunState { wait_for_first_frame, running, disabled };
@@ -118,17 +117,16 @@ private:
     void load_bundle(const std::string& pilot_profiles_path, const std::string& weights_path) {
         std::ifstream profiles_file(pilot_profiles_path);
         if (!profiles_file)
-            throw std::runtime_error(fmt::format(
-                fmt("cudaPilotProxyDetector: cannot open pilot_profiles_path {:s}"),
-                pilot_profiles_path));
+            throw std::runtime_error(
+                fmt::format(fmt("cudaPilotProxyDetector: cannot open pilot_profiles_path {:s}"),
+                            pilot_profiles_path));
         json pilot_profiles;
         profiles_file >> pilot_profiles;
 
         std::ifstream weights_file(weights_path, std::ios::binary);
         if (!weights_file)
-            throw std::runtime_error(
-                fmt::format(fmt("cudaPilotProxyDetector: cannot open weights_path {:s}"),
-                            weights_path));
+            throw std::runtime_error(fmt::format(
+                fmt("cudaPilotProxyDetector: cannot open weights_path {:s}"), weights_path));
         weight_bank.assign(std::istreambuf_iterator<char>(weights_file),
                            std::istreambuf_iterator<char>());
 
@@ -193,8 +191,8 @@ private:
                         throw std::runtime_error(
                             "cudaPilotProxyDetector: bulk_mask_words_hex must be 4 hex words");
                     for (int word = 0; word < 4; ++word)
-                        profile.bulk_mask_words[word] = std::stoull(
-                            words_hex.at(word).get<std::string>(), nullptr, 16);
+                        profile.bulk_mask_words[word] =
+                            std::stoull(words_hex.at(word).get<std::string>(), nullptr, 16);
                 }
             }
             bundle_profiles.push_back(profile);
@@ -301,8 +299,7 @@ class cudaPilotProxyDetector : public cudaCommand {
 public:
     cudaPilotProxyDetector(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                           const int instance_num,
-                           const std::shared_ptr<cudaCommandState>& state);
+                           const int instance_num, const std::shared_ptr<cudaCommandState>& state);
     virtual ~cudaPilotProxyDetector();
 
     int wait_on_precondition() override;
@@ -332,10 +329,10 @@ private:
     const std::string dtv_powers_name;
 
     // Derived geometry
-    const int num_streams;              // P * D
-    const int detector_window_samples;  // K, from the compiled kernel
-    const int windows_per_stream;       // samples_per_detector_frame / K
-    const int detector_rows;            // num_streams * windows_per_stream
+    const int num_streams;             // P * D
+    const int detector_window_samples; // K, from the compiled kernel
+    const int windows_per_stream;      // samples_per_detector_frame / K
+    const int detector_rows;           // num_streams * windows_per_stream
 
     // Buffers
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
@@ -379,14 +376,13 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     detector_rows(num_streams * windows_per_stream),
     // Buffers
     voltage(voltage_name, "E",
-            std::array<std::ptrdiff_t, 4>{std::ptrdiff_t(buffer_depth) * num_times,
-                                          num_frequencies, num_polarizations, num_dishes},
+            std::array<std::ptrdiff_t, 4>{std::ptrdiff_t(buffer_depth) * num_times, num_frequencies,
+                                          num_polarizations, num_dishes},
             std::array<std::string, 4>{"T", "F", "P", "D"},
             std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this),
     dtv_mask(dtv_mask_name, "dtv_mask", std::array<std::ptrdiff_t, 1>{num_frequencies},
              std::array<std::string, 1>{"F"}, std::array<std::ptrdiff_t, 1>{1}, *this),
-    dtv_powers(dtv_powers_name, "dtv_powers",
-               std::array<std::ptrdiff_t, 2>{num_frequencies, 3},
+    dtv_powers(dtv_powers_name, "dtv_powers", std::array<std::ptrdiff_t, 2>{num_frequencies, 3},
                std::array<std::string, 2>{"F", "W"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this)
 //
 {
@@ -467,8 +463,8 @@ void cudaPilotProxyDetector::bind_first_frame(
             State::BoundChannel channel;
             channel.freq_index = f;
             channel.profile = &profile;
-            channel.use_fine_mask = decision_mode == "auto" && profile.fine_calibrated
-                                    && fine_geometry_ok;
+            channel.use_fine_mask =
+                decision_mode == "auto" && profile.fine_calibrated && fine_geometry_ok;
             state.bound_channels.push_back(channel);
             INFO("PilotProxy: bound ATSC physical channel {:d} (pilot {:.6f} MHz, "
                  "chord_channel_id {:d}) to local frequency index {:d}; decision path: {:s}",
@@ -541,8 +537,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     dtv_mask.set_metadata(in_metadata);
     dtv_powers.set_metadata(in_metadata);
     const std::ptrdiff_t block_start_sample = voltage.get_read_valid().begin();
-    for (const auto& metadata :
-         {dtv_mask.get_metadata(), dtv_powers.get_metadata()}) {
+    for (const auto& metadata : {dtv_mask.get_metadata(), dtv_powers.get_metadata()}) {
         metadata->set_fpga_seq_num(block_start_sample);
         metadata->set_time_downsampling_fpga(in_metadata->get_time_downsampling_fpga()
                                              * samples_per_detector_frame);
@@ -553,9 +548,8 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     const cudaStream_t kotekan_stream = device.getStream(cuda_stream_id);
 
     // Non-pilot channels (and DISABLED nodes) report mask 0 / powers 0.
-    CHECK_CUDA_ERROR(cudaMemsetAsync(mask_memory, 0,
-                                     std::size_t(num_frequencies) * sizeof(std::int8_t),
-                                     kotekan_stream));
+    CHECK_CUDA_ERROR(cudaMemsetAsync(
+        mask_memory, 0, std::size_t(num_frequencies) * sizeof(std::int8_t), kotekan_stream));
     CHECK_CUDA_ERROR(cudaMemsetAsync(powers_memory, 0,
                                      std::size_t(num_frequencies) * 3 * sizeof(std::uint64_t),
                                      kotekan_stream));
@@ -568,24 +562,21 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         return record_end_event();
     }
 
-    const kotekan::int4x2_swapped_withoffset_t* const voltage_memory =
-        voltage.get_ndarray().data();
+    const kotekan::int4x2_swapped_withoffset_t* const voltage_memory = voltage.get_ndarray().data();
     const std::ptrdiff_t ring_size = voltage.get_ndarray().extent(0);
     const std::ptrdiff_t ring_pos = block_start_sample % ring_size;
 
     // Order this block's packer after the previous block's default-stream
     // detector work (the packed staging regions are shared across blocks).
     if (state.default_stream_done_valid)
-        CHECK_CUDA_ERROR(
-            cudaStreamWaitEvent(kotekan_stream, state.default_stream_done_event, 0));
+        CHECK_CUDA_ERROR(cudaStreamWaitEvent(kotekan_stream, state.default_stream_done_event, 0));
 
     for (const auto& channel : state.bound_channels)
         launch_pilotproxy_pack(channel.d_packed,
                                reinterpret_cast<const std::uint8_t*>(voltage_memory), num_dishes,
                                num_polarizations, num_frequencies, channel.freq_index,
                                samples_per_detector_frame, ring_size, ring_pos,
-                               detector_window_samples, state.time_reverse_windows,
-                               kotekan_stream);
+                               detector_window_samples, state.time_reverse_windows, kotekan_stream);
 
     // Hand off to the vendored library, which launches on the legacy default
     // stream (stream 0). The events make the ordering explicit; the legacy
@@ -602,9 +593,9 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         device.get_gpu_memory("pilotproxy_fine_power_scratch", 3 * 256 * sizeof(std::uint64_t)));
     int* const mask_i32_scratch = static_cast<int*>(
         device.get_gpu_memory("pilotproxy_mask_i32_scratch", num_bound * sizeof(int)));
-    unsigned long long* const numden_scratch = static_cast<unsigned long long*>(
-        device.get_gpu_memory("pilotproxy_numden_scratch",
-                              num_bound * 2 * sizeof(unsigned long long)));
+    unsigned long long* const numden_scratch =
+        static_cast<unsigned long long*>(device.get_gpu_memory(
+            "pilotproxy_numden_scratch", num_bound * 2 * sizeof(unsigned long long)));
 
     for (std::ptrdiff_t i = 0; i < num_bound; ++i) {
         const auto& channel = state.bound_channels[i];
@@ -617,9 +608,9 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
             // launch from packed samples to the mask bit; the coarse power
             // marginals come along as the debug tap for validation.
             FStat_Compute_FusedFineMask_U64(
-                channel.fstat_handle, weights, profile.anchor_bin,
-                profile.designated_half_width, profile.bulk_mask_words.data(), profile.cfar_rank,
-                profile.multiplier_q16, fine_power_scratch, mask_i32_scratch + i,
+                channel.fstat_handle, weights, profile.anchor_bin, profile.designated_half_width,
+                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
+                fine_power_scratch, mask_i32_scratch + i,
                 reinterpret_cast<unsigned long long*>(channel_powers), nullptr);
         } else {
             // Coarse norm-corrected positive-excess rule: exact uint64
@@ -643,8 +634,8 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         const auto& channel = state.bound_channels[i];
         if (!channel.use_fine_mask)
             continue;
-        CHECK_CUDA_ERROR(cudaMemcpyAsync(mask_memory + channel.freq_index, mask_i32_scratch + i,
-                                         1, cudaMemcpyDeviceToDevice, kotekan_stream));
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(mask_memory + channel.freq_index, mask_i32_scratch + i, 1,
+                                         cudaMemcpyDeviceToDevice, kotekan_stream));
     }
 
     return record_end_event();

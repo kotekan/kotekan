@@ -1,0 +1,7 @@
+# Vendored third-party code kept byte-identical to its upstream source so
+# that re-vendoring stays a pure copy + hash comparison. The PilotProxy
+# detector core is vendored verbatim from https://github.com/WVURAIL/pilot-proxy
+# (see lib/cuda/pilotproxy/README.md); clang-format >= 17 honors this file
+# for explicit command-line arguments as well, so tools/lint.sh skips these
+# without special-casing.
+lib/cuda/pilotproxy/*

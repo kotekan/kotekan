@@ -29,7 +29,11 @@ Local modifications: none. Do not edit these files here; changes belong
 upstream in pilot-proxy (the detector contract is frozen and validated by
 the upstream test suite, including golden vectors for the FFT and
 bit-equality tests for the fused mask epilogue). To update, copy the files
-from a new upstream commit and record the commit hash above.
+from a new upstream commit and record the commit hash above. The top-level
+`.clang-format-ignore` excludes this directory so the copies stay
+byte-identical to upstream (re-vendoring remains a pure copy + hash
+comparison); pilot-proxy is MIT-licensed (see the "Included Libraries"
+section of the repository LICENSE).
 
 Notes for kotekan integration:
 

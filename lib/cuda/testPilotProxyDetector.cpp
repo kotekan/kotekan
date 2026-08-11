@@ -20,16 +20,15 @@
 // / pipeline integration of cudaPilotProxyDetector. Modeled on
 // testPLMaskUpchannelizer.
 
-#include "Config.hpp"                // for Config
-#include "Stage.hpp"                 // for Stage
-#include "StageFactory.hpp"          // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"       // for bufferContainer
-#include "cudaPilotProxyPacker.hpp"  // for launch_pilotproxy_pack, cpu_pilotproxy_pack
-#include "cudaUtils.hpp"             // for CHECK_CUDA_ERROR
-#include "cuda_runtime.h"            // for cudaMalloc, cudaMemcpy, ...
-#include "errors.h"                  // for TEST_PASSED
-#include "kotekanLogging.hpp"        // for FATAL_ERROR, INFO
-
+#include "Config.hpp"                         // for Config
+#include "Stage.hpp"                          // for Stage
+#include "StageFactory.hpp"                   // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"                // for bufferContainer
+#include "cudaPilotProxyPacker.hpp"           // for launch_pilotproxy_pack, cpu_pilotproxy_pack
+#include "cudaUtils.hpp"                      // for CHECK_CUDA_ERROR
+#include "cuda_runtime.h"                     // for cudaMalloc, cudaMemcpy, ...
+#include "errors.h"                           // for TEST_PASSED
+#include "kotekanLogging.hpp"                 // for FATAL_ERROR, INFO
 #include "pilotproxy/f_statistic.h"           // for FStat_* (vendored)
 #include "pilotproxy/f_statistic_reference.h" // for fstat_ref_* (vendored)
 
@@ -123,8 +122,8 @@ void cpu_fine_powers(const std::vector<std::int32_t>& row_sums, const int num_st
 // widths for kernel-produced fine powers.
 
 struct FineDecisionRef {
-    int mask;      // 1 = reject (pilot present)
-    bool valid;    // false when the bulk is not deeper than the rank
+    int mask;   // 1 = reject (pilot present)
+    bool valid; // false when the bulk is not deeper than the rank
     int n_bulk;
     int rank_bin;  // representative bin of the rank value (-1 invalid)
     int fired_bin; // first designated bin that fired (-1 when mask=0)
@@ -247,8 +246,8 @@ public:
         const std::array<ptrdiff_t, 3> ring_positions = {0, 5 * ring_size / 8, ring_size - K / 2};
 
         std::uniform_int_distribution<int> byte_dist(0, 255);
-        std::vector<std::uint8_t> ring(std::size_t(ring_size) * num_frequencies
-                                       * num_polarizations * num_dishes);
+        std::vector<std::uint8_t> ring(std::size_t(ring_size) * num_frequencies * num_polarizations
+                                       * num_dishes);
         for (auto& v : ring)
             v = std::uint8_t(byte_dist(rng));
 
@@ -266,9 +265,8 @@ public:
         CHECK_CUDA_ERROR(cudaMalloc(&d_powers, NUM_TERMS * sizeof(unsigned long long)));
         CHECK_CUDA_ERROR(
             cudaMalloc(&d_row_sums, std::size_t(NUM_TERMS) * detector_rows * 2 * sizeof(int)));
-        CHECK_CUDA_ERROR(cudaMalloc(&d_fine_powers,
-                                    std::size_t(NUM_TERMS) * FINE_BINS
-                                        * sizeof(unsigned long long)));
+        CHECK_CUDA_ERROR(cudaMalloc(&d_fine_powers, std::size_t(NUM_TERMS) * FINE_BINS
+                                                        * sizeof(unsigned long long)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_numden, 2 * sizeof(unsigned long long)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_mask_u8, 1));
         CHECK_CUDA_ERROR(cudaMalloc(&d_mask_i32, sizeof(int)));
@@ -290,8 +288,8 @@ public:
                 for (const ptrdiff_t pos : ring_positions) {
                     // --- Packer: GPU vs CPU, bit for bit.
                     launch_pilotproxy_pack(d_packed, d_ring, num_dishes, num_polarizations,
-                                           num_frequencies, freq_index, num_time_samples,
-                                           ring_size, pos, K, reverse, /*stream=*/nullptr);
+                                           num_frequencies, freq_index, num_time_samples, ring_size,
+                                           pos, K, reverse, /*stream=*/nullptr);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                     CHECK_CUDA_ERROR(cudaMemcpy(packed_gpu.data(), d_packed, packed_count,
                                                 cudaMemcpyDeviceToHost));
@@ -341,8 +339,8 @@ public:
                     CHECK_CUDA_ERROR(cudaMemcpy(fine_gpu.data(), d_fine_powers,
                                                 fine_gpu.size() * sizeof(uint64_t),
                                                 cudaMemcpyDeviceToHost));
-                    CHECK_CUDA_ERROR(cudaMemcpy(fused_powers_gpu, d_powers,
-                                                sizeof fused_powers_gpu, cudaMemcpyDeviceToHost));
+                    CHECK_CUDA_ERROR(cudaMemcpy(fused_powers_gpu, d_powers, sizeof fused_powers_gpu,
+                                                cudaMemcpyDeviceToHost));
                     cpu_fine_powers(row_sums_cpu, int(num_streams), windows, fine_cpu);
                     if (fine_gpu != fine_cpu)
                         FATAL_ERROR("fine power mismatch (rev={:d},f={:d},pos={:d})", int(reverse),
@@ -358,8 +356,8 @@ public:
                     const struct {
                         unsigned long long half_num, half_den;
                     } thresholds[] = {
-                        {1, 1000000000ULL}, // ~always fires (den > 0)
-                        {~0ULL / 4, 1},     // ~never fires
+                        {1, 1000000000ULL},                 // ~always fires (den > 0)
+                        {~0ULL / 4, 1},                     // ~never fires
                         {num, 2 * den > den ? 2 * den : 1}, // near the operating point
                     };
                     for (const auto& threshold : thresholds) {
@@ -369,8 +367,8 @@ public:
                             handle, weights.data(), threshold.half_num, threshold.half_den,
                             d_numden, d_numden + 1, d_mask_u8);
                         CHECK_CUDA_ERROR(cudaDeviceSynchronize());
-                        CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu, d_mask_u8, 1,
-                                                    cudaMemcpyDeviceToHost));
+                        CHECK_CUDA_ERROR(
+                            cudaMemcpy(&mask_gpu, d_mask_u8, 1, cudaMemcpyDeviceToHost));
                         CHECK_CUDA_ERROR(cudaMemcpy(numden_gpu, d_numden, sizeof numden_gpu,
                                                     cudaMemcpyDeviceToHost));
                         if (numden_gpu[0] != num || numden_gpu[1] != den)
@@ -378,8 +376,8 @@ public:
                                         numden_gpu[0], numden_gpu[1], num, den);
                         const int mask_cpu =
                             den != 0
-                                && less_u256(mul_u128(u128(threshold.half_num), u128(den)),
-                                             mul_u128(u128(num), u128(threshold.half_den)));
+                            && less_u256(mul_u128(u128(threshold.half_num), u128(den)),
+                                         mul_u128(u128(num), u128(threshold.half_den)));
                         if (int(mask_gpu) != mask_cpu)
                             FATAL_ERROR("coarse mask mismatch: half={:d}/{:d} gpu={:d} cpu={:d}",
                                         threshold.half_num, threshold.half_den, int(mask_gpu),
@@ -427,9 +425,9 @@ public:
                         CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                         CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
                                                     cudaMemcpyDeviceToHost));
-                        const FineDecisionRef ref = cpu_fine_decision(
-                            fine_cpu, calibration.anchor, calibration.half_width, words,
-                            calibration.rank, calibration.mult_q16);
+                        const FineDecisionRef ref =
+                            cpu_fine_decision(fine_cpu, calibration.anchor, calibration.half_width,
+                                              words, calibration.rank, calibration.mult_q16);
                         if (mask_gpu_i32 != ref.mask)
                             FATAL_ERROR("fine mask mismatch: anchor={:d} w={:d} rank={:d} "
                                         "mult={:d}: gpu={:d} cpu={:d} (n_bulk={:d} valid={:d})",

@@ -97,12 +97,8 @@ def expected_powers(real, imag, weights_packed):
     powers = []
     for term in range(3):
         # row . conj(w): re = xr*wr + xi*wi ; im = xi*wr - xr*wi
-        z_real = (real * w_real[term] + imag * w_imag[term]).sum(
-            axis=1, dtype=np.int64
-        )
-        z_imag = (imag * w_real[term] - real * w_imag[term]).sum(
-            axis=1, dtype=np.int64
-        )
+        z_real = (real * w_real[term] + imag * w_imag[term]).sum(axis=1, dtype=np.int64)
+        z_imag = (imag * w_real[term] - real * w_imag[term]).sum(axis=1, dtype=np.int64)
         power = (z_real * z_real + z_imag * z_imag).sum(dtype=np.int64)
         powers.append(int(power))
     return powers
