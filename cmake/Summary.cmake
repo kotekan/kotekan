@@ -282,6 +282,16 @@ else()
 endif()
 kfeature_row("No Memlock" "${NO_MEMLOCK}" "${NOMEMLOCK_REASON}" OFF NO_MEMLOCK)
 
+if(TARGET pilotproxy-bundle)
+    set(PPBUNDLE_REASON "enabled: exports to ${PILOTPROXY_BUNDLE_DIR}")
+elseif("${PILOTPROXY_EXPORT_BUNDLE}" STREQUAL "OFF")
+    set(PPBUNDLE_REASON "disabled")
+else()
+    set(PPBUNDLE_REASON "skipped: pilot-proxy CLI not found (AUTO)")
+endif()
+kfeature_row("PilotProxy bundle" "${PILOTPROXY_EXPORT_BUNDLE}" "${PPBUNDLE_REASON}" OFF
+             PILOTPROXY_EXPORT_BUNDLE)
+
 kfeature_row("ccache" "${CCACHE}" "${CCACHE_REASON}" OFF CCACHE)
 
 set(WERROR_REASON "disabled")

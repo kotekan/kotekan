@@ -102,6 +102,10 @@ ktk_tristate_option(CMAKE_LINK_WHAT_YOU_USE "Report missing link dependencies wh
 ktk_tristate_option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 ktk_tristate_option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 ktk_tristate_option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OFF)
+ktk_tristate_option(
+    PILOTPROXY_EXPORT_BUNDLE
+    "Export + validate the PilotProxy DTV runtime weight bundle at build time (pilot-proxy CLI)"
+    OFF)
 ktk_tristate_option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 ktk_tristate_option(SANITIZE "Enable clang sanitizers for testing" OFF)
 ktk_tristate_option(USE_HIP "Build HIP GPU Framework" OFF)

@@ -22,6 +22,14 @@
 #
 #   pilot-proxy validate-runtime-weight-bundle --bundle-dir <dtv_runtime_bundle_dir>
 #
+# Kotekan can run this export as part of the build: configure with
+# -DPILOTPROXY_EXPORT_BUNDLE=ON (or AUTO) with the pilot-proxy CLI on
+# PATH, and the bundle lands in <build>/pilotproxy_bundle (see
+# cmake/Features/FeaturePilotProxyBundle.cmake; export + validation take
+# seconds). Production deployments should keep pinning a released bundle
+# via dtv_runtime_bundle_dir: the bundle is survey calibration data with
+# epoch semantics, not a build product.
+#
 # For the ATSC 14-36 pilot range the bundle covers CHORD coarse channels
 # (freq_ids) 2408-3084 (470.3-602.3 MHz).
 #

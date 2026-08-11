@@ -69,6 +69,9 @@ include(cmake/Features/FeatureIO.cmake)
 # Julia runtime and bindings
 include(cmake/Features/FeatureJulia.cmake)
 
+# Optional build-time export of the PilotProxy DTV runtime weight bundle
+include(cmake/Features/FeaturePilotProxyBundle.cmake)
+
 if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()

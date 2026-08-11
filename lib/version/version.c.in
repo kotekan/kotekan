@@ -47,6 +47,7 @@ char* __cmake_build_options = " CMAKE_BUILD_TYPE: @CMAKE_BUILD_TYPE@ \n"
                               " WITH_TESTS: @WITH_TESTS@\n"
                               " WITH_BOOST_TESTS: @WITH_BOOST_TESTS@\n"
                               " COMPILE_DOCS: @COMPILE_DOCS@\n"
+                              " PILOTPROXY_EXPORT_BUNDLE: @PILOTPROXY_EXPORT_BUNDLE@\n"
                               " IWYU: @IWYU@\n"
                               " CCACHE: @CCACHE@\n"
                               " WERROR: @WERROR@\n";
