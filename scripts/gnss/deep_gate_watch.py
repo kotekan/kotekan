@@ -34,6 +34,12 @@ def poll(url, chain, prn):
             return {"disc": x.get("dll_disc"), "trim": x.get("dll_trim"),
                     "present": x.get("fleet_present"), "gate": x.get("present_gate"),
                     "deep_snr": x.get("deep_snr"), "deep_floor": x.get("deep_floor"),
+                    # #50: the far-regime error signal and its shuffled-null significance,
+                    # plus q -- which is what says whether the DISCRIMINATOR had anything to
+                    # follow. Without q in the record, a flat disc cannot be told apart from
+                    # "on the peak" and the A/B is unreadable (#47's lesson, one layer down).
+                    "spec_tau": x.get("spec_tau_chips"),
+                    "spec_ratio": x.get("spec_peak_ratio"), "q": x.get("fleet_q"),
                     "lp": (x.get("l_pow") or 0.0) / p if p else None,
                     "ep": (x.get("e_pow") or 0.0) / p if p else None}
     return None

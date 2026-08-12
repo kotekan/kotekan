@@ -1268,6 +1268,38 @@ def main(argv=None, rx=None, publisher=None):
                     help="fleet DLL: the deep gate's bar in units of deep_floor (default 3.0). "
                          "The floor is the combiner's own rectification level, so this is a "
                          "detection significance, not a tuned constant.")
+    ap.add_argument("--reseed-spec-tau", default="",
+                    help="task #50: PRNs allowed a FAR-REGIME RE-SEED from spec_tau (the "
+                         "cross-channel phase-ramp delay fit, #32). Comma-separated PRNs or "
+                         "'all'. DEFAULT OFF. Fires only where the discriminator cannot help: "
+                         "the #49 deep gate says present, q < --reseed-q-max (E/P/L carry no "
+                         "gradient), and spec_peak_ratio clears --reseed-min-ratio. Applied as "
+                         "a SEED step, not a trim increment -- the slew cap would swallow a "
+                         "trim. Requires --dll-deep-gate on the same PRN to be useful.")
+    ap.add_argument("--reseed-q-max", type=float, default=1.20,
+                    help="task #50: only re-seed when the fleet q is BELOW this. q = 2P/(E+L) "
+                         "is 1.0 with no peak in the taps and ~4 at a clean lock, so this says "
+                         "'the discriminator has nothing to follow'. Above it the DLL can do "
+                         "the job and a seed step would fight it.")
+    ap.add_argument("--reseed-min-ratio", type=float, default=1.5,
+                    help="task #50: minimum spec_peak_ratio. This is a SHUFFLED-NULL "
+                         "significance (fit_spectrum_delay builds the null from the same "
+                         "points), so 1.5 means the fold beat its own null by 50%%. Measured "
+                         "2026-08-12: 11.3%% of emissions clear it -- fine for a one-shot "
+                         "re-seed (~1 opportunity per 5 min against 25-45 min excursions), "
+                         "and NOT enough for a continuous loop.")
+    ap.add_argument("--reseed-gain", type=float, default=0.5,
+                    help="task #50: fraction of the fitted tau applied per opportunity. The "
+                         "SIGN of spec_tau is validated (r -0.47..-0.62 against disc on the "
+                         "shoulder); the MAGNITUDE is not (within-satellite r -0.375 in the "
+                         "far regime), so converge over several fits rather than betting the "
+                         "whole correction on one unproven number.")
+    ap.add_argument("--reseed-max-chips", type=float, default=0.75,
+                    help="task #50: hard cap on a single re-seed step, chips.")
+    ap.add_argument("--spec-span-chips", type=float, default=2.0,
+                    help="task #50: the delay fit's scan half-width, which MUST match "
+                         "fit_spectrum_delay's span_chips. A fit at the edge is a saturation, "
+                         "not a measurement, and is refused rather than acted on.")
     ap.add_argument("--dll-min-instances", type=int, default=2,
                     help="fleet DLL: instances that must report the same window before their "
                          "sum is used. Below this the PRN falls back to the single --combiner "
@@ -1949,6 +1981,26 @@ def main(argv=None, rx=None, publisher=None):
         _deep_gate = {int(x) for x in _dg.replace(",", " ").split()}
     else:
         _deep_gate = None
+    _rs = (args.reseed_spec_tau or "").strip()
+    if _rs.lower() == "all":
+        _reseed_prns = True
+    elif _rs:
+        _reseed_prns = {int(x) for x in _rs.replace(",", " ").split()}
+    else:
+        _reseed_prns = None
+    if _reseed_prns:
+        _log("SPEC-TAU RE-SEED (#50) active on %s: q<%.2f, spec_peak_ratio>=%.2f, gain %.2f, "
+             "cap %.2f chips, span +-%.1f. Fires only where the discriminator has NO GRADIENT "
+             "(far off-peak, E~P~L~noise); applied as a SEED step so the slew cap cannot "
+             "swallow it"
+             % ("ALL PRNs" if _reseed_prns is True else
+                "PRN " + ",".join(str(p) for p in sorted(_reseed_prns)),
+                args.reseed_q_max, args.reseed_min_ratio, args.reseed_gain,
+                args.reseed_max_chips, args.spec_span_chips))
+        if not _deep_gate:
+            _log("SPEC-TAU RE-SEED (#50) WARNING: no --dll-deep-gate is set, so the PRNs this "
+                 "targets will mostly fail `present` and never reach the re-seed test at all "
+                 "(that is the #49 latch). Arm both, or this does nothing.")
     if _deep_gate:
         _log("DLL DEEP GATE (#49) active on %s at %.1fx deep_floor -- these PRNs are trimmed "
              "on DETECTION (deep_snr) instead of on prompt power, which is on-peak-biased and "
@@ -6186,6 +6238,68 @@ def main(argv=None, rx=None, publisher=None):
                 # correction below the errors we actually have. The single-combiner fallback
                 # keeps the original leak: it has no such gate, and that is where the runaway
                 # happened.
+                # ---- FAR-REGIME RE-SEED (task #50) ------------------------------------------
+                # WHEN THE DISCRIMINATOR HAS NO GRADIENT, THE TRIM CANNOT HELP. Far off the
+                # peak E, P and L are all noise, so q -> 1.0 and disc -> 0: #49's deep gate
+                # admits the satellite to this loop but there is nothing for the loop to
+                # follow. Measured immediately on deploying #49 (E33 on gal_e5a: q 0.96-1.04,
+                # disc -0.02..-0.07, trim ~0, while deep_snr was 23-36).
+                #
+                # spec_tau measures the offset a different way -- the phase ramp ACROSS
+                # CHANNELS (task #32) -- so it does not need E/P/L to straddle the peak, which
+                # is exactly the regime that kills the discriminator.
+                #
+                # VALIDATED BEFORE BEING WIRED IN (2026-08-12): sign predicted A PRIORI from
+                # the physics (disc<0 => L>E => peak later => tau>0, so anti-correlated) and
+                # confirmed on the shoulder where disc is trustworthy, r -0.47..-0.62 over 222
+                # samples, slope -0.67 chips per unit disc. In the far regime, judged against
+                # cn0_inc (the prompt-based witness, disc never used) WITHIN satellite so the
+                # off-peak/faint confound is removed: r -0.230 all, -0.375 strong fits. The
+                # direction is established; THE SIZE IS NOT, which is why this steps by a
+                # fraction and re-measures rather than jumping to the fitted value.
+                #
+                # ⚠️ A SEED STEP, NOT A TRIM INCREMENT. The slew cap (0.05 chips/event, already
+                # railing 67-100% of the time) would swallow this whole if it went through the
+                # trim -- see chord-slew-cap-saturation.
+                #
+                # spec_peak_ratio IS a shuffled-null significance (fit_spectrum_delay builds
+                # the null from the same points, values reassigned within each instance), so
+                # >= the bar means the fold beat its own null -- not a tuned constant.
+                _rs = None
+                if (_reseed_prns and fl is not None
+                        and (_reseed_prns is True or prn in _reseed_prns)
+                        and fl.get("present")                      # #49 deep gate said so
+                        and fl.get("q", 9.9) < args.reseed_q_max   # taps carry no gradient
+                        and (fl.get("spec_ratio") or 0.0) >= args.reseed_min_ratio
+                        and fl.get("spec_tau") is not None):
+                    _t = float(fl["spec_tau"])
+                    # SPAN EDGE IS A SATURATION, NOT A MEASUREMENT. fit_spectrum_delay scans
+                    # +-span_chips (default 2.0); a fit sitting at the edge means the true
+                    # offset is unrepresentable, so the value carries no information about how
+                    # far to go. Refuse it rather than stepping by a rail.
+                    _edge = args.spec_span_chips * 0.95
+                    if abs(_t) >= _edge:
+                        _rs = "at span edge %+.2f -- refused" % _t
+                    else:
+                        # +tau = the sky arrives LATER than the replica, so the code phase must
+                        # INCREASE to meet it. Fractional step: the direction is validated, the
+                        # magnitude is not, so converge over a few opportunities (a strong fit
+                        # arrives ~every 5 min against 25-45 min excursions) instead of betting
+                        # the whole correction on one unproven number.
+                        _step = max(-args.reseed_max_chips,
+                                    min(args.reseed_max_chips, args.reseed_gain * _t))
+                        seeds[prn]["code_phase_chips"] = (
+                            seeds[prn].get("code_phase_chips", 0.0) + _step) % args.code_length
+                        # The at-ref phase is a DERIVED leg of the same triple; leaving it
+                        # stale would ship a seed whose two phases disagree, which is the
+                        # transport disease of #45 in miniature. Drop it and let the normal
+                        # path rebuild it from the value we just moved.
+                        seeds[prn].pop("code_phase_at_ref_chips", None)
+                        _rs = ("tau %+.3f pk/fl %.2f q %.2f -> seed %+.3f chips"
+                               % (_t, fl.get("spec_ratio") or 0.0, fl.get("q", 0.0), _step))
+                if _rs:
+                    _log("RESEED PRN %d: %s" % (prn, _rs))
+
                 leak = args.dll_leak_present if fl is not None else args.dll_leak
                 trim = (1.0 - leak) * dll_trim.get(prn, 0.0) + args.dll_gain * tau
                 dll_trim[prn] = max(-3.0, min(3.0, trim))

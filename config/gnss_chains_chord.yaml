@@ -310,6 +310,20 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # NOT on C/N0 -- cn0_coh cannot see code error at all (#47).
     # Widen with --dll-deep-gate all once the pull-in rate is measured. Revert: delete.
     dll-deep-gate: "33"
+    # ── #50 FAR-REGIME RE-SEED, same satellite, 2026-08-12 ────────────────────────────
+    # The deep gate above admits E33 to the loop; this gives the loop something to follow
+    # when it gets there. Far off-peak E, P and L are ALL noise, so q -> 1.0 and disc -> 0 --
+    # measured on E33 within minutes of arming #49 (q 0.96-1.04, disc -0.02, trim 0.00, while
+    # deep_snr was 23-36). spec_tau reads the offset off the CROSS-CHANNEL phase ramp instead,
+    # which does not need E/P/L to straddle the peak.
+    # Fires only when: #49 says present AND q < 1.20 AND spec_peak_ratio >= 1.5 (a
+    # shuffled-null significance, cleared by 11.3% of emissions ~ one chance per 5 min against
+    # 25-45 min excursions). Steps the SEED by half the fitted tau -- the sign is validated,
+    # the magnitude is not -- and REFUSES a fit at the +-2 chip span edge, which is a
+    # saturation rather than a measurement.
+    # JUDGE WITH: RESEED log lines + deep_gate_watch.py, on whether E33's excursions on this
+    # band get SHORTER than on gal_e5b. Not on C/N0 (#47). Revert: delete.
+    reseed-spec-tau: "33"
     # ...AND UNRAIL THE RATE LIMIT, or the line above cannot show anything. The flat
     # 0.05 chips/event cap had 47% of steps sitting exactly on it while satellites were
     # 5-8 chips from their model -- of order an hour to close, against a ~600 s
