@@ -930,3 +930,79 @@ def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_nu
             # The null is a MAX over shuffles, so clearing it by a margin is a real detection
             # in the same sense the search's Gamma ceiling is (chord-gamma-noise-ceiling).
             "present": mag > 0.0 and floor > 0.0 and mag >= 1.5 * floor}
+
+
+def fit_tau_coherent(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
+                     coarse_step_chips=0.02, refine=3, rng=None, n_null=16):
+    """Fit ONE tau by maximising the coherence of the gathered points. No nuisance phases.
+
+    WHY THIS REPLACES fit_spectrum_delay's SOLVE. That fit solves a free phase PER INSTANCE at
+    every trial tau, and those parameters absorb the very ramp it is measuring: 12 free
+    parameters flatten a 1-parameter objective, so it never leaves its start. Measured on sky
+    2026-08-12, the four brightest gal_e5a satellites, shipped fit vs the coherence optimum:
+        PRN 29  fit -0.000 (coh 0.020)  vs BEST -1.020 (coh 0.103)
+        PRN 10  fit -0.100 (coh 0.050)  vs BEST +2.000 (coh 0.250)
+        PRN 21  fit +0.056 (coh 0.094)  vs BEST -0.320 (coh 0.153)
+        PRN 11  fit +0.068 (coh 0.067)  vs BEST +0.860 (coh 0.471)
+    It clusters at ZERO at 2-7x worse coherence. That is not SNR inflation, it is loss of tau
+    OBSERVABILITY -- and it explains spec_tau's whole record (11.3% clearing its null, a
+    far-regime correlation of -0.375, and #50's re-seed firing 74 times while tau never shrank).
+
+    ⚠️ REQUIRES ALIGNED POINTS (fleet_spectrum_aligned). The coherence being maximised is across
+    the fleet at ONE instant, which is legitimate only when every instance summed the same
+    records -- and that is exactly what task #53 established. Verified on sky first: 79 channels,
+    one window, ONE ramp, coherence 0.794 against a 0.109 random baseline.
+
+    Returns (tau_chips, coherence, floor, n_pts, n_inst) -- same shape as fit_spectrum_delay so
+    it drops in -- where `floor` is a SHUFFLED-NULL coherence over the same points. The null
+    shuffles AMPLITUDES across the frequency slots, destroying the frequency<->phase pairing
+    while preserving every marginal; shuffle, never roll (a roll IS a delay).
+    """
+    import cmath
+    import random as _random
+
+    pts = [(fid, en * a) for fid, a, en, _ in points
+           if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)]
+    if len(pts) < 8:
+        return None
+    f0 = min(fid for fid, _ in pts)
+    wsum = sum(abs(g) for _, g in pts)
+    if wsum <= 0.0:
+        return None
+
+    def coh_at(tau_chips, seq):
+        ts = tau_chips / chip_rate_hz
+        tot = sum(g * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * ts)
+                  for fid, g in seq)
+        return abs(tot) / wsum
+
+    def best_over(seq, lo, hi, step):
+        # Coarse scan then successive refinement. The peak half-width is 1.1-3.3 chips on sky,
+        # so a 0.02-chip grid is far finer than the feature -- the refinement is for the
+        # sub-grid vertex, not to find the peak.
+        b, bc = lo, -1.0
+        t = lo
+        while t <= hi:
+            c = coh_at(t, seq)
+            if c > bc:
+                b, bc = t, c
+            t += step
+        for _ in range(max(0, refine)):
+            step *= 0.25
+            for t in (b - 2 * step, b - step, b + step, b + 2 * step):
+                c = coh_at(t, seq)
+                if c > bc:
+                    b, bc = t, c
+        return b, bc
+
+    tau, coh = best_over(pts, -span_chips, span_chips, coarse_step_chips)
+    rng = rng or _random.Random(20260812)
+    amps = [g for _, g in pts]
+    floor = 0.0
+    for _ in range(max(1, n_null)):
+        sh = list(amps)
+        rng.shuffle(sh)
+        _, c = best_over([(pts[i][0], sh[i]) for i in range(len(pts))],
+                         -span_chips, span_chips, coarse_step_chips)
+        floor = max(floor, c)
+    return (tau, coh, floor, len(pts), len({k for _, _, _, k in points}))
