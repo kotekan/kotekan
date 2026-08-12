@@ -26,6 +26,12 @@ num_local_freq: 4
 
 rfi_downsampling_factor: 256
 
+# The bad feed mask is valid for this many input samples, i.e. for four S012 frames here. The
+# RFI stage reads the same mask element on each of those frames and consumes it only on
+# the last, so this exercises both the read-without-claiming path and the hand-over to
+# the next element.
+bf_mask_lifetime_in_samples: 4 * samples_per_data_set
+
 updatable_config:
     bad_inputs:
         kotekan_update_endpoint: json
@@ -42,6 +48,19 @@ main_pool:
 
 # Buffers
 host_bf_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: main_pool
+
+# The CPU reference consumes one mask per input frame, so it gets its own buffer and producer
+# rather than sharing the GPU path's. Both producers are driven from the same `bad_inputs`, so
+# the two masks are identical.
+simulated_bf_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
     value_type: int8
@@ -71,6 +90,11 @@ simulated_rfi_s012tilde_buffer:
 
 
 # Ringbuffer signalling buffer
+host_bf_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * 1
+    metadata_pool: main_pool
+
 host_rfi_s012_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
@@ -98,6 +122,28 @@ set_bf_mask:
         bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
 
+set_simulated_bf_mask:
+    kotekan_stage: bufferBadInputs
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
+    out_buf: simulated_bf_mask_buffer
+
+run_send_bf_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
+        commands:
+            - name: cudaCopyToRingbuffer
+              input_size: num_dishes * num_polarizations
+              ring_buffer_size: buffer_depth * input_size
+              in_buf: host_bf_mask_buffer
+              signal_buf: host_bf_mask_ringbuffer
+              gpu_mem_output: bf_mask_buffer
+
 run_send_rfi_s012:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -120,16 +166,11 @@ run_rfi_s012tilde:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
             host_rfi_s012tilde_ringbuffer: host_rfi_s012tilde_ringbuffer
         commands:
-            - name: cudaInputData
-              do_once: false
-              in_buf: host_bf_mask_buffer
-              gpu_mem: bf_mask_buffer
-            - name: cudaSyncInput
             - name: cudaRFIS012tilde
               rfi_S012_name: rfi_s012
               bf_mask_name: bf_mask
@@ -158,7 +199,7 @@ run_recv_rfi_s012tilde:
 cpu_rfi_s012tilde:
     kotekan_stage: gpuSimulateRFIS012tilde
     in_rfi_s012_buf: host_rfi_s012_buffer
-    in_bf_mask_buf: host_bf_mask_buffer
+    in_bf_mask_buf: simulated_bf_mask_buffer
     out_rfi_s012tilde_buf: simulated_rfi_s012tilde_buffer
 
 
