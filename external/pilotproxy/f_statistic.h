@@ -59,7 +59,7 @@
  *
  *   d_in[m, k] = d_in[m * detector_window_samples + k]
  *
- * where m is the detector row and k is the dot-product tap.  The 128-tap
+ * where m is the detector row and k is the dot-product tap.  The K-tap
  * detector window must be contiguous for each row.  For a batched handle:
  *
  *   d_in[b, m, k] =
@@ -77,7 +77,7 @@
  *   detector_rows_per_block = contiguous_sample_count / detector_window_samples
  *
  * If the ring buffer wraps, split the call at the physical wrap boundary or
- * stage into a contiguous buffer. A 128-sample detector row must not cross a
+ * stage into a contiguous buffer. A K-sample detector row must not cross a
  * physical wrap boundary unless a future kernel explicitly adds modulo
  * addressing.
  *

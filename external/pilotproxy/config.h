@@ -60,9 +60,20 @@
  * ===========================================================================*/
 
 /**
- * Detector-window samples in one matched-filter vector.
+ * Detector-window samples (K) in one matched-filter vector.
+ *
+ * K is a per-receiver build parameter. It scales with the coarse-channel
+ * width to hold the fine-bin width near 3.05 kHz: CHIME channels are
+ * 390.625 kHz wide and use K = 128; CHORD channels are 195.3125 kHz wide
+ * and use K = 64. The window count per detector block
+ * (FSTAT_FINE_WINDOWS_PER_STREAM) is frozen at 128 for every receiver;
+ * only the window length varies. Supported values are 64 and 128. The
+ * guard-bit chain and the static assertions below enforce the fixed-point
+ * closure for each.
  */
+#ifndef FSTAT_DETECTOR_WINDOW_SAMPLES
 #define FSTAT_DETECTOR_WINDOW_SAMPLES 128
+#endif
 
 /**
  * Number of detector weight terms: target, lower reference, upper reference.
@@ -122,8 +133,8 @@
 /**
  * Use uint64 integer accumulation for per-weight power sums.
  *
- * For the locked K=128, int4xint4 detector, the worst-case full-block power
- * sum fits well below 64 bits.  The kernel stays fixed point through dot
+ * For the int4xint4 detector at any supported K, the worst-case full-block
+ * power sum fits well below 64 bits.  The kernel stays fixed point through dot
  * product and power accumulation; floating point is introduced only when the
  * accumulated integer powers are divided for diagnostic float outputs.
  */
@@ -132,7 +143,7 @@
 /**
  * Use the DP4A dot-product path (1) or the scalar integer path (0).
  *
- * DP4A is the default production path for the locked K=128 detector. It keeps
+ * DP4A is the default production path for the detector. It keeps
  * packed samples in global memory, pre-packs the fixed weights into int8
  * dot-product lanes, and logically unpacks two packed complex samples at a time
  * in registers. The scalar path remains available via make DP4A=0 for direct
@@ -145,7 +156,8 @@
 /**
  * Store DP4A weight lanes in CUDA constant memory.
  *
- * The locked detector has only 3 x 64 int32 DP4A weight lanes, or 768 bytes.
+ * The detector has only 3 x (K/2) int32 DP4A weight lanes, or 768 bytes at
+ * K = 128.
  * Constant memory is left as an experimental option because the production
  * DP4A access pattern has different warp lanes reading different weight-lane
  * addresses, which can serialize constant-memory access on Ada.  It is also a
@@ -190,18 +202,24 @@ typedef int8_t InputType;
  * One complex product component is the sum/difference of two int4xint4
  * products: 4 + 4 + 1 = 9 bits. Accumulating K taps adds log2(K) guard bits,
  * so completed real/imaginary dot-product components require 9 + log2(K)
- * bits. At the deployed K = 128 that is 16 bits, which is why the row sums
- * fit an int16 range even though they are stored as int32 -- a property
- * worth keeping in view, since shared-memory footprint scales with the
- * window count and this is the lever that halves it.
+ * bits. At K = 128 that is 16 bits, which is why the row sums fit an int16
+ * range even though they are stored as int32; at K = 64 it is 15 bits with
+ * the same storage. Shared-memory footprint scales with the window count,
+ * and this margin is the lever that halves it.
  *
- * FSTAT_DOT_ACCUM_GUARD_BITS must track FSTAT_DETECTOR_WINDOW_SAMPLES; the
- * relation is asserted below rather than left as a coincidence.
+ * FSTAT_DOT_ACCUM_GUARD_BITS must equal log2(FSTAT_DETECTOR_WINDOW_SAMPLES).
+ * It is derived here for each supported window length and asserted below.
  */
 #define FSTAT_INT4_COMPONENT_BITS 4
 #define FSTAT_COMPLEX_PRODUCT_COMPONENT_BITS \
     (FSTAT_INT4_COMPONENT_BITS + FSTAT_INT4_COMPONENT_BITS + 1)
+#if FSTAT_DETECTOR_WINDOW_SAMPLES == 128
 #define FSTAT_DOT_ACCUM_GUARD_BITS 7
+#elif FSTAT_DETECTOR_WINDOW_SAMPLES == 64
+#define FSTAT_DOT_ACCUM_GUARD_BITS 6
+#else
+#error "Unsupported FSTAT_DETECTOR_WINDOW_SAMPLES; add its guard-bit count."
+#endif
 #define FSTAT_COMPLEX_DOT_COMPONENT_BITS \
     (FSTAT_COMPLEX_PRODUCT_COMPONENT_BITS + FSTAT_DOT_ACCUM_GUARD_BITS)
 
@@ -322,10 +340,11 @@ static_assert(
 /**
  * Threads per CUDA block.
  *
- * The detector window is locked to 128 taps.  The DP4A path consumes two taps
- * per lane, so 64 threads cover the 64 tap-pairs with no inactive tap-pair
- * workers.  This is the default production block size.  The scalar reference
- * path remains correct because it strides over taps.
+ * The DP4A path consumes two taps per lane, so 64 threads cover the 64
+ * tap-pairs of a K = 128 window with no inactive tap-pair workers.  At
+ * K = 64 the same block strides the 32 tap-pairs with half the lanes active
+ * in that loop.  This is the default production block size.  The scalar
+ * reference path remains correct because it strides over taps.
  */
 #ifndef FSTAT_BLOCK_THREADS
 #define FSTAT_BLOCK_THREADS 64
@@ -341,7 +360,7 @@ static_assert(
 #define FSTAT_WARP_MASK 0xFFFFFFFF
 
 /**
- * Maximum grid dimension.  With the locked 128-tap detector and 64-thread
+ * Maximum grid dimension.  With a 128-tap detector window and 64-thread
  * DP4A blocks, 4096 blocks gives one block per 64 detector rows for a
  * reference-sized 262144-row block.  This improves occupancy over the older
  * 1024-block cap while keeping the per-block atomic output cost small.
