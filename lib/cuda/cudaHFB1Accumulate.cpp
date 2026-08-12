@@ -132,10 +132,6 @@ cudaHFB1Accumulate::cudaHFB1Accumulate(kotekan::Config& config, const std::strin
     hfb1_beams.register_consumer();
     hfb1_accumulated_beams.register_producer();
 
-    // Ensure that this stage can always make progress
-    hfb1_beams.check_read_progress(hfb1_beams.get_ndarray().extent(0),
-                                   hfb_second_downsampling_factor);
-
     set_command_type(gpuCommandType::KERNEL);
 }
 

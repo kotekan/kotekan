@@ -120,10 +120,6 @@ cudaRFIS012bar::cudaRFIS012bar(kotekan::Config& config, const std::string& uniqu
     rfi_S012.register_consumer();
     rfi_S012bar.register_producer();
 
-    // Ensure that this stage can always make progress
-    rfi_S012.check_read_progress(rfi_S012.get_ndarray().extent(0) / 4,
-                                 rfi_second_downsampling_factor);
-
     set_command_type(gpuCommandType::KERNEL);
 
     if (rfi_num_times != rfi_num_times_bar * rfi_second_downsampling_factor) {

@@ -163,13 +163,6 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     rfi_RFImask.register_consumer();
     n2k_counts.register_producer();
 
-    // Ensure that this stage can always make progress. Both inputs are claimed in fixed-size
-    // chunks, so the ringbuffers must be able to hold a whole chunk.
-    pl_expanded_mask.check_read_progress(pl_expanded_mask.get_ndarray().extent(0),
-                                         div_noremainder(num_times, 64));
-    rfi_RFImask.check_read_progress(rfi_RFImask.get_ndarray().extent(0),
-                                    div_noremainder(num_times, 8 * 128));
-
     set_command_type(gpuCommandType::KERNEL);
 }
 

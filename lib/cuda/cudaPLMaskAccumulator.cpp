@@ -148,9 +148,6 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
     pl_mask.register_consumer();
     pl_counts.register_producer();
 
-    // Ensure that this stage can always make progress
-    pl_mask.check_read_progress(pl_mask.get_ndarray().extent(0), num_times / 128);
-
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaPLMaskAccumulator");
 }

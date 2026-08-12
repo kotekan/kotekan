@@ -317,7 +317,7 @@ public:
     // data will then be read again during the next iteration. This
     // means that `wait_and_claim_readable` no longer guarantees that
     // the caller makes progress -- see the comment for
-    // `read_descriptor_t` above, and `check_read_progress` below.
+    // `read_descriptor_t` above.
     //
     // Returns 0 if all is good, -1 if we should terminate.
     int wait_and_claim_readable(
@@ -400,32 +400,6 @@ public:
         read_claimed = extent_t(read_claimed.end(), read_claimed.end());
         assert(read_valid.size() == 0);
         assert(read_claimed.size() == 0);
-    }
-
-    // Ensure that a consumer can make progress. `read_max` is the
-    // largest number of elements the consumer will read at once,
-    // `min_read` is the smallest number of elements from which it is
-    // able to claim anything. If `read_max` is smaller than `min_read`
-    // then the consumer would wait forever. Call this from the stage
-    // constructor so that a too small buffer is diagnosed at startup
-    // instead of hanging at run time.
-    void check_read_progress(const std::ptrdiff_t read_max, const std::ptrdiff_t min_read) const {
-        if (min_read <= 0)
-            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: min_read={:d} must be "
-                        "positive",
-                        cuda_command.get_unique_name(), buffer_name, min_read);
-        if (read_max < min_read)
-            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: this stage reads at most "
-                        "{:d} elements at a time, but needs at least {:d} elements to claim "
-                        "anything, and would thus never make progress. The ringbuffer (holding "
-                        "{:d} elements) is too small.",
-                        cuda_command.get_unique_name(), buffer_name, read_max, min_read,
-                        ndarray.extent(0));
-        if (min_read > ndarray.extent(0))
-            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: this stage needs at least "
-                        "{:d} elements to claim anything, but the ringbuffer holds only {:d} "
-                        "elements, and it would thus never make progress.",
-                        cuda_command.get_unique_name(), buffer_name, min_read, ndarray.extent(0));
     }
 
     // State

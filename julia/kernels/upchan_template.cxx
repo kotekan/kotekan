@@ -281,10 +281,6 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // Ensure that this stage can always make progress
-    E_buffer.check_read_progress(E_buffer.get_ndarray().extent(0) / 4,
-                                 round_up(cuda_algorithm_overlap + 1, cuda_granularity_number_of_timesamples));
-
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX only once
