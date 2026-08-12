@@ -411,7 +411,21 @@ void GnssGpuRecordAssemble::main_thread() {
                     const size_t prow = (size_t)(c.job0 + 1) * n_chan;
                     std::lock_guard<std::mutex> lk(_spec_mtx);
                     SpecWindow& W = spec_window_for(wstart);
-                    // ⚠️ REFERENCE THE DEROTATION TO THIS WINDOW'S FIRST RECORD (task #52).
+                    // ⚠️ DO **NOT** REFERENCE THIS TO THE WINDOW'S OWN FIRST RECORD.
+                    // I tried exactly that (45fe3a438) to remove the arbitrary per-instance
+                    // origin of _phi[p], and it was a mistake: _phi[p] is CONTINUOUS IN TIME
+                    // (it only resets on re-acquisition), so subtracting a per-window origin
+                    // gives every window its own arbitrary constant and the exported phase
+                    // becomes random FROM WINDOW TO WINDOW. Measured after that change:
+                    // coherence of a fixed (PRN,instance,channel) across 7 consecutive windows
+                    // was 0.38 against a 1/sqrt(7) = 0.378 random baseline -- i.e. destroyed.
+                    // KV: "we'd be adding flat but random phases time-to-time."
+                    // The cross-INSTANCE concern that motivated it was real but is not fixed
+                    // here; a continuous common reference is worth more than a tidy origin.
+                    // KEEP the raw _phi[p]: continuous in time, and its INCREMENTS are common
+                    // across instances (same commanded carrier, and since #53 the same
+                    // records), which is what a cross-window combine needs.
+                    // (task #52).
                     // `_phi[p]` is an ACCUMULATOR whose zero is set at a per-instance
                     // re-acquisition ("FRESH acquisition: break the arc"), so its absolute
                     // value is arbitrary and DIFFERENT on every instance. Exporting
@@ -437,10 +451,6 @@ void GnssGpuRecordAssemble::main_thread() {
                     // since #53 the same records), so the arbitrary origin cancels exactly and
                     // every instance lands on one common reference. The record path keeps the
                     // raw _phi[p] and is untouched.
-                    if (W.nrec[p] == 0)
-                        W.phi0[p] = _phi[p];
-                    const std::complex<double> rot_spec =
-                        std::polar(1.0, -(_phi[p] - W.phi0[p]));
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
@@ -454,7 +464,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         } else {
                             g = {corr[2 * (base + ref_e)], corr[2 * (base + ref_e) + 1]};
                         }
-                        g *= rot_spec;
+                        g *= rot;
                         const size_t k = (size_t)p * n_chan + ch;
                         W.re[k] += g.real();
                         W.im[k] += g.imag();
