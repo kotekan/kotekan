@@ -72,6 +72,7 @@ from gnss_broker.transport import (           # noqa: E402
     expand_token, resolve_prefix, parse_endpoints,
 )
 from gnss_broker.fits import (                # noqa: E402
+    track_vs_fit_chips,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
@@ -3741,51 +3742,33 @@ def main(argv=None, rx=None, publisher=None):
             if (prev is not None and prn in cp_held
                     and all(k in seed for k in ("code_phase_chips", "code_phase_rate",
                                                 "ref_hop"))):
-                h_now = seed["ref_hop"]
-                cp_prev = (prev["code_phase_chips"]
-                           + prev["code_phase_rate"] * (h_now - prev["ref_hop"]))
-                # The tracker's commanded cp also carries the QUADRATIC doppler-rate code
-                # feed-forward from ref_hop (0.5*sgn*dop_rate*f_chip/f_c*dt^2 -- chips at
-                # hold ages of minutes); model it or long-held sats false-escape.
-                dt_anchor = (h_now - prev["ref_hop"]) / args.hops_per_sec
-                cp_prev += (0.5 * args.code_doppler_sign
-                            * float(prev.get("doppler_rate_hz_s", 0.0) or 0.0)
-                            * args.chip_rate_hz / args.carrier_hz * dt_anchor * dt_anchor)
-                # held cp (prev currency) -> the fresh seed's doppler currency
-                t_abs = h_now / args.hops_per_sec
-                cp_prev += (t_abs * args.chip_rate_hz * args.code_doppler_sign
-                            * (prev["doppler_hz"] - seed["doppler_hz"]) / args.carrier_hz)
-                cp_err = ((seed["code_phase_chips"] - cp_prev - dll_trim.get(prn, 0.0)
-                           + CODE_LEN / 2.0) % CODE_LEN) - CODE_LEN / 2.0
-                # CP_ERR TERM DECOMPOSITION (#42, 2026-08-12). Seven lever-shaped false
-                # accusations in one evening (PRNs 26/4/9, -0.26..-2.4 Hz x t_abs, track
-                # healthy at 40 dB-Hz throughout, re-accusing 1-8 min after re-anchor).
-                # The liar is one of the terms of cp_prev, and each candidate has a
-                # distinct signature: the frozen-slope extrapolation grows ~linearly in
-                # hold age with a per-hold-constant slope (fit-slope noise, +-0.7-10
-                # chips/s); the missing/wrong quadratic grows ~age^2; a currency-epoch
-                # inconsistency tracks ddop. Log every term whenever |cp_err| clears the
-                # escape bar so the next specimen identifies its own term -- reading raw
-                # cp_err cost half a day of armchair candidates.
-                if abs(cp_err) > args.hold_max_cp_err:
-                    _rate_term = prev["code_phase_rate"] * (h_now - prev["ref_hop"])
-                    _quad_term = (0.5 * args.code_doppler_sign
-                                  * float(prev.get("doppler_rate_hz_s", 0.0) or 0.0)
-                                  * args.chip_rate_hz / args.carrier_hz
-                                  * dt_anchor * dt_anchor)
-                    _curr_term = (t_abs * args.chip_rate_hz * args.code_doppler_sign
-                                  * (prev["doppler_hz"] - seed["doppler_hz"])
-                                  / args.carrier_hz)
-                    _log_rl("cperrdecomp-%d" % prn,
-                            "CP_ERR-DECOMP PRN %d: err %+.1f = cand %.1f - [prev %.1f "
-                            "+ rate %+.1f (slope %+.3e c/hop x age %.0f s) + quad %+.1f "
-                            "+ curr %+.1f (ddop %+.1f Hz)] - trim %+.2f | hold_age %.0f s"
-                            % (prn, cp_err, seed["code_phase_chips"] % CODE_LEN,
-                               prev["code_phase_chips"] % CODE_LEN, _rate_term,
-                               prev["code_phase_rate"], dt_anchor, _quad_term,
-                               _curr_term,
-                               prev["doppler_hz"] - seed["doppler_hz"],
-                               dll_trim.get(prn, 0.0), dt_anchor), every_s=30.0)
+                # AT-EPOCH COMPARISON (#42 -> #45 step 1, 2026-08-12). The sample-0
+                # currency comparison that lived here manufactured -t_abs*k*d(clock_bias)
+                # chips of phantom whenever the seed-vs-detection dop bias moved (an EMA
+                # DESIGNED to move): 145 CP_ERR-DECOMP specimens in 7 min, seven false
+                # ESCAPES in one evening against tracks healthy at 40 dB-Hz. The
+                # candidate tuple reaching this point can be PAIR-INCONSISTENT (label
+                # stepped, cp0 unmoved) and no translation survives that. So: compare
+                # physical phases at the DETECTION's epoch instead -- the search's own
+                # cp_at_ref (dt=0, its Doppler estimate does not enter) against where
+                # dr_seed_phys puts the tracker's despread. test_track_vs_fit.py pins
+                # the discriminating pair (bias step: old ~1700/Hz, new ~0; real lobe
+                # park: both read +-3.27) and drives the SHIPPED function.
+                cp_err = track_vs_fit_chips(
+                    prev, cp_at_ref, ref_hop, dll_trim.get(prn, 0.0),
+                    args.hops_per_sec, args.chip_rate_hz, args.carrier_hz,
+                    args.code_doppler_sign, CODE_LEN)
+                if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
+                    _log_rl("cperr-%d" % prn,
+                            "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
+                            "search cp_at_ref vs held propagation; trim %+.2f, "
+                            "hold_age %.0f s)"
+                            % (prn, cp_err, ref_hop, dll_trim.get(prn, 0.0),
+                               (ref_hop - prev["ref_hop"]) / args.hops_per_sec),
+                            every_s=60.0)
+                if cp_err is not None:
+                    cp_err_hist.setdefault(prn, []).append(cp_err)
+                    del cp_err_hist[prn][:-9]
                 # MEDIAN GATE (2026-07-19): the per-detection cp noise is 0.03-0.5 chips
                 # (per-sat conditions -- multipath/BOC refine; measured same-instrument at
                 # t_abs 100 s AND 27000 s, i.e. FLAT in run age: the earlier 'growth law'

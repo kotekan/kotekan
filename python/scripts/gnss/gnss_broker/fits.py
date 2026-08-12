@@ -266,3 +266,39 @@ def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign,
             + seed.get("code_phase_rate", 0.0) * (h1 - seed["ref_hop"])
             + 0.5 * (chip_hz / carrier_hz)
               * seed.get("doppler_rate_hz_s", 0.0) * dt * dt) % mod
+
+
+def track_vs_fit_chips(held_seed, det_cp_at_ref, det_ref_hop, dll_trim_chips,
+                       hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, code_len):
+    """Track-vs-search residual, compared AT THE DETECTION'S EPOCH (#42 / #45 step 1).
+
+    Replaces the sample-0 currency comparison that cp_err used until 2026-08-12. That
+    formula translated between SEED-dop currencies with the full-run-age lever
+    (t_abs*chip/carrier ~ 1700 chips/Hz at 2.3 days), so any motion of the seed-vs-
+    detection dop bias (the carrier clock_bias EMA -- a quantity DESIGNED to move) read
+    as -1700*dBias chips of track error: 145 logged specimens in 7 minutes, seven false
+    ESCAPES in one evening against tracks healthy at 40 dB-Hz throughout.
+
+    This form has no currencies to disagree: both sides are physical code phases at one
+    hop, det_ref_hop.
+      * fresh: the search's own at-epoch physical phase (code_phase_at_ref_chips),
+        published per detection since the seeding investigation. dt = 0 by construction,
+        so the detection's Doppler estimate does not enter AT ALL.
+      * held: dr_seed_phys of the held tuple at det_ref_hop -- where the tracker's
+        propagation actually puts the despread (the tuple's own dop/rate/quad labels,
+        used self-consistently; a pair-inconsistent LABEL cannot hurt a comparison that
+        never crosses currencies).
+    The residual is what cp_err always claimed to be: how far the track sits from the
+    search's current measurement, in chips, mod the primary code (whole-period
+    assignment flips -- the #41 flicker -- are invisible here, as they must be: the
+    escape referee's job is lobes at +-3.27 chips, not overlay periods).
+
+    Returns the wrapped residual (fresh - held - trim), or None when the stage did not
+    publish cp_at_ref (pre-2026-08 payloads carry -1.0).
+    """
+    if det_cp_at_ref is None or det_cp_at_ref < 0.0:
+        return None
+    held = dr_seed_phys(held_seed, det_ref_hop, hops_per_sec, chip_hz, carrier_hz,
+                        code_doppler_sign, code_len)
+    return ((det_cp_at_ref - held - dll_trim_chips + code_len / 2.0) % code_len
+            ) - code_len / 2.0
