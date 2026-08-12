@@ -29,9 +29,8 @@ rfi_downsampling_factor: 256
 updatable_config:
     bad_inputs:
         kotekan_update_endpoint: json
-        # Indices must be valid for this test's num_elements (= 2 * 64 = 128).
         # yamlfix:off
-        bad_inputs: [   3,   17,   46,   60,   84,   99,  107,  120]
+        bad_inputs: [3, 12, 46, 47, 48, 84, 99, 107, 120]
         # yamlfix:on
         start_time: 1535048997.
         update_id: "initial_flags"

@@ -62,7 +62,7 @@ public:
                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
-    ~processFeedGains();
+    virtual ~processFeedGains();
 
     void main_thread() override;
 
@@ -78,6 +78,9 @@ protected:
     /// Number of components
     uint32_t num_components;
 
+    /// fixed scaling factor
+    float scaling_factor;
+
     /// Store gain upchannelization factors
     std::vector<int> freq_upchan_factor;
     std::vector<int> freq_upchan_index;
@@ -89,12 +92,10 @@ private:
     void copy_upchannelize(float* frame, size_t beam_id);
 
     /// Implement logic to upchannelize a single fine frequency, given a coarse frequency.
-    /// Default will just duplicate the coarse frequency gain `N` times.
-    virtual void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid);
+    virtual void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) = 0;
 
-    /// Create a frame desc for the output buffer. Default creates a frame desc
-    /// containing [beam, freq, element, ReIm] axes.
-    virtual void set_frame_desc(Buffer* buf);
+    /// Create a frame desc for the output buffer.
+    virtual void set_frame_desc(Buffer* buf) = 0;
 
     std::vector<Buffer*> gain_buffers;
     Buffer* in_mask_buf;
@@ -102,9 +103,6 @@ private:
 
     /// Number of elements in the output buffer
     uint32_t out_num_values;
-
-    /// Fixed scaling factor
-    float scaling_factor;
 
     /// Fixed buffers used to hold gains separately from the kotekan buffers
     std::vector<float16_t> gain_store_buf;

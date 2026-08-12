@@ -14,6 +14,7 @@
 // break with "templates must have C++ linkage".
 extern "C" {
 // IWYU pragma: begin_keep
+#include <cinttypes>       // for uint32_t, int32_t, uint8_t
 #include <rte_ethdev.h>    // for rte_eth_conf
 #include <rte_ring_core.h> // for rte_ring
 // IWYU pragma: end_keep

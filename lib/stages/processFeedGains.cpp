@@ -3,7 +3,6 @@
 #include "Config.hpp"         // for Config
 #include "DataType.hpp"       // for float16_t
 #include "N2Util.hpp"         // for frameID
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"         // for Buffer
 #include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"  // for configUpdater
@@ -22,8 +21,6 @@ using kotekan::Config;
 using kotekan::configUpdater;
 using kotekan::Stage;
 using nlohmann::json;
-
-REGISTER_KOTEKAN_STAGE(processFeedGains);
 
 processFeedGains::processFeedGains(Config& config, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
@@ -94,38 +91,6 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
 
 processFeedGains::~processFeedGains() {}
 
-void processFeedGains::set_frame_desc(Buffer* buf) {
-    buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 4>::describe(
-        "W",
-        {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
-         static_cast<ptrdiff_t>(num_elements), static_cast<ptrdiff_t>(num_components)},
-        {"R", "Fbar", "E", "C"}, {1, 1, 1, 1}));
-
-    freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, upchan_factor);
-    freq_upchan_index = std::vector<int>(num_local_freq * upchan_factor);
-    coarse_freq = std::vector<int>(num_local_freq * upchan_factor, -1);
-
-    // set the actual frequency upchan indices. Assume increasing
-    // upchannelized index
-    // TODO: this needs to be consistent with the upchannelizer, and
-    // potentially configurable
-    for (uint64_t f = 0; f < num_local_freq * upchan_factor; ++f) {
-        freq_upchan_index[f] = static_cast<int>(f % upchan_factor);
-    }
-}
-
-void processFeedGains::copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) {
-    (void)fid; // not used in the default implementation
-    auto scaling_factor = this->scaling_factor;
-    for (size_t u = 0; u < upchan_factor; ++u) {
-        // copy ell elements from the source into each fine channel
-        float16_t* u_ptr = dst_f + u * num_elements * num_components;
-        // apply the constant scaling factor
-        std::transform(src_f, src_f + num_components * num_elements, u_ptr,
-                       [scaling_factor](float v) { return float16_t(v * scaling_factor); });
-    }
-}
-
 void processFeedGains::copy_upchannelize(float* frame, size_t beam_id) {
     size_t in_fstride = num_elements * num_components;
     // duplicate the gains at each upchan = 0 bin for each freq
@@ -169,9 +134,14 @@ void processFeedGains::main_thread() {
             N2::frameID& frame_id = gain_buffer_frame_ids.at(beam_id);
 
             // check if this buffer has an available frame, using a short
-            // timeout to avoid blocking, but wait (1day) until have received one data
-            timespec timeout =
-                double_to_ts(current_time() + (gains_received.at(beam_id) ? 0 : 24 * 3600.));
+            // timeout to avoid blocking
+            timespec timeout;
+            if (set_coarse_freqs_once) {
+                // first frame - need to wait until we get something
+                timeout = double_to_ts(current_time() + 60 * 60 * 24);
+            } else {
+                timeout = double_to_ts(current_time());
+            }
             int status = buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout);
 
             if (status == 0) {
@@ -204,7 +174,13 @@ void processFeedGains::main_thread() {
         }
 
         // Check for mask updates and copy to the mask buffer
-        timespec timeout = double_to_ts(current_time() + (mask_received ? 0 : 24 * 3600.));
+        timespec timeout;
+        if (!mask_received) {
+            // first frame - need to wait until we get something
+            timeout = double_to_ts(current_time() + 60 * 60 * 24);
+        } else {
+            timeout = double_to_ts(current_time());
+        }
         int status =
             in_mask_buf->wait_for_full_frame_timeout(unique_name, in_mask_frame_id, timeout);
         if (status == 0) {

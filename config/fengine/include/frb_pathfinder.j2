@@ -203,11 +203,10 @@ run_set_frb2_beams:
     y_max: frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
 
 run_calc_frb2_weights:
-    kotekan_stage: calcFRB2Weights
+    kotekan_stage: cudaCalcFRB2Weights
     frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
     frb2_beam_positions: host_frb2_beam_positions_buffer
     frb2_weights: host_frb2_weights_buffer
-    num_threads: 32
 
 run_frb23:
     gpu_0:

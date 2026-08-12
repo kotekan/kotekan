@@ -21,8 +21,10 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 
-{% set using_dpdk = False %}
-{% set do_once_and_dump = True %}
+# Test configuration parameters
+{% set using_dpdk = True %}
+{% set do_once_and_dump = False %}
+{% set send_baseband = False %}
 
 {% set num_polarizations = 2 %}
 {% set num_dishes = 1024 %}
@@ -1671,13 +1673,11 @@ FRB:
 
     run_calc_frb2_weights:
 ###
-        kotekan_stage: calcFRB2Weights
-        cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+        kotekan_stage: cudaCalcFRB2Weights
         frb2_num_frequencies: upchan_U16_max_num_output_channels
         frb2_beam_positions: host_frb2_beam_positions_buffer
         frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
-        num_threads: 32
 ###
 #{#
         kotekan_stage: hdf5FileRead
@@ -1822,7 +1822,7 @@ write_baseband:
     in_buf: baseband_output_buffer_merged
 
 ## Transmit baseband data to the baseband receiver
-{#
+{%- if send_baseband %}
 baseband_send:
   server_ip: 10.5.60.2
   reconnect_time: 60
@@ -1836,7 +1836,7 @@ baseband_send:
     kotekan_stage: bufferSend
     server_port: 11027
     buf: baseband_output_buffer_merged
-#}
+{%- endif %}
 
 write_vis:
     kotekan_stage: VisWriter

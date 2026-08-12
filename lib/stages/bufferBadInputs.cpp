@@ -77,8 +77,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     // Baseline mask from the telescope's dish table: elements whose dish is
     // not a real array dish (Fake or an RFI antenna) are never valid inputs
-    // and stay masked independent of the posted bad-inputs list. This is what
-    // inventBFMask (mode: auto) encoded before this stage replaced it.
+    // and stay masked independent of the posted bad-inputs list.
     baseline_mask = std::vector<uint8_t>(num_elements, 1u);
     const auto* chord_tel = dynamic_cast<const CHORDTelescope*>(&tel);
     if (chord_tel != nullptr) {
@@ -128,15 +127,14 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         }
     }
 
-    // Reset the mask (1 == good, non-array dishes always masked)
-    input_mask = baseline_mask;
+    // Reset the mask (1 == good)
+    std::fill(input_mask.begin(), input_mask.end(), 1u);
 
     // now update the mask
     for (int element : bad_inputs) {
         input_mask[reorder[element]] = 0;
     }
-
-    num_bad_inputs = std::count(input_mask.begin(), input_mask.end(), 0u);
+    num_bad_inputs = bad_inputs.size();
 
     DEBUG("update_bad_inputs_callback(): Bad inputs reordered and buffered.");
 
@@ -145,24 +143,25 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
 
 void bufferBadInputs::main_thread() {
     N2::frameID frame_id(out_buf);
+    size_t nbad; // copy num bad inputs for access outside lock
 
     while (!stop_thread) {
-        // get an output frame; a null frame means kotekan is shutting down
+        // get an output frame
         uint8_t* out_frame = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
-        if (out_frame == nullptr)
+        if (out_frame == nullptr) {
             return;
+        }
 
         // Copy from the permanent buffer
-        uint64_t frame_num_bad_inputs;
         {
             std::lock_guard<std::mutex> lock(mtx);
             std::copy_n(input_mask.begin(), num_elements, out_frame);
-            frame_num_bad_inputs = num_bad_inputs;
+            nbad = num_bad_inputs;
         }
 
         // Set metadata and release
         out_buf->allocate_new_metadata_object(frame_id);
-        get_chord_metadata(out_buf, frame_id)->set_rfi_num_bad_inputs(frame_num_bad_inputs);
+        get_chord_metadata(out_buf, frame_id)->set_rfi_num_bad_inputs(nbad);
         out_buf->mark_frame_full(unique_name, frame_id);
         frame_id++;
     }

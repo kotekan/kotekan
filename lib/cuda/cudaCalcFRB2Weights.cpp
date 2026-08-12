@@ -1,3 +1,7 @@
+// GPU version of calcFRB2Weights: calculates the FRB2 beamforming weights on a CUDA device.
+// This is an independent alternative to the (slow) CPU stage calcFRB2Weights; both produce
+// the same weights up to floating-point differences (see cudaCalcFRB2WeightsKernel.hpp).
+
 #include "Config.hpp"                   // for Config
 #include "DataType.hpp"                 // for float16_t
 #include "NDArray.hpp"                  // for GenericNDArray
@@ -8,30 +12,25 @@
 #include "buffer.hpp"                   // for Buffer
 #include "bufferContainer.hpp"          // for bufferContainer
 #include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR
-#include "visUtil.hpp"                  // for current_time
+#include "cudaCalcFRB2WeightsKernel.hpp"
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "kotekanLogging.hpp" // for DEBUG, INFO, WARN, FATAL_ERROR
+#include "visUtil.hpp"        // for current_time
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm> // for max
-#include <atomic>
-#include <cassert> // for assert
-#include <cassert>
-#include <cmath>   // for sin, cos, sqrt, M_PI
-#include <cstddef> // for ptrdiff_t, size_t
-#include <cstdint>
-#include <cstdio>
+#include <algorithm> // for clamp, min
+#include <cassert>   // for assert
+#include <cstddef>   // for ptrdiff_t, size_t
+#include <cstdint>   // for int64_t
+#include <cuda_runtime.h>
 #include <functional> // for function
 #include <memory>     // for __shared_ptr_access, shared_ptr
-#include <set>        // for set, operator!=, _Rb_tree_const_iterator
-#ifdef WITH_OMP
-#include <omp.h>
-#endif
-#include <string>   // for allocator, basic_string, string
-#include <unistd.h> // for sleep
-#include <vector>   // for vector
+#include <string>     // for allocator, basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
-class calcFRB2Weights : public kotekan::Stage {
+class cudaCalcFRB2Weights : public kotekan::Stage {
     // Telescope setup
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
 
@@ -41,24 +40,7 @@ class calcFRB2Weights : public kotekan::Stage {
 
     // FRB1 beamformer setup
 
-    // The directions "x" and "y" are the geographic direction
-    // east-west and north-south. The directions we call "M" and "N"
-    // are really just describing the in-memory layout of the dishes
-    // (antennae) in the dish array. For CHORD, the physical
-    // x-direction (east-west) runs fastest, but for CHIME, the
-    // y-direction (north-south) runs fastest. This is necessary to
-    // get an efficient FRB1 beamformer given the different shapes of
-    // the dish (antenna) layouts.
-    //
-    // Internally (in the FRB1 kernels) we call the dish (antenna)
-    // directions M and N, where M runs fastest, and the respective
-    // beam directions P and Q, where P runs fastest. For CHORD,
-    // M=P=x=east/west and N=Q=y=north/south. For CHIME it's the
-    // converse, M=P=y=north/south and N=Q=x=east/west.
-    //
-    // We need to take this into account when creating the FRB2
-    // beamforming weights. For CHORD we have `frb1_swap_MN=false`,
-    // and for CHIME we have `frb1_swap_MN=true`.
+    // See calcFRB2Weights for the meaning of the directions M/N and P/Q and of `frb1_swap_MN`.
     const int num_dishes_x = Telescope::instance().get_grid_size_x();
     const int num_dishes_y = Telescope::instance().get_grid_size_y();
     const bool frb1_swap_MN = config.get_default<bool>(unique_name, "frb1_swap_MN", false);
@@ -73,7 +55,10 @@ class calcFRB2Weights : public kotekan::Stage {
     const int frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y;
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
 
-    const int num_threads = config.get_default<int>(unique_name, "num_threads", 1);
+    // Upper limit for the GPU scratch buffer holding W2 before it is copied to the host; the
+    // calculation is split into chunks of frequencies to respect this limit
+    const std::int64_t gpu_max_chunk_bytes =
+        config.get_default<std::int64_t>(unique_name, "gpu_max_chunk_bytes", std::int64_t(2) << 30);
 
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
         sizeof(float) * 2 * frb2_num_beams;
@@ -85,8 +70,8 @@ class calcFRB2Weights : public kotekan::Stage {
     Buffer* const W2_buffer;
 
 public:
-    calcFRB2Weights(kotekan::Config& config, const std::string& unique_name,
-                    kotekan::bufferContainer& buffer_container) :
+    cudaCalcFRB2Weights(kotekan::Config& config, const std::string& unique_name,
+                        kotekan::bufferContainer& buffer_container) :
         Stage(config, unique_name, buffer_container,
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
@@ -97,8 +82,8 @@ public:
     {
         assert(frb2_beam_positions_buffer);
         assert(W2_buffer);
-        if (num_threads < 0)
-            FATAL_ERROR("num_threads %d must be positive", num_threads);
+        if (gpu_max_chunk_bytes <= 0)
+            FATAL_ERROR("gpu_max_chunk_bytes {:d} must be positive", gpu_max_chunk_bytes);
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
 
@@ -109,7 +94,7 @@ public:
             {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1}));
     }
 
-    virtual ~calcFRB2Weights() {}
+    virtual ~cudaCalcFRB2Weights() {}
 
     void main_thread() override {
         // Only calculate a single frame
@@ -195,21 +180,6 @@ public:
             DEBUG("Calculating FRB2 beam weights...");
             const double t0 = current_time();
 
-            using std::cos, std::sin, std::sqrt;
-
-            const float c0 = 299792458.0f; // speed of light in vacuum [m/s]
-
-            // This matches a function defined in Kendrick's beamforming note (eqn
-            // 7/8).
-            const auto Ufunc = [](int p, int M, float theta) {
-                float acc = 0.0f;
-                for (int s = 0; s <= M; ++s) {
-                    float A = s == 0 || s == M ? 0.5f : 1.0f;
-                    acc += A * cos(float(M_PI) * (2 * theta - p) * s / M);
-                }
-                return acc / M;
-            };
-
             const std::ptrdiff_t str_beamP = 1;
             const std::ptrdiff_t str_beamQ = str_beamP * frb1_num_beams_P;
             const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_Q;
@@ -228,63 +198,57 @@ public:
             const float sigmaN_y = frb1_swap_MN ? 0 : telescope.get_feed_separation_y_m();
             const float sigmaN_z = 0;
 
-            std::atomic<int> nfreqs_done = 0;
+            // Split the calculation into chunks of frequencies such that the GPU scratch
+            // buffer stays below `gpu_max_chunk_bytes` (and the grid fits into gridDim.y)
+            const std::ptrdiff_t slab_bytes = str_freq * std::ptrdiff_t(sizeof(float16_t));
+            const int max_chunk =
+                std::clamp<std::ptrdiff_t>(gpu_max_chunk_bytes / slab_bytes, 1,
+                                           std::min<std::ptrdiff_t>(frb2_num_frequencies, 65535));
 
-#ifdef WITH_OMP
-#pragma omp parallel num_threads(num_threads)
-#endif
-            {
-                std::vector<float> Up(frb1_num_beams_P);
-                std::vector<float> Uq(frb1_num_beams_Q);
+            float* d_frequencies = nullptr;
+            float* d_positions = nullptr;
+            float16_t* d_W2 = nullptr;
+            CHECK_CUDA_ERROR(cudaMalloc(&d_frequencies, frb2_num_frequencies * sizeof(float)));
+            CHECK_CUDA_ERROR(cudaMalloc(&d_positions, frb2_beam_positions_buffer->frame_size));
+            CHECK_CUDA_ERROR(cudaMalloc(&d_W2, max_chunk * slab_bytes));
 
-#ifdef WITH_OMP
-#pragma omp for
-#endif
-                for (int freq = 0; freq < frb2_num_frequencies; ++freq) {
-                    // Calculate physical frequency from channel index
-                    const float afreq = frequencies.at(freq);
-                    const float wavelength = c0 / afreq;
+            CHECK_CUDA_ERROR(cudaMemcpy(d_frequencies, frequencies.data(),
+                                        frb2_num_frequencies * sizeof(float),
+                                        cudaMemcpyHostToDevice));
+            CHECK_CUDA_ERROR(cudaMemcpy(d_positions, frb2_beam_positions_frame,
+                                        frb2_beam_positions_buffer->frame_size,
+                                        cudaMemcpyHostToDevice));
 
-                    for (int beamR = 0; beamR < frb2_num_beams; ++beamR) {
-                        // Unit vector pointing to sky location in the GRID frame
-                        const float nx = frb2_beam_positions_frame[2 * beamR + 0];
-                        const float ny = frb2_beam_positions_frame[2 * beamR + 1];
-                        const float nz = sqrt(1 - (nx * nx + ny * ny));
-
-                        // Kendrick's FRB beamforming notes, equation 7:
-                        //   theta = M (nhat ⋅ sigma) / lambda
-                        // where nhat is the unit vector in the direction of the sky location
-                        // sigma is the dish displacement in meters East-West.
-                        const float theta_M = num_dishes_M
-                                              * (nx * sigmaM_x + ny * sigmaM_y + nz * sigmaM_z)
-                                              / wavelength;
-                        const float theta_N = num_dishes_N
-                                              * (nx * sigmaN_x + ny * sigmaN_y + nz * sigmaN_z)
-                                              / wavelength;
-
-                        for (int i = 0; i < frb1_num_beams_P; ++i)
-                            Up[i] = Ufunc(i, num_dishes_M, theta_M);
-                        for (int j = 0; j < frb1_num_beams_Q; ++j)
-                            Uq[j] = Ufunc(j, num_dishes_N, theta_N);
-
-                        for (int beamQ = 0; beamQ < frb1_num_beams_Q; ++beamQ) {
-                            for (int beamP = 0; beamP < frb1_num_beams_P; ++beamP) {
-                                const std::ptrdiff_t idx = str_beamP * beamP + str_beamQ * beamQ
-                                                           + str_beamR * beamR + str_freq * freq;
-                                assert(idx >= 0
-                                       && idx < std::ptrdiff_t(W2_buffer->frame_size
-                                                               / sizeof *W2_frame));
-                                W2_frame[idx] = float16_t(Up[beamP] * Uq[beamQ]);
-                            }
-                        }
-                    }
-                    ++nfreqs_done;
-                    std::printf("\rcalcFRB2Weights: freqs: %d/%d...", int(nfreqs_done),
-                                frb2_num_frequencies);
-                    std::fflush(stdout);
-                }
+            // Pinning the output frame speeds up the device-to-host copies below, but
+            // pinning can fail for very large frames (locked-memory limits); fall back to
+            // pageable copies in that case
+            const cudaError_t register_error =
+                cudaHostRegister(W2_frame, W2_buffer->frame_size, cudaHostRegisterDefault);
+            const bool host_registered = register_error == cudaSuccess;
+            if (!host_registered) {
+                (void)cudaGetLastError(); // clear the error
+                WARN("Could not pin the W2 frame ({:s}); using slower pageable copies",
+                     cudaGetErrorString(register_error));
             }
-            std::printf("\n");
+
+            for (int freq0 = 0; freq0 < frb2_num_frequencies; freq0 += max_chunk) {
+                const int nfreq = std::min(max_chunk, frb2_num_frequencies - freq0);
+                cuda_calc_frb2_weights(d_frequencies + freq0, d_positions, d_W2, nfreq,
+                                       frb2_num_beams, num_dishes_M, num_dishes_N, sigmaM_x,
+                                       sigmaM_y, sigmaM_z, sigmaN_x, sigmaN_y, sigmaN_z, nullptr);
+                // This synchronizes with the kernel (same stream, synchronous copy). No
+                // copy/compute overlap: this stage runs only once, a few seconds suffice.
+                CHECK_CUDA_ERROR(cudaMemcpy(W2_frame + freq0 * str_freq, d_W2, nfreq * slab_bytes,
+                                            cudaMemcpyDeviceToHost));
+                INFO("cudaCalcFRB2Weights: freqs: {:d}/{:d}...", freq0 + nfreq,
+                     frb2_num_frequencies);
+            }
+
+            if (host_registered)
+                CHECK_CUDA_ERROR(cudaHostUnregister(W2_frame));
+            CHECK_CUDA_ERROR(cudaFree(d_W2));
+            CHECK_CUDA_ERROR(cudaFree(d_positions));
+            CHECK_CUDA_ERROR(cudaFree(d_frequencies));
 
             const double t1 = current_time();
             const double elapsed = t1 - t0;
@@ -305,4 +269,4 @@ public:
     }
 };
 
-REGISTER_KOTEKAN_STAGE(calcFRB2Weights);
+REGISTER_KOTEKAN_STAGE(cudaCalcFRB2Weights);

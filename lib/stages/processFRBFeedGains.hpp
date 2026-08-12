@@ -28,9 +28,8 @@ public:
     processFRBFeedGains(kotekan::Config& config_, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
 
-    ~processFRBFeedGains();
-
 private:
+    void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) override;
     void set_frame_desc(Buffer* buf) override;
 
     // config parameters required for metadata

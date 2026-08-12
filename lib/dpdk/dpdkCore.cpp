@@ -418,20 +418,28 @@ void dpdkCore::update_port_stats() {
 
         // imissed counts packets that arrived at the NIC but were dropped because
         // the rx ring was full, i.e. the lcore didn't service this port fast enough.
-        const uint64_t missed_delta = stats.imissed - last_eth_stats[port].imissed;
+        // Guard against counter resets (e.g. a link/NIC reset), which would
+        // otherwise underflow the unsigned delta into a bogus WARN.
+        const uint64_t missed_delta = stats.imissed >= last_eth_stats[port].imissed
+                                          ? stats.imissed - last_eth_stats[port].imissed
+                                          : 0;
         if (missed_delta > 0) {
             WARN("Port {:d}: NIC dropped {:d} packets since the last poll (~1s) because the rx "
                  "ring was full (lcore stalled or too slow); total missed: {:d}",
                  port, missed_delta, stats.imissed);
         }
 
-        const uint64_t error_delta = stats.ierrors - last_eth_stats[port].ierrors;
+        const uint64_t error_delta = stats.ierrors >= last_eth_stats[port].ierrors
+                                         ? stats.ierrors - last_eth_stats[port].ierrors
+                                         : 0;
         if (error_delta > 0) {
             WARN("Port {:d}: NIC reported {:d} rx errors since the last poll (~1s); total: {:d}",
                  port, error_delta, stats.ierrors);
         }
 
-        const uint64_t nombuf_delta = stats.rx_nombuf - last_eth_stats[port].rx_nombuf;
+        const uint64_t nombuf_delta = stats.rx_nombuf >= last_eth_stats[port].rx_nombuf
+                                          ? stats.rx_nombuf - last_eth_stats[port].rx_nombuf
+                                          : 0;
         if (nombuf_delta > 0) {
             WARN("Port {:d}: {:d} rx mbuf allocation failures since the last poll (~1s); "
                  "increase num_mbufs; total: {:d}",
@@ -507,6 +515,12 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
         ERROR("Failed to start port: {:d}", port);
         return retval;
     }
+
+    // Prime the stats baseline so the first poll in update_port_stats() reports
+    // deltas relative to now rather than the port's cumulative pre-start counters.
+    if (rte_eth_stats_get(port, &last_eth_stats[port]) != 0)
+        WARN("Port {:d}: could not read initial NIC stats; first stats poll may over-report deltas",
+             port);
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON
