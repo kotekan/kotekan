@@ -887,6 +887,20 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # Task #32: sky-frequency labels for /get_spectrum -- see the path-A assemble
             # block's comment; same list the inject command despreads.
             "channel_ids": freq_ids,
+            # TASK #53: ADDRESSABLE, HOP-QUANTISED SPECTRUM WINDOWS. The window index is
+            # floor(wstart / spectrum_window_samples) on the F-engine sample clock, so every
+            # instance assigns a record to the same window without talking to any other.
+            #
+            # ⚠️ THIS VALUE MUST BE IDENTICAL ON EVERY INSTANCE. It is computed here, from the
+            # SAME record geometry every stage in this file already uses, precisely so it
+            # cannot be hand-set per node and drift -- a mismatch would leave the instances
+            # unaligned again while every reply still looked well-formed. Derived, not chosen:
+            # records_per_window x hops_per_record x fft_length, so window boundaries land on
+            # record boundaries and each window holds a constant record count.
+            "spectrum_window_samples": (args.spectrum_window_records
+                                        * args.hops_per_record
+                                        * int(cfg["fengine"]["fft_length"])),
+            "spectrum_ring_depth": args.spectrum_ring_depth,
             "reference_element": args.reference_element,
             "elem_sum": args.elem_sum,
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
@@ -1482,6 +1496,19 @@ def main():
                     help="10.49 ms at CHORD's 5.12 us hop; divides the 8192-hop frame 4 ways and "
                          "stays under the 20 ms NH20 period, so a record straddles at most one "
                          "overlay transition (which P_HEAD handles)")
+    ap.add_argument("--spectrum-window-records", type=int, default=100,
+                    help="task #53: /get_spectrum accumulation window, in RECORDS. Windows are "
+                         "quantised on the F-engine sample clock (index = wstart // "
+                         "(records x hops_per_record x fft_length)), so every instance assigns "
+                         "a record to the same window with no negotiation -- which is what the "
+                         "old reset-on-read behaviour made impossible, since the window was "
+                         "defined by when each GET happened to arrive. 100 records = 1.0486 s, "
+                         "matching the combiner's own coherent span so the two agree.")
+    ap.add_argument("--spectrum-ring-depth", type=int, default=8,
+                    help="task #53: completed spectrum windows kept per instance. Must exceed "
+                         "the per-node record lag spread (measured ~0.15 s = ~4 records, task "
+                         "#46) so a laggard can still be asked for the window its peers already "
+                         "returned; 8 leaves headroom without meaningful memory cost.")
     ap.add_argument("--reference-element", type=int, default=0,
                     help="antenna whose correlation fills the record HEADER -- the broker's DLL "
                          "and carrier loop reference (and, with --elem-sum, the phase anchor of "

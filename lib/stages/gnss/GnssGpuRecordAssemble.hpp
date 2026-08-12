@@ -104,8 +104,8 @@ private:
     /// PER-CHANNEL PROMPT SPECTRUM (task #32, docs/CHORD_JOINT_TRACKING.md P1). The general
     /// form of the chan_dump above: for EVERY PRN, accumulate the NCO-derotated, element-
     /// combined prompt per covering channel over a window, and serve it on
-    /// `<unique_name>/get_spectrum` (snapshot + reset per GET, so successive polls are
-    /// independent windows). A delay is a phase ramp across frequency, and this is the
+    /// `<unique_name>/get_spectrum?window=N`. A delay is a phase ramp across frequency, and this
+    /// is the
     /// sufficient statistic for the fleet-level phase-slope delay fit in the broker --
     /// per-(PRN, channel) complex sums, ~4 kB per poll, never per-element data (the 30 Gbps
     /// full-CHORD trap). The derotation is the SAME `rot` the record's prompt gets, one
@@ -113,13 +113,43 @@ private:
     /// without touching the cross-channel RELATIVE phases, which are the observable.
     /// Enabled by the presence of `channel_ids` in the config (the generator wires the same
     /// per-GPU list the despread runs); absent -> fully inert, airspy/legacy byte-identical.
+    ///
+    /// ⚠️ WINDOWS ARE ADDRESSABLE AND HOP-QUANTISED (task #53, 2026-08-12). They used to be
+    /// "whatever accumulated since your last GET", with a reset-on-read -- so the window was
+    /// defined by WHEN THE BROKER'S REQUEST ARRIVED, and the broker polls 12 instances
+    /// SEQUENTIALLY. The instances were therefore never summing the same records, and the
+    /// broker could not repair it: re-polling a laggard returns a NEW SHORTER window, never
+    /// the records it missed. There is no way to ask for the past.
+    ///
+    /// That misalignment is not cosmetic. Each instance's channels are a COMB spanning
+    /// ~18.75 MHz (7 channels, stride 16), so the cross-instance phase relationship is a delay
+    /// ramp -2*pi*f*tau, and the broker was absorbing the window offset into a FREE PHASE PER
+    /// INSTANCE fitted from the data it then summed -- a self-reference that aligns noise and,
+    /// when it fails, drops the whole chain to the quadrature fallback (gps_l5 measured
+    /// align 0.143 with 9/12 satellites on `quad`). See task #52.
+    ///
+    /// Now: window index = floor(wstart / _spec_win_samples), derived from the F-engine sample
+    /// clock, so every instance assigns a record to the SAME window with no negotiation. A ring
+    /// of completed windows lets a laggard still be asked for the window its peers already
+    /// returned. Reads are IDEMPOTENT -- no reset -- so a second poller is harmless.
     std::vector<int> _spec_freq_ids;             ///< [n_chan] F-engine freq_id per channel
-    std::vector<double> _spec_re, _spec_im;      ///< [n_prn * n_chan] accumulated prompt
-    std::vector<double> _spec_energy;            ///< [n_prn * n_chan] accumulated replica energy
-    std::vector<int> _spec_nrec;                 ///< [n_prn] records accumulated
-    int64_t _spec_w0 = -1, _spec_w1 = -1;        ///< window sample span (wstart of first/last)
+    int64_t _spec_win_samples = 0;               ///< window length, SAMPLES (0 = legacy mode)
+    /// One accumulated window. Slot for index i is _spec_ring[i % depth], so a window is
+    /// evicted only when the ring wraps past it -- no bookkeeping list, and the slot's own
+    /// `idx` is what says whether it still holds what you asked for.
+    struct SpecWindow {
+        int64_t idx = -1;                        ///< window index, or -1 for an unused slot
+        int64_t w0 = -1, w1 = -1;                ///< wstart of the first/last record in it
+        std::vector<double> re, im, energy;      ///< [n_prn * n_chan]
+        std::vector<int> nrec;                   ///< [n_prn]
+    };
+    std::vector<SpecWindow> _spec_ring;          ///< depth from config; index -> idx % depth
+    int64_t _spec_max_idx = -1;                  ///< newest index SEEN; complete windows are < this
     std::mutex _spec_mtx;                        ///< guards _spec_* between main_thread and REST
     std::vector<std::complex<double>> _spec_scratch; ///< [n_elem] per-channel cal-combine input
+    /// Accumulate one record's channels into the window that owns `wstart`, opening/clearing
+    /// the ring slot on a boundary crossing. Caller holds _spec_mtx.
+    SpecWindow& spec_window_for(int64_t wstart);
     void spectrum_callback(kotekan::connectionInstance& conn);
 };
 

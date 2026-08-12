@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -89,13 +91,48 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _spec_freq_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
     if (!_spec_freq_ids.empty()) {
         const size_t nc = _spec_freq_ids.size();
-        _spec_re.assign((size_t)n * nc, 0.0);
-        _spec_im.assign((size_t)n * nc, 0.0);
-        _spec_energy.assign((size_t)n * nc, 0.0);
-        _spec_nrec.assign(n, 0);
+        // WINDOW QUANTISATION (task #53). The window index is floor(wstart / win_samples) on
+        // the F-engine sample clock, so every instance assigns a record to the same window
+        // WITHOUT talking to any other instance. Configure in SAMPLES, not seconds: the
+        // division must be exact integer arithmetic or two instances can straddle a boundary
+        // differently, which is the whole failure this replaces. Every instance must be given
+        // the SAME value -- the generator writes it, and a mismatch shows up immediately as
+        // disjoint window indices in the broker's first poll.
+        //
+        // Whole records land in exactly one window regardless of whether win_samples is a
+        // record multiple (a record is assigned by its wstart, never split), so alignment does
+        // not depend on that -- but making it a multiple keeps the per-window record count
+        // constant, which is one less thing to explain in a residual.
+        _spec_win_samples =
+            (int64_t)config.get_default<double>(unique_name, "spectrum_window_samples", 0.0);
+        const int depth = config.get_default<int>(unique_name, "spectrum_ring_depth", 8);
+        if (_spec_win_samples > 0) {
+            _spec_ring.resize((size_t)std::max(2, depth));
+            for (auto& w : _spec_ring) {
+                w.re.assign((size_t)n * nc, 0.0);
+                w.im.assign((size_t)n * nc, 0.0);
+                w.energy.assign((size_t)n * nc, 0.0);
+                w.nrec.assign(n, 0);
+            }
+            INFO("per-channel spectrum export ON: {:d} channels, freq_id {:d}..{:d}; "
+                 "ADDRESSABLE windows of {:d} samples ({:.3f} s), ring depth {:d}",
+                 (int)nc, _spec_freq_ids.front(), _spec_freq_ids.back(),
+                 (long long)_spec_win_samples, (double)_spec_win_samples / _sample_rate,
+                 (int)_spec_ring.size());
+        } else {
+            // LEGACY: one open accumulator, reset on read. Kept so a node whose config predates
+            // spectrum_window_samples keeps working until it is regenerated -- but it CANNOT be
+            // aligned across instances, so the broker treats a legacy reply as unaddressable.
+            _spec_ring.resize(1);
+            _spec_ring[0].re.assign((size_t)n * nc, 0.0);
+            _spec_ring[0].im.assign((size_t)n * nc, 0.0);
+            _spec_ring[0].energy.assign((size_t)n * nc, 0.0);
+            _spec_ring[0].nrec.assign(n, 0);
+            WARN("per-channel spectrum export ON: {:d} channels -- but LEGACY reset-on-read "
+                 "windows (no 'spectrum_window_samples' in this config). Instances CANNOT be "
+                 "aligned; regenerate this node's config (task #53).", (int)nc);
+        }
         _spec_scratch.assign((size_t)std::max(1, _n_elements), {0.0, 0.0});
-        INFO("per-channel spectrum export ON: {:d} channels, freq_id {:d}..{:d}",
-             (int)nc, _spec_freq_ids.front(), _spec_freq_ids.back());
     }
     using namespace std::placeholders;
     kotekan::restServer::instance().register_get_callback(
@@ -371,6 +408,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 if (!_spec_freq_ids.empty() && (int)_spec_freq_ids.size() == n_chan) {
                     const size_t prow = (size_t)(c.job0 + 1) * n_chan;
                     std::lock_guard<std::mutex> lk(_spec_mtx);
+                    SpecWindow& W = spec_window_for(wstart);
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
@@ -386,14 +424,14 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                         g *= rot;
                         const size_t k = (size_t)p * n_chan + ch;
-                        _spec_re[k] += g.real();
-                        _spec_im[k] += g.imag();
-                        _spec_energy[k] += energy[prow + ch];
+                        W.re[k] += g.real();
+                        W.im[k] += g.imag();
+                        W.energy[k] += energy[prow + ch];
                     }
-                    _spec_nrec[p] += 1;
-                    if (_spec_w0 < 0)
-                        _spec_w0 = wstart;
-                    _spec_w1 = wstart;
+                    W.nrec[p] += 1;
+                    if (W.w0 < 0)
+                        W.w0 = wstart;
+                    W.w1 = wstart;
                 }
                 // Head segment: SAME NCO rotation as the prompt (it is the same correlation,
                 // restricted to the hops before the code-period boundary), so head + tail
@@ -492,12 +530,44 @@ void GnssGpuRecordAssemble::main_thread() {
     }
 }
 
+GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_t wstart) {
+    // Caller holds _spec_mtx.
+    if (_spec_win_samples <= 0)
+        return _spec_ring[0]; // legacy single accumulator: one open window, reset on read
+    // FLOOR division, not C's truncation-toward-zero. wstart should never be negative, but a
+    // silent sign convention change upstream must not quietly put two instances on different
+    // sides of zero -- that is precisely the class of bug this endpoint exists to remove.
+    int64_t idx = wstart / _spec_win_samples;
+    if (wstart < 0 && idx * _spec_win_samples != wstart)
+        --idx;
+    SpecWindow& W = _spec_ring[(size_t)(((idx % (int64_t)_spec_ring.size())
+                                         + (int64_t)_spec_ring.size())
+                                        % (int64_t)_spec_ring.size())];
+    if (W.idx != idx) {
+        // First record of this window (or the ring wrapped past the old occupant): clear.
+        std::fill(W.re.begin(), W.re.end(), 0.0);
+        std::fill(W.im.begin(), W.im.end(), 0.0);
+        std::fill(W.energy.begin(), W.energy.end(), 0.0);
+        std::fill(W.nrec.begin(), W.nrec.end(), 0);
+        W.idx = idx;
+        W.w0 = W.w1 = -1;
+    }
+    if (idx > _spec_max_idx)
+        _spec_max_idx = idx;
+    return W;
+}
+
 void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn) {
-    // Snapshot + RESET under the lock, serialize outside it. Reset-on-read makes successive
-    // polls independent windows -- exactly what the broker's stability statistics want -- and
-    // means one slow poller can never watch a window grow unboundedly. One consumer (the
-    // broker) is the design; a second poller would halve everyone's windows, visibly (each
-    // reply carries its own span), not silently.
+    // ADDRESSABLE, IDEMPOTENT READ (task #53). `?window=N` returns exactly window N; no
+    // argument returns the newest COMPLETE one. Nothing is reset, so polling is free of side
+    // effects and a second consumer no longer steals anyone's data.
+    //
+    // EVERY reply -- success or refusal -- carries available:[lo,hi], because that is what
+    // lets the broker resynchronise without guessing. `too_old` means those records are gone
+    // and the broker must JUMP (and log how many windows it skipped, so falling behind is
+    // visible rather than a silent permanent resync); `not_yet` is NORMAL, not an error --
+    // instances lag each other by a few records and the caller should simply re-ask that
+    // instance, which now works because the ring still holds the window when it completes.
     if (_spec_freq_ids.empty()) {
         conn.send_error("per-channel spectrum export is OFF: this stage's config has no "
                         "'channel_ids' (regenerate the node config with a "
@@ -506,28 +576,96 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
         return;
     }
     const size_t nc = _spec_freq_ids.size();
+    const bool legacy = (_spec_win_samples <= 0);
+
+    // Requested index: absent -> newest COMPLETE window. "Complete" means a LATER window has
+    // been opened, which is the only evidence available locally that no more records are
+    // coming for this one -- there is no end-of-window event to wait on.
+    bool want_specific = false;
+    int64_t want = -1;
+    for (const auto& kv : conn.get_query()) {
+        if (kv.first != "window")
+            continue;
+        want_specific = true;
+        try {
+            want = std::stoll(kv.second);
+        } catch (const std::exception&) {
+            conn.send_error("get_spectrum: 'window' must be an integer window index",
+                            kotekan::HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+    }
+
     std::vector<double> re, im, en;
     std::vector<int> nrec;
-    int64_t w0, w1;
+    int64_t w0 = -1, w1 = -1, idx = -1, lo = -1, hi = -1;
+    const char* status = "ok";
     {
         std::lock_guard<std::mutex> lk(_spec_mtx);
-        re.swap(_spec_re);
-        im.swap(_spec_im);
-        en.swap(_spec_energy);
-        nrec.swap(_spec_nrec);
-        w0 = _spec_w0;
-        w1 = _spec_w1;
-        _spec_re.assign((size_t)_prns.size() * nc, 0.0);
-        _spec_im.assign((size_t)_prns.size() * nc, 0.0);
-        _spec_energy.assign((size_t)_prns.size() * nc, 0.0);
-        _spec_nrec.assign(_prns.size(), 0);
-        _spec_w0 = _spec_w1 = -1;
+        if (legacy) {
+            // Legacy path keeps the old reset-on-read semantics exactly, so a not-yet-
+            // regenerated node behaves as it always did rather than half-changing.
+            SpecWindow& W = _spec_ring[0];
+            re.swap(W.re);
+            im.swap(W.im);
+            en.swap(W.energy);
+            nrec.swap(W.nrec);
+            w0 = W.w0;
+            w1 = W.w1;
+            W.re.assign((size_t)_prns.size() * nc, 0.0);
+            W.im.assign((size_t)_prns.size() * nc, 0.0);
+            W.energy.assign((size_t)_prns.size() * nc, 0.0);
+            W.nrec.assign(_prns.size(), 0);
+            W.w0 = W.w1 = -1;
+        } else {
+            hi = _spec_max_idx - 1; // newest COMPLETE
+            for (const auto& W : _spec_ring)
+                if (W.idx >= 0 && W.idx <= hi && (lo < 0 || W.idx < lo))
+                    lo = W.idx;
+            idx = want_specific ? want : hi;
+            if (_spec_max_idx < 0 || hi < 0 || lo < 0) {
+                status = "not_yet"; // nothing has completed since start-up
+            } else if (idx > hi) {
+                status = "not_yet";
+            } else if (idx < lo) {
+                status = "too_old";
+            } else {
+                const SpecWindow& W =
+                    _spec_ring[(size_t)(((idx % (int64_t)_spec_ring.size())
+                                         + (int64_t)_spec_ring.size())
+                                        % (int64_t)_spec_ring.size())];
+                if (W.idx != idx) {
+                    // In range but the slot holds someone else: a gap (no records landed in
+                    // that window at all). Report it as too_old rather than inventing zeros --
+                    // "I never had it" and "here is an empty window" are different facts.
+                    status = "too_old";
+                } else {
+                    re = W.re;
+                    im = W.im;
+                    en = W.energy;
+                    nrec = W.nrec;
+                    w0 = W.w0;
+                    w1 = W.w1;
+                }
+            }
+        }
     }
+
     nlohmann::json reply;
     reply["freq_ids"] = _spec_freq_ids;
     reply["sample_rate"] = _sample_rate;
+    reply["status"] = status;
+    reply["addressable"] = !legacy; // false -> this node predates #53; do NOT trust alignment
+    reply["window_samples"] = (double)_spec_win_samples;
+    reply["window"] = idx;
+    reply["available"] = nlohmann::json::array({lo, hi});
     reply["wstart0"] = w0; // absolute sample of the first / last record in this window --
     reply["wstart1"] = w1; // the cross-instance alignment key, same clock as fleet hops
+    if (std::string(status) != "ok") {
+        reply["prns"] = nlohmann::json::array();
+        conn.send_json_reply(reply);
+        return;
+    }
     nlohmann::json prns = nlohmann::json::array();
     for (size_t p = 0; p < _prns.size(); ++p) {
         if (nrec[p] <= 0)
