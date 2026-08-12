@@ -66,6 +66,7 @@
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <cstring>
 #include <memory>
 #include <random>
@@ -230,18 +231,34 @@ static void quantize44(std::vector<std::vector<cf>>& ch) {
 // Minimal extraction of one numeric field from the last seed object mentioning "prn": N in a
 // seed_sink.py capture. Deliberately dumb -- this reads a file we write ourselves, and pulling
 // in a JSON dependency for six numbers is not worth it.
+// WHITESPACE-TOLERANT. The first version matched "prn":N literally, and json.dumps writes
+// "prn": N -- so EVERY seed file written by Python (e2e_broker's capture of the real
+// broker's POST included) failed every lookup and e2e silently fell back to its own seed.
+// The harness then reported the broker's contribution as "identical to e2e's own", which
+// is exactly what a working broker looks like: a gate that could not fail, for as long as
+// it has existed. Found 2026-08-12 when a deliberately WRONG seed (52 chips off) also
+// scored 0.000. Now: skip spaces after the colon, and REQUIRE the caller to check the
+// return value for fields it depends on (main() logs what it actually took).
 static bool seed_field(const std::string& blob, int prn, const char* key, double& out) {
-    const std::string pk = "\"prn\":" + std::to_string(prn);
+    const std::string pk = "\"prn\":";
     size_t at = std::string::npos;
-    for (size_t i = blob.find(pk); i != std::string::npos; i = blob.find(pk, i + 1))
-        at = i;
+    for (size_t i = blob.find(pk); i != std::string::npos; i = blob.find(pk, i + 1)) {
+        size_t v = i + pk.size();
+        while (v < blob.size() && std::isspace((unsigned char)blob[v]))
+            ++v;
+        if (atoi(blob.c_str() + v) == prn)
+            at = i;
+    }
     if (at == std::string::npos)
         return false;
     const size_t end = blob.find('}', at);
     const size_t k = blob.find(std::string("\"") + key + "\":", at);
     if (k == std::string::npos || (end != std::string::npos && k > end))
         return false;
-    out = atof(blob.c_str() + k + std::strlen(key) + 3);
+    size_t v = k + std::strlen(key) + 3;
+    while (v < blob.size() && std::isspace((unsigned char)blob[v]))
+        ++v;
+    out = atof(blob.c_str() + v);
     return true;
 }
 
@@ -888,12 +905,31 @@ int main(int argc, char** argv) {
             blob.append(buf, n);
         fclose(fp);
         double v;
-        if (seed_field(blob, o.prn, "code_phase_at_ref_chips", v)) sd.phase_ref_chips = v;
-        if (seed_field(blob, o.prn, "doppler_hz", v)) sd.doppler_hz = v;
-        if (seed_field(blob, o.prn, "code_phase_rate", v)) sd.cp_rate = v;
-        if (seed_field(blob, o.prn, "doppler_rate_hz_s", v)) sd.dop_rate = v;
-        if (seed_field(blob, o.prn, "ref_hop", v)) sd.ref_hop = (long long)v;
+        std::string took, missed;
+        auto take = [&](const char* key, auto&& apply) {
+            double x;
+            if (seed_field(blob, o.prn, key, x)) { apply(x); took += std::string(" ") + key; }
+            else                                   missed += std::string(" ") + key;
+        };
+        take("code_phase_at_ref_chips", [&](double x) { sd.phase_ref_chips = x; });
+        take("doppler_hz", [&](double x) { sd.doppler_hz = x; });
+        take("code_phase_chips", [&](double x) { sd.cp_chips = x; });
+        take("code_phase_rate", [&](double x) { sd.cp_rate = x; });
+        take("doppler_rate_hz_s", [&](double x) { sd.dop_rate = x; });
+        take("ref_hop", [&](double x) { sd.ref_hop = (long long)x; });
         printf("[2] SEED (from %s)\n", o.seed_file);
+        // SAY WHAT WAS ACTUALLY TAKEN. A file whose fields all fail to parse leaves e2e
+        // running its OWN seed and reporting a perfect score -- which is how the
+        // "\"prn\":N" whitespace bug made this harness unfalsifiable. If nothing parsed,
+        // that is a broken test, not a passing one: refuse rather than flatter.
+        printf("    fields taken:%s\n", took.empty() ? " NONE" : took.c_str());
+        if (!missed.empty())
+            printf("    fields absent:%s (e2e's own values kept)\n", missed.c_str());
+        if (took.empty()) {
+            printf("\n*** --seed-file parsed NOTHING. The run below would measure e2e's own\n"
+                   "*** seed and call it the producer's. Refusing.\n");
+            return 4;
+        }
     } else {
         printf("[2] SEED (direct from the detection)\n");
     }
