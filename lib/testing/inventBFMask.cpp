@@ -56,8 +56,8 @@ public:
         if (mode == "manual")
             // Check feed indices
             for (const auto feed : manual_bad_feeds)
-              if (!(feed >= 0 && feed < std::ptrdiff_t(buffer->frame_size))
-                  FATAL_ERROR("Bad feed number {:d} in `manual_bad_feeds`", feed);
+                if (!(feed >= 0 && feed < std::ptrdiff_t(buffer->frame_size)))
+                    FATAL_ERROR("Bad feed number {:d} in `manual_bad_feeds`", feed);
     }
 
     virtual ~inventBFMask() {}
