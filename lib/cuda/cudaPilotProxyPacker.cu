@@ -16,7 +16,7 @@
 // coalesced (adjacent threads write adjacent taps of one detector row).
 // The gathered reads stride by F*P*D bytes between taps as a result of
 // the [T, F, P, D] -> [row, tap] corner turn. At the deployed geometry
-// (<= 1024 streams x 16384 samples = 16 MiB in + 16 MiB out per 83.9 ms
+// (<= 1024 streams x 8192 samples = 8 MiB in + 8 MiB out per 41.9 ms
 // detector block), even a fully uncoalesced gather is far below 1% of an
 // A40's bandwidth budget. Thus, the simple form is preferred over a
 // tiled transpose.

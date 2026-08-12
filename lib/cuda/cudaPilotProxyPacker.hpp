@@ -53,12 +53,13 @@
  * @param num_frequencies   Local coarse-frequency count F on this node.
  * @param freq_index        Local frequency index to extract, in [0, F).
  * @param num_time_samples  Channelized samples per detector block (multiple
- *                          of detector_window_samples; 16384 deployed).
+ *                          of detector_window_samples; 8192 deployed).
  * @param ringbuf_size_t    Ring extent in time samples; must be a power of
  *                          two.
  * @param ringbuf_pos_t     Logical start position in time samples (wrapped
  *                          internally with the power-of-two mask).
- * @param detector_window_samples K (128 for the locked detector).
+ * @param detector_window_samples K from the compiled kernel (64 on CHORD;
+ *                          128 on CHIME).
  * @param time_reverse_windows Reverse each K-sample window (the adapter
  *                          flip assumed by post-spectral-sense weight
  *                          banks; true for CHORD runtime bundles).

@@ -13,7 +13,7 @@ detector contract (external/pilotproxy/f_statistic.h):
   nibble, imaginary low nibble, real high nibble (decoding nibble - 8 is
   exactly the stage's XOR 0x88 conversion);
 - detector rows: stream s = p * num_dishes + d (P outer, D inner), windows
-  of K = 128 consecutive samples per stream; each window is time-reversed
+  of K = 64 consecutive samples per stream; each window is time-reversed
   when the bundle's input_preprocessing requests it (CHORD bundles set
   time_reverse_detector_windows_before_kernel = true: post-spectral-sense
   weight templates assume the adapter flip);
@@ -42,11 +42,11 @@ import numpy as np
 
 # Geometry defaults; must match verify_pilotproxy_pipeline.yaml.
 NUM_TIMES = 8192
-BLOCK_SAMPLES = 16384
+BLOCK_SAMPLES = 8192
 NUM_FREQ = 4
 NUM_POL = 2
 NUM_DISHES = 8
-K = 128
+K = 64
 FREQ_IDS = [2408, 1600, 2623, 4000]
 
 

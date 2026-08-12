@@ -223,8 +223,9 @@ private:
  * `coarse_freq` during the run is rejected with FATAL_ERROR (the bundle
  * binding is per-run).
  *
- * Per detector block (default 16384 samples = 2 CHORD GPU frames =
- * 83.88608 ms) and per bound channel, the stage:
+ * Per detector block (default 8192 samples = one CHORD GPU frame =
+ * 41.94304 ms, aligned 1:1 with the 8192-sample n2k visibility
+ * integration) and per bound channel, the stage:
  *
  *  1. packs the channel's [T, P, D] slice into the kernel's row-major
  *     detector matrix (offset-binary -> two's-complement via XOR 0x88;
@@ -275,9 +276,11 @@ private:
  * @conf num_times                  Int. Voltage samples per upstream GPU
  *                                  frame (ring advance unit; 8192 for CHORD).
  * @conf samples_per_detector_frame Int. Channelized samples per detector
- *                                  block; multiple of 128. Default 16384
- *                                  (the frozen fine-transform geometry:
- *                                  128 windows/stream).
+ *                                  block; multiple of the compiled core's
+ *                                  detector_window_samples (64 for CHORD).
+ *                                  Default 8192: one GPU ring frame giving
+ *                                  the frozen fine-transform geometry of
+ *                                  128 windows/stream.
  * @conf num_frequencies            Int. Local coarse frequencies (F).
  * @conf num_polarizations          Int. Polarizations (2).
  * @conf num_dishes                 Int. Dishes (D).
@@ -359,7 +362,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     buffer_depth(config.get<int>(unique_name, "buffer_depth")),
     num_times(config.get<int>(unique_name, "num_times")),
     samples_per_detector_frame(
-        config.get_default<int>(unique_name, "samples_per_detector_frame", 16384)),
+        config.get_default<int>(unique_name, "samples_per_detector_frame", 8192)),
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),

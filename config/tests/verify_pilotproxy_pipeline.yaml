@@ -42,11 +42,11 @@ samples_per_data_set: num_times
 
 # Small geometry: full logical structure, cheap offline verification.
 num_times: 8192                  # voltage samples per generated frame
-samples_per_detector_frame: 16384 # detector block = 2 frames (128 windows)
+samples_per_detector_frame: 8192 # detector block = one frame (128 windows at K=64)
 num_local_freq: 4
 num_polarizations: 2
 num_dishes: 8
-num_gen_frames: 8                # -> 4 detector blocks
+num_gen_frames: 8                # -> 8 detector blocks
 
 # Output directory for the raw dumps (inherited by the rawFileWrite stages)
 # and the PilotProxy runtime-bundle files (inherited by the detector).

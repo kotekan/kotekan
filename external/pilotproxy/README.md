@@ -11,8 +11,10 @@ kotekan stage.
   the `FXFFT256_REF_NO_MAIN` guard); `tools/check_vendored_pilotproxy.py`
   verifies them.
 - Files (verbatim copies of the upstream files):
-  - `config.h` — compile-time kernel configuration (K=128, 3 weight terms,
-    packed complex int4, DP4A, uint64 power accumulation).
+  - `config.h` — compile-time kernel configuration (detector window length
+    K selectable via `FSTAT_DETECTOR_WINDOW_SAMPLES`, supported values 64
+    and 128 with a default of 128; 3 weight terms, packed complex int4,
+    DP4A, uint64 power accumulation).
   - `f_statistic.h` / `f_statistic.cu` — public C API and CUDA
     implementation. All entry points are `extern "C"`; the deployed mask
     entry is `FStat_Compute_FusedFineMask_U64` (kernel core 2.3.0) and the
@@ -51,7 +53,11 @@ Notes for kotekan integration:
   `CMAKE_CUDA_ARCHITECTURES` (sm_86, A40); the upstream default build knobs
   (`FSTAT_USE_DP4A=1`, `FSTAT_BLOCK_THREADS=64`,
   `FSTAT_USE_SHARED_WEIGHT_LANES=1`, `FSTAT_GRID_MAX_BLOCKS=4096`) are the
-  `config.h` defaults, so no extra compile definitions are required.
+  `config.h` defaults. The CHORD deployment additionally sets
+  `FSTAT_DETECTOR_WINDOW_SAMPLES=64` in this directory's `CMakeLists.txt`:
+  one 8192-sample GPU frame then carries the frozen 128 windows per stream
+  on CHORD's 195.3125 kHz channels. Stage code reads the compiled value at
+  runtime through `fstat_get_config`.
 - The upstream API executes on the legacy default CUDA stream and takes no
   stream argument. `cudaPilotProxyDetector` brackets the calls with CUDA
   events to order them against kotekan's per-pipeline streams; a

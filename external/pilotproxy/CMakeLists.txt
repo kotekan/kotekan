@@ -18,6 +18,13 @@ add_library(
                       f_statistic_reference.cpp # bit-accurate CPU reference (fstat_ref_*)
 )
 
+# CHORD deployment geometry: detector_window_samples (K) = 64. K scales with the coarse-channel
+# width to hold the fine-bin width near 3.05 kHz (CHIME 390.625 kHz / K=128; CHORD 195.3125 kHz /
+# K=64), so one 8192-sample GPU frame gives the frozen 128 windows per stream. The knob is consumed
+# by the vendored config.h; stage code reads the compiled value at runtime through fstat_get_config,
+# so the definition stays PRIVATE to this library.
+target_compile_definitions(pilotproxy PRIVATE FSTAT_DETECTOR_WINDOW_SAMPLES=64)
+
 # Expose the parent (external/) as the include root so consumers keep the `#include
 # "pilotproxy/f_statistic.h"` spelling they used when the core lived under lib/cuda/. SYSTEM matches
 # the ksgpu/n2k treatment: vendored headers are exempt from kotekan's -Werror surface (the copies
