@@ -52,6 +52,12 @@ public:
 
         if (!(mode == "all_good" || mode == "all_bad" || mode == "auto" || mode == "manual"))
             FATAL_ERROR("Bad mode: {:s}", mode);
+
+        if (mode == "manual")
+            // Check feed indices
+            for (const auto feed : manual_bad_feeds)
+              if (!(feed >= 0 && feed < std::ptrdiff_t(buffer->frame_size))
+                  FATAL_ERROR("Bad feed number {:d} in `manual_bad_feeds`", feed);
     }
 
     virtual ~inventBFMask() {}
