@@ -7,6 +7,7 @@ signal has its own combiners), but neither holds state between calls.
 See docs/CHORD_GNSS_SHARED_DLL.md for fleet_dll and gnss_gpu_search.md 11.15 for
 fleet_coherent's one-way split and shuffled-null floor.
 """
+import cmath
 import collections
 import math
 import random
