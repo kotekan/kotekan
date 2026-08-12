@@ -3757,6 +3757,35 @@ def main(argv=None, rx=None, publisher=None):
                             * (prev["doppler_hz"] - seed["doppler_hz"]) / args.carrier_hz)
                 cp_err = ((seed["code_phase_chips"] - cp_prev - dll_trim.get(prn, 0.0)
                            + CODE_LEN / 2.0) % CODE_LEN) - CODE_LEN / 2.0
+                # CP_ERR TERM DECOMPOSITION (#42, 2026-08-12). Seven lever-shaped false
+                # accusations in one evening (PRNs 26/4/9, -0.26..-2.4 Hz x t_abs, track
+                # healthy at 40 dB-Hz throughout, re-accusing 1-8 min after re-anchor).
+                # The liar is one of the terms of cp_prev, and each candidate has a
+                # distinct signature: the frozen-slope extrapolation grows ~linearly in
+                # hold age with a per-hold-constant slope (fit-slope noise, +-0.7-10
+                # chips/s); the missing/wrong quadratic grows ~age^2; a currency-epoch
+                # inconsistency tracks ddop. Log every term whenever |cp_err| clears the
+                # escape bar so the next specimen identifies its own term -- reading raw
+                # cp_err cost half a day of armchair candidates.
+                if abs(cp_err) > args.hold_max_cp_err:
+                    _rate_term = prev["code_phase_rate"] * (h_now - prev["ref_hop"])
+                    _quad_term = (0.5 * args.code_doppler_sign
+                                  * float(prev.get("doppler_rate_hz_s", 0.0) or 0.0)
+                                  * args.chip_rate_hz / args.carrier_hz
+                                  * dt_anchor * dt_anchor)
+                    _curr_term = (t_abs * args.chip_rate_hz * args.code_doppler_sign
+                                  * (prev["doppler_hz"] - seed["doppler_hz"])
+                                  / args.carrier_hz)
+                    _log_rl("cperrdecomp-%d" % prn,
+                            "CP_ERR-DECOMP PRN %d: err %+.1f = cand %.1f - [prev %.1f "
+                            "+ rate %+.1f (slope %+.3e c/hop x age %.0f s) + quad %+.1f "
+                            "+ curr %+.1f (ddop %+.1f Hz)] - trim %+.2f | hold_age %.0f s"
+                            % (prn, cp_err, seed["code_phase_chips"] % CODE_LEN,
+                               prev["code_phase_chips"] % CODE_LEN, _rate_term,
+                               prev["code_phase_rate"], dt_anchor, _quad_term,
+                               _curr_term,
+                               prev["doppler_hz"] - seed["doppler_hz"],
+                               dll_trim.get(prn, 0.0), dt_anchor), every_s=30.0)
                 # MEDIAN GATE (2026-07-19): the per-detection cp noise is 0.03-0.5 chips
                 # (per-sat conditions -- multipath/BOC refine; measured same-instrument at
                 # t_abs 100 s AND 27000 s, i.e. FLAT in run age: the earlier 'growth law'
