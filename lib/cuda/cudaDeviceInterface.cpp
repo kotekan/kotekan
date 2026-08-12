@@ -352,7 +352,10 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     // Extract kernels
     cu_res = cuModuleLoadDataEx(&module, elf, 0, nullptr, nullptr);
     if (cu_res != CUDA_SUCCESS) {
-        FATAL_ERROR("Could not load module data from elf");
+        const char* errStr = nullptr;
+        cuGetErrorString(cu_res, &errStr);
+        FATAL_ERROR("Could not load module data from elf for kernel file {:s}: {:s}",
+                    kernel_filename, errStr);
         return;
     }
 
