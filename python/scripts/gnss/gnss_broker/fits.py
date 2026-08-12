@@ -361,3 +361,38 @@ def seed_phase_at_ref(phys_chips, doppler_hz, chip_hz, hops_per_sec, carrier_hz,
     per_hop = chip_hz / hops_per_sec * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)
     off = per_hop * (1.0 - 1.0 / fft_len) if fft_len else per_hop
     return (phys_chips + off) % mod
+
+
+def tracker_phase_at(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod,
+                     fft_len=None):
+    """The phase the TRACKER will command at hop h1 for this seed -- mirroring
+    gnss::propagate_seed, including WHICH code reference it actually uses (#45 step 7).
+
+    propagate_seed prefers `code_phase_at_ref_chips` over `code_phase_chips` whenever the
+    former is >= 0 ("transported as a phase: no back-reference at all"), and the two are
+    computed by DIFFERENT broker paths -- cp0 from cp_long, the phase from the search's
+    cp_at_ref -- so they are not interchangeable. Any audit that models cp0 while the
+    tracker reads the phase is measuring a stream nobody consumes: that is #43, whose
+    symptom was +-90,000-chip "steps" on gps_l5 while the same satellites tracked at
+    40 dB-Hz with live DLL trim.
+
+    Returns the phase in the C++ last-sample convention (see seed_phase_at_ref), so it is
+    directly comparable between consecutive seeds -- which is the seed audit's whole job.
+    """
+    per_hop = chip_hz / hops_per_sec * (1.0 + code_doppler_sign * seed["doppler_hz"]
+                                        / carrier_hz)
+    hop_off = per_hop * (1.0 - 1.0 / fft_len) if fft_len else per_hop
+    ph_ref = seed.get("code_phase_at_ref_chips", -1.0)
+    if ph_ref is None or ph_ref < 0.0:
+        # the argument branch: undo the sample-0 back-reference, then move to the
+        # tracker's reference point
+        ph_ref = (dr_seed_phys({k: v for k, v in seed.items()
+                                if k != "code_phase_at_ref_chips"},
+                               seed["ref_hop"], hops_per_sec, chip_hz, carrier_hz,
+                               code_doppler_sign, mod) + hop_off)
+    dh = h1 - seed["ref_hop"]
+    dt = dh / hops_per_sec
+    return (ph_ref
+            + (per_hop + seed.get("code_phase_rate", 0.0) or 0.0) * dh
+            + 0.5 * (chip_hz / carrier_hz)
+              * (seed.get("doppler_rate_hz_s", 0.0) or 0.0) * dt * dt) % mod

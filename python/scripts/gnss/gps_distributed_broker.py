@@ -72,7 +72,7 @@ from gnss_broker.transport import (           # noqa: E402
     expand_token, resolve_prefix, parse_endpoints,
 )
 from gnss_broker.fits import (                # noqa: E402
-    retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips,
+    retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
@@ -6871,18 +6871,25 @@ def main(argv=None, rx=None, publisher=None):
             _prevA = seed_audit_prev.get(d["prn"])
             if _h_new > 0 and all(k in d for k in ("code_phase_chips", "doppler_hz")):
                 seed_audit_prev[d["prn"]] = {
-                    k: d[k] for k in ("code_phase_chips", "doppler_hz",
-                                      "code_phase_rate", "ref_hop",
+                    k: d[k] for k in ("code_phase_chips", "code_phase_at_ref_chips",
+                                      "doppler_hz", "code_phase_rate", "ref_hop",
                                       "doppler_rate_hz_s") if k in d}
             if (_prevA is None or _h_new <= 0 or _h_new < int(_prevA["ref_hop"])
                     or _h_new - int(_prevA["ref_hop"]) > 600 * args.hops_per_sec):
                 continue
-            _ph_prev = dr_seed_phys(_prevA, _h_new, args.hops_per_sec,
-                                    args.chip_rate_hz, args.carrier_hz,
-                                    args.code_doppler_sign, _aud_mod)
-            _ph_new = dr_seed_phys(d, _h_new, args.hops_per_sec,
-                                   args.chip_rate_hz, args.carrier_hz,
-                                   args.code_doppler_sign, _aud_mod)
+            # #45 STEP 7 (#43): model WHAT THE TRACKER READS. propagate_seed prefers
+            # code_phase_at_ref_chips when the payload carries it -- which the search-fed
+            # path always has -- so auditing cp0 measured a stream no tracker consumes:
+            # +-90,000-chip "steps" on gps_l5 while those satellites tracked at 40 dB-Hz.
+            # tracker_phase_at picks the same reference propagate_seed would.
+            _ph_prev = tracker_phase_at(_prevA, _h_new, args.hops_per_sec,
+                                        args.chip_rate_hz, args.carrier_hz,
+                                        args.code_doppler_sign, _aud_mod,
+                                        args.search_fft_len or None)
+            _ph_new = tracker_phase_at(d, _h_new, args.hops_per_sec,
+                                       args.chip_rate_hz, args.carrier_hz,
+                                       args.code_doppler_sign, _aud_mod,
+                                       args.search_fft_len or None)
             _stp = ((_ph_new - _ph_prev + _aud_mod / 2.0) % _aud_mod) - _aud_mod / 2.0
             _ddopA = d["doppler_hz"] - _prevA["doppler_hz"]
             _dtA = (_h_new - int(_prevA["ref_hop"])) / args.hops_per_sec

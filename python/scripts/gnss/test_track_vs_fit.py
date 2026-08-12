@@ -327,5 +327,76 @@ class TestSeedPhaseTransport(unittest.TestCase):
                         "a 2 Hz re-tag moved the shipped phase by %.4f chips" % (b - a))
 
 
+class TestTrackerPhaseAt(unittest.TestCase):
+    """tracker_phase_at (#45 step 7 / #43): the seed audit must model the reference
+    propagate_seed ACTUALLY reads, not the one the broker happens to have computed."""
+
+    DOP = 1894.984
+    FFT = 8192
+
+    def _seed(self, phys, h, **kw):
+        d = {"code_phase_chips": dr_cp0(phys, h / HPS, self.DOP, CHIP, CARR, SGN, MOD),
+             "doppler_hz": self.DOP, "ref_hop": h, "code_phase_rate": 0.0,
+             "doppler_rate_hz_s": 0.0}
+        d.update(kw)
+        return d
+
+    def test_both_references_agree_when_consistent(self):
+        from gnss_broker.fits import tracker_phase_at, seed_phase_at_ref
+        h = H0
+        arg_only = self._seed(4321.0, h)
+        with_phase = self._seed(4321.0, h, code_phase_at_ref_chips=seed_phase_at_ref(
+            4321.0, self.DOP, CHIP, HPS, CARR, SGN, MOD, self.FFT))
+        a = tracker_phase_at(arg_only, h, HPS, CHIP, CARR, SGN, MOD, self.FFT)
+        b = tracker_phase_at(with_phase, h, HPS, CHIP, CARR, SGN, MOD, self.FFT)
+        self.assertAlmostEqual(a, b, delta=1e-3)
+
+    def test_the_phase_wins_when_they_disagree(self):
+        """THE #43 BUG. cp0 and the phase come from different broker paths and CAN
+        disagree; the tracker reads the phase, so the audit must too."""
+        from gnss_broker.fits import tracker_phase_at, seed_phase_at_ref
+        h = H0
+        shipped = seed_phase_at_ref(9999.0, self.DOP, CHIP, HPS, CARR, SGN, MOD, self.FFT)
+        d = self._seed(4321.0, h, code_phase_at_ref_chips=shipped)
+        got = tracker_phase_at(d, h, HPS, CHIP, CARR, SGN, MOD, self.FFT)
+        # the SHIPPED value is the expectation, not the broker-convention phase it was
+        # built from -- they differ by the hop offset, which is the point of the field
+        self.assertAlmostEqual(((got - shipped + MOD / 2) % MOD) - MOD / 2, 0.0,
+                               delta=1e-3,
+                               msg="the audit followed cp0 where the tracker follows "
+                                   "the phase -- this is exactly #43")
+        self.assertGreater(abs(((got - (4321.0 + shipped - 9999.0) + MOD / 2) % MOD)
+                               - MOD / 2), 1000.0,
+                           "the cp0 value must NOT be what came back")
+
+    def test_advance_matches_the_code_rate(self):
+        from gnss_broker.fits import tracker_phase_at
+        h = H0
+        d = self._seed(4321.0, h)
+        dh = int(10.0 * HPS)
+        a = tracker_phase_at(d, h, HPS, CHIP, CARR, SGN, MOD, self.FFT)
+        b = tracker_phase_at(d, h + dh, HPS, CHIP, CARR, SGN, MOD, self.FFT)
+        want = 10.0 * (CHIP + SGN * CHIP * self.DOP / CARR)
+        self.assertAlmostEqual(((b - a - want + MOD / 2) % MOD) - MOD / 2, 0.0,
+                               delta=1e-2)
+
+    def test_a_pair_inconsistent_seed_no_longer_reads_as_a_step(self):
+        """The audit's purpose: a seed whose cp0 is stale but whose PHASE is correct is
+        not a discontinuity for the tracker, and must not be reported as one."""
+        from gnss_broker.fits import tracker_phase_at, seed_phase_at_ref
+        h0, h1 = H0, H0 + int(8.0 * HPS)
+        phase0 = seed_phase_at_ref(4321.0, self.DOP, CHIP, HPS, CARR, SGN, MOD, self.FFT)
+        adv = 8.0 * (CHIP + SGN * CHIP * self.DOP / CARR)
+        s0 = self._seed(4321.0, h0, code_phase_at_ref_chips=phase0)
+        # cp0 deliberately garbage (a stale argument); the phase is right
+        s1 = self._seed(4321.0 + 7777.0, h1,
+                        code_phase_at_ref_chips=(phase0 + adv) % MOD)
+        step = ((tracker_phase_at(s1, h1, HPS, CHIP, CARR, SGN, MOD, self.FFT)
+                 - tracker_phase_at(s0, h1, HPS, CHIP, CARR, SGN, MOD, self.FFT)
+                 + MOD / 2) % MOD) - MOD / 2
+        self.assertLess(abs(step), 1e-2,
+                        "a stale cp0 leaked into the audit as a %.1f-chip step" % step)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
