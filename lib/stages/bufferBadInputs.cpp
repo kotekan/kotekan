@@ -109,9 +109,6 @@ bufferBadInputs::~bufferBadInputs() {}
 bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     INFO("update_bad_inputs_callback(): Received update to bad inputs list.");
 
-    // hold lock for the entire update
-    std::lock_guard<std::mutex> lock(mtx);
-
     try {
         bad_inputs = json["bad_inputs"].get<std::vector<int>>();
     } catch (std::exception const& e) {
@@ -120,21 +117,30 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     }
 
     // validate all inputs before changing the mask
+    std::vector<bool> is_present(num_elements, false);
     for (int element : bad_inputs) {
         if (element >= (int)num_elements || element < 0) {
             ERROR("Received input with invalid index: {:d}", element);
             return false;
         }
+        if (is_present.at(element)) {
+            ERROR("Received input with duplicate index: {:d}", element);
+            return false;
+        }
+        is_present.at(element) = true;
     }
 
-    // Reset the mask (1 == good)
-    std::fill(input_mask.begin(), input_mask.end(), 1u);
+    // hold lock for the mask update (parsing and validation stay outside it)
+    std::lock_guard<std::mutex> lock(mtx);
+
+    // Reset to the baseline mask (1 == good, non-array dishes stay masked)
+    input_mask = baseline_mask;
 
     // now update the mask
     for (int element : bad_inputs) {
-        input_mask[reorder[element]] = 0;
+        input_mask.at(reorder[element]) = 0;
     }
-    num_bad_inputs = bad_inputs.size();
+    num_bad_inputs = std::count(input_mask.begin(), input_mask.end(), 0u);
 
     DEBUG("update_bad_inputs_callback(): Bad inputs reordered and buffered.");
 

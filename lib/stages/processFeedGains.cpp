@@ -89,7 +89,6 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     mask_store_buf = std::vector<uint8_t>(num_elements, 1u);
 }
 
-processFeedGains::~processFeedGains() {}
 
 void processFeedGains::copy_upchannelize(float* frame, size_t beam_id) {
     size_t in_fstride = num_elements * num_components;

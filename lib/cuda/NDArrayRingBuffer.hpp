@@ -366,6 +366,13 @@ public:
 
     // State
 
+    extent_t get_maybe_empty_write_valid() const {
+        return write_valid;
+    }
+    extent_t get_maybe_empty_read_valid() const {
+        return read_valid;
+    }
+
     extent_t get_write_valid() const {
 #ifdef DEBUGGING
         if (!(write_valid.size() > 0))

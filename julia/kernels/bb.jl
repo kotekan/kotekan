@@ -1187,6 +1187,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             cxx,
             Dict(
                 "kernel_name" => "BasebandBeamformer_$setup",
+                "cuda_arch" => cuda_arch,
                 "kernel_design_parameters" => [
                     Dict("type" => "int", "name" => "cuda_number_of_beams", "value" => "$B"),
                     Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),

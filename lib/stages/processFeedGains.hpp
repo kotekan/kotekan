@@ -62,7 +62,7 @@ public:
                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
-    virtual ~processFeedGains();
+    virtual ~processFeedGains() = default;
 
     void main_thread() override;
 

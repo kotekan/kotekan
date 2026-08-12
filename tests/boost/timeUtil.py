@@ -118,9 +118,15 @@ def get_era_nrot_fancy(t):
     return era_deg, n_rot
 
 
-def get_era_nrot_precise(t):
+def get_era_nrot_precise(ut1_ns):
+    # Takes the *rounded* integer-nanosecond UT1 (2451545 JD epoch) that is
+    # handed to the C++ code, rather than the full-precision jd1/jd2, so that
+    # the reference ERA and the value under test refer to the same instant.
+    # Comparing against an ERA derived from the unrounded jd1/jd2 carries the
+    # nanosecond quantization of the UT1 dump (up to ~2.1e-12 deg of rotation),
+    # which is larger than the tolerance the tests assert on.
 
-    ut1_jd = (mp.mpf(t.ut1.jd1) - mp.mpf(2451545)) + mp.mpf(t.ut1.jd2)
+    ut1_jd = mp.mpf(ut1_ns) / mp.mpf(86_400_000_000_000)
 
     rot = era_A + era_B * ut1_jd
 
@@ -160,7 +166,7 @@ def print_isot_times(t_str):
     era_deg, nrot = get_era_nrot_fancy(t)
     mjd = ((era_deg / 360.0 + nrot) - 0.7790572732640) / 1.00273781191135448
     print("ERA3 {0:.17e} deg {1:d} rot {2:.17e} jd2000".format(era_deg, nrot, mjd))
-    era_deg, nrot = get_era_nrot_precise(t)
+    era_deg, nrot = get_era_nrot_precise(ut1_ns)
     mjd = ((era_deg / 360.0 + nrot) - 0.7790572732640) / 1.00273781191135448
     print("ERA4 {0:.17e} deg {1:d} rot {2:.17e} jd2000".format(era_deg, nrot, mjd))
 
