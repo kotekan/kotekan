@@ -266,6 +266,8 @@ gnss0_b2a_n2assemble:
   - 42
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss0_b2a_n2assemble_tiles:
   cpu_affinity:
   - 59
@@ -432,6 +434,8 @@ gnss0_b2b_n2assemble:
   - 42
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss0_b2b_n2assemble_tiles:
   cpu_affinity:
   - 24
@@ -611,6 +615,8 @@ gnss0_e5a_n2assemble:
   - 34
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss0_e5a_n2assemble_tiles:
   cpu_affinity:
   - 31
@@ -785,6 +791,8 @@ gnss0_e5b_n2assemble:
   - 34
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss0_e5b_n2assemble_tiles:
   cpu_affinity:
   - 62
@@ -959,6 +967,8 @@ gnss0_n2assemble:
   - 32
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss0_n2assemble_tiles:
   cpu_affinity:
   - 63
@@ -1134,6 +1144,8 @@ gnss1_b2a_n2assemble:
   prns: *id002
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss1_b2a_n2assemble_tiles:
   cpu_affinity:
   - 60
@@ -1276,6 +1288,8 @@ gnss1_b2b_n2assemble:
   prns: *id005
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss1_b2b_n2assemble_tiles:
   cpu_affinity:
   - 31
@@ -1423,6 +1437,8 @@ gnss1_e5a_n2assemble:
   prns: *id008
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss1_e5a_n2assemble_tiles:
   cpu_affinity:
   - 57
@@ -1565,6 +1581,8 @@ gnss1_e5b_n2assemble:
   prns: *id011
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss1_e5b_n2assemble_tiles:
   cpu_affinity:
   - 63
@@ -1707,6 +1725,8 @@ gnss1_n2assemble:
   prns: *id014
   reference_element: 0
   sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
 gnss1_n2assemble_tiles:
   cpu_affinity:
   - 19
