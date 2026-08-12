@@ -242,7 +242,7 @@ def _coherent_sum(a):
 
 
 def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
-                   null_trials=1, floor_margin=3.0, seed=0):
+                   null_trials=1, floor_margin=3.0, seed=0, max_age_hops=1 << 20):
     """CROSS-NODE COHERENT COMBINE: the per-record sky phase, and the deep folds it unlocks.
 
     WHAT THIS FIXES, measured on sky 2026-08-05. Every instance's deep fold sat at ~14 sigma
@@ -318,6 +318,11 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         return {}
     # url -> prn -> {hop: (A, energy)}. Unreachable instances are skipped, never fatal.
     got = {}
+    # THE FLEET'S CLOCK, taken across EVERY satellite an instance serves -- including the
+    # ones this call was not asked about. Deriving it only from the requested PRNs would
+    # make "now" depend on at least one of THOSE being current, which is exactly the
+    # assumption that fails when a whole set of satellites goes down together.
+    fleet_now_all = 0
     for url in endpoints:
         try:
             recs = _get("%s/get_records" % url)
@@ -327,7 +332,14 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         per = {}
         for r in recs or []:
             prn = int(r.get("prn", -1))
-            if prn <= 0 or (prns is not None and prn not in prns):
+            if prn <= 0:
+                continue
+            for _x in (r.get("records") or []):
+                try:
+                    fleet_now_all = max(fleet_now_all, int(_x[0]))
+                except (TypeError, ValueError, IndexError):
+                    pass
+            if prns is not None and prn not in prns:
                 continue
             d = {}
             for x in r.get("records") or []:
@@ -347,10 +359,34 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
       all_prns = set()
       for per in store.values():
         all_prns.update(per)
+      # the fleet's own "now": the newest record anywhere, over every satellite
+      fleet_now = max(fleet_now_all,
+                      max((max(d) for per in store.values() for d in per.values() if d),
+                          default=0))
+      stale_prns = {}
       for prn in sorted(all_prns):
         src = {u: per[prn] for u, per in store.items() if prn in per}
         if len(src) < min_instances:
             continue
+        # ---- ABSOLUTE STALENESS: a SET satellite must not keep reporting ----------------
+        # Combiner buffers never expire a PRN's records: once a satellite stops being
+        # tracked its last window sits there indefinitely (measured 2026-08-12: up to 2.9 h).
+        # The relative test below cannot see that, because when EVERY instance is equally
+        # stale they agree perfectly and the combine proceeds -- publishing an hour-old
+        # detection as current. Observed the same day: gal_e5a PRN 27 combined at deep 35
+        # over 12 instances from records 98 minutes old, and PRN 15 kept "reporting" for
+        # 18 minutes after it set below the horizon at 15:48 UTC. That is the whole fleet
+        # agreeing on a fossil.
+        #
+        # `fleet_now` is the newest record ANY instance holds for ANY satellite -- the
+        # fleet's own clock, needing no wall time and no F-engine epoch. A PRN whose newest
+        # record trails it by more than max_age_hops is not being tracked; drop it rather
+        # than report it.
+        if max_age_hops and fleet_now:
+            prn_now = max(max(d) for d in src.values())
+            if fleet_now - prn_now > max_age_hops:
+                stale_prns[prn] = fleet_now - prn_now
+                continue
         # ---- ANCHOR ON THE FRESHEST WINDOW, NOT ON UNANIMITY (2026-08-12) ------------
         # This used to intersect the hop sets of EVERY contributor. One instance outside the
         # others' window then emptied the common set for every satellite on every cycle, and
@@ -503,6 +539,12 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
             # the caller logs it, because the old code's silent {} was the actual defect.
             "dropped": drop_note,
         }
+      if stale_prns and log:
+          log("fleet coherent: %d PRN(s) excluded as STALE (their newest record trails "
+              "the fleet by more than %d hops): %s"
+              % (len(stale_prns), max_age_hops,
+                 ", ".join("PRN %d (%.0f s)" % (p, a / 195312.5)
+                           for p, a in sorted(stale_prns.items()))))
       return out
 
     out = _solve(got)
