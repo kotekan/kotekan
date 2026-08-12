@@ -328,3 +328,36 @@ def retag_seed_doppler(cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz
 
 
 
+
+
+def seed_phase_at_ref(phys_chips, doppler_hz, chip_hz, hops_per_sec, carrier_hz,
+                      code_doppler_sign, mod, fft_len=None):
+    """Broker-held physical phase -> `code_phase_at_ref_chips`, the field the tracker
+    prefers over the sample-0 argument (#45 step 6).
+
+    THE CONVERSION IS NOT OPTIONAL AND IT IS NOT A DETAIL. The broker's dr_cp0/dr_seed_phys
+    pair references a hop at its FIRST sample; ChannelizedReplicaBank -- and therefore
+    phase_from_arg, propagate_seed and every replica -- references it at the LAST
+    (window_start + fft_len - 1). One hop apart: 52.3713 chips at CHORD. Shipping the
+    broker's phase unconverted steps the commanded code by exactly that.
+
+    MEASURED, not asserted (scripts/gnss/e2e_phase_transport.py, real propagate_seed + real
+    GPU despread, PRN 3):
+        arg    (production, cp0 only)          worst |err| 0.788 chips
+        phase  (unconverted)                   worst |err| 51.999   <- the whole hop
+        phase+ (this function)                 worst |err| 0.785    <- agrees to 0.003
+    Re-run that after touching this, and note the middle row: it is what a "harmless
+    refactor" of the seed transport looks like when the convention is dropped.
+
+    Why ship the phase at all: cp0 back-references through t_abs (~2.3 days), so the pair
+    (cp0, dop) only means anything TOGETHER -- every producer that updates one without
+    re-projecting the other injects ~1700 chips/Hz (#42's writer, #44's coast). A phase at
+    its own epoch has no partner to fall out of step with.
+
+    `fft_len` supplies the exact "-1 sample" term; omitted, the offset is one whole hop and
+    the residual is 0.0064 chips (two orders below the DLL's pull-in, and a constant, so it
+    lands in the clock rather than in tracking).
+    """
+    per_hop = chip_hz / hops_per_sec * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)
+    off = per_hop * (1.0 - 1.0 / fft_len) if fft_len else per_hop
+    return (phys_chips + off) % mod

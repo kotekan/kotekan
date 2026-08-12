@@ -281,5 +281,51 @@ class TestBankedSkyReplay(unittest.TestCase):
                                msg="constant term %.4f chips" % (my - slope * mx))
 
 
+class TestSeedPhaseTransport(unittest.TestCase):
+    """seed_phase_at_ref (#45 step 6): the broker's held phase -> the field the tracker
+    prefers. The conversion is the whole test -- the unconverted value is 52 chips wrong,
+    which is total loss of lock, and the e2e gate measured exactly that
+    (scripts/gnss/e2e_phase_transport.py: arg 0.788 / phase 51.999 / phase+ 0.785)."""
+
+    def test_offset_is_one_hop(self):
+        from gnss_broker.fits import seed_phase_at_ref
+        v = seed_phase_at_ref(0.0, 1894.984, CHIP, HPS, CARR, SGN, MOD, 8192)
+        self.assertAlmostEqual(v, 52.3713, delta=1e-3,
+                               msg="the measured e2e offset was 52.3713 chips")
+
+    def test_omitting_fft_len_costs_one_sample(self):
+        from gnss_broker.fits import seed_phase_at_ref
+        a = seed_phase_at_ref(0.0, 1894.984, CHIP, HPS, CARR, SGN, MOD, 8192)
+        b = seed_phase_at_ref(0.0, 1894.984, CHIP, HPS, CARR, SGN, MOD, None)
+        self.assertAlmostEqual(b - a, 0.0064, delta=1e-3)
+
+    def test_round_trip_matches_the_tracker(self):
+        """The invariant the tracker enforces: phase_from_arg(dr_cp0(phys)) == the shipped
+        phase. Both sides here are the broker's; the C++ agreement is the e2e gate's job."""
+        from gnss_broker.fits import seed_phase_at_ref
+        phys, dop = 4321.0, -876.0
+        h = H0 + int(11.0 * HPS)
+        cp0 = dr_cp0(phys, h / HPS, dop, CHIP, CARR, SGN, MOD)
+        shipped = seed_phase_at_ref(phys, dop, CHIP, HPS, CARR, SGN, MOD, 8192)
+        # what the tracker reconstructs from the ARGUMENT (its own last-sample reference)
+        per_hop = CHIP / HPS * (1.0 + SGN * dop / CARR)
+        from_arg = (cp0 + (h / HPS) * CHIP * (1.0 + SGN * dop / CARR)
+                    + per_hop * (1.0 - 1.0 / 8192)) % MOD
+        self.assertAlmostEqual(((shipped - from_arg + MOD / 2) % MOD) - MOD / 2, 0.0,
+                               delta=2e-3)
+
+    def test_a_doppler_edit_cannot_move_the_phase(self):
+        """WHY the phase is shipped at all: cp0 is only meaningful paired with its dop, and
+        a producer that edits one without the other injects ~1700 chips/Hz. The phase has
+        no partner -- re-tagging the Doppler leaves it where it is (bar the code-rate
+        term, which is physics, not bookkeeping)."""
+        from gnss_broker.fits import seed_phase_at_ref
+        phys = 4321.0
+        a = seed_phase_at_ref(phys, 1000.0, CHIP, HPS, CARR, SGN, MOD, 8192)
+        b = seed_phase_at_ref(phys, 1002.0, CHIP, HPS, CARR, SGN, MOD, 8192)
+        self.assertLess(abs(b - a), 1e-3,
+                        "a 2 Hz re-tag moved the shipped phase by %.4f chips" % (b - a))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -72,7 +72,7 @@ from gnss_broker.transport import (           # noqa: E402
     expand_token, resolve_prefix, parse_endpoints,
 )
 from gnss_broker.fits import (                # noqa: E402
-    retag_seed_doppler, track_vs_fit_chips,
+    retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
@@ -1147,6 +1147,23 @@ def main(argv=None, rx=None, publisher=None):
                     help="a JOINT consumer refuses to act on a state carrying fewer than "
                          "this many satellites: with the mean(b)=0 gauge a thin fleet lets "
                          "one satellite's bias leak into the clock at 1/N.")
+    ap.add_argument("--seed-phase-transport", action="store_true",
+                    help="#45 step 6: dead-reckon/slew seeds carry code_phase_at_ref_chips "
+                         "(the PHASE at ref_hop) in addition to the sample-0 argument. "
+                         "propagate_seed prefers the phase, which has no t_abs lever, so a "
+                         "producer that edits the Doppler without re-projecting cp0 can no "
+                         "longer walk the despread (~1700 chips/Hz). The search-fed path has "
+                         "shipped a phase all along; this closes the model-primary gap. "
+                         "MEASURED before enabling (scripts/gnss/e2e_phase_transport.py, real "
+                         "propagate_seed + GPU): arg 0.788 chips, phase+ 0.785, and the "
+                         "UNCONVERTED phase 51.999 -- the broker references a hop's first "
+                         "sample and the C++ side its last, so the conversion is what makes "
+                         "this safe. OFF by default until it has flown.")
+    ap.add_argument("--search-fft-len", type=int, default=0,
+                    help="the search/tracker fft_len, used only to refine the one-hop epoch "
+                         "conversion in --seed-phase-transport by its '-1 sample' term "
+                         "(0.0064 chips at CHORD). 0 = omit; the residual is constant and "
+                         "two orders below the DLL's pull-in.")
     ap.add_argument("--joint-feed-warmup-s", type=float, default=240.0,
                     help="withhold ALL measurements from the joint state for this many "
                          "seconds after broker start. Birth is the one path with no "
@@ -5816,6 +5833,16 @@ def main(argv=None, rx=None, publisher=None):
                                     dop_seed, la, args.hops_per_sec,
                                     args.chip_rate_hz, args.carrier_hz),
                                 "ref_hop": h1, "doppler_rate_hz_s": drate}
+                            # #45 STEP 6: ship the PHASE as well. propagate_seed prefers it
+                            # and it carries no sample-0 lever, so a later dop edit cannot
+                            # desynchronise the pair (#42's writer, #44's coast). Both are
+                            # emitted so a tracker that ignores the field is unaffected.
+                            if args.seed_phase_transport:
+                                seeds[prn]["code_phase_at_ref_chips"] = seed_phase_at_ref(
+                                    _held + _step, dop_seed, args.chip_rate_hz,
+                                    args.hops_per_sec, args.carrier_hz,
+                                    args.code_doppler_sign, _DR_MOD, args.search_fft_len
+                                    or None)
                             dr_state["pin"][prn] = now_w
                             _log_rl("drslew-%d" % prn,
                                     "dead-reckon SLEW PRN %d: model-held %+.3f chips, "
@@ -5835,6 +5862,15 @@ def main(argv=None, rx=None, publisher=None):
                                 args.chip_rate_hz, args.carrier_hz),
                             "ref_hop": int(round(t_now_abs * args.hops_per_sec)),
                             "doppler_rate_hz_s": drate}
+                        # #45 STEP 6, birth/re-pin arm. cp0 was just built FROM this phase
+                        # (cp_predicted + _off at t_now_abs), so shipping it costs nothing
+                        # and removes the round trip the tracker would otherwise redo.
+                        if args.seed_phase_transport:
+                            seeds[prn]["code_phase_at_ref_chips"] = seed_phase_at_ref(
+                                (cp_predicted(v, t_now_abs) + _off) % _DR_MOD, dop_seed,
+                                args.chip_rate_hz, args.hops_per_sec, args.carrier_hz,
+                                args.code_doppler_sign, _DR_MOD,
+                                args.search_fft_len or None)
                         dr_state["seeded"].add(prn)
                         dr_state["pin"][prn] = now_w
                     if planned:
