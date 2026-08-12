@@ -1250,6 +1250,24 @@ def main(argv=None, rx=None, publisher=None):
                          "and the noise population cannot be characterised. 2.2 is the measured "
                          "single-instance bar (noise mean ~1.0 with a tail to 1.87 on sky "
                          "2026-08-03), so the fallback is the conservative one-node answer.")
+    ap.add_argument("--dll-deep-gate", default="",
+                    help="fleet DLL (task #49): PRNs whose trim PRESENCE is gated on "
+                         "deep_snr >= margin x deep_floor instead of on summed prompt power. "
+                         "Comma-separated PRNs, or 'all'. DEFAULT OFF. The prompt gate is "
+                         "ON-PEAK-BIASED and therefore a LATCH: prompt power is suppressed "
+                         "precisely when the tap is off-peak, so an off-peak satellite fails "
+                         "the gate and is never trimmed back. Measured 2026-08-12: 26 of 36 "
+                         "well-detected satellites (72%) were excluded, and the excluded ones "
+                         "carried the LARGER discriminators. deep_snr is immune because the "
+                         "deep fold re-searches rate and phase, so it detects the satellite "
+                         "wherever the tap sits. Opt in ONE PRN AT A TIME: enabling the whole "
+                         "fleet at once makes 72% of it newly trimmable against a slew cap "
+                         "already railing 67-100% of the time, which trades the latch for an "
+                         "oscillation and makes the A/B uninterpretable.")
+    ap.add_argument("--dll-deep-gate-margin", type=float, default=3.0,
+                    help="fleet DLL: the deep gate's bar in units of deep_floor (default 3.0). "
+                         "The floor is the combiner's own rectification level, so this is a "
+                         "detection significance, not a tuned constant.")
     ap.add_argument("--dll-min-instances", type=int, default=2,
                     help="fleet DLL: instances that must report the same window before their "
                          "sum is used. Below this the PRN falls back to the single --combiner "
@@ -1921,6 +1939,23 @@ def main(argv=None, rx=None, publisher=None):
     # Integer hop tolerance, derived once from the record geometry. Kept as an int so every
     # comparison downstream is integer arithmetic on the F-engine's own counter.
     dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
+    # Task #49 opt-in set. Parsed ONCE at launch and logged, so which satellites are on the
+    # deep gate is a fact in the log rather than something to infer from behaviour -- the
+    # whole point of the per-PRN rollout is that the A/B is readable afterwards.
+    _dg = (args.dll_deep_gate or "").strip()
+    if _dg.lower() == "all":
+        _deep_gate = True
+    elif _dg:
+        _deep_gate = {int(x) for x in _dg.replace(",", " ").split()}
+    else:
+        _deep_gate = None
+    if _deep_gate:
+        _log("DLL DEEP GATE (#49) active on %s at %.1fx deep_floor -- these PRNs are trimmed "
+             "on DETECTION (deep_snr) instead of on prompt power, which is on-peak-biased and "
+             "latches an off-peak satellite out of its own correction"
+             % ("ALL PRNs" if _deep_gate is True else
+                "PRN " + ",".join(str(p) for p in sorted(_deep_gate)),
+                args.dll_deep_gate_margin))
     # Optional REST publication of the fleet-merged state (see FleetPublisher). Started here so
     # a bind failure is fatal at launch rather than silently leaving the viewer with no source.
     # ONE PORT FOR EVERY CHAIN (task #27 M6). The driver passes a shared publisher in and
@@ -5908,7 +5943,8 @@ def main(argv=None, rx=None, publisher=None):
             # sum -- (SUM E - SUM L)/(SUM E + SUM L) is not any function of the per-instance
             # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
             fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
-                              args.dll_quality_sigma, args.dll_quality_min)
+                              args.dll_quality_sigma, args.dll_quality_min,
+                              deep_gate_prns=_deep_gate, deep_gate_margin=args.dll_deep_gate_margin)
             # CROSS-NODE COHERENT COMBINE. Separate from the DLL on purpose: the DLL sums
             # POWERS (phase-free, which is what makes it cheap) while this removes the common
             # per-record PHASE, and the two answer different questions off the same endpoints.
@@ -6157,9 +6193,15 @@ def main(argv=None, rx=None, publisher=None):
                     "PRN %d disc %+.3f trim %+.2f%s"
                     % (prn, disc, dll_trim[prn],
                        "" if fl is None
-                       else " [fleet %d/%d q %.2f p %.1fx]"
+                       else " [fleet %d/%d q %.2f p %.1fx%s]"
                             % (fl["n_src"], len(dll_combiners), fl["q"],
-                               fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0)))
+                               fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0,
+                               # Which gate admitted this PRN (#49). Printed only for the
+                               # deep gate, so the opt-in set is identifiable in the log
+                               # without diffing against the prompt-gated majority.
+                               "" if fl.get("present_gate") != "deep" else
+                               " DEEP %.1f/%.1f" % (fl.get("deep_gate_snr", 0.0),
+                                                    fl.get("deep_gate_floor", 0.0)))))
             if dll_report:
                 _log("DLL: " + "; ".join(dll_report))
             # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.

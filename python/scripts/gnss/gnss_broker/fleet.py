@@ -15,7 +15,8 @@ import statistics
 from .transport import _get, _log_rl
 
 
-def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
+def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
+              deep_gate_prns=None, deep_gate_margin=3.0):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -192,6 +193,52 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
         # No population to characterise -> fall back to the q bar rather than gating on nothing.
         v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
                         else v["p_pow"] >= p_floor)
+        v["present_gate"] = "prompt"
+
+        # ---- DEEP GATE (task #49, opt-in per PRN) --------------------------------------
+        # THE PROMPT GATE ABOVE IS ON-PEAK-BIASED, WHICH MAKES IT A LATCH. Prompt power is
+        # suppressed precisely WHEN THE TAP IS OFF-PEAK, so: off-peak -> low prompt -> fails
+        # the gate -> never trimmed -> stays off-peak. The loop cannot pull in from the
+        # shoulder, which is the entire region a DLL exists for.
+        #
+        # ⚠️ THIS IS THE SAME DEFECT THIS GATE WAS WRITTEN TO FIX. The comment above records
+        # gating on q having exactly this property ("only correct the code once it is already
+        # correct") and the remedy was to move to prompt power -- which is on-peak-biased in
+        # the same way. One on-peak statistic was swapped for another, so the sky never
+        # showed the fix failing. Do not "fix" this a third time with another tap ratio.
+        #
+        # MEASURED 2026-08-12 across all five chains: 36 satellites well-detected
+        # (deep_snr > 3x deep_floor), only 10 passed the prompt gate, 26 (72%) excluded --
+        # and the EXCLUDED ones carried the LARGER errors (e5a |disc| 0.850 vs 0.342 present;
+        # e5b 0.742 vs 0.291). Witness case E33 on gal_e5a at el 69: deep_snr 35 (13x floor),
+        # all 12 instances agreeing E:P:L = 0.11 : 1.0 : 2.0, and its trim FROZEN while the
+        # same satellite tracked normally on gal_e5b.
+        #
+        # deep_snr is the right statistic BECAUSE OF the property that makes it wrong for a
+        # C/N0 (task #47): the deep fold RE-SEARCHES rate and phase, so it detects the
+        # satellite wherever the tap sits. Detection and tap-placement are exactly what a DLL
+        # presence gate must separate.
+        #
+        # OPT-IN, one PRN at a time, because switching the whole fleet at once would make 72%
+        # of it newly trimmable in one step -- against a slew cap already railing 67-100% of
+        # the time. That trades a latch for an oscillation, and the A/B would be
+        # uninterpretable. deep_gate_prns=True enables it fleet-wide once the pull-in has been
+        # measured on the opt-in set.
+        if deep_gate_prns:
+            for prn, v in out.items():
+                if deep_gate_prns is not True and prn not in deep_gate_prns:
+                    continue
+                c = v.get("coh_row") or {}
+                ds = float(c.get("deep_snr", 0.0) or 0.0)
+                fl = float(c.get("deep_floor", 0.0) or 0.0)
+                # Needs a REAL floor to compare against. Without one there is no bar, and
+                # defaulting to "present" would trim on noise -- strictly worse than the
+                # latch. Fall through to the prompt verdict instead.
+                if fl <= 0.0 or ds <= 0.0:
+                    continue
+                v["present"] = ds >= deep_gate_margin * fl
+                v["present_gate"] = "deep"
+                v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
     return out
 
 

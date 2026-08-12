@@ -284,6 +284,32 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # matched time-since-restart -- NOT on C/N0 through the restart transient. Revert by
     # deleting this line.
     joint-consume: clk
+    # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
+    # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
+    # when the tap is off-peak -- so an off-peak satellite fails the gate and is never trimmed
+    # back. A latch. E33 is the witness: el 69, deep_snr 35 = 13x its floor, all 12 instances
+    # agreeing E:P:L = 0.11 : 1.0 : 2.0 (a rising flank, peak beyond +0.5 chips), trim FROZEN
+    # -- while the SAME satellite tracks normally on gal_e5b. Gating it on deep_snr instead
+    # lets the loop see it; the deep fold re-searches, so it detects regardless of tap
+    # placement.
+    #
+    # ONE PRN ON PURPOSE. Fleet-wide this makes 26 of 36 satellites newly trimmable in one
+    # step, against a slew cap already railing 67-100% of the time -- a latch traded for an
+    # oscillation, with every other satellite moving at once so nothing is attributable.
+    # Here E33's own e5b twin is the control: same satellite, same sky, same clock, gate
+    # unchanged.
+    #
+    # ⚠️ THE FAULT ALTERNATES BETWEEN THE BANDS, so this is a DUTY-CYCLE test, not a
+    # before/after. Measured 18:15 -> 18:35 on 2026-08-12 the two bands SWAPPED roles: e5a
+    # went disc -0.878 / L-P 4.98 / trim frozen -> +0.146 / 0.27 / present, while e5b went
+    # +0.846 / 0.63 / trimmed -> -0.943 / 8.78 / frozen. A single snapshot of either band
+    # would have "confirmed" whichever story it was taken to support.
+    # JUDGE ON: over hours, the fraction of time gal_e5a PRN 33 sits |disc| > 0.6 versus
+    # gal_e5b PRN 33, across many alternations. The armed band should spend LESS time stuck,
+    # and its excursions should be SHORTER -- the claim is faster pull-in, not immunity.
+    # NOT on C/N0 -- cn0_coh cannot see code error at all (#47).
+    # Widen with --dll-deep-gate all once the pull-in rate is measured. Revert: delete.
+    dll-deep-gate: "33"
     # ...AND UNRAIL THE RATE LIMIT, or the line above cannot show anything. The flat
     # 0.05 chips/event cap had 47% of steps sitting exactly on it while satellites were
     # 5-8 chips from their model -- of order an hour to close, against a ~600 s
