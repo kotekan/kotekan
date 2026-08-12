@@ -349,11 +349,6 @@ cudaUpchannelizer_chime_U2::cudaUpchannelizer_chime_U2(Config& config,
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
 
-    // Ensure that this stage can always make progress
-    E_buffer.check_read_progress(
-        E_buffer.get_ndarray().extent(0) / 4,
-        round_up(cuda_algorithm_overlap + 1, cuda_granularity_number_of_timesamples));
-
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX only once

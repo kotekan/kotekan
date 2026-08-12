@@ -28,8 +28,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::round_down, kotekan::round_up, kotekan::div_noremainder, kotekan::div,
-    kotekan::mod;
+using kotekan::round_down, kotekan::round_up, kotekan::div_noremainder, kotekan::div, kotekan::mod;
 
 namespace {
 template<typename T, std::size_t D>
@@ -349,10 +348,6 @@ cudaUpchannelizer_chord_U8::cudaUpchannelizer_chord_U8(Config& config,
     Ebar_buffer.register_producer();
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
-
-    // Ensure that this stage can always make progress
-    E_buffer.check_read_progress(E_buffer.get_ndarray().extent(0) / 4,
-                                 round_up(cuda_algorithm_overlap + 1, cuda_granularity_number_of_timesamples));
 
     set_command_type(gpuCommandType::KERNEL);
 
