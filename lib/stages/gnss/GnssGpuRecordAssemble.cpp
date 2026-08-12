@@ -113,6 +113,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 w.im.assign((size_t)n * nc, 0.0);
                 w.energy.assign((size_t)n * nc, 0.0);
                 w.nrec.assign(n, 0);
+                w.phi0.assign(n, 0.0);
             }
             INFO("per-channel spectrum export ON: {:d} channels, freq_id {:d}..{:d}; "
                  "ADDRESSABLE windows of {:d} samples ({:.3f} s), ring depth {:d}",
@@ -128,6 +129,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             _spec_ring[0].im.assign((size_t)n * nc, 0.0);
             _spec_ring[0].energy.assign((size_t)n * nc, 0.0);
             _spec_ring[0].nrec.assign(n, 0);
+            _spec_ring[0].phi0.assign(n, 0.0);
             WARN("per-channel spectrum export ON: {:d} channels -- but LEGACY reset-on-read "
                  "windows (no 'spectrum_window_samples' in this config). Instances CANNOT be "
                  "aligned; regenerate this node's config (task #53).", (int)nc);
@@ -409,6 +411,36 @@ void GnssGpuRecordAssemble::main_thread() {
                     const size_t prow = (size_t)(c.job0 + 1) * n_chan;
                     std::lock_guard<std::mutex> lk(_spec_mtx);
                     SpecWindow& W = spec_window_for(wstart);
+                    // ⚠️ REFERENCE THE DEROTATION TO THIS WINDOW'S FIRST RECORD (task #52).
+                    // `_phi[p]` is an ACCUMULATOR whose zero is set at a per-instance
+                    // re-acquisition ("FRESH acquisition: break the arc"), so its absolute
+                    // value is arbitrary and DIFFERENT on every instance. Exporting
+                    // g * exp(-i*_phi) therefore stamped each instance's spectrum with its own
+                    // arbitrary constant -- which left INTRA-instance coherence untouched
+                    // (a constant does not tilt a ramp) while destroying INTER-instance
+                    // coherence. Measured on sky 2026-08-12 before this fix: intra 0.48-0.98
+                    // (0.86-0.98 on strong satellites) against inter 0.05-0.46. I first read
+                    // that as a physical per-instance instrumental phase; it is not -- the
+                    // instances are compute assignments over ONE PFB, interleaved stride-16
+                    // combs over the SAME 5972-6076 span, with no separate signal path to
+                    // carry a calibration term. KV caught it.
+                    //
+                    // The accumulator itself is NECESSARY: without it the prompt winds with the
+                    // residual carrier across the ~100 records in a window (1 Hz of residual is
+                    // 6.6 rad over 1.05 s) and the window sum decoheres. Only its ORIGIN is
+                    // wrong. Computing an absolute phase instead is not an option either --
+                    // f_car * t_abs at days of uptime is ~1e8 cycles, the same precision trap
+                    // as the code-phase transport disease.
+                    //
+                    // So subtract the phase at the window's OWN first record. The INCREMENT
+                    // from there is identical on every instance (same commanded carrier, and
+                    // since #53 the same records), so the arbitrary origin cancels exactly and
+                    // every instance lands on one common reference. The record path keeps the
+                    // raw _phi[p] and is untouched.
+                    if (W.nrec[p] == 0)
+                        W.phi0[p] = _phi[p];
+                    const std::complex<double> rot_spec =
+                        std::polar(1.0, -(_phi[p] - W.phi0[p]));
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
@@ -422,7 +454,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         } else {
                             g = {corr[2 * (base + ref_e)], corr[2 * (base + ref_e) + 1]};
                         }
-                        g *= rot;
+                        g *= rot_spec;
                         const size_t k = (size_t)p * n_chan + ch;
                         W.re[k] += g.real();
                         W.im[k] += g.imag();
@@ -549,6 +581,7 @@ GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_
         std::fill(W.im.begin(), W.im.end(), 0.0);
         std::fill(W.energy.begin(), W.energy.end(), 0.0);
         std::fill(W.nrec.begin(), W.nrec.end(), 0);
+        std::fill(W.phi0.begin(), W.phi0.end(), 0.0);
         W.idx = idx;
         W.w0 = W.w1 = -1;
     }

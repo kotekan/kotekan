@@ -142,6 +142,9 @@ private:
         int64_t w0 = -1, w1 = -1;                ///< wstart of the first/last record in it
         std::vector<double> re, im, energy;      ///< [n_prn * n_chan]
         std::vector<int> nrec;                   ///< [n_prn]
+        /// [n_prn] the NCO phase at this window's FIRST record for this PRN -- the reference
+        /// the window's derotation is taken relative to (task #52). See spec_window_for().
+        std::vector<double> phi0;
     };
     std::vector<SpecWindow> _spec_ring;          ///< depth from config; index -> idx % depth
     int64_t _spec_max_idx = -1;                  ///< newest index SEEN; complete windows are < this
