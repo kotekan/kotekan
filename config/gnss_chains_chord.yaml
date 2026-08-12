@@ -323,7 +323,16 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # saturation rather than a measurement.
     # JUDGE WITH: RESEED log lines + deep_gate_watch.py, on whether E33's excursions on this
     # band get SHORTER than on gal_e5b. Not on C/N0 (#47). Revert: delete.
-    reseed-spec-tau: "33"
+    # DISARMED 2026-08-12 20:30 -- IT DID NOT CONVERGE. 74 firings in ~1 h, each stepping the
+    # seed +0.25..+0.40 chips, while tau STAYED at +0.5..+0.8 the whole time (~22 chips of
+    # cumulative seed motion with no reduction in the measured offset). A converging loop must
+    # show tau shrinking; this did not, so one of: the step never reaches the tracker, the sign
+    # is inverted, or spec_tau is not measuring the commanded-vs-true offset. ALSO: the fit rail
+    # is NOT +-2.0 -- observed taus reach +-2.180 -- so --spec-span-chips is miscalibrated and
+    # the span-edge guard was refusing good fits (1.9-2.18) while not knowing the true rail.
+    # Re-arm only after #53 (aligned windows) makes tau trustworthy, and with a convergence
+    # assertion in the loop: if tau does not fall after N steps, stop and say so.
+    # reseed-spec-tau: "33"
     # ...AND UNRAIL THE RATE LIMIT, or the line above cannot show anything. The flat
     # 0.05 chips/event cap had 47% of steps sitting exactly on it while satellites were
     # 5-8 chips from their model -- of order an hour to close, against a ~600 s
