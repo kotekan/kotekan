@@ -128,7 +128,7 @@ public:
                 }
 
             } else {
-                std::abort();
+                FATAL_ERROR("Internal logic error");
             }
 
             // Mark buffer as full
