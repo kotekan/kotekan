@@ -44,8 +44,17 @@ const METRICS = {
     // returned -6.9 dB-Hz for PRN 23, which is not a physical C/N0. Both are offered now,
     // labelled, with the coherent one first because it is the one that reports on the
     // instrument's actual sensitivity.
+    // "?" MARKS A BLIND NUMBER (task #47). cn0_coh comes from the deep fold, which RE-SEARCHES
+    // rate and phase and so re-finds the satellite no matter where the prompt tap was
+    // commanded -- it stays high while E/P/L sit on noise, and dll_disc reads ~0 there because
+    // E ~= L ~= noise. Measured 2026-08-12 15:20-15:45 UTC: all five chains served ~41 dB-Hz at
+    // |disc| 0.013 with the prompt Rayleigh, and this display was read as the array's best look
+    // of the day. The value is still shown -- it is a real deep-fold significance -- but a
+    // marked one must never be averaged into a health number. 7-30% of bright-LOOKING samples
+    // on 2026-08-11/12 carry the mark.
     cn0_coh: {label: "C/N0 coh", field: "cn0_coh", unit: "dB-Hz",
-              fmt: m => m && m.cn0_coh != null ? m.cn0_coh.toFixed(0) : null},
+              fmt: m => m && m.cn0_coh != null
+                        ? m.cn0_coh.toFixed(0) + (m.prompt_lock === false ? "?" : "") : null},
     cn0:  {label: "C/N0 inc", field: "cn0",     unit: "dB-Hz",
            fmt: m => m && m.cn0 != null ? m.cn0.toFixed(0) : null},
     sig:  {label: "sig",  field: "sig",     unit: "σ",
@@ -450,7 +459,17 @@ export class GpsTablePanel {
                 id: dot + "<b>" + r.id + "</b>",
                 el: r.el != null ? r.el.toFixed(0) + "°" : "—",
                 snr: r.snr != null ? r.snr.toFixed(1) : "—",
-                cn0_coh: r.cn0_coh != null ? r.cn0_coh.toFixed(1) : "—",
+                // Blind rows carry the mark AND a hover reason, so the display explains itself
+                // rather than needing this file to be read (task #47).
+                cn0_coh: r.cn0_coh != null
+                    ? (r.prompt_lock === false
+                       ? `<span style="opacity:.55" title="BLIND: the prompt tap is not on the`
+                         + ` signal (Rayleigh prompt intensity AND below the live noise floor).`
+                         + ` This is a deep-fold significance, not a C/N0 -- the deep fold`
+                         + ` re-searches and re-finds the satellite wherever the tap sits.">`
+                         + r.cn0_coh.toFixed(1) + "?</span>"
+                       : r.cn0_coh.toFixed(1))
+                    : "—",
                 cn0: r.cn0 != null ? r.cn0.toFixed(1) : "—",
                 sig,
                 coh_s: r.coh_s != null && r.coh_s > 0 ? r.coh_s.toFixed(2) : "—",

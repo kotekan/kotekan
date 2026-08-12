@@ -101,6 +101,14 @@ export function signal_metrics(s, t_rec) {
         coh_s: s.coherence_s != null ? s.coherence_s : null,
         deep_snr: s.deep_snr || 0, dr: s.deep_records || 0,
         cn0: null, cn0_coh: null, peel_db: null, peel_bound: false,
+        // PROMPT LOCK (task #47): is the prompt tap on the signal at all? Every C/N0 below is
+        // built from deep_snr, and the deep fold RE-SEARCHES rate and phase -- it re-finds the
+        // satellite wherever the tap was commanded, so this panel can show 41 dB-Hz and a
+        // dll_disc of 0.01 while E/P/L sit on pure noise. That is not a hypothetical: on
+        // 2026-08-12 15:20-15:45 UTC all five chains did exactly that for 25 minutes and it
+        // was read off this display as the array's best look of the day. Default TRUE so a
+        // pre-#47 broker renders unchanged rather than greying every satellite.
+        prompt_lock: s.prompt_lock != null ? !!s.prompt_lock : true,
     };
     // significance: deep counts only where the combiner certified it beat its rectification
     // floor (coherence_s > 0); a floored deep (~7-12 sigma) is noise wearing a lock's clothes.
@@ -320,6 +328,8 @@ export class GpsFeed {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
                 amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0, deep_snr: 0, dr: 0,
                 cn0: null, cn0_coh: null, dop: null, coh_s: null,
+                // Paired with cn0_coh below, NOT summarised independently -- see there.
+                prompt_lock: true,
                 peel_db: null, peel_bound: false,
                 sig_by: {},     // unified: combiner-key -> signal_metrics()
                 n_sig: 0,       // unified: signals this sat is locked on
@@ -377,8 +387,16 @@ export class GpsFeed {
                         // ...and the COHERENT one alongside, or the table's C/N0-coh column
                         // and its sort would read empty in flat mode while the unified cells
                         // showed values. Both are row summaries = best signal, same rule.
-                        if (m.cn0_coh != null && (r.cn0_coh == null || m.cn0_coh > r.cn0_coh))
+                        // ⚠️ THE FLAG MOVES WITH THE NUMBER IT QUALIFIES (task #47). Taking the
+                        // row's prompt_lock as, say, "any signal locked" while the row's
+                        // cn0_coh comes from the max would let a blind signal's C/N0 be shown
+                        // under a different signal's lock -- the same mismatched-pairing shape
+                        // that produced the phantom C/N0 scatter in #35. One assignment, one
+                        // measurement.
+                        if (m.cn0_coh != null && (r.cn0_coh == null || m.cn0_coh > r.cn0_coh)) {
                             r.cn0_coh = m.cn0_coh;
+                            r.prompt_lock = m.prompt_lock;
+                        }
                     }
             }
         } else {

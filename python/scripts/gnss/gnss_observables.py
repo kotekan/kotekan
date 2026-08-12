@@ -51,9 +51,27 @@ def _get(url, timeout=3.0):
         return None
 
 
-def cn0_dbhz(deep_snr, coherence_s):
-    """Coherent C/N0 (dB-Hz) = 10 log10(deep_snr^2 / T_coh); None unless the combiner
-    certified the coherence (coherence_s > 0 -- a floored deep is rectification noise)."""
+def cn0_dbhz(row, deep_snr, coherence_s):
+    """Coherent C/N0 (dB-Hz): PREFER the broker's own `cn0_coh_db`, and only fall back to the
+    local 20log10(deep_snr) - 10log10(T) when serving an older broker that does not publish it.
+
+    ⚠️ THE FALLBACK IS THE BUG THIS FUNCTION USED TO BE (task #47, 2026-08-12). Recomputing from
+    the ROW's deep_snr silently re-introduced everything task #35 fixed one layer upstream: that
+    field is OVERRIDDEN in publish.py by the fleet-coherent value or the quadrature fallback, so
+    it mixes estimator populations with different normalisations. publish.py deliberately builds
+    cn0_coh_db from the BEST SINGLE INSTANCE's own deep_snr over that instance's own coherent
+    span -- one estimator, one normalisation, continuous across serving states -- and this
+    function threw that away and recomputed the mixture. MEASURED live on gal_e5a the same day:
+    the recomputation runs up to +9.7 dB hot against the published value, worst on exactly the
+    PRNs carrying `coh_src: quad:12` (the 10log10(12) = 10.8 dB inflation of docs 11.31).
+    So every observables file and every viewer trace written since #35 landed carries the
+    UN-fixed number, while the broker's own REST surface carried the fixed one.
+
+    Coherence is still required: a floored deep is rectification noise. Whether the PROMPT was
+    on the signal at all is a separate question this number cannot answer -- see prompt_lock."""
+    pub = row.get("cn0_coh_db")
+    if pub is not None:
+        return pub
     if deep_snr and deep_snr > 0 and coherence_s and coherence_s > 0:
         return 20.0 * math.log10(deep_snr) - 10.0 * math.log10(coherence_s)
     return None
@@ -249,7 +267,17 @@ def main():
                     "carr_resid_m": carr_resid_m,     # model-removed carrier range (CMC input)
                     "adr_lock_s": r.get("adr_lock_s"),
                     # --- POWER
-                    "cn0_coh_dbhz": cn0_dbhz(r.get("deep_snr"), r.get("coherence_s")),
+                    "cn0_coh_dbhz": cn0_dbhz(r, r.get("deep_snr"), r.get("coherence_s")),
+                    # IS THE PROMPT TAP ACTUALLY ON THE SIGNAL? (task #47) Every C/N0 above is
+                    # blind to code error -- deep_snr comes from the RE-SEARCHING deep fold, so
+                    # it re-finds the satellite wherever the tap was commanded. Carried per-row
+                    # so that offline can no longer average a blind window into a health number:
+                    # 7-30% of bright-LOOKING samples on 2026-08-11/12 were blind.
+                    # `prompt_lock` False => cn0_coh_dbhz is a deep-fold significance, not a C/N0.
+                    "prompt_lock": r.get("prompt_lock"),
+                    "prompt_rayleigh": r.get("prompt_rayleigh"),
+                    "fleet_present": r.get("fleet_present"),
+                    "coh_src": r.get("coh_src"),
                     "cn0_inc_dbhz": cn0_inc_dbhz(r.get("amplitude"),
                                                  r.get("unbiased_amplitude"), t_rec),
                     "cn0_q_dbhz": cn0_q_dbhz(r.get("snr_q"), t_rec),  # modulation-immune (BOC pilots)

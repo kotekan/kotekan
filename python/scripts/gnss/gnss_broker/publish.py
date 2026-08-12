@@ -15,6 +15,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .transport import _now
 
+# Prompt-intensity Rayleigh bar for the blind-tracking flag (task #47). A prompt tap holding a
+# coherent signal has s4_raw well below 1; a tap on noise is Rayleigh, s4_raw ~= 1.
+# DERIVED FROM SKY, not chosen: over 2026-08-11/12 the measured populations are 1.00-1.05 while
+# blind (broker-wide, all five chains) and 0.17-0.82 while tracking, so the bar sits in an empty
+# gap between them rather than inside either. Re-derive it -- do not nudge it -- if the split
+# ever stops being bimodal; scripts/gnss/blind_witness_check.py prints both populations.
+PROMPT_RAYLEIGH_S4 = 0.90
+
 
 class FleetPublisher:
     """Serve the broker's FLEET-MERGED per-PRN state over REST, in a combiner's schema.
@@ -455,6 +463,46 @@ class FleetPublisher:
             # The fleet's view stays published beside it (deep_snr / coh_src /
             # fleet_coh_best_inst), so the gain is still visible -- just not conflated
             # with the radiometry.
+            #
+            # ---- PROMPT LOCK (task #47, 2026-08-12). ------------------------------------
+            # EVERY C/N0 IN THIS ROW IS BLIND TO CODE ERROR. deep_snr comes from the deep
+            # fold, which RE-SEARCHES rate and phase and therefore re-finds the satellite no
+            # matter where the prompt tap was actually commanded. So a row can serve 41 dB-Hz
+            # while E/P/L sit on pure noise, and nothing downstream can tell.
+            #
+            # MEASURED, 2026-08-12 15:20-15:45 UTC (the window KV reported as the array's BEST
+            # look of the day, on all five chains at once): per-instance deep_snr 1.5-2.5,
+            # cross-instance align 0.14-0.22, s4_raw 1.00-1.05 (Rayleigh -- no coherent
+            # component at all), cn0_inc 22-25 dB-Hz (the rectification floor), `present` 0-1
+            # of 11-12 PRNs. dll_disc read 0.01 THROUGHOUT, because a discriminator built from
+            # E ~= L ~= noise is zero. Over 08-11 and 08-12, 7-30% of all BRIGHT-LOOKING
+            # samples carry this signature; 08-11 17h UTC looked like that day's best hour by
+            # every served metric and was 30-41% blind.
+            #
+            # ⚠️ A ZERO DISCRIMINATOR MEANS ON-PEAK **OR** BLIND. It is not evidence of health,
+            # and neither is a high cn0_coh. Judge tracking on the witnesses below.
+            #
+            # Two witnesses, deliberately of different kinds, because each alone has a failure
+            # mode the other covers:
+            #   s4_raw -- the prompt intensity's fractional variation. ABSOLUTE and per-satellite:
+            #       it needs no population and no floor estimate, so it survives the case that
+            #       breaks every relative gate (a fleet in which EVERY satellite is blind, where
+            #       the median IS the blind level). ~1.0 is Rayleigh, i.e. no coherent component.
+            #       Fails alone under strong scintillation, which is real on these bands.
+            #   fleet_present -- summed prompt power over the LIVE noise population (fleet.py
+            #       _floor). Immune to scintillation, but RELATIVE: it asks "brighter than the
+            #       median PRN", so a uniformly strong fleet also reads low. Cannot be the whole
+            #       test on its own -- that is why it is not.
+            # Blind is asserted only when BOTH agree, so the flag is conservative: it never calls
+            # a satellite blind on the strength of one estimator's weakness.
+            _s4 = row.get("s4_raw")
+            _rayleigh = (_s4 is not None and _s4 >= PROMPT_RAYLEIGH_S4)
+            row["prompt_rayleigh"] = _rayleigh
+            row["prompt_lock"] = not (_rayleigh and not row["fleet_present"])
+            # cn0_coh_db is the RADIOMETRY and is only meaningful when the prompt is on the
+            # signal. Published unconditionally (never destroy an estimator's output -- a row
+            # that has had a model applied cannot be un-applied), with the flag beside it so
+            # consumers can decline it. gnss_observables + the viewer both honour this.
             rows.append(row)
         meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                 "present": sum(1 for r in rows if r["fleet_present"]),
