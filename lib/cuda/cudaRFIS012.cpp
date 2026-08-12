@@ -140,6 +140,13 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     voltage.register_consumer();
     rfi_S012.register_producer();
 
+    // Ensure that this stage can always make progress
+    const std::ptrdiff_t pl_mask_read_max = pl_mask.get_ndarray().extent(0) / 4;
+    pl_mask.check_read_progress(pl_mask_read_max, div_noremainder(rfi_downsampling_factor, 128));
+    // We read as many `voltage` elements as we read `pl_mask` elements, so the `voltage`
+    // ringbuffer must be able to hold the largest amount we might ask for at once
+    voltage.check_read_progress(voltage.get_ndarray().extent(0), pl_mask_read_max * 128);
+
     set_command_type(gpuCommandType::KERNEL);
 }
 

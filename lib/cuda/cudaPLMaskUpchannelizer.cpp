@@ -176,6 +176,13 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
     pl_expanded_mask.register_consumer();
     pl_upchannelized_expanded_mask.register_producer();
 
+    // Ensure that this stage can always make progress: we need to be able to read the look-ahead
+    // plus at least one whole batch of `upchannelization_factor` rows.
+    pl_expanded_mask.check_read_progress(
+        in_size / 4,
+        div_ceil((cuda_number_of_taps - 1) * std::ptrdiff_t(upchannelization_factor), 64)
+            + upchannelization_factor);
+
     set_command_type(gpuCommandType::KERNEL);
 }
 

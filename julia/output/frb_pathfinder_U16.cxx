@@ -31,7 +31,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+using kotekan::round_down, kotekan::round_up, kotekan::div_noremainder, kotekan::div,
+    kotekan::mod;
 
 namespace {
 template<typename T, std::size_t D>
@@ -441,6 +442,10 @@ cudaFRBBeamformer_pathfinder_U16::cudaFRBBeamformer_pathfinder_U16(Config& confi
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
 
+    // Ensure that this stage can always make progress
+    Ebar_buffer.check_read_progress(Ebar_buffer.get_ndarray().extent(0) / 4,
+                                 round_up(cuda_downsampling_factor, cuda_granularity_number_of_timesamples));
+
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX only once
@@ -487,8 +492,11 @@ int cudaFRBBeamformer_pathfinder_U16::wait_on_precondition() {
             Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
                 using std::min;
                 Tbar_read = min(Tbar_available, Tbar_read_max);
-                return read_descriptor_t{.claimed = num_consumed_elements(Tbar_read),
-                                         .read = num_processed_elements(Tbar_read)};
+                // Ensure that we make progress: If we cannot claim any elements then we
+                // must not read any elements either, and instead wait for more data.
+                const std::ptrdiff_t Tbar_claimed = num_consumed_elements(Tbar_read);
+                const std::ptrdiff_t Tbar_processed = Tbar_claimed == 0 ? 0 : num_processed_elements(Tbar_read);
+                return read_descriptor_t{.claimed = Tbar_claimed, .read = Tbar_processed};
             });
         if (errcode < 0)
             return errcode;

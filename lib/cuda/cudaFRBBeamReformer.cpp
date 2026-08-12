@@ -134,6 +134,10 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
     frb1_beams_buffer.register_consumer();
     frb2_beams_buffer.register_producer();
 
+    // Ensure that this stage can always make progress
+    frb1_beams_buffer.check_read_progress(frb1_beams_buffer.get_ndarray().extent(0),
+                                          frb2_num_times);
+
     set_command_type(gpuCommandType::KERNEL);
 
     // Create cuBLAS handle

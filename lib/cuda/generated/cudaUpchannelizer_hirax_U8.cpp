@@ -28,7 +28,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+using kotekan::round_down, kotekan::round_up, kotekan::div_noremainder, kotekan::div, kotekan::mod;
 
 namespace {
 template<typename T, std::size_t D>
@@ -349,6 +349,11 @@ cudaUpchannelizer_hirax_U8::cudaUpchannelizer_hirax_U8(Config& config,
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
 
+    // Ensure that this stage can always make progress
+    E_buffer.check_read_progress(
+        E_buffer.get_ndarray().extent(0) / 4,
+        round_up(cuda_algorithm_overlap + 1, cuda_granularity_number_of_timesamples));
+
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX only once
@@ -397,8 +402,11 @@ int cudaUpchannelizer_hirax_U8::wait_on_precondition() {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
             using std::min;
             T_read = min(T_available, T_read_max);
-            return read_descriptor_t{.claimed = num_consumed_elements(T_read),
-                                     .read = num_processed_elements(T_read)};
+            // Ensure that we make progress: If we cannot claim any elements then we
+            // must not read any elements either, and instead wait for more data.
+            const std::ptrdiff_t T_claimed = num_consumed_elements(T_read);
+            const std::ptrdiff_t T_processed = T_claimed == 0 ? 0 : num_processed_elements(T_read);
+            return read_descriptor_t{.claimed = T_claimed, .read = T_processed};
         });
         if (errcode < 0)
             return errcode;

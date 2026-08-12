@@ -126,6 +126,9 @@ cudaPLMaskExpander::cudaPLMaskExpander(kotekan::Config& config, const std::strin
     pl_mask.register_consumer();
     pl_expanded_mask.register_producer();
 
+    // Ensure that this stage can always make progress
+    pl_mask.check_read_progress(pl_mask.get_ndarray().extent(0) / 4, 1);
+
     set_command_type(gpuCommandType::KERNEL);
 }
 

@@ -147,6 +147,9 @@ cudaRFISKbar::cudaRFISKbar(kotekan::Config& config, const std::string& unique_na
     rfi_SKbar.register_producer();
     rfi_SKbartilde.register_producer();
 
+    // Ensure that this stage can always make progress
+    rfi_S012bar.check_read_progress(rfi_S012bar.get_ndarray().extent(0) / 4, 1);
+
     set_command_type(gpuCommandType::KERNEL);
 }
 

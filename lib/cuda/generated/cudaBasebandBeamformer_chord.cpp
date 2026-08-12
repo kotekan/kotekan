@@ -401,6 +401,10 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     register_gpu_buffer_user(
         {.name = log_name, .is_array = true, .does_read = true, .does_write = true});
 
+    // Ensure that this stage can always make progress
+    E_buffer.check_read_progress(E_buffer.get_ndarray().extent(0) / 4,
+                                 cuda_granularity_number_of_timesamples);
+
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX only once

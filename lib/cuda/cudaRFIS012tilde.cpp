@@ -125,6 +125,9 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     rfi_S012.register_consumer();
     rfi_S012tilde.register_producer();
 
+    // Ensure that this stage can always make progress
+    rfi_S012.check_read_progress(rfi_S012.get_ndarray().extent(0) / 4, 1);
+
     set_command_type(gpuCommandType::KERNEL);
 }
 

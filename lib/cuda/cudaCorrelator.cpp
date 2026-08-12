@@ -80,6 +80,12 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(_n2k_correlation_name, true, false, true));
 
+    // Ensure that this stage can always make progress. Both inputs are claimed in fixed-size
+    // chunks, so the ringbuffers must be able to hold a whole chunk.
+    voltage.check_read_progress(voltage.get_ndarray().extent(0), _num_times);
+    rfi_RFImask.check_read_progress(rfi_RFImask.get_ndarray().extent(0),
+                                    div_noremainder(_num_times, 8 * 128));
+
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaCorrelator");
 }

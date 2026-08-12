@@ -152,6 +152,9 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
         INFO("First-stage RFI excision disabled: producing an all-good RFI mask. "
              "SK statistics are still computed.");
 
+    // Ensure that this stage can always make progress
+    rfi_S012.check_read_progress(rfi_S012.get_ndarray().extent(0) / 4, 1);
+
     set_command_type(gpuCommandType::KERNEL);
 }
 
