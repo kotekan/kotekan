@@ -755,7 +755,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None):
     rather than mixed in: a single unaligned member would put the free-phase problem straight
     back into the gathered set.
     """
-    avail, served, dropped, degraded = {}, {}, [], []
+    avail, served, dropped, degraded, reanchored = {}, {}, [], [], []
     for url in endpoints:
         try:
             r = _get("%s/get_spectrum" % url)
@@ -800,6 +800,16 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None):
             prn = int(row.get("prn", -1))
             if prn <= 0 or (prns is not None and prn not in prns):
                 continue
+            # PHASE CURRENCY (task #52). The export applied exp(-i*phi0) to this window as a
+            # whole, and phi0 is an accumulator the broker's own re-pins move every ~2 min.
+            # Rotating it out here puts every window -- and every instance -- on ONE reference,
+            # which is what makes windows comparable at all. n_reanchor > 0 means the
+            # accumulator was reset or stepped MID-window: no single constant can undo that,
+            # so drop the PRN for this window rather than fold a discontinuity into the sum.
+            if int(row.get("n_reanchor", 0) or 0) > 0:
+                reanchored.append((url, prn))
+                continue
+            derot = cmath.exp(1j * float(row.get("phi0", 0.0) or 0.0))
             ch = row.get("chan") or []
             pts = out.setdefault(prn, [])
             for i, fid in enumerate(fids):
@@ -807,7 +817,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None):
                     break
                 re_, im_, en = ch[i]
                 if en > 0.0:
-                    pts.append((int(fid), complex(re_, im_), float(en), url))
+                    pts.append((int(fid), complex(re_, im_) * derot, float(en), url))
     # THE INVARIANT, ASSERTED RATHER THAN ASSUMED. Same index must mean the same samples. If
     # two instances disagree here the quantisation is broken (mismatched window_samples in a
     # node's config is the way that happens), and every phase downstream is wrong -- so say so
@@ -824,7 +834,8 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None):
                 "fleet spectrum: excluding %d NOT-addressable instance(s) (pre-#53 config): %s"
                 % (len(degraded), ", ".join(degraded)))
     return out, {"window": idx, "w0": next(iter(w0s), None), "w1": next(iter(w1s), None),
-                 "served": served, "dropped": dropped, "degraded": degraded}
+                 "served": served, "dropped": dropped, "degraded": degraded,
+                 "reanchored": reanchored}
 
 
 def fleet_spectrum(endpoints, prns=None):

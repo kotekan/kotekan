@@ -114,6 +114,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 w.energy.assign((size_t)n * nc, 0.0);
                 w.nrec.assign(n, 0);
                 w.phi0.assign(n, 0.0);
+                w.nreanchor.assign(n, 0);
             }
             INFO("per-channel spectrum export ON: {:d} channels, freq_id {:d}..{:d}; "
                  "ADDRESSABLE windows of {:d} samples ({:.3f} s), ring depth {:d}",
@@ -130,6 +131,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             _spec_ring[0].energy.assign((size_t)n * nc, 0.0);
             _spec_ring[0].nrec.assign(n, 0);
             _spec_ring[0].phi0.assign(n, 0.0);
+            _spec_ring[0].nreanchor.assign(n, 0);
             WARN("per-channel spectrum export ON: {:d} channels -- but LEGACY reset-on-read "
                  "windows (no 'spectrum_window_samples' in this config). Instances CANNOT be "
                  "aligned; regenerate this node's config (task #53).", (int)nc);
@@ -411,6 +413,28 @@ void GnssGpuRecordAssemble::main_thread() {
                     const size_t prow = (size_t)(c.job0 + 1) * n_chan;
                     std::lock_guard<std::mutex> lk(_spec_mtx);
                     SpecWindow& W = spec_window_for(wstart);
+                    // PUBLISH THE PHASE CURRENCY (task #52). The rotation applied below is
+                    // exp(-i*_phi[p]), and _phi[p] is an accumulator that is ZEROED on a fresh
+                    // acquisition and STEPPED on a continuous re-pin -- and the broker re-pins
+                    // seeds every ~2 minutes. So the export's phase reference MOVES UNDERNEATH
+                    // the consumer, on exactly the minutes timescale where the measured
+                    // window-to-window coherence collapses to its random floor.
+                    //
+                    // Neither of my two earlier attempts was right: leaving it implicit (the
+                    // original) hands the consumer a reference it cannot know, and subtracting
+                    // a per-window origin (45fe3a438) throws away the within-window continuity
+                    // that is the whole point. KV: "the original was also wrong."
+                    //
+                    // So publish it. A window's sum is exp(-i*phi0) * SUM_r G_r*exp(-i*dphi_r),
+                    // so a consumer that knows phi0 can rotate any two windows onto a common
+                    // reference exactly; and n_reanchor > 0 says the accumulator was reset or
+                    // stepped MID-window, which no single constant can undo -- drop those.
+                    // This is #45's (value, currency, epoch) discipline applied to a phase:
+                    // the spectrum was a value whose currency was never transported.
+                    if (W.nrec[p] == 0)
+                        W.phi0[p] = _phi[p];
+                    if (c.reanchored != 0)
+                        W.nreanchor[p] += 1;
                     // ⚠️ DO **NOT** REFERENCE THIS TO THE WINDOW'S OWN FIRST RECORD.
                     // I tried exactly that (45fe3a438) to remove the arbitrary per-instance
                     // origin of _phi[p], and it was a mistake: _phi[p] is CONTINUOUS IN TIME
@@ -592,6 +616,7 @@ GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_
         std::fill(W.energy.begin(), W.energy.end(), 0.0);
         std::fill(W.nrec.begin(), W.nrec.end(), 0);
         std::fill(W.phi0.begin(), W.phi0.end(), 0.0);
+        std::fill(W.nreanchor.begin(), W.nreanchor.end(), 0);
         W.idx = idx;
         W.w0 = W.w1 = -1;
     }
@@ -639,8 +664,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
         }
     }
 
-    std::vector<double> re, im, en;
-    std::vector<int> nrec;
+    std::vector<double> re, im, en, phi0;
+    std::vector<int> nrec, nre;
     int64_t w0 = -1, w1 = -1, idx = -1, lo = -1, hi = -1;
     const char* status = "ok";
     {
@@ -653,6 +678,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
             im.swap(W.im);
             en.swap(W.energy);
             nrec.swap(W.nrec);
+            phi0 = W.phi0;
+            nre = W.nreanchor;
             w0 = W.w0;
             w1 = W.w1;
             W.re.assign((size_t)_prns.size() * nc, 0.0);
@@ -687,6 +714,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
                     im = W.im;
                     en = W.energy;
                     nrec = W.nrec;
+                    phi0 = W.phi0;
+                    nre = W.nreanchor;
                     w0 = W.w0;
                     w1 = W.w1;
                 }
@@ -723,7 +752,10 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
             else
                 chans.push_back({0.0, 0.0, 0.0}); // masked-off channel: weight 0, skipped
         }
-        prns.push_back({{"prn", _prns[p]}, {"n_rec", nrec[p]}, {"chan", chans}});
+        prns.push_back({{"prn", _prns[p]}, {"n_rec", nrec[p]},
+                        {"phi0", phi0.empty() ? 0.0 : phi0[p]},
+                        {"n_reanchor", nre.empty() ? 0 : nre[p]},
+                        {"chan", chans}});
     }
     reply["prns"] = prns;
     conn.send_json_reply(reply);
