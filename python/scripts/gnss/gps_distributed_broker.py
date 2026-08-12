@@ -3768,10 +3768,22 @@ def main(argv=None, rx=None, publisher=None):
                 # dr_seed_phys puts the tracker's despread. test_track_vs_fit.py pins
                 # the discriminating pair (bias step: old ~1700/Hz, new ~0; real lobe
                 # park: both read +-3.27) and drives the SHIPPED function.
-                cp_err = track_vs_fit_chips(
+                # CONVENTION GATE (step 5 follow-up): cp_at_ref is only usable under the
+                # pair-consistent epoch convention (gnssSeedTransport 2026-08-12). Against
+                # an OLD search, its +52.37-chip skew would read as a sustained cp_err on
+                # every held sat -> mass false escapes, the very defect this comparator
+                # replaced. Same self-detection as the clock solve: agree with the
+                # sample-0 reconstruction within a chip, or the comparator DECLINES
+                # (cp_err = None), which every downstream gate already handles.
+                _cpe_recon = (cp + (ref_hop / args.hops_per_sec) * args.chip_rate_hz
+                              * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
+                              ) % CODE_LEN
+                _cpe_car, _cpe_src = at_epoch_cp_loc(cp_at_ref, _cpe_recon, CODE_LEN)
+                cp_err = (track_vs_fit_chips(
                     prev, cp_at_ref, ref_hop, dll_trim.get(prn, 0.0),
                     args.hops_per_sec, args.chip_rate_hz, args.carrier_hz,
                     args.code_doppler_sign, CODE_LEN)
+                    if _cpe_src == "at_ref" else None)
                 if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
                     _log_rl("cperr-%d" % prn,
                             "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
