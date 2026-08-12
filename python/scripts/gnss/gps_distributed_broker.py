@@ -72,7 +72,7 @@ from gnss_broker.transport import (           # noqa: E402
     expand_token, resolve_prefix, parse_endpoints,
 )
 from gnss_broker.fits import (                # noqa: E402
-    track_vs_fit_chips,
+    retag_seed_doppler, track_vs_fit_chips,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
@@ -4496,17 +4496,24 @@ def main(argv=None, rx=None, publisher=None):
                     # is meaningful only in its doppler's currency -- updating the forecast
                     # dop WITHOUT re-expressing cp walks the despread by t_abs*f_chip*ddop/
                     # f_c chips at soak age (the t_abs lever the code-currency rule forbids;
-                    # why long coasts silently lost the code peak). Same algebra as the
-                    # hold-path TRANSLATE, which the dop-continuous A/B legs validated; the
-                    # old --trim-precomp-coast gate (OFF in prod) was shipping the known-bad
-                    # legacy raw-dop overwrite. The carrier pre-shift that used to ride here
-                    # is gone with the trim-precomp flags (bench-rejected; the BOOTSTRAP
-                    # re-pull owns step recovery).
-                    t_abs = seeds[prn].get("ref_hop", 0) / args.hops_per_sec
-                    seeds[prn]["code_phase_chips"] = (
-                        seeds[prn].get("code_phase_chips", 0.0)
-                        + t_abs * args.chip_rate_hz * args.code_doppler_sign
-                          * (old_dop - new_dop) / args.carrier_hz) % CODE_LEN
+                    # why long coasts silently lost the code peak).
+                    #
+                    # #44 (2026-08-12): the first fix translated at the SEED'S ANCHOR epoch
+                    # (ref_hop) -- which preserves the phase at the anchor and steps the
+                    # phase NOW by anchor_age * k_c * ddop per forecast update, i.e. the
+                    # residual half of the very symptom it targeted (~k_c*r*age^2/2 chips
+                    # of silent walk-off over a coast). The correct epoch is NOW, same as
+                    # the hold-path TRANSLATE has always used; both now go through
+                    # retag_seed_doppler so the algebra lives once, beside dr_cp0/
+                    # dr_seed_phys, with its own regression test. When the sample-0 anchor
+                    # is not known (no utc0_sample0), keep the old anchor-epoch behaviour:
+                    # a partial correction still beats the raw-dop overwrite it replaced.
+                    _t_retag = ((now_w - utc0_sample0) if utc0_sample0
+                                else seeds[prn].get("ref_hop", 0) / args.hops_per_sec)
+                    seeds[prn]["code_phase_chips"] = retag_seed_doppler(
+                        seeds[prn].get("code_phase_chips", 0.0), old_dop, new_dop,
+                        _t_retag, args.chip_rate_hz, args.carrier_hz,
+                        args.code_doppler_sign, CODE_LEN)
                     seeds[prn]["doppler_hz"] = new_dop
                 if "doppler_rate_hz_s" in seeds[prn]:
                     seeds[prn]["doppler_rate_hz_s"] = pred[prn][1]

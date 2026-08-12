@@ -150,5 +150,44 @@ class TestTrackVsFit(unittest.TestCase):
                             "a %+d-period flicker leaked into cp_err" % k)
 
 
+class TestRetagSeedDoppler(unittest.TestCase):
+    """retag_seed_doppler (#44 / #45 step 4): a dop re-tag must preserve the physical
+    phase where the despread is RUNNING -- the present -- not where the seed happens to
+    be anchored."""
+
+    def _phys(self, cp0, dop, t):
+        return (cp0 + t * CHIP * (1.0 + SGN * dop / CARR)) % MOD
+
+    def test_retag_at_now_preserves_the_phase_now(self):
+        cp0, dopA, dopB = 4321.0, 1000.0, 1002.0
+        t_now = T0 + 600.0
+        before = self._phys(cp0, dopA, t_now)
+        from gnss_broker.fits import retag_seed_doppler
+        cp0_new = retag_seed_doppler(cp0, dopA, dopB, t_now, CHIP, CARR, SGN, MOD)
+        after = self._phys(cp0_new, dopB, t_now)
+        # Bar sits just above the double-precision floor, not at zero: the phys
+        # reconstruction runs through t*f_chip ~ 2e12 chips where one ulp is 2.4e-4,
+        # and a few ulps accumulate across retag + rebuild. 2e-3 chips = ~0.2 mm of
+        # code -- physics never sees it; a LOGIC error here is chips, not milli-chips.
+        self.assertLess(abs(((after - before + MOD / 2) % MOD) - MOD / 2), 2e-3)
+
+    def test_the_anchor_epoch_tripwire(self):
+        """The #44 defect, pinned: translating at a 600-s-stale anchor steps the phase
+        NOW by anchor_age * (f_chip/f_car) * ddop ~ 10.4 chips for a 2 Hz re-tag. If a
+        future edit moves the epoch back to the anchor, this fails loudly."""
+        cp0, dopA, ddop = 4321.0, 1000.0, 2.0
+        t_anchor = T0
+        t_now = T0 + 600.0
+        before = self._phys(cp0, dopA, t_now)
+        from gnss_broker.fits import retag_seed_doppler
+        cp0_bad = retag_seed_doppler(cp0, dopA, dopA + ddop, t_anchor,
+                                     CHIP, CARR, SGN, MOD)
+        after_bad = self._phys(cp0_bad, dopA + ddop, t_now)
+        err = abs(((after_bad - before + MOD / 2) % MOD) - MOD / 2)
+        self.assertAlmostEqual(err, 600.0 * CHIP / CARR * ddop, delta=0.01,
+                               msg="the anchor-epoch error law changed -- investigate")
+        self.assertGreater(err, 10.0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

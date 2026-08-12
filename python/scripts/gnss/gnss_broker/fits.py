@@ -302,3 +302,24 @@ def track_vs_fit_chips(held_seed, det_cp_at_ref, det_ref_hop, dll_trim_chips,
                         code_doppler_sign, code_len)
     return ((det_cp_at_ref - held - dll_trim_chips + code_len / 2.0) % code_len
             ) - code_len / 2.0
+
+
+def retag_seed_doppler(cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz,
+                       code_doppler_sign, mod):
+    """Re-express a sample-0 cp in a new Doppler's currency, preserving the physical
+    phase AT t_eval_s (#44 / #45 step 4).
+
+    The ONLY correct t_eval_s is NOW: the tracker rebuilds the phase as
+    cp0 + t*f_chip*(1 + k*dop) with t elapsed since sample 0, so changing dop by ddop
+    moves the physical phase at time t by t*f_chip*k*ddop -- the translation must cancel
+    it where the despread is actually running, which is the present. The coast path
+    translated at the seed's ANCHOR epoch instead: that preserves the phase at the
+    anchor and steps the phase NOW by anchor_age * k_c * ddop per forecast update --
+    integrated over a coast at dop rate r, ~(f_chip/f_car)*r*age^2/2 chips of silent
+    walk-off (the residual half of "long coasts silently lost the code peak"). The hold
+    path always used the current epoch; now both go through this one function, kept
+    beside dr_cp0/dr_seed_phys so the three transport directions cannot drift apart.
+    """
+    return ((cp_chips
+             - t_eval_s * chip_hz * code_doppler_sign * (new_dop - old_dop) / carrier_hz)
+            % mod)
