@@ -67,6 +67,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
+#include <limits>
 #include <cstring>
 #include <memory>
 #include <random>
@@ -904,6 +905,17 @@ int main(int argc, char** argv) {
         while ((n = fread(buf, 1, sizeof buf, fp)) > 0)
             blob.append(buf, n);
         fclose(fp);
+        // POISON FIRST, PARSE SECOND (KV, 2026-08-12). The fields a --seed-file run is
+        // ABOUT must not survive a failed parse wearing e2e's own plausible values --
+        // that is what made a 52-chip-wrong seed score 0.000 and a whitespace bug look
+        // like a healthy broker. NaN cannot be mistaken for a measurement: it propagates
+        // to the verdict and is checked below. (cp_rate / dop_rate stay 0: absent means
+        // "the producer had none", which is a real and common answer.)
+        sd.phase_ref_chips = std::numeric_limits<double>::quiet_NaN();
+        sd.cp_chips = std::numeric_limits<double>::quiet_NaN();
+        sd.doppler_hz = std::numeric_limits<double>::quiet_NaN();
+        sd.cp_rate = 0.0;
+        sd.dop_rate = 0.0;
         double v;
         std::string took, missed;
         auto take = [&](const char* key, auto&& apply) {
@@ -924,12 +936,26 @@ int main(int argc, char** argv) {
         // that is a broken test, not a passing one: refuse rather than flatter.
         printf("    fields taken:%s\n", took.empty() ? " NONE" : took.c_str());
         if (!missed.empty())
-            printf("    fields absent:%s (e2e's own values kept)\n", missed.c_str());
+            printf("    fields absent:%s (poisoned to NaN, or 0 for the rate terms --\n"
+                   "                   NOT inherited from e2e's own seed)\n",
+                   missed.c_str());
         if (took.empty()) {
             printf("\n*** --seed-file parsed NOTHING. The run below would measure e2e's own\n"
                    "*** seed and call it the producer's. Refusing.\n");
             return 4;
         }
+        // A seed needs a Doppler and SOME code reference. Either form of the latter is
+        // fine -- the phase is preferred, the argument is the fallback -- but a file that
+        // supplied neither would run on NaN and print a nonsense verdict rather than
+        // failing, which is the same trap one level down.
+        if (!std::isfinite(sd.doppler_hz)
+            || (!std::isfinite(sd.phase_ref_chips) && !std::isfinite(sd.cp_chips))) {
+            printf("\n*** --seed-file supplied no doppler_hz, or neither code_phase_chips\n"
+                   "*** nor code_phase_at_ref_chips. Nothing to propagate. Refusing.\n");
+            return 4;
+        }
+        if (!std::isfinite(sd.phase_ref_chips))
+            sd.phase_ref_chips = -1.0;   // the "no phase, use the argument" sentinel
     } else {
         printf("[2] SEED (direct from the detection)\n");
     }
