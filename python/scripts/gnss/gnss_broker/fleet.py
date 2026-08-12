@@ -7,6 +7,7 @@ signal has its own combiners), but neither holds state between calls.
 See docs/CHORD_GNSS_SHARED_DLL.md for fleet_dll and gnss_gpu_search.md 11.15 for
 fleet_coherent's one-way split and shuffled-null floor.
 """
+import collections
 import math
 import random
 import statistics
@@ -350,12 +351,46 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         src = {u: per[prn] for u, per in store.items() if prn in per}
         if len(src) < min_instances:
             continue
-        hops = None
-        for d in src.values():
-            hops = set(d) if hops is None else (hops & set(d))
-        hops = sorted(hops or ())
-        if len(hops) < min_records:
+        # ---- ANCHOR ON THE FRESHEST WINDOW, NOT ON UNANIMITY (2026-08-12) ------------
+        # This used to intersect the hop sets of EVERY contributor. One instance outside the
+        # others' window then emptied the common set for every satellite on every cycle, and
+        # the estimator returned {} -- indistinguishable from an empty sky, with no log line
+        # anywhere. Measured that day: cx19's GPU-0 pipeline froze (all five of its chains
+        # stopped at the same hop, an hour stale) while the other seven agreed to +-0.10 s,
+        # and the cross-node coherent combine was silently dead for the duration. An
+        # estimator that gets MORE fragile as the fleet grows is backwards.
+        #
+        # STALENESS IS ABOUT TIME, so the newest data anchors -- not the largest group. A
+        # first cut took the most-populous window and it was wrong in a way the fixture
+        # caught: several instances frozen TOGETHER outvote the live ones and the fleet
+        # happily combines hour-old records into a confident current number. Records are
+        # stamped by hop, so "freshest" is knowable: anchor on the instance reaching the
+        # newest hop, keep everyone who overlaps it by min_records, and refuse to fall back
+        # onto an anchor that is itself more than one window behind the fleet.
+        fresh_max = max(max(d) for d in src.values())
+        keep, hops, dropped = None, set(), []
+        for anchor in sorted(src, key=lambda u: max(src[u]), reverse=True):
+            span = max(src[anchor]) - min(src[anchor])
+            if max(src[anchor]) < fresh_max - span:
+                break          # this anchor and every later one are stale: decline
+            aset = set(src[anchor])
+            cohort = {u: d for u, d in src.items() if len(set(d) & aset) >= min_records}
+            if len(cohort) < min_instances:
+                continue
+            h = set.intersection(*(set(d) & aset for d in cohort.values()))
+            while len(h) < min_records and len(cohort) > min_instances:
+                worst = min(cohort, key=lambda u: len(set(cohort[u]) & aset))
+                del cohort[worst]
+                h = set.intersection(*(set(d) & aset for d in cohort.values()))
+            if len(h) >= min_records and len(cohort) >= min_instances:
+                keep, hops = cohort, h
+                dropped = [(u, len(set(src[u]) & aset)) for u in src if u not in cohort]
+                break
+        if keep is None:
             continue
+        src = keep
+        hops = sorted(hops)
+        drop_note = dropped
         # Reference instance = the most energetic view; every other is rotated onto it.
         ref_u = max(src, key=lambda u: sum(src[u][h][1] for h in hops))
         ref = [src[ref_u][h][0] for h in hops]
@@ -463,6 +498,10 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
             # membership is still moving and deep_snr will step with it.
             "split_imbalance": _imb,
             "split_s": sorted(u for u in urls if half[u] == 0),
+            # Instances excluded from THIS PRN's combine and why (url, hops it had inside
+            # the candidate window). Non-empty means the fleet degraded rather than failed;
+            # the caller logs it, because the old code's silent {} was the actual defect.
+            "dropped": drop_note,
         }
       return out
 

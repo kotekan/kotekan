@@ -5987,6 +5987,26 @@ def main(argv=None, rx=None, publisher=None):
                     _log("FLEET-INST: PRN %d align %.3f n_rec %d %s"
                          % (prn, v.get("align", 0.0), v.get("n_rec", 0),
                             " ".join("%s=%.1f" % (_tag(u), pi[u]) for u in sorted(pi))))
+                # WHO WAS LEFT OUT, AND WHY (2026-08-12). fleet_coherent now anchors on the
+                # freshest window instead of demanding unanimity, so a stalled instance
+                # degrades the combine instead of killing it -- but a fleet quietly running
+                # on 7 of 8 is exactly the state that hid a frozen GPU for an hour. Name the
+                # dropped instances and how many hops they had in the window, so "we are
+                # combining fewer nodes than we own" is visible without polling by hand.
+                _dropped = {}
+                for prn, v in sorted(fcoh.items()):
+                    for u, n_h in (v.get("dropped") or []):
+                        _dropped.setdefault(u, []).append(n_h)
+                if _dropped:
+                    _log_rl("fleet-drop",
+                            "FLEET-DROP: %d instance(s) outside the fleet's current window "
+                            "-- %s (a frozen or lagging tracker; the combine continued on "
+                            "the rest)"
+                            % (len(_dropped),
+                               ", ".join("%s (%d hops shared, %d PRN)"
+                                         % (_tag(u), max(v), len(v))
+                                         for u, v in sorted(_dropped.items()))),
+                            every_s=120.0)
             # FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md P1).
             # MEASUREMENT ONLY: touches no seed and no loop -- it is logged and published so
             # it can be judged against the disc, the E/L asymmetry and GPS's search-measured
