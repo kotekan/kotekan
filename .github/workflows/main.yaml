@@ -274,6 +274,7 @@ jobs:
       container_image: ${{ needs.kotekan-docker.outputs.docker_gpu_img_name }}
       ccache_key: ${{ matrix.ccache_key }}
       cmake_defs: ${{ matrix.cmake_defs }}
+      pre_build: ${{ matrix.pre_build }}
       post_build: ${{ matrix.post_build }}
       runs_on: ${{ matrix.runs_on }}
     strategy:
@@ -292,6 +293,23 @@ jobs:
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+              -DPILOTPROXY_EXPORT_BUNDLE=ON
+            pre_build: |
+              # PILOTPROXY_EXPORT_BUNDLE runs the pilot-proxy CLI at configure
+              # time, so the CLI has to be on PATH before cmake. The image is
+              # the better home for it. However, a pull request from a fork
+              # cannot put it there, since touching the Dockerfile forces an
+              # image rebuild and a push to ghcr.io that a fork's read-only
+              # token is refused. Installing it here works instead. The
+              # image's python is already the one the other python tooling
+              # installs into, so a plain pip install is enough. The commit is
+              # the one the vendored detector core is pinned to, read from the
+              # vendor manifest rather than repeated here, so the exported
+              # bundle geometry always matches the compiled kernel.
+              PP_COMMIT="$(python3 -c 'import json, os; print(json.load(open(os.environ["GITHUB_WORKSPACE"] + "/external/pilotproxy/VENDOR.json"))["upstream_commit"])')"
+              echo "Installing the pilot-proxy CLI at ${PP_COMMIT}"
+              python3 -m pip install --upgrade "git+https://github.com/WVURAIL/pilot-proxy@${PP_COMMIT}"
+              command -v pilot-proxy
             post_build: ""   # Any OpenCL-specific commands to test?
             runs_on: self-hosted
 

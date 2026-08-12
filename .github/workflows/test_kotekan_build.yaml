@@ -23,6 +23,9 @@ on:
       cmake_defs: # Compiler flags to build kotekan with, if building
         required: false
         type: string
+      pre_build: # Commands to run (from the main kotekan directory) before configuring
+        required: false
+        type: string
       post_build: # Commands to run (from the main kotekan directory) after building
         required: false
         type: string
@@ -89,6 +92,14 @@ jobs:
             echo "::error::This job must run on an x86_64 runner (found $arch)"
             exit 1
           fi
+
+      - name: Run pre-build commands
+        if: inputs.pre_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Run any commands specified ...
+          ${{ inputs.pre_build }}
 
       - name: Configure & Build kotekan
         if: inputs.cmake_defs
