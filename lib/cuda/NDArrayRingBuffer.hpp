@@ -306,6 +306,31 @@ public:
         assert(write_valid.size() == 0);
     }
 
+    // Where the next read will begin, in elements.
+    //
+    // This is the read head of the underlying ringbuffer, which is
+    // shared by all instances of this command: `register_consumer` only
+    // registers instance 0, and `RingBuffer` keys its cursors on the
+    // consumer name alone. `get_maybe_empty_read_valid().begin()` is
+    // *not* a substitute -- that is this instance's own position, which
+    // lags the shared head by whatever the other instances claimed in
+    // the meantime.
+    //
+    // Only the thread that claims from this ringbuffer (that is, the
+    // stage's `gpuProcess::main_thread`) advances the read head, and it
+    // is the same thread that calls this function, so the value stays
+    // valid until this instance claims.
+    //
+    // Returns -1 if the pipeline is shutting down. (A read head is never negative, and the
+    // other functions here that can observe a shutdown report it the same way.)
+    std::ptrdiff_t peek_read_head() const {
+        const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
+            ringbuffer->peek_readable(cuda_command.get_unique_name(), get_instance_num());
+        if (!peeked.has_value())
+            return -1;
+        return div_noremainder(peeked.value().first, granularity_in_bytes());
+    }
+
     // `wait_and_claim_readable` is the main function to claim data
     // for reading. Input is a callback function that receives the
     // currently available number of elements as input, and then

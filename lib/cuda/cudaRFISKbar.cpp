@@ -27,6 +27,7 @@
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
+using kotekan::round_up;
 
 class cudaRFISKbar : public cudaCommand {
 public:
@@ -152,6 +153,24 @@ cudaRFISKbar::cudaRFISKbar(kotekan::Config& config, const std::string& unique_na
     })
 //
 {
+    if (bf_mask_lifetime_in_samples % (rfi_downsampling_factor * rfi_second_downsampling_factor)
+        != 0)
+        FATAL_ERROR(
+            "rfi_downsampling_factor {:d} x rfi_second_downsampling_factor {:d} must evenly "
+            "divide bf_mask_lifetime_in_samples {:d}",
+            rfi_downsampling_factor, rfi_second_downsampling_factor, bf_mask_lifetime_in_samples);
+
+    // We read at most this many `rfi_S012bar` elements per frame, and we stop at the end of a
+    // bad feed mask element. If a mask lifetime were not a whole number of these batches we
+    // would have to read a short batch at the end of each lifetime, which would leave the
+    // read position unaligned and could make a later batch straddle the end of the
+    // ringbuffer.
+    const std::ptrdiff_t rfi_S012bar_read_max = rfi_S012bar.get_ndarray().extent(0) / buffer_depth;
+    if (rfi_samples_per_bf_sample % rfi_S012bar_read_max != 0)
+        FATAL_ERROR("The bad feed mask lifetime of {:d} rfi_S012bar elements must be a multiple of "
+                    "the {:d} elements read per frame",
+                    rfi_samples_per_bf_sample, rfi_S012bar_read_max);
+
     bf_mask.register_consumer();
     rfi_S012bar.register_consumer();
     rfi_SKbar.register_producer();
@@ -165,35 +184,26 @@ cudaRFISKbar::~cudaRFISKbar() {}
 int cudaRFISKbar::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
 
-    if (bf_mask.get_maybe_empty_read_valid().size() == 0) {
-        // We need a new bad feed mask element. Wait for one single element.
-
-        DEBUG("Waiting for bf_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
-        const std::ptrdiff_t bf_mask_read = 1;
-        const int bf_mask_errcode =
-            bf_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-                if (available_elements == 0)
-                    return read_descriptor_t{.claimed = 0, .read = 0};
-                return read_descriptor_t{.claimed = bf_mask_read, .read = bf_mask_read};
-            });
-        if (bf_mask_errcode < 0)
-            return bf_mask_errcode;
-        DEBUG("Done waiting for bf_mask input ringbuffer data for frame {:d}; will read {:d} "
-              "elements",
-              gpu_frame_id, bf_mask_read);
-    }
-
-    // End of bad feed mask lifetime
+    // Which bad feed mask element covers the data we are about to read? Ask the ringbuffer
+    // where our next read will begin. We must not use our own `read_valid` for this: every
+    // instance of this command shares one ringbuffer read head, so our own position lags it
+    // by whatever the other instances have claimed since our previous frame.
+    const std::ptrdiff_t rfi_S012bar_begin = rfi_S012bar.peek_read_head();
+    if (rfi_S012bar_begin < 0)
+        return -1; // shutting down
+    // (`kotekan::div` must be qualified; an unqualified `div` finds C's `::div`)
+    const std::ptrdiff_t bf_mask_element =
+        kotekan::div(rfi_S012bar_begin, rfi_samples_per_bf_sample);
     const std::ptrdiff_t bf_mask_lifetime_end =
-        rfi_samples_per_bf_sample * bf_mask.get_read_valid().end();
+        round_up(rfi_S012bar_begin + 1, rfi_samples_per_bf_sample);
 
     DEBUG("Waiting for rfi_S012bar input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_S012bar_ringbuf = rfi_S012bar.get_ndarray().extent(0);
     // Do not overshoot the bf mask lifetime
     using std::min;
     const std::ptrdiff_t rfi_S012bar_read_max =
-        min(rfi_S012bar_ringbuf / 4,
-            bf_mask_lifetime_end - rfi_S012bar.get_maybe_empty_read_valid().begin());
+        min(rfi_S012bar_ringbuf / buffer_depth, bf_mask_lifetime_end - rfi_S012bar_begin);
+    assert(rfi_S012bar_read_max > 0);
     std::ptrdiff_t rfi_S012bar_read = -1;
     const int rfi_S012bar_errcode =
         rfi_S012bar.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
@@ -206,9 +216,32 @@ int cudaRFISKbar::wait_on_precondition() {
     DEBUG("Done waiting for rfi_S012bar input ringbuffer data for frame {:d}; will read {:d} "
           "elements",
           gpu_frame_id, rfi_S012bar_read);
+    assert(rfi_S012bar.get_read_valid().begin() == rfi_S012bar_begin);
+    assert(rfi_S012bar.get_read_valid().end() <= bf_mask_lifetime_end);
 
-    assert(rfi_S012bar.get_read_valid().end()
-           <= rfi_samples_per_bf_sample * bf_mask.get_read_valid().end());
+    // Read the bad feed mask element covering these data. We claim it only when we have
+    // reached the end of its lifetime, i.e. when this is the last frame that will use it.
+    // Until then it stays in the ringbuffer and the following frames read it again.
+    //
+    // We are holding a claim on `rfi_S012bar` while we wait here. That is safe because the
+    // bad feed mask producer does not depend on `rfi_S012bar` being drained: it is fed by
+    // its own stage, and all consumers of the bad feed mask advance at the same rate through
+    // the data, so none of them can hold the mask ringbuffer's read tail far enough back to
+    // keep this element from being written.
+    const bool bf_mask_last_use = rfi_S012bar.get_read_valid().end() == bf_mask_lifetime_end;
+    DEBUG("Waiting for bf_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const int bf_mask_errcode =
+        bf_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+            if (available_elements < 1)
+                return read_descriptor_t{.claimed = 0, .read = 0};
+            return read_descriptor_t{.claimed = bf_mask_last_use ? 1 : 0, .read = 1};
+        });
+    if (bf_mask_errcode < 0)
+        return bf_mask_errcode;
+    DEBUG("Done waiting for bf_mask input ringbuffer data for frame {:d}; using element {:d}{:s}",
+          gpu_frame_id, bf_mask_element, bf_mask_last_use ? " (last use)" : "");
+    // The two ringbuffers must agree on which mask element covers these data
+    assert(bf_mask.get_read_valid().begin() == bf_mask_element);
 
     DEBUG("Waiting for rfi_SKbar output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_SKbar_written = rfi_S012bar_read;
@@ -294,10 +327,9 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
 }
 
 void cudaRFISKbar::finalize_frame() {
-    // Advance the ring buffers
-    if (rfi_S012bar.get_read_valid().end()
-        == rfi_samples_per_bf_sample * bf_mask.get_read_valid().end())
-        bf_mask.finish_read();
+    // Advance the ring buffers. The bad feed mask advances by the one element we claimed if
+    // this was the last frame using it, and by nothing otherwise.
+    bf_mask.finish_read();
     rfi_S012bar.finish_read();
     rfi_SKbar.finish_write();
     rfi_SKbartilde.finish_write();
