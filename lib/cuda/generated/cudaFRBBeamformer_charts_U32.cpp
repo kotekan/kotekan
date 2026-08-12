@@ -447,7 +447,7 @@ cudaFRBBeamformer_charts_U32::cudaFRBBeamformer_charts_U32(Config& config,
     static std::once_flag build_ptx_flag;
     std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
-            "--gpu-name=sm_86",
+            "--gpu-name=sm_120",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/FRBBeamformer_charts_U32.ptx", {kernel_symbol}, opts,
