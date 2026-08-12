@@ -154,10 +154,10 @@ class JointReceiverState:
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013,
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5, escape_spread=5.0,
-                 birth_max=50.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
+                 birth_max=12.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
                  sigma_fcar0=50.0, q_fcar=0.01,
-                 clk0=0.0, escape_min_sats=3):
+                 clk0=0.0, escape_min_sats=3, p_floor=0.04):
         import numpy as np
         self._np = np
         self.L = float(code_len)
@@ -217,8 +217,20 @@ class JointReceiverState:
         self.rate_max = float(rate_max)   # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
         self.diverged = False   # latched: an escape was refused as non-physical
         self.escapes = 0
+        # birth_max default 50 -> 12 (2026-08-12): the 00:08 zombie's garbage biases
+        # (+-20-46 chips) all slid UNDER 50. Real biases measure <= ~6 (G28 -5.7 the
+        # largest ever seen healthy); 12 is 2x margin. Note the gate is open during
+        # bootstrap BY DESIGN (P00 >= 100), so this alone cannot stop garbage-era
+        # births -- that is the feed warmup's job (broker --joint-feed-warmup-s).
         self.birth_max = birth_max     # refuse to BIRTH a sat implausibly far from clk
         self.gauge_max_b = gauge_max_b # a wild bias does not get a vote in the gauge
+        # P FLOOR (2026-08-12, the zombie's terminal symptom). A flood of self-consistent
+        # measurements crushed P[0,0] to ~1e-7: gain ~0, sigma printed 0.000, rej=0 -- a
+        # zero-gain state cannot MOVE and cannot REJECT, so no escape hatch can ever
+        # rescue it. No amount of self-agreeing evidence may claim the clock (or a bias)
+        # better than the floor; healthy runs measure sigma 0.05-0.08, so 0.04 caps
+        # confidence just below the best honest reading without touching normal operation.
+        self.p_floor = float(p_floor)
         # Events worth an operator's attention (escapes, incoherent runs, gauge fallbacks).
         # The filter has no logger of its own, so it queues one-line notes and the broker
         # drains them. The single most damaging event of 2026-08-10 fired SILENTLY.
@@ -438,6 +450,20 @@ class JointReceiverState:
                 self.P[i, i] += self.q_tau ** 2 * dt
             if self._fcar_idx is not None:
                 self.P[self._fcar_idx, self._fcar_idx] += self.q_fcar ** 2 * dt
+        # P floor -- see __init__. Applied to clk and the satellite-bias rows (NOT tau,
+        # NOT f_carrier: different units and timescales own their own priors). The floor
+        # goes on the DIAGONAL only; correlations keep whatever structure they earned.
+        if self.p_floor > 0.0:
+            f2 = self.p_floor ** 2
+            if self.P[0, 0] < f2:
+                self.P[0, 0] = f2
+            if n > 2:
+                other = set(self._band_idx.values())
+                if self._fcar_idx is not None:
+                    other.add(self._fcar_idx)
+                for i in range(2, n):
+                    if i not in other and self.P[i, i] < f2:
+                        self.P[i, i] = f2
 
     def _scalar_update(self, H, y, R):
         """One scalar measurement, innovation already wrapped by the caller."""

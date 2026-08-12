@@ -191,3 +191,60 @@ class TestHousekeeping(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestZombieGuards(unittest.TestCase):
+    """The 2026-08-12 00:08 zombie, pinned (task #33 / #45 step 2).
+
+    On sky: the filter was born during the #42 establishment-garbage window, absorbed
+    biases of +-20-46 chips (unphysical; real ones measure <= ~6) as its geometry, then a
+    flood of self-consistent measurements crushed P[0,0] to ~1e-7 -- sigma printed 0.000,
+    gain ~0, rej=0 for 10+ minutes. A zero-gain state can neither MOVE nor REJECT, so no
+    escape hatch could ever fire. Three guards, one per layer: the P floor keeps the
+    filter capable; birth_max 50 -> 12 refuses zombie-scale births once the clock is
+    known; the broker-side feed warmup (--joint-feed-warmup-s, not unit-testable here)
+    keeps establishment garbage from becoming birth geometry at all.
+    """
+
+    ZB = {26: -46.05, 9: +32.23, 6: +23.85, 11: +20.27, 4: -14.52}   # the 00:08 biases
+    BT = {26: -3.5, 9: +2.8, 6: +1.6, 11: -1.4, 4: +0.4}             # plausible truth
+
+    def test_p_floor_prevents_zero_gain(self):
+        """A flood of self-agreeing measurements must not buy sigma below the floor."""
+        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=150.0)
+        feed(js, [("G", p) for p in self.ZB], 150.5, n=400, dt=1.0)
+        self.assertGreaterEqual(js.sigma(), 0.02,
+                                "sigma %.4f: the P floor failed to hold" % js.sigma())
+
+    def test_zombie_geometry_recovers_when_truth_returns(self):
+        """The capability the zombie lacked. Converge INTO the zombie geometry (garbage
+        clock + garbage biases, self-consistent), then let the y-feed return to truth --
+        the guarded filter must reject, escape, and recover. The on-sky zombie, at
+        P ~ 1e-7, could do none of those for 10+ minutes."""
+        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=150.0)
+        sats = [("G", p) for p in self.ZB]
+        feed(js, sats, 163.9, n=100, dt=1.0,
+             noise=lambda s, p, c: self.ZB[p])
+        self.assertGreater(abs(js.wrap(js.clk - 150.5)), 5.0,
+                           "fixture failed to poison the state (clk %.1f)" % js.clk)
+        rej0 = js.rejected
+        feed(js, sats, 150.5, t0=500.0, n=120, dt=1.0,
+             noise=lambda s, p, c: self.BT[p])
+        self.assertGreater(js.rejected - rej0, 5,
+                           "a guarded filter must be ABLE to reject (got %d)"
+                           % (js.rejected - rej0))
+        self.assertLess(abs(js.wrap(js.clk - 150.5)), 3.0,
+                        "did not recover: clk %.1f vs truth 150.5" % js.clk)
+
+    def test_birth_clamp_refuses_zombie_scale_biases(self):
+        """Once the clock is determined, a +46-chip newborn is refused (birth_max 12)
+        and a +5.7 one -- the largest healthy bias ever measured -- is admitted."""
+        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=150.0)
+        feed(js, [("G", p) for p in (10, 20, 23)], 150.5, n=25)
+        rej0 = js.rejected
+        r = js.update(("G", 99), (150.5 + 46.0) % L, 0.3, 600.0, band=BAND)
+        self.assertIsNone(r, "a zombie-scale birth was admitted")
+        self.assertEqual(js.rejected, rej0 + 1)
+        self.assertNotIn(("G", 99), js._idx)
+        r2 = js.update(("G", 28), (150.5 + 5.7) % L, 0.3, 602.0, band=BAND)
+        self.assertIn(("G", 28), js._idx, "a legitimate large bias was refused at birth")

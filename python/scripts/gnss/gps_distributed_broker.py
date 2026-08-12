@@ -1147,6 +1147,16 @@ def main(argv=None, rx=None, publisher=None):
                     help="a JOINT consumer refuses to act on a state carrying fewer than "
                          "this many satellites: with the mean(b)=0 gauge a thin fleet lets "
                          "one satellite's bias leak into the clock at 1/N.")
+    ap.add_argument("--joint-feed-warmup-s", type=float, default=240.0,
+                    help="withhold ALL measurements from the joint state for this many "
+                         "seconds after broker start. Birth is the one path with no "
+                         "innovation to gate on, and the establishment window is when the "
+                         "y-feed is at its worst: the 2026-08-12 00:08 zombie was born "
+                         "from establishment-phase garbage (biases +-20-46 chips), locked "
+                         "it in, and no escape could fire because the garbage was "
+                         "self-consistent. Seeds/holds settle in ~3 min; 240 is that plus "
+                         "margin. The filter object itself is still created (warm-started) "
+                         "immediately -- only the feed waits.")
     ap.add_argument("--joint-clk-max-chips", type=float, default=5.0,
                     help="P2b consumer 'clk': refuse the joint CLOCK if it disagrees with "
                          "the legacy median by more than this. The median's measured "
@@ -2721,6 +2731,10 @@ def main(argv=None, rx=None, publisher=None):
     # can be compared against the previous one in physical units. Keys are the 5 fields
     # dr_seed_phys consumes -- nav_bits etc. are deliberately not retained.
     seed_audit_prev = {}
+    # Broker start, for the joint feed warmup (--joint-feed-warmup-s). Wall clock on
+    # purpose: the warmup guards against ESTABLISHMENT-PHASE garbage, and establishment
+    # runs on wall time regardless of what the transcript clock replays.
+    broker_t0 = time.time()
 
     while True:
         # Start of cycle: sample the frozen cycle clock ONCE (see the _Transcript note).
@@ -4862,12 +4876,22 @@ def main(argv=None, rx=None, publisher=None):
                         # they are. `predicted` is clk + b_i, so the residual below is exactly
                         # "what the shared state got wrong about a satellite it is no longer
                         # being told about".
-                        _js.cycle([((tag, p), d, args.joint_sigma, band_id)
-                                   for p, d in offs
-                                   if _snr.get(p, 0.0) >= args.joint_min_snr
-                                   and _track_ok(p)
-                                   and not _p2c_hold(_js, (tag, p))],
-                                  t_now_abs)
+                        # FEED WARMUP (2026-08-12, the zombie's root): no measurements
+                        # until the establishment window has passed -- see the flag help.
+                        if time.time() - broker_t0 < args.joint_feed_warmup_s:
+                            _log_rl("jwarm", "JFEED WARMUP: withholding the joint feed "
+                                    "(%.0f s of %.0f remain) -- establishment-phase "
+                                    "measurements must not become birth geometry"
+                                    % (args.joint_feed_warmup_s
+                                       - (time.time() - broker_t0),
+                                       args.joint_feed_warmup_s), every_s=60.0)
+                        else:
+                            _js.cycle([((tag, p), d, args.joint_sigma, band_id)
+                                       for p, d in offs
+                                       if _snr.get(p, 0.0) >= args.joint_min_snr
+                                       and _track_ok(p)
+                                       and not _p2c_hold(_js, (tag, p))],
+                                      t_now_abs)
                         # The filter has no logger; drain what it wants an operator to see.
                         # An escape or an incoherent run is a tracking event worth a line --
                         # on 2026-08-10 the single most damaging update of the day fired
@@ -5469,7 +5493,15 @@ def main(argv=None, rx=None, publisher=None):
                     if "clk" in joint_consume:
                         _jrC = _joint_state(rx, band_id, args)
                         if _jrC is not None and len(_jrC._idx) >= args.joint_min_sats:
-                            _jsigC = _jrC.sigma() or float("inf")
+                            # sigma <= 0 is DEGENERATE (a zero-gain zombie claims perfect
+                            # knowledge), not excellent -- refuse it explicitly. The first
+                            # version wrote `sigma() or inf`, which also flipped a
+                            # legitimate 0.0 to inf by truthiness accident; with the
+                            # state_filter P floor sigma cannot reach 0 anymore, but this
+                            # gate must not depend on that.
+                            _jsigC = _jrC.sigma()
+                            if _jsigC is None or _jsigC <= 0.0:
+                                _jsigC = float("inf")
                             _jdC = ((_jrC.clk - clk_now + CODE_LEN / 2.0) % CODE_LEN
                                     ) - CODE_LEN / 2.0
                             _jokC = (_jsigC <= args.joint_clk_max_sigma
