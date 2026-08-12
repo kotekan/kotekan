@@ -177,6 +177,10 @@ n2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 16 * buffer_depth
 
+chord_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 4 * buffer_depth
+
 
 
 # Receive subset N2 buffer
@@ -201,6 +205,19 @@ n2_recv_full_buffer:
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
+# Autocorrelation power gathered across frequency, one frame per accumulation
+# bin. Produced by N2AutoSpectrum: float32 "autospectrum"
+# [num_local_freq, num_elements] {F, E}; rows stay NaN until that freq_id
+# arrives. No consumer: held for the /buffer/auto_spectrum_buffer/frame peek
+# endpoint.
+auto_spectrum_buffer:
+    kotekan_buffer: ndarray
+    peek_hold: true
+    num_frames: buffer_depth
+    value_type: float32
+    extents: [num_local_freq, num_elements]
+    metadata_pool: chord_pool
+
 
 
 ## Receive data
@@ -214,6 +231,14 @@ buffer_recv_full_n2:
     kotekan_stage: bufferRecv
     buf: n2_recv_full_buffer
     listen_port: 11027
+
+# Live autocorrelation power vs frequency from the full N2 stream, for the
+# peek endpoint. freq_id_base and num_pending_bins are left at their defaults
+# (0 and 2).
+auto_spectrum:
+    kotekan_stage: N2AutoSpectrum
+    in_buf: n2_recv_full_buffer
+    out_buf: auto_spectrum_buffer
 
 
 
