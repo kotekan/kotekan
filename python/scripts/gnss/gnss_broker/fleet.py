@@ -730,14 +730,111 @@ def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
             len(insts))
 
 
+def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None):
+    """Poll every instance for the SAME hop-quantised window (task #53) and gather the
+    per-channel points across the whole fleet.
+
+    Returns (points_by_prn, meta) where meta = {window, w0, w1, served, dropped, degraded}.
+    `points_by_prn` has the same shape fleet_spectrum returns, so fit_spectrum_delay consumes
+    it unchanged -- but every point now comes from the SAME RECORDS, which is what lets the
+    caller derotate by a derived phase instead of fitting one free phase per instance.
+
+    HOW THE COMMON INDEX IS CHOSEN. Ask each instance what it has (every reply carries
+    available:[lo,hi], success or refusal), then take **min(hi)** -- the newest window EVERY
+    instance has finished. Instances lag each other by a few records (~0.15 s, task #46), so
+    the fastest one is typically a window ahead; taking its index would make the laggards
+    answer `not_yet` forever.
+
+    ⚠️ NEVER BLOCK ON UNANIMITY. An instance that cannot serve the common window is DROPPED BY
+    NAME and the rest combine without it. Requiring all of them is exactly the failure of
+    [[chord-fleet-combine-fragility]], where one frozen GPU silently emptied the common window
+    for every satellite and the combine returned {} -- indistinguishable from an empty sky.
+
+    `degraded` lists instances whose reply is NOT addressable (a node still running a config
+    without spectrum_window_samples). Those cannot be aligned with anyone, so they are excluded
+    rather than mixed in: a single unaligned member would put the free-phase problem straight
+    back into the gathered set.
+    """
+    avail, served, dropped, degraded = {}, {}, [], []
+    for url in endpoints:
+        try:
+            r = _get("%s/get_spectrum" % url)
+        except Exception as e:
+            _log_rl("fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e))
+            dropped.append((url, "unreachable"))
+            continue
+        if not r.get("addressable"):
+            degraded.append(url)
+            continue
+        a = r.get("available") or [-1, -1]
+        if a[1] is None or a[1] < 0:
+            dropped.append((url, "no complete window yet"))
+            continue
+        avail[url] = (int(a[0]), int(a[1]))
+    if not avail:
+        if degraded and log:
+            log("fleet spectrum: %d instance(s) NOT addressable (pre-#53 config): %s"
+                % (len(degraded), ", ".join(degraded)))
+        return {}, {"window": None, "served": {}, "dropped": dropped, "degraded": degraded}
+
+    idx = int(window) if window is not None else min(hi for _, hi in avail.values())
+    out, w0s, w1s = {}, set(), set()
+    for url, (lo, hi) in avail.items():
+        if idx < lo or idx > hi:
+            # Refused by its own bookkeeping before we even ask -- name it and move on.
+            dropped.append((url, "window %d outside [%d,%d]" % (idx, lo, hi)))
+            continue
+        try:
+            r = _get("%s/get_spectrum?window=%d" % (url, idx))
+        except Exception as e:
+            dropped.append((url, "unreachable on second poll (%s)" % e))
+            continue
+        if r.get("status") != "ok":
+            dropped.append((url, r.get("status") or "no status"))
+            continue
+        w0s.add(r.get("wstart0"))
+        w1s.add(r.get("wstart1"))
+        served[url] = r
+        fids = r.get("freq_ids") or []
+        for row in r.get("prns") or []:
+            prn = int(row.get("prn", -1))
+            if prn <= 0 or (prns is not None and prn not in prns):
+                continue
+            ch = row.get("chan") or []
+            pts = out.setdefault(prn, [])
+            for i, fid in enumerate(fids):
+                if i >= len(ch):
+                    break
+                re_, im_, en = ch[i]
+                if en > 0.0:
+                    pts.append((int(fid), complex(re_, im_), float(en), url))
+    # THE INVARIANT, ASSERTED RATHER THAN ASSUMED. Same index must mean the same samples. If
+    # two instances disagree here the quantisation is broken (mismatched window_samples in a
+    # node's config is the way that happens), and every phase downstream is wrong -- so say so
+    # loudly instead of combining anyway.
+    if len(w0s) > 1 or len(w1s) > 1:
+        if log:
+            log("⚠️ fleet spectrum: window %d has DIFFERENT sample spans across instances "
+                "(wstart0 %s, wstart1 %s) -- the quantisation is broken, check that every node "
+                "config has the SAME spectrum_window_samples" % (idx, sorted(w0s), sorted(w1s)))
+        return {}, {"window": idx, "served": {}, "dropped": dropped, "degraded": degraded,
+                    "misaligned": True}
+    if degraded and log:
+        _log_rl("fleet-spec-degraded",
+                "fleet spectrum: excluding %d NOT-addressable instance(s) (pre-#53 config): %s"
+                % (len(degraded), ", ".join(degraded)))
+    return out, {"window": idx, "w0": next(iter(w0s), None), "w1": next(iter(w1s), None),
+                 "served": served, "dropped": dropped, "degraded": degraded}
+
+
 def fleet_spectrum(endpoints, prns=None):
     """Poll every instance's /get_spectrum; return {prn: [(freq_id, A, energy, inst_key)]}.
 
-    Windows are NOT record-aligned across instances -- unlike fleet_coherent, a window-summed
-    spectrum cannot be, and does not need to be: the per-instance phi_i solved in the fit
-    absorbs any window-offset phase, and tau is quasi-static over the poll interval. Each
-    reply is that instance's accumulation since ITS last poll (snapshot + reset per GET), so
-    one poller (the broker) sees disjoint windows; do not add a second poller.
+    ⚠️ LEGACY (pre-#53): takes whatever each instance accumulated since ITS last poll, so the
+    instances are NOT summing the same records and the per-instance phi_i in the fit is what
+    absorbs the offset. Use fleet_spectrum_aligned instead -- that free phase per instance is
+    the defect of task #52, not a modelling convenience. Kept for a fleet that has not been
+    restarted onto the addressable endpoint yet.
     """
     out = {}
     for url in endpoints:
@@ -760,3 +857,76 @@ def fleet_spectrum(endpoints, prns=None):
                 if en > 0.0:
                     pts.append((int(fid), complex(re_, im_), float(en), url))
     return out
+
+
+def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_null=8):
+    """Coherently sum per-channel points after derotating each by its OWN DERIVED phase.
+
+    THIS IS TASK #52. The old combine gave every INSTANCE a free phase, fitted by
+    cross-correlating it against the most energetic instance and then summing with that
+    rotation -- twelve free parameters estimated from the data they are summed into, which
+    aligns noise (a self-reference: [[gnss-phase-estimator-self-reference]]) and, when the fit
+    fails, drops the whole chain to the quadrature fallback (gps_l5 measured align 0.143 with
+    9/12 satellites on `quad`).
+
+    Physics gives ONE parameter, not twelve. A delay is a phase ramp across frequency,
+    phi(f) = -2*pi*f*tau, so once tau is known every channel's rotation FOLLOWS. And it must be
+    applied PER CHANNEL, not per instance: each instance's 7 channels are a comb spanning
+    ~18.75 MHz (stride 16), so at tau = 1 chip the ramp WITHIN one instance is ~11.5 rad --
+    1.8 wraps. No single constant per instance can represent that, which is why summing an
+    instance's channels without removing the ramp already destroys its coherence before any
+    cross-instance step happens.
+
+    Returns {snr, amplitude, coh_frac, n_pts, n_inst, floor, present} where `floor` is a
+    SHUFFLED NULL over the same points. That gate is only meaningful now: with a free phase per
+    instance the fit could always find some alignment, so a null could never fail. Here the
+    rotation is derived from tau alone and a shuffled set must sum to nothing.
+
+    Requires ALIGNED windows (fleet_spectrum_aligned). Feeding it unaligned points silently
+    reintroduces the per-instance offset this exists to remove -- the caller must not mix.
+    """
+    import cmath
+    import random as _random
+
+    pts = [(fid, a, en, key) for fid, a, en, key in points
+           if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)]
+    if len(pts) < 3:
+        return None
+    f0 = min(fid for fid, _, _, _ in pts)
+    tau_s = tau_chips / chip_rate_hz
+
+    def combine(seq):
+        # MRC: energy is the ML weight (A = G/E has variance ~1/E), same convention as
+        # _coherent_sum and fleet_dll -- two weighting conventions in one broker is how a floor
+        # stops meaning anything.
+        tot = 0.0j
+        abs_sum = 0.0
+        for fid, a, en, _ in seq:
+            rot = cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * tau_s)
+            tot += en * a * rot
+            abs_sum += en * abs(a)
+        return tot, abs_sum
+
+    tot, abs_sum = combine(pts)
+    mag = abs(tot)
+    # SHUFFLED NULL. Reassign the AMPLITUDES across the frequency slots, keeping the
+    # frequencies and the derotation identical -- that destroys the frequency<->phase pairing
+    # (the delay ramp) while preserving every marginal. Shuffle, never roll: a roll IS a delay
+    # and would leave the very structure being tested for.
+    rng = rng or _random.Random(1234567)
+    floor = 0.0
+    amps = [(a, en) for _, a, en, _ in pts]
+    for _ in range(max(1, n_null)):
+        sh = list(amps)
+        rng.shuffle(sh)
+        null_pts = [(pts[i][0], sh[i][0], sh[i][1], pts[i][3]) for i in range(len(pts))]
+        floor = max(floor, abs(combine(null_pts)[0]))
+    n_inst = len({k for _, _, _, k in pts})
+    return {"snr": (mag / floor) if floor > 0.0 else 0.0,
+            "amplitude": mag / len(pts),
+            "coh_frac": (mag / abs_sum) if abs_sum > 0.0 else 0.0,
+            "n_pts": len(pts), "n_inst": n_inst, "floor": floor,
+            "tau_chips": tau_chips,
+            # The null is a MAX over shuffles, so clearing it by a margin is a real detection
+            # in the same sense the search's Gamma ceiling is (chord-gamma-noise-ceiling).
+            "present": mag > 0.0 and floor > 0.0 and mag >= 1.5 * floor}
