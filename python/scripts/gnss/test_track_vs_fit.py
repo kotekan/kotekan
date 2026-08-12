@@ -189,5 +189,72 @@ class TestRetagSeedDoppler(unittest.TestCase):
         self.assertGreater(err, 10.0)
 
 
+
+class TestAtEpochCpLoc(unittest.TestCase):
+    """at_epoch_cp_loc (#45 step 5): adopt the search's at-epoch phase only when the
+    payload speaks the pair-consistent convention; an old search degrades to the
+    reconstruction instead of stepping the solved clock by ~52 chips."""
+
+    def test_new_convention_is_adopted(self):
+        from gnss_broker.fits import at_epoch_cp_loc
+        v, src = at_epoch_cp_loc(4321.4, 4321.1, L)
+        self.assertEqual(src, "at_ref")
+        self.assertAlmostEqual(v, 4321.4)
+
+    def test_old_convention_is_refused(self):
+        from gnss_broker.fits import at_epoch_cp_loc
+        v, src = at_epoch_cp_loc(4321.1 + 52.3711, 4321.1, L)
+        self.assertEqual(src, "recon_skew")
+        self.assertAlmostEqual(v, 4321.1)
+
+    def test_missing_field_degrades(self):
+        from gnss_broker.fits import at_epoch_cp_loc
+        for bad in (-1.0, None):
+            v, src = at_epoch_cp_loc(bad, 4321.1, L)
+            self.assertEqual(src, "recon")
+            self.assertAlmostEqual(v, 4321.1)
+
+    def test_wrap_agreement_across_the_code_boundary(self):
+        from gnss_broker.fits import at_epoch_cp_loc
+        v, src = at_epoch_cp_loc(0.2, L - 0.3, L)
+        self.assertEqual(src, "at_ref", "agreement across the wrap must adopt")
+
+    def test_banked_capture_is_uniformly_refused(self):
+        """FIXTURE REPLAY: the 2026-08-11 capture predates the epoch fix, so every one
+        of its detections must read recon_skew (+52.37) -- none may be adopted. This is
+        the deploy-order hazard, pinned on 26,815 real detections (bounded here)."""
+        import json
+        fx = ("/home/kvand/gnss/fixtures/20260811_clock_investigation/"
+              "dets_live_2124.jsonl")
+        if not os.path.exists(fx):
+            self.skipTest("banked capture not available on this host")
+        n, seen = 0, set()
+        with open(fx) as f:
+            for ln in f:
+                d = json.loads(ln)
+                for det in d.get("dets", []):
+                    key = (det["prn"], det["ref_hop"])
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    t_i = det["ref_hop"] / HPS
+                    recon = (det["code_phase_chips"]
+                             + t_i * CHIP * (1.0 + SGN * det["doppler_hz"] / CARR)) % L
+                    _, src = at_epoch_cp_loc(
+                        det.get("code_phase_at_ref_chips", -1.0), recon, L)
+                    self.assertEqual(src, "recon_skew",
+                                     "old-convention detection was adopted (PRN %d)"
+                                     % det["prn"])
+                    n += 1
+                    if n >= 2000:
+                        break
+                if n >= 2000:
+                    break
+        self.assertGreaterEqual(n, 1000)
+
+
+from gnss_broker.fits import at_epoch_cp_loc  # noqa: E402,F401
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

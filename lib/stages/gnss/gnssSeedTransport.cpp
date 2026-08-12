@@ -272,7 +272,18 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     // 5903 chips/Hz for the sample-0 route above. Same information, seven orders better
     // conditioned. (Done by hand rather than through bank.phase_from_arg() because THIS bank
     // reduces mod L and would throw the overlay period away.)
-    const long double n_anc = (long double)anchor + (long double)fft_len - 1.0L;
+    //
+    // #45 step 5 (2026-08-12): the epoch is `anchor` -- the snapshot's FIRST sample --
+    // because det.ref_hop labels the snapshot start and (cp_at_ref, ref_hop) must be a
+    // consistent (value, epoch) pair. The original wrote anchor + fft_len - 1 (the last
+    // sample of the first hop), publishing a value one hop minus one sample AHEAD of the
+    // epoch its ref_hop names: +52.37 chips of constant convention skew, measured on 26,815
+    // banked sky detections against the cp0 reconstruction before this fix. A consumer
+    // could only undo that with the search's own fft_len -- exactly the cross-component
+    // convention glue the transport-hardening pass exists to remove. The residual
+    // ~1.4e-4 chips/Hz Doppler sensitivity is the replica warm-up advance: real physics,
+    // irreducible, and the number the comment above already quotes.
+    const long double n_anc = (long double)anchor;
     const long double cps_d =
         (long double)cps * (1.0L + (long double)(bank.code_doppler_sign * dop / bank.carrier_hz()));
     const long double a_adv = n_anc * cps_d;

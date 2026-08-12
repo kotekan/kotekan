@@ -323,3 +323,30 @@ def retag_seed_doppler(cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz
     return ((cp_chips
              - t_eval_s * chip_hz * code_doppler_sign * (new_dop - old_dop) / carrier_hz)
             % mod)
+
+
+def at_epoch_cp_loc(cp_at_ref, cp_loc_reconstructed, code_len, tol_chips=1.0):
+    """Choose the clock solve's measurement: the search's at-epoch physical phase, or
+    the sample-0 reconstruction it replaces (#45 step 5).
+
+    cp_at_ref (mod the primary code) and the reconstruction are algebraically the same
+    quantity once the search publishes the pair-consistent convention (gnssSeedTransport
+    2026-08-12: evaluated at the snapshot's first sample, the epoch ref_hop names). The
+    old convention sat one hop minus one sample ahead -- +52.3711 chips, measured on
+    26,815 banked detections and equal to (fft_len-1)*cps at fft_len 8192 to 4 decimals.
+
+    Rather than couple the broker deploy to the search deploy, DETECT the convention per
+    detection: agreement within tol_chips means the new convention is live -> use the
+    at-epoch value (whose Doppler sensitivity is ~1.4e-4 chips/Hz, the replica warm-up,
+    vs 1696 chips/Hz for the sample-0 route's inputs); a skew means an old search is
+    still publishing -> keep the reconstruction, which remains exactly correct. Returns
+    (cp_loc, source) with source in {"at_ref", "recon", "recon_skew"} so the caller can
+    log which convention the fleet is actually speaking.
+    """
+    if cp_at_ref is None or cp_at_ref < 0.0:
+        return cp_loc_reconstructed, "recon"
+    car = cp_at_ref % code_len
+    skew = ((car - cp_loc_reconstructed + code_len / 2.0) % code_len) - code_len / 2.0
+    if abs(skew) <= tol_chips:
+        return car, "at_ref"
+    return cp_loc_reconstructed, "recon_skew"
