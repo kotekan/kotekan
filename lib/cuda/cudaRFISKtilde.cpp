@@ -69,6 +69,7 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
+    const std::int64_t bf_mask_lifetime_in_samples;
     const int rfi_downsampling_factor;
     const int rfi_num_times;
     const bool poison_buffers;
@@ -77,6 +78,8 @@ private:
     // statistics are still computed for second-stage excision (RfiFrameMask).
     const bool first_stage_excision_enabled;
 
+    const std::int64_t rfi_samples_per_bf_sample;
+
     // Kotekan buffer names
     const std::string bf_mask_name;
     const std::string rfi_S012_name;
@@ -84,7 +87,7 @@ private:
     const std::string rfi_RFImask_name;
 
     // Buffers
-    NDArrayBuffer<std::int8_t, 2> bf_mask;
+    NDArrayRingBuffer<std::int8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<float, 3> rfi_SKtilde;
     NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
@@ -106,19 +109,25 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
+    bf_mask_lifetime_in_samples(
+        config.get<std::int64_t>(unique_name, "bf_mask_lifetime_in_samples")),
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     first_stage_excision_enabled(
         config.get_default<bool>(unique_name, "rfi_first_stage_excision_enabled", true)),
+    rfi_samples_per_bf_sample(
+        div_noremainder(bf_mask_lifetime_in_samples, rfi_downsampling_factor)),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_SKtilde_name(config.get<std::string>(unique_name, "rfi_SKtilde_name")),
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
     // Buffers
-    bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
+    bf_mask(bf_mask_name, "bf_mask",
+            std::array<std::ptrdiff_t, 3>{buffer_depth * 1, num_polarizations, num_dishes},
+            std::array<std::string, 3>{"Tbf", "P", "D"},
+            std::array<std::ptrdiff_t, 3>{bf_mask_lifetime_in_samples, 1, 1}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
@@ -144,6 +153,12 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     })
 //
 {
+    if (bf_mask_lifetime_in_samples % rfi_downsampling_factor != 0)
+        FATAL_ERROR(
+            "rfi_downsampling_factor {:d} must evenly divide bf_mask_lifetime_in_samples {:d}",
+            rfi_downsampling_factor, bf_mask_lifetime_in_samples);
+
+    bf_mask.register_consumer();
     rfi_S012.register_consumer();
     rfi_SKtilde.register_producer();
     rfi_RFImask.register_producer();
@@ -159,9 +174,35 @@ cudaRFISKtilde::~cudaRFISKtilde() {}
 
 int cudaRFISKtilde::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
+
+    if (bf_mask.get_maybe_empty_read_valid().size() == 0) {
+        // We need a new bad feed mask element. Wait for one single element.
+
+        DEBUG("Waiting for bf_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const std::ptrdiff_t bf_mask_read = 1;
+        const int bf_mask_errcode =
+            bf_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+                if (available_elements == 0)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = bf_mask_read, .read = bf_mask_read};
+            });
+        if (bf_mask_errcode < 0)
+            return bf_mask_errcode;
+        DEBUG("Done waiting for bf_mask input ringbuffer data for frame {:d}; will read {:d} "
+              "elements",
+              gpu_frame_id, bf_mask_read);
+    }
+
+    // End of bad feed mask lifetime
+    const std::ptrdiff_t bf_mask_lifetime_end =
+        rfi_samples_per_bf_sample * bf_mask.get_read_valid().end();
+
     DEBUG("Waiting for rfi_S012 input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_S012_ringbuf = rfi_S012.get_ndarray().extent(0);
-    const std::ptrdiff_t rfi_S012_read_max = rfi_S012_ringbuf / 4;
+    // Do not overshoot the bf mask lifetime
+    using std::min;
+    const std::ptrdiff_t rfi_S012_read_max = min(
+        rfi_S012_ringbuf / 4, bf_mask_lifetime_end - rfi_S012.get_maybe_empty_read_valid().begin());
     std::ptrdiff_t rfi_S012_read = -1;
     const int rfi_S012_errcode =
         rfi_S012.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
@@ -173,6 +214,9 @@ int cudaRFISKtilde::wait_on_precondition() {
         return rfi_S012_errcode;
     DEBUG("Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will read {:d} elements",
           gpu_frame_id, rfi_S012_read);
+
+    assert(rfi_S012.get_read_valid().end()
+           <= rfi_samples_per_bf_sample * bf_mask.get_read_valid().end());
 
     DEBUG("Waiting for rfi_SKtilde output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_Sktilde_written = rfi_S012_read;
@@ -201,6 +245,7 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     pre_execute();
     record_start_event();
 
+    bf_mask.check_metadata();
     rfi_S012.check_metadata();
 
     rfi_SKtilde.set_metadata(rfi_S012.get_metadata());
@@ -217,7 +262,10 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
         // rfi_RFImask.set_to_poison(0x55);
     }
 
-    const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
+    const std::int8_t* const bf_mask_memory =
+        bf_mask.get_ndarray().data()
+        + bf_mask.get_ndarray().stride(0)
+              * (bf_mask.get_read_valid().begin() % bf_mask.get_ndarray().extent(0));
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
     float* const rfi_SKtilde_memory = rfi_SKtilde.get_ndarray().data();
     kotekan::uint1x8_t* const rfi_RFImask_memory = rfi_RFImask.get_ndarray().data();
@@ -279,6 +327,9 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
 
 void cudaRFISKtilde::finalize_frame() {
     // Advance the ring buffers
+    if (rfi_S012.get_read_valid().end()
+        == rfi_samples_per_bf_sample * bf_mask.get_read_valid().end())
+        bf_mask.finish_read();
     rfi_S012.finish_read();
     rfi_SKtilde.finish_write();
     rfi_RFImask.finish_write();
