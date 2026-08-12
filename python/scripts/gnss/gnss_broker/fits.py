@@ -268,39 +268,41 @@ def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign,
               * seed.get("doppler_rate_hz_s", 0.0) * dt * dt) % mod
 
 
-def track_vs_fit_chips(held_seed, det_cp_at_ref, det_ref_hop, dll_trim_chips,
+def track_vs_fit_chips(held_seed, det_cp_loc, det_ref_hop, dll_trim_chips,
                        hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, code_len):
-    """Track-vs-search residual, compared AT THE DETECTION'S EPOCH (#42 / #45 step 1).
+    """Track-vs-search residual, both sides physical, at the DETECTION's epoch
+    (#42 / #45 step 1).
 
-    Replaces the sample-0 currency comparison that cp_err used until 2026-08-12. That
-    formula translated between SEED-dop currencies with the full-run-age lever
-    (t_abs*chip/carrier ~ 1700 chips/Hz at 2.3 days), so any motion of the seed-vs-
-    detection dop bias (the carrier clock_bias EMA -- a quantity DESIGNED to move) read
-    as -1700*dBias chips of track error: 145 logged specimens in 7 minutes, seven false
-    ESCAPES in one evening against tracks healthy at 40 dB-Hz throughout.
+    Replaces the sample-0 currency comparison cp_err used until 2026-08-12. That formula
+    translated between two SEED-dop currencies with the full-run-age lever (~1700 chips/Hz
+    at 2.3 days), so any motion of the seed-vs-detection dop bias -- the carrier clock_bias
+    EMA, a quantity DESIGNED to move -- read as -1700*dBias chips of track error: 145
+    specimens in 7 minutes, seven false ESCAPES in one evening against tracks healthy at
+    40 dB-Hz.
 
-    This form has no currencies to disagree: both sides are physical code phases at one
-    hop, det_ref_hop.
-      * fresh: the search's own at-epoch physical phase (code_phase_at_ref_chips),
-        published per detection since the seeding investigation. dt = 0 by construction,
-        so the detection's Doppler estimate does not enter AT ALL.
-      * held: dr_seed_phys of the held tuple at det_ref_hop -- where the tracker's
-        propagation actually puts the despread (the tuple's own dop/rate/quad labels,
-        used self-consistently; a pair-inconsistent LABEL cannot hurt a comparison that
-        never crosses currencies).
-    The residual is what cp_err always claimed to be: how far the track sits from the
-    search's current measurement, in chips, mod the primary code (whole-period
-    assignment flips -- the #41 flicker -- are invisible here, as they must be: the
-    escape referee's job is lobes at +-3.27 chips, not overlay periods).
+    Both inputs here are physical code phases at det_ref_hop, in one convention:
+      * det_cp_loc: the detection's own (cp0, dop) pair undone -- cp0 + t*f_chip*(1+k*dop),
+        the SAME pair the search published together, so no translation happens and a
+        pair-inconsistent candidate cannot inject anything. Measured continuity on sky:
+        0.27 chips median over 1423 consecutive detections.
+      * dr_seed_phys(held): where the tracker's propagation puts the despread, from the
+        held tuple's own labels used self-consistently.
 
-    Returns the wrapped residual (fresh - held - trim), or None when the stage did not
-    publish cp_at_ref (pre-2026-08 payloads carry -1.0).
+    An earlier draft used the payload's cp_at_ref instead. It is better conditioned in
+    principle, but it is referenced at the hop's LAST sample and carries the replica
+    anchor's Doppler term (+52.3711 + 1.39e-4*dop chips vs this quantity, measured on
+    26,815 banked detections) -- so consuming it means importing the search's fft_len AND
+    anchor geometry into every consumer, which is the coupling this pass exists to remove,
+    for a conditioning gain the sky says is not needed. The C++ side keeps cp_at_ref in its
+    own last-sample convention, which is a contract there (gnssSeedTransport).
+
+    Returns the wrapped residual (fresh - held - trim), or None if det_cp_loc is missing.
     """
-    if det_cp_at_ref is None or det_cp_at_ref < 0.0:
+    if det_cp_loc is None or det_cp_loc < 0.0:
         return None
     held = dr_seed_phys(held_seed, det_ref_hop, hops_per_sec, chip_hz, carrier_hz,
                         code_doppler_sign, code_len)
-    return ((det_cp_at_ref - held - dll_trim_chips + code_len / 2.0) % code_len
+    return ((det_cp_loc - held - dll_trim_chips + code_len / 2.0) % code_len
             ) - code_len / 2.0
 
 
@@ -325,28 +327,4 @@ def retag_seed_doppler(cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz
             % mod)
 
 
-def at_epoch_cp_loc(cp_at_ref, cp_loc_reconstructed, code_len, tol_chips=1.0):
-    """Choose the clock solve's measurement: the search's at-epoch physical phase, or
-    the sample-0 reconstruction it replaces (#45 step 5).
 
-    cp_at_ref (mod the primary code) and the reconstruction are algebraically the same
-    quantity once the search publishes the pair-consistent convention (gnssSeedTransport
-    2026-08-12: evaluated at the snapshot's first sample, the epoch ref_hop names). The
-    old convention sat one hop minus one sample ahead -- +52.3711 chips, measured on
-    26,815 banked detections and equal to (fft_len-1)*cps at fft_len 8192 to 4 decimals.
-
-    Rather than couple the broker deploy to the search deploy, DETECT the convention per
-    detection: agreement within tol_chips means the new convention is live -> use the
-    at-epoch value (whose Doppler sensitivity is ~1.4e-4 chips/Hz, the replica warm-up,
-    vs 1696 chips/Hz for the sample-0 route's inputs); a skew means an old search is
-    still publishing -> keep the reconstruction, which remains exactly correct. Returns
-    (cp_loc, source) with source in {"at_ref", "recon", "recon_skew"} so the caller can
-    log which convention the fleet is actually speaking.
-    """
-    if cp_at_ref is None or cp_at_ref < 0.0:
-        return cp_loc_reconstructed, "recon"
-    car = cp_at_ref % code_len
-    skew = ((car - cp_loc_reconstructed + code_len / 2.0) % code_len) - code_len / 2.0
-    if abs(skew) <= tol_chips:
-        return car, "at_ref"
-    return cp_loc_reconstructed, "recon_skew"

@@ -72,7 +72,7 @@ from gnss_broker.transport import (           # noqa: E402
     expand_token, resolve_prefix, parse_endpoints,
 )
 from gnss_broker.fits import (                # noqa: E402
-    at_epoch_cp_loc, retag_seed_doppler, track_vs_fit_chips,
+    retag_seed_doppler, track_vs_fit_chips,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
@@ -3768,22 +3768,18 @@ def main(argv=None, rx=None, publisher=None):
                 # dr_seed_phys puts the tracker's despread. test_track_vs_fit.py pins
                 # the discriminating pair (bias step: old ~1700/Hz, new ~0; real lobe
                 # park: both read +-3.27) and drives the SHIPPED function.
-                # CONVENTION GATE (step 5 follow-up): cp_at_ref is only usable under the
-                # pair-consistent epoch convention (gnssSeedTransport 2026-08-12). Against
-                # an OLD search, its +52.37-chip skew would read as a sustained cp_err on
-                # every held sat -> mass false escapes, the very defect this comparator
-                # replaced. Same self-detection as the clock solve: agree with the
-                # sample-0 reconstruction within a chip, or the comparator DECLINES
-                # (cp_err = None), which every downstream gate already handles.
+                # THE DETECTION'S OWN PHYSICAL PHASE at its epoch: cp0 and dop were
+                # published together, so undoing the pair reintroduces no translation --
+                # which is the entire #42 fix. (cp_at_ref would be better conditioned but
+                # lives in the C++ last-sample convention and carries the anchor Doppler
+                # term; see track_vs_fit_chips.)
                 _cpe_recon = (cp + (ref_hop / args.hops_per_sec) * args.chip_rate_hz
                               * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
                               ) % CODE_LEN
-                _cpe_car, _cpe_src = at_epoch_cp_loc(cp_at_ref, _cpe_recon, CODE_LEN)
-                cp_err = (track_vs_fit_chips(
-                    prev, cp_at_ref, ref_hop, dll_trim.get(prn, 0.0),
+                cp_err = track_vs_fit_chips(
+                    prev, _cpe_recon, ref_hop, dll_trim.get(prn, 0.0),
                     args.hops_per_sec, args.chip_rate_hz, args.carrier_hz,
                     args.code_doppler_sign, CODE_LEN)
-                    if _cpe_src == "at_ref" else None)
                 if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
                     _log_rl("cperr-%d" % prn,
                             "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
@@ -4747,7 +4743,6 @@ def main(argv=None, rx=None, publisher=None):
                 # normalization, not the sky.
                 det_age = {}
                 off_inputs = {}
-                _clksrc_n = {}
                 for prn, (snr, dop, cp, ref_hop, _nh, _cpl, _car) in sorted(best.items()):
                     v = pd.get((tag, prn))
                     if v is None:
@@ -4761,24 +4756,23 @@ def main(argv=None, rx=None, publisher=None):
                     # but across live scans it scatters by f_chip/hops_per_sec * (ref_hop
                     # mod code-period) -- the wandering "13 chips/s clock" of the first
                     # live deploy (2026-07-13).
-                    _cp_recon = (cp + t_i * args.chip_rate_hz
-                                 * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
-                                 ) % CODE_LEN
-                    # #45 STEP 5 (2026-08-12): prefer the search's AT-EPOCH physical phase
-                    # (cp_at_ref, pair-consistent with ref_hop since the gnssSeedTransport
-                    # epoch fix) over the sample-0 round trip above. The reconstruction is
-                    # kept as the reference: at_epoch_cp_loc adopts cp_at_ref only when the
-                    # two agree within a chip, so an OLD search (whose cp_at_ref sits one
-                    # hop ahead, +52.37 chips measured) degrades to the reconstruction
-                    # instead of stepping the solved clock -- the deploys stay uncoupled,
-                    # and the CLKSRC line says which convention the fleet is speaking.
-                    cp_loc, _cp_src = at_epoch_cp_loc(_car, _cp_recon, CODE_LEN)
+                    # #45 STEP 5 (2026-08-12): this reconstruction STAYS the clock-solve
+                    # measurement. The payload's cp_at_ref is better conditioned in
+                    # principle, but it is referenced at the hop's last sample AND carries
+                    # the replica anchor's Doppler term (+52.3711 + 1.39e-4*dop chips vs
+                    # this quantity, measured on 26,815 banked detections), so consuming it
+                    # means importing the search's fft_len and anchor geometry here -- the
+                    # coupling this pass removes -- to fix a conditioning problem the sky
+                    # says does not exist: the detection's (cp0, dop) pair is published
+                    # together and its embed cancels exactly, giving 0.27-chip measured
+                    # continuity. Better conditioned on paper is not better when the price
+                    # is a second component's geometry.
+                    cp_loc = (cp + t_i * args.chip_rate_hz
+                              * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
+                              ) % CODE_LEN
                     d_i = (cp_loc - cp_predicted(v, t_i)
                            + drift * (t_now_abs - t_i)) % CODE_LEN
                     offs.append((prn, d_i))
-                    # #45 STEP 5 SHADOW/ADOPT: count which convention the search speaks,
-                    # for the CLKSRC line below. The adoption itself happened above.
-                    _clksrc_n[_cp_src] = _clksrc_n.get(_cp_src, 0) + 1
                     # WHICH INPUT MOVED. Record cp_loc (NOT raw cp): raw cp swings
                     # ~uniform mod L between passes by construction -- the search embeds
                     # -t_abs*chip_rate*sign*dop/carrier in cp0 and the detection Doppler
@@ -4789,9 +4783,6 @@ def main(argv=None, rx=None, publisher=None):
                     # The 2026-08-11 WHAT-MOVED that printed raw dcp cost half a day:
                     # its thousands-of-chips swings were read as a search fault.
                     off_inputs[prn] = (cp_loc, t_i, dop)
-                if _clksrc_n:
-                    _log_rl("clksrc", "CLKSRC: clock-solve measurement sources %s"
-                            % dict(sorted(_clksrc_n.items())), every_s=300.0)
                 # ERRATIC-TRACK GUARD (#39). A satellite whose solve offset JUMPS between
                 # consecutive cycles is not measuring anything: d_i = clk + b_i and both
                 # terms are stable, so a real satellite moves far less than 10 chips per

@@ -273,17 +273,22 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     // conditioned. (Done by hand rather than through bank.phase_from_arg() because THIS bank
     // reduces mod L and would throw the overlay period away.)
     //
-    // #45 step 5 (2026-08-12): the epoch is `anchor` -- the snapshot's FIRST sample --
-    // because det.ref_hop labels the snapshot start and (cp_at_ref, ref_hop) must be a
-    // consistent (value, epoch) pair. The original wrote anchor + fft_len - 1 (the last
-    // sample of the first hop), publishing a value one hop minus one sample AHEAD of the
-    // epoch its ref_hop names: +52.37 chips of constant convention skew, measured on 26,815
-    // banked sky detections against the cp0 reconstruction before this fix. A consumer
-    // could only undo that with the search's own fft_len -- exactly the cross-component
-    // convention glue the transport-hardening pass exists to remove. The residual
-    // ~1.4e-4 chips/Hz Doppler sensitivity is the replica warm-up advance: real physics,
-    // irreducible, and the number the comment above already quotes.
-    const long double n_anc = (long double)anchor;
+    // ⚠️ THE EPOCH IS THE HOP'S LAST SAMPLE (anchor + fft_len - 1), AND THAT IS A CONTRACT,
+    // not an accident of this function (#45 step 5, 2026-08-12). Every phase in the C++ side
+    // is referenced this way: ChannelizedReplicaBank::window_advance_chips uses
+    // `window_start_sample + _fft_len - 1` ("hoprate_stream's per-hop reference"), so
+    // phase_from_arg, arg_from_phase, propagate_seed, the replica generators and the e2e
+    // harness's truth all share it. cp_at_ref must too, or it stops being comparable with
+    // the tracker's own propagation -- which is the whole reason it exists.
+    //
+    // Measured on 26,815 banked sky detections, cp_at_ref sits +52.3711 chips from the
+    // cp0 reconstruction = exactly (fft_len-1)*cps at fft_len 8192. That skew is REAL and
+    // it is cp0's: the sample-0 back-reference above is built at the FIRST sample. The two
+    // published fields are one hop apart by construction. A first cut at this "fixed"
+    // cp_at_ref to first-sample and broke the C++ family's shared reference -- e2e caught
+    // it immediately (search leg 0.373 -> -52.002 chips). The consumers that mix the two
+    // fields are the ones that must convert, and they do (gnss_broker/fits.py).
+    const long double n_anc = (long double)anchor + (long double)fft_len - 1.0L;
     const long double cps_d =
         (long double)cps * (1.0L + (long double)(bank.code_doppler_sign * dop / bank.carrier_hz()));
     const long double a_adv = n_anc * cps_d;

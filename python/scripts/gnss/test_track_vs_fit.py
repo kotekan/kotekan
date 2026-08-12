@@ -27,9 +27,17 @@ H0 = int(round(T0 * HPS))
 
 
 def phys_at(h, phys0, dop, h_ref):
-    """True physical code phase at hop h for a trajectory pinned at (h_ref, phys0)."""
+    """True physical code phase at hop h for a trajectory pinned at (h_ref, phys0),
+    in the TRACKER's convention (hop referenced at its first sample)."""
     dt = (h - h_ref) / HPS
     return (phys0 + dt * (CHIP + SGN * CHIP * dop / CARR)) % MOD
+
+
+def det_cp_loc(h, phys0, dop, h_ref):
+    """What the broker reconstructs from a detection: cp0 + t*f_chip*(1+k*dop), i.e. the
+    detection's own published (cp0, dop) pair undone -- the same physical phase phys_at
+    gives, which is the point of using it."""
+    return phys_at(h, phys0, dop, h_ref)
 
 
 def make_held(phys0, dop_label, h_ref, rate=0.0, drate=0.0):
@@ -61,8 +69,8 @@ class TestTrackVsFit(unittest.TestCase):
         dop = 1234.5
         held = make_held(5000.0, dop, H0)
         h_det = H0 + int(7.5 * HPS)
-        det_at_ref = phys_at(h_det, 5000.0, dop, H0)
-        err = track_vs_fit_chips(held, det_at_ref, h_det, 0.0,
+        det_phase = det_cp_loc(h_det, 5000.0, dop, H0)
+        err = track_vs_fit_chips(held, det_phase, h_det, 0.0,
                                  HPS, CHIP, CARR, SGN, L)
         self.assertLess(abs(err), 1e-3)
 
@@ -88,8 +96,8 @@ class TestTrackVsFit(unittest.TestCase):
         self.assertGreater(abs(old), 3000.0,
                            "the retracted formula should manufacture ~1700/Hz "
                            "on a pair-inconsistent candidate (got %+.1f)" % old)
-        det_at_ref = cand_phys % MOD
-        new = track_vs_fit_chips(held, det_at_ref, h_det, 0.0,
+        det_phase = cand_phys % MOD
+        new = track_vs_fit_chips(held, det_phase, h_det, 0.0,
                                  HPS, CHIP, CARR, SGN, L)
         self.assertLess(abs(new), 1e-3,
                         "the at-epoch form must be blind to bias motion "
@@ -102,8 +110,8 @@ class TestTrackVsFit(unittest.TestCase):
         dop = -876.0
         held = make_held(5000.0 + 3.27, dop, H0)   # parked ON the lobe
         h_det = H0 + int(5.0 * HPS)
-        det_at_ref = phys_at(h_det, 5000.0, dop, H0)   # sky truth
-        err = track_vs_fit_chips(held, det_at_ref, h_det, 0.0,
+        det_phase = det_cp_loc(h_det, 5000.0, dop, H0)   # sky truth, as published
+        err = track_vs_fit_chips(held, det_phase, h_det, 0.0,
                                  HPS, CHIP, CARR, SGN, L)
         self.assertAlmostEqual(err, -3.27, delta=0.01,
                                msg="fresh - held should read the park as -3.27")
@@ -113,8 +121,8 @@ class TestTrackVsFit(unittest.TestCase):
         The residual must be large (the erratic guard's food), not smoothed away."""
         held = make_held(5000.0, 500.0, H0)
         h_det = H0 + int(3.0 * HPS)
-        det_at_ref = (phys_at(h_det, 5000.0, 500.0, H0) + 2646.0) % MOD
-        err = track_vs_fit_chips(held, det_at_ref, h_det, 0.0,
+        det_phase = (det_cp_loc(h_det, 5000.0, 500.0, H0) + 2646.0) % MOD
+        err = track_vs_fit_chips(held, det_phase, h_det, 0.0,
                                  HPS, CHIP, CARR, SGN, L)
         self.assertGreater(abs(err), 2000.0)
 
@@ -123,8 +131,8 @@ class TestTrackVsFit(unittest.TestCase):
         dop = 1000.0
         held = make_held(5000.0, dop, H0)
         h_det = H0 + int(4.0 * HPS)
-        det_at_ref = phys_at(h_det, 5000.0, dop, H0)
-        err = track_vs_fit_chips(held, det_at_ref, h_det, 0.75,
+        det_phase = det_cp_loc(h_det, 5000.0, dop, H0)
+        err = track_vs_fit_chips(held, det_phase, h_det, 0.75,
                                  HPS, CHIP, CARR, SGN, L)
         self.assertAlmostEqual(err, -0.75, delta=1e-3)
 
@@ -141,10 +149,10 @@ class TestTrackVsFit(unittest.TestCase):
         dop = 1000.0
         held = make_held(5000.0, dop, H0)
         h_det = H0 + int(4.0 * HPS)
-        base = phys_at(h_det, 5000.0, dop, H0)
+        base = det_cp_loc(h_det, 5000.0, dop, H0)
         for k in (-2, 5, 9):
-            det_at_ref = (base + k * L) % MOD
-            err = track_vs_fit_chips(held, det_at_ref, h_det, 0.0,
+            det_phase = (base + k * L) % MOD
+            err = track_vs_fit_chips(held, det_phase, h_det, 0.0,
                                      HPS, CHIP, CARR, SGN, L)
             self.assertLess(abs(err), 1e-3,
                             "a %+d-period flicker leaked into cp_err" % k)
@@ -190,70 +198,87 @@ class TestRetagSeedDoppler(unittest.TestCase):
 
 
 
-class TestAtEpochCpLoc(unittest.TestCase):
-    """at_epoch_cp_loc (#45 step 5): adopt the search's at-epoch phase only when the
-    payload speaks the pair-consistent convention; an old search degrades to the
-    reconstruction instead of stepping the solved clock by ~52 chips."""
+class TestBankedSkyReplay(unittest.TestCase):
+    """FIXTURE REPLAY (#45 step 5, the decision): the clock solve and the escape referee
+    both consume the detection's own reconstruction, so what has to hold on sky is that
+    the reconstruction is CONTINUOUS between consecutive detections -- it is the
+    measurement, and a measurement that jumps is what started this whole investigation.
 
-    def test_new_convention_is_adopted(self):
-        from gnss_broker.fits import at_epoch_cp_loc
-        v, src = at_epoch_cp_loc(4321.4, 4321.1, L)
-        self.assertEqual(src, "at_ref")
-        self.assertAlmostEqual(v, 4321.4)
+    Also records the road not taken: cp_at_ref sits +52.3711 + 1.39e-4*dop chips from this
+    quantity (last-sample epoch + the replica anchor's Doppler term). Adopting it would
+    have required the search's fft_len and anchor in the broker; this test measures what
+    that would have bought -- nothing the sky needs.
+    """
 
-    def test_old_convention_is_refused(self):
-        from gnss_broker.fits import at_epoch_cp_loc
-        v, src = at_epoch_cp_loc(4321.1 + 52.3711, 4321.1, L)
-        self.assertEqual(src, "recon_skew")
-        self.assertAlmostEqual(v, 4321.1)
+    FX = ("/home/kvand/gnss/fixtures/20260811_clock_investigation/"
+          "dets_live_2124.jsonl")
 
-    def test_missing_field_degrades(self):
-        from gnss_broker.fits import at_epoch_cp_loc
-        for bad in (-1.0, None):
-            v, src = at_epoch_cp_loc(bad, 4321.1, L)
-            self.assertEqual(src, "recon")
-            self.assertAlmostEqual(v, 4321.1)
-
-    def test_wrap_agreement_across_the_code_boundary(self):
-        from gnss_broker.fits import at_epoch_cp_loc
-        v, src = at_epoch_cp_loc(0.2, L - 0.3, L)
-        self.assertEqual(src, "at_ref", "agreement across the wrap must adopt")
-
-    def test_banked_capture_is_uniformly_refused(self):
-        """FIXTURE REPLAY: the 2026-08-11 capture predates the epoch fix, so every one
-        of its detections must read recon_skew (+52.37) -- none may be adopted. This is
-        the deploy-order hazard, pinned on 26,815 real detections (bounded here)."""
+    def _load(self):
         import json
-        fx = ("/home/kvand/gnss/fixtures/20260811_clock_investigation/"
-              "dets_live_2124.jsonl")
-        if not os.path.exists(fx):
-            self.skipTest("banked capture not available on this host")
-        n, seen = 0, set()
-        with open(fx) as f:
+        byprn, seen = {}, set()
+        with open(self.FX) as f:
             for ln in f:
-                d = json.loads(ln)
-                for det in d.get("dets", []):
+                for det in json.loads(ln).get("dets", []):
                     key = (det["prn"], det["ref_hop"])
                     if key in seen:
                         continue
                     seen.add(key)
-                    t_i = det["ref_hop"] / HPS
-                    recon = (det["code_phase_chips"]
-                             + t_i * CHIP * (1.0 + SGN * det["doppler_hz"] / CARR)) % L
-                    _, src = at_epoch_cp_loc(
-                        det.get("code_phase_at_ref_chips", -1.0), recon, L)
-                    self.assertEqual(src, "recon_skew",
-                                     "old-convention detection was adopted (PRN %d)"
-                                     % det["prn"])
-                    n += 1
-                    if n >= 2000:
-                        break
-                if n >= 2000:
-                    break
-        self.assertGreaterEqual(n, 1000)
+                    byprn.setdefault(det["prn"], []).append(det)
+        for v in byprn.values():
+            v.sort(key=lambda d: d["ref_hop"])
+        return byprn
 
+    def setUp(self):
+        if not os.path.exists(self.FX):
+            self.skipTest("banked capture not available on this host")
 
-from gnss_broker.fits import at_epoch_cp_loc  # noqa: E402,F401
+    def test_reconstruction_is_continuous_on_sky(self):
+        import statistics
+        jumps = []
+        for prn, dets in self._load().items():
+            for a, b in zip(dets, dets[1:]):
+                dt = (b["ref_hop"] - a["ref_hop"]) / HPS
+                if not (0.0 < dt <= 120.0):
+                    continue
+                dmean = 0.5 * (a["doppler_hz"] + b["doppler_hz"])
+                adv = dt * (CHIP + SGN * CHIP * dmean / CARR)
+
+                def loc(d):
+                    t = d["ref_hop"] / HPS
+                    return (d["code_phase_chips"]
+                            + t * CHIP * (1.0 + SGN * d["doppler_hz"] / CARR)) % L
+                jumps.append(abs(((loc(b) - loc(a) - adv + L / 2) % L) - L / 2))
+        self.assertGreater(len(jumps), 1000)
+        jumps.sort()
+        self.assertLess(jumps[len(jumps) // 2], 1.0,
+                        "median reconstruction jump %.3f chips" % jumps[len(jumps) // 2])
+        self.assertLess(jumps[int(len(jumps) * 0.99)], 5.0,
+                        "p99 reconstruction jump %.3f chips"
+                        % jumps[int(len(jumps) * 0.99)])
+
+    def test_cp_at_ref_offset_is_the_documented_law(self):
+        """Pins the road not taken, so the reason stays checkable: the offset is a
+        constant hop plus the anchor's Doppler term, NOT a pure constant."""
+        pts = []
+        for prn, dets in self._load().items():
+            for d in dets:
+                car = d.get("code_phase_at_ref_chips", -1.0)
+                if car is None or car < 0:
+                    continue
+                t = d["ref_hop"] / HPS
+                loc = (d["code_phase_chips"]
+                       + t * CHIP * (1.0 + SGN * d["doppler_hz"] / CARR)) % L
+                pts.append((d["doppler_hz"], ((car - loc + L / 2) % L) - L / 2))
+        self.assertGreater(len(pts), 1000)
+        n = len(pts)
+        mx = sum(p[0] for p in pts) / n
+        my = sum(p[1] for p in pts) / n
+        den = sum((p[0] - mx) ** 2 for p in pts)
+        slope = sum((p[0] - mx) * (p[1] - my) for p in pts) / den
+        self.assertAlmostEqual(slope, 1.39e-4, delta=0.2e-4,
+                               msg="anchor Doppler slope %.3e chips/Hz" % slope)
+        self.assertAlmostEqual(my - slope * mx, 52.3776, delta=0.05,
+                               msg="constant term %.4f chips" % (my - slope * mx))
 
 
 if __name__ == "__main__":
