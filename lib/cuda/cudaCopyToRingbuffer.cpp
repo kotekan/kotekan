@@ -64,13 +64,8 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
 }
 
 cudaCopyToRingbuffer::~cudaCopyToRingbuffer() {
-    if (in_buffer && in_buffer->frame_size) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, in_buffer->frames[instance_num])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(in_buffer->frames[instance_num]));
-        }
-    }
+    if (in_buffer)
+        unregister_host_buffer(in_buffer);
 }
 
 int cudaCopyToRingbuffer::wait_on_precondition() {
