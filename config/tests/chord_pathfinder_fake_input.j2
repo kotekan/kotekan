@@ -10,6 +10,7 @@
 # array_shape [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]).
 host_voltage_buffer_0:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int4x2_swapped_withoffset
     extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
@@ -17,6 +18,7 @@ host_voltage_buffer_0:
     numa_node: 0
 host_voltage_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int4x2_swapped_withoffset
     extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
@@ -28,6 +30,7 @@ host_voltage_buffer_1:
 # shape [samples_per_data_set / 1024, num_local_freq, 128] is fixed in testRFImaskGen.cpp:133).
 host_rfi_RFImask_dummy_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -37,6 +40,7 @@ host_rfi_RFImask_dummy_buffer:
 
 host_rfi_RFImask_dummy_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -49,6 +53,7 @@ host_rfi_RFImask_dummy_buffer_1:
 # extents = [samples_per_data_set/128, (num_local_freq+3)/4, num_polarizations, num_dishes/8, 8]
 host_pl_mask_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, num_dishes / 8, 8]
@@ -56,6 +61,7 @@ host_pl_mask_buffer:
 
 host_pl_mask_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, num_dishes / 8, 8]

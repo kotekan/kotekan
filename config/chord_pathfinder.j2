@@ -283,6 +283,7 @@ n2_pool:
 # [P, D] = [num_polarizations, num_dishes], 1 = good / 0 = bad.
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: buffer_depth
     value_type: int8
     extents: [num_polarizations, num_dishes]
@@ -291,6 +292,7 @@ host_bf_mask_buffer:
 
 host_bf_mask_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: buffer_depth
     value_type: int8
     extents: [num_polarizations, num_dishes]
@@ -300,6 +302,7 @@ host_bf_mask_buffer_1:
 # Buffers
 network_input_buffers:
     num_frames: host_side_buffer_depth
+    peek_hold: true
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
@@ -327,6 +330,7 @@ network_input_buffers:
 # ndarray buffers derive their size from the descriptor.
 host_voltage_buffer_0:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int4x2_swapped_withoffset
     extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
@@ -336,6 +340,7 @@ host_voltage_buffer_0:
 
 host_voltage_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int4x2_swapped_withoffset
     extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
@@ -346,6 +351,7 @@ host_voltage_buffer_1:
 
 packet_receipt_bitmap_buffers:
     num_frames: host_side_buffer_depth
+    peek_hold: true
     frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
     metadata_pool: main_pool
     use_hugepages: true
@@ -371,6 +377,7 @@ packet_receipt_bitmap_buffers:
 # {Thi64, F, P, D8, Tlo64}.
 host_pl_mask_exp_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
@@ -378,6 +385,7 @@ host_pl_mask_exp_buffer:
 
 host_pl_mask_exp_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
@@ -390,6 +398,7 @@ host_pl_mask_exp_buffer_1:
 # {T2hi64, F4, P, D8, T2lo64}. num_local_freq=384 -> (384+3)/4 = 96 = num_local_freq/4.
 host_pl_mask_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, 2, (num_elements / 8) / 2, 8]
@@ -397,6 +406,7 @@ host_pl_mask_buffer:
 
 host_pl_mask_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, 2, (num_elements / 8) / 2, 8]
@@ -408,6 +418,7 @@ host_pl_mask_buffer_1:
 # float32 "SKtilde" [samples_per_data_set/rfi_downsampling_factor, num_local_freq, 3] {Trfi, F, SK}.
 host_rfi_sktilde_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: float32
     extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
@@ -415,6 +426,7 @@ host_rfi_sktilde_buffer:
 
 host_rfi_sktilde_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: float32
     extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
@@ -427,6 +439,7 @@ host_rfi_sktilde_buffer_1:
 # {Trfibar, F, SK = {SK, b, sigma}, P, D}; sigma < 0 marks an invalid cell.
 host_rfi_skbar_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: float32
     extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
@@ -434,6 +447,7 @@ host_rfi_skbar_buffer:
 
 host_rfi_skbar_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: float32
     extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
@@ -446,6 +460,7 @@ host_rfi_skbar_buffer_1:
 # uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
 host_rfi_RFImask_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -455,6 +470,7 @@ host_rfi_RFImask_buffer:
 
 host_rfi_RFImask_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -467,6 +483,7 @@ host_rfi_RFImask_buffer_1:
 # [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_rfi_RFImask_counts_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -474,6 +491,7 @@ host_rfi_RFImask_counts_buffer:
 
 host_rfi_RFImask_counts_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -484,6 +502,7 @@ host_rfi_RFImask_counts_buffer_1:
 # [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_pl_counts_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -491,6 +510,7 @@ host_pl_counts_buffer:
 
 host_pl_counts_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -502,6 +522,7 @@ host_pl_counts_buffer_1:
 # [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_rfi_RFIframemask_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint8
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -511,6 +532,7 @@ host_rfi_RFIframemask_buffer:
 
 host_rfi_RFIframemask_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint8
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -529,6 +551,7 @@ vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 # matches the kernel's triangle_num_blocks.
 host_correlation_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
@@ -536,6 +559,7 @@ host_correlation_buffer:
 
 host_correlation_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
@@ -553,6 +577,7 @@ counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 # so counts_num_blocks=3 matches the kernel's triangle_num_blocks.
 host_counts_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
@@ -560,6 +585,7 @@ host_counts_buffer:
 
 host_counts_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
@@ -568,6 +594,7 @@ host_counts_buffer_1:
 
 n2_buffer:
     kotekan_buffer: N2
+    peek_hold: true
     num_ev: 0
     n2_layout: "FullUpperTri"
     num_frames: host_side_buffer_depth * num_local_freq
@@ -575,6 +602,7 @@ n2_buffer:
 
 n2_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     numa_node: 1
     num_ev: 0
     n2_layout: "FullUpperTri"
@@ -583,6 +611,7 @@ n2_buffer_1:
 
 n2_subset_buffer:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 32
     num_ev: 0
     n2_layout: "FullUpperTri"
@@ -591,6 +620,7 @@ n2_subset_buffer:
 
 n2_subset_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 32
     num_ev: 0
     n2_layout: "FullUpperTri"
@@ -599,6 +629,7 @@ n2_subset_buffer_1:
 
 n2_eigen_buffer:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
@@ -607,6 +638,7 @@ n2_eigen_buffer:
 
 n2_eigen_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
@@ -615,6 +647,7 @@ n2_eigen_buffer_1:
 
 n2_recv_buffer_0:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
@@ -623,6 +656,7 @@ n2_recv_buffer_0:
 
 n2_recv_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"

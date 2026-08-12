@@ -12,6 +12,7 @@
 
 host_rfi_RFImask_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -21,6 +22,7 @@ host_rfi_RFImask_buffer:
 
 host_rfi_RFImask_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -31,6 +33,7 @@ host_rfi_RFImask_buffer_1:
 
 host_rfi_sktilde_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: float32
     extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
@@ -38,6 +41,7 @@ host_rfi_sktilde_buffer:
 
 host_rfi_sktilde_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: float32
     extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
@@ -46,6 +50,7 @@ host_rfi_sktilde_buffer_1:
 
 host_rfi_RFImask_counts_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -53,6 +58,7 @@ host_rfi_RFImask_counts_buffer:
 
 host_rfi_RFImask_counts_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -61,6 +67,7 @@ host_rfi_RFImask_counts_buffer_1:
 
 host_pl_counts_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -68,6 +75,7 @@ host_pl_counts_buffer:
 
 host_pl_counts_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -76,6 +84,7 @@ host_pl_counts_buffer_1:
 
 host_rfi_RFIframemask_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint8
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -85,6 +94,7 @@ host_rfi_RFIframemask_buffer:
 
 host_rfi_RFIframemask_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint8
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
@@ -98,6 +108,7 @@ vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 host_correlation_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
@@ -105,6 +116,7 @@ host_correlation_buffer:
 
 host_correlation_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
@@ -117,6 +129,7 @@ counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
 counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 host_counts_buffer:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
@@ -124,6 +137,7 @@ host_counts_buffer:
 
 host_counts_buffer_1:
     kotekan_buffer: ndarray
+    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: int32
     extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
@@ -132,6 +146,7 @@ host_counts_buffer_1:
 
 n2_buffer:
     kotekan_buffer: N2
+    peek_hold: true
     num_ev: 0
     n2_layout: "FullUpperTri"
     num_frames: host_side_buffer_depth * num_local_freq
@@ -139,6 +154,7 @@ n2_buffer:
 
 n2_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     numa_node: 1
     num_ev: 0
     n2_layout: "FullUpperTri"
@@ -147,6 +163,7 @@ n2_buffer_1:
 
 n2_subset_buffer:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 8
     num_ev: 0
     n2_layout: "FullUpperTri"
@@ -155,6 +172,7 @@ n2_subset_buffer:
 
 n2_subset_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 8
     num_ev: 0
     n2_layout: "FullUpperTri"
@@ -163,6 +181,7 @@ n2_subset_buffer_1:
 
 n2_eigen_buffer:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
@@ -171,6 +190,7 @@ n2_eigen_buffer:
 
 n2_eigen_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
@@ -179,6 +199,7 @@ n2_eigen_buffer_1:
 
 n2_recv_buffer_0:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
@@ -187,6 +208,7 @@ n2_recv_buffer_0:
 
 n2_recv_buffer_1:
     kotekan_buffer: N2
+    peek_hold: true
     num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
