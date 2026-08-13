@@ -6586,6 +6586,19 @@ def main(argv=None, rx=None, publisher=None):
         else:
             _rr2_resid = {}
         if args.rrate_state and _rr2_resid:
+            # REGIME GATE (arm 4's lesson, 2026-08-13 15:4x). The full-band field revealed
+            # a population the capped view called noise: STRONG but DECOHERED sats (PRN 27
+            # at amp 56, coh_frac 0.02) carrying REAL multi-Hz carrier residuals that SWING
+            # +-10 Hz poll-to-poll -- seed/f_ref churn, not orbit error. The rrate model is
+            # a slow per-sat drift; fed those swings it rejects 2:1 and the escape
+            # snap-moves rows. Feed only sats whose regime the model fits: COHERING ones
+            # (same bar as the joint code feed's _track_ok). The decohered population is
+            # its own open question -- the full field finally makes it VISIBLE (#48).
+            _rr2_resid = {
+                _p: _rv for _p, _rv in _rr2_resid.items()
+                if ((status.get(_p) or {}).get("coherence_s") or 0.0) > 0.0
+                or ((status.get(_p) or {}).get("coh_frac") or 0.0) >= 0.3}
+        if args.rrate_state and _rr2_resid:
             try:
                 _jrr = rx.joint_receiver(band_id, CODE_LEN)
                 _n_ok = 0

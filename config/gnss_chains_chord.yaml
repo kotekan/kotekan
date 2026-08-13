@@ -233,7 +233,14 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # innovations routinely exceed the 6-sigma bar? (q gate admitting junk picks at
     # large |f| on marginal sats / real drift q_rr under-tracks / actuator state after
     # the tracker restart unverified.)
-    # rrate-command: true
+    # RESOLVED 15:5x: none of those -- the full field revealed a POPULATION the capped
+    # view called noise: strong-but-DECOHERED sats (PRN 27 amp 56, coh_frac 0.02)
+    # carrying real multi-Hz residuals that swing +-10 Hz poll-to-poll (seed/f_ref
+    # churn, not orbit). ARM 5: the feed is regime-gated to COHERING sats (coherence_s>0
+    # or coh_frac>=0.3); a decohered sat's row goes stale and its sigma growth
+    # de-commands it automatically. Cohering sats' picks are clean and stable (PRN 5/21:
+    # q 17-21, full==capped).
+    rrate-command: true
     trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
