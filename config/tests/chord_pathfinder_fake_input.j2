@@ -102,6 +102,8 @@ gen_fake_voltage:
     name: "E"
     array_shape: [ 8192, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
+    # One FPGA sample per time index, as inventVoltage and the fengine configs describe "E".
+    dim_scaling: [1, 1, 1, 1]
     num_frames: -1
 
     voltage_0:
