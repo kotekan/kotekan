@@ -54,6 +54,43 @@ chains:
   # clock, which every other chain here now consumes in-process.
   gps_l5:
     signal: gps_l5
+    # ⚠️ TEMPORARY EXPERIMENT (task #52, 2026-08-14) -- ON THIS CHAIN ONLY, deliberately.
+    #
+    # CLOSE THE SHARED CARRIER LOOP. The airspy prototype held carrier coherence for ~4 s and
+    # CHORD cannot hold 1 s; the difference is not the ephemeris, it is that the prototype runs
+    # this loop CLOSED (fll_gain 0 + carrier_shared) and CHORD has run it open at gain 0. The
+    # delivery path on CHORD is already complete: the seed carries carrier_trim_hz,
+    # cudaGnssChordTrack:184 reads it, and BOTH producers feed it to the despread actuator
+    # (sp.ctrim_hz) and the NCO (c.f_nco). Only the gain was zero.
+    #
+    # Measured open-loop, the per-window common phase steps ~1.8 rad = 0.27 Hz of carrier
+    # residual, against a 15 mHz budget for 0.1 rad across one window.
+    #
+    # ⚠️ ONE CHAIN, so the other four stay OPEN-LOOP as a live control in the same poll -- the
+    # only comparison this sky has ever answered straight. And ⚠️ HISTORY: before the actuator
+    # fix (the trim reached f_nco but not the despread, so deep_rate_hz could not respond) this
+    # loop "ratcheted to its rail at every gain tried", and its continuity gate was in RECORD
+    # units and rejected 100% of updates until 2026-08-04. Both are fixed; this is the first
+    # time it has been tried since. Gain is deliberately small.
+    #
+    # RESULT 2026-08-14: RUN, AND REVERTED TO 0 -- the loop is STRUCTURALLY INERT on CHORD.
+    # Enabled at gain 0.05 for ~12 minutes. Zero harm (no tracebacks, deep_snr indistinguishable
+    # from the four open-loop control chains) and ZERO EFFECT, because it accepted ZERO
+    # measurements:
+    #     37x "carrier-rate: N PRN(s) skipped across a window gap (re-anchor, not a measurement)"
+    #     25x "carrier-rate: N PRN(s) skipped on a slew step >3.0 Hz (f_ref re-pin, not a ...)"
+    #      0x accepted/applied
+    # The gate is right and the architecture is wrong for it. It rejects "the reference just
+    # moved", and on CHORD THE SEED IS THE REFERENCE and is refreshed EVERY WINDOW -- so every
+    # measurement looks like a re-pin. The seed refresh and the carrier loop are two controllers
+    # commanding the same state, and no gain setting fixes that.
+    #
+    # This is the THIRD time this loop has been found inert for a different reason (continuity
+    # gate in RECORD units, 100% rejected, fixed 2026-08-04; actuator reaching f_nco but not the
+    # despread so deep_rate could not respond, fixed; now this). Do NOT re-enable it as a knob.
+    # It needs the seed and the carrier trim to be ONE controller -- task #33's shared per-sat
+    # vector state. See #52.
+    carrier-gain: 0.0
     detectors: http://localhost:12050/gps_search
     # -- PATH B (task #26, 2026-08-09). GPS L5 ran on BOTH paths simultaneously: path A
     # (gnss*_track / gnss*_assemble / gnss*_combine) and a fully-built path B
