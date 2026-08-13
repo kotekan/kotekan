@@ -209,9 +209,20 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     #   gal_e5b  -- SAME satellites feeding the SAME rrate rows at 1207.14, command OFF
     # The metric: the window-to-window common-phase step (was 1.89 rad = 0.29 Hz on PRN 27
     # at flip time) and cross-window coh_t vs the 1/sqrt(N) baseline, e5a vs both controls.
-    # Delivery path verified: set_seeds parses carrier_trim_hz (cudaGnssChordTrack:184,
-    # state shared with cudaGnssInject) -> sp.ctrim_hz (despread) + c.f_nco (NCO).
-    rrate-command: true
+    # Delivery path verified IN THE TREE: set_seeds parses carrier_trim_hz
+    # (cudaGnssChordTrack:184, state shared with cudaGnssInject) -> sp.ctrim_hz (despread)
+    # + c.f_nco (NCO).
+    #
+    # ⚠️ RESULT 2026-08-13 14:05-14:13: ARMED AND REVERTED after 8 minutes -- the RUNNING
+    # trackers do not actuate it. The discriminating observation: E27's command stepped
+    # +4.6 Hz and its next innovations read +4.0 Hz -- the measured residual NEVER MOVED,
+    # the "no response" row of the trim-force probe table. With a dead actuator the feed's
+    # reference reconstruction (y = resid + cmd) turns the filter into a ratchet: commands
+    # walked ~1 Hz/min (PRN 5: 0 -> -5.4 in 6 min), the uncommanded e5b feed fought back on
+    # the shared rows, rejections hit ~40%. Verify what RUNS, not what you built: the
+    # trackers predate the tree. RE-ARM ONLY AFTER a tracker restart + a positive
+    # command-response check (deep_rate moves by -step within ~2 emits).
+    # rrate-command: true
     trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
