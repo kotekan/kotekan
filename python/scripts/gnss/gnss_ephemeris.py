@@ -479,11 +479,26 @@ def sat_pos_clk(e, t_gpst):
     X = x * co - y * ci * so
     Y = x * so + y * ci * co
     Z = y * si
-    # velocity by simple differentiation step (adequate: range-rate to ~mm/s)
+    # VELOCITY BY CENTRAL DIFFERENCE. This was a FORWARD difference over 0.5 s, commented
+    # "adequate: range-rate to ~mm/s". It is not, and the error is not noise -- a forward
+    # difference does not estimate v(t), it estimates v(t + h/2). That is a 0.25 s TIME-TAG
+    # OFFSET, and a time offset in Doppler is dop_rate * 0.25.
+    #
+    # Along the line of sight a 0.37 Hz/s Doppler rate is ~0.094 m/s^2 of range acceleration,
+    # so the bias is 0.094 * 0.25 = 0.024 m/s -> 0.09 Hz at 1176.45 MHz. The cross-window phase
+    # budget (task #52) needs the carrier to ~15 mHz for 0.1 rad over one 1.049 s window, so
+    # this ONE first-order scheme was 6x the entire budget.
+    #
+    # Central differencing costs one extra position evaluation and is second-order: the leading
+    # error becomes (h^2/6)*jerk, and for a GPS-altitude orbit (omega^3 r ~ 8e-5 m/s^3) that is
+    # ~3e-6 m/s -- 13 microHz, four orders below the budget. Do NOT shrink h to compensate for
+    # the old scheme: the bias is first-order in h, so halving h only halves it, while the
+    # central form removes it outright.
     dt = 0.5
     e2 = dict(e)
-    p2 = _pos_only(e2, t_gpst + dt)
-    V = tuple((p2[k] - p) / dt for k, p in enumerate((X, Y, Z)))
+    pp = _pos_only(e2, t_gpst + dt)
+    pm = _pos_only(e2, t_gpst - dt)
+    V = tuple((pp[k] - pm[k]) / (2.0 * dt) for k in range(3))
     # clock: polynomial + relativistic
     tc = t_gpst - e["toc_gpst"]
     clk = e["af0"] + e["af1"] * tc + e["af2"] * tc * tc \
