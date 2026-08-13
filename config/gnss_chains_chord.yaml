@@ -223,7 +223,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # reads "converged" at the wrong alias and the in-band observable cannot tell; the
     # cross-band feed and the beam map are the outside checks until #40 fixes the grid.
     deep-rate-alias-hz: 9.537
-    rrate-command: true
+    # ⚠️ ARM 2 (14:26-14:55): DISARMED. The unwrap-to-prediction is SELF-REFERENTIAL
+    # (gnss-phase-estimator-self-reference, frequency-domain edition): a walking row drags
+    # its own unwrap anchor, and commands ran away PAST the modulus (PRN 9 +11.7, PRN 15
+    # +14.8 Hz) while residuals never collapsed. The observable is ambiguous mod 9.537
+    # against per-sat errors of +-2-5 Hz: no feed-side arithmetic can break that tie.
+    # THE FIX IS #40: the e5a/b2a deep fold's rate search uses 104.86 ms coherent units;
+    # per-RECORD spacing (10.49 ms, as GPS effectively has) widens the window to +-47.7 Hz
+    # and the ambiguity vanishes. Re-arm only after that lands.
+    # rrate-command: true
     trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
