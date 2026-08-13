@@ -6679,15 +6679,24 @@ def main(argv=None, rx=None, publisher=None):
                             _co = _rr2_resid.get(_p) if _rr2_resid else None
                             if _co is not None:
                                 _jpp.append((_p, _fy, _co))
+                            # COMMAND DRIFT over the span: a strict cmd_now == cmd_then
+                            # gate never opens (the coarse feed nudges the command every
+                            # poll), which starved the fine feed to ~1 event/min. The
+                            # exact reference for a linearly-drifting command is its
+                            # SPAN MEAN; allow drift up to 0.1 Hz (the residual reference
+                            # error is then < 0.05 Hz worst-case, and typically far less)
+                            # and reference to the mean rather than gating on stillness.
+                            _dcmd = _cmd_now - _pv[1]
                             if (args.rrate_phase_feed and args.rrate_phase_sign != 0.0
-                                    and abs(_cmd_now - _pv[1]) < 1e-6
+                                    and abs(_dcmd) <= 0.1
                                     and ((_rec.get("coherence_s") or 0.0) > 0.0
                                          or (_rec.get("coh_frac") or 0.0) >= 0.3)):
                                 _yf = args.rrate_phase_sign * _fy
                                 if abs(_yf) < 0.3:   # fine regime: coarse loop converged
                                     _k = (args.dr_constellation, int(_p))
+                                    _cmd_mid = 0.5 * (_cmd_now + _pv[1])
                                     if _jrf.update_rrate(
-                                            _k, _yf + _cmd_now, t_now_abs, args.carrier_hz,
+                                            _k, _yf + _cmd_mid, t_now_abs, args.carrier_hz,
                                             sigma_hz=args.rrate_phase_sigma) is not None:
                                         _n_fine += 1
                     adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
