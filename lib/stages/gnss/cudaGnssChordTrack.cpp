@@ -583,13 +583,18 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             sp.covering = S.covering;
 
             // THE RE-PIN PHASE STEP (task #52). Same construction as cudaGnssInject's -- the
-            // replica's carrier phase is 2*pi*(f_offset + dop)*t_abs and dop moves every
-            // record, so the phase steps by (dop - dop_prev)*t_abs cycles. Subtracted here, in
-            // the Doppler domain, before f_offset swamps the precision (PrnCtl::dcyc).
+            // replica's carrier phase is 2*pi*(f_offset + dop + ctrim)*t_abs and dop moves
+            // every record, so the phase steps by d(dop + ctrim)*t_abs cycles. Subtracted
+            // here, in the Doppler domain, before f_offset swamps the precision
+            // (PrnCtl::dcyc). ⚠️ The APPLIED total, not the Doppler alone (2026-08-13):
+            // ctrim is inside the despread reference too, and leaving its changes out of
+            // dcyc meant every broker carrier-command slew punched an unfolded mod-1 phase
+            // step into the records -- the closed loop scrambled its own measurement.
             const double t_abs = (double)wstart / S.sample_rate;
             const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
-            const double dcyc = have_hist ? (dop - _dop_prev[(size_t)p]) * t_abs : 0.0;
-            _dop_prev[(size_t)p] = dop;
+            const double applied = dop + sd.ctrim_hz;
+            const double dcyc = have_hist ? (applied - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            _dop_prev[(size_t)p] = applied;
             _dop_prev_ok[(size_t)p] = 1;
 
             c.run = 1;

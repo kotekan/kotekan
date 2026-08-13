@@ -144,6 +144,14 @@ struct Opt {
     /// (huge absolute argument): hop0 supplies the huge argument, this supplies the small one.
     /// Set --seed-dop-rate 0 to recover the old blind behaviour deliberately.
     double seed_dop_rate = -0.36893;
+    /// Carrier-RAMPED truth (task #52/#48 fold bench). The injected signal's carrier gains
+    /// a quadratic phase 0.5*F*(t - seed_ref)^2 cycles -- i.e. its Doppler ramps at F Hz/s
+    /// through the seeded value at the seed epoch. With --seed-dop-rate set EQUAL to this,
+    /// the seed model matches the truth and any [4] residual is pure REFERENCE arithmetic:
+    /// the [4c] candidate whose fitted rate reads ~0 is the correct re-pin fold algebra.
+    /// Keep F small (~0.01): the truth's CODE rate does not ramp, so the seed's code quad
+    /// mismatches by 0.5*(chip_rate/f_offset)*F*age^2 -- under half a chip at 0.01/50 s.
+    double truth_dop_rate = 0.0;
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
     int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
@@ -310,6 +318,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-dop-err")) o.seed_dop_err = next_d();
         else if (arg_eq(a, "--seed-cp-rate")) o.seed_cp_rate = next_d();
         else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
+        else if (arg_eq(a, "--truth-dop-rate")) o.truth_dop_rate = next_d();
         else if (arg_eq(a, "--signal")) o.signal = argv[++i];
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
@@ -1016,6 +1025,21 @@ int main(int argc, char** argv) {
         const double err = wrap(pr.phase_now - truth_phase_at(W), LL);
 
         auto rec = tbank.channels_hoprate(0, W, o.cp204, o.dop, o.hops_per_record, t_chans, {}, -1);
+        // RAMPED-CARRIER TRUTH (--truth-dop-rate): quadratic phase about the seed epoch,
+        // applied per hop (the quad's per-hop increment is ~1e-5 rad at F = 0.01 -- constant
+        // within a hop to far better than anything measured here). Sign chosen so that the
+        // truth's instantaneous Doppler INCREASES like the seed model's (+F): job 0's
+        // P/P_true holding ~its F=0 value is the check; a wrong sign doubles the dop error
+        // and visibly collapses it.
+        if (o.truth_dop_rate != 0.0) {
+            for (int m = 0; m < o.hops_per_record; ++m) {
+                const double tq = (double)(h + m - sd.ref_hop) * hop_s;
+                const std::complex<float> qr =
+                    std::polar(1.0f, (float)(2.0 * M_PI * 0.5 * o.truth_dop_rate * tq * tq));
+                for (auto& ch : rec)
+                    ch[(size_t)m] *= qr;
+            }
+        }
         // --noise REACHES THE TRACKER LEG TOO (2026-08-04). It did not before: noise was added
         // only to the search snapshot, so every record despread here was noiseless no matter
         // what --noise said, and a sweep over it returned bit-identical numbers at every level.

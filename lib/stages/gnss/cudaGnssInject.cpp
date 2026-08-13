@@ -238,9 +238,18 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             // one built from the new, which is what the despread actually swapped.
             const double t_abs = (double)wstart / S.sample_rate;
             const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
+            // THE APPLIED CARRIER, not the Doppler alone (2026-08-13, the churn root).
+            // ctrim sits inside the despread's reference frequency (ang0/wc both take it),
+            // so a broker carrier-command CHANGE steps the reference by dctrim*t_abs
+            // exactly as a Doppler change does -- and it was NOT in dcyc. Every command
+            // slew therefore punched an unfolded mod-1 phase step into the records: the
+            // closed carrier loop was scrambling its own measurement stream (validated
+            // offline: e2e --truth-dop-rate matched-ramp bench shows this dcyc algebra
+            // recovers the baseline to mHz when the difference tracks the APPLIED total).
+            const double applied = pr.doppler_hz + sd.ctrim_hz;
             const double dcyc =
-                have_hist ? (pr.doppler_hz - _dop_prev[(size_t)p]) * t_abs : 0.0;
-            _dop_prev[(size_t)p] = pr.doppler_hz;
+                have_hist ? (applied - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            _dop_prev[(size_t)p] = applied;
             _t_prev[(size_t)p] = t_abs;
             _dop_prev_ok[(size_t)p] = 1;
 
