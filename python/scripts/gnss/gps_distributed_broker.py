@@ -74,7 +74,7 @@ from gnss_broker.transport import (           # noqa: E402
 from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
-    cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
+    cp_rate_from_code_bias, dr_cp0, dr_seed_phys, adr_fine_rate,
 )
 from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fit_spectrum_delay,
@@ -1068,6 +1068,24 @@ def main(argv=None, rx=None, publisher=None):
                          "count is in the JRR-CMD line -- a rail that never clears means "
                          "the target is out of reach, not converging (the dr slew cap's "
                          "lesson).")
+    ap.add_argument("--rrate-phase-feed", action="store_true",
+                    help="#33 PLL fine stage: feed the joint state's rrate rows from the "
+                         "ADR's residual half (res_cycles per adr_records -- ~5 mHz over "
+                         "a 20 s span) on sats that pass the fine gates: coarse loop "
+                         "converged (|coarse resid| < 0.3 Hz), command HELD over the span "
+                         "(the fine value's reference is only exact under a constant "
+                         "command), same arc, counter advanced. The coarse deep_rate_full "
+                         "feed stays as acquisition. SIGN IS CALIBRATED, NOT ASSUMED: "
+                         "requires --rrate-phase-sign nonzero, which is set from the "
+                         "JRRP shadow line's live fine-vs-coarse comparison -- closing a "
+                         "loop on an uncalibrated observable is how this day started.")
+    ap.add_argument("--rrate-phase-sign", type=float, default=0.0,
+                    help="sign (+1/-1) mapping the combiner's internal (r2c-flipped) "
+                         "res_cycles rate onto the deep_rate_full_hz convention. 0 = "
+                         "uncalibrated: the JRRP shadow comparison still logs, the fine "
+                         "feed stays off regardless of --rrate-phase-feed.")
+    ap.add_argument("--rrate-phase-sigma", type=float, default=0.02,
+                    help="measurement sigma (Hz) for the fine phase-step feed.")
     ap.add_argument("--rrate-cmd-max-sigma", type=float, default=0.5,
                     help="command a sat's carrier only when its rrate row's 1-sigma (m/s) "
                          "is below this. 0.5 m/s is ~2 Hz at 1176 MHz -- an UNMEASURED "
@@ -2540,6 +2558,8 @@ def main(argv=None, rx=None, publisher=None):
     rr_full_ok = False   # this poll's feed ran on the UNCAPPED fields -- the command requires
                          # it (a capped measurement past +-5 Hz is noise; feeding a loop with
                          # it is what walked arm 1)
+    adr_prev = {}        # prn -> ((arc, records, res_cycles), cmd_then) at the last poll --
+                         # the PLL fine observable differences THESE (#33 phase-step feed)
     rr_cmd_applied = {}  # prn -> carrier command POSTED last poll (#33 P3). The rrate feed's
                          # reference: deep_rate_hz is measured on records already derotated
                          # by this, so the feed adds it back to reference y at the base seed.
@@ -6631,6 +6651,57 @@ def main(argv=None, rx=None, publisher=None):
                            _jrr.n_rrate, _jrr.rrate_rejected), every_s=60.0)
             except Exception as e:
                 _log_rl("jrr-err", "rrate feed skipped: %s" % e, every_s=300.0)
+        # 3d''. PLL FINE STAGE (#33 phase-step feed). The ADR's residual half
+        # (res_cycles), differenced over the poll span: ~5 mHz where the rate spectrum's
+        # floor is ~60. SHADOW ALWAYS (the JRRP line calibrates the r2c sign against the
+        # coarse observable on the uncommanded chains' standing residuals); FEED only when
+        # --rrate-phase-feed is set AND the sign is calibrated AND, per sat: same arc,
+        # counter advanced (adr_fine_rate's structural gates), the coarse loop converged,
+        # and the command HELD over the span -- the fine value's reference is only exact
+        # under a constant command, and gating beats averaging a moving one.
+        if args.rrate_state:
+            try:
+                _rec_dt = 2048.0 / args.hops_per_sec
+                _jpp = []
+                _n_fine = 0
+                _jrf = rx.joint_receiver(band_id, CODE_LEN)
+                for _p, _rec in (status or {}).items():
+                    if not isinstance(_rec, dict):
+                        continue
+                    _pv = adr_prev.get(_p)
+                    _cmd_now = rr_cmd_applied.get(_p, 0.0)
+                    if _pv is not None:
+                        _snap = {"adr_arc": _pv[0][0], "adr_records": _pv[0][1],
+                                 "res_cycles": _pv[0][2]}
+                        _fr = adr_fine_rate(_rec, _snap, _rec_dt)
+                        if _fr is not None:
+                            _fy, _nrec = _fr
+                            _co = _rr2_resid.get(_p) if _rr2_resid else None
+                            if _co is not None:
+                                _jpp.append((_p, _fy, _co))
+                            if (args.rrate_phase_feed and args.rrate_phase_sign != 0.0
+                                    and abs(_cmd_now - _pv[1]) < 1e-6
+                                    and ((_rec.get("coherence_s") or 0.0) > 0.0
+                                         or (_rec.get("coh_frac") or 0.0) >= 0.3)):
+                                _yf = args.rrate_phase_sign * _fy
+                                if abs(_yf) < 0.3:   # fine regime: coarse loop converged
+                                    _k = (args.dr_constellation, int(_p))
+                                    if _jrf.update_rrate(
+                                            _k, _yf + _cmd_now, t_now_abs, args.carrier_hz,
+                                            sigma_hz=args.rrate_phase_sigma) is not None:
+                                        _n_fine += 1
+                    adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
+                                     _rec.get("res_cycles")), _cmd_now)
+                if _jpp:
+                    _log_rl("jrrp",
+                            "JRRP[%s] fine|coarse Hz (fine in INTERNAL sign): %s%s"
+                            % (args.dr_constellation,
+                               " ".join("%d:%+.3f|%+.3f" % t for t in _jpp),
+                               (" -- %d fine-fed" % _n_fine) if _n_fine else ""),
+                            every_s=60.0)
+            except Exception as e:
+                _log_rl("jrrp-err", "phase-step feed skipped: %s" % e, every_s=300.0)
+
         # S2 OBSERVER: the shadow surface for sky validation (present even when the feed
         # produced nothing this poll, so a dead feed shows n=0 rather than vanishing).
         if state_w is not None and args.rrate_state:

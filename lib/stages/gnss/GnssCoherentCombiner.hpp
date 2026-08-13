@@ -455,6 +455,13 @@ private:
                                        ///< subtract exactly; docs/adr_trim_subtraction.md)
     std::vector<double> _adr_cyc;      ///< accumulated carrier phase this arc (cycles; DOUBLE --
                                        ///< float32 would quantize ~1e6 cycles to 0.06)
+    /// #33 PLL fine observable: the RESIDUAL half of the ADR alone -- sum of the measured
+    /// per-record residual increments (dres), same arc lifecycle as _adr_cyc. Its
+    /// per-poll difference over the record count is a mHz-class carrier-rate measurement
+    /// (dres is memoryless and fold-proof at converged residuals: ~3e-3 cyc/record against
+    /// a +-0.25 window), with none of adr_cycles' (huge commanded integral) transport risk.
+    std::vector<double> _res_cyc;
+    std::vector<double> _st_res;       ///< REST snapshot of _res_cyc, at emit
     std::vector<double> _adr_cph_prev; ///< previous record's commanded phase (cycles mod 1)
     std::vector<double> _adr_rate;     ///< commanded-phase rate (Hz) -- the unwrap predictor. The
                                        ///< reported Doppler errs by 2*trim, which at a 10 ms B1C

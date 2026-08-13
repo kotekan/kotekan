@@ -207,6 +207,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_car_resid.assign(_n_prn, 0.0f);
     _adr_cyc.assign(_n_prn, 0.0);
     _trim_cyc.assign(_n_prn, 0.0);
+    _res_cyc.assign(_n_prn, 0.0);
+    _st_res.assign(_n_prn, 0.0);
     _adr_cph_prev.assign(_n_prn, 0.0);
     _adr_rate.assign(_n_prn, 0.0);
     _adr_t0.assign(_n_prn, 0.0);
@@ -653,6 +655,7 @@ void GnssCoherentCombiner::main_thread() {
                                     std::arg(_adr_blk_v[p] * std::conj(_adr_blk_prev[p]))
                                     / (2.0 * M_PI);
                                 _adr_cyc[p] += _adr_blk_dcmd[p] - dres_blk;
+                                _res_cyc[p] += dres_blk;
                             }
                             else
                                 _adr_blk_rate_ok[p] = 0; // no product -> rate not continuous
@@ -670,6 +673,7 @@ void GnssCoherentCombiner::main_thread() {
                         // Arc start, smoothed mode (v_ok is true here): seed the first block.
                         _adr_cyc[p] = 0.0;
                         _trim_cyc[p] = 0.0;
+                        _res_cyc[p] = 0.0;
                         _adr_arc[p] += 1;
                         _adr_t0[p] = utc_p;
                         _adr_n[p] = 0;
@@ -706,6 +710,7 @@ void GnssCoherentCombiner::main_thread() {
                             dres = std::arg(prod) / (2.0 * M_PI * (carrier_raw() ? 1.0 : 2.0));
                         }
                         _adr_cyc[p] += dcmd - dres;
+                        _res_cyc[p] += dres;
                         // The commanded-trim increment (slot 19) rides the SAME arc
                         // lifecycle as the ADR it contaminates, so downstream can subtract
                         // trim_cycles from adr_cycles per arc with no bookkeeping.
@@ -717,6 +722,7 @@ void GnssCoherentCombiner::main_thread() {
                         // own (the standard carrier-phase ambiguity, one per arc).
                         _adr_cyc[p] = 0.0;
                         _trim_cyc[p] = 0.0;
+                        _res_cyc[p] = 0.0;
                         _adr_arc[p] += 1;
                         _adr_t0[p] = utc_p;
                         _adr_n[p] = 0;
@@ -2201,6 +2207,7 @@ void GnssCoherentCombiner::main_thread() {
                 const double utc_e = *reinterpret_cast<const double*>(rec + RECORD_UTC_SLOT);
                 _st_utc[p] = utc_e;
                 _st_adr[p] = _adr_ok[p] ? _adr_cyc[p] : 0.0;
+                _st_res[p] = _adr_ok[p] ? _res_cyc[p] : 0.0;
                 _st_trim[p] = _adr_ok[p] ? _trim_cyc[p] : 0.0;
                 _st_adr_arc[p] = _adr_arc[p];
                 _st_adr_n[p] = _adr_ok[p] ? _adr_n[p] : 0;
@@ -2386,6 +2393,12 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // cycles with a bumped arc id means the arc just restarted.
                          {"utc", _st_utc[p]},
                          {"adr_cycles", _st_adr[p]},
+                         // #33 PLL fine observable: the RESIDUAL half of the ADR alone
+                         // (sum of measured dres, same arc). d(res_cycles)/d(adr_records)
+                         // over a poll span is a mHz-class carrier-rate measurement with
+                         // no commanded-integral transport: the broker's phase-step feed
+                         // reads THIS, never adr_cycles.
+                         {"res_cycles", _st_res[p]},
                          // Commanded-trim integral on the SAME arc (subtract from
                          // adr_cycles to remove the carrier loop's known transients --
                          // docs/adr_trim_subtraction.md)

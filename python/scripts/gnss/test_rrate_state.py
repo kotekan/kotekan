@@ -284,6 +284,39 @@ class TestFullBandFields(unittest.TestCase):
         self.assertAlmostEqual(out[7], -7.8)
 
 
+class TestAdrFineRate(unittest.TestCase):
+    """#33 PLL fine observable: res_cycles differenced over adr_records. The gates are
+    structural and each one exists because its absence is a known disease: an arc break
+    means unobserved whole cycles (no measurement, not zero); a frozen counter must read
+    ABSENT (a dead feed passing for healthy is the chord-served-cn0 class)."""
+    R = 2048.0 / 195312.5
+
+    def setUp(self):
+        from gnss_broker.fits import adr_fine_rate
+        self.f = adr_fine_rate
+
+    @staticmethod
+    def _row(arc, n, res):
+        return {"adr_arc": arc, "adr_records": n, "res_cycles": res}
+
+    def test_rate_and_count(self):
+        out = self.f(self._row(3, 1900, 2.5), self._row(3, 0, 0.5), self.R)
+        self.assertIsNotNone(out)
+        rate, n = out
+        self.assertAlmostEqual(rate, 2.0 / (1900 * self.R), places=9)
+        self.assertEqual(n, 1900)
+
+    def test_arc_break_is_no_measurement(self):
+        self.assertIsNone(self.f(self._row(4, 100, 0.1), self._row(3, 50, 2.0), self.R))
+
+    def test_frozen_counter_reads_absent_not_zero(self):
+        self.assertIsNone(self.f(self._row(3, 100, 0.1), self._row(3, 100, 0.1), self.R))
+
+    def test_missing_field_reads_absent(self):
+        self.assertIsNone(self.f({"adr_arc": 3, "adr_records": 100},
+                                 self._row(3, 0, 0.0), self.R))
+
+
 class TestUnmeasuredReadsAsUnknown(unittest.TestCase):
 
     def test_sigma_is_inf_before_any_measurement(self):

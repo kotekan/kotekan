@@ -232,6 +232,35 @@ def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier
     return code_bias * chip_hz / hops_per_sec
 
 
+def adr_fine_rate(rec, prev, rec_dt):
+    """#33 PLL fine observable: the residual carrier rate from the ADR's residual half.
+
+    res_cycles is the combiner's running sum of MEASURED per-record residual phase
+    increments (dres) on the current arc -- memoryless per record and fold-proof at
+    converged residuals (~3e-3 cyc/record against a +-0.25 window). Its difference over a
+    poll span, divided by the record count, is a carrier-rate measurement whose precision
+    is (per-record phase noise)/span: ~5 mHz over 20 s -- the budget class the rate
+    search's spectrum cannot reach.
+
+    GATES, all structural: same arc (a break means unobserved whole cycles -- no
+    measurement); the record counter advanced (a frozen combiner must read as absent,
+    never as 0 Hz); both endpoints present. Returns (rate_cycles_per_s, n_records) in the
+    combiner's INTERNAL (r2c-flipped) sign convention -- the caller applies the calibrated
+    sign, which is measured on sky against deep_rate_full_hz, never assumed.
+    """
+    if not isinstance(rec, dict) or not isinstance(prev, dict):
+        return None
+    if rec.get("adr_arc") != prev.get("adr_arc"):
+        return None
+    n1 = rec.get("adr_records") or 0
+    n0 = prev.get("adr_records") or 0
+    r1 = rec.get("res_cycles")
+    r0 = prev.get("res_cycles")
+    if r1 is None or r0 is None or n1 <= n0:
+        return None
+    return (r1 - r0) / ((n1 - n0) * rec_dt), n1 - n0
+
+
 # (An `unalias` helper lived here for ~40 minutes on 2026-08-13: it unwrapped the rrate
 #  feed's measurements toward the filter's own prediction, on the theory that deep_rate_hz
 #  wrapped mod 9.537 Hz. The theory was WRONG -- built from 1-3 noisy samples per sat --
