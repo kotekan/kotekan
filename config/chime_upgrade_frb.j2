@@ -141,6 +141,9 @@ updatable_config:
   enable_frb_out:
     kotekan_update_endpoint: "json"
     enabled: false
+  enable_xpos2048_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
 
 dataset_manager:
   use_dataset_broker: False
@@ -587,6 +590,29 @@ host_xposed_voltage_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * num_freq_gpu_buf * samples_per_data_set
     metadata_pool: main_pool
 
+host_xposed_voltage_buffer:
+  kotekan_buffer: ndarray
+  num_frames: host_buffer_depth
+  value_type: int4x2_swapped_withoffset
+  extents: [samples_per_data_set, num_freq_gpu_buf, 2, num_elements/2]
+  dimnames: [T, F, P, D]
+  metadata_pool: main_pool
+  use_hugepages: true
+
+host_xposed_voltage_buffer_post:
+  kotekan_buffer: ndarray
+  num_frames: host_buffer_depth
+  value_type: int4x2_swapped_withoffset
+  extents: [samples_per_data_set, num_freq_gpu_buf, 2, num_elements/2]
+  dimnames: [T, F, P, D]
+  metadata_pool: main_pool
+  use_hugepages: true
+
+host_voltage_ringbuffer:
+  kotekan_buffer: ring
+  ring_buffer_size: gpu_buffer_depth * samples_per_data_set * num_elements * num_freq_gpu_buf
+  metadata_pool: main_pool
+
 # Stages
 
 run_xpose2048:
@@ -611,6 +637,32 @@ run_xpose2048:
           input_voltage_name: voltage
           scatter_indices_name: scatter_indices
           output_voltage_name: xposed_voltage
+
+#recv_xpose2048:
+#    gpu_0:
+#        kotekan_stage: cudaProcess
+#        gpu_id: 0
+#        buffer_depth: gpu_buffer_depth
+#        frame_arrival_period: network_frame_arrival_period
+#        num_times: samples_per_data_set
+#        in_buffers:
+#            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+#        out_buffers:
+#            host_xposed_voltage_buffer: host_xposed_voltage_buffer
+#        commands:
+#        - name: cudaCopyFromRingbuffer
+#          host_signal: host_xposed_voltage_ringbuffer
+#          gpu_mem_input: xposed_voltage_buffer
+#          output_size: num_dishes * num_polarizations * num_freq_gpu_buf * samples_per_data_set
+#          ring_buffer_size: gpu_buffer_depth * output_size
+#          out_buf: host_xposed_voltage_buffer
+#
+#switch_xpose2048_out:
+#    kotekan_stage: bufferSwitch
+#    in_bufs:
+#      - enabled: host_xposed_voltage_buffer
+#    out_buf: host_xposed_voltage_buffer_post
+#    updatable_config: /updatable_config/enable_xpose2048_out
 
 ################################################################################
 # RFI setup
@@ -1759,54 +1811,61 @@ FRB:
     # dump data for debugging
     dump_frb_beams:
         max_frames: 1
-        upchan_U16_voltage:
+        use_compression: false
+        xposed_voltage:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_beams
             input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_upchan_U16_voltage_buffer
-            file_name: upchan_U16_voltage_buffer
+            in_buf: host_xposed_voltage_buffer_post
+            file_name: xposed_voltage_buffer
+        #upchan_U16_voltage:
+        #    kotekan_stage: hdf5FileWrite
+        #    base_dir: frb_beams
+        #    input_order: CHIMEBeamformer # this makes no sense, but is required
+        #    in_buf: host_upchan_U16_voltage_buffer
+        #    file_name: upchan_U16_voltage_buffer
         beams1:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_beams
             input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_frb1_beams_buffer
+            in_buf: host_frb1_beams_buffer_post
             file_name: host_frb1_beams_buffer
         beams2:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_beams
             input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_frb2_beams_buffer
+            in_buf: host_frb2_beams_buffer_post
             file_name: host_frb2_beams_buffer
-        beams:
-            kotekan_stage: hdf5FileWrite
-            base_dir: frb_beams
-            input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_frb3_beams_buffer
-            file_name: host_frb3_beams_buffer
-        offsetscale:
-            kotekan_stage: hdf5FileWrite
-            base_dir: frb_beams
-            input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_frb3_beams_offsetscale_buffer
-            file_name: host_frb3_offsetscale_buffer
-        host_frb2_beam_positions_buffer:
-            kotekan_stage: hdf5FileWrite
-            base_dir: frb_weights
-            input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_frb2_beam_positions_buffer
-            file_name: host_frb2_beam_positions_buffer
-        host_frb2_weights_buffer:
-            kotekan_stage: hdf5FileWrite
-            base_dir: frb_weights
-            input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_frb2_weights_buffer
-            file_name: host_frb2_weights_buffer
-        host_frb1_U16_phase_buffer:
-            kotekan_stage: hdf5FileWrite
-            base_dir: frb_weights
-            input_order: CHIMEBeamformer # this makes no sense, but is required
-            in_buf: host_frb1_U16_phase_buffer
-            file_name: host_frb1_U16_phase_buffer
+        #beams:
+        #    kotekan_stage: hdf5FileWrite
+        #    base_dir: frb_beams
+        #    input_order: CHIMEBeamformer # this makes no sense, but is required
+        #    in_buf: host_frb3_beams_buffer
+        #    file_name: host_frb3_beams_buffer
+        #offsetscale:
+        #    kotekan_stage: hdf5FileWrite
+        #    base_dir: frb_beams
+        #    input_order: CHIMEBeamformer # this makes no sense, but is required
+        #    in_buf: host_frb3_beams_offsetscale_buffer
+        #    file_name: host_frb3_offsetscale_buffer
+        #host_frb2_beam_positions_buffer:
+        #    kotekan_stage: hdf5FileWrite
+        #    base_dir: frb_weights
+        #    input_order: CHIMEBeamformer # this makes no sense, but is required
+        #    in_buf: host_frb2_beam_positions_buffer
+        #    file_name: host_frb2_beam_positions_buffer
+        #host_frb2_weights_buffer:
+        #    kotekan_stage: hdf5FileWrite
+        #    base_dir: frb_weights
+        #    input_order: CHIMEBeamformer # this makes no sense, but is required
+        #    in_buf: host_frb2_weights_buffer
+        #    file_name: host_frb2_weights_buffer
+        #host_frb1_U16_phase_buffer:
+        #    kotekan_stage: hdf5FileWrite
+        #    base_dir: frb_weights
+        #    input_order: CHIMEBeamformer # this makes no sense, but is required
+        #    in_buf: host_frb1_U16_phase_buffer
+        #    file_name: host_frb1_U16_phase_buffer
 {% endif %}
 
 {% if False %}
@@ -1890,7 +1949,7 @@ write_frb_offsetscale:
     input_order: CHIMEBeamformer
 #}#
 
-###
+#{#
 write_frb1:
     kotekan_stage: hdf5FileWrite
     log_level: info
@@ -1900,9 +1959,9 @@ write_frb1:
     file_name: host_frb1_beams_buffer
     create_single_file: true
     input_order: CHIMEBeamformer
-###
+#}#
 
-###
+#{#
 write_frb2:
     kotekan_stage: hdf5FileWrite
     log_level: info
@@ -1912,7 +1971,7 @@ write_frb2:
     file_name: host_frb2_beams_buffer
     create_single_file: true
     input_order: CHIMEBeamformer
-###
+#}#
 
 # enable to dump sk statistics data
 {% if False %}
