@@ -112,8 +112,19 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         // dn is exact as a double (< 2^25 hops * 2^14 samples), and wc*dn <= 7.8e7 rad has a
         // 1.5e-8 rad ULP, so the reduction below loses nothing that matters. Reduce BEFORE the
         // float cast: sincosf on 7.8e7 rad would be meaningless (float ULP there is ~8 rad).
-        const double dn = (double)((long long)mh * (long long)p.fft_len);
-        const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
+        // A/B ARM (task #52/#55, TEMPORARY). Arm 1 is the fix: ang0 carries the phase at the
+        // window reference and wc multiplies only the intra-record offset, so the ~1.18 GHz
+        // carrier's rounding cannot reach the absolute sample index. Arm 0 is exactly what
+        // shipped before 86349ac4d, kept textually intact so the comparison is honest.
+        double ang;
+        if (p.carrier_phase_from_ref) {
+            const double dn = (double)((long long)mh * (long long)p.fft_len);
+            ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
+        } else {
+            const double pr = job.wc * (double)n_m;
+            const double er = fma(job.wc, (double)n_m, -pr);
+            ang = fmod(pr, 2.0 * M_PI) + er;
+        }
         float sn, cn;
         sincosf((float)ang, &sn, &cn);
         const float2 pa = make_float2(cn, sn);

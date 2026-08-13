@@ -359,6 +359,12 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                 {"name": "cudaInputData", "in_buf": "gnss_volt_in",
                  "gpu_mem": f"{pre}voltage"},
                 {"name": "cudaGnssChordTrack",
+                 # TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. Emitted on BOTH
+                 # producers because cudaGnssChordTrackState (which owns the despread, and
+                 # therefore the arm) is constructed with the COMMAND's unique_name -- so path A
+                 # and path B each need their own copy or one silently keeps the default.
+                 "carrier_phase_from_ref": (gpu == 0 if args.carrier_phase_from_ref == "ab"
+                                            else args.carrier_phase_from_ref == "1"),
                  # F-engine conjugation, measured on sky 2026-07-30 (see GnssChordDequantize).
                  "conjugate": True,
                  "gpu_mem_input": f"{pre}voltage",
@@ -722,6 +728,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # correlator's kernel reads the synth array -- that ordering is the entire
                 # synchronization story (no ring semantics on gnss_synth).
                 {"name": "cudaGnssInject",
+                 # TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. Emitted on BOTH
+                 # producers because cudaGnssChordTrackState (which owns the despread, and
+                 # therefore the arm) is constructed with the COMMAND's unique_name -- so path A
+                 # and path B each need their own copy or one silently keeps the default.
+                 "carrier_phase_from_ref": (gpu == 0 if args.carrier_phase_from_ref == "ab"
+                                            else args.carrier_phase_from_ref == "1"),
                  "voltage_name": "voltage",
                  # MUST match the tracker's `conjugate`. The N^2 kernel has no conj_data flag
                  # and its antenna input is production's, so the F-engine conjugation is
@@ -1559,6 +1571,17 @@ def main():
                          "from the satellite itself (validated: 5.8x of the 7.95x MRC bound on "
                          "synthetic, dead elements auto-gated, dead reference fails over). "
                          "STATE 8.21.5 item 1 -- the phase-floor fix's SNR half.")
+    ap.add_argument("--carrier-phase-from-ref", choices=("1", "0", "ab"), default="1",
+                    help="TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. 1 (default) = "
+                         "the carrier phase comes from DespreadJob::ang0 at the window's "
+                         "reference sample, so the ~1.18 GHz carrier's rounding never "
+                         "multiplies the absolute sample index. 0 = the pre-86349ac4d "
+                         "wc*n_abs expression. 'ab' = GPU 0 gets the fix and GPU 1 the old "
+                         "code ON EVERY NODE, which is the tightest pairing available: same "
+                         "node, same sky, same seeds, same poll. A before/after across two "
+                         "restarts CANNOT resolve this -- measured 2026-08-13, deep_snr max "
+                         "swung 52-197 inside four minutes and the seeded PRN count moved "
+                         "12 -> 5 on geometry alone.")
     ap.add_argument("--phase-track", action=argparse.BooleanOptionalAction, default=False,
                     help="combiner: leave-one-out common-phase tracker before the deep coherent "
                          "sum -- the batch form of the carrier loop the airspy chain closed, "

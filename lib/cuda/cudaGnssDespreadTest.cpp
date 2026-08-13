@@ -188,6 +188,10 @@ int main(int argc, char** argv) {
 
     gnss_cuda::DespreadParams p;
     p.n0 = window_start + fft_len - 1; // hoprate_stream's per-hop reference sample
+    // A/B ARM (task #55): honour GNSS_PHASE_FROM_REF=0 so BOTH arms are exercised by the gate.
+    // A flag whose off-position is never run is not an A/B, it is dead code with a config key.
+    if (const char* e = getenv("GNSS_PHASE_FROM_REF"))
+        p.carrier_phase_from_ref = atoi(e);
     p.fft_len = fft_len;
     p.n_hops = n_hops;
     p.Lf = Lf;

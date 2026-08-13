@@ -91,6 +91,12 @@ public:
     /// from the PFB span -- ~8 chips per hop at the unit test's 40-sample hop against ~52 at
     /// CHORD's 16384 -- so a per-sample rate from one geometry does not transfer to the other.
     /// Off by default; costs two event records per frame when on.
+    /// A/B ARM FOR TASK #52 -- ⚠️ TEMPORARY, remove with task #55. true (default) = carrier
+    /// phase from DespreadJob::ang0; false = the pre-86349ac4d wc * n_abs expression. Exists so
+    /// half the fleet can run each arm and be compared IN ONE POLL, because the sky churns
+    /// faster than a before/after across two restarts can resolve.
+    void set_carrier_phase_from_ref(bool on);
+
     void enable_split_timing(bool on);
     /// Last frame's split, milliseconds. False if timing is off or the events are not resolved.
     /// synthesis = launch_waveform (n_elem-INDEPENDENT: one replica per PRN/chan/hop, broadcast

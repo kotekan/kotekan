@@ -22,6 +22,9 @@ struct GnssCudaDespread::Impl {
     int n_prn, n_chan, n_hops;
     double fs, f_off, refresh_hz;
     long long window_start = 0;
+    /// A/B arm for task #52 -- see gnss_cuda::DespreadParams::carrier_phase_from_ref.
+    /// ⚠️ TEMPORARY (task #55). Default = the fix.
+    int carrier_phase_from_ref = 1;
 
     // Device buffers (persistent).
     float2* d_data = nullptr;                  // [n_chan][n_hops]
@@ -266,6 +269,10 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
     im.window_start = window_start_sample;
 }
 
+void GnssCudaDespread::set_carrier_phase_from_ref(bool on) {
+    _impl->carrier_phase_from_ref = on ? 1 : 0;
+}
+
 void GnssCudaDespread::enable_split_timing(bool on) {
     Impl& im = *_impl;
     if (on && !im.ev_a) {
@@ -365,6 +372,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
 
     gnss_cuda::DespreadParams par;
     par.n0 = im.window_start + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
+    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -464,6 +472,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
 
     gnss_cuda::DespreadParams par;
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
+    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -505,6 +514,7 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
 
     gnss_cuda::DespreadParams par;
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
+    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -551,6 +561,7 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
 
     gnss_cuda::DespreadParams par;
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
+    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -629,6 +640,7 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
 
     gnss_cuda::DespreadParams par;
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // same per-hop reference as the despread
+    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;

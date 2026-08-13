@@ -114,6 +114,21 @@ struct PeelJob {
 
 /// Batch-shared geometry.
 struct DespreadParams {
+    /// A/B ARM FOR TASK #52 -- ⚠️ TEMPORARY, DELETE WHEN THE QUESTION IS SETTLED (task #55).
+    ///
+    /// 1 = the shipped behaviour: carrier phase from DespreadJob::ang0 plus an intra-record
+    /// offset. 0 = the pre-86349ac4d expression, wc * n_abs with the two-product reduction.
+    ///
+    /// It exists ONLY because the live fleet churns faster than the effect can be seen from
+    /// snapshots (deep_snr max swung 52-197 inside four minutes, and the seeded PRN count moved
+    /// 12 -> 5 on geometry alone), so a before/after across two restarts cannot attribute
+    /// anything. Every node runs ONE binary off NFS, so the only way to pair the arms in a
+    /// single poll is a config knob: run half the fleet on each and compare same-poll, which is
+    /// the only comparison this system has ever given a straight answer to.
+    ///
+    /// Both arms MUST stay compiled and exercised. The moment one is deleted this is no longer
+    /// an A/B, and re-adding it costs another restart.
+    int carrier_phase_from_ref = 1;
     long long n0; ///< absolute sample index of the window's first hop reference (+fft_len-1)
     int fft_len;  ///< samples per hop
     int n_hops;   ///< hops per record (<=256)

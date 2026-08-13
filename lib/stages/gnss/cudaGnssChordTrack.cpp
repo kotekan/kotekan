@@ -104,6 +104,14 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // is why nothing ever locked (found 2026-07-31). See GnssCudaDespread.hpp.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                  sample_rate, f_offset_hz);
+    // A/B ARM FOR TASK #52 -- ⚠️ TEMPORARY, remove with task #55. Default = the fix (carrier
+    // phase from a reference sample). Set false on HALF the fleet to compare the two arms in a
+    // SINGLE poll; a before/after across restarts cannot resolve it, because the sky churns
+    // faster than the effect (deep_snr max swung 52-197 in four minutes, 2026-08-13).
+    // ⚠️ MUST be set on the despread the same way in BOTH producers, or path A and path B
+    // silently run different arms on the same node and the comparison means nothing.
+    despread->set_carrier_phase_from_ref(
+        config.get_default<bool>(unique_name, "carrier_phase_from_ref", true));
     // MUST follow the construction above: enabling it next to the config read dereferenced a
     // null unique_ptr and the node SEGV'd 12 s into startup. The cf06 build did not catch it --
     // the aggregator links this file but never instantiates cudaGnssChordTrack.
