@@ -199,6 +199,57 @@ class TestClosedLoopReference(unittest.TestCase):
                                "resid %.3f of y %.3f" % (prn, resid[prn], y_true))
 
 
+class TestClosedLoopLag(unittest.TestCase):
+    """ARM 3's walk (2026-08-13 15:26): the measured residual reflects the command posted
+    LAG polls earlier, while the feed adds back the LATEST command -- y_fed carries a
+    (cmd_now - cmd_then) misreference that is self-reinforcing at full slew. The command
+    slew bound (--rrate-cmd-slew-hz) bounds the misreference and it decays to zero at the
+    fixed point. This simulates exactly that loop."""
+
+    def _run(self, slew, n=400, lag=2, meas_noise=0.0, seed=7):
+        import random
+        rng = random.Random(seed)
+        truth = {11: -3.0, 21: 2.0, 28: 1.0}
+        fcar = 0.5
+        s = JointReceiverState(code_len=10230.0)
+        hist = {p: [0.0] * (lag + 1) for p in truth}   # [0] = latest posted
+        for k in range(n):
+            for prn, rr in truth.items():
+                y_true = y_of(rr, fcar, F_E5A)
+                resid = y_true - hist[prn][-1]          # measured under the OLD command
+                y_fed = resid + hist[prn][0]            # broker adds back the LATEST
+                if meas_noise:
+                    y_fed += rng.gauss(0.0, meas_noise)
+                s.update_rrate(prn, y_fed, 100.0 + k, F_E5A)
+            s.gauge_rrate()
+            for prn in truth:
+                tgt = s.carrier_correction_hz(prn, F_E5A)
+                step = tgt - hist[prn][0]
+                if slew > 0.0:
+                    step = max(-slew, min(slew, step))
+                hist[prn] = [hist[prn][0] + step] + hist[prn][:lag]
+        return {p: abs(y_of(truth[p], fcar, F_E5A) - hist[p][0]) for p in truth}
+
+    def test_slewed_loop_converges_under_lag_and_noise(self):
+        # The bound is set by the filter's own steady state (q_rr holds the row loose to
+        # track drift), not by the loop: ~0.4 Hz at 0.3 Hz measurement noise. The claim
+        # pinned here is BOUNDED AND SMALL vs the multi-Hz walk, not noiseless perfection.
+        err = self._run(slew=0.5, meas_noise=0.3)
+        for prn, e in err.items():
+            self.assertLess(e, 0.8, "PRN %d standing error %.2f Hz" % (prn, e))
+
+    def test_the_bound_is_what_does_it(self):
+        """Same loop, no slew bound: with realistic measurement noise the misreference
+        feeds back and the loop must end up WORSE than the bounded one by a clear margin
+        -- this is the arm-3 walk in miniature. (Deterministically the unbounded loop can
+        look fine; the instability needs noise to express, which is exactly why arm 3
+        passed a desk-check and walked on sky.)"""
+        bounded = max(self._run(slew=0.5, meas_noise=0.3).values())
+        free = max(self._run(slew=0.0, meas_noise=0.3).values())
+        self.assertGreater(free, 2.0 * bounded,
+                           "free %.2f vs bounded %.2f Hz" % (free, bounded))
+
+
 class TestFullBandFields(unittest.TestCase):
     """#40: the rrate feed must read the UNCAPPED rate fields. deep_rate_hz is the FOLD's
     pick, clamped to deep_rate_max_hz -- past the cap it degrades to the best in-cap noise

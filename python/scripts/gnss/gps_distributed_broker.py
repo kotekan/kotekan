@@ -1055,6 +1055,19 @@ def main(argv=None, rx=None, publisher=None):
                          "Posts via carrier_trim_hz (NCO derotation, phase-continuous in "
                          "the tracker) and never touches doppler_hz: seed continuity "
                          "beats freshness, measured (deep_snr 221->17 on a 10 s re-pin).")
+    ap.add_argument("--rrate-cmd-slew-hz", type=float, default=0.5,
+                    help="per-POLL bound on how far the posted carrier command may move "
+                         "(Hz). THE STABILITY TERM, not a nicety: the measured residual "
+                         "reflects the command posted 1-2 polls earlier, while the feed "
+                         "adds back the LATEST command -- so during a transient the "
+                         "reconstruction is off by (cmd_now - cmd_then), which is "
+                         "self-reinforcing and walked arm 3 at full slew. Bounding the "
+                         "step bounds that misreference at ~slew*lag and it DECAYS: at "
+                         "the fixed point the command stops moving and the reference is "
+                         "exact. 0.5/poll = full 5 Hz pull-in in ~20 s. Railed-step "
+                         "count is in the JRR-CMD line -- a rail that never clears means "
+                         "the target is out of reach, not converging (the dr slew cap's "
+                         "lesson).")
     ap.add_argument("--rrate-cmd-max-sigma", type=float, default=0.5,
                     help="command a sat's carrier only when its rrate row's 1-sigma (m/s) "
                          "is below this. 0.5 m/s is ~2 Hz at 1176 MHz -- an UNMEASURED "
@@ -7102,6 +7115,7 @@ def main(argv=None, rx=None, publisher=None):
                 except Exception:
                     _jrc = None
         _rr_cmd_new = {}
+        _rr_railed = 0
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
@@ -7123,6 +7137,19 @@ def main(argv=None, rx=None, publisher=None):
                     _cmd = _jrc.carrier_correction_hz(_k, args.carrier_hz)
                     if args.carrier_max_hz > 0.0:
                         _cmd = max(-args.carrier_max_hz, min(args.carrier_max_hz, _cmd))
+                    # SLEW toward the target from the command actually POSTED last poll
+                    # (--rrate-cmd-slew-hz): the feed's reference is only exact for a
+                    # command that holds still over the emit lag, so the step is bounded
+                    # and the bound is what makes the closed loop stable. Railed steps
+                    # are counted into the JRR-CMD line -- a rail that never clears is
+                    # a target out of reach, not convergence in progress.
+                    _prev = rr_cmd_applied.get(prn, 0.0)
+                    if args.rrate_cmd_slew_hz > 0.0:
+                        _stp = max(-args.rrate_cmd_slew_hz,
+                                   min(args.rrate_cmd_slew_hz, _cmd - _prev))
+                        if abs(_cmd - _prev) > args.rrate_cmd_slew_hz:
+                            _rr_railed += 1
+                        _cmd = _prev + _stp
                     d["carrier_trim_hz"] = _cmd
                     _rr_cmd_new[prn] = _cmd
             if prn in car_repin_pending:
@@ -7229,10 +7256,11 @@ def main(argv=None, rx=None, publisher=None):
         rr_cmd_applied.update(_rr_cmd_new)
         if _rr_cmd_new:
             _log_rl("jrr-cmd",
-                    "JRR-CMD[%s]: %s Hz (rrate rows -> carrier_trim_hz, %d sat(s))"
+                    "JRR-CMD[%s]: %s Hz (rrate rows -> carrier_trim_hz, %d sat(s), "
+                    "%d slew-railed)"
                     % (args.dr_constellation,
                        " ".join("%d:%+.2f" % kv for kv in sorted(_rr_cmd_new.items())),
-                       len(_rr_cmd_new)), every_s=60.0)
+                       len(_rr_cmd_new), _rr_railed), every_s=60.0)
         # WHERE THE PEEL'S SIGNS ACTUALLY CAME FROM this cycle. Without this the only symptom
         # of a source that silently supplies nothing is `nobits` in a health line 10 s later on
         # a different process, which is what made the 30 s-horizon bug hard to see.
