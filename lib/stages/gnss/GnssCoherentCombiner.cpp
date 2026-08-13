@@ -1094,8 +1094,23 @@ void GnssCoherentCombiner::main_thread() {
             const double frac = (double)ip / (double)nb;
             best_f = (frac < 0.5 ? frac : frac - 1.0) / dt;
             if (full_f) {
-                const double fr2 = (double)ip_full / (double)nb;
-                *full_f = (fr2 < 0.5 ? fr2 : fr2 - 1.0) / dt;
+                // PARABOLIC PEAK INTERPOLATION (2026-08-13). The 4x-oversampled grid has
+                // 1/(4 L dt) ~ 0.19 Hz bins at 128 records: +-0.09 Hz of pure quantization,
+                // which is exactly the floor the carrier loop's filter sat on while the
+                // stream's split-half precision measured 37-46 mHz. Three points around the
+                // argmax recover the sub-bin peak; the FOLD's own pick stays bin-centred on
+                // purpose (its 4% amplitude concern is unchanged, and deep_snr must not
+                // move under a carrier-measurement change).
+                const double m0 = mag[(ip_full + nb - 1) % nb];
+                const double m1 = mag[ip_full];
+                const double m2 = mag[(ip_full + 1) % nb];
+                const double den = m0 - 2.0 * m1 + m2;
+                double db = 0.0;
+                if (den < 0.0) // a genuine peak; flat/noise keeps the bin centre
+                    db = std::max(-0.5, std::min(0.5, 0.5 * (m0 - m2) / den));
+                const double fr2 = ((double)ip_full + db) / (double)nb;
+                double f2v = fr2 - std::floor(fr2);
+                *full_f = (f2v < 0.5 ? f2v : f2v - 1.0) / dt;
             }
             if (full_q)
                 *full_q = med > 0.0 ? best_m_full / med : 0.0;
