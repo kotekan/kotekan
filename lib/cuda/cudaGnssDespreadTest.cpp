@@ -74,7 +74,12 @@ int main(int argc, char** argv) {
     // not see the defect it exists to catch, nor an error in the fix.
     //
     // 6.8 days of CHORD uptime, matching scripts/gnss/e2e's --hop0 default.
-    const long long window_start = 114436200145LL * 16384LL;
+    long long window_start = 114436200145LL * 16384LL;
+    // #54: scan the absolute anchor. If the GPU-vs-CPU disagreement grows with n0 it is the
+    // (small number) x (huge argument) family again -- and the only such lever left inside the
+    // kernel is C_P = cp0 + n_m*cps, the CODE phase. If it is flat, it is not.
+    if (const char* e = getenv("GNSS_TEST_HOP0"))
+        window_start = atoll(e) * 16384LL;
 
     const gnss::SignalDescriptor* sig = gnss::signal_by_name(argc > 1 ? argv[1] : "GPS_L1CA");
     if (!sig) {
