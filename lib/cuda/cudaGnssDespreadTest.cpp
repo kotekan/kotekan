@@ -64,7 +64,17 @@ int main(int argc, char** argv) {
     const int taps = 4;
     const int prn = 19;
     const double dop = -2900.0;
-    const long long window_start = 40LL * 125 * 3600; // an "aged" absolute anchor (~1 hr of hops)
+    // ⚠️ CHORD-SCALE ABSOLUTE ANCHOR, AND THAT IS THE POINT (task #52, 2026-08-13).
+    //
+    // This was 40*125*3600 = 1.8e7 samples, "~1 hr of hops" at AIRSPY scale -- nine orders of
+    // magnitude below the 1.9e15 the live F-engine reaches in a week. Every phase bug in the
+    // (small number) x (huge absolute argument) family is INVISIBLE there: at n0 ~ 1e7 the old
+    // wc*n_m and the new ang0 + wc*(n-n0) agree to the last bit, so this test -- the one gate
+    // that compares the GPU replica against an independent long-double CPU reference -- could
+    // not see the defect it exists to catch, nor an error in the fix.
+    //
+    // 6.8 days of CHORD uptime, matching scripts/gnss/e2e's --hop0 default.
+    const long long window_start = 114436200145LL * 16384LL;
 
     const gnss::SignalDescriptor* sig = gnss::signal_by_name(argc > 1 ? argv[1] : "GPS_L1CA");
     if (!sig) {
