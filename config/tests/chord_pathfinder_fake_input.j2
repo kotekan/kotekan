@@ -62,26 +62,35 @@ host_pl_mask_buffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
-# Bad feed mask - marks which feeds to exclude from RFI calculations
-# Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
+# The bad feed mask is valid for this many input samples. Four frames, so that a mask
+# element spans several frames and a short test run still hands the mask over many times.
+# This must be a multiple of samples_per_data_set: rfi_downsampling_factor has to divide it,
+# and the quotient has to be a multiple of rfi_num_times.
+bf_mask_lifetime_in_samples: 4 * samples_per_data_set
+
+# Bad feed mask - marks which feeds to exclude from RFI calculations.
+# Shape: [1, P, D] = [1, 2, num_dishes], one mask element per bf_mask_lifetime_in_samples input
+# samples. It reaches the GPU through host_bf_mask_ringbuffer (see chord_pathfinder_core.j2).
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: int8
-    extents: [num_polarizations, num_dishes]
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 0
 
 host_bf_mask_buffer_1:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: int8
-    extents: [num_polarizations, num_dishes]
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 1
 
 

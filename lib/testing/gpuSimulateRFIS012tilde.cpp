@@ -37,7 +37,8 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     _num_elements(_num_polarizations * _num_dishes),
     _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
-    _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")) {
+    _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
+    _bf_mask_lifetime_in_samples(config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples")) {
 
     // Grab buffers.
     in_rfi_s012_buf = get_buffer("in_rfi_s012_buf");
@@ -58,8 +59,11 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     in_rfi_s012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         "S012", {nt, nf, 3, _num_polarizations, _num_dishes}, {"Trfi", "F", "S", "P", "D"},
         {_rfi_downsampling_factor, 1, 1, 1, 1}));
-    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
-        "bf_mask", {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
+    // The bad feed mask has a leading (length one) time dimension, as it is a time series of
+    // masks. This stage consumes one mask per input frame.
+    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 3>::describe(
+        "bf_mask", {1, _num_polarizations, _num_dishes}, {"Tbf", "P", "D"},
+        {_bf_mask_lifetime_in_samples, 1, 1}));
     out_rfi_s012tilde_buf->require_frame_desc(kotekan::NDArray<uint64_t, 3>::describe(
         "S012tilde", {nt, nf, 3}, {"Trfi", "F", "S"}, {_rfi_downsampling_factor, 1, 1}));
 }

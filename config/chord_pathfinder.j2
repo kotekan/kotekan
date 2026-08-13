@@ -200,27 +200,36 @@ n2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 16 * buffer_depth
 
-# Bad feed mask - marks which feeds to exclude from RFI calculations
-# Produced by inventBFMask: int8 "bf_mask" [P, D] = [num_polarizations, num_dishes].
-# All ones (0xFF) means all feeds are good.
+# The bad feed mask is valid for this many input samples. A frame is
+# samples_per_data_set * 5.12 us, so 24 frames is about one second. This must be a multiple of
+# samples_per_data_set: rfi_downsampling_factor has to divide it, and the quotient has to be a
+# multiple of rfi_num_times.
+bf_mask_lifetime_in_samples: 24 * samples_per_data_set
+
+# Bad feed mask - marks which feeds to exclude from RFI calculations.
+# Produced by inventBFMask: int8 "bf_mask" [1, P, D] = [1, num_polarizations, num_dishes], one
+# mask element per bf_mask_lifetime_in_samples input samples. It reaches the GPU through
+# host_bf_mask_ringbuffer, written by run_send_bf_mask.
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: int8
-    extents: [num_polarizations, num_dishes]
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 0
 
 host_bf_mask_buffer_1:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: int8
-    extents: [num_polarizations, num_dishes]
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 1
 
 # Buffers
@@ -583,6 +592,17 @@ host_pl_mask_exp_ringbuffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
+host_bf_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_polarizations * num_dishes * sizeof_int8
+    metadata_pool: main_pool
+
+host_bf_mask_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_polarizations * num_dishes * sizeof_int8
+    metadata_pool: main_pool
+    numa_node: 1
+
 host_rfi_s012_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_uint64
@@ -807,6 +827,38 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
+run_send_bf_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        cpu_affinity: [12, 13, 14]
+        in_buffers:
+            host_bf_mask_buffer_in: host_bf_mask_buffer
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_polarizations * num_dishes * sizeof_int8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_bf_mask_buffer_in
+          signal_buf: host_bf_mask_ringbuffer
+          gpu_mem_output: bf_mask_buffer
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        cpu_affinity: [25, 26, 27]
+        in_buffers:
+            host_bf_mask_buffer_in: host_bf_mask_buffer_1
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_polarizations * num_dishes * sizeof_int8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_bf_mask_buffer_in
+          signal_buf: host_bf_mask_ringbuffer
+          gpu_mem_output: bf_mask_buffer
+
 run_send_pl_mask:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -881,17 +933,12 @@ run_rfi_sktilde:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
@@ -904,17 +951,12 @@ run_rfi_sktilde:
         kotekan_stage: cudaProcess
         gpu_id: 1
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer_1
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask

@@ -14,6 +14,7 @@
 
 #include "json.hpp" // for json
 
+#include <cstdint>  // for int64_t
 #include <mutex>    // for lock_guard, mutex
 #include <stddef.h> // for size_t
 #include <string>   // for string
@@ -29,11 +30,28 @@
  * This stage expects the input buffer to be recieved in CHIME cylinder order,
  * and automatically remaps into beamformer order.
  *
+ * One frame is produced per output buffer slot, each carrying the mask that is current at
+ * that moment, so an update received via the endpoint takes effect on the next frame. Each
+ * frame is one bad feed mask sample, and a sample is valid for
+ * @c bf_mask_lifetime_in_samples FPGA samples.
+ *
+ * The mask is a rank-3 array with a leading (length one) time axis, which is what the
+ * consumers of the bad feed mask ring buffer expect. Element @c beamformer_idx of the flat
+ * CHIME beamformer-order mask is @c polarization * num_dishes + dish (see
+ * @c ICETelescope::station_id_to_element_index), so the rank-3 shape is a reinterpretation of
+ * the mask rather than a reordering of it.
+ *
  * @par Buffers
  * @buffer out_buf Kotekan buffer of bad inputs.
- *     @buffer_shape [num_element]
- *     @buffer_format uint8_t
+ *     @buffer_shape [1, num_polarizations, num_dishes]
+ *     @buffer_format int8
  *
+ * @conf   num_elements                 Int.  The size of the bad input mask. Must equal
+ *                                      num_polarizations * num_dishes.
+ * @conf   num_polarizations            Int.  Number of polarizations.
+ * @conf   num_dishes                   Int.  Number of dishes.
+ * @conf   bf_mask_lifetime_in_samples  Int.  Number of FPGA samples that one bad feed mask
+ *                                      is valid for.
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
  *                                      "bad_inputs"  An array of bad inputs in cylinder order.
@@ -65,6 +83,11 @@ private:
     std::vector<int> bad_inputs;
     /// The size of the bad input mask.
     size_t num_elements;
+    /// The shape of the bad input mask, num_elements == num_polarizations * num_dishes
+    int num_polarizations;
+    int num_dishes;
+    /// Number of FPGA samples that one bad feed mask is valid for
+    std::int64_t bf_mask_lifetime_in_samples;
     // Number of bad inputs
     uint64_t num_bad_inputs;
 

@@ -495,11 +495,25 @@ baseband_merge:
 
 # Buffers
 
+# The bad feed mask is valid for this many input samples. A frame is
+# samples_per_data_set * sample_period_ns = 41.94 ms, so 24 frames is about one second. This must
+# be a multiple of samples_per_data_set: rfi_downsampling_factor (and, where SKbar runs,
+# rfi_downsampling_factor * rfi_second_downsampling_factor) has to divide it, and the quotient
+# has to be a multiple of rfi_num_times.
+bf_mask_lifetime_in_samples: 24 * samples_per_data_set
+
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
     value_type: int8
-    extents: [num_polarizations, num_dishes]
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: main_pool
+host_bf_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: gpu_buffer_depth * num_polarizations * num_dishes
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
@@ -537,6 +551,28 @@ set_bf_mask:
     updatable_config:
         bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
+
+# Send the bad feed mask to its GPU ringbuffer. One mask element covers
+# bf_mask_lifetime_in_samples input samples, so this runs far less often than the other
+# send stages.
+run_send_bf_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_polarizations * num_dishes
+          ring_buffer_size: gpu_buffer_depth * input_size
+          in_buf: host_bf_mask_buffer
+          signal_buf: host_bf_mask_ringbuffer
+          gpu_mem_output: bf_mask_buffer
 
 run_send_pl_mask:
     gpu_0:
@@ -815,15 +851,11 @@ run_rfi_S012tilde:
         frame_arrival_period: network_frame_arrival_period
         num_times: samples_per_data_set
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         out_buffers:
             host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
         commands:
-        - name: cudaInputData
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFIS012tilde
           num_frequencies: num_freq_gpu_buf
           bf_mask_name: bf_mask
@@ -845,7 +877,6 @@ run_rfi_S012bar:
         commands:
         - name: cudaRFIS012bar
           num_frequencies: num_freq_gpu_buf
-          bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012
           rfi_S012bar_name: rfi_S012bar
 
@@ -858,16 +889,12 @@ run_rfi_SKtilde:
         frame_arrival_period: network_frame_arrival_period
         num_times: samples_per_data_set
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         out_buffers:
             host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
-        - name: cudaInputData
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKtilde
           num_frequencies: num_freq_gpu_buf
           bf_mask_name: bf_mask
@@ -884,16 +911,12 @@ run_rfi_SKbar:
         frame_arrival_period: network_frame_arrival_period
         num_times: samples_per_data_set
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
         out_buffers:
             host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
             host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
         commands:
-        - name: cudaInputData
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKbar
           num_frequencies: num_freq_gpu_buf
           bf_mask_name: bf_mask
@@ -1550,6 +1573,8 @@ FRB:
         scaling_factor: 1.0 / 32
         gain_buffers:
           - host_frb1_phase_buffer
+        # This reads the mask on the host side, not from the GPU ringbuffer, and it reads it as
+        # a flat array of num_elements bytes -- which the rank-3 [1, P, D] mask still is.
         in_mask_buf: host_bf_mask_buffer
         out_buf: host_frb1_U16_phase_buffer
 

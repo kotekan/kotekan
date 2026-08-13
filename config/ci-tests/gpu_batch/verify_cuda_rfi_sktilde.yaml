@@ -79,7 +79,12 @@ simulated_bf_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
     value_type: int8
-    extents: [num_polarizations, num_dishes]
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    # The CPU reference consumes one mask per input frame, so its masks live for one frame,
+    # unlike the GPU path's `bf_mask_lifetime_in_samples`.
+    dimscalings: [samples_per_data_set, 1, 1]
     metadata_pool: main_pool
 
 host_rfi_s012_buffer:
@@ -165,6 +170,8 @@ set_simulated_bf_mask:
     kotekan_stage: bufferBadInputs
     updatable_config:
         bad_inputs: /updatable_config/bad_inputs
+    # One mask per frame, matching `simulated_bf_mask_buffer` and the CPU reference below
+    bf_mask_lifetime_in_samples: samples_per_data_set
     out_buf: simulated_bf_mask_buffer
 
 run_send_bf_mask:
@@ -257,6 +264,7 @@ cpu_rfi_sktilde:
     kotekan_stage: gpuSimulateRFISK
     in_rfi_s012_buf: host_rfi_s012_buffer
     in_bf_mask_buf: simulated_bf_mask_buffer
+    bf_mask_lifetime_in_samples: samples_per_data_set
     out_rfi_sk_buf: simulated_rfi_sk_buffer
     out_rfi_sktilde_buf: simulated_rfi_sktilde_buffer
     out_rfi_mask_buf: simulated_rfi_mask_buffer
