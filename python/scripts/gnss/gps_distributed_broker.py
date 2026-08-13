@@ -3490,6 +3490,7 @@ def main(argv=None, rx=None, publisher=None):
                 _log("time anchor unavailable (%s); retrying" % e)
         dr_pd = (dr_state or {}).get("pd") or {}
         dr_pd2 = (dr_state or {}).get("pd2") or {}
+        dr_pd0 = (dr_state or {}).get("pd0") or {}
         for prn, (snr, dop, cp, ref_hop, det_nh, cp_long, cp_at_ref) in best.items():
             # DETECTION ALIAS CENSUS (2026-07-20; was briefly a FOLD, corrected same day):
             # the search's Doppler estimate is ambiguous mod 1/(2*t_rec) -- 25 Hz on L2C's
@@ -3653,12 +3654,21 @@ def main(argv=None, rx=None, publisher=None):
             # retune -- that walks the absolutely-anchored code/carrier off-peak) so the deep-
             # integration residual stays flat even at zenith (max Doppler acceleration).
             v2_dr = dr_pd2.get((args.dr_constellation, prn)) if dr_pd2 else None
-            if v_dr is not None and v2_dr is not None:
-                # BRDC doppler rate (range-rate differencing over the 4 s epoch pair),
-                # same source as the doppler above
+            v0_dr = dr_pd0.get((args.dr_constellation, prn)) if dr_pd0 else None
+            if v2_dr is not None and v0_dr is not None:
+                # BRDC doppler rate, CENTRAL difference over the +/-2 s pair straddling now_w
+                # (task #52). Centred, so the rate is tagged at now_w rather than 2 s late.
                 seed["doppler_rate_hz_s"] = (args.doppler_sign
                                              * (-(v2_dr["range_rate_mps"]
-                                                  - v_dr["range_rate_mps"]) / 4.0)
+                                                  - v0_dr["range_rate_mps"]) / 4.0)
+                                             / C_LIGHT * args.carrier_hz)
+            elif v_dr is not None and v2_dr is not None:
+                # Fallback for the first cycle, before pd0 exists: the OLD forward form, and
+                # it is deliberately still here rather than silently emitting nothing -- but it
+                # is 2 s mis-tagged, so it must not be the steady state.
+                seed["doppler_rate_hz_s"] = (args.doppler_sign
+                                             * (-(v2_dr["range_rate_mps"]
+                                                  - v_dr["range_rate_mps"]) / 2.0)
                                              / C_LIGHT * args.carrier_hz)
             elif args.almanac and prn in pred:
                 seed["doppler_rate_hz_s"] = pred[prn][1]
@@ -4776,9 +4786,14 @@ def main(argv=None, rx=None, publisher=None):
                         pd = _decfb.predict_from_decoders(
                             _ents, args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                        # CENTRED PAIR (task #52): +/-2 s about now_w, not [now, now+4].
                         pd2 = _decfb.predict_from_decoders(
                             _ents, args.lat, args.lon, args.alt,
-                            datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
+                            datetime.fromtimestamp(now_w + 2.0, tz=timezone.utc),
+                            mask_deg=-90.0)
+                        pd0 = _decfb.predict_from_decoders(
+                            _ents, args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w - 2.0, tz=timezone.utc),
                             mask_deg=-90.0)
                         if _now() - _decfb_log_t[0] > 60.0:
                             _decfb_log_t[0] = _now()
@@ -4808,17 +4823,30 @@ def main(argv=None, rx=None, publisher=None):
                         pd = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                        # CENTRED PAIR (task #52): +/-2 s about now_w, not [now, now+4]. The
+                        # old form was a FORWARD difference, so it estimated the rate at
+                        # now+2 and handed it to the seed as if it were the rate at now -- the
+                        # same first-order time-tag mistake as the velocity in
+                        # gnss_ephemeris.sat_pos_clk (ced7f8b51), one level up. Bias ~1.6e-3
+                        # Hz/s against a 29 mHz/s single-window budget: below budget, which is
+                        # why it survived, but it is free to remove and the centred form also
+                        # cuts the truncation error 3x at the same 4 s baseline.
                         pd2 = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
-                            datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
+                            datetime.fromtimestamp(now_w + 2.0, tz=timezone.utc),
+                            mask_deg=-90.0)
+                        pd0 = dr_eph_mod.predict_all(
+                            dr_state["eph"], args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w - 2.0, tz=timezone.utc),
                             mask_deg=-90.0)
                 except Exception as e:
-                    pd, pd2 = {}, {}
+                    pd, pd2, pd0 = {}, {}, {}
                     _log("dead-reckon: predict failed: %s" % e)
                 if pd:
                     # cache for the SEED loop (next cycle): BRDC doppler/rate for
                     # search-anchored sats, so both masters share one currency
                     dr_state["pd"], dr_state["pd2"] = pd, pd2
+                    dr_state["pd0"] = pd0
 
                 def cp_predicted(v, t_abs):
                     """Physical code phase (chips) of the predicted signal at capture age
