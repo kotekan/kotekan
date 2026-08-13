@@ -157,6 +157,7 @@ class JointReceiverState:
                  birth_max=12.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
                  sigma_fcar0=50.0, q_fcar=0.01,
+                 sigma_rr0=2.0, q_rr=0.02, rr_gauge_sigma=0.5, f_ref_hz=None,
                  clk0=0.0, escape_min_sats=3, p_floor=0.04):
         import numpy as np
         self._np = np
@@ -290,6 +291,62 @@ class JointReceiverState:
         self._fcar_idx = None          # row in x, or None until the first carrier update
         self.n_fcar = 0                # accepted carrier measurements
         self.fcar_rejected = 0
+
+        # -- rrate_sat: the PER-SATELLITE ORBITAL DOPPLER ERROR (task #33 P3, 2026-08-14) --
+        # ⚠️ THIS IS NOT A PER-SATELLITE f_carrier, AND THE DISTINCTION IS PHYSICAL. An LO or
+        # clock frequency error is ONE number for the whole receiver -- it cannot vary
+        # satellite to satellite, and f_carrier above is correctly receiver-wide. What varies
+        # per satellite is the ORBIT: a range-rate model error for that satellite, which only
+        # becomes Hz when multiplied by a carrier. So this state is held in m/s, where it is
+        # BAND-INDEPENDENT and physically meaningful, not in Hz at some reference band.
+        #
+        #     y_(i,b) [Hz] = -(f_b/c) * rrate_i   +   (f_b/f_ref) * f_carrier   +   noise
+        #                     \_ orbit, per sat _/     \_ LO, receiver-wide _/
+        #
+        # The two are degenerate WITHIN one band -- both scale with f_b -- and are separated
+        # only by the same thing that separates clk from b_sat: one is common across
+        # satellites and the other is not. Hence one solve, never staged.
+        #
+        # WHY m/s IS THE RIGHT UNIT AND Hz IS NOT. The same satellite's E5a and E5b Doppler
+        # errors are not two numbers, they are ONE range-rate error seen through two carriers
+        # (1207.14/1176.45 = 1.0261 apart). Holding the state in m/s makes both bands
+        # measurements OF THE SAME ROW; holding it in Hz-at-a-reference-band would work
+        # arithmetically but invites exactly the per-band duplication this task exists to
+        # remove -- today gal_e5a and gal_e5b fit this quantity independently and never
+        # compare, because dop_hist is a local in a per-chain main().
+        #
+        # THE GAUGE, same argument as b_sat: adding c to f_carrier and subtracting the
+        # equivalent from every rrate_i predicts identical measurements, so the common mode is
+        # unobservable and would random-walk. mean(rrate) = 0 over active satellites pins it,
+        # making f_carrier "the receiver-wide term" and rrate_i "this orbit's deviation".
+        #
+        # ⚠️ NOT YET COUPLED TO b_sat, DELIBERATELY -- see the note on update_rrate(). b_sat
+        # (chips) and rrate (m/s) are the POSITION and VELOCITY of one per-satellite range
+        # error and a proper vector state would link them; that link is the carrier-aided code
+        # loop and it is the obvious next step. It is not taken here because a per-satellite
+        # RATE state is precisely what diverged on mass birth (the filter read an OFFSET as a
+        # RATE, 12.5 ppm), and that failure is worth re-earning deliberately rather than by
+        # accident.
+        # The carrier the receiver-wide f_carrier is EXPRESSED AT. Latched on the first
+        # carrier measurement if not given, exactly as ref_band is for tau -- so a
+        # single-band deployment never has to state it, and a second band arriving later
+        # cannot silently redefine what f_carrier means.
+        self.f_ref_hz = float(f_ref_hz) if f_ref_hz else None
+        self.sigma_rr0 = float(sigma_rr0)
+        self.q_rr = float(q_rr)        # m/s per sqrt(s); orbit error, so SLOW
+        # Moderate on purpose, but NOT because a stiffer one breaks it -- that was my first
+        # diagnosis and it is WRONG. The freeze measured while building this (one satellite
+        # rejected 298 times of 300, innov 17.6 Hz against a 3.1 Hz bar) came from the BIRTH
+        # PATH and the missing escape, not the gauge: with those fixed, a 0.02 gauge converges
+        # to 2e-11. Recorded because I changed three things at once and credited the wrong one;
+        # test_a_stiff_gauge_is_NOT_what_froze_it pins the correction so it stays corrected.
+        self.rr_gauge_sigma = float(rr_gauge_sigma)
+        self._rr_idx = {}              # key -> row in x
+        self._rr_t_seen = {}           # key -> last carrier measurement time
+        self._rr_reject_run = {}       # key -> consecutive rejections (escape)
+        self.rr_escape_runs = 8
+        self.n_rrate = 0
+        self.rrate_rejected = 0
         self.x = np.zeros(2)           # [clk chips, clk_rate chips/s]
         # WARM START (2026-08-11). Starting at 0 when the receiver clock is ~151 chips is
         # not a neutral prior, it is a DEADLOCK: every measurement then arrives ~151 chips
@@ -397,6 +454,10 @@ class JointReceiverState:
         # aliases onto a satellite's bias row the first time a sat ages out.
         if self._fcar_idx is not None:
             self._fcar_idx = remap.get(self._fcar_idx)
+        # rrate rides the same remap. A per-satellite row that is not remapped points at
+        # ANOTHER satellite's state after a drop -- silent, and wrong in the worst way.
+        self._rr_idx = {k: remap[i] for k, i in self._rr_idx.items() if remap.get(i) is not None}
+        self._rr_t_seen = {k: v for k, v in self._rr_t_seen.items() if k in self._rr_idx}
         for k in keys:
             self._dual.pop(k, None)
         self._membership_changed()
@@ -441,6 +502,9 @@ class JointReceiverState:
             other = set(brows)
             if self._fcar_idx is not None:
                 other.add(self._fcar_idx)
+            # rrate rows are m/s, not chips -- q_b would inflate them by ~1000x their own
+            # process noise, the same trap the f_carrier line above avoids.
+            other |= set(self._rr_idx.values())
             srows = [i for i in range(2, n) if i not in other]
             if srows:
                 idx = np.array(srows)
@@ -450,6 +514,10 @@ class JointReceiverState:
                 self.P[i, i] += self.q_tau ** 2 * dt
             if self._fcar_idx is not None:
                 self.P[self._fcar_idx, self._fcar_idx] += self.q_fcar ** 2 * dt
+            for i in self._rr_idx.values():
+                # orbit error: moves with geometry, so faster than the GPSDO-disciplined LO
+                # but far slower than a chip bias
+                self.P[i, i] += self.q_rr ** 2 * dt
         # P floor -- see __init__. Applied to clk and the satellite-bias rows (NOT tau,
         # NOT f_carrier: different units and timescales own their own priors). The floor
         # goes on the DIAGONAL only; correlations keep whatever structure they earned.
@@ -461,6 +529,7 @@ class JointReceiverState:
                 other = set(self._band_idx.values())
                 if self._fcar_idx is not None:
                     other.add(self._fcar_idx)
+                other |= set(self._rr_idx.values())
                 for i in range(2, n):
                     if i not in other and self.P[i, i] < f2:
                         self.P[i, i] = f2
@@ -828,6 +897,149 @@ class JointReceiverState:
         self._scalar_update(H, innov, float(sigma_hz) ** 2)
         self.n_fcar += 1
         return innov
+
+    C_LIGHT = 299792458.0
+
+    def _add_rrate(self, key, rr0, t_now):
+        """Give a satellite its own range-rate-error row, lazily."""
+        np = self._np
+        i = self.x.size
+        self.x = np.append(self.x, float(rr0))
+        P = np.zeros((i + 1, i + 1))
+        P[:i, :i] = self.P
+        P[i, i] = self.sigma_rr0 ** 2
+        self.P = P
+        self._rr_idx[key] = i
+        self._rr_t_seen[key] = t_now
+        return i
+
+    def update_rrate(self, key, y_hz, t_now, f_band_hz, sigma_hz=0.2):
+        """One carrier-frequency measurement for ONE satellite, from ONE band.
+
+        `y_hz` is that satellite's measured carrier residual in this band -- feed
+        deep_rate_hz, gated on deep_rate_q, for the reasons f_carrier's note gives (
+        carrier_hz_resid is documented SIGNAL-FREE at CHORD SNR, so a filter fed by it
+        produces a confident meaningless estimate).
+
+            y = -(f_b/c) * rrate_i  +  (f_b/f_ref) * f_carrier  +  noise
+
+        BOTH ROWS ARE UPDATED BY ONE MEASUREMENT, which is the whole point: the receiver-wide
+        term and the per-orbit term are degenerate within a band and are separated only by
+        the fact that one is shared. A second band on the SAME satellite lands on the SAME
+        rrate row with a different f_b, which is how cross-band information actually combines
+        instead of being fitted twice.
+
+        Returns the accepted innovation (Hz), or None if gated out.
+        """
+        np = self._np
+        self.predict(t_now)
+        f_b = float(f_band_hz)
+        if self.f_ref_hz is None:
+            self.f_ref_hz = f_b
+        f_ref = float(self.f_ref_hz)
+        if self._fcar_idx is None:
+            # No receiver-wide term yet: the first measurement cannot separate the two, so it
+            # all goes to f_carrier -- the shared term is the better prior for one sample, and
+            # the gauge will hand back whatever is really per-satellite as soon as a second
+            # satellite reports.
+            self._add_fcar()
+            self.x[self._fcar_idx] = y_hz * (f_ref / f_b)
+            self.n_fcar = 1
+            # ...and give this satellite its row NOW, at zero. One measurement cannot split
+            # the receiver-wide term from this orbit's deviation, so f_carrier takes it all
+            # and the gauge hands back whatever is really per-satellite once a second
+            # satellite reports. Without a row here the FIRST satellite is structurally
+            # unable to disagree with the value it itself defined.
+            self._add_rrate(key, 0.0, t_now)
+            return 0.0
+        if key not in self._rr_idx:
+            # Birth on the measurement, like b_sat: initialise to the residual left AFTER the
+            # current receiver-wide estimate, not to zero. Walking in from zero at loop gain
+            # is how a real per-sat offset gets read as noise for its first minutes.
+            resid = y_hz - (f_b / f_ref) * float(self.x[self._fcar_idx])
+            self._add_rrate(key, -resid * self.C_LIGHT / f_b, t_now)
+            return 0.0
+        self._rr_t_seen[key] = t_now
+        i = self._rr_idx[key]
+        H = np.zeros(self.x.size)
+        H[i] = -(f_b / self.C_LIGHT)
+        H[self._fcar_idx] = f_b / f_ref
+        innov = float(y_hz) - float(H @ self.x)
+        var = float(H @ self.P @ H) + float(sigma_hz) ** 2
+        if var > 0.0 and abs(innov) > self.innov_nsigma * var ** 0.5:
+            self.rrate_rejected += 1
+            self._rr_reject_run[key] = self._rr_reject_run.get(key, 0) + 1
+            # ESCAPE. A gate with no way out turns a bad birth into a permanent one: the state
+            # is confident, the satellite is real, and every cycle it is thrown away for
+            # disagreeing. Measured while building this -- one satellite rejected 298 times
+            # out of 300. After a sustained run of consistent rejections, believe the
+            # SATELLITE and re-open its row rather than the estimate that has stopped
+            # predicting it. Same principle as the code path's escape.
+            if self._rr_reject_run[key] >= self.rr_escape_runs:
+                i_ = self._rr_idx[key]
+                self.x[i_] += innov * -(self.C_LIGHT / f_b)
+                self.P[i_, i_] = self.sigma_rr0 ** 2
+                self._rr_reject_run[key] = 0
+                self._note("rrate ESCAPE %s: %d consistent rejections -- reopening the row"
+                           % (self._key_str(key), self.rr_escape_runs))
+            else:
+                self._note("rrate REJECT %s: innov %+.3f Hz vs %.1f-sigma bar %.3f"
+                           % (self._key_str(key), innov, self.innov_nsigma,
+                              self.innov_nsigma * var ** 0.5))
+            return None
+        self._rr_reject_run[key] = 0
+        self._scalar_update(H, innov, float(sigma_hz) ** 2)
+        self.n_rrate += 1
+        return innov
+
+    def gauge_rrate(self):
+        """Pin mean(rrate) = 0 over the active satellites.
+
+        Without this, f_carrier and the rrate rows share an unobservable common mode: add c
+        to the receiver-wide term, subtract the equivalent from every orbit, and every
+        prediction is identical. Same construction as gauge() for b_sat, including the
+        median-centred inlier test -- a wild orbit does not get a vote, and the estimator
+        this replaces (a per-chain fit with no shared term at all) had no common mode to
+        pin, so the robustness has to be supplied here rather than inherited.
+        """
+        np = self._np
+        idx = list(self._rr_idx.values())
+        if len(idx) < 2 or self._fcar_idx is None:
+            return
+        v = [float(self.x[i]) for i in idx]
+        med = float(np.median(v))
+        use = [i for i in idx if abs(float(self.x[i]) - med) <= max(10.0 * self.sigma_rr0, 1.0)]
+        if len(use) < 2:
+            use = idx
+        H = np.zeros(self.x.size)
+        for i in use:
+            H[i] = 1.0 / len(use)
+        self._scalar_update(H, -float(H @ self.x), self.rr_gauge_sigma ** 2)
+
+    def rrate(self, key):
+        """This satellite's range-rate model error, m/s. 0.0 if never measured."""
+        i = self._rr_idx.get(key)
+        return 0.0 if i is None else float(self.x[i])
+
+    def rrate_sigma(self, key):
+        """1-sigma, m/s. inf when unmeasured -- an unmeasured state must not read as a
+        confident zero, which is how a dead feed passes for a healthy one."""
+        i = self._rr_idx.get(key)
+        return float("inf") if i is None else float(self.P[i, i]) ** 0.5
+
+    def carrier_correction_hz(self, key, f_band_hz):
+        """THE ONE COMMAND: total carrier correction for this satellite in this band, Hz.
+
+        This is what a seed adds to its model Doppler -- receiver-wide term and orbit term
+        together, scaled to the band being seeded. It exists so there is exactly ONE number
+        leaving the estimator per (satellite, band), rather than a seed and a separate trim
+        that a continuity gate then has to referee. See task #33: the reason the shared
+        carrier loop was structurally inert was two controllers on one state.
+        """
+        f_b = float(f_band_hz)
+        f_ref = float(self.f_ref_hz or f_b)
+        fc = float(self.x[self._fcar_idx]) if self._fcar_idx is not None else 0.0
+        return (f_b / f_ref) * fc - (f_b / self.C_LIGHT) * self.rrate(key)
 
     def f_carrier(self):
         """Receiver-wide carrier frequency offset (Hz). 0.0 before any measurement."""
