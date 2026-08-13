@@ -173,6 +173,29 @@ struct GnssCudaDespread::Impl {
         return 2.0 * M_PI * (bank.carrier_offset(p) + doppler_hz + ctrim_hz) / fs;
     }
 
+    /// Carrier phase at absolute sample n0, radians in [0, 2*pi). Task #52 -- see
+    /// gnss_cuda::DespreadJob::ang0 for why this has to exist at all.
+    ///
+    /// LONG DOUBLE IS LOAD-BEARING. The quantity is frac(f * n0 / fs) with f ~ 1.18e9 and
+    /// n0 ~ 1.9e15, i.e. 6.9e14 whole cycles to be discarded before a fraction survives. In
+    /// double that leaves nothing (the ulp at 6.9e14 is 0.125 cycles); x87 long double's 64-bit
+    /// mantissa leaves ~3.7e-5 cycles = 2.3e-4 rad, three orders below the 0.2 rad this
+    /// removes. CUDA maps long double to double, which is exactly why the reduction is done
+    /// HERE and shipped to the kernel rather than computed there.
+    ///
+    /// ⚠️ CALLERS MUST PASS THE SAME n0 THE KERNEL USES (par.n0 = window_start + fft_len - 1,
+    /// the hop's LAST sample). A first/last mismatch is a constant rotation of the whole
+    /// record, and that convention has already cost 52 chips once on the code side.
+    double ang0_for(int p, double doppler_hz, double ctrim_hz, long long n0) const {
+        constexpr long double TWO_PI_L = 6.283185307179586476925286766559005768L;
+        const long double f = (long double)bank.carrier_offset(p) + (long double)doppler_hz
+                              + (long double)ctrim_hz;
+        long double fr = fmodl(f / (long double)fs * (long double)n0, 1.0L);
+        if (fr < 0.0L)
+            fr += 1.0L;
+        return (double)(TWO_PI_L * fr);
+    }
+
     // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz.
     PhiCache& ensure_phi(int p, double doppler) {
         PhiCache& pc = phi[(size_t)p];
@@ -324,6 +347,9 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
                         cps,
                         1.0 / cps,
                         wc,
+                        // Same n0 the kernel is handed below (par.n0) -- hop's LAST sample.
+                        im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
+                                    im.window_start + im.bank.fft_len() - 1),
                         im.code_offset[(size_t)sp.p],
                         (int)im.code_len,
                         mask,
@@ -407,6 +433,8 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
                         cps,
                         1.0 / cps,
                         wc,
+                        im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
+                                    window_start_sample + im.bank.fft_len() - 1),
                         im.code_offset[(size_t)sp.p],
                         (int)im.code_len,
                         mask,
@@ -574,6 +602,11 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
                                  cps,
                                  1.0 / cps,
                                  im.wc_for(sp.p, sp.doppler_hz),
+                                 // BIT-IDENTICAL to the despread's, or the analytic add-back
+                                 // stops being exact (see PeelJob::ang0). Note the peel takes
+                                 // no ctrim, exactly as its wc_for call does not.
+                                 im.ang0_for(sp.p, sp.doppler_hz, 0.0,
+                                             window_start_sample + im.bank.fft_len() - 1),
                                  im.code_offset[(size_t)sp.p],
                                  (int)im.code_len,
                                  mask,

@@ -142,6 +142,20 @@ int main(int argc, char** argv) {
     const double cps =
         bank.eff_chip_rate() / fs * (1.0 + bank.code_doppler_sign * dop / sig->carrier_hz);
     const double wc = 2.0 * M_PI * (f_off + dop) / fs;
+    // Carrier phase at the hop reference sample, in LONG DOUBLE -- the same reduction
+    // GnssCudaDespread::Impl::ang0_for does, and for the same reason (task #52): wc must never
+    // multiply the absolute sample index. Duplicated rather than shared because this test is
+    // the INDEPENDENT check on the kernel; calling production's helper would make it agree with
+    // itself. Keep the two expressions equivalent by hand.
+    const auto ang0_of = [&](long long n0) {
+        constexpr long double TWO_PI_L = 6.283185307179586476925286766559005768L;
+        long double fr = fmodl(((long double)f_off + (long double)dop) / (long double)fs
+                                   * (long double)n0,
+                               1.0L);
+        if (fr < 0.0L)
+            fr += 1.0L;
+        return (double)(TWO_PI_L * fr);
+    };
 
     const auto& fcode = bank.full_code(0); // slot 0 == our PRN
     std::vector<int8_t> code8(fcode.begin(), fcode.end());
@@ -189,7 +203,8 @@ int main(int argc, char** argv) {
     for (int b = 0; b < n_spec; ++b) // component -> combined chips, as production does
         jobs[b] = {(double)comb * ftrials[b].cp_prompt, (double)comb * spacing,
                    cps,           1.0 / cps,
-                   wc,            0,         (int)code8.size(), all_mask,
+                   wc,            ang0_of(window_start + fft_len - 1),
+                   0,             (int)code8.size(), all_mask,
                    d_phiA,        d_phiB,    filt.n_chips,  ftrials[b].m_head};
     CK(cudaMemcpy(d_jobs, jobs.data(), jobs.size() * sizeof(gnss_cuda::DespreadJob),
                   cudaMemcpyHostToDevice));
@@ -344,6 +359,7 @@ int main(int argc, char** argv) {
                               cps,
                               1.0 / cps,
                               wc,
+                              ang0_of(window_start + fft_len - 1),
                               0,
                               (int)code8.size(),
                               all_mask,

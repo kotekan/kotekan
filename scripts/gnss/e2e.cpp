@@ -128,7 +128,22 @@ struct Opt {
     const char* seed_file = nullptr; ///< read a REAL broker seed (seeds.jsonl) instead of direct
     double seed_dop_err = 0.0;       ///< Hz added to the seed's Doppler only (not the truth)
     double seed_cp_rate = 0.0;       ///< chips/hop residual handed to the tracker
-    double seed_dop_rate = 0.0;      ///< Hz/s handed to the tracker
+    /// Hz/s handed to the tracker. ⚠️ NOT ZERO, AND THAT IS THE POINT (task #52, 2026-08-13).
+    ///
+    /// This defaulted to 0.0, and a satellite whose Doppler never moves has no re-pin: the
+    /// replica's f_ref is identical in every record, so the (delta f)*t_abs phase step that
+    /// dominates the live chain CANNOT ARISE HERE. That is why this harness reported a
+    /// per-record phase residual of 0.0008 rad while the sky read 0.745, and why it printed
+    /// "the live floor comes from something this harness does not model" for weeks. It was
+    /// modelling it fine; it was handed a satellite that does not exist.
+    ///
+    /// -0.369 Hz/s is PRN 21's measured rate on 2026-08-13 -- mid-range for the E5a fleet
+    /// (0.036 to 0.369 across 12 satellites). With it, coherent snr collapses 3394 -> 5.4 and
+    /// the residual reproduces the live floor with NO NOISE. A gate has to vary the axis the
+    /// defect lives on, and for this whole family of bugs that axis is (small number) x
+    /// (huge absolute argument): hop0 supplies the huge argument, this supplies the small one.
+    /// Set --seed-dop-rate 0 to recover the old blind behaviour deliberately.
+    double seed_dop_rate = -0.36893;
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
     int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
@@ -175,7 +190,9 @@ static void usage() {
         "  --refine-hops N    refine integration length, hops (default = the full record)\n"
         "  --seed-dop-err F   Hz of Doppler error given ONLY to the seed (the live residual)\n"
         "  --seed-cp-rate X   code_phase_rate handed to the tracker, chips/hop\n"
-        "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker\n"
+        "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker (default -0.36893, a\n"
+        "                     REAL fleet rate; 0 removes the re-pin lever and makes this\n"
+        "                     harness blind to the (delta f)*t_abs family -- see #52)\n"
         "  --seed-file P      use a REAL captured broker seed (seeds.jsonl) for this PRN\n"
         "  --emit-detection P write the detection in /get_detections wire format (for e2e_broker)\n"
         "  --ms-split K       run the ms-split acquire over K ~1 ms sub-windows instead\n"
@@ -1081,10 +1098,41 @@ int main(int argc, char** argv) {
         printf("\n[4] DEEP FOLD over %d records (the combiner's own coherent_sum)\n", N);
         printf("    coherent snr %.2f   amplitude %.6g\n", cs.snr, cs.amplitude);
         printf("    implied sigma_phi = sqrt(N)/snr = %.4f rad\n", cs.snr > 0 ? std::sqrt((double)N)/cs.snr : 0.0);
-        printf("    per-record phase residual about a linear ramp: %.4f rad rms\n", sig_res);
+        // ⚠️ IS THE UNWRAP EVEN VALID? sig_res unwraps the per-record phase, which assumes the
+        // step between records is under pi. When it is not -- and with a real Doppler rate at
+        // days of uptime it routinely is not -- the unwrap aliases and sig_res stops being a
+        // measurement: it saturates near the uniform-phase value and stays there no matter how
+        // much better or worse the arithmetic gets. That is how this line read 1.1-1.2 rad
+        // across THREE DECADES of uptime and a 16x improvement showed as nothing (task #52).
+        // Say "unresolved" rather than print a number that looks like data.
+        double med_step;
+        {
+            std::vector<double> st;
+            for (int i = 1; i < N; ++i) {
+                double d = std::arg(prompts[i]) - std::arg(prompts[i - 1]);
+                while (d > M_PI) d -= 2 * M_PI;
+                while (d < -M_PI) d += 2 * M_PI;
+                st.push_back(std::fabs(d));
+            }
+            std::sort(st.begin(), st.end());
+            med_step = st.empty() ? 0.0 : st[st.size() / 2];
+        }
+        if (med_step > 1.5)
+            printf("    per-record phase residual: UNRESOLVED -- median |dphi| = %.2f rad, the "
+                   "unwrap has aliased\n      (records are %.4g s apart; use --rec-gap-s "
+                   "%.6f, the live record cadence, to measure this)\n",
+                   med_step, o.rec_gap_s, 2048.0 / 195312.5);
+        else
+            printf("    per-record phase residual about a linear ramp: %.4f rad rms\n", sig_res);
         printf("    LIVE reads sigma_phi ~0.745 rad, flat across a 9x amp_snr range.\n");
-        printf("    %s\n", sig_res > 0.2
-               ? ">>> the floor REPRODUCES with no noise -- it is in our arithmetic"
+        printf("    %s\n", med_step > 1.5
+               ? ">>> cannot tell: the per-record step aliases the unwrap (see above)"
+               : sig_res > 0.2
+               ? ">>> the floor REPRODUCES with no noise -- it is in our arithmetic OR in the\n"
+                 "        seed model extrapolated over this record spacing. Re-run with\n"
+                 "        --rec-gap-s 0.0104858 (the live cadence, which is what the deep fold\n"
+                 "        actually integrates) to separate the two: arithmetic survives that,\n"
+                 "        a multi-second extrapolation residual does not."
                : ">>> noiseless chain is phase-clean; the live floor comes from something this "
                  "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
     }

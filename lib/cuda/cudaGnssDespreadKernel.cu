@@ -128,12 +128,13 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
 
         // Carrier phasor pa = e^{i wc n_m}: range-reduce in DOUBLE, trig in float. ONE per hop
         // for the whole quad -- E/P/L share a Doppler, and P_HEAD *is* the prompt.
-        // Two-product before the reduction -- see the long note in cudaGnssChordDespread.cu.
-        // wc*n_m reaches the binade where a double's ULP is one radian at CHORD's absolute
-        // sample index, and n_m steps per hop, so the error re-rolls inside every record.
-        const double pr_ = job.wc * (double)n_m;
-        const double er_ = fma(job.wc, (double)n_m, -pr_);
-        const double ang = fmod(pr_, 2.0 * M_PI) + er_;
+        // PHASE FROM job.ang0, NOT FROM n_m -- see the long note in cudaGnssChordDespread.cu
+        // (task #52). The two-product this replaces was exact for the product and still left
+        // wc's own rounding times the absolute sample: a per-record constant that re-rolls with
+        // every Doppler re-propagation, 0.217 rad at 6.8 days of uptime, and per-record
+        // constants are precisely what the cross-record estimators integrate.
+        const double dn_ = (double)((long long)mh * (long long)p.fft_len);
+        const double ang = job.ang0 + fmod(job.wc * dn_, 2.0 * M_PI);
         float sn, cn;
         sincosf((float)ang, &sn, &cn);
         const float2 pa = make_float2(cn, sn);
@@ -436,10 +437,9 @@ __global__ void gnss_peel_kernel(const T* __restrict__ data,           // [nchan
             const int mh = base + t * (int)blockDim.x;
             const long long n_m = p.n0 + (long long)mh * p.fft_len;
             const double C_P = job.cp0 + (double)n_m * job.cps;
-            // Two-product before the reduction -- see cudaGnssChordDespread.cu.
-            const double pr_ = job.wc * (double)n_m;
-            const double er_ = fma(job.wc, (double)n_m, -pr_);
-            const double ang = fmod(pr_, 2.0 * M_PI) + er_;
+            // Phase from job.ang0 -- see cudaGnssChordDespread.cu (task #52).
+            const double dn_ = (double)((long long)mh * (long long)p.fft_len);
+            const double ang = job.ang0 + fmod(job.wc * dn_, 2.0 * M_PI);
             float sn, cn;
             sincosf((float)ang, &sn, &cn);
             const float2 pa = make_float2(cn, sn);

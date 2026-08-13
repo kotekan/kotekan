@@ -39,6 +39,28 @@ struct DespreadJob {
     double cps;          ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
     double inv_cps;      ///< 1/cps (tap-boundary indices via multiply, not the costly FP64 divide)
     double wc;           ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
+    /// CARRIER PHASE AT THE WINDOW'S REFERENCE SAMPLE (p.n0), radians in [0, 2*pi), computed on
+    /// the host in LONG DOUBLE. Task #52.
+    ///
+    /// ⚠️ THIS EXISTS TO KEEP wc AWAY FROM THE ABSOLUTE SAMPLE INDEX. The replica phase is
+    /// 2*pi*f*t and t is F-engine uptime: n_abs reaches 1.9e15 samples in a week, so ANY
+    /// rounding of the ~1.18 GHz carrier -- the ulp of the (f_offset + doppler) sum is 2.4e-7 Hz
+    /// -- becomes tenths of a radian of phase, and it RE-ROLLS every record because the Doppler
+    /// is re-propagated per record. Measured offline (scripts/gnss/e2e, 24 realizations per
+    /// point): the per-record phase residual is flat at 0.012 rad below ~0.2 days of uptime and
+    /// then grows EXACTLY LINEARLY with absolute time -- 0.023 / 0.066 / 0.217 rad at 0.6 / 2 /
+    /// 6.8 days. On sky it reads 0.745.
+    ///
+    /// With this field the kernel evaluates ang0 + wc*(n - n0), where (n - n0) never exceeds one
+    /// record (3.4e7 samples). The lever drops by eight orders of magnitude and the same
+    /// rounding contributes 1.5e-8 rad. It is the carrier-domain twin of #45 step 6, which gave
+    /// the CODE phase a reference so it too stopped being reconstructed from f*t_abs
+    /// ([[chord-cp-currency]]: "a phase is not an argument").
+    ///
+    /// ⚠️ n0 IS THE HOP'S LAST SAMPLE (window_start + fft_len - 1), matching par.n0 and
+    /// m_head_for. The first/last-sample convention has produced a 52-chip error before; if this
+    /// disagrees with par.n0 the whole record rotates by a constant.
+    double ang0;
     int code_offset;     ///< this PRN's offset into the shared code table
     int code_len;        ///< combined-stream code length (chips)
     uint64_t chan_mask;  ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
@@ -74,6 +96,10 @@ struct PeelJob {
     double cps;         ///< chips per sample incl. code Doppler (== DespreadJob::cps)
     double inv_cps;     ///< 1/cps
     double wc;          ///< carrier angular rate 2*pi*(f_offset + doppler)/fs
+    /// Carrier phase at p.n0 -- see DespreadJob::ang0. MUST be built by the SAME expression:
+    /// the peel and the despread have to generate bit-identical replicas or the analytic
+    /// add-back stops being exact.
+    double ang0;
     int code_offset;    ///< offset into the shared code table
     int code_len;       ///< combined-stream code length (chips)
     uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set
