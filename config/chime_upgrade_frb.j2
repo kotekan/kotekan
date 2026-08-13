@@ -568,7 +568,6 @@ set_scatter_indices:
     out_buf: host_scatter_indices_buffer
     # TODO: need to undo transpose to beamformer (from cylinder order) in
     # conversion to visFrame
-    # Will HACK C++ code ot invert CHIMECOrrelator order
     input_order: CHIMECorrelator
     output_order: CHIMEBeamformer
     name: scatter_indices
