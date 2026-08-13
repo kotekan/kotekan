@@ -241,6 +241,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # de-commands it automatically. Cohering sats' picks are clean and stable (PRN 5/21:
     # q 17-21, full==capped).
     rrate-command: true
+    # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
+    # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
+    # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
+    # pairs agree at +1: E3 -0.98|-1.25, E8 +1.81|+2.18, C39 +1.07|+1.29, G10 same-sign;
+    # zero inversions). Gates per sat: same arc, counter advanced, command HELD over the
+    # span, coherent, |fine| < 0.3 Hz. Fed at sigma 0.02 Hz into the SAME rrate rows --
+    # the Kalman blends coarse acquisition and fine tracking with no mode switch.
+    rrate-phase-sign: 1.0
+    rrate-phase-feed: true
     trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
