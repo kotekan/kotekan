@@ -288,6 +288,60 @@ class TestFullBandFields(unittest.TestCase):
         self.assertAlmostEqual(out[7], -7.8)
 
 
+class TestCoarseFineHandoff(unittest.TestCase):
+    """THE FLL->PLL HANDOFF (--rrate-coarse-deweight). Both feeds hit the SAME row, so
+    relative weight is what decides which observable governs: the coarse one arrives every
+    poll at 60 mHz scatter, the fine one ~1/min at 16 mHz. At equal sigma the coarse feed
+    wins on sheer count and the row tracks ITS noise -- measured live as phi0 bouncing
+    0.4-1.1 rad while the fine feed was firing and being out-voted."""
+
+    F = F_E5A
+    TRUTH = -2.0                      # m/s on one satellite
+
+    def _row_after(self, deweight, n_poll=240, fine_every=12, seed=5):
+        """Returns |rrate(11) - gauge-centred truth|, m/s.
+
+        ⚠️ MEASURE AGAINST THE GAUGE, not against raw truth. gauge_rrate() pins
+        mean(rrate) = 0, so every row sits at truth minus the fleet mean BY CONSTRUCTION
+        -- a first draft of this test read a flat 0.500 m/s "error" on both arms, which
+        was the gauge offset (mean of {-2, +1}), not estimator error, and it swamped the
+        effect under test. Same trap as any statistic quoted before its constraint is
+        removed."""
+        import random
+        rng = random.Random(seed)
+        s = JointReceiverState(code_len=10230.0)
+        # two satellites so the gauge has a fleet; only PRN 11 gets the fine feed
+        truth = {11: self.TRUTH, 21: 1.0}
+        centred = self.TRUTH - sum(truth.values()) / len(truth)
+        for k in range(n_poll):
+            for prn, rr in truth.items():
+                y = y_of(rr, 0.0, self.F)
+                sig = 0.2 * (deweight if (prn == 11 and deweight > 1.0) else 1.0)
+                s.update_rrate(prn, y + rng.gauss(0.0, 0.06), 100.0 + k, self.F,
+                               sigma_hz=sig)
+            if k % fine_every == 0:    # the fine feed: rarer, far more precise
+                s.update_rrate(11, y_of(truth[11], 0.0, self.F) + rng.gauss(0.0, 0.016),
+                               100.0 + k, self.F, sigma_hz=0.02)
+            s.gauge_rrate()
+        return abs(s.rrate(11) - centred)
+
+    def test_deweighted_row_follows_the_fine_observable(self):
+        """With the handoff on, the row's error must sit at the FINE noise scale."""
+        err_hz = self._row_after(deweight=8.0) * (self.F / C)
+        self.assertLess(err_hz, 0.05, "phase-governed row off by %.3f Hz" % err_hz)
+
+    def test_the_deweight_is_what_does_it(self):
+        """Same measurements, equal weights: the frequent coarse feed dominates and the
+        row lands measurably further from truth. This is the live pathology in miniature
+        -- and the reason the fine feed alone was not enough. Averaged over seeds: one
+        realisation of a noise comparison is not a result."""
+        gov = sum(self._row_after(deweight=8.0, seed=s) for s in range(6)) / 6.0
+        flat = sum(self._row_after(deweight=1.0, seed=s) for s in range(6)) / 6.0
+        self.assertLess(gov, flat,
+                        "governed %.4f vs flat %.4f m/s -- the handoff bought nothing"
+                        % (gov, flat))
+
+
 class TestAdrFineRate(unittest.TestCase):
     """#33 PLL fine observable: res_cycles differenced over adr_records. The gates are
     structural and each one exists because its absence is a known disease: an arc break

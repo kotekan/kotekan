@@ -1086,6 +1086,26 @@ def main(argv=None, rx=None, publisher=None):
                          "feed stays off regardless of --rrate-phase-feed.")
     ap.add_argument("--rrate-phase-sigma", type=float, default=0.02,
                     help="measurement sigma (Hz) for the fine phase-step feed.")
+    ap.add_argument("--rrate-coarse-deweight", type=float, default=8.0,
+                    help="THE FLL->PLL HANDOFF. While a satellite holds a fresh fine lock "
+                         "(see --rrate-fine-hold-s), its COARSE measurements enter at "
+                         "sigma x this factor. Both feeds keep running -- the coarse one "
+                         "is what re-acquires after a cycle slip or a re-seed -- but a "
+                         "60 mHz observable must not out-vote a 16 mHz one at equal "
+                         "weight, which is exactly what pinned phi0 at 0.4-1.1 rad while "
+                         "the fine feed fired once a minute. 8x sigma = 64x variance, so "
+                         "one fine sample outweighs ~64 coarse ones; the row is then "
+                         "governed by phase and merely SUPERVISED by frequency. 1.0 "
+                         "disables the handoff (both feeds at face value).")
+    ap.add_argument("--rrate-fine-hold-s", type=float, default=240.0,
+                    help="how long a fine acceptance keeps a satellite in the "
+                         "phase-governed regime. On expiry the coarse feed returns to "
+                         "full weight automatically -- the drop-back an FLL/PLL handoff "
+                         "needs when the fine gate stops passing (weak sat, arc break, "
+                         "command slewing hard). Sized well above the observed fine "
+                         "cadence (~1/min) so ordinary gaps do not flap the regime, and "
+                         "well under the timescale on which an unsupervised row could "
+                         "drift anywhere interesting.")
     ap.add_argument("--rrate-cmd-max-sigma", type=float, default=0.5,
                     help="command a sat's carrier only when its rrate row's 1-sigma (m/s) "
                          "is below this. 0.5 m/s is ~2 Hz at 1176 MHz -- an UNMEASURED "
@@ -2560,6 +2580,9 @@ def main(argv=None, rx=None, publisher=None):
                          # it is what walked arm 1)
     adr_prev = {}        # prn -> ((arc, records, res_cycles), cmd_then) at the last poll --
                          # the PLL fine observable differences THESE (#33 phase-step feed)
+    rr_fine_t = {}       # prn -> t of the last ACCEPTED fine measurement. The FLL->PLL
+                         # handoff reads this: while the lock is fresh the coarse feed is
+                         # de-weighted, and on expiry it silently returns to full weight.
     rr_cmd_applied = {}  # prn -> carrier command POSTED last poll (#33 P3). The rrate feed's
                          # reference: deep_rate_hz is measured on records already derotated
                          # by this, so the feed adds it back to reference y at the base seed.
@@ -6622,6 +6645,7 @@ def main(argv=None, rx=None, publisher=None):
             try:
                 _jrr = rx.joint_receiver(band_id, CODE_LEN)
                 _n_ok = 0
+                _n_gov = 0   # sats in the PHASE-GOVERNED regime this poll
                 for _p, _rv in sorted(_rr2_resid.items()):
                     # THE REFERENCE. deep_rate is measured on records the tracker already
                     # derotated by the commanded trim, so what the search reports is what
@@ -6632,8 +6656,17 @@ def main(argv=None, rx=None, publisher=None):
                     # read as "solved" and the filter would unlearn its own correction.
                     _y = _rv + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
                     _k = (args.dr_constellation, int(_p))
-                    if _jrr.update_rrate(_k, _y, t_now_abs,
-                                         args.carrier_hz) is not None:
+                    # FLL->PLL HANDOFF: a phase-governed satellite takes its coarse
+                    # measurements at inflated sigma (see --rrate-coarse-deweight). Never
+                    # SKIPPED -- the coarse feed is what re-acquires this row after a
+                    # cycle slip, and a fine lock that has gone quiet expires on its own.
+                    _sig_c = 0.2
+                    if (args.rrate_coarse_deweight > 1.0
+                            and t0 - rr_fine_t.get(_p, -1e9) <= args.rrate_fine_hold_s):
+                        _sig_c *= args.rrate_coarse_deweight
+                        _n_gov += 1
+                    if _jrr.update_rrate(_k, _y, t_now_abs, args.carrier_hz,
+                                         sigma_hz=_sig_c) is not None:
                         _n_ok += 1
                 _jrr.gauge_rrate()
                 _rows = " ".join(
@@ -6644,10 +6677,11 @@ def main(argv=None, rx=None, publisher=None):
                     for _p in sorted(_rr2_resid))
                 _log_rl("jrr",
                         "JRR[%s%s] rrate m/s: %s | f_car %+.3f+-%.3f Hz "
-                        "(%d/%d accepted this poll; n=%d rej=%d)"
+                        "(%d/%d accepted this poll%s; n=%d rej=%d)"
                         % (args.dr_constellation, "" if rr_full_ok else " CAPPED-FALLBACK",
                            _rows, _jrr.f_carrier(),
                            _jrr.f_carrier_sigma(), _n_ok, len(_rr2_resid),
+                           (", %d PHASE-GOVERNED" % _n_gov) if _n_gov else "",
                            _jrr.n_rrate, _jrr.rrate_rejected), every_s=60.0)
             except Exception as e:
                 _log_rl("jrr-err", "rrate feed skipped: %s" % e, every_s=300.0)
@@ -6699,8 +6733,18 @@ def main(argv=None, rx=None, publisher=None):
                                             _k, _yf + _cmd_mid, t_now_abs, args.carrier_hz,
                                             sigma_hz=args.rrate_phase_sigma) is not None:
                                         _n_fine += 1
+                                        # ACCEPTED fine measurements arm the handoff --
+                                        # not attempts, so a sat whose fine values the
+                                        # gate keeps rejecting stays coarse-governed.
+                                        rr_fine_t[_p] = t0
                     adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
                                      _rec.get("res_cycles")), _cmd_now)
+                # A sat that has left the seed set is RE-ACQUIRING when it returns, which
+                # is the coarse feed's job -- drop its fine lock rather than let a stale
+                # one de-weight the very measurements that must pull it back in.
+                for _dead in [k for k in rr_fine_t if k not in seeds]:
+                    rr_fine_t.pop(_dead, None)
+                    adr_prev.pop(_dead, None)
                 if _jpp:
                     _log_rl("jrrp",
                             "JRRP[%s] fine|coarse Hz (fine in INTERNAL sign): %s%s"
