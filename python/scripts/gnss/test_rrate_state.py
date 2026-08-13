@@ -199,6 +199,34 @@ class TestClosedLoopReference(unittest.TestCase):
                                "resid %.3f of y %.3f" % (prn, resid[prn], y_true))
 
 
+class TestUnalias(unittest.TestCase):
+    """The measured aliasing of deep_rate_hz (2026-08-13 trim probe): values live in
+    (-4.77, +4.77] and out-of-window truth wraps by 9.537. These pin the two probe
+    observations and the bound that keeps unwrapping from running away."""
+    M = 9.537
+
+    def setUp(self):
+        from gnss_broker.fits import unalias
+        self.unalias = unalias
+
+    def test_the_probe_pair(self):
+        # PRN 5: predicted -7.9 after the +5 Hz step, read +1.4 -- one wrap down restores
+        self.assertAlmostEqual(self.unalias(1.4, -7.9, self.M), 1.4 - self.M, places=6)
+        # PRN 15: predicted -6.0, read +3.5
+        self.assertAlmostEqual(self.unalias(3.5, -6.0, self.M), 3.5 - self.M, places=6)
+
+    def test_in_window_untouched(self):
+        self.assertEqual(self.unalias(-3.1, -4.3, self.M), -3.1)
+
+    def test_wrap_bound_holds(self):
+        # a prediction 5 moduli away moves the sample by at most max_wraps
+        self.assertAlmostEqual(self.unalias(0.0, 5 * self.M, self.M, max_wraps=2),
+                               2 * self.M, places=6)
+
+    def test_disabled_modulus_is_identity(self):
+        self.assertEqual(self.unalias(3.5, -6.0, 0.0), 3.5)
+
+
 class TestUnmeasuredReadsAsUnknown(unittest.TestCase):
 
     def test_sigma_is_inf_before_any_measurement(self):

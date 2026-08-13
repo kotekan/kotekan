@@ -227,6 +227,28 @@ def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier
     return code_bias * chip_hz / hops_per_sec
 
 
+def unalias(y, pred, modulus, max_wraps=2):
+    """Move `y` to its alias nearest `pred`: y + k*modulus with k chosen to minimise
+    |y + k*modulus - pred|, |k| <= max_wraps.
+
+    WHY (task #33, measured 2026-08-13). deep_rate_hz is only defined modulo the deep
+    fold's rate-search window: on the CS100 chains every exported value lives in
+    (-4.77, +4.77] Hz and a true residual outside it WRAPS by 9.54 (the +5 Hz trim probe:
+    PRN 5 at -2.9 predicted -7.9 and read +1.4; PRN 15 at -1.0 predicted -6.0 and read
+    +3.5 -- both exactly one wrap). Fed raw, a wrapped sample is off by a full modulus,
+    which is what walked the commanded rows ~1 Hz/min on the first live arm.
+
+    ⚠️ THE LOCK-IN RISK, and why max_wraps is small: unwrapping toward the prediction can
+    CONFIRM a wrong birth forever -- the mod ambiguity is genuinely unresolvable from one
+    band. Bounding |k| keeps the correction local; the cross-band feed (a different
+    modulus sees the same satellite) and the gauge are what break a genuine tie."""
+    if not modulus or modulus <= 0.0:
+        return y
+    k = round((pred - y) / modulus)
+    k = max(-int(max_wraps), min(int(max_wraps), int(k)))
+    return y + k * modulus
+
+
 # --- dead-reckon seed currency (task #30) -----------------------------------------------
 #
 # The two directions of the SAME mapping, kept adjacent so they cannot drift apart. The

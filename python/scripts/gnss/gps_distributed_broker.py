@@ -74,7 +74,7 @@ from gnss_broker.transport import (           # noqa: E402
 from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
-    cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
+    cp_rate_from_code_bias, dr_cp0, dr_seed_phys, unalias,
 )
 from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fit_spectrum_delay,
@@ -1055,6 +1055,17 @@ def main(argv=None, rx=None, publisher=None):
                          "Posts via carrier_trim_hz (NCO derotation, phase-continuous in "
                          "the tracker) and never touches doppler_hz: seed continuity "
                          "beats freshness, measured (deep_snr 221->17 on a 10 s re-pin).")
+    ap.add_argument("--deep-rate-alias-hz", type=float, default=0.0,
+                    help="the modulus of deep_rate_hz's ambiguity (Hz), i.e. the full "
+                         "width of the deep fold's rate-search window; 0 disables "
+                         "unwrapping. MEASURED 9.537 on the CS100 chains (e5a/b2a: every "
+                         "exported value lives in +-4.77 Hz, and the +5 Hz trim probe's "
+                         "out-of-window sats came back wrapped by exactly one modulus). "
+                         "With this set, the rrate feed unwraps each measurement to the "
+                         "alias nearest the state's own prediction (max 2 wraps) before "
+                         "updating -- a wrapped sample fed raw is off by a full modulus, "
+                         "which is what walked the first live arm ~1 Hz/min. Per-chain: "
+                         "the modulus is a property of the chain's fold geometry.")
     ap.add_argument("--rrate-cmd-max-sigma", type=float, default=0.5,
                     help="command a sat's carrier only when its rrate row's 1-sigma (m/s) "
                          "is below this. 0.5 m/s is ~2 Hz at 1176 MHz -- an UNMEASURED "
@@ -6556,7 +6567,17 @@ def main(argv=None, rx=None, publisher=None):
                     # argument: feeding the bare residual would make every commanded sat
                     # read as "solved" and the filter would unlearn its own correction.
                     _y = _rv + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
-                    if _jrr.update_rrate((args.dr_constellation, int(_p)), _y, t_now_abs,
+                    _k = (args.dr_constellation, int(_p))
+                    # UNWRAP to the state's own prediction (--deep-rate-alias-hz). Only
+                    # once the row is MEASURED: unwrapping a birth toward an unmeasured
+                    # prediction of 0 would be a no-op dressed as a correction, and
+                    # unwrapping toward a wide row locks in whatever the first sample
+                    # aliased to. carrier_correction_hz IS the prediction -- the same
+                    # expression the command posts, kept as one function on purpose.
+                    if args.deep_rate_alias_hz > 0.0 and _jrr.rrate_sigma(_k) < 1.0:
+                        _y = unalias(_y, _jrr.carrier_correction_hz(_k, args.carrier_hz),
+                                     args.deep_rate_alias_hz)
+                    if _jrr.update_rrate(_k, _y, t_now_abs,
                                          args.carrier_hz) is not None:
                         _n_ok += 1
                 _jrr.gauge_rrate()
