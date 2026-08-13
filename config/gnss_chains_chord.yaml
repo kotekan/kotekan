@@ -225,7 +225,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # command HOLDS (jrr-nofull log line) until the combiner actually serves them -- so
     # this key is safe to leave armed across the deploy: old binary = loud shadow,
     # new binary = closed loop.
-    rrate-command: true
+    # ⚠️ ARM 4 (15:29-15:37): DISARMED -- commands still walked, but the telltale moved:
+    # rejections EXCEED acceptances ~2:1 (rej 334 / n 190) ON THE UNCOMMANDED e5b FEED
+    # TOO, so the anomaly is in the MEASUREMENT/MODEL, not the loop dynamics: the escape
+    # (rr_escape_runs 8) snap-moves rows under the reject storm and no slew bound can
+    # stabilise a force-snapped estimator. Diagnose in SHADOW: why do full-band
+    # innovations routinely exceed the 6-sigma bar? (q gate admitting junk picks at
+    # large |f| on marginal sats / real drift q_rr under-tracks / actuator state after
+    # the tracker restart unverified.)
+    # rrate-command: true
     trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
