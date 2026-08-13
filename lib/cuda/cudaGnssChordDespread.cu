@@ -83,8 +83,21 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             continue;
         }
 
-        const long long n_m = p.n0 + (long long)mh * p.fft_len;
-        const double C_P = job.cp0 + (double)n_m * job.cps;
+        const long long n_m = p.n0 + (long long)mh * p.fft_len; // arm 0 only (see below)
+        // Intra-record sample offset: exact as a double, and the ONLY thing the per-sample
+        // rates are allowed to multiply now (tasks #52, #54).
+        const double dn = (double)((long long)mh * (long long)p.fft_len);
+        // CODE PHASE FROM A REFERENCE (task #54). This was cp0 + n_m*cps on the ABSOLUTE
+        // sample: n_m*cps reaches 6.1e12 chips at CHORD uptime, where a double's ulp is
+        // ~1e-3 chips, and it re-rolls every hop. Measured GPU-vs-CPU replica error on the
+        // PROMPT row, with the carrier already referenced via ang0: 7.9e-08 at 0.007 days,
+        // 8.2e-07 at 0.068, 9.6e-04 at 0.678, 3.6e-02 at 6.8. Zero at prototype scale, 3.6%
+        // at the real thing -- and WITHIN a record, so no per-record correction can reach it.
+        //
+        // job.cp_ref is the prompt code phase at p.n0, reduced mod code_len on the host in
+        // long double. cps then multiplies only the intra-record offset (<= 3.4e7 samples),
+        // so its rounding contributes ~1e-11 chips instead of ~1e-3.
+        const double C_P = job.cp_ref + dn * job.cps;
 
         // PHASE FROM A REFERENCE, NOT FROM THE ABSOLUTE SAMPLE (task #52, 2026-08-13).
         //
@@ -118,7 +131,6 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         // shipped before 86349ac4d, kept textually intact so the comparison is honest.
         double ang;
         if (p.carrier_phase_from_ref) {
-            const double dn = (double)((long long)mh * (long long)p.fft_len);
             ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
         } else {
             const double pr = job.wc * (double)n_m;

@@ -189,6 +189,22 @@ struct GnssCudaDespread::Impl {
     /// ⚠️ CALLERS MUST PASS THE SAME n0 THE KERNEL USES (par.n0 = window_start + fft_len - 1,
     /// the hop's LAST sample). A first/last mismatch is a constant rotation of the whole
     /// record, and that convention has already cost 52 chips once on the code side.
+    /// Prompt code phase at absolute sample n0, combined-stream chips, reduced mod code_len.
+    /// Task #54 -- the code twin of ang0_for, and long double is load-bearing for the same
+    /// reason: cp0 + n0*cps is ~6e12 chips at CHORD uptime and a double keeps ~1e-3 of a chip
+    /// there, re-rolled every hop. See gnss_cuda::DespreadJob::cp_ref.
+    ///
+    /// Reduced mod code_len so the kernel's gather sees a small argument; the code is periodic
+    /// so this is exact, and it keeps cp_ref from being a large number again by the back door.
+    double cp_ref_for(double cp0, double cps, long long n0) const {
+        long double c = (long double)cp0 + (long double)n0 * (long double)cps;
+        const long double L = (long double)code_len;
+        c = fmodl(c, L);
+        if (c < 0.0L)
+            c += L;
+        return (double)c;
+    }
+
     double ang0_for(int p, double doppler_hz, double ctrim_hz, long long n0) const {
         constexpr long double TWO_PI_L = 6.283185307179586476925286766559005768L;
         const long double f = (long double)bank.carrier_offset(p) + (long double)doppler_hz
@@ -349,8 +365,11 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
         for (int c : sp.covering)
             if (c >= 0 && c < im.n_chan)
                 mask |= (1ULL << c);
-        im.h_jobs[i] = {(double)im.bank.comb_mult() * sp.cp_seed,
+        const double cp0_i = (double)im.bank.comb_mult() * sp.cp_seed;
+        im.h_jobs[i] = {cp0_i,
                         (double)im.bank.comb_mult() * sp.spacing_chips,
+                        // Same n0 as ang0 and par.n0 -- the hop's LAST sample (task #54).
+                        im.cp_ref_for(cp0_i, cps, im.window_start + im.bank.fft_len() - 1),
                         cps,
                         1.0 / cps,
                         wc,
@@ -438,6 +457,7 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
 
         im.h_jobs[i] = {cp0,
                         (double)im.bank.comb_mult() * sp.spacing_chips,
+                        im.cp_ref_for(cp0, cps, window_start_sample + im.bank.fft_len() - 1),
                         cps,
                         1.0 / cps,
                         wc,
@@ -610,6 +630,9 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
             im.h_gains[(size_t)(2 * i + 1) * im.n_chan + c] = make_float2(at.real(), at.imag());
         }
         im.h_pjobs[(size_t)i] = {cp0,
+                                 // BIT-IDENTICAL to the despread's (see PeelJob::cp_ref).
+                                 im.cp_ref_for(cp0, cps,
+                                               window_start_sample + im.bank.fft_len() - 1),
                                  cps,
                                  1.0 / cps,
                                  im.wc_for(sp.p, sp.doppler_hz),

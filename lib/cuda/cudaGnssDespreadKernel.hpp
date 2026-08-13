@@ -36,6 +36,22 @@ struct DespreadJob {
     double cp0;          ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
     double ds;           ///< Early/Late displacement from the prompt (combined-stream chips):
                          ///< row 0 = cp0-ds, row 1 = cp0, row 2 = cp0+ds
+    /// PROMPT CODE PHASE AT THE WINDOW'S REFERENCE SAMPLE (p.n0), combined-stream chips,
+    /// reduced mod code_len on the host in LONG DOUBLE. Task #54.
+    ///
+    /// The code twin of @ref ang0, and found the same way. cp0 + n_m*cps evaluated on the
+    /// ABSOLUTE sample reaches 6.1e12 chips at CHORD uptime, a binade where a double's ulp is
+    /// ~1e-3 chips, and n_m advances every hop so the rounding re-rolls 2048 times per record.
+    /// Measured GPU vs the long-double CPU reference, PROMPT row, with the carrier ALREADY
+    /// referenced via ang0: 7.9e-08 at 0.007 days of uptime, 8.2e-07 at 0.068, 9.6e-04 at
+    /// 0.678, 3.6e-02 at 6.8. Zero at prototype scale, 3.6% at the real instrument.
+    ///
+    /// ⚠️ THIS ERROR IS WITHIN A RECORD, which is why none of #52's per-record phase fixes
+    /// touched it -- they remove constants that cancel inside a record. It hits every
+    /// correlation before any per-record correction is even reached.
+    ///
+    /// Same n0 as ang0 and as m_head_for: window_start + fft_len - 1, the hop's LAST sample.
+    double cp_ref;
     double cps;          ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
     double inv_cps;      ///< 1/cps (tap-boundary indices via multiply, not the costly FP64 divide)
     double wc;           ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
@@ -93,6 +109,9 @@ struct DespreadJob {
 /// boundary the despread's P_HEAD row uses, computed ONCE on the host and shared.
 struct PeelJob {
     double cp0;         ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
+    /// Prompt code phase at p.n0 -- see DespreadJob::cp_ref. MUST be built by the SAME
+    /// expression as the despread's or the replicas stop being bit-identical.
+    double cp_ref;
     double cps;         ///< chips per sample incl. code Doppler (== DespreadJob::cps)
     double inv_cps;     ///< 1/cps
     double wc;          ///< carrier angular rate 2*pi*(f_offset + doppler)/fs

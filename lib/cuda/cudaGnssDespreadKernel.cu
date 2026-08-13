@@ -124,7 +124,15 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         // differs from the unfused form by ~1 ulp of C (~1e-7 chips = 0.03 mm), far below the
         // gather's own float error.
         const long long n_m = p.n0 + (long long)mh * p.fft_len;
-        const double C_P = job.cp0 + (double)n_m * job.cps;
+        const double dn = (double)((long long)mh * (long long)p.fft_len);
+        // CODE PHASE FROM A REFERENCE (task #54). This was cp0 + n_m*cps on the ABSOLUTE sample:
+        // n_m*cps reaches 6.1e12 chips at CHORD uptime, where a double's ulp is ~1e-3 chips, and it
+        // re-rolls every hop. Measured GPU-vs-CPU replica error on the PROMPT row, carrier already
+        // referenced via ang0: 7.9e-08 / 8.2e-07 / 9.6e-04 / 3.6e-02 at 0.007 / 0.068 / 0.678 / 6.8
+        // days. Zero at prototype scale, 3.6% at the real thing -- and WITHIN a record, so no
+        // per-record correction can reach it. cp_ref is the prompt code phase at p.n0, reduced mod
+        // code_len on the host in long double; cps now multiplies only the intra-record offset.
+        const double C_P = job.cp_ref + dn * job.cps;
 
         // Carrier phasor pa = e^{i wc n_m}: range-reduce in DOUBLE, trig in float. ONE per hop
         // for the whole quad -- E/P/L share a Doppler, and P_HEAD *is* the prompt.
@@ -135,8 +143,7 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         // constants are precisely what the cross-record estimators integrate.
         double ang;   // A/B arm, task #52/#55 -- see DespreadParams::carrier_phase_from_ref
         if (p.carrier_phase_from_ref) {
-            const double dn_ = (double)((long long)mh * (long long)p.fft_len);
-            ang = job.ang0 + fmod(job.wc * dn_, 2.0 * M_PI);
+            ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
         } else {
             const double pr_ = job.wc * (double)n_m;
             const double er_ = fma(job.wc, (double)n_m, -pr_);
@@ -443,12 +450,19 @@ __global__ void gnss_peel_kernel(const T* __restrict__ data,           // [nchan
                 continue;
             const int mh = base + t * (int)blockDim.x;
             const long long n_m = p.n0 + (long long)mh * p.fft_len;
-            const double C_P = job.cp0 + (double)n_m * job.cps;
+            const double dn = (double)((long long)mh * (long long)p.fft_len);
+            // CODE PHASE FROM A REFERENCE (task #54). This was cp0 + n_m*cps on the ABSOLUTE sample:
+            // n_m*cps reaches 6.1e12 chips at CHORD uptime, where a double's ulp is ~1e-3 chips, and it
+            // re-rolls every hop. Measured GPU-vs-CPU replica error on the PROMPT row, carrier already
+            // referenced via ang0: 7.9e-08 / 8.2e-07 / 9.6e-04 / 3.6e-02 at 0.007 / 0.068 / 0.678 / 6.8
+            // days. Zero at prototype scale, 3.6% at the real thing -- and WITHIN a record, so no
+            // per-record correction can reach it. cp_ref is the prompt code phase at p.n0, reduced mod
+            // code_len on the host in long double; cps now multiplies only the intra-record offset.
+            const double C_P = job.cp_ref + dn * job.cps;
             // Phase from job.ang0 -- see cudaGnssChordDespread.cu (task #52).
             double ang;   // A/B arm, task #52/#55 (peel: MUST match the despread's arm)
             if (p.carrier_phase_from_ref) {
-                const double dn_ = (double)((long long)mh * (long long)p.fft_len);
-                ang = job.ang0 + fmod(job.wc * dn_, 2.0 * M_PI);
+                ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
             } else {
                 const double pr_ = job.wc * (double)n_m;
                 const double er_ = fma(job.wc, (double)n_m, -pr_);

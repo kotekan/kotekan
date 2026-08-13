@@ -175,6 +175,17 @@ int main(int argc, char** argv) {
     const auto& fcode = bank.full_code(0); // slot 0 == our PRN
     std::vector<int8_t> code8(fcode.begin(), fcode.end());
 
+    // Mirrors GnssCudaDespread::Impl::cp_ref_for. Duplicated on purpose: this test is the
+    // independent check, and calling production's helper would make it agree with itself.
+    const auto cp_ref_of = [&](double cp0, long long n0) {
+        long double c = (long double)cp0 + (long double)n0 * (long double)cps;
+        const long double L = (long double)code8.size();
+        c = fmodl(c, L);
+        if (c < 0.0L)
+            c += L;
+        return (double)c;
+    };
+
     std::vector<float2> phiA((size_t)n_chan * (Lf + 1)), phiB((size_t)n_chan * (Lf + 1));
     for (int c = 0; c < n_chan; ++c)
         for (int k = 0; k <= Lf; ++k) {
@@ -221,6 +232,7 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(float2), cudaMemcpyHostToDevice));
     for (int b = 0; b < n_spec; ++b) // component -> combined chips, as production does
         jobs[b] = {(double)comb * ftrials[b].cp_prompt, (double)comb * spacing,
+                   cp_ref_of((double)comb * ftrials[b].cp_prompt, window_start + fft_len - 1),
                    cps,           1.0 / cps,
                    wc,            ang0_of(window_start + fft_len - 1),
                    0,             (int)code8.size(), all_mask,
@@ -375,6 +387,8 @@ int main(int argc, char** argv) {
         CK(cudaMemcpy(d_gain, gains.data(), gains.size() * sizeof(float2),
                       cudaMemcpyHostToDevice));
         gnss_cuda::PeelJob pj{(double)comb * ftrials[0].cp_prompt,
+                              cp_ref_of((double)comb * ftrials[0].cp_prompt,
+                                        window_start + fft_len - 1),
                               cps,
                               1.0 / cps,
                               wc,
