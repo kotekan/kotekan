@@ -267,7 +267,8 @@ station_id_t ICETelescope::element_index_to_station_id(uint64_t el_idx, ElementO
         FATAL_ERROR("Element idx {:d} >= num_elements {:d}", el_idx, _num_elements);
 
     if (ord == ElementOrder::CHIMECorrelator) {
-        return _correlator_stations.at(el_idx);
+        //return _correlator_stations.at(el_idx);
+        return _input_reorder.at(el_idx);
     } else if (ord == ElementOrder::CHIMECylinder) {
         return el_idx;
     } else if (ord == ElementOrder::CHIMEBeamformer) {
@@ -285,7 +286,8 @@ uint64_t ICETelescope::station_id_to_element_index(station_id_t st_id, ElementOr
         FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
 
     if (ord == ElementOrder::CHIMECorrelator) {
-        return _input_reorder.at(st_id);
+        //return _input_reorder.at(st_id);
+        return _correlator_stations.at(st_id);
     } else if (ord == ElementOrder::CHIMECylinder) {
         return st_id;
     } else if (ord == ElementOrder::CHIMEBeamformer) {
