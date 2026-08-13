@@ -238,16 +238,20 @@ class TestClosedLoopLag(unittest.TestCase):
         for prn, e in err.items():
             self.assertLess(e, 0.8, "PRN %d standing error %.2f Hz" % (prn, e))
 
-    def test_the_bound_is_what_does_it(self):
-        """Same loop, no slew bound: with realistic measurement noise the misreference
-        feeds back and the loop must end up WORSE than the bounded one by a clear margin
-        -- this is the arm-3 walk in miniature. (Deterministically the unbounded loop can
-        look fine; the instability needs noise to express, which is exactly why arm 3
-        passed a desk-check and walked on sky.)"""
+    def test_the_adopt_escape_was_the_amplifier(self):
+        """HISTORY, kept as a test. When the escape ADOPTED the rejected measurement,
+        this sim showed the unbounded loop ending >2x worse than the slew-bounded one --
+        the lag misreference fed noise into reject runs, and every 8th rejection SNAPPED
+        the row (the arm-3 walk, and live PRN 32's -7 -> -14.5 Hz in arm 7). With the
+        escape re-opening P WITHOUT adopting, the amplifier is gone: both loops converge
+        to the same filter-limited floor. The slew bound stays as defense-in-depth for
+        transients; this pins that the ESCAPE no longer manufactures instability."""
         bounded = max(self._run(slew=0.5, meas_noise=0.3).values())
         free = max(self._run(slew=0.0, meas_noise=0.3).values())
-        self.assertGreater(free, 2.0 * bounded,
-                           "free %.2f vs bounded %.2f Hz" % (free, bounded))
+        self.assertLess(bounded, 0.8)
+        self.assertLess(free, 0.8,
+                        "free loop diverged (%.2f Hz): the escape is amplifying again"
+                        % free)
 
 
 class TestFullBandFields(unittest.TestCase):

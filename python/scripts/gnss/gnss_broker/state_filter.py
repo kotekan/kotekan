@@ -976,12 +976,22 @@ class JointReceiverState:
             # SATELLITE and re-open its row rather than the estimate that has stopped
             # predicting it. Same principle as the code path's escape.
             if self._rr_reject_run[key] >= self.rr_escape_runs:
+                # RE-OPEN, DO NOT ADOPT (2026-08-13, the PRN 32 walk). The code filter's
+                # escape snaps x to the rejected measurement because there a sustained
+                # rejection means a REAL satellite the gate wrongly excluded. On carrier
+                # rows the sustained-rejection population is different: weak sats whose
+                # rate picks scatter multi-Hz emit to emit -- junk the gate is RIGHT to
+                # reject. Snapping adopts the junk, and the command then walks (measured:
+                # -7 -> -14.5 Hz in 4 min). Re-opening P alone gets both cases right:
+                # sigma growth de-commands the sat (the --rrate-cmd-max-sigma gate), and
+                # a genuinely mis-converged row is pulled in by NORMAL updates the moment
+                # its measurements turn consistent -- through a wide-open gate.
                 i_ = self._rr_idx[key]
-                self.x[i_] += innov * -(self.C_LIGHT / f_b)
                 self.P[i_, i_] = self.sigma_rr0 ** 2
                 self._rr_reject_run[key] = 0
-                self._note("rrate ESCAPE %s: %d consistent rejections -- reopening the row"
-                           % (self._key_str(key), self.rr_escape_runs))
+                self._note("rrate ESCAPE %s: %d consistent rejections -- re-opening the "
+                           "row WITHOUT adopting (x held)" % (self._key_str(key),
+                                                              self.rr_escape_runs))
             else:
                 self._note("rrate REJECT %s: innov %+.3f Hz vs %.1f-sigma bar %.3f"
                            % (self._key_str(key), innov, self.innov_nsigma,
