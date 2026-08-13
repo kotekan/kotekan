@@ -41,6 +41,19 @@ common:
   seed-doppler: auto
   dll-gain: 0.25
   carrier-gain: 0.0
+  # -- task #33 P3: the per-sat carrier state (rrate rows + receiver f_carrier) ----------
+  # SHADOW ON EVERYWHERE (2026-08-13): measurement-only by construction -- with
+  # rrate-command off this cannot change a seed or a POST. Every chain feeds so the
+  # cross-band combination actually happens: gal_e5a + gal_e5b land each Galileo sat's
+  # two carriers (1.0261 apart) on ONE m/s row, which is the point of the state. Watch
+  # the JRR[...] log lines: per-sat rrate should be STABLE (the ~600 s plant oscillation
+  # was per-sat model error of +-1-6 chips), and E5a/E5b must agree per sat.
+  rrate-state: true
+  # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
+  # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
+  # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
+  # control: gal_e5a commanded vs bds_b2a open on the SAME carrier is the clean pair.
+  # A before/after across restarts cannot resolve it -- the sky churns faster.
   code-bias-alpha: 0.05
   code-bias-min-sats: 2
   fit-gap-s: 3600

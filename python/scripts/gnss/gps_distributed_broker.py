@@ -1031,6 +1031,36 @@ def main(argv=None, rx=None, publisher=None):
                          "masked sat is still SEEDED normally, so nothing on sky changes. "
                          "Mask a STRONG sat -- masking a weak one tests nothing, since its "
                          "own measurements were not holding it up anyway.")
+    ap.add_argument("--rrate-state", action="store_true",
+                    help="P3 step 2 (task #33): FEED the receiver-wide joint state's "
+                         "per-satellite ORBITAL range-rate rows (m/s, band-shared) from "
+                         "this chain's deep_rate_hz residuals -- the validated carrier "
+                         "measurement (q-gated, continuity-gated, slew-gated by "
+                         "rate_residuals; NEVER carrier_hz_resid, which is documented "
+                         "signal-free at CHORD SNR). Measurement-only: cannot change a "
+                         "seed or a POST. This is the shadow phase, and the JRR log line "
+                         "is where sky validation happens. Per-CHAIN key on purpose: "
+                         "E5a+E5b feeding lands both bands on ONE row per Galileo sat, "
+                         "which is the cross-band combination the state exists for.")
+    ap.add_argument("--rrate-command", action="store_true",
+                    help="P3 step 3 (task #33): the seed's carrier command comes from the "
+                         "joint state's carrier_correction_hz() -- receiver-wide f_carrier "
+                         "plus this sat's orbital rrate, scaled to THIS band -- posted as "
+                         "carrier_trim_hz, REPLACING the trim-loop value rather than "
+                         "adding to it. One command per (satellite, band) is the point: "
+                         "#52's root was two controllers on one state. Turning this on is "
+                         "what closes the carrier loop. Implies --rrate-state. Per-CHAIN "
+                         "key so half the fleet can run each arm and be compared IN ONE "
+                         "POLL (the sky churns faster than a restart A/B can resolve). "
+                         "Posts via carrier_trim_hz (NCO derotation, phase-continuous in "
+                         "the tracker) and never touches doppler_hz: seed continuity "
+                         "beats freshness, measured (deep_snr 221->17 on a 10 s re-pin).")
+    ap.add_argument("--rrate-cmd-max-sigma", type=float, default=0.5,
+                    help="command a sat's carrier only when its rrate row's 1-sigma (m/s) "
+                         "is below this. 0.5 m/s is ~2 Hz at 1176 MHz -- an UNMEASURED "
+                         "row reads sigma=inf by design (a dead feed must not pass for a "
+                         "healthy one), so this also gates births: a sat is commanded "
+                         "only after its row has actually converged.")
     ap.add_argument("--dr-slew-cap", type=float, default=0.05,
                     help="Per-event ceiling (chips) on the dead-reckon slew -- how far a "
                          "seed may be dragged toward the model in one cycle. ⚠️ 0 DISABLES "
@@ -1949,6 +1979,9 @@ def main(argv=None, rx=None, publisher=None):
     band_id = "%.2fMHz" % (args.carrier_hz / 1e6)
     if args.joint_consume and not args.joint_shadow:
         args.joint_shadow = True   # a consumer without the solve running would read zeros
+    if args.rrate_command and not args.rrate_state:
+        args.rrate_state = True    # same rule: the command gates on the row's sigma, and
+                                   # only the feed can ever bring that below infinity
 
     base = args.rest_url.rstrip("/")
     detectors = parse_endpoints(args.detectors, base)
@@ -2488,6 +2521,11 @@ def main(argv=None, rx=None, publisher=None):
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
+    rr_cmd_applied = {}  # prn -> carrier command POSTED last poll (#33 P3). The rrate feed's
+                         # reference: deep_rate_hz is measured on records already derotated
+                         # by this, so the feed adds it back to reference y at the base seed.
+                         # Rebuilt each poll at POST time; a sat that stops being commanded
+                         # drops out, so a stale command can never re-enter a measurement.
     rate_unit_hop = [0]  # [emit spacing in hops], LEARNED -- see rate_residuals' continuity gate
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
@@ -6435,14 +6473,28 @@ def main(argv=None, rx=None, publisher=None):
         # Scope to the detector chain (gps_l5): its carrier bias is actually solved, so
         # its consensus is the best-defined "LO minus solved bias" residual. A per-band
         # f_carrier (tau_band-style) is the eventual right shape if other chains need it.
-        if (args.joint_shadow and args.detectors and args.carrier_source == "rate"
-                and args.carrier_gain <= 0.0):
+        # ⚠️ ONE rate_residuals CALL PER POLL, shared by its three consumers (the f_carrier
+        # consensus feed, the rrate per-sat feed, and the trim loop). The call MUTATES its
+        # continuity state (prev_hop/prev_val/unit_hop): a second call in the same poll
+        # reads "the same window again" for every PRN and returns {} -- so the consumers
+        # must share one result, never each ask.
+        _rr_resid, _rr_cons = {}, None
+        if (args.carrier_source == "rate"
+                and (args.carrier_gain > 0.0 or args.rrate_state
+                     or (args.joint_shadow and args.detectors))):
             try:
-                _fr_resid, _fr_cons = rate_residuals(
-                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, None,
+                _rr_resid, _rr_cons = rate_residuals(
+                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz,
+                    _log if args.carrier_gain > 0.0 else None,
                     prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap,
                     prev_val=rate_prev_val, max_step=args.carrier_rate_max_step,
                     unit_hop=rate_unit_hop)
+            except Exception as e:
+                _log_rl("rate-resid-err", "rate_residuals skipped: %s" % e, every_s=300.0)
+        if (args.joint_shadow and args.detectors and args.carrier_source == "rate"
+                and args.carrier_gain <= 0.0):
+            try:
+                _fr_resid, _fr_cons = _rr_resid, _rr_cons
                 # A consensus over 1-2 sats is a rotating PER-SAT sample, not a common
                 # mode: measured 01:05-01:08, successive "consensuses" swung -29.6 ->
                 # -14.3 -> +38.6 -> +18.3 Hz as different single sats passed the q gate
@@ -6461,7 +6513,12 @@ def main(argv=None, rx=None, publisher=None):
                             % (" ".join("%d:%+.1f" % (p_, r_) for p_, r_
                                         in sorted(_fr_resid.items())),
                                0.5 * args.hops_per_sec / 2048.0), every_s=30.0)
-                if _fr_cons is not None and len(_fr_resid) >= 3:
+                # SUPERSEDED BY THE PER-SAT FEED when --rrate-state is on: the consensus
+                # is a weighted mean of the SAME residuals update_rrate consumes one by
+                # one, so feeding both is the same data twice per poll (correlated
+                # measurements the filter would treat as independent -> overconfident).
+                # Under the rrate gauge the common mode lands on f_carrier anyway.
+                if _fr_cons is not None and len(_fr_resid) >= 3 and not args.rrate_state:
                     _vals = sorted(_fr_resid.values())
                     _sprd = _vals[-1] - _vals[0]
                     _jfc = _joint_state(rx, band_id, args)
@@ -6476,18 +6533,73 @@ def main(argv=None, rx=None, publisher=None):
                                 every_s=60.0)
             except Exception as e:
                 _log_rl("jfcar-err", "f_carrier feed skipped: %s" % e, every_s=300.0)
+
+        # 3d'. rrate FEED (task #33 P3 step 2, --rrate-state). Per-satellite ORBITAL
+        # range-rate-error rows (m/s, band-shared) in the RECEIVER-WIDE joint state, fed
+        # from this chain's per-sat rate residuals. Each measurement updates BOTH the sat's
+        # rrate row and the shared f_carrier through one H -- the two are degenerate within
+        # a band and separated only by what is shared across satellites (the clk/b_sat
+        # construction, on the carrier). E5a and E5b feeding the same Galileo sat land on
+        # ONE row through two carriers 1.0261 apart: cross-band information ADDS instead of
+        # being fitted twice, which is the entire point of the state.
+        # MEASUREMENT-ONLY unless --rrate-command is also set: touches no seed, no POST.
+        if args.rrate_state and _rr_resid:
+            try:
+                _jrr = rx.joint_receiver(band_id, CODE_LEN)
+                _n_ok = 0
+                for _p, _rv in sorted(_rr_resid.items()):
+                    # THE REFERENCE. deep_rate_hz is measured on records the tracker
+                    # already derotated by the commanded trim, so what the search reports
+                    # is what REMAINS. Add the standing command back so y is referenced to
+                    # the chain's BASE seed -- the same value regardless of what the last
+                    # command happened to be. A frequency from a reference, never from an
+                    # argument: feeding the bare residual would make every commanded sat
+                    # read as "solved" and the filter would unlearn its own correction.
+                    _y = _rv + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                    if _jrr.update_rrate((args.dr_constellation, int(_p)), _y, t_now_abs,
+                                         args.carrier_hz) is not None:
+                        _n_ok += 1
+                _jrr.gauge_rrate()
+                _rows = " ".join(
+                    "%d:%+.2f+-%s" % (_p, _jrr.rrate((args.dr_constellation, int(_p))),
+                                      ("%.2f" % _s if (_s := _jrr.rrate_sigma(
+                                          (args.dr_constellation, int(_p)))) < 99.0
+                                       else "inf"))
+                    for _p in sorted(_rr_resid))
+                _log_rl("jrr",
+                        "JRR[%s] rrate m/s: %s | f_car %+.3f+-%.3f Hz "
+                        "(%d/%d accepted this poll; n=%d rej=%d)"
+                        % (args.dr_constellation, _rows, _jrr.f_carrier(),
+                           _jrr.f_carrier_sigma(), _n_ok, len(_rr_resid),
+                           _jrr.n_rrate, _jrr.rrate_rejected), every_s=60.0)
+            except Exception as e:
+                _log_rl("jrr-err", "rrate feed skipped: %s" % e, every_s=300.0)
+        # S2 OBSERVER: the shadow surface for sky validation (present even when the feed
+        # produced nothing this poll, so a dead feed shows n=0 rather than vanishing).
+        if state_w is not None and args.rrate_state:
+            try:
+                _jro = rx.joint_receiver(band_id, CODE_LEN)
+                _ks = [k for k in _jro._rr_idx if k[0] == args.dr_constellation]
+                _vs = sorted(_jro.rrate(k) for k in _ks)
+                state_w.observe(
+                    "rrate",
+                    n=len(_ks),
+                    median_mps=(statistics.median(_vs) if _vs else None),
+                    spread_mps=((_vs[-1] - _vs[0]) if _vs else None),
+                    f_carrier_hz=(_jro.f_carrier()
+                                  if _jro.f_carrier_sigma() != float("inf") else None),
+                    rejected=_jro.rrate_rejected)
+            except Exception:
+                pass
+
         if args.carrier_gain > 0.0:
             for _p in [p for p in _trim_force if p in seeds]:
                 car_trim[_p] = _trim_force.pop(_p)
                 _log("TRIM FORCE (bench): PRN %d car_trim POISONED to %+.1f Hz"
                      % (_p, car_trim[_p]))
-            rate_resid, rate_consensus = {}, None
-            if args.carrier_source == "rate":
-                rate_resid, rate_consensus = rate_residuals(
-                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, _log,
-                    prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap,
-                    prev_val=rate_prev_val, max_step=args.carrier_rate_max_step,
-                    unit_hop=rate_unit_hop)
+            # (computed once above -- see the shared-call note; {} when carrier_source
+            #  is not "rate", which preserves the old carrier_hz_resid fallback below)
+            rate_resid, rate_consensus = _rr_resid, _rr_cons
             car_report = []
             for prn in list(seeds):
                 if prn in probe_set:
@@ -6933,6 +7045,23 @@ def main(argv=None, rx=None, publisher=None):
             for prn in seeds:
                 car_trim[prn] = _ctc
 
+        # -- P3 CONSUMER (task #33, --rrate-command): ONE carrier command per (sat, band) --
+        # carrier_correction_hz() = receiver-wide f_carrier + this sat's orbital rrate,
+        # scaled to THIS band. Posted as carrier_trim_hz (NCO derotation -- a frequency
+        # step is phase-continuous in the tracker), REPLACING the trim-loop value: two
+        # controllers on one state is the #52 disease this exists to end. doppler_hz is
+        # never touched -- seed continuity beats freshness, measured.
+        _jrc = None
+        if args.rrate_command:
+            try:
+                _j = rx.joint_receiver(band_id, CODE_LEN)
+                # No receiver-wide term solved yet -> nothing to command. The sigma gate
+                # below then handles per-sat convergence one row at a time.
+                _jrc = _j if _j.f_carrier_sigma() != float("inf") else None
+            except Exception:
+                _jrc = None
+        _rr_cmd_new = {}
+
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
         bit_src, bit_known = {}, {}
@@ -6942,6 +7071,19 @@ def main(argv=None, rx=None, publisher=None):
                 d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
+            if _jrc is not None and prn not in probe_set:
+                # Probes excepted for the trim loop's own reason: no carrier, and a moving
+                # trim moves the REPORTED Doppler, which the beam map's churn gate reads
+                # as sky. A sat whose row has not converged keeps the trim-loop value
+                # (usually 0 on CHORD): commanding from a wide row would inject the
+                # filter's own transient into the NCO.
+                _k = (args.dr_constellation, int(prn))
+                if _jrc.rrate_sigma(_k) <= args.rrate_cmd_max_sigma:
+                    _cmd = _jrc.carrier_correction_hz(_k, args.carrier_hz)
+                    if args.carrier_max_hz > 0.0:
+                        _cmd = max(-args.carrier_max_hz, min(args.carrier_max_hz, _cmd))
+                    d["carrier_trim_hz"] = _cmd
+                    _rr_cmd_new[prn] = _cmd
             if prn in car_repin_pending:
                 # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
                 # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
@@ -7038,6 +7180,18 @@ def main(argv=None, rx=None, publisher=None):
                 bit_known[_bsrc] = bit_known.get(_bsrc, 0) + sum(
                     1 for t in d["nav_bits"].values() for b in t["bits"] if b)
             payload.append(d)
+        # The commands actually shipped this poll become the rrate feed's reference next
+        # poll. REBUILT, not updated: a sat that stopped being commanded (row widened, seed
+        # dropped) must fall back to referencing car_trim/0, or a stale command would
+        # silently re-enter its measurements forever.
+        rr_cmd_applied.clear()
+        rr_cmd_applied.update(_rr_cmd_new)
+        if _rr_cmd_new:
+            _log_rl("jrr-cmd",
+                    "JRR-CMD[%s]: %s Hz (rrate rows -> carrier_trim_hz, %d sat(s))"
+                    % (args.dr_constellation,
+                       " ".join("%d:%+.2f" % kv for kv in sorted(_rr_cmd_new.items())),
+                       len(_rr_cmd_new)), every_s=60.0)
         # WHERE THE PEEL'S SIGNS ACTUALLY CAME FROM this cycle. Without this the only symptom
         # of a source that silently supplies nothing is `nobits` in a health line 10 s later on
         # a different process, which is what made the 30 s-horizon bug hard to see.

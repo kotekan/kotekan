@@ -154,6 +154,51 @@ class TestTheBugsFoundWhileBuilding(unittest.TestCase):
                         % s.rrate(11))
 
 
+class TestClosedLoopReference(unittest.TestCase):
+    """THE BROKER'S REFERENCE RULE (--rrate-command). deep_rate_hz is measured on records
+    the tracker already derotated by the commanded trim, so the broker must feed
+    y = residual + command_applied -- the value referenced to the BASE seed. This class is
+    the closed-loop demonstration of why: get the reference wrong and the loop is not
+    noisy, it is WRONG BY HALF, at equilibrium, forever, with every gate green."""
+
+    def _run_loop(self, add_back, n=300):
+        truth = {11: -3.0, 21: 2.0, 28: 1.0}
+        fcar = 0.5
+        s = JointReceiverState(code_len=10230.0)
+        cmd = {p: 0.0 for p in truth}
+        resid = {}
+        for k in range(n):
+            for prn, rr in truth.items():
+                y_true = y_of(rr, fcar, F_E5A)
+                resid[prn] = y_true - cmd[prn]              # what deep_rate_hz reports
+                y_fed = resid[prn] + (cmd[prn] if add_back else 0.0)
+                s.update_rrate(prn, y_fed, 100.0 + k, F_E5A)
+            s.gauge_rrate()
+            for prn in truth:                                # next poll's command
+                cmd[prn] = s.carrier_correction_hz(prn, F_E5A)
+        return truth, fcar, resid
+
+    def test_adding_the_command_back_closes_the_loop(self):
+        truth, fcar, resid = self._run_loop(add_back=True)
+        for prn in truth:
+            self.assertLess(abs(resid[prn]), 0.05,
+                            "PRN %d standing residual %.3f Hz" % (prn, resid[prn]))
+
+    def test_feeding_the_bare_residual_parks_at_half(self):
+        """The equilibrium is exact: feed y_true - cmd while commanding the prediction and
+        the fixed point is cmd = y_true/2 -- a permanent 50%% residual that no gate flags
+        (measurements accepted, sigma converged, commands stable). This is what the broker
+        would do without rr_cmd_applied, and why that dict exists."""
+        truth, fcar, resid = self._run_loop(add_back=False)
+        for prn, rr in truth.items():
+            y_true = y_of(rr, fcar, F_E5A)
+            if abs(y_true) < 1.0:
+                continue                                     # too small to discriminate
+            self.assertGreater(abs(resid[prn]), 0.3 * abs(y_true),
+                               "PRN %d: bare-residual feed should park near y/2, got "
+                               "resid %.3f of y %.3f" % (prn, resid[prn], y_true))
+
+
 class TestUnmeasuredReadsAsUnknown(unittest.TestCase):
 
     def test_sigma_is_inf_before_any_measurement(self):
