@@ -220,6 +220,14 @@ private:
     size_t _in_frame_len = 0, _out_frame_len = 0;
     std::vector<char> _ctl_stage; ///< host staging for the FrameHdr + PrnCtl control block
     bool _uploaded_static = false;
+
+    /// RE-PIN PHASE STEP (task #52), per PRN slot, across frames and records. Identical
+    /// construction and identical reason as cudaGnssInject's -- see that header, and
+    /// gnss_gpu::PrnCtl::dcyc for why the subtraction has to happen here in the Doppler domain.
+    /// Lives on the COMMAND, not on cudaGnssChordTrackState, so path A and path B keep separate
+    /// histories when both run against the same state on one node.
+    std::vector<double> _dop_prev;
+    std::vector<uint8_t> _dop_prev_ok;
 };
 
 #endif // CUDA_GNSS_CHORD_TRACK_HPP

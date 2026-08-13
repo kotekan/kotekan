@@ -60,6 +60,12 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
 
     const int n_rec = S.n_hops_frame / S.hops_per_record;
     _h_slot2spec.assign((size_t)n_rec * S.n_prn, -1);
+    // Re-pin phase-step history (task #52). Not "ok" until a PRN has produced one record, so a
+    // cold start and a returning seed both break the arc rather than folding a step against
+    // whatever the slot happened to hold.
+    _dop_prev.assign((size_t)S.n_prn, 0.0);
+    _t_prev.assign((size_t)S.n_prn, 0.0);
+    _dop_prev_ok.assign((size_t)S.n_prn, 0);
 
     // M5 control block: the epl layout minus corr (see the header). Sized for the worst case
     // (every PRN active in every record), which is what gnss_gpu::max_jobs already encodes.
@@ -189,8 +195,13 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         for (int p = 0; p < S.n_prn; ++p) {
             slot2spec[p] = -1;
             const auto& sd = seeds[(size_t)p];
-            if (!sd.have)
+            if (!sd.have) {
+                // Seed gone (set, expired, never acquired): the replica phase history is
+                // meaningless across the gap, so drop it. The next record this PRN produces
+                // emits reanchored = 1 and the assembler breaks the arc.
+                _dop_prev_ok[(size_t)p] = 0;
                 continue;
+            }
 
             // Same propagation as the tracker (gnssSeedTransport) -- replicas cannot fork.
             // No DLL trim here (the injector has no loop); A/B against code_trim: false.
@@ -215,9 +226,28 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             // PrnCtl, same contract as cudaGnssChordTrack's pass-1 block so the SHIPPED
             // assembler can consume path B unchanged. job0 indexes the 4 rows (E/P/L/PH) this
             // spec will occupy in the consumer's corr/energy arrays.
+            // THE RE-PIN PHASE STEP (task #52). propagate_seed just handed back this record's
+            // Doppler; the replica's carrier phase is 2*pi*(f_offset + dop)*t_abs, absolutely
+            // anchored, so a change in dop since the previous record steps that phase by
+            // (dop - dop_prev)*t_abs cycles -- 109-1127 of them at 3.37 days of uptime.
+            // Subtract HERE, in the Doppler domain, while the difference still has full
+            // precision (see PrnCtl::dcyc), and hand the assembler the finished step.
+            //
+            // t_abs uses THIS record's wstart for both terms: the step being described is the
+            // phase difference AT THIS INSTANT between a replica built from the old Doppler and
+            // one built from the new, which is what the despread actually swapped.
+            const double t_abs = (double)wstart / S.sample_rate;
+            const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
+            const double dcyc =
+                have_hist ? (pr.doppler_hz - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            _dop_prev[(size_t)p] = pr.doppler_hz;
+            _t_prev[(size_t)p] = t_abs;
+            _dop_prev_ok[(size_t)p] = 1;
+
             gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
             c.run = 1;
-            c.reanchored = 0;
+            c.reanchored = have_hist ? 3 : 1;
+            c.dcyc = dcyc;
             c.job0 = (n_jobs_frame + (int)specs.size()) * gnss_gpu::ROWS_PLAIN;
             c.fcar_report = (float)pr.doppler_hz;
             c.n_owned = (float)S.n_chan;

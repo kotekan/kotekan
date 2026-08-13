@@ -274,6 +274,9 @@ cudaGnssChordTrack::cudaGnssChordTrack(Config& config, const std::string& unique
     _in_frame_len = (size_t)S.n_hops_frame * S.frame_chan_stride * S.elem_stride;
     _out_frame_len = gnss_gpu::frame_bytes(S.n_prn, S.n_chan, gnss_gpu::ROWS_PLAIN, S.n_elem);
     _ctl_stage.resize(gnss_gpu::off_corr(S.n_prn));
+    // Re-pin phase-step history (task #52); not "ok" until a PRN has produced one record.
+    _dop_prev.assign((size_t)S.n_prn, 0.0);
+    _dop_prev_ok.assign((size_t)S.n_prn, 0);
 
     if (S.trim_ref_elem < 0 || S.trim_ref_elem >= S.n_elem)
         FATAL_ERROR("cudaGnssChordTrack: trim_ref_elem {:d} outside [0, {:d})", S.trim_ref_elem,
@@ -532,8 +535,12 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
             const auto& sd = seeds[(size_t)p];
             c.job0 = -1;
-            if (!sd.have || seq0 < 0)
+            if (!sd.have || seq0 < 0) {
+                // No seed (or no absolute time yet): the replica phase history cannot bridge
+                // the gap, so drop it -- the next record emits reanchored = 1. See #52.
+                _dop_prev_ok[(size_t)p] = 0;
                 continue;
+            }
 
             // PROPAGATE IN THE PHASE DOMAIN, NEVER IN THE ARGUMENT DOMAIN (2026-07-31).
             // The arithmetic (and the full argument for it) lives in gnssSeedTransport, so the
@@ -567,8 +574,19 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             sp.ctrim_hz = sd.ctrim_hz;
             sp.covering = S.covering;
 
+            // THE RE-PIN PHASE STEP (task #52). Same construction as cudaGnssInject's -- the
+            // replica's carrier phase is 2*pi*(f_offset + dop)*t_abs and dop moves every
+            // record, so the phase steps by (dop - dop_prev)*t_abs cycles. Subtracted here, in
+            // the Doppler domain, before f_offset swamps the precision (PrnCtl::dcyc).
+            const double t_abs = (double)wstart / S.sample_rate;
+            const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
+            const double dcyc = have_hist ? (dop - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            _dop_prev[(size_t)p] = dop;
+            _dop_prev_ok[(size_t)p] = 1;
+
             c.run = 1;
-            c.reanchored = 0;
+            c.reanchored = have_hist ? 3 : 1;
+            c.dcyc = dcyc;
             c.job0 = (int)specs.size() * gnss_gpu::ROWS_PLAIN + n_out_rows;
             c.fcar_report = (float)dop;
             c.n_owned = (float)S.n_chan;

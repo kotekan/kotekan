@@ -101,6 +101,21 @@ private:
     bool _uploaded_static = false;
     uint64_t _frames = 0;
 
+    /// RE-PIN PHASE STEP (task #52), per PRN slot, carried ACROSS frames and records.
+    ///
+    /// propagate_seed runs per record, so the replica's Doppler -- and therefore its
+    /// ABSOLUTELY-anchored carrier phase, 2*pi*fcar*t_abs -- moves every record. The step is
+    /// (dop - dop_prev)*t_abs, which at 3.37 days of uptime is 109-1127 CYCLES per record on
+    /// sky. The assembler has always known how to fold that out (PrnCtl::reanchored == 2) and
+    /// this producer never told it, so the step went into every correlation and read downstream
+    /// as a per-record common phase that is "white in time". It is not white; it is this.
+    ///
+    /// Kept in the DOPPLER domain on purpose: the difference must be taken before f_offset
+    /// (1.176 GHz) is added, or cancellation costs 0.4 rad. See PrnCtl::dcyc.
+    std::vector<double> _dop_prev;  ///< previous record's propagated Doppler, Hz
+    std::vector<double> _t_prev;    ///< and the absolute time it was pinned at, s
+    std::vector<uint8_t> _dop_prev_ok; ///< 0 => no history: emit reanchored = 1 (break the arc)
+
     /// M5: the epl-format CONTROL BLOCK this command publishes for the path-B consumer --
     /// [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn][energy x jobs x n_chan],
     /// i.e. the shipped gnssGpuChain.hpp layout MINUS the corr array, which the consumer fills

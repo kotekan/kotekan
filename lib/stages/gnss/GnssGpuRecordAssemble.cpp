@@ -340,13 +340,18 @@ void GnssGpuRecordAssemble::main_thread() {
                 // Carrier NCO (pass-2 half): the command's fence re-anchor resets the phase
                 // history exactly like the tracker's in-place reset; f_nco (ctrim + ff ramp)
                 // changes the slope of phi, never jumps it.
-                if (c.reanchored == 1 || (c.reanchored == 2 && !_fcar_prev_ok[p])) {
+                // reanchored 2 and 3 are the SAME event; they differ only in who subtracted.
+                // 3 carries the step in c.dcyc because the assembler cannot compute it
+                // accurately from fcar (see gnssGpuChain.hpp: differencing two 1.176 GHz
+                // doubles leaves 0.4 rad on the table, the same order as the term itself).
+                const bool repin = (c.reanchored == 2 || c.reanchored == 3);
+                if (c.reanchored == 1 || (repin && !_fcar_prev_ok[p])) {
                     // FRESH acquisition: no phase history to preserve. Break the arc.
                     _phi[p] = 0.0;
                     _phi_cyc[p] = 0.0;
                     _a_prev_ok[p] = 0;
                     _phi_cmd_ok[p] = 0;
-                } else if (c.reanchored == 2) {
+                } else if (repin) {
                     // PHASE-CONTINUOUS RE-PIN. Re-pinning f_ref steps the ABSOLUTELY-ANCHORED
                     // replica phase by df*t_abs -- thousands of cycles at soak age. The old code
                     // folded that step into an EXPORT-ONLY offset and then ZEROED the NCO, so the
@@ -370,8 +375,19 @@ void GnssGpuRecordAssemble::main_thread() {
                     // record, so f_ref never goes stale and the within-record decoherence that
                     // grows with anchor age (the OTHER half of the sawtooth, ~(dop_rate*age*t_rec)^2
                     // -- negligible on GPS's 1 ms record, ~1 dB on B1C's 10 ms) never accumulates.
+                    //
+                    // ⚠️ THIS BRANCH WAS DEAD CODE ON CHORD UNTIL 2026-08-13. The only producer
+                    // that ever set `reanchored` was cudaGnssTrack (the airspy chain); BOTH
+                    // CHORD producers hardcoded 0 (cudaGnssChordTrack.cpp, cudaGnssInject.cpp),
+                    // so the step below -- 109 to 1127 CYCLES per record at 3.37 days of uptime,
+                    // measured on gal_e5a -- went straight into every correlation. With
+                    // carrier-gain 0.0 making f_nco zero as well, _phi was identically zero and
+                    // this stage applied NO derotation at all. That is the whole of the
+                    // "per-record common phase is white in time" folklore: it is not the sky,
+                    // it is this subtraction never being performed. See task #52.
                     const double t_pin = (double)wstart / _sample_rate;
-                    const double dcyc = (c.fcar - _fcar_prev[p]) * t_pin;
+                    const double dcyc = (c.reanchored == 3) ? c.dcyc
+                                                            : (c.fcar - _fcar_prev[p]) * t_pin;
                     _phi_cyc[p] += dcyc;
                     _phi[p] = std::remainder(_phi[p] + 2.0 * M_PI * dcyc, 2.0 * M_PI);
                 }

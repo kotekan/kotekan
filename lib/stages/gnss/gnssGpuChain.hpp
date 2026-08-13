@@ -81,6 +81,10 @@ struct PrnCtl {
                         ///< 2 = CONTINUOUS re-pin (fence or age): the replica phase stepped by
                         ///< df*t_abs, and the assembler folds that step INTO the NCO so the
                         ///< despread output never sees it. See GnssGpuRecordAssemble.
+                        ///< 3 = CONTINUOUS re-pin, STEP SUPPLIED in @ref dcyc -- identical
+                        ///< meaning to 2, but the producer did the subtraction (see dcyc for
+                        ///< why the assembler cannot do it accurately). Prefer 3 in new
+                        ///< producers; 2 stays for the airspy chain, byte-identical.
     uint16_t _pad0;
     int32_t job0;       ///< first of this PRN's 4 job rows (E,P,L,P_HEAD); -1 if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)
@@ -94,7 +98,23 @@ struct PrnCtl {
     double fcar;        ///< replica carrier f_ref (Hz): the assembler needs it to reconstruct the
                         ///< COMMANDED carrier phase f_ref*t_abs + phi/2pi (record slot 15). NOT
                         ///< derivable from fcar_report, which folds out the re-pin step on purpose.
-    uint64_t _pad1;
+    /// RE-PIN PHASE STEP FOR THIS RECORD, CYCLES (reanchored == 3 only; 0.0 otherwise).
+    ///
+    /// The replica's carrier phase is ABSOLUTELY anchored -- 2*pi*fcar*t_abs -- so when
+    /// propagate_seed hands back a different Doppler than the previous record, the replica
+    /// phase steps by (fcar - fcar_prev)*t_abs. That is NOT small: on sky at 3.37 days of
+    /// uptime the per-record Doppler change of a few micro-Hz becomes 109-1127 CYCLES
+    /// (measured 2026-08-13, gal_e5a). Unfolded, its fractional part is uniform, which is
+    /// exactly why the per-record common phase has always read as "white in time".
+    ///
+    /// ⚠️ WHY THE PRODUCER MUST SUBTRACT, NOT THE ASSEMBLER. fcar is f_offset + doppler, and
+    /// f_offset is the SKY CARRIER (1.176 GHz on E5a). Differencing two doubles that large
+    /// costs an ulp of 2.4e-7 Hz against a delta of ~4e-3 Hz -- 6e-5 relative, i.e. ~0.07
+    /// cycles = 0.4 rad of residual per-record phase, which is the same order as the whole
+    /// term this is meant to remove. f_offset is CONSTANT, so delta fcar == delta doppler
+    /// EXACTLY; taking the difference in the doppler domain (~1e3 Hz, ulp 2e-13) makes the
+    /// step exact. The producer is the only place that domain still exists.
+    double dcyc;
 };
 static_assert(sizeof(PrnCtl) == 64, "PrnCtl must stay 16-byte aligned");
 
