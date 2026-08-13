@@ -38,12 +38,20 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
+// State served by the fake broker for the claim-release test below. It is
+// never registered locally, so the datasetManager has to request it.
+static std::vector<std::pair<uint32_t, freq_ctype>> broker_freqs() {
+    return {{7, {7.7, 77.7}}};
+}
+
 struct TestContext {
 
     std::atomic<size_t> _dset_id_count;
+    std::atomic<int> _request_state_count;
 
     void init() {
         _dset_id_count = 0;
+        _request_state_count = 0;
         restServer::instance().register_post_callback(
             "/register-state", std::bind(&TestContext::register_state, this, std::placeholders::_1,
                                          std::placeholders::_2));
@@ -53,6 +61,12 @@ struct TestContext {
         restServer::instance().register_post_callback(
             "/register-dataset", std::bind(&TestContext::register_dataset, this,
                                            std::placeholders::_1, std::placeholders::_2));
+        restServer::instance().register_post_callback(
+            "/update-datasets", std::bind(&TestContext::update_datasets, this,
+                                          std::placeholders::_1, std::placeholders::_2));
+        restServer::instance().register_post_callback(
+            "/request-state", std::bind(&TestContext::request_state, this, std::placeholders::_1,
+                                        std::placeholders::_2));
         usleep(1000);
     }
 
@@ -156,6 +170,40 @@ struct TestContext {
         con.send_json_reply(reply);
         DEBUG_NON_OO("test: /register-dataset: replied with\n{:s}", reply.dump(4));
     }
+
+    void update_datasets(connectionInstance& con, json& js) {
+        DEBUG_NON_OO("test: /update-datasets received:\n{:s}", js.dump(4));
+        // Serve a root dataset whose state only the broker knows.
+        freqState fs(broker_freqs());
+        state_id_t state_id = hash(fs.to_json().dump());
+        dataset ds(state_id, FACTORY(datasetState)::label<freqState>());
+        dset_id_t ds_id = hash(ds.to_json().dump());
+
+        json reply;
+        reply["result"] = "success";
+        reply["datasets"][ds_id.to_string()] = ds.to_json();
+        con.send_json_reply(reply);
+        DEBUG_NON_OO("test: /update-datasets: replied with\n{:s}", reply.dump(4));
+    }
+
+    void request_state(connectionInstance& con, json& js) {
+        DEBUG_NON_OO("test: /request-state received:\n{:s}", js.dump(4));
+        json reply;
+        // Fail the first request, so the test exercises the release of the
+        // requested-state claim on the error path.
+        if (_request_state_count++ == 0) {
+            reply["result"] = "error";
+            con.send_json_reply(reply);
+            DEBUG_NON_OO("test: /request-state: replied with an error");
+            return;
+        }
+        freqState fs(broker_freqs());
+        reply["result"] = "success";
+        reply["id"] = js.at("id");
+        reply["state"] = fs.to_json();
+        con.send_json_reply(reply);
+        DEBUG_NON_OO("test: /request-state: replied with\n{:s}", reply.dump(4));
+    }
 };
 
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
@@ -210,4 +258,35 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     usleep(500000);
+}
+
+// A state request that fails at the broker must not block later requests for
+// the same state: the claim in _requested_states has to be released on error
+// paths. A leaked claim used to hang the retry in dataset_state() forever,
+// which is what the timeout below turns into a test failure.
+// Relies on _dataset_manager_general having configured the datasetManager and
+// started the restServer, so it cannot be run on its own.
+BOOST_FIXTURE_TEST_CASE(_dataset_manager_state_claim_release, TestContext,
+                        *boost::unit_test::timeout(120)) {
+    _global_log_level = 4;
+    __enable_syslog = 0;
+
+    TestContext::init();
+
+    datasetManager& dm = datasetManager::instance();
+
+    // The dataset and state only the fake broker knows (see update_datasets()).
+    freqState fs(broker_freqs());
+    state_id_t state_id = hash(fs.to_json().dump());
+    dataset ds(state_id, FACTORY(datasetState)::label<freqState>());
+    dset_id_t ds_id = hash(ds.to_json().dump());
+
+    // This pulls the dataset from the broker, then requests its state. The
+    // first state request fails at the broker; dataset_state() retries, and
+    // the retry must reach the broker instead of waiting on the failed
+    // request's claim.
+    const freqState* received = dm.dataset_state<freqState>(ds_id);
+    BOOST_REQUIRE(received != nullptr);
+    BOOST_CHECK(received->to_json() == fs.to_json());
+    BOOST_CHECK(_request_state_count == 2);
 }

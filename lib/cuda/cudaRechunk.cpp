@@ -86,7 +86,8 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate, const std::vector
         DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- producing output!",
               cols_accumulated, _cols_output);
         // emit an output frame!
-        int out_id = (_output_async ? get_state()->output_id : pipestate.gpu_frame_id);
+        uint32_t out_id =
+            (_output_async ? get_state()->output_id : (uint32_t)pipestate.gpu_frame_id);
         get_state()->output_id++;
         void* output_memory =
             device.get_gpu_memory_array(_gpu_mem_output, out_id, _gpu_buffer_depth, output_len);

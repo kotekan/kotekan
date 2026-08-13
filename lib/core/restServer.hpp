@@ -7,17 +7,19 @@
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
 
-#include <atomic>        // for atomic
-#include <event2/util.h> // for evutil_socket_t
-#include <evhttp.h>      // for evhttp  // IWYU pragma: keep
-#include <functional>    // for function
-#include <map>           // for map
-#include <shared_mutex>  // for shared_timed_mutex
-#include <stdint.h>      // for uint8_t
-#include <string>        // for string, allocator, basic_string
-#include <sys/types.h>   // for u_short
-#include <thread>        // for thread
-#include <vector>        // for vector (CORS allowlist)
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <event2/util.h>      // for evutil_socket_t
+#include <evhttp.h>           // for evhttp  // IWYU pragma: keep
+#include <functional>         // for function
+#include <map>                // for map
+#include <mutex>              // for mutex
+#include <shared_mutex>       // for shared_timed_mutex
+#include <stdint.h>           // for uint8_t
+#include <string>             // for string, allocator, basic_string
+#include <sys/types.h>        // for u_short
+#include <thread>             // for thread
+#include <vector>             // for vector (CORS allowlist)
 
 namespace kotekan {
 
@@ -459,6 +461,34 @@ private:
 
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;
+
+    /**
+     * @brief Waits until no request is executing the callback for @c endpoint.
+     *
+     * Callbacks are copied out of the maps and invoked with
+     * @c callback_map_lock released, so erasing a map entry does not stop a
+     * callback that is already running. Endpoints are usually bound to a stage
+     * (e.g. @c gpuProcess::profile_callback), and that stage starts tearing
+     * itself down as soon as the remove call returns, so unregistration has to
+     * wait the running callback out or the callback dereferences freed memory.
+     *
+     * Waits are bounded: a callback stuck for longer than the drain timeout
+     * means the REST thread is wedged and the caller cannot safely free the
+     * callback's resources, so kotekan is shut down with a fatal error.
+     * Must not be called while holding @c callback_map_lock.
+     */
+    void drain_endpoint(const std::string& endpoint);
+
+    /// Endpoint whose callback the libevent dispatch thread is currently
+    /// executing (empty if none). A single thread runs all callbacks, so one
+    /// marker suffices. Protected by @c _inflight_lock.
+    std::string _inflight_endpoint;
+
+    /// Guards @c _inflight_endpoint
+    std::mutex _inflight_lock;
+
+    /// Signalled whenever an in-flight callback finishes
+    std::condition_variable _inflight_cv;
 
     /// The libevent base
     struct event_base* event_base = nullptr;
