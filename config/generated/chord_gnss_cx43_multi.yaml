@@ -6,7 +6,7 @@
 # base sha256 ccf62befb3a4189f (config/base/live_config_20260730.json)
 # REGENERATE WITH (this is the whole recipe -- flags included):
 #   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json --node cx43
-#       --carrier-phase-from-ref ab --keep-n2 --n2-dual --no-path-a --sky-deep --n2-dump
+#       --carrier-phase-from-ref 1 --keep-n2 --n2-dual --no-path-a --sky-deep --n2-dump
 #       --search-host 10.222.3.6 --extra-signal
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
@@ -1202,7 +1202,7 @@ gnss1_b2a_n2ctl_buf:
   num_frames: 4
 gnss1_b2a_n2dual:
   commands:
-  - carrier_phase_from_ref: false
+  - carrier_phase_from_ref: true
     channel_ids: *id016
     conjugate: true
     f_offset_hz: 1176450000.0
@@ -1346,7 +1346,7 @@ gnss1_b2b_n2ctl_buf:
   num_frames: 4
 gnss1_b2b_n2dual:
   commands:
-  - carrier_phase_from_ref: false
+  - carrier_phase_from_ref: true
     channel_ids: *id018
     conjugate: true
     f_offset_hz: 1207140000.0
@@ -1495,7 +1495,7 @@ gnss1_e5a_n2ctl_buf:
   num_frames: 4
 gnss1_e5a_n2dual:
   commands:
-  - carrier_phase_from_ref: false
+  - carrier_phase_from_ref: true
     channel_ids: *id020
     conjugate: true
     f_offset_hz: 1176450000.0
@@ -1639,7 +1639,7 @@ gnss1_e5b_n2ctl_buf:
   num_frames: 4
 gnss1_e5b_n2dual:
   commands:
-  - carrier_phase_from_ref: false
+  - carrier_phase_from_ref: true
     channel_ids: *id022
     conjugate: true
     f_offset_hz: 1207140000.0
@@ -1783,7 +1783,7 @@ gnss1_n2ctl_buf:
   num_frames: 4
 gnss1_n2dual:
   commands:
-  - carrier_phase_from_ref: false
+  - carrier_phase_from_ref: true
     channel_ids: *id024
     conjugate: true
     f_offset_hz: 1176450000.0

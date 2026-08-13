@@ -59,7 +59,12 @@ common:
   # measuring it: the sky churns faster than a before/after across restarts can resolve
   # (2026-08-13: deep_snr max swung 52-197 in four minutes, seeded PRNs moved 12 -> 5 on
   # geometry alone). Do not leave it armed once the comparison is in.
-  carrier-phase-from-ref: ab
+  # A/B RESULT (2026-08-13, paired, same nodes/seeds/poll, gated to satellites whose cohFIT
+  # clears 1.5x its own shuffled null): the fix has the smoother per-record phase in 9 of 10,
+  # sign test p = 0.011. Modest -- med|dphi| 0.519 vs 0.604 rad -- and cross-instance agreement
+  # was FLAT between arms, so it is a real term and not the dominant one. Fleet set uniform on
+  # the fix; the A/B has told us what it can.
+  carrier-phase-from-ref: 1
 
   # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
