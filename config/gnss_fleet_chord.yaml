@@ -44,6 +44,23 @@ base: base/live_config_20260730.json
 suffix: _multi
 
 common:
+  # ⚠️⚠️ TEMPORARY EXPERIMENT -- REMOVE WITH TASK #55. ⚠️⚠️
+  #
+  # TASK #52 A/B: 'ab' puts the carrier-phase fix (DespreadJob::ang0, phase taken at the
+  # window's reference sample) on GPU 0 and the pre-86349ac4d wc*n_abs expression on GPU 1, on
+  # EVERY node. Same node, same sky, same seeds, same poll, six instances per arm.
+  #
+  # It is here rather than passed by hand because a hand-run generator flag is exactly the
+  # unreproducible state this file exists to abolish -- and because someone (probably me) has
+  # to find it later to take it out. Set back to 1 to ship the fix everywhere, or 0 to revert
+  # the whole change without a rebuild.
+  #
+  # ⚠️ THIS DELIBERATELY MAKES HALF THE FLEET RUN CODE WE BELIEVE IS WRONG. That is the cost of
+  # measuring it: the sky churns faster than a before/after across restarts can resolve
+  # (2026-08-13: deep_snr max swung 52-197 in four minutes, seeded PRNs moved 12 -> 5 on
+  # geometry alone). Do not leave it armed once the comparison is in.
+  carrier-phase-from-ref: ab
+
   # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
   keep-n2: true
