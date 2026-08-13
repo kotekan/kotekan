@@ -116,5 +116,50 @@ class TestShuffledNull(unittest.TestCase):
         self.assertIsNone(delay_combine([], CHIP_HZ, CHAN_HZ, 0.0))
 
 
+class TestNullPreservesTheWeights(unittest.TestCase):
+    """⚠️ THE CASE EVERY OTHER TEST IN THIS FILE IS BLIND TO.
+
+    make_points gives every channel energy 1.0, so a null that permutes (amplitude, energy)
+    pairs and one that permutes phases alone are indistinguishable here -- which is why the
+    suite passed for a day while the shipped null was degenerate.
+
+    The live comb is NOT uniform: the edge channels roll off and one can carry most of the
+    weight. When it does, |sum|/sum|.| approaches 1 for ANY phases, so a null that moves the
+    weights folds as well as the data and the gate can never fire. Measured on sky 2026-08-13:
+    null 0.940 against a true coherence of 0.974 on a deep_snr 233 satellite -- reported as no
+    detection. It also caused a CORRECT result (c46a68327) to be retracted.
+    """
+
+    def _lopsided(self, tau_chips, dominant=3.0):
+        """Real delay structure, with the weight spread MEASURED ON SKY rather than invented:
+        the live 79-channel gather runs max/median energy 2.6-3.1x and N_eff 48 of 79
+        (2026-08-13). An earlier draft of this test used 200x and failed even with the correct
+        null -- rightly: at that concentration ONE point carries the fold and no permutation of
+        phases can suppress it, so the statistic is degenerate for any null. Testing an
+        unphysical regime would have argued for the wrong repair."""
+        pts = make_points(tau_chips=tau_chips, noise=0.3)
+        out = []
+        for i, (fid, a, en, key) in enumerate(pts):
+            out.append((fid, a, dominant if i == 0 else 1.0, key))
+        return out
+
+    def test_signal_still_clears_the_null_when_one_channel_dominates(self):
+        pts = self._lopsided(0.6)
+        r = delay_combine(pts, CHIP_HZ, CHAN_HZ, 0.6, rng=random.Random(3), n_null=32)
+        self.assertTrue(r["present"],
+                        "a dominant weight hid a real delay: the null moved the weights "
+                        "instead of only the phases (r=%r)" % r)
+
+    def test_and_noise_still_does_not_clear_it(self):
+        """The repair must not work by making the gate easier -- pure noise, same lopsided
+        weights, must still be refused."""
+        rng = random.Random(5)
+        pts = [(5972 + i * 16, complex(rng.gauss(0, 1), rng.gauss(0, 1)),
+                200.0 if i == 0 else 1.0, INSTANCES[i % 12]) for i in range(84)]
+        r = delay_combine(pts, CHIP_HZ, CHAN_HZ, tau_chips=0.3, rng=random.Random(2),
+                          n_null=32)
+        self.assertFalse(r["present"], "noise cleared the null: the gate is not a gate")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

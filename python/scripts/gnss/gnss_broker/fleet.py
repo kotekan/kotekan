@@ -719,13 +719,16 @@ def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
         return tau, mag
 
     tau_s, peak = run(insts)
-    # Shuffled null: same instances, same freqs, values reassigned within each instance.
+    # Shuffled null: same instances, same freqs, same ENERGY WEIGHTS -- only arg(A) is
+    # permuted. Moving (A, en) together moves the weights and the null then folds as well as
+    # the data whenever one channel dominates; see delay_combine for what that cost.
     rng = rng or _random.Random(0xC0DE)
     null_store = {}
     for k, v in insts.items():
-        vals = [(a, en) for _, a, en in v]
-        rng.shuffle(vals)
-        null_store[k] = [(fid, a, en) for (fid, _, _), (a, en) in zip(v, vals)]
+        ph = [cmath.phase(a) for _, a, _ in v]
+        rng.shuffle(ph)
+        null_store[k] = [(fid, abs(a) * cmath.exp(1j * ph[i]), en)
+                         for i, (fid, a, en) in enumerate(v)]
     _, floor = run(null_store)
     return (tau_s * chip_rate_hz, peak, floor, sum(len(v) for v in insts.values()),
             len(insts))
@@ -927,14 +930,32 @@ def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_nu
     # and would leave the very structure being tested for.
     rng = rng or _random.Random(1234567)
     floor = 0.0
-    amps = [(a, en) for _, a, en, _ in pts]
+    # ⚠️ PERMUTE THE PHASE ONLY, NOT THE (AMPLITUDE, ENERGY) PAIR. Moving the pair moves the
+    # ENERGY WEIGHTS with it, and this comb's weights are far from uniform (the edge channels
+    # roll off). When one channel dominates the weight, a shuffled set folds just as well as
+    # the real one -- |sum|/sum|.| approaches 1 for BOTH -- so the gate reads ~1.0 whatever the
+    # truth is. That is exactly how it read on 2026-08-13 while the real coherence was 0.68-0.97,
+    # and the wrong verdict survived a retraction, a night, and a morning of chasing it.
+    # Keeping (f, |A|, E) pinned and permuting only arg(A) destroys the frequency<->phase
+    # pairing the delay lives in and NOTHING else, which is the whole point of the null.
+    phases = [cmath.phase(a) for _, a, _, _ in pts]
     for _ in range(max(1, n_null)):
-        sh = list(amps)
+        sh = list(phases)
         rng.shuffle(sh)
-        null_pts = [(pts[i][0], sh[i][0], sh[i][1], pts[i][3]) for i in range(len(pts))]
+        null_pts = [(pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]), pts[i][2], pts[i][3])
+                    for i in range(len(pts))]
         floor = max(floor, abs(combine(null_pts)[0]))
     n_inst = len({k for _, _, _, k in pts})
+    # EFFECTIVE POINT COUNT of the fold's own weights, w = E*|A|. The coherence statistic is
+    # degenerate when the weight concentrates: at n_eff -> 1 a single point carries the sum and
+    # |sum|/sum|.| -> 1 for ANY phases, so neither the value nor the null means anything. Live
+    # sky runs n_eff ~48 of 79 (2026-08-13), which is healthy -- but publish it, because the
+    # failure is invisible in the coherence alone and it cost a retracted correct result.
+    _w = [en * abs(a) for _, a, en, _ in pts]
+    _sw = sum(_w)
+    n_eff = (_sw * _sw / sum(x * x for x in _w)) if _sw > 0.0 else 0.0
     return {"snr": (mag / floor) if floor > 0.0 else 0.0,
+            "n_eff": n_eff,
             "amplitude": mag / len(pts),
             "coh_frac": (mag / abs_sum) if abs_sum > 0.0 else 0.0,
             "n_pts": len(pts), "n_inst": n_inst, "floor": floor,
@@ -967,8 +988,10 @@ def fit_tau_coherent(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
 
     Returns (tau_chips, coherence, floor, n_pts, n_inst) -- same shape as fit_spectrum_delay so
     it drops in -- where `floor` is a SHUFFLED-NULL coherence over the same points. The null
-    shuffles AMPLITUDES across the frequency slots, destroying the frequency<->phase pairing
-    while preserving every marginal; shuffle, never roll (a roll IS a delay).
+    permutes the PHASES across the frequency slots, destroying the frequency<->phase pairing
+    while preserving every marginal INCLUDING THE ENERGY WEIGHTS; shuffle, never roll (a roll
+    IS a delay). ⚠️ It shuffled g = E*A until 2026-08-13, which moved the weights too and made
+    the gate unfalsifiable whenever one channel dominated -- see the note at the shuffle.
     """
     import cmath
     import random as _random
@@ -1009,12 +1032,18 @@ def fit_tau_coherent(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
 
     tau, coh = best_over(pts, -span_chips, span_chips, coarse_step_chips)
     rng = rng or _random.Random(20260812)
-    amps = [g for _, g in pts]
+    # PHASE-ONLY PERMUTATION. `pts` holds g = E*A, so shuffling g moves the WEIGHT as well as
+    # the phase -- and with this comb's weights (edge channels roll off, one can dominate) the
+    # null then folds as well as the data and the gate is unfalsifiable. Measured 2026-08-13:
+    # this null read 0.94 against a true coherence of 0.97 on PRN 28, i.e. "no detection" on a
+    # deep_snr 233 satellite. Pin |g| to its own frequency, permute only arg(g).
+    phases = [cmath.phase(g) for _, g in pts]
     floor = 0.0
     for _ in range(max(1, n_null)):
-        sh = list(amps)
+        sh = list(phases)
         rng.shuffle(sh)
-        _, c = best_over([(pts[i][0], sh[i]) for i in range(len(pts))],
+        _, c = best_over([(pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]))
+                          for i in range(len(pts))],
                          -span_chips, span_chips, coarse_step_chips)
         floor = max(floor, c)
     return (tau, coh, floor, len(pts), len({k for _, _, _, k in points}))
