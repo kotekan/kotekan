@@ -992,6 +992,8 @@ int main(int argc, char** argv) {
     const long long gap_hops = (long long)std::llround(o.rec_gap_s / hop_s);
     double worst = 0.0;
     std::vector<std::complex<double>> prompts; // per-record P, for the deep fold below
+    std::vector<double> rec_dop, rec_tabs;     // per-record (dop, t_abs) for the [4b] fold
+    std::vector<double> rec_tage;              // per-record seed AGE, for the [4c] candidate
     // Independent of the search realization, so a tracker sweep is reproducible on its own.
     std::mt19937 trk_rng(o.nseed + 1000u);
     for (int r = 0; r < o.nrec; ++r) {
@@ -1049,6 +1051,9 @@ int main(int argc, char** argv) {
                Pt > 0 ? P / Pt : 0.0, (E + La) > 0 ? 2.0 * P / (E + La) : 0.0);
         worst = std::max(worst, std::fabs(err));
         prompts.push_back(res[0][1].correlation);
+        rec_dop.push_back(pr.doppler_hz);
+        rec_tabs.push_back((double)W / o.sample_rate);
+        rec_tage.push_back((double)(h - sd.ref_hop) * hop_s); // age since the SEED epoch
     }
 
     // ---- THE DEEP FOLD, on the SAME statistic the combiner publishes ----
@@ -1135,6 +1140,95 @@ int main(int argc, char** argv) {
                  "        a multi-second extrapolation residual does not."
                : ">>> noiseless chain is phase-clean; the live floor comes from something this "
                  "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
+
+        // ---- [4b] THE ASSEMBLER'S RE-PIN FOLD, applied here (task #52/#40 root hunt) ----
+        // The despread's carrier reference is (f_offset + dop) * t_abs, so the per-record
+        // Doppler retag steps it by dcyc = (dop_k - dop_{k-1}) * t_k cycles. Live,
+        // GnssGpuRecordAssemble subtracts exactly that (reanchored == 3, PrnCtl::dcyc).
+        // This harness despreads WITHOUT the assembler, so [4] above measures the UNFOLDED
+        // stream. Fold it here with the assembler's own algebra: if the residual collapses
+        // to the --seed-dop-rate 0 floor, the fold algebra is exact and the live artifact
+        // must enter elsewhere; if it does not, the live bug is reproduced offline.
+        if (rec_dop.size() == prompts.size() && prompts.size() >= 4) {
+            std::vector<std::complex<double>> fp = prompts;
+            double cyc = 0.0;
+            for (size_t k = 1; k < fp.size(); ++k) {
+                cyc += (rec_dop[k] - rec_dop[k - 1]) * rec_tabs[k];
+                fp[k] *= std::polar(1.0, +2.0 * M_PI * std::remainder(cyc, 1.0));
+            }
+            // same statistics as [4]
+            std::vector<double> ph2(fp.size());
+            double pu2 = 0.0, pv2 = 0.0;
+            for (size_t i = 0; i < fp.size(); ++i) {
+                const double a2 = std::arg(fp[i]);
+                if (i) { double d = a2 - pv2; while (d > M_PI) d -= 2*M_PI;
+                         while (d < -M_PI) d += 2*M_PI; pu2 += d; }
+                pv2 = a2; ph2[i] = pu2;
+            }
+            double qx=0, qy=0, qxx=0, qxy=0;
+            for (int i = 0; i < N; ++i) { qx+=i; qy+=ph2[i]; qxx+=(double)i*i; qxy+=(double)i*ph2[i]; }
+            const double qd = N*qxx - qx*qx;
+            const double qb = qd != 0.0 ? (N*qxy - qx*qy)/qd : 0.0, qa = (qy - qb*qx)/N;
+            double qs2 = 0.0;
+            for (int i = 0; i < N; ++i) { const double e2v = ph2[i] - (qa + qb*i); qs2 += e2v*e2v; }
+            std::vector<std::complex<double>> fd = fp;
+            for (int i = 0; i < N; ++i) fd[i] = fp[i] * std::polar(1.0, -qb*i);
+            const gnss::OverlayWipeResult cf2 = gnss::coherent_sum(fd);
+            printf("\n[4b] SAME records with the ASSEMBLER'S dcyc fold applied\n");
+            printf("    coherent snr %.2f   residual about a linear ramp: %.4f rad rms\n",
+                   cf2.snr, std::sqrt(qs2 / N));
+            // THE DISCRIMINATOR: apparent frequencies. A constant per-record reference step
+            // is INVISIBLE to the about-a-ramp statistic (it IS a frequency), so compare the
+            // fitted rates against the prediction remainder(ddop*t_abs, 1)/dT directly.
+            const double dT = (rec_tabs.back() - rec_tabs.front())
+                              / (double)(rec_tabs.size() - 1);
+            double mean_step = 0.0;
+            for (size_t k = 1; k < rec_dop.size(); ++k)
+                mean_step += std::remainder(
+                    (rec_dop[k] - rec_dop[k - 1]) * rec_tabs[k], 1.0);
+            mean_step /= (double)(rec_dop.size() - 1);
+            printf("    fitted rate: raw %+9.3f Hz | folded %+9.3f Hz | predicted alias "
+                   "step %+9.3f Hz (dT %.4f s)\n",
+                   b / (2.0 * M_PI * dT), qb / (2.0 * M_PI * dT), mean_step / dT, dT);
+            // ⚠️ INTERPRETATION LIMIT (2026-08-13, learned the hard way): with
+            // --seed-dop-rate != 0 the seed model deliberately MISMATCHES the constant-dop
+            // injected truth (#51's live-pathology default), so the raw/folded rates mix a
+            // GENUINE model error with any fold artifact -- an epoch fitted from them
+            // (t_eff = 2*age - 104 s across --age-s 7/27/47) describes the MIXTURE, not the
+            // fold. Discriminating the fold needs a truth whose carrier RAMPS at the seeded
+            // rate: extend channels_hoprate with a dop_rate before believing any of these
+            // rows about the fold's algebra. --seed-dop-rate 0 IS clean (0.004 rad) and
+            // pins that the rate-0 arithmetic has no t_abs disease of its own.
+            printf("    ⚠️ seed model mismatches the constant-dop truth when "
+                   "--seed-dop-rate != 0:\n       these rates mix genuine model error with "
+                   "any fold artifact -- see the source note\n");
+            // [4c] CANDIDATE ALGEBRAS, judged by the fitted rate alone: the correct fold
+            // brings it to ~0. Sweep the reference (t_abs vs seed age) and the sign.
+            auto fitted_rate = [&](double sgn, const std::vector<double>& tref) {
+                std::vector<std::complex<double>> f2 = prompts;
+                double cy = 0.0;
+                for (size_t k = 1; k < f2.size(); ++k) {
+                    cy += (rec_dop[k] - rec_dop[k - 1]) * tref[k];
+                    f2[k] *= std::polar(1.0, sgn * 2.0 * M_PI * std::remainder(cy, 1.0));
+                }
+                double u = 0.0, pvv = std::arg(f2[0]), s_x=0, s_y=0, s_xx=0, s_xy=0;
+                std::vector<double> uw(f2.size(), 0.0);
+                for (size_t i = 1; i < f2.size(); ++i) {
+                    double d = std::arg(f2[i]) - pvv;
+                    while (d > M_PI) d -= 2*M_PI;
+                    while (d < -M_PI) d += 2*M_PI;
+                    u += d; pvv = std::arg(f2[i]); uw[i] = u;
+                }
+                for (int i = 0; i < N; ++i) { s_x+=i; s_y+=uw[i]; s_xx+=(double)i*i; s_xy+=(double)i*uw[i]; }
+                const double dnm = N*s_xx - s_x*s_x;
+                return dnm != 0.0 ? ((N*s_xy - s_x*s_y)/dnm) / (2.0*M_PI*dT) : 0.0;
+            };
+            printf("[4c] fitted rate after fold (Hz):  t_abs sgn- %+8.3f  sgn+ %+8.3f | "
+                   "age sgn- %+8.3f  sgn+ %+8.3f | raw %+8.3f\n",
+                   fitted_rate(-1.0, rec_tabs), fitted_rate(+1.0, rec_tabs),
+                   fitted_rate(-1.0, rec_tage), fitted_rate(+1.0, rec_tage),
+                   b / (2.0 * M_PI * dT));
+        }
     }
 
     printf("\n================================================================================\n");
