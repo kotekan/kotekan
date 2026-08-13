@@ -98,7 +98,8 @@ def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz
 
 
 def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, fft_len=16384,
-                   rec_hops=2048, prev_val=None, max_step=3.0, unit_hop=None):
+                   rec_hops=2048, prev_val=None, max_step=3.0, unit_hop=None,
+                   rate_field="deep_rate_hz", q_field="deep_rate_q"):
     """Per-PRN carrier residual (Hz) from the combiner's phase-rate search.
 
     TWO FAILURE MODES, TWO DEFENCES. Measured on sky 2026-08-04 by splitting each PRN's records
@@ -130,8 +131,12 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
     cand = {}
     gapped, stepped = [], []
     for prn, rec in (status or {}).items():
-        q = float(rec.get("deep_rate_q") or 0.0)
-        f = rec.get("deep_rate_hz")
+        # rate_field/q_field (#40): the FOLD's pick (deep_rate_hz) is clamped to
+        # deep_rate_max_hz and degrades to a noise bin past the cap; the carrier loop must
+        # read deep_rate_full_hz instead. Same gates either way -- a caller choosing the
+        # full fields brings its OWN prev_hop/prev_val state, never shares this one.
+        q = float(rec.get(q_field) or 0.0)
+        f = rec.get(rate_field)
         if f is None or q < min_q:
             continue
         # CONTINUITY GATE (2026-08-04). Measured per emit window: when the sequence is
@@ -227,27 +232,13 @@ def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier
     return code_bias * chip_hz / hops_per_sec
 
 
-def unalias(y, pred, modulus, max_wraps=2):
-    """Move `y` to its alias nearest `pred`: y + k*modulus with k chosen to minimise
-    |y + k*modulus - pred|, |k| <= max_wraps.
-
-    WHY (task #33, measured 2026-08-13). deep_rate_hz is only defined modulo the deep
-    fold's rate-search window: on the CS100 chains every exported value lives in
-    (-4.77, +4.77] Hz and a true residual outside it WRAPS by 9.54 (the +5 Hz trim probe:
-    PRN 5 at -2.9 predicted -7.9 and read +1.4; PRN 15 at -1.0 predicted -6.0 and read
-    +3.5 -- both exactly one wrap). Fed raw, a wrapped sample is off by a full modulus,
-    which is what walked the commanded rows ~1 Hz/min on the first live arm.
-
-    ⚠️ THE LOCK-IN RISK, and why max_wraps is small: unwrapping toward the prediction can
-    CONFIRM a wrong birth forever -- the mod ambiguity is genuinely unresolvable from one
-    band. Bounding |k| keeps the correction local; the cross-band feed (a different
-    modulus sees the same satellite) and the gauge are what break a genuine tie."""
-    if not modulus or modulus <= 0.0:
-        return y
-    k = round((pred - y) / modulus)
-    k = max(-int(max_wraps), min(int(max_wraps), int(k)))
-    return y + k * modulus
-
+# (An `unalias` helper lived here for ~40 minutes on 2026-08-13: it unwrapped the rrate
+#  feed's measurements toward the filter's own prediction, on the theory that deep_rate_hz
+#  wrapped mod 9.537 Hz. The theory was WRONG -- built from 1-3 noisy samples per sat --
+#  and the construction was SELF-REFERENTIAL: a walking row dragged its unwrap anchor with
+#  it and commands ran away past +-10 Hz. The real mechanism was the deep_rate_max_hz CAP
+#  turning out-of-window residuals into in-cap noise picks; the fix is the combiner's
+#  deep_rate_full_* fields (#40), consumed via rate_field/q_field above.)
 
 # --- dead-reckon seed currency (task #30) -----------------------------------------------
 #

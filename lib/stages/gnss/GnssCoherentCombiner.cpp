@@ -276,6 +276,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _deep_rate_min_q = config.get_default<double>(unique_name, "deep_rate_min_q", 10.0);
     _st_deep_rate.assign(_n_prn, 0.0f);
     _st_deep_rate_q.assign(_n_prn, 0.0f);
+    _st_deep_rate_full.assign(_n_prn, 0.0f);
+    _st_deep_rate_full_q.assign(_n_prn, 0.0f);
     // COMMON-PHASE TRACKER (see the hpp note / CHORD_GNSS_STATE 8.21.5). The half-width list
     // brackets the wander's measured >42 ms correlation time in records; each is a candidate
     // and the floor pays the selection, so more widths cost floor height, not correctness.
@@ -937,6 +939,8 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<std::vector<std::array<float, 3>>> rungs(_n_prn);
         std::vector<double> deep_rate(_n_prn, 0.0);   // phase-rate removed before the deep sum
         std::vector<double> deep_rate_q(_n_prn, 0.0); // its peak/median -- the gate, and the SNR
+        std::vector<double> deep_rate_full(_n_prn, 0.0);   // UNCAPPED argmax (#40): the carrier
+        std::vector<double> deep_rate_full_q(_n_prn, 0.0); // loop's measurement, never the fold's
         std::vector<double> coh_frac(_n_prn, 0.0); // |sum|/sum|.| of the winning deep stream
         std::vector<int> pt_hw(_n_prn, 0);         // winning tracker half-width (0 = straight)
         std::vector<double> peel_rsnr(_n_prn, 0.0);  // residual deep significance (peel_depth)
@@ -1016,10 +1020,23 @@ void GnssCoherentCombiner::main_thread() {
         // The floor/q stay full-band so q keeps its calibrated meaning (17.9-22 signal
         // vs 2.8-6.1 noise).
         const double rate_max_hz = _deep_rate_max_hz;
+        // full_f/full_q (task #40, 2026-08-13): the UNCAPPED argmax of the same spectrum.
+        // The cap exists to protect the FOLD -- on GPS the NH20 overlay's +-50 Hz sidebands
+        // alias to -+45.4 and a sideband derotation reports the sideband's amplitude -- but
+        // it silently redefines the MEASUREMENT: a residual beyond the cap gets reported as
+        // the best in-cap bin, i.e. noise, which is what walked #33's first closed-loop arm
+        // (commands crossed +-5 and the feedback became junk; measured full-band on live
+        // records, a strong sat's spectrum has ONE clean peak, q 19-27, no comb). The fold
+        // keeps the capped pick; the carrier loop reads the full-band one.
         auto rate_search = [rate_max_hz](const std::vector<std::complex<double>>& x,
-                              const std::vector<double>& u, double& best_f, double& q) {
+                              const std::vector<double>& u, double& best_f, double& q,
+                              double* full_f = nullptr, double* full_q = nullptr) {
             best_f = 0.0;
             q = 0.0;
+            if (full_f)
+                *full_f = 0.0;
+            if (full_q)
+                *full_q = 0.0;
             const size_t L = x.size();
             if (L < 8 || u.size() != L)
                 return;
@@ -1052,11 +1069,15 @@ void GnssCoherentCombiner::main_thread() {
                     acc += x[k] * tw[(size_t)(((long long)i * m[k]) % (long long)nb)];
                 mag[i] = std::abs(acc);
             }
-            size_t ip = 0;
-            double best_m = -1.0;
+            size_t ip = 0, ip_full = 0;
+            double best_m = -1.0, best_m_full = -1.0;
             for (size_t i = 0; i < nb; ++i) {
                 const double fr = (double)i / (double)nb;
                 const double f_i = (fr < 0.5 ? fr : fr - 1.0) / dt;
+                if (mag[i] > best_m_full) {
+                    best_m_full = mag[i];
+                    ip_full = i;
+                }
                 if (rate_max_hz > 0.0 && std::abs(f_i) > rate_max_hz)
                     continue; // outside the physical window: may set the floor, cannot win
                 if (mag[i] > best_m) {
@@ -1072,6 +1093,12 @@ void GnssCoherentCombiner::main_thread() {
             // the reported rate is the signed offset a carrier loop could actually consume.
             const double frac = (double)ip / (double)nb;
             best_f = (frac < 0.5 ? frac : frac - 1.0) / dt;
+            if (full_f) {
+                const double fr2 = (double)ip_full / (double)nb;
+                *full_f = (fr2 < 0.5 ? fr2 : fr2 - 1.0) / dt;
+            }
+            if (full_q)
+                *full_q = med > 0.0 ? best_m_full / med : 0.0;
         };
         auto coh_span = [](const std::vector<double>& u, size_t len) {
             if (u.empty() || len < 2 || u.size() < len)
@@ -1730,9 +1757,10 @@ void GnssCoherentCombiner::main_thread() {
                     // gaps (a PRN the broker drops for a window) become zeros in the transform,
                     // which is exact rather than approximate.
                     double rate_hz = 0.0, rate_q = 0.0;
+                    double rate_fhz = 0.0, rate_fq = 0.0;
                     if (_deep_rate) {
                         const std::vector<double> us(ub.end() - (long)len, ub.end());
-                        rate_search(w, us, rate_hz, rate_q);
+                        rate_search(w, us, rate_hz, rate_q, &rate_fhz, &rate_fq);
                         if (have_sky) {
                             // The sky correction removes the per-record phase INCLUDING whatever
                             // linear part it carried, so the corrected stream gets its own rate
@@ -1806,6 +1834,8 @@ void GnssCoherentCombiner::main_thread() {
                         full_hw = hw_used;
                         deep_rate[p] = rate_hz;
                         deep_rate_q[p] = rate_q;
+                        deep_rate_full[p] = rate_fhz;
+                        deep_rate_full_q[p] = rate_fq;
                     }
                     rungs[p].push_back({(float)len, (float)cs.snr, (float)coh_span(ub, len)});
                     // THE GATE IS THE SEARCH'S OWN SPECTRUM, not a closed-form floor. A max over
@@ -1823,6 +1853,8 @@ void GnssCoherentCombiner::main_thread() {
                     if (!cleared || cs.snr > deep_snr[p] * 1.05) {
                         deep_rate[p] = rate_hz;
                         deep_rate_q[p] = rate_q;
+                        deep_rate_full[p] = rate_fhz;
+                        deep_rate_full_q[p] = rate_fq;
                         rec[8] = (float)cs.amplitude;
                         deep_snr[p] = cs.snr;
                         deep_rec[p] = (int)len;
@@ -2045,6 +2077,8 @@ void GnssCoherentCombiner::main_thread() {
                 _st_rungs[p] = rungs[p];
                 _st_deep_rate[p] = (float)deep_rate[p];
                 _st_deep_rate_q[p] = (float)deep_rate_q[p];
+                _st_deep_rate_full[p] = (float)deep_rate_full[p];
+                _st_deep_rate_full_q[p] = (float)deep_rate_full_q[p];
                 _st_coh_frac[p] = (float)coh_frac[p];
                 _st_pt_hw[p] = (float)pt_hw[p];
                 if (_rec_export > 0)
@@ -2269,6 +2303,15 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // nothing and the straight sum was scored instead.
                          {"deep_rate_hz", _st_deep_rate[p]},
                          {"deep_rate_q", _st_deep_rate_q[p]},
+                         // #40: the UNCAPPED argmax of the same spectrum (+-47.7 Hz at
+                         // 2048-hop records). deep_rate_hz above is the fold's pick and is
+                         // clamped to deep_rate_max_hz -- beyond the cap it reports the best
+                         // in-cap bin, i.e. NOISE, which is unusable as a loop measurement.
+                         // The carrier loop (#33 rrate feed) reads THESE two; the fold's
+                         // derotation still uses the capped pick, so nothing about deep_snr
+                         // or the sideband protection changes.
+                         {"deep_rate_full_hz", _st_deep_rate_full[p]},
+                         {"deep_rate_full_q", _st_deep_rate_full_q[p]},
                          // COMMON-PHASE TRACKER (8.21.5). coh_frac = |sum|/sum|.| of the winning
                          // deep stream -- the chopping-independent coherence measure (deep_snr
                          // scales with record count when phase-limited; THIS is what a detection

@@ -209,29 +209,23 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     #   gal_e5b  -- SAME satellites feeding the SAME rrate rows at 1207.14, command OFF
     # The metric: the window-to-window common-phase step (was 1.89 rad = 0.29 Hz on PRN 27
     # at flip time) and cross-window coh_t vs the 1/sqrt(N) baseline, e5a vs both controls.
-    # ⚠️ ARM 1 (14:05-14:13): commands ratcheted ~1 Hz/min, REVERTED. My first read -- dead
-    # actuator -- was WRONG: the +5 Hz open-loop trim probe (14:2x, /set_carrier_trim)
-    # showed response = -STEP on every sat, i.e. plumbed and correctly signed... MODULO
-    # 9.537 Hz. deep_rate_hz lives in (-4.77, +4.77]: PRN 5 predicted -7.9 read +1.4,
-    # PRN 15 predicted -6.0 read +3.5 -- wrapped by exactly one modulus. The ratchet was
-    # the ALIAS: once commands reached a few Hz, wrapped samples entered (the slew gate
-    # rejects one step then RE-BASELINES), the y = resid + cmd reconstruction went off by
-    # a full modulus, and the rows walked. #40 (the rate-search grid) is the real owner.
+    # ── #33 P3 arms 1+2 (2026-08-13 14:05-14:55), the honest history ────────────────────
+    # ARM 1 ratcheted ~1 Hz/min. First read (dead actuator): WRONG -- the +5 Hz runtime
+    # trim probe showed response = -step, correctly signed, for every IN-CAP sat. Second
+    # read (deep_rate wraps mod 9.537): ALSO WRONG -- built from 1-3 noisy samples; the
+    # full-band spectrum of the live per-record export shows ONE clean peak (q 19-27), no
+    # comb. ARM 2's unwrap-to-prediction was self-referential and ran commands past
+    # +-10 Hz. THE ACTUAL MECHANISM: deep_rate_hz is the FOLD's pick, clamped to
+    # deep-rate-max-hz (5.0) -- past the cap it silently degrades to the best in-cap
+    # NOISE bin, and both arms closed the loop on that junk.
     #
-    # ARM 2: the feed now unwraps each sample to the state's own prediction
-    # (--deep-rate-alias-hz, measured 9.537 here). ⚠️ Residual risk: a sat BORN wrapped
-    # reads "converged" at the wrong alias and the in-band observable cannot tell; the
-    # cross-band feed and the beam map are the outside checks until #40 fixes the grid.
-    deep-rate-alias-hz: 9.537
-    # ⚠️ ARM 2 (14:26-14:55): DISARMED. The unwrap-to-prediction is SELF-REFERENTIAL
-    # (gnss-phase-estimator-self-reference, frequency-domain edition): a walking row drags
-    # its own unwrap anchor, and commands ran away PAST the modulus (PRN 9 +11.7, PRN 15
-    # +14.8 Hz) while residuals never collapsed. The observable is ambiguous mod 9.537
-    # against per-sat errors of +-2-5 Hz: no feed-side arithmetic can break that tie.
-    # THE FIX IS #40: the e5a/b2a deep fold's rate search uses 104.86 ms coherent units;
-    # per-RECORD spacing (10.49 ms, as GPS effectively has) widens the window to +-47.7 Hz
-    # and the ambiguity vanishes. Re-arm only after that lands.
-    # rrate-command: true
+    # ARM 3 (#40, requires the tracker restart that ships it): the combiner now exports
+    # deep_rate_full_hz/q, the UNCAPPED argmax (+-47.7 Hz window, unambiguous at every
+    # magnitude in play). The rrate feed prefers those fields automatically, and the
+    # command HOLDS (jrr-nofull log line) until the combiner actually serves them -- so
+    # this key is safe to leave armed across the deploy: old binary = loud shadow,
+    # new binary = closed loop.
+    rrate-command: true
     trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
@@ -462,9 +456,8 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
   bds_b2a:
     signal: bds_b2a
     dr-clock-adopt: true
-    # #33: same CS100 fold geometry as gal_e5a, same measured deep_rate modulus. Feed-side
-    # unwrap only -- this chain stays COMMAND-OFF as the same-carrier control arm.
-    deep-rate-alias-hz: 9.537
+    # #33: COMMAND-OFF on purpose -- the same-carrier control arm for gal_e5a's closed
+    # loop (its feed auto-prefers deep_rate_full_* once the tracker restart serves them).
     trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,http://cx27:12049/gnss{0..1}_b2a_inject,\
 http://cx42:12049/gnss{0..1}_b2a_inject,http://cx43:12049/gnss{0..1}_b2a_inject,\
 http://cx44:12049/gnss{0..1}_b2a_inject,http://cx51:12049/gnss{0..1}_b2a_inject"

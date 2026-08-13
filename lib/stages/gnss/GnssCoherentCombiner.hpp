@@ -398,6 +398,10 @@ private:
     double _deep_rate_max_hz;
     double _deep_rate_min_q = 10.0;
     std::vector<float> _st_deep_rate, _st_deep_rate_q;
+    /// #40: the rate search's UNCAPPED argmax + q -- the carrier loop's measurement.
+    /// deep_rate_hz is the FOLD's pick and is clamped to deep_rate_max_hz; past the cap it
+    /// degrades to the best in-cap noise bin, which must never feed a loop.
+    std::vector<float> _st_deep_rate_full, _st_deep_rate_full_q;
 
     /// COMMON-PHASE TRACKER before the deep coherent sum (the _deep_plain branch): the batch
     /// form of the closed carrier loop the airspy chain had -- each record derotated by the

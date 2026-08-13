@@ -74,7 +74,7 @@ from gnss_broker.transport import (           # noqa: E402
 from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
-    cp_rate_from_code_bias, dr_cp0, dr_seed_phys, unalias,
+    cp_rate_from_code_bias, dr_cp0, dr_seed_phys,
 )
 from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fit_spectrum_delay,
@@ -1055,17 +1055,6 @@ def main(argv=None, rx=None, publisher=None):
                          "Posts via carrier_trim_hz (NCO derotation, phase-continuous in "
                          "the tracker) and never touches doppler_hz: seed continuity "
                          "beats freshness, measured (deep_snr 221->17 on a 10 s re-pin).")
-    ap.add_argument("--deep-rate-alias-hz", type=float, default=0.0,
-                    help="the modulus of deep_rate_hz's ambiguity (Hz), i.e. the full "
-                         "width of the deep fold's rate-search window; 0 disables "
-                         "unwrapping. MEASURED 9.537 on the CS100 chains (e5a/b2a: every "
-                         "exported value lives in +-4.77 Hz, and the +5 Hz trim probe's "
-                         "out-of-window sats came back wrapped by exactly one modulus). "
-                         "With this set, the rrate feed unwraps each measurement to the "
-                         "alias nearest the state's own prediction (max 2 wraps) before "
-                         "updating -- a wrapped sample fed raw is off by a full modulus, "
-                         "which is what walked the first live arm ~1 Hz/min. Per-chain: "
-                         "the modulus is a property of the chain's fold geometry.")
     ap.add_argument("--rrate-cmd-max-sigma", type=float, default=0.5,
                     help="command a sat's carrier only when its rrate row's 1-sigma (m/s) "
                          "is below this. 0.5 m/s is ~2 Hz at 1176 MHz -- an UNMEASURED "
@@ -2532,6 +2521,12 @@ def main(argv=None, rx=None, publisher=None):
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
+    rrate_prev_hop = {}  # the rrate feed's OWN continuity state (#40): it may read different
+    rrate_prev_val = {}  # fields (deep_rate_full_*) than the trim loop, so sharing the trim
+                         # loop's prev dicts would corrupt both gates
+    rr_full_ok = False   # this poll's feed ran on the UNCAPPED fields -- the command requires
+                         # it (a capped measurement past +-5 Hz is noise; feeding a loop with
+                         # it is what walked arm 1)
     rr_cmd_applied = {}  # prn -> carrier command POSTED last poll (#33 P3). The rrate feed's
                          # reference: deep_rate_hz is measured on records already derotated
                          # by this, so the feed adds it back to reference y at the base seed.
@@ -6491,8 +6486,9 @@ def main(argv=None, rx=None, publisher=None):
         # must share one result, never each ask.
         _rr_resid, _rr_cons = {}, None
         if (args.carrier_source == "rate"
-                and (args.carrier_gain > 0.0 or args.rrate_state
-                     or (args.joint_shadow and args.detectors))):
+                and (args.carrier_gain > 0.0
+                     or (args.joint_shadow and args.detectors
+                         and not args.rrate_state))):
             try:
                 _rr_resid, _rr_cons = rate_residuals(
                     status, args.carrier_rate_min_q, args.carrier_rate_clip_hz,
@@ -6554,29 +6550,42 @@ def main(argv=None, rx=None, publisher=None):
         # ONE row through two carriers 1.0261 apart: cross-band information ADDS instead of
         # being fitted twice, which is the entire point of the state.
         # MEASUREMENT-ONLY unless --rrate-command is also set: touches no seed, no POST.
-        if args.rrate_state and _rr_resid:
+        # ITS OWN rate_residuals CALL, on the UNCAPPED fields when the combiner serves them
+        # (#40: deep_rate_hz is the fold's pick, clamped to deep_rate_max_hz -- past the cap
+        # it reports the best in-cap bin, i.e. NOISE, which is what walked arm 1). Fallback
+        # to the capped fields keeps the shadow alive against an old tracker binary, and
+        # rr_full_ok is how the COMMAND refuses to close the loop on that degraded feed.
+        rr_full_ok = False
+        if args.rrate_state and args.carrier_source == "rate":
+            rr_full_ok = any(isinstance(_r, dict) and _r.get("deep_rate_full_q") is not None
+                             for _r in (status or {}).values())
+            try:
+                _fd = ("deep_rate_full_hz", "deep_rate_full_q") if rr_full_ok \
+                    else ("deep_rate_hz", "deep_rate_q")
+                _rr2_resid, _ = rate_residuals(
+                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, None,
+                    prev_hop=rrate_prev_hop, max_gap=args.carrier_rate_max_gap,
+                    prev_val=rrate_prev_val, max_step=args.carrier_rate_max_step,
+                    unit_hop=rate_unit_hop, rate_field=_fd[0], q_field=_fd[1])
+            except Exception as e:
+                _rr2_resid = {}
+                _log_rl("jrr-err", "rrate residuals skipped: %s" % e, every_s=300.0)
+        else:
+            _rr2_resid = {}
+        if args.rrate_state and _rr2_resid:
             try:
                 _jrr = rx.joint_receiver(band_id, CODE_LEN)
                 _n_ok = 0
-                for _p, _rv in sorted(_rr_resid.items()):
-                    # THE REFERENCE. deep_rate_hz is measured on records the tracker
-                    # already derotated by the commanded trim, so what the search reports
-                    # is what REMAINS. Add the standing command back so y is referenced to
-                    # the chain's BASE seed -- the same value regardless of what the last
+                for _p, _rv in sorted(_rr2_resid.items()):
+                    # THE REFERENCE. deep_rate is measured on records the tracker already
+                    # derotated by the commanded trim, so what the search reports is what
+                    # REMAINS. Add the standing command back so y is referenced to the
+                    # chain's BASE seed -- the same value regardless of what the last
                     # command happened to be. A frequency from a reference, never from an
                     # argument: feeding the bare residual would make every commanded sat
                     # read as "solved" and the filter would unlearn its own correction.
                     _y = _rv + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
                     _k = (args.dr_constellation, int(_p))
-                    # UNWRAP to the state's own prediction (--deep-rate-alias-hz). Only
-                    # once the row is MEASURED: unwrapping a birth toward an unmeasured
-                    # prediction of 0 would be a no-op dressed as a correction, and
-                    # unwrapping toward a wide row locks in whatever the first sample
-                    # aliased to. carrier_correction_hz IS the prediction -- the same
-                    # expression the command posts, kept as one function on purpose.
-                    if args.deep_rate_alias_hz > 0.0 and _jrr.rrate_sigma(_k) < 1.0:
-                        _y = unalias(_y, _jrr.carrier_correction_hz(_k, args.carrier_hz),
-                                     args.deep_rate_alias_hz)
                     if _jrr.update_rrate(_k, _y, t_now_abs,
                                          args.carrier_hz) is not None:
                         _n_ok += 1
@@ -6586,12 +6595,13 @@ def main(argv=None, rx=None, publisher=None):
                                       ("%.2f" % _s if (_s := _jrr.rrate_sigma(
                                           (args.dr_constellation, int(_p)))) < 99.0
                                        else "inf"))
-                    for _p in sorted(_rr_resid))
+                    for _p in sorted(_rr2_resid))
                 _log_rl("jrr",
-                        "JRR[%s] rrate m/s: %s | f_car %+.3f+-%.3f Hz "
+                        "JRR[%s%s] rrate m/s: %s | f_car %+.3f+-%.3f Hz "
                         "(%d/%d accepted this poll; n=%d rej=%d)"
-                        % (args.dr_constellation, _rows, _jrr.f_carrier(),
-                           _jrr.f_carrier_sigma(), _n_ok, len(_rr_resid),
+                        % (args.dr_constellation, "" if rr_full_ok else " CAPPED-FALLBACK",
+                           _rows, _jrr.f_carrier(),
+                           _jrr.f_carrier_sigma(), _n_ok, len(_rr2_resid),
                            _jrr.n_rrate, _jrr.rrate_rejected), every_s=60.0)
             except Exception as e:
                 _log_rl("jrr-err", "rrate feed skipped: %s" % e, every_s=300.0)
@@ -7074,13 +7084,23 @@ def main(argv=None, rx=None, publisher=None):
         # never touched -- seed continuity beats freshness, measured.
         _jrc = None
         if args.rrate_command:
-            try:
-                _j = rx.joint_receiver(band_id, CODE_LEN)
-                # No receiver-wide term solved yet -> nothing to command. The sigma gate
-                # below then handles per-sat convergence one row at a time.
-                _jrc = _j if _j.f_carrier_sigma() != float("inf") else None
-            except Exception:
-                _jrc = None
+            if not rr_full_ok:
+                # ⚠️ THE ARM-1 GUARD. A capped measurement past +-deep_rate_max_hz is the
+                # best in-cap NOISE bin, and closing the loop on it walked every command
+                # (~1 Hz/min). The command therefore requires the combiner to be serving
+                # the uncapped fields THIS POLL -- an old tracker binary degrades this
+                # chain to shadow, loudly, instead of ratcheting.
+                _log_rl("jrr-nofull",
+                        "rrate-command HELD: combiner is not serving deep_rate_full_* "
+                        "(old tracker binary?) -- shadow only", every_s=120.0)
+            else:
+                try:
+                    _j = rx.joint_receiver(band_id, CODE_LEN)
+                    # No receiver-wide term solved yet -> nothing to command. The sigma
+                    # gate below then handles per-sat convergence one row at a time.
+                    _jrc = _j if _j.f_carrier_sigma() != float("inf") else None
+                except Exception:
+                    _jrc = None
         _rr_cmd_new = {}
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)

@@ -199,32 +199,38 @@ class TestClosedLoopReference(unittest.TestCase):
                                "resid %.3f of y %.3f" % (prn, resid[prn], y_true))
 
 
-class TestUnalias(unittest.TestCase):
-    """The measured aliasing of deep_rate_hz (2026-08-13 trim probe): values live in
-    (-4.77, +4.77] and out-of-window truth wraps by 9.537. These pin the two probe
-    observations and the bound that keeps unwrapping from running away."""
-    M = 9.537
+class TestFullBandFields(unittest.TestCase):
+    """#40: the rrate feed must read the UNCAPPED rate fields. deep_rate_hz is the FOLD's
+    pick, clamped to deep_rate_max_hz -- past the cap it degrades to the best in-cap noise
+    bin, and closing a loop on that walked arm 1 (~1 Hz/min). rate_residuals therefore
+    takes the field names; these pin that the selection actually selects."""
 
     def setUp(self):
-        from gnss_broker.fits import unalias
-        self.unalias = unalias
+        from gnss_broker.fits import rate_residuals
+        self.rr = rate_residuals
 
-    def test_the_probe_pair(self):
-        # PRN 5: predicted -7.9 after the +5 Hz step, read +1.4 -- one wrap down restores
-        self.assertAlmostEqual(self.unalias(1.4, -7.9, self.M), 1.4 - self.M, places=6)
-        # PRN 15: predicted -6.0, read +3.5
-        self.assertAlmostEqual(self.unalias(3.5, -6.0, self.M), 3.5 - self.M, places=6)
+    @staticmethod
+    def _status(prn, capped, full, q=20.0, hop=1000):
+        return {prn: {"deep_rate_hz": capped, "deep_rate_q": q,
+                      "deep_rate_full_hz": full, "deep_rate_full_q": q,
+                      "amp_snr": 50.0, "pow_hop": hop}}
 
-    def test_in_window_untouched(self):
-        self.assertEqual(self.unalias(-3.1, -4.3, self.M), -3.1)
+    def _two_polls(self, **kw):
+        """The continuity gate skips a PRN's first sighting, so drive two polls."""
+        ph, pv = {}, {}
+        self.rr(self._status(7, -4.7, -7.9, hop=1000), 10.0, 0.0,
+                prev_hop=ph, prev_val=pv, **kw)
+        out, _ = self.rr(self._status(7, -4.6, -7.8, hop=3048), 10.0, 0.0,
+                         prev_hop=ph, prev_val=pv, **kw)
+        return out
 
-    def test_wrap_bound_holds(self):
-        # a prediction 5 moduli away moves the sample by at most max_wraps
-        self.assertAlmostEqual(self.unalias(0.0, 5 * self.M, self.M, max_wraps=2),
-                               2 * self.M, places=6)
+    def test_default_reads_the_capped_field(self):
+        out = self._two_polls()
+        self.assertAlmostEqual(out[7], -4.6)
 
-    def test_disabled_modulus_is_identity(self):
-        self.assertEqual(self.unalias(3.5, -6.0, 0.0), 3.5)
+    def test_full_fields_read_the_uncapped_value(self):
+        out = self._two_polls(rate_field="deep_rate_full_hz", q_field="deep_rate_full_q")
+        self.assertAlmostEqual(out[7], -7.8)
 
 
 class TestUnmeasuredReadsAsUnknown(unittest.TestCase):
