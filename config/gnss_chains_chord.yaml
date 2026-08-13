@@ -250,6 +250,19 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # the Kalman blends coarse acquisition and fine tracking with no mode switch.
     rrate-phase-sign: 1.0
     rrate-phase-feed: true
+    # ⚠️ THE FLL->PLL HANDOFF (96cc120f7) IS DISABLED OVERNIGHT -- it REGRESSED the chain.
+    # Measured 23:5x on the SAME satellites (e5b = cross-band control): commanded coh_frac
+    # worse on 5 of 6 -- 7: 0.90|0.95, 8: 0.77|0.91, 26: 0.91|0.99, 29: 0.83|0.92, and
+    # PRN 33 (PHASE-GOVERNED, command never settled) 0.25|0.87. Mechanism: de-weighting
+    # coarse 8x makes a row 64x slower, and the fine feed fires only ~1/min, so between
+    # fine samples nothing tracks the real drift -- the command wanders and drags the sat.
+    # THE REAL BLOCKER IS FINE CADENCE, NOT WEIGHTING: the fine gate needs |dcmd| <= 0.1
+    # Hz over the span, and the coarse loop moves the command ~0.5 Hz/poll, so fine fires
+    # only when the command happens to be still. The span-MEAN reference is exact to first
+    # order for a linearly drifting command, so that gate can be relaxed a long way (~1 Hz)
+    # -- do that in daylight, confirm fine fires every poll, and only THEN re-try the
+    # handoff. Overnight state = flat weights + fine feed live (stable 20:49-23:43).
+    rrate-coarse-deweight: 1.0
     trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
 http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
 http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
