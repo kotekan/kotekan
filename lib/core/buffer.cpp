@@ -449,17 +449,13 @@ int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_le
 
 void Buffer::enable_peek_hold() {
     buffer_lock lock(mutex);
-    if (num_frames < 2) {
-        // Logged through the buffer's own logging so the message carries which
-        // buffer it is about, then thrown: the buffer factory turns this into a
-        // clean shutdown, which is what a pipeline configured this way wants.
-        const std::string message =
-            fmt::format(fmt("peek_hold on buffer {:s} requires num_frames >= 2: with a single "
-                            "frame the producer would deadlock waiting for the held frame"),
-                        buffer_name);
-        ERROR("{:s}", message);
-        throw std::runtime_error(message);
-    }
+    // A pipeline configured this way cannot run, so take kotekan down the way
+    // every other unusable-config check does, rather than leaving the exit code
+    // to whoever catches the exception.
+    if (num_frames < 2)
+        FATAL_ERROR("peek_hold on buffer {:s} requires num_frames >= 2: with a single frame the "
+                    "producer would deadlock waiting for the held frame",
+                    buffer_name);
     // The hold costs one frame slot for as long as the pipeline runs, which on a
     // shallow buffer is a large share of the depth it has to absorb jitter with.
     if (num_frames < peek_hold_shallow_frames)
