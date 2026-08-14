@@ -132,6 +132,11 @@ private:
     /// clock, so every instance assigns a record to the SAME window with no negotiation. A ring
     /// of completed windows lets a laggard still be asked for the window its peers already
     /// returned. Reads are IDEMPOTENT -- no reset -- so a second poller is harmless.
+    /// PER-CHANNEL COMB EXPORT (gnssRecord.hpp's chan block). Appends the UNSUMMED per-channel
+    /// prompt after the PRN records -- the same NCO-derotated, element-combined value the
+    /// spectrum ring accumulates, but PER RECORD, because a cross-record rate fit cannot be
+    /// done on a window sum. Off by default; requires channel_ids.
+    bool _chan_export = false;
     std::vector<int> _spec_freq_ids;             ///< [n_chan] F-engine freq_id per channel
     int64_t _spec_win_samples = 0;               ///< window length, SAMPLES (0 = legacy mode)
     /// One accumulated window. Slot for index i is _spec_ring[i % depth], so a window is

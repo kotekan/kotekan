@@ -44,13 +44,23 @@ def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
     if present is None:
         present = (1 << n_rec) - 1
     wstart0 = win * n_rec * hops_per_record * fft_len
+    n_chan = 5
+    chan_ids = [5972 + 16 * k for k in range(n_chan)] + [0] * (telem._MAX_CHAN - n_chan)
     hdr = telem._HDR.pack(telem._MAGIC, telem._VERSION, n_rec, n_prn, telem._ROW_FLOATS,
-                          7, 32, hops_per_record, fft_len, win, seq, wstart0, utc0,
-                          present, 0, chain.encode(), inst.encode())
-    body = [0.0] * (n_rec * n_prn * telem._ROW_FLOATS)
+                          n_chan, 32, hops_per_record, fft_len, win, seq, wstart0, utc0,
+                          present, telem._MAX_CHAN, telem._ROW_TOTAL,
+                          chain.encode(), inst.encode(), *chan_ids)
+    body = [0.0] * (n_rec * n_prn * telem._ROW_TOTAL)
     for r in range(n_rec):
         for p in range(n_prn):
-            base = (r * n_prn + p) * telem._ROW_FLOATS
+            base = (r * n_prn + p) * telem._ROW_TOTAL
+            # the comb: A = 1 exactly on every column, energy 1, so a caller can check that
+            # summing A*E over columns reproduces the header prompt
+            for ch in range(n_chan):
+                cb = base + telem._ROW_FLOATS + ch * telem._CHAN_FLOATS
+                body[cb + telem.CHAN_RE] = 1.0
+                body[cb + telem.CHAN_IM] = 0.0
+                body[cb + telem.CHAN_ENERGY] = 1.0
             body[base + telem.REC_PRN] = float(1 + p)
             body[base + telem.REC_P_ENERGY] = 2.0
             body[base + telem.REC_P_RE] = 2.0 * (1 + p)   # A = 1+p exactly
@@ -59,7 +69,7 @@ def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
             body[base + telem.REC_TRIM_INC] = 0.01
     if rows:
         for (r, p, slot), v in rows.items():
-            body[(r * n_prn + p) * telem._ROW_FLOATS + slot] = v
+            body[(r * n_prn + p) * telem._ROW_TOTAL + slot] = v
     return hdr + struct.pack("<%df" % len(body), *body)
 
 
@@ -134,6 +144,44 @@ class TestWireFormat(unittest.TestCase):
         self.assertTrue(f.has_record(3))
         self.assertIsNone(f.row(2, 100))
         self.assertEqual(f.row(3, 100)[telem.REC_P_IM], 3000 + 0 + telem.REC_P_IM)
+
+    def test_comb_labels_and_values(self):
+        # THE v2 PAYLOAD. telemfmt writes comb[ch] = 100000*r + 1000*p + 10*ch + {1,2} with
+        # energy ch+1, and freq_ids on a real stride-16 comb. Every element of the address
+        # (record, PRN, channel, slot) is in the value, so a wrong row stride or a wrong comb
+        # offset returns a number that provably belongs somewhere else.
+        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
+        self.assertEqual(self.meta["max_chan"], telem._MAX_CHAN)
+        self.assertEqual(self.meta["chan_floats"], telem._CHAN_FLOATS)
+        self.assertEqual(self.meta["row_floats"], telem._ROW_TOTAL)
+        self.assertEqual(f.chan_ids, [5972 + 16 * ch for ch in range(5)])
+        comb = f.comb(3, 102)  # r=3, p=2
+        self.assertEqual(len(comb), 5)
+        for ch, (fid, A, e) in enumerate(comb):
+            self.assertEqual(fid, 5972 + 16 * ch)
+            self.assertEqual(e, ch + 1)
+            # comb() normalises by energy, matching the header slots' G/E convention
+            self.assertAlmostEqual(A.real, (100000 * 3 + 1000 * 2 + 10 * ch + 1) / (ch + 1),
+                                   places=3)
+            self.assertAlmostEqual(A.imag, (100000 * 3 + 1000 * 2 + 10 * ch + 2) / (ch + 1),
+                                   places=3)
+
+    def test_unused_comb_columns_do_not_leak(self):
+        # telemfmt fills 5 of TELEM_MAX_CHAN columns ON PURPOSE. The reserved-but-unused ones
+        # must read as absent, never as the neighbouring row's first channel -- which is what a
+        # row stride computed from n_chan instead of max_chan would hand back.
+        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
+        self.assertEqual(f.n_chan, 5)
+        self.assertLess(f.n_chan, telem._MAX_CHAN)
+        for r in range(f.n_rec):
+            if f.has_record(r):
+                for prn in f.prns():
+                    self.assertEqual(len(f.comb(r, prn)), 5)
+
+    def test_comb_absent_on_a_missing_record(self):
+        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
+        self.assertFalse(f.has_record(2))
+        self.assertEqual(f.comb(2, 100), [])
 
     def test_utc_double_alias(self):
         # UTC is a double aliased over two float slots. A float-by-float parse gets a

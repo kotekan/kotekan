@@ -103,6 +103,10 @@
  * from this file (the gnssSignal.hpp pattern); keep the literals machine-readable.
  */
 
+#include <cstddef> // for size_t -- this header is standalone (parsed by the config generator
+                   // and included by tools that pull in nothing else), so it must not rely on
+                   // an earlier include having happened to provide it.
+
 namespace gnss {
 
 /// float32 slots per PRN per record.
@@ -287,10 +291,66 @@ constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below 
                                       ///< the RATIO is a per-antenna coherence diagnostic.
 // 4..11 reserved (per-antenna deep integration, peel residual).
 
+// ---------------------------------------------------------------------------------------
+// PER-CHANNEL BLOCK (2026-08-14) -- THE COMB, UNSUMMED
+// ---------------------------------------------------------------------------------------
+/// ⚠️ THE CROSS-CHANNEL SUM IS A LOSS WE SHOULD NEVER HAVE TAKEN. GnssGpuRecordAssemble sums
+/// each PRN's covering channels into ONE complex prompt (slots 3/4), and that sum is, in the
+/// generator's own words, "the one combine the broker can never undo". It destroys exactly the
+/// axis the fleet needs: a delay is a phase ramp ACROSS FREQUENCY, so with the comb collapsed
+/// the broker can only FIT a free constant per instance where it should DERIVE one from the
+/// ramp -- which is #52 in its original form, and why fleet_coherent aligns instances by a
+/// phase estimated from the very data it then sums.
+///
+/// KV, 2026-08-14: "purge the idea of summing across channels in each instance, that's *never*
+/// what we want to do. We want the frequencies separate, do not combine them in the trackers."
+///
+/// So the assembler now ALSO emits the un-summed comb, appended AFTER the PRN records in the
+/// same frame:
+///
+///     [PRN 0 record][PRN 1 record]...[PRN n-1 record][chan block]
+///     chan block = [PRN 0: ch 0..n_chan-1][PRN 1: ...],  CHAN_FLOATS each
+///
+/// APPENDED rather than interleaved into the record, deliberately: every existing consumer
+/// (GnssCoherentCombiner, GnssBeamCube, rawFileWrite, the offline readers) indexes by
+/// record_stride() and n_prn, so a longer frame with the same prefix is invisible to all of
+/// them. That is what makes this deployable without a flag day -- the summed prompt keeps
+/// working while the un-summed path is proven, and only then does the sum go.
+///
+/// The values are the SAME per-channel quantities the /get_spectrum ring accumulates -- NCO-
+/// derotated and element-combined, i.e. one "element-equivalent" per channel -- but PER RECORD
+/// rather than per window, which is what a cross-record rate fit needs.
+constexpr int CHAN_FLOATS = 3;
+constexpr int CHAN_RE = 0;     ///< per-channel prompt, NCO-derotated + element-combined
+constexpr int CHAN_IM = 1;
+constexpr int CHAN_ENERGY = 2; ///< that channel's replica energy (the ML combining weight)
+
 /// Floats per PRN for a record carrying @c n_elem antennas (@c n_elem 0 => the airspy layout).
 constexpr int record_stride(int n_elem) {
     return RECORD_FLOATS + n_elem * ELEM_FLOATS;
 }
+
+/// Float offset of the appended per-channel block (0 channels => no block, frame unchanged).
+constexpr size_t chan_block_offset(int n_prn, int n_elem) {
+    return (size_t)n_prn * record_stride(n_elem);
+}
+
+/// Float offset of PRN @c p, channel @c ch within the frame.
+constexpr size_t chan_offset(int p, int ch, int n_prn, int n_chan, int n_elem) {
+    return chan_block_offset(n_prn, n_elem) + ((size_t)p * n_chan + ch) * CHAN_FLOATS;
+}
+
+/// Total floats in a frame carrying @c n_prn records plus the comb (@c n_chan 0 = no comb).
+constexpr size_t frame_floats(int n_prn, int n_elem, int n_chan) {
+    return chan_block_offset(n_prn, n_elem) + (size_t)n_prn * n_chan * CHAN_FLOATS;
+}
+
+static_assert(frame_floats(4, 2, 0) == chan_block_offset(4, 2),
+              "n_chan 0 must reproduce the record-only frame exactly");
+static_assert(chan_offset(0, 0, 4, 7, 2) == chan_block_offset(4, 2),
+              "the comb starts immediately after the last PRN record");
+static_assert(chan_offset(1, 0, 4, 7, 2) - chan_offset(0, 0, 4, 7, 2) == 7 * CHAN_FLOATS,
+              "consecutive PRNs are n_chan channels apart");
 
 /// Float offset of element @c e of PRN @c p within the frame.
 constexpr int elem_offset(int p, int e, int n_elem) {

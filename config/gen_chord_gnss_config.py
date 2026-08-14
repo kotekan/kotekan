@@ -897,7 +897,14 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
             "num_frames": args.buffer_depth,
-            "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
+            # RECORDS **PLUS THE UNSUMMED COMB** (gnssRecord.hpp, 2026-08-14). The comb is
+            # APPENDED after the PRN records, so every existing consumer -- the combiner, the
+            # beam cube, rawFileWrite, the offline readers -- indexes exactly as before and is
+            # untouched by the longer frame. KV: "purge the idea of summing across channels in
+            # each instance, that's *never* what we want to do."
+            "frame_size": (f"{n_prn} * {record_floats} * sizeof_float32"
+                           + (f" + {n_prn} * {n_chan} * 3 * sizeof_float32"
+                              if args.telem_host else "")),
             # dump a path-B record frame over REST without a rawFileWrite (see the tap buffers)
             "peek_hold": True,
         },
@@ -939,6 +946,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                                         * args.hops_per_record
                                         * int(cfg["fengine"]["fft_length"])),
             "spectrum_ring_depth": args.spectrum_ring_depth,
+            # THE UNSUMMED COMB, per record, appended after the PRN records (gnssRecord.hpp).
+            # Tied to --telem-host because the broker is its only consumer today; the record
+            # buffer above is sized to match, and the two must move together.
+            **({"chan_export": True} if args.telem_host else {}),
             "reference_element": args.reference_element,
             "elem_sum": args.elem_sum,
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
@@ -1071,6 +1082,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 "hops_per_record": args.hops_per_record,
                 "fft_len": cfg["fengine"]["fft_length"],
                 "n_chan": n_chan,
+                # THE COMB AND ITS COLUMN LABELS. channel_ids is the SAME list the assembler and
+                # the despread were given -- the broker reads the freq_ids off the wire so a
+                # configured copy on its side cannot drift out of step with the node.
+                "chan_export": True,
+                "channel_ids": list(freq_ids),
                 "cpu_affinity": [cores[(gpu + 5) % len(cores)]],
             },
             f"{pre}telem_send": {

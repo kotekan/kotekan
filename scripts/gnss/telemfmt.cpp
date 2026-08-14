@@ -49,7 +49,15 @@ int main(int argc, char** argv) {
     gnss::telem_set_name(h.chain, "gal_e5a");
     gnss::telem_set_name(h.inst, "cx42.1");
 
-    std::vector<float> rows((size_t)n_rec * n_prn * gnss::RECORD_FLOATS, 0.0f);
+    const int n_chan = 5; // < TELEM_MAX_CHAN on purpose: the unused columns must read ZERO,
+                          // never the neighbouring row's data, and only a partial fill tests it
+    h.n_chan = (uint16_t)n_chan;
+    h.max_chan = (uint16_t)gnss::TELEM_MAX_CHAN;
+    h.n_row_total = (uint16_t)gnss::TELEM_ROW_FLOATS;
+    for (int ch = 0; ch < n_chan; ++ch)
+        h.chan_id[ch] = (uint16_t)(5972 + 16 * ch); // a real stride-16 comb
+
+    std::vector<float> rows((size_t)n_rec * n_prn * gnss::TELEM_ROW_FLOATS, 0.0f);
     for (int r = 0; r < n_rec; ++r)
         for (int p = 0; p < n_prn; ++p) {
             float* row = &rows[gnss::telem_row_offset(r, p, n_prn)];
@@ -57,6 +65,15 @@ int main(int argc, char** argv) {
                 row[f] = (float)(1000 * r + 10 * p + f);
             row[gnss::REC_PRN] = (float)(100 + p);
             row[gnss::REC_P_ENERGY] = (float)(p + 1); // > 0 so every row survives the energy gate
+            // THE COMB: a distinct, reproducible value per (record, PRN, channel, slot) so a
+            // parser that gets the row stride or the comb offset wrong reads a number that
+            // provably belongs somewhere else rather than a plausible one.
+            for (int ch = 0; ch < n_chan; ++ch) {
+                float* cb = row + gnss::telem_chan_offset(ch);
+                cb[gnss::CHAN_RE] = (float)(100000 * r + 1000 * p + 10 * ch + 1);
+                cb[gnss::CHAN_IM] = (float)(100000 * r + 1000 * p + 10 * ch + 2);
+                cb[gnss::CHAN_ENERGY] = (float)(ch + 1);
+            }
             // UTC is a DOUBLE aliased over two float slots -- the one place a naive
             // float-by-float parse gets a plausible-looking wrong answer.
             *reinterpret_cast<double*>(row + gnss::RECORD_UTC_SLOT) =
@@ -72,13 +89,17 @@ int main(int argc, char** argv) {
     std::fwrite(rows.data(), sizeof(float), rows.size(), f);
     std::fclose(f);
 
-    std::printf("{\"header_bytes\": %zu, \"telem_header_bytes_const\": %d, \"record_floats\": %d,"
+    std::printf("{\"row_floats\": %d, \"max_chan\": %d, \"chan_floats\": %d, \"n_chan\": %d,"
+                " \"chan_id0\": %d, \"chan_stride\": %zu,"
+                " \"header_bytes\": %zu, \"telem_header_bytes_const\": %d, \"record_floats\": %d,"
                 " \"frame_bytes\": %zu, \"n_rec\": %d, \"n_prn\": %d,"
                 " \"off_win\": %zu, \"off_seq\": %zu, \"off_wstart0\": %zu, \"off_utc0\": %zu,"
                 " \"off_present\": %zu, \"off_chain\": %zu, \"off_inst\": %zu,"
                 " \"magic\": %u, \"version\": %d, \"win\": %llu, \"seq\": %llu,"
                 " \"wstart0\": %lld, \"present\": %u,"
                 " \"chain\": \"gal_e5a\", \"inst\": \"cx42.1\"}\n",
+                gnss::TELEM_ROW_FLOATS, gnss::TELEM_MAX_CHAN, gnss::CHAN_FLOATS, n_chan,
+                (int)h.chan_id[0], gnss::telem_chan_offset(1) - gnss::telem_chan_offset(0),
                 sizeof(gnss::TelemHeader), gnss::TELEM_HEADER_BYTES, gnss::RECORD_FLOATS,
                 gnss::telem_frame_bytes(n_rec, n_prn), n_rec, n_prn,
                 offsetof(gnss::TelemHeader, win), offsetof(gnss::TelemHeader, seq),

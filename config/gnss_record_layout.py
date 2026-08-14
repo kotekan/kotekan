@@ -55,6 +55,21 @@ def telem_header_bytes():
     return _read("TELEM_HEADER_BYTES", TELEM_HEADER)
 
 
+def telem_max_chan():
+    """gnss::TELEM_MAX_CHAN -- comb columns reserved per wire row."""
+    return _read("TELEM_MAX_CHAN", TELEM_HEADER)
+
+
+def chan_floats():
+    """gnss::CHAN_FLOATS -- floats per comb column (prompt re, im, energy)."""
+    return _read("CHAN_FLOATS")
+
+
+def telem_row_floats():
+    """gnss::TELEM_ROW_FLOATS -- the record header PLUS the reserved comb columns."""
+    return record_floats() + telem_max_chan() * chan_floats()
+
+
 def telem_frame_bytes(n_rec, n_prn):
     """Bytes of one telemetry wire frame -- the SAME expression as gnss::telem_frame_bytes.
 
@@ -63,7 +78,7 @@ def telem_frame_bytes(n_rec, n_prn):
     CLOSES THE CONNECTION on a mismatch, so a disagreement here does not corrupt data -- it
     silently delivers none, which is its own kind of expensive.
     """
-    return telem_header_bytes() + n_rec * n_prn * record_floats() * 4
+    return telem_header_bytes() + n_rec * n_prn * telem_row_floats() * 4
 
 
 if __name__ == "__main__":

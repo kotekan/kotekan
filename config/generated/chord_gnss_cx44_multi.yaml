@@ -225,6 +225,7 @@ fpga_controller:
   timing_endpoint: /get-frame0-time
 frame_arrival_period: 5.12e-6 * 8192
 gnss0_b2a_n2assemble:
+  chan_export: true
   channel_ids: &id001
   - 5986
   - 6002
@@ -373,7 +374,7 @@ gnss0_b2a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 410 * sizeof_float32 + 24 * 6 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -393,12 +394,20 @@ gnss0_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss0_b2a_telem_pack:
   chain: bds_b2a
+  chan_export: true
+  channel_ids:
+  - 5986
+  - 6002
+  - 6018
+  - 6034
+  - 6050
+  - 6066
   cpu_affinity:
   - 59
   fft_len: 16384
@@ -424,6 +433,7 @@ gnss0_b2a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_b2b_n2assemble:
+  chan_export: true
   channel_ids: &id004
   - 6130
   - 6146
@@ -574,7 +584,7 @@ gnss0_b2b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 410 * sizeof_float32 + 24 * 7 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -594,12 +604,21 @@ gnss0_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss0_b2b_telem_pack:
   chain: bds_b2b
+  chan_export: true
+  channel_ids:
+  - 6130
+  - 6146
+  - 6162
+  - 6178
+  - 6194
+  - 6210
+  - 6226
   cpu_affinity:
   - 59
   fft_len: 16384
@@ -630,6 +649,7 @@ gnss0_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_n2assemble:
+  chan_export: true
   channel_ids: &id007
   - 5986
   - 6002
@@ -786,7 +806,7 @@ gnss0_e5a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32 + 32 * 6 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -806,12 +826,20 @@ gnss0_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss0_e5a_telem_pack:
   chain: gal_e5a
+  chan_export: true
+  channel_ids:
+  - 5986
+  - 6002
+  - 6018
+  - 6034
+  - 6050
+  - 6066
   cpu_affinity:
   - 59
   fft_len: 16384
@@ -837,6 +865,7 @@ gnss0_e5a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_e5b_n2assemble:
+  chan_export: true
   channel_ids: &id010
   - 6130
   - 6146
@@ -995,7 +1024,7 @@ gnss0_e5b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32 + 32 * 7 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1015,12 +1044,21 @@ gnss0_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss0_e5b_telem_pack:
   chain: gal_e5b
+  chan_export: true
+  channel_ids:
+  - 6130
+  - 6146
+  - 6162
+  - 6178
+  - 6194
+  - 6210
+  - 6226
   cpu_affinity:
   - 59
   fft_len: 16384
@@ -1046,6 +1084,7 @@ gnss0_e5b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_n2assemble:
+  chan_export: true
   channel_ids: &id013
   - 5986
   - 6002
@@ -1202,7 +1241,7 @@ gnss0_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32 + 32 * 6 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1256,12 +1295,20 @@ gnss0_srch_tap:
   n_elements: 1
   out_buf: gnss0_srch_buf
 gnss0_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss0_telem_pack:
   chain: gps_l5
+  chan_export: true
+  channel_ids:
+  - 5986
+  - 6002
+  - 6018
+  - 6034
+  - 6050
+  - 6066
   cpu_affinity:
   - 59
   fft_len: 16384
@@ -1287,6 +1334,7 @@ gnss0_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_b2a_n2assemble:
+  chan_export: true
   channel_ids: &id016
   - 5978
   - 5994
@@ -1413,7 +1461,7 @@ gnss1_b2a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 410 * sizeof_float32 + 24 * 7 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1433,12 +1481,21 @@ gnss1_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss1_b2a_telem_pack:
   chain: bds_b2a
+  chan_export: true
+  channel_ids:
+  - 5978
+  - 5994
+  - 6010
+  - 6026
+  - 6042
+  - 6058
+  - 6074
   cpu_affinity:
   - 60
   fft_len: 16384
@@ -1464,6 +1521,7 @@ gnss1_b2a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_b2b_n2assemble:
+  chan_export: true
   channel_ids: &id018
   - 6138
   - 6154
@@ -1588,7 +1646,7 @@ gnss1_b2b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 410 * sizeof_float32 + 24 * 6 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1608,12 +1666,20 @@ gnss1_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss1_b2b_telem_pack:
   chain: bds_b2b
+  chan_export: true
+  channel_ids:
+  - 6138
+  - 6154
+  - 6170
+  - 6186
+  - 6202
+  - 6218
   cpu_affinity:
   - 60
   fft_len: 16384
@@ -1644,6 +1710,7 @@ gnss1_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_n2assemble:
+  chan_export: true
   channel_ids: &id020
   - 5978
   - 5994
@@ -1770,7 +1837,7 @@ gnss1_e5a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32 + 32 * 7 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1790,12 +1857,21 @@ gnss1_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss1_e5a_telem_pack:
   chain: gal_e5a
+  chan_export: true
+  channel_ids:
+  - 5978
+  - 5994
+  - 6010
+  - 6026
+  - 6042
+  - 6058
+  - 6074
   cpu_affinity:
   - 60
   fft_len: 16384
@@ -1821,6 +1897,7 @@ gnss1_e5a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_e5b_n2assemble:
+  chan_export: true
   channel_ids: &id022
   - 6138
   - 6154
@@ -1945,7 +2022,7 @@ gnss1_e5b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32 + 32 * 6 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1965,12 +2042,20 @@ gnss1_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss1_e5b_telem_pack:
   chain: gal_e5b
+  chan_export: true
+  channel_ids:
+  - 6138
+  - 6154
+  - 6170
+  - 6186
+  - 6202
+  - 6218
   cpu_affinity:
   - 60
   fft_len: 16384
@@ -1996,6 +2081,7 @@ gnss1_e5b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_n2assemble:
+  chan_export: true
   channel_ids: &id024
   - 5978
   - 5994
@@ -2122,7 +2208,7 @@ gnss1_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 410 * sizeof_float32 + 32 * 7 * 3 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2177,12 +2263,21 @@ gnss1_srch_tap:
   n_elements: 1
   out_buf: gnss1_srch_buf
 gnss1_telem_buf:
-  frame_size: 16736
+  frame_size: 32112
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
 gnss1_telem_pack:
   chain: gps_l5
+  chan_export: true
+  channel_ids:
+  - 5978
+  - 5994
+  - 6010
+  - 6026
+  - 6042
+  - 6058
+  - 6074
   cpu_affinity:
   - 60
   fft_len: 16384

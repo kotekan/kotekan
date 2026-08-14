@@ -72,6 +72,12 @@ private:
     int64_t _hops_per_record = 0;
     int64_t _fft_len = 0;
     int _n_chan = 0;
+    /// THE UNSUMMED COMB (gnssRecord.hpp's chan block, gnssTelem v2). When on, each row carries
+    /// this instance's per-channel prompts as well as the record header's summed one, and the
+    /// frame header carries their freq_ids so the broker can fit a delay across the fleet's
+    /// full comb instead of a free constant per instance.
+    bool _chan_export = false;
+    std::vector<int> _chan_ids; ///< [n_chan] freq_id per comb column; rides on every frame
 
     /// records_per_frame * hops_per_record * fft_len -- the absolute window length in SAMPLES.
     int64_t _win_samples = 0;

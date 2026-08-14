@@ -70,6 +70,9 @@ PRNS = [3, 7, 10, 26]
 INSTANCES = [("cx19.0", 0), ("cx42.1", 0), ("cx51.1", 3)]
 
 REC_STRIDE = record_stride(N_ELEM)
+N_CHAN = 5          # < TELEM_MAX_CHAN, so the unused wire columns are exercised
+CHAN_FLOATS = 3
+CHAN_IDS = [5972 + 16 * k for k in range(N_CHAN)]
 
 
 def _mark(inst, wstart, prn, slot):
@@ -108,7 +111,7 @@ def write_record_files(dirpath, inst, start_win, drop=()):
                     continue
                 wstart = (w * REC_PER_FRAME + r) * HOPS_PER_RECORD * FFT_LEN
                 fh.write(struct.pack("<qI", wstart, 0))
-                body = [0.0] * (N_PRN * REC_STRIDE)
+                body = [0.0] * (N_PRN * REC_STRIDE + N_PRN * N_CHAN * CHAN_FLOATS)
                 for p, prn in enumerate(PRNS):
                     base = p * REC_STRIDE
                     for s in range(telem._ROW_FLOATS):
@@ -120,6 +123,16 @@ def write_record_files(dirpath, inst, start_win, drop=()):
                     # smuggle these through looking like data.
                     for s in range(telem._ROW_FLOATS, REC_STRIDE):
                         body[base + s] = -12345.0
+                    # THE COMB, appended after every PRN record exactly as the assembler writes
+                    # it (gnssRecord.hpp chan_offset). Encodes its own full address so a stride
+                    # error anywhere between here and the broker is caught by value, not by
+                    # plausibility.
+                    cb0 = N_PRN * REC_STRIDE + (p * N_CHAN) * CHAN_FLOATS
+                    for ch in range(N_CHAN):
+                        cb = cb0 + ch * CHAN_FLOATS
+                        body[cb + 0] = _mark(inst, wstart, prn, 100 + ch)
+                        body[cb + 1] = _mark(inst, wstart, prn, 200 + ch)
+                        body[cb + 2] = float(ch + 1)
                 fh.write(struct.pack("<%df" % len(body), *body))
     return path
 
@@ -152,7 +165,7 @@ def write_config(dirpath):
         tag = "s%d" % i
         lines += [
             "%s_rec_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 16,"
-            " frame_size: %d}" % (tag, N_PRN * REC_STRIDE * 4),
+            " frame_size: %d}" % (tag, (N_PRN * REC_STRIDE + N_PRN * N_CHAN * CHAN_FLOATS) * 4),
             "%s_out_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 64,"
             " frame_size: %d}" % (tag, telem_frame_bytes(REC_PER_FRAME, MAX_PRN)),
             "%s_read: {kotekan_stage: rawFileRead, buf: %s_rec_buf, base_dir: %s,"
@@ -160,9 +173,10 @@ def write_config(dirpath):
             % (tag, tag, dirpath, inst.replace(".", "_")),
             "%s_pack: {kotekan_stage: GnssTelemPack, in_buf: %s_rec_buf, out_buf: %s_out_buf,"
             " chain: gps_l5, inst: %s, n_prn: %d, n_elements: %d, max_prn: %d,"
-            " records_per_frame: %d, hops_per_record: %d, fft_len: %d, n_chan: 7}"
+            " records_per_frame: %d, hops_per_record: %d, fft_len: %d, n_chan: %d,"
+            " chan_export: true, channel_ids: [%s]}"
             % (tag, tag, tag, inst, N_PRN, N_ELEM, MAX_PRN, REC_PER_FRAME, HOPS_PER_RECORD,
-               FFT_LEN),
+               FFT_LEN, N_CHAN, ", ".join(str(c) for c in CHAN_IDS)),
             "%s_send: {kotekan_stage: bufferSend, buf: %s_out_buf, server_ip: 127.0.0.1,"
             " server_port: %d, drop_frames: false, use_config_tracker: false}"
             % (tag, tag, PORT_RECV),
@@ -275,8 +289,26 @@ def main():
                         if any(v == -12345.0 for v in row):
                             fails.append("%s w%d r%d PRN %d: an ELEMENT block leaked into the "
                                          "wire row -- the stride is wrong" % (inst, w, r, prn))
+                        # [1b] THE COMB, v2. Same provenance rule: every column must be the
+                        # value written for that (instance, hop, PRN, channel), and its label
+                        # must be the freq_id the sender was configured with. A comb whose
+                        # columns survive but whose labels do not is worse than no comb -- the
+                        # delay fit downstream would be confidently wrong.
+                        cmb = f.comb(r, prn)
+                        if len(cmb) != N_CHAN:
+                            fails.append("%s w%d r%d PRN %d: %d comb columns, expected %d"
+                                         % (inst, w, r, prn, len(cmb), N_CHAN))
+                        for ch, (fid, A, e) in enumerate(cmb):
+                            if fid != CHAN_IDS[ch]:
+                                fails.append("%s w%d r%d PRN %d ch%d: freq_id %d != %d"
+                                             % (inst, w, r, prn, ch, fid, CHAN_IDS[ch]))
+                            want_re = _mark(inst, wstart, prn, 100 + ch) / (ch + 1)
+                            if abs(A.real - want_re) > 1e-3 * max(1.0, abs(want_re)):
+                                fails.append("%s w%d r%d PRN %d ch%d: comb %g != %g"
+                                             % (inst, w, r, prn, ch, A.real, want_re))
                         checked += 1
-        print("rows     %d checked against their own written address" % checked)
+        print("rows     %d checked against their own written address (record + %d-column comb)"
+              % (checked, N_CHAN))
         if checked == 0:
             fails.append("no rows were checked -- the gate could not have failed")
 

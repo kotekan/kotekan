@@ -61,7 +61,12 @@ PY
 )
 echo "gather config: $(basename "$CFG") -- recv :$RECV, serve :$SERVE, rest :$REST"
 
-pkill -9 -f "kotekan --config.*gather" 2>/dev/null || true
+# THE BRACKET TRICK, and it is not decoration. `pkill -f` matches full command lines, and a
+# remote shell running this script HAS the pattern in its own command line -- so an unbracketed
+# pkill signals the shell executing it, the rest of the script never runs, and ssh returns 255.
+# broker_restart.sh's header records the same trap costing 20 minutes on 2026-08-04; I repeated
+# it from the command line on 2026-08-14. The literal brackets here do not match themselves.
+pkill -9 -f "[k]otekan --config.*gather" 2>/dev/null || true
 # LISTENING sockets only, deliberately. bufferRecv now sets SO_REUSEADDR unconditionally, so a
 # fresh listener may rebind over the ~60 s of TIME_WAIT left by 60 sender connections; waiting
 # for those to drain would add half a minute to every restart for no reason. Before that fix

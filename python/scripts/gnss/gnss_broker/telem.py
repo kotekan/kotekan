@@ -48,9 +48,15 @@ from .transport import _log, _log_rl
 # gnssTelem.hpp -- keep in step with TelemHeader. The magic and version are checked on every
 # frame, so a drift here surfaces immediately as "no frames" rather than as wrong numbers.
 _MAGIC = 0x314C5447
-_VERSION = 1
-_HDR = struct.Struct("<IHHHHHHIIQQqdII16s16s")
-_HDR_BYTES = 96
+# v2: the row carries the UNSUMMED COMB after the record header, and the header carries the
+# columns' freq_ids. The cross-channel sum in the tracker destroyed the frequency axis a delay
+# lives on, which forced fleet_coherent to FIT a per-instance constant instead of DERIVING one.
+_VERSION = 2
+_HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
+_HDR_BYTES = 112
+_MAX_CHAN = 8
+_CHAN_FLOATS = 3
+CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2
 # gnssRecord.hpp RECORD_FLOATS. Verified against every frame's own n_row field, because a
 # tracker rebuilt with a wider record and a broker that was not is precisely the silent
 # mis-stride this transport exists to stop tolerating.
@@ -80,6 +86,9 @@ REC_TRIM_INC = 19
 REC_SKY_RE = 24
 REC_SKY_IM = 25
 
+# Floats per row: the record header, then the comb. gnss::TELEM_ROW_FLOATS.
+_ROW_TOTAL = _ROW_FLOATS + _MAX_CHAN * _CHAN_FLOATS
+
 assert _HDR.size == _HDR_BYTES, "TelemHeader struct format does not match gnssTelem.hpp"
 
 
@@ -94,12 +103,16 @@ class TelemFrame(object):
 
     __slots__ = ("chain", "inst", "win", "seq", "n_rec", "n_prn", "n_chan", "n_elem",
                  "hops_per_record", "fft_len", "wstart0", "utc0", "present", "_buf", "_idx",
-                 "rx")
+                 "rx", "max_chan", "row_total", "chan_ids")
 
     def __init__(self, hdr, buf, rx):
         (_magic, _ver, self.n_rec, self.n_prn, _n_row, self.n_chan, self.n_elem,
          self.hops_per_record, self.fft_len, self.win, self.seq, self.wstart0, self.utc0,
-         self.present, _pad, chain, inst) = hdr
+         self.present, self.max_chan, self.row_total, chain, inst) = hdr[:18]
+        # THE COMB'S COLUMN LABELS ride on the frame, never configured here: a configured copy
+        # is one more thing that can drift out of step with the node it describes, and a delay
+        # fit over mislabelled frequencies is confidently wrong rather than absent.
+        self.chan_ids = list(hdr[18:18 + _MAX_CHAN])[:self.n_chan]
         self.chain = chain.split(b"\0", 1)[0].decode("ascii", "replace")
         self.inst = inst.split(b"\0", 1)[0].decode("ascii", "replace")
         self._buf = buf
@@ -121,7 +134,7 @@ class TelemFrame(object):
             # did not run this window), so the map is read from the data rather than assumed
             # from a configured PRN list the broker would have to keep in step.
             for p in range(self.n_prn):
-                off = _HDR_BYTES + p * _ROW_FLOATS * 4
+                off = _HDR_BYTES + p * _ROW_TOTAL * 4
                 prn = int(struct.unpack_from("<f", self._buf, off)[0] + 0.5)
                 if prn > 0:
                     idx[prn] = p
@@ -140,10 +153,37 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r):
             return None
-        off = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_FLOATS * 4
+        off = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4
         a = array.array("f")
-        a.frombytes(self._buf[off:off + _ROW_FLOATS * 4])
+        a.frombytes(self._buf[off:off + _ROW_FLOATS * 4])   # the record header only
         return a
+
+    def comb(self, r, prn):
+        """The UNSUMMED per-channel prompts: [(freq_id, A, energy), ...], or [].
+
+        THE POINT OF v2. The record header's prompt (`row()[REC_P_RE/IM]`) is SUMMED over this
+        instance's covering channels by the tracker -- "the one combine the broker can never
+        undo" -- and that sum destroys the frequency axis a delay lives on. These are the same
+        NCO-derotated, element-combined prompts BEFORE that sum, labelled with the freq_id they
+        belong to, so the fleet can fit a delay across its full ~106-channel comb rather than a
+        free constant per instance.
+
+        A is energy-normalised per channel (G/E), matching the header slots' convention, so the
+        two are directly comparable and summing A*E over the returned columns reproduces the
+        header's prompt exactly -- which is the check to run before trusting either.
+        """
+        p = self._index().get(int(prn))
+        if p is None or not self.has_record(r) or not self.n_chan:
+            return []
+        base = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4 + _ROW_FLOATS * 4
+        a = array.array("f")
+        a.frombytes(self._buf[base:base + self.n_chan * _CHAN_FLOATS * 4])
+        out = []
+        for ch in range(self.n_chan):
+            re_, im_, e = a[ch * 3 + CHAN_RE], a[ch * 3 + CHAN_IM], a[ch * 3 + CHAN_ENERGY]
+            if e > 0.0:
+                out.append((self.chan_ids[ch], complex(re_ / e, im_ / e), e))
+        return out
 
     def utc(self, r, prn):
         """Capture UTC of this record, as the assembler stamped it (row slots 9-10, a double).
@@ -154,7 +194,7 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r):
             return 0.0
-        off = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_FLOATS * 4 + REC_UTC * 4
+        off = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4 + REC_UTC * 4
         return struct.unpack_from("<d", self._buf, off)[0]
 
 
@@ -167,10 +207,15 @@ class TelemClient(object):
     the new one has been shown, on sky, to be at least as good.
     """
 
-    def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0):
+    def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0, chains=None):
         self.host = host
         self.port = port
         self.depth = int(depth)
+        # Optional chain filter, applied at PARSE time. The stream carries all five chains on
+        # one connection, so a long collection (tens of seconds of records) otherwise costs 5x
+        # the memory for data the caller will throw away -- which is the difference between a
+        # 30 s diagnostic being affordable and not. None = keep everything (the broker's case).
+        self.chains_filter = set(chains) if chains else None
         self.retry_s = float(retry_s)
         self._lock = threading.Lock()
         # chain -> OrderedDict{win: {inst: TelemFrame}}, oldest first, capped at `depth`
@@ -249,6 +294,8 @@ class TelemClient(object):
             self._store_frame(TelemFrame(hdr, buf, time.time()))
 
     def _store_frame(self, f):
+        if self.chains_filter is not None and f.chain not in self.chains_filter:
+            return
         with self._lock:
             self.frames += 1
             self.last_rx = f.rx

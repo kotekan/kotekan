@@ -42,7 +42,20 @@
  *
  * LAYOUT
  *
- *     [ TelemHeader, 96 B ][ float32 rows[n_rec][n_prn][gnss::RECORD_FLOATS] ]
+ *     [ TelemHeader, 112 B ][ float32 rows[n_rec][n_prn][gnss::TELEM_ROW_FLOATS] ]
+ *
+ * and a row is
+ *
+ *     [ gnss::RECORD_FLOATS -- the tracker record header ][ the UNSUMMED COMB ]
+ *       ...................................................  CHAN_FLOATS x TELEM_MAX_CHAN
+ *
+ * ⚠️ THE COMB IS THE POINT (v2, 2026-08-14). The record header's prompt (slots 3/4) is SUMMED
+ * over the instance's covering channels by GnssGpuRecordAssemble -- "the one combine the broker
+ * can never undo". That sum destroys the frequency axis a delay lives on, which is why
+ * fleet_coherent has to FIT a free constant per instance instead of DERIVING one from the ramp
+ * across the fleet's ~106 channels (#52 in its original form). KV, 2026-08-14: "purge the idea
+ * of summing across channels in each instance, that's *never* what we want to do." The summed
+ * slots stay for now so the existing consumers keep working while the un-summed path is proven.
  *
  * A row is the TRACKER RECORD HEADER of gnssRecord.hpp verbatim -- byte-for-byte the airspy
  * single-antenna layout (`record_stride(0) == RECORD_FLOATS`). Deliberately not a new schema:
@@ -60,8 +73,10 @@
  * makes a dropped record harmless instead of a silent re-pairing.
  *
  * SIZE / RATE (CHORD, 2026-08-14): 4 records/frame, 40 PRN rows, 26 floats
- *     = 96 + 4*40*26*4 = 16736 B per frame, 23.84 frames/s per (chain, instance)
- *     = 399 kB/s x 12 instances x 5 chains = 24 MB/s into the gather host.
+ *     = 112 + 4*40*50*4 = 32112 B per frame, 23.84 frames/s per (chain, instance)
+ *     = 766 kB/s x 12 instances x 5 chains = 46 MB/s into the gather host.
+ * (v1 was 24 MB/s with the comb summed away; carrying the comb costs 1.9x for the axis the
+ * fleet combine actually needs.)
  * The rows are mostly zero for chains carrying fewer PRNs, and that is on purpose: ONE frame
  * size for every sender means ONE bufferRecv, one port, one buffer, and no per-chain plumbing
  * that could be wired up crooked. bufferRecv rejects a size mismatch by closing the connection,
@@ -79,7 +94,17 @@ namespace gnss {
 
 /// "GTL1" -- bumped only for an INCOMPATIBLE layout change; `version` covers the rest.
 constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
-constexpr uint16_t TELEM_VERSION = 1;
+/// v2 (2026-08-14): the row carries the UNSUMMED COMB after the record header, and the wire
+/// header carries the channels' freq_ids. ⚠️ KV: "purge the idea of summing across channels in
+/// each instance, that's *never* what we want to do" -- the cross-channel sum destroys the
+/// frequency axis a delay lives on, so the broker was left FITTING a per-instance constant
+/// where it should DERIVE one from the ramp across ~106 channels.
+constexpr uint16_t TELEM_VERSION = 2;
+
+/// Comb columns reserved per row. Instances hold 6-7 covering channels today; the frame is a
+/// fixed size for every sender (one bufferRecv, one buffer, no per-chain plumbing), so this is
+/// the ceiling and the header's n_chan says how many are real.
+constexpr int TELEM_MAX_CHAN = 8;
 
 /// Hard ceiling on records batched into one wire frame. Not the configured value -- that is
 /// `records_per_frame`, and it must divide the upstream frame's record count so a wire frame
@@ -96,7 +121,7 @@ constexpr int TELEM_NAME = 16;
 /// frame_size is yaml and the wire format is C++, and config/gnss_record_layout.py exists
 /// because that gap silently drifted once already (RECORD_FLOATS 24 -> 26, 34 stages dead at
 /// construction). The static_assert below is what keeps the two honest.
-constexpr int TELEM_HEADER_BYTES = 96;
+constexpr int TELEM_HEADER_BYTES = 112;
 
 /**
  * @struct TelemHeader
@@ -135,10 +160,21 @@ struct TelemHeader {
                      ///< instances on records with identical wstart.
 
     uint32_t present; ///< bit r set => record slot r was filled this frame
-    uint32_t pad_;    ///< explicit, so the struct has no compiler-chosen holes
+
+    uint16_t max_chan; ///< comb columns RESERVED per row (== TELEM_MAX_CHAN at the sender)
+    uint16_t n_row_total; ///< floats per row == n_row + max_chan*CHAN_FLOATS. Derivable, but
+                          ///< stated: a parser that computes a stride wrong reads plausible
+                          ///< numbers at the wrong offsets rather than failing.
 
     char chain[TELEM_NAME]; ///< chain tag, NUL-padded ("gps_l5", "gal_e5a", ...)
     char inst[TELEM_NAME];  ///< instance tag, NUL-padded ("cx19.0" = node cx19, GPU 0)
+
+    /// F-engine freq_id of each comb column, [0, n_chan) valid. ⚠️ WITHOUT THESE THE COMB IS
+    /// USELESS: a delay is a phase ramp across FREQUENCY, so a fit over unlabelled columns --
+    /// or worse, columns whose labels the consumer assumed -- returns a confident wrong tau.
+    /// They ride on every frame rather than being configured into the broker, because a
+    /// configured copy is one more thing that can drift out of step with the node it describes.
+    uint16_t chan_id[TELEM_MAX_CHAN];
 };
 
 static_assert(sizeof(TelemHeader) == TELEM_HEADER_BYTES,
@@ -148,17 +184,32 @@ static_assert(offsetof(TelemHeader, win) == 24, "TelemHeader layout is a wire fo
 static_assert(offsetof(TelemHeader, wstart0) == 40, "TelemHeader layout is a wire format");
 static_assert(offsetof(TelemHeader, chain) == 64, "TelemHeader layout is a wire format");
 static_assert(offsetof(TelemHeader, inst) == 80, "TelemHeader layout is a wire format");
+static_assert(offsetof(TelemHeader, chan_id) == 96, "TelemHeader layout is a wire format");
+
+/// Floats per row: the gnssRecord.hpp header, then the UNSUMMED COMB.
+///
+///     [ RECORD_FLOATS ][ CHAN_FLOATS x TELEM_MAX_CHAN ]
+///
+/// The record header keeps its summed prompt (slots 3/4) so nothing downstream has to change on
+/// the same day; the comb is what the broker should actually combine, because only it carries
+/// the frequency axis a delay lives on.
+constexpr int TELEM_ROW_FLOATS = RECORD_FLOATS + TELEM_MAX_CHAN * CHAN_FLOATS;
 
 /// Bytes of one wire frame carrying @c n_rec record slots of @c n_prn rows.
 /// ⚠️ The senders and the gather's receive buffer MUST agree on this exactly; it is computed
-/// once in the config generator from the same two integers and written into both.
+/// once in the config generator from the same integers and written into both.
 constexpr size_t telem_frame_bytes(int n_rec, int n_prn) {
-    return sizeof(TelemHeader) + (size_t)n_rec * n_prn * RECORD_FLOATS * sizeof(float);
+    return sizeof(TelemHeader) + (size_t)n_rec * n_prn * TELEM_ROW_FLOATS * sizeof(float);
 }
 
 /// Float offset of PRN row @c p in record slot @c r, within the payload (i.e. AFTER the header).
 constexpr size_t telem_row_offset(int r, int p, int n_prn) {
-    return ((size_t)r * n_prn + p) * RECORD_FLOATS;
+    return ((size_t)r * n_prn + p) * TELEM_ROW_FLOATS;
+}
+
+/// Float offset of comb column @c ch within a row (relative to the row's start).
+constexpr size_t telem_chan_offset(int ch) {
+    return (size_t)RECORD_FLOATS + (size_t)ch * CHAN_FLOATS;
 }
 
 /// The payload floats of a frame.

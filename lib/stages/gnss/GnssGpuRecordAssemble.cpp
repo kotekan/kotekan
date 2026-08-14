@@ -89,6 +89,40 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     // fully inert: no accumulation, and the endpoint answers with an explanatory error rather
     // than not existing, so a mis-wired poller sees WHY instead of a bare 404.
     _spec_freq_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+
+    // PER-CHANNEL COMB EXPORT (gnssRecord.hpp, 2026-08-14). ⚠️ THE CROSS-CHANNEL SUM BELOW IS A
+    // LOSS WE SHOULD NEVER HAVE TAKEN -- it destroys the frequency axis a delay lives on, so
+    // the broker can only FIT a per-instance constant where it should DERIVE one from the ramp.
+    // KV: "purge the idea of summing across channels in each instance, that's *never* what we
+    // want to do." This appends the UNSUMMED comb after the PRN records; the summed slots stay
+    // for now so nothing downstream has to change on the same day.
+    //
+    // channel_ids is REQUIRED: the broker must know which SKY FREQUENCY each column is. A comb
+    // whose columns are unlabelled is worse than no comb -- a delay fit across mislabelled
+    // frequencies returns a confident wrong tau.
+    _chan_export = config.get_default<bool>(unique_name, "chan_export", false);
+    if (_chan_export && _spec_freq_ids.empty()) {
+        FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: chan_export needs channel_ids -- an unlabelled "
+                    "frequency axis makes every delay fit downstream confidently wrong",
+                    unique_name);
+        return;
+    }
+    if (_chan_export) {
+        const size_t need =
+            gnss::frame_floats(n, _n_elements, (int)_spec_freq_ids.size()) * sizeof(float);
+        if ((size_t)out_buf->frame_size < need) {
+            FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: chan_export needs a {:d} B frame ({:d} PRN "
+                        "x {:d} record floats, then {:d} PRN x {:d} chan x {:d}); out_buf is "
+                        "{:d} B. The generator sizes this -- regenerate the config.",
+                        unique_name, need, n, rec_stride, n, (int)_spec_freq_ids.size(),
+                        gnss::CHAN_FLOATS, (size_t)out_buf->frame_size);
+            return;
+        }
+        INFO("GnssGpuRecordAssemble[{:s}]: exporting the UNSUMMED comb -- {:d} channels x {:d} "
+             "floats per PRN per record, appended after the records ({:d} B frame)",
+             unique_name, (int)_spec_freq_ids.size(), gnss::CHAN_FLOATS, need);
+    }
+
     if (!_spec_freq_ids.empty()) {
         const size_t nc = _spec_freq_ids.size();
         // WINDOW QUANTISATION (task #53). The window index is floor(wstart / win_samples) on
@@ -218,6 +252,14 @@ void GnssGpuRecordAssemble::main_thread() {
 
         for (int r = 0; r < hdr.n_rec && !stop_thread; ++r) {
             float* out = (float*)out_buf->wait_for_empty_frame(unique_name, frame_out);
+            // ZERO THE WHOLE COMB BLOCK FIRST. The per-PRN record zeroing below covers only
+            // record_stride floats; a PRN that does not run this window, or a channel outside
+            // its covering mask, would otherwise hand the broker the PREVIOUS record's value as
+            // if it were current -- the same "stale is not neutral" trap GnssChanAlignMerge
+            // zeroes absent feeds for.
+            if (_chan_export && out != nullptr)
+                std::fill(out + gnss::chan_block_offset(n_prn, _n_elements),
+                          out + gnss::frame_floats(n_prn, _n_elements, n_chan), 0.0f);
             if (out == nullptr)
                 return;
             const int64_t wstart = winstart[r];
@@ -526,6 +568,18 @@ void GnssGpuRecordAssemble::main_thread() {
                         W.re[k] += g.real();
                         W.im[k] += g.imag();
                         W.energy[k] += energy[prow + ch];
+                        // THE SAME VALUE, PER RECORD (gnssRecord.hpp comb block). The window
+                        // ring above is what /get_spectrum serves; this is the identical
+                        // quantity written out un-accumulated, because a cross-RECORD rate fit
+                        // cannot be done on a window sum -- the sum is exactly what a residual
+                        // rate destroys.
+                        if (_chan_export) {
+                            float* cb = out + gnss::chan_offset(p, ch, n_prn, n_chan,
+                                                                _n_elements);
+                            cb[gnss::CHAN_RE] = (float)g.real();
+                            cb[gnss::CHAN_IM] = (float)g.imag();
+                            cb[gnss::CHAN_ENERGY] = (float)energy[prow + ch];
+                        }
                     }
                     W.nrec[p] += 1;
                     if (W.w0 < 0)
