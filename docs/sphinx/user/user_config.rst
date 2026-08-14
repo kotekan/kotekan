@@ -50,7 +50,11 @@ Common keys (unless noted otherwise):
 - ``peek_hold`` (default ``false``, frame-based buffers only): keep the newest full frame around —
   its recycling is deferred until the next frame is marked full — so the ``/buffer_frame``
   endpoint always has a frame to serve even when consumers drain frames quickly. Requires
-  ``num_frames >= 2``; the held frame counts as one full frame in ``/buffers``.
+  ``num_frames >= 2``; the held frame counts as one full frame in ``/buffers``. It occupies
+  that slot for the lifetime of the pipeline, so kotekan warns at startup on a buffer of
+  fewer than four frames, where the hold is a large share of the depth available to absorb
+  jitter. Setting it on a ``ring`` buffer warns and does nothing — ring buffers are not
+  peekable yet.
 
 Type-specific notes:
 

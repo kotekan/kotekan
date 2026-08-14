@@ -460,6 +460,13 @@ void Buffer::enable_peek_hold() {
         ERROR("{:s}", message);
         throw std::runtime_error(message);
     }
+    // The hold costs one frame slot for as long as the pipeline runs, which on a
+    // shallow buffer is a large share of the depth it has to absorb jitter with.
+    if (num_frames < peek_hold_shallow_frames)
+        WARN("peek_hold on buffer {:s} leaves {:d} of {:d} frames for the pipeline: on a buffer "
+             "this shallow the held frame is a large part of its depth, so expect the producer "
+             "to block sooner",
+             buffer_name, num_frames - 1, num_frames);
     peek_hold_enabled = true;
 }
 

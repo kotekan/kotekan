@@ -6,7 +6,7 @@
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "NDArray.hpp"        // for GenericNDArray
 #include "buffer.hpp"         // for GenericBuffer, Buffer
-#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "kotekanLogging.hpp" // for INFO_NON_OO, WARN_NON_OO
 #include "metadata.hpp"       // for metadataPool
 #include "ringbuffer.hpp"     // for RingBuffer
 #include "visBuffer.hpp"      // for VisFrameView
@@ -122,8 +122,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         // peek_hold: defer recycling of the newest full frame until the
         // next one lands, so the /buffer_frame endpoint works on
         // buffers whose consumers drain frames faster than a peek. No
-        // copies; costs one occupied frame slot and one pooled metadata
-        // object.
+        // copies; costs one occupied frame slot, along with the metadata
+        // object that frame holds.
         if (config.get_default<bool>(location, "peek_hold", false))
             static_cast<Buffer*>(buf)->enable_peek_hold();
 
@@ -133,6 +133,13 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, ringbuf_size, metadataPool_name, numa_node);
         buf = new RingBuffer(ringbuf_size, pool, name, type_name);
+
+        // Ring buffers are not peekable yet, so peek_hold would otherwise be
+        // read by nothing and leave the buffer quietly unpeekable.
+        if (config.get_default<bool>(location, "peek_hold", false))
+            WARN_NON_OO("peek_hold is set on ring buffer {:s} and has no effect: ring buffers "
+                        "have no /buffer_frame endpoint to hold a frame for",
+                        name);
 
     } else {
         // Unknown buffer type
