@@ -151,6 +151,23 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
                     "n_src": len(use),
                     "n_chan": sum(r[4] for r in use)}
 
+    # The floors, the presence verdict and the deep gate live in apply_presence() so the
+    # COMB path (combdll.fleet_dll_comb) reaches exactly the same verdict from the same
+    # numbers. Two copies of a presence policy is how an A/B stops being a measurement of
+    # the powers and becomes a measurement of which copy drifted.
+    return apply_presence(out, k_sigma, q_fallback, probe_prns=probe_prns,
+                          deep_gate_prns=deep_gate_prns,
+                          deep_gate_margin=deep_gate_margin)
+
+
+def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=None,
+                   deep_gate_margin=3.0):
+    """Floors, the presence verdict and the deep gate, in place, on a fleet_dll-shaped dict.
+
+    Split out of fleet_dll (2026-08-15, task #63) UNCHANGED, so the comb-derived DLL shares one
+    policy with the polled one. Everything below is about the POPULATION of q and p_pow, not
+    about how any single row's powers were formed -- which is exactly why it transplants.
+    """
     # LIVE NOISE FLOOR for q, measured every cycle instead of assumed. The floor moves with the
     # number of contributing instances and with the EMA length, so ANY constant is wrong for
     # some fleet size -- and a constant set for K=1 (2.2, correct there) rejects every real
@@ -312,6 +329,8 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
                 v["present_gate"] = "deep"
                 v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
     return out
+
+
 
 
 def _coherent_sum(a):

@@ -72,6 +72,7 @@ from gnss_broker.transport import (           # noqa: E402
     expand_token, resolve_prefix, parse_endpoints, log_tag,
 )
 from gnss_broker import telem as _telem                    # noqa: E402  (task #59 gather)
+from gnss_broker import combdll                            # noqa: E402  (task #63 comb DLL)
 from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
@@ -1471,6 +1472,32 @@ def main(argv=None, rx=None, publisher=None):
     ap.add_argument("--telem-windows", type=int, default=8,
                     help="windows of telemetry fed to fleet_coherent (4 records each at the "
                          "default packing, so 8 windows = 32 records ~ 0.34 s)")
+    ap.add_argument("--telem-dll", action="store_true",
+                    help="TASK #63: close the CODE loop on the discriminator formed in this "
+                         "broker from the un-summed comb (gnss_broker/combdll.py) instead of on "
+                         "the powers the trackers formed by summing across each instance's "
+                         "channels. The arithmetic is the combiner's own -- coherent across an "
+                         "instance's channels, then powers added across instances -- moved to "
+                         "where the whole band is visible; what it removes is the tracker-side "
+                         "sum that destroys the frequency axis on the way.\n"
+                         "MEASURED BEFORE SHIPPING (scripts/gnss/comb_dll_ab.py, gps_l5, 20 "
+                         "cycles, 240 paired PRNs): disc agrees to +0.0015 +- 0.0223 against "
+                         "the POLLED arm's own cycle-to-cycle control of +-0.0472, q to +0.008 "
+                         "+- 0.044 against 0.090, prompt power to +0.13 dB, and presence "
+                         "disagreed on 10 of 240 with McNemar chi2 0.10 -- symmetric, i.e. "
+                         "churn rather than bias.\n"
+                         "⚠️ The polled endpoints are STILL read while this is set: the deep "
+                         "statistics (deep_snr / deep_floor / coherence_s) come from the "
+                         "combiner's fold and are handed to the comb rows for #49's deep gate "
+                         "and the publisher. The trackers' summed slots stop being DELETABLE "
+                         "only once that fold also runs here. Falls back to the polled "
+                         "discriminator, per cycle, whenever the gather has no windows for "
+                         "this chain -- so a gather that dies costs a log line, not the loop.")
+    ap.add_argument("--telem-dll-windows", type=int, default=0,
+                    help="windows meaned for --telem-dll (0 = --telem-windows). 32 windows x 4 "
+                         "records = 128, which is what the combiners' EMA integrates; a much "
+                         "shorter window makes the comb arm noisier than the arm it replaces "
+                         "and the A/B would read that as a regression.")
     ap.add_argument("--n2-combiners", default="",
                     help="CROSS-NODE COHERENT COMBINE FOR PATH B: comma-separated *_n2combine "
                          "endpoints ({a..b} ranges expanded), run through the SAME "
@@ -6238,6 +6265,53 @@ def main(argv=None, rx=None, publisher=None):
                               # the bar is built from the tracked population and becomes a
                               # peer competition. See the note in fleet_dll.
                               probe_prns=probe_set)
+            # TASK #63: THE SAME DISCRIMINATOR, FORMED HERE FROM THE UN-SUMMED COMB. The powers
+            # above were built by each tracker summing across its own channels -- "the one
+            # combine the broker can never undo" -- and everything derived from them inherits
+            # that. combdll rebuilds them from the per-channel Early/Prompt/Late the transport
+            # ships, in the one place that can see the whole band.
+            #
+            # THE POLLED ARM IS STILL COMPUTED ABOVE, ON PURPOSE, AND FOR TWO REASONS: the deep
+            # statistics are not in the comb (they come from the combiner's fold, so they are
+            # handed across as coh_rows), and running both makes the swap self-monitoring --
+            # the log line below is the same paired comparison the offline A/B makes, on the
+            # loop's own cycles. Any cycle where the gather has nothing for this chain simply
+            # keeps the polled fleet.
+            if args.telem_dll and telem_client is not None:
+                try:
+                    _cf = combdll.fleet_dll_comb(
+                        telem_client, telem_chain,
+                        n_win=(args.telem_dll_windows or args.telem_windows),
+                        min_instances=args.dll_min_instances,
+                        k_sigma=args.dll_quality_sigma, q_fallback=args.dll_quality_min,
+                        prns=set(seeds) or None, probe_prns=probe_set,
+                        deep_gate_prns=_deep_gate,
+                        deep_gate_margin=args.dll_deep_gate_margin,
+                        # deep_snr / deep_floor / coherence_s AND the quadrature fallback,
+                        # from the arm that has them
+                        coh_from=fleet)
+                except Exception as e:
+                    _cf = None
+                    _log_rl("comb-dll-err",
+                            "COMB-DLL: failed (%s) -- the polled discriminator is unchanged" % e)
+                if _cf:
+                    _shared = sorted(set(_cf) & set(fleet or {}))
+                    _dd = sorted(_cf[p]["disc"] - fleet[p]["disc"] for p in _shared)
+                    _log_rl("comb-dll",
+                            "COMB-DLL %s: %d PRNs from %d instances / %d channels; vs polled on "
+                            "%d shared: median ddisc %+.4f, max %.4f%s"
+                            % (telem_chain, len(_cf),
+                               max(v["n_src"] for v in _cf.values()),
+                               int(max(v["n_chan"] for v in _cf.values())), len(_shared),
+                               _dd[len(_dd) // 2] if _dd else 0.0,
+                               max((abs(x) for x in _dd), default=0.0),
+                               "" if _shared else "  (NO OVERLAP -- check the chain key)"),
+                            every_s=30.0)
+                    fleet = _cf
+                else:
+                    _log_rl("comb-dll-empty",
+                            "COMB-DLL %s: no windows yet -- closing the loop on the polled "
+                            "discriminator this cycle" % telem_chain, every_s=60.0)
             # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
             # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
             hold_prev.clear()
