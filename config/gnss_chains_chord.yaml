@@ -240,7 +240,18 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # or coh_frac>=0.3); a decohered sat's row goes stale and its sigma growth
     # de-commands it automatically. Cohering sats' picks are clean and stable (PRN 5/21:
     # q 17-21, full==capped).
-    rrate-command: true
+    # ⚠️ rrate-command OFF for the night (01:2x): arm 8 developed a FLEET-COMMON command
+    # ramp (+0.3-0.7 Hz/min on every sat, PRN 27 to +19 Hz) with measurements still
+    # reporting positive residuals on top -- feedback, not sky. PRIME SUSPECT: the dcyc
+    # fold's Delta-CTRIM sign (62d8513f0) -- the ramped-truth bench validated the dop
+    # term ONLY; ctrim's sign in the actual kernel was assumed by algebra transfer.
+    # THE DISCRIMINATOR RUNS ITSELF NOW: with commands frozen at 0, if the standing
+    # residuals collapse to the ~0.3 Hz class within minutes, command activity was
+    # manufacturing them (fold sign convicted); if they persist, the term is real.
+    # Read the JRR/JRRP series right after this restart for the verdict, and extend the
+    # e2e bench with a ctrim step before any re-arm. Shadow + fine feed stay ON:
+    # measurements without actuation = no feedback possible, pristine overnight data.
+    # rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
