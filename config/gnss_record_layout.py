@@ -20,6 +20,8 @@ import re
 
 HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "lib", "stages", "gnss", "gnssRecord.hpp")
+TELEM_HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "lib", "stages", "gnss", "gnssTelem.hpp")
 
 
 def _read(name, header=None):
@@ -48,5 +50,22 @@ def record_stride(n_elem, header=None):
     return record_floats(header) + n_elem * elem_floats(header)
 
 
+def telem_header_bytes():
+    """gnss::TELEM_HEADER_BYTES -- the task #59 wire header (gnssTelem.hpp)."""
+    return _read("TELEM_HEADER_BYTES", TELEM_HEADER)
+
+
+def telem_frame_bytes(n_rec, n_prn):
+    """Bytes of one telemetry wire frame -- the SAME expression as gnss::telem_frame_bytes.
+
+    ⚠️ Every sender's out_buf AND the gather's receive buffer must be sized from this, with the
+    same (n_rec, n_prn). bufferRecv compares frame_size on the wire against its own buffer and
+    CLOSES THE CONNECTION on a mismatch, so a disagreement here does not corrupt data -- it
+    silently delivers none, which is its own kind of expensive.
+    """
+    return telem_header_bytes() + n_rec * n_prn * record_floats() * 4
+
+
 if __name__ == "__main__":
-    print("RECORD_FLOATS %d  ELEM_FLOATS %d" % (record_floats(), elem_floats()))
+    print("RECORD_FLOATS %d  ELEM_FLOATS %d  TELEM_HEADER_BYTES %d"
+          % (record_floats(), elem_floats(), telem_header_bytes()))

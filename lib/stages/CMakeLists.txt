@@ -66,6 +66,11 @@ add_library(
     gnss/GnssCoherentCombiner.cpp
     gnss/GnssBeamCube.cpp
     gnss/GnssTrackState.cpp
+    # Task #59, the tracker->broker telemetry transport. Deliberately OUTSIDE the FFTW block:
+    # the gather half runs on the broker host, which has no F-engine, no GPU and no reason to
+    # carry an FFTW dependency, and the pack half must build in the same tree as the trackers.
+    gnss/GnssTelemPack.cpp
+    gnss/GnssTelemGather.cpp
     SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
