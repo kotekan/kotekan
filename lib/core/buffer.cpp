@@ -8,7 +8,7 @@
 #include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
 #include <sstream>    // for ostringstream
-#include <stdexcept>  // for runtime_error, invalid_argument
+#include <stdexcept>  // for runtime_error
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for strerror, memset, memcpy
 #include <sys/mman.h> // for mlock, mmap, munmap, MAP_FAILED
@@ -216,9 +216,10 @@ kotekan::BufferState GenericBuffer::dot_buffer_state() {
 std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOptions&) {
     // Which kind of buffer this is, and the metadata that travels with its
     // frames -- the two things that decide what a consumer can do with it.
-    return {buffer_name, metadata_pool
-                             ? fmt::format("{:s} · {:s}", buffer_type, metadata_pool->type_name)
-                             : buffer_type};
+    std::string type_line = buffer_type;
+    if (metadata_pool)
+        type_line += fmt::format(fmt(" · {:s}"), metadata_pool->type_name);
+    return {buffer_name, type_line};
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -413,10 +414,18 @@ int Buffer::get_num_full_frames() {
 
 int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
                                    std::shared_ptr<metadataObject>& metadata_out) {
+    // Size the destination before taking the lock: frame_size never changes,
+    // and doing the allocation (and its page faults) here keeps them out of
+    // the window where every producer and consumer on this buffer is blocked.
+    const size_t copy_len = std::min(max_len, frame_size);
+    data_out.resize(copy_len);
+
     buffer_lock lock(mutex);
 
-    if (last_frame_filled < 0)
+    if (last_frame_filled < 0) {
+        data_out.clear();
         return -1;
+    }
 
     // Frames fill in ring order, so the first full frame found scanning
     // backwards from the last filled position is the newest one.
@@ -428,11 +437,11 @@ int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_le
             break;
         }
     }
-    if (ID == -1)
+    if (ID == -1) {
+        data_out.clear();
         return -1;
+    }
 
-    const size_t copy_len = std::min(max_len, frame_size);
-    data_out.resize(copy_len);
     memcpy(data_out.data(), frames[ID], copy_len);
     metadata_out = metadata[ID];
     return ID;
@@ -440,11 +449,17 @@ int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_le
 
 void Buffer::enable_peek_hold() {
     buffer_lock lock(mutex);
-    if (num_frames < 2)
-        throw std::invalid_argument(
+    if (num_frames < 2) {
+        // Logged through the buffer's own logging so the message carries which
+        // buffer it is about, then thrown: the buffer factory turns this into a
+        // clean shutdown, which is what a pipeline configured this way wants.
+        const std::string message =
             fmt::format(fmt("peek_hold on buffer {:s} requires num_frames >= 2: with a single "
                             "frame the producer would deadlock waiting for the held frame"),
-                        buffer_name));
+                        buffer_name);
+        ERROR("{:s}", message);
+        throw std::runtime_error(message);
+    }
     peek_hold_enabled = true;
 }
 

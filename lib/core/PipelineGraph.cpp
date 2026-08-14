@@ -152,6 +152,34 @@ GraphCluster& GraphCluster::set_attr(const std::string& key, const std::string& 
     return *this;
 }
 
+GraphOptions GraphOptions::from_query(const std::map<std::string, std::string>& query) {
+    GraphOptions options;
+
+    auto flag = [&query](const std::string& name, bool& value) {
+        auto arg = query.find(name);
+        if (arg == query.end())
+            return;
+        // Accept the forms people actually type, and treat a bare `?legend` as
+        // asking for it.
+        const std::string& text = arg->second;
+        value = text.empty() || text == "1" || text == "true" || text == "yes" || text == "on";
+    };
+    flag("cluster", options.cluster);
+    flag("legend", options.legend);
+    flag("pools", options.pools);
+    flag("kernels", options.kernels);
+    flag("runtime", options.runtime);
+    flag("urls", options.urls);
+
+    auto rankdir = query.find("rankdir");
+    if (rankdir != query.end()
+        && (rankdir->second == "LR" || rankdir->second == "TB" || rankdir->second == "RL"
+            || rankdir->second == "BT"))
+        options.rankdir = rankdir->second;
+
+    return options;
+}
+
 GraphNode& PipelineGraph::add_node(const std::string& id) {
     auto it = _node_index.find(id);
     if (it != _node_index.end())
@@ -186,8 +214,16 @@ std::string PipelineGraph::common_cluster(const std::vector<std::string>& node_i
         auto node = _node_index.find(node_id);
         if (node == _node_index.end())
             return chain;
+        std::set<std::string> seen;
         std::string cluster = _nodes[node->second].cluster;
         while (!cluster.empty()) {
+            if (!seen.insert(cluster).second) {
+                // The parent chain loops (the same wiring bug to_dot() breaks
+                // and reports), so no cluster meaningfully contains this node:
+                // treat it as top level rather than walking the loop forever.
+                chain.clear();
+                return chain;
+            }
             chain.insert(chain.begin(), cluster);
             auto it = _cluster_index.find(cluster);
             if (it == _cluster_index.end())
@@ -214,6 +250,58 @@ std::string PipelineGraph::common_cluster(const std::vector<std::string>& node_i
             break;
     }
     return common.empty() ? std::string() : common.back();
+}
+
+void PipelineGraph::apply_default_style() {
+    // Pipelines are long and thin, so they read left to right; the extra
+    // crossing-minimisation passes are cheap next to the cost of untangling the
+    // result by eye, and newrank lines the clusters up across the whole graph.
+    graph_attrs["rankdir"] = options.rankdir;
+    graph_attrs["nodesep"] = "0.3";
+    graph_attrs["ranksep"] = "0.9";
+    graph_attrs["mclimit"] = "6";
+    graph_attrs["newrank"] = "true";
+    // Name every colour, including the ones graphviz would default to black.
+    // An unset fontcolor emits no colour at all on the text, which leaves a
+    // viewer with nothing to select on when it restyles the graph -- and black
+    // text is what it is left with on a dark page.
+    graph_attrs["fontcolor"] = graph_ink; // cluster labels
+    node_attrs["fontname"] = "Helvetica";
+    node_attrs["fontsize"] = "11";
+    node_attrs["fontcolor"] = graph_ink;
+    edge_attrs["fontname"] = "Helvetica";
+    edge_attrs["fontsize"] = "8";
+    edge_attrs["fontcolor"] = graph_ink;
+    edge_attrs["color"] = graph_edge_line;
+}
+
+void PipelineGraph::add_legend() {
+    auto& legend = add_cluster("__legend");
+    legend.label = "legend";
+    legend.set_attr("style", "rounded").set_attr("color", graph_cluster_line);
+    // One rank keeps the key as a compact block instead of a band stretched
+    // across the whole drawing.
+    legend.set_attr("rank", "same");
+
+    struct Entry {
+        const char* id;
+        GraphCategory category;
+        const char* text;
+    };
+    static const Entry entries[] = {
+        {"buffer", GraphCategory::Buffer, "buffer: name / type · metadata / layout / size / fill"},
+        {"compute", GraphCategory::Compute, "stage on the CPU"},
+        {"gpu", GraphCategory::Gpu, "GPU stage and its commands"},
+        {"io", GraphCategory::Io, "stage moving data on or off this machine"},
+        {"memory", GraphCategory::Memory, "device memory (not a kotekan buffer)"},
+        {"endpoint", GraphCategory::Endpoint, "the far end: a socket, a port, a file"},
+    };
+    for (const auto& entry : entries) {
+        auto& node = add_node(std::string("__legend/") + entry.id);
+        node.add_line(entry.text);
+        node.cluster = legend.id;
+        node.set_category(entry.category);
+    }
 }
 
 std::string PipelineGraph::escape_html(const std::string& text) {
@@ -280,26 +368,56 @@ std::string PipelineGraph::node_dot(const GraphNode& node, const std::string& in
     return fmt::format("{:s}{:s} [{:s}];\n", indent, quote(node.id), attrs);
 }
 
-bool PipelineGraph::cluster_is_empty(const std::string& id) const {
+std::set<std::string> PipelineGraph::cyclic_clusters() const {
+    std::set<std::string> cyclic;
+    for (const auto& cluster : _clusters) {
+        // Walk up to the top, refusing to visit a cluster twice: the second
+        // visit is the cycle.
+        std::set<std::string> seen;
+        std::string id = cluster.id;
+        while (!id.empty() && seen.insert(id).second) {
+            auto it = _cluster_index.find(id);
+            if (it == _cluster_index.end())
+                break;
+            id = _clusters[it->second].parent;
+        }
+        if (!id.empty() && seen.count(id))
+            cyclic.insert(cluster.id);
+    }
+    return cyclic;
+}
+
+/// The cluster @p cluster is drawn inside, with parent cycles broken: one whose
+/// parent chain loops is drawn at the top level instead, so a stage that wires
+/// its clusters up wrongly loses the nesting rather than everything inside it.
+static const std::string& render_parent(const GraphCluster& cluster,
+                                        const std::set<std::string>& cyclic) {
+    static const std::string top_level;
+    return cyclic.count(cluster.id) ? top_level : cluster.parent;
+}
+
+bool PipelineGraph::cluster_is_empty(const std::string& id,
+                                     const std::set<std::string>& cyclic) const {
     for (const auto& node : _nodes)
         if (node.cluster == id)
             return false;
     for (const auto& cluster : _clusters)
-        if (cluster.parent == id && !cluster_is_empty(cluster.id))
+        if (render_parent(cluster, cyclic) == id && !cluster_is_empty(cluster.id, cyclic))
             return false;
     return true;
 }
 
-std::string PipelineGraph::cluster_dot(const std::string& parent, const std::string& indent) const {
+std::string PipelineGraph::cluster_dot(const std::string& parent, const std::string& indent,
+                                       const std::set<std::string>& cyclic) const {
     std::string dot;
     for (const auto& cluster : _clusters) {
-        if (cluster.parent != parent)
+        if (render_parent(cluster, cyclic) != parent)
             continue;
         // A section a stage was declared in, whose stages all drew themselves
         // somewhere else, is a labelled empty rectangle: it reads as a part of
         // the pipeline holding nothing rather than as a heading with nothing
         // left under it.
-        if (cluster_is_empty(cluster.id))
+        if (cluster_is_empty(cluster.id, cyclic))
             continue;
         const std::string inner = indent + "    ";
         dot += fmt::format("{:s}subgraph {:s} {{\n", indent,
@@ -312,7 +430,7 @@ std::string PipelineGraph::cluster_dot(const std::string& parent, const std::str
             if (node.cluster == cluster.id)
                 dot += node_dot(node, inner);
         // Nested clusters are emitted inside their parent.
-        dot += cluster_dot(cluster.id, inner);
+        dot += cluster_dot(cluster.id, inner, cyclic);
         dot += fmt::format("{:s}}}\n", indent);
     }
     return dot;
@@ -333,11 +451,16 @@ std::string PipelineGraph::to_dot() const {
     if (!edge_attrs.empty())
         dot += fmt::format("{:s}edge [{:s}];\n", indent, attrs_dot(edge_attrs));
 
+    // A cluster whose parent chain loops would recurse forever below, so break
+    // the loops first and say which clusters were in one -- like a dangling
+    // edge, it is a mistake in whatever built the graph, not in the pipeline.
+    const std::set<std::string> cyclic = cyclic_clusters();
+
     // Top-level nodes first, then the clusters (and the nodes they hold).
     for (const auto& node : _nodes)
         if (node.cluster.empty())
             dot += node_dot(node, indent);
-    dot += cluster_dot("", indent);
+    dot += cluster_dot("", indent, cyclic);
 
     // Graphviz would materialise an unknown endpoint as an unlabelled node, which
     // silently turns a wiring bug into a plausible-looking graph; drop those edges
@@ -365,6 +488,9 @@ std::string PipelineGraph::to_dot() const {
     }
     for (const auto& id : dangling)
         dot += fmt::format("{:s}// dropped edge(s) referring to unknown node: {:s}\n", indent, id);
+    for (const auto& id : cyclic)
+        dot += fmt::format("{:s}// drawn at the top level, its parent chain loops: {:s}\n", indent,
+                           id);
 
     dot += "}\n";
     return dot;
@@ -374,12 +500,19 @@ nlohmann::json PipelineGraph::to_json() const {
     nlohmann::json out;
     out["graph_attrs"] = graph_attrs;
 
+    // Same rule as to_dot(): a parent chain that loops is a wiring bug, and
+    // handing it through raw would hang any consumer that recurses on parents
+    // the way cluster_dot() does. Break the loops and name the clusters.
+    const std::set<std::string> cyclic = cyclic_clusters();
+    if (!cyclic.empty())
+        out["cyclic_clusters"] = cyclic;
+
     out["clusters"] = nlohmann::json::array();
     for (const auto& cluster : _clusters) {
         nlohmann::json entry;
         entry["id"] = cluster.id;
         entry["label"] = cluster.label;
-        entry["parent"] = cluster.parent;
+        entry["parent"] = cyclic.count(cluster.id) ? "" : cluster.parent;
         out["clusters"].push_back(entry);
     }
 

@@ -11,7 +11,7 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <memory>    // for shared_ptr
-#include <stdexcept> // for invalid_argument
+#include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint8_t, SIZE_MAX
 #include <string.h>  // for memset
 #include <time.h>    // for clock_gettime, timespec
@@ -244,7 +244,9 @@ BOOST_AUTO_TEST_CASE(peek_hold_single_frame_rejected) {
     std::shared_ptr<metadataPool> pool = make_pool(config);
     BOOST_REQUIRE(pool != nullptr);
 
-    // A single-frame ring would deadlock its producer: refused up front.
+    // A single-frame ring would deadlock its producer: refused up front, which
+    // the buffer factory turns into a clean shutdown rather than a pipeline that
+    // runs with a buffer nothing can be produced into.
     Buffer buf(1, 8, pool, "one_buf", "standard", 0, false, false, {}, false);
-    BOOST_CHECK_THROW(buf.enable_peek_hold(), std::invalid_argument);
+    BOOST_CHECK_THROW(buf.enable_peek_hold(), std::runtime_error);
 }

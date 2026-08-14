@@ -73,8 +73,12 @@ public:
 
     /**
      * @brief Get tids from the current stage.
+     *
+     * Returned by value: the list grows and shrinks as the stage's threads start
+     * and exit, so handing out a reference would leave a caller reading it while
+     * it is being reallocated underneath them.
      */
-    const std::vector<pid_t>& get_tids();
+    std::vector<pid_t> get_tids();
 
     /**
      * @brief The CPU cores this stage's threads are allowed to run on.
@@ -137,6 +141,10 @@ private:
 
     // List of stage tids used for CPU usage tracking
     std::vector<pid_t> thread_list;
+
+    // Lock for changing or reading thread_list, which the stage's own threads
+    // add themselves to while the CPU monitor and the pipeline graph read it.
+    std::mutex thread_list_lock;
 };
 
 } // namespace kotekan
