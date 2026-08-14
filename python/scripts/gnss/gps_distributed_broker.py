@@ -6221,8 +6221,15 @@ def main(argv=None, rx=None, publisher=None):
                                           log=None, floor_margin=args.coh_floor_margin,
                                           seed=int(_now()),
                                           # lets it fit the record-stream carrier rate off
-                                          # the records it already fetched (#33 coarse feed)
-                                          hop_rate_hz=args.hops_per_sec / 2048.0)
+                                          # the records it already fetched (#33 coarse feed).
+                                          # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
+                                          # element is a HOP COUNT -- phaseslope.py divides
+                                          # it by 195312.5, not by the record rate. Passing
+                                          # hops_per_sec/2048 made the time axis 2048x too
+                                          # long, so every fitted rate came out 2048x too
+                                          # SMALL: +-0.005 Hz where the fold read +-10,
+                                          # ratio 1907-2140 across satellites.
+                                          hop_rate_hz=args.hops_per_sec)
                 except Exception as e:
                     _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
             # PATH B, same estimator, separate population. Reported side by side rather than
