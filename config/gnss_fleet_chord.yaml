@@ -94,6 +94,23 @@ common:
   # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's
   # answer and would point every node at itself.
   search-host: 10.222.3.6
+  # TASK #59: the frame-synced tracker->broker telemetry leg. Same host as the search
+  # aggregator and the broker -- cf06 already runs a kotekan instance, so this is a second
+  # small one beside it (scripts/gnss/gather_up.sh), not a new kind of thing.
+  #
+  # WHAT IT ADDS PER INSTANCE: a second CONSUMER of each chain's record buffer (the combiner
+  # is untouched), which strips each record to its gnssRecord.hpp header, batches four of them
+  # on an ABSOLUTE window boundary, and bufferSends 16736 B at 23.84 Hz. 24 MB/s from the whole
+  # fleet, and drop_frames means a gather that is down costs nothing but a log line.
+  #
+  # ⚠️ BRING THE GATHER UP BEFORE RESTARTING NODES INTO THIS. 60 senders retrying a dead
+  # listener is ~2 log lines a second across the fleet even at reconnect_time 30.
+  telem-host: 10.222.3.6
+  # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
+  # closes any connection whose frame_size disagrees with its buffer -- so changing either one
+  # means regenerating the GATHER config in the same commit, and restarting both ends. They are
+  # left at the generator defaults (40 / 4) deliberately: 40 clears the widest chain (32) with
+  # room, and 4 records is exactly one 8192-hop correlator frame.
   # Extra tracker chains on the SAME 1176.45 MHz tap. Both are free of an extra voltage tap
   # (identical covering channels to GPS L5) but each gets its OWN 128-lane synth buffer and
   # its own dual-correlator pass, so the cost is GPU, not bandwidth.

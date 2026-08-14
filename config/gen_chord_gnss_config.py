@@ -44,7 +44,7 @@ sys.path.insert(0, CONF)
 
 from chord_band_plan import (all_band_channels, covering_channels,  # noqa: E402
                              node_channels, signal_table)
-from gnss_record_layout import record_stride  # noqa: E402
+from gnss_record_layout import record_stride, telem_frame_bytes  # noqa: E402
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
@@ -137,6 +137,19 @@ def signal_tag(name):
     parts = name.split("_")
     body = parts[1] if len(parts) > 1 else parts[0]
     return "_" + body.lower()
+
+
+def broker_chain_name(name):
+    """gnssSignal.hpp name -> the BROKER's chain key. GPS_L5_Q -> gps_l5, GAL_E5A_Q_CS -> gal_e5a.
+
+    The two are already the same fact stated twice -- config/gnss_chains_chord.yaml keys its
+    chains `gps_l5`, `gal_e5a`, `bds_b2a`, `gal_e5b`, `bds_b2b` -- so derive it rather than
+    carry a table. Task #59 puts this string ON THE WIRE (gnssTelem.hpp), which is why it is a
+    name and not an integer id: an integer would need identical tables in the generator, the
+    C++ and the broker, and a drifted one attributes a constellation's data to another
+    constellation with nothing anywhere to say so.
+    """
+    return "_".join(name.split("_")[:2]).lower()
 
 
 def parse_extra_signals(cfg, args, node, primary_chans):
@@ -693,7 +706,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  + 8 * 4 * n_prn * 16 * n_chan)
     # control block = the same minus the corr array.
     ctl_bytes = (48 + 8 * 16 + 64 * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
-    record_floats = 26 + n_live * 12
+    # READ from gnssRecord.hpp, never restated: this line used to be the literal `26 + n_live*12`
+    # -- the exact drift config/gnss_record_layout.py was written to make impossible, left behind
+    # in this branch when the path-A one was fixed (2026-08-07).
+    record_floats = record_stride(n_live)
 
     blocks = {
         tiles_buf: {
@@ -996,6 +1012,80 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             {"kotekan_stage": "dropAllFrames",
              "in_buf": f"{pre}n2cmb_buf"}),
     }
+
+    # -- TASK #59: the frame-synced telemetry leg to the broker --------------------------------
+    #
+    # A SECOND CONSUMER of the record buffer, not a change to the existing chain. The combiner
+    # keeps reading n2rec_buf exactly as before; this leg strips each record to its
+    # gnssRecord.hpp header, batches telem_records_per_frame of them on an ABSOLUTE window
+    # boundary (see GnssTelemPack), and bufferSends it to the gather instance.
+    #
+    # WHY IT REPLACES POLLING. The broker used to make ~60 REST round trips per cycle and then
+    # infer which instance and which window each reply described; #52, #53, #46 and the 6x
+    # error in the #33 carrier-rate feed were all that inference going wrong. Here the address
+    # (chain, instance, absolute window) travels with the data on the F-engine's own clock.
+    #
+    # FRAME SIZE IS UNIFORM ACROSS EVERY SENDER, deliberately: one bufferRecv, one port, one
+    # buffer on the far side, and no per-chain plumbing that can be wired up crooked. The cost
+    # is zero rows for chains carrying fewer than telem_max_prn PRNs -- a few MB/s.
+    if args.telem_host:
+        chain_name = broker_chain_name(chain["signal"] if chain else sig["primary"])
+        telem_bytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
+        if n_prn > args.telem_max_prn:
+            raise SystemExit(f"--telem-max-prn {args.telem_max_prn} < {n_prn} PRNs on chain "
+                             f"{chain_name}. This number is on the WIRE and must be identical on "
+                             f"every sender and on the gather's receive buffer -- raise it in "
+                             f"config/gnss_fleet_chord.yaml and regenerate the gather too.")
+        blocks.update({
+            f"{pre}telem_buf": {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                # Deep enough that a momentary stall in the send leg costs latency rather than
+                # records; at 23.84 frames/s this is ~1.3 s of slack.
+                "num_frames": 32,
+                "frame_size": telem_bytes,
+            },
+            f"{pre}telem_pack": {
+                "kotekan_stage": "GnssTelemPack",
+                "in_buf": n2rec_buf,
+                "out_buf": f"{pre}telem_buf",
+                "chain": chain_name,
+                # THE SENDER'S IDENTITY, and the only thing that distinguishes two instances on
+                # the far side. node.gpu, because that is exactly the granularity the combiner
+                # and every existing endpoint use.
+                "inst": f"{node}.{gpu}",
+                "n_prn": n_prn,
+                "n_elements": n_live,
+                "max_prn": args.telem_max_prn,
+                "records_per_frame": args.telem_records_per_frame,
+                "hops_per_record": args.hops_per_record,
+                "fft_len": cfg["fengine"]["fft_length"],
+                "n_chan": n_chan,
+                "cpu_affinity": [cores[(gpu + 5) % len(cores)]],
+            },
+            f"{pre}telem_send": {
+                "kotekan_stage": "bufferSend",
+                "buf": f"{pre}telem_buf",
+                "server_ip": args.telem_host,
+                "server_port": args.telem_port,
+                # NEVER back-pressure the science chain for telemetry. A broker that is down
+                # must cost us nothing; that is also why this is a separate consumer of
+                # n2rec_buf rather than a stage inside the chain.
+                "drop_frames": True,
+                # 30 s, not the 5 s default. When the gather is down EVERY sender logs one WARN
+                # per attempt, and there are 60 of them (12 instances x 5 chains): at the
+                # default that is ~12 lines a second of "Connection refused" across the fleet
+                # logs, which buries whatever the real problem is. Bring the gather up first
+                # (scripts/gnss/gather_up.sh), then restart the nodes.
+                "reconnect_time": 30,
+                # PIN THE WIRE FORMAT on both ends -- see the srch_send note. The node inherits
+                # a config_tracker block from the production base and the gather instance has
+                # none, so left to default the two disagree by one header field and the stream
+                # shifts, surfacing as an unrelated-looking "Frame size does not match".
+                "use_config_tracker": False,
+                "cpu_affinity": [cores[(gpu + 6) % len(cores)]],
+            },
+        })
     return blocks
 
 
@@ -1266,6 +1356,80 @@ def build_aggregator_instance(cfg, nodes, args, port):
     out["gps_search"]["acquire_threads"] = nth
     out["gps_search"]["cpu_affinity"] = list(cores[-max(nth, 6):])
     return out, feeds, union_ids
+
+
+def build_gather_instance(cfg, args, port):
+    """TASK #59: the GATHER instance -- the whole fleet's record telemetry into one local stream.
+
+    Deliberately TINY. One bufferRecv accepts every sender (12 instances x 5 chains today) on a
+    single port, and GnssTelemGather writes each frame, length-prefixed and verbatim, to the
+    Python broker over a local socket.
+
+    IT COLLATES NOTHING, AND THAT IS THE DESIGN. The loops live in the broker (KV, 2026-08-14),
+    and collation needs no C++ help: every frame already carries the absolute window index
+    wstart/(records_per_frame * hops_per_record * fft_length), computed by each sender from the
+    same three integers, so grouping instances is an exact integer match rather than an
+    inference from arrival order or from a UTC stamp each instance derives on its own (#46
+    measured 0.105 s of spread in exactly that stamp).
+
+    ONE LISTENER, ONE BUFFER. The identity of a frame is in its payload (chain + instance tags),
+    not in which socket it arrived on, so there is no port map to wire up crooked -- which is
+    how the search aggregator's feeds get renumbered whenever a node is dropped.
+
+    Standalone, like the search instance and for the same reasons: it must not share the
+    aggregator's fate (the aggregator is restarted often), and moving it is a change of
+    --telem-host on the nodes and nothing else.
+    """
+    rt = cfg["runtime"]
+    cores = rt["cpu_affinity"]
+    frame_bytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
+    return {
+        "type": "config",
+        "log_level": "info",
+        # bufferRecv deserializes the sender's metadata into a pool object of the same type, so
+        # the pool must exist here even though nothing in this instance reads sample_seq.
+        "gnss_pool": {"kotekan_metadata_pool": "GnssChanMetadata",
+                      "num_metadata_objects": 4096},
+        "cpu_affinity": cores,
+        "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
+        # kotekan constructs a Telescope whatever the stage graph contains, so a minimal valid
+        # block is required even though nothing here has a sky model -- same as the search
+        # instance. query_gps false: this host has no F-engine to ask.
+        "telescope": {"name": "ICETelescope", "num_polarizations": 1, "num_dishes": 1,
+                      "query_gps": False, "require_gps": False},
+        "telem_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            # 60 senders x 23.84 frames/s = ~1430 frames/s; 1024 frames is ~0.7 s of absorption
+            # for a broker that stalls, at 17 MB of memory. Past that the gather drops, which is
+            # correct: telemetry must never back-pressure a tracker.
+            "num_frames": 1024,
+            "frame_size": frame_bytes,
+        },
+        "telem_recv": {
+            "kotekan_stage": "bufferRecv",
+            "buf": "telem_buf",
+            "listen_port": args.telem_port,
+            # One thread per ~15 senders. These are 17 kB frames at a modest rate; the work is
+            # socket reads, not compute.
+            "num_threads": 4,
+            "drop_frames": True,
+            # ⚠️ MUST MATCH THE SENDER EXACTLY -- see the srch_send note in the node branch. The
+            # nodes inherit a config_tracker block from the production base and this instance
+            # has none, so left to default the two write different header lengths, the stream
+            # shifts by one field, and it surfaces as a frame-size mismatch that says nothing
+            # about config_tracker.
+            "use_config_tracker": False,
+            "cpu_affinity": list(cores[:4]),
+        },
+        "telem_gather": {
+            "kotekan_stage": "GnssTelemGather",
+            "in_buf": "telem_buf",
+            "serve_host": args.gather_serve_host,
+            "serve_port": args.gather_serve_port,
+            "cpu_affinity": [cores[4 % len(cores)]],
+        },
+    }
 
 
 def build_search_instance(cfg, node, per_gpu, args, port):
@@ -1606,6 +1770,40 @@ def main():
  combs (e.g. --aggregator-instance cx19 cx27). Feeds listen on search_port_base + i in\
  node-major, GPU-minor order -- the same ports the node configs already target. Implies\
  everything --search-instance implies (no DPDK/GPU/hugepages, ordinary user).")
+    # -- TASK #59: the frame-synced tracker -> broker telemetry transport ---------------------
+    ap.add_argument("--telem-host", default=None,
+                    help="TASK #59: send per-record telemetry to the gather instance at this "
+                         "address (bufferSend -> bufferRecv), replacing the broker's ~60 REST "
+                         "polls per cycle. Off when unset -- the polling path is untouched, so "
+                         "this can be turned on a node at a time. The gather is normally the "
+                         "broker host (cf06, 10.222.3.6), which already runs the search "
+                         "aggregator instance.")
+    ap.add_argument("--telem-port", type=int, default=11060,
+                    help="port the gather instance's bufferRecv listens on. ONE port for the "
+                         "whole fleet: every frame carries its own chain and instance tags, so "
+                         "there is no per-chain port map to get wrong.")
+    ap.add_argument("--telem-max-prn", type=int, default=40,
+                    help="PRN rows on the wire. ⚠️ ON THE WIRE and therefore IDENTICAL on every "
+                         "sender and on the gather's receive buffer -- bufferRecv closes any "
+                         "connection whose frame_size disagrees. Chains with fewer PRNs send "
+                         "zero rows, which is the price of one uniform frame size (and so one "
+                         "listener, one buffer, no per-chain plumbing).")
+    ap.add_argument("--telem-records-per-frame", type=int, default=4,
+                    help="records batched into one wire frame. 4 = one 8192-hop correlator "
+                         "frame at hops_per_record 2048, i.e. 23.84 frames/s. The batch "
+                         "boundary is the ABSOLUTE window index wstart/(this*hops*fft_len), not "
+                         "a local counter, so every instance batches the same record sets "
+                         "without negotiating -- the #53 lesson, applied before it can bite.")
+    ap.add_argument("--gather-instance", action="store_true",
+                    help="TASK #59: emit the standalone GATHER instance -- one bufferRecv for "
+                         "the whole fleet's telemetry plus GnssTelemGather, which hands the "
+                         "frames to the PYTHON broker over a local socket. No DPDK, no GPU, no "
+                         "hugepages; runs as an ordinary user beside the search aggregator on "
+                         "cf06. It collates NOTHING: the frames carry an absolute window index, "
+                         "so grouping is an exact integer match the broker does itself.")
+    ap.add_argument("--gather-serve-host", default="127.0.0.1",
+                    help="bind address of the gather's broker stream (--gather-instance)")
+    ap.add_argument("--gather-serve-port", type=int, default=11061)
     ap.add_argument("--combine-gpus", action="store_true",
                     help="ONE GnssCoherentCombiner over BOTH GPUs' tracker record streams "
                          "instead of one per GPU. The stage is documented for exactly this -- "
@@ -1893,6 +2091,35 @@ def main():
             print(f"  feed {i}: {node} gpu{gpu} {len(fids)} ch  <- port "
                   f"{args.search_port_base + i}", file=sys.stderr)
         print(f"  union    {len(union_ids)} channels", file=sys.stderr)
+        print(f"  rest     {port}", file=sys.stderr)
+        return
+
+    if args.gather_instance:
+        port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"] + 2
+        if port == 12048:
+            raise SystemExit("refusing port 12048 (choco owns it)")
+        out = build_gather_instance(cfg, args, port)
+        nbytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
+        text = ("# GENERATED by config/gen_chord_gnss_config.py --gather-instance -- DO NOT "
+                "HAND-EDIT.\n"
+                f"# TASK #59: the fleet's per-record telemetry, gathered on ONE port and handed\n"
+                f"# to the PYTHON broker on {args.gather_serve_host}:{args.gather_serve_port}.\n"
+                f"# wire frame {nbytes} B = {args.telem_records_per_frame} records x "
+                f"{args.telem_max_prn} PRN rows; listen {args.telem_port}; rest {port}\n"
+                "# ⚠️ telem_max_prn and telem_records_per_frame must match EVERY sender: they\n"
+                "#    set frame_size, and bufferRecv closes any connection that disagrees.\n"
+                + yaml.safe_dump(out, default_flow_style=False, sort_keys=True))
+        if args.out:
+            os.makedirs(os.path.dirname(args.out), exist_ok=True)
+            open(args.out, "w").write(text)
+            print(f"wrote {args.out}")
+        else:
+            sys.stdout.write(text)
+        print(f"  GATHER instance", file=sys.stderr)
+        print(f"  listens  {args.telem_port} (all senders)", file=sys.stderr)
+        print(f"  serves   {args.gather_serve_host}:{args.gather_serve_port} to the broker",
+              file=sys.stderr)
+        print(f"  frame    {nbytes} B", file=sys.stderr)
         print(f"  rest     {port}", file=sys.stderr)
         return
 
