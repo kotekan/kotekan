@@ -7,6 +7,7 @@ port, which is why CHORD needs a viewer instance per constellation (12060 GPS, 1
 The unified broker publishes every chain on one port, keyed by chain id -- see
 docs/CHORD_BROKER_REFACTOR.md M7. Moved unchanged here so that change is isolated.
 """
+import collections
 import json
 import math
 import threading
@@ -22,6 +23,13 @@ from .transport import _now
 # gap between them rather than inside either. Re-derive it -- do not nudge it -- if the split
 # ever stops being bimodal; scripts/gnss/blind_witness_check.py prints both populations.
 PROMPT_RAYLEIGH_S4 = 0.90
+
+# Trailing window for det_duty_s / inst_snr_med_win (seconds). Chosen as ~12 seed-POST
+# intervals (posts land every ~10 s), so the duty averages over many flicker cycles
+# rather than aliasing against one. Not a smoothing constant to be tuned for looks: it
+# is the averaging time of a MEASUREMENT of how often the array is actually holding a
+# satellite, and it should be reported alongside the number (det_duty_n).
+DUTY_WIN_S = 120.0
 
 
 class FleetPublisher:
@@ -66,6 +74,13 @@ class FleetPublisher:
         self._chains = {}          # chain id -> {"rows", "dets", "meta", "ctl", "sig", "band"}
         self._order = []           # registration order, so output is deterministic
         self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
+        # TRAILING DETECTION HISTORY, (chain, prn) -> deque[(t, inst_snr_med, certified)].
+        # Exists because EVERY instantaneous statistic in this row churns: measured
+        # 2026-08-14, all 12 instances collapse to noise together and recover on a ~10 s
+        # cadence (the seed POST cadence), so a single poll samples a violently flickering
+        # quantity and the display reads as random. A trailing duty is the honest summary --
+        # it does not hide the flicker, it MEASURES it. See det_duty_s below.
+        self._hist = {}
         # RUNTIME CONTROL, deliberately narrow. Everything else here is read-only; this one
         # value is writable because the experiment that needs it CANNOT be run any other way.
         # Measuring the carrier loop's open-loop transfer function means holding a fixed
@@ -404,6 +419,68 @@ class FleetPublisher:
                 if _q is not None:
                     row.update({"deep_snr": _q[0],
                                 "coh_src": "quad:%d" % _q[1]})
+            # ---- THE HONEST HEALTH METRIC (2026-08-14, task #57) ------------------------
+            # Everything above is best-of-instance or fleet-override, and BOTH churn: the
+            # served row is a single sample of a quantity that (measured on sky, 12
+            # instances polled simultaneously at 2 s) collapses to noise and recovers on
+            # the ~10 s seed-POST cadence, fleet-wide and in lockstep. A viewer built on
+            # any instantaneous scalar therefore reads as random -- which is exactly the
+            # "bad churn, at most 3 sats" KV reported while GPS SEARCH was seeing the same
+            # satellites at SNR 1674-2362 continuously.
+            #
+            # Two properties make these fields trustworthy where the others are not:
+            #  * MEDIAN, not max, over instances. The instances agree with each other to
+            #    ~5% at every instant (measured), so their median is a stable estimate of
+            #    what the array actually saw; the max is an order statistic that jumps
+            #    every time the winner changes (see adr_fine_rate's churn gate for the
+            #    same disease biting the carrier loop).
+            #  * A TRAILING DUTY rather than a snapshot. det_duty_s reports the fraction
+            #    of the last DUTY_WIN_S in which the median instance cleared its floor.
+            #    This does not smooth the flicker away -- a satellite that is genuinely
+            #    half dead reads 0.5, and that IS the finding.
+            _pi = sorted((fc.get("per_inst") or {}).values()) if fc else []
+            if _pi:
+                _n = len(_pi)
+                row["inst_snr_med"] = (_pi[_n // 2] if _n % 2
+                                       else 0.5 * (_pi[_n // 2 - 1] + _pi[_n // 2]))
+                row["inst_snr_lo"], row["inst_snr_hi"] = _pi[0], _pi[-1]
+                row["inst_snr_n"] = _n
+            # Trailing duty over the last DUTY_WIN_S. "Certified" means the median
+            # instance beat the fleet's own measured floor -- the fleet's number judged
+            # against the fleet's own null, one estimator, no cross-population pairing.
+            _t_now = _now()
+            _key = (chain, prn)
+            _h = self._hist.setdefault(_key, collections.deque())
+            if _pi:
+                _fl = float(fc.get("floor") or 0.0)
+                _h.append((_t_now, row["inst_snr_med"], row["inst_snr_med"] > _fl > 0.0))
+            while _h and _t_now - _h[0][0] > DUTY_WIN_S:
+                _h.popleft()
+            if _h:
+                row["det_duty_s"] = sum(1 for _, _, ok in _h if ok) / float(len(_h))
+                row["det_duty_n"] = len(_h)
+                _m = sorted(v for _, v, _ok in _h)
+                row["inst_snr_med_win"] = _m[len(_m) // 2]
+            # SIGNIFICANCE WITH A MATCHED GATE. The viewer computed
+            #     sig = coherence_s > 0 ? max(deep_snr, amp_snr) : amp_snr
+            # where deep_snr may be the FLEET value while coherence_s is the best single
+            # INSTANCE's ladder pick -- two different estimators over two different
+            # integrations. Measured 2026-08-14: PRN 26 served deep_snr 137, coh_frac
+            # 1.00, coh_src 'fleet:11' and coherence_s 0.0, i.e. a live fleet detection
+            # displayed as insignificant, flickering in and out as the winning instance
+            # changed. Same numerator/denominator class as the cn0_coh_db pairing bug
+            # (#35) -- fixed there in the VALUE, left in place on the GATE.
+            # Publish sig with its gate and its source attached so no consumer has to
+            # re-derive the pairing.
+            if _pi and row.get("det_duty_s") is not None:
+                row["sig"] = row.get("inst_snr_med_win") or row["inst_snr_med"]
+                row["sig_src"] = "inst_med:%d" % row["inst_snr_n"]
+            elif (c.get("coherence_s") or 0.0) > 0.0 and c.get("deep_snr"):
+                row["sig"] = c["deep_snr"]      # one instance, its own certified span
+                row["sig_src"] = "inst_best"
+            else:
+                row["sig"] = row.get("amp_snr") or 0.0
+                row["sig_src"] = "incoh"
             # C/N0, PUBLISHED RATHER THAN DERIVED (task #35, 2026-08-11). The viewer used
             # to compute 20log10(deep_snr) - 10log10(coherence_s), which is only valid
             # when deep_snr is ONE instance's amplitude SNR. It is not: the fleet override

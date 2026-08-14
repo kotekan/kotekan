@@ -57,6 +57,13 @@ const METRICS = {
                         ? m.cn0_coh.toFixed(0) + (m.prompt_lock === false ? "?" : "") : null},
     cn0:  {label: "C/N0 inc", field: "cn0",     unit: "dB-Hz",
            fmt: m => m && m.cn0 != null ? m.cn0.toFixed(0) : null},
+    // DUTY (task #57): the fraction of the last 2 minutes in which the array actually
+    // held this satellite. sig says how loud, duty says how often -- different
+    // questions. Measured 2026-08-14: satellites sitting at sig 20-40 were being lost a
+    // third of the time, all 12 instances dropping together on the seed-POST cadence,
+    // and no instantaneous column could show it.
+    duty: {label: "duty", field: "duty",    unit: "",
+           fmt: m => m && m.duty != null ? (100 * m.duty).toFixed(0) + "%" : null},
     sig:  {label: "sig",  field: "sig",     unit: "σ",
            fmt: m => m && m.sig ? m.sig.toFixed(0) : null},
     coh:  {label: "coh",  field: "coh_s",   unit: "s",
@@ -102,8 +109,14 @@ const COLS = [
           + "unbiased_amplitude floors at 0, i.e. for any satellite at or below the "
           + "fleet's noise median, which is most of them"},
     {key: "sig",  label: "sig",  align: "right", dir: -1,
-     tip: "combined significance = signal / its uncertainty (sigma above "
-          + "noise, deep nav-wiped when available): >>1 real, ~1 noise"},
+     tip: "combined significance. Since #57 this is the broker's published `sig`: the "
+          + "MEDIAN over instances (they agree to ~5% at any instant, so the median is "
+          + "stable where the best-of-instance max churns) over a trailing window, with "
+          + "its gate paired to its own numerator. `sig_src` names the estimator"},
+    {key: "duty", label: "duty", align: "right", dir: -1,
+     tip: "fraction of the last 2 min the array actually HELD this satellite (median "
+          + "instance above the fleet's own floor). Read it beside sig: a loud sig at a "
+          + "low duty is a satellite we keep losing, which no instantaneous column shows"},
     {key: "coh_s", label: "coh", align: "right", dir: -1,
      tip: "coherent window the deep integration held (s, auto-ladder winner)"},
     {key: "peel_db", label: "peel", align: "right", dir: -1,
@@ -472,6 +485,15 @@ export class GpsTablePanel {
                     : "—",
                 cn0: r.cn0 != null ? r.cn0.toFixed(1) : "—",
                 sig,
+                // duty greys below 70%: the number is real, the satellite is not being
+                // held, and those two facts must be legible in the same glance.
+                duty: r.duty != null
+                    ? (r.duty < 0.7
+                       ? `<span style="opacity:.55" title="held only ${(100 * r.duty).toFixed(0)}%`
+                         + ` of the last 2 min (${r.inst_n || "?"} instances). sig is the level`
+                         + ` WHEN held; this is how often.">${(100 * r.duty).toFixed(0)}%</span>`
+                       : (100 * r.duty).toFixed(0) + "%")
+                    : "—",
                 coh_s: r.coh_s != null && r.coh_s > 0 ? r.coh_s.toFixed(2) : "—",
                 peel_db: r.peel_db != null
                     ? (r.peel_bound ? "≥" : "") + r.peel_db.toFixed(1)

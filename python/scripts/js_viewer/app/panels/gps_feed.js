@@ -110,10 +110,30 @@ export function signal_metrics(s, t_rec) {
         // pre-#47 broker renders unchanged rather than greying every satellite.
         prompt_lock: s.prompt_lock != null ? !!s.prompt_lock : true,
     };
-    // significance: deep counts only where the combiner certified it beat its rectification
-    // floor (coherence_s > 0); a floored deep (~7-12 sigma) is noise wearing a lock's clothes.
-    m.sig = (s.coherence_s || 0) > 0
-        ? Math.max(s.deep_snr || 0, s.amp_snr || 0) : (s.amp_snr || 0);
+    // SIGNIFICANCE: prefer the broker's published `sig`, which carries its own matched gate
+    // and names its estimator in `sig_src` (task #57, 2026-08-14).
+    //
+    // The local expression below (kept as the fallback for a pre-#57 broker) pairs a
+    // numerator and a gate that come from DIFFERENT estimators: deep_snr may be the FLEET
+    // coherent value while coherence_s is the best single INSTANCE's ladder pick. Measured
+    // on sky: PRN 26 served deep_snr 137, coh_frac 1.00, coh_src 'fleet:11', coherence_s
+    // 0.0 -- a live fleet detection rendered insignificant, flickering as the winning
+    // instance changed. Same class as the cn0_coh_db pairing bug (#35), which was fixed in
+    // the value and left in the gate.
+    //
+    // The broker's `sig` is the MEDIAN over instances (they agree to ~5% at any instant,
+    // so the median is stable where the max churns) over a trailing window; `det_duty_s`
+    // beside it reports how often the array actually held the satellite. Read them
+    // together: sig says how loud, duty says how often. A high sig at duty 0.3 is a
+    // satellite we are losing two thirds of the time, and the display should say so.
+    m.sig = s.sig != null ? s.sig
+          : ((s.coherence_s || 0) > 0 ? Math.max(s.deep_snr || 0, s.amp_snr || 0)
+                                      : (s.amp_snr || 0));
+    m.sig_src = s.sig_src || null;
+    m.duty = s.det_duty_s != null ? s.det_duty_s : null;
+    m.inst_n = s.inst_snr_n != null ? s.inst_snr_n : null;
+    m.inst_spread = (s.inst_snr_hi != null && s.inst_snr_lo != null) ?
+                    (s.inst_snr_hi - s.inst_snr_lo) : null;
     // coherent C/N0 (dB-Hz): PREFER the broker-published cn0_coh_db (task #35) -- the
     // best single instance over its own span, one estimator, one normalisation. The
     // local derivation from deep_snr is WRONG whenever the broker serves the fleet
