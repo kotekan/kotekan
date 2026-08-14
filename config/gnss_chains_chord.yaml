@@ -209,7 +209,30 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # ⚠️ The integration lengths are MATCHED via common's telem-windows (32 windows x 4 records
     # = 128 = the combiners' record_export). Unmatched, the telemetry arm would integrate a
     # quarter as long and lose for a reason that has nothing to do with alignment.
-    telem-coherent: true
+    #
+    # ⚠️ RESULT, 2026-08-14 20:21-20:40 -- RUN, MEASURED, AND TURNED BACK OFF. The A/B showed
+    # NO benefit to fleet_coherent, because the CONTROL showed the estimator is not
+    # reproducible in the first place:
+    #
+    #   treatment (A gathered vs B polled): 529 pairs / 128 polls, correlation 0.054,
+    #       clear-rate discordance 176 vs 144, sign test p = 0.083
+    #   CONTROL   (A polled  vs B polled): 277 pairs /  74 polls, correlation 0.077,
+    #       clear-rate discordance  90 vs  95, sign test p = 0.77
+    #
+    # TWO COMPUTATIONS OF fleet_coherent IN ONE CYCLE, OVER THE SAME TWELVE ENDPOINTS, BOTH
+    # POLLING REST, AGREE AT r = 0.077 -- i.e. essentially not at all. The gathered feed's
+    # 0.054 is indistinguishable from that, so the transport neither causes the churn nor
+    # cures it, and the p = 0.083 lean in its favour is not established. Whatever dominates
+    # this estimator's output changes faster than one poll and is upstream of the transport
+    # (see task #61). The absolute clear-RATES are not quotable: the FLEET-COH line only
+    # prints a PRN when at least one arm cleared, so that cell is structurally zero -- only
+    # the discordant (McNemar) counts survive the selection.
+    #
+    # Re-arm when there is a consumer this actually helps -- the #33 record_stream feed is
+    # the candidate, not this. `scripts/gnss/ab_fleetcoh.py` reproduces the analysis, and
+    # ⚠️ RUN THE CONTROL WITH IT: without the REST-vs-REST arm, r = 0.054 reads as an
+    # indictment of the transport instead of a property of the estimator.
+    # telem-coherent: true
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
