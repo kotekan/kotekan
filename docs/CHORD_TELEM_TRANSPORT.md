@@ -1,6 +1,8 @@
 # The frame-synced tracker → broker transport (task #59)
 
-**Status 2026-08-14: BUILT, GATED OFFLINE, NOT YET ON SKY.** The node configs carry the sender
+**Status 2026-08-14 23:00: LIVE AT v3.** The comb ships E/P/L per channel per record; a DLL discriminator has been formed entirely broker-side from it. The transport (#59) is DONE; the remaining work is THE PURGE (#63) -- move every derived quantity into the broker and delete the tracker's cross-channel sum.
+
+_Superseded status line:_ The node configs carry the sender
 legs (regenerated, so they arrive on the next tracker restart); the gather instance config is
 committed; the broker connects only when told to and consumes only when told to. Nothing about
 the existing REST path has changed.
@@ -189,3 +191,40 @@ same-poll control. A before/after across restarts cannot resolve it — the sky 
 
 Related: `chord-frame-synced-gather`, `chord-rrate-physics`, `chord-instance-time-divergence`
 (#46), `docs/CHORD_GNSS_SHARED_DLL.md`, `docs/CHORD_JOINT_TRACKING.md`.
+
+
+---
+
+## 7. v3 — the comb (2026-08-14)
+
+`CHAN_FLOATS = 9`: **P**(re, im, energy), **E**(re, im, energy), **L**(re, im, energy) per
+channel, appended after the PRN records. Columns 0–2 keep their v2 meaning, so the widening
+re-pointed no reader. The header carries each column's `freq_id` — labels ride on the wire, never
+configured broker-side, because a configured copy drifts out of step with the node it describes.
+
+**E/P/L (not just P) is what makes the sum deletable.** With only the prompt un-summed the code
+loop still had to read the tracker's summed slots, so nothing could be removed.
+
+In the assembler all three taps go through one lambda: identical element combine, identical NCO
+rotation. A discriminator built from taps combined even slightly differently measures the
+difference between the combines rather than the code offset.
+
+62832 B/frame, 90 MB/s fleet-wide.
+
+### What the comb is FOR, stated honestly
+
+The **frequency axis** — a delay is a ramp across frequency, and the collapsed comb forced the
+broker to *fit* a per-instance constant where it should *derive* one.
+
+It is **not** an SNR win. A joint fit over 434 channel-series found no measurable delay
+(excess +0.867 dB against a 0.409 dB null). An earlier "+6.5 dB" claim was a per-instance fit to
+noise and is **retracted** — a per-node delay is physically impossible here (one PFB; nodes are
+`freq_id mod 8` routing). The τ machinery is kept deliberately for future arrays with real
+spectral tilt.
+
+### ⚠️ Judge changes on fit-free metrics
+
+`fleet_coherent`'s output is uncorrelated (r = 0.077) between two same-cycle runs on the same
+endpoints, so it **cannot resolve a few-dB change**. A first full-band A/B read "−2.25 dB worse"
+while both arms ran identical math. Use `telem_align.py`'s cross-instance coherence, or
+per-instance coherent amplitude.
