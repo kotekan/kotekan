@@ -233,6 +233,34 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # ⚠️ RUN THE CONTROL WITH IT: without the REST-vs-REST arm, r = 0.054 reads as an
     # indictment of the transport instead of a property of the estimator.
     # telem-coherent: true
+    #
+    # -- TASK #63: THE CODE LOOP CLOSES ON THE COMB, ON THIS CHAIN ONLY ----------------------
+    # The discriminator is now formed HERE from the per-channel Early/Prompt/Late the #59
+    # transport ships, instead of from powers the trackers built by summing across each
+    # instance's channels. Same arithmetic (coherent over an instance's channels, then powers
+    # added across instances), moved to the one place that can see the whole band.
+    #
+    # ⚠️ UNLIKE --telem-coherent ABOVE, THIS ONE WAS MEASURED FIRST AND IT PASSED. The estimator
+    # that A/B tried to move is not reproducible against itself (r = 0.077); the DLL is, so the
+    # paired comparison means something. scripts/gnss/comb_dll_ab.py, live, WITH the mandatory
+    # poll-vs-poll control:
+    #
+    #   gps_l5,  20 cycles, 240 paired PRNs
+    #     disc  comb - poll  +0.0015 +- 0.0223   CONTROL (poll - poll)  +0.0014 +- 0.0472
+    #     q     comb - poll  +0.0081 +- 0.0435   CONTROL                +0.0015 +- 0.0902
+    #     presence 10/240 discordant, McNemar chi2 0.10 -- symmetric, churn not bias
+    #   gal_e5a, 15 cycles, 210 paired PRNs
+    #     disc  +0.0000 +- 0.0320   CONTROL  -0.0021 +- 0.0412
+    #
+    # The comb arm tracks the polled one MORE CLOSELY THAN THE POLLED ONE TRACKS ITSELF one
+    # cycle later. The other four chains stay on the polled discriminator as the live control.
+    #
+    # ⚠️ THE POLL IS STILL MADE. deep_snr / deep_floor / coherence_s and the quadrature
+    # fallback come from the combiner's DEEP FOLD, which is not in the comb; they are carried
+    # across verbatim. Nothing tracker-side becomes deletable until that fold also runs here.
+    # Watch the COMB-DLL log line: it prints the same paired comparison on the loop's own
+    # cycles, so the swap monitors itself.
+    telem-dll: true
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
