@@ -168,9 +168,20 @@ class TelemFrame(object):
         belong to, so the fleet can fit a delay across its full ~106-channel comb rather than a
         free constant per instance.
 
-        A is energy-normalised per channel (G/E), matching the header slots' convention, so the
-        two are directly comparable and summing A*E over the returned columns reproduces the
-        header's prompt exactly -- which is the check to run before trusting either.
+        A is energy-normalised per channel (G/E), matching the header slots' convention.
+
+        ⚠️ SUMMING A*E OVER THE COLUMNS DOES **NOT** EXACTLY REPRODUCE THE HEADER'S PROMPT --
+        measured 1-11% on sky, 2026-08-14, and the reason is worth knowing. ElemCal::combine is
+        linear, so summing over channels and combining over elements DO commute; the difference
+        is that the assembler calls ec.update() BETWEEN writing the header (which uses the
+        previous record's weights, causally) and writing this comb (which uses weights already
+        updated with THIS record). So the comb is element-combined with weights one record
+        newer, and -- worse -- weights that saw the very record they are applied to. The
+        long-standing /get_spectrum export has the same property. See task #62.
+
+        For a delay fit across channels this is harmless: every column of one instance shares
+        the same weights, so the RAMP is unaffected. Do not use the residual as a cross-check of
+        the header until #62 is fixed; it is a known offset, not a transport error.
         """
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r) or not self.n_chan:

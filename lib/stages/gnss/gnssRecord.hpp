@@ -311,11 +311,19 @@ constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below 
 ///     [PRN 0 record][PRN 1 record]...[PRN n-1 record][chan block]
 ///     chan block = [PRN 0: ch 0..n_chan-1][PRN 1: ...],  CHAN_FLOATS each
 ///
-/// APPENDED rather than interleaved into the record, deliberately: every existing consumer
-/// (GnssCoherentCombiner, GnssBeamCube, rawFileWrite, the offline readers) indexes by
-/// record_stride() and n_prn, so a longer frame with the same prefix is invisible to all of
-/// them. That is what makes this deployable without a flag day -- the summed prompt keeps
-/// working while the un-summed path is proven, and only then does the sum go.
+/// APPENDED rather than interleaved into the record, deliberately: a consumer that indexes by
+/// record_stride() and a CONFIGURED n_prn sees a longer frame and nothing else. That is what
+/// makes this deployable without a flag day -- the summed prompt keeps working while the
+/// un-summed path is proven, and only then does the sum go. GnssCoherentCombiner and
+/// rawFileWrite are in that class and are untouched.
+///
+/// ⚠️ BUT A CONSUMER THAT **INFERS** n_prn FROM frame_size IS WRONG THE MOMENT THIS IS ON.
+/// GnssBeamCube does exactly that (`_n_prn = frame_size / sizeof(float) / IN_RECORD_FLOATS`
+/// when no n_prn is configured), so with a comb appended it would infer too many PRNs and read
+/// the comb as records. It is not instantiated on CHORD today -- only in the airspy
+/// config/live_l5.yaml, where chan_export is off -- so nothing is broken now. If it is ever
+/// wired to a chain with the comb on, GIVE IT AN EXPLICIT `n_prn`. Checked 2026-08-14 after
+/// claiming, too broadly, that a longer frame was invisible to every consumer.
 ///
 /// The values are the SAME per-channel quantities the /get_spectrum ring accumulates -- NCO-
 /// derotated and element-combined, i.e. one "element-equivalent" per channel -- but PER RECORD
