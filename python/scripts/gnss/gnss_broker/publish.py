@@ -397,6 +397,15 @@ class FleetPublisher:
                     # The best single instance kept alongside, so the GAIN this buys is
                     # visible in the same row rather than inferred across restarts.
                     "fleet_coh_best_inst": fc["best_inst_snr"],
+                    # THE RECORD-STREAM CARRIER RATE and its split-half sigma (Hz), the
+                    # rrate state's coarse feed since 2974aaa81. Published beside
+                    # deep_rate_full_hz -- the fold's argmax it replaced -- so the two
+                    # estimators of the same quantity can be judged against each other on
+                    # sky rather than by argument. The fold's measured structure function
+                    # was FLAT with lag (1.44 m/s rms at 3 s, 2.07 at 24 s), i.e. pure
+                    # per-sample noise; this one is what that comparison needs.
+                    "rec_rate_hz": fc.get("rate_hz"),
+                    "rec_rate_sigma_hz": fc.get("rate_sigma_hz"),
                 })
             else:
                 if fc:
