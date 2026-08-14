@@ -268,7 +268,14 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # it needs an honest path-B export (dedicated applied-ctrim field, C++, daylight).
     # Broker now sanity-gates |applied| < 50 Hz (garbage -> loud fallback) regardless.
     # OVERNIGHT: command OFF, shadow + fine feed on -- the proven-safe config.
-    # rrate-command: true
+    # ✅ RE-ARMED 2026-08-14 ~12:00 after the honest export landed (2eb36680a:
+    # PrnCtl::ctrim_hz -> slot 19; trackers cycled). Acceptance: held +5.00 Hz probe
+    # read back at 5.0000 exactly on every span-consistent pair. That probe ALSO exposed
+    # serving-instance churn poisoning cross-poll differences (span wrong up to 12x,
+    # arc gate blind to it) -- adr_fine_rate now gates span-vs-wall-clock (419474c3e).
+    # Re-arm acceptance = the frozen-command discriminator: hold trim 0, residuals must
+    # PERSIST (collapse = feedback still in the loop).
+    rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
