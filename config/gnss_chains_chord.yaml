@@ -54,7 +54,20 @@ common:
   # phase is free and the fit absorbs it -- which is #52's defect, not a modelling choice.
   # Nodes on a pre-#53 config are excluded from the gather (and named in the log) rather
   # than mixed in.
-  spectrum-aligned: true
+  # ⚠️ OFF (2026-08-14, within minutes of turning it on): the aligned gather is correctly
+  # constructed and completely unusable as it stands. Live it served 12/12 instances on one
+  # window index -- and then dropped EVERY point: "132 re-anchored" is 12 instances x 11
+  # PRNs, i.e. 100%, with zero SPEC-FIT lines and 0 archive points where the legacy path
+  # was producing both. The rule that drops a PRN whose phi0 accumulator re-anchored
+  # MID-window is right in principle and can never pass here, because this broker re-pins
+  # the seed essentially every window -- the same trap the carrier loop fell into (see the
+  # gps_l5 note above: its continuity gate rejected 100% of measurements because on CHORD
+  # THE SEED IS THE REFERENCE and it is refreshed every window).
+  # THE REAL FIX IS IN C++, and it is the one we already know how to write: the spectrum
+  # accumulator must FOLD the re-pin step out (the PrnCtl::dcyc treatment, in the Doppler
+  # domain) instead of flagging it and forcing a drop. Until then the legacy gather is what
+  # actually delivers data. #53.
+  # spectrum-aligned: true
   # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
   # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
