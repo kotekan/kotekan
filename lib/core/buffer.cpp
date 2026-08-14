@@ -115,6 +115,24 @@ int GenericBuffer::get_num_producers() {
     return producers.size();
 }
 
+std::vector<std::string> GenericBuffer::get_consumer_names() {
+    buffer_lock lock(mutex);
+    std::vector<std::string> names;
+    names.reserve(consumers.size());
+    for (auto& consumer : consumers)
+        names.push_back(consumer.second.name);
+    return names;
+}
+
+std::vector<std::string> GenericBuffer::get_producer_names() {
+    buffer_lock lock(mutex);
+    std::vector<std::string> names;
+    names.reserve(producers.size());
+    for (auto& producer : producers)
+        names.push_back(producer.second.name);
+    return names;
+}
+
 void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
     buffer_lock lock(mutex);
     if (metadata[from_ID] == nullptr) {

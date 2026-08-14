@@ -360,21 +360,26 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
         return name;
     };
     for (auto& buf : buffer_container.get_buffer_map()) {
+        // Snapshots, not the live maps: a stage may unregister from a buffer
+        // while the pipeline runs, and erasing from a map another thread is
+        // walking is not something the walk survives.
+        const std::vector<std::string> consumers = buf.second->get_consumer_names();
+        const std::vector<std::string> producers = buf.second->get_producer_names();
+
         // A buffer with one producer and one consumer is a link in a chain, and
         // the chain is the thing to keep straight; everything else can bend
         // around it.
-        const bool in_chain =
-            buf.second->producers.size() == 1 && buf.second->consumers.size() == 1;
+        const bool in_chain = producers.size() == 1 && consumers.size() == 1;
         const std::string weight = in_chain ? "4" : "1";
 
         std::vector<std::string> touched_by;
-        for (auto& cit : buf.second->consumers) {
-            const std::string node = endpoint(cit.second.name);
+        for (const auto& consumer : consumers) {
+            const std::string node = endpoint(consumer);
             graph.add_edge(buf.first, node).set_attr("weight", weight);
             touched_by.push_back(node);
         }
-        for (auto& pit : buf.second->producers) {
-            const std::string node = endpoint(pit.second.name);
+        for (const auto& producer : producers) {
+            const std::string node = endpoint(producer);
             graph.add_edge(node, buf.first).set_attr("weight", weight);
             touched_by.push_back(node);
         }
