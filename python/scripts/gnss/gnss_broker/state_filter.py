@@ -159,6 +159,7 @@ class JointReceiverState:
                  sigma_fcar0=50.0, q_fcar=0.01,
                  sigma_rr0=2.0, q_rr=0.02, rr_gauge_sigma=0.5, f_ref_hz=None,
                  sigma_rrd0=0.0, q_rrd=0.0, rrd_max=8e-3,
+                 rr_bsat_chips_per_m=0.0,
                  clk0=0.0, escape_min_sats=3, p_floor=0.04):
         import numpy as np
         self._np = np
@@ -362,6 +363,33 @@ class JointReceiverState:
         # Plausibility clamp (the joint_max_rate_ppm lesson: never carry a physically
         # impossible number). 8e-3 m/s/s = 4x the measured churn-population drift.
         self.rrd_max = float(rrd_max)
+        # ---- THE CARRIER-AIDED CODE LOOP (#33 step 4) -----------------------------------
+        # b_sat (chips) and rrate (m/s) are the POSITION and VELOCITY of ONE per-satellite
+        # range error, and until now the filter did not know that: b_sat was a random walk
+        # and rrate was estimated beside it with no link. This is the link.
+        #
+        #     d(b_sat)/dt = rr_bsat_chips_per_m * rrate     [chips/s]
+        #
+        # The constant is the caller's to supply, DELIBERATELY -- see below -- and 0.0
+        # (the default) reproduces the uncoupled filter exactly, F stays identity there.
+        #
+        # SCALE. Physically |rr_bsat_chips_per_m| = f_chip / c. On L5/E5a/B2a that is
+        # 10.23e6 / 2.998e8 = 0.03412 chips per (m/s), i.e. ONE m/s of unmodelled range
+        # rate drags the code 2.05 chips per MINUTE. That is the same order as the per-sat
+        # drift this receiver has been fighting all along (the ~600 s plant oscillation is
+        # per-sat model error of 1-6 chips), which is exactly why the coupling is worth
+        # having -- and exactly why it must not be switched on by guess.
+        #
+        # ⚠️ THE SIGN IS NOT DERIVED HERE, IT IS MEASURED. Whether a receding satellite
+        # (rrate > 0) drives b_sat positive or negative depends on b_sat's own sign
+        # convention, which is set by the DLL discriminator and the seed's code-phase
+        # convention, not by geometry. This codebase has been burned repeatedly by exactly
+        # this class of assumption (the fine feed's sign was calibrated on sky, 4/4 pairs,
+        # before it was ever fed; the trim_cycles identity was transferred by algebra from
+        # the airspy chain and railed the loop to -40 Hz). So: pass 0.0 until the sign has
+        # been read off the sky by regressing measured d(b_sat)/dt against rrate, then
+        # pass +/- f_chip/c.
+        self.rr_bsat_chips_per_m = float(rr_bsat_chips_per_m)
         self._rrd_idx = {}             # key -> the dot row (always rrate row + 1)
         self._rr_idx = {}              # key -> row in x
         self._rr_t_seen = {}           # key -> last carrier measurement time
@@ -513,6 +541,14 @@ class JointReceiverState:
             _id = self._rrd_idx.get(_k)
             if _id is not None:
                 F[_ir, _id] = dt
+            # CARRIER-AIDED CODE LOOP: this satellite's range RATE propagates its code
+            # bias. Only where the same satellite carries both rows -- a key with an
+            # rrate row but no b_sat row (carrier seen, code not yet) simply does not
+            # couple, rather than birthing a bias row as a side effect of a predict.
+            if self.rr_bsat_chips_per_m != 0.0:
+                _ib = self._idx.get(_k)
+                if _ib is not None:
+                    F[_ib, _ir] = self.rr_bsat_chips_per_m * dt
         self.x = F @ self.x
         for _i in self._rrd_idx.values():   # the dot clamp, every cycle
             if self.x[_i] > self.rrd_max:
