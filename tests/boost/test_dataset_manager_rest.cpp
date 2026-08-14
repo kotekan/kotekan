@@ -171,7 +171,7 @@ struct TestContext {
         DEBUG_NON_OO("test: /register-dataset: replied with\n{:s}", reply.dump(4));
     }
 
-    void update_datasets(connectionInstance& con, json& js) {
+    void update_datasets(connectionInstance& con, [[maybe_unused]] json& js) {
         DEBUG_NON_OO("test: /update-datasets received:\n{:s}", js.dump(4));
         // Serve a root dataset whose state only the broker knows.
         freqState fs(broker_freqs());
