@@ -16,7 +16,12 @@ REST endpoints
 - ``/pipeline_dot`` (GET) – the running pipeline graph in graphviz ``dot`` format.
 - ``/buffer/<name>/frame`` (GET) – copy of the newest full frame in buffer ``<name>`` as JSON:
   base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``?len=N`` limits
-  the number of data bytes returned; ``len=0`` returns metadata only.
+  the number of data bytes returned; ``len=0`` returns metadata only. On buffers whose
+  consumers drain frames faster than a peek can catch them, set ``peek_hold: true`` on the
+  buffer's config block: recycling of the newest frame is then deferred until the next one
+  lands (no data is copied), so this endpoint always has a frame to serve. The held frame can
+  be arbitrarily old if production has stopped — check the metadata timestamps — and it counts
+  as one full frame in ``/buffers``.
 - Per-stage endpoints live under the stage ``unique_name`` (e.g., ``/<stage>/control``).
 
 Example:

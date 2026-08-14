@@ -335,7 +335,7 @@ protected:
  *
  * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
- * is being dropped.
+ * is being dropped (unless @c peek_hold keeps the newest frame).
  *
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
@@ -343,6 +343,9 @@ protected:
  * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
  * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
  * @conf mlock_frames Lock the frame pages with mlock Default: true
+ * @conf peek_hold Keep the newest full frame peekable by deferring its empty
+ *                 transition until the next frame is marked full; see
+ *                 @c enable_peek_hold(). Requires num_frames >= 2. Default: false
  *
  * See metadata.h for more information on metadata pools
  *
@@ -508,6 +511,34 @@ public:
      */
     int peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
                                std::shared_ptr<metadataObject>& metadata_out);
+
+    /**
+     * @brief Keeps the newest full frame peekable (the ``peek_hold``
+     *        buffer config option).
+     *
+     * When enabled, the frame most recently marked full never transitions
+     * to empty: its empty transition (consumer reset, metadata release,
+     * optional zeroing) is deferred until the *next* frame is marked full.
+     * The newest frame therefore always stays in the full state -- with
+     * its metadata -- so @c peek_newest_full_frame() keeps working on
+     * buffers whose consumers otherwise drain frames faster than an
+     * observer can peek.
+     *
+     * This costs no copies and no producer stalls: a producer only
+     * returns to a frame after filling every other frame in the ring, and
+     * filling any frame releases the previous hold -- so the hold is
+     * always long gone by the time its slot is wanted again. The visible
+     * costs are one permanently occupied frame slot (an otherwise-idle
+     * buffer reports one full frame) and one metadata object kept out of
+     * the pool. Data served from a held frame can be arbitrarily old if
+     * production has stopped; consult the metadata's timestamps rather
+     * than presenting it as live.
+     *
+     * @throws std::invalid_argument for a single-frame buffer: with
+     *         ``num_frames == 1`` the producer would deadlock waiting for
+     *         the held frame whose release requires the producer.
+     */
+    void enable_peek_hold();
 
     /**
      * @brief Swaps the provided frame of memory with the internal frame
@@ -772,6 +803,18 @@ public:
      * @c peek_newest_full_frame().
      */
     int last_frame_filled = -1;
+
+    /// True once enable_peek_hold() has enabled newest-frame holding.
+    bool peek_hold_enabled = false;
+
+    /**
+     * @brief The frame whose empty transition is deferred by peek_hold,
+     * or -1 if none. Set when the newest full frame would otherwise go
+     * empty; the deferred transition runs when the next frame is marked
+     * full. At most one frame is ever deferred, since only the newest
+     * frame qualifies and a newer fill releases the previous hold first.
+     */
+    int hold_deferred_id = -1;
 
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;

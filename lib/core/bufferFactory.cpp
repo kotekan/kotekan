@@ -119,6 +119,14 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
             static_cast<Buffer*>(buf)->ensure_frame_desc(frame_desc);
         }
 
+        // peek_hold: defer recycling of the newest full frame until the
+        // next one lands, so the /buffer/<name>/frame endpoint works on
+        // buffers whose consumers drain frames faster than a peek. No
+        // copies; costs one occupied frame slot and one pooled metadata
+        // object.
+        if (config.get_default<bool>(location, "peek_hold", false))
+            static_cast<Buffer*>(buf)->enable_peek_hold();
+
     } else if (type_name == "ring") {
         size_t ringbuf_size = config.get<size_t>(location, "ring_buffer_size");
         INFO_NON_OO("Creating {:s}Buffer named {:s} with ring buffer size of {:d} and "
