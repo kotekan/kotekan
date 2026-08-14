@@ -606,7 +606,7 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             c.cp_seed = cp;
             c.f_nco = sd.ctrim_hz;
             c.chan_mask = (S.n_chan >= 64) ? ~0ULL : ((1ULL << S.n_chan) - 1ULL);
-            c.energy_scale = 1.0;
+            c.ctrim_hz = sd.ctrim_hz;
             c.fcar = S.f_offset_hz + dop;
             specs.push_back(sp);
         }

@@ -1212,7 +1212,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                    // cp_seed -- the replica physically runs at f_ref.
             c.f_nco = ctrim[p] + ff_hz;
             c.chan_mask = mask;
-            c.energy_scale = 1.0;
+            c.ctrim_hz = ctrim[p];
             c.fcar = fcar; // replica f_ref -> the assembler's commanded-carrier-phase export
             // ---- PEEL: mirror the NCO phase, then hand the peel this record's gain.
             if (S.peel) {

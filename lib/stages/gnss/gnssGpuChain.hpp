@@ -94,7 +94,16 @@ struct PrnCtl {
                         ///< command -- that keeps the f_ref currency and rides the Spec.
     double f_nco;       ///< NCO slope for this record (ctrim + ff, internal convention, Hz)
     uint64_t chan_mask; ///< local covering-channel bits (for the assembler's cross-channel sum)
-    double energy_scale;///< reserved (1.0)
+    /// APPLIED carrier trim over this record, Hz (the broker's carrier_trim_hz as the producer
+    /// actually ran it). Written honestly by ALL producers; the assembler integrates it into
+    /// record slot 19 (REC_TRIM_INC) directly. It must NOT be reconstructed from the identity
+    /// ctrim = (f_nco + fcar_report - fcar)/2 -- that identity encodes the airspy tracker's
+    /// f_nco = ctrim + ff convention, and on the CHORD producers (f_nco = ctrim,
+    /// fcar_report = doppler) it evaluates to (ctrim - f_offset)/2: MHz-scale garbage that a
+    /// closed carrier loop then integrates as its "applied" reference (the 2026-08-14 arm-9
+    /// rail, -40 Hz in ten minutes). Occupies the slot formerly reserved as energy_scale (1.0,
+    /// never read).
+    double ctrim_hz;
     double fcar;        ///< replica carrier f_ref (Hz): the assembler needs it to reconstruct the
                         ///< COMMANDED carrier phase f_ref*t_abs + phi/2pi (record slot 15). NOT
                         ///< derivable from fcar_report, which folds out the re-pin step on purpose.

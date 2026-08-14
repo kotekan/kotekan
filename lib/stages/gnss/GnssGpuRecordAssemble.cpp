@@ -393,14 +393,15 @@ void GnssGpuRecordAssemble::main_thread() {
                 }
                 const double dt = (double)(wstart - _wstart_prev[p]) / _sample_rate;
                 if (_a_prev_ok[p] && dt > 0.0) {
-                    // Commanded-trim increment (slot 19, see gnssRecord.hpp): the broker's
-                    // ctrim reconstructed from the identity f_nco = ctrim + ff and
-                    // fcar_report = fcar - ff + ctrim => ctrim = (f_nco + fcar_report -
-                    // fcar)/2. Integrated over this record so downstream TEC can subtract
-                    // the loop's transients from the ADR exactly.
-                    const double ctrim_hz =
-                        0.5 * ((double)c.f_nco + (double)c.fcar_report - c.fcar);
-                    rec[gnss::REC_TRIM_INC] = (float)(ctrim_hz * dt);
+                    // Commanded-trim increment (slot 19, see gnssRecord.hpp): the trim the
+                    // producer ACTUALLY applied, exported honestly in PrnCtl::ctrim_hz and
+                    // integrated over this record so downstream can subtract the loop's
+                    // transients from the ADR exactly. This used to be reconstructed from the
+                    // identity ctrim = (f_nco + fcar_report - fcar)/2 -- valid only for the
+                    // airspy tracker's f_nco = ctrim + ff convention; on the CHORD producers
+                    // it evaluated to (ctrim - f_offset)/2, MHz-scale garbage (see the
+                    // PrnCtl::ctrim_hz doc, gnssGpuChain.hpp).
+                    rec[gnss::REC_TRIM_INC] = (float)(c.ctrim_hz * dt);
                     _phi[p] += 2.0 * M_PI * c.f_nco * dt;
                     // Keep the ROTATION phase bounded, but track the NCO phase UNWRAPPED (in
                     // cycles) for the carrier-phase export. remainder() slides phi by whole
