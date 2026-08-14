@@ -177,6 +177,23 @@ public:
     int get_num_producers();
 
     /**
+     * @brief The names of the consumers registered to this buffer.
+     *
+     * A copy taken under the buffer lock: a stage may unregister while the
+     * pipeline runs, so @c consumers cannot be walked from another thread.
+     *
+     * @return The registered consumer names, in registration-name order.
+     */
+    std::vector<std::string> get_consumer_names();
+
+    /**
+     * @brief The names of the producers registered to this buffer.
+     *
+     * @return The registered producer names, in registration-name order.
+     */
+    std::vector<std::string> get_producer_names();
+
+    /**
      * @brief Allocates a new metadata object from the associated pool
      *
      * Needs to be called by the first producer in a chain, or by a producer
