@@ -45,7 +45,11 @@ Buffer types
 ``numa_node``. Frame-oriented buffers (all types except ``ring``) also
 require ``num_frames``, plus the optional allocation tunables
 ``use_hugepages`` (off), ``mlock_frames`` (on), ``zero_new_frames`` (on),
-``zero_value`` (0), and ``cpu_affinity`` (unset).
+``zero_value`` (0), and ``cpu_affinity`` (unset). ``peek_hold`` (off) keeps
+the newest full frame peekable for the ``/buffer/<name>/frame`` endpoint by
+deferring its empty transition until the next frame lands; it requires
+``num_frames >= 2`` and permanently occupies one frame slot and one pooled
+metadata object.
 
 Type-specific parameters are required unless marked *optional*:
 
