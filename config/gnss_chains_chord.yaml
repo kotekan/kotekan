@@ -67,7 +67,14 @@ common:
   # accumulator must FOLD the re-pin step out (the PrnCtl::dcyc treatment, in the Doppler
   # domain) instead of flagging it and forcing a drop. Until then the legacy gather is what
   # actually delivers data. #53.
-  # spectrum-aligned: true
+  # ✅ RE-ENABLED 2026-08-14 ~15:2x, after the ROOT was fixed in C++ (5b4f450a3) and the
+  # trackers cycled: n_reanchor counted the FOLDED re-pins (reanchored 2/3, whose phase step
+  # the assembler removes exactly) instead of only the unfolded reset (1). It was therefore
+  # pinned above zero for every PRN in every window, and this gather -- which drops any PRN
+  # with n_reanchor > 0 -- discarded 100% of its points. Measured before/after the tracker
+  # cycle on cx42: re-anchored fraction 1.00 -> 0.00 on gps_l5/gal_e5a/bds_b2a, 0.01 on
+  # gal_e5b (one genuine re-acquisition in 99).
+  spectrum-aligned: true
   # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
   # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
