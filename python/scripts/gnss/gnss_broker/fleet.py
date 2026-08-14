@@ -17,7 +17,7 @@ from .transport import _get, _log_rl
 
 
 def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
-              deep_gate_prns=None, deep_gate_margin=3.0):
+              deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -186,7 +186,39 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
     q_med, q_sigma, q_floor = _floor([v["q"] for v in out.values()], k_sigma, 0.05)
     # Prompt power spans orders of magnitude between satellites, so the bar is multiplicative:
     # median = the noise level, and a PRN must exceed it by k sigma to count as present.
-    p_med, p_sigma, p_floor = _floor([v["p_pow"] for v in out.values()], k_sigma, 0.0)
+    # ---- THE PRESENCE FLOOR NEEDS A NOISE REFERENCE, NOT A PEER COMPARISON ------------
+    # The line below (kept as the fallback) builds the bar from `out.values()` -- EVERY
+    # TRACKED SATELLITE -- and then treats that population's median as the noise level.
+    # That premise holds only when most rows are noise. On the airspy prototype it did,
+    # because --noise-probes seeded below-horizon PRNs and put genuine signal-free records
+    # into exactly this population. CHORD has never set --noise-probes (default 0), so the
+    # median is a SIGNAL level and the bar lands at the top of the signal distribution:
+    # measured 2026-08-14, gps_l5 2/9 present, gal_e5a 1/12, bds_b2a 1/9. Presence stopped
+    # meaning "is this discriminator informative" and became "are you in the upper tail of
+    # today's peers" -- a competition a satellite loses the moment it starts drifting,
+    # which is precisely when it needs the loop (#49's latch).
+    #
+    # There is no fixing this from the tracked population alone: the measured p_pow spans
+    # one decade with NO bimodality, so nothing in it locates the noise. (A log-domain bar
+    # off the weakest quartile was tried on the same data: 2/9 and 4/12. Also guessing.)
+    # The probes are not a refinement, they are the missing anchor.
+    #
+    # With probes present, the bar is what the comment below always claimed it was:
+    # MULTIPLICATIVE against a measured noise level. Probes are pure noise by construction
+    # (deepest below-horizon PRNs), so their median IS N, and k_sigma becomes "this many
+    # times the noise floor" rather than sigmas of a mixed population -- which is also
+    # robust to there being only a handful of them, where a MAD would not be.
+    _probe_p = [v["p_pow"] for k, v in out.items()
+                if probe_prns and k in probe_prns and v.get("p_pow")]
+    if len(_probe_p) >= 2:
+        _pm = sorted(_probe_p)[len(_probe_p) // 2]
+        p_med, p_sigma, p_floor = _pm, None, _pm * max(k_sigma, 1.0)
+        for v in out.values():
+            v["p_floor_src"] = "probes:%d" % len(_probe_p)
+    else:
+        p_med, p_sigma, p_floor = _floor([v["p_pow"] for v in out.values()], k_sigma, 0.0)
+        for v in out.values():
+            v["p_floor_src"] = "peers:%d" % len(out)
     for v in out.values():
         v["q_med"], v["q_sigma"] = q_med, q_sigma
         v["q_floor"] = q_fallback if q_med is None else q_floor

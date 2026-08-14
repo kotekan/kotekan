@@ -48,6 +48,16 @@ common:
   # two carriers (1.0261 apart) on ONE m/s row, which is the point of the state. Watch
   # the JRR[...] log lines: per-sat rrate should be STABLE (the ~600 s plant oscillation
   # was per-sat model error of +-1-6 chips), and E5a/E5b must agree per sat.
+  # NOISE PROBES -- the anchor the presence floor is measured against (#49, 2026-08-14).
+  # The prototype set these and CHORD never has (default 0), which is why the same gate
+  # code behaves differently on the two: fleet_dll builds the presence bar from the
+  # tracked population and calls its median "the noise level". With no signal-free rows in
+  # that population the median is a SIGNAL level, so the bar sits at the top of the signal
+  # distribution -- measured before this change: gps_l5 2/9 satellites present, gal_e5a
+  # 1/12, bds_b2a 1/9. A satellite fails the moment it drifts below its peers, i.e. exactly
+  # when it needs trimming. 3 probes (deepest below-horizon PRNs, exempt from the
+  # below-horizon drop, invisible to every other gate because their sig ~ 0).
+  noise-probes: 3
   rrate-state: true
   # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
   # SAME records and each reply lands on one phase reference. Without this the per-instance

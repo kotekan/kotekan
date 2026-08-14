@@ -6195,7 +6195,11 @@ def main(argv=None, rx=None, publisher=None):
             # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
             fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
                               args.dll_quality_sigma, args.dll_quality_min,
-                              deep_gate_prns=_deep_gate, deep_gate_margin=args.dll_deep_gate_margin)
+                              deep_gate_prns=_deep_gate, deep_gate_margin=args.dll_deep_gate_margin,
+                              # the noise ANCHOR for the presence floor (#49): without it
+                              # the bar is built from the tracked population and becomes a
+                              # peer competition. See the note in fleet_dll.
+                              probe_prns=probe_set)
             # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
             # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
             hold_prev.clear()
