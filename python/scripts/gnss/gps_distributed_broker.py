@@ -77,7 +77,8 @@ from gnss_broker.fits import (                # noqa: E402
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys, adr_fine_rate,
 )
 from gnss_broker.fleet import (               # noqa: E402
-    fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fit_spectrum_delay,
+    fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fleet_spectrum_aligned,
+    fit_spectrum_delay,
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker import signals                            # noqa: E402
@@ -973,6 +974,19 @@ def main(argv=None, rx=None, publisher=None):
                          "sigma/(T*sqrt(N/12)), so at ~1.5 Hz detection scatter 4 points over "
                          "44 s give ~0.06 Hz/s and 8 over 88 s ~0.02 Hz/s, against BRDC's "
                          "measured 0.108 Hz/s error. A short baseline fits noise.")
+    ap.add_argument("--spectrum-aligned", action="store_true",
+                    help="TASK #53: gather /get_spectrum by WINDOW INDEX instead of taking "
+                         "whatever each instance has accumulated since its own last poll. "
+                         "Every instance is asked for the same window, each reply is rotated "
+                         "onto one phase reference (phi0), PRNs whose accumulator re-anchored "
+                         "mid-window are dropped, and the 'same index == same samples' "
+                         "invariant is asserted across instances rather than assumed. "
+                         "Instances on a pre-#53 node config cannot address windows and are "
+                         "EXCLUDED, not mixed in -- one unaligned member reintroduces exactly "
+                         "the free per-instance phase this exists to remove (#52). Off by "
+                         "default only because the aligned path issues two GETs per instance "
+                         "where the legacy path issues one, and replay is strict-ordered: an "
+                         "old transcript replayed with it on would diverge.")
     ap.add_argument("--spectrum-endpoints", default="",
                     help="FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md "
                          "P1): comma-separated GnssGpuRecordAssemble endpoints ({a..b} ranges "
@@ -1347,12 +1361,12 @@ def main(argv=None, rx=None, publisher=None):
                          "ON-PEAK-BIASED and therefore a LATCH: prompt power is suppressed "
                          "precisely when the tap is off-peak, so an off-peak satellite fails "
                          "the gate and is never trimmed back. Measured 2026-08-12: 26 of 36 "
-                         "well-detected satellites (72%) were excluded, and the excluded ones "
+                         "well-detected satellites (72%%) were excluded, and the excluded ones "
                          "carried the LARGER discriminators. deep_snr is immune because the "
                          "deep fold re-searches rate and phase, so it detects the satellite "
                          "wherever the tap sits. Opt in ONE PRN AT A TIME: enabling the whole "
-                         "fleet at once makes 72% of it newly trimmable against a slew cap "
-                         "already railing 67-100% of the time, which trades the latch for an "
+                         "fleet at once makes 72%% of it newly trimmable against a slew cap "
+                         "already railing 67-100%% of the time, which trades the latch for an "
                          "oscillation and makes the A/B uninterpretable.")
     ap.add_argument("--dll-deep-gate-margin", type=float, default=3.0,
                     help="fleet DLL: the deep gate's bar in units of deep_floor (default 3.0). "
@@ -6243,7 +6257,37 @@ def main(argv=None, rx=None, publisher=None):
             spec_fit = {}
             if spectrum_endpoints:
                 try:
-                    _spec = fleet_spectrum(spectrum_endpoints, prns=set(seeds) or None)
+                    # ALIGNED GATHER (task #53). The legacy fleet_spectrum takes
+                    # whatever each instance accumulated since ITS OWN last poll, so the
+                    # instances are not summing the same records and each one carries a
+                    # free phase -- which is the defect of #52, not a modelling
+                    # convenience. The addressable path names ONE window index, asks every
+                    # instance for exactly that window, rotates each reply onto a single
+                    # phase reference (phi0), drops PRNs whose accumulator was re-anchored
+                    # mid-window, and ASSERTS that the same index meant the same samples
+                    # everywhere. Instances that cannot address windows (a node still on a
+                    # pre-#53 config) are EXCLUDED rather than mixed in -- one unaligned
+                    # member puts the free phase straight back.
+                    #
+                    # Behind a flag because replay is strict-ordered: the aligned path
+                    # issues TWO GETs per instance (availability, then the window) where
+                    # the legacy path issues one, so an old transcript replayed with it on
+                    # would diverge. Same pattern as --spectrum-endpoints itself.
+                    if args.spectrum_aligned:
+                        _spec, _smeta = fleet_spectrum_aligned(
+                            spectrum_endpoints, prns=set(seeds) or None, log=_log)
+                        _log_rl("specwin",
+                                "SPEC-WINDOW %s: %d/%d instance(s) served%s%s"
+                                % (_smeta.get("window"), len(_smeta.get("served") or {}),
+                                   len(spectrum_endpoints),
+                                   (", %d dropped" % len(_smeta["dropped"]))
+                                   if _smeta.get("dropped") else "",
+                                   (", %d re-anchored" % len(_smeta["reanchored"]))
+                                   if _smeta.get("reanchored") else ""),
+                                every_s=120.0)
+                    else:
+                        _spec = fleet_spectrum(spectrum_endpoints,
+                                               prns=set(seeds) or None)
                     # PER-SUBBAND ARCHIVE (task #25, 2026-08-11). fleet_spectrum ALREADY
                     # returns (freq_id, amplitude, energy, instance) per PRN -- the
                     # per-frequency x per-element product the science side wants -- and

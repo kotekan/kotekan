@@ -49,6 +49,12 @@ common:
   # the JRR[...] log lines: per-sat rrate should be STABLE (the ~600 s plant oscillation
   # was per-sat model error of +-1-6 chips), and E5a/E5b must agree per sat.
   rrate-state: true
+  # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
+  # SAME records and each reply lands on one phase reference. Without this the per-instance
+  # phase is free and the fit absorbs it -- which is #52's defect, not a modelling choice.
+  # Nodes on a pre-#53 config are excluded from the gather (and named in the log) rather
+  # than mixed in.
+  spectrum-aligned: true
   # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
   # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
