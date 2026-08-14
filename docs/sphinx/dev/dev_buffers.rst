@@ -48,8 +48,8 @@ require ``num_frames``, plus the optional allocation tunables
 ``zero_value`` (0), and ``cpu_affinity`` (unset). ``peek_hold`` (off) keeps
 the newest full frame peekable for the ``/buffer_frame`` endpoint by
 deferring its empty transition until the next frame lands; it requires
-``num_frames >= 2`` and permanently occupies one frame slot and one pooled
-metadata object.
+``num_frames >= 2`` and permanently occupies one frame slot, along with the
+metadata object that frame holds.
 
 Type-specific parameters are required unless marked *optional*:
 

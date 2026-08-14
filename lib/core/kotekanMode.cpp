@@ -244,7 +244,10 @@ static std::string config_section(const std::string& unique_name) {
 static std::string url_encode(const std::string& text) {
     std::string out;
     for (unsigned char c : text) {
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+        // ASCII range checked explicitly: isalnum() is locale dependent, and a
+        // locale that classifies a high byte as alphanumeric would put it in the
+        // URL unencoded.
+        if ((c < 0x80 && isalnum(c)) || c == '-' || c == '_' || c == '.' || c == '~')
             out += (char)c;
         else
             out += fmt::format(fmt("%{:02X}"), c);
