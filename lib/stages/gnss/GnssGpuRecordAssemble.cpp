@@ -450,7 +450,23 @@ void GnssGpuRecordAssemble::main_thread() {
                     // the spectrum was a value whose currency was never transported.
                     if (W.nrec[p] == 0)
                         W.phi0[p] = _phi[p];
-                    if (c.reanchored != 0)
+                    // ⚠️ ONLY AN **UNFOLDED** RESET BREAKS THE WINDOW (2026-08-14, #53).
+                    // This counted `reanchored != 0`, but reanchored 2 and 3 are the
+                    // CONTINUOUS re-pins whose phase step the block immediately above has
+                    // just folded INTO _phi -- exactly so the accumulator stays continuous
+                    // across them. Only 1 is a fresh acquisition, where there is no phase
+                    // history, the NCO is reset and the arc genuinely breaks.
+                    //
+                    // Counting the folded ones made n_reanchor a constant: cudaGnssInject
+                    // sets `reanchored = have_hist ? 3 : 1` on EVERY record (the Doppler is
+                    // propagated per record, so the reference legitimately moves every
+                    // record), so path B reported n_reanchor > 0 for every PRN in every
+                    // window, forever. Measured on sky: 100% of (PRN, window) on all four
+                    // chains, before AND after the seed-cadence work -- which is what
+                    // finally showed the counter, not the receiver, was the problem.
+                    // fleet_spectrum_aligned drops any PRN with n_reanchor > 0, so #53's
+                    // aligned gather discarded 100% of its points on a benign condition.
+                    if (c.reanchored == 1)
                         W.nreanchor[p] += 1;
                     // ⚠️ DO **NOT** REFERENCE THIS TO THE WINDOW'S OWN FIRST RECORD.
                     // I tried exactly that (45fe3a438) to remove the arbitrary per-instance
