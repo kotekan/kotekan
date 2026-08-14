@@ -207,3 +207,69 @@ walks to 1.16 chips, which is §7's gate in miniature.
    is not expected to rise, so the test is **the measured noise floor falling** and the trim
    integrating continuously rather than in bursts. Baseline captured 2026-08-03 before the
    change, 2 nodes: per-instance `q` max 1.75, median ~1.1, every trim +0.00.
+
+---
+
+## 10. Where the powers come from, after task #63 (2026-08-15)
+
+Everything above is unchanged as *arithmetic*. What moved is **where the cross-channel
+combine happens**.
+
+### 10.1 What was wrong with the old input
+
+§3 asked each combiner to publish `e_pow`/`p_pow`/`l_pow`, and it formed them by summing the
+correlation across that instance's ~7 covering channels *first*:
+
+    A  = (SUM_c G_c) / (SUM_c E_c)        <- the cross-channel coherent sum, on the NODE
+    p2 = |A|^2,  e2 = |SUM_c G^E_c|^2 / (SUM_c E^E_c)^2,  l2 likewise
+
+That sum is irreversible downstream — "the one combine the broker can never undo". It is not
+wrong as a combine, but doing it on the node destroys the **frequency axis** for every
+consumer, and KV's instruction (2026-08-14) is that no derived quantity is formed in a
+tracker: *"We want the frequencies separate, do not combine them in the trackers."*
+
+### 10.2 The same three numbers, formed in the broker
+
+`python/scripts/gnss/gnss_broker/combdll.py` rebuilds exactly the expression above from the
+per-channel Early/Prompt/Late that the #59 transport ships (`gnssTelem.hpp` v3,
+`comb_epl()`), then sums the resulting POWERS across instances as §2 always did. The
+coherent-within-instance / incoherent-across-instances structure is unchanged — it is the
+correct structure, because the per-instance NCO constant is arbitrary and only powers are
+phase-blind.
+
+`fleet_dll` and `fleet_dll_comb` share `apply_presence()`, split out of `fleet_dll`
+unchanged, so the two paths cannot reach different verdicts from equal numbers.
+
+### 10.3 The A/B, with the control that makes it a measurement
+
+`scripts/gnss/comb_dll_ab.py`, live, comparing per-PRN against the polled arm **and** the
+polled arm against itself one cycle earlier:
+
+| chain | pairs | disc: comb − poll | disc CONTROL: poll − poll |
+|---|---|---|---|
+| gps_l5 (20 cycles) | 240 | +0.0015 ± 0.0223 | +0.0014 ± 0.0472 |
+| gal_e5a (15 cycles) | 210 | +0.0000 ± 0.0320 | −0.0021 ± 0.0412 |
+
+`q` agrees to +0.008 ± 0.044 against a control of ±0.090; prompt power to +0.13 dB; presence
+disagreed on 10 of 240 with McNemar χ² 0.10 — symmetric, i.e. churn, not bias.
+
+**The comb arm tracks the polled one more closely than the polled one tracks itself.** The
+control is what licenses that sentence: without it, ±0.02 on a discriminator reads as an
+error rather than as half the instrument's own cycle-to-cycle motion.
+
+### 10.4 What is NOT yet moved
+
+`deep_snr`, `deep_floor`, `coherence_s` and the quadrature fallback are products of the
+combiner's deep fold, which still runs on the node's summed prompt. `--telem-dll` carries
+them across verbatim (`combdll.COH_KEYS`). **The tracker's sum is not deletable until that
+fold also runs in the broker** — deleting it today would take `GnssCoherentCombiner`'s
+outputs and with them the `/get_status` surface the whole loop rides on.
+
+### 10.5 The new axis, and an honest caveat about it
+
+A comb row carries `chan`: the same three powers per `freq_id`, ~52 across the lobe where
+there was one number. First look on sky: **every channel's `q` sits at 1.00 ± 0.03 while the
+coherent full-band `q` reaches 3.3.** That is what a per-channel, per-record `|A|^2` with an
+unsubtracted noise bias must do — one channel over 10.5 ms has negligible SNR, and averaging
+records shrinks the variance, not the bias. The per-channel view is a diagnostic axis today,
+not a per-channel detector; making it one needs the noise term removed.

@@ -6788,8 +6788,13 @@ def main(argv=None, rx=None, publisher=None):
             if fleet:
                 any_fl = next(iter(fleet.values()))
                 _log_rl("dll-floor",
-                        "fleet DLL: %d PRN(s) over %d combiner(s), %d present, q floor %.2f%s"
-                        % (len(fleet), len(dll_combiners),
+                        # WHICH ARM produced these numbers. Since #63 this line can describe
+                        # either the polled powers or the ones formed here from the comb, and
+                        # a floor with no provenance is exactly the kind of number that gets
+                        # compared across a switch without anyone noticing it changed source.
+                        "fleet DLL [%s]: %d PRN(s) over %d combiner(s), %d present, "
+                        "q floor %.2f%s"
+                        % (any_fl.get("src") or "polled", len(fleet), len(dll_combiners),
                            sum(1 for v in fleet.values() if v["present"]), any_fl["q_floor"],
                            "" if any_fl["q_med"] is None
                            else " (noise median %.2f, sigma %.3f)"
