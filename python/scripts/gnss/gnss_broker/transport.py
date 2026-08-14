@@ -250,6 +250,17 @@ def set_log_tag(tag):
     _tag.v = (" " + tag) if tag else ""
 
 
+def log_tag():
+    """This thread's chain name ("gps_l5"), or "" outside a chain thread.
+
+    broker_multi runs every chain in one process as a thread and tags it with the chain key
+    from gnss_chains_chord.yaml, so this IS the chain identity -- and it is the same string the
+    trackers stamp on every telemetry frame (task #59, gnssTelem.hpp). Read it rather than
+    re-deriving the chain from --signal: they agree today and nothing enforces that they must.
+    """
+    return getattr(_tag, "v", "").strip()
+
+
 def _log(msg):
     # Timestamped (2026-07-19): every autopsy this week had to reconstruct event times by
     # correlating line numbers against the status stream -- the 07-18 carrier-latch hunt

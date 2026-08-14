@@ -69,8 +69,9 @@ from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name 
 # ---------------------------------------------------------------------------------------
 from gnss_broker.transport import (           # noqa: E402
     _TranscriptDone, _Transcript, _TR, _now, _get, _post, _log, _log_rl,
-    expand_token, resolve_prefix, parse_endpoints,
+    expand_token, resolve_prefix, parse_endpoints, log_tag,
 )
+from gnss_broker import telem as _telem                    # noqa: E402  (task #59 gather)
 from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
@@ -1446,6 +1447,30 @@ def main(argv=None, rx=None, publisher=None):
                          "sats, against a shuffled-null floor of ~4. Costs one extra REST poll "
                          "per combiner and ~0.2 s per cycle; publishes into the coherent fields "
                          "the FleetPublisher previously had to take best-of-one-instance.")
+    # -- TASK #59: the frame-synced telemetry gather ------------------------------------------
+    ap.add_argument("--telem-gather", default="",
+                    help="TASK #59: read per-record telemetry from the GATHER instance at "
+                         "host:port (default port 11061) instead of inferring alignment from "
+                         "~60 REST polls per cycle. Every frame carries its chain, its instance "
+                         "and an ABSOLUTE window index on the F-engine sample clock, so "
+                         "grouping instances is an exact integer match rather than a guess "
+                         "about arrival order. Empty = off; the REST path is untouched either "
+                         "way, and ONE reader thread serves every chain in this process.\n"
+                         "Connecting alone changes NOTHING -- it only fills the store. See "
+                         "--telem-coherent for the first consumer.")
+    ap.add_argument("--telem-coherent", action="store_true",
+                    help="feed fleet_coherent from --telem-gather instead of from "
+                         "/get_records. THE SAME ESTIMATOR, a different transport: that is "
+                         "what makes the comparison a measurement. ⚠️ Run it on ONE CHAIN at a "
+                         "time, with the others left on REST as a same-poll control -- a "
+                         "before/after across restarts cannot resolve it, because the sky "
+                         "churns faster (2026-08-13: deep_snr max swung 52-197 in four "
+                         "minutes). No effect unless --telem-gather is set and the gather is "
+                         "reachable; if it is not, this silently falls back to the REST poll "
+                         "rather than publishing nothing.")
+    ap.add_argument("--telem-windows", type=int, default=8,
+                    help="windows of telemetry fed to fleet_coherent (4 records each at the "
+                         "default packing, so 8 windows = 32 records ~ 0.34 s)")
     ap.add_argument("--n2-combiners", default="",
                     help="CROSS-NODE COHERENT COMBINE FOR PATH B: comma-separated *_n2combine "
                          "endpoints ({a..b} ranges expanded), run through the SAME "
@@ -2097,6 +2122,19 @@ def main(argv=None, rx=None, publisher=None):
     n2_combiners = parse_endpoints(args.n2_combiners, base) if args.n2_combiners else []
     spectrum_endpoints = (parse_endpoints(args.spectrum_endpoints, base)
                           if args.spectrum_endpoints else [])
+    # TASK #59: the frame-synced telemetry gather. ONE reader thread per PROCESS -- broker_multi
+    # runs all five chains here as threads, the stream carries every chain on one connection,
+    # and the store is keyed by chain, so five clients would decode the same bytes five times
+    # and throw four of them away. `telem_chain` is this thread's chain key (the same string
+    # the trackers stamp on every frame), read from the log tag rather than re-derived from
+    # --signal: they agree today and nothing enforces that they must.
+    _tg = _telem.parse_endpoint(args.telem_gather)
+    telem_client = _telem.shared_client(*_tg) if _tg else None
+    telem_chain = log_tag() or (args.signal or "")
+    if telem_client is not None:
+        _log("telem: gather %s:%d, chain key %r%s"
+             % (_tg[0], _tg[1], telem_chain,
+                "; fleet_coherent will read it" if args.telem_coherent else " (store only)"))
     # Per-subband archive (task #25). Created once; None when --spectrum-archive is unset,
     # which is the only condition the call site checks.
     _spec_writer = make_spectrum_writer(args.spectrum_archive, log=_log)
@@ -6214,6 +6252,43 @@ def main(argv=None, rx=None, publisher=None):
             # map -- so a fault here can degrade what is displayed but can never move the code
             # or carrier loops.
             fcoh = {}
+            # TASK #59. The gather feed, when it is asked for AND actually has this chain's
+            # windows. `source=None` falls straight through to the REST poll below, so a gather
+            # that is down, restarting, or simply not carrying this chain costs a rate-limited
+            # log line and nothing else -- the two feeds run side by side until the new one has
+            # been shown ON SKY to be at least as good, and neither is load-bearing for the
+            # other.
+            _tsrc = None
+            if telem_client is not None:
+                # THE ALIGNMENT CHECK, PUBLISHED. `spread` is max-min of the instances' newest
+                # window index: 0 or 1 is the transport working. Logged whether or not anything
+                # consumes the feed, because the entire argument for this transport is that
+                # misalignment becomes visible immediately instead of surfacing weeks later as
+                # a physics anomaly (#46, #52, #53 all did).
+                _st = telem_client.stats()
+                _cs = _st["chains"].get(telem_chain)
+                _log_rl("telem-stat",
+                        "TELEM %s frames %d gaps %d bad %d | %s"
+                        % ("up" if _st["connected"] else "DOWN", _st["frames"], _st["gaps"],
+                           _st["bad"],
+                           ("chain %s: %d inst, win %d..%d spread %d"
+                            % (telem_chain, _cs["instances"], _cs["win_min"], _cs["win_max"],
+                               _cs["spread"]))
+                           if _cs else "chain %s: nothing yet" % telem_chain),
+                        every_s=30.0)
+            if args.telem_coherent and telem_client is not None:
+                try:
+                    _tsrc = telem_client.coherent_source(
+                        telem_chain, prns=set(seeds) or None, n_win=args.telem_windows, lag=1)
+                    if not _tsrc[0]:
+                        _tsrc = None
+                        _log_rl("telem-empty",
+                                "telem: no windows for chain %r yet -- falling back to "
+                                "/get_records (gather stats: %s)"
+                                % (telem_chain, telem_client.stats()))
+                except Exception as e:
+                    _tsrc = None
+                    _log_rl("telem-src", "telem: source failed (%s); using /get_records" % e)
             if args.fleet_coherent:
                 try:
                     fcoh = fleet_coherent(dll_combiners, args.coh_min_instances,
@@ -6229,7 +6304,11 @@ def main(argv=None, rx=None, publisher=None):
                                           # long, so every fitted rate came out 2048x too
                                           # SMALL: +-0.005 Hz where the fold read +-10,
                                           # ratio 1907-2140 across satellites.
-                                          hop_rate_hz=args.hops_per_sec)
+                                          hop_rate_hz=args.hops_per_sec,
+                                          # #59: when set, the poll is skipped entirely and
+                                          # this identical estimator runs on the gathered
+                                          # records instead.
+                                          source=_tsrc)
                 except Exception as e:
                     _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
             # PATH B, same estimator, separate population. Reported side by side rather than

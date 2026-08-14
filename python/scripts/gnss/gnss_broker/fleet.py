@@ -361,7 +361,8 @@ def _coherent_sum(a):
 
 
 def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
-                   null_trials=1, floor_margin=3.0, seed=0, max_age_hops=1 << 20, hop_rate_hz=None):
+                   null_trials=1, floor_margin=3.0, seed=0, max_age_hops=1 << 20,
+                   hop_rate_hz=None, source=None):
     """CROSS-NODE COHERENT COMBINE: the per-record sky phase, and the deep folds it unlocks.
 
     WHAT THIS FIXES, measured on sky 2026-08-05. Every instance's deep fold sat at ~14 sigma
@@ -433,8 +434,6 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
     and keeps the single-instance value otherwise, so a partly-down fleet degrades rather than
     stalls, and a noise-only PRN can never manufacture a fleet detection.
     """
-    if not endpoints:
-        return {}
     # url -> prn -> {hop: (A, energy)}. Unreachable instances are skipped, never fatal.
     got = {}
     # THE FLEET'S CLOCK, taken across EVERY satellite an instance serves -- including the
@@ -442,6 +441,21 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
     # make "now" depend on at least one of THOSE being current, which is exactly the
     # assumption that fails when a whole set of satellites goes down together.
     fleet_now_all = 0
+
+    # TASK #59: the SAME estimator, fed by the frame-synced telemetry gather instead of by 60
+    # REST polls. `source` is (got, fleet_now) already in this function's own shape -- see
+    # gnss_broker/telem.py's coherent_source(), which forms A = (P_re + i P_im)/P_energy from
+    # the record header exactly as the combiner forms ar = gr/energy before exporting it.
+    #
+    # ONE ESTIMATOR, TWO TRANSPORTS, ON PURPOSE. The whole claim of the new transport is that
+    # its records are addressed rather than inferred; the way to test that claim is to run the
+    # identical math on both feeds and compare, not to write a second estimator whose
+    # differences would then be unattributable.
+    if source is not None:
+        got, fleet_now_all = source
+        endpoints = []
+    if not endpoints and not got:
+        return {}
     for url in endpoints:
         try:
             recs = _get("%s/get_records" % url)
