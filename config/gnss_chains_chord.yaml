@@ -85,6 +85,26 @@ common:
   # cycle on cx42: re-anchored fraction 1.00 -> 0.00 on gps_l5/gal_e5a/bds_b2a, 0.01 on
   # gal_e5b (one genuine re-acquisition in 99).
   spectrum-aligned: true
+  # TASK #59: the frame-synced telemetry gather. CONNECT ONLY -- this fills the store and logs
+  # the TELEM line; it consumes NOTHING and changes no number this broker publishes. Turning
+  # the feed on is a separate flag (--telem-coherent), deliberately, so the transport can be
+  # watched for a while before anything depends on it.
+  #
+  # 127.0.0.1, not cf06: the gather binds its broker stream to LOCALHOST (the fleet's frames
+  # come in on :11060 from the network; :11061 goes only to the process on this host). Naming
+  # cf06 here would resolve to the external address the gather is NOT listening on.
+  #
+  # ONE reader thread serves all five chains -- the stream carries every chain on one
+  # connection and the store is keyed by chain, so a client per chain would decode the same
+  # 24 MB/s five times and discard four.
+  telem-gather: 127.0.0.1:11061
+  # ⚠️ MATCHED TO THE REST FEED, NOT LEFT AT THE DEFAULT. The combiners serve
+  # `record_export: 128` records on /get_records, so 32 windows x 4 records/frame = 128 gives
+  # the two feeds the SAME integration length. At the 8-window default the telemetry arm would
+  # see a QUARTER of the records and score lower for a reason that has nothing to do with
+  # alignment -- an unfair comparison that reads as "the new transport is worse". Change this
+  # whenever record_export changes.
+  telem-windows: 32
   # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
   # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
@@ -173,6 +193,23 @@ http://cx43:12049/gnss{0..1}_n2combine,\
 http://cx44:12049/gnss{0..1}_n2combine,\
 http://cx51:12049/gnss{0..1}_n2combine"
     n2-combiners: *l5_cmb
+    # TASK #59 A/B -- ON THIS CHAIN ONLY, and it is a PAIRED test rather than a before/after.
+    #
+    # This broker runs fleet_coherent TWICE per cycle, and on CHORD `dll-combiners` and
+    # `n2-combiners` are the SAME anchor (*l5_cmb) -- the same twelve endpoints. Only the first
+    # call takes the telemetry feed, so the existing "fleet coherent" log line already prints
+    # the two arms side by side for the SAME satellites at the SAME instant, through the SAME
+    # estimator, over the SAME instances:
+    #     a = gathered (bufferSend/bufferRecv, addressed by absolute window)
+    #     b = polled   (/get_records, alignment inferred)
+    # A before/after across restarts could never resolve this -- the sky churns faster
+    # (2026-08-13: deep_snr max swung 52-197 in four minutes). The other four chains stay fully
+    # on REST, so a fleet-wide regression would also be visible immediately.
+    #
+    # ⚠️ The integration lengths are MATCHED via common's telem-windows (32 windows x 4 records
+    # = 128 = the combiners' record_export). Unmatched, the telemetry arm would integrate a
+    # quarter as long and lose for a reason that has nothing to do with alignment.
+    telem-coherent: true
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
