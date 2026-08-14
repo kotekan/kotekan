@@ -248,8 +248,20 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
         # question presence exists to answer, and it is scale-free so a faint satellite
         # with a clean peak passes while a bright one whose tap has slid does not.
         if len(_probe_q) >= 3:
-            v["present"] = v["q"] >= v["q_floor"]
-            v["present_gate"] = "q:probes"
+            # BOTH, and they answer different questions. q says "there is a PEAK under the
+            # tap" and is scale-free, which is what lets a faint satellite with a clean
+            # peak in. But q alone cannot tell a real faint peak from a noise realisation
+            # that happens to be centred -- measured within minutes of shipping q-only:
+            # bds_b2a PRN 32 and 35 admitted and TRIMMED at q 1.07-1.15 with prompt power
+            # 1.3-2.2x the noise floor, i.e. trimming on noise, the exact failure this
+            # gate exists to prevent. So p_pow returns as a floor on "is there anything
+            # there at all", at the probe-referenced 3x rather than the old peer bar that
+            # excluded everything unbright. The populations separate cleanly at that line:
+            # every satellite tracking today sits at >=3.1x (3.1, 6.6, 15, 22, 32, 57, 92,
+            # 123, 142) and the doubtful ones at 1.3-2.2x.
+            v["present"] = (v["q"] >= v["q_floor"]
+                            and (p_floor is None or v["p_pow"] >= p_floor))
+            v["present_gate"] = "q+p:probes"
         else:
             v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
                             else v["p_pow"] >= p_floor)
