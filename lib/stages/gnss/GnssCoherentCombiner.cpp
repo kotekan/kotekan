@@ -274,7 +274,34 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // Cap on the rate-search argmax (Hz); <=0 restores the full alias window. See the
     // comment at rate_search -- 5 Hz admits any real seed/ramp residual (seeds are good
     // to ~1 Hz) while excluding the +-45.4 Hz aliased NH20 sidebands it kept folding at.
-    _deep_rate_max_hz = config.get_default<double>(unique_name, "deep_rate_max_hz", 5.0);
+    // 5.0 -> 25.0 (2026-08-14, #58/#40). THE CAP WAS THE DEEP FOLD'S FAILURE MODE.
+    //
+    // The 5 Hz bound was chosen on the premise stated in the rate_search note below --
+    // "a tracked seed is good to ~1 Hz" -- which is FALSE here: carrier-gain is 0.0, the
+    // carrier runs OPEN LOOP, and the residual wanders. Measured on sky, 249 picks with
+    // full_q >= 10 on satellites whose prompt is on signal: the |rate| distribution is
+    // BROAD and continuous from 0 to 24 Hz. Roughly half of all polls sit outside 5 Hz.
+    //
+    // The fold APPLIES the capped pick, so on those polls it derotated by the best
+    // IN-CAP bin -- i.e. noise -- integrated a rotating phasor and died. Measured, one
+    // instance, split by whether the fold cohered:
+    //     cohered   (coh_frac>=0.70): deep_rate_q 21.5, |full_hz| med 3.18
+    //     decohered (coh_frac<=0.35): deep_rate_q  3.1, |full_hz| med 9.62
+    // 3.1 is this statistic's calibrated NOISE value. That is #58 in one line: ~50% of
+    // the fleet's deep folds failing, all instances together, with prompt power flat
+    // through every collapse because the CODE was never the problem.
+    //
+    // WHY 25 AND NOT UNCAPPED. The cap's real job is the NH20 overlay, whose 50 Hz
+    // fundamental aliases to -+45.4 on the 95.37 Hz record grid; a sideband derotation
+    // reports the sideband's amplitude, dB down, fleet-wide. 25 Hz keeps 20 Hz of margin
+    // from that while admitting the measured residual distribution.
+    // ⚠️ THE HARMONICS ARE NOT FREE: 100/150/200/... Hz alias to 4.6/-40.8/9.2/... so
+    // multiples of 4.6 Hz sit INSIDE the new bound (and 4.6 was inside the OLD one too).
+    // Checked before widening -- the picks do not comb: 20% land within 0.6 Hz of a
+    // harmonic against 12% expected by chance, a 1.7x excess rather than a pile-up. If
+    // fold amplitudes ever go dB-down fleet-wide again, suspect this first and re-run
+    // the histogram (scratchpad comb.py).
+    _deep_rate_max_hz = config.get_default<double>(unique_name, "deep_rate_max_hz", 25.0);
     _deep_rate_min_q = config.get_default<double>(unique_name, "deep_rate_min_q", 10.0);
     _st_deep_rate.assign(_n_prn, 0.0f);
     _st_deep_rate_q.assign(_n_prn, 0.0f);
