@@ -64,6 +64,8 @@ const METRICS = {
     // and no instantaneous column could show it.
     duty: {label: "duty", field: "duty",    unit: "",
            fmt: m => m && m.duty != null ? (100 * m.duty).toFixed(0) + "%" : null},
+    hold: {label: "hold", field: "hold",    unit: "x",
+           fmt: m => m && m.hold ? m.hold.toFixed(1) : null},
     sig:  {label: "sig",  field: "sig",     unit: "σ",
            fmt: m => m && m.sig ? m.sig.toFixed(0) : null},
     coh:  {label: "coh",  field: "coh_s",   unit: "s",
@@ -110,13 +112,21 @@ const COLS = [
           + "fleet's noise median, which is most of them"},
     {key: "sig",  label: "sig",  align: "right", dir: -1,
      tip: "combined significance. Since #57 this is the broker's published `sig`: the "
-          + "MEDIAN over instances (they agree to ~5% at any instant, so the median is "
-          + "stable where the best-of-instance max churns) over a trailing window, with "
-          + "its gate paired to its own numerator. `sig_src` names the estimator"},
+          + "MEDIAN over instances over a trailing window, with its gate paired to its "
+          + "own numerator. The median is used because the best-of-instance max is an "
+          + "order statistic -- it churns with the winner and takes the luckiest noise "
+          + "draw. `sig_src` names the estimator"},
+    {key: "hold", label: "hold", align: "right", dir: -1,
+     tip: "PROMPT power / live noise median: is there signal under the tap we commanded. "
+          + "No deep fold, no rate search, no certification -- the one column that did "
+          + "not flicker while deep_snr swung 20-30x with the broker frozen. This is "
+          + "'are we on the satellite'; the deep columns are 'did the coherent stage "
+          + "manage to use it'"},
     {key: "duty", label: "duty", align: "right", dir: -1,
-     tip: "fraction of the last 2 min the array actually HELD this satellite (median "
-          + "instance above the fleet's own floor). Read it beside sig: a loud sig at a "
-          + "low duty is a satellite we keep losing, which no instantaneous column shows"},
+     tip: "fraction of the last 2 min the DEEP stage certified this satellite. NOT "
+          + "'was it tracked' -- measured 2026-08-14, prompt power stayed flat through "
+          + "every collapse. A low duty beside a healthy hold means the coherent stage "
+          + "keeps losing a satellite the despread never lost"},
     {key: "coh_s", label: "coh", align: "right", dir: -1,
      tip: "coherent window the deep integration held (s, auto-ladder winner)"},
     {key: "peel_db", label: "peel", align: "right", dir: -1,
@@ -487,6 +497,7 @@ export class GpsTablePanel {
                 sig,
                 // duty greys below 70%: the number is real, the satellite is not being
                 // held, and those two facts must be legible in the same glance.
+                hold: r.hold != null ? r.hold.toFixed(1) : "—",
                 duty: r.duty != null
                     ? (r.duty < 0.7
                        ? `<span style="opacity:.55" title="held only ${(100 * r.duty).toFixed(0)}%`

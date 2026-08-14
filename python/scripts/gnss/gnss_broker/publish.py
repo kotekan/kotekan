@@ -429,11 +429,18 @@ class FleetPublisher:
             # satellites at SNR 1674-2362 continuously.
             #
             # Two properties make these fields trustworthy where the others are not:
-            #  * MEDIAN, not max, over instances. The instances agree with each other to
-            #    ~5% at every instant (measured), so their median is a stable estimate of
-            #    what the array actually saw; the max is an order statistic that jumps
-            #    every time the winner changes (see adr_fine_rate's churn gate for the
-            #    same disease biting the carrier loop).
+            #  * MEDIAN, not max, over instances. The max is an order statistic: it
+            #    tracks whichever instance happens to be highest, so it churns whenever
+            #    the winner changes and is biased upward by the most favourable noise
+            #    draw (see adr_fine_rate's churn gate for the same disease biting the
+            #    carrier loop). The median is neither.
+            #    ⚠️ INSTANCE AGREEMENT IS REGIME-DEPENDENT, do not quote one number for
+            #    it: measured 2026-08-14, instances agreed to ~5% while the fleet was
+            #    strong (per-instance deep_snr ~20-40) and scattered by 70-110% half an
+            #    hour later when the same satellites had fallen to deep_snr ~1-30. That
+            #    is expected -- a noise-dominated estimate scatters -- but it means the
+            #    spread is itself a diagnostic, which is why inst_snr_lo/_hi ship beside
+            #    the median rather than being reduced away.
             #  * A TRAILING DUTY rather than a snapshot. det_duty_s reports the fraction
             #    of the last DUTY_WIN_S in which the median instance cleared its floor.
             #    This does not smooth the flicker away -- a satellite that is genuinely
@@ -445,9 +452,19 @@ class FleetPublisher:
                                        else 0.5 * (_pi[_n // 2 - 1] + _pi[_n // 2]))
                 row["inst_snr_lo"], row["inst_snr_hi"] = _pi[0], _pi[-1]
                 row["inst_snr_n"] = _n
-            # Trailing duty over the last DUTY_WIN_S. "Certified" means the median
-            # instance beat the fleet's own measured floor -- the fleet's number judged
-            # against the fleet's own null, one estimator, no cross-population pairing.
+            # Trailing duty over the last DUTY_WIN_S: the fraction of it in which the
+            # median instance's COHERENT number beat the fleet's own measured floor.
+            #
+            # ⚠️ THIS IS A DEEP-STAGE DUTY, NOT "IS THE SATELLITE BEING TRACKED".
+            # Measured 2026-08-14, and it is the whole diagnosis: with the broker
+            # SIGSTOPped (no seed POSTs, no trims, no commands of any kind) the flicker
+            # was UNCHANGED -- dead 48% before, 48% frozen, 44% after -- while p_pow, the
+            # prompt correlation power, sat flat through every collapse (PRN 23: p_pow
+            # 67,67,67,69,64,67,69,70 while deep_snr ran 5,17,11,7,0,1,7,13). The
+            # despread is holding the satellite continuously; the deep fold intermittently
+            # fails to certify it, identically on all 12 instances because it is a
+            # deterministic algorithm over near-identical data. So read a low duty as
+            # "the deep stage keeps losing this", never as "the array lost the sky".
             _t_now = _now()
             _key = (chain, prn)
             _h = self._hist.setdefault(_key, collections.deque())
@@ -472,6 +489,17 @@ class FleetPublisher:
             # (#35) -- fixed there in the VALUE, left in place on the GATE.
             # Publish sig with its gate and its source attached so no consumer has to
             # re-derive the pairing.
+            # PROMPT HOLD -- the one number here that does not flicker (2026-08-14).
+            # p_pow is the fleet-summed PROMPT correlation power and `ratio` is it against
+            # the live noise median: no deep fold, no rate search, no nav-wipe ladder, no
+            # floor certification -- just "is there signal under the tap we commanded".
+            # Through every deep-stage collapse measured today it moved by <25% while
+            # deep_snr swung 20-30x, so it is the honest answer to "are we on the
+            # satellite" and the deep columns are the honest answer to "did the coherent
+            # stage manage to use it". Publishing both, named for what they are, is the
+            # point of this block: KV could read the sky off GPS search while every
+            # deep/coh column on the display was telling him the array had gone dark.
+            row["prompt_hold"] = ratio          # fleet prompt power / noise median
             if _pi and row.get("det_duty_s") is not None:
                 row["sig"] = row.get("inst_snr_med_win") or row["inst_snr_med"]
                 row["sig_src"] = "inst_med:%d" % row["inst_snr_n"]

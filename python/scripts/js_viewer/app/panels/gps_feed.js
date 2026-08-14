@@ -121,8 +121,8 @@ export function signal_metrics(s, t_rec) {
     // instance changed. Same class as the cn0_coh_db pairing bug (#35), which was fixed in
     // the value and left in the gate.
     //
-    // The broker's `sig` is the MEDIAN over instances (they agree to ~5% at any instant,
-    // so the median is stable where the max churns) over a trailing window; `det_duty_s`
+    // The broker's `sig` is the MEDIAN over instances (robust where the best-of-instance
+    // max churns with its winner) over a trailing window; `det_duty_s`
     // beside it reports how often the array actually held the satellite. Read them
     // together: sig says how loud, duty says how often. A high sig at duty 0.3 is a
     // satellite we are losing two thirds of the time, and the display should say so.
@@ -130,7 +130,12 @@ export function signal_metrics(s, t_rec) {
           : ((s.coherence_s || 0) > 0 ? Math.max(s.deep_snr || 0, s.amp_snr || 0)
                                       : (s.amp_snr || 0));
     m.sig_src = s.sig_src || null;
+    // ⚠️ duty is a DEEP-STAGE duty, not "was the satellite tracked". With the broker
+    // SIGSTOPped (no commands at all) the flicker was unchanged, while prompt power sat
+    // flat through every collapse -- the despread holds the sat continuously and the deep
+    // fold keeps failing to certify it. `hold` below is the number that does not flicker.
     m.duty = s.det_duty_s != null ? s.det_duty_s : null;
+    m.hold = s.prompt_hold != null ? s.prompt_hold : null;
     m.inst_n = s.inst_snr_n != null ? s.inst_snr_n : null;
     m.inst_spread = (s.inst_snr_hi != null && s.inst_snr_lo != null) ?
                     (s.inst_snr_hi - s.inst_snr_lo) : null;
