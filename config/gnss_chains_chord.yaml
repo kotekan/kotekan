@@ -275,7 +275,25 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # arc gate blind to it) -- adr_fine_rate now gates span-vs-wall-clock (419474c3e).
     # Re-arm acceptance = the frozen-command discriminator: hold trim 0, residuals must
     # PERSIST (collapse = feedback still in the loop).
-    rrate-command: true
+    # ⚠️ DISARMED AGAIN 2026-08-14 ~14:0x BY THE PAYOFF MEASUREMENT (the one test the
+    # morning re-arm never ran: split-half phase precision on the RECORD stream, which
+    # is independent of the flickering deep fold). Commanding makes this chain WORSE:
+    #   split-half rate agreement, same poll, cx42 / cx27:
+    #     gal_e5a (commanded)  660 / 428 mHz     <- 2-3x worse
+    #     bds_b2a (control)    258 / 296 mHz
+    #     gal_e5b (control)    209 / 245 mHz
+    #   and the MECHANISM SIGNATURE, which needs no cross-band normalisation:
+    #   WITHIN-WINDOW COHERENCE DECAY (1st-half coh / 2nd-half), median over sats:
+    #     gal_e5a 1.81 (cx42) / 1.60 (cx27)   both controls 0.99-1.09
+    #   Same-satellite pairing vs e5b makes it airtight: PRN 10 3.4x worse, 11 3.8x,
+    #   12 3.0x, 16 4.1x, 25 2.8x, 28 66x; 19 better, 2 equal.
+    # READ: records DEGRADE THROUGH THE BUFFER on the commanded chain only. A command
+    # landing mid-buffer is corrupting the records after it -- the dcyc fold makes the
+    # step exact at the RECORD boundary (proved by e2e [4d]), so the suspect is the
+    # within-window timing of when the tracker actually adopts a new ctrim vs the record
+    # the fold charges it to. The morning's coh_frac-based 'no harm' read was made
+    # through the deep fold, which #58 has since shown flickers ~50% of the time.
+    # rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
