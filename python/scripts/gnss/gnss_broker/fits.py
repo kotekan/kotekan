@@ -232,7 +232,7 @@ def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier
     return code_bias * chip_hz / hops_per_sec
 
 
-def adr_fine_rate(rec, prev, rec_dt):
+def adr_fine_rate(rec, prev, rec_dt, wall_dt=None):
     """#33 PLL fine observable: the residual carrier rate from the ADR's residual half.
 
     res_cycles is the combiner's running sum of MEASURED per-record residual phase
@@ -244,7 +244,17 @@ def adr_fine_rate(rec, prev, rec_dt):
 
     GATES, all structural: same arc (a break means unobserved whole cycles -- no
     measurement); the record counter advanced (a frozen combiner must read as absent,
-    never as 0 Hz); both endpoints present. Returns (rate_cycles_per_s, n_records) in the
+    never as 0 Hz); both endpoints present; and, when the caller supplies wall_dt, the
+    record-implied span must agree with the wall-clock span. THAT LAST GATE IS THE
+    SERVING-LAYER CHURN DISCRIMINATOR (found 2026-08-14 with the honest trim_cycles as
+    in-band truth): the published row is best-of-instance and the winning instance churns
+    poll to poll; instances' arcs began minutes apart, so a cross-instance difference
+    passes the arc gate (every instance says arc 1) and n1 > n0 half the time, with a
+    span wrong by up to 12x. Measured on a held +5.00 Hz trim: same-instance pairs read
+    5.0000 exactly, cross-instance pairs read 0.23-16.7 Hz. Both halves of this
+    observable (res_cycles AND trim_cycles) ride the same row, so a span/wall mismatch
+    invalidates the whole difference, not just the applied reference. Returns
+    (rate_cycles_per_s, n_records, applied_hz) in the
     combiner's INTERNAL (r2c-flipped) sign convention -- the caller applies the calibrated
     sign, which is measured on sky against deep_rate_full_hz, never assumed.
     """
@@ -259,6 +269,8 @@ def adr_fine_rate(rec, prev, rec_dt):
     if r1 is None or r0 is None or n1 <= n0:
         return None
     span = (n1 - n0) * rec_dt
+    if wall_dt is not None and (wall_dt <= 0.0 or abs(span - wall_dt) > 0.25 * wall_dt):
+        return None
     # THE MEASURED APPLIED COMMAND (2026-08-14 02:xx, the last assumption removed).
     # trim_cycles integrates the commanded-trim increments the tracker ACTUALLY applied,
     # on the same arc as res_cycles -- so d(trim)/d(span) is the applied carrier command

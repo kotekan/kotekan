@@ -387,6 +387,27 @@ class TestAdrFineRate(unittest.TestCase):
         self.assertIsNone(self.f({"adr_arc": 3, "adr_records": 100},
                                  self._row(3, 0, 0.0), self.R))
 
+    def test_serving_churn_span_wall_mismatch_is_no_measurement(self):
+        """THE CHURN LESSON (2026-08-14, exposed by the honest trim_cycles): the served
+        row is best-of-instance and the winner churns; instances' arcs began minutes
+        apart, so a cross-instance difference passes the arc gate (every instance is on
+        arc 1) with a record-implied span wrong by up to 12x. Measured on a held +5 Hz
+        trim: same-instance pairs 5.0000 exactly, cross-instance 0.23-16.7 Hz. A span
+        that disagrees with the wall clock is not a measurement."""
+        # 5660 records claim a 59.3 s span across a 5.0 s wall gap -> rejected.
+        self.assertIsNone(self.f(self._row(1, 5660, 2.5, trim=10.0),
+                                 self._row(1, 0, 0.5, trim=1.0), self.R, wall_dt=5.0))
+        # The same difference over a consistent wall span is accepted untouched.
+        out = self.f(self._row(1, 5660, 2.5, trim=10.0), self._row(1, 0, 0.5, trim=1.0),
+                     self.R, wall_dt=5660 * self.R)
+        self.assertIsNotNone(out)
+
+    def test_no_wall_clock_means_no_churn_gate(self):
+        """wall_dt is optional: a caller without a poll clock keeps the structural gates
+        and simply cannot discriminate churn (the pre-2026-08-14 behavior)."""
+        self.assertIsNotNone(self.f(self._row(1, 5660, 2.5), self._row(1, 0, 0.5),
+                                    self.R))
+
 
 class TestUnmeasuredReadsAsUnknown(unittest.TestCase):
 

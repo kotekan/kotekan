@@ -6717,7 +6717,12 @@ def main(argv=None, rx=None, publisher=None):
                         _snap = {"adr_arc": _pv[0][0], "adr_records": _pv[0][1],
                                  "res_cycles": _pv[0][2]}
                         _snap["trim_cycles"] = _pv[0][3] if len(_pv[0]) > 3 else None
-                        _fr = adr_fine_rate(_rec, _snap, _rec_dt)
+                        # wall_dt arms the serving-churn discriminator (see
+                        # adr_fine_rate): the row is best-of-instance and the winner
+                        # churns; a cross-instance span is wrong by up to 12x while
+                        # passing the arc gate.
+                        _wdt = (t0 - _pv[2]) if len(_pv) > 2 else None
+                        _fr = adr_fine_rate(_rec, _snap, _rec_dt, wall_dt=_wdt)
                         if _fr is not None:
                             _fy, _nrec, _applied = _fr
                             _co = _rr2_resid.get(_p) if _rr2_resid else None
@@ -6778,7 +6783,7 @@ def main(argv=None, rx=None, publisher=None):
                                         rr_fine_t[_p] = t0
                     adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
                                      _rec.get("res_cycles"), _rec.get("trim_cycles")),
-                                    _cmd_now)
+                                    _cmd_now, t0)
                 # A sat that has left the seed set is RE-ACQUIRING when it returns, which
                 # is the coarse feed's job -- drop its fine lock rather than let a stale
                 # one de-weight the very measurements that must pull it back in.
