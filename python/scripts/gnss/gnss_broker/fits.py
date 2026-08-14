@@ -258,7 +258,19 @@ def adr_fine_rate(rec, prev, rec_dt):
     r0 = prev.get("res_cycles")
     if r1 is None or r0 is None or n1 <= n0:
         return None
-    return (r1 - r0) / ((n1 - n0) * rec_dt), n1 - n0
+    span = (n1 - n0) * rec_dt
+    # THE MEASURED APPLIED COMMAND (2026-08-14 02:xx, the last assumption removed).
+    # trim_cycles integrates the commanded-trim increments the tracker ACTUALLY applied,
+    # on the same arc as res_cycles -- so d(trim)/d(span) is the applied carrier command
+    # over EXACTLY the measured span, from the same data stream. The broker's own
+    # rr_cmd_applied is an assumption (posted != applied, one-poll-lag class), and a
+    # slowly wrong applied-reference is a marginal integrator: arm 8's fleet-common
+    # +0.3-0.7 Hz/min ramp. None when the field is absent (old binary): the caller then
+    # falls back to its assumption, loudly.
+    t1 = rec.get("trim_cycles")
+    t0v = prev.get("trim_cycles")
+    applied = ((t1 - t0v) / span) if (t1 is not None and t0v is not None) else None
+    return (r1 - r0) / span, n1 - n0, applied
 
 
 # (An `unalias` helper lived here for ~40 minutes on 2026-08-13: it unwrapped the rrate

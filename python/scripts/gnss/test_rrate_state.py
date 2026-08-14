@@ -354,15 +354,28 @@ class TestAdrFineRate(unittest.TestCase):
         self.f = adr_fine_rate
 
     @staticmethod
-    def _row(arc, n, res):
-        return {"adr_arc": arc, "adr_records": n, "res_cycles": res}
+    def _row(arc, n, res, trim=None):
+        r = {"adr_arc": arc, "adr_records": n, "res_cycles": res}
+        if trim is not None:
+            r["trim_cycles"] = trim
+        return r
 
     def test_rate_and_count(self):
         out = self.f(self._row(3, 1900, 2.5), self._row(3, 0, 0.5), self.R)
         self.assertIsNotNone(out)
-        rate, n = out
+        rate, n, applied = out
         self.assertAlmostEqual(rate, 2.0 / (1900 * self.R), places=9)
         self.assertEqual(n, 1900)
+        self.assertIsNone(applied)   # no trim_cycles served -> caller falls back, loudly
+
+    def test_applied_command_is_measured_not_assumed(self):
+        """THE ARM-8 LESSON: the reference must come from the tracker's own integrated
+        trim (trim_cycles), same span, same stream -- never from what the broker believes
+        it posted. 40 cycles of trim over 1900 records = the applied command in Hz."""
+        out = self.f(self._row(3, 1900, 2.5, trim=41.0), self._row(3, 0, 0.5, trim=1.0),
+                     self.R)
+        rate, n, applied = out
+        self.assertAlmostEqual(applied, 40.0 / (1900 * self.R), places=9)
 
     def test_arc_break_is_no_measurement(self):
         self.assertIsNone(self.f(self._row(4, 100, 0.1), self._row(3, 50, 2.0), self.R))

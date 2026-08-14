@@ -152,6 +152,12 @@ struct Opt {
     /// Keep F small (~0.01): the truth's CODE rate does not ramp, so the seed's code quad
     /// mismatches by 0.5*(chip_rate/f_offset)*F*age^2 -- under half a chip at 0.01/50 s.
     double truth_dop_rate = 0.0;
+    /// [4d] ctrim-fold bench: records in the SECOND HALF of the tracker leg are despread
+    /// with this carrier trim (Hz). The truth does not move, so the second half's prompts
+    /// rotate at an extra -ctrim AND the argument-style reference steps by ctrim*t_abs at
+    /// the boundary. The printed boundary step, compared against +-ctrim*t_abs mod 1,
+    /// reads the fold term the assembler must subtract -- sign and magnitude, offline.
+    double bench_ctrim = 0.0;
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
     int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
@@ -319,6 +325,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-cp-rate")) o.seed_cp_rate = next_d();
         else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
         else if (arg_eq(a, "--truth-dop-rate")) o.truth_dop_rate = next_d();
+        else if (arg_eq(a, "--bench-ctrim")) o.bench_ctrim = next_d();
         else if (arg_eq(a, "--signal")) o.signal = argv[++i];
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
@@ -1003,6 +1010,7 @@ int main(int argc, char** argv) {
     std::vector<std::complex<double>> prompts; // per-record P, for the deep fold below
     std::vector<double> rec_dop, rec_tabs;     // per-record (dop, t_abs) for the [4b] fold
     std::vector<double> rec_tage;              // per-record seed AGE, for the [4c] candidate
+    std::vector<double> rec_ctrim;             // per-record applied ctrim, for the [4d] bench
     // Independent of the search realization, so a tracker sweep is reproducible on its own.
     std::mt19937 trk_rng(o.nseed + 1000u);
     for (int r = 0; r < o.nrec; ++r) {
@@ -1064,8 +1072,12 @@ int main(int argc, char** argv) {
         ds.upload_window(win.data(), W);
 
         // Job 0 = the tracker's commanded phase; job 1 = perfect knowledge, the normalizer.
-        auto res = ds.despread_batch({{0, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov},
-                                      {1, o.cp204, o.dll_spacing, o.dop, t_cov}});
+        // [4d]: job 0 carries the bench ctrim on the second half of the records.
+        const double ctrim_r = (o.bench_ctrim != 0.0 && r >= o.nrec / 2) ? o.bench_ctrim : 0.0;
+        GnssCudaDespread::Spec s0{0, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov};
+        s0.ctrim_hz = ctrim_r;
+        auto res = ds.despread_batch({s0, {1, o.cp204, o.dll_spacing, o.dop, t_cov}});
+        rec_ctrim.push_back(ctrim_r);
         const double P = std::norm(res[0][1].correlation);
         const double E = std::norm(res[0][0].correlation);
         const double La = std::norm(res[0][2].correlation);
@@ -1247,6 +1259,35 @@ int main(int argc, char** argv) {
                 const double dnm = N*s_xx - s_x*s_x;
                 return dnm != 0.0 ? ((N*s_xy - s_x*s_y)/dnm) / (2.0*M_PI*dT) : 0.0;
             };
+            if (o.bench_ctrim != 0.0) {
+                // [4d] THE CTRIM FOLD, read directly. Derotate each record by its OWN
+                // applied ctrim rotation-within-record is common-mode; what remains at
+                // the boundary is the REFERENCE step. Compare the measured step against
+                // the +-ctrim*t_abs candidates: the matching sign IS the dcyc term.
+                const int h2 = N / 2;
+                // mean phase step across the boundary, minus the step within each half
+                auto stepat = [&](int i) {
+                    return std::arg(prompts[(size_t)i] * std::conj(prompts[(size_t)i - 1]))
+                           / (2.0 * M_PI);
+                };
+                double inhalf = 0.0;
+                int nin = 0;
+                for (int i = 1; i < N; ++i)
+                    if (i != h2) { inhalf += stepat(i); ++nin; }
+                inhalf /= std::max(nin, 1);
+                // the ctrim itself rotates the second half at -s*ctrim: subtract the known
+                // rate part over one record so what is left is the pure REFERENCE step
+                const double dTb = rec_tabs[(size_t)h2] - rec_tabs[(size_t)h2 - 1];
+                const double meas = stepat(h2) - inhalf;
+                const double cand = o.bench_ctrim * rec_tabs[(size_t)h2];
+                auto wrapc = [](double v) { return v - std::floor(v + 0.5); };
+                printf("[4d] CTRIM-STEP bench (ctrim %+0.2f Hz at record %d):\n"
+                       "     measured boundary step %+8.4f cyc (rate part %+0.4f removed)\n"
+                       "     candidates: +ctrim*t_abs -> %+8.4f   -ctrim*t_abs -> %+8.4f   "
+                       "ctrim*dT -> %+8.4f\n",
+                       o.bench_ctrim, h2, wrapc(meas), inhalf,
+                       wrapc(cand), wrapc(-cand), wrapc(o.bench_ctrim * dTb));
+            }
             printf("[4c] fitted rate after fold (Hz):  t_abs sgn- %+8.3f  sgn+ %+8.3f | "
                    "age sgn- %+8.3f  sgn+ %+8.3f | raw %+8.3f\n",
                    fitted_rate(-1.0, rec_tabs), fitted_rate(+1.0, rec_tabs),

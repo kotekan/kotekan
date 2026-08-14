@@ -251,7 +251,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # Read the JRR/JRRP series right after this restart for the verdict, and extend the
     # e2e bench with a ctrim step before any re-arm. Shadow + fine feed stay ON:
     # measurements without actuation = no feedback possible, pristine overnight data.
-    # rrate-command: true
+    #
+    # VERDICTS (02:xx): (a) frozen-command discriminator: residuals COLLAPSED in 3 min
+    # (PRN 30 +3.57 -> -0.48) -- feedback confirmed. (b) e2e [4d] ctrim-step bench:
+    # measured boundary step +0.3599 cyc vs +ctrim*t_abs = +0.3606 -- the 62d8513f0 fold
+    # term is EXACTLY RIGHT. So the feedback was the broker's ASSUMED applied command
+    # (rr_cmd_applied, posted != applied): a marginal integrator. ARM 9: the fine feed's
+    # reference now comes from the MEASURED applied trim (d(trim_cycles)/d(records),
+    # same span, same stream as the measurement -- no assumption left in the loop).
+    rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy

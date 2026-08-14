@@ -6716,9 +6716,10 @@ def main(argv=None, rx=None, publisher=None):
                     if _pv is not None:
                         _snap = {"adr_arc": _pv[0][0], "adr_records": _pv[0][1],
                                  "res_cycles": _pv[0][2]}
+                        _snap["trim_cycles"] = _pv[0][3] if len(_pv[0]) > 3 else None
                         _fr = adr_fine_rate(_rec, _snap, _rec_dt)
                         if _fr is not None:
-                            _fy, _nrec = _fr
+                            _fy, _nrec, _applied = _fr
                             _co = _rr2_resid.get(_p) if _rr2_resid else None
                             if _co is not None:
                                 _jpp.append((_p, _fy, _co))
@@ -6747,9 +6748,17 @@ def main(argv=None, rx=None, publisher=None):
                                 # wandered at the coarse floor. Gate only at fold safety.
                                 if abs(_yf) < 20.0:
                                     _k = (args.dr_constellation, int(_p))
-                                    _cmd_mid = 0.5 * (_cmd_now + _pv[1])
-                                    _sig_f = (args.rrate_phase_sigma ** 2
-                                              + (0.5 * _dcmd) ** 2) ** 0.5
+                                    # reference: the MEASURED applied command when the
+                                    # combiner serves it (same span, same stream, no
+                                    # assumption -- and no motion penalty needed, it is
+                                    # exact); the posted-command span-mean otherwise.
+                                    if _applied is not None:
+                                        _cmd_mid = args.rrate_phase_sign * _applied
+                                        _sig_f = args.rrate_phase_sigma
+                                    else:
+                                        _cmd_mid = 0.5 * (_cmd_now + _pv[1])
+                                        _sig_f = (args.rrate_phase_sigma ** 2
+                                                  + (0.5 * _dcmd) ** 2) ** 0.5
                                     if _jrf.update_rrate(
                                             _k, _yf + _cmd_mid, t_now_abs, args.carrier_hz,
                                             sigma_hz=_sig_f) is not None:
@@ -6759,7 +6768,8 @@ def main(argv=None, rx=None, publisher=None):
                                         # gate keeps rejecting stays coarse-governed.
                                         rr_fine_t[_p] = t0
                     adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
-                                     _rec.get("res_cycles")), _cmd_now)
+                                     _rec.get("res_cycles"), _rec.get("trim_cycles")),
+                                    _cmd_now)
                 # A sat that has left the seed set is RE-ACQUIRING when it returns, which
                 # is the coarse feed's job -- drop its fine lock rather than let a stale
                 # one de-weight the very measurements that must pull it back in.
