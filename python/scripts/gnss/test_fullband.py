@@ -122,6 +122,87 @@ class TestSeries(unittest.TestCase):
             self.assertGreater(a, b, "aligning a real 70 ns ramp must raise |A| for %s" % inst)
 
 
+class TestFullbandSource(unittest.TestCase):
+    """fullband_source is the PRODUCTION-shaped function -- so it must carry the retraction.
+
+    A per-instance delay is physically impossible on this array (one PFB, `freq_id mod 8`
+    routing), and the module says so in fit_tau_per_instance's docstring. For a while the
+    docstring said it and this function still called it: the correction was written down and
+    not applied. These pin the model that actually ships.
+    """
+
+    def _client(self, n_prn=3, n_inst=3, per_prn_ramp=0.0):
+        """Frames whose comb carries a DIFFERENT phase ramp on every PRN when asked.
+
+        ⚠️ THE RAMP IS LOAD-BEARING FOR THE TEST BELOW, and a first version without it passed
+        against a deliberately per-PRN mutation -- with identical taps on every satellite the
+        per-PRN fits coincide, so "all taus equal" was true of the broken code too. A gate has
+        to vary the axis it claims to test.
+        """
+        import test_combdll as tc
+        frames = []
+        for i in range(n_inst):
+            ids = tuple(5972 + 16 * (i * 4 + k) for k in range(4))
+            for w in (10, 11, 12):
+                taps = {}
+                if per_prn_ramp:
+                    for r in range(4):
+                        for pi in range(n_prn):
+                            for ch in range(len(ids)):
+                                # a delay that differs per SATELLITE: physically impossible,
+                                # which is the point -- only a per-PRN model can follow it
+                                ph = 2j * cmath.pi * ids[ch] * CH * (per_prn_ramp * (pi + 1))
+                                rot = cmath.exp(ph)
+                                taps[(r, pi, ch)] = (0.5 * rot, rot, 0.25 * rot, 1.0)
+                frames.append(tc.make_frame(inst="cx%02d.0" % (19 + i), win=w,
+                                            n_prn=n_prn, chan_ids=ids, taps=taps))
+        return tc.client_with(frames, depth=16)
+
+    def test_one_delay_for_the_whole_array(self):
+        """Every satellite reports the SAME tau, even when the data begs for per-PRN ones."""
+        cl = self._client(per_prn_ramp=40e-9)
+        _got, _now, info = fullband.fullband_source(cl, "gps_l5", n_win=4, lag=0,
+                                                    min_excess_db=0.0)
+        self.assertGreaterEqual(len(info), 2)
+        taus = {round(v["tau_ns"], 9) for v in info.values()}
+        self.assertEqual(len(taus), 1, "tau differs between satellites: %s" % sorted(taus))
+
+    def test_a_fit_that_does_not_clear_its_null_falls_through_to_zero(self):
+        _got, _now, info = fullband.fullband_source(self._client(), "gps_l5", n_win=4, lag=0)
+        self.assertEqual({v["applied"] for v in info.values()}, {0})
+        self.assertEqual({v["tau_ns"] for v in info.values()}, {0.0})
+
+    def test_shape_matches_what_fleet_coherent_consumes(self):
+        got, now, _info = fullband.fullband_source(self._client(), "gps_l5", n_win=4, lag=0)
+        self.assertTrue(got)
+        self.assertGreater(now, 0)
+        for _inst, per_prn in got.items():
+            for _prn, series in per_prn.items():
+                for _hop, (A, E) in series.items():
+                    self.assertIsInstance(A, complex)
+                    self.assertGreater(E, 0.0)
+
+    def test_tau_zero_is_the_blind_sum_exactly(self):
+        """The fallback has to be bit-identical, not approximately equal.
+
+        It is the entire reason this path can be turned on next to a live instrument.
+        """
+        per = _mk(n_inst=2, n_chan=4, n_rec=8, tau_ns=0.0, snr=6.0, seed=7)
+        hops = set()
+        for chans in per.values():
+            for _f, (_m, _t, rec) in chans.items():
+                hops |= set(rec)
+        blind = fullband.instance_series(per, 0.0, hops)
+        for inst, series in blind.items():
+            for hop, (A, E) in series.items():
+                g = sum(a * e for _f, (_m, _t, rec) in per[inst].items()
+                        for h, (a, e) in rec.items() if h == hop)
+                tot = sum(e for _f, (_m, _t, rec) in per[inst].items()
+                          for h, (_a, e) in rec.items() if h == hop)
+                self.assertEqual(A, g / tot)
+                self.assertEqual(E, tot)
+
+
 class TestAmbiguity(unittest.TestCase):
     def test_search_window_matches_the_comb_spacing(self):
         # tau is unambiguous only within +-1/(2 * 16 * 195312.5) = 160 ns; a wider search would

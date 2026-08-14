@@ -238,13 +238,17 @@ def fullband_source(client, chain, prns=None, n_win=32, lag=1, min_excess_db=1.0
 
     Same `got` shape fleet_coherent already consumes ({inst: {prn: {hop: (A, E)}}}), so the
     estimator downstream is untouched and the comparison against the polled path stays a
-    measurement rather than an argument. The difference is entirely in how each instance's
-    per-record prompt was formed: channels aligned by a fitted delay instead of summed blind.
+    measurement rather than an argument. THE DIFFERENCE IS WHERE THE CHANNELS WERE COMBINED:
+    here, in the broker, from the un-summed comb -- which is the whole of task #63. It is the
+    drop-in replacement for TelemClient.coherent_source(), which reads the tracker's SUMMED
+    prompt slots and therefore cannot be the input to a deep fold that outlives the sum.
 
-    `min_excess_db` is the guard. A delay search inflates the sum from noise, so tau is applied
-    only where the excess over the channel-permuted null clears this bar; otherwise the blind
-    sum (tau = 0) is used, which is bit-identical to what the tracker ships today. The path can
-    therefore never be worse than the one it replaces.
+    `min_excess_db` is the guard on the delay. A delay search recovers amplitude from noise,
+    so tau is applied only when the excess over the channel-permuted null clears this bar;
+    otherwise tau = 0, which reproduces the blind sum exactly. On today's array the joint fit
+    does not clear it (+0.867 dB against a 0.409 dB null over 434 channel-series), so this
+    ships the blind sum and the tau machinery is dormant, kept for arrays with real spectral
+    tilt (KV).
     """
     wins = client.windows(chain, lag=lag)
     if not wins:
@@ -253,48 +257,44 @@ def fullband_source(client, chain, prns=None, n_win=32, lag=1, min_excess_db=1.0
     want = None if prns is None else set(int(p) for p in prns)
     all_prns = sorted({p for w in wins for f in client.frame_set(chain, w).values()
                        for p in f.prns()})
-    got, fleet_now, info = {}, 0, {}
+    # ONE DELAY FOR THE WHOLE ARRAY, fitted across every instance AND every satellite at once.
+    # ⚠️ THIS WAS PER-INSTANCE AND THAT WAS WRONG (retracted 2026-08-14, commit bb9d8739a; the
+    # correction stands in fit_tau_per_instance's docstring and [[chord-nothing-is-per-node]]).
+    # Every channel comes from ONE PFB on the same raw samples and the split to nodes is
+    # `freq_id mod 8` -- routing taken AFTER the signal path -- so a delay cannot localise to
+    # an instance. The joint fit is also the STRONGEST form of the measurement, which is what
+    # makes its verdict worth acting on: over 434 channel-series it found +0.867 dB against a
+    # 0.409 dB null, i.e. NO DETECTION, and this therefore falls through to tau = 0 on today's
+    # array. tau = 0 reproduces the blind sum exactly, so that fallback is bit-identical to
+    # what the tracker ships and this path can never be worse than the one it replaces.
+    per_prn = {}
     for prn in all_prns:
         if want is not None and prn not in want:
             continue
-        per_inst = _per_channel(client, chain, wins, prn)
-        if len(per_inst) < 2:
-            continue
-        # ONE DELAY PER INSTANCE -- see fit_tau_per_instance. A single fleet-wide tau was tried
-        # first and the sky rejected it: declined on 13/13 PRNs while per-instance fits found
-        # +6.4 to +6.9 dB on the same satellite at two nodes.
-        fits = fit_tau_per_instance(per_inst)
+        pc = _per_channel(client, chain, wins, prn)
+        if len(pc) >= 2:
+            per_prn[prn] = pc
+    if not per_prn:
+        return {}, 0, {}
+    tau, gain, null, excess = fit_tau_joint(per_prn)
+    used = tau if excess >= min_excess_db else 0.0
+    got, fleet_now, info = {}, 0, {}
+    for prn, per_inst in per_prn.items():
         hops = set()
         for chans in per_inst.values():
             for _fid, (_m, _t, per) in chans.items():
                 hops |= set(per)
         fleet_now = max(fleet_now, max(hops) if hops else 0)
-        # Guard PER INSTANCE: an instance whose delay does not clear its own channel-permuted
-        # null keeps the blind sum, which is bit-identical to what the tracker ships. So the
-        # combine is >= today's for every instance independently, never on average.
-        series = {}
-        n_applied = 0
-        for inst, chans in per_inst.items():
-            tau_i, _g, _n, exc_i = fits[inst]
-            use_i = tau_i if exc_i >= min_excess_db else 0.0
-            n_applied += 1 if use_i != 0.0 else 0
-            series.update(instance_series({inst: chans}, use_i, hops))
-        tau = statistics.median([f[0] for f in fits.values()])
-        gain = statistics.median([f[1] for f in fits.values()])
-        null = statistics.median([f[2] for f in fits.values()])
-        excess = statistics.median([f[3] for f in fits.values()])
-        used = tau if n_applied else 0.0
-        for inst, d in series.items():
+        for inst, d in instance_series(per_inst, used, hops).items():
             if d:
                 got.setdefault(inst, {})[prn] = d
         info[prn] = {"tau_ns": used * 1e9, "gain_db": gain, "null_db": null,
-                     "excess_db": excess, "applied": n_applied, "n_inst": len(per_inst),
-                     "n_chan": sum(len(c) for c in per_inst.values()),
-                     "per_inst_tau_ns": {i: f[0] * 1e9 for i, f in fits.items()},
-                     "per_inst_excess_db": {i: f[3] for i, f in fits.items()}}
-        if log and n_applied:
-            log("FULLBAND %s PRN %d: delay applied on %d/%d instances, median tau %+.1f ns, "
-                "median excess %+.2f dB over %d channels"
-                % (chain, prn, n_applied, len(per_inst), used * 1e9, excess,
-                   info[prn]["n_chan"]))
+                     "excess_db": excess, "applied": 1 if used else 0,
+                     "n_inst": len(per_inst),
+                     "n_chan": sum(len(c) for c in per_inst.values())}
+    if log:
+        log("FULLBAND %s: joint tau %+.1f ns, gain %+.2f dB vs null %+.2f (excess %+.2f dB) "
+            "over %d satellites -- %s"
+            % (chain, tau * 1e9, gain, null, excess, len(per_prn),
+               "APPLIED" if used else "not applied, blind sum (bit-identical to the tracker's)"))
     return got, fleet_now, info
