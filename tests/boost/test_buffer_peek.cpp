@@ -5,13 +5,14 @@
 #include "errors.h"            // for __enable_syslog
 #include "metadata.hpp"        // for metadataObject, metadataPool
 #include "metadataFactory.hpp" // for metadataFactory
+#include "test_logging.hpp"    // for SigtermGuard
 #include "test_utils.hpp"      // for GlobalFixture_Locale
 
 #include "json.hpp" // for json
 
 #include <boost/test/included/unit_test.hpp>
 #include <memory>    // for shared_ptr
-#include <stdexcept> // for invalid_argument
+#include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint8_t, SIZE_MAX
 #include <string.h>  // for memset
 #include <time.h>    // for clock_gettime, timespec
@@ -19,6 +20,10 @@
 
 using kotekan::Config;
 using json = nlohmann::json;
+
+// Lets peek_hold_single_frame_rejected catch the FATAL_ERROR, which calls
+// exit_kotekan and raises SIGTERM before throwing FatalError.
+static kotekan_test_logging::SigtermGuard g_sigterm_guard;
 
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
@@ -244,7 +249,38 @@ BOOST_AUTO_TEST_CASE(peek_hold_single_frame_rejected) {
     std::shared_ptr<metadataPool> pool = make_pool(config);
     BOOST_REQUIRE(pool != nullptr);
 
-    // A single-frame ring would deadlock its producer: refused up front.
+    // A single-frame ring would deadlock its producer: refused up front with a
+    // FATAL_ERROR, so kotekan comes down rather than running with a buffer
+    // nothing can be produced into. FatalError derives from std::runtime_error.
     Buffer buf(1, 8, pool, "one_buf", "standard", 0, false, false, {}, false);
-    BOOST_CHECK_THROW(buf.enable_peek_hold(), std::invalid_argument);
+    BOOST_CHECK_THROW(buf.enable_peek_hold(), std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(peek_hold_shallow_buffer_warns_but_holds) {
+    __enable_syslog = 0;
+
+    Config config;
+    std::shared_ptr<metadataPool> pool = make_pool(config);
+    BOOST_REQUIRE(pool != nullptr);
+
+    // Two frames is the shallowest depth the hold works at: it warns (the slot
+    // is half the buffer), but the hold itself still has to behave.
+    Buffer buf(2, 8, pool, "shallow_buf", "standard", 0, false, false, {}, false);
+    buf.register_producer("prod");
+    buf.register_consumer("con");
+    BOOST_CHECK_NO_THROW(buf.enable_peek_hold());
+
+    std::vector<uint8_t> data;
+    std::shared_ptr<metadataObject> meta;
+
+    // The producer still gets round the ring with one frame permanently held.
+    uint8_t value = 0x10;
+    for (int id : {0, 1, 0, 1}) {
+        produce_frame(buf, id, value);
+        consume_frame(buf, id);
+        BOOST_CHECK_EQUAL(buf.peek_newest_full_frame(data, SIZE_MAX, meta), id);
+        BOOST_CHECK_EQUAL(data[0], value);
+        BOOST_CHECK_EQUAL(buf.get_num_full_frames(), 1);
+        ++value;
+    }
 }

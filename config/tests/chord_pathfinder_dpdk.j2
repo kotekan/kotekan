@@ -12,7 +12,6 @@
 network_input_buffers:
     log_level: info
     num_frames: host_side_buffer_depth
-    peek_hold: true
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
@@ -35,7 +34,6 @@ network_input_buffers:
 # ndarray buffers derive their size from the descriptor.
 host_voltage_buffer_0:
     kotekan_buffer: ndarray
-    peek_hold: true
     log_level: info
     num_frames: host_side_buffer_depth
     value_type: int4x2_swapped_withoffset
@@ -45,7 +43,6 @@ host_voltage_buffer_0:
     numa_node: 0
 host_voltage_buffer_1:
     kotekan_buffer: ndarray
-    peek_hold: true
     log_level: info
     num_frames: host_side_buffer_depth
     value_type: int4x2_swapped_withoffset
@@ -57,7 +54,6 @@ host_voltage_buffer_1:
 packet_receipt_bitmap_buffers:
     log_level: info
     num_frames: host_side_buffer_depth
-    peek_hold: true
     frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
     metadata_pool: main_pool
     use_hugepages: true
@@ -80,7 +76,6 @@ packet_receipt_bitmap_buffers:
 # Produced by ProcessPacketMask (rfi_mask_buf): uint1x8 "RFImask".
 host_rfi_RFImask_dummy_buffer:
     kotekan_buffer: ndarray
-    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -90,7 +85,6 @@ host_rfi_RFImask_dummy_buffer:
 
 host_rfi_RFImask_dummy_buffer_1:
     kotekan_buffer: ndarray
-    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
@@ -102,7 +96,6 @@ host_rfi_RFImask_dummy_buffer_1:
 # Note this is the expanded version of the pl_mask, which is used for correlator input
 host_pl_mask_exp_buffer:
     kotekan_buffer: ndarray
-    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 64, num_local_freq, num_polarizations, (num_elements / 8) / 2, 8]
@@ -110,7 +103,6 @@ host_pl_mask_exp_buffer:
 
 host_pl_mask_exp_buffer_1:
     kotekan_buffer: ndarray
-    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 64, num_local_freq, num_polarizations, (num_elements / 8) / 2, 8]
@@ -119,7 +111,6 @@ host_pl_mask_exp_buffer_1:
 
 host_pl_mask_buffer:
     kotekan_buffer: ndarray
-    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, (num_elements / 8) / 2, 8]
@@ -127,7 +118,6 @@ host_pl_mask_buffer:
 
 host_pl_mask_buffer_1:
     kotekan_buffer: ndarray
-    peek_hold: true
     num_frames: host_side_buffer_depth
     value_type: uint1x8
     extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, (num_elements / 8) / 2, 8]

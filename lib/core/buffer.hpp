@@ -177,6 +177,23 @@ public:
     int get_num_producers();
 
     /**
+     * @brief The names of the consumers registered to this buffer.
+     *
+     * A copy taken under the buffer lock: a stage may unregister while the
+     * pipeline runs, so @c consumers cannot be walked from another thread.
+     *
+     * @return The registered consumer names, in registration-name order.
+     */
+    std::vector<std::string> get_consumer_names();
+
+    /**
+     * @brief The names of the producers registered to this buffer.
+     *
+     * @return The registered producer names, in registration-name order.
+     */
+    std::vector<std::string> get_producer_names();
+
+    /**
      * @brief Allocates a new metadata object from the associated pool
      *
      * Needs to be called by the first producer in a chain, or by a producer
@@ -511,7 +528,7 @@ public:
      *        that is still full, without taking part in the producer/consumer
      *        protocol.
      *
-     * Intended for inspection/debugging (e.g. the REST `/buffer/<name>/frame`
+     * Intended for inspection/debugging (e.g. the REST `/buffer_frame`
      * endpoint): the caller does not need to be a registered consumer, and
      * calling this never consumes or delays frames. The buffer lock is held
      * for the duration of the copy, which prevents the frame from being
@@ -523,7 +540,8 @@ public:
      * without holding the buffer lock.
      *
      * @param[out] data_out Resized to the copy length and filled with the
-     *                      leading bytes of the frame.
+     *                      leading bytes of the frame; cleared when -1 is
+     *                      returned.
      * @param[in] max_len Maximum number of bytes of frame data to copy; the
      *                    copy length is min(max_len, frame_size).
      * @param[out] metadata_out Set to the frame's metadata object, or nullptr
@@ -556,11 +574,24 @@ public:
      * production has stopped; consult the metadata's timestamps rather
      * than presenting it as live.
      *
-     * @throws std::invalid_argument for a single-frame buffer: with
-     *         ``num_frames == 1`` the producer would deadlock waiting for
-     *         the held frame whose release requires the producer.
+     * Shuts kotekan down (@c FATAL_ERROR, which throws @c FatalError) for a
+     * single-frame buffer: with ``num_frames == 1`` the producer would
+     * deadlock waiting for the held frame whose release requires the
+     * producer. Warns, but continues, below @c peek_hold_shallow_frames,
+     * where the held slot is a large share of the buffer's depth.
      */
     void enable_peek_hold();
+
+    /**
+     * @brief Buffer depth below which @c enable_peek_hold() warns.
+     *
+     * The hold occupies one frame for the lifetime of the pipeline. On a deep
+     * buffer that is a rounding error; at three frames or fewer it is a third
+     * or more of the depth the buffer has to absorb jitter with, which is
+     * worth saying out loud at startup rather than leaving to be found in a
+     * throughput plot.
+     */
+    static constexpr int peek_hold_shallow_frames = 4;
 
     /**
      * @brief Swaps the provided frame of memory with the internal frame

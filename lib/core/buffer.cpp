@@ -119,6 +119,24 @@ int GenericBuffer::get_num_producers() {
     return producers.size();
 }
 
+std::vector<std::string> GenericBuffer::get_consumer_names() {
+    buffer_lock lock(mutex);
+    std::vector<std::string> names;
+    names.reserve(consumers.size());
+    for (auto& consumer : consumers)
+        names.push_back(consumer.second.name);
+    return names;
+}
+
+std::vector<std::string> GenericBuffer::get_producer_names() {
+    buffer_lock lock(mutex);
+    std::vector<std::string> names;
+    names.reserve(producers.size());
+    for (auto& producer : producers)
+        names.push_back(producer.second.name);
+    return names;
+}
+
 void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
     buffer_lock lock(mutex);
     if (metadata[from_ID] == nullptr) {
@@ -235,9 +253,10 @@ kotekan::BufferState GenericBuffer::dot_buffer_state() {
 std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOptions&) {
     // Which kind of buffer this is, and the metadata that travels with its
     // frames -- the two things that decide what a consumer can do with it.
-    return {buffer_name, metadata_pool
-                             ? fmt::format("{:s} · {:s}", buffer_type, metadata_pool->type_name)
-                             : buffer_type};
+    std::string type_line = buffer_type;
+    if (metadata_pool)
+        type_line += fmt::format(fmt(" · {:s}"), metadata_pool->type_name);
+    return {buffer_name, type_line};
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -483,10 +502,18 @@ int Buffer::get_num_full_frames() {
 
 int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
                                    std::shared_ptr<metadataObject>& metadata_out) {
+    // Size the destination before taking the lock: frame_size never changes,
+    // and doing the allocation (and its page faults) here keeps them out of
+    // the window where every producer and consumer on this buffer is blocked.
+    const size_t copy_len = std::min(max_len, frame_size);
+    data_out.resize(copy_len);
+
     buffer_lock lock(mutex);
 
-    if (last_frame_filled < 0)
+    if (last_frame_filled < 0) {
+        data_out.clear();
         return -1;
+    }
 
     // Frames fill in ring order, so the first full frame found scanning
     // backwards from the last filled position is the newest one.
@@ -498,11 +525,11 @@ int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_le
             break;
         }
     }
-    if (ID == -1)
+    if (ID == -1) {
+        data_out.clear();
         return -1;
+    }
 
-    const size_t copy_len = std::min(max_len, frame_size);
-    data_out.resize(copy_len);
     memcpy(data_out.data(), frames[ID], copy_len);
     metadata_out = metadata[ID];
     return ID;
@@ -510,11 +537,20 @@ int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_le
 
 void Buffer::enable_peek_hold() {
     buffer_lock lock(mutex);
+    // A pipeline configured this way cannot run, so take kotekan down the way
+    // every other unusable-config check does, rather than leaving the exit code
+    // to whoever catches the exception.
     if (num_frames < 2)
-        throw std::invalid_argument(
-            fmt::format(fmt("peek_hold on buffer {:s} requires num_frames >= 2: with a single "
-                            "frame the producer would deadlock waiting for the held frame"),
-                        buffer_name));
+        FATAL_ERROR("peek_hold on buffer {:s} requires num_frames >= 2: with a single frame the "
+                    "producer would deadlock waiting for the held frame",
+                    buffer_name);
+    // The hold costs one frame slot for as long as the pipeline runs, which on a
+    // shallow buffer is a large share of the depth it has to absorb jitter with.
+    if (num_frames < peek_hold_shallow_frames)
+        WARN("peek_hold on buffer {:s} leaves {:d} of {:d} frames for the pipeline: on a buffer "
+             "this shallow the held frame is a large part of its depth, so expect the producer "
+             "to block sooner",
+             buffer_name, num_frames - 1, num_frames);
     peek_hold_enabled = true;
 }
 

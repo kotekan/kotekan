@@ -18,14 +18,21 @@ REST endpoints
 - ``/pipeline_json`` (GET) – the same graph as JSON (nodes, edges, clusters), for clients
   that would rather lay it out, or diff it, than parse ``dot``. Takes the same query
   arguments.
-- ``/buffer/<name>/frame`` (GET) – copy of the newest full frame in buffer ``<name>`` as JSON:
-  base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``?len=N`` limits
-  the number of data bytes returned; ``len=0`` returns metadata only. On buffers whose
-  consumers drain frames faster than a peek can catch them, set ``peek_hold: true`` on the
-  buffer's config block: recycling of the newest frame is then deferred until the next one
-  lands (no data is copied), so this endpoint always has a frame to serve. The held frame can
-  be arbitrarily old if production has stopped — check the metadata timestamps — and it counts
-  as one full frame in ``/buffers``.
+- ``/buffer_frame?name=<buffer>`` (GET) – copy of the newest full frame in ``<buffer>`` as
+  JSON: base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``&len=N``
+  sets how many data bytes come back (64 KiB without it; ``len=0`` for metadata only).
+  The copy is made with the buffer locked, which blocks every stage on that buffer for as
+  long as it takes, so ``len`` is what keeps this cheap: the 64 KiB default costs a few
+  microseconds, while one whole-frame request on a CHORD voltage buffer copies several
+  hundred MiB and holds the lock for roughly a frame period — long enough on its own to
+  cost the pipeline a frame, before any question of repeating it. The lock is not the only
+  cost: the reply is assembled whole in memory (about five times ``len``, once the base64
+  and the JSON are counted) on the REST server's single thread, so a large request also
+  holds that much memory and blocks every other endpoint — ``/status``, the Prometheus
+  scrape — until it has been sent. Ask for what you need to look at, and keep ``len``
+  small on the voltage and network-input buffers. If consumers recycle frames faster than
+  a peek can catch them, set ``peek_hold: true`` on the buffer's config block (see the
+  configuration docs). Frame buffers only; ring buffers are not peekable yet.
 - Per-stage endpoints live under the stage ``unique_name`` (e.g., ``/<stage>/control``).
 
 Example:
@@ -59,14 +66,14 @@ config declares this the other way round — a ``gpuProcess`` per section, each 
 doing" in one place instead of across a box per section. A section left holding nothing as
 a result is not drawn. A buffer is drawn inside the innermost region containing everything
 that touches it, so only real hand-offs cross a boundary.
-Buffer nodes link to their ``/buffer/<name>/frame`` endpoint, so a rendered SVG is
+Buffer nodes link to their ``/buffer_frame`` endpoint, so a rendered SVG is
 clickable.
 
 Every colour in the graph is named explicitly, including the label ink and the edges that
-graphviz would otherwise leave black. That is what lets a viewer restyle the whole graph —
-choco's pipeline page mirrors the palette to draw it on a dark background — so the values
-in ``lib/core/PipelineGraph.cpp`` (``graph_style()`` and the ``graph_*`` constants) are an
-interface, not a local choice: changing one changes what those viewers have to match.
+graphviz would otherwise leave black. That is what lets a viewer restyle the whole graph — to
+draw it on a dark background, say — so the values in ``lib/core/PipelineGraph.cpp``
+(``graph_style()`` and the ``graph_*`` constants) are an interface, not a local choice:
+changing one changes what those viewers have to match.
 
 Query arguments (all boolean ones take ``0``/``1``):
 
@@ -86,9 +93,6 @@ Query arguments (all boolean ones take ``0``/``1``):
 
     # just the structure, without the GPU internals
     curl -s 'http://localhost:12048/pipeline_dot?runtime=0&kernels=0' | dot -Tpdf -o pipeline.pdf
-
-``tools/pipeline_graph.py`` wraps this up: it fetches, renders, and can watch a running
-pipeline by re-fetching on an interval.
 
 
 Daemon mode

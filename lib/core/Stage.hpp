@@ -73,6 +73,10 @@ public:
 
     /**
      * @brief Get tids from the current stage.
+     *
+     * Returned by value: the list grows and shrinks as the stage's threads start
+     * and exit, so handing out a reference would leave a caller reading it while
+     * it is being reallocated underneath them.
      */
     std::vector<pid_t> get_tids();
 
@@ -135,12 +139,13 @@ private:
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 
-    // Lock for changing or reading the thread_list variable.
-    std::mutex thread_list_lock;
-
     // List of stage tids used for CPU usage tracking.
     // Written by each stage thread and read by the CPU monitor thread.
     std::vector<pid_t> thread_list;
+
+    // Lock for changing or reading thread_list, which the stage's own threads
+    // add themselves to while the CPU monitor and the pipeline graph read it.
+    std::mutex thread_list_lock;
 };
 
 } // namespace kotekan

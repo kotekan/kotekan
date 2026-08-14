@@ -84,76 +84,81 @@ void CpuMonitor::track_cpu() {
             WARN_NON_OO("CPU monitor cannot read from /proc/stat");
         }
 
-        // Read each thread stats based on tid
-        std::unique_lock<std::mutex> lock(ult_lock);
-        for (auto stage : tid_list) {
-            for (auto tid : stage.second) {
-                char fname[40];
-                snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", tid);
-                FILE* thread_fp = fopen(fname, "r");
+        // Read each thread stats based on tid. The sweep is done under the lock,
+        // but the wait below is not: the REST callbacks walk ult_list while this
+        // loop inserts into it, and a map cannot be read through an insertion.
+        {
+            std::lock_guard<std::mutex> lock(ult_list_lock);
+            for (auto stage : tid_list) {
+                for (auto tid : stage.second) {
+                    char fname[40];
+                    snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", tid);
+                    FILE* thread_fp = fopen(fname, "r");
 
-                if (thread_fp) {
-                    // Get the 14th (utime) and the 15th (stime) stats
-                    uint32_t utime = 0, stime = 0;
-                    int ret = fscanf(thread_fp,
-                                     "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u",
-                                     &utime, &stime);
+                    if (thread_fp) {
+                        // Get the 14th (utime) and the 15th (stime) stats
+                        uint32_t utime = 0, stime = 0;
+                        int ret = fscanf(
+                            thread_fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u",
+                            &utime, &stime);
 
-                    auto stage_itr = ult_list.find(stage.first);
-                    if (stage_itr != ult_list.end()) {
-                        auto thread_itr = (stage_itr->second).find(tid);
-                        if (thread_itr != (stage_itr->second).end()) {
-                            if (ret == 2) {
-                                // Compute usr and sys CPU usage
-                                (thread_itr->second)
-                                    .utime_usage->add_sample(
-                                        core_num * 100 * (utime - (thread_itr->second).prev_utime)
-                                        / (cpu_time - prev_cpu_time));
-                                (thread_itr->second)
-                                    .stime_usage->add_sample(
-                                        core_num * 100 * (stime - (thread_itr->second).prev_stime)
-                                        / (cpu_time - prev_cpu_time));
-                                // Update thread usr and sys time
-                                (thread_itr->second).prev_utime = utime;
-                                (thread_itr->second).prev_stime = stime;
+                        auto stage_itr = ult_list.find(stage.first);
+                        if (stage_itr != ult_list.end()) {
+                            auto thread_itr = (stage_itr->second).find(tid);
+                            if (thread_itr != (stage_itr->second).end()) {
+                                if (ret == 2) {
+                                    // Compute usr and sys CPU usage
+                                    (thread_itr->second)
+                                        .utime_usage->add_sample(
+                                            core_num * 100
+                                            * (utime - (thread_itr->second).prev_utime)
+                                            / (cpu_time - prev_cpu_time));
+                                    (thread_itr->second)
+                                        .stime_usage->add_sample(
+                                            core_num * 100
+                                            * (stime - (thread_itr->second).prev_stime)
+                                            / (cpu_time - prev_cpu_time));
+                                    // Update thread usr and sys time
+                                    (thread_itr->second).prev_utime = utime;
+                                    (thread_itr->second).prev_stime = stime;
+                                } else {
+                                    WARN_NON_OO("CPU monitor read insufficient stats from {:s}",
+                                                fname);
+                                }
                             } else {
-                                WARN_NON_OO("CPU monitor read insufficient stats from {:s}", fname);
+                                // Create new thread record
+                                kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
+                                (stage_itr->second)[tid].utime_usage = KT.add_tracker(
+                                    "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|usr",
+                                    "percent", track_len, true);
+                                (stage_itr->second)[tid].stime_usage = KT.add_tracker(
+                                    "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|sys",
+                                    "percent", track_len, true);
+                                (stage_itr->second)[tid].prev_utime = utime;
+                                (stage_itr->second)[tid].prev_stime = stime;
                             }
                         } else {
-                            // Create new thread record
+                            // Create new stage and thread record
                             kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                            (stage_itr->second)[tid].utime_usage = KT.add_tracker(
+                            (ult_list[stage.first])[tid].utime_usage = KT.add_tracker(
                                 "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|usr",
                                 "percent", track_len, true);
-                            (stage_itr->second)[tid].stime_usage = KT.add_tracker(
+                            (ult_list[stage.first])[tid].stime_usage = KT.add_tracker(
                                 "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|sys",
                                 "percent", track_len, true);
-                            (stage_itr->second)[tid].prev_utime = utime;
-                            (stage_itr->second)[tid].prev_stime = stime;
+                            (ult_list[stage.first])[tid].prev_utime = utime;
+                            (ult_list[stage.first])[tid].prev_stime = stime;
                         }
+                        fclose(thread_fp);
                     } else {
-                        // Create new stage and thread record
-                        kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker(
-                            "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|usr",
-                            "percent", track_len, true);
-                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker(
-                            "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|sys",
-                            "percent", track_len, true);
-                        (ult_list[stage.first])[tid].prev_utime = utime;
-                        (ult_list[stage.first])[tid].prev_stime = stime;
+                        // The thread has been terminated early, add 0 to stats
+                        (ult_list[stage.first])[tid].utime_usage->add_sample(0);
+                        (ult_list[stage.first])[tid].stime_usage->add_sample(0);
+                        WARN_NON_OO("CPU monitor cannot read from {:s}", fname);
                     }
-                } else {
-                    // The thread has been terminated early, add 0 to stats
-                    (ult_list[stage.first])[tid].utime_usage->add_sample(0);
-                    (ult_list[stage.first])[tid].stime_usage->add_sample(0);
-                    WARN_NON_OO("CPU monitor cannot read from {:s}", fname);
                 }
-                fclose(thread_fp);
             }
         }
-        lock.unlock();
-
         // Update cpu time
         prev_cpu_time = cpu_time;
 
@@ -171,7 +176,7 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(ult_lock);
+    std::lock_guard<std::mutex> lock(ult_list_lock);
     for (auto& stage : ult_list) {
         nlohmann::json stage_cpu_ult = {};
         for (auto& thread : stage.second) {
@@ -194,7 +199,7 @@ std::map<std::string, double> CpuMonitor::get_stage_cpu_usage() {
     if (!this_thread.joinable())
         return usage;
 
-    std::lock_guard<std::mutex> lock(ult_lock);
+    std::lock_guard<std::mutex> lock(ult_list_lock);
     for (auto& stage : ult_list) {
         double total = 0;
         for (auto& thread : stage.second)
