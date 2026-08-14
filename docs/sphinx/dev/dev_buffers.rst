@@ -49,7 +49,9 @@ require ``num_frames``, plus the optional allocation tunables
 the newest full frame peekable for the ``/buffer_frame`` endpoint by
 deferring its empty transition until the next frame lands; it requires
 ``num_frames >= 2`` and permanently occupies one frame slot, along with the
-metadata object that frame holds.
+metadata object that frame holds; below four frames it warns, the slot being
+a large share of such a buffer's depth. It has no effect on ``ring`` buffers,
+which are not peekable yet.
 
 Type-specific parameters are required unless marked *optional*:
 

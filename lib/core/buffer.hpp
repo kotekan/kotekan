@@ -549,9 +549,22 @@ public:
      *
      * Shuts kotekan down (@c FATAL_ERROR) for a single-frame buffer: with
      * ``num_frames == 1`` the producer would deadlock waiting for the held
-     * frame whose release requires the producer.
+     * frame whose release requires the producer. Warns, but continues, below
+     * @c peek_hold_shallow_frames, where the held slot is a large share of
+     * the buffer's depth.
      */
     void enable_peek_hold();
+
+    /**
+     * @brief Buffer depth below which @c enable_peek_hold() warns.
+     *
+     * The hold occupies one frame for the lifetime of the pipeline. On a deep
+     * buffer that is a rounding error; at three frames or fewer it is a third
+     * or more of the depth the buffer has to absorb jitter with, which is
+     * worth saying out loud at startup rather than leaving to be found in a
+     * throughput plot.
+     */
+    static constexpr int peek_hold_shallow_frames = 4;
 
     /**
      * @brief Swaps the provided frame of memory with the internal frame

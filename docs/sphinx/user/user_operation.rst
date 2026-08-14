@@ -20,10 +20,16 @@ REST endpoints
   arguments.
 - ``/buffer_frame?name=<buffer>`` (GET) – copy of the newest full frame in ``<buffer>`` as
   JSON: base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``&len=N``
-  sets how many data bytes come back (64 KiB without it; ``len=0`` for metadata only). The
-  copy is made with the buffer locked, so fetching whole large frames in a loop stalls the
-  pipeline. If consumers recycle frames faster than a peek can catch them, set
-  ``peek_hold: true`` on the buffer's config block (see the configuration docs).
+  sets how many data bytes come back (64 KiB without it; ``len=0`` for metadata only).
+  The copy is made with the buffer locked, which blocks every stage on that buffer for as
+  long as it takes, so ``len`` is what keeps this cheap: the 64 KiB default costs a few
+  microseconds, while one whole-frame request on a CHORD voltage buffer copies several
+  hundred MiB and holds the lock for roughly a frame period — long enough on its own to
+  cost the pipeline a frame, before any question of repeating it. Ask for what you need to
+  look at, and keep ``len`` small on the voltage and network-input buffers. If consumers
+  recycle frames faster than a peek can catch them, set ``peek_hold: true`` on the buffer's
+  config block (see the configuration docs). Frame buffers only; ring buffers are not
+  peekable yet.
 - Per-stage endpoints live under the stage ``unique_name`` (e.g., ``/<stage>/control``).
 
 Example:

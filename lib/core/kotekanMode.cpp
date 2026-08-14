@@ -439,11 +439,12 @@ void kotekanMode::buffer_frame_callback(connectionInstance& conn) {
                         HTTP_RESPONSE::NOT_FOUND);
         return;
     }
-    // Only frame-holding buffers have a newest full frame to copy; a ring has no
-    // frames to speak of.
+    // Only frame-holding buffers have a newest full frame to copy. Ring buffers
+    // are not peekable yet: a read would have to name a position and a length
+    // rather than a frame, which this endpoint has no way to express.
     Buffer* buf = dynamic_cast<Buffer*>(entry->second);
     if (buf == nullptr) {
-        conn.send_error(fmt::format(fmt("buffer {:s} is a {:s} buffer, which holds no frames"),
+        conn.send_error(fmt::format(fmt("buffer {:s} is a {:s} buffer, which cannot be peeked yet"),
                                     name_arg->second, entry->second->buffer_type),
                         HTTP_RESPONSE::BAD_REQUEST);
         return;
