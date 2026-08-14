@@ -5,6 +5,7 @@
 #include "errors.h"            // for __enable_syslog
 #include "metadata.hpp"        // for metadataObject, metadataPool
 #include "metadataFactory.hpp" // for metadataFactory
+#include "test_logging.hpp"    // for SigtermGuard
 #include "test_utils.hpp"      // for GlobalFixture_Locale
 
 #include "json.hpp" // for json
@@ -19,6 +20,10 @@
 
 using kotekan::Config;
 using json = nlohmann::json;
+
+// Lets peek_hold_single_frame_rejected catch the FATAL_ERROR, which calls
+// exit_kotekan and raises SIGTERM before throwing FatalError.
+static kotekan_test_logging::SigtermGuard g_sigterm_guard;
 
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
@@ -244,9 +249,9 @@ BOOST_AUTO_TEST_CASE(peek_hold_single_frame_rejected) {
     std::shared_ptr<metadataPool> pool = make_pool(config);
     BOOST_REQUIRE(pool != nullptr);
 
-    // A single-frame ring would deadlock its producer: refused up front, which
-    // the buffer factory turns into a clean shutdown rather than a pipeline that
-    // runs with a buffer nothing can be produced into.
+    // A single-frame ring would deadlock its producer: refused up front with a
+    // FATAL_ERROR, so kotekan comes down rather than running with a buffer
+    // nothing can be produced into. FatalError derives from std::runtime_error.
     Buffer buf(1, 8, pool, "one_buf", "standard", 0, false, false, {}, false);
     BOOST_CHECK_THROW(buf.enable_peek_hold(), std::runtime_error);
 }

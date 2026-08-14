@@ -547,11 +547,11 @@ public:
      * production has stopped; consult the metadata's timestamps rather
      * than presenting it as live.
      *
-     * Shuts kotekan down (@c FATAL_ERROR) for a single-frame buffer: with
-     * ``num_frames == 1`` the producer would deadlock waiting for the held
-     * frame whose release requires the producer. Warns, but continues, below
-     * @c peek_hold_shallow_frames, where the held slot is a large share of
-     * the buffer's depth.
+     * Shuts kotekan down (@c FATAL_ERROR, which throws @c FatalError) for a
+     * single-frame buffer: with ``num_frames == 1`` the producer would
+     * deadlock waiting for the held frame whose release requires the
+     * producer. Warns, but continues, below @c peek_hold_shallow_frames,
+     * where the held slot is a large share of the buffer's depth.
      */
     void enable_peek_hold();
 
