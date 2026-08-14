@@ -6219,7 +6219,10 @@ def main(argv=None, rx=None, publisher=None):
                     fcoh = fleet_coherent(dll_combiners, args.coh_min_instances,
                                           args.coh_min_records, prns=set(seeds) or None,
                                           log=None, floor_margin=args.coh_floor_margin,
-                                          seed=int(_now()))
+                                          seed=int(_now()),
+                                          # lets it fit the record-stream carrier rate off
+                                          # the records it already fetched (#33 coarse feed)
+                                          hop_rate_hz=args.hops_per_sec / 2048.0)
                 except Exception as e:
                     _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
             # PATH B, same estimator, separate population. Reported side by side rather than
@@ -6763,6 +6766,7 @@ def main(argv=None, rx=None, publisher=None):
                 _jrr = rx.joint_receiver(band_id, CODE_LEN)
                 _n_ok = 0
                 _n_gov = 0   # sats in the PHASE-GOVERNED regime this poll
+                _n_rec_fed = 0
                 for _p, _rv in sorted(_rr2_resid.items()):
                     # THE REFERENCE. deep_rate is measured on records the tracker already
                     # derotated by the commanded trim, so what the search reports is what
@@ -6778,6 +6782,29 @@ def main(argv=None, rx=None, publisher=None):
                     # SKIPPED -- the coarse feed is what re-acquires this row after a
                     # cycle slip, and a fine lock that has gone quiet expires on its own.
                     _sig_c = 0.2
+                    # ---- PREFER THE RECORD-STREAM RATE (2026-08-14) -----------------
+                    # deep_rate_full_hz is the DEEP FOLD's argmax, and its measured
+                    # structure function is FLAT with lag -- rms change 1.44 m/s at 3 s
+                    # rising to 2.07 at 24 s and no further. Flat means independent NOISE
+                    # on every sample (a genuinely moving state grows as sqrt(lag)), so
+                    # that feed carries ~1.4 m/s = 5.6 Hz of noise around a state that
+                    # barely moves. The filter was right to reject 98% of it, and
+                    # loosening q_rr would only have admitted the noise.
+                    #
+                    # fcoh's rate_hz fits the phase slope of the fleet-summed per-record
+                    # series instead, with a split-half sigma measured the same way --
+                    # 15-500 mHz on these satellites, 4-100x better. Same records, no
+                    # extra poll. Falls through to the fold's value when the arc is too
+                    # short to fit, so a thin poll degrades rather than starving the row.
+                    _fcr = (fcoh or {}).get(_p) or {}
+                    _rrec, _srec = _fcr.get("rate_hz"), _fcr.get("rate_sigma_hz")
+                    if _rrec is not None and _srec is not None:
+                        _y = _rrec + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                        # never claim better than the fold's grid can resolve, and never
+                        # worse than the old blanket 0.2 -- a split-half of exactly 0 is
+                        # two halves landing in one bin, not infinite precision.
+                        _sig_c = min(max(_srec, 0.02), 0.2)
+                        _n_rec_fed += 1
                     if (args.rrate_coarse_deweight > 1.0
                             and t0 - rr_fine_t.get(_p, -1e9) <= args.rrate_fine_hold_s):
                         _sig_c *= args.rrate_coarse_deweight
@@ -6798,7 +6825,9 @@ def main(argv=None, rx=None, publisher=None):
                         % (args.dr_constellation, "" if rr_full_ok else " CAPPED-FALLBACK",
                            _rows, _jrr.f_carrier(),
                            _jrr.f_carrier_sigma(), _n_ok, len(_rr2_resid),
-                           (", %d PHASE-GOVERNED" % _n_gov) if _n_gov else "",
+                           ((", %d PHASE-GOVERNED" % _n_gov) if _n_gov else "")
+                           + ((", %d/%d from RECORD STREAM" % (_n_rec_fed, len(_rr2_resid)))
+                              if _n_rec_fed else ", fold-fed"),
                            _jrr.n_rrate, _jrr.rrate_rejected), every_s=60.0)
             except Exception as e:
                 _log_rl("jrr-err", "rrate feed skipped: %s" % e, every_s=300.0)

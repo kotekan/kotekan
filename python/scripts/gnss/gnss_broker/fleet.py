@@ -361,7 +361,7 @@ def _coherent_sum(a):
 
 
 def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
-                   null_trials=1, floor_margin=3.0, seed=0, max_age_hops=1 << 20):
+                   null_trials=1, floor_margin=3.0, seed=0, max_age_hops=1 << 20, hop_rate_hz=None):
     """CROSS-NODE COHERENT COMBINE: the per-record sky phase, and the deep folds it unlocks.
 
     WHAT THIS FIXES, measured on sky 2026-08-05. Every instance's deep fold sat at ~14 sigma
@@ -569,6 +569,56 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         urls = sorted(aligned)
         nrec = len(hops)
         tot = [sum(aligned[u][k] for u in urls) for k in range(nrec)]
+        # ---- RECORD-STREAM CARRIER RATE (#33, 2026-08-14) --------------------------------
+        # The rrate state's coarse feed has been deep_rate_full_hz -- the DEEP FOLD's rate
+        # argmax. Measured structure function of that input: rms change 1.44 m/s at 3 s lag
+        # rising to only 2.07 at 24 s and FLAT thereafter. Flat = independent noise on every
+        # sample (a moving state would keep growing as sqrt(lag)), so the fold delivers
+        # ~1.4 m/s = 5.6 Hz of NOISE per sample around a state that barely moves. The filter
+        # was right to reject 98% of it; loosening q_rr would only have let the noise in.
+        #
+        # This fits the phase slope of the FLEET-SUMMED per-record series instead -- the same
+        # quantity phaseslope.py measures at 15-500 mHz split-half on these satellites, i.e.
+        # 4-100x better than the fold. It is not a better search; it is the right estimator:
+        # the fold's rate maximises the FOLD's amplitude over a coarse grid and was never an
+        # unbiased frequency measurement (the #47 category error, one layer down).
+        #
+        # Reuses the records already fetched above -- no new GET, so replay stays ordered.
+        rate_hz = rate_sig = None
+        if hop_rate_hz and nrec >= 16:
+            try:
+                import numpy as _np
+                _t = _np.array([h / float(hop_rate_hz) for h in hops])
+                _t -= _t[0]
+                _z = _np.array(tot, dtype=complex)
+                _span = _t[-1] - _t[0]
+                if _span > 0.0:
+                    # Grid to the record-rate Nyquist, then parabolic refine. Sized so the
+                    # bin is well inside the fold's noise: 1/(2*dt) over ~4000 bins.
+                    _dt = _span / max(len(_t) - 1, 1)
+                    _fmax = 0.5 / _dt
+                    _g = _np.linspace(-_fmax, _fmax, 4001)
+                    _p = _np.abs(_np.exp(-2j * _np.pi * _np.outer(_g, _t)) @ _z)
+                    _k = int(_np.argmax(_p))
+                    _f0 = float(_g[_k])
+                    if 0 < _k < len(_g) - 1:
+                        _a, _b, _c = _p[_k - 1], _p[_k], _p[_k + 1]
+                        _d = _a - 2 * _b + _c
+                        if _d != 0.0:
+                            _f0 += 0.5 * (_a - _c) / _d * (_g[1] - _g[0])
+                    # SPLIT-HALF for an honest sigma: fit each half independently at the same
+                    # grid and take their disagreement. This is the protocol that measured the
+                    # fold's noise, applied to its replacement -- so the two are comparable and
+                    # the filter gets a sigma it can actually gate on.
+                    _h = len(_t) // 2
+                    _hf = []
+                    for _sl in (slice(0, _h), slice(_h, None)):
+                        _pp = _np.abs(_np.exp(-2j * _np.pi * _np.outer(_g, _t[_sl])) @ _z[_sl])
+                        _hf.append(float(_g[int(_np.argmax(_pp))]))
+                    rate_hz = _f0
+                    rate_sig = abs(_hf[0] - _hf[1]) / 2.0
+            except Exception:
+                rate_hz = rate_sig = None
         # ---- per instance: leave THAT instance out of its own reference ----
         per_inst = {}
         for u in urls:
@@ -651,6 +701,9 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
             # Published so the split can be judged rather than assumed: 0 = perfectly balanced
             # sum|w|^2, 1 = everything in one half. A value that WANDERS between polls means
             # membership is still moving and deep_snr will step with it.
+            # record-stream carrier rate + its split-half sigma (Hz). None when the caller
+            # did not supply hop_rate_hz or the arc is too short to fit.
+            "rate_hz": rate_hz, "rate_sigma_hz": rate_sig,
             "split_imbalance": _imb,
             "split_s": sorted(u for u in urls if half[u] == 0),
             # Instances excluded from THIS PRN's combine and why (url, hops it had inside
