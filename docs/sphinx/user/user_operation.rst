@@ -25,11 +25,14 @@ REST endpoints
   long as it takes, so ``len`` is what keeps this cheap: the 64 KiB default costs a few
   microseconds, while one whole-frame request on a CHORD voltage buffer copies several
   hundred MiB and holds the lock for roughly a frame period — long enough on its own to
-  cost the pipeline a frame, before any question of repeating it. Ask for what you need to
-  look at, and keep ``len`` small on the voltage and network-input buffers. If consumers
-  recycle frames faster than a peek can catch them, set ``peek_hold: true`` on the buffer's
-  config block (see the configuration docs). Frame buffers only; ring buffers are not
-  peekable yet.
+  cost the pipeline a frame, before any question of repeating it. The lock is not the only
+  cost: the reply is assembled whole in memory (about five times ``len``, once the base64
+  and the JSON are counted) on the REST server's single thread, so a large request also
+  holds that much memory and blocks every other endpoint — ``/status``, the Prometheus
+  scrape — until it has been sent. Ask for what you need to look at, and keep ``len``
+  small on the voltage and network-input buffers. If consumers recycle frames faster than
+  a peek can catch them, set ``peek_hold: true`` on the buffer's config block (see the
+  configuration docs). Frame buffers only; ring buffers are not peekable yet.
 - Per-stage endpoints live under the stage ``unique_name`` (e.g., ``/<stage>/control``).
 
 Example:
