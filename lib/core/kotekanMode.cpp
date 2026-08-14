@@ -15,7 +15,7 @@
 #include "kotekanTrackers.hpp"   // for KotekanTrackers
 #include "metadata.hpp"          // for metadataObject
 #include "metadataFactory.hpp"   // for metadataFactory
-#include "modp_b64.hpp"          // for modp_b64_encode, modp_b64_encode_len, MODP_B64_ERROR
+#include "modp_b64.hpp"          // for modp_b64_encode, modp_b64_encode_len
 #include "prometheusMetrics.hpp" // for Metrics
 #include "restServer.hpp"        // for restServer, connectionInstance
 #include "version.h"             // for get_cmake_build_options, get_git_branch, get_git_commit...
@@ -23,6 +23,7 @@
 #include "fmt.hpp"  // for compile_string_to_view, format, format_string
 #include "json.hpp" // for json, basic_json
 
+#include <cctype>     // for isalnum
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <limits>     // for numeric_limits
@@ -65,8 +66,7 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_get_callback("/pipeline_json");
-    for (auto const& endpoint : frame_peek_endpoints)
-        restServer::instance().remove_get_callback(endpoint);
+    restServer::instance().remove_get_callback("/buffer_frame");
     restServer::instance().remove_all_aliases();
 
     KotekanTrackers::instance().set_kotekan_mode_ptr(nullptr);
@@ -165,18 +165,12 @@ void kotekanMode::initalize_stages() {
     restServer::instance().register_get_callback(
         "/pipeline_json", std::bind(&kotekanMode::pipeline_json_graph_callback, this, _1));
 
-    // Register frame-peek endpoints for every frame-holding buffer, so the
-    // newest full frame in any buffer can be inspected without config changes.
-    for (auto& buf : buffer_container.get_buffer_map()) {
-        Buffer* frame_buf = dynamic_cast<Buffer*>(buf.second);
-        if (frame_buf == nullptr)
-            continue;
-
-        std::string endpoint = fmt::format(fmt("/buffer/{:s}/frame"), buf.first);
-        restServer::instance().register_get_callback(
-            endpoint, std::bind(&kotekanMode::buffer_frame_callback, this, frame_buf, _1));
-        frame_peek_endpoints.push_back(endpoint);
-    }
+    // One frame-peek endpoint naming its buffer in the query, rather than one
+    // registered per buffer: a pipeline has a hundred buffers or more, and the
+    // REST server reads its callback map without holding the lock that guards
+    // registration, so every added endpoint widens that window.
+    restServer::instance().register_get_callback(
+        "/buffer_frame", std::bind(&kotekanMode::buffer_frame_callback, this, _1));
 }
 
 void kotekanMode::join() {
@@ -245,34 +239,17 @@ static std::string config_section(const std::string& unique_name) {
     return unique_name.substr(first, slash - first);
 }
 
-/// Adds a colour key, so the graph can be read without knowing this code.
-static void add_legend(PipelineGraph& graph) {
-    auto& legend = graph.add_cluster("__legend");
-    legend.label = "legend";
-    legend.set_attr("style", "rounded").set_attr("color", graph_cluster_line);
-    // One rank keeps the key as a compact block instead of a band stretched
-    // across the whole drawing.
-    legend.set_attr("rank", "same");
-
-    struct Entry {
-        const char* id;
-        GraphCategory category;
-        const char* text;
-    };
-    static const Entry entries[] = {
-        {"buffer", GraphCategory::Buffer, "buffer: name / type · metadata / layout / size / fill"},
-        {"compute", GraphCategory::Compute, "stage on the CPU"},
-        {"gpu", GraphCategory::Gpu, "GPU stage and its commands"},
-        {"io", GraphCategory::Io, "stage moving data on or off this machine"},
-        {"memory", GraphCategory::Memory, "device memory (not a kotekan buffer)"},
-        {"endpoint", GraphCategory::Endpoint, "the far end: a socket, a port, a file"},
-    };
-    for (const auto& entry : entries) {
-        auto& node = graph.add_node(std::string("__legend/") + entry.id);
-        node.add_line(entry.text);
-        node.cluster = legend.id;
-        node.set_category(entry.category);
+/// Percent-encodes @p text for use as a URL query value. Buffer names come from
+/// the config, so they can hold characters that would end the value early.
+static std::string url_encode(const std::string& text) {
+    std::string out;
+    for (unsigned char c : text) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+            out += (char)c;
+        else
+            out += fmt::format(fmt("%{:02X}"), c);
     }
+    return out;
 }
 
 PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
@@ -280,26 +257,7 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
     graph.options = options;
     graph.header_comments.push_back(
         "This is a DOT formatted pipeline graph, use the graphviz package to plot.");
-    // Pipelines are long and thin, so they read left to right; the extra
-    // crossing-minimisation passes are cheap next to the cost of untangling the
-    // result by eye, and newrank lines the clusters up across the whole graph.
-    graph.graph_attrs["rankdir"] = options.rankdir;
-    graph.graph_attrs["nodesep"] = "0.3";
-    graph.graph_attrs["ranksep"] = "0.9";
-    graph.graph_attrs["mclimit"] = "6";
-    graph.graph_attrs["newrank"] = "true";
-    // Name every colour, including the ones graphviz would default to black.
-    // An unset fontcolor emits no colour at all on the text, which leaves a
-    // viewer with nothing to select on when it restyles the graph -- and black
-    // text is what it is left with on a dark page.
-    graph.graph_attrs["fontcolor"] = graph_ink; // cluster labels
-    graph.node_attrs["fontname"] = "Helvetica";
-    graph.node_attrs["fontsize"] = "11";
-    graph.node_attrs["fontcolor"] = graph_ink;
-    graph.edge_attrs["fontname"] = "Helvetica";
-    graph.edge_attrs["fontsize"] = "8";
-    graph.edge_attrs["fontcolor"] = graph_ink;
-    graph.edge_attrs["color"] = graph_edge_line;
+    graph.apply_default_style();
 
     // Buffer nodes.
     for (auto& buf : buffer_container.get_buffer_map()) {
@@ -311,7 +269,8 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
         // A rendered graph is then a way in: click a buffer to see the frame it
         // is holding. Only frame buffers have somewhere to go.
         if (options.urls && dynamic_cast<Buffer*>(buf.second) != nullptr)
-            node.set_attr("URL", fmt::format(fmt("/buffer/{:s}/frame"), buf.first));
+            node.set_attr("URL",
+                          fmt::format(fmt("/buffer_frame?name={:s}"), url_encode(buf.first)));
         node.set_attr("tooltip",
                       fmt::format(fmt("{:s} ({:s} buffer)"), buf.first, buf.second->buffer_type));
     }
@@ -446,56 +405,53 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
     }
 
     if (options.legend)
-        add_legend(graph);
+        graph.add_legend();
     return graph;
-}
-
-/// Reads the graph options out of a request's query arguments.
-static GraphOptions graph_options_from_query(connectionInstance& conn) {
-    GraphOptions options;
-    const std::map<std::string, std::string> query = conn.get_query();
-
-    auto flag = [&query](const std::string& name, bool& value) {
-        auto arg = query.find(name);
-        if (arg == query.end())
-            return;
-        // Accept the forms people actually type, and treat a bare `?legend` as
-        // asking for it.
-        const std::string& text = arg->second;
-        value = text.empty() || text == "1" || text == "true" || text == "yes" || text == "on";
-    };
-    flag("cluster", options.cluster);
-    flag("legend", options.legend);
-    flag("pools", options.pools);
-    flag("kernels", options.kernels);
-    flag("runtime", options.runtime);
-    flag("urls", options.urls);
-
-    auto rankdir = query.find("rankdir");
-    if (rankdir != query.end()
-        && (rankdir->second == "LR" || rankdir->second == "TB" || rankdir->second == "RL"
-            || rankdir->second == "BT"))
-        options.rankdir = rankdir->second;
-
-    return options;
 }
 
 void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     // Layout lines carry `×` and `·`, so the charset is not optional: without it
     // HTTP says this is ISO-8859-1 and clients decode the labels into mojibake.
-    conn.send_text_reply(get_pipeline_graph(graph_options_from_query(conn)).to_dot(),
+    conn.send_text_reply(get_pipeline_graph(GraphOptions::from_query(conn.get_query())).to_dot(),
                          "text/vnd.graphviz; charset=utf-8");
 }
 
 void kotekanMode::pipeline_json_graph_callback(connectionInstance& conn) {
-    conn.send_json_reply(get_pipeline_graph(graph_options_from_query(conn)).to_json());
+    conn.send_json_reply(get_pipeline_graph(GraphOptions::from_query(conn.get_query())).to_json());
 }
 
-void kotekanMode::buffer_frame_callback(Buffer* buf, connectionInstance& conn) {
-    // Optional `len` query parameter: absent means copy the whole frame,
-    // `len=0` requests metadata only.
-    size_t max_len = std::numeric_limits<size_t>::max();
-    auto query = conn.get_query();
+void kotekanMode::buffer_frame_callback(connectionInstance& conn) {
+    const std::map<std::string, std::string> query = conn.get_query();
+
+    auto name_arg = query.find("name");
+    if (name_arg == query.end()) {
+        conn.send_error("'name' query parameter naming a buffer is required",
+                        HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const std::map<std::string, GenericBuffer*>& buffer_map = buffer_container.get_buffer_map();
+    auto entry = buffer_map.find(name_arg->second);
+    if (entry == buffer_map.end()) {
+        conn.send_error(fmt::format(fmt("no buffer named {:s}"), name_arg->second),
+                        HTTP_RESPONSE::NOT_FOUND);
+        return;
+    }
+    // Only frame-holding buffers have a newest full frame to copy; a ring has no
+    // frames to speak of.
+    Buffer* buf = dynamic_cast<Buffer*>(entry->second);
+    if (buf == nullptr) {
+        conn.send_error(fmt::format(fmt("buffer {:s} is a {:s} buffer, which holds no frames"),
+                                    name_arg->second, entry->second->buffer_type),
+                        HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+
+    // Optional `len` query parameter; `len=0` requests metadata only. The copy
+    // runs under the buffer lock, so the default is bounded: a frame here is
+    // routinely hundreds of megabytes, and copying one whole would hold up every
+    // producer and consumer on the buffer for the length of the memcpy. A caller
+    // that wants more says so.
+    size_t max_len = default_peek_len;
     auto len_arg = query.find("len");
     if (len_arg != query.end()) {
         try {
@@ -530,15 +486,11 @@ void kotekanMode::buffer_frame_callback(Buffer* buf, connectionInstance& conn) {
     auto frame_desc = buf->get_frame_desc();
     reply["frame_desc"] = frame_desc ? frame_desc->to_json() : nlohmann::json();
     if (!data.empty()) {
+        // modp_b64_encode_len() leaves room for a terminating null the string
+        // does not want; trim to what was written.
         std::string encoded(modp_b64_encode_len(data.size()), '\0');
-        const size_t enc_len =
-            modp_b64_encode(&encoded[0], reinterpret_cast<const char*>(data.data()), data.size());
-        if (enc_len == MODP_B64_ERROR) {
-            conn.send_error("base64 encoding of frame data failed", HTTP_RESPONSE::INTERNAL_ERROR);
-            return;
-        }
-        // Trim the encode-buffer allocation down to the actual encoded length.
-        encoded.resize((data.size() + 2) / 3 * 4);
+        encoded.resize(
+            modp_b64_encode(&encoded[0], reinterpret_cast<const char*>(data.data()), data.size()));
         reply["data"] = std::move(encoded);
         reply["encoding"] = "base64";
     }

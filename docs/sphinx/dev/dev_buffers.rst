@@ -46,7 +46,7 @@ Buffer types
 require ``num_frames``, plus the optional allocation tunables
 ``use_hugepages`` (off), ``mlock_frames`` (on), ``zero_new_frames`` (on),
 ``zero_value`` (0), and ``cpu_affinity`` (unset). ``peek_hold`` (off) keeps
-the newest full frame peekable for the ``/buffer/<name>/frame`` endpoint by
+the newest full frame peekable for the ``/buffer_frame`` endpoint by
 deferring its empty transition until the next frame lands; it requires
 ``num_frames >= 2`` and permanently occupies one frame slot and one pooled
 metadata object.

@@ -120,7 +120,7 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         }
 
         // peek_hold: defer recycling of the newest full frame until the
-        // next one lands, so the /buffer/<name>/frame endpoint works on
+        // next one lands, so the /buffer_frame endpoint works on
         // buffers whose consumers drain frames faster than a peek. No
         // copies; costs one occupied frame slot and one pooled metadata
         // object.

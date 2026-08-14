@@ -14,6 +14,7 @@
 
 #include <deque>    // for deque
 #include <map>      // for map
+#include <set>      // for set
 #include <stddef.h> // for size_t
 #include <string>   // for string
 #include <vector>   // for vector
@@ -71,9 +72,9 @@ GraphStyle graph_style(GraphCategory category);
  * @name The colours that are not a node category
  *
  * These are named rather than inlined because a viewer embedding the graph has
- * to be able to recognise every colour it can be handed -- choco recolours the
- * whole palette for its dark theme by matching these exact values. Changing one
- * is a change to that contract, not a local edit.
+ * to be able to recognise every colour it can be handed: recolouring the whole
+ * palette for a dark theme means matching these exact values. Changing one is a
+ * change to that contract, not a local edit.
  * @{
  */
 /// Label text, everywhere. Set so that text carries an explicit colour rather
@@ -232,6 +233,16 @@ struct GraphOptions {
 
     /// Link buffer nodes to the endpoints that can show their contents.
     bool urls = true;
+
+    /**
+     * @brief Reads options out of a request's query arguments.
+     *
+     * A boolean argument accepts the forms people actually type -- `1`, `true`,
+     * `yes`, `on`, and a bare `?legend` counts as asking for it; any other value
+     * turns the option off. `rankdir` takes only the four directions. An
+     * argument that is absent leaves its default in place.
+     */
+    static GraphOptions from_query(const std::map<std::string, std::string>& query);
 };
 
 /**
@@ -284,9 +295,31 @@ public:
      *
      * @param node_ids  Nodes that must all be inside the returned cluster.
      * @return The cluster id, or an empty string when the nodes have no common
-     *         cluster (or any of them is unknown or at the top level).
+     *         cluster (or any of them is unknown, at the top level, or inside
+     *         a cluster whose parent chain loops).
      */
     std::string common_cluster(const std::vector<std::string>& node_ids) const;
+
+    /**
+     * @brief Applies the layout and colour defaults shared by every kotekan
+     *        pipeline graph.
+     *
+     * Fonts, node spacing, the crossing-minimisation settings, and an explicit
+     * colour on everything graphviz would otherwise leave black -- an unset
+     * colour emits nothing, which leaves a viewer restyling the graph with
+     * nothing to select on. Reads @c options.rankdir, so assign @c options
+     * first.
+     */
+    void apply_default_style();
+
+    /**
+     * @brief Adds the colour key: one cluster holding a node per category.
+     *
+     * What lets the rendered graph be read without knowing the palette in this
+     * file. Called by the graph's builder when @c GraphOptions::legend asks
+     * for it.
+     */
+    void add_legend();
 
     /**
      * @brief Renders the graph in graphviz `dot` format.
@@ -303,6 +336,12 @@ public:
      *
      * For anything that wants to lay the pipeline out itself, or diff two
      * graphs, rather than parse DOT to get at the structure.
+     *
+     * Follows the same repair rules as @c to_dot(): edges naming a node that
+     * was never added are dropped, and a cluster whose parent chain loops is
+     * emitted with an empty parent (the offenders are listed under
+     * `cyclic_clusters`), so a consumer recursing on parents cannot be hung by
+     * a wiring bug here.
      */
     nlohmann::json to_json() const;
 
@@ -349,11 +388,28 @@ private:
     /// Renders one node statement, indented by @c indent.
     std::string node_dot(const GraphNode& node, const std::string& indent) const;
 
+    /**
+     * @brief Ids of the clusters whose chain of parents reaches a loop.
+     *
+     * @c parent is set by whatever builds the graph, so a stage can wire two
+     * clusters as each other's parent. Rendering follows those links, so the
+     * loops have to be found before, not during.
+     *
+     * Deliberately includes clusters that merely hang below a loop, not only
+     * the loop's own members: every cluster *not* returned then provably has
+     * an acyclic chain to the top level, which is what lets @c cluster_dot()
+     * and @c cluster_is_empty() recurse without guards of their own. Narrowing
+     * this to just the cycle members would reintroduce the infinite recursion.
+     */
+    std::set<std::string> cyclic_clusters() const;
+
     /// Renders the clusters whose parent is @c parent, and the nodes they hold.
-    std::string cluster_dot(const std::string& parent, const std::string& indent) const;
+    /// Clusters named in @p cyclic are drawn at the top level instead.
+    std::string cluster_dot(const std::string& parent, const std::string& indent,
+                            const std::set<std::string>& cyclic) const;
 
     /// @return True if @p id holds no node, directly or in any cluster under it.
-    bool cluster_is_empty(const std::string& id) const;
+    bool cluster_is_empty(const std::string& id, const std::set<std::string>& cyclic) const;
 };
 
 } // namespace kotekan

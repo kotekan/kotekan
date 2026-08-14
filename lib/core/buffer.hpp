@@ -501,7 +501,7 @@ public:
      *        that is still full, without taking part in the producer/consumer
      *        protocol.
      *
-     * Intended for inspection/debugging (e.g. the REST `/buffer/<name>/frame`
+     * Intended for inspection/debugging (e.g. the REST `/buffer_frame`
      * endpoint): the caller does not need to be a registered consumer, and
      * calling this never consumes or delays frames. The buffer lock is held
      * for the duration of the copy, which prevents the frame from being
@@ -513,7 +513,8 @@ public:
      * without holding the buffer lock.
      *
      * @param[out] data_out Resized to the copy length and filled with the
-     *                      leading bytes of the frame.
+     *                      leading bytes of the frame; cleared when -1 is
+     *                      returned.
      * @param[in] max_len Maximum number of bytes of frame data to copy; the
      *                    copy length is min(max_len, frame_size).
      * @param[out] metadata_out Set to the frame's metadata object, or nullptr
@@ -546,9 +547,9 @@ public:
      * production has stopped; consult the metadata's timestamps rather
      * than presenting it as live.
      *
-     * @throws std::invalid_argument for a single-frame buffer: with
-     *         ``num_frames == 1`` the producer would deadlock waiting for
-     *         the held frame whose release requires the producer.
+     * Shuts kotekan down (@c FATAL_ERROR) for a single-frame buffer: with
+     * ``num_frames == 1`` the producer would deadlock waiting for the held
+     * frame whose release requires the producer.
      */
     void enable_peek_hold();
 
