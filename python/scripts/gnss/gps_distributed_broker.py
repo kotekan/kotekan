@@ -1084,8 +1084,17 @@ def main(argv=None, rx=None, publisher=None):
                          "res_cycles rate onto the deep_rate_full_hz convention. 0 = "
                          "uncalibrated: the JRRP shadow comparison still logs, the fine "
                          "feed stays off regardless of --rrate-phase-feed.")
-    ap.add_argument("--rrate-phase-sigma", type=float, default=0.02,
-                    help="measurement sigma (Hz) for the fine phase-step feed.")
+    ap.add_argument("--rrate-phase-sigma", type=float, default=0.05,
+                    help="base measurement sigma (Hz) for the fine phase-step feed at the "
+                         "1-poll span. NOT 0.02: res_cycles TELESCOPES (consecutive dres "
+                         "share a record), so the span noise is sqrt(2)*sigma_phi/2pi "
+                         "~ 0.07 cycles regardless of span length -- ~35-50 mHz over a "
+                         "2 s poll. (Long baselines are not the fix: the plant's rate "
+                         "itself drifts ~0.02 Hz/s, so a 60 s average lags the current "
+                         "rate by ~0.6 Hz. The mHz class needs a rate-of-rate state.) "
+                         "The feed inflates this by the command's motion over the span: "
+                         "sigma_eff = sqrt(sigma^2 + (0.5*dcmd)^2), the worst-case "
+                         "span-mean reference error for an unknown application time.")
     ap.add_argument("--rrate-coarse-deweight", type=float, default=8.0,
                     help="THE FLL->PLL HANDOFF. While a satellite holds a fresh fine lock "
                          "(see --rrate-fine-hold-s), its COARSE measurements enter at "
@@ -6713,25 +6722,29 @@ def main(argv=None, rx=None, publisher=None):
                             _co = _rr2_resid.get(_p) if _rr2_resid else None
                             if _co is not None:
                                 _jpp.append((_p, _fy, _co))
-                            # COMMAND DRIFT over the span: a strict cmd_now == cmd_then
-                            # gate never opens (the coarse feed nudges the command every
-                            # poll), which starved the fine feed to ~1 event/min. The
-                            # exact reference for a linearly-drifting command is its
-                            # SPAN MEAN; allow drift up to 0.1 Hz (the residual reference
-                            # error is then < 0.05 Hz worst-case, and typically far less)
-                            # and reference to the mean rather than gating on stillness.
+                            # COMMAND MOTION over the span enters the REFERENCE, not a
+                            # stillness gate (a strict gate starved the feed to ~1/min --
+                            # the coarse loop nudges the command every poll). Span-mean
+                            # is the best estimate of the applied command for an unknown
+                            # application time within the span; its worst-case error is
+                            # dcmd/2, which goes into sigma rather than into a silent
+                            # bias. Gate only at ONE slew step (0.6): beyond that the
+                            # command jumped for a non-loop reason (re-seed, probe) and
+                            # the span is not a measurement.
                             _dcmd = _cmd_now - _pv[1]
                             if (args.rrate_phase_feed and args.rrate_phase_sign != 0.0
-                                    and abs(_dcmd) <= 0.1
+                                    and abs(_dcmd) <= 0.6
                                     and ((_rec.get("coherence_s") or 0.0) > 0.0
                                          or (_rec.get("coh_frac") or 0.0) >= 0.3)):
                                 _yf = args.rrate_phase_sign * _fy
                                 if abs(_yf) < 0.3:   # fine regime: coarse loop converged
                                     _k = (args.dr_constellation, int(_p))
                                     _cmd_mid = 0.5 * (_cmd_now + _pv[1])
+                                    _sig_f = (args.rrate_phase_sigma ** 2
+                                              + (0.5 * _dcmd) ** 2) ** 0.5
                                     if _jrf.update_rrate(
                                             _k, _yf + _cmd_mid, t_now_abs, args.carrier_hz,
-                                            sigma_hz=args.rrate_phase_sigma) is not None:
+                                            sigma_hz=_sig_f) is not None:
                                         _n_fine += 1
                                         # ACCEPTED fine measurements arm the handoff --
                                         # not attempts, so a sat whose fine values the
