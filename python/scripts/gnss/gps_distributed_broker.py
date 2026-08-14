@@ -6737,7 +6737,15 @@ def main(argv=None, rx=None, publisher=None):
                                     and ((_rec.get("coherence_s") or 0.0) > 0.0
                                          or (_rec.get("coh_frac") or 0.0) >= 0.3)):
                                 _yf = args.rrate_phase_sign * _fy
-                                if abs(_yf) < 0.3:   # fine regime: coarse loop converged
+                                # NO CONVERGENCE REGIME (00:2x, measured): res_cycles is
+                                # UNWRAPPED -- summed per-record increments, no mod-2pi
+                                # anywhere -- so the fine value is valid at ANY residual
+                                # below the per-record fold bound (0.25 cyc / 10.5 ms
+                                # ~ +-23 Hz). The old 0.3 gate was FLL->PLL folklore: it
+                                # kept fine to ~1 sat/poll while the two sats inside it
+                                # held their commands to +-0.02 Hz and everyone else
+                                # wandered at the coarse floor. Gate only at fold safety.
+                                if abs(_yf) < 20.0:
                                     _k = (args.dr_constellation, int(_p))
                                     _cmd_mid = 0.5 * (_cmd_now + _pv[1])
                                     _sig_f = (args.rrate_phase_sigma ** 2
