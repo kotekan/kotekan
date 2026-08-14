@@ -158,6 +158,7 @@ class JointReceiverState:
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
                  sigma_fcar0=50.0, q_fcar=0.01,
                  sigma_rr0=2.0, q_rr=0.02, rr_gauge_sigma=0.5, f_ref_hz=None,
+                 sigma_rrd0=0.0, q_rrd=0.0, rrd_max=8e-3,
                  clk0=0.0, escape_min_sats=3, p_floor=0.04):
         import numpy as np
         self._np = np
@@ -341,6 +342,27 @@ class JointReceiverState:
         # to 2e-11. Recorded because I changed three things at once and credited the wrong one;
         # test_a_stiff_gauge_is_NOT_what_froze_it pins the correction so it stays corrected.
         self.rr_gauge_sigma = float(rr_gauge_sigma)
+        # rrate_dot (#33, 2026-08-14): d(rrate)/dt, m/s per s -- the carrier twin of
+        # clk_rate, and for the same reason: the per-sat residual DRIFTS (measured
+        # ~0.5 Hz/min = 2e-3 m/s/s on the churn population, with fine and coarse
+        # agreeing), and a random-walk row tracks a drifting truth only by lagging it.
+        # Constant-velocity per pair; NO gauge on the dots -- a fleet-common drift
+        # accumulates into f_carrier through the existing rrate gauge, which is where a
+        # receiver-common term belongs.
+        # ⚠️ INERT AT DEFAULTS (0, 0) -- deliberately, 2026-08-14 00:5x. The bench
+        # falsified BOTH first parameterizations before deploy: fast priors integrate the
+        # closed loop's own lag misreference (velocity runaway, 5-24 Hz in
+        # TestClosedLoopLag), and priors slow enough to be loop-stable learn NOTHING on
+        # session timescales (CV and RW arms bit-identical over 600 s). The viable
+        # window, if it exists, must be set from the MEASURED drift autocorrelation --
+        # the overnight JRRP fine series provides exactly that by morning. Enable by
+        # passing measured values; zero priors make the dot rows exact RW-equivalents.
+        self.sigma_rrd0 = float(sigma_rrd0)   # prior, m/s/s: ~2x the measured drift scale
+        self.q_rrd = float(q_rrd)             # dot random walk, m/s/s per sqrt(s)
+        # Plausibility clamp (the joint_max_rate_ppm lesson: never carry a physically
+        # impossible number). 8e-3 m/s/s = 4x the measured churn-population drift.
+        self.rrd_max = float(rrd_max)
+        self._rrd_idx = {}             # key -> the dot row (always rrate row + 1)
         self._rr_idx = {}              # key -> row in x
         self._rr_t_seen = {}           # key -> last carrier measurement time
         self._rr_reject_run = {}       # key -> consecutive rejections (escape)
@@ -457,6 +479,8 @@ class JointReceiverState:
         # rrate rides the same remap. A per-satellite row that is not remapped points at
         # ANOTHER satellite's state after a drop -- silent, and wrong in the worst way.
         self._rr_idx = {k: remap[i] for k, i in self._rr_idx.items() if remap.get(i) is not None}
+        self._rrd_idx = {k: remap[i] for k, i in self._rrd_idx.items()
+                         if remap.get(i) is not None and k in self._rr_idx}
         self._rr_t_seen = {k: v for k, v in self._rr_t_seen.items() if k in self._rr_idx}
         for k in keys:
             self._dual.pop(k, None)
@@ -484,7 +508,17 @@ class JointReceiverState:
         n = self.x.size
         F = np.eye(n)
         F[0, 1] = dt
+        # each satellite's carrier pair is constant-velocity, like the clock's
+        for _k, _ir in self._rr_idx.items():
+            _id = self._rrd_idx.get(_k)
+            if _id is not None:
+                F[_ir, _id] = dt
         self.x = F @ self.x
+        for _i in self._rrd_idx.values():   # the dot clamp, every cycle
+            if self.x[_i] > self.rrd_max:
+                self.x[_i] = self.rrd_max
+            elif self.x[_i] < -self.rrd_max:
+                self.x[_i] = -self.rrd_max
         self.P = F @ self.P @ F.T
         # Q: clock gets the integrated-rate terms (nearly-constant-velocity), biases a
         # plain random walk. Off-diagonal clk/rate coupling matters -- without it the
@@ -505,6 +539,7 @@ class JointReceiverState:
             # rrate rows are m/s, not chips -- q_b would inflate them by ~1000x their own
             # process noise, the same trap the f_carrier line above avoids.
             other |= set(self._rr_idx.values())
+            other |= set(self._rrd_idx.values())
             srows = [i for i in range(2, n) if i not in other]
             if srows:
                 idx = np.array(srows)
@@ -514,10 +549,17 @@ class JointReceiverState:
                 self.P[i, i] += self.q_tau ** 2 * dt
             if self._fcar_idx is not None:
                 self.P[self._fcar_idx, self._fcar_idx] += self.q_fcar ** 2 * dt
-            for i in self._rr_idx.values():
-                # orbit error: moves with geometry, so faster than the GPSDO-disciplined LO
-                # but far slower than a chip bias
-                self.P[i, i] += self.q_rr ** 2 * dt
+            qd = self.q_rrd ** 2
+            for _k, i in self._rr_idx.items():
+                # orbit error: its own white walk PLUS the integrated-dot terms (the
+                # clock's nearly-constant-velocity Q, per pair). The off-diagonal coupling
+                # is what lets a fresh rrate measurement correct the DOT.
+                self.P[i, i] += self.q_rr ** 2 * dt + qd * dt ** 3 / 3.0
+                _id = self._rrd_idx.get(_k)
+                if _id is not None:
+                    self.P[i, _id] += qd * dt ** 2 / 2.0
+                    self.P[_id, i] += qd * dt ** 2 / 2.0
+                    self.P[_id, _id] += qd * dt
         # P floor -- see __init__. Applied to clk and the satellite-bias rows (NOT tau,
         # NOT f_carrier: different units and timescales own their own priors). The floor
         # goes on the DIAGONAL only; correlations keep whatever structure they earned.
@@ -530,6 +572,11 @@ class JointReceiverState:
                 if self._fcar_idx is not None:
                     other.add(self._fcar_idx)
                 other |= set(self._rr_idx.values())
+                # dot rows are m/s/s: the chips-scale floor would hand an 'inert' dot a
+                # huge variance every predict -- found live 2026-08-14 as dots that
+                # learned with ZERO priors (and it invalidated the first CV parameter
+                # bracketing: both arms' dot dynamics were floor-driven).
+                other |= set(self._rrd_idx.values())
                 for i in range(2, n):
                     if i not in other and self.P[i, i] < f2:
                         self.P[i, i] = f2
@@ -901,15 +948,19 @@ class JointReceiverState:
     C_LIGHT = 299792458.0
 
     def _add_rrate(self, key, rr0, t_now):
-        """Give a satellite its own range-rate-error row, lazily."""
+        """Give a satellite its (rrate, rrate_dot) PAIR, lazily. The dot is born at 0
+        with a wide prior: one measurement cannot see a rate, and the CV predict plus the
+        cross-covariance the updates earn is what teaches it."""
         np = self._np
         i = self.x.size
-        self.x = np.append(self.x, float(rr0))
-        P = np.zeros((i + 1, i + 1))
+        self.x = np.append(self.x, [float(rr0), 0.0])
+        P = np.zeros((i + 2, i + 2))
         P[:i, :i] = self.P
         P[i, i] = self.sigma_rr0 ** 2
+        P[i + 1, i + 1] = self.sigma_rrd0 ** 2
         self.P = P
         self._rr_idx[key] = i
+        self._rrd_idx[key] = i + 1
         self._rr_t_seen[key] = t_now
         return i
 
@@ -988,6 +1039,10 @@ class JointReceiverState:
                 # its measurements turn consistent -- through a wide-open gate.
                 i_ = self._rr_idx[key]
                 self.P[i_, i_] = self.sigma_rr0 ** 2
+                _id = self._rrd_idx.get(key)
+                if _id is not None:
+                    # the dot that tracked the row into rejection is as suspect as the row
+                    self.P[_id, _id] = self.sigma_rrd0 ** 2
                 self._rr_reject_run[key] = 0
                 self._note("rrate ESCAPE %s: %d consistent rejections -- re-opening the "
                            "row WITHOUT adopting (x held)" % (self._key_str(key),
@@ -1035,6 +1090,16 @@ class JointReceiverState:
         """1-sigma, m/s. inf when unmeasured -- an unmeasured state must not read as a
         confident zero, which is how a dead feed passes for a healthy one."""
         i = self._rr_idx.get(key)
+        return float("inf") if i is None else float(self.P[i, i]) ** 0.5
+
+    def rrate_dot(self, key):
+        """d(rrate)/dt, m/s per s. 0.0 if never measured. THIS IS #48's OBSERVABLE: the
+        per-sat drift the churn investigation needs, estimated live."""
+        i = self._rrd_idx.get(key)
+        return 0.0 if i is None else float(self.x[i])
+
+    def rrate_dot_sigma(self, key):
+        i = self._rrd_idx.get(key)
         return float("inf") if i is None else float(self.P[i, i]) ** 0.5
 
     def carrier_correction_hz(self, key, f_band_hz):
