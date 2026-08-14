@@ -90,22 +90,25 @@ def _score(per_inst, tau):
 
 
 def fit_tau_per_instance(per_inst, step_ns=1.0, rng=None, null_trials=32):
-    """{inst: (tau_s, gain_dB, null_dB, excess_dB)} -- ONE DELAY PER INSTANCE.
+    """{inst: (tau, gain, null, excess)} -- ⚠️ RETRACTED AS A MODEL. DIAGNOSTIC ONLY.
 
-    ⚠️ THIS REPLACED A GLOBAL FIT, AND THE SKY IS WHY. fit_tau() below searches a single tau for
-    the whole fleet, which is what "one instrumental delay" predicts. Run live on gps_l5 it
-    DECLINED on all 13 PRNs -- excess -1.5 to +0.7 dB, never clearing the null -- while
-    comb_tau.py, fitting each instance separately, had found +6.87 and +6.41 dB on the same
-    satellite at cx51.1 and cx44.0 with a consistent ~60 ns.
+    ⚠️⚠️ A PER-NODE DELAY IS PHYSICALLY IMPOSSIBLE HERE AND I SHOULD NOT HAVE PROPOSED ONE.
+    Every channel comes from ONE PFB operating on the same raw samples; the split to nodes is
+    `freq_id mod 8`, i.e. a routing decision taken AFTER the signal path. A node is where a
+    channel happened to land. No physical parameter can localise to one (KV, 2026-08-14 --
+    the same mistake, made before, which last time turned out to be a bug).
 
-    Both results are right, and together they say the delay is NOT common: it is PER NODE, which
-    is exactly what different cable runs predict and what the earlier measurement already hinted
-    (cx42.1 read -5 ns on PRN 3 where cx51.1 read +70). A single global tau cannot fit a set of
-    per-node delays, so S(tau) goes flat and the search correctly finds nothing.
+    WHAT ACTUALLY HAPPENED: the physically correct global fit (fit_tau over the whole fleet)
+    DECLINED on 13/13 PRNs, which was the right answer -- there is no measurable delay. Rather
+    than accept that, I rescued a marginal per-instance result (5 of 70 pairs clearing a 1 dB
+    bar AT 1.00-1.17 dB, i.e. consistent with chance) by inventing a per-node mechanism, and
+    read "two instances agreed within 13 ns" as corroboration when a 13 ns coincidence in a
+    320 ns search window is a ~4% event.
 
-    A per-node delay is also a much stronger constraint than it looks: it is ONE number per node
-    shared by every satellite, so it can eventually be solved jointly across the whole PRN list
-    instead of per (node, satellite). That is the next step, not this one.
+    Kept ONLY as a diagnostic: scatter in these per-instance values is a measure of the fit's
+    own noise, and if it ever becomes SMALL and CONSISTENT that is evidence of a real common
+    delay that the global fit should then find with more power, not less. It must never be used
+    to align anything.
     """
     out = {}
     rng = rng or random.Random(20260814)
@@ -113,6 +116,58 @@ def fit_tau_per_instance(per_inst, step_ns=1.0, rng=None, null_trials=32):
         one = {inst: chans}
         out[inst] = fit_tau(one, step_ns=step_ns, rng=rng, null_trials=null_trials)
     return out
+
+
+def fit_tau_joint(per_prn, step_ns=0.5, rng=None, null_trials=32):
+    """ONE tau for the whole array, fitted across every instance AND every satellite.
+
+    THE PHYSICALLY CORRECT MODEL, and the strongest form of it. tau is a property of the signal
+    path ahead of the PFB, so it is common to every channel and every satellite; fitting it
+    jointly multiplies the lever arm by the number of satellites and is the only version of this
+    measurement with real power.
+
+    per_prn: {prn: {inst: {fid: (mean, tot, records)}}}. The score sums |.| per (satellite,
+    instance) BEFORE summing, so every arbitrary per-instance constant AND every per-satellite
+    sky phase drops out -- leaving only the ramp across frequency.
+    """
+    def score(tau, store):
+        s = 0.0
+        for _prn, per_inst in store.items():
+            s += _score(per_inst, tau)
+        return s
+
+    if not per_prn:
+        return 0.0, 0.0, 0.0, 0.0
+    taus = [(-TAU_MAX_S + i * step_ns * 1e-9)
+            for i in range(int(2 * TAU_MAX_S / (step_ns * 1e-9)) + 1)]
+    blind = score(0.0, per_prn)
+    if blind <= 0.0:
+        return 0.0, 0.0, 0.0, 0.0
+    best_t, best_s = 0.0, blind
+    for t in taus:
+        v = score(t, per_prn)
+        if v > best_s:
+            best_t, best_s = t, v
+    gain = 20.0 * math.log10(best_s / blind)
+
+    rng = rng or random.Random(20260814)
+    nulls = []
+    for _ in range(null_trials):
+        shuf = {}
+        for prn, per_inst in per_prn.items():
+            s2 = {}
+            for inst, chans in per_inst.items():
+                fids = list(chans)
+                vals = [chans[f] for f in fids]
+                rng.shuffle(vals)
+                s2[inst] = {f: v for f, v in zip(fids, vals)}
+            shuf[prn] = s2
+        nb = score(0.0, shuf)
+        if nb <= 0:
+            continue
+        nulls.append(20.0 * math.log10(max(score(t, shuf) for t in taus) / nb))
+    null = statistics.median(nulls) if nulls else 0.0
+    return best_t, gain, null, gain - null
 
 
 def fit_tau(per_inst, step_ns=1.0, rng=None, null_trials=32):
