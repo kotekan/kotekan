@@ -183,7 +183,23 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
         # of zeros) the bar would collapse with it, so keep a small absolute margin too.
         return m, sg, max(m + k * sg, m + lo_margin)
 
-    q_med, q_sigma, q_floor = _floor([v["q"] for v in out.values()], k_sigma, 0.05)
+    # Q FLOOR FROM THE PROBES TOO (2026-08-14). Same peer-competition trap as the prompt
+    # bar below: computed over out.values() this reads ~1.0 only because most satellites
+    # happen to be OFF-peak right now. On a good day with eight healthy rows the median
+    # would be ~2.5 and the bar would lock out everything that was working. Probes are
+    # E=P=L by construction, so their q is the noise value by definition -- measured 0.88,
+    # 0.97, 1.06 against real satellites at 2.70 and 3.28.
+    _probe_q = [v["q"] for k, v in out.items() if probe_prns and k in probe_prns]
+    if len(_probe_q) >= 3:
+        q_med, q_sigma, q_floor = _floor(_probe_q, k_sigma, 0.05)
+        if q_med is None:                      # _floor needs 8; do it directly for a few
+            _s = sorted(_probe_q)
+            q_med = _s[len(_s) // 2]
+            _mad = sorted(abs(x - q_med) for x in _probe_q)[len(_probe_q) // 2]
+            q_sigma = 1.4826 * _mad
+            q_floor = max(q_med + k_sigma * q_sigma, q_med + 0.05)
+    else:
+        q_med, q_sigma, q_floor = _floor([v["q"] for v in out.values()], k_sigma, 0.05)
     # Prompt power spans orders of magnitude between satellites, so the bar is multiplicative:
     # median = the noise level, and a PRN must exceed it by k sigma to count as present.
     # ---- THE PRESENCE FLOOR NEEDS A NOISE REFERENCE, NOT A PEER COMPARISON ------------
@@ -224,9 +240,20 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
         v["q_floor"] = q_fallback if q_med is None else q_floor
         v["p_med"], v["p_floor"] = p_med, p_floor
         # No population to characterise -> fall back to the q bar rather than gating on nothing.
-        v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
-                        else v["p_pow"] >= p_floor)
-        v["present_gate"] = "prompt"
+        # PREFER q WHEN ITS NOISE VALUE IS MEASURED. p_pow is an ABSOLUTE power, so the
+        # prompt gate asks "are you bright" -- and brightness varies 25x between
+        # satellites for reasons unrelated to whether the tap is on the peak (measured:
+        # G10 and G23 at 7.7e-08 and 4.4e-08 against G8 at 9.0e-10, all three tracking).
+        # q = 2P/(E+L) is a RATIO: it asks "is there a peak under the tap", which is the
+        # question presence exists to answer, and it is scale-free so a faint satellite
+        # with a clean peak passes while a bright one whose tap has slid does not.
+        if len(_probe_q) >= 3:
+            v["present"] = v["q"] >= v["q_floor"]
+            v["present_gate"] = "q:probes"
+        else:
+            v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
+                            else v["p_pow"] >= p_floor)
+            v["present_gate"] = "prompt"
 
         # ---- DEEP GATE (task #49, opt-in per PRN) --------------------------------------
         # THE PROMPT GATE ABOVE IS ON-PEAK-BIASED, WHICH MAKES IT A LATCH. Prompt power is
