@@ -6803,9 +6803,32 @@ def main(argv=None, rx=None, publisher=None):
                     # 15-500 mHz on these satellites, 4-100x better. Same records, no
                     # extra poll. Falls through to the fold's value when the arc is too
                     # short to fit, so a thin poll degrades rather than starving the row.
+                    # ⚠️ OFF (2026-08-14, measured): the record-stream fit is NOT better.
+                    # Structure functions on the SAME satellites at the SAME instants, once
+                    # the 2048x units bug was fixed:
+                    #     lag      3 s    6 s   12 s   24 s
+                    #     record  1.21   1.83   2.37   2.40   m/s
+                    #     fold    1.26   1.87   2.28   2.15
+                    # Indistinguishable. Both pick a peak from a spectrum over the same ~1 s
+                    # window of the same records with deterministic algorithms, so when the
+                    # peak selection goes wrong they go wrong TOGETHER -- correlated errors,
+                    # identical structure functions.
+                    #
+                    # Its split-half sigma (1.13 Hz) said otherwise and was WRONG to trust:
+                    # two halves of one window fitted on one grid both land on the same wrong
+                    # peak and agree. Split-half measures PRECISION, never accuracy. The
+                    # structure function at 3 s reads 1.21 m/s where 0.29 m/s of independent
+                    # noise would give 0.41 -- that gap is the shared bias split-half cannot
+                    # see.
+                    #
+                    # Left in place, unused, because rec_rate_hz remains a useful published
+                    # diagnostic and because the next estimator worth trying is of a
+                    # DIFFERENT KIND (the fine feed's res_cycles phase accumulation), not a
+                    # better spectral fit over the same window. Set _use_rec to re-enable.
+                    _use_rec = False
                     _fcr = (fcoh or {}).get(_p) or {}
                     _rrec, _srec = _fcr.get("rate_hz"), _fcr.get("rate_sigma_hz")
-                    if _rrec is not None and _srec is not None:
+                    if _use_rec and _rrec is not None and _srec is not None:
                         _y = _rrec + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
                         # never claim better than the fold's grid can resolve, and never
                         # worse than the old blanket 0.2 -- a split-half of exactly 0 is
