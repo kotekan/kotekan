@@ -1,0 +1,4 @@
+gal 5      -1.947 Hz / 0.838      +3.723 Hz / 0.843    -1.912    NOT physical
+gal 23     -0.500 Hz / 0.907      -1.688 Hz / 0.889    3.378     NOT physical
+gal 5      -0.531 Hz / 0.818      +5.358 Hz / 0.816    -10.091   NOT physical
+gal 31     +7.087 Hz / 0.841      +1.208 Hz / 0.868    0.171     NOT physical
