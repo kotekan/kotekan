@@ -44,7 +44,8 @@ sys.path.insert(0, CONF)
 
 from chord_band_plan import (all_band_channels, covering_channels,  # noqa: E402
                              node_channels, signal_table)
-from gnss_record_layout import record_stride, telem_frame_bytes  # noqa: E402
+from gnss_record_layout import (record_stride, telem_frame_bytes,  # noqa: E402
+                                chan_floats)
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
@@ -903,7 +904,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # untouched by the longer frame. KV: "purge the idea of summing across channels in
             # each instance, that's *never* what we want to do."
             "frame_size": (f"{n_prn} * {record_floats} * sizeof_float32"
-                           + (f" + {n_prn} * {n_chan} * 3 * sizeof_float32"
+                           + (f" + {n_prn} * {n_chan} * {chan_floats()} * sizeof_float32"
                               if args.telem_host else "")),
             # dump a path-B record frame over REST without a rawFileWrite (see the tap buffers)
             "peek_hold": True,

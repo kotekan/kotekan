@@ -73,6 +73,12 @@ int main(int argc, char** argv) {
                 cb[gnss::CHAN_RE] = (float)(100000 * r + 1000 * p + 10 * ch + 1);
                 cb[gnss::CHAN_IM] = (float)(100000 * r + 1000 * p + 10 * ch + 2);
                 cb[gnss::CHAN_ENERGY] = (float)(ch + 1);
+                cb[gnss::CHAN_E_RE] = (float)(100000 * r + 1000 * p + 10 * ch + 3);
+                cb[gnss::CHAN_E_IM] = (float)(100000 * r + 1000 * p + 10 * ch + 4);
+                cb[gnss::CHAN_E_ENERGY] = (float)(ch + 1);
+                cb[gnss::CHAN_L_RE] = (float)(100000 * r + 1000 * p + 10 * ch + 5);
+                cb[gnss::CHAN_L_IM] = (float)(100000 * r + 1000 * p + 10 * ch + 6);
+                cb[gnss::CHAN_L_ENERGY] = (float)(ch + 1);
             }
             // UTC is a DOUBLE aliased over two float slots -- the one place a naive
             // float-by-float parse gets a plausible-looking wrong answer.

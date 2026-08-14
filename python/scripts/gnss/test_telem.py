@@ -61,6 +61,10 @@ def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
                 body[cb + telem.CHAN_RE] = 1.0
                 body[cb + telem.CHAN_IM] = 0.0
                 body[cb + telem.CHAN_ENERGY] = 1.0
+                body[cb + telem.CHAN_E_RE] = 0.5      # E and L distinct from P, so a slot
+                body[cb + telem.CHAN_E_ENERGY] = 1.0  # mix-up shows up as a value, not a shape
+                body[cb + telem.CHAN_L_RE] = 0.25
+                body[cb + telem.CHAN_L_ENERGY] = 1.0
             body[base + telem.REC_PRN] = float(1 + p)
             body[base + telem.REC_P_ENERGY] = 2.0
             body[base + telem.REC_P_RE] = 2.0 * (1 + p)   # A = 1+p exactly
@@ -165,6 +169,31 @@ class TestWireFormat(unittest.TestCase):
                                    places=3)
             self.assertAlmostEqual(A.imag, (100000 * 3 + 1000 * 2 + 10 * ch + 2) / (ch + 1),
                                    places=3)
+
+    def test_comb_epl_carries_all_three_taps(self):
+        # v3: E/P/L per channel is what lets the DLL leave the tracker's summed slots. telemfmt
+        # writes +1/+2 for P, +3/+4 for E, +5/+6 for L, so a tap swap is a WRONG VALUE rather
+        # than a plausible one.
+        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
+        epl = f.comb_epl(3, 102)
+        self.assertEqual(len(epl), 5)
+        for ch, (fid, E, P, L, (eE, eP, eL)) in enumerate(epl):
+            self.assertEqual(fid, 5972 + 16 * ch)
+            b = 100000 * 3 + 1000 * 2 + 10 * ch
+            self.assertAlmostEqual(P.real, (b + 1) / (ch + 1), places=3)
+            self.assertAlmostEqual(E.real, (b + 3) / (ch + 1), places=3)
+            self.assertAlmostEqual(L.real, (b + 5) / (ch + 1), places=3)
+            self.assertEqual((eE, eP, eL), (ch + 1, ch + 1, ch + 1))
+
+    def test_comb_and_comb_epl_agree_on_the_prompt(self):
+        # The two accessors must not drift: comb() is the v2 view of the same bytes comb_epl()
+        # reads, and a reader using either must get the same prompt.
+        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
+        for (fid, A, e), (fid2, _E, P, _L, (_eE, eP, _eL)) in zip(f.comb(1, 101),
+                                                                  f.comb_epl(1, 101)):
+            self.assertEqual(fid, fid2)
+            self.assertAlmostEqual(A.real, P.real, places=6)
+            self.assertEqual(e, eP)
 
     def test_unused_comb_columns_do_not_leak(self):
         # telemfmt fills 5 of TELEM_MAX_CHAN columns ON PURPOSE. The reserved-but-unused ones

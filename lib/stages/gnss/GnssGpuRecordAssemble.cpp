@@ -550,20 +550,30 @@ void GnssGpuRecordAssemble::main_thread() {
                     // since #53 the same records), so the arbitrary origin cancels exactly and
                     // every instance lands on one common reference. The record path keeps the
                     // raw _phi[p] and is untouched.
+                    // ROWS: trial 0 = EARLY, 1 = PROMPT, 2 = LATE (see prow above). One lambda
+                    // so all three taps get IDENTICALLY the same element combine and the same
+                    // NCO rotation -- a discriminator built from taps combined even slightly
+                    // differently is measuring the difference between the combines, not the
+                    // code offset.
+                    const size_t erow = (size_t)(c.job0 + 0) * n_chan;
+                    const size_t lrow = (size_t)(c.job0 + 2) * n_chan;
+                    const bool warm = _elem_sum && _cal[p].warm();
+                    auto tap = [&](size_t row, int ch) -> std::complex<double> {
+                        const size_t b = (row + ch) * n_e;
+                        std::complex<double> v;
+                        if (warm) {
+                            for (int el = 0; el < n_e; ++el)
+                                _spec_scratch[el] = {corr[2 * (b + el)], corr[2 * (b + el) + 1]};
+                            v = _cal[p].combine(_spec_scratch.data());
+                        } else {
+                            v = {corr[2 * (b + ref_e)], corr[2 * (b + ref_e) + 1]};
+                        }
+                        return v * rot;
+                    };
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
-                        std::complex<double> g;
-                        const size_t base = (prow + ch) * n_e;
-                        if (_elem_sum && _cal[p].warm()) {
-                            for (int el = 0; el < n_e; ++el)
-                                _spec_scratch[el] = {corr[2 * (base + el)],
-                                                     corr[2 * (base + el) + 1]};
-                            g = _cal[p].combine(_spec_scratch.data());
-                        } else {
-                            g = {corr[2 * (base + ref_e)], corr[2 * (base + ref_e) + 1]};
-                        }
-                        g *= rot;
+                        std::complex<double> g = tap(prow, ch);
                         const size_t k = (size_t)p * n_chan + ch;
                         W.re[k] += g.real();
                         W.im[k] += g.imag();
@@ -576,9 +586,17 @@ void GnssGpuRecordAssemble::main_thread() {
                         if (_chan_export) {
                             float* cb = out + gnss::chan_offset(p, ch, n_prn, n_chan,
                                                                 _n_elements);
+                            const std::complex<double> ge = tap(erow, ch);
+                            const std::complex<double> gl = tap(lrow, ch);
                             cb[gnss::CHAN_RE] = (float)g.real();
                             cb[gnss::CHAN_IM] = (float)g.imag();
                             cb[gnss::CHAN_ENERGY] = (float)energy[prow + ch];
+                            cb[gnss::CHAN_E_RE] = (float)ge.real();
+                            cb[gnss::CHAN_E_IM] = (float)ge.imag();
+                            cb[gnss::CHAN_E_ENERGY] = (float)energy[erow + ch];
+                            cb[gnss::CHAN_L_RE] = (float)gl.real();
+                            cb[gnss::CHAN_L_IM] = (float)gl.imag();
+                            cb[gnss::CHAN_L_ENERGY] = (float)energy[lrow + ch];
                         }
                     }
                     W.nrec[p] += 1;

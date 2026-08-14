@@ -71,7 +71,7 @@ INSTANCES = [("cx19.0", 0), ("cx42.1", 0), ("cx51.1", 3)]
 
 REC_STRIDE = record_stride(N_ELEM)
 N_CHAN = 5          # < TELEM_MAX_CHAN, so the unused wire columns are exercised
-CHAN_FLOATS = 3
+CHAN_FLOATS = 9      # E/P/L per channel (gnssRecord.hpp v3)
 CHAN_IDS = [5972 + 16 * k for k in range(N_CHAN)]
 
 
@@ -130,9 +130,13 @@ def write_record_files(dirpath, inst, start_win, drop=()):
                     cb0 = N_PRN * REC_STRIDE + (p * N_CHAN) * CHAN_FLOATS
                     for ch in range(N_CHAN):
                         cb = cb0 + ch * CHAN_FLOATS
-                        body[cb + 0] = _mark(inst, wstart, prn, 100 + ch)
+                        body[cb + 0] = _mark(inst, wstart, prn, 100 + ch)   # P
                         body[cb + 1] = _mark(inst, wstart, prn, 200 + ch)
                         body[cb + 2] = float(ch + 1)
+                        body[cb + 3] = _mark(inst, wstart, prn, 300 + ch)   # E
+                        body[cb + 5] = float(ch + 1)
+                        body[cb + 6] = _mark(inst, wstart, prn, 400 + ch)   # L
+                        body[cb + 8] = float(ch + 1)
                 fh.write(struct.pack("<%df" % len(body), *body))
     return path
 
@@ -298,6 +302,14 @@ def main():
                         if len(cmb) != N_CHAN:
                             fails.append("%s w%d r%d PRN %d: %d comb columns, expected %d"
                                          % (inst, w, r, prn, len(cmb), N_CHAN))
+                        # E/L too: a tap that survives with the wrong VALUE is the failure a
+                        # shape-only check would miss.
+                        for ch, (fid, E, P, L, _en) in enumerate(f.comb_epl(r, prn)):
+                            for tag, got, off in (("E", E.real, 300), ("L", L.real, 400)):
+                                wv = _mark(inst, wstart, prn, off + ch) / (ch + 1)
+                                if abs(got - wv) > 1e-3 * max(1.0, abs(wv)):
+                                    fails.append("%s win%d r%d PRN %d ch%d %s: %g != %g"
+                                                 % (inst, w, r, prn, ch, tag, got, wv))
                         for ch, (fid, A, e) in enumerate(cmb):
                             if fid != CHAN_IDS[ch]:
                                 fails.append("%s w%d r%d PRN %d ch%d: freq_id %d != %d"

@@ -328,10 +328,24 @@ constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below 
 /// The values are the SAME per-channel quantities the /get_spectrum ring accumulates -- NCO-
 /// derotated and element-combined, i.e. one "element-equivalent" per channel -- but PER RECORD
 /// rather than per window, which is what a cross-record rate fit needs.
-constexpr int CHAN_FLOATS = 3;
-constexpr int CHAN_RE = 0;     ///< per-channel prompt, NCO-derotated + element-combined
+/// EARLY, PROMPT AND LATE PER CHANNEL (widened 3 -> 9, 2026-08-14). The prompt alone was enough
+/// to give the broker the frequency axis, but NOT enough to retire the tracker's sum: the code
+/// loop runs on E/L powers, so with only P un-summed the DLL still had to read the summed
+/// slots. Carrying all three taps is what makes `rec[3..14]` deletable.
+///
+/// ⚠️ SLOTS 0-2 KEEP THEIR ORIGINAL MEANING (prompt re, im, energy) so every consumer written
+/// against the 3-float comb still reads correctly; E and L are appended. That is deliberate --
+/// a widening that renumbered the existing columns would silently re-point every reader.
+constexpr int CHAN_FLOATS = 9;
+constexpr int CHAN_RE = 0;       ///< per-channel PROMPT, NCO-derotated + element-combined
 constexpr int CHAN_IM = 1;
-constexpr int CHAN_ENERGY = 2; ///< that channel's replica energy (the ML combining weight)
+constexpr int CHAN_ENERGY = 2;   ///< that channel's prompt replica energy (the ML weight)
+constexpr int CHAN_E_RE = 3;     ///< EARLY, same channel, same rotation, same element combine
+constexpr int CHAN_E_IM = 4;
+constexpr int CHAN_E_ENERGY = 5;
+constexpr int CHAN_L_RE = 6;     ///< LATE
+constexpr int CHAN_L_IM = 7;
+constexpr int CHAN_L_ENERGY = 8;
 
 /// Floats per PRN for a record carrying @c n_elem antennas (@c n_elem 0 => the airspy layout).
 constexpr int record_stride(int n_elem) {

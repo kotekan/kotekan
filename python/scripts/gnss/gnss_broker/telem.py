@@ -51,12 +51,14 @@ _MAGIC = 0x314C5447
 # v2: the row carries the UNSUMMED COMB after the record header, and the header carries the
 # columns' freq_ids. The cross-channel sum in the tracker destroyed the frequency axis a delay
 # lives on, which forced fleet_coherent to FIT a per-instance constant instead of DERIVING one.
-_VERSION = 2
+_VERSION = 3
 _HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
 _HDR_BYTES = 112
 _MAX_CHAN = 8
-_CHAN_FLOATS = 3
-CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2
+_CHAN_FLOATS = 9
+CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2          # PROMPT (unchanged from v2)
+CHAN_E_RE, CHAN_E_IM, CHAN_E_ENERGY = 3, 4, 5    # EARLY
+CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8    # LATE
 # gnssRecord.hpp RECORD_FLOATS. Verified against every frame's own n_row field, because a
 # tracker rebuilt with a wider record and a broker that was not is precisely the silent
 # mis-stride this transport exists to stop tolerating.
@@ -191,9 +193,40 @@ class TelemFrame(object):
         a.frombytes(self._buf[base:base + self.n_chan * _CHAN_FLOATS * 4])
         out = []
         for ch in range(self.n_chan):
-            re_, im_, e = a[ch * 3 + CHAN_RE], a[ch * 3 + CHAN_IM], a[ch * 3 + CHAN_ENERGY]
+            b = ch * _CHAN_FLOATS
+            e = a[b + CHAN_ENERGY]
             if e > 0.0:
-                out.append((self.chan_ids[ch], complex(re_ / e, im_ / e), e))
+                out.append((self.chan_ids[ch],
+                            complex(a[b + CHAN_RE] / e, a[b + CHAN_IM] / e), e))
+        return out
+
+    def comb_epl(self, r, prn):
+        """The comb with all three taps: [(freq_id, E, P, L, (eE, eP, eL)), ...], or [].
+
+        THE DLL's INPUT once the tracker stops summing. Each tap is energy-normalised by ITS OWN
+        replica energy, and all three were element-combined and NCO-rotated identically in the
+        assembler -- a discriminator built from taps combined even slightly differently measures
+        the difference between the combines rather than the code offset.
+        """
+        p = self._index().get(int(prn))
+        if p is None or not self.has_record(r) or not self.n_chan:
+            return []
+        base = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4 + _ROW_FLOATS * 4
+        a = array.array("f")
+        a.frombytes(self._buf[base:base + self.n_chan * _CHAN_FLOATS * 4])
+        out = []
+        for ch in range(self.n_chan):
+            b = ch * _CHAN_FLOATS
+            eP = a[b + CHAN_ENERGY]
+            if eP <= 0.0:
+                continue
+            eE = a[b + CHAN_E_ENERGY] or eP
+            eL = a[b + CHAN_L_ENERGY] or eP
+            out.append((self.chan_ids[ch],
+                        complex(a[b + CHAN_E_RE] / eE, a[b + CHAN_E_IM] / eE),
+                        complex(a[b + CHAN_RE] / eP, a[b + CHAN_IM] / eP),
+                        complex(a[b + CHAN_L_RE] / eL, a[b + CHAN_L_IM] / eL),
+                        (eE, eP, eL)))
         return out
 
     def utc(self, r, prn):

@@ -94,12 +94,15 @@ namespace gnss {
 
 /// "GTL1" -- bumped only for an INCOMPATIBLE layout change; `version` covers the rest.
 constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
-/// v2 (2026-08-14): the row carries the UNSUMMED COMB after the record header, and the wire
+/// v3 (2026-08-14): the comb carries EARLY, PROMPT and LATE per channel (CHAN_FLOATS
+/// 3 -> 9), which is what lets the DLL move off the tracker's summed slots and so what
+/// makes the sum deletable. Columns 0-2 keep their v2 meaning (prompt re, im, energy).
+/// v2: the row carries the UNSUMMED COMB after the record header, and the wire
 /// header carries the channels' freq_ids. ⚠️ KV: "purge the idea of summing across channels in
 /// each instance, that's *never* what we want to do" -- the cross-channel sum destroys the
 /// frequency axis a delay lives on, so the broker was left FITTING a per-instance constant
 /// where it should DERIVE one from the ramp across ~106 channels.
-constexpr uint16_t TELEM_VERSION = 2;
+constexpr uint16_t TELEM_VERSION = 3;
 
 /// Comb columns reserved per row. Instances hold 6-7 covering channels today; the frame is a
 /// fixed size for every sender (one bufferRecv, one buffer, no per-chain plumbing), so this is
