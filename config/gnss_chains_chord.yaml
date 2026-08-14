@@ -259,7 +259,16 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # (rr_cmd_applied, posted != applied): a marginal integrator. ARM 9: the fine feed's
     # reference now comes from the MEASURED applied trim (d(trim_cycles)/d(records),
     # same span, same stream as the measurement -- no assumption left in the loop).
-    rrate-command: true
+    # ⚠️ ARM 9 (01:33-01:50): HARD RUNAWAY TO THE -40 RAIL in minutes -- MY ERROR, known
+    # and forgotten: REC_TRIM_INC's reconstruction identity ((f_nco+fcar_report-fcar)/2)
+    # is AIRSPY'S. On path B it evaluates to (ctrim - f_offset)/2 -- I identified exactly
+    # this at 15:xx ("NONSENSE for chord") and twelve hours later differenced trim_cycles
+    # as the fine reference anyway. applied ~ -f_offset/2 = garbage-huge-negative ->
+    # y crashes -> rows crash -> rail. The measured-applied-reference DESIGN is right;
+    # it needs an honest path-B export (dedicated applied-ctrim field, C++, daylight).
+    # Broker now sanity-gates |applied| < 50 Hz (garbage -> loud fallback) regardless.
+    # OVERNIGHT: command OFF, shadow + fine feed on -- the proven-safe config.
+    # rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy

@@ -6752,6 +6752,12 @@ def main(argv=None, rx=None, publisher=None):
                                     # combiner serves it (same span, same stream, no
                                     # assumption -- and no motion penalty needed, it is
                                     # exact); the posted-command span-mean otherwise.
+                                    # SANITY: on path B REC_TRIM_INC integrates the
+                                    # AIRSPY identity's value = (ctrim - f_offset)/2,
+                                    # garbage at MHz scale (arm 9's rail runaway). A
+                                    # plausible applied command is a few tens of Hz.
+                                    if _applied is not None and abs(_applied) > 50.0:
+                                        _applied = None
                                     if _applied is not None:
                                         _cmd_mid = args.rrate_phase_sign * _applied
                                         _sig_f = args.rrate_phase_sigma
