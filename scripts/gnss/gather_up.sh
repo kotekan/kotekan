@@ -62,6 +62,11 @@ PY
 echo "gather config: $(basename "$CFG") -- recv :$RECV, serve :$SERVE, rest :$REST"
 
 pkill -9 -f "kotekan --config.*gather" 2>/dev/null || true
+# LISTENING sockets only, deliberately. bufferRecv now sets SO_REUSEADDR unconditionally, so a
+# fresh listener may rebind over the ~60 s of TIME_WAIT left by 60 sender connections; waiting
+# for those to drain would add half a minute to every restart for no reason. Before that fix
+# this loop broke immediately (TIME_WAIT is not LISTEN) and the new instance then died on
+# EADDRINUSE -- which is how the first #59 gather restart failed.
 for _i in $(seq 1 30); do
     ss -ltn 2>/dev/null | grep -qE ":($RECV|$SERVE|$REST)\b" || break
     sleep 1
@@ -105,19 +110,23 @@ if not s:
     print("  health: NO SENDERS yet. The gather is up and listening; the nodes are not")
     print("          sending. They need a config carrying --telem-host and a RESTART.")
     raise SystemExit
-by_chain = {}
-for row in s:
-    chain = row["key"].split("/", 1)[0]
-    by_chain.setdefault(chain, []).append(row)
-print("  %d senders, %d bad frames, %d client drops" %
-      (len(s), st.get("bad_frames", 0), st.get("client_drops", 0)))
-for chain in sorted(by_chain):
-    rows = by_chain[chain]
-    wins = [r["last_win"] for r in rows]
-    gaps = sum(r["gaps"] for r in rows)
-    stale = [r["key"] for r in rows if r["age_s"] > 5.0]
-    flag = "" if max(wins) - min(wins) <= 1 else "   *** MISALIGNED ***"
-    print("  %-9s %2d inst  win %d..%d (spread %d)  gaps %d%s%s"
-          % (chain, len(rows), min(wins), max(wins), max(wins) - min(wins), gaps,
-             ("  stale: " + ",".join(stale)) if stale else "", flag))
+print("  %d senders, %d bad frames, %d client drops (stale after %.0f s)" %
+      (len(s), st.get("bad_frames", 0), st.get("client_drops", 0),
+       st.get("stale_after_s", 5.0)))
+# THE VERDICT IS OVER LIVE SENDERS ONLY -- the gather computes it, so this script and the
+# broker cannot drift apart on what "spread" means. A stopped instance keeps its last window
+# forever; folded in, one death reads as a four-digit alignment alarm (measured: 984 while the
+# nine live instances sat at 1). The stale ones are named instead, because that is the half
+# you can act on.
+for chain, c in sorted((st.get("chains") or {}).items()):
+    stale = c.get("stale") or []
+    if not c.get("live"):
+        print("  %-9s *** ALL SENDERS STALE: %s" % (chain, ",".join(stale)))
+        continue
+    flag = "" if c["spread"] <= 1 else "   *** MISALIGNED ***"
+    print("  %-9s %2d live  win %d..%d (spread %d)  gaps %d%s%s"
+          % (chain, c["live"], c["win_min"], c["win_max"], c["spread"], c["gaps"],
+             ("  STALE: " + ",".join(stale)) if stale else "", flag))
+    if not c.get("all_slots_present"):
+        print("            (some records missing from a frame -- check the node's record rate)")
 HEALTH

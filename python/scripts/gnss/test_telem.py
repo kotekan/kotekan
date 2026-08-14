@@ -22,6 +22,7 @@ import os
 import struct
 import subprocess
 import sys
+import time
 import tempfile
 import unittest
 
@@ -306,19 +307,74 @@ class TestRecordStream(unittest.TestCase):
         self.assertEqual(c.record_stream("gps_l5", "cx99.9", 1), [])
 
 
+class TestStaleness(unittest.TestCase):
+    """B. Live-vs-stale, because the first version of this metric could not tell them apart.
+
+    On sky, 2026-08-14: cx43's GPU-0 chain died and its frozen window index drove the reported
+    spread to 984 within a minute, while the nine live instances sat at 1. A health number that
+    screams on every instance death is a health number nobody reads by the second week -- so
+    the verdict is over LIVE senders and the stale ones are named.
+    """
+
+    def _feed(self, c, raw, rx):
+        f = telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, rx)
+        c._store_frame(f)
+
+    def test_stale_instance_does_not_inflate_the_spread(self):
+        c = telem.TelemClient(depth=64)
+        now = time.time()
+        # cx43.0 stopped 240 s ago at window 10; the others are current at 994/995.
+        self._feed(c, _make_frame(inst="cx43.0", win=10), now - 240.0)
+        self._feed(c, _make_frame(inst="cx19.0", win=994), now)
+        self._feed(c, _make_frame(inst="cx27.1", win=995), now)
+        st = c.stats(stale_after_s=5.0)["chains"]["gps_l5"]
+        self.assertEqual(st["instances"], 3)
+        self.assertEqual(st["live"], 2)
+        self.assertEqual(st["stale"], ["cx43.0"])
+        self.assertEqual(st["spread"], 1, "the dead instance must not be in the verdict")
+
+    def test_all_stale_reports_no_live_rather_than_a_healthy_spread(self):
+        # Silence must never read as health. With every sender stale there is no spread to
+        # report, and the row says so instead of omitting the chain.
+        c = telem.TelemClient(depth=64)
+        old = time.time() - 600.0
+        self._feed(c, _make_frame(inst="cx19.0", win=10), old)
+        self._feed(c, _make_frame(inst="cx27.0", win=10), old)
+        st = c.stats(stale_after_s=5.0)["chains"]["gps_l5"]
+        self.assertEqual(st["live"], 0)
+        self.assertNotIn("spread", st)
+        self.assertEqual(st["stale"], ["cx19.0", "cx27.0"])
+
+    def test_staleness_can_be_disabled(self):
+        c = telem.TelemClient(depth=64)
+        self._feed(c, _make_frame(inst="cx43.0", win=10), time.time() - 240.0)
+        self._feed(c, _make_frame(inst="cx19.0", win=994), time.time())
+        st = c.stats(stale_after_s=0)["chains"]["gps_l5"]
+        self.assertEqual(st["live"], 2)
+        self.assertEqual(st["spread"], 984)  # the raw number, for when it is wanted
+
+
 class TestStats(unittest.TestCase):
-    def test_spread_reports_misalignment(self):
-        # The alignment check, served rather than inferred: if two instances are on different
-        # windows this number says so immediately, instead of the fact surfacing weeks later as
-        # a physics anomaly.
+    def test_spread_reports_misalignment_among_LIVE_instances(self):
+        # The alignment check, served rather than inferred: three instances all delivering NOW,
+        # one of them on a different window. That is the real fault -- and it is a different
+        # thing from an instance that stopped (TestStaleness), which is why the two must not
+        # share a number. This one has to keep firing.
         c = telem.TelemClient(depth=16)
-        for raw in (_make_frame(inst="cx19.0", win=10), _make_frame(inst="cx42.0", win=10)):
-            c._store_frame(telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, 0.0))
+        now = time.time()
+
+        def feed(inst, win, rx=None):
+            raw = _make_frame(inst=inst, win=win)
+            c._store_frame(telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, rx or now))
+
+        feed("cx19.0", 10)
+        feed("cx42.0", 10)
         self.assertEqual(c.stats()["chains"]["gps_l5"]["spread"], 0)
-        raw = _make_frame(inst="cx51.1", win=7)
-        c._store_frame(telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, 0.0))
+        feed("cx51.1", 7)  # live, but three windows behind: a genuine misalignment
         st = c.stats()["chains"]["gps_l5"]
         self.assertEqual(st["instances"], 3)
+        self.assertEqual(st["live"], 3)
+        self.assertEqual(st["stale"], [])
         self.assertEqual(st["spread"], 3)
 
 

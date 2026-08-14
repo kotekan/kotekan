@@ -521,7 +521,17 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # The search must NEVER back-pressure the ingest: acquisition is a bootstrap
             # convenience, the science chain is not.
             "drop_frames": True,
-            "retry_time": 5.0,
+            # ⚠️ `retry_time` WAS A DEAD KEY -- bufferSend reads `reconnect_time`, and nothing
+            # warns about a config key nobody consumes. It happened to be set to the same value
+            # as the default, so the leg behaved correctly for the wrong reason and would have
+            # kept doing so through any future edit of the number.
+            "reconnect_time": 5,
+            # BOUND THE SENDER'S EXPOSURE TO A WEDGED RECEIVER. Default 20 s: an aggregator that
+            # accepts the connection and then stops reading parks this stage inside send() for
+            # that long per frame, and with drop_frames the buffer meanwhile fills and discards
+            # -- so the cost of a half-dead receiver is paid in silence. 2 s is ~48 frames of
+            # voltage here; past that the connection is worth abandoning and rebuilding.
+            "send_timeout": 2,
             # PIN THE WIRE FORMAT EXPLICITLY on both ends. bufferSend/bufferRecv default
             # use_config_tracker to whether the INSTANCE has a /config_tracker block, and the two
             # instances differ: the node inherits one from the production base config, the search
@@ -1078,6 +1088,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # logs, which buries whatever the real problem is. Bring the gather up first
                 # (scripts/gnss/gather_up.sh), then restart the nodes.
                 "reconnect_time": 30,
+                # Same bound as the search leg, and for the same reason: a gather that accepts
+                # the connection and then stops reading must cost this instance a dropped frame,
+                # not a 20-second stall inside send() on a thread that is also the only consumer
+                # keeping telem_buf drained.
+                "send_timeout": 2,
                 # PIN THE WIRE FORMAT on both ends -- see the srch_send note. The node inherits
                 # a config_tracker block from the production base and the gather instance has
                 # none, so left to default the two disagree by one header field and the stream
@@ -1338,6 +1353,16 @@ def build_aggregator_instance(cfg, nodes, args, port):
             "in_bufs": in_buf_names,
             "out_buf": "agg_merged_buf",
             "in_channels": in_channels,
+            # ABSENT-FEED TIMEOUT, stated rather than inherited. This is the stage's default
+            # (5.0) and it has been on since 2026-08-08 -- but "the resiliency is a default in
+            # a header" and "the resiliency is in the config that runs" are different claims,
+            # and only the second survives someone reading the file to find out. A feed that
+            # delivers nothing for this long is declared ABSENT: its channels are ZEROED (never
+            # reused -- stale samples correlate against the wrong epoch and would manufacture
+            # detections rather than merely lose sensitivity), the merge continues on the rest,
+            # and it rejoins by itself. 0 would restore the old block-forever behaviour, which
+            # is how a 12-input config with 8 nodes running once sat silent for forty minutes.
+            "input_timeout_s": 5.0,
             "cpu_affinity": [cores[3 % len(cores)]],
         },
         # Named gps_search -- the CANONICAL spelling the browser viewer's /wsport chains and
@@ -1427,6 +1452,14 @@ def build_gather_instance(cfg, args, port):
             "in_buf": "telem_buf",
             "serve_host": args.gather_serve_host,
             "serve_port": args.gather_serve_port,
+            # A sender silent this long is STALE: announced once in the log, excluded from the
+            # alignment verdict, rejoins on its own. Nothing here BLOCKS on a sender -- this
+            # stage has no barrier, which is the whole point of collating in the broker -- but
+            # until this existed nothing NOTICED one stopping either, and that is worse. On
+            # 2026-08-14 cx43's GPU-0 chain died and only a hand poll found it; unfiltered, its
+            # frozen window index drove the reported spread to 984 while the nine live
+            # instances sat at 1.
+            "stale_after_s": 5.0,
             "cpu_affinity": [cores[4 % len(cores)]],
         },
     }

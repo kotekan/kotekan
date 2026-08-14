@@ -35,6 +35,7 @@ telem_gather:
   kotekan_stage: GnssTelemGather
   serve_host: 127.0.0.1
   serve_port: 11061
+  stale_after_s: 5.0
 telem_recv:
   buf: telem_buf
   cpu_affinity:

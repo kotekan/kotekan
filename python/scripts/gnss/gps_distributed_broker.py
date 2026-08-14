@@ -6267,14 +6267,24 @@ def main(argv=None, rx=None, publisher=None):
                 # a physics anomaly (#46, #52, #53 all did).
                 _st = telem_client.stats()
                 _cs = _st["chains"].get(telem_chain)
+                if not _cs:
+                    _msg = "chain %s: nothing yet" % telem_chain
+                elif not _cs.get("live"):
+                    _msg = ("chain %s: ALL %d instances stale (%s)"
+                            % (telem_chain, _cs["instances"], ",".join(_cs["stale"])))
+                else:
+                    # SPREAD IS OVER LIVE INSTANCES ONLY; the stale ones are NAMED. A stopped
+                    # instance keeps its last window forever, so folding it into the spread
+                    # turns every instance death into a four-digit alarm about alignment --
+                    # which is the one number here that must stay trustworthy.
+                    _msg = ("chain %s: %d live, win %d..%d spread %d%s"
+                            % (telem_chain, _cs["live"], _cs["win_min"], _cs["win_max"],
+                               _cs["spread"],
+                               (" | STALE %s" % ",".join(_cs["stale"])) if _cs["stale"] else ""))
                 _log_rl("telem-stat",
                         "TELEM %s frames %d gaps %d bad %d | %s"
                         % ("up" if _st["connected"] else "DOWN", _st["frames"], _st["gaps"],
-                           _st["bad"],
-                           ("chain %s: %d inst, win %d..%d spread %d"
-                            % (telem_chain, _cs["instances"], _cs["win_min"], _cs["win_max"],
-                               _cs["spread"]))
-                           if _cs else "chain %s: nothing yet" % telem_chain),
+                           _st["bad"], _msg),
                         every_s=30.0)
             if args.telem_coherent and telem_client is not None:
                 try:

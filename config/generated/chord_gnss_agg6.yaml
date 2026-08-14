@@ -379,6 +379,7 @@ agg_merge:
   - 7
   - 7
   - 6
+  input_timeout_s: 5.0
   kotekan_stage: GnssChanAlignMerge
   out_buf: agg_merged_buf
 agg_merged_buf:
@@ -407,6 +408,7 @@ gps_search:
   acquire_snr: 30.0
   acquire_threads: 16
   acquire_windows: 1
+  blind_prns_per_pass: 0
   channel_ids:
   - 5972
   - 5988
@@ -555,6 +557,7 @@ gps_search:
   sample_rate: 3200000000.0
   signal: GPS_L5_Q
   spectrum_length: 8192
+  use_cuda_acquire: false
 log_level: info
 rest_server:
   cpu_affinity: *id001

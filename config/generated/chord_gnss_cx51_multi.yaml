@@ -421,6 +421,7 @@ gnss0_b2a_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -621,6 +622,7 @@ gnss0_b2b_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -834,6 +836,7 @@ gnss0_e5a_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -1042,6 +1045,7 @@ gnss0_e5b_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -1234,7 +1238,8 @@ gnss0_srch_send:
   - 57
   drop_frames: true
   kotekan_stage: bufferSend
-  retry_time: 5.0
+  reconnect_time: 5
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11050
   use_config_tracker: false
@@ -1284,6 +1289,7 @@ gnss0_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -1458,6 +1464,7 @@ gnss1_b2a_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -1632,6 +1639,7 @@ gnss1_b2b_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -1811,6 +1819,7 @@ gnss1_e5a_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -1985,6 +1994,7 @@ gnss1_e5b_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
@@ -2143,7 +2153,8 @@ gnss1_srch_send:
   - 58
   drop_frames: true
   kotekan_stage: bufferSend
-  retry_time: 5.0
+  reconnect_time: 5
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11051
   use_config_tracker: false
@@ -2192,6 +2203,7 @@ gnss1_telem_send:
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
+  send_timeout: 2
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false

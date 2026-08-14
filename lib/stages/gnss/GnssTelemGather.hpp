@@ -49,6 +49,9 @@
  * @conf serve_port   Int, default 11061.
  * @conf send_timeout_ms Int, default 200. How long a single frame may take to hand to one
  *                      client before that client is dropped.
+ * @conf stale_after_s   Double, default 5.0. A sender silent this long is STALE: it is
+ *                      announced once in the log, excluded from the alignment verdict, and
+ *                      rejoins on its own. 0 disables the check.
  *
  * @par REST
  * `<unique_name>/get_stats` -- per-sender frame counts, last window, sequence gaps, and the
@@ -69,6 +72,10 @@ private:
     std::string _serve_host;
     int _serve_port = 11061;
     int _send_timeout_ms = 200;
+    /// A sender silent this long is STALE. Nothing here blocks on a sender -- the gather has no
+    /// barrier by construction -- but until this existed nothing NOTICED one stopping either,
+    /// which is worse: cx43's GPU-0 chain died 2026-08-14 and only a hand poll found it.
+    double _stale_after_s = 5.0;
 
     /// Listener + accepted clients. Touched by the accept thread and the main thread.
     int _listen_fd = -1;
@@ -86,12 +93,19 @@ private:
         double last_utc = 0.0;
         double last_rx = 0.0;   ///< host time of the last frame from this sender
         uint32_t n_present = 0; ///< record slots filled in the last frame
+        bool stale = false;     ///< silent for longer than stale_after_s
+        uint64_t stalls = 0;    ///< times this sender has gone stale (churn is itself a signal)
     };
     std::map<std::string, Sender> _senders;
     std::mutex _stat_mtx;
 
     uint64_t _bad_frames = 0;   ///< failed the magic/version/geometry check
     uint64_t _client_drops = 0; ///< clients disconnected for being too slow
+
+    /// Mark senders stale/live and log each TRANSITION once. Called on a timer, not only when
+    /// a frame arrives -- a fleet that goes completely silent must still be reported, and that
+    /// is exactly the case a frame-driven loop cannot see.
+    void sweep_stale();
 
     void accept_loop();
     /// Write the whole buffer or fail. Returns false if the client should be dropped.

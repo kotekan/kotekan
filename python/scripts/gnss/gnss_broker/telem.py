@@ -397,29 +397,41 @@ class TelemClient(object):
                             "gap": gap})
         return out
 
-    def stats(self):
+    def stats(self, stale_after_s=5.0):
         """Transport health -- and the alignment check, served rather than inferred.
 
-        `spread` is max(win) - min(win) over the instances reporting a chain. Zero or one is
-        the transport working. Anything larger is the misalignment this whole change exists to
-        make visible instead of leaving it to be discovered as a physics anomaly six weeks
-        later.
+        `spread` is max(win) - min(win) over the LIVE instances of a chain. Zero or one is the
+        transport working; anything larger is the misalignment this whole change exists to make
+        visible instead of leaving it to be found six weeks later as a physics anomaly.
+
+        ⚠️ LIVE ONLY, and that is load-bearing. A stopped instance keeps its last window
+        forever, so one dead sender drives the raw spread to the number of windows since it
+        died -- measured 984 within a minute on 2026-08-14 while the nine live instances sat at
+        1. Reported raw, this number would cry wolf on every instance death and be ignored by
+        the second week. The stale ones are listed BY NAME instead, because "who left" is the
+        actionable half.
         """
         now = time.time()
         with self._lock:
             per_chain = {}
             for chain, ring in self._store.items():
-                last = {}
+                last, seen = {}, {}
                 for win, insts in ring.items():
-                    for inst in insts:
+                    for inst, f in insts.items():
                         if win > last.get(inst, -1):
                             last[inst] = win
-                if last:
-                    per_chain[chain] = {"instances": len(last),
-                                        "win_min": min(last.values()),
-                                        "win_max": max(last.values()),
-                                        "spread": max(last.values()) - min(last.values()),
-                                        "windows_held": len(ring)}
+                        if f.rx > seen.get(inst, 0.0):
+                            seen[inst] = f.rx
+                live = {i: w for i, w in last.items()
+                        if stale_after_s <= 0 or (now - seen.get(i, 0.0)) <= stale_after_s}
+                stale = sorted(set(last) - set(live))
+                row = {"instances": len(last), "live": len(live), "stale": stale,
+                       "windows_held": len(ring)}
+                if live:
+                    row.update({"win_min": min(live.values()),
+                                "win_max": max(live.values()),
+                                "spread": max(live.values()) - min(live.values())})
+                per_chain[chain] = row
             return {"connected": self.connected,
                     "frames": self.frames,
                     "gaps": self.gaps,

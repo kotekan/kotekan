@@ -38,6 +38,7 @@ GnssTelemGather::GnssTelemGather(Config& config, const std::string& unique_name,
     _serve_host = config.get_default<std::string>(unique_name, "serve_host", "127.0.0.1");
     _serve_port = config.get_default<int>(unique_name, "serve_port", 11061);
     _send_timeout_ms = config.get_default<int>(unique_name, "send_timeout_ms", 200);
+    _stale_after_s = config.get_default<double>(unique_name, "stale_after_s", 5.0);
 
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_stats",
@@ -160,7 +161,21 @@ void GnssTelemGather::main_thread() {
 
     frameID in_id(in_buf);
     while (!stop_thread) {
-        uint8_t* frame = in_buf->wait_for_full_frame(unique_name, in_id);
+        // TIMED WAIT, not a blocking one. Nothing here waits ON a sender -- the gather has no
+        // barrier -- but a plain wait_for_full_frame only wakes when a frame ARRIVES, so a
+        // fleet that goes completely silent would leave this stage parked with nothing in the
+        // log. The timeout is the heartbeat that lets sweep_stale() run and say so.
+        struct timespec deadline;
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_sec += 1;
+        const int rc = in_buf->wait_for_full_frame_timeout(unique_name, in_id, deadline);
+        if (rc < 0)
+            break; // shutting down
+        if (rc > 0) {
+            sweep_stale();
+            continue;
+        }
+        uint8_t* frame = in_buf->frames[in_id];
         if (frame == nullptr)
             break;
 
@@ -200,11 +215,44 @@ void GnssTelemGather::main_thread() {
             s.last_utc = h->utc0;
             s.last_rx = current_time();
             s.n_present = h->present;
+            if (s.stale) {
+                s.stale = false;
+                INFO("GnssTelemGather[{:s}]: {:s} is back (window {:d})", unique_name,
+                     chain + "/" + inst, (int64_t)h->win);
+            }
         }
 
         broadcast(frame, (size_t)in_buf->frame_size);
         in_buf->mark_frame_empty(unique_name, in_id++);
+        sweep_stale();
     }
+}
+
+void GnssTelemGather::sweep_stale() {
+    if (_stale_after_s <= 0.0)
+        return;
+    const double now = current_time();
+    std::vector<std::string> went;
+    {
+        std::lock_guard<std::mutex> lk(_stat_mtx);
+        for (auto& kv : _senders) {
+            Sender& s = kv.second;
+            if (!s.stale && (now - s.last_rx) > _stale_after_s) {
+                s.stale = true;
+                s.stalls++;
+                went.push_back(kv.first);
+            }
+        }
+    }
+    // Logged OUTSIDE the lock, and once per transition rather than per sweep -- the same
+    // join/leave idiom GnssChanAlignMerge uses for an absent input. A line per second per dead
+    // sender would bury the event that matters.
+    for (const auto& k : went)
+        WARN("GnssTelemGather[{:s}]: {:s} has sent nothing for {:.1f} s -- excluding it from the "
+             "alignment verdict. NOTHING BLOCKS ON IT: this stage has no barrier, so the rest of "
+             "the fleet is unaffected and it rejoins on its own. If it does not, that instance's "
+             "chain has stopped upstream of the record buffer.",
+             unique_name, k, _stale_after_s);
 }
 
 void GnssTelemGather::stats_callback(kotekan::connectionInstance& conn) {
@@ -216,7 +264,17 @@ void GnssTelemGather::stats_callback(kotekan::connectionInstance& conn) {
         // THE ALIGNMENT CHECK, served rather than inferred: every sender's most recent window
         // index, side by side. Equal (or within one) across a chain is the transport working;
         // a spread is the thing this stage exists to make visible.
-        for (const auto& kv : _senders)
+        //
+        // ⚠️ THE VERDICT IS OVER LIVE SENDERS ONLY, and that is not a cosmetic choice. A sender
+        // that stopped keeps its last window forever, so a single dead instance drives the raw
+        // spread to the number of windows since it died -- 984 within a minute, on 2026-08-14,
+        // while the nine live instances sat at spread 1. Reported raw, this metric would cry
+        // wolf on every instance death and be ignored by the second week. Stale senders are
+        // listed separately, by name, because "who left" is the actionable half.
+        std::map<std::string, std::vector<const Sender*>> live, dead;
+        for (const auto& kv : _senders) {
+            const std::string chain = kv.first.substr(0, kv.first.find('/'));
+            (kv.second.stale ? dead : live)[chain].push_back(&kv.second);
             senders.push_back({{"key", kv.first},
                                {"frames", kv.second.frames},
                                {"gaps", kv.second.gaps},
@@ -224,10 +282,49 @@ void GnssTelemGather::stats_callback(kotekan::connectionInstance& conn) {
                                {"last_win", kv.second.last_win},
                                {"last_utc", kv.second.last_utc},
                                {"age_s", now - kv.second.last_rx},
+                               {"stale", kv.second.stale},
+                               {"stalls", kv.second.stalls},
                                {"present", kv.second.n_present}});
+        }
+        nlohmann::json chains = nlohmann::json::object();
+        for (const auto& kv : live) {
+            int64_t lo = INT64_MAX, hi = INT64_MIN;
+            uint64_t gaps = 0;
+            uint32_t all_present = 0xffffffffu;
+            for (const Sender* s : kv.second) {
+                lo = std::min(lo, s->last_win);
+                hi = std::max(hi, s->last_win);
+                gaps += s->gaps;
+                all_present &= s->n_present;
+            }
+            nlohmann::json stale_keys = nlohmann::json::array();
+            for (const auto& d : _senders)
+                if (d.second.stale && d.first.rfind(kv.first + "/", 0) == 0)
+                    stale_keys.push_back(d.first);
+            chains[kv.first] = {{"live", kv.second.size()},
+                                {"win_min", lo},
+                                {"win_max", hi},
+                                {"spread", hi - lo},
+                                {"gaps", gaps},
+                                {"all_slots_present", all_present == 0xfu || all_present == 0xffu},
+                                {"stale", stale_keys}};
+        }
+        // A chain whose senders are ALL stale has no live entry above, so name it here or it
+        // vanishes from the report entirely -- silence reading as health is the failure mode
+        // this endpoint exists to prevent.
+        for (const auto& kv : dead)
+            if (!live.count(kv.first)) {
+                nlohmann::json stale_keys = nlohmann::json::array();
+                for (const auto& d : _senders)
+                    if (d.second.stale && d.first.rfind(kv.first + "/", 0) == 0)
+                        stale_keys.push_back(d.first);
+                chains[kv.first] = {{"live", 0}, {"stale", stale_keys}};
+            }
+        reply["chains"] = chains;
         reply["senders"] = senders;
         reply["bad_frames"] = _bad_frames;
         reply["client_drops"] = _client_drops;
+        reply["stale_after_s"] = _stale_after_s;
     }
     {
         std::lock_guard<std::mutex> lk(_client_mtx);
