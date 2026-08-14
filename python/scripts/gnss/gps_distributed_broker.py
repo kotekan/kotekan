@@ -234,6 +234,31 @@ def main(argv=None, rx=None, publisher=None):
     ap.add_argument("--drop-amplitude", type=float, default=0.3,
                     help="combined |A| below which a tracked PRN is coasting (fallback metric when "
                          "the combiner reports no deep significance / nav-bit wipe is off)")
+    ap.add_argument("--lock-prompt-hold", type=float, default=3.0,
+                    help="HOLD-ON-LOCK, FOLD-INDEPENDENT PATH (2026-08-14, #58). A satellite "
+                         "also counts as locked when its FLEET PROMPT POWER over the live "
+                         "noise median reaches this, regardless of what the deep fold says. "
+                         "0 disables, restoring the pre-#58 gate.\n"
+                         "WHY: the gate metric was max(amp_snr, deep_snr-if-certified), so it "
+                         "asks the DEEP FOLD whether we are locked -- and #58 measured that "
+                         "fold failing to certify ~50%% of the time on satellites the despread "
+                         "is holding continuously (prompt power flat through every collapse; "
+                         "all 12 instances failing together; unchanged with the broker "
+                         "SIGSTOPped). When it fails, sig falls back to amp_snr, which is "
+                         "moment-debiased and routinely below 3, so a perfectly tracked "
+                         "satellite reads UNLOCKED and gets re-pinned on the --dr-repin-s "
+                         "timer. That closes a loop: fold flickers -> re-pin -> phase "
+                         "discontinuity -> fold fails. And re-pinning is expensive -- measured "
+                         "2026-08-09, 10 s re-pin vs held seed on the same satellite: median "
+                         "deep_snr 16.7 vs 221.2, deep-uncertified 21%% vs 0%%.\n"
+                         "SCALE, and it is NOT the same units as --lock-snr: this is a POWER "
+                         "RATIO against the noise median (1.0 = nothing there), while lock_snr "
+                         "is a debiased sigma. They are OR-ed, each against its own bar, "
+                         "rather than max()-ed, because max() over two different units is "
+                         "meaningless. Live reference values: PRN 23 hold 22.0 (amp_snr 7.8), "
+                         "PRN 26 4.7 (2.8), PRN 20 1.0 (3.3) -- note the last one, where the "
+                         "prompt tap is ON THE NOISE while the fold reports the satellite: "
+                         "that is #48/#47 and it SHOULD re-pin, which this gate gets right.")
     ap.add_argument("--lock-snr", type=float, default=3.0,
                     help="detection significance (sigma above noise) above which a sat counts as "
                          "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
@@ -2446,6 +2471,11 @@ def main(argv=None, rx=None, publisher=None):
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
     status = {}      # prn -> last combiner get_status record (previous cycle; lock gate below)
+    # prn -> PROMPT HOLD, fleet prompt power / live noise median, from the previous cycle's
+    # fleet dict. Carried exactly like `status` above and for the same reason: the lock gate
+    # runs before this cycle's fleet_dll. See the --lock-prompt-hold note for why the gate
+    # needs a fold-independent term at all.
+    hold_prev = {}
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
     cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
@@ -4767,7 +4797,10 @@ def main(argv=None, rx=None, publisher=None):
                 metric, thresh = sig_of(rec), args.lock_snr
             else:
                 metric, thresh = float(rec.get("amplitude", 0.0)), args.drop_amplitude
-            if metric >= thresh:
+            # FOLD-INDEPENDENT HOLD (#58). OR-ed against its own bar, never max()-ed into
+            # `metric`: prompt hold is a power ratio and `metric` is a debiased sigma.
+            if metric >= thresh or (args.lock_prompt_hold > 0.0
+                                    and hold_prev.get(prn, 0.0) >= args.lock_prompt_hold):
                 low_hits[prn] = 0  # lock holding through the dropout -> reset coast
             else:
                 low_hits[prn] = low_hits.get(prn, 0) + 1
@@ -5876,11 +5909,26 @@ def main(argv=None, rx=None, publisher=None):
                         # gain _DR_SLEW_K low-passing the clock EMA jitter the repin injected
                         # raw. Search-FED chains keep the plain hold: their DLL owns code and
                         # their search owns Doppler, and their digest is the control.
+                        # THE RE-PIN DECISION, and the one #58 makes wrong. `_held` adds a
+                        # fold-independent path: a satellite whose PROMPT is on the signal is
+                        # locked whatever the deep fold currently says about it. Without this
+                        # the fold's ~50%% certification flicker toggles lock state and
+                        # re-pins a satellite the despread never lost -- and the re-pin then
+                        # steps the phase reference the fold is trying to integrate across.
+                        _held = (args.lock_prompt_hold > 0.0
+                                 and hold_prev.get(prn, 0.0) >= args.lock_prompt_hold)
+                        if _held and sig_of(status.get(prn, {})) < args.lock_snr:
+                            _log_rl("hold-prompt",
+                                    "HOLD-BY-PROMPT: PRN %d held through a deep-fold dropout "
+                                    "(prompt %.1fx noise, sig %.1f < %.1f) -- no re-pin"
+                                    % (prn, hold_prev.get(prn, 0.0),
+                                       sig_of(status.get(prn, {})), args.lock_snr),
+                                    every_s=60.0)
                         _slew = (prn in seeds and not detectors
                                  and prn in dr_state["seeded"]
-                                 and sig_of(status.get(prn, {})) >= args.lock_snr)
+                                 and (sig_of(status.get(prn, {})) >= args.lock_snr or _held))
                         if (not _slew and prn in seeds
-                                and sig_of(status.get(prn, {})) >= args.lock_snr):
+                                and (sig_of(status.get(prn, {})) >= args.lock_snr or _held)):
                             continue  # sub-threshold LOCK: the DLL owns the residual now
                         if (not _slew and prn in dr_state["seeded"]
                                 and now_w - dr_state["pin"].get(prn, 0.0) < args.dr_repin_s):
@@ -6148,6 +6196,13 @@ def main(argv=None, rx=None, publisher=None):
             fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
                               args.dll_quality_sigma, args.dll_quality_min,
                               deep_gate_prns=_deep_gate, deep_gate_margin=args.dll_deep_gate_margin)
+            # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
+            # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
+            hold_prev.clear()
+            for _p, _fl in (fleet or {}).items():
+                _pm = _fl.get("p_med")
+                if _pm:
+                    hold_prev[_p] = _fl["p_pow"] / _pm
             # CROSS-NODE COHERENT COMBINE. Separate from the DLL on purpose: the DLL sums
             # POWERS (phase-free, which is what makes it cheap) while this removes the common
             # per-record PHASE, and the two answer different questions off the same endpoints.
@@ -6337,6 +6392,11 @@ def main(argv=None, rx=None, publisher=None):
                     # reseed logic trusts (deep-certified sig), because P1 measured weak-sat
                     # tau to be self-reference-biased toward zero -- a weak "tau ~ 0" is not
                     # a measurement. The filter adds its own thin-fleet and lobe gates.
+                    # ⚠️ DELIBERATELY NOT given the fold-independent prompt path that the
+                    # re-pin gate got (#58): this one admits a MEASUREMENT, not a retention
+                    # decision, and P1 measured weak-sat tau biased toward zero by
+                    # self-reference. "The prompt is on the signal" does not establish that
+                    # this poll's tau is trustworthy. Separate question, separate evidence.
                     for prn, v in spec_fit.items():
                         if sig_of(status.get(prn, {})) >= args.lock_snr:
                             bsat.update(prn, v["tau_chips"], v["n_inst"], t0)
