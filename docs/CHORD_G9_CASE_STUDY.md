@@ -10,7 +10,11 @@ brightest thing in the sky rather than a typical one.
 
 ## The verdict, up front
 
-**More is working than the viewer suggests, and one stage is measurably losing 7.6 dB.**
+⚠️ **CORRECTED 2026-08-15 ~02:00.** The first version of this document claimed the cross-node
+combine was losing 7.6 dB. **That was an arithmetic error of mine and there is no such loss** —
+see §3. Coherent combining of N instances gives **√N**, not N. Everything else below stands.
+
+**More is working than the viewer suggests. The combine is fine; the served products are not.**
 
 | stage | number | verdict |
 |---|---|---|
@@ -20,9 +24,9 @@ brightest thing in the sky rather than a typical one.
 | within-instance coherent integration | 12→100 records, snr 1.63→10.86 = ×6.66 | ✅ **80% of ideal** |
 | fleet deep | `deep_snr` 32.3 vs floor 2.67 = 12× | ✅ detects |
 | carrier arc (ADR) | `adr_arc` 1, **3187 s locked**, 303938 records | ✅ |
-| **cross-node coherent combine** | fleet/median-instance = **×4.18 (12.4 dB)** | ❌ **7.6 dB lost** |
+| **cross-node coherent combine** | fleet/median-instance ×4.18 (12.4 dB) vs √N ideal ×3.16 (10.0 dB) | ✅ **at/above ideal** |
 | served C/N0 | `cn0_coh_db` **20.5** | ❌ see below |
-| cross-instance phase | median \|corr\| 0.310 = 3.5× the 1/√128 floor | ⚠️ marginal |
+| cross-instance phase | median \|corr\| 0.310 = 3.5× the 1/√128 floor | ✅ what per-record SNR 0.77 predicts |
 
 ---
 
@@ -50,30 +54,41 @@ Ideal coherent growth over that span is ×8.33, incoherent ×2.89. **×6.66 is 8
 the deep fold, its rate search and the phase model are all doing their job inside an instance.
 Nothing here needs fixing.
 
-## 3. Across instances, the combine is barely better than incoherent
+## 3. Across instances, the combine is working — ⚠️ my original claim here was wrong
 
     median instance   7.72
     best instance    10.86
     FLEET            32.26
 
-    fleet / median instance  = x4.18  = 12.4 dB
-      ideal COHERENT over 10 instances  x10    = 20.0 dB
-      plain INCOHERENT sum              x3.16  = 10.0 dB
+    measured  fleet / median instance      x4.18  = 12.4 dB
+    IDEAL coherent over 10 instances       x3.16  = 10.0 dB     <- sqrt(N), NOT N
 
-**Coherent combining should buy 10.0 dB over incoherent. It is buying 2.4 dB. 7.6 dB is on the
-floor.** That is task #10, and this is the cleanest measurement of it yet — on a satellite
-bright enough that no one can argue it is a marginal detection.
+⚠️ **THE FIRST VERSION OF THIS SECTION SAID THE IDEAL WAS ×10 (20 dB) AND CONCLUDED 7.6 dB WAS
+LOST. THAT IS WRONG.** Coherent combining of N instances with independent noise adds signal as
+*Na* and noise as *σ√N*, so the SNR gain is **√N = 3.16 = 10.0 dB**. I had labelled ×3.16 as
+the *incoherent* value; it is the coherent one.
 
-The corroborating number is the fit-free one (`scripts/gnss/telem_align.py`, which never fits
-a phase and so cannot manufacture agreement): across the 10 instances on 128 shared hops,
-median per-pair |corr| is **0.310 against a 1/√128 = 0.088 chance floor** — real (3.5×) but
-marginal, with a per-pair spread from 0.120 (at the floor) to 0.523. Compare a previously
-measured bright satellite at **0.973**. The instances are looking at the same sky and only
-partly agreeing about its phase.
+So the combine is running **+2.4 dB above** ideal equal-amplitude coherent gain — which is what
+MRC weighting does when the instances are unequal (`inst_snr` spans 2.46 to 12.41). Checked
+against `sqrt(Σ ρᵢ²)` for several spreads consistent with lo/med/hi: 24.4–26.8, versus 32.3
+observed, i.e. +1.6 to +2.4 dB.
 
-⚠️ **Addressing is not the problem, and this rules it out cleanly:** 128 hops in the union,
-**128 shared by all 10 instances (100%)**, no instance missing any hop. Whatever is
-decohering them is not the transport and not collation.
+**There is no missing 8 dB.** ⚠️ If anything the fleet number is *mildly optimistic* — beating
+MRC is not possible — which is a smaller, opposite-signed question about how fleet `deep_snr`
+is normalised against the per-instance one, and is worth a look on its own.
+
+⚠️ **THIS ERROR COST AN HOUR OF MECHANISM-HUNTING AND IS WHY EVERY HUNT CAME UP EMPTY.** No
+delay (tilt fit residual 2.06 rad — the channel phases are not on a line), no delay drift, and
+no stable per-channel constant (split-half with a leave-one-out reference: excess **−0.03 dB**
+over a permuted-label null). Those nulls were correct. They were nulls because nothing was
+missing.
+
+The cross-instance |corr| of 0.310 is likewise not a symptom: at a per-record per-instance SNR
+of ~0.77 (7.72/√100), the expected pair correlation is ρ²/(1+ρ²) ≈ 0.37. Measured 0.310. That
+is the number agreeing with physics, not disagreeing with it.
+
+⚠️ **Addressing was ruled out cleanly and that still stands:** 128 hops in the union, 128
+shared by all 10 instances (100%), none missing.
 
 ## 4. Two published numbers that do not add up
 
@@ -101,48 +116,31 @@ losing 7.6 dB. **The tracking underneath is healthy and the viewer has no way to
 say "locked"; none of them is on the panel. That is #57's honest-health-metric argument,
 answered by a concrete case.
 
-## 5a. #10 followed up the same night: the per-instance offset MOVES
+## 5a. ⚠️ RETRACTED: the per-instance drift hunt
 
-`scripts/gnss/inst_phase_drift.py`, on G9, 256 records, 32-record (0.336 s) blocks. It asks
-the one question `|corr|` cannot answer: is the per-instance offset **constant but noisy**
-(in which case 0.310 is just per-record SNR and nothing is lost) or **time-varying** (in which
-case one constant rotation can never align it, and that is the 7.6 dB)?
+This section reported a per-instance phase drift and a +2.39 dB recovery from a fitted
+per-instance rate, presented as part of the (non-existent) 7.6 dB. Two things are wrong with
+it and both are worth keeping visible:
 
-⚠️ **The null is the constant hypothesis itself.** Permuting records destroys time structure
-but PRESERVES a constant offset, so the shuffled lag-1 is the best a constant model could
-achieve on this data. Measured lag-1 *below* it therefore means "less repeatable than a
-constant".
+1. **It was chasing a loss that was not there** (§3).
+2. **It was on the wrong axis.** An instance is a bag of ~7 channels selected by
+   `freq_id mod 8` — a routing decision taken after the signal path. A per-instance number is a
+   per-channel effect averaged inside a bag, and reporting it at the bag level hides the
+   variable that matters. KV has now corrected this twice; see the `chord-nothing-is-per-node`
+   note.
 
-    FLEET: median lag-1 0.628 against a shuffled null of 0.999
-    block-phase scatter 3-6x the noise expectation on the high-SNR instances
-      (cx19.1 46 deg vs 13, cx27.0 42 vs 12, cx42.0 49 vs 14)
-
-**The offset moves.** Fitting one differential RATE per instance and rebuilding the fleet sum
-on the same records:
-
-    per-instance differential rate:  -0.290 .. +0.130 Hz   (0.42 Hz spread)
-    fleet coh_frac  constant-only 0.0405 -> constant+rate 0.0533   = +2.39 dB
-    shuffled-null gain                                             = +0.04 dB
-
-**+2.39 dB is real** (the null shows the fit is not inflating it from noise) **but it is only
-about a third of the 7.6 dB.** So a per-instance rate is part of the mechanism and not all of
-it — do not ship a rate and declare #10 closed.
-
-The 0.42 Hz spread between instances of the *same chain* is the physically interesting number:
-these are the same PFB, the same satellite and the same sky. G9's `doppler_rate_hz_s` is
-−0.318, so a 0.42 Hz spread corresponds to ~1.3 s of relative timing — an order of magnitude
-larger than #46's measured 0.105 s, so #46 as it stands does not obviously account for it.
+Redone on the channel axis with a leave-one-out reference (`scripts/gnss/chan_phase.py`), the
+answer is a clean nothing: no delay, no delay drift, and no per-channel constant that survives
+a split-half (excess −0.03 dB). The channels are as aligned as their SNR allows.
 
 ## 6. What to do next, in order
 
-1. **#10 — find the other ~5 dB.** §5a establishes that the offset drifts and that a
-   per-instance rate recovers +2.39 dB of the 7.6. What accounts for the rest is open. The
-   0.42 Hz inter-instance rate spread wants a mechanism: it is far larger than #46's 0.105 s
-   timing spread can explain against G9's −0.318 Hz/s Doppler rate, so either the timing
-   spread is much worse than #46 measured, or the rate is not coming from timing at all.
-   ⚠️ Before shipping a per-instance rate into `fleet_coherent`, note that a fitted rate is
-   exactly the machinery that produced the retracted-then-restored ×38 claim; it needs the
-   shuffled-null comparison every time, which `inst_phase_drift.py` does by default.
+1. **The served products, not the combine.** `cn0_coh_db` 20.5 on the brightest satellite on
+   the chain is the real anomaly (§4) — the combine feeding it is healthy, so the fault is in
+   how C/N0 is derived or normalised, which is #47's family and a much narrower search.
+2. **Why the fleet beats MRC by ~2 dB** (§3). Small, but you cannot exceed MRC, so the
+   per-instance and fleet `deep_snr` are probably not normalised the same way — and every
+   comparison of the two (including the one that produced the phantom 7.6 dB) depends on it.
 2. **Re-measure #61's fold churn now that a satellite is on-peak.** The CV ~0.6 was measured
    when every tap was off-peak; if the churn follows q it was never a fold problem.
 3. **Resolve `spec_tau` vs `q` before #50.**
