@@ -477,6 +477,9 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # that pair is confounded for #33 until e5b is armed too. Deliberate -- #49's own
     # same-satellite A/B (E5a armed vs E5b not, identical satellites, identical sky) is the
     # stronger experiment right now, and it is the one that defeats "the sky moved".
+    # ✅ RESOLVED 21:15Z: e5b and b2b armed too, so #33's pair is back to differing in the
+    # carrier command alone. The window above was 20:32-21:15Z -- do not fit #33 across it.
+    # The A/B it bought is E28 through boresight, recorded in gal_e5b's note.
     #
     # JUDGE ON q AND |disc|, PAIRED AGAINST gal_e5b -- never on deep_snr / cn0_coh / coh_frac
     # (#66: a below-horizon PRN reads 11.2x its floor). Bandwidth copied from gps_l5's MEASURED
@@ -870,6 +873,26 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
   gal_e5b:
     signal: gal_e5b
     dr-clock-adopt: true
+    # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
+    # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
+    # same PRN, same instant, both bands, across the 20:32Z arming of gal_e5a:
+    #   E5a-Q (ARMED)   ~noise and scattered before -> smooth 35-45 dB-Hz after
+    #   E5b-Q (control) ~noise throughout, tracking roughly the right SHAPE but not the value
+    # Same satellite, same sky, differing only in loop bandwidth. That is the pairing that
+    # defeats [[the sky moves faster than the investigation]], and it is worth more than any
+    # duty-over-hours on this question -- so the remaining control is spent here rather than
+    # held to re-measure a loop already known to be ~1100x too slow (KV's call, and correct:
+    # a control group is for a question still open).
+    #
+    # ⚠️ THE E28 PLOT IS NOW THE RECORD. With all five chains armed there is no unarmed arm
+    # left to re-run this against; re-creating it means deliberately disarming a chain.
+    #
+    # #33 GETS CLEANER, not worse. The carrier command is untouched by this -- still ON for
+    # gal_e5a only, OFF here and on bds_b2a/bds_b2b. With every chain now code-armed, that
+    # comparison differs in the carrier command ALONE, which is what it was always meant to
+    # isolate. (Between 20:32Z and now it was briefly confounded; see gal_e5a's note.)
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
     trackers: "http://cx19:12049/gnss{0..1}_e5b_inject,\
 http://cx27:12049/gnss{0..1}_e5b_inject,\
 http://cx42:12049/gnss{0..1}_e5b_inject,\
@@ -910,6 +933,16 @@ http://cx51:12049/gnss{0..1}_e5b_n2combine"
   bds_b2b:
     signal: bds_b2b
     dr-clock-adopt: true
+    # #49 ARMED 2026-08-15 21:15Z -- see gal_e5b's note. All five chains now run the C++ code
+    # loop; nothing is left on the 11.5 s Python cycle, which never had the authority to hold
+    # a lock (0.0054 chips/s against a plant that moves at ~0.43).
+    # ⚠️ This chain is also #48's open question ("why is b2b blind at all times?"). It had the
+    # SMALLEST |disc| of the five (median 0.25, 0/12 railed) while tracking nothing -- small
+    # disc with no peak is what NOISE looks like, not what on-peak looks like, so do not read
+    # an improvement here as the loop working. Judge it on q, and on whether p_pow leaves the
+    # noise floor at all.
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
     trackers: "http://cx19:12049/gnss{0..1}_b2b_inject,\
 http://cx27:12049/gnss{0..1}_b2b_inject,\
 http://cx42:12049/gnss{0..1}_b2b_inject,\
