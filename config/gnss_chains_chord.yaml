@@ -278,6 +278,35 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # applies to every chain. gps_l5 ran it alone from 2026-08-14 23:12 to 2026-08-15 ~00:30
     # with the other four as the live control; that arm is finished and the result is recorded
     # with the flag.
+    # -- #49's DEEP GATE, ARMED HERE 2026-08-15 00:40 (KV approved) ------------------------
+    # WHY NOW: measuring the deep fold for #63 showed the fold is not the first problem. The
+    # PROMPT TAP IS OFF-PEAK on this whole chain -- fleet_q = 2P/(E+L) sits at 0.23-1.35
+    # against a 1.065 floor, and q = 1.0 is EXACTLY the no-peak value (all three taps on equal
+    # noise power). The satellites are not missing: the fold reads deep_snr 28-55 against a
+    # 2.2-2.7 floor on the same PRNs, because it RE-SEARCHES rate and phase and so detects
+    # them wherever the tap sits (#47). The loop that should walk the tap back onto the peak
+    # is frozen by the on-peak-biased prompt gate -- #49's latch, at 11 of 13 PRNs.
+    #
+    # THE WITNESS ROW, baseline captured 00:35:10 before arming:
+    #   PRN  4   q 0.232  present FALSE   deep_snr 28.45 / floor 2.18 = 13x   dll_disc +0.755
+    # Detected at 13x, carrying a large correctly-signed discriminator, and not trimmed.
+    #
+    # ARMED ON THE FROZEN-BUT-DETECTED SET ONLY. 11 and 26 already pass the prompt gate
+    # (q 1.353 / 1.158) so gating them would prove nothing, and the other eight PRNs stay on
+    # the prompt gate as the IN-CHAIN control -- same sky, same clock, same cycle. Chosen from
+    # three samples 25 s apart, keeping only PRNs that cleared 3x the floor in all of them.
+    #
+    # ⚠️ JUDGE ON PULL-IN, NOT ON A SNAPSHOT. The claim is that an armed PRN spends LESS time
+    # stuck at large |disc| and its excursions are SHORTER -- not that it never drifts. The
+    # baseline is in the commit; watch fleet_q rising off 1.0 toward the floor and |dll_disc|
+    # falling on 4/9/27 while the eight controls stay put. ⚠️ NOT on C/N0: cn0_coh cannot see
+    # code error at all (#47).
+    # ⚠️ EXPECT IT SLOW, AND EXPECT A DELAY BEFORE IT ENGAGES. dll-gain 0.25 on disc +0.755
+    # gives ~0.047 chips/cycle against a 0.05 cap, so ~0.24 chips/min at a ~12 s cycle. And
+    # see the gal_e5a note below: a gated change took 22 MINUTES to bite once, and was misread
+    # as a regression from the restart that shipped it.
+    # Revert: delete this line and restart the broker.
+    dll-deep-gate: "4 9 27"
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
