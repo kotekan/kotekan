@@ -8,8 +8,11 @@
 #include "gnssFleetDll.hpp"
 #include "restServer.hpp"
 
+#include <condition_variable>
 #include <cstdint>
 #include <mutex>
+#include <thread>
+#include <vector>
 #include <string>
 
 /**
@@ -81,13 +84,37 @@ class GnssFleetTrim : public kotekan::Stage {
 public:
     GnssFleetTrim(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
-    ~GnssFleetTrim() override = default;
+    ~GnssFleetTrim() override;
 
     void main_thread() override;
 
 private:
+    /// One tracker instance's /set_trim. Parsed from a URL at construction, so a malformed
+    /// endpoint fails loudly at startup rather than as a silent stream of failed posts.
+    struct Target {
+        std::string host;
+        unsigned short port = 0;
+        std::string path;
+        std::string url;   ///< as configured, for the log and get_stats
+        std::string chain; ///< which chain's payload it takes
+    };
+
+    /// What the policy cycle asked for, before the rate conversion. Kept separate from
+    /// gnss::TrimPolicy because `leak_per_s` is what the broker states and `leak` is what the
+    /// integrator uses, and conflating them is exactly the 30x-bandwidth trap.
+    struct PolicyReq {
+        std::set<int> armed;
+        double gain = 0.25, clamp = 3.0, spacing = 0.5;
+        double leak_per_s = -1.0; ///< <0 means "leak was given per-update instead"
+        double leak = 0.05;
+    };
+
     void dll_callback(kotekan::connectionInstance& conn);
     void stats_callback(kotekan::connectionInstance& conn);
+    void policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    void post_trims();
+    void post_loop(int slot);
+    void rearm();
 
     Buffer* in_buf;
 
@@ -95,6 +122,66 @@ private:
     gnss::FleetDll _dll;
     uint64_t _frames = 0, _bad_frames = 0, _late_frames = 0;
     double _fold_s = 0.0; ///< total seconds folding -- the budget this must not blow
+
+    // ---- THE ACTUATOR (F2) ---------------------------------------------------------------
+    //
+    // ⚠️ THE POST COUNT IS NOT WHAT I FIRST CLAIMED. Every instance tracking a chain despreads
+    // the same PRNs and so needs the same trims, and each instance has its OWN endpoint path --
+    // 10-12 per chain, ~60 across five. They share only 6 host processes, but a shared HOST is
+    // not a shared ENDPOINT, so they cannot be batched into 6 requests as I first wrote. At one
+    // post per window that is ~1430 requests/s, and restClient sends `Connection: close`, so
+    // each is its own TCP connection. `post_every_n_windows` decimates the ACTUATION without
+    // touching the integrator: the trim moves at most gain*0.25 = 0.0625 chips per step, so
+    // posting every 4th window costs ~0.02 chips of lag against a 0.121 chips/s drift --
+    // nothing -- and cuts the request rate by four.
+    //
+    // ⚠️ BLOCKING SENDS ON DEDICATED THREADS, NOT restClient::make_request. The async entry
+    // point stores a POINTER to the caller's std::function and never owns it -- its cleanup()
+    // frees only the internal pair -- so the callback must outlive a reply that arrives on
+    // libevent's thread. A stack-local one killed the cf06 gather within seconds of the first
+    // post (2026-08-15), silently: the process was simply gone, last log line "restClient:
+    // libevent version". Every other caller in this tree uses make_request_blocking, and on a
+    // stage that back-pressures the whole fleet's telemetry the safe pattern wins. It also
+    // removes the shutdown race, where a reply lands after the stage is destroyed.
+    //
+    // THE FOLD THREAD NEVER SENDS. It publishes the newest payload and moves on; these threads
+    // do the I/O. And because the trim is ABSOLUTE, a thread that falls behind simply picks up
+    // the newest payload -- SKIP, NEVER QUEUE. A queue would deliver stale corrections late,
+    // which is worse than delivering none.
+    std::vector<Target> _targets; ///< flat: one entry per tracker instance
+    std::vector<std::thread> _post_threads;
+    std::mutex _pend_mtx;
+    std::condition_variable _pend_cv;
+    std::map<std::string, nlohmann::json> _pending; ///< chain -> newest payload
+    uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
+    std::vector<uint64_t> _sent_gen;                ///< per thread slot, last generation sent
+    int _post_every = 1;
+    /// PER CHAIN, not fleet-wide. Summing across chains made any chain's window close trigger
+    /// a post round for EVERY chain: measured 116 posts/s/path against the 23.8 intended, a
+    /// clean 5x for the five chains (2026-08-15). Harmless in correctness -- the trim is
+    /// absolute and idempotent -- and 5x the request rate, which is exactly the sort of thing
+    /// that is invisible unless the measurement is made against a stated expectation.
+    std::map<std::string, uint64_t> _closed_seen;
+    uint64_t _post_reqs = 0, _post_ok = 0, _post_fail = 0, _post_rounds = 0;
+    std::string _post_last_err;
+
+    // ---- THE POLICY SEAM (F3) -------------------------------------------------------------
+    //
+    // The broker's 12 s cycle POSTs who is armed and with what constants; this stage converts
+    // and applies. Everything that is a JUDGEMENT -- presence, floors, the deep gate, the
+    // clock, the ephemeris -- stays there. See docs/CHORD_FAST_TRIM.md 4.
+    //
+    // ⚠️ THE LEAK CONVERSION LIVES HERE AND NOWHERE ELSE. `leak` is PER UPDATE, so the loop's
+    // closed-loop and noise bandwidths both scale with the update rate: at unchanged constants,
+    // moving 3.1 -> 23.8 Hz is ~8x the bandwidth. The broker therefore states `leak_per_s` and
+    // this converts with the MEASURED close rate (not the nominal 23.84, which is what the wire
+    // would deliver if nothing were ever late -- 3% are). The measured rate is served in
+    // get_stats so the conversion is checkable rather than trusted.
+    std::map<std::string, PolicyReq> _policy;
+    double _first_close_t = 0.0; ///< wall time of the first window close, for the rate
+    uint64_t _first_close_n = 0;
+    double _close_hz = 0.0;      ///< MEASURED window closes/s, fleet-wide
+    uint64_t _policy_posts = 0;
 };
 
 #endif // GNSS_FLEET_TRIM_HPP

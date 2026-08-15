@@ -2,10 +2,12 @@
 
 #include "StageFactory.hpp"
 #include "kotekanLogging.hpp"
+#include "restClient.hpp"
 #include "visUtil.hpp" // for frameID, current_time
 
 #include "json.hpp"
 
+#include <chrono>
 #include <functional>
 
 using kotekan::bufferContainer;
@@ -29,12 +31,84 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_stats",
         std::bind(&GnssFleetTrim::stats_callback, this, std::placeholders::_1));
+    kotekan::restServer::instance().register_post_callback(
+        unique_name + "/set_policy",
+        std::bind(&GnssFleetTrim::policy_callback, this, std::placeholders::_1,
+                  std::placeholders::_2));
+
+    // THE ACTUATOR'S TARGETS: {chain: [url, ...]}, one per tracker INSTANCE (not per host --
+    // see the header note). Parsed here so a malformed endpoint is a startup failure rather
+    // than a silent stream of failed posts nobody reads.
+    _post_every = std::max(1, config.get_default<int>(unique_name, "post_every_n_windows", 1));
+    nlohmann::json tg = config.get_default<nlohmann::json>(unique_name, "post_targets", {});
+    int n_tgt = 0;
+    for (auto it = tg.begin(); it != tg.end(); ++it) {
+        for (const auto& u : it.value()) {
+            const std::string url = u.get<std::string>();
+            // http://host:port/path -- deliberately hand-parsed and strict. A URL that almost
+            // parses is worse than one that does not: it posts somewhere plausible.
+            const std::string pfx = "http://";
+            if (url.rfind(pfx, 0) != 0)
+                FATAL_ERROR("GnssFleetTrim[{:s}]: post target '{:s}' must start with http://",
+                            unique_name, url);
+            const size_t hb = pfx.size();
+            const size_t sl = url.find('/', hb);
+            if (sl == std::string::npos)
+                FATAL_ERROR("GnssFleetTrim[{:s}]: post target '{:s}' has no path", unique_name,
+                            url);
+            const std::string hostport = url.substr(hb, sl - hb);
+            const size_t co = hostport.find(':');
+            if (co == std::string::npos)
+                FATAL_ERROR("GnssFleetTrim[{:s}]: post target '{:s}' has no port -- state it "
+                            "rather than relying on a default that differs per stage",
+                            unique_name, url);
+            Target t;
+            t.host = hostport.substr(0, co);
+            t.port = (unsigned short)std::stoi(hostport.substr(co + 1));
+            t.path = url.substr(sl);
+            t.url = url;
+            t.chain = it.key();
+            _targets.push_back(t);
+            n_tgt++;
+        }
+    }
+    if (n_tgt)
+        INFO("GnssFleetTrim[{:s}]: ACTUATING -- {:d} tracker endpoint(s) over {:d} chain(s), "
+             "posting every {:d} window(s) ({:.1f} Hz, {:.0f} requests/s).",
+             unique_name, n_tgt, _targets.size(), _post_every, 23.84 / _post_every,
+             23.84 * n_tgt / _post_every);
+    const int nthr = std::max(1, std::min((int)_targets.size(),
+                                          config.get_default<int>(unique_name, "post_threads", 4)));
+    if (n_tgt) {
+        _sent_gen.assign((size_t)nthr, 0);
+        for (int i = 0; i < nthr; ++i)
+            _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
+        INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends. The fold thread never "
+             "waits on a tracker -- it publishes the newest payload and moves on.",
+             unique_name, nthr);
+    }
+}
+
+GnssFleetTrim::~GnssFleetTrim() {
+    // Wake the posters and JOIN them before anything they touch is destroyed. The async
+    // restClient path could not offer this: a reply landing after the stage is gone is a
+    // use-after-free with no join to prevent it.
+    {
+        std::lock_guard<std::mutex> lk(_pend_mtx);
+        _pend_gen++;
+    }
+    _pend_cv.notify_all();
+    for (auto& t : _post_threads)
+        if (t.joinable())
+            t.join();
 }
 
 void GnssFleetTrim::main_thread() {
-    INFO("GnssFleetTrim[{:s}]: observing (F1 -- NO actuation). {:d} windows averaged "
-         "({:.0f} ms at 4 records/window), min_instances {:d}.",
-         unique_name, _dll.n_win(), _dll.n_win() * 4 * 10.4857, _dll.min_instances());
+    INFO("GnssFleetTrim[{:s}]: {:s}. {:d} windows averaged ({:.0f} ms at 4 records/window), "
+         "min_instances {:d}. Nothing is trimmed until the broker POSTs /set_policy -- this "
+         "stage arms no PRN of its own.",
+         unique_name, _targets.empty() ? "OBSERVING (no post targets configured)" : "ACTUATING",
+         _dll.n_win(), _dll.n_win() * 4 * 10.4857, _dll.min_instances());
 
     frameID in_id(in_buf);
     while (!stop_thread) {
@@ -65,6 +139,14 @@ void GnssFleetTrim::main_thread() {
                 _late_frames++;
             _fold_s += current_time() - t0;
         }
+        // ACTUATE OUTSIDE THE FOLD LOCK, and only when a window actually closed. Driving this
+        // off frames instead would post 10-12 times per window (once per instance) for the
+        // same trim.
+        // Re-derive the per-update leak from the MEASURED close rate before acting on it.
+        rearm();
+        if (!_targets.empty())
+            post_trims();
+
         if (st == gnss::FoldStatus::BAD_HEADER && (_bad_frames % 100) == 1)
             ERROR("GnssFleetTrim[{:s}]: rejected a frame ({:d} so far) -- a sender is on a "
                   "different build, max_prn or records_per_frame. Folding it would parse the "
@@ -72,6 +154,174 @@ void GnssFleetTrim::main_thread() {
                   unique_name, _bad_frames);
 
         in_buf->mark_frame_empty(unique_name, in_id++);
+    }
+}
+
+void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {
+    // Parse first, lock last -- the fold path takes _mtx on every frame.
+    std::map<std::string, PolicyReq> got;
+    try {
+        const auto& chains = request.at("chains");
+        for (auto it = chains.begin(); it != chains.end(); ++it) {
+            PolicyReq p;
+            const auto& v = it.value();
+            for (const auto& a : v.at("armed"))
+                p.armed.insert(a.get<int>());
+            p.gain = v.value("gain", p.gain);
+            p.clamp = v.value("clamp", p.clamp);
+            p.spacing = v.value("spacing", p.spacing);
+            // EXACTLY ONE of the two leak forms, and it must be stated. Defaulting the
+            // conversion silently is how a loop ends up running at 8x the intended bandwidth
+            // and being blamed on the combine.
+            const bool has_s = v.contains("leak_per_s"), has_u = v.contains("leak");
+            if (has_s == has_u)
+                throw std::runtime_error("give exactly one of leak_per_s or leak");
+            if (has_s)
+                p.leak_per_s = v.at("leak_per_s").get<double>();
+            else {
+                p.leak_per_s = -1.0;
+                p.leak = v.at("leak").get<double>();
+            }
+            if (p.gain <= 0.0 || p.clamp <= 0.0 || p.spacing <= 0.0)
+                throw std::runtime_error("gain, clamp and spacing must be positive");
+            got[it.key()] = p;
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("bad policy payload: ") + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+        // REPLACE, never merge: the broker publishes the whole armed set every cycle, so a
+        // merge would leave a PRN armed forever after policy stopped naming it -- the
+        // latched-forever failure again, in the arming rather than the seed.
+        _policy = got;
+        _policy_posts++;
+    }
+    rearm();
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+void GnssFleetTrim::rearm() {
+    std::lock_guard<std::mutex> lk(_mtx);
+    // THE MEASURED CLOSE RATE, not the nominal 23.84. They differ: ~3% of frames arrive after
+    // their window closed and are dropped, senders come and go, and a chain with no senders
+    // closes nothing at all. Converting a per-second leak with a rate the loop is not actually
+    // running at silently rescales the loop's bandwidth.
+    uint64_t closed = 0;
+    for (const auto& cv : _dll.chains())
+        closed += cv.second.n_closed;
+    const double now = current_time();
+    if (_first_close_t == 0.0 && closed > 0) {
+        _first_close_t = now;
+        _first_close_n = closed;
+    }
+    const double dt = now - _first_close_t;
+    if (_first_close_t > 0.0 && dt > 1.0)
+        _close_hz = (double)(closed - _first_close_n) / dt / std::max<size_t>(1, _dll.chains().size());
+
+    for (const auto& pv : _policy) {
+        gnss::TrimPolicy tp;
+        tp.gain = pv.second.gain;
+        tp.clamp = pv.second.clamp;
+        tp.spacing = pv.second.spacing;
+        if (pv.second.leak_per_s >= 0.0)
+            // Until a rate has been measured, fall back to the wire's nominal 23.84 Hz rather
+            // than to a per-update number nobody chose. Stated, not silent.
+            tp.leak = pv.second.leak_per_s / (_close_hz > 0.1 ? _close_hz : 23.84);
+        else
+            tp.leak = pv.second.leak;
+        tp.leak = std::max(0.0, std::min(1.0, tp.leak));
+        _dll.set_armed(pv.first, pv.second.armed, tp);
+    }
+}
+
+void GnssFleetTrim::post_trims() {
+    // PUBLISH ONLY. The fold thread builds the payload and hands it over; the poster threads do
+    // every byte of I/O. See the header: this stage is a second consumer of telem_buf, so a
+    // network wait here would back-pressure the BROKER's telemetry too.
+    std::map<std::string, nlohmann::json> pend;
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+        for (const auto& cv : _dll.chains()) {
+            // ⚠️ PER CHAIN. This was a fleet-wide sum, so one chain closing a window commanded
+            // all five (measured 5x the intended request rate). A chain only gets a new
+            // command when ITS OWN window closed.
+            uint64_t& seen = _closed_seen[cv.first];
+            const uint64_t closed = cv.second.n_closed;
+            const bool due = (closed / (uint64_t)_post_every) != (seen / (uint64_t)_post_every);
+            const bool moved = closed != seen;
+            seen = closed;
+            if (!moved || !due)
+                continue;
+            if (cv.second.trim.empty())
+                continue;
+            nlohmann::json rows = nlohmann::json::array();
+            for (const auto& tv : cv.second.trim) {
+                if (!cv.second.armed.count(tv.first))
+                    continue; // disarmed: its trim stands, but we stop commanding it
+                rows.push_back({{"prn", tv.first},
+                                {"trim_chips", tv.second.trim},
+                                {"win", tv.second.last_win}});
+            }
+            if (!rows.empty())
+                pend[cv.first] = std::move(rows);
+        }
+        if (!pend.empty())
+            _post_rounds++;
+    }
+    if (pend.empty())
+        return;
+    {
+        std::lock_guard<std::mutex> lk(_pend_mtx);
+        // REPLACE, NEVER APPEND. The trim is absolute, so the newest payload supersedes any the
+        // posters have not sent yet. Queueing would deliver stale corrections late, which is
+        // strictly worse than skipping them.
+        _pending = std::move(pend);
+        _pend_gen++;
+    }
+    _pend_cv.notify_all();
+}
+
+void GnssFleetTrim::post_loop(int slot) {
+    uint64_t last = 0;
+    while (!stop_thread) {
+        std::map<std::string, nlohmann::json> work;
+        uint64_t gen = 0;
+        {
+            std::unique_lock<std::mutex> lk(_pend_mtx);
+            _pend_cv.wait_for(lk, std::chrono::milliseconds(200),
+                              [&] { return _pend_gen != last || stop_thread; });
+            if (stop_thread)
+                break;
+            if (_pend_gen == last)
+                continue;
+            gen = _pend_gen;
+            work = _pending; // a copy: the fold thread may replace it while we send
+        }
+        last = gen;
+        for (size_t i = (size_t)slot; i < _targets.size(); i += _post_threads.size()) {
+            Target& t = _targets[i];
+            auto it = work.find(t.chain);
+            if (it == work.end())
+                continue;
+            const restClient::restReply r = restClient::instance().make_request_blocking(
+                t.path, it->second, t.host, t.port, 0, 1);
+            std::lock_guard<std::mutex> lk(_mtx);
+            _post_reqs++;
+            if (r.first)
+                _post_ok++;
+            else {
+                _post_fail++;
+                _post_last_err = t.url + ": " + r.second;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lk(_pend_mtx);
+            if ((size_t)slot < _sent_gen.size())
+                _sent_gen[(size_t)slot] = gen;
+        }
     }
 }
 
@@ -118,6 +368,21 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     // the whole fleet costs fold_us_per_frame x 1430 us per second of wall clock.
     reply["fold_s"] = _fold_s;
     reply["fold_us_per_frame"] = _frames ? 1e6 * _fold_s / (double)_frames : 0.0;
+    reply["close_hz_measured"] = _close_hz;
+    reply["policy_posts"] = _policy_posts;
+    { nlohmann::json a = nlohmann::json::object();
+      for (const auto& cv : _dll.chains())
+          a[cv.first] = {{"armed", cv.second.armed}, {"leak_per_update", cv.second.policy.leak},
+                         {"gain", cv.second.policy.gain}};
+      reply["policy"] = a; }
+    reply["post_targets"] = _targets.size();
+    reply["post_threads"] = _post_threads.size();
+    reply["post_every_n_windows"] = _post_every;
+    reply["post_rounds"] = _post_rounds;
+    reply["post_requests"] = _post_reqs;
+    reply["post_ok"] = _post_ok;
+    reply["post_fail"] = _post_fail;
+    reply["post_last_err"] = _post_last_err;
     reply["n_win"] = _dll.n_win();
     reply["min_instances"] = _dll.min_instances();
     conn.send_json_reply(reply);
