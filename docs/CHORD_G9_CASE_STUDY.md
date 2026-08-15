@@ -251,3 +251,28 @@ minutes late and degraded every Galileo and BeiDou satellite). So the fix is not
 bigger cap — the drift has to come down (feed-forward accuracy, reseed cadence) *and* the cap
 has to be matched to whatever drift remains. The 0.48 Hz tolerance is the budget both sides
 have to meet.
+
+
+---
+
+## 9. Where the session ended (2026-08-15 02:25)
+
+**The root is §8: the code loop is rate-limited ~23× below the drift.** Everything in §3–§7 —
+the phase statistics, the fold, the C/N0 — was measured on an off-peak tap and is downstream
+of it.
+
+`--fast-trim-hz 5` is **armed on gps_l5**, four chains as control. Achieved **~3.1 Hz** against
+a 1.94 Hz break-even. Armed PRN 4's `dll_disc` went +0.443 → +0.0823 (5.4×), but the controls
+improved in the same two minutes across a restart, so **benefit is not established**;
+`/tmp/qwatch.jsonl` on cf06 is recording the paired duty for 8 h.
+
+⚠️ **It has to move to C++.** ~3 Hz is an order of magnitude below the 23.84 Hz the #59
+transport already delivers, and the remainder is Python decode plus GIL in a process that also
+runs five chain loops. Note the constraint that shapes the design: **loops live in the broker**
+(an instance sees 7 of ~105 channels), so the target is the *actuator and discriminator* in
+C++, still answerable to the broker's policy — not moving the loop onto a node.
+
+⚠️ And it was **1.5 Hz, below break-even, until the armed-PRN filter went in** — the loop was
+decoding every PRN and using one. The offline gate could not catch that: its fixture has 3
+PRNs, so it hit 4.39 Hz either way. **A gate whose fixture is smaller than production cannot
+measure a cost that scales with production.**
