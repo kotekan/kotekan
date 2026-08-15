@@ -1194,9 +1194,18 @@ class JointReceiverState:
     def clk_rate(self):
         return float(self.x[1])
 
+    # ⚠️ THE READ ACCESSORS TOLERATE A STALE INDEX. The filter is SHARED ACROSS CHAIN
+    # THREADS (the in-process clock), and diagnostics iterate a snapshot of _idx while
+    # another chain's membership update is resizing x/P -- measured 2026-08-15 17:01:29:
+    # sigma() indexed P[0, 57] on a 57x57 P during the post-restart mass re-acquisition
+    # and the IndexError KILLED the gps_l5 chain thread (seeds then expired and the chain
+    # went dark until the next broker restart). A stale index is answerable: the clk-only
+    # value (sigma) / 0.0 (bias) is what the caller would have gotten a moment earlier,
+    # and a DIAGNOSTIC must never be able to kill a chain. The real membership lock is
+    # #33's business; these guards make stale READS safe regardless.
     def bias(self, key):
         i = self._idx.get(key)
-        return float(self.x[i]) if i is not None else 0.0
+        return float(self.x[i]) if i is not None and i < len(self.x) else 0.0
 
     def predicted(self, key):
         """clk + b_i: what a seed for this sat should add to the pure model."""
@@ -1208,7 +1217,7 @@ class JointReceiverState:
         if key is None:
             return math.sqrt(max(0.0, self.P[0, 0]))
         i = self._idx.get(key)
-        if i is None:
+        if i is None or i >= self.P.shape[0]:
             return math.sqrt(max(0.0, self.P[0, 0]))
         v = self.P[0, 0] + 2.0 * self.P[0, i] + self.P[i, i]
         return math.sqrt(max(0.0, v))
