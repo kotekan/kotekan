@@ -2627,6 +2627,11 @@ def main(argv=None, rx=None, publisher=None):
     # needs a fold-independent term at all.
     hold_prev = {}
     _elem_arch_t = [0.0]   # last per-element archive append (--element-archive-every-s)
+    # #57 step 3: the residual carrier rates the known-rate coherent fold derotates with.
+    # Updated AFTER each cycle's fold from that cycle's record-stream fit, so the fold only
+    # ever uses a rate estimated from EARLIER records -- causal by construction, which is
+    # the entire difference between this estimator and the deep fold it replaces.
+    _kcoh_rates = {}
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
     cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
@@ -6840,6 +6845,45 @@ def main(argv=None, rx=None, publisher=None):
                             "PROMPT-CN0 %s: no estimate this cycle (no windows, or fewer "
                             "than 16 probe records for the noise anchor)" % telem_chain,
                             every_s=120.0)
+            # THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold with the rate
+            # INJECTED from the PREVIOUS cycle's record-stream fit (_kcoh_rates, updated
+            # below AFTER the fold so this integration never consumes a rate estimated
+            # from itself). No search, no q gate -- a fixed-rate fold over noise is noise,
+            # which is why this cannot fire on noise the way the deep fold did, and why it
+            # reaches the deep-sidelobe satellites a per-record gate never passes.
+            # Measurement-only; rides the same telemetry the comb DLL uses.
+            _kcoh = None
+            if telem_client is not None and probe_set:
+                try:
+                    _kcoh = combdll.coh_cn0(
+                        telem_client, telem_chain, rates=dict(_kcoh_rates),
+                        n_win=(args.telem_dll_windows or args.telem_windows),
+                        min_instances=args.dll_min_instances,
+                        prns=set(seeds) or None, probe_prns=probe_set,
+                        hop_s=1.0 / args.hops_per_sec)
+                except Exception as e:
+                    _kcoh = None
+                    _log_rl("kcoh-err",
+                            "KCOH: failed (%s) -- rows served without it" % e)
+                if _kcoh:
+                    _kv = ["PRN %d %.1f dB-Hz (sig %.0f, eta %s, f %+.2f)"
+                           % (p, v["cn0_db"], v["sig"],
+                              "%.0f" % v["eta"] if v["eta"] is not None else "--",
+                              v["rate_hz"])
+                           for p, v in sorted(_kcoh.items())
+                           if v["cn0_db"] is not None and not v["probe"] and v["sig"] > 3.0]
+                    _log_rl("kcoh",
+                            "KCOH %s: %s | %d PRNs folded, floor from %d probe folds"
+                            % (telem_chain,
+                               "; ".join(_kv) if _kv else "no fold above the probe floor",
+                               len(_kcoh),
+                               next(iter(_kcoh.values()))["n_probe"]),
+                            every_s=30.0)
+            # NOW the rates for the NEXT cycle, from THIS cycle's record-stream fit.
+            for _p, _fc2 in (fcoh or {}).items():
+                _r2 = _fc2.get("rate_hz")
+                if _r2 is not None:
+                    _kcoh_rates[_p] = float(_r2)
             # THE PER-ELEMENT COMPLEX GAIN (task #57 step 2): amplitude AND phase per
             # antenna, per instance -- the beam/peel coefficients. Assembled from the
             # combiners' /get_elements (raw leave-one-out cross-products accumulated per
@@ -6889,7 +6933,7 @@ def main(argv=None, rx=None, publisher=None):
                 # on, not the state after it acted -- otherwise a reader can never see the
                 # input that produced a given correction.
                 publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, fcoh,
-                                 pcn0=_pcn0)
+                                 pcn0=_pcn0, kcoh=_kcoh)
             dll_report = []
             for prn in list(seeds):
                 rec = status.get(prn, {})

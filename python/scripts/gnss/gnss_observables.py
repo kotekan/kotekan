@@ -294,6 +294,19 @@ def main():
                     "cn0_prompt_duty": r.get("cn0_prompt_duty"),
                     "cn0_prompt_split_db": r.get("cn0_prompt_split_db"),
                     "noise_probe": r.get("noise_probe"),
+                    # The known-rate coherent fold (#57 step 3): the deep-sidelobe
+                    # radiometry (+~10log10(n_rec) sensitivity over cn0_prompt), rate
+                    # injected causally, never searched. kcoh_sig is its detection
+                    # significance vs the probes' identical fold; kcoh_eta the coherence
+                    # efficiency (n_rec = fully coherent, ~1 = noise). On strong
+                    # satellites cn0_kcoh and cn0_prompt must agree -- their difference
+                    # per row is the standing cross-check, archived here.
+                    "cn0_kcoh_dbhz": r.get("cn0_kcoh_db"),
+                    "cn0_kcoh_sky_dbhz": r.get("cn0_kcoh_sky_db"),
+                    "kcoh_sig": r.get("kcoh_sig"),
+                    "kcoh_eta": r.get("kcoh_eta"),
+                    "kcoh_rate_hz": r.get("kcoh_rate_hz"),
+                    "kcoh_t_coh_s": r.get("kcoh_t_coh_s"),
                     "sig": sig, "coherence_s": r.get("coherence_s"),
                     "search_snr": det_snr.get(prn),
                     "doppler_hz": r.get("doppler_hz"),

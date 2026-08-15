@@ -340,10 +340,11 @@ class FleetPublisher:
                 st["elem"] = {"utc": _now(), "prns": table}
 
     def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
-               pcn0=None):
+               pcn0=None, kcoh=None):
         rows = []
         fcoh = fcoh or {}
         pcn0 = pcn0 or {}
+        kcoh = kcoh or {}
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
             sd = seeds.get(prn, {})
@@ -623,6 +624,26 @@ class FleetPublisher:
                 # The probes themselves ride the same rows (they are seeded PRNs); flag
                 # them so no consumer plots a below-horizon noise reference as a satellite.
                 row["noise_probe"] = bool(_pc.get("probe"))
+            # ---- THE KNOWN-RATE COHERENT C/N0 (task #57 step 3) ------------------------
+            # The ~1 s fold with the residual rate INJECTED (previous cycle's record-stream
+            # fit -- causal), not searched. Same currency as cn0_prompt_db by construction,
+            # so on a strong stationary satellite the two MUST agree -- serving both makes
+            # that a standing cross-check instead of a one-time validation. kcoh_sig is the
+            # fold power over the probes' identically-folded floor (the detection number
+            # for deep-sidelobe satellites below the per-record gate); kcoh_eta is the
+            # coherence efficiency (n_rec when fully coherent, ~1 on noise) -- a wrong rate
+            # or a phase discontinuity shows up THERE, never as a silently low C/N0.
+            _kc = kcoh.get(prn)
+            if _kc:
+                row["cn0_kcoh_db"] = _kc.get("cn0_db")
+                row["cn0_kcoh_sky_db"] = _kc.get("cn0_sky_db")
+                row["kcoh_sig"] = _kc.get("sig")
+                row["kcoh_sig_sky"] = _kc.get("sig_sky")
+                row["kcoh_eta"] = _kc.get("eta")
+                row["kcoh_n"] = _kc.get("n_rec")
+                row["kcoh_rate_hz"] = _kc.get("rate_hz")
+                row["kcoh_rate_src"] = _kc.get("rate_src")
+                row["kcoh_t_coh_s"] = _kc.get("t_coh_s")
             #
             # ---- PROMPT LOCK (task #47, 2026-08-12). ------------------------------------
             # EVERY C/N0 IN THIS ROW IS BLIND TO CODE ERROR. deep_snr comes from the deep

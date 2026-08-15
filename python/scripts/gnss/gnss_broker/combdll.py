@@ -40,6 +40,7 @@ combiner's own fold, so `coh_rows` must be supplied by the caller (fleet_coheren
 polled fleet_dll during migration) for #49's deep gate to have anything to gate on. Without
 it the deep gate simply does not fire -- it never guesses.
 """
+import cmath
 import math
 
 from .fleet import apply_presence
@@ -389,6 +390,204 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
                     "probe": prn in probe_prns}
         if keep_records:
             out[prn]["recs"] = rec_rows
+    return out
+
+
+def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=None,
+            min_instances=2, hop_s=5.12e-6, keep_series=False):
+    """THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold, with NO fit in it.
+
+    The deep fold's defect was never coherence -- it was the per-integration rate RE-SEARCH,
+    which re-finds a satellite wherever the tap sits and carries ~20 dB of its own paired
+    scatter doing so ([[chord-deep-snr-fires-on-noise]]). This fold keeps the coherent gain
+    (~10log10(n) over per-record -- the deep-sidelobe sensitivity) and removes the search:
+    the residual carrier rate is INJECTED by the caller (`rates`, per PRN), taken from the
+    PREVIOUS cycle's record-stream fit -- split-half sigma 37-46 mHz, i.e. ~0.25 rad over a
+    1 s fold -- or 0.0 for a dead-reckoned satellite whose NCO is the model. Nothing about
+    this integration is chosen by looking at this integration.
+
+    ⚠️ AND THAT IS WHY IT CANNOT FIRE ON NOISE. A fold at a FIXED rate over noise is noise:
+    E[|mean|^2] = sigma^2/n, exactly what the probes -- folded IDENTICALLY, each at its own
+    (zero) rate entry -- measure as the floor. The re-search was the mechanism that turned
+    noise into "detections"; with it gone, no q gate is needed here, and none is applied:
+    the deep-sidelobe satellites this exists for are precisely the ones a per-record gate
+    can never pass.
+
+    TWO SERIES, BOTH FOLDED, BOTH SERVED -- their offsets are measured, not assumed:
+      raw  the record-header prompt (REC_P). Absolutely calibrated against the probes, but
+           the per-record COMMON sky phase (~0.75 rad, white in time -- gnssElemCal.hpp)
+           decoheres the cross-record sum by ~e^{-sigma^2} (~-2.4 dB expected).
+      sky  the split-aperture sky-corrected prompt (REC_SKY), which removes that phase per
+           record -- at the one-way split's aperture cost (half the array integrates, half
+           references), a CONVENTION offset the probes' own sky fold carries identically.
+    Strong satellites tracked by cn0_prompt are the calibration: each fold's offset from
+    the per-record estimator is measured on sky by scripts/gnss/kcoh_gate.py, never argued.
+
+    Per (PRN, instance): Abar = (1/n) sum_k A_k exp(-2 pi i f t_k), t_k = hop_k * hop_s
+    (absolute hops -- exact, shared across the fleet). Fleet: mean over instances of
+    |Abar|^2 (incoherent across instances: cross-instance coherence is the delay-alignment
+    problem and belongs to the combine, not the radiometry). Debias against the probes'
+    clipped-mean folded power (the Gamma-median lesson, [[chord-cn0-prompt-estimator]]).
+    C/N0 = 10log10(rho / T_coh), T_coh = n_rec_mean * t_rec; identical currency to
+    cn0_prompt by construction, so on a strong stationary satellite THE TWO MUST AGREE --
+    that standing cross-check is the point of serving both.
+
+    Returns {prn: {cn0_db, cn0_sky_db, sig, sig_sky, rho, n_rec, n_src, eta, eta_sky,
+    rate_hz, rate_src, t_coh_s, sigma2, sigma2_sky, n_probe, probe}}. `eta` is the
+    coherence efficiency |Abar|^2 * n / mean|A|^2 -- n for a perfectly coherent series, ~1
+    for noise -- the live diagnostic of whether coherence actually accrued (a re-pin
+    discontinuity or a wrong rate shows up HERE, not as a silent low number).
+    keep_series adds per-instance {inst: [(hop, re, im, sky_re, sky_im)]} for the offline
+    tools (shuffled-null and genie legs); the broker must not carry it.
+    """
+    rates = rates or {}
+    probe_prns = set(int(p) for p in (probe_prns or ()))
+    want = None
+    if prns is not None:
+        want = set(int(p) for p in prns) | probe_prns
+    wins = client.windows(chain, lag=lag)
+    if not wins:
+        return {}
+    wins = wins[-int(n_win):]
+    t_rec = None
+    ser = {}   # (prn, inst) -> [(hop, A_raw, A_sky|None)]
+    for w in wins:
+        for inst, f in client.frame_set(chain, w).items():
+            if t_rec is None and getattr(f, "hops_per_record", 0) > 0:
+                t_rec = f.hops_per_record * hop_s
+            for r in range(f.n_rec):
+                if not f.has_record(r):
+                    continue
+                hop = f.hop(r)
+                for prn in f.prns():
+                    if want is not None and prn not in want:
+                        continue
+                    row = f.row(r, prn)
+                    if row is None:
+                        continue
+                    en = row[5]                       # REC_P_ENERGY
+                    if en <= 0.0:
+                        continue
+                    a = complex(row[3], row[4]) / en  # REC_P_RE/IM
+                    skr, ski = row[24], row[25]       # REC_SKY_RE/IM (0 = absent)
+                    sky = (complex(skr, ski) / en) if (skr != 0.0 or ski != 0.0) else None
+                    ser.setdefault((prn, inst), []).append((hop, a, sky))
+    if not ser or t_rec is None:
+        return {}
+
+    def _fold(rows, f_hz, pick):
+        """(|mean|^2, n, mean|A|^2) of the derotated series; pick selects raw/sky."""
+        s = 0j
+        pw = 0.0
+        n = 0
+        for hop, a, sky in rows:
+            v = a if pick == 0 else sky
+            if v is None:
+                continue
+            s += v * cmath.exp(-2j * math.pi * f_hz * hop * hop_s)
+            pw += abs(v) ** 2
+            n += 1
+        if n == 0:
+            return None, 0, 0.0
+        return abs(s / n) ** 2, n, pw / n
+
+    # Per-PRN fleet reduction: per-instance folds, then the mean over instances.
+    acc = {}
+    for (prn, inst), rows in ser.items():
+        f_hz = float(rates.get(prn) or 0.0)
+        pr, nr, pinc = _fold(rows, f_hz, 0)
+        ps, ns, pinc_s = _fold(rows, f_hz, 1)
+        if pr is None:
+            continue
+        d = acc.setdefault(prn, {"raw": [], "sky": [], "inc": [], "inc_sky": [], "n": [],
+                                 "insts": 0, "series": {}})
+        d["raw"].append(pr)
+        d["inc"].append(pinc)
+        d["n"].append(nr)
+        if ps is not None and ns >= max(4, nr // 2):
+            d["sky"].append(ps)
+            d["inc_sky"].append(pinc_s)
+        d["insts"] += 1
+        if keep_series:
+            d["series"][inst] = [(h, a.real, a.imag,
+                                  s.real if s is not None else None,
+                                  s.imag if s is not None else None)
+                                 for h, a, s in rows]
+
+    def _mean(v):
+        return sum(v) / len(v) if v else None
+
+    def _floor(vals):
+        """Clipped MEAN of the probe population -- the median is Gamma-biased low."""
+        if len(vals) < 2:
+            return None
+        s = sorted(vals)
+        med = s[len(s) // 2]
+        if med <= 0.0:
+            return None
+        kept = [x for x in s if x <= 8.0 * med]
+        return sum(kept) / len(kept)
+
+    # ---- THE FOLD FLOOR: sigma^2/n FROM THE PER-RECORD ANCHOR, NOT FROM THE FOLDS -----
+    # White noise folds down as exactly sigma^2/n, and sigma^2 is measured by the probes'
+    # PER-RECORD incoherent power -- thousands of draws (~1.5%), the same anchor
+    # cn0_prompt uses. Anchoring on the probes' FOLDED powers instead would rest the whole
+    # C/N0 on n_probes x n_inst (~36 in production, 9 in the self-test) exponential draws:
+    # ~0.7 dB of floor noise per cycle, and the self-test caught a +3.4 dB error from
+    # exactly that population being small. The whiteness assumption is LOAD-BEARING, so it
+    # is served, not assumed: `floor_white` is the ratio of the directly-measured probe
+    # fold floor to sigma^2/n -- ~1 when the noise is white record-to-record; a sustained
+    # excess means correlated noise (RFI) and the C/N0 must not be believed at face value.
+    probe_raw = [x for p in probe_prns for x in acc.get(p, {}).get("raw", ())]
+    probe_sky = [x for p in probe_prns for x in acc.get(p, {}).get("sky", ())]
+    s2_inc = _floor([x for p in probe_prns for x in acc.get(p, {}).get("inc", ())])
+    s2_inc_sky = _floor([x for p in probe_prns for x in acc.get(p, {}).get("inc_sky", ())])
+    if s2_inc is None or s2_inc <= 0.0:
+        return {}   # no anchor, no estimate -- never a peer fallback
+    probe_n = [x for p in probe_prns for x in acc.get(p, {}).get("n", ())]
+    n_pr = _mean(probe_n) or 0.0
+    fw_raw = (_floor(probe_raw) / (s2_inc / n_pr)
+              if probe_raw and n_pr > 0 else None)
+    fw_sky = (_floor(probe_sky) / (s2_inc_sky / n_pr)
+              if probe_sky and s2_inc_sky and n_pr > 0 else None)
+
+    out = {}
+    for prn, d in acc.items():
+        if d["insts"] < min_instances:
+            continue
+        pw = _mean(d["raw"])
+        pinc = _mean(d["inc"])
+        n_rec = _mean(d["n"]) or 0.0
+        if pw is None or n_rec < 4:
+            continue
+        t_coh = n_rec * t_rec
+        fl = s2_inc / n_rec                     # the white-noise fold floor for THIS n
+        rho = (pw - fl) / fl
+        row = {"cn0_db": (10.0 * math.log10(rho / t_coh) if rho > 0.0 else None),
+               "sig": pw / fl,
+               "rho": rho,
+               "n_rec": int(round(n_rec)), "n_src": d["insts"],
+               # coherence efficiency: n for coherent, ~1 for noise. Uses the DEBIASED
+               # numerator against the debiased per-record power so a strong satellite's
+               # eta is not diluted by the noise term.
+               "eta": ((pw - fl) * n_rec / (pinc - s2_inc)
+                       if (pinc is not None and pinc > s2_inc and rho > 0.0) else None),
+               "rate_hz": float(rates.get(prn) or 0.0),
+               "rate_src": "rate" if rates.get(prn) else "zero",
+               "t_coh_s": t_coh,
+               "sigma2": fl, "n_probe": len(probe_raw),
+               "floor_white": fw_raw, "floor_white_sky": fw_sky,
+               "probe": prn in probe_prns,
+               "cn0_sky_db": None, "sig_sky": None, "eta_sky": None}
+        pws = _mean(d["sky"])
+        if pws is not None and s2_inc_sky is not None and s2_inc_sky > 0.0:
+            fls = s2_inc_sky / n_rec
+            rho_s = (pws - fls) / fls
+            row["cn0_sky_db"] = (10.0 * math.log10(rho_s / t_coh) if rho_s > 0.0 else None)
+            row["sig_sky"] = pws / fls
+        if keep_series:
+            row["series"] = d["series"]
+        out[prn] = row
     return out
 
 
