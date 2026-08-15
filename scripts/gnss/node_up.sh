@@ -85,6 +85,26 @@ preflight() {
         echo "FAILED: binary not executable: $BIN" >&2
         exit 1
     fi
+    # ⚠️ IS THE BINARY OLDER THAN THE LIBRARY IT LINKS? A WARNING, never a refusal.
+    #
+    # `ninja lib/stages/all` builds the static library and DOES NOT RELINK kotekan. Everything
+    # then looks built: the compile is clean, the .a is fresh, the source is committed -- and
+    # the executable on disk is yesterday's. On 2026-08-15 that cost a full six-node restart:
+    # the trackers came up without the /set_trim endpoint that had been "deployed" hours
+    # earlier, and the only reason it was caught was a checker that looked at what the process
+    # SERVED rather than at what was compiled. Restarts here need sudo and someone's attention,
+    # so the cheap mtime comparison belongs in front of one.
+    #
+    # It is deliberately a warning: mtimes over NFS are not a correctness oracle, and refusing
+    # a restart on one would be worse than the thing it prevents. Build with `ninja kotekan`.
+    _LIB=$(dirname "$BIN")/../lib/stages/libkotekan_stages.a
+    if [ -f "$_LIB" ] && [ "$_LIB" -nt "$BIN" ]; then
+        echo "⚠️  $BIN is OLDER than $(basename "$_LIB") -- it was not relinked." >&2
+        echo "    binary  $(date -r "$BIN" '+%F %T')" >&2
+        echo "    library $(date -r "$_LIB" '+%F %T')" >&2
+        echo "    'ninja lib/stages/all' does not relink kotekan. Run 'ninja kotekan'." >&2
+        echo "    Starting anyway -- but this node will run the OLD code." >&2
+    fi
     # PROVENANCE, NOT CORRECTNESS -- a WARNING, never a refusal. If this config is one the
     # fleet manifest owns, say whether it still matches. A node started from a config nobody
     # can regenerate has no explanation available when it later misbehaves, and that is
