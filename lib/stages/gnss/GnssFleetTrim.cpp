@@ -335,6 +335,24 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
                 p.leak_per_s = -1.0;
                 p.leak = v.at("leak").get<double>();
             }
+            // ⚠️ THE GAIN SCALES WITH RATE TOO -- the lesson the leak taught did not go far
+            // enough. Loop BANDWIDTH is gain x rate, and against this loop's ~0.3-0.5 s
+            // measurement round trip (4-window disc average + actuation + record + fold), the
+            // per-update gain that was stable at 3.1 Hz (0.25 -> 0.78/s) is a limit cycle at
+            // 23.84 Hz (6/s): measured on sky 2026-08-15, trim swinging +-1 chip at 5-10 s
+            // period, disc anti-correlated and lagging, q hitting 3.3 and being thrown off.
+            // "Same gain, faster rate" holds for SLEW AUTHORITY and fails for STABILITY. So
+            // policy states gain_per_s (the bandwidth) and the conversion uses the measured
+            // rate, exactly as for the leak.
+            const bool hgs = v.contains("gain_per_s"), hgu = v.contains("gain");
+            if (hgs && hgu)
+                throw std::runtime_error("give at most one of gain_per_s or gain");
+            if (hgs)
+                p.gain_per_s = v.at("gain_per_s").get<double>();
+            else if (hgu) {
+                p.gain_per_s = -1.0;
+                p.gain = v.at("gain").get<double>();
+            }
             if (p.gain <= 0.0 || p.clamp <= 0.0 || p.spacing <= 0.0)
                 throw std::runtime_error("gain, clamp and spacing must be positive");
             // The tracker endpoints for this chain. Absent = observe this chain, command
@@ -391,10 +409,13 @@ void GnssFleetTrim::rearm() {
         tp.gain = pv.second.gain;
         tp.clamp = pv.second.clamp;
         tp.spacing = pv.second.spacing;
+        const double hz = _close_hz > 0.1 ? _close_hz : 23.84;
+        if (pv.second.gain_per_s >= 0.0)
+            tp.gain = pv.second.gain_per_s / hz;
         if (pv.second.leak_per_s >= 0.0)
             // Until a rate has been measured, fall back to the wire's nominal 23.84 Hz rather
             // than to a per-update number nobody chose. Stated, not silent.
-            tp.leak = pv.second.leak_per_s / (_close_hz > 0.1 ? _close_hz : 23.84);
+            tp.leak = pv.second.leak_per_s / hz;
         else
             tp.leak = pv.second.leak;
         tp.leak = std::max(0.0, std::min(1.0, tp.leak));
@@ -424,8 +445,9 @@ void GnssFleetTrim::post_trims() {
                 continue;
             nlohmann::json rows = nlohmann::json::array();
             for (const auto& tv : cv.second.trim) {
-                if (!cv.second.armed.count(tv.first))
-                    continue; // disarmed: its trim stands, but we stop commanding it
+                // Disarmed PRNs with a standing trim are still here: integrate() decays them
+                // through the leak and removes them when negligible, so the release is a
+                // ramp, not the 4 s TTL step it was.
                 rows.push_back({{"prn", tv.first},
                                 {"trim_chips", tv.second.trim},
                                 {"win", tv.second.last_win}});

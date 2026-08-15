@@ -365,6 +365,13 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # deliberately HUNG tracker and a REFUSED one: the gather survives and the healthy targets
     # hold 22.9-23.9 posts/s.
     fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    # Bandwidth 2.5/s (slew 0.62 chips/s) against the MEASURED plant: the tap sweeps through
+    # the peak with an ~18 s period -- the documented +-1-chip clock breathing, peak slew
+    # ~0.31 chips/s, plus the 0.12 drift = ~0.43 chips/s the loop must outrun. At the first
+    # stable setting (1.4/s -> 0.35 chips/s) the loop chased and lost: disc ramped -0.9 -> +0.9
+    # through each q maximum. Paired with fleet-trim-windows 2 at the gather, which halves the
+    # measurement delay that bounds this bandwidth (stability wants bandwidth x delay < ~0.5).
+    fleet-trim-bandwidth: 2.5
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.

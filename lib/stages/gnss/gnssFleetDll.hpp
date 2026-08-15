@@ -389,7 +389,12 @@ private:
         integrate(c, win_hi);
     }
 
-    /// ONE INTEGRATOR STEP PER WINDOW CLOSE, for every armed PRN that got a discriminator.
+    /// ONE INTEGRATOR STEP PER WINDOW CLOSE, for every armed PRN that got a discriminator --
+    /// and a LEAK-ONLY step for a disarmed PRN whose trim is still standing, so leaving the
+    /// armed set is a graceful release rather than a commanded step. Without this the
+    /// controller stopped posting a disarmed PRN, the tracker's TTL zeroed it 4 s later, and
+    /// re-arming re-applied it: measured on sky 2026-08-15 as trims snapping N -> 0 -> N
+    /// whenever presence flickered, ON TOP of the gain oscillation it was entangled with.
     ///
     /// THE RATE THIS ACHIEVES, and why it is not the 95.4/s the wire could support. A window is
     /// one frame, so this steps at 23.84 Hz = 12x the 1.94 Hz break-even against CHORD's
@@ -416,6 +421,21 @@ private:
             t.last_q = it->second.q;
             t.last_win = win;
             t.n_steps++;
+        }
+        // GRACEFUL RELEASE: a disarmed PRN's trim decays through the leak (disc treated as 0)
+        // and keeps being posted until it is negligible, then drops out. Erasing it -- or
+        // letting the tracker TTL zero it -- turns every presence flicker into a code step.
+        for (auto it = c.trim.begin(); it != c.trim.end();) {
+            if (!c.armed.count(it->first)) {
+                TrimState& t = it->second;
+                t.trim = dll_integrate(t.trim, 0.0, c.policy);
+                t.last_win = win; // still commanded: the poster keys on this moving
+                if (std::abs(t.trim) < 1e-3) {
+                    it = c.trim.erase(it);
+                    continue;
+                }
+            }
+            ++it;
         }
     }
 

@@ -114,6 +114,7 @@ private:
         double gain = 0.25, clamp = 3.0, spacing = 0.5;
         double leak_per_s = -1.0; ///< <0 means "leak was given per-update instead"
         double leak = 0.05;
+        double gain_per_s = -1.0; ///< the BANDWIDTH; <0 means per-update `gain` was given
     };
 
     void dll_callback(kotekan::connectionInstance& conn);

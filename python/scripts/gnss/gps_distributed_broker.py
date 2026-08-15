@@ -1504,6 +1504,38 @@ def main(argv=None, rx=None, publisher=None):
                          "crosses. ⚠️ Do not run this together with --fast-trim-hz on the same "
                          "chain: two loops writing one trim is a race, and neither would be "
                          "measurable.")
+    ap.add_argument("--fleet-trim-hold-s", type=float, default=90.0,
+                    help="keep a PRN armed to the C++ fleet loop this long after it was last "
+                         "PRESENT. ⚠️ Without this the loop is disarmed BY THE ERROR IT "
+                         "EXISTS TO FIX: the +-1-chip clock breathing (~19 s period, measured "
+                         "in the fleet disc 2026-08-15) sweeps the tap off-peak, prompt power "
+                         "collapses, presence drops, the PRN disarms and its trim is released "
+                         "-- so arming sampled the breathing's phase each ~12 s cycle and held "
+                         "~30%% duty. The hold must exceed the breathing period by margin; a "
+                         "satellite that truly set is still released within ~1.5 min, and the "
+                         "E/L discriminator it leaves behind is noise-mean-zero, so a held "
+                         "arm on a dead PRN random-walks nothing (the leak reverts it).")
+    ap.add_argument("--fleet-trim-bandwidth", type=float, default=1.4,
+                    help="closed-loop bandwidth (1/s) published to the C++ fleet loop as "
+                         "gain_per_s. ⚠️ NOT a per-update gain: the controller divides by the "
+                         "update rate it measures. The stability bound is bandwidth x "
+                         "round-trip < ~0.5, and the loop's measurement round trip is "
+                         "~0.3-0.5 s (4-window disc average + actuation + record + fold), so "
+                         "~1.4 is near the ceiling. The per-update 0.25 that was stable at the "
+                         "Python arm's 3.1 Hz (bandwidth 0.78) was a LIMIT CYCLE at 23.84 Hz "
+                         "(bandwidth 6): measured on sky 2026-08-15, trim swinging +-1 chip at "
+                         "5-10 s period, q reaching 3.3 and being thrown off the peak. Slew "
+                         "authority = bandwidth x 0.25 chips = 0.35 chips/s here, ~3x the "
+                         "0.121 chips/s drift and above the ~0.31 chips/s peak slew of the "
+                         "+-1-chip/20 s clock breathing.")
+    ap.add_argument("--fleet-trim-leak-per-s", type=float, default=0.12,
+                    help="leak (1/s) published to the C++ fleet loop. Sets BOTH the noise "
+                         "mean-reversion time (1/this ~ 8 s) and the reachable-correction "
+                         "ceiling: trim_max = 0.25 x bandwidth / leak_per_s = 2.9 chips at the "
+                         "defaults, i.e. the +-3 clamp finally is the bound. The old pairing "
+                         "(gain 0.25, leak 0.05 per update) capped it at 1.25 chips -- "
+                         "measured max |trim| 1.140 over 8 h, the clamp unreachable BY "
+                         "CONSTRUCTION.")
     ap.add_argument("--fast-trim-hz", type=float, default=0.0,
                     help="TASK #51: run the CODE LOOP at this rate, on its own thread, instead "
                          "of once per policy cycle. 0 = off (the loop stays on the cycle).\n"
@@ -2739,6 +2771,7 @@ def main(argv=None, rx=None, publisher=None):
     # variable at a time.
     _fleet_trim_nominal_hz = 23.84
     _fleet_trim_stat = {"posts": 0, "fail": 0, "armed": 0, "last_err": ""}
+    _ft_hold = {}   # prn -> last time PRESENT (the arming hold; see --fleet-trim-hold-s)
 
     def _fast_trim_loop():
         """Run the DLL integrator and the seed POST at --fast-trim-hz. See the notes above.
@@ -6877,11 +6910,23 @@ def main(argv=None, rx=None, publisher=None):
                 # and scripts/gnss/fleetdll_gate.py compares the C++ and Python arms on
                 # identical bytes. `tau` is still computed above because the far-regime re-seed
                 # block reads it.
-                dll_trim[prn] = combdll.dll_integrate(
-                    dll_trim.get(prn, 0.0), disc, args.dll_gain, leak, 3.0, args.dll_spacing)
+                #
+                # ⚠️ NOT WHEN THE C++ FLEET LOOP OWNS THIS CHAIN. Two integrators correcting
+                # one code error double-apply during pull-in and fight at the null -- and
+                # this one bakes its trim into the SEED cp while the fleet loop's arrives at
+                # the tracker, so they stack invisibly. The slow loop still MEASURES (the
+                # disc/q log lines and the far-regime re-seed stay); it just stops actuating.
+                if not args.fleet_trim_url:
+                    dll_trim[prn] = combdll.dll_integrate(
+                        dll_trim.get(prn, 0.0), disc, args.dll_gain, leak, 3.0,
+                        args.dll_spacing)
                 dll_report.append(
                     "PRN %d disc %+.3f trim %+.2f%s"
-                    % (prn, disc, dll_trim[prn],
+                    # .get: when the C++ fleet loop owns this chain the integrator above is
+                    # skipped and dll_trim may have no entry -- indexing it killed the gps_l5
+                    # chain thread with KeyError(20) at 13:17:11 on 2026-08-15, and the seeds
+                    # expired 60 s later. The DLL line still reports disc/q; trim reads 0.
+                    % (prn, disc, dll_trim.get(prn, 0.0),
                        "" if fl is None
                        else " [fleet %d/%d q %.2f p %.1fx%s]"
                             % (fl["n_src"], len(dll_combiners), fl["q"],
@@ -8040,11 +8085,20 @@ def main(argv=None, rx=None, publisher=None):
         # brace-expanded), so a node added to the fleet reaches the loop without regenerating
         # the gather's config.
         if args.fleet_trim_url:
-            _armed = sorted(_p for _p in (fleet or {}) if fleet[_p].get("present"))
+            _now_present = [_p for _p in (fleet or {}) if fleet[_p].get("present")]
+            for _p in _now_present:
+                _ft_hold[_p] = time.time()
+            # PRESENCE WITH A HOLD, not presence sampled at an instant -- see the flag.
+            _armed = sorted(_p for _p, _t in _ft_hold.items()
+                            if time.time() - _t < args.fleet_trim_hold_s)
             _pol = {"chains": {telem_chain: {
                 "armed": _armed,
-                "gain": args.dll_gain,
-                "leak_per_s": args.dll_leak_present * _fleet_trim_nominal_hz,
+                # BANDWIDTH, not per-update gain -- the controller converts with its measured
+                # rate. The slow DLL's dll_gain/dll_leak_present are NOT reused here: those
+                # constants are per-update at THIS process's cadence, and reusing them at
+                # 23.84 Hz is exactly the limit cycle of 2026-08-15. See the two flags.
+                "gain_per_s": args.fleet_trim_bandwidth,
+                "leak_per_s": args.fleet_trim_leak_per_s,
                 "clamp": 3.0,
                 "spacing": args.dll_spacing,
                 "targets": ["%s/set_trim" % t for t in trackers]}}}
