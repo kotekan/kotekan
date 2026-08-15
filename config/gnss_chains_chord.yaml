@@ -307,6 +307,32 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # as a regression from the restart that shipped it.
     # Revert: delete this line and restart the broker.
     dll-deep-gate: "4 9 27"
+    # -- #51: THE CODE LOOP ON THE TELEMETRY CLOCK, THIS CHAIN ONLY -------------------------
+    # THE DEFECT: the DLL's authority is a step PER UPDATE and the update rate was the ~12 s
+    # policy cycle, so the loop ran 23x slower than the drift and could never hold lock.
+    # Measured offline, noiseless, from a GOOD (+0.373 chip) seed: the tap walks off at
+    # 0.121 chips/s while the loop corrects at most dll_gain*|tau|max/cycle = 0.0052 chips/s.
+    # ⚠️ NO GAIN SETTING FIXES IT -- tau is clamped to |tau| <= 0.25 chips by construction, so
+    # even dll_gain 1.0 tops out at 0.021 chips/s. Update RATE is the only lever, which is why
+    # this is a rate and not a bigger cap or gain.
+    #
+    # 5 Hz against a 1.94 Hz break-even = 2.6x margin. The #59 telemetry arrives at 23.84 Hz,
+    # so the data was already here; only the actuator was still on the slow clock.
+    #
+    # GATED OFFLINE FIRST (scripts/gnss/fast_trim_e2e.py, ~50 s): real broker, real gather,
+    # real packer/bufferSend/bufferRecv, synthetic records with a KNOWN discriminator ->
+    # 4.37 Hz of POSTs against the cycle's 0.49 Hz, first moving steps -0.03215 chips against
+    # a predicted -0.0375, only the armed PRN touched, and consecutive posts differing ONLY in
+    # code_phase_chips. An actuator gets exercised before it sees sky.
+    #
+    # THE OTHER FOUR CHAINS ARE THE CONTROL. Baseline at 02:14:53 before arming: gps_l5 2
+    # present (PRN 4 q 2.657 disc +0.443, PRN 8 q 1.558 disc -0.691); gal_e5a / bds_b2a /
+    # gal_e5b / bds_b2b all 0 present with q ~ 0.98-1.0, i.e. no peak under the tap.
+    # JUDGE ON q -- never on deep_snr / cn0_coh / coh_frac, all of which #66 showed are blind
+    # (a below-horizon PRN reads 11.2x its floor).
+    # Revert: delete these two lines, restart the broker.
+    fast-trim-hz: 5
+    fast-trim-windows: 4
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
