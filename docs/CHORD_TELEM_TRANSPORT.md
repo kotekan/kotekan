@@ -228,3 +228,62 @@ spectral tilt.
 endpoints, so it **cannot resolve a few-dB change**. A first full-band A/B read "−2.25 dB worse"
 while both arms ran identical math. Use `telem_align.py`'s cross-instance coherence, or
 per-instance coherent amplitude.
+
+---
+
+## The transport is not free: it costs BROKER CYCLES (task #64, 2026-08-15)
+
+KV noticed the search running slowly. The search was not what regressed — the **broker cycle**
+was, and this transport is why.
+
+### The measurement, and the control that made it one
+
+A-B-A by parking the gather, median cycle time (the per-chain `active=` line), all five chains:
+
+| | gps_l5 | gal_e5a | bds_b2a | gal_e5b | bds_b2b | fleet |
+|---|---|---|---|---|---|---|
+| A gather up, 62832 B | 18.6 | 15.7 | 16.4 | 16.5 | 16.1 | **16.5 s** |
+| B gather PARKED | 11.5 | 14.2 | 11.5 | 10.3 | 11.7 | **11.5 s** |
+| A2 gather up again | 17.8 | 20.0 | 21.6 | 12.8 | 16.8 | **17.8 s** |
+| **C 25200 B, telemetry live** | 11.7 | 11.2 | 14.3 | 11.5 | 12.4 | **11.7 s** |
+
+11.5 s is the pre-transport baseline (11.8 s on 2026-08-12). Four of those chains run no
+broker-side comb code, so this was the transport, not task #63.
+
+⚠️ **THE FIRST TEST AIMED AT THE WRONG SYMPTOM.** The *search pass rate* is unchanged with the
+gather parked (3 passes/60 s either way — its merge is compute-bound in `refine`), and that
+was reported as "not bandwidth". The search was never the statistic that moved. **Test the
+thing that regressed, not the thing that was complained about.**
+
+### Where the cost lands: the wire, not the broker's Python
+
+Dropping only the broker's subscription while leaving the gather running at full NIC load gave
+**no recovery** (17.8–23.6 s), and the broker sits at **10% CPU** — waiting, not computing.
+
+cf06 has **one** 1 GbE (`eno8303`, 1000 Mb/s) carrying everything: telemetry, the search
+aggregator legs, and the broker's ~60 REST polls. At 62832 B/frame the telemetry alone was
+~480 Mbps of a measured 620, and **the senders are frame-synced by design** — they burst
+together on every window boundary, so the REST replies queue behind the bursts.
+
+### The fix: `max_prn` is a WIRE CAPACITY, not the record buffer's slot count
+
+`GnssTelemPack` maps wire rows onto the PRNs that actually have replica energy. A tracker
+configured for 32 PRN slots with 14 seeded satellites fits in 16 rows; the 40 rows shipped
+before were ~65% zeros.
+
+The row map is built **once per window, from its first record, and held for all four** — the
+broker builds its PRN→row index from record slot 0 and applies it to every record, so a map
+that changed mid-frame would file one satellite's samples under another's label. Overflow
+(more live than rows) **WARNs by PRN name** and ships the lowest-numbered; it is never silent.
+
+The broker needed no change: `TelemFrame._index()` already reads each row's PRN from slot 0
+rather than assuming row *p* = slot *p*.
+
+### Two numbers to carry forward
+
+⚠️ **A 43% traffic cut recovered 100% of the delay.** That is queueing near saturation, not a
+linear bandwidth cost — 620 Mbps average on a 1 GbE with synchronized bursts is already past
+the knee. Do not assume the next small increase is affordable because it is small.
+
+⚠️ **Headroom is two rows** — 14 live against 16. Raise `--telem-max-prn` before the sky gets
+busier; a frame-size change needs *both* ends restarted.
