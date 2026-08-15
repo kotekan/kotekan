@@ -74,6 +74,12 @@ def main():
     ap.add_argument("--step-hz", type=float, default=0.25)
     ap.add_argument("--windows", type=int, default=32, help="fold span, windows (~1.34 s)")
     ap.add_argument("--blocks", type=int, default=4, help="disjoint time blocks (stability)")
+    ap.add_argument("--all", action="store_true",
+                    help="sweep EVERY held satellite in the same block and split the residual "
+                         "into a chain COMMON MODE and per-sat remainders. A receiver clock "
+                         "frequency error (the never-implemented f_carrier state) is common "
+                         "to every satellite on the chain; an orbit/model error is not. One "
+                         "satellite's rate cannot tell those apart.")
     ap.add_argument("--seconds", type=float, default=20.0, help="collect per block")
     a = ap.parse_args()
 
@@ -100,6 +106,76 @@ def main():
     host, port = telem.parse_endpoint(a.gather)
     cl = telem.TelemClient(host=host, port=port, depth=4096, chains={a.chain})
     cl.start()
+
+    if a.all:
+        # ── COMMON MODE vs PER-SAT ──────────────────────────────────────────────────────
+        # A receiver clock frequency error shifts EVERY satellite on the chain by the same
+        # amount; a per-satellite model/orbit error does not. The served estimator injects a
+        # per-sat rate and so cannot see the difference -- and neither can a one-satellite
+        # sweep, which is why "PRN 3 sits at +12.8 Hz" is not yet a diagnosis.
+        print("\n  ALL HELD SATELLITES, same records, same grid:")
+        print("    %-5s %-9s %-9s %-9s %-8s" % ("prn", "broker_hz", "best_f", "eta_peak",
+                                                "cn0_inc"))
+        rowsout = []
+        try:
+            for b in range(a.blocks):
+                time.sleep(a.seconds)
+                with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"),
+                                                                  a.chain), timeout=10) as r:
+                    live = {int(x["prn"]): x for x in json.loads(r.read().decode())}
+                got = combdll.coh_cn0(cl, a.chain, rates={}, n_win=a.windows,
+                                      probe_prns=probes, keep_series=True)
+                if not got:
+                    print("    (block %d: no fold)" % b)
+                    continue
+                pn = []
+                for x in held:
+                    p = int(x["prn"])
+                    v = got.get(p)
+                    if not v or "series" not in v:
+                        continue
+                    bf, be = max(sweep(v["series"], grid, HOP_S), key=lambda t: t[1])
+                    if be < 3.0 * 2.5:        # below the probe null scale: no carrier, no rate
+                        continue
+                    pn.append((p, live.get(p, {}).get("rec_rate_hz"), bf, be,
+                               x["cn0_prompt_db"]))
+                if len(pn) < 2:
+                    print("    (block %d: %d satellite(s) beat the null -- need 2+)" % (b,
+                                                                                        len(pn)))
+                    continue
+                print("    -- block %d --" % b)
+                for p, br, bf, be, c in pn:
+                    print("    %-5d %-9s %+9.2f %9.1f %8.1f"
+                          % (p, ("%+.2f" % br) if br is not None else "--", bf, be, c))
+                cm = statistics.median([x[2] for x in pn])
+                rem = [x[2] - cm for x in pn]
+                spr = max(rem) - min(rem)
+                rowsout.append((cm, spr, len(pn)))
+                print("    common mode (median) %+.2f Hz;  per-sat remainder spread %.2f Hz "
+                      "over %d sats" % (cm, spr, len(pn)))
+        finally:
+            cl.stop()
+        if not rowsout:
+            print("\nINCONCLUSIVE: no block had 2+ satellites beating the null.")
+            return 1
+        cms = [x[0] for x in rowsout]
+        sprs = [x[1] for x in rowsout]
+        print("\n  common mode over %d block(s): %s Hz" % (len(cms),
+                                                           " ".join("%+.2f" % c for c in cms)))
+        print("  per-sat remainder spread:     %s Hz" % " ".join("%.2f" % v for v in sprs))
+        width0 = 1.0 / (a.windows * 4 * 2048 * HOP_S)
+        if statistics.median(sprs) < abs(statistics.median(cms)) / 2.0:
+            print("\n✅ MOSTLY COMMON MODE: the satellites share %+.2f Hz and differ by only "
+                  "%.2f Hz. That is a RECEIVER-side carrier frequency error (the f_carrier "
+                  "state that was declared and never implemented), not per-satellite orbit "
+                  "or model error -- one number per chain would remove most of it."
+                  % (statistics.median(cms), statistics.median(sprs)))
+        else:
+            print("\n⚠️ NOT COMMON MODE: per-sat remainders spread %.2f Hz about a %+.2f Hz "
+                  "median, so this is not one receiver clock term. A per-satellite rate is "
+                  "genuinely needed." % (statistics.median(sprs), statistics.median(cms)))
+        print("   (peak width 1/T = %.2f Hz, so anything above that is resolved)" % width0)
+        return 0
 
     print("\n  block  broker_rate   best_f   eta_peak  eta@0   n_rec   | probe best_f  "
           "probe eta")
