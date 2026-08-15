@@ -48,11 +48,21 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
                     unique_name, _chain, _inst, gnss::TELEM_NAME);
         return;
     }
-    if (_max_prn < _n_prn) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: max_prn {:d} < n_prn {:d}", unique_name, _max_prn,
-                    _n_prn);
+    // max_prn IS A WIRE CAPACITY, NOT A MIRROR OF n_prn (task #64). It used to be fatal for it
+    // to be smaller, because rows were shipped at their input slot index; they are now COMPACTED
+    // to the PRNs that actually have signal, so a 32-slot tracker carrying 14 live satellites
+    // fits in 16 rows. What must still hold is that the wire can carry everything live at once:
+    // that is checked per window at runtime, where the live count is actually known, and it
+    // WARNs rather than dying -- a telemetry frame is not worth taking the instrument down for.
+    if (_max_prn < 1) {
+        FATAL_ERROR("GnssTelemPack[{:s}]: max_prn {:d} must be >= 1", unique_name, _max_prn);
         return;
     }
+    if (_max_prn < _n_prn)
+        INFO("GnssTelemPack[{:s}]: wire carries {:d} PRN rows for a {:d}-slot record buffer -- "
+             "rows are compacted to the PRNs with signal, and a window with more than {:d} live "
+             "will WARN and ship the lowest-numbered ones",
+             unique_name, _max_prn, _n_prn, _max_prn);
     if (_rec_per_frame < 1 || _rec_per_frame > gnss::TELEM_MAX_REC) {
         FATAL_ERROR("GnssTelemPack[{:s}]: records_per_frame {:d} outside [1, {:d}]", unique_name,
                     _rec_per_frame, gnss::TELEM_MAX_REC);
@@ -108,6 +118,7 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
     }
 
     _rows.assign((size_t)_rec_per_frame * _max_prn * gnss::TELEM_ROW_FLOATS, 0.0f);
+    _row_of.assign((size_t)_n_prn, -1);
 
     INFO("GnssTelemPack[{:s}]: {:s}/{:s} -- {:d} records/frame x {:d} PRN rows x {:d} floats = "
          "{:d} B/frame; window = {:d} hops = {:d} samples on the F-engine clock",
@@ -163,6 +174,12 @@ bool GnssTelemPack::flush(frameID& out_id) {
     _cur_present = 0;
     _cur_utc0 = 0.0;
     std::fill(_rows.begin(), _rows.end(), 0.0f);
+    // The row map belongs to the window that just went out. Clearing it here is what makes it
+    // impossible for one window's PRN->row assignment to leak into the next, which would put a
+    // PRN's samples under a neighbour's label -- the exact class of silent mislabelling this
+    // whole transport exists to remove.
+    std::fill(_row_of.begin(), _row_of.end(), -1);
+    _map_built = false;
     return true;
 }
 
@@ -218,8 +235,48 @@ void GnssTelemPack::main_thread() {
             continue;
         }
 
+        // ROW COMPACTION (task #64), built ONCE per window from the first record of it. A PRN
+        // earns a wire row by having replica energy -- i.e. by having actually been despread.
+        // The tracker's record buffer holds a slot for every CONFIGURED PRN and writes a row
+        // for each whether or not it ran, so without this ~65% of every frame was zeros: 40
+        // rows shipped for 11-14 live satellites, 480 Mbps of a single 1 GbE into cf06, and a
+        // measured ~5 s added to every broker cycle (the REST polls queue behind the synced
+        // bursts).
+        //
+        // WHY THE FIRST RECORD AND NOT A PER-RECORD MAP: the broker builds its PRN->row index
+        // from record slot 0 and applies it to all four records of the frame, so the map must
+        // be constant across the window. The cost is that a PRN which starts being despread
+        // mid-window waits for the next one -- 42 ms, against a despread state that does not
+        // flicker on that timescale.
+        if (!_map_built) {
+            int next = 0;
+            for (int p = 0; p < _n_prn; ++p) {
+                if (in[(size_t)p * in_stride + gnss::REC_P_ENERGY] <= 0.0f)
+                    continue; // not despread this window: silence, not a row of zeros
+                if (next >= _max_prn) {
+                    // MORE LIVE THAN THE WIRE CAN CARRY. Ship what fits and say so loudly and
+                    // by name: a silent truncation here reads downstream as "that satellite
+                    // stopped being tracked", which is a physics conclusion drawn from a
+                    // transport limit. Rate-limited because it would fire every window.
+                    if ((_prn_overflow++ % 200) == 0)
+                        WARN("GnssTelemPack[{:s}]: more live PRNs than the {:d} wire rows -- "
+                             "shipping the lowest-numbered and DROPPING the rest (PRN {:.0f} "
+                             "onwards); raise telem_max_prn. {:d} windows so far",
+                             unique_name, _max_prn,
+                             in[(size_t)p * in_stride + gnss::REC_PRN], _prn_overflow);
+                    break;
+                }
+                _row_of[(size_t)p] = next++;
+            }
+            _last_live = next;
+            _map_built = true;
+        }
+
         for (int p = 0; p < _n_prn; ++p) {
-            float* row = &_rows[gnss::telem_row_offset(slot, p, _max_prn)];
+            const int wrow = _row_of[(size_t)p];
+            if (wrow < 0)
+                continue;
+            float* row = &_rows[gnss::telem_row_offset(slot, wrow, _max_prn)];
             std::memcpy(row, in + (size_t)p * in_stride,
                         gnss::RECORD_FLOATS * sizeof(float));
             // THE COMB, copied column by column so the wire's fixed TELEM_MAX_CHAN stride is

@@ -97,6 +97,16 @@ common:
   # ONE reader thread serves all five chains -- the stream carries every chain on one
   # connection and the store is keyed by chain, so a client per chain would decode the same
   # 24 MB/s five times and discard four.
+  # ⚠️ THE TRANSPORT COSTS ~5 s PER BROKER CYCLE, AND THE COST IS ON THE WIRE (2026-08-15).
+  # A-B-A on all five chains: gather up 16.5 s median, PARKED 11.5 s, up again 17.8 s --
+  # 11.5 s is the pre-transport baseline (11.8 s, 2026-08-12). Four of those chains never
+  # touch the comb DLL, so this is the transport itself, not task #63's broker-side work.
+  # Isolated further by dropping ONLY this subscription while leaving the gather running at
+  # full NIC load: NO recovery (17.8-23.6 s), so it is not this process's Python ingest --
+  # the nodes' pushes delay the broker's own REST polls to those same nodes. cf06 has ONE
+  # 1 GbE (eno8303) carrying 620 Mbps of telemetry, and the senders are frame-synced by
+  # design, so they burst together. See task #64: ~65% of every frame is zero-filled PRN
+  # rows (max_prn 40 vs 11-14 live).
   telem-gather: 127.0.0.1:11061
   # ⚠️ MATCHED TO THE REST FEED, NOT LEFT AT THE DEFAULT. The combiners serve
   # `record_export: 128` records on /get_records, so 32 windows x 4 records/frame = 128 gives

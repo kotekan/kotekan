@@ -90,9 +90,21 @@ private:
     double _cur_utc0 = 0.0;
     std::vector<float> _rows; ///< [rec_per_frame][max_prn][RECORD_FLOATS]
 
+    /// ROW COMPACTION (task #64). `_row_of[p]` is the WIRE row that input PRN slot p occupies
+    /// in the window currently open, or -1 if it is not carried. The tracker's record buffer
+    /// has one slot per CONFIGURED PRN (32 on GPS/Galileo, 24 on BeiDou) but only the seeded
+    /// ones are despread, so shipping the slot array verbatim put ~65% zero rows on the wire.
+    /// The map is built once per window, from the first record of that window, and reused for
+    /// every record in it -- the broker reads its PRN->row index from record slot 0 and applies
+    /// it to all four, so a map that changed between records would silently mislabel rows.
+    std::vector<int> _row_of;
+    bool _map_built = false;
+
     uint64_t _seq = 0;      ///< frames emitted; the receiver reads gaps as loss
     uint64_t _dropped = 0;  ///< records that could not be placed (no metadata / bad wstart)
     uint64_t _n_records = 0;
+    uint64_t _prn_overflow = 0; ///< windows where more PRNs were live than the wire can carry
+    int _last_live = 0;         ///< live PRNs in the most recent window (for get_stats)
 
     /// Write the accumulated window out and reset. No-op if nothing is open.
     /// Returns false if the output buffer shut down (the caller must exit).

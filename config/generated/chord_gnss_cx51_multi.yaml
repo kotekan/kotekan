@@ -396,7 +396,7 @@ gnss0_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -418,7 +418,7 @@ gnss0_b2a_telem_pack:
   in_buf: gnss0_b2a_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 7
   n_elements: 32
   n_prn: 24
@@ -607,7 +607,7 @@ gnss0_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -629,7 +629,7 @@ gnss0_b2b_telem_pack:
   in_buf: gnss0_b2b_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 7
   n_elements: 32
   n_prn: 24
@@ -831,7 +831,7 @@ gnss0_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -853,7 +853,7 @@ gnss0_e5a_telem_pack:
   in_buf: gnss0_e5a_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 7
   n_elements: 32
   n_prn: 32
@@ -1050,7 +1050,7 @@ gnss0_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1072,7 +1072,7 @@ gnss0_e5b_telem_pack:
   in_buf: gnss0_e5b_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 7
   n_elements: 32
   n_prn: 32
@@ -1304,7 +1304,7 @@ gnss0_srch_tap:
   n_elements: 1
   out_buf: gnss0_srch_buf
 gnss0_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1326,7 +1326,7 @@ gnss0_telem_pack:
   in_buf: gnss0_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 7
   n_elements: 32
   n_prn: 32
@@ -1489,7 +1489,7 @@ gnss1_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1510,7 +1510,7 @@ gnss1_b2a_telem_pack:
   in_buf: gnss1_b2a_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 6
   n_elements: 32
   n_prn: 24
@@ -1673,7 +1673,7 @@ gnss1_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1694,7 +1694,7 @@ gnss1_b2b_telem_pack:
   in_buf: gnss1_b2b_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 6
   n_elements: 32
   n_prn: 24
@@ -1862,7 +1862,7 @@ gnss1_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1883,7 +1883,7 @@ gnss1_e5a_telem_pack:
   in_buf: gnss1_e5a_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 6
   n_elements: 32
   n_prn: 32
@@ -2046,7 +2046,7 @@ gnss1_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2067,7 +2067,7 @@ gnss1_e5b_telem_pack:
   in_buf: gnss1_e5b_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 6
   n_elements: 32
   n_prn: 32
@@ -2264,7 +2264,7 @@ gnss1_srch_tap:
   n_elements: 1
   out_buf: gnss1_srch_buf
 gnss1_telem_buf:
-  frame_size: 62832
+  frame_size: 25200
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2285,7 +2285,7 @@ gnss1_telem_pack:
   in_buf: gnss1_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 40
+  max_prn: 16
   n_chan: 6
   n_elements: 32
   n_prn: 32

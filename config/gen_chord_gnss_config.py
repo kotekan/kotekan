@@ -1053,11 +1053,15 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     if args.telem_host:
         chain_name = broker_chain_name(chain["signal"] if chain else sig["primary"])
         telem_bytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
-        if n_prn > args.telem_max_prn:
-            raise SystemExit(f"--telem-max-prn {args.telem_max_prn} < {n_prn} PRNs on chain "
-                             f"{chain_name}. This number is on the WIRE and must be identical on "
-                             f"every sender and on the gather's receive buffer -- raise it in "
-                             f"config/gnss_fleet_chord.yaml and regenerate the gather too.")
+        # ⚠️ NO LONGER AN ERROR WHEN n_prn EXCEEDS IT (task #64). GnssTelemPack COMPACTS the
+        # wire rows onto the PRNs that were actually despread, so max_prn is the number of
+        # SIMULTANEOUSLY LIVE satellites the wire can carry, not a mirror of the record
+        # buffer's slot count. A tracker configured for 32 PRN slots with 11-14 seeded fits in
+        # 16 rows, and the 40 rows this used to demand were ~65% zeros: 480 Mbps of cf06's
+        # single 1 GbE, which measured ~5 s on every broker cycle. The stage WARNs by PRN name
+        # if a window ever has more live than fit.
+        if args.telem_max_prn < 1:
+            raise SystemExit(f"--telem-max-prn must be >= 1 (chain {chain_name})")
         blocks.update({
             f"{pre}telem_buf": {
                 "kotekan_buffer": "standard",
@@ -1832,12 +1836,18 @@ def main():
                     help="port the gather instance's bufferRecv listens on. ONE port for the "
                          "whole fleet: every frame carries its own chain and instance tags, so "
                          "there is no per-chain port map to get wrong.")
-    ap.add_argument("--telem-max-prn", type=int, default=40,
-                    help="PRN rows on the wire. ⚠️ ON THE WIRE and therefore IDENTICAL on every "
+    ap.add_argument("--telem-max-prn", type=int, default=16,
+                    help="PRN rows on the wire = how many SIMULTANEOUSLY LIVE satellites one "
+                         "frame can carry. ⚠️ ON THE WIRE and therefore IDENTICAL on every "
                          "sender and on the gather's receive buffer -- bufferRecv closes any "
-                         "connection whose frame_size disagrees. Chains with fewer PRNs send "
-                         "zero rows, which is the price of one uniform frame size (and so one "
-                         "listener, one buffer, no per-chain plumbing).")
+                         "connection whose frame_size disagrees, so changing this needs BOTH "
+                         "ends restarted.\n"
+                         "NOT the record buffer's slot count: GnssTelemPack compacts rows onto "
+                         "the PRNs that were actually despread, so a 32-slot tracker with 14 "
+                         "seeded satellites fits in 16 rows. Was 40 until 2026-08-15, which put "
+                         "~65% zero rows on the wire -- 480 Mbps of cf06's single 1 GbE and a "
+                         "measured ~5 s on every broker cycle, because the ~60 REST polls "
+                         "queue behind the frame-synced bursts (task #64).")
     ap.add_argument("--telem-records-per-frame", type=int, default=4,
                     help="records batched into one wire frame. 4 = one 8192-hop correlator "
                          "frame at hops_per_record 2048, i.e. 23.84 frames/s. The batch "

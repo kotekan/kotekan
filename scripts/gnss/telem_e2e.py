@@ -60,11 +60,20 @@ PORT_REST = 12890
 HOPS_PER_RECORD = 2048
 FFT_LEN = 16384
 REC_PER_FRAME = 4
-MAX_PRN = 8
+# ROW COMPACTION (task #64): the wire carries FEWER rows than the record buffer has PRN slots,
+# and GnssTelemPack fills them with the PRNs that were actually despread. MAX_PRN < N_PRN is the
+# whole point -- the previous code FATAL_ERRORed on exactly this configuration, so a regression
+# to slot-indexed rows cannot pass this gate.
+MAX_PRN = 3
 N_PRN = 4
 N_ELEM = 2
 N_WINDOWS = 12
 PRNS = [3, 7, 10, 26]
+# One configured PRN that is NOT being despread. It must occupy no row at all: silence is not a
+# row of zeros, and a zero row would be indistinguishable downstream from a satellite that was
+# tracked and found nothing.
+DEAD_PRN = 7
+LIVE_PRNS = [p for p in PRNS if p != DEAD_PRN]
 
 # The three simulated instances. cx51.1 starts LATE -- see [2] above.
 INSTANCES = [("cx19.0", 0), ("cx42.1", 0), ("cx51.1", 3)]
@@ -117,7 +126,9 @@ def write_record_files(dirpath, inst, start_win, drop=()):
                     for s in range(telem._ROW_FLOATS):
                         body[base + s] = _mark(inst, wstart, prn, s)
                     body[base + telem.REC_PRN] = float(prn)
-                    body[base + telem.REC_P_ENERGY] = float(prn)  # > 0: every row survives
+                    # Replica energy is what marks a PRN as despread, and it is what the pack
+                    # compacts on. DEAD_PRN gets zero and must therefore reach no wire row.
+                    body[base + telem.REC_P_ENERGY] = 0.0 if prn == DEAD_PRN else float(prn)
                     # Element blocks: filled with a sentinel that must NEVER appear on the
                     # wire. The transport ships the record HEADER only, and a stride bug would
                     # smuggle these through looking like data.
@@ -276,7 +287,18 @@ def main():
                     if not f.has_record(r):
                         continue
                     wstart = f.wstart0 + r * HOPS_PER_RECORD * FFT_LEN
-                    for prn in PRNS:
+                    # [1a] COMPACTION: exactly the despread PRNs, and nothing else. Checked per
+                    # record because the pack builds ONE row map for the whole window -- if it
+                    # ever rebuilt mid-frame, some record would disagree here.
+                    got_prns = f.prns()
+                    if got_prns != LIVE_PRNS:
+                        fails.append("%s w%d r%d: wire carries PRNs %s, expected %s "
+                                     "(row compaction)" % (inst, w, r, got_prns, LIVE_PRNS))
+                    if DEAD_PRN in got_prns:
+                        fails.append("%s w%d r%d: PRN %d was never despread but occupies a wire "
+                                     "row -- silence is being shipped as data"
+                                     % (inst, w, r, DEAD_PRN))
+                    for prn in LIVE_PRNS:
                         row = f.row(r, prn)
                         if row is None:
                             fails.append("%s w%d r%d: PRN %d missing" % (inst, w, r, prn))
@@ -387,13 +409,13 @@ def main():
                          % (dw, late))
 
         # -- the shape the broker consumes ---------------------------------------------------
-        got, now = client.coherent_source("gps_l5", prns=PRNS)
+        got, now = client.coherent_source("gps_l5", prns=LIVE_PRNS)
         print("coherent %d instances, %d PRNs on cx19.0, fleet_now hop %d"
               % (len(got), len(got.get("cx19.0", {})), now))
         if len(got) != len(INSTANCES):
             fails.append("coherent_source saw %d instances, expected %d"
                          % (len(got), len(INSTANCES)))
-        hopsets = [set(g.get(PRNS[0], {})) for g in got.values() if g.get(PRNS[0])]
+        hopsets = [set(g.get(LIVE_PRNS[0], {})) for g in got.values() if g.get(LIVE_PRNS[0])]
         if len(hopsets) > 1:
             common = set.intersection(*hopsets)
             if not common:

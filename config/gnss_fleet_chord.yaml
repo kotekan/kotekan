@@ -99,18 +99,26 @@ common:
   # small one beside it (scripts/gnss/gather_up.sh), not a new kind of thing.
   #
   # WHAT IT ADDS PER INSTANCE: a second CONSUMER of each chain's record buffer (the combiner
-  # is untouched), which strips each record to its gnssRecord.hpp header, batches four of them
-  # on an ABSOLUTE window boundary, and bufferSends 16736 B at 23.84 Hz. 24 MB/s from the whole
-  # fleet, and drop_frames means a gather that is down costs nothing but a log line.
+  # is untouched), which strips each record to its gnssRecord.hpp header plus the per-channel
+  # E/P/L comb, batches four of them on an ABSOLUTE window boundary, and bufferSends 25200 B at
+  # 23.84 Hz. 24 MB/s from the whole fleet, and drop_frames means a gather that is down costs
+  # nothing but a log line.
   #
   # ⚠️ BRING THE GATHER UP BEFORE RESTARTING NODES INTO THIS. 60 senders retrying a dead
   # listener is ~2 log lines a second across the fleet even at reconnect_time 30.
   telem-host: 10.222.3.6
   # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
   # closes any connection whose frame_size disagrees with its buffer -- so changing either one
-  # means regenerating the GATHER config in the same commit, and restarting both ends. They are
-  # left at the generator defaults (40 / 4) deliberately: 40 clears the widest chain (32) with
-  # room, and 4 records is exactly one 8192-hop correlator frame.
+  # means regenerating the GATHER config in the same commit, and restarting both ends. Left at
+  # the generator defaults (16 / 4): 4 records is exactly one 8192-hop correlator frame, and 16
+  # is how many SIMULTANEOUSLY LIVE satellites one frame carries -- not the record buffer's slot
+  # count, because GnssTelemPack compacts rows onto the PRNs that were actually despread.
+  #
+  # ⚠️ WAS 40 UNTIL 2026-08-15, WHICH COST ~5 s ON EVERY BROKER CYCLE. 40 rows for 11-14 live
+  # satellites is ~65% zeros: 480 Mbps of cf06's ONE 1 GbE (eno8303), and because the senders
+  # are frame-synced they burst together, so the broker's ~60 REST polls queued behind them.
+  # A-B-A on all five chains, parking the gather: 16.5 s -> 11.5 s -> 17.8 s median cycle,
+  # against an 11.8 s pre-transport baseline. Task #64.
   # Extra tracker chains on the SAME 1176.45 MHz tap. Both are free of an extra voltage tap
   # (identical covering channels to GPS L5) but each gets its OWN 128-lane synth buffer and
   # its own dual-correlator pass, so the cost is GPU, not bandwidth.
