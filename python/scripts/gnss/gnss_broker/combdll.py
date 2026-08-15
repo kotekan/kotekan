@@ -492,9 +492,20 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
         return abs(s / n) ** 2, n, pw / n
 
     # Per-PRN fleet reduction: per-instance folds, then the mean over instances.
+    # ⚠️ RATE SANITY CLAMP. Physics bounds the residual at ~±10 Hz (decohered sats,
+    # [[chord-deep-rate-alias]]); a rate fit taken on a re-acquiring fleet hands back
+    # ±30-45 Hz of pure noise (measured 2026-08-15 16:52, minutes after a node restart),
+    # and folding a REAL signal at a noise rate destroys it. Beyond the bound the honest
+    # statement is "rate unknown": fold at 0 and say so in rate_src, so eta carries the
+    # cost visibly instead of the C/N0 silently eating it.
+    RATE_MAX_HZ = 15.0
     acc = {}
+    clamped = set()
     for (prn, inst), rows in ser.items():
         f_hz = float(rates.get(prn) or 0.0)
+        if abs(f_hz) > RATE_MAX_HZ:
+            f_hz = 0.0
+            clamped.add(prn)
         pr, nr, pinc = _fold(rows, f_hz, 0)
         ps, ns, pinc_s = _fold(rows, f_hz, 1)
         if pr is None:
@@ -572,8 +583,9 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
                # eta is not diluted by the noise term.
                "eta": ((pw - fl) * n_rec / (pinc - s2_inc)
                        if (pinc is not None and pinc > s2_inc and rho > 0.0) else None),
-               "rate_hz": float(rates.get(prn) or 0.0),
-               "rate_src": "rate" if rates.get(prn) else "zero",
+               "rate_hz": 0.0 if prn in clamped else float(rates.get(prn) or 0.0),
+               "rate_src": ("clamped" if prn in clamped
+                            else "rate" if rates.get(prn) else "zero"),
                "t_coh_s": t_coh,
                "sigma2": fl, "n_probe": len(probe_raw),
                "floor_white": fw_raw, "floor_white_sky": fw_sky,
