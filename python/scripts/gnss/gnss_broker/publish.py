@@ -544,10 +544,31 @@ class FleetPublisher:
             # THE DEEP NUMBERS ARE NOT DESTROYED -- inst_snr_med/_lo/_hi/_n and deep_snr
             # stay published beside this, so the old population remains inspectable and the
             # switch is visible in `sig_src` rather than hidden in a changed number.
-            _ks = (kcoh.get(prn) or {}).get("sig")
-            if _ks is not None:
+            # USE THE COHERENT SIGNIFICANCE ONLY WHERE THE FOLD ACTUALLY COHERED. Measured
+            # 2026-08-15 on gal_e5a: eta 20/124 (16%), kcoh_sig 1-2 on satellites the
+            # incoherent estimator had at 19 dB-Hz -- a fold that did not cohere reports a
+            # weak DETECTION, which is true of the fold and false of the satellite. Swapping
+            # one understated column for another would have been no fix at all. So: coherent
+            # significance when eta says the coherence is real, else the incoherent
+            # t-statistic (combdll.prompt_cn0's sig_inc), else the old deep branches.
+            # sig_src always names which, so the population is never switched silently.
+            # ⚠️ Both dicts are read HERE by their own lookups, not via the _pc/_kc locals
+            # the C/N0 blocks below define -- those are ~100 lines later in this function
+            # and would be an UnboundLocalError (the same ordering slip cost the broker a
+            # restart cycle earlier today).
+            _kc2 = kcoh.get(prn) or {}
+            _pc2 = pcn0.get(prn) or {}
+            _ks, _eta, _kn = _kc2.get("sig"), _kc2.get("eta"), _kc2.get("n_rec")
+            _si = _pc2.get("sig_inc")
+            if _ks is not None and _eta is not None and _kn and _eta >= 0.25 * _kn:
                 row["sig"] = _ks
-                row["sig_src"] = "kcoh:%d" % (kcoh[prn].get("n_rec") or 0)
+                row["sig_src"] = "kcoh:%d" % _kn
+            elif _si is not None:
+                row["sig"] = _si
+                row["sig_src"] = "inc:%d" % (_pc2.get("n_used") or 0)
+            elif _ks is not None:
+                row["sig"] = _ks
+                row["sig_src"] = "kcoh_weak:%d" % (_kn or 0)
             elif _pi and row.get("det_duty_s") is not None:
                 row["sig"] = row.get("inst_snr_med_win") or row["inst_snr_med"]
                 row["sig_src"] = "inst_med:%d" % row["inst_snr_n"]

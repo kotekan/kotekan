@@ -371,6 +371,22 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
                 rec_rows.append((w, r, rho, q, gated))
         n_used, n_tot = len(rho_gated), len(rows)
         rho_mean = sum(rho_gated) / n_used if n_used else None
+        # THE INCOHERENT DETECTION SIGNIFICANCE, empirically (2026-08-15). A t-statistic on
+        # the gated per-record rho: mean / (std/sqrt(n)). No distributional assumption --
+        # the scatter is MEASURED from the same records the mean is, so scintillation and
+        # any residual non-whiteness make it conservative rather than wrong.
+        #
+        # ⚠️ WHY THIS EXISTS: `sig` was the deep fold's number, which read single digits
+        # while the SEARCH saw the same satellites at hundreds of sigma (KV, 2026-08-15).
+        # Replacing it with the COHERENT fold's significance is right only where the fold
+        # actually cohered; where it did not, this is the honest detection statement, and
+        # it is large for exactly the satellites that are obviously there.
+        sig_inc = None
+        if n_used >= 8 and rho_mean is not None and rho_mean > 0.0:
+            _v = sum((x - rho_mean) ** 2 for x in rho_gated) / (n_used - 1)
+            _se = (_v / n_used) ** 0.5
+            if _se > 0.0:
+                sig_inc = rho_mean / _se
         cn0 = (10.0 * math.log10(rho_mean / t_rec)
                if rho_mean is not None and rho_mean > 0.0 else None)
         # Even/odd split of the GATED records: the self-consistency of the number served.
@@ -382,6 +398,7 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
                 split_db = 10.0 * math.log10(re_ / ro_)
         out[prn] = {"cn0_db": cn0,
                     "rho": rho_mean,
+                    "sig_inc": sig_inc,
                     "duty": n_used / float(n_tot) if n_tot else 0.0,
                     "n_used": n_used, "n_rec": n_tot,
                     "split_db": split_db,

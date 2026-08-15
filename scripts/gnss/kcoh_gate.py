@@ -234,6 +234,84 @@ def self_test():
     return 0
 
 
+def _broker_rows(broker, chain):
+    with urllib.request.urlopen("%s/get_status?chain=%s" % (broker, chain), timeout=5.0) as h:
+        return json.loads(h.read().decode())
+
+
+def coherence_scan(a):
+    """eta/n vs T_coh on a HELD satellite -- the carrier coherence time, measured.
+
+    THE POINT: the deep fold re-searched a rate every integration, so it could report a
+    detection whether or not the carrier stayed coherent -- it fitted the incoherence out.
+    A known-rate fold cannot, so eta becomes a direct measurement of something the old
+    estimator structurally could not show. Where eta/n falls through ~0.5 is where a
+    coherent integration stops paying, which is the number that decides how deep into the
+    sidelobes this instrument can reach.
+    """
+    rows = _broker_rows(a.broker, a.chain)
+    probes = {int(r["prn"]) for r in rows if r.get("noise_probe")}
+    rates = {int(r["prn"]): r["rec_rate_hz"] for r in rows
+             if r.get("rec_rate_hz") is not None}
+    held = [r for r in rows
+            if not r.get("noise_probe") and r.get("cn0_prompt_db") is not None
+            and (r.get("cn0_prompt_duty") or 0) >= a.min_duty]
+    if not probes:
+        raise SystemExit("no noise probes -- no floor, no scan")
+    if not held:
+        # AN EXPERIMENT THAT CANNOT SUCCEED IS NOT EVIDENCE. Say what was available.
+        best = max(((r.get("cn0_prompt_duty") or 0), r["prn"]) for r in rows) if rows else (0, 0)
+        raise SystemExit(
+            "INCONCLUSIVE: no satellite on %s is held at duty >= %.2f (best %.2f on PRN %d).\n"
+            "A coherence scan on an intermittently-tracked satellite measures the gaps, not "
+            "the carrier. Re-run when the chain is holding." % (a.chain, a.min_duty, best[0],
+                                                               best[1]))
+    tgt = max(held, key=lambda r: r["cn0_prompt_db"])
+    prn = int(tgt["prn"])
+    print("scan target PRN %d: cn0_inc %.1f dB-Hz, duty %.2f, injected rate %+.3f Hz"
+          % (prn, tgt["cn0_prompt_db"], tgt["cn0_prompt_duty"], rates.get(prn) or 0.0))
+
+    host, port = telem.parse_endpoint(a.gather)
+    cl = telem.TelemClient(host=host, port=port, depth=4096, chains={a.chain})
+    cl.start()
+    time.sleep(a.seconds)
+    print("\n  T_coh(s)   n_rec   eta     eta/n    cn0_coh    cn0_coh_sky")
+    prev = None
+    t_half = None
+    for nw in (1, 2, 4, 8, 16, 32):
+        g = combdll.coh_cn0(cl, a.chain, rates=rates, n_win=nw, probe_prns=probes)
+        v = (g or {}).get(prn)
+        if not v:
+            print("  (%d windows: no fold)" % nw)
+            continue
+        eff = (v["eta"] / v["n_rec"]) if v["eta"] else None
+        print("  %-10.3f %-7d %-7s %-8s %-10s %s"
+              % (v["t_coh_s"], v["n_rec"],
+                 "%.1f" % v["eta"] if v["eta"] else "--",
+                 "%.2f" % eff if eff else "--",
+                 "%.1f" % v["cn0_db"] if v["cn0_db"] is not None else "--",
+                 "%.1f" % v["cn0_sky_db"] if v["cn0_sky_db"] is not None else "--"))
+        if eff is not None and prev is not None and prev[1] >= 0.5 > eff and t_half is None:
+            t_half = (prev[0], v["t_coh_s"])
+        if eff is not None:
+            prev = (v["t_coh_s"], eff)
+    cl.stop()
+    print()
+    if t_half:
+        print("COHERENCE TIME: eta/n crosses 0.5 between %.3f s and %.3f s -- coherent "
+              "integration stops paying beyond that." % t_half)
+    elif prev and prev[1] >= 0.5:
+        print("COHERENCE TIME: eta/n still >= 0.5 at %.3f s (the longest fold tried) -- "
+              "the carrier holds at least that long; scan further with --windows." % prev[0])
+    else:
+        print("⚠️ eta/n IS BELOW 0.5 AT EVERY LENGTH INCLUDING THE SHORTEST. The records "
+              "are not adding coherently even over one frame, so this is not a coherence "
+              "TIME at all -- suspect the injected rate (a residual error of df decoheres "
+              "in ~1/(2 df) s) or a per-record phase discontinuity. Check kcoh_rate_hz "
+              "against the chain's carrier residual before reading anything into the C/N0.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -244,9 +322,21 @@ def main():
     ap.add_argument("--windows", type=int, default=32,
                     help="fold length in windows (32 = ~1.34 s, the production value)")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--coherence-scan", action="store_true",
+                    help="HOW LONG DO WE ACTUALLY HOLD CARRIER COHERENCE? Fold the same "
+                         "records at 1,2,4...32 windows and report eta/n vs T_coh. "
+                         "eta/n ~ 1 means every record added coherently; the T where it "
+                         "falls through ~0.5 IS the coherence time. ⚠️ Runs only on a "
+                         "satellite the incoherent estimator HOLDS (duty >= --min-duty): "
+                         "on a weak or intermittently-tracked satellite eta is a ratio of "
+                         "two small noisy numbers and means nothing, which is exactly the "
+                         "kind of reading that has been mistaken for physics here before.")
+    ap.add_argument("--min-duty", type=float, default=0.8)
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    if a.coherence_scan:
+        return coherence_scan(a)
 
     # Probes + rates + the per-record reference, all from the broker's served rows.
     try:
