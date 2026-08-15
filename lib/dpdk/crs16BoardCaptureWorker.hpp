@@ -85,6 +85,8 @@ protected:
     /// Genuine backwards steps seen since start. NOT fatal (see the check) -- but a
     /// sustained count is a real controller reset and the frames around it are suspect.
     uint64_t seq_backwards_count = 0;
+    /// Rate limit for the "still waiting for stream IDs" warning (see first_run).
+    double _last_incomplete_warn = 0.0;
 
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
@@ -221,6 +223,21 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         }
 
         if (stream_ids_expected.size() < num_expected_stream_ids) {
+            // ⚠️ SAY SO. This branch consumes packets forever and produces NOTHING while it
+            // waits, so a worker that never sees all its streams looks exactly like a
+            // healthy busy worker: ring draining, packets counted, CPU spinning -- and its
+            // GPU idle with no frames, no log line and no metric. cx43 sat in precisely
+            // that state on 2026-08-15 (port 0 receiving 430k pkt/s, ring drops static,
+            // all workers alive, /gnss0_n2combine frozen) and it survived a restart, so it
+            // is deterministic rather than a race. One line a second names what is missing.
+            const double now = current_time();
+            if (now - _last_incomplete_warn > 1.0) {
+                _last_incomplete_warn = now;
+                WARN("Port: {:d}, Worker: {:d}; STILL WAITING to start capture -- seen "
+                     "{:d} of {:d} expected stream IDs. No frames are produced until the "
+                     "set is complete, so this GPU's pipeline stays idle.",
+                     port, worker_id, stream_ids_expected.size(), num_expected_stream_ids);
+            }
             return 0; // Wait for more packets to establish the full list
         }
 
