@@ -2735,13 +2735,21 @@ def main(argv=None, rx=None, publisher=None):
         while True:
             t0 = time.time()
             try:
-                fl = combdll.fleet_dll_comb(
-                    telem_client, telem_chain, n_win=max(1, args.fast_trim_windows),
-                    min_instances=args.dll_min_instances, k_sigma=args.dll_quality_sigma,
-                    q_fallback=args.dll_quality_min, per_channel=False)
                 with fast_lock:
                     prns = set(fast_prns)
                     tmpl = dict(fast_tmpl)
+                # ⚠️ DECODE ONLY THE ARMED PRNs. Without this filter the loop decodes every
+                # PRN's comb on every iteration -- ~15 satellites x 10 instances x 4 windows
+                # x 4 records of Python -- and then throws all but the armed ones away. It
+                # cost a factor ~10 in achieved rate: 5 Hz requested, 1.5 Hz delivered, which
+                # is BELOW the 1.94 Hz break-even, i.e. the loop was still losing to the drift
+                # while looking like it was running. The rate is the whole point of this
+                # thread; anything that silently caps it defeats it.
+                fl = combdll.fleet_dll_comb(
+                    telem_client, telem_chain, n_win=max(1, args.fast_trim_windows),
+                    min_instances=args.dll_min_instances, k_sigma=args.dll_quality_sigma,
+                    q_fallback=args.dll_quality_min, per_channel=False,
+                    prns=prns or None) if prns else {}
                 if not fl or not prns or not tmpl:
                     fast_stats["skipped"] += 1
                 else:
