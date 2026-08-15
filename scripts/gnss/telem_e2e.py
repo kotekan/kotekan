@@ -103,9 +103,16 @@ def _mark(inst, wstart, prn, slot):
     return float(ih * 4000000 + rec * 1000 + prn * 10 + slot)  # < 2^24, exact in float32
 
 
-def write_record_files(dirpath, inst, start_win, drop=()):
-    """One rawFileWrite-format file of record frames: [u32 meta_size][meta][frame]...
+def write_record_files(dirpath, inst, start_win, drop=(), comb_epl=None):
+    """`comb_epl=(E, P, L)` overrides the provenance MARKS in the comb with fixed amplitudes.
 
+    ⚠️ THE DEFAULT MARKS ARE NOT A SIGNAL. They encode their own (instance, hop, PRN, channel)
+    address so a stride error is caught by value, which is what THIS gate needs -- but the
+    resulting E/P/L are arbitrary, so any discriminator built from them is meaningless. A
+    caller that wants a PREDICTABLE q and disc (fast_trim_e2e.py does: it has to know the trim
+    step in advance) must pass comb_epl and give up the provenance check in exchange.
+
+    One rawFileWrite-format file of record frames: [u32 meta_size][meta][frame]...
     rawFileRead reads the metadata size once at the head of the file and then alternates
     metadata/frame, so this is the same layout rawFileWrite produces -- which is what makes the
     replay a genuine stand-in for the assembler's output rather than a special path.
@@ -141,6 +148,12 @@ def write_record_files(dirpath, inst, start_win, drop=()):
                     cb0 = N_PRN * REC_STRIDE + (p * N_CHAN) * CHAN_FLOATS
                     for ch in range(N_CHAN):
                         cb = cb0 + ch * CHAN_FLOATS
+                        if comb_epl is not None:
+                            _e, _p, _l = comb_epl
+                            body[cb + 0], body[cb + 2] = _p, 1.0        # P re, energy
+                            body[cb + 3], body[cb + 5] = _e, 1.0        # E re, energy
+                            body[cb + 6], body[cb + 8] = _l, 1.0        # L re, energy
+                            continue
                         body[cb + 0] = _mark(inst, wstart, prn, 100 + ch)   # P
                         body[cb + 1] = _mark(inst, wstart, prn, 200 + ch)
                         body[cb + 2] = float(ch + 1)
