@@ -1493,6 +1493,28 @@ def main(argv=None, rx=None, publisher=None):
                          "only once that fold also runs here. Falls back to the polled "
                          "discriminator, per cycle, whenever the gather has no windows for "
                          "this chain -- so a gather that dies costs a log line, not the loop.")
+    ap.add_argument("--fast-trim-hz", type=float, default=0.0,
+                    help="TASK #51: run the CODE LOOP at this rate, on its own thread, instead "
+                         "of once per policy cycle. 0 = off (the loop stays on the cycle).\n"
+                         "THE DEFECT THIS FIXES: the DLL's authority is a step PER UPDATE and "
+                         "the update rate was the ~12 s cycle, so the loop was 23x slower than "
+                         "the drift and could never hold lock. Measured offline, noiseless, "
+                         "from a GOOD (+0.373 chip) seed: the tap walks off at 0.121 chips/s "
+                         "while the loop corrects at most dll_gain*|tau|max/cycle = "
+                         "0.25*0.25/12.1 = 0.0052 chips/s.\n"
+                         "⚠️ NO GAIN SETTING FIXES IT: tau is clamped to |tau| <= 0.25 chips by "
+                         "construction, so even dll_gain 1.0 tops out at 0.021 chips/s. The E/L "
+                         "discriminator is a FINE loop; update RATE is the only lever.\n"
+                         "Break-even is 0.121/0.0625 = 1.94 Hz; 5-10 Hz gives 3-5x margin and "
+                         "the #59 telemetry arrives at 23.84 Hz, so the data is already there. "
+                         "POLICY STAYS ON THE CYCLE -- the main loop still decides who is "
+                         "present and trimmable; this only runs the integrator and the POST.\n"
+                         "Requires --telem-gather (it reads the gather store, never REST).")
+    ap.add_argument("--fast-trim-windows", type=int, default=4,
+                    help="telemetry windows averaged per fast-trim update (4 windows = 16 "
+                         "records = 0.17 s). Shorter is noisier per update but the loop's "
+                         "problem is SLEW, not noise -- see --fast-trim-hz. Must be short "
+                         "enough that consecutive updates see fresh records.")
     ap.add_argument("--telem-dll-windows", type=int, default=0,
                     help="windows meaned for --telem-dll (0 = --telem-windows). 32 windows x 4 "
                          "records = 128, which is what the combiners' EMA integrates; a much "
@@ -2667,6 +2689,105 @@ def main(argv=None, rx=None, publisher=None):
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
+    # -- TASK #51: THE CONTROL LOOP'S OWN CLOCK, decoupled from the policy cycle ------------
+    # WHY THIS EXISTS, in one line: the DLL's authority is a step PER UPDATE, and the update
+    # rate was the 12 s policy cycle, so the loop was 23x slower than the drift it had to
+    # cancel and could never hold lock. Measured offline, noiseless, with a GOOD (+0.373 chip)
+    # seed: the tap walks off at 0.121 chips/s while the loop can correct at most
+    #   dll_gain * |tau|max / cycle = 0.25 * 0.25 / 12.1 = 0.0052 chips/s.
+    #
+    # ⚠️ AND NO GAIN SETTING FIXES IT. tau is clamped -- tau = -clamp(disc,+-1)/4 *
+    # (spacing/0.5) -- so |tau| <= 0.25 chips NO MATTER how large the error is. Even at
+    # dll_gain 1.0 the loop tops out at 0.021 chips/s, still 6x under the drift. The E/L
+    # discriminator is a FINE loop with half-a-chip of pull-in; it cannot slew chips per
+    # second at any gain. THE ONLY LEVER IS UPDATE RATE.
+    #
+    # WHY FASTER IS A REAL WIN AND NOT JUST MORE NOISE: the limit above is SATURATION, not
+    # noise. When disc is railed the step is dll_gain*0.25 whatever the averaging, so N times
+    # more updates is N times more slew exactly when the error is large. The noise penalty
+    # applies near lock, where the loop already has margin. (Cutting the gain by N to
+    # "compensate" would hand the entire win straight back -- so: SAME gain, faster rate.)
+    #
+    # POLICY STAYS ON THE 12 s CYCLE, CONTROL MOVES HERE. The main loop still decides WHO is
+    # present and trimmable and publishes that set; this thread only runs the integrator and
+    # the POST on it. That keeps every gate, floor and presence rule in one place.
+    #
+    # ⚠️ A FAST POST IS SAFE ONLY BECAUSE THE RE-PIN WAS MADE CHEAP (tracker, 2026-07-13:
+    # "the phase step is folded into phi_cyc itself ... re-pinned as often as we like"). The
+    # older measurement that a 10 s re-pin cut deep_snr 221 -> 17 PREDATES that fix. If the
+    # tracker ever regains a per-re-pin phase punch, this thread must be turned off first.
+    fast_lock = threading.Lock()
+    fast_prns = set()   # published by the policy cycle: who may be trimmed right now
+    fast_tmpl = {}      # prn -> (the EXACT dict the cycle last posted, base cp before trim)
+    fast_stats = {"updates": 0, "posts": 0, "skipped": 0, "last_err": "", "rail": 0}
+
+    def _fast_trim_loop():
+        """Run the DLL integrator and the seed POST at --fast-trim-hz. See the notes above.
+
+        ⚠️ IT SUBSTITUTES ONE FIELD INTO THE CYCLE'S OWN PAYLOAD and builds nothing itself.
+        Rebuilding the seed here would silently drop whatever the policy cycle had put in it
+        (carrier_trim_hz, the joint-state terms, nav bits), and a POST that drops a field
+        ZEROES it at the tracker -- an actuator quietly undoing another loop is the worst
+        failure this could have. So the cycle publishes the exact dict it posted plus the
+        untrimmed code phase, and this only ever replaces code_phase_chips.
+        """
+        period = 1.0 / max(args.fast_trim_hz, 1e-3)
+        while True:
+            t0 = time.time()
+            try:
+                fl = combdll.fleet_dll_comb(
+                    telem_client, telem_chain, n_win=max(1, args.fast_trim_windows),
+                    min_instances=args.dll_min_instances, k_sigma=args.dll_quality_sigma,
+                    q_fallback=args.dll_quality_min, per_channel=False)
+                with fast_lock:
+                    prns = set(fast_prns)
+                    tmpl = dict(fast_tmpl)
+                if not fl or not prns or not tmpl:
+                    fast_stats["skipped"] += 1
+                else:
+                    posted = []
+                    for prn in sorted(prns & set(fl) & set(tmpl)):
+                        disc = fl[prn]["disc"]
+                        # THE SAME conversion the policy cycle uses -- one convention, one
+                        # place it can be wrong. tau is clamped by construction, which is
+                        # exactly why rate and not gain is the lever here.
+                        tau = (-max(-1.0, min(1.0, disc)) / 4.0
+                               * (args.dll_spacing / 0.5))
+                        leak = args.dll_leak_present
+                        with fast_lock:
+                            t_new = ((1.0 - leak) * dll_trim.get(prn, 0.0)
+                                     + args.dll_gain * tau)
+                            t_new = max(-3.0, min(3.0, t_new))
+                            if abs(t_new) >= 2.999:
+                                fast_stats["rail"] += 1
+                            dll_trim[prn] = t_new
+                            d0, base_cp = tmpl[prn]
+                            d = dict(d0)
+                        d["code_phase_chips"] = (base_cp + t_new) % args.code_length
+                        posted.append(d)
+                        fast_stats["updates"] += 1
+                    if posted:
+                        for t_ep in trackers:
+                            try:
+                                _post("%s/set_seeds" % t_ep, posted)
+                            except Exception as e:
+                                fast_stats["last_err"] = "%s: %s" % (t_ep, e)
+                        fast_stats["posts"] += 1
+            except Exception as e:                 # a control thread must never take the
+                fast_stats["last_err"] = str(e)    # broker down; the cycle still runs the loop
+            dt = period - (time.time() - t0)
+            if dt > 0:
+                time.sleep(dt)
+
+    if args.fast_trim_hz > 0.0 and telem_client is not None:
+        threading.Thread(target=_fast_trim_loop, daemon=True).start()
+        _log("FAST-TRIM: code loop at %.1f Hz on %d windows (%.2f s), policy stays on the "
+             "%.1f s cycle. Break-even vs the measured 0.121 chips/s drift is 1.94 Hz."
+             % (args.fast_trim_hz, args.fast_trim_windows,
+                args.fast_trim_windows * 4 * 0.0104857, args.interval))
+    elif args.fast_trim_hz > 0.0:
+        _log("FAST-TRIM requested at %.1f Hz but --telem-gather is not set -- staying on the "
+             "policy cycle (it reads the gather store, never REST)." % args.fast_trim_hz)
     last_dets = []      # most recent raw /get_detections, re-served by the publisher so
                         # the viewer has ONE origin for both search and combiner data
     nh_off_hist = []    # pooled (t, predicted - reported): ONE receiver-clock constant.
@@ -6253,6 +6374,10 @@ def main(argv=None, rx=None, publisher=None):
         # the seed at POST time only -- the stored seed stays pure fit/coast state, so the trim
         # converges to the search fit's quantization bias instead of double-counting on coasted
         # seeds. Gated on lock significance (an unlocked PRN's disc is noise). Bounded +-3 chips.
+        # Per-cycle, so a dll_gain of 0 (the loop disabled) leaves a defined empty fleet for
+        # everything downstream that reports on it -- including #51's fast-trim publication,
+        # which must arm NOBODY rather than raise when the code loop is off.
+        fleet = {}
         if args.dll_gain > 0.0:
             # FLEET COMBINE (docs/CHORD_GNSS_SHARED_DLL.md). Sum the RAW powers across every
             # instance that reports the same window, then form ONE discriminator. Ratios do not
@@ -7858,6 +7983,33 @@ def main(argv=None, rx=None, publisher=None):
                     % (_n, _aud_steps[_n // 2][0],
                        _aud_steps[min(_n - 1, int(_n * 0.9))][0],
                        _wA, _wp, _ws, _wd, _wt), every_s=60.0)
+        # TASK #51: hand the fast control thread this cycle's decisions. It substitutes ONLY
+        # code_phase_chips into these exact dicts, so nothing the policy put in a seed can be
+        # dropped by the faster actuator. `base_cp` is the UNTRIMMED phase, because the fast
+        # loop owns dll_trim from here and must not re-add a trim already folded in above.
+        if args.fast_trim_hz > 0.0:
+            with fast_lock:
+                fast_tmpl.clear()
+                for _d in payload:
+                    _p = _d.get("prn")
+                    if _p is None:
+                        continue
+                    _base = _d.get("code_phase_chips", 0.0) - dll_trim.get(_p, 0.0)
+                    fast_tmpl[_p] = (dict(_d), _base)
+                fast_prns.clear()
+                # Only PRNs this cycle judged present AND trimmable. Presence, floors and the
+                # deep gate all stay here; the fast thread never re-decides who to touch.
+                fast_prns.update(_p for _p in (fleet or {})
+                                 if (fleet[_p].get("present") and _p in fast_tmpl))
+            _log_rl("fast-trim",
+                    "FAST-TRIM %s: %d PRNs armed, %d updates / %d posts since start "
+                    "(%d skipped, %d railed)%s"
+                    % (log_tag() or args.signal, len(fast_prns), fast_stats["updates"],
+                       fast_stats["posts"], fast_stats["skipped"], fast_stats["rail"],
+                       ("  last err %s" % fast_stats["last_err"])
+                       if fast_stats["last_err"] else ""),
+                    every_s=30.0)
+
         ok = 0
         for t_ep in trackers:
             try:
