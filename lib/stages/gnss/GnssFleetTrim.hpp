@@ -206,11 +206,28 @@ private:
     // this converts with the MEASURED close rate (not the nominal 23.84, which is what the wire
     // would deliver if nothing were ever late -- 3% are). The measured rate is served in
     // get_stats so the conversion is checkable rather than trusted.
+    //
+    // ⚠️ PER CHAIN, AND THAT IS NOT COSMETIC. Each broker chain thread POSTs a payload naming
+    // ONLY its own chain (`{"chains": {telem_chain: {...}}}`), so a wholesale `_policy = got`
+    // means the last chain to POST disarms every other one. With a single armed chain that is
+    // invisible; the moment a second is armed the two clobber each other at the policy cadence
+    // and BOTH fall to a duty cycle set by who posted last. Found before arming gal_e5a/bds_b2a
+    // (#49), by reading the POST payload rather than the endpoint -- it would have presented as
+    // "arming the new chains broke gps_l5".
+    //
+    // The anti-latch property that motivated "replace, never merge" is preserved, just at chain
+    // granularity: a chain's OWN entry is still replaced wholesale every post, so a PRN it stops
+    // naming stops being armed. What replace-everything additionally bought -- a chain that goes
+    // silent stops being commanded -- is now bought explicitly by _policy_seen + policy_ttl_s,
+    // because a silent chain is a broker thread that died and its trims must expire.
     std::map<std::string, PolicyReq> _policy;
+    std::map<std::string, double> _policy_seen; ///< chain -> wall time of its last /set_policy
+    double _policy_ttl_s = 60.0;                ///< drop a chain's policy after this silence
     double _first_close_t = 0.0; ///< wall time of the first window close, for the rate
     uint64_t _first_close_n = 0;
     double _close_hz = 0.0;      ///< MEASURED window closes/s, fleet-wide
     uint64_t _policy_posts = 0;
+    uint64_t _policy_expired = 0; ///< chains dropped for silence; a rising count is a dead thread
 };
 
 #endif // GNSS_FLEET_TRIM_HPP

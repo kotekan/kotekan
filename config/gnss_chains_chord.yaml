@@ -444,6 +444,48 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
   gal_e5a:
     signal: gal_e5a
     dr-clock-adopt: true
+    # ── #49 ARMED 2026-08-15 20:30: the code loop, on the chains that could not hold ──────
+    # THE MEASUREMENT THAT FORCED IT. Same C++ instrument, same windows, same fleet, read off
+    # /fleet_trim/get_dll for the PRNs the whole fleet folds (n_src 12):
+    #     gps_l5   |disc| median 0.09   railed 0/15      <- has this loop
+    #     gal_e5a  |disc| median 0.48   railed 6/14
+    #     gal_e5b  |disc| median 0.68   railed 7/14
+    #     bds_b2a  |disc| median 0.80   railed 7/13
+    # And the E/P/L geometry says it is a CODE offset, not weak signal: on every strong gal/bds
+    # satellite L > P with E at the noise floor (PRN 12: E 1.6e-9, P 4.3e-8, L 8.3e-8). P < L is
+    # impossible if the taps straddle the peak, so the peak sits at or beyond the LATE tap.
+    # Inverting the triangular ACF at 0.5-chip spacing: gal_e5a +0.27, gal_e5b +0.64, bds_b2a
+    # +0.63 chips. gps_l5 has no solution because P dominates both sides -- it is ON peak.
+    #
+    # WHY THE SLOW LOOP CANNOT CLOSE IT. dll_gain*|tau|max = 0.0625 chips per update, and the
+    # Python policy cycle updates every ~11.5 s -> 0.0054 chips/s. The C++ loop runs at 95.4/s
+    # -> 5.96 chips/s. That is ~1100x, and it is the whole difference between these chains and
+    # gps_l5. The trims were not stuck, they were CRAWLING (PRN 12: +0.04 -> +0.29 monotonic
+    # over the log) against a target that moves faster than they do. The dead-reckon slew is a
+    # second, independent limit stacked on it: 85-95% of its steps sit exactly on the 0.05
+    # chips/event cap against a median |model-held| of 1.5-2.9 chips.
+    #
+    # ⚠️ ARMING THIS REQUIRED A C++ FIX FIRST, and would otherwise have broken gps_l5. Each
+    # chain thread POSTs a policy naming only ITS chain, and GnssFleetTrim stored it with a
+    # wholesale `_policy = got` -- so the second armed chain disarms the first, at the policy
+    # cadence, forever. Invisible with one armed chain. Now per-chain + a silence TTL, gated by
+    # scripts/gnss/fleettrim_multichain_gate.py (which FAILS against the old code -- checked).
+    #
+    # ⚠️ WHAT THIS COSTS #33. gal_e5a keeps its same-CARRIER control (bds_b2a: armed here too,
+    # so the pair still differs only in the carrier command). It LOSES its same-SATELLITE
+    # control: gal_e5b now differs from gal_e5a in the carrier command AND the code loop, so
+    # that pair is confounded for #33 until e5b is armed too. Deliberate -- #49's own
+    # same-satellite A/B (E5a armed vs E5b not, identical satellites, identical sky) is the
+    # stronger experiment right now, and it is the one that defeats "the sky moved".
+    #
+    # JUDGE ON q AND |disc|, PAIRED AGAINST gal_e5b -- never on deep_snr / cn0_coh / coh_frac
+    # (#66: a below-horizon PRN reads 11.2x its floor). Bandwidth copied from gps_l5's MEASURED
+    # setting; these chains share the same adopted clock and so the same ~0.43 chips/s plant,
+    # but it is inherited, not measured here -- if the loop chases and loses (disc ramping
+    # -0.9 -> +0.9 through each q maximum, the 1.4/s failure mode), that is the number to move.
+    # Revert: delete these two lines and restart the broker.
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
     # ── #33 P3 step 3, LIVE ARM (2026-08-13, KV): the carrier loop CLOSED on this chain ──
     # carrier_correction_hz() -> carrier_trim_hz per (sat, band): receiver f_carrier + this
     # sat's orbital rrate, one command, one controller. CONTROLS, both in the same poll:
@@ -788,6 +830,14 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
   bds_b2a:
     signal: bds_b2a
     dr-clock-adopt: true
+    # #49 ARMED 2026-08-15 20:30 -- see the long note in gal_e5a for the measurement and the
+    # C++ fix this depended on. This chain was the worst of the five (|disc| median 0.80, 7/13
+    # railed, +0.63 chips off peak) and it is BeiDou's arm of the A/B: bds_b2b stays unarmed as
+    # its same-satellite control, exactly as gal_e5b is gal_e5a's.
+    # ⚠️ This keeps #33's same-carrier pair intact: gal_e5a and bds_b2a are now BOTH code-armed,
+    # so that comparison still differs only in the carrier command, which is the point of it.
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
     # #33: COMMAND-OFF on purpose -- the same-carrier control arm for gal_e5a's closed
     # loop (its feed auto-prefers deep_rate_full_* once the tracker restart serves them).
     trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,http://cx27:12049/gnss{0..1}_b2a_inject,\

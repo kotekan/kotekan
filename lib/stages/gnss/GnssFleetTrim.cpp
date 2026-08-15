@@ -6,6 +6,7 @@
 
 #include "json.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <functional>
 
@@ -187,6 +188,9 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     // which instances are serving which chain right now, and a second copy in the gather's
     // yaml is one more thing to drift -- adding a node would silently leave it out. So
     // /set_policy carries them and this stage holds no deployment knowledge at all.
+    // Generous against the broker's ~12 s policy cycle: this is a DEAD-THREAD detector, not a
+    // freshness gate, and expiring a chain that merely posted late would disarm a healthy loop.
+    _policy_ttl_s = std::max(5.0, config.get_default<double>(unique_name, "policy_ttl_s", 60.0));
     _post_every = std::max(1, config.get_default<int>(unique_name, "post_every_n_windows", 1));
     _post_timeout_ms = std::max(20, config.get_default<int>(unique_name, "post_timeout_ms", 200));
     const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
@@ -368,20 +372,33 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
                         kotekan::HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
+    const double now = current_time();
     {
         std::lock_guard<std::mutex> lk(_mtx);
-        // REPLACE, never merge: the broker publishes the whole armed set every cycle, so a
-        // merge would leave a PRN armed forever after policy stopped naming it -- the
-        // latched-forever failure again, in the arming rather than the seed.
-        _policy = got;
+        // REPLACE PER CHAIN, never merge WITHIN one: the broker publishes a chain's whole armed
+        // set every cycle, so replacing that chain's entry expires a PRN it stopped naming --
+        // the latched-forever failure, in the arming rather than the seed. But each chain thread
+        // POSTs only its OWN chain, so replacing the whole map disarms every chain that did not
+        // happen to post last. See the header note: with one armed chain that is invisible.
+        for (auto& kv : got) {
+            _policy[kv.first] = kv.second;
+            _policy_seen[kv.first] = now;
+        }
         _policy_posts++;
     }
     {
-        // Guarded by _pend_mtx because the poster threads read it. REPLACE wholesale: the
-        // broker publishes the full list every cycle, so an instance it stops naming must
-        // stop being commanded.
+        // Guarded by _pend_mtx because the poster threads read it. Targets are chain-tagged
+        // (parse_target carries the key) and matched per chain in post_trims, so they replace
+        // with the SAME per-chain scope as the policy above: drop this post's chains, keep the
+        // rest. A flat wholesale replace here is the identical clobber one layer down.
         std::lock_guard<std::mutex> lk(_pend_mtx);
-        _targets = std::move(tg);
+        std::vector<Target> keep;
+        for (auto& t : _targets)
+            if (!got.count(t.chain))
+                keep.push_back(std::move(t));
+        for (auto& t : tg)
+            keep.push_back(std::move(t));
+        _targets = std::move(keep);
     }
     rearm();
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
@@ -404,6 +421,26 @@ void GnssFleetTrim::rearm() {
     const double dt = now - _first_close_t;
     if (_first_close_t > 0.0 && dt > 1.0)
         _close_hz = (double)(closed - _first_close_n) / dt / std::max<size_t>(1, _dll.chains().size());
+
+    // A CHAIN THAT HAS GONE SILENT STOPS BEING COMMANDED. Now that the policy is replaced per
+    // chain rather than wholesale, this is what keeps the old anti-latch guarantee: a dead
+    // broker chain thread must not leave its last armed set standing forever. It lives HERE
+    // rather than in policy_callback because the sweep has to run when NOTHING is posting --
+    // the whole-broker-death case, which is exactly when a POST-driven sweep never fires.
+    // Erasing the policy is sufficient to disarm: post_trims skips any target whose chain has
+    // no entry, so the (chain-tagged) targets left behind send nothing.
+    for (auto it = _policy_seen.begin(); it != _policy_seen.end();) {
+        if (now - it->second > _policy_ttl_s) {
+            WARN("GnssFleetTrim[{:s}]: chain '{:s}' has POSTed no policy for {:.0f}s -- "
+                 "DISARMED. Its broker chain thread is dead or cannot reach us; trims already "
+                 "at the trackers expire on their own TTL.",
+                 unique_name, it->first, now - it->second);
+            _policy.erase(it->first);
+            it = _policy_seen.erase(it);
+            _policy_expired++;
+        } else
+            ++it;
+    }
 
     for (const auto& pv : _policy) {
         gnss::TrimPolicy tp;
@@ -586,6 +623,24 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     reply["fold_us_per_frame"] = _frames ? 1e6 * _fold_s / (double)_frames : 0.0;
     reply["close_hz_measured"] = _close_hz;
     reply["policy_posts"] = _policy_posts;
+    // A RISING policy_expired MEANS A BROKER CHAIN THREAD DIED. Served next to the per-chain
+    // last-seen age so "which chain stopped talking, and how long ago" is one poll, not a log
+    // grep -- the arming is now per chain and so is its failure mode.
+    reply["policy_expired"] = _policy_expired;
+    reply["policy_ttl_s"] = _policy_ttl_s;
+    { nlohmann::json a = nlohmann::json::object();
+      const double now = current_time();
+      for (const auto& sv : _policy_seen)
+          a[sv.first] = now - sv.second;
+      reply["policy_age_s"] = a; }
+    // WHAT THE BROKER ASKED FOR, straight off _policy -- deliberately NOT off _dll.chains()
+    // like `policy` below, which only lists chains that have delivered frames. The per-chain
+    // clobber this guards against is a property of the POST path alone, so the gate for it has
+    // to be readable with no data flowing at all.
+    { nlohmann::json a = nlohmann::json::object();
+      for (const auto& pv : _policy)
+          a[pv.first] = pv.second.armed.size();
+      reply["policy_armed_requested"] = a; }
     { nlohmann::json a = nlohmann::json::object();
       for (const auto& cv : _dll.chains())
           a[cv.first] = {{"armed", cv.second.armed}, {"leak_per_update", cv.second.policy.leak},
