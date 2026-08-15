@@ -218,6 +218,13 @@ def main():
     ap.add_argument("rest", nargs=argparse.REMAINDER,
                     help="for `record`: the broker flags to run under, after a bare --")
     a = ap.parse_args()
+    # ⚠️ ABSOLUTE, BEFORE ANYTHING USES IT. The replay runs the broker as a subprocess with
+    # cwd=K (the repo root), so a transcript named relative to the CALLER's directory --
+    # `broker_equiv.py check fixtures/broker_fake_l5.jsonl`, run from scripts/gnss, which is
+    # the obvious way to type it -- resolves inside the child against the wrong directory and
+    # dies with FileNotFoundError on a file that plainly exists. It reads as a missing fixture
+    # rather than as a path bug, and it cost a detour on 2026-08-15.
+    a.transcript = os.path.abspath(a.transcript)
     gold = _gold_path(a.transcript)
 
     if a.action == "record":

@@ -189,13 +189,63 @@ def python_arm(frames, n_win, min_instances):
     return out
 
 
-def cpp_arm(exe, path, n_win, min_instances):
-    r = subprocess.run([exe, path, "--n-win", str(n_win), "--min-instances",
-                        str(min_instances), "--no-flush"],
-                       capture_output=True, text=True)
+def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None):
+    cmd = [exe, path, "--n-win", str(n_win), "--min-instances", str(min_instances), "--no-flush"]
+    if arm:
+        cmd += ["--arm", ",".join(str(p) for p in sorted(arm))]
+        for k in ("gain", "leak", "clamp", "spacing"):
+            cmd += ["--" + k, repr((pol or {}).get(k, DEFAULT_POLICY[k]))]
+    r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise SystemExit("fleetdll failed (%d): %s" % (r.returncode, r.stderr.strip()))
     return json.loads(r.stdout)
+
+
+#: The shipped broker defaults (--dll-gain, --dll-leak-present, the +-3 clamp, --dll-spacing).
+#: ⚠️ leak 0.05 puts the integrator's steady state at gain*0.25/leak = 1.25 chips, so the 3.0
+#: clamp is unreachable BY CONSTRUCTION -- see combdll.dll_integrate. The gate uses the shipped
+#: values deliberately: a gate run at constants nobody deploys measures a loop nobody runs.
+DEFAULT_POLICY = {"gain": 0.25, "leak": 0.05, "clamp": 3.0, "spacing": 0.5}
+
+
+def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
+    """{win: {prn: disc}} -- Python's fleet discriminator at EVERY window close, not just the last.
+
+    F1 compared the two arms at the end of the stream. That is enough to catch a wrong fold and
+    not enough to certify the INTEGRATOR, which walks the whole series: one window disagreeing in
+    the middle would be invisible at the end but would have moved every trim after it. Built by
+    replaying prefixes of the same bytes through the real client, which is slow and exact --
+    both correct properties for a gate.
+    """
+    out = {}
+    for w in wins_seen:
+        client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
+        for buf, _c in frames:
+            hdr = telem._HDR.unpack_from(buf, 0)
+            if hdr[9] > w:            # header field 9 is `win`
+                continue
+            client._store_frame(telem.TelemFrame(hdr, buf, 0.0))
+        # lag=0: the C++ CLOSED w (a newer frame arrived), so w is inside its ring. Slicing to
+        # the last n_win of everything <= w reproduces exactly the ring it aggregated on.
+        ws = client.windows(chain, lag=0)[-n_win:]
+        if not ws:
+            continue
+        rows = combdll.instance_taps(client, chain, ws, per_channel=False)
+        got = {}
+        for prn, per_inst in rows.items():
+            use = {i: d for i, d in per_inst.items() if d["n_rec"] > 0}
+            if len(use) < min_instances:
+                continue
+            # ⚠️ NO /n_rec HERE. instance_taps ALREADY divides by it (see the tail of that
+            # function) -- fleet_dll_comb sums the per-instance values raw, and so must this.
+            # Dividing again weights each instance by 1/n_rec^2, which moved disc by ~1e-3 and
+            # read as a C++/Python disagreement. Harness bug, caught by the gate, 2026-08-15.
+            E = sum(d["e"] for d in use.values())
+            L = sum(d["l"] for d in use.values())
+            if E + L > 0.0:
+                got[prn] = (E - L) / (E + L)
+        out[w] = got
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -338,6 +388,62 @@ def main():
               "folding it makes the aggregate depend on arrival order.")
         return 1
     print("LATE-FRAME PASS -- counted (1) and dropped; the answer is unchanged.")
+
+    # ---- THE INTEGRATOR (F2) -----------------------------------------------------------
+    # Two legs, deliberately separate, because a single end-to-end comparison would let a fold
+    # error and a recurrence error cancel:
+    #   (a) the C++ disc at EVERY window close matches Python's on the same window set;
+    #   (b) Python's dll_integrate, driven by that disc series, reproduces the C++ trim series.
+    # (b) alone would be circular if (a) were not established; (a) alone is what F1 already did,
+    # but only at the last window.
+    ARM = sorted(p for p in TARGETS if p != 11)   # 11 is the min_instances exclusion
+    cpp2 = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM)
+    series = cpp2.get("series", {}).get("gps_l5", {})
+    if not series:
+        print("FAIL -- the C++ integrator stepped on nothing. It was armed on %s." % ARM)
+        return 1
+    wins_seen = sorted({int(r[0]) for rows in series.values() for r in rows})
+    pyd = python_disc_series(frames, "gps_l5", wins_seen, args.n_win, args.min_instances)
+
+    bad_i = []
+    n_disc = n_trim = 0
+    for prn_s, rows in sorted(series.items()):
+        prn = int(prn_s)
+        trim = 0.0
+        for win, disc, cpp_trim in rows:
+            win = int(win)
+            # (a) the discriminator, per window
+            ref = pyd.get(win, {}).get(prn)
+            if ref is None:
+                bad_i.append("PRN %d win %d: C++ stepped, Python formed no discriminator" % (prn, win))
+                continue
+            if abs(ref - disc) > 1e-9 * max(1.0, abs(ref)):
+                bad_i.append("PRN %d win %d disc: py %.12g vs cpp %.12g" % (prn, win, ref, disc))
+            n_disc += 1
+            # (b) the recurrence, driven by the SAME disc
+            trim = combdll.dll_integrate(trim, disc, **DEFAULT_POLICY)
+            if abs(trim - cpp_trim) > 1e-12 * max(1.0, abs(trim)):
+                bad_i.append("PRN %d win %d trim: py %.12g vs cpp %.12g" % (prn, win, trim, cpp_trim))
+            n_trim += 1
+    if bad_i:
+        print("\nFAIL -- integrator: %d disagreement(s):" % len(bad_i))
+        for m in bad_i[:20]:
+            print("  %s" % m)
+        return 1
+
+    # ⚠️ AND CHECK IT ACTUALLY MOVED. An integrator that returned 0 every step would pass every
+    # comparison above. The trims must be non-trivial and must show the leak ceiling.
+    finals = {int(p): rows[-1][2] for p, rows in series.items() if rows}
+    ceiling = DEFAULT_POLICY["gain"] * 0.25 / DEFAULT_POLICY["leak"]
+    if max(abs(v) for v in finals.values()) < 1e-3:
+        print("FAIL -- every trim is ~0. The integrator ran but did not integrate.")
+        return 1
+    print("INTEGRATOR PASS -- %d window discriminators and %d integrator steps agree "
+          "(%d PRNs, %d steps each)." % (n_disc, n_trim, len(series),
+                                         len(next(iter(series.values())))))
+    print("  final trims: %s" % ", ".join("PRN %d %+.4f" % (p, v) for p, v in sorted(finals.items())))
+    print("  leak ceiling gain*0.25/leak = %.3f chips; max |trim| here %.3f"
+          % (ceiling, max(abs(v) for v in finals.values())))
 
     if args.self_test:
         # THE GATE MUST BE ABLE TO FAIL. Nudge one channel of one record by 1% and require the

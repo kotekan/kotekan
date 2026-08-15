@@ -45,6 +45,43 @@ import math
 from .fleet import apply_presence
 
 
+def dll_tau(disc, spacing):
+    """The code discriminator -> delay estimate, chips.
+
+    ⚠️ |tau| <= 0.25 chips BY CONSTRUCTION, whatever `disc` is: the clamp is on the
+    discriminator and it is then divided by four. THIS IS THE WHOLE OF #51 -- one update can
+    never slew further than that at any gain, so the UPDATE RATE is the only lever. (Cutting
+    the gain to "compensate" for a faster rate hands the entire win straight back: same gain,
+    faster rate.)
+
+    ⚠️ ONE CONVENTION, ONE PLACE. The C++ fleet loop calls gnss::dll_tau in
+    lib/stages/gnss/gnssFleetDll.hpp, which is this expression character for character, and
+    scripts/gnss/fleetdll_gate.py compares the two on identical bytes. This existed as two
+    inline copies in the broker (the policy cycle and the fast thread) whose own comment
+    claimed they were "one convention, one place it can be wrong" -- they were two.
+    """
+    return -max(-1.0, min(1.0, disc)) / 4.0 * (spacing / 0.5)
+
+
+def dll_integrate(trim, disc, gain, leak, clamp, spacing):
+    """One leaky-integrator update. Twin of gnss::dll_integrate.
+
+    ⚠️ `leak` IS PER UPDATE, SO LOOP BANDWIDTH SCALES WITH RATE. Continuous form:
+    dT/dt = -leak*f*T + gain*f*tau. The steady state (gain*tau/leak) does NOT move with f, but
+    the closed-loop and noise bandwidths both scale with it -- 3.1 -> 23.8 Hz is ~8x the
+    bandwidth at unchanged constants.
+
+    ⚠️ AND THAT STEADY STATE IS A CEILING NO RATE CAN LIFT. Under a railed discriminator the
+    trim converges to gain*0.25/leak = 1.25 chips at the shipped defaults (0.25, 0.05), which
+    is below the residuals seen on sky and far below the +-3.0 clamp -- so the clamp is
+    unreachable by construction. Measured on sky 2026-08-15: max |trim| 1.140 chips over 5174
+    updates in 8 hours, never once past 1.25. A loop pushing at a railed discriminator without
+    arriving is hitting THIS, and a faster loop will not fix it. See --dll-leak-present.
+    """
+    t = (1.0 - leak) * trim + gain * dll_tau(disc, spacing)
+    return max(-clamp, min(clamp, t))
+
+
 def instance_taps(client, chain, wins, prns=None, per_channel=True):
     """{prn: {inst: {e, p, l, hop, n_chan, n_rec, chan}}} -- per-record powers, meaned.
 

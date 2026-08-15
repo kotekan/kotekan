@@ -15,6 +15,13 @@ cpu_affinity: &id001
 - 61
 - 62
 - 63
+fleet_trim:
+  cpu_affinity:
+  - 59
+  in_buf: telem_buf
+  kotekan_stage: GnssFleetTrim
+  min_instances: 2
+  n_win: 4
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 4096

@@ -37,6 +37,10 @@ public:
     /// either chain and the airspy tooling works unchanged against a CHORD node.
     void set_seeds_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
+    /// POST endpoint: the FLEET controller's code trim (task #51 F2). See the long note on
+    /// `trim_ttl_s` in the state class for why this is not `set_seeds` with one more field.
+    void set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+
     /// GET endpoint: per-PRN code-trim state {prn, trim_chips, disc, quality}, for the
     /// broker/scripts to watch the in-tracker DLL without touching the record stream.
     void get_trim_callback(kotekan::connectionInstance& conn);
@@ -107,6 +111,38 @@ public:
     // "nulls". Averaging ~1 s of frames leaves q_perfect ~3.6 but pulls the noise toward 1,
     // which is the separation the gate needs; the disc gets the same benefit (this is exactly
     // what the airspy broker does with the combiner's window-averaged E/L powers).
+    // ---- THE FLEET CONTROLLER'S TRIM (task #51 F2, 2026-08-15) ---------------------------
+    //
+    // `trim` above is now written by EITHER the in-tracker loop (`code_trim`, still default
+    // false) OR by GnssFleetTrim through /set_trim. It is applied to the model phase either
+    // way -- see the `trim_now` snapshot in the cpp, which no longer zeroes itself when
+    // `code_trim` is off. Nothing writes it unless one of the two is enabled, so this changes
+    // no behaviour on its own.
+    //
+    // ⚠️ WHY /set_trim AND NOT ONE MORE FIELD ON /set_seeds. set_seeds_callback resets ema_n
+    // for every PRN it touches -- correctly, since a re-seed moves the commanded cp out from
+    // under the power average. At the fleet loop's 23.84 Hz that would pin any tracker-side
+    // average at warm-up forever. And a seed POST that omits a field ZEROES it, so the Python
+    // fast-trim thread had to copy the policy cycle's exact dict and substitute one value; an
+    // actuator that can silently undo another loop's field is the worst failure this could
+    // have. /set_trim carries ONE number and touches nothing else: not seeds, not t_recv, not
+    // ema_n. It is ABSOLUTE, not a delta, so a dropped message costs latency and not
+    // authority.
+    //
+    // ⚠️ AND IT EXPIRES. A frozen trim from a controller that died is a permanent, silent code
+    // offset that the broker's own slow DLL would then fight -- and "latched forever" is
+    // exactly the failure seed_ttl_s exists to have fixed (#13: the despread grew to 14 slots
+    // against 6-7 seeded, kernel 14.2 -> 22.6 ms). On expiry the trim goes to ZERO and says
+    // so: that is a step of up to `trim_clamp`, but the alternative is a wrong correction held
+    // for as long as the process lives, and zero is the state the instrument ran in before
+    // this existed. 0 disables (the in-tracker loop's own trim must not expire -- it is
+    // refreshed from this process and its silence means the SIGNAL went away, not the
+    // controller).
+    double trim_ttl_s = 0.0;
+    std::vector<double> trim_t_recv; ///< steady-clock stamp of the last /set_trim, per PRN
+    uint64_t trim_posts = 0;         ///< /set_trim requests accepted (the ACHIEVED post rate)
+    uint64_t trim_expired = 0;
+
     bool trim_enable = false;
     double trim_gain = 0.15;        ///< integrator gain per update
     double trim_leak = 0.002;       ///< leaky-integrator leak per update (noise can't walk it)

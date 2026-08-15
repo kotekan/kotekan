@@ -45,6 +45,7 @@
 #include <cstring>
 #include <deque>
 #include <map>
+#include <set>
 #include <string>
 
 namespace gnss {
@@ -65,6 +66,46 @@ struct FleetDllRow {
 /// Why a frame was not folded. Anything but OK means the wire and this build disagree, and the
 /// numbers that would have fallen out are plausible and wrong.
 enum class FoldStatus { OK, BAD_HEADER, LATE };
+
+/// The integrator's constants. ONE convention, and the Python arm calls the same expression
+/// (gnss_broker.combdll.dll_tau / dll_integrate) so the two cannot drift.
+struct TrimPolicy {
+    double gain = 0.25;    ///< step = gain * tau
+    double leak = 0.05;    ///< PER UPDATE -- see the warning on dll_integrate
+    double clamp = 3.0;    ///< |trim| bound, chips
+    double spacing = 0.5;  ///< tracker Early/Late spacing, chips
+};
+
+/// The code discriminator -> delay estimate, in chips.
+///
+/// ⚠️ |tau| <= 0.25 chips BY CONSTRUCTION, whatever `disc` is: the clamp is on the
+/// discriminator, and it is divided by four. THIS IS THE WHOLE OF #51 -- the loop's authority
+/// is a step per update, so no gain and no clamp can make one update slew further, and the
+/// UPDATE RATE is the only lever. (Cutting the gain to "compensate" for a faster rate hands the
+/// entire win straight back: same gain, faster rate.)
+inline double dll_tau(double disc, double spacing) {
+    return -std::max(-1.0, std::min(1.0, disc)) / 4.0 * (spacing / 0.5);
+}
+
+/// One leaky-integrator update.
+///
+/// ⚠️ `leak` IS PER UPDATE, SO LOOP BANDWIDTH SCALES WITH RATE. In continuous form this is
+/// dT/dt = -leak*f*T + gain*f*tau: the steady state (gain*tau/leak) does NOT move with f, but
+/// the closed-loop AND noise bandwidths both scale with it. Going 3.1 -> 23.8 Hz is therefore
+/// ~8x the bandwidth at unchanged constants. Whoever sets these must convert from a
+/// per-SECOND leak using the ACHIEVED rate; this function is deliberately the dumb primitive
+/// so that conversion happens in exactly one, clearly-labelled place.
+///
+/// ⚠️ AND THE STEADY STATE IS A CEILING THE RATE CANNOT LIFT: under a railed discriminator the
+/// trim converges to gain*0.25/leak, which at the shipped defaults (0.25, 0.05) is 1.25 chips
+/// -- BELOW the residuals seen on sky, and far below the +-3.0 clamp, which is therefore
+/// unreachable by construction. Measured on sky 2026-08-15: max |trim| 1.140 chips over 5174
+/// updates in 8 hours, never once past 1.25. If the loop is pushing at a railed discriminator
+/// without arriving, THIS is the reason and a faster loop will not fix it.
+inline double dll_integrate(double trim, double disc, const TrimPolicy& p) {
+    const double t = (1.0 - p.leak) * trim + p.gain * dll_tau(disc, p.spacing);
+    return std::max(-p.clamp, std::min(p.clamp, t));
+}
 
 /**
  * The fleet discriminator, accumulated per chain over a ring of absolute windows.
@@ -99,12 +140,28 @@ public:
         std::map<std::string, std::map<int, Tap>> tap; ///< [instance][prn]
     };
 
+    /// One PRN's integrator state. `trim` is a correction to the BROKER'S MODEL, not to a
+    /// particular seed, so it survives the model being republished every policy cycle.
+    struct TrimState {
+        double trim = 0.0;
+        uint64_t n_steps = 0;  ///< integrator updates -- THE RATE, measured not assumed
+        uint64_t n_railed = 0; ///< updates that hit the clamp
+        double last_disc = 0.0, last_q = 0.0;
+        uint64_t last_win = 0;
+    };
+
     struct Chain {
         uint64_t newest = 0;
         bool have_newest = false;
         std::map<uint64_t, WindowAcc> open; ///< ordered, so "close everything older" is a walk
         std::deque<WindowAcc> closed;       ///< the last n_win closed windows
         std::map<int, FleetDllRow> row;
+        /// WHO MAY BE TRIMMED, decided by the Python broker and never here. This class forms
+        /// numbers and steps an integrator; presence, floors, the deep gate and the arming
+        /// verdict are POLICY and stay on the 12 s cycle (docs/CHORD_FAST_TRIM.md 3).
+        std::set<int> armed;
+        TrimPolicy policy;
+        std::map<int, TrimState> trim;
         uint64_t n_closed = 0; ///< windows closed == integrator steps available
         uint64_t n_late = 0;   ///< frames for a window already closed: dropped, never folded
         uint64_t n_forced = 0; ///< force-closed by max_open_win, i.e. a sender went away
@@ -241,6 +298,18 @@ public:
                 close_oldest(cv.second, true);
     }
 
+    /// Publish the policy cycle's decisions: who may be trimmed, and with what constants.
+    ///
+    /// ⚠️ A PRN THAT LEAVES THE ARMED SET KEEPS ITS TRIM. Zeroing it would step the commanded
+    /// code phase by up to `clamp` chips at the moment policy stopped being sure -- a
+    /// disturbance injected exactly when confidence is lowest. The trim decays through the
+    /// leak instead, and the tracker's own TTL is what removes it if this controller dies.
+    void set_armed(const std::string& chain, const std::set<int>& prns, const TrimPolicy& p) {
+        Chain& c = _chain[chain];
+        c.armed = prns;
+        c.policy = p;
+    }
+
     const std::map<std::string, Chain>& chains() const {
         return _chain;
     }
@@ -316,6 +385,37 @@ private:
             s.hop = hop;
             s.win = win_hi;
             s.n_updates++;
+        }
+        integrate(c, win_hi);
+    }
+
+    /// ONE INTEGRATOR STEP PER WINDOW CLOSE, for every armed PRN that got a discriminator.
+    ///
+    /// THE RATE THIS ACHIEVES, and why it is not the 95.4/s the wire could support. A window is
+    /// one frame, so this steps at 23.84 Hz = 12x the 1.94 Hz break-even against CHORD's
+    /// measured 0.121 chips/s drift. Stepping per RECORD instead would give 95.4 Hz and 49x --
+    /// but it would also stop being the same arithmetic the Python arm computes, and the
+    /// byte-for-byte equivalence gate (scripts/gnss/fleetdll_gate.py) would go with it. 12x is
+    /// margin enough; the gate is not worth spending for the other 4x until something measured
+    /// says 12x is short.
+    ///
+    /// A PRN with no row this window is NOT stepped -- not even by the leak. An absent
+    /// discriminator is the absence of a measurement, not a measurement of zero, and leaking a
+    /// trim toward zero on windows where the satellite simply was not seen would walk the
+    /// correction out during exactly the dropouts it exists to ride through.
+    void integrate(Chain& c, uint64_t win) {
+        for (int prn : c.armed) {
+            auto it = c.row.find(prn);
+            if (it == c.row.end() || it->second.win != win)
+                continue; // no discriminator formed for this PRN THIS window
+            TrimState& t = c.trim[prn];
+            t.trim = dll_integrate(t.trim, it->second.disc, c.policy);
+            if (std::abs(t.trim) >= c.policy.clamp * 0.999)
+                t.n_railed++;
+            t.last_disc = it->second.disc;
+            t.last_q = it->second.q;
+            t.last_win = win;
+            t.n_steps++;
         }
     }
 

@@ -2756,16 +2756,16 @@ def main(argv=None, rx=None, publisher=None):
                     posted = []
                     for prn in sorted(prns & set(fl) & set(tmpl)):
                         disc = fl[prn]["disc"]
-                        # THE SAME conversion the policy cycle uses -- one convention, one
-                        # place it can be wrong. tau is clamped by construction, which is
-                        # exactly why rate and not gain is the lever here.
-                        tau = (-max(-1.0, min(1.0, disc)) / 4.0
-                               * (args.dll_spacing / 0.5))
-                        leak = args.dll_leak_present
+                        # THE SAME conversion the policy cycle uses -- and now literally the
+                        # same function, which it was not before (2026-08-15). This comment
+                        # claimed "one convention, one place it can be wrong" while the
+                        # expression sat inline in TWO places; combdll.dll_integrate is that
+                        # one place, and the C++ fleet loop's gnss::dll_integrate is its twin,
+                        # compared byte-for-byte by scripts/gnss/fleetdll_gate.py.
                         with fast_lock:
-                            t_new = ((1.0 - leak) * dll_trim.get(prn, 0.0)
-                                     + args.dll_gain * tau)
-                            t_new = max(-3.0, min(3.0, t_new))
+                            t_new = combdll.dll_integrate(
+                                dll_trim.get(prn, 0.0), disc, args.dll_gain,
+                                args.dll_leak_present, 3.0, args.dll_spacing)
                             if abs(t_new) >= 2.999:
                                 fast_stats["rail"] += 1
                             dll_trim[prn] = t_new
@@ -6852,8 +6852,14 @@ def main(argv=None, rx=None, publisher=None):
                     _log("RESEED PRN %d: %s" % (prn, _rs))
 
                 leak = args.dll_leak_present if fl is not None else args.dll_leak
-                trim = (1.0 - leak) * dll_trim.get(prn, 0.0) + args.dll_gain * tau
-                dll_trim[prn] = max(-3.0, min(3.0, trim))
+                # ONE EXPRESSION, ONE PLACE (2026-08-15). `tau` above and this recurrence used
+                # to be inline here AND in the fast-trim thread AND, now, in C++. All three call
+                # combdll.dll_integrate / gnss::dll_integrate, which are the same expression,
+                # and scripts/gnss/fleetdll_gate.py compares the C++ and Python arms on
+                # identical bytes. `tau` is still computed above because the far-regime re-seed
+                # block reads it.
+                dll_trim[prn] = combdll.dll_integrate(
+                    dll_trim.get(prn, 0.0), disc, args.dll_gain, leak, 3.0, args.dll_spacing)
                 dll_report.append(
                     "PRN %d disc %+.3f trim %+.2f%s"
                     % (prn, disc, dll_trim[prn],

@@ -48,6 +48,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     dll_spacing = config.get_default<double>(unique_name, "dll_spacing", 0.5);
     doppler_margin_hz = config.get_default<double>(unique_name, "doppler_margin_hz", 5000.0);
     trim_enable = config.get_default<bool>(unique_name, "code_trim", false);
+    trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 0.0);
     trim_gain = config.get_default<double>(unique_name, "trim_gain", 0.15);
     trim_leak = config.get_default<double>(unique_name, "trim_leak", 0.002);
     trim_clamp = config.get_default<double>(unique_name, "trim_clamp", 3.0);
@@ -146,6 +147,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     trim_disc.assign((size_t)n_prn, 0.0);
     trim_q.assign((size_t)n_prn, 0.0);
     trim_n.assign((size_t)n_prn, 0);
+    trim_t_recv.assign((size_t)n_prn, 0.0);
     ema_e2.assign((size_t)n_prn, 0.0);
     ema_p2.assign((size_t)n_prn, 0.0);
     ema_l2.assign((size_t)n_prn, 0.0);
@@ -159,6 +161,14 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         config.get_default<std::string>(unique_name, "trim_endpoint", "/chord_track/get_trim");
     kotekan::restServer::instance().register_get_callback(
         tep, std::bind(&cudaGnssChordTrackState::get_trim_callback, this, _1));
+    // TASK #51 F2: the fleet controller's actuator. Registered ALWAYS -- it carries its own
+    // authority (an explicit POST) rather than depending on `code_trim`, which gates the
+    // IN-TRACKER loop and nothing else. The two must never both be writing `trim`; that is a
+    // deployment rule, and get_trim reports `code_trim` so it is visible which one is live.
+    const std::string sep =
+        config.get_default<std::string>(unique_name, "set_trim_endpoint", "/chord_track/set_trim");
+    kotekan::restServer::instance().register_post_callback(
+        sep, std::bind(&cudaGnssChordTrackState::set_trim_callback, this, _1, _2));
     INFO_NON_OO("cudaGnssChordTrack: {:d} PRN x {:d} chan x {:d} elem, {:d} hops/record "
                 "({:d} rec/frame), seeds on {:s}",
                 n_prn, n_chan, n_elem, hops_per_record, n_rec, ep);
@@ -246,6 +256,51 @@ cudaGnssChordTrackState::~cudaGnssChordTrackState() {
     }
 }
 
+void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& conn,
+                                                nlohmann::json& request) {
+    // Parse first, lock last -- the same discipline as set_seeds: the execute path takes
+    // trim_mtx every GPU frame, so holding it across a parse would stall the tracker directly.
+    std::vector<std::pair<int, double>> upd;
+    try {
+        upd.reserve(request.size());
+        for (const auto& s : request) {
+            const int prn = s.at("prn").get<int>();
+            const double t = s.at("trim_chips").get<double>();
+            // A NaN here would propagate into the commanded code phase and despread garbage
+            // for as long as it stood. Reject the whole request rather than a field: a partial
+            // application would leave the controller and the tracker disagreeing about what is
+            // commanded, silently.
+            if (!std::isfinite(t))
+                throw std::runtime_error("trim_chips is not finite");
+            for (int i = 0; i < n_prn; ++i)
+                if (prns[i] == prn) {
+                    upd.emplace_back(i, std::max(-trim_clamp, std::min(trim_clamp, t)));
+                    break;
+                }
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("bad trim payload: ") + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const double now =
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    {
+        std::lock_guard<std::mutex> lk(trim_mtx);
+        for (const auto& u : upd) {
+            trim[(size_t)u.first] = u.second;
+            trim_t_recv[(size_t)u.first] = now;
+            ++trim_n[(size_t)u.first];
+        }
+        ++trim_posts;
+    }
+    // ⚠️ NOTHING ELSE IS TOUCHED. Not seeds, not t_recv, not ema_n. See the header note: an
+    // actuator that quietly resets another loop's state is the failure this endpoint exists
+    // to avoid, and it is why this is not a field on /set_seeds.
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
 void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& conn) {
     nlohmann::json out = nlohmann::json::array();
     {
@@ -256,9 +311,24 @@ void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& con
                            {"disc", trim_disc[(size_t)p]},
                            {"quality", trim_q[(size_t)p]},
                            {"ema_frames", ema_n[(size_t)p]},
+                           {"age_s", trim_t_recv[(size_t)p] > 0.0
+                                         ? (std::chrono::duration<double>(
+                                                std::chrono::steady_clock::now()
+                                                    .time_since_epoch())
+                                                .count()
+                                            - trim_t_recv[(size_t)p])
+                                         : -1.0},
                            {"updates", trim_n[(size_t)p]}});
     }
-    nlohmann::json reply = {{"enabled", trim_enable}, {"trims", out}};
+    // `enabled` is the IN-TRACKER loop; `posts` is the fleet controller. Both are reported
+    // because "who is writing this trim?" must be answerable from one endpoint -- two writers
+    // on one vector is a deployment error, and it should be visible rather than inferred.
+    nlohmann::json reply = {{"enabled", trim_enable},
+                            {"posts", trim_posts},
+                            {"expired", trim_expired},
+                            {"ttl_s", trim_ttl_s},
+                            {"clamp", trim_clamp},
+                            {"trims", out}};
     conn.send_json_reply(reply);
 }
 
@@ -505,11 +575,41 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     std::vector<double> trim_now;
     std::vector<int> expired; // logged AFTER the lock: never log while holding seed_mtx
     std::vector<cudaGnssChordTrackState::Seed> seeds = S.snapshot_seeds(expired);
-    if (S.trim_enable) {
+    // THE TRIM IS READ UNCONDITIONALLY (task #51 F2, 2026-08-15). It used to be zeroed
+    // whenever `code_trim` was false, which made the actuator slot unreachable from outside
+    // this stage. `trim` is now written by EITHER the in-tracker loop OR the fleet controller
+    // through /set_trim, and either way it is a correction to the broker's model phase.
+    // Nothing writes it unless one of those is enabled, so with both off this is exactly the
+    // old behaviour: a vector of zeros.
+    std::vector<int> trim_gone;
+    {
         std::lock_guard<std::mutex> lk(S.trim_mtx);
+        // EXPIRE A TRIM WHOSE CONTROLLER STOPPED TALKING. See the header note: a frozen trim
+        // is a permanent silent code offset that the broker's own slow DLL would then fight,
+        // and "latched forever" is the #13 failure. Only stamped trims expire -- the
+        // in-tracker loop leaves trim_t_recv at 0, and its silence means the SIGNAL went away,
+        // not the controller.
+        if (S.trim_ttl_s > 0.0) {
+            const double now = std::chrono::duration<double>(
+                                   std::chrono::steady_clock::now().time_since_epoch())
+                                   .count();
+            for (int p = 0; p < S.n_prn; ++p)
+                if (S.trim_t_recv[(size_t)p] > 0.0
+                    && (now - S.trim_t_recv[(size_t)p]) > S.trim_ttl_s) {
+                    if (S.trim[(size_t)p] != 0.0)
+                        trim_gone.push_back(S.prns[(size_t)p]);
+                    S.trim[(size_t)p] = 0.0;
+                    S.trim_t_recv[(size_t)p] = 0.0;
+                    ++S.trim_expired;
+                }
+        }
         trim_now = S.trim;
-    } else
-        trim_now.assign((size_t)S.n_prn, 0.0);
+    }
+    for (int prn : trim_gone)
+        WARN("cudaGnssChordTrack: PRN {:d} trim EXPIRED after {:.1f} s with no /set_trim -- "
+             "zeroed. The fleet controller has stopped posting; the code phase has just "
+             "stepped back to the broker's bare model.",
+             prn, S.trim_ttl_s);
     // Reports the PREVIOUS frame's split: this runs near the top of execute, before this
     // frame's enqueues. That is fine for a steady-state measurement and avoids a sync here.
     if (S.split_timing) {
