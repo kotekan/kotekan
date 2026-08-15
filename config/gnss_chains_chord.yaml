@@ -115,6 +115,36 @@ common:
   # alignment -- an unfair comparison that reads as "the new transport is worse". Change this
   # whenever record_export changes.
   telem-windows: 32
+  # -- TASK #63: EVERY CHAIN'S CODE LOOP CLOSES ON THE COMB -------------------------------
+  # The discriminator is formed HERE from the per-channel Early/Prompt/Late the #59 transport
+  # ships, instead of from powers the trackers built by summing across each instance's own
+  # channels. Same arithmetic (coherent over an instance's channels, then POWERS added across
+  # instances), moved to the one place that can see the whole band.
+  #
+  # ⚠️ UNLIKE --telem-coherent, THIS ONE WAS MEASURED FIRST AND IT PASSED -- and it COULD be,
+  # because the DLL is reproducible against itself where fleet_coherent is not (r = 0.077,
+  # #61). scripts/gnss/comb_dll_ab.py, live, WITH the mandatory poll-vs-poll control:
+  #
+  #   gps_l5,  20 cycles, 240 paired PRNs
+  #     disc  comb - poll  +0.0015 +- 0.0223   CONTROL (poll - poll)  +0.0014 +- 0.0472
+  #     q     comb - poll  +0.0081 +- 0.0435   CONTROL                +0.0015 +- 0.0902
+  #     presence 10/240 discordant, McNemar chi2 0.10 -- symmetric, churn not bias
+  #   gal_e5a, 15 cycles, 210 paired PRNs
+  #     disc  +0.0000 +- 0.0320   CONTROL  -0.0021 +- 0.0412
+  #
+  # The comb arm tracks the polled one MORE CLOSELY THAN THE POLLED ONE TRACKS ITSELF one
+  # cycle later. gps_l5 then ran it alone on sky for ~80 min against the other four as a live
+  # control, clean (median ddisc +0.001..+0.007, no fallbacks, no errors), so 2026-08-15 it
+  # went fleet-wide.
+  #
+  # ⚠️ THE POLL IS STILL MADE, AND MUST BE. deep_snr / deep_floor / coherence_s and the
+  # quadrature fallback come from the combiner's DEEP FOLD, which is not in the comb; they are
+  # carried across verbatim (combdll.COH_KEYS). NOTHING tracker-side becomes deletable until
+  # that fold also runs here -- the fold is the last consumer of the sum.
+  # Watch the COMB-DLL log line: it prints the same paired comparison on the loop's own cycles,
+  # so the swap keeps monitoring itself. Per-cycle fallback to the polled discriminator
+  # whenever the gather has no windows for a chain.
+  telem-dll: true
   # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
   # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
@@ -244,33 +274,10 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # indictment of the transport instead of a property of the estimator.
     # telem-coherent: true
     #
-    # -- TASK #63: THE CODE LOOP CLOSES ON THE COMB, ON THIS CHAIN ONLY ----------------------
-    # The discriminator is now formed HERE from the per-channel Early/Prompt/Late the #59
-    # transport ships, instead of from powers the trackers built by summing across each
-    # instance's channels. Same arithmetic (coherent over an instance's channels, then powers
-    # added across instances), moved to the one place that can see the whole band.
-    #
-    # ⚠️ UNLIKE --telem-coherent ABOVE, THIS ONE WAS MEASURED FIRST AND IT PASSED. The estimator
-    # that A/B tried to move is not reproducible against itself (r = 0.077); the DLL is, so the
-    # paired comparison means something. scripts/gnss/comb_dll_ab.py, live, WITH the mandatory
-    # poll-vs-poll control:
-    #
-    #   gps_l5,  20 cycles, 240 paired PRNs
-    #     disc  comb - poll  +0.0015 +- 0.0223   CONTROL (poll - poll)  +0.0014 +- 0.0472
-    #     q     comb - poll  +0.0081 +- 0.0435   CONTROL                +0.0015 +- 0.0902
-    #     presence 10/240 discordant, McNemar chi2 0.10 -- symmetric, churn not bias
-    #   gal_e5a, 15 cycles, 210 paired PRNs
-    #     disc  +0.0000 +- 0.0320   CONTROL  -0.0021 +- 0.0412
-    #
-    # The comb arm tracks the polled one MORE CLOSELY THAN THE POLLED ONE TRACKS ITSELF one
-    # cycle later. The other four chains stay on the polled discriminator as the live control.
-    #
-    # ⚠️ THE POLL IS STILL MADE. deep_snr / deep_floor / coherence_s and the quadrature
-    # fallback come from the combiner's DEEP FOLD, which is not in the comb; they are carried
-    # across verbatim. Nothing tracker-side becomes deletable until that fold also runs here.
-    # Watch the COMB-DLL log line: it prints the same paired comparison on the loop's own
-    # cycles, so the swap monitors itself.
-    telem-dll: true
+    # TASK #63: the code loop closes on the COMB -- see `telem-dll` in `common`, which now
+    # applies to every chain. gps_l5 ran it alone from 2026-08-14 23:12 to 2026-08-15 ~00:30
+    # with the other four as the live control; that arm is finished and the result is recorded
+    # with the flag.
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
