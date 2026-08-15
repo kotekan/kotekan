@@ -139,19 +139,31 @@ export function signal_metrics(s, t_rec) {
     m.inst_n = s.inst_snr_n != null ? s.inst_snr_n : null;
     m.inst_spread = (s.inst_snr_hi != null && s.inst_snr_lo != null) ?
                     (s.inst_snr_hi - s.inst_snr_lo) : null;
-    // coherent C/N0 (dB-Hz): PREFER the broker-published cn0_coh_db (task #35) -- the
-    // best single instance over its own span, one estimator, one normalisation. The
-    // local derivation from deep_snr is WRONG whenever the broker serves the fleet
-    // override or the quadrature fallback (quad inflates by 10log10(N) ~ 10.8 dB, and
-    // every fleet<->quad flip stepped this display ~8 dB -- the measured bulk of the
-    // "C/N0 scatter", docs 11.31). Kept only as a fallback for pre-#35 brokers.
+    // THE C/N0 (task #57, 2026-08-15): the broker-published cn0_prompt_db -- per-record
+    // prompt power, q-gated on the noise probes' own q population, probe-debiased. No fit
+    // anywhere in it, sky-validated (AUC 1.000 vs the probes, split-half <= 0.1 dB,
+    // two-feed pairing <= 0.35 dB). It supersedes BOTH numbers this panel used to carry:
+    // the incoherent one was biased (E[|P|^2] carries sigma^2 undebiased -- the 22-25
+    // dB-Hz rectification floor) and the coherent one rode the deep fold's per-integration
+    // rate re-search (~20 dB of its own paired scatter, #47/#66). cn0_duty is the lock
+    // duty the value is conditioned on -- a low duty means the number rests on few
+    // gate-passing records and should be read with that beside it, so it travels WITH the
+    // value everywhere (the #47 rule: the flag moves with the number it qualifies).
+    m.cn0_duty = s.cn0_prompt_duty != null ? s.cn0_prompt_duty : null;
+    if (s.cn0_prompt_db != null)
+        m.cn0 = s.cn0_prompt_db;
+    else {
+        // Pre-#57 broker: the old incoherent pipeline-zero-point expression, so an old
+        // chain renders SOMETHING rather than a blank column. Marked by cn0_duty == null.
+        const a = s.amplitude || 0, u = s.unbiased_amplitude || 0;
+        if (a > u && u > 0) m.cn0 = 10 * Math.log10(((u * u) / (a * a - u * u)) / t_rec);
+    }
+    // The deep-fold number stays COMPUTED (offline consumers of this feed may read it)
+    // but is no longer a display column anywhere -- see the table/history panels.
     if (s.cn0_coh_db != null)
         m.cn0_coh = s.cn0_coh_db;
     else if (m.coh_s > 0 && m.deep_snr > 0)
         m.cn0_coh = 20 * Math.log10(m.deep_snr) - 10 * Math.log10(m.coh_s);
-    // incoherent C/N0 (dB-Hz, pipeline zero-point): x = u^2/(a^2-u^2), density x/t_rec.
-    const a = s.amplitude || 0, u = s.unbiased_amplitude || 0;
-    if (a > u && u > 0) m.cn0 = 10 * Math.log10(((u * u) / (a * a - u * u)) / t_rec);
     // peel depth (dB) = 20 log10(deep/peel_deep), valid only where the PRIMARY deep cleared
     // its floor; at-floor residual -> a lower bound (the detection-limit ratio), rendered ">=".
     const pdeep = s.peel_deep || 0, psnr = s.peel_deep_snr || 0;
@@ -162,6 +174,51 @@ export function signal_metrics(s, t_rec) {
                                  : 20 * Math.log10(m.deep / pdeep);
     }
     return m;
+}
+
+// THE BEAM SUMMARY (task #57 step 2). One /get_elements row -- {probe, inst: {tag: {keff,
+// amp[], ph[], sig[]}}} -- reduced to the three numbers a table cell can carry:
+//   beam_n    live elements (sig >= 3 against the per-element PROBE floor), median over
+//             instances. sig absent (no probe anchor) -> every element counts, honestly
+//             weaker.
+//   beam_amp  median over instances of the median LIVE element amplitude, normalized by
+//             (n_elem - 1) so a uniform array reads ~1.0 (the raw amp is in units of the
+//             OTHER elements' sum).
+//   beam_ph   median over instances of the circular RMS spread of the live elements'
+//             phases (deg). Phase is RELATIVE TO THE ARRAY MEAN -- the peel coefficient
+//             -- so this is "how far from phased-up is the array on this satellite": ~0
+//             after a good cal, growing as cables/pointing decohere.
+// The FULL per-element vectors ride the broker's /get_elements and the NFS archive; this
+// is the glanceable summary, not the beam map itself.
+export function beam_summary(row) {
+    if (!row || !row.inst) return null;
+    const med = a => {
+        if (!a.length) return null;
+        const s = [...a].sort((x, y) => x - y);
+        return s[Math.floor(s.length / 2)];
+    };
+    const per_amp = [], per_ph = [], per_n = [];
+    for (const tag of Object.keys(row.inst)) {
+        const ir = row.inst[tag];
+        if (!ir || !Array.isArray(ir.amp) || !ir.amp.length) continue;
+        const L = ir.amp.length;
+        const live = [];
+        for (let e = 0; e < L; e++)
+            if (!Array.isArray(ir.sig) || ir.sig[e] == null || ir.sig[e] >= 3.0) live.push(e);
+        if (!live.length) { per_n.push(0); continue; }
+        per_n.push(Array.isArray(ir.sig) ? live.length : null);
+        per_amp.push(med(live.map(e => ir.amp[e])) * Math.max(1, L - 1));
+        // circular RMS: R = |<e^{i ph}>|, rms = sqrt(-2 ln R)
+        let cr = 0, ci = 0;
+        for (const e of live) { cr += Math.cos(ir.ph[e]); ci += Math.sin(ir.ph[e]); }
+        const R = Math.hypot(cr, ci) / live.length;
+        per_ph.push(R > 0 ? Math.sqrt(Math.max(0, -2 * Math.log(Math.min(1, R)))) * 180 / Math.PI
+                          : 180);
+    }
+    if (!per_amp.length) return null;
+    const ns = per_n.filter(x => x != null);
+    return {beam_amp: med(per_amp), beam_ph: med(per_ph),
+            beam_n: ns.length ? med(ns) : null, probe: !!row.probe};
 }
 
 export class GpsFeed {
@@ -259,6 +316,10 @@ export class GpsFeed {
         const per_unit = units.map(u => Promise.all([
             u.search ? jget(k.stageGet(u.search, "get_detections")) : Promise.resolve(null),
             jget(k.stageGet(u.combiner, "get_status")),
+            // Per-element beam table (task #57 step 2): served by the BROKER publisher on
+            // the same stage path. A 404 (pre-#57 broker, or nodes not yet serving the
+            // element export) resolves null and every beam cell renders "—".
+            jget(k.stageGet(u.combiner, "get_elements")),
         ]));
         // Stream health, unified: watch all three front ends but poll ONE airspy's /adcstat
         // per tick, ROUND-ROBIN -- NOT all three concurrently. /adcstat runs on restServer's
@@ -305,10 +366,13 @@ export class GpsFeed {
             const store = (last.units = last.units || {});
             units.forEach((u, i) => {
                 const key = this.unified ? u.key : u.tag;
-                const [det, status] = res[i];
+                const [det, status, elem] = res[i];
                 const l = (store[key] = store[key] || {});
                 if (det) l.det = det;
                 if (status) l.status = status;
+                // Only a table with rows counts as data; {} is the pre-first-cycle broker
+                // and must not evict the last good one.
+                if (elem && elem.prns && Object.keys(elem.prns).length) l.elem = elem;
             });
             this._emit();
         });
@@ -423,6 +487,23 @@ export class GpsFeed {
                             r.prompt_lock = m.prompt_lock;
                         }
                     }
+                // BEAM SUMMARY per (sat, signal), off the per-element table (#57 step 2).
+                // Attached onto the same sig_by entry the status built, so a beam cell and
+                // its C/N0 cell always describe the same signal. Staleness-gated: a
+                // stalled broker table must render as absent, not as fresh (the utc rides
+                // the table for exactly this).
+                const et = l.elem;
+                if (et && et.prns && (et.utc == null || Date.now() / 1000 - et.utc < 300)) {
+                    for (const pk of Object.keys(et.prns)) {
+                        const b = beam_summary(et.prns[pk]);
+                        if (!b) continue;
+                        const r = get(sg.sys || sg.tag, +pk);
+                        const e = (r.sig_by[sg.key] = r.sig_by[sg.key] || {});
+                        e.beam_amp = b.beam_amp;
+                        e.beam_ph = b.beam_ph;
+                        e.beam_n = b.beam_n;
+                    }
+                }
             }
         } else {
             for (const c of this.chains) {
@@ -436,6 +517,14 @@ export class GpsFeed {
                     for (const s of l.status) {
                         if (!s.prn) continue;
                         Object.assign(get(c.tag, s.prn), signal_metrics(s, c.t_rec));
+                    }
+                // Beam summary, flat path -- same rules as unified, attached at row level.
+                const et = l.elem;
+                if (et && et.prns && (et.utc == null || Date.now() / 1000 - et.utc < 300))
+                    for (const pk of Object.keys(et.prns)) {
+                        const b = beam_summary(et.prns[pk]);
+                        if (b) Object.assign(get(c.tag, +pk),
+                            {beam_amp: b.beam_amp, beam_ph: b.beam_ph, beam_n: b.beam_n});
                     }
             }
         }

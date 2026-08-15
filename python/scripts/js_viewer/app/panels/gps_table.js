@@ -34,29 +34,31 @@ const METRICS = {
     // signal (L2C-CL, L5-I): those are seeded from a sibling and never searched.
     snr:  {label: "SNR",  field: "snr",     unit: "σ",
            fmt: m => m && m.snr ? m.snr.toFixed(0) : null},
-    // TWO C/N0 ESTIMATORS, NAMED. This column was labelled a bare "C/N0" and carried the
-    // INCOHERENT one, which is by far the less sensitive of the two -- and the table's `sig`
-    // column shows the deep COHERENT value, so the two disagreed with nothing on screen
-    // saying why. Measured live 2026-08-10, GPS L5, one emit: the incoherent estimator was
-    // defined for 4 of 10 satellites (it needs amplitude > unbiased_amplitude > 0, and
-    // unbiased_amplitude floors at exactly 0 for anything at or below the fleet's noise
-    // median) while the coherent one was defined for ALL TEN -- 28.6 to 48.9 dB-Hz. It also
-    // returned -6.9 dB-Hz for PRN 23, which is not a physical C/N0. Both are offered now,
-    // labelled, with the coherent one first because it is the one that reports on the
-    // instrument's actual sensitivity.
-    // "?" MARKS A BLIND NUMBER (task #47). cn0_coh comes from the deep fold, which RE-SEARCHES
-    // rate and phase and so re-finds the satellite no matter where the prompt tap was
-    // commanded -- it stays high while E/P/L sit on noise, and dll_disc reads ~0 there because
-    // E ~= L ~= noise. Measured 2026-08-12 15:20-15:45 UTC: all five chains served ~41 dB-Hz at
-    // |disc| 0.013 with the prompt Rayleigh, and this display was read as the array's best look
-    // of the day. The value is still shown -- it is a real deep-fold significance -- but a
-    // marked one must never be averaged into a health number. 7-30% of bright-LOOKING samples
-    // on 2026-08-11/12 carry the mark.
-    cn0_coh: {label: "C/N0 coh", field: "cn0_coh", unit: "dB-Hz",
-              fmt: m => m && m.cn0_coh != null
-                        ? m.cn0_coh.toFixed(0) + (m.prompt_lock === false ? "?" : "") : null},
-    cn0:  {label: "C/N0 inc", field: "cn0",     unit: "dB-Hz",
-           fmt: m => m && m.cn0 != null ? m.cn0.toFixed(0) : null},
+    // ONE C/N0 (task #57, 2026-08-15). The two-estimator display (coh + inc, both named) is
+    // retired: the incoherent number was biased (undebised sigma^2 -- the rectification
+    // floor) and the coherent one rode the deep fold's per-integration rate re-search
+    // (~20 dB of its own paired scatter, #47/#66). This is cn0_prompt_db -- per-record
+    // prompt power, q-gated, probe-debiased, sky-validated -- and it is conditioned on
+    // lock, so its DUTY travels with it: a value at duty < 70% is greyed with the duty in
+    // the hover (few gate-passing records; read it as "when held", not "always").
+    cn0:  {label: "C/N0", field: "cn0", unit: "dB-Hz",
+           fmt: m => {
+               if (!m || m.cn0 == null) return null;
+               const v = m.cn0.toFixed(0);
+               if (m.cn0_duty == null) return v + "*";   // pre-#57 broker: old estimator
+               return m.cn0_duty < 0.7
+                   ? `<span style="opacity:.55" title="lock duty ${(100 * m.cn0_duty).toFixed(0)}%`
+                     + ` -- the C/N0 of the records where tracking held">${v}</span>`
+                   : v;
+           }},
+    // BEAM (task #57 step 2): the per-element complex gain, summarised. amp = median live
+    // element amplitude (1.0 = uniform array); ph = circular RMS of the live elements'
+    // phases about the array mean (deg) -- "how far from phased-up on this satellite".
+    // The full 32-element vectors are on the broker's /get_elements and in the NFS archive.
+    beam_amp: {label: "beam A", field: "beam_amp", unit: "x",
+               fmt: m => m && m.beam_amp != null ? m.beam_amp.toFixed(2) : null},
+    beam_ph:  {label: "beam φ", field: "beam_ph", unit: "°",
+               fmt: m => m && m.beam_ph != null ? m.beam_ph.toFixed(0) + "°" : null},
     // DUTY (task #57): the fraction of the last 2 minutes in which the array actually
     // held this satellite. sig says how loud, duty says how often -- different
     // questions. Measured 2026-08-14: satellites sitting at sig 20-40 were being lost a
@@ -100,16 +102,19 @@ const COLS = [
      tip: "elevation (deg)"},
     {key: "snr",  label: "SNR",  align: "right", dir: -1,
      tip: "search detection significance (sigma above the acquire grid noise)"},
-    {key: "cn0_coh", label: "C/N0 coh", align: "right", dir: -1,
-     tip: "COHERENT C/N0 (dB-Hz) = 20log10(deep_snr) - 10log10(T_coh): the deep "
-          + "estimator, defined wherever the deep fold cleared its floor. Far more "
-          + "sensitive than the incoherent column beside it -- measured 10/10 "
-          + "satellites vs 4/10 on the same emit"},
-    {key: "cn0",  label: "C/N0 inc", align: "right", dir: -1,
-     tip: "INCOHERENT C/N0 (dB-Hz, pipeline zero-point): needs only 1 record of "
-          + "coherence -- the beam-map observable. Undefined (—) once "
-          + "unbiased_amplitude floors at 0, i.e. for any satellite at or below the "
-          + "fleet's noise median, which is most of them"},
+    {key: "cn0",  label: "C/N0", align: "right", dir: -1,
+     tip: "C/N0 (dB-Hz): per-record prompt power, q-gated on the noise probes' own q "
+          + "population, probe-debiased (task #57 -- supersedes the old coh/inc pair). "
+          + "Greyed when the lock duty is under 70%: the value is then the C/N0 of the "
+          + "minority of records where tracking held"},
+    {key: "beam_amp", label: "beam A", align: "right", dir: -1,
+     tip: "median live-element gain amplitude, normalised so a uniform array reads 1.0 "
+          + "(the per-element complex gain, #57 step 2). Full 32-element vectors on the "
+          + "broker's /get_elements and in the NFS archive"},
+    {key: "beam_ph", label: "beam φ", align: "right", dir: -1,
+     tip: "circular RMS spread of the live elements' gain phases about the array mean "
+          + "(deg) -- how far from phased-up the array is on this satellite. The phase "
+          + "is the peel coefficient; ~0 after a good cal"},
     {key: "sig",  label: "sig",  align: "right", dir: -1,
      tip: "combined significance. Since #57 this is the broker's published `sig`: the "
           + "MEDIAN over instances over a trailing window, with its gate paired to its "
@@ -144,11 +149,10 @@ export class GpsTablePanel {
         this.has_site = !!has_site;
         this.sort = {key: "id", dir: 1};      // stable default: constellation+PRN
         this.usort = {key: "el", dir: -1};    // unified default: highest sat first
-        // Default to the COHERENT C/N0: the incoherent one was the silent default and is
-        // defined for a minority of satellites (4 of 10 on the measured emit), which is how
-        // a table of blank cells sat next to a `sig` column full of robust detections.
-        // A stored preference still wins (see the restore below).
-        this.metric = "cn0_coh";              // unified cell metric
+        // Default to THE C/N0 (cn0_prompt, task #57). A stored preference still wins, but a
+        // stale "cn0_coh" preference (the retired metric) fails the METRICS check below and
+        // falls back here rather than resurrecting the deep-fold column.
+        this.metric = "cn0";                  // unified cell metric
         try {
             const p = JSON.parse(localStorage.getItem(PREFS_KEY));
             if (p && p.sort && COLS.some(c => c.key === p.sort.key)) this.sort = p.sort;
@@ -482,18 +486,17 @@ export class GpsTablePanel {
                 id: dot + "<b>" + r.id + "</b>",
                 el: r.el != null ? r.el.toFixed(0) + "°" : "—",
                 snr: r.snr != null ? r.snr.toFixed(1) : "—",
-                // Blind rows carry the mark AND a hover reason, so the display explains itself
-                // rather than needing this file to be read (task #47).
-                cn0_coh: r.cn0_coh != null
-                    ? (r.prompt_lock === false
-                       ? `<span style="opacity:.55" title="BLIND: the prompt tap is not on the`
-                         + ` signal (Rayleigh prompt intensity AND below the live noise floor).`
-                         + ` This is a deep-fold significance, not a C/N0 -- the deep fold`
-                         + ` re-searches and re-finds the satellite wherever the tap sits.">`
-                         + r.cn0_coh.toFixed(1) + "?</span>"
-                       : r.cn0_coh.toFixed(1))
+                // ONE C/N0 (task #57): cn0_prompt, duty-qualified in place -- the flag moves
+                // with the number it qualifies.
+                cn0: r.cn0 != null
+                    ? (r.cn0_duty != null && r.cn0_duty < 0.7
+                       ? `<span style="opacity:.55" title="lock duty `
+                         + `${(100 * r.cn0_duty).toFixed(0)}% -- the C/N0 of the records`
+                         + ` where tracking held">${r.cn0.toFixed(1)}</span>`
+                       : r.cn0.toFixed(1) + (r.cn0_duty == null ? "*" : ""))
                     : "—",
-                cn0: r.cn0 != null ? r.cn0.toFixed(1) : "—",
+                beam_amp: r.beam_amp != null ? r.beam_amp.toFixed(2) : "—",
+                beam_ph: r.beam_ph != null ? r.beam_ph.toFixed(0) + "°" : "—",
                 sig,
                 // duty greys below 70%: the number is real, the satellite is not being
                 // held, and those two facts must be legible in the same glance.

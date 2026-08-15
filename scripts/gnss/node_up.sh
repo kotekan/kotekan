@@ -105,6 +105,24 @@ preflight() {
         echo "    'ninja lib/stages/all' does not relink kotekan. Run 'ninja kotekan'." >&2
         echo "    Starting anyway -- but this node will run the OLD code." >&2
     fi
+    # ⚠️ AND IS THE BINARY OLDER THAN THE SOURCES? The check above cannot catch the tree
+    # never being built at all: /home/kvand is NFS-shared and there are TWO build trees
+    # (`build/` = the nodes' DPDK build launched here; `build_nodpdk/` = cf06's), so a
+    # change built and verified in one leaves the other -- binary AND library together,
+    # consistently, silently -- old. On 2026-08-15 that cost a six-node restart that came
+    # up without /get_elements: the combiner change was compiled, linked and
+    # strings-verified in build_nodpdk while this script launched build/. Same warning
+    # discipline: mtimes are provenance, not correctness; never a refusal.
+    _NEWEST_SRC=$(find /home/kvand/gnss/kotekan/lib/stages/gnss -name '*.cpp' -o -name '*.hpp' \
+                  2>/dev/null | xargs -r ls -t 2>/dev/null | head -1)
+    if [ -n "$_NEWEST_SRC" ] && [ "$_NEWEST_SRC" -nt "$BIN" ]; then
+        echo "⚠️  $BIN is OLDER than $(basename "$_NEWEST_SRC") -- this BUILD TREE was never rebuilt." >&2
+        echo "    binary  $(date -r "$BIN" '+%F %T')" >&2
+        echo "    source  $(date -r "$_NEWEST_SRC" '+%F %T')  ($_NEWEST_SRC)" >&2
+        echo "    Two build trees exist (build/ = nodes, build_nodpdk/ = cf06); rebuild THIS one:" >&2
+        echo "    cd $(dirname "$BIN")/.. && ninja kotekan" >&2
+        echo "    Starting anyway -- but this node will run the OLD code." >&2
+    fi
     # PROVENANCE, NOT CORRECTNESS -- a WARNING, never a refusal. If this config is one the
     # fleet manifest owns, say whether it still matches. A node started from a config nobody
     # can regenerate has no explanation available when it later misbehaves, and that is

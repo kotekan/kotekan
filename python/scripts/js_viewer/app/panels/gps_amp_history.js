@@ -2,14 +2,14 @@
 //
 // Observables (the dropdown), all straight off the shared GpsFeed so this panel and the
 // table can never disagree:
-//   * C/N₀ coh  -- 10 log10(deep_snr² / T_coh) dB-Hz: the DEEP estimator. Gain-independent
-//                  and √T-deep, but defined only where the combiner certified the coherence
-//                  (coherence_s > 0); a floored deep is nav-wipe rectification, not signal,
-//                  so those emits are GAPS here rather than points.
-//   * C/N₀ inc  -- 10 log10(x / t_rec) dB-Hz from the single-record power ratio
-//                  x = u²/(a²-u²): needs no coherence at all, so it survives where the
-//                  coherent estimator drops out. The pair together is the diagnostic --
-//                  they should agree, and the map (gps_cn0_map.py) plots both for that reason.
+//   * C/N₀      -- cn0_prompt_db (task #57): per-record prompt power, q-gated on the noise
+//                  probes' q population, probe-debiased. THE radiometry; supersedes the old
+//                  coh/inc pair (inc was rectification-biased, coh rode the deep fold's
+//                  per-integration rate re-search and its ~20 dB paired self-scatter).
+//   * beam A/φ  -- the per-element complex-gain summary (#57 step 2): median live-element
+//                  amplitude (1 = uniform array) and the circular RMS of the element
+//                  phases about the array mean (the peel coefficient's dispersion). The
+//                  full per-element vectors ride /get_elements and the NFS archive.
 //   * sig       -- combined significance (σ above noise): deep when floor-certified, else
 //                  the moment-debiased incoherent amp_snr. The lock metric.
 //   * coh       -- the auto-ladder's winning coherent window (s). Its collapses ARE the
@@ -35,11 +35,19 @@
 const MAX_PTS = 10000;      // per-PRN cap (~4 h at 1.5 s); bounds RENDER cost, not RAM
 const LN10_10 = 10 / Math.LN10;   // 10/ln10 = 4.3429; d(dB)/dx = LN10_10 / x
 
-// key -> {label, unit, fmt, zero (y-axis rangemode tozero), errs (1σ bars)}
+// key -> {label, unit, fmt, zero (y-axis rangemode tozero)}
+// ONE C/N0 (task #57, 2026-08-15): the coh/inc pair is retired from display. `cn0` is now
+// cn0_prompt_db off the feed -- per-record prompt power, q-gated, probe-debiased -- which
+// supersedes both (the incoherent one was rectification-biased, the coherent one carried
+// the deep fold's ~20 dB of paired self-scatter). The beam modes are #57 step 2: the
+// per-element complex-gain summary (median live-element amplitude; circular RMS of the
+// element phases about the array mean -- the peel coefficient's dispersion).
 const MODES = {
-    cn0_coh: {label: "C/N₀ coh", axis: "C/N₀ coherent (dB-Hz)", unit: " dB-Hz", fmt: ".1f",
-              errs: true},
-    cn0:     {label: "C/N₀ inc", axis: "C/N₀ incoherent (dB-Hz)", unit: " dB-Hz", fmt: ".1f"},
+    cn0:      {label: "C/N₀",    axis: "C/N₀ (dB-Hz)", unit: " dB-Hz", fmt: ".1f"},
+    beam_amp: {label: "beam A",  axis: "median element gain (×, 1 = uniform)", unit: "×",
+               fmt: ".2f", zero: true},
+    beam_ph:  {label: "beam φ",  axis: "element phase spread (deg RMS)", unit: "°",
+               fmt: ".0f", zero: true},
     sig:     {label: "sig",      axis: "significance (σ)", unit: "σ", fmt: ".1f", zero: true},
     coh_s:   {label: "coh",      axis: "coherent window (s)", unit: " s", fmt: ".3f", zero: true},
     dop:     {label: "dop",      axis: "tracked Doppler (Hz)", unit: " Hz", fmt: ".1f"},
@@ -47,7 +55,7 @@ const MODES = {
     peel:    {label: "peel",     axis: "voltage-peel depth (dB)", unit: " dB", fmt: ".1f",
               zero: true},
 };
-const MODE_ORDER = ["cn0_coh", "cn0", "sig", "coh_s", "dop", "snr", "peel"];
+const MODE_ORDER = ["cn0", "beam_amp", "beam_ph", "sig", "coh_s", "dop", "snr", "peel"];
 
 // ICD minimum received power per TRACKED COMPONENT, as a C/N₀ floor with
 // N₀ = −204 dBW/Hz (290 K, lossless front end): C/N₀_min = P_min(dBW) + 204.
@@ -78,7 +86,7 @@ export class GpsAmpHistoryPanel {
         this.meta = new Map();   // key -> {label, band, tag} (unified: one entry per sat+signal)
         this.unified = false;
         this.selected = null;
-        this.mode = "cn0_coh";
+        this.mode = "cn0";
         this._dirty = false;
         this._plotted = false;
         this._maxDr = 0;         // largest deep_records seen = the converged (~1 s) window
@@ -130,8 +138,8 @@ export class GpsAmpHistoryPanel {
         // `bound` parallels `peel`: true where the residual sat at the combiner's detection
         // floor, i.e. the point is a LOWER BOUND. Kept as its own array so the plot can never
         // render a bound as a measurement (see the header note).
-        return {t: [], cn0_coh: [], cn0: [], sig: [], coh_s: [], dop: [], snr: [], dr: [],
-                peel: [], bound: []};
+        return {t: [], cn0: [], beam_amp: [], beam_ph: [], sig: [], coh_s: [], dop: [],
+                snr: [], dr: [], peel: [], bound: []};
     }
 
     // L1/L2/L5 (unified signal band) -> the CN0_BASELINE band key.
@@ -147,7 +155,9 @@ export class GpsAmpHistoryPanel {
         if (n && h.sig[n - 1] === src.sig && h.coh_s[n - 1] === src.coh_s
             && h.dop[n - 1] === src.dop && h.snr[n - 1] === snr) return;
         h.t.push(now);
-        h.cn0_coh.push(src.cn0_coh); h.cn0.push(src.cn0); h.sig.push(src.sig);
+        h.cn0.push(src.cn0); h.sig.push(src.sig);
+        h.beam_amp.push(src.beam_amp != null ? src.beam_amp : null);
+        h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);
         h.dr.push(src.dr || 0);
         h.peel.push(src.peel_db); h.bound.push(!!src.peel_bound);
@@ -238,12 +248,11 @@ export class GpsAmpHistoryPanel {
     _has(id) { return this._series_keys(id).length > 0; }
     _len(id) { return this._series_keys(id).reduce((n, k) => n + this.hist.get(k).t.length, 0); }
 
-    // 1σ error bar for sample i, where the observable has one worth drawing.
-    _err(h, i) {
-        if (this.mode !== "cn0_coh") return 0;
-        // significance has ~unit std -> d(dB)/d(sig) = (10/ln10)*(2/sig)
-        const sig = h.sig[i];
-        return sig > 0 ? (2 * LN10_10) / sig : 0;
+    // 1σ error bar for sample i. Retired with the cn0_coh mode (its bars were derived from
+    // the deep significance); cn0_prompt ships its own split-half witness in the TABLE row
+    // instead. Kept as a hook so a future mode can define one.
+    _err(h, i) {                                        // eslint-disable-line no-unused-vars
+        return 0;
     }
 
     // Unified: overlay one trace per signal the selected satellite carries (CM vs CL vs L5...
@@ -317,7 +326,7 @@ export class GpsAmpHistoryPanel {
         // ladder emits for cn0_coh/sig, and floor-limited LOWER BOUNDS for peel. Same
         // mechanism, opposite emphasis -- a bound is not junk, it is a real statement about
         // the peel that simply cannot be read as an equality.
-        const ladder = (this.mode === "cn0_coh" || this.mode === "sig");
+        const ladder = (this.mode === "sig");
         const isPeel = (this.mode === "peel");
         const thr = 0.6 * (this._maxDr || 0);
         const SIG_REAL = 20;
@@ -395,7 +404,7 @@ export class GpsAmpHistoryPanel {
         // Absolute reference: the ICD-minimum C/N₀ for this band + constellation
         // (dashed line, C/N₀ modes only). Baseline is per tracked component -- see
         // CN0_BASELINE for the power bookkeeping and sources.
-        if (this.mode === "cn0_coh" || this.mode === "cn0") {
+        if (this.mode === "cn0") {
             // Per-signal band in unified mode (the selected key's meta), else the viewer's band.
             const band = this.unified
                 ? ((this.meta.get(this.selected) || {}).band || "l1")
