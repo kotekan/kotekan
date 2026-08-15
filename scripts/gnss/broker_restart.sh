@@ -65,6 +65,12 @@ fi
 # ABSOLUTE PATHS THROUGHOUT. This is normally invoked over ssh, which lands in $HOME rather
 # than the repo, and a relative script path there fails with a bare "can't open file" after
 # the old broker is already dead.
+# ⚠️ ONE BLAS THREAD. numpy's OpenBLAS pool defaults to one BUSY-SPINNING worker per core;
+# the joint filter's small matmuls (P is ~57x57) wake all of them, and measured 2026-08-15
+# 17:14 the broker sat at ~53 cores of spin -- which starved the TELEMETRY READER at the OS
+# level: the gather dropped its client every 200 ms and 5 of 6 frames were lost (gaps 95k
+# vs frames 18k). At these matrix sizes single-threaded BLAS is also simply faster.
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 nohup setsid "$PY" -u "$K/scripts/gnss/broker_multi.py" "$CHAINS" "$@" \
     > "$LOG" 2>&1 < /dev/null &
 disown
