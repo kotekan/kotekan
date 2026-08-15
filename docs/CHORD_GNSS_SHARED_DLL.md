@@ -273,3 +273,63 @@ coherent full-band `q` reaches 3.3.** That is what a per-channel, per-record `|A
 unsubtracted noise bias must do — one channel over 10.5 ms has negligible SNR, and averaging
 records shrinks the variance, not the bias. The per-channel view is a diagnostic axis today,
 not a per-channel detector; making it one needs the noise term removed.
+
+---
+
+## 11. The code latch was upstream of the deep fold (2026-08-15, #49/#61/#63)
+
+Moving the deep fold into the broker (#63's last step) started by reproducing what was on file
+about why the fold misbehaves. What it found instead was that **the fold is downstream of this
+document's own gate.**
+
+### 11.1 The tap was off-peak on the entire chain
+
+`fleet_q = 2P/(E+L)` measured 0.23–1.35 on every gps_l5 PRN against a 1.065 floor — and §8
+records that **q = 1.0 is exactly the no-peak value**, all three taps on equal noise power.
+0 of 13 present. Meanwhile the combiner's deep fold reported `deep_snr` 28–55 against a
+2.2–2.7 floor on those same satellites, because it **re-searches** rate and phase and so
+detects them wherever the tap sits (#47).
+
+The satellites were there. The tap was on none of them. And the loop that exists to fix that
+was frozen by §8's prompt gate — the latch this document's §10 deep-gate note describes,
+running at 11 of 13 PRNs.
+
+### 11.2 Arming the deep gate moved exactly one thing
+
+`dll-deep-gate: "4 9 27"`, the frozen-but-detected set, with the chain's other PRNs left on the
+prompt gate as an in-chain control. Within minutes:
+
+* PRN 4 `present: True` at 13.1× its deep floor with `fleet_q` **1.031 — below the q floor**,
+  so nothing but the deep gate could have admitted it;
+* **every non-zero trim on the chain belonged to PRN 4**, against 96 logged `trim +0.000`;
+* `fleet_q` on PRN 4 went 0.232 → 1.031 → 1.516 while 14 controls stayed at 0.99–1.04.
+
+### 11.3 ⚠️ And then the phase statistics inverted
+
+Measured **before** the gate, with every tap off-peak, removing a linear carrier rate changed
+coherence by ×0.27–1.2 — random in sign, residual 2.5–10.6 rad. On that basis the "the fold is
+fighting a rate" finding was written up as a retraction.
+
+Measured **after**, on PRN 4 with its tap pulled onto the peak:
+
+| L=128 | measured | derotated | null |
+|---|---|---|---|
+| PRN 4 (on-peak, disc ≈ 0) | 0.034 | **0.704** | 0.032 |
+
+with a fitted rate of +3.132 Hz and a residual of **0.827 rad**. **×20, and the retraction was
+the error.**
+
+**The rule this leaves:** a rate fit on an off-peak tap is a fit to noise, and it correctly
+finds nothing. The same tool, satellite and statistic give opposite answers depending only on
+whether the code loop has the prompt on the peak. **Never judge the fold, its rate search, or
+any coherence statistic without checking `fleet_q` first.**
+
+PRN 9 shows the intermediate state: still at disc +0.50, derotating to 0.463 (×9) but with a
+5.149 rad residual — a rate *plus* the residual code error.
+
+### 11.4 Consequence for the order of work
+
+The deep fold is not independently broken and should not be ported, tuned or rewritten while
+its input is off-peak. Fix the latch, get the tap on the peak, and the fold's existing rate
+search does its job — on PRN 4 the combiner reports `coh_frac` 0.922 and `deep_snr` 13× floor
+with no change to the fold at all.
