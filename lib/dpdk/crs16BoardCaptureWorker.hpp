@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <immintrin.h>
+#include <unordered_map>
 
 
 class crs16BoardCaptureWorker : public dpdkRXhandler {
@@ -72,13 +73,18 @@ protected:
     const kotekan::FrameInfo* active_f0 = nullptr;
     const kotekan::FrameInfo* active_f1 = nullptr;
 
-    /// Sample-based FPGA seq monotonicity check. At each sample the seq must
-    /// be strictly greater than the previous sample's, otherwise we treat it
-    /// as an FPGA reset and shut down. Sampled every @c _seq_check_interval
-    /// packets, which at typical CRS packet rates is roughly once per second.
+    /// Sample-based FPGA seq monotonicity check, PER STREAM. At each sample this stream's
+    /// seq must exceed the previous sample FROM THE SAME STREAM -- one worker interleaves
+    /// several boards and each keeps its own counter, so a single shared scalar compared
+    /// different boards to each other and cried "FPGA reset" at ordinary inter-board skew
+    /// (see the note at the check). Sampled every @c _seq_check_interval packets, roughly
+    /// once per second at typical CRS rates; the map is touched only in that branch.
     static constexpr uint64_t _seq_check_interval = 500000;
-    uint64_t _last_check_seq = 0;
+    std::unordered_map<uint16_t, uint64_t> _last_check_seq_by_stream;
     uint64_t _seq_check_packet_count = 0;
+    /// Genuine backwards steps seen since start. NOT fatal (see the check) -- but a
+    /// sustained count is a real controller reset and the frames around it are suspect.
+    uint64_t seq_backwards_count = 0;
 
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
@@ -165,15 +171,40 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // Sample-based FPGA seq monotonicity check: at each sample boundary the
     // current seq must be strictly greater than the previous sample's,
     // otherwise the FPGA likely reset.
+    // ⚠️ PER STREAM. The previous version kept ONE scalar for the whole worker and compared
+    // a sample against the sample 500,000 packets earlier -- but a worker interleaves
+    // `num_expected_stream_ids` boards (4 on CHORD), each with its OWN sequence counter, so
+    // consecutive samples routinely came from DIFFERENT boards. Any skew between boards then
+    // read as "the FPGA went backwards", and because that path was FATAL it killed the lcore:
+    // its ring filled, the distributor dropped ~99.5% of that port's packets, and the whole
+    // GPU pipeline (GNSS *and* the production N2 correlator) starved while the node kept
+    // answering REST. Measured 2026-08-15 on cx19/cx42/cx43 -- three reboots, a day of
+    // hunting, and it was never an FPGA fault at all: two numbers that were never the same
+    // measurement, compared. Keyed by stream_id the comparison is apples to apples.
+    //
+    // The map is touched only in the SAMPLED branch (once per _seq_check_interval packets),
+    // never per packet, so the fast path keeps its single increment.
     if (unlikely(++_seq_check_packet_count >= _seq_check_interval)) {
-        if (unlikely(_last_check_seq != 0 && seq_num < _last_check_seq)) {
-            FATAL_ERROR("Port: {:d}, Worker: {:d}; CRS FPGA seq went backwards ({:d} -> {:d}), "
-                        "controller likely reset, kotekan stopping...",
-                        port, worker_id, _last_check_seq, seq_num);
-            return -1;
-        }
-        _last_check_seq = seq_num;
         _seq_check_packet_count = 0;
+        uint64_t& last_seq = _last_check_seq_by_stream[stream_id];
+        if (unlikely(last_seq != 0 && seq_num < last_seq)) {
+            // ⚠️ AND NEVER FATAL. A capture process that deletes one of its own receive
+            // threads is strictly worse than one that keeps going: the array does not stop,
+            // it silently half-stops, which is the hardest failure to see. Count it, say it,
+            // resync this stream's baseline, drop the packet, carry on.
+            //
+            // ⚠️ A SUSTAINED count here IS still a real controller reset, and the frames
+            // written around it are suspect (the prefetch service keys frames by seq, so a
+            // genuine backwards jump misplaces data). This counter is the trigger for
+            // deciding to restart capture -- deliberately an operator/monitoring decision
+            // now, not an lcore suicide.
+            seq_backwards_count++;
+            WARN("Port: {:d}, Worker: {:d}, Stream: {:d}; CRS FPGA seq went backwards "
+                 "({:d} -> {:d}); resyncing this stream and continuing (count {:d}). A "
+                 "SUSTAINED count means a real controller reset and suspect frames.",
+                 port, worker_id, stream_id, last_seq, seq_num, seq_backwards_count);
+        }
+        last_seq = seq_num;
     }
 
     if (unlikely(first_run)) {

@@ -66,7 +66,9 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     workers_active_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_workers_active", unique_name)),
     workers_expected_metric(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_dpdk_workers_expected", unique_name)) {
+        "kotekan_dpdk_workers_expected", unique_name)),
+    worker_packet_errors_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_worker_packet_errors_total", unique_name)) {
 
     uint32_t num_mbufs = config.get_default<uint32_t>(unique_name, "num_mbufs", 1024);
     const uint32_t mbuf_cache_size =
@@ -76,6 +78,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     // (see the note at exit_loop). Set false to keep the pre-2026-08-15 limp-on behaviour.
     exit_on_worker_failure =
         config.get_default<bool>(unique_name, "exit_on_worker_failure", true);
+    abort_worker_on_handler_error =
+        config.get_default<bool>(unique_name, "abort_worker_on_handler_error", false);
     rx_ring_size = config.get_default<uint32_t>(unique_name, "rx_ring_size", 512);
     tx_ring_size = config.get_default<uint32_t>(unique_name, "tx_ring_size", 512);
 
@@ -405,6 +409,7 @@ void dpdkCore::main_thread() {
         const int32_t live = active_workers.load();
         workers_active_metric.set(live);
         workers_expected_metric.set(num_workers);
+        worker_packet_errors_metric.set(worker_packet_errors.load());
         if (num_workers > 0 && live < num_workers) {
             if (exit_on_worker_failure) {
                 FATAL_ERROR("DPDK: only {:d} of {:d} workers are alive -- this node is "
@@ -590,8 +595,18 @@ int dpdkCore::lcore_rx(void* args) {
 
             for (uint16_t j = 0; j < num_rx; ++j) {
                 if (unlikely(local_worker->handle_packet(mbufs[j]) != 0)) {
+                    // DROP THE PACKET AND CARRY ON (2026-08-15). This used to jump to
+                    // exit_loop, deleting the receive thread for the rest of the run: one
+                    // packet the handler disliked cost ~99.5% of a port's data until
+                    // somebody noticed and rebooted the node. A capture process that
+                    // amputates its own inputs is strictly worse than one that keeps
+                    // running with a counter climbing -- an operator can SEE a counter.
+                    // Set abort_worker_on_handler_error to restore the old behaviour.
                     rte_pktmbuf_free(mbufs[j]);
-                    goto exit_loop;
+                    core->worker_packet_errors++;
+                    if (unlikely(core->abort_worker_on_handler_error))
+                        goto exit_loop;
+                    continue;
                 }
                 rte_pktmbuf_free(mbufs[j]);
             }

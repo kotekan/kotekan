@@ -240,6 +240,7 @@ private:
     /// are dropped at the ring (measured 2026-08-15: 99.5%, for hours, on three nodes).
     kotekan::prometheus::Gauge& workers_active_metric;
     kotekan::prometheus::Gauge& workers_expected_metric;
+    kotekan::prometheus::Gauge& worker_packet_errors_metric;
 
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;
@@ -292,6 +293,12 @@ private:
     int32_t num_workers = 0;
     /// Stop the process when a worker dies instead of running on with a starved port.
     bool exit_on_worker_failure = true;
+    /// Let a handler error KILL the receive thread (the pre-2026-08-15 behaviour). Default
+    /// false: drop the offending packet, count it, keep receiving.
+    bool abort_worker_on_handler_error = false;
+    /// Packets dropped because a handler rejected them. Climbing = something is wrong with
+    /// the stream; it is no longer a reason to stop receiving.
+    std::atomic<uint64_t> worker_packet_errors{0};
 };
 
 
