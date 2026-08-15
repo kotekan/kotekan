@@ -2,13 +2,158 @@
 
 #include "StageFactory.hpp"
 #include "kotekanLogging.hpp"
-#include "restClient.hpp"
 #include "visUtil.hpp" // for frameID, current_time
 
 #include "json.hpp"
 
 #include <chrono>
 #include <functional>
+
+#include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+namespace {
+
+/// Connect with a bounded wait. A blocking connect() has no timeout short of the kernel's,
+/// which is minutes -- far longer than the 42 ms window this loop lives in.
+int connect_to(const struct sockaddr_in& addr, int timeout_ms) {
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+        return -1;
+    ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    int rc = ::connect(fd, (const struct sockaddr*)&addr, sizeof(addr));
+    if (rc < 0 && errno == EINPROGRESS) {
+        struct pollfd pfd = {fd, POLLOUT, 0};
+        if (::poll(&pfd, 1, timeout_ms) != 1) {
+            ::close(fd);
+            return -1;
+        }
+        int err = 0;
+        socklen_t len = sizeof(err);
+        if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
+            ::close(fd);
+            return -1;
+        }
+    } else if (rc < 0) {
+        ::close(fd);
+        return -1;
+    }
+    ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK);
+    struct timeval tv = {timeout_ms / 1000, (timeout_ms % 1000) * 1000};
+    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    int one = 1;
+    ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)); // 200-byte posts at 24 Hz
+    return fd;
+}
+
+/// One HTTP/1.1 POST on a KEPT-ALIVE connection. Returns false and leaves *fd == -1 on any
+/// error, so the caller simply reconnects next round -- there is no state to repair and
+/// nothing that can throw or exit.
+bool http_post(int* fd, const struct sockaddr_in& addr, const std::string& host,
+               const std::string& path, const std::string& body, int timeout_ms,
+               std::string* err) {
+    for (int attempt = 0; attempt < 2; ++attempt) { // one free retry: a kept-alive socket the
+        if (*fd < 0)                                // peer closed fails on the first write
+            *fd = connect_to(addr, timeout_ms);
+        if (*fd < 0) {
+            *err = "connect: " + std::string(std::strerror(errno));
+            return false;
+        }
+        std::string req = "POST " + path + " HTTP/1.1\r\nHost: " + host
+                          + "\r\nContent-Type: application/json\r\nContent-Length: "
+                          + std::to_string(body.size()) + "\r\nConnection: keep-alive\r\n\r\n"
+                          + body;
+        size_t sent = 0;
+        bool wrote = true;
+        while (sent < req.size()) {
+            const ssize_t w = ::send(*fd, req.data() + sent, req.size() - sent, MSG_NOSIGNAL);
+            if (w <= 0) {
+                wrote = false;
+                break;
+            }
+            sent += (size_t)w;
+        }
+        if (!wrote) {
+            ::close(*fd);
+            *fd = -1;
+            if (attempt == 0)
+                continue; // stale keep-alive: reconnect and send once more
+            *err = "send: " + std::string(std::strerror(errno));
+            return false;
+        }
+        // ⚠️ DRAIN THE WHOLE RESPONSE, OR KEEP-ALIVE POISONS THE NEXT REQUEST.
+        // The first version read 512 bytes once and moved on. kotekan's restServer sends CORS
+        // headers (enable_cors), which push the reply past that, so the remainder sat in the
+        // socket and the NEXT request parsed it as ITS status line -- surfacing as
+        // "status: -Max-Age: 2520", the tail of Access-Control-Max-Age. 13% of posts failed
+        // against the real fleet, and it looked exactly like flaky trackers. A reused
+        // connection must be left byte-clean.
+        std::string resp;
+        char buf[1024];
+        size_t hdr_end = std::string::npos;
+        bool dead = false;
+        while (hdr_end == std::string::npos) {
+            const ssize_t n = ::recv(*fd, buf, sizeof(buf), 0);
+            if (n <= 0) {
+                dead = true;
+                break;
+            }
+            resp.append(buf, (size_t)n);
+            hdr_end = resp.find("\r\n\r\n");
+            if (resp.size() > 64 * 1024) { // a reply this large is not one of ours
+                dead = true;
+                break;
+            }
+        }
+        if (!dead) {
+            // Content-Length is what makes the body's end knowable. restServer always sets it
+            // (send_empty_reply included, as 0), so a missing one means this is not the peer
+            // we think it is -- drop the connection rather than guess where the body ends.
+            size_t want = std::string::npos;
+            const size_t cl = resp.find("Content-Length:");
+            if (cl != std::string::npos && cl < hdr_end)
+                want = (size_t)std::strtoul(resp.c_str() + cl + 15, nullptr, 10);
+            if (want == std::string::npos)
+                dead = true;
+            else {
+                const size_t have = resp.size() - (hdr_end + 4);
+                for (size_t got = have; got < want;) {
+                    const ssize_t n = ::recv(*fd, buf, std::min(sizeof(buf), want - got), 0);
+                    if (n <= 0) {
+                        dead = true;
+                        break;
+                    }
+                    got += (size_t)n;
+                }
+            }
+        }
+        if (dead) {
+            ::close(*fd);
+            *fd = -1;
+            if (attempt == 0)
+                continue;
+            *err = "recv: " + std::string(std::strerror(errno));
+            return false;
+        }
+        if (resp.compare(0, 12, "HTTP/1.1 200") != 0 && resp.compare(0, 12, "HTTP/1.0 200") != 0) {
+            *err = "status: " + resp.substr(0, std::min<size_t>(resp.size(), 40));
+            return false; // a 4xx is the payload's fault; the connection is still clean
+        }
+        return true;
+    }
+    return false;
+}
+
+} // namespace
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -42,8 +187,10 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     // yaml is one more thing to drift -- adding a node would silently leave it out. So
     // /set_policy carries them and this stage holds no deployment knowledge at all.
     _post_every = std::max(1, config.get_default<int>(unique_name, "post_every_n_windows", 1));
+    _post_timeout_ms = std::max(20, config.get_default<int>(unique_name, "post_timeout_ms", 200));
     const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
     _sent_gen.assign((size_t)nthr, 0);
+    _n_post_threads = nthr; // BEFORE the threads exist -- see the header note
     for (int i = 0; i < nthr; ++i)
         _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
     INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends, posting every {:d} "
@@ -142,6 +289,23 @@ GnssFleetTrim::Target GnssFleetTrim::parse_target(const std::string& url,
     t.path = url.substr(sl);
     t.url = url;
     t.chain = chain;
+    // RESOLVE NOW, ONCE. See the Target note: per-request DNS at ~1430/s took the resolver
+    // down and the process with it. A name that will not resolve is a policy error, answered
+    // with 400, not something to rediscover on every post.
+    std::memset(&t.addr, 0, sizeof(t.addr));
+    t.addr.sin_family = AF_INET;
+    t.addr.sin_port = htons(t.port);
+    if (::inet_pton(AF_INET, t.host.c_str(), &t.addr.sin_addr) != 1) {
+        struct addrinfo hints;
+        std::memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        struct addrinfo* res = nullptr;
+        if (::getaddrinfo(t.host.c_str(), nullptr, &hints, &res) != 0 || res == nullptr)
+            throw std::runtime_error("cannot resolve host '" + t.host + "' in '" + url + "'");
+        t.addr.sin_addr = ((struct sockaddr_in*)res->ai_addr)->sin_addr;
+        ::freeaddrinfo(res);
+    }
     return t;
 }
 
@@ -287,6 +451,9 @@ void GnssFleetTrim::post_trims() {
 
 void GnssFleetTrim::post_loop(int slot) {
     uint64_t last = 0;
+    std::map<size_t, int> fds;    // target index -> socket, this thread's alone
+    std::map<size_t, int> skips;  // rounds still to skip (backoff)
+    std::map<size_t, int> nfails; // consecutive failures
     while (!stop_thread) {
         std::map<std::string, nlohmann::json> work;
         std::vector<Target> tgt;
@@ -304,20 +471,40 @@ void GnssFleetTrim::post_loop(int slot) {
             tgt = _targets;  // ditto -- /set_policy can replace the list mid-round
         }
         last = gen;
-        for (size_t i = (size_t)slot; i < tgt.size(); i += _post_threads.size()) {
+        for (size_t i = (size_t)slot; i < tgt.size(); i += (size_t)_n_post_threads) {
             const Target& t = tgt[i];
             auto it = work.find(t.chain);
             if (it == work.end())
                 continue;
-            const restClient::restReply r = restClient::instance().make_request_blocking(
-                t.path, it->second, t.host, t.port, 0, 1);
+            // One socket per target, owned by THIS thread and kept alive across rounds. Each
+            // thread takes a disjoint stride of the target list, so no socket is shared.
+            // ⚠️ BACK OFF A FAILING TARGET. A wedged tracker costs its timeout on EVERY
+            // round, and threads serve a stride GROUP -- so without this one dead node drags
+            // its stride-mates from 23.8 Hz down to the timeout rate. Measured here: the hung
+            // target held its thread ~400 ms per round (send, timeout, retry, timeout).
+            // Exponential, capped, reset by a single success, so a node that comes back
+            // rejoins within a couple of seconds.
+            int& skip = skips[i];
+            if (skip > 0) {
+                --skip;
+                continue;
+            }
+            int& fd = fds[i];
+            std::string err;
+            const bool ok = http_post(&fd, t.addr, t.host, t.path, it->second.dump(),
+                                      _post_timeout_ms, &err);
+            int& nfail = nfails[i];
+            if (ok)
+                nfail = 0;
+            else
+                skip = std::min(48, 1 << std::min(5, ++nfail)); // <= ~2 s at 23.8 Hz
             std::lock_guard<std::mutex> lk(_mtx);
             _post_reqs++;
-            if (r.first)
+            if (ok)
                 _post_ok++;
             else {
                 _post_fail++;
-                _post_last_err = t.url + ": " + r.second;
+                _post_last_err = t.url + ": " + err;
             }
         }
         {
@@ -326,6 +513,9 @@ void GnssFleetTrim::post_loop(int slot) {
                 _sent_gen[(size_t)slot] = gen;
         }
     }
+    for (auto& f : fds)
+        if (f.second >= 0)
+            ::close(f.second);
 }
 
 void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {

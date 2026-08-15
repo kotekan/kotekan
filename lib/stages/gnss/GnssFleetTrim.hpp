@@ -97,6 +97,13 @@ private:
         std::string path;
         std::string url;   ///< as configured, for the log and get_stats
         std::string chain; ///< which chain's payload it takes
+        /// ⚠️ RESOLVED ONCE, AT POLICY TIME. restClient's own header warns "Prefer numerical,
+        /// because the DNS lookup is blocking" -- and at ~1430 posts/s it is not a slowdown,
+        /// it is an outage: on 2026-08-15 the gather's log went "Nameserver 127.0.0.53:53 has
+        /// failed: request timed out. All nameservers have failed" and the process died. Six
+        /// hostnames do not change while a policy stands; resolving them per request is pure
+        /// self-harm.
+        struct sockaddr_in addr;
     };
 
     /// What the policy cycle asked for, before the rate conversion. Kept separate from
@@ -136,14 +143,23 @@ private:
     // posting every 4th window costs ~0.02 chips of lag against a 0.121 chips/s drift --
     // nothing -- and cuts the request rate by four.
     //
-    // ⚠️ BLOCKING SENDS ON DEDICATED THREADS, NOT restClient::make_request. The async entry
-    // point stores a POINTER to the caller's std::function and never owns it -- its cleanup()
-    // frees only the internal pair -- so the callback must outlive a reply that arrives on
-    // libevent's thread. A stack-local one killed the cf06 gather within seconds of the first
-    // post (2026-08-15), silently: the process was simply gone, last log line "restClient:
-    // libevent version". Every other caller in this tree uses make_request_blocking, and on a
-    // stage that back-pressures the whole fleet's telemetry the safe pattern wins. It also
-    // removes the shutdown race, where a reply lands after the stage is destroyed.
+    // ⚠️ NEITHER restClient ENTRY POINT IS USABLE HERE, and both were tried on sky.
+    //
+    //   make_request (async): stores a POINTER to the caller's std::function and never owns
+    //     it -- cleanup() frees only the internal pair. A stack-local callback is dangling by
+    //     the time the reply lands on libevent's thread. Killed the gather within seconds,
+    //     silently: last log line "restClient: libevent version", then nothing.
+    //
+    //   make_request_blocking: FATAL_ERROR_NON_OO on timeout -- "This might leave the
+    //     restClient in an abnormal state. Exiting..." It does not return an error, it exits
+    //     the process. So ONE slow tracker takes the fleet's telemetry down with it. That is
+    //     exactly what happened at 12:41 on 2026-08-15, compounded by per-request DNS.
+    //
+    // Both failures are the same shape: this stage back-pressures every chain's telemetry, so
+    // it cannot host a dependency that reserves the right to call exit(). The poster below is
+    // ~100 lines of plain socket with explicit timeouts, addresses resolved once, persistent
+    // connections, and NO path that can terminate the process. Slower to write, and the only
+    // version that has not taken the instrument down.
     //
     // THE FOLD THREAD NEVER SENDS. It publishes the newest payload and moves on; these threads
     // do the I/O. And because the trim is ABSOLUTE, a thread that falls behind simply picks up
@@ -151,12 +167,23 @@ private:
     // which is worse than delivering none.
     std::vector<Target> _targets; ///< flat, one per tracker instance; guarded by _pend_mtx
     std::vector<std::thread> _post_threads;
+    /// ⚠️ THE STRIDE, FIXED BEFORE ANY THREAD STARTS. post_loop used to read
+    /// _post_threads.size() -- a vector still being emplace_back'd by the constructor while
+    /// the earlier threads were already running -- so every thread read a DIFFERENT stride and
+    /// the target list was covered raggedly. Measured on sky 2026-08-15: 4 targets, 4 threads,
+    /// and exactly 2 requests per round. It fails SILENTLY: the targets that are served look
+    /// perfect, and the ones that are not simply never appear.
+    int _n_post_threads = 1;
     std::mutex _pend_mtx;
     std::condition_variable _pend_cv;
     std::map<std::string, nlohmann::json> _pending; ///< chain -> newest payload
     uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
     std::vector<uint64_t> _sent_gen;                ///< per thread slot, last generation sent
     int _post_every = 1;
+    /// Per-request budget. 200 ms is ~5 frames: long enough that a busy tracker is not
+    /// declared dead, short enough that a wedged one cannot hold a poster thread past the
+    /// point where its trim would be stale anyway.
+    int _post_timeout_ms = 200;
     /// PER CHAIN, not fleet-wide. Summing across chains made any chain's window close trigger
     /// a post round for EVERY chain: measured 116 posts/s/path against the 23.8 intended, a
     /// clean 5x for the five chains (2026-08-15). Harmless in correctness -- the trim is

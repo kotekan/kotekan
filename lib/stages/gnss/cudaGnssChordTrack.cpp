@@ -228,25 +228,29 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
-std::vector<double> cudaGnssChordTrackState::snapshot_trims(std::vector<int>& expired) {
-    std::lock_guard<std::mutex> lk(trim_mtx);
+void cudaGnssChordTrackState::expire_trims_locked(std::vector<int>& expired) {
     // EXPIRE A TRIM WHOSE CONTROLLER STOPPED TALKING. A frozen trim is a permanent silent code
     // offset that the broker's own slow DLL would then fight, and "latched forever" is the #13
     // failure. Only STAMPED trims expire: the in-tracker loop leaves trim_t_recv at 0, and its
     // silence means the SIGNAL went away, not the controller.
-    if (trim_ttl_s > 0.0) {
-        const double now = std::chrono::duration<double>(
-                               std::chrono::steady_clock::now().time_since_epoch())
-                               .count();
-        for (int p = 0; p < n_prn; ++p)
-            if (trim_t_recv[(size_t)p] > 0.0 && (now - trim_t_recv[(size_t)p]) > trim_ttl_s) {
-                if (trim[(size_t)p] != 0.0)
-                    expired.push_back(prns[(size_t)p]);
-                trim[(size_t)p] = 0.0;
-                trim_t_recv[(size_t)p] = 0.0;
-                ++trim_expired;
-            }
-    }
+    if (trim_ttl_s <= 0.0)
+        return;
+    const double now =
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    for (int p = 0; p < n_prn; ++p)
+        if (trim_t_recv[(size_t)p] > 0.0 && (now - trim_t_recv[(size_t)p]) > trim_ttl_s) {
+            if (trim[(size_t)p] != 0.0)
+                expired.push_back(prns[(size_t)p]);
+            trim[(size_t)p] = 0.0;
+            trim_t_recv[(size_t)p] = 0.0;
+            ++trim_expired;
+        }
+}
+
+std::vector<double> cudaGnssChordTrackState::snapshot_trims(std::vector<int>& expired) {
+    std::lock_guard<std::mutex> lk(trim_mtx);
+    expire_trims_locked(expired);
     return trim;
 }
 
@@ -310,6 +314,11 @@ void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& con
             .count();
     {
         std::lock_guard<std::mutex> lk(trim_mtx);
+        // Sweep here too: this callback still runs when execute() has stopped (a wedged GPU
+        // chain answers REST perfectly well), and that is precisely when a stale trim would
+        // otherwise stand indefinitely. See expire_trims_locked.
+        std::vector<int> gone;
+        expire_trims_locked(gone);
         for (const auto& u : upd) {
             trim[(size_t)u.first] = u.second;
             trim_t_recv[(size_t)u.first] = now;

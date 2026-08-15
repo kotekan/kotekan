@@ -90,6 +90,18 @@ public:
     /// and was then ignored. Found 2026-08-15 while wiring #51 F3. One function, both callers.
     std::vector<double> snapshot_trims(std::vector<int>& expired);
 
+    /// The expiry sweep itself. ⚠️ CALLER MUST HOLD trim_mtx.
+    ///
+    /// It is called from the REST callback as well as from execute(), and that is not
+    /// belt-and-braces -- it is the only thing that covers the case the TTL exists for.
+    /// Expiry that runs ONLY on the consumer's thread cannot protect against the consumer
+    /// being dead. Measured on sky 2026-08-15: cx19's and cx43's GPU-0 chains were wedged
+    /// (task #60) -- still answering REST, so /set_trim landed and `posts` climbed, but
+    /// execute() never ran, so trims sat at 236 s and 949 s old against a 4 s TTL while the
+    /// eight healthy instances expired theirs normally. A chain that later resumes would then
+    /// apply a quarter-hour-old correction as its first act.
+    void expire_trims_locked(std::vector<int>& expired);
+
     /// Snapshot the live seeds, expiring stale ones IN THE SHARED STATE (so /get_trim and
     /// every consumer sees the live set, not the high-water mark). Expired PRN numbers land
     /// in @c expired for the caller to log OUTSIDE the lock. Shared by cudaGnssChordTrack and

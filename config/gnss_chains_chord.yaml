@@ -330,9 +330,41 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # gal_e5b / bds_b2b all 0 present with q ~ 0.98-1.0, i.e. no peak under the tap.
     # JUDGE ON q -- never on deep_snr / cn0_coh / coh_frac, all of which #66 showed are blind
     # (a below-horizon PRN reads 11.2x its floor).
-    # Revert: delete these two lines, restart the broker.
-    fast-trim-hz: 5
-    fast-trim-windows: 4
+    # 2026-08-15, LATER: the Python fast trim is RETIRED on this chain and the loop has moved
+    # to C++ (F1-F3 of #51, docs/CHORD_FAST_TRIM.md). It achieved ~3.1 Hz against the 1.94 Hz
+    # break-even -- 1.6x, and only after an armed-PRN filter lifted it off 1.5 Hz, which is
+    # BELOW break-even. GnssFleetTrim runs the same discriminator and the same integrator
+    # (literally the same expression: combdll.dll_integrate and gnss::dll_integrate are
+    # compared byte-for-byte by scripts/gnss/fleetdll_gate.py) at the telemetry's own 23.84 Hz,
+    # measured 23.85 posts/s/path on sky.
+    #
+    # ⚠️ THE TWO MUST NOT BOTH RUN. They write the same trim through the same endpoint; two
+    # loops on one actuator is a race, and neither arm would be measurable. So fast-trim-hz is
+    # DELETED here in the same edit that adds fleet-trim-url, not merely reduced.
+    #
+    # POLICY DID NOT MOVE. Presence, the floors, the deep gate above and the arming verdict are
+    # all still computed in this process, on this cycle; what crosses to C++ is a PRN list and
+    # four constants. `leak_per_s` crosses rather than `leak` because the leak is PER UPDATE,
+    # so at unchanged constants the loop's bandwidth would scale with the rate -- 3.1 -> 23.8 Hz
+    # is ~8x. The controller divides by the rate it MEASURES.
+    #
+    # THE OTHER FOUR CHAINS REMAIN THE CONTROL, and they are now a CLEANER control than before:
+    # none of them has ever had a fast loop of any kind.
+    # JUDGE ON q, PAIRED, AS A DUTY OVER HOURS -- never on deep_snr / cn0_coh / coh_frac (#66).
+    # ⚠️ And judge it from /fleet_trim/get_dll's n_updates, at the LOOP's cadence: the 8 h
+    # overnight run at 30 s polling could not resolve the on-peak episodes, which turned out to
+    # be shorter than 30 s.
+    # Revert: delete this line, restore `fast-trim-hz: 5` / `fast-trim-windows: 4`, restart.
+    # ⚠️ THIS LINE TOOK THE FLEET'S TELEMETRY DOWN TWICE BEFORE IT STUCK (2026-08-15). Both
+    # times the fault was the POSTER, not the loop: restClient's async path stores a pointer to
+    # a callback it does not own, and its blocking path calls FATAL_ERROR on timeout -- so one
+    # slow tracker exits the process that carries every chain's telemetry. Per-request DNS then
+    # collapsed the resolver at ~1430 lookups/s ("All nameservers have failed"). The poster is
+    # now plain sockets: addresses resolved once, persistent connections, explicit timeouts,
+    # per-target backoff, and no path that can terminate the process. Verified against a
+    # deliberately HUNG tracker and a REFUSED one: the gather survives and the healthy targets
+    # hold 22.9-23.9 posts/s.
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
