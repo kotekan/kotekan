@@ -184,6 +184,18 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     for (int prn : expired)
         INFO("cudaGnssInject: PRN {:d} seed expired -- lane group goes dark", prn);
 
+    // ⚠️ THE DLL TRIM, WHICH THIS STAGE USED TO THROW AWAY (task #51 F3, 2026-08-15). It
+    // passed a hardcoded 0.0 to propagate_seed, so on PATH B -- the path the fleet actually
+    // runs, the broker's trackers being `gnss{0..1}_inject` -- the fleet controller's trim
+    // landed in the shared state and was then ignored. The two stages duplicate the seed ->
+    // Spec construction by explicit decision, and this is exactly the "must be mirrored by
+    // hand" hazard that decision carries. Shared implementation, both callers.
+    std::vector<int> trim_gone;
+    const std::vector<double> trim_now = S.snapshot_trims(trim_gone);
+    for (int prn : trim_gone)
+        WARN("cudaGnssInject: PRN {:d} trim EXPIRED with no /set_trim -- zeroed; the code "
+             "phase has stepped back to the broker's bare model.", prn);
+
     int n_jobs_frame = 0, n_active = 0;
     for (int r = 0; r < n_rec; ++r) {
         const long long hop0 = hop0_frame + (long long)r * S.hops_per_record;
@@ -213,7 +225,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             ss.cp_rate = sd.cp_rate;
             ss.ref_hop = sd.ref_hop;
             const gnss::SeedPropagation pr = gnss::propagate_seed(
-                *S.replica, ss, hop0, S.sample_rate, S.f_offset_hz, /*trim_chips=*/0.0);
+                *S.replica, ss, hop0, S.sample_rate, S.f_offset_hz, trim_now[(size_t)p]);
 
             GnssCudaDespread::Spec sp;
             sp.p = p;

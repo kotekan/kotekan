@@ -111,6 +111,12 @@ struct Opt {
     int t_chan0 = 5972, t_stride = 16, t_nchan = 7;
     int hops_per_record = 2048;
     double dll_spacing = 0.5;
+    /// [#51 F3] THE COMMANDED DLL TRIM, chips, handed to propagate_seed exactly as
+    /// cudaGnssChordTrack hands it the fleet controller's value. With a perfect seed
+    /// (--skip-search) a nonzero trim IS a known code error of known sign, which makes this
+    /// the sign test for the whole actuator: the loop must respond with tau = -disc/4 pointing
+    /// BACK toward zero. A sign error here diverges the loop, and no amount of rate fixes it.
+    double trim_chips = 0.0;
 
     // Shared geometry
     double sample_rate = 3.2e9, f_offset = 1176.45e6;
@@ -226,6 +232,8 @@ static void usage() {
         "  --nseed N          RNG seed (default 12345), so a noisy run is reproducible\n"
         "  --quantize         quantize the synthetic sky to 4+4b (default: noiseless float)\n"
         "  --skip-search      seed straight from truth -- isolates the tracker/despread leg\n"
+        "  --trim X           commanded DLL trim, chips (task #51). With --skip-search this\n"
+        "                     IS a known code error: the sign test for the actuator.\n"
         "  --code-doppler-sign S   (default +1)\n");
 }
 
@@ -326,6 +334,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
         else if (arg_eq(a, "--truth-dop-rate")) o.truth_dop_rate = next_d();
         else if (arg_eq(a, "--bench-ctrim")) o.bench_ctrim = next_d();
+        else if (arg_eq(a, "--trim")) o.trim_chips = next_d();
         else if (arg_eq(a, "--signal")) o.signal = argv[++i];
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
@@ -1002,7 +1011,7 @@ int main(int argc, char** argv) {
     printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n",
            o.age_s, o.rec_gap_s);
     GnssCudaDespread ds(tbank, 2, t_chans, o.hops_per_record, o.sample_rate, o.f_offset);
-    printf("    rec   age_s        cp cmd    phase err     per   |   P/P_true    q=2P/(E+L)\n");
+    printf("    rec   age_s        cp cmd    phase err     per   |   P/P_true    q=2P/(E+L)      disc\n");
 
     const long long age_hops = (long long)std::llround(o.age_s / hop_s);
     const long long gap_hops = (long long)std::llround(o.rec_gap_s / hop_s);
@@ -1017,9 +1026,12 @@ int main(int argc, char** argv) {
         const long long h = o.hop0 + age_hops + (long long)r * gap_hops;
         const long long W = h * (long long)FFT;
 
-        // ---- THE SHIPPED PROPAGATION ARITHMETIC (trim 0: we are measuring the OPEN loop) ----
+        // ---- THE SHIPPED PROPAGATION ARITHMETIC ----
+        // trim defaults to 0 (the OPEN loop, which is what every other bench here wants).
+        // --trim commands the actuator, so the sign of the response can be measured rather
+        // than reasoned about (#51 F3).
         const gnss::SeedPropagation pr =
-            gnss::propagate_seed(tbank, sd, h, o.sample_rate, o.f_offset, 0.0);
+            gnss::propagate_seed(tbank, sd, h, o.sample_rate, o.f_offset, o.trim_chips);
 
         // The error is a difference of PHYSICAL PHASES at this window -- never of arguments.
         //
@@ -1082,9 +1094,10 @@ int main(int argc, char** argv) {
         const double E = std::norm(res[0][0].correlation);
         const double La = std::norm(res[0][2].correlation);
         const double Pt = std::norm(res[1][1].correlation);
-        printf("    %3d %7.1f  %13.3f  %+12.3f  %+5.0f   |   %8.4f    %8.3f\n", r,
+        const double disc = (E + La) > 0 ? (E - La) / (E + La) : 0.0;
+        printf("    %3d %7.1f  %13.3f  %+12.3f  %+5.0f   |   %8.4f    %8.3f  %+8.4f\n", r,
                (double)(h - o.hop0) * hop_s, pr.cp, err, std::round(err / L),
-               Pt > 0 ? P / Pt : 0.0, (E + La) > 0 ? 2.0 * P / (E + La) : 0.0);
+               Pt > 0 ? P / Pt : 0.0, (E + La) > 0 ? 2.0 * P / (E + La) : 0.0, disc);
         worst = std::max(worst, std::fabs(err));
         prompts.push_back(res[0][1].correlation);
         rec_dop.push_back(pr.doppler_hz);

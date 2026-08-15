@@ -22,6 +22,8 @@ fleet_trim:
   kotekan_stage: GnssFleetTrim
   min_instances: 2
   n_win: 4
+  post_every_n_windows: 1
+  post_threads: 4
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 4096

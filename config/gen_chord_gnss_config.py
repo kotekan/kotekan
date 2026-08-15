@@ -408,6 +408,8 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  "fft_length": cfg["fengine"]["fft_length"],
                  "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
                  "seed_endpoint": f"/{pre}track/set_seeds",
+                 "set_trim_endpoint": f"/{pre}track/set_trim",  # see the inject block (#51 F3)
+                 "trim_ttl_s": args.trim_ttl_s,
                  # In-tracker DLL code trim (ported 2026-07-31): per-frame closure is the only
                  # loop fast enough for the clock chain's +-1 chip / ~20 s breathing. The
                  # broker's own DLL (3c) sees disc ~ 0 once this holds and stays quiet.
@@ -788,6 +790,15 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  "gnss_ctl_name": f"{pre}n2ctl",
                  "seed_endpoint": f"/{pre}inject/set_seeds",
                  "trim_endpoint": f"/{pre}inject/get_trim",
+                 # TASK #51 F3: the fleet controller's actuator. ⚠️ PER INSTANCE, and that is
+                 # not cosmetic -- the stage's built-in default is a single fixed path, so
+                 # every instance in this process would register the SAME endpoint and the
+                 # last one would win. The trim would then be applied to one chain's PRNs on
+                 # behalf of another's: a wrong code phase that looks like a tracking failure.
+                 "set_trim_endpoint": f"/{pre}inject/set_trim",
+                 # A trim whose controller stopped posting EXPIRES to zero rather than being
+                 # held forever (the #13 latch).
+                 "trim_ttl_s": args.trim_ttl_s,
                  # THE SAME F-ENGINE ANCHOR THE TRACKER GETS, AND NOT OPTIONAL. This one
                  # missing key was the whole of the 11.14.1 coh_frac defect. Without it
                  # cudaGnssInject writes utc0 = 0, GnssGpuRecordAssemble falls back to HOST
@@ -1510,6 +1521,11 @@ def build_gather_instance(cfg, args, port):
             "in_buf": "telem_buf",
             "n_win": args.fleet_trim_windows,
             "min_instances": args.fleet_trim_min_instances,
+            # The ACTUATOR's cadence. Its TARGETS are not here: the broker publishes them with
+            # /set_policy, because it already owns the tracker endpoint list and a second copy
+            # in this file would silently miss a node added to the fleet.
+            "post_every_n_windows": args.fleet_trim_post_every,
+            "post_threads": 4,
             "cpu_affinity": [cores[5 % len(cores)]],
         }
     return out
@@ -1908,6 +1924,19 @@ def main():
                          "16 records = 168 ms, matching --fast-trim-windows on the Python arm.")
     ap.add_argument("--fleet-trim-min-instances", type=int, default=2,
                     help="instances required before GnssFleetTrim forms a discriminator")
+    ap.add_argument("--trim-ttl-s", type=float, default=4.0,
+                    help="TASK #51: seconds a tracker holds a /set_trim value with no refresh "
+                         "before ZEROING it. A frozen trim from a dead controller is a "
+                         "permanent silent code offset that the broker's own slow DLL then "
+                         "fights, and 'latched forever' is exactly the #13 failure. 0 disables "
+                         "(the IN-TRACKER loop's own trim never expires either way -- it is "
+                         "unstamped, and its silence means the SIGNAL went away).")
+    ap.add_argument("--fleet-trim-post-every", type=int, default=1,
+                    help="windows between actuator posts (1 = every window, 23.84 Hz). Each "
+                         "instance is its own endpoint -- ~60 across five chains -- so this is "
+                         "~1430 requests/s at 1. Decimating costs only latency: the trim moves "
+                         "at most 0.0625 chips/step, so every 4th window is ~0.02 chips of lag "
+                         "against a 0.121 chips/s drift.")
     ap.add_argument("--combine-gpus", action="store_true",
                     help="ONE GnssCoherentCombiner over BOTH GPUs' tracker record streams "
                          "instead of one per GPU. The stage is documented for exactly this -- "

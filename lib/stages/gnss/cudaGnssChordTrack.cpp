@@ -228,6 +228,28 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
+std::vector<double> cudaGnssChordTrackState::snapshot_trims(std::vector<int>& expired) {
+    std::lock_guard<std::mutex> lk(trim_mtx);
+    // EXPIRE A TRIM WHOSE CONTROLLER STOPPED TALKING. A frozen trim is a permanent silent code
+    // offset that the broker's own slow DLL would then fight, and "latched forever" is the #13
+    // failure. Only STAMPED trims expire: the in-tracker loop leaves trim_t_recv at 0, and its
+    // silence means the SIGNAL went away, not the controller.
+    if (trim_ttl_s > 0.0) {
+        const double now = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
+        for (int p = 0; p < n_prn; ++p)
+            if (trim_t_recv[(size_t)p] > 0.0 && (now - trim_t_recv[(size_t)p]) > trim_ttl_s) {
+                if (trim[(size_t)p] != 0.0)
+                    expired.push_back(prns[(size_t)p]);
+                trim[(size_t)p] = 0.0;
+                trim_t_recv[(size_t)p] = 0.0;
+                ++trim_expired;
+            }
+    }
+    return trim;
+}
+
 std::vector<cudaGnssChordTrackState::Seed>
 cudaGnssChordTrackState::snapshot_seeds(std::vector<int>& expired) {
     // EXPIRE STALE SEEDS, under the same lock that copies them (see the long note at the call
@@ -580,31 +602,9 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     // this stage. `trim` is now written by EITHER the in-tracker loop OR the fleet controller
     // through /set_trim, and either way it is a correction to the broker's model phase.
     // Nothing writes it unless one of those is enabled, so with both off this is exactly the
-    // old behaviour: a vector of zeros.
+    // old behaviour: a vector of zeros. Shared with cudaGnssInject -- see snapshot_trims.
     std::vector<int> trim_gone;
-    {
-        std::lock_guard<std::mutex> lk(S.trim_mtx);
-        // EXPIRE A TRIM WHOSE CONTROLLER STOPPED TALKING. See the header note: a frozen trim
-        // is a permanent silent code offset that the broker's own slow DLL would then fight,
-        // and "latched forever" is the #13 failure. Only stamped trims expire -- the
-        // in-tracker loop leaves trim_t_recv at 0, and its silence means the SIGNAL went away,
-        // not the controller.
-        if (S.trim_ttl_s > 0.0) {
-            const double now = std::chrono::duration<double>(
-                                   std::chrono::steady_clock::now().time_since_epoch())
-                                   .count();
-            for (int p = 0; p < S.n_prn; ++p)
-                if (S.trim_t_recv[(size_t)p] > 0.0
-                    && (now - S.trim_t_recv[(size_t)p]) > S.trim_ttl_s) {
-                    if (S.trim[(size_t)p] != 0.0)
-                        trim_gone.push_back(S.prns[(size_t)p]);
-                    S.trim[(size_t)p] = 0.0;
-                    S.trim_t_recv[(size_t)p] = 0.0;
-                    ++S.trim_expired;
-                }
-        }
-        trim_now = S.trim;
-    }
+    trim_now = S.snapshot_trims(trim_gone);
     for (int prn : trim_gone)
         WARN("cudaGnssChordTrack: PRN {:d} trim EXPIRED after {:.1f} s with no /set_trim -- "
              "zeroed. The fleet controller has stopped posting; the code phase has just "

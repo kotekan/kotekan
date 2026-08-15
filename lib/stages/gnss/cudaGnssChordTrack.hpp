@@ -80,6 +80,16 @@ public:
     /// is many refreshes of margin while still retiring a set satellite promptly.
     double seed_ttl_s = 60.0;
 
+    /// Snapshot the live trims, expiring any whose controller stopped posting.
+    ///
+    /// ⚠️ CALLED BY BOTH cudaGnssChordTrack AND cudaGnssInject, and it must stay that way.
+    /// Those two duplicate the per-record seed -> Spec construction by explicit decision (see
+    /// the class note below), and the trim was applied in ONE of them: cudaGnssInject passed a
+    /// hardcoded 0.0, so on path B -- which is what the fleet actually runs, the broker's
+    /// trackers being `gnss{0..1}_inject` -- the fleet controller's trim landed in this vector
+    /// and was then ignored. Found 2026-08-15 while wiring #51 F3. One function, both callers.
+    std::vector<double> snapshot_trims(std::vector<int>& expired);
+
     /// Snapshot the live seeds, expiring stale ones IN THE SHARED STATE (so /get_trim and
     /// every consumer sees the live set, not the high-water mark). Expired PRN numbers land
     /// in @c expired for the caller to log OUTSIDE the lock. Shared by cudaGnssChordTrack and

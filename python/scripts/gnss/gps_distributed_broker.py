@@ -1493,6 +1493,17 @@ def main(argv=None, rx=None, publisher=None):
                          "only once that fold also runs here. Falls back to the polled "
                          "discriminator, per cycle, whenever the gather has no windows for "
                          "this chain -- so a gather that dies costs a log line, not the loop.")
+    ap.add_argument("--fleet-trim-url", default="",
+                    help="TASK #51 F3: base URL of the C++ fleet loop's stage, e.g. "
+                         "http://cf06:12051/fleet_trim. Each cycle the broker POSTs "
+                         "<url>/set_policy with the armed PRN set, the loop constants and the "
+                         "tracker endpoints; the C++ side then runs the discriminator, the "
+                         "integrator and the actuation at ~23.8 Hz instead of this process's "
+                         "~3.1. POLICY STAYS HERE -- presence, the floors, the deep gate and "
+                         "the arming verdict are all computed above and only their RESULT "
+                         "crosses. ⚠️ Do not run this together with --fast-trim-hz on the same "
+                         "chain: two loops writing one trim is a race, and neither would be "
+                         "measurable.")
     ap.add_argument("--fast-trim-hz", type=float, default=0.0,
                     help="TASK #51: run the CODE LOOP at this rate, on its own thread, instead "
                          "of once per policy cycle. 0 = off (the loop stays on the cycle).\n"
@@ -2720,6 +2731,14 @@ def main(argv=None, rx=None, publisher=None):
     fast_prns = set()   # published by the policy cycle: who may be trimmed right now
     fast_tmpl = {}      # prn -> (the EXACT dict the cycle last posted, base cp before trim)
     fast_stats = {"updates": 0, "posts": 0, "skipped": 0, "last_err": "", "rail": 0}
+    # #51 F3: the C++ fleet loop's seam. `_fleet_trim_nominal_hz` converts --dll-leak-present
+    # (per UPDATE, at this process's own cadence) into the per-SECOND leak the controller
+    # wants. 23.84 is the frame rate the trackers ship at, which is the rate the C++ loop
+    # steps at -- so at these defaults the C++ loop runs the SAME per-update leak the Python
+    # arm did, and the only thing that changed is how often it steps. That is deliberate: one
+    # variable at a time.
+    _fleet_trim_nominal_hz = 23.84
+    _fleet_trim_stat = {"posts": 0, "fail": 0, "armed": 0, "last_err": ""}
 
     def _fast_trim_loop():
         """Run the DLL integrator and the seed POST at --fast-trim-hz. See the notes above.
@@ -8001,6 +8020,52 @@ def main(argv=None, rx=None, publisher=None):
         # code_phase_chips into these exact dicts, so nothing the policy put in a seed can be
         # dropped by the faster actuator. `base_cp` is the UNTRIMMED phase, because the fast
         # loop owns dll_trim from here and must not re-add a trim already folded in above.
+        # TASK #51 F3: HAND THE C++ FLEET LOOP THIS CYCLE'S DECISIONS.
+        #
+        # THE SPLIT. Everything above this line is policy -- ephemeris, sky, the clock solve,
+        # the joint state, presence, the floors, the deep gate, who is armed -- and it stays
+        # here on the 12 s cycle. What crosses is a list of PRNs and four constants. The C++
+        # side forms the discriminator, steps the integrator and posts the trim, and it
+        # invents no gate and chooses no PRN.
+        #
+        # ⚠️ leak_per_s, NOT leak. The integrator's leak is PER UPDATE, so at unchanged
+        # constants the loop's closed-loop AND noise bandwidths scale with the update rate --
+        # 3.1 -> 23.8 Hz is ~8x. The controller divides by the rate it MEASURES (not the
+        # nominal 23.84: 3-4% of frames arrive late and a chain with no senders closes
+        # nothing), so the loop keeps the bandwidth this cycle asked for whatever rate it
+        # actually achieves. --dll-leak-present is per update, so it is converted here.
+        #
+        # ⚠️ AND THE TARGETS RIDE WITH IT. The controller holds no deployment knowledge: this
+        # is the process that knows which instances serve this chain (--trackers, already
+        # brace-expanded), so a node added to the fleet reaches the loop without regenerating
+        # the gather's config.
+        if args.fleet_trim_url:
+            _armed = sorted(_p for _p in (fleet or {}) if fleet[_p].get("present"))
+            _pol = {"chains": {telem_chain: {
+                "armed": _armed,
+                "gain": args.dll_gain,
+                "leak_per_s": args.dll_leak_present * _fleet_trim_nominal_hz,
+                "clamp": 3.0,
+                "spacing": args.dll_spacing,
+                "targets": ["%s/set_trim" % t for t in trackers]}}}
+            try:
+                _post("%s/set_policy" % args.fleet_trim_url.rstrip("/"), _pol, timeout=2.0)
+                _fleet_trim_stat["posts"] += 1
+                _fleet_trim_stat["armed"] = len(_armed)
+            except Exception as _e:
+                # NEVER take the cycle down for the fast loop. A controller that cannot be
+                # reached simply stops being refreshed, and its trims EXPIRE at the trackers
+                # (trim_ttl_s) rather than standing forever.
+                _fleet_trim_stat["fail"] += 1
+                _fleet_trim_stat["last_err"] = str(_e)
+            _log_rl("fleet-trim",
+                    "FLEET-TRIM %s: %d PRN(s) armed to %s, %d posts / %d failed%s"
+                    % (log_tag() or args.signal, len(_armed), args.fleet_trim_url,
+                       _fleet_trim_stat["posts"], _fleet_trim_stat["fail"],
+                       ("  last err %s" % _fleet_trim_stat["last_err"])
+                       if _fleet_trim_stat["last_err"] else ""),
+                    every_s=30.0)
+
         if args.fast_trim_hz > 0.0:
             with fast_lock:
                 fast_tmpl.clear()

@@ -112,6 +112,7 @@ private:
     void dll_callback(kotekan::connectionInstance& conn);
     void stats_callback(kotekan::connectionInstance& conn);
     void policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    static Target parse_target(const std::string& url, const std::string& chain);
     void post_trims();
     void post_loop(int slot);
     void rearm();
@@ -148,7 +149,7 @@ private:
     // do the I/O. And because the trim is ABSOLUTE, a thread that falls behind simply picks up
     // the newest payload -- SKIP, NEVER QUEUE. A queue would deliver stale corrections late,
     // which is worse than delivering none.
-    std::vector<Target> _targets; ///< flat: one entry per tracker instance
+    std::vector<Target> _targets; ///< flat, one per tracker instance; guarded by _pend_mtx
     std::vector<std::thread> _post_threads;
     std::mutex _pend_mtx;
     std::condition_variable _pend_cv;

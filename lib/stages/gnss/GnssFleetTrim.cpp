@@ -36,57 +36,19 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
         std::bind(&GnssFleetTrim::policy_callback, this, std::placeholders::_1,
                   std::placeholders::_2));
 
-    // THE ACTUATOR'S TARGETS: {chain: [url, ...]}, one per tracker INSTANCE (not per host --
-    // see the header note). Parsed here so a malformed endpoint is a startup failure rather
-    // than a silent stream of failed posts nobody reads.
+    // THE ACTUATOR'S TARGETS ARRIVE WITH THE POLICY, not from config. The broker already
+    // owns the tracker endpoint list (--trackers, brace-expanded), it is the thing that knows
+    // which instances are serving which chain right now, and a second copy in the gather's
+    // yaml is one more thing to drift -- adding a node would silently leave it out. So
+    // /set_policy carries them and this stage holds no deployment knowledge at all.
     _post_every = std::max(1, config.get_default<int>(unique_name, "post_every_n_windows", 1));
-    nlohmann::json tg = config.get_default<nlohmann::json>(unique_name, "post_targets", {});
-    int n_tgt = 0;
-    for (auto it = tg.begin(); it != tg.end(); ++it) {
-        for (const auto& u : it.value()) {
-            const std::string url = u.get<std::string>();
-            // http://host:port/path -- deliberately hand-parsed and strict. A URL that almost
-            // parses is worse than one that does not: it posts somewhere plausible.
-            const std::string pfx = "http://";
-            if (url.rfind(pfx, 0) != 0)
-                FATAL_ERROR("GnssFleetTrim[{:s}]: post target '{:s}' must start with http://",
-                            unique_name, url);
-            const size_t hb = pfx.size();
-            const size_t sl = url.find('/', hb);
-            if (sl == std::string::npos)
-                FATAL_ERROR("GnssFleetTrim[{:s}]: post target '{:s}' has no path", unique_name,
-                            url);
-            const std::string hostport = url.substr(hb, sl - hb);
-            const size_t co = hostport.find(':');
-            if (co == std::string::npos)
-                FATAL_ERROR("GnssFleetTrim[{:s}]: post target '{:s}' has no port -- state it "
-                            "rather than relying on a default that differs per stage",
-                            unique_name, url);
-            Target t;
-            t.host = hostport.substr(0, co);
-            t.port = (unsigned short)std::stoi(hostport.substr(co + 1));
-            t.path = url.substr(sl);
-            t.url = url;
-            t.chain = it.key();
-            _targets.push_back(t);
-            n_tgt++;
-        }
-    }
-    if (n_tgt)
-        INFO("GnssFleetTrim[{:s}]: ACTUATING -- {:d} tracker endpoint(s) over {:d} chain(s), "
-             "posting every {:d} window(s) ({:.1f} Hz, {:.0f} requests/s).",
-             unique_name, n_tgt, _targets.size(), _post_every, 23.84 / _post_every,
-             23.84 * n_tgt / _post_every);
-    const int nthr = std::max(1, std::min((int)_targets.size(),
-                                          config.get_default<int>(unique_name, "post_threads", 4)));
-    if (n_tgt) {
-        _sent_gen.assign((size_t)nthr, 0);
-        for (int i = 0; i < nthr; ++i)
-            _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
-        INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends. The fold thread never "
-             "waits on a tracker -- it publishes the newest payload and moves on.",
-             unique_name, nthr);
-    }
+    const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
+    _sent_gen.assign((size_t)nthr, 0);
+    for (int i = 0; i < nthr; ++i)
+        _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
+    INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends, posting every {:d} "
+         "window(s). NOTHING IS TRIMMED until the broker POSTs /set_policy with targets.",
+         unique_name, nthr, _post_every);
 }
 
 GnssFleetTrim::~GnssFleetTrim() {
@@ -144,8 +106,7 @@ void GnssFleetTrim::main_thread() {
         // same trim.
         // Re-derive the per-update leak from the MEASURED close rate before acting on it.
         rearm();
-        if (!_targets.empty())
-            post_trims();
+        post_trims();
 
         if (st == gnss::FoldStatus::BAD_HEADER && (_bad_frames % 100) == 1)
             ERROR("GnssFleetTrim[{:s}]: rejected a frame ({:d} so far) -- a sender is on a "
@@ -157,9 +118,37 @@ void GnssFleetTrim::main_thread() {
     }
 }
 
+GnssFleetTrim::Target GnssFleetTrim::parse_target(const std::string& url,
+                                                  const std::string& chain) {
+    // http://host:port/path -- deliberately hand-parsed and strict. A URL that ALMOST parses
+    // is worse than one that does not: it posts somewhere plausible. Throws, so the caller
+    // answers 400 rather than taking the process down -- this runs in a REST callback, and a
+    // FATAL_ERROR here would let a bad broker payload kill the whole fleet's telemetry.
+    const std::string pfx = "http://";
+    if (url.rfind(pfx, 0) != 0)
+        throw std::runtime_error("target '" + url + "' must start with http://");
+    const size_t hb = pfx.size();
+    const size_t sl = url.find('/', hb);
+    if (sl == std::string::npos)
+        throw std::runtime_error("target '" + url + "' has no path");
+    const std::string hostport = url.substr(hb, sl - hb);
+    const size_t co = hostport.find(':');
+    if (co == std::string::npos)
+        throw std::runtime_error("target '" + url + "' has no port -- state it rather than "
+                                 "relying on a default that differs per stage");
+    Target t;
+    t.host = hostport.substr(0, co);
+    t.port = (unsigned short)std::stoi(hostport.substr(co + 1));
+    t.path = url.substr(sl);
+    t.url = url;
+    t.chain = chain;
+    return t;
+}
+
 void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {
     // Parse first, lock last -- the fold path takes _mtx on every frame.
     std::map<std::string, PolicyReq> got;
+    std::vector<Target> tg;
     try {
         const auto& chains = request.at("chains");
         for (auto it = chains.begin(); it != chains.end(); ++it) {
@@ -184,6 +173,11 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
             }
             if (p.gain <= 0.0 || p.clamp <= 0.0 || p.spacing <= 0.0)
                 throw std::runtime_error("gain, clamp and spacing must be positive");
+            // The tracker endpoints for this chain. Absent = observe this chain, command
+            // nothing -- which is how a chain is armed for measurement without actuation.
+            if (v.contains("targets"))
+                for (const auto& u : v.at("targets"))
+                    tg.push_back(parse_target(u.get<std::string>(), it.key()));
             got[it.key()] = p;
         }
     } catch (const std::exception& e) {
@@ -198,6 +192,13 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
         // latched-forever failure again, in the arming rather than the seed.
         _policy = got;
         _policy_posts++;
+    }
+    {
+        // Guarded by _pend_mtx because the poster threads read it. REPLACE wholesale: the
+        // broker publishes the full list every cycle, so an instance it stops naming must
+        // stop being commanded.
+        std::lock_guard<std::mutex> lk(_pend_mtx);
+        _targets = std::move(tg);
     }
     rearm();
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
@@ -288,6 +289,7 @@ void GnssFleetTrim::post_loop(int slot) {
     uint64_t last = 0;
     while (!stop_thread) {
         std::map<std::string, nlohmann::json> work;
+        std::vector<Target> tgt;
         uint64_t gen = 0;
         {
             std::unique_lock<std::mutex> lk(_pend_mtx);
@@ -299,10 +301,11 @@ void GnssFleetTrim::post_loop(int slot) {
                 continue;
             gen = _pend_gen;
             work = _pending; // a copy: the fold thread may replace it while we send
+            tgt = _targets;  // ditto -- /set_policy can replace the list mid-round
         }
         last = gen;
-        for (size_t i = (size_t)slot; i < _targets.size(); i += _post_threads.size()) {
-            Target& t = _targets[i];
+        for (size_t i = (size_t)slot; i < tgt.size(); i += _post_threads.size()) {
+            const Target& t = tgt[i];
             auto it = work.find(t.chain);
             if (it == work.end())
                 continue;
