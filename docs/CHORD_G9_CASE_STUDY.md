@@ -192,3 +192,62 @@ fold product.
 seeded, and they are the only rows in the system that are noise *by construction*. This
 document spent an evening measuring coherence against carefully-built shuffled nulls without
 once consulting the null the instrument already had.
+
+---
+
+## 8. THE ROOT, found offline (#51): the loop is rate-limited 29× below the drift
+
+Run `scripts/gnss/e2e` at **production search density** (the default is a sparse 27-channel,
+stride-4 comb whose −13.188 chip seed error is the known 2-node grating lobe — *check the node
+count first*):
+
+    ./scripts/gnss/e2e --s-stride 1 --s-nchan 105
+
+    SEARCH LEG ERROR: +0.373 chips          <- the seed is GOOD, sub-chip
+    rec  age_s      cp cmd     phase err   P/P_true    q
+     0   27.0   180139.827      -0.425      0.4336   0.899
+     1   37.0   198937.464      -1.314      0.0026   0.130
+     2   47.0    13135.419      -2.523      0.0629   0.181
+     3   57.0    31933.697      -4.054      0.0434   0.143
+
+**A good seed, zero noise, and the tracker still walks off it at −0.121 chips/s**, with q
+collapsing 0.899 → 0.143 in 30 s — the same q ≈ 1 the whole fleet shows on sky. The drift rate
+is identical in the 2-node run, so it is independent of seed quality and of the grating lobe:
+it is the *propagation*, not the acquisition.
+
+The mechanism is arithmetic. A Doppler error ΔF drives the code phase at ΔF × (f_chip/f_carrier)
+= ΔF × 8.695e-3 chips/s. The e2e's default seed carries `dop_rate` −0.36893 Hz/s that its truth
+does not, so ΔF grows to ~14 Hz over the window → 0.12 chips/s. (That mismatch is deliberate in
+the harness; what it establishes is the **sensitivity**, not the live cause.)
+
+### Now compare it with what the loop is allowed to do
+
+| | |
+|---|---|
+| drift | 0.121 chips/s → **1.46 chips per 12 s cycle** |
+| maximum correction | **0.05 chips** per event (`--dr-slew-cap`) |
+| | **the loop is 29× slower than the drift** |
+
+Even at the benign `dop_rate 0` arm (0.0138 chips/s) it is **3.3× slower**. Inverting:
+
+> **The code loop can only hold against ~0.48 Hz of Doppler error** (0.05 chips ÷ 12 s ÷
+> 8.695e-3). Beyond that, the tap walks away faster than the DLL can pull it back — *regardless
+> of how good the discriminator is*.
+
+### Why this is the root and not another symptom
+
+It is upstream of, and sufficient to explain, everything else in this document and in the
+probe audit: q ≈ 1.0 fleet-wide (the no-peak value), prompt power blind at AUC 0.55, C/N0
+incoherent swinging 40 dB, the fold folding noise, `deep_snr` inflating on it. It also explains
+the one thing that looked hopeful tonight — PRN 4 and 9 reached q 3.2 after #49's gate let the
+loop trim, then fell back. **The loop can pull in; it cannot hold.**
+
+And it connects to a root already on file: [[chord-clock-median-churn]] records the clock
+median stepping **1–2 chips** on membership churn every ~600 s. At 0.05 chips/event that is
+4–8 minutes of walking off, every churn.
+
+⚠️ Raising the cap has been tried and reverted (2026-08-11: acquisition authority engaged 22
+minutes late and degraded every Galileo and BeiDou satellite). So the fix is not simply a
+bigger cap — the drift has to come down (feed-forward accuracy, reseed cadence) *and* the cap
+has to be matched to whatever drift remains. The 0.48 Hz tolerance is the budget both sides
+have to meet.
