@@ -47,6 +47,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace gnss {
 
@@ -119,9 +120,9 @@ inline double dll_integrate(double trim, double disc, const TrimPolicy& p) {
  */
 class FleetDll {
 public:
-    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8) :
+    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, double sig_k = 3.0) :
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
-        _max_open_win(std::max(2, max_open_win)) {}
+        _max_open_win(std::max(2, max_open_win)), _sig_k(sig_k) {}
 
     /// One (instance, PRN)'s three powers, accumulated over the records of ONE window.
     ///
@@ -145,7 +146,8 @@ public:
     struct TrimState {
         double trim = 0.0;
         uint64_t n_steps = 0;  ///< integrator updates -- THE RATE, measured not assumed
-        uint64_t n_railed = 0; ///< updates that hit the clamp
+        uint64_t n_railed = 0;  ///< updates that hit the clamp
+        uint64_t n_skipped = 0; ///< windows with no signal under the taps: leak only
         double last_disc = 0.0, last_q = 0.0;
         uint64_t last_win = 0;
     };
@@ -409,11 +411,52 @@ private:
     /// trim toward zero on windows where the satellite simply was not seen would walk the
     /// correction out during exactly the dropouts it exists to ride through.
     void integrate(Chain& c, uint64_t win) {
+        // ⚠️ THE DISCRIMINATOR IS ONLY INFORMATION WHEN THERE IS A PEAK UNDER THE TAPS.
+        // Off-peak, disc is noise that flips sign every window, and integrating it at full
+        // authority RANDOM-WALKS THE TRIM TO THE CLAMP. Measured on sky 2026-08-15, PRN 23:
+        // trim railed at -3.0000 chips, then ran 3.4 chips back to +0.38 in 32 s, sign-flipping
+        // disc (+0.87, -0.96, +0.35, ...) all the way. And an ARMING HOLD makes it worse, not
+        // better: holding a PRN armed across the off-peak half of the clock breathing is
+        // exactly a licence to integrate tens of seconds of noise.
+        //
+        // The gate is PROMPT POWER against the same window's population, not q. That is the
+        // distinction the broker learned on 2026-08-03 and wrote down: q is peak SHARPNESS,
+        // high only once the tap is already on the peak, so gating on it says "only correct
+        // the code once it is already correct" and the loop can never pull in from the
+        // shoulder. Prompt power answers "is there signal here at all", which is independent
+        // of WHERE on the correlation function we sit -- and on the shoulder P is still well
+        // above noise. Self-calibrating: most PRNs are signal-free at any moment, so the
+        // MEDIAN of this window's p_pow IS the no-signal level.
+        //
+        // This is a LOCAL INFORMATION TEST, not the presence verdict. Presence is policy and
+        // stays in Python (it decides whether a satellite is worth tracking, over cycles);
+        // this decides whether THIS WINDOW's number means anything.
+        double p_floor = 0.0;
+        {
+            std::vector<double> pp;
+            pp.reserve(c.row.size());
+            for (const auto& rv : c.row)
+                if (rv.second.win == win)
+                    pp.push_back(rv.second.p_pow);
+            if (pp.size() >= 4) {
+                std::nth_element(pp.begin(), pp.begin() + pp.size() / 2, pp.end());
+                p_floor = _sig_k * pp[pp.size() / 2];
+            }
+        }
         for (int prn : c.armed) {
             auto it = c.row.find(prn);
             if (it == c.row.end() || it->second.win != win)
                 continue; // no discriminator formed for this PRN THIS window
             TrimState& t = c.trim[prn];
+            if (p_floor > 0.0 && it->second.p_pow < p_floor) {
+                // No signal under the taps this window: LEAK ONLY. The trim mean-reverts
+                // instead of chasing noise, and the PRN stays armed so a returning peak is
+                // caught on the very next window.
+                t.trim = dll_integrate(t.trim, 0.0, c.policy);
+                t.last_win = win;
+                t.n_skipped++;
+                continue;
+            }
             t.trim = dll_integrate(t.trim, it->second.disc, c.policy);
             if (std::abs(t.trim) >= c.policy.clamp * 0.999)
                 t.n_railed++;
@@ -440,6 +483,7 @@ private:
     }
 
     int _n_win, _min_instances, _max_open_win;
+    double _sig_k = 3.0; ///< prompt power must exceed this x the window median
     std::map<std::string, Chain> _chain;
 };
 

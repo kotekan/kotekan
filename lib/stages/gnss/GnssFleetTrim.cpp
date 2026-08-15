@@ -166,7 +166,8 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&GnssFleetTrim::main_thread, this)),
     _dll(config.get_default<int>(unique_name, "n_win", 4),
          config.get_default<int>(unique_name, "min_instances", 2),
-         config.get_default<int>(unique_name, "max_open_win", 8)) {
+         config.get_default<int>(unique_name, "max_open_win", 8),
+         config.get_default<double>(unique_name, "sig_k", 3.0)) {
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
 
