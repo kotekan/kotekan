@@ -1473,6 +1473,16 @@ def main(argv=None, rx=None, publisher=None):
     ap.add_argument("--telem-windows", type=int, default=8,
                     help="windows of telemetry fed to fleet_coherent (4 records each at the "
                          "default packing, so 8 windows = 32 records ~ 0.34 s)")
+    ap.add_argument("--estimator-every-s", type=float, default=40.0,
+                    help="minimum seconds between the TELEMETRY-WALK estimators (cn0_prompt "
+                         "+ kcoh) per chain; the last values keep being served between "
+                         "runs. They are pure-Python walks over ~1500 record decodes each, "
+                         "and at every-cycle cadence across five chains they ate ~75%% of "
+                         "the interpreter -- the telemetry READER then missed the gather's "
+                         "200 ms delivery deadline and 5 of 6 frames were dropped "
+                         "(measured 2026-08-15 17:17, gaps 128k vs frames 39k). The "
+                         "estimators' inputs are ~1.3 s windows; nothing downstream needs "
+                         "them faster than the display refreshes.")
     ap.add_argument("--element-poll", action="store_true",
                     help="TASK #57 step 2: poll the --dll-combiners' /get_elements each cycle "
                          "and serve the per-element complex-gain table (amplitude AND phase "
@@ -2632,6 +2642,10 @@ def main(argv=None, rx=None, publisher=None):
     # ever uses a rate estimated from EARLIER records -- causal by construction, which is
     # the entire difference between this estimator and the deep fold it replaces.
     _kcoh_rates = {}
+    # Telemetry-walk estimator throttle (--estimator-every-s): last results + next-run time,
+    # staggered per chain so five chains never walk in the same beat.
+    _est_last = {"pcn0": None, "kcoh": None}
+    _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
     cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
@@ -6807,8 +6821,15 @@ def main(argv=None, rx=None, publisher=None):
             # client is a push stream, so recorded transcripts replay byte-identically).
             # Needs the probes as its noise anchor; without them it publishes nothing rather
             # than falling back to the peer competition (#49's lesson).
-            _pcn0 = None
-            if telem_client is not None and probe_set:
+            # Throttle (--estimator-every-s): both telemetry-walk estimators run together,
+            # at most this often; the last values keep being served in between. Defined
+            # HERE because this is the FIRST of the two blocks in cycle order.
+            _run_est = (telem_client is not None and probe_set
+                        and _now() >= _est_next[0])
+            if _run_est:
+                _est_next[0] = _now() + args.estimator_every_s
+            _pcn0 = _est_last["pcn0"]
+            if _run_est:
                 try:
                     _pcn0 = combdll.prompt_cn0(
                         telem_client, telem_chain,
@@ -6821,6 +6842,7 @@ def main(argv=None, rx=None, publisher=None):
                     _pcn0 = None
                     _log_rl("pcn0-err",
                             "PROMPT-CN0: failed (%s) -- rows served without it" % e)
+                _est_last["pcn0"] = _pcn0
                 if _pcn0:
                     _lv = ["PRN %d %.1f dB-Hz (duty %.2f%s)"
                            % (p, v["cn0_db"], v["duty"],
@@ -6852,8 +6874,10 @@ def main(argv=None, rx=None, publisher=None):
             # which is why this cannot fire on noise the way the deep fold did, and why it
             # reaches the deep-sidelobe satellites a per-record gate never passes.
             # Measurement-only; rides the same telemetry the comb DLL uses.
-            _kcoh = None
-            if telem_client is not None and probe_set:
+            # Same throttle gate as PROMPT-CN0 above (_run_est, set there -- the first of
+            # the two telemetry-walk blocks in cycle order).
+            _kcoh = _est_last["kcoh"]
+            if _run_est:
                 try:
                     _kcoh = combdll.coh_cn0(
                         telem_client, telem_chain, rates=dict(_kcoh_rates),
@@ -6865,6 +6889,7 @@ def main(argv=None, rx=None, publisher=None):
                     _kcoh = None
                     _log_rl("kcoh-err",
                             "KCOH: failed (%s) -- rows served without it" % e)
+                _est_last["kcoh"] = _kcoh
                 if _kcoh:
                     _kv = ["PRN %d %.1f dB-Hz (sig %.0f, eta %s, f %+.2f)"
                            % (p, v["cn0_db"], v["sig"],
