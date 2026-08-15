@@ -101,16 +101,48 @@ losing 7.6 dB. **The tracking underneath is healthy and the viewer has no way to
 say "locked"; none of them is on the panel. That is #57's honest-health-metric argument,
 answered by a concrete case.
 
+## 5a. #10 followed up the same night: the per-instance offset MOVES
+
+`scripts/gnss/inst_phase_drift.py`, on G9, 256 records, 32-record (0.336 s) blocks. It asks
+the one question `|corr|` cannot answer: is the per-instance offset **constant but noisy**
+(in which case 0.310 is just per-record SNR and nothing is lost) or **time-varying** (in which
+case one constant rotation can never align it, and that is the 7.6 dB)?
+
+⚠️ **The null is the constant hypothesis itself.** Permuting records destroys time structure
+but PRESERVES a constant offset, so the shuffled lag-1 is the best a constant model could
+achieve on this data. Measured lag-1 *below* it therefore means "less repeatable than a
+constant".
+
+    FLEET: median lag-1 0.628 against a shuffled null of 0.999
+    block-phase scatter 3-6x the noise expectation on the high-SNR instances
+      (cx19.1 46 deg vs 13, cx27.0 42 vs 12, cx42.0 49 vs 14)
+
+**The offset moves.** Fitting one differential RATE per instance and rebuilding the fleet sum
+on the same records:
+
+    per-instance differential rate:  -0.290 .. +0.130 Hz   (0.42 Hz spread)
+    fleet coh_frac  constant-only 0.0405 -> constant+rate 0.0533   = +2.39 dB
+    shuffled-null gain                                             = +0.04 dB
+
+**+2.39 dB is real** (the null shows the fit is not inflating it from noise) **but it is only
+about a third of the 7.6 dB.** So a per-instance rate is part of the mechanism and not all of
+it — do not ship a rate and declare #10 closed.
+
+The 0.42 Hz spread between instances of the *same chain* is the physically interesting number:
+these are the same PFB, the same satellite and the same sky. G9's `doppler_rate_hz_s` is
+−0.318, so a 0.42 Hz spread corresponds to ~1.3 s of relative timing — an order of magnitude
+larger than #46's measured 0.105 s, so #46 as it stands does not obviously account for it.
+
 ## 6. What to do next, in order
 
-1. **#10 — the cross-node coherent combine.** The 7.6 dB is the largest single loss in the
-   chain and it now has an unambiguous witness. Note per-record per-instance SNR is only
-   ~0.77 (7.72/√100), so the alignment must work at low per-record SNR; the constant-per-
-   instance rotation is estimated from ~7.9σ of aggregate, which is ample, so a badly
-   estimated constant is *not* an obvious explanation and the cause is still open.
-   ⚠️ #46 (instances diverging by 0.105 s in record time) is the standing candidate and should
-   be checked first, because a time offset that *varies* between instances turns into a phase
-   difference that no constant rotation can remove.
+1. **#10 — find the other ~5 dB.** §5a establishes that the offset drifts and that a
+   per-instance rate recovers +2.39 dB of the 7.6. What accounts for the rest is open. The
+   0.42 Hz inter-instance rate spread wants a mechanism: it is far larger than #46's 0.105 s
+   timing spread can explain against G9's −0.318 Hz/s Doppler rate, so either the timing
+   spread is much worse than #46 measured, or the rate is not coming from timing at all.
+   ⚠️ Before shipping a per-instance rate into `fleet_coherent`, note that a fitted rate is
+   exactly the machinery that produced the retracted-then-restored ×38 claim; it needs the
+   shuffled-null comparison every time, which `inst_phase_drift.py` does by default.
 2. **Re-measure #61's fold churn now that a satellite is on-peak.** The CV ~0.6 was measured
    when every tap was off-peak; if the churn follows q it was never a fold problem.
 3. **Resolve `spec_tau` vs `q` before #50.**
