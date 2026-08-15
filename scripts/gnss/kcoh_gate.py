@@ -278,12 +278,14 @@ def coherence_scan(a):
     print("\n  T_coh(s)   n_rec   eta     eta/n    cn0_coh    cn0_coh_sky")
     prev = None
     t_half = None
+    n_folded = 0
     for nw in (1, 2, 4, 8, 16, 32):
         g = combdll.coh_cn0(cl, a.chain, rates=rates, n_win=nw, probe_prns=probes)
         v = (g or {}).get(prn)
         if not v:
             print("  (%d windows: no fold)" % nw)
             continue
+        n_folded += 1
         eff = (v["eta"] / v["n_rec"]) if v["eta"] else None
         print("  %-10.3f %-7d %-7s %-8s %-10s %s"
               % (v["t_coh_s"], v["n_rec"],
@@ -297,6 +299,21 @@ def coherence_scan(a):
             prev = (v["t_coh_s"], eff)
     cl.stop()
     print()
+    # ⚠️ NO DATA IS NOT A MEASUREMENT. Every row can print "no fold" because the telemetry
+    # client never connected -- --gather wants HOST:PORT and takes a URL without complaint,
+    # and the gather serves 11061 on 127.0.0.1 only, so an off-box run connects to nothing.
+    # Both mistakes were made in one sitting (2026-08-15) and this function answered each
+    # with the confident "not adding coherently even over one frame" verdict below, which is
+    # the strongest claim it can make, drawn from zero records. The real scan, run correctly
+    # moments later, showed eta/n = 0.85 at one frame -- the opposite. An estimator that
+    # cannot measure must say so ([[an estimator that cannot measure must serve NOTHING]]).
+    if not n_folded:
+        print("⚠️ NO FOLD AT ANY LENGTH -- and that is a measurement of NOTHING, not of "
+              "incoherence. The scan got zero records, so no verdict is available. Check "
+              "the telemetry connected at all (the line above should read 'telem: connected "
+              "to gather'): --gather takes HOST:PORT, not a URL, and the gather's serve port "
+              "is bound to 127.0.0.1 -- run this ON the gather host.")
+        return 1
     if t_half:
         print("COHERENCE TIME: eta/n crosses 0.5 between %.3f s and %.3f s -- coherent "
               "integration stops paying beyond that." % t_half)
