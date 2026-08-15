@@ -1,7 +1,12 @@
 # The fast code loop: moving control to C++, leaving policy in Python (task #51)
 
-**Status 2026-08-15.** F1, F2 and F3 landed and measured; F4 (arming) is next and
-needs a NODE RESTART. Nothing is trimmed today.
+**Status 2026-08-15 14:30 — CLOSED, IT TRACKS.** All four milestones landed and the loop
+holds on sky: G23 at q 2.78-3.52 for 40+ continuous seconds on a small stable trim
+(-0.15..-0.32 chips), confirmed per-record at 95.4 Hz (`scripts/gnss/excursion.py`, median
+one-record |ddisc| 0.102). Live: gps_l5 at 23.84 Hz, bandwidth 2.5/s, signal-gated
+integrator, 90 s arming hold; four control chains. See §11 for the three control-theory
+lessons the sky taught on arming day; docs/CHORD_BUGLIST and task #57 for what the working
+loop exposed next (the served coherent estimator's own ~20 dB scatter).
 
 ## 1. The problem, stated as arithmetic
 
@@ -223,3 +228,21 @@ the discriminator has any gradient at all. **The null is located first.**
 tracker's `trim[]` and changes what is despread. The running nodes predate the endpoint, so
 this needs a node restart (sudo, KV). Everything up to the POST is measured; the last hop is
 offline-verified only.
+
+
+## 11. What arming day taught (all measured, all mine)
+
+1. **"Same gain, faster rate" is true for slew and FALSE for stability.** Bandwidth =
+   gain x rate against the loop's ~0.2-0.5 s measurement round trip: per-update 0.25, stable
+   at 3.1 Hz (0.78/s), was a textbook limit cycle at 23.84 Hz (6/s) -- trim swinging +-1 chip
+   at 5-10 s period, q reaching 3.3 and being thrown off. Policy states `gain_per_s`; the
+   controller converts by its MEASURED close rate, exactly as for the leak.
+2. **The integrator must be signal-gated.** Off-peak, disc is sign-flipping noise; integrating
+   it at full authority random-walked the trim to the -3.0 clamp. Gate on prompt power vs the
+   same window's population median (NOT on q -- q gating forbids pull-in from the shoulder).
+3. **Arming must not be disarmed by the error it fixes.** Presence sampled once per 12 s cycle
+   caught the plant at random phase (~30% armed duty). 90 s hold; and a disarmed PRN's trim
+   decays through the leak rather than being TTL-stepped to zero.
+4. **The per-record view settles arguments the windowed view starts.** Two of my diagnoses
+   ("sub-second plant excursion", "arms 6x apart") were single draws of wide distributions,
+   refuted by `excursion.py` (95.4 Hz) and the paired A/B population respectively.
