@@ -25,11 +25,18 @@
  * map to wire up crooked). For each frame it validates the wire header and writes the frame
  * verbatim, length-prefixed, to every connected client.
  *
- * ⚠️ IT COLLATES NOTHING, DELIBERATELY. The broker is Python and the loops live there (KV,
- * 2026-08-14); a C++ collator here would be policy in the wrong process, and it is not needed:
- * every frame already carries the absolute window index that makes collation an exact integer
- * grouping. What this stage exists to provide is IDENTITY and DELIVERY -- which sender, which
- * window, with no inference -- and those ride in the payload.
+ * ⚠️ IT COLLATES NOTHING, DELIBERATELY. What this stage exists to provide is IDENTITY and
+ * DELIVERY -- which sender, which window, with no inference -- and those ride in the payload.
+ * Every frame already carries the absolute window index that makes collation an exact integer
+ * grouping, so a collator here would buy the broker nothing it cannot do itself.
+ *
+ * ⚠️ THAT IS NOT THE SAME AS "no C++ may collate" (updated 2026-08-15, task #51).
+ * @ref GnssFleetTrim now rides beside this stage as a second consumer of the same buffer and
+ * does collate -- because the CODE LOOP needs a fleet-wide view at frame rate, and this process
+ * is the only one that has one (a tracker instance sees ~7 of the fleet's ~105 channels). The
+ * rule that survives is ONE PLACE WITH THE FLEET-WIDE VIEW OWNS THE LOOP: policy -- who is
+ * armed, every gate, the clock, the ephemeris -- stays in the Python broker, and only the
+ * discriminator, the integrator and the actuation post moved here. docs/CHORD_FAST_TRIM.md.
  *
  * WIRE PROTOCOL TO THE BROKER: a stream of `[uint32 little-endian length][length bytes]`, where
  * the bytes are the telemetry frame exactly as it arrived (gnssTelem.hpp). The length prefix is

@@ -1411,8 +1411,16 @@ def build_gather_instance(cfg, args, port):
     single port, and GnssTelemGather writes each frame, length-prefixed and verbatim, to the
     Python broker over a local socket.
 
-    IT COLLATES NOTHING, AND THAT IS THE DESIGN. The loops live in the broker (KV, 2026-08-14),
-    and collation needs no C++ help: every frame already carries the absolute window index
+    GnssTelemGather ITSELF COLLATES NOTHING, AND THAT IS STILL THE DESIGN -- it is IDENTITY and
+    DELIVERY, nothing else. What changed on 2026-08-15 (task #51) is that a SECOND STAGE,
+    GnssFleetTrim, now rides beside it on the same buffer and does collate, because the code
+    loop needs a fleet-wide view at frame rate and this is the only process that has one. The
+    rule that survives is not "the loops live in the broker" but ONE PLACE WITH THE FLEET-WIDE
+    VIEW OWNS THE LOOP: the POLICY (who is armed, every gate, the clock, the ephemeris) stays in
+    the Python broker, and only the discriminator, the integrator and the post move here.
+    See docs/CHORD_FAST_TRIM.md.
+
+    Collation needs no C++ help either way: every frame already carries the absolute window index
     wstart/(records_per_frame * hops_per_record * fft_length), computed by each sender from the
     same three integers, so grouping instances is an exact integer match rather than an
     inference from arrival order or from a UTC stamp each instance derives on its own (#46
@@ -1429,7 +1437,7 @@ def build_gather_instance(cfg, args, port):
     rt = cfg["runtime"]
     cores = rt["cpu_affinity"]
     frame_bytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
-    return {
+    out = {
         "type": "config",
         "log_level": "info",
         # bufferRecv deserializes the sender's metadata into a pool object of the same type, so
@@ -1484,6 +1492,27 @@ def build_gather_instance(cfg, args, port):
             "cpu_affinity": [cores[4 % len(cores)]],
         },
     }
+    if not args.no_fleet_trim:
+        # TASK #51, THE FAST CODE LOOP. A SECOND CONSUMER of telem_buf, not a second parse of
+        # the served byte stream: it needs exactly the buffer this instance already has, and a
+        # separate process re-parsing the same stream can silently disagree with what the broker
+        # saw -- which is the bug class (#52, #53, #33) that #59 exists to have removed.
+        #
+        # ⚠️ A SECOND CONSUMER SHARES THE BUFFER'S FATE. If this stalls, telem_buf fills and
+        # bufferRecv (drop_frames true) starts dropping FOR THE BROKER TOO. It is bounded work
+        # per frame -- 8.2 us measured offline against a 42 ms frame period -- and get_stats
+        # serves fold_us_per_frame so that claim stays checkable rather than remembered.
+        #
+        # F1 OBSERVES ONLY. It forms the fleet discriminator and actuates nothing; the trim is
+        # still posted by the Python broker. See docs/CHORD_FAST_TRIM.md 8.
+        out["fleet_trim"] = {
+            "kotekan_stage": "GnssFleetTrim",
+            "in_buf": "telem_buf",
+            "n_win": args.fleet_trim_windows,
+            "min_instances": args.fleet_trim_min_instances,
+            "cpu_affinity": [cores[5 % len(cores)]],
+        }
+    return out
 
 
 def build_search_instance(cfg, node, per_gpu, args, port):
@@ -1845,7 +1874,7 @@ def main():
                          "NOT the record buffer's slot count: GnssTelemPack compacts rows onto "
                          "the PRNs that were actually despread, so a 32-slot tracker with 14 "
                          "seeded satellites fits in 16 rows. Was 40 until 2026-08-15, which put "
-                         "~65% zero rows on the wire -- 480 Mbps of cf06's single 1 GbE and a "
+                         "~65%% zero rows on the wire -- 480 Mbps of cf06's single 1 GbE and a "
                          "measured ~5 s on every broker cycle, because the ~60 REST polls "
                          "queue behind the frame-synced bursts (task #64).")
     ap.add_argument("--telem-records-per-frame", type=int, default=4,
@@ -1864,6 +1893,21 @@ def main():
     ap.add_argument("--gather-serve-host", default="127.0.0.1",
                     help="bind address of the gather's broker stream (--gather-instance)")
     ap.add_argument("--gather-serve-port", type=int, default=11061)
+    ap.add_argument("--no-fleet-trim", action="store_true",
+                    help="TASK #51: omit GnssFleetTrim from the gather instance. It rides "
+                         "beside GnssTelemGather as a SECOND CONSUMER of the same telemetry "
+                         "buffer -- the gather host is the only place with the whole fleet at "
+                         "frame rate, which is what the code loop needs and what a tracker "
+                         "instance (7 of ~105 channels) cannot have. At milestone F1 it "
+                         "OBSERVES ONLY and actuates nothing; measured 8.2 us/frame offline, "
+                         "~1-4%% of one core at the fleet's 1430 frames/s. Use this to drop it "
+                         "if it is ever suspected of back-pressuring the buffer -- which would "
+                         "cost the BROKER frames too, since bufferRecv drops when it fills.")
+    ap.add_argument("--fleet-trim-windows", type=int, default=4,
+                    help="windows GnssFleetTrim averages into one discriminator. 4 windows = "
+                         "16 records = 168 ms, matching --fast-trim-windows on the Python arm.")
+    ap.add_argument("--fleet-trim-min-instances", type=int, default=2,
+                    help="instances required before GnssFleetTrim forms a discriminator")
     ap.add_argument("--combine-gpus", action="store_true",
                     help="ONE GnssCoherentCombiner over BOTH GPUs' tracker record streams "
                          "instead of one per GPU. The stage is documented for exactly this -- "
@@ -1886,7 +1930,7 @@ def main():
                          "median fleet deep_snr ratio 0.997, and the WEAK PRNs did BETTER split "
                          "(5.2 vs 4.0) because more instances give the leave-one-out reference "
                          "and the one-way S/R split more to work with. The synthetic version of "
-                         "the same test (scripts/gnss/fleetcoh_partition.py) is flat to 2% from "
+                         "the same test (scripts/gnss/fleetcoh_partition.py) is flat to 2%% from "
                          "2x6 down to 12x1.\n"
                          "\n"
                          "So use it for what it still does -- HALVE THE ENDPOINT COUNT the "

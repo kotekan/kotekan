@@ -71,6 +71,9 @@ add_library(
     # carry an FFTW dependency, and the pack half must build in the same tree as the trackers.
     gnss/GnssTelemPack.cpp
     gnss/GnssTelemGather.cpp
+    # Task #51, the fast code loop. Rides in the gather instance beside GnssTelemGather (the
+    # only place with the whole fleet at frame rate), so it belongs in the same no-FFTW block.
+    gnss/GnssFleetTrim.cpp
     SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
