@@ -266,10 +266,30 @@ def coherence_scan(a):
             "A coherence scan on an intermittently-tracked satellite measures the gaps, not "
             "the carrier. Re-run when the chain is holding." % (a.chain, a.min_duty, best[0],
                                                                best[1]))
-    tgt = max(held, key=lambda r: r["cn0_prompt_db"])
+    if a.prn is not None:
+        sel = [r for r in held if int(r["prn"]) == a.prn]
+        if not sel:
+            raise SystemExit("PRN %d is not held at duty >= %.2f on %s" % (a.prn, a.min_duty,
+                                                                          a.chain))
+        tgt = sel[0]
+    else:
+        tgt = max(held, key=lambda r: r["cn0_prompt_db"])
     prn = int(tgt["prn"])
-    print("scan target PRN %d: cn0_inc %.1f dB-Hz, duty %.2f, injected rate %+.3f Hz"
-          % (prn, tgt["cn0_prompt_db"], tgt["cn0_prompt_duty"], rates.get(prn) or 0.0))
+    # ⚠️ THE INJECTED RATE IS A HYPOTHESIS, SO IT HAS TO BE VARIABLE. The scan's whole
+    # conclusion ("coherence dies at T") is conditional on the rate it derotates by, and if
+    # that rate is itself noise the scan measures the NOISE's decoherence, not the carrier's.
+    # --rate-hz overrides it (0 = no derotation at all), which turns "is the rate the cause?"
+    # into a paired measurement instead of an inference from a number that looked wrong.
+    broker_rate = rates.get(prn) or 0.0
+    rate_used = broker_rate
+    note = ""
+    if a.rate_hz is not None:
+        rate_used = a.rate_hz
+        rates = dict(rates)
+        rates[prn] = a.rate_hz
+        note = "  [OVERRIDE -- broker said %+.3f Hz]" % broker_rate
+    print("scan target PRN %d: cn0_inc %.1f dB-Hz, duty %.2f, rate %+.3f Hz%s"
+          % (prn, tgt["cn0_prompt_db"], tgt["cn0_prompt_duty"], rate_used, note))
 
     host, port = telem.parse_endpoint(a.gather)
     cl = telem.TelemClient(host=host, port=port, depth=4096, chains={a.chain})
@@ -348,6 +368,14 @@ def main():
                          "on a weak or intermittently-tracked satellite eta is a ratio of "
                          "two small noisy numbers and means nothing, which is exactly the "
                          "kind of reading that has been mistaken for physics here before.")
+    ap.add_argument("--rate-hz", type=float, default=None,
+                    help="coherence-scan: derotate at THIS rate instead of the broker's "
+                         "injected one. 0 = no derotation. The scan's conclusion is "
+                         "conditional on the rate, so this is how the rate itself is "
+                         "tested rather than assumed.")
+    ap.add_argument("--prn", type=int, default=None,
+                    help="coherence-scan: pin the target PRN (default: strongest held) "
+                         "so a paired rate A/B lands on the SAME satellite.")
     ap.add_argument("--min-duty", type=float, default=0.8)
     a = ap.parse_args()
     if a.self_test:
