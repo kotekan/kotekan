@@ -157,9 +157,25 @@ export class GpsAmpHistoryPanel {
         const n = h.t.length;
         if (n && h.sig[n - 1] === src.sig && h.coh_s[n - 1] === src.coh_s
             && h.dop[n - 1] === src.dop && h.snr[n - 1] === snr) return;
+        // ⚠️ DO NOT REPLOT AN ESTIMATE THAT HAS NOT BEEN RECOMPUTED. The C/N0 estimators
+        // run on their own cadence (--estimator-every-s) and the broker keeps serving the
+        // last value in between, so at a 1.5 s poll one estimate becomes ~26 identical
+        // points: the history drew flat plateaus with cliffs between them and looked like
+        // a quantised instrument. Identical floats out of a floating-point estimator mean
+        // "same computation", so dropping the repeats is safe and the plot then shows one
+        // point per actual measurement.
+        if (n && h.cn0[n - 1] === src.cn0 && h.cn0_kcoh[n - 1] === src.cn0_kcoh
+            && src.cn0 != null) return;
         h.t.push(now);
         h.cn0.push(src.cn0); h.sig.push(src.sig);
-        h.cn0_kcoh.push(src.cn0_kcoh != null ? src.cn0_kcoh : null);
+        // ⚠️ ONLY PLOT A COHERENT POINT THE FOLD ACTUALLY EARNED. eta well below n_rec
+        // means the records did not add coherently, so the value is the noise floor
+        // (~0 dB-Hz), not a C/N0 -- E19 through boresight drew a whole trace of those on
+        // 2026-08-15 and it read as "the coherent estimator is broken" when what it was
+        // reporting was "there is no coherence here". The table greys the same case; a
+        // history plot has no room for a qualifier, so the honest rendering is a GAP.
+        h.cn0_kcoh.push((src.cn0_kcoh != null && src.kcoh_eta != null && src.kcoh_n
+                         && src.kcoh_eta >= 0.25 * src.kcoh_n) ? src.cn0_kcoh : null);
         h.beam_amp.push(src.beam_amp != null ? src.beam_amp : null);
         h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);

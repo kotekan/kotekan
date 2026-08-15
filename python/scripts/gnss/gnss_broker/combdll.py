@@ -231,7 +231,8 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
 
 
 def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
-               k_sigma=3.0, min_instances=2, hop_s=5.12e-6, keep_records=False):
+               k_sigma=3.0, min_instances=2, hop_s=5.12e-6, keep_records=False,
+               min_used=8):
     """THE SERVED C/N0 (task #57): per-record prompt power, q-gated, probe-debiased.
 
     Replaces the deep fold as the radiometry. The fold RE-SEARCHES a residual rate per
@@ -370,7 +371,18 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
             if keep_records:
                 rec_rows.append((w, r, rho, q, gated))
         n_used, n_tot = len(rho_gated), len(rows)
-        rho_mean = sum(rho_gated) / n_used if n_used else None
+        # ⚠️ TOO FEW GATED RECORDS IS NOT A MEASUREMENT -- SERVE NOTHING.
+        # The q gate and the signal share noise, so at low duty the records that PASS are
+        # precisely the upward fluctuations: the mean of a handful of them is biased high
+        # and scatters enormously. Measured 2026-08-15, E19 transiting boresight on
+        # gal_e5b at q 0.36 (BELOW the 1.0 no-peak value -- the array never got on the
+        # peak): duty 0.01, n_used 1, and the served value was 27.8 dB-Hz off ONE record.
+        # The viewer plotted a decade of that as a C/N0 history. `duty` was published so a
+        # consumer could decline the number, but publishing a declinable number and hoping
+        # is not a gate -- this is (see also the no-peer-fallback rule for the floor).
+        # duty/n_used are still served, so "tracked but not measurable" stays visible and
+        # is distinguishable from "never seen".
+        rho_mean = (sum(rho_gated) / n_used) if n_used >= min_used else None
         # THE INCOHERENT DETECTION SIGNIFICANCE, empirically (2026-08-15). A t-statistic on
         # the gated per-record rho: mean / (std/sqrt(n)). No distributional assumption --
         # the scatter is MEASURED from the same records the mean is, so scintillation and

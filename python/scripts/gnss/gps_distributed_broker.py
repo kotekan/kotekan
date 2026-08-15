@@ -1473,7 +1473,7 @@ def main(argv=None, rx=None, publisher=None):
     ap.add_argument("--telem-windows", type=int, default=8,
                     help="windows of telemetry fed to fleet_coherent (4 records each at the "
                          "default packing, so 8 windows = 32 records ~ 0.34 s)")
-    ap.add_argument("--estimator-every-s", type=float, default=40.0,
+    ap.add_argument("--estimator-every-s", type=float, default=15.0,
                     help="minimum seconds between the TELEMETRY-WALK estimators (cn0_prompt "
                          "+ kcoh) per chain; the last values keep being served between "
                          "runs. They are pure-Python walks over ~1500 record decodes each, "
