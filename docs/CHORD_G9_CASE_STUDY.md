@@ -92,6 +92,9 @@ shared by all 10 instances (100%), none missing.
 
 ## 4. Two published numbers that do not add up
 
+⚠️ **RESOLVED, and it is worse than a normalisation — see §7.** Both of these are fold
+products, and the fold is not measuring detection.
+
 * **`cn0_coh_db` 20.5.** The array's full-band-equivalent C/N0 for L5 is ~45.5 dB-Hz, and #47
   measured `cn0_coh` reading ~41 dB-Hz *on noise*. 20.5 on the brightest satellite on the
   chain is below both. Worth deriving from first principles rather than trusting: the deep
@@ -144,3 +147,48 @@ a split-half (excess −0.03 dB). The channels are as aligned as their SNR allow
 2. **Re-measure #61's fold churn now that a satellite is on-peak.** The CV ~0.6 was measured
    when every tap was off-peak; if the churn follows q it was never a fold problem.
 3. **Resolve `spec_tau` vs `q` before #50.**
+
+
+---
+
+## 7. ⚠️ THE ANSWER: `deep_snr` is not a detection statistic (#66)
+
+KV, on being shown a search SNR of 8000 against a deep of 17σ: *"that simply cannot be right."*
+
+**The null was already running.** `--noise-probes` seeds the deepest **below-horizon** PRNs as
+a pure-noise anchor. Live on gps_l5, probes at elev −65, −64, −64:
+
+| PRN | in search? | deep_snr | ×floor | coh_frac |
+|---|---|---|---|---|
+| **10** | **NO — probe, elev −64** | **29.9** | **11.2×** | **0.744** |
+| 24 | NO — not detected | 10.6 | 4.0× | 0.710 |
+| 26 | yes, real | 1.3 | **0.6×** | 0.113 |
+| 8 | yes, real | 1.9 | 0.7× | 0.158 |
+| 21 | yes, real | 2.1 | 0.8× | 0.158 |
+
+**A satellite 64° below the horizon reads 11.2× its noise floor**, while genuinely detected
+satellites sit at 0.6–0.8×. And `deep_snr` does not track the search: PRN 9 (search **10997**)
+→ deep 17.5, while PRN 30 (search 33, barely above the ~18 noise ceiling) → deep **76.2**.
+
+This collapses three separate puzzles into one fault:
+
+* §4's `cn0_coh_db` 20.5 — derived from the fold;
+* §3's "the fleet beats MRC by ~2 dB" — impossible, therefore inflation;
+* #61's fold churn — a statistic that fires on noise churns.
+
+**Mechanism is a hypothesis, not a conclusion.** The deep path re-searches rate and phase, so
+it is a max-over-many-cells statistic; `coherent_sum()` states that it sets *"phase = 0; no
+alignment searched, hence no extreme-value bias in the floor"*, i.e. the honest path is the
+unsearched one. If the searched path reuses `residual_snr()` on the already-derotated series,
+the orthogonal component that *is* the noise estimate was minimised by the same fit. **Test it.**
+
+⚠️ **OPERATIONAL HAZARD.** #49's deep gate *trims* on `deep_snr`. The three PRNs armed tonight
+are all search-detected, so nothing trims on noise right now — but **widening the gate
+fleet-wide would admit PRN 10, a below-horizon probe, and trim it.** Do not widen until this
+is fixed. The q floor is unaffected: probe `q` reads ~1.0, correctly, because `q` is not a
+fold product.
+
+⚠️ **AND THE METHOD LESSON: check the probes first.** They cost nothing, they are already
+seeded, and they are the only rows in the system that are noise *by construction*. This
+document spent an evening measuring coherence against carefully-built shuffled nulls without
+once consulting the null the instrument already had.
