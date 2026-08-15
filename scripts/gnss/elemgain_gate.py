@@ -135,8 +135,17 @@ def main():
     if not pe1:
         raise SystemExit("0/%d instances served /get_elements -- nodes not yet restarted "
                          "with the #57 step-2 combiner?" % len(eps))
+    pe1, stale = elemgain.drop_stale(pe1)
+    if stale:
+        # NAMED, never silently dropped -- and the first run of this gate scored a WEDGED
+        # instance's frozen phases as R = 1.000 ("perfectly stable"), which is how a
+        # stalled combiner passes a phase test. Identical numbers are not agreement.
+        print("⚠️ STALE instances excluded: "
+              + ", ".join("%s (%s)" % (t, "%.0f s behind" % l if l else "no hop")
+                          for t, l in stale))
     time.sleep(a.gap_s)
     pe2, _ = elemgain.poll_elements(eps)
+    pe2, _ = elemgain.drop_stale(pe2)
     t1 = elemgain.gain_table(pe1, probes, min_keff=a.min_keff)
     t2 = elemgain.gain_table(pe2, probes, min_keff=a.min_keff)
     print("%d/%d instances served; %d PRNs in the table" % (srv1, len(eps), len(t1)))

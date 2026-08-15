@@ -6917,12 +6917,20 @@ def main(argv=None, rx=None, publisher=None):
             if args.element_poll and dll_combiners:
                 try:
                     _pe, _srv = elemgain.poll_elements(dll_combiners)
+                    # WEDGED INSTANCES ARE EXCLUDED AND NAMED (see elemgain.drop_stale):
+                    # a frozen combiner keeps serving byte-identical gains from a sky ten
+                    # minutes gone, and a median over instances would blend them in.
+                    _pe, _stale = elemgain.drop_stale(_pe) if _pe else ({}, [])
                     _etab = elemgain.gain_table(_pe, probe_set) if _pe else {}
                     if _etab and publisher is not None:
                         publisher.set_elements(_etab)
                     _log_rl("elemgain",
-                            "ELEM-GAIN: %d/%d instance(s) served, %d PRN(s) in the table"
-                            % (_srv, len(dll_combiners), len(_etab)), every_s=120.0)
+                            "ELEM-GAIN: %d/%d instance(s) served, %d used, %d PRN(s)%s"
+                            % (_srv, len(dll_combiners), len(_pe), len(_etab),
+                               ("  ⚠️ STALE (excluded): "
+                                + ", ".join("%s %s" % (t, "%.0f s behind" % l if l else "no hop")
+                                            for t, l in _stale)) if _stale else ""),
+                            every_s=120.0)
                     # RAW archive, present sats + probes, throttled. Reopened per tick --
                     # at one append a minute a persistent handle buys nothing and a
                     # reopened one survives log rotation and NFS hiccups.

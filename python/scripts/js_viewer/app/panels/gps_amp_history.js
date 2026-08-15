@@ -43,7 +43,9 @@ const LN10_10 = 10 / Math.LN10;   // 10/ln10 = 4.3429; d(dB)/dx = LN10_10 / x
 // per-element complex-gain summary (median live-element amplitude; circular RMS of the
 // element phases about the array mean -- the peel coefficient's dispersion).
 const MODES = {
-    cn0:      {label: "C/N₀",    axis: "C/N₀ (dB-Hz)", unit: " dB-Hz", fmt: ".1f"},
+    cn0:      {label: "C/N₀ inc", axis: "C/N₀ incoherent (dB-Hz)", unit: " dB-Hz", fmt: ".1f"},
+    cn0_kcoh: {label: "C/N₀ coh", axis: "C/N₀ coherent, known-rate fold (dB-Hz)",
+               unit: " dB-Hz", fmt: ".1f"},
     beam_amp: {label: "beam A",  axis: "median element gain (×, 1 = uniform)", unit: "×",
                fmt: ".2f", zero: true},
     beam_ph:  {label: "beam φ",  axis: "element phase spread (deg RMS)", unit: "°",
@@ -55,7 +57,8 @@ const MODES = {
     peel:    {label: "peel",     axis: "voltage-peel depth (dB)", unit: " dB", fmt: ".1f",
               zero: true},
 };
-const MODE_ORDER = ["cn0", "beam_amp", "beam_ph", "sig", "coh_s", "dop", "snr", "peel"];
+const MODE_ORDER = ["cn0", "cn0_kcoh", "beam_amp", "beam_ph", "sig", "coh_s", "dop",
+                    "snr", "peel"];
 
 // ICD minimum received power per TRACKED COMPONENT, as a C/N₀ floor with
 // N₀ = −204 dBW/Hz (290 K, lossless front end): C/N₀_min = P_min(dBW) + 204.
@@ -138,8 +141,8 @@ export class GpsAmpHistoryPanel {
         // `bound` parallels `peel`: true where the residual sat at the combiner's detection
         // floor, i.e. the point is a LOWER BOUND. Kept as its own array so the plot can never
         // render a bound as a measurement (see the header note).
-        return {t: [], cn0: [], beam_amp: [], beam_ph: [], sig: [], coh_s: [], dop: [],
-                snr: [], dr: [], peel: [], bound: []};
+        return {t: [], cn0: [], cn0_kcoh: [], beam_amp: [], beam_ph: [], sig: [],
+                coh_s: [], dop: [], snr: [], dr: [], peel: [], bound: []};
     }
 
     // L1/L2/L5 (unified signal band) -> the CN0_BASELINE band key.
@@ -156,6 +159,7 @@ export class GpsAmpHistoryPanel {
             && h.dop[n - 1] === src.dop && h.snr[n - 1] === snr) return;
         h.t.push(now);
         h.cn0.push(src.cn0); h.sig.push(src.sig);
+        h.cn0_kcoh.push(src.cn0_kcoh != null ? src.cn0_kcoh : null);
         h.beam_amp.push(src.beam_amp != null ? src.beam_amp : null);
         h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);
@@ -404,7 +408,7 @@ export class GpsAmpHistoryPanel {
         // Absolute reference: the ICD-minimum C/N₀ for this band + constellation
         // (dashed line, C/N₀ modes only). Baseline is per tracked component -- see
         // CN0_BASELINE for the power bookkeeping and sources.
-        if (this.mode === "cn0") {
+        if (this.mode === "cn0" || this.mode === "cn0_kcoh") {
             // Per-signal band in unified mode (the selected key's meta), else the viewer's band.
             const band = this.unified
                 ? ((this.meta.get(this.selected) || {}).band || "l1")

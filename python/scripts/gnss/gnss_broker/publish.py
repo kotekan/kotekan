@@ -532,7 +532,23 @@ class FleetPublisher:
             # point of this block: KV could read the sky off GPS search while every
             # deep/coh column on the display was telling him the array had gone dark.
             row["prompt_hold"] = ratio          # fleet prompt power / noise median
-            if _pi and row.get("det_duty_s") is not None:
+            # ⚠️ `sig` NOW COMES FROM THE KNOWN-RATE FOLD (task #57 step 3, 2026-08-15).
+            # Every branch below it is a DEEP-FOLD significance, and the deep fold's
+            # per-integration rate re-search is the fault #47/#66 diagnosed: on sky those
+            # branches served single digits while the SEARCH saw the same satellites at
+            # hundreds-to-thousands of sigma -- KV read exactly that off this column and
+            # asked whether it still meant anything. It did not. kcoh_sig is the fold power
+            # over the probes' IDENTICALLY-folded floor: one estimator, one normalisation,
+            # a floor measured on noise-by-construction rows, and no search anywhere.
+            #
+            # THE DEEP NUMBERS ARE NOT DESTROYED -- inst_snr_med/_lo/_hi/_n and deep_snr
+            # stay published beside this, so the old population remains inspectable and the
+            # switch is visible in `sig_src` rather than hidden in a changed number.
+            _ks = (kcoh.get(prn) or {}).get("sig")
+            if _ks is not None:
+                row["sig"] = _ks
+                row["sig_src"] = "kcoh:%d" % (kcoh[prn].get("n_rec") or 0)
+            elif _pi and row.get("det_duty_s") is not None:
                 row["sig"] = row.get("inst_snr_med_win") or row["inst_snr_med"]
                 row["sig_src"] = "inst_med:%d" % row["inst_snr_n"]
             elif (c.get("coherence_s") or 0.0) > 0.0 and c.get("deep_snr"):

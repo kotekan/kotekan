@@ -41,7 +41,14 @@ const METRICS = {
     // prompt power, q-gated, probe-debiased, sky-validated -- and it is conditioned on
     // lock, so its DUTY travels with it: a value at duty < 70% is greyed with the duty in
     // the hover (few gate-passing records; read it as "when held", not "always").
-    cn0:  {label: "C/N0", field: "cn0", unit: "dB-Hz",
+    // TWO C/N0s AGAIN (2026-08-15) -- but both HONEST this time, and they mean different
+    // things rather than duplicating one measurement badly. `cn0` is per-record prompt
+    // power (q-gated, probe-debiased): no coherence assumed, defined whenever tracking
+    // held. `cn0k` is the ~1 s KNOWN-RATE coherent fold: ~10log10(n_rec) more sensitive --
+    // the deep-sidelobe instrument -- and available wherever the carrier stayed coherent.
+    // On a strong satellite they must AGREE; a low coherent value beside a healthy
+    // incoherent one means COHERENCE was lost, not signal, and `eta` says so directly.
+    cn0:  {label: "C/N0 inc", field: "cn0", unit: "dB-Hz",
            fmt: m => {
                if (!m || m.cn0 == null) return null;
                const v = m.cn0.toFixed(0);
@@ -51,13 +58,30 @@ const METRICS = {
                      + ` -- the C/N0 of the records where tracking held">${v}</span>`
                    : v;
            }},
-    // BEAM (task #57 step 2): the per-element complex gain, summarised. amp = median live
-    // element amplitude (1.0 = uniform array); ph = circular RMS of the live elements'
-    // phases about the array mean (deg) -- "how far from phased-up on this satellite".
-    // The full 32-element vectors are on the broker's /get_elements and in the NFS archive.
+    cn0k: {label: "C/N0 coh", field: "cn0_kcoh", unit: "dB-Hz",
+           fmt: m => {
+               if (!m || m.cn0_kcoh == null) return null;
+               const v = m.cn0_kcoh.toFixed(0);
+               // Greyed when the fold did not actually cohere (eta << n_rec): the number
+               // is then a floor, not a measurement, and the reason is IN the hover.
+               const eta = m.kcoh_eta, n = m.kcoh_n;
+               if (eta != null && n && eta < 0.25 * n)
+                   return `<span style="opacity:.55" title="coherence efficiency ${eta.toFixed(0)}`
+                        + `/${n} records -- the fold barely cohered (stale or wrong residual`
+                        + ` rate, or a phase discontinuity), so this is a LOWER BOUND">${v}</span>`;
+               return v;
+           }},
+    // BEAM (task #57 step 2): the per-element complex gain, summarised.
+    //   beam A   = median live-element gain amplitude, 1.0 = uniform array.
+    //   φ spread = the CIRCULAR RMS of the live elements' phases about the array mean, in
+    //              degrees. ⚠️ IT IS A DISPERSION, NOT AN ANGLE -- 0 means the array is
+    //              phased up on this satellite, 60+ means the elements disagree. It was
+    //              labelled "beam φ", which reads as a phase and was taken for one; the
+    //              per-element phases themselves (the actual peel coefficients) are 32
+    //              numbers per instance and live on /get_elements + the NFS archive.
     beam_amp: {label: "beam A", field: "beam_amp", unit: "x",
                fmt: m => m && m.beam_amp != null ? m.beam_amp.toFixed(2) : null},
-    beam_ph:  {label: "beam φ", field: "beam_ph", unit: "°",
+    beam_ph:  {label: "φ spread", field: "beam_ph", unit: "° rms",
                fmt: m => m && m.beam_ph != null ? m.beam_ph.toFixed(0) + "°" : null},
     // DUTY (task #57): the fraction of the last 2 minutes in which the array actually
     // held this satellite. sig says how loud, duty says how often -- different
@@ -102,25 +126,40 @@ const COLS = [
      tip: "elevation (deg)"},
     {key: "snr",  label: "SNR",  align: "right", dir: -1,
      tip: "search detection significance (sigma above the acquire grid noise)"},
-    {key: "cn0",  label: "C/N0", align: "right", dir: -1,
-     tip: "C/N0 (dB-Hz): per-record prompt power, q-gated on the noise probes' own q "
-          + "population, probe-debiased (task #57 -- supersedes the old coh/inc pair). "
-          + "Greyed when the lock duty is under 70%: the value is then the C/N0 of the "
-          + "minority of records where tracking held"},
+    {key: "cn0",  label: "C/N0 inc", align: "right", dir: -1,
+     tip: "INCOHERENT C/N0 (dB-Hz): per-record prompt power, q-gated on the noise probes' "
+          + "own q population, probe-debiased (task #57). No coherence assumed, so it is "
+          + "defined whenever tracking held. Greyed under 70% lock duty: the value is then "
+          + "the C/N0 of the records where tracking held, not of all of them"},
+    {key: "cn0_kcoh", label: "C/N0 coh", align: "right", dir: -1,
+     tip: "COHERENT C/N0 (dB-Hz): the ~1 s KNOWN-RATE fold -- residual rate injected from "
+          + "the previous cycle's record-stream fit, never searched (that search was the "
+          + "#47 fault). ~10log10(n_rec) more sensitive than the incoherent column, which "
+          + "is what reaches the deep sidelobes. On a strong satellite the two agree; a low "
+          + "coherent value beside a healthy incoherent one means COHERENCE was lost, not "
+          + "signal. Greyed when eta shows the fold did not cohere (then it is a bound)"},
+    {key: "kcoh_eta", label: "η", align: "right", dir: -1,
+     tip: "coherence efficiency of the coherent fold: n_rec when every record added "
+          + "coherently, ~1 on noise. This is the number that says whether the fold WORKED "
+          + "-- a stale or wrong residual rate, or a phase discontinuity, shows up here "
+          + "instead of hiding as a quietly low C/N0"},
     {key: "beam_amp", label: "beam A", align: "right", dir: -1,
      tip: "median live-element gain amplitude, normalised so a uniform array reads 1.0 "
           + "(the per-element complex gain, #57 step 2). Full 32-element vectors on the "
           + "broker's /get_elements and in the NFS archive"},
-    {key: "beam_ph", label: "beam φ", align: "right", dir: -1,
-     tip: "circular RMS spread of the live elements' gain phases about the array mean "
-          + "(deg) -- how far from phased-up the array is on this satellite. The phase "
-          + "is the peel coefficient; ~0 after a good cal"},
+    {key: "beam_ph", label: "φ spread", align: "right", dir: -1,
+     tip: "⚠️ A DISPERSION, NOT AN ANGLE: the circular RMS of the live elements' gain "
+          + "phases about the array mean (deg). 0 = the array is phased up on this "
+          + "satellite; 60+ = the elements disagree. The per-element phases themselves -- "
+          + "the actual peel coefficients, 32 per instance -- are on the broker's "
+          + "/get_elements and in the NFS archive, not summarisable to one angle"},
     {key: "sig",  label: "sig",  align: "right", dir: -1,
-     tip: "combined significance. Since #57 this is the broker's published `sig`: the "
-          + "MEDIAN over instances over a trailing window, with its gate paired to its "
-          + "own numerator. The median is used because the best-of-instance max is an "
-          + "order statistic -- it churns with the winner and takes the luckiest noise "
-          + "draw. `sig_src` names the estimator"},
+     tip: "detection significance. Since 2026-08-15 this is the KNOWN-RATE fold's power "
+          + "over the probes' identically-folded noise floor (sig_src 'kcoh:N'). It was "
+          + "the deep fold's median-over-instances, which served single digits while the "
+          + "SEARCH saw the same satellites at hundreds of sigma -- that gap was the #47 "
+          + "fault, not the sky. The deep numbers stay published as inst_snr_med/_lo/_hi "
+          + "so the old population is still inspectable"},
     {key: "hold", label: "hold", align: "right", dir: -1,
      tip: "PROMPT power / live noise median: is there signal under the tap we commanded. "
           + "No deep fold, no rate search, no certification -- the one column that did "
@@ -495,6 +534,15 @@ export class GpsTablePanel {
                          + ` where tracking held">${r.cn0.toFixed(1)}</span>`
                        : r.cn0.toFixed(1) + (r.cn0_duty == null ? "*" : ""))
                     : "—",
+                cn0_kcoh: r.cn0_kcoh != null
+                    ? ((r.kcoh_eta != null && r.kcoh_n && r.kcoh_eta < 0.25 * r.kcoh_n)
+                       ? `<span style="opacity:.55" title="coherence efficiency `
+                         + `${r.kcoh_eta.toFixed(0)}/${r.kcoh_n} records -- the fold barely`
+                         + ` cohered, so this is a LOWER BOUND">${r.cn0_kcoh.toFixed(1)}</span>`
+                       : r.cn0_kcoh.toFixed(1))
+                    : "—",
+                kcoh_eta: r.kcoh_eta != null
+                    ? r.kcoh_eta.toFixed(0) + (r.kcoh_n ? "/" + r.kcoh_n : "") : "—",
                 beam_amp: r.beam_amp != null ? r.beam_amp.toFixed(2) : "—",
                 beam_ph: r.beam_ph != null ? r.beam_ph.toFixed(0) + "°" : "—",
                 sig,

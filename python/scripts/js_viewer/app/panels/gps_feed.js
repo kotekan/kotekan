@@ -158,6 +158,24 @@ export function signal_metrics(s, t_rec) {
         const a = s.amplitude || 0, u = s.unbiased_amplitude || 0;
         if (a > u && u > 0) m.cn0 = 10 * Math.log10(((u * u) / (a * a - u * u)) / t_rec);
     }
+    // THE COHERENT C/N0 (task #57 step 3): the ~1 s KNOWN-RATE fold -- rate injected from
+    // the previous cycle's record-stream fit, never searched. This is the deep-sidelobe
+    // instrument (~10log10(n_rec) more sensitive than the per-record number above), and
+    // the pair is the diagnostic again: on a strong satellite the two must AGREE, and a
+    // coherent value far below its incoherent partner means coherence was lost, not signal.
+    //   kcoh_eta  coherence efficiency: n_rec when the fold was fully coherent, ~1 on
+    //             noise. THE number that says whether the fold worked -- a wrong rate or a
+    //             phase discontinuity lands here rather than in a silently low C/N0.
+    //   kcoh_sig  fold power over the probes' IDENTICALLY-folded floor: the detection
+    //             significance for satellites below the per-record gate.
+    // ⚠️ NOT the old cn0_coh_db: that came from the deep fold's per-integration rate
+    // RE-SEARCH and carried ~20 dB of its own paired scatter (#47/#66). The deep number is
+    // still computed below for offline consumers, but nothing displays it.
+    m.cn0_kcoh = s.cn0_kcoh_db != null ? s.cn0_kcoh_db : null;
+    m.kcoh_eta = s.kcoh_eta != null ? s.kcoh_eta : null;
+    m.kcoh_n = s.kcoh_n != null ? s.kcoh_n : null;
+    m.kcoh_sig = s.kcoh_sig != null ? s.kcoh_sig : null;
+    m.kcoh_rate = s.kcoh_rate_hz != null ? s.kcoh_rate_hz : null;
     // The deep-fold number stays COMPUTED (offline consumers of this feed may read it)
     // but is no longer a display column anywhere -- see the table/history panels.
     if (s.cn0_coh_db != null)
@@ -416,7 +434,8 @@ export class GpsFeed {
             if (!sats.has(id)) sats.set(id, {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
                 amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0, deep_snr: 0, dr: 0,
-                cn0: null, cn0_coh: null, dop: null, coh_s: null,
+                cn0: null, cn0_duty: null, cn0_coh: null, dop: null, coh_s: null,
+                cn0_kcoh: null, kcoh_eta: null, kcoh_n: null,
                 // Paired with cn0_coh below, NOT summarised independently -- see there.
                 prompt_lock: true,
                 peel_db: null, peel_bound: false,
@@ -472,7 +491,19 @@ export class GpsFeed {
                             r.sig = m.sig; r.deep_snr = m.deep_snr; r.coh_s = m.coh_s;
                             r.dop = m.dop; r.amp = m.amp;
                         }
-                        if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) r.cn0 = m.cn0;
+                        if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) {
+                            r.cn0 = m.cn0;
+                            r.cn0_duty = m.cn0_duty;   // the flag moves with its number
+                        }
+                        // The coherent one and its coherence efficiency, same best-signal
+                        // rule -- and eta travels WITH the value it qualifies, or a
+                        // healthy signal's eta could grey a different signal's C/N0.
+                        if (m.cn0_kcoh != null
+                            && (r.cn0_kcoh == null || m.cn0_kcoh > r.cn0_kcoh)) {
+                            r.cn0_kcoh = m.cn0_kcoh;
+                            r.kcoh_eta = m.kcoh_eta;
+                            r.kcoh_n = m.kcoh_n;
+                        }
                         // ...and the COHERENT one alongside, or the table's C/N0-coh column
                         // and its sort would read empty in flat mode while the unified cells
                         // showed values. Both are row summaries = best signal, same rule.
