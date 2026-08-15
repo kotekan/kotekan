@@ -199,20 +199,61 @@ def main():
     print("\n  PHASE STEP BY POSITION WITHIN THE FRAME (rad, amplitude-weighted)")
     print("    %-6s %s" % ("prn", "  ".join("%d->%d    " % (j, (j + 1) % REC_PER_FRAME)
                                             for j in range(REC_PER_FRAME))))
-    ramps = []
+    # ⚠️ THE FALSIFIABLE PREDICTION. If the phase is referenced to the FRAME START rather
+    # than accumulating, the intra-frame steps are all D and the boundary step is exactly
+    # -(REC_PER_FRAME-1)*D -- the ramp unwinding in one go. That is a hard number, not a
+    # shape, so it can be wrong. A residual of ~0 confirms it; a residual of ~pi confirms it
+    # TOO but with a sign flip on top (an unremoved secondary-code / nav-bit transition),
+    # which is why residuals are reported wrapped and CLUSTERED rather than averaged --
+    # averaging 0 and pi gives pi/2 and hides both.
+    def wrap(x):
+        return (x + math.pi) % (2 * math.pi) - math.pi
+
+    ramps, resids = [], []
     for p, inc in sorted(incs.items()):
         steps = [inc.get(j, (float("nan"),))[0] for j in range(REC_PER_FRAME)]
-        print("    %-6d %s" % (p, "  ".join("%+8.3f" % v for v in steps)))
         good = [v for j, v in enumerate(steps) if j != REC_PER_FRAME - 1
                 and math.isfinite(v)]
-        if len(good) == REC_PER_FRAME - 1:
-            ramps.append(statistics.median(good))
+        bnd = steps[REC_PER_FRAME - 1]
+        note = ""
+        if len(good) == REC_PER_FRAME - 1 and math.isfinite(bnd):
+            D = statistics.median(good)
+            r = wrap(bnd - (-(REC_PER_FRAME - 1) * D))
+            ramps.append(D)
+            resids.append(r)
+            note = "  pred %+.3f  resid %+.3f%s" % (
+                -(REC_PER_FRAME - 1) * D, r,
+                "  [+pi SIGN FLIP]" if abs(abs(r) - math.pi) < 0.6
+                else ("  [MATCH]" if abs(r) < 0.6 else ""))
+        # ⚠️ THE MAGNITUDE DECIDES CONSTANT vs RANDOM, and the phase alone cannot. These are
+        # VECTOR averages over many frames: a jump that is the same every frame keeps |acc|
+        # high, a jump that is random collapses it toward 0 while still printing some angle.
+        # |r_4| staying HIGH already implies constant (every m=4 pair crosses one boundary),
+        # but this measures it at the boundary directly instead of inferring it.
+        mags = [inc.get(j, (0, 0.0, 1))[1] / max(1, inc.get(j, (0, 0.0, 1))[2])
+                for j in range(REC_PER_FRAME)]
+        mx = max(mags) or 1.0
+        print("    %-6d %s%s" % (p, "  ".join("%+8.3f" % v for v in steps), note))
+        print("    %-6s %s   <- |vector avg| / max (low = the step is RANDOM)"
+              % ("", "  ".join("%8.2f" % (m / mx) for m in mags)))
     print()
     if not ramps:
         print("INCONCLUSIVE: no per-position increments.")
         return 1
     ramp = statistics.median(ramps)
     hz = ramp / (2 * math.pi * T_REC)
+    if resids:
+        near0 = [r for r in resids if abs(r) < 0.6]
+        nearpi = [r for r in resids if abs(abs(r) - math.pi) < 0.6]
+        print("  boundary residual vs the -(n-1)*D prediction: %d/%d at ~0, %d/%d at ~pi "
+              "(sign flip), %d other"
+              % (len(near0), len(resids), len(nearpi), len(resids),
+                 len(resids) - len(near0) - len(nearpi)))
+        if len(near0) + len(nearpi) >= max(2, int(0.6 * len(resids))):
+            print("  => THE FRAME-REFERENCED MODEL HOLDS: the boundary step IS the "
+                  "intra-frame ramp unwinding.%s"
+                  % ("  Some satellites carry an extra pi -- an unremoved SIGN (secondary "
+                     "code / nav bit) on top of it." if nearpi else ""))
     within = sat.get(1, 0.0) / sat[ref] if sat.get(ref) else float("nan")
     if within < 0.75 and sat[ref] > 5.0 * prb.get(ref, 1.0):
         print("⚠️ THE PHASE RESETS EVERY FRAME. Coherence at one FRAME (m=4, %.3f) is full, "
