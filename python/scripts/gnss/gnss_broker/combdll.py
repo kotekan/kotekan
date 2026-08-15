@@ -229,6 +229,169 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
                           deep_gate_prns=deep_gate_prns, deep_gate_margin=deep_gate_margin)
 
 
+def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
+               k_sigma=3.0, min_instances=2, hop_s=5.12e-6, keep_records=False):
+    """THE SERVED C/N0 (task #57): per-record prompt power, q-gated, probe-debiased.
+
+    Replaces the deep fold as the radiometry. The fold RE-SEARCHES a residual rate per
+    integration -- a fit on something the tracking loop already fixed -- and that re-search
+    gives it ~20 dB of its own scatter, measured PAIRED on the same records (>10x on 23% of
+    cycles, 7912 samples, 2026-08-15). Nothing derived from it is a measurement of the
+    satellite. This estimator fits NOTHING: the rate is the tracker's (already applied to the
+    despread), the tap is the loop's, and the only arithmetic is a debiased power ratio.
+
+    THE THREE INGREDIENTS, each load-bearing:
+
+      * PER-RECORD prompt power, fleet-summed then divided by the record's instance count.
+        The per-instance mean (not the raw sum) is what makes a record with a dropped frame
+        comparable to a full one -- signal and noise both scale with n_inst, so the ratio to
+        the probe floor is unaffected in the common case and robust in the degraded one.
+
+      * q-GATED. C/N0 is radiometry CONDITIONAL ON LOCK: a record where the tap sat off the
+        peak measures the tap, not the satellite, and averaging it in is the incoherent
+        estimator's bias (#24). The gate bar comes from the PROBES' own per-record q
+        population (med + k*MAD), i.e. the same statistic on noise-by-construction rows.
+        ⚠️ This on-peak bias is CORRECT here and would be the #49 latch in a trim gate --
+        an estimator publishes its duty and lets the consumer decline; a gate starves the
+        loop. Do not transplant this bar into presence logic.
+        ⚠️ SELECTION BIAS AT THE MARGIN: q and P share noise, so a satellite passing the
+        gate only on upward fluctuations reads high. `duty` is published precisely so a
+        low-duty cn0 can be declined; a duty near 1 has no selection to bias it.
+
+      * PROBE-DEBIASED. E[|P|^2] = |s|^2 + sigma^2, and sigma^2 is MEASURED as the median
+        per-record prompt power of the below-horizon probes -- the only rows that are noise
+        by construction ([[chord-deep-snr-fires-on-noise]]). NO PEER FALLBACK: without
+        probes this returns {} rather than quietly rebuilding the #49 peer competition
+        (the tracked population's median is a SIGNAL level; see apply_presence).
+
+    C/N0 = 10*log10(rho / T_rec) with rho = (P - sigma^2)/sigma^2 meaned over gated records
+    and T_rec the record's coherent span (hops_per_record * hop_s, read from the frames).
+    Every normalisation upstream of P -- element cal, channel weights, the 4+4b scale --
+    cancels in the ratio because the probes ride the identical pipeline.
+
+    Returns {prn: {cn0_db, rho, duty, n_used, n_rec, split_db, sigma2, q_gate, t_rec_s,
+    n_probe_rec, probe}} for every PRN seen (probes included, flagged -- their cn0 SHOULD
+    be None/negative, which is what the AUC leg of the validation bar checks).
+    `split_db` is the even/odd-record self-consistency in dB: free, and it is the
+    split-half witness of the validation bar. keep_records=True adds `recs`
+    [(win, slot, rho, q, gated)] for the offline tools; the broker must not carry it.
+    """
+    probe_prns = set(int(p) for p in (probe_prns or ()))
+    want = None
+    if prns is not None:
+        want = set(int(p) for p in prns) | probe_prns
+    wins = client.windows(chain, lag=lag)
+    if not wins:
+        return {}
+    wins = wins[-int(n_win):]
+    t_rec = None
+    recs = {}   # (win, slot) -> {prn: [e_sum, p_sum, l_sum, n_inst]}
+    for w in wins:
+        for inst, f in client.frame_set(chain, w).items():
+            if t_rec is None and getattr(f, "hops_per_record", 0) > 0:
+                t_rec = f.hops_per_record * hop_s
+            for r in range(f.n_rec):
+                if not f.has_record(r):
+                    continue
+                for prn in f.prns():
+                    if want is not None and prn not in want:
+                        continue
+                    cmb = f.comb_epl(r, prn)
+                    if not cmb:
+                        continue
+                    gE = gP = gL = 0j
+                    eE = eP = eL = 0.0
+                    for _fid, E, P, L, (wE, wP, wL) in cmb:
+                        gE += E * wE
+                        gP += P * wP
+                        gL += L * wL
+                        eE += wE
+                        eP += wP
+                        eL += wL
+                    if eP <= 0.0:
+                        continue
+                    d = recs.setdefault((w, r), {}).setdefault(prn, [0.0, 0.0, 0.0, 0])
+                    d[0] += (abs(gE) / eE) ** 2 if eE > 0.0 else 0.0
+                    d[1] += (abs(gP) / eP) ** 2
+                    d[2] += (abs(gL) / eL) ** 2 if eL > 0.0 else 0.0
+                    d[3] += 1
+    if not recs or t_rec is None:
+        return {}
+
+    # Per-PRN time-ordered per-record series: (win, slot, p_mean, q).
+    series = {}
+    for key in sorted(recs):
+        for prn, (e, p, l, n) in recs[key].items():
+            if n < min_instances:
+                continue
+            q = 2.0 * p / (e + l) if (e + l) > 0.0 else 0.0
+            series.setdefault(prn, []).append((key[0], key[1], p / n, q))
+
+    # THE NOISE ANCHOR. Pooled over the whole capture rather than per record: the per-record
+    # median of 3 probes carries ~20% scatter, the pooled one ~1/sqrt(N); the #56 power
+    # swings are ~hourly against this window's ~1.3 s, so pooling loses nothing they move.
+    probe_p, probe_q = [], []
+    for prn in probe_prns:
+        for _w, _r, p, q in series.get(prn, ()):
+            probe_p.append(p)
+            probe_q.append(q)
+    if len(probe_p) < 16:
+        return {}   # no anchor, no estimate -- never a peer fallback
+    probe_p.sort()
+    probe_q.sort()
+    # ⚠️ THE DEBIAS NEEDS THE MEAN, NOT THE MEDIAN. E[|P|^2] = |s|^2 + sigma^2 with
+    # sigma^2 the noise power's EXPECTATION; the per-record noise power is Gamma-ish
+    # (a few complex-Gaussian dof per instance, ~n_inst of them meaned), whose median
+    # sits BELOW its mean -- the self-test caught a +0.7 dB high bias from exactly this
+    # (Gamma(3): median/mean = 0.89 -> +0.5 dB; ~+0.13 dB at a healthy 11-instance
+    # fleet, still a bias, not noise). The median stays as the CLIP reference only:
+    # mean over records <= 8x median keeps a single contaminated probe record from
+    # dragging the anchor, and clips essentially nothing of a genuine Gamma tail.
+    _med = probe_p[len(probe_p) // 2]
+    if _med <= 0.0:
+        return {}
+    _kept = [x for x in probe_p if x <= 8.0 * _med]
+    sigma2 = sum(_kept) / len(_kept)
+    if sigma2 <= 0.0:
+        return {}
+    q_med = probe_q[len(probe_q) // 2]
+    _mad = sorted(abs(x - q_med) for x in probe_q)[len(probe_q) // 2]
+    q_gate = q_med + max(k_sigma * 1.4826 * _mad, 0.05)
+
+    out = {}
+    for prn, rows in series.items():
+        rho_gated, rec_rows = [], []
+        for w, r, p, q in rows:
+            rho = (p - sigma2) / sigma2
+            gated = q >= q_gate
+            if gated:
+                rho_gated.append(rho)
+            if keep_records:
+                rec_rows.append((w, r, rho, q, gated))
+        n_used, n_tot = len(rho_gated), len(rows)
+        rho_mean = sum(rho_gated) / n_used if n_used else None
+        cn0 = (10.0 * math.log10(rho_mean / t_rec)
+               if rho_mean is not None and rho_mean > 0.0 else None)
+        # Even/odd split of the GATED records: the self-consistency of the number served.
+        split_db = None
+        if n_used >= 8:
+            re_ = sum(rho_gated[0::2]) / len(rho_gated[0::2])
+            ro_ = sum(rho_gated[1::2]) / len(rho_gated[1::2])
+            if re_ > 0.0 and ro_ > 0.0:
+                split_db = 10.0 * math.log10(re_ / ro_)
+        out[prn] = {"cn0_db": cn0,
+                    "rho": rho_mean,
+                    "duty": n_used / float(n_tot) if n_tot else 0.0,
+                    "n_used": n_used, "n_rec": n_tot,
+                    "split_db": split_db,
+                    "sigma2": sigma2, "q_gate": q_gate, "t_rec_s": t_rec,
+                    "n_probe_rec": len(probe_p),
+                    "probe": prn in probe_prns}
+        if keep_records:
+            out[prn]["recs"] = rec_rows
+    return out
+
+
 def chan_profile(row):
     """[(freq_id, q, disc)] sorted by frequency -- the lobe shape one PRN's comb sees.
 

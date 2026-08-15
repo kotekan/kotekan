@@ -319,9 +319,11 @@ class FleetPublisher:
             v = st["ctl"]["carrier_trim_const"] if st else self._ctl["carrier_trim_const"]
         return fallback if v is None else v
 
-    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None):
+    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
+               pcn0=None):
         rows = []
         fcoh = fcoh or {}
+        pcn0 = pcn0 or {}
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
             sd = seeds.get(prn, {})
@@ -577,6 +579,30 @@ class FleetPublisher:
             # The fleet's view stays published beside it (deep_snr / coh_src /
             # fleet_coh_best_inst), so the gain is still visible -- just not conflated
             # with the radiometry.
+            #
+            # ---- THE ESTIMATOR-STACK C/N0 (task #57, 2026-08-15) ------------------------
+            # combdll.prompt_cn0: per-record prompt power off the gather feed, q-gated on
+            # the probes' own per-record q population, noise-debiased by the probes' median
+            # prompt power. NO FIT ANYWHERE IN IT -- the rate is the tracker's, the tap is
+            # the loop's -- which is what cn0_coh_db above can never have: its deep fold
+            # re-searches a residual rate per integration and carries ~20 dB of its own
+            # paired scatter doing so. Both are published; this one is the radiometry to
+            # consume. cn0_prompt_duty is the fraction of records that passed the lock
+            # gate: a duty near 0 means the number rests on a handful of upward
+            # fluctuations (decline it); cn0_prompt_split_db is the even/odd-record
+            # self-consistency, the split-half witness served with the value it witnesses.
+            _pc = pcn0.get(prn)
+            if _pc:
+                row["cn0_prompt_db"] = _pc.get("cn0_db")
+                row["cn0_prompt_duty"] = _pc.get("duty")
+                row["cn0_prompt_n"] = _pc.get("n_used")
+                row["cn0_prompt_split_db"] = _pc.get("split_db")
+                row["cn0_prompt_src"] = ("probes:%d,q>=%.2f"
+                                         % (_pc.get("n_probe_rec", 0),
+                                            _pc.get("q_gate", 0.0)))
+                # The probes themselves ride the same rows (they are seeded PRNs); flag
+                # them so no consumer plots a below-horizon noise reference as a satellite.
+                row["noise_probe"] = bool(_pc.get("probe"))
             #
             # ---- PROMPT LOCK (task #47, 2026-08-12). ------------------------------------
             # EVERY C/N0 IN THIS ROW IS BLIND TO CODE ERROR. deep_snr comes from the deep

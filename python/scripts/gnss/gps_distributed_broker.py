@@ -6773,11 +6773,58 @@ def main(argv=None, rx=None, publisher=None):
                             fleet[prn]["spec_tau"] = v["tau_chips"]
                             fleet[prn]["spec_ratio"] = v["peak"] / max(v["floor"], 1e-12)
                             fleet[prn]["bsat"] = bsat.get(prn, t0)
+            # THE SERVED C/N0 (task #57): per-record prompt power off the gather feed,
+            # q-gated, debiased against the noise probes. Fits NOTHING -- the deep fold's
+            # per-integration rate re-search is a fit on something the tracking loop already
+            # fixed, and its ~20 dB of paired self-scatter is why cn0_coh_db cannot be the
+            # radiometry. Measurement-only: touches no loop, issues no polls (the telemetry
+            # client is a push stream, so recorded transcripts replay byte-identically).
+            # Needs the probes as its noise anchor; without them it publishes nothing rather
+            # than falling back to the peer competition (#49's lesson).
+            _pcn0 = None
+            if telem_client is not None and probe_set:
+                try:
+                    _pcn0 = combdll.prompt_cn0(
+                        telem_client, telem_chain,
+                        n_win=(args.telem_dll_windows or args.telem_windows),
+                        min_instances=args.dll_min_instances,
+                        k_sigma=args.dll_quality_sigma,
+                        prns=set(seeds) or None, probe_prns=probe_set,
+                        hop_s=1.0 / args.hops_per_sec)
+                except Exception as e:
+                    _pcn0 = None
+                    _log_rl("pcn0-err",
+                            "PROMPT-CN0: failed (%s) -- rows served without it" % e)
+                if _pcn0:
+                    _lv = ["PRN %d %.1f dB-Hz (duty %.2f%s)"
+                           % (p, v["cn0_db"], v["duty"],
+                              "" if v["split_db"] is None
+                              else ", split %+.1f" % v["split_db"])
+                           for p, v in sorted(_pcn0.items())
+                           if v["cn0_db"] is not None and not v["probe"]]
+                    _any = next(iter(_pcn0.values()))
+                    # sigma2 is IN the line on purpose: it is a live, probe-anchored noise
+                    # power at cycle cadence -- the first greppable series for #56's
+                    # fleet-wide level swings (measured moving 3 dB in 2 min on 2026-08-15,
+                    # carrying every satellite's served C/N0 with it, common-mode).
+                    _log_rl("pcn0",
+                            "PROMPT-CN0 %s: %s | q_gate %.2f, sigma2 %.3e from %d probe "
+                            "records"
+                            % (telem_chain,
+                               "; ".join(_lv) if _lv else "no PRN above the noise",
+                               _any["q_gate"], _any["sigma2"], _any["n_probe_rec"]),
+                            every_s=30.0)
+                elif telem_client is not None:
+                    _log_rl("pcn0-empty",
+                            "PROMPT-CN0 %s: no estimate this cycle (no windows, or fewer "
+                            "than 16 probe records for the noise anchor)" % telem_chain,
+                            every_s=120.0)
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
                 # input that produced a given correction.
-                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, fcoh)
+                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, fcoh,
+                                 pcn0=_pcn0)
             dll_report = []
             for prn in list(seeds):
                 rec = status.get(prn, {})
