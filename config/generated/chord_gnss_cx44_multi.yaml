@@ -337,8 +337,10 @@ gnss0_b2a_n2dual:
     prns: *id002
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_b2a_inject/set_seeds
+    set_trim_endpoint: /gnss0_b2a_inject/set_trim
     signal: BDS_B2A_P_CS
     trim_endpoint: /gnss0_b2a_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id003
@@ -547,8 +549,10 @@ gnss0_b2b_n2dual:
     prns: *id005
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_b2b_inject/set_seeds
+    set_trim_endpoint: /gnss0_b2b_inject/set_trim
     signal: BDS_B2B_I
     trim_endpoint: /gnss0_b2b_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id006
@@ -769,8 +773,10 @@ gnss0_e5a_n2dual:
     prns: *id008
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_e5a_inject/set_seeds
+    set_trim_endpoint: /gnss0_e5a_inject/set_trim
     signal: GAL_E5A_Q_CS
     trim_endpoint: /gnss0_e5a_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id009
@@ -987,8 +993,10 @@ gnss0_e5b_n2dual:
     prns: *id011
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_e5b_inject/set_seeds
+    set_trim_endpoint: /gnss0_e5b_inject/set_trim
     signal: GAL_E5B_Q_CS
     trim_endpoint: /gnss0_e5b_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id012
@@ -1204,8 +1212,10 @@ gnss0_n2dual:
     prns: *id014
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_inject/set_seeds
+    set_trim_endpoint: /gnss0_inject/set_trim
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss0_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id015
@@ -1424,8 +1434,10 @@ gnss1_b2a_n2dual:
     prns: *id002
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_b2a_inject/set_seeds
+    set_trim_endpoint: /gnss1_b2a_inject/set_trim
     signal: BDS_B2A_P_CS
     trim_endpoint: /gnss1_b2a_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id017
@@ -1609,8 +1621,10 @@ gnss1_b2b_n2dual:
     prns: *id005
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_b2b_inject/set_seeds
+    set_trim_endpoint: /gnss1_b2b_inject/set_trim
     signal: BDS_B2B_I
     trim_endpoint: /gnss1_b2b_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id019
@@ -1800,8 +1814,10 @@ gnss1_e5a_n2dual:
     prns: *id008
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_e5a_inject/set_seeds
+    set_trim_endpoint: /gnss1_e5a_inject/set_trim
     signal: GAL_E5A_Q_CS
     trim_endpoint: /gnss1_e5a_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id021
@@ -1985,8 +2001,10 @@ gnss1_e5b_n2dual:
     prns: *id011
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_e5b_inject/set_seeds
+    set_trim_endpoint: /gnss1_e5b_inject/set_trim
     signal: GAL_E5B_Q_CS
     trim_endpoint: /gnss1_e5b_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id023
@@ -2171,8 +2189,10 @@ gnss1_n2dual:
     prns: *id014
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_inject/set_seeds
+    set_trim_endpoint: /gnss1_inject/set_trim
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss1_inject/get_trim
+    trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
     gnss_local_channels: *id025
