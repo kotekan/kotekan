@@ -103,6 +103,8 @@ private:
     void get_status_callback(kotekan::connectionInstance& conn);
     /// Per-record complex prompts for the fleet's coherent combine (see _rec_export).
     void get_records_callback(kotekan::connectionInstance& conn);
+    /// Per-element complex-gain snapshot (task #57 step 2); registered when n_elements > 0.
+    void get_elements_callback(kotekan::connectionInstance& conn);
 
     /// Nav-bit-wiped deep coherent amplitude from a window of per-record (A, capture-UTC):
     /// bin records into nav-bit epochs by their ABSOLUTE code-period index (from UTC, so
@@ -197,6 +199,21 @@ private:
     std::vector<double> _ge_r, _ge_i;      ///< scratch: per-antenna prompt summed over subbands
     std::vector<double> _acc_epow_el;      ///< [n_prn][n_elem] <|A_e|^2>, the beam-map estimator
     std::vector<double> _acc_ear, _acc_eai; ///< [n_prn][n_elem] <A_e>, the per-antenna phase
+    /// [n_prn][n_elem] THE PER-ELEMENT COMPLEX GAIN (task #57 step 2): EMA of
+    /// A_e * conj(sum of the OTHER elements' A), accumulated PER RECORD so the sky phase --
+    /// common across elements, near-white in time (gnssElemCal.hpp) -- cancels in the product
+    /// before any averaging. _acc_ear/_acc_eai above average the raw A_e and therefore
+    /// collapse under that same phase (their own comment calls the coherent/incoherent ratio
+    /// a "coherence diagnostic"); this is the accumulator whose mean IS the gain.
+    /// The reference is LEAVE-ONE-OUT (unweighted sum minus this element) so no element's
+    /// noise enters its own gain -- the gnssElemCal rule -- and it is built from the RAW
+    /// per-antenna prompts, upstream of the element cal's weights, so #62's non-causal
+    /// weighting cannot touch it. _acc_euq is the matching EMA of |LOO ref|^2 (normalizer).
+    std::vector<double> _acc_eu_r, _acc_eu_i, _acc_euq;
+    /// REST snapshot of the element-gain state (under _st_mtx): [n_prn][n_elem][4] =
+    /// u_re, u_im, <|A_e|^2>, <|ref|^2>, normalized at emit like the element blocks.
+    std::vector<float> _st_elem;
+    double _st_elem_keff = 0.0; ///< effective records behind the snapshot (significance input)
     double _alpha_el = 0.0;                ///< rolling EMA weight for the per-antenna state
     int _integration_length; ///< block: records/output; rolling: EMA time constant (records)
     bool _rolling;           ///< rolling EMA integration vs block-and-reset

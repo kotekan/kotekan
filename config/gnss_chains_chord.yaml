@@ -58,6 +58,13 @@ common:
   # when it needs trimming. 3 probes (deepest below-horizon PRNs, exempt from the
   # below-horizon drop, invisible to every other gate because their sig ~ 0).
   noise-probes: 3
+  # TASK #57 step 2: poll the combiners' /get_elements and serve the per-element complex
+  # gain (amplitude AND phase per antenna, per instance -- the beam/peel coefficients) on
+  # the publisher's /get_elements, with the raw parts archived to NFS for the offline beam
+  # map. The node endpoint ships with the NEXT NODE RESTART; until then every poll 404s,
+  # which the broker counts and skips (rate-limited log), so this is safe to leave on.
+  element-poll: true
+  element-archive-dir: /home/kvand/gnss/fixtures/obs
   rrate-state: true
   # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
   # SAME records and each reply lands on one phase reference. Without this the per-instance

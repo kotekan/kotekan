@@ -73,6 +73,7 @@ from gnss_broker.transport import (           # noqa: E402
 )
 from gnss_broker import telem as _telem                    # noqa: E402  (task #59 gather)
 from gnss_broker import combdll                            # noqa: E402  (task #63 comb DLL)
+from gnss_broker import elemgain                           # noqa: E402  (task #57 step 2)
 from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
@@ -1472,6 +1473,25 @@ def main(argv=None, rx=None, publisher=None):
     ap.add_argument("--telem-windows", type=int, default=8,
                     help="windows of telemetry fed to fleet_coherent (4 records each at the "
                          "default packing, so 8 windows = 32 records ~ 0.34 s)")
+    ap.add_argument("--element-poll", action="store_true",
+                    help="TASK #57 step 2: poll the --dll-combiners' /get_elements each cycle "
+                         "and serve the per-element complex-gain table (amplitude AND phase "
+                         "per antenna, per instance -- the beam/peel coefficients) via the "
+                         "publisher's /get_elements. Off by default and gated on its own flag "
+                         "for the same reason --spectrum-endpoints is: replay is strict-"
+                         "ordered, and old transcripts do not carry these GETs. Instances "
+                         "predating the endpoint (nodes not yet restarted) are skipped and "
+                         "counted, never fatal.")
+    ap.add_argument("--element-archive-dir", default="",
+                    help="append the RAW per-element gain parts (u, p2, q per antenna) to "
+                         "<dir>/elem_<chain>_<YYYYMMDD>.jsonl -- present satellites and the "
+                         "noise probes only. Raw parts on purpose: the beam map and peel "
+                         "solves are offline consumers and a combined number cannot be "
+                         "un-combined. Empty = no archive.")
+    ap.add_argument("--element-archive-every-s", type=float, default=60.0,
+                    help="archive cadence; the gains move on the cal EMA (~1 s) but the beam "
+                         "traces move on the transit timescale, so 60 s loses nothing "
+                         "downstream while keeping the file ~MB/day scale.")
     ap.add_argument("--telem-dll", action="store_true",
                     help="TASK #63: close the CODE loop on the discriminator formed in this "
                          "broker from the un-summed comb (gnss_broker/combdll.py) instead of on "
@@ -2606,6 +2626,7 @@ def main(argv=None, rx=None, publisher=None):
     # runs before this cycle's fleet_dll. See the --lock-prompt-hold note for why the gate
     # needs a fold-independent term at all.
     hold_prev = {}
+    _elem_arch_t = [0.0]   # last per-element archive append (--element-archive-every-s)
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
     cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
@@ -6819,6 +6840,50 @@ def main(argv=None, rx=None, publisher=None):
                             "PROMPT-CN0 %s: no estimate this cycle (no windows, or fewer "
                             "than 16 probe records for the noise anchor)" % telem_chain,
                             every_s=120.0)
+            # THE PER-ELEMENT COMPLEX GAIN (task #57 step 2): amplitude AND phase per
+            # antenna, per instance -- the beam/peel coefficients. Assembled from the
+            # combiners' /get_elements (raw leave-one-out cross-products accumulated per
+            # record node-side, where the element axis lives), significance-anchored on the
+            # noise probes per (instance, element). Measurement-only; touches no loop.
+            if args.element_poll and dll_combiners:
+                try:
+                    _pe, _srv = elemgain.poll_elements(dll_combiners)
+                    _etab = elemgain.gain_table(_pe, probe_set) if _pe else {}
+                    if _etab and publisher is not None:
+                        publisher.set_elements(_etab)
+                    _log_rl("elemgain",
+                            "ELEM-GAIN: %d/%d instance(s) served, %d PRN(s) in the table"
+                            % (_srv, len(dll_combiners), len(_etab)), every_s=120.0)
+                    # RAW archive, present sats + probes, throttled. Reopened per tick --
+                    # at one append a minute a persistent handle buys nothing and a
+                    # reopened one survives log rotation and NFS hiccups.
+                    if (_etab and args.element_archive_dir
+                            and _now() - _elem_arch_t[0] >= args.element_archive_every_s):
+                        _elem_arch_t[0] = _now()
+                        _keep = {p for p, v in (fleet or {}).items()
+                                 if v.get("present")} | set(probe_set)
+                        _fn = os.path.join(
+                            args.element_archive_dir, "elem_%s_%s.jsonl"
+                            % (chain_id, time.strftime("%Y%m%d", time.gmtime())))
+                        with open(_fn, "a") as _fh:
+                            for _tag2, _d2 in _pe.items():
+                                for _p2, _v2 in _d2.items():
+                                    if _p2 not in _keep:
+                                        continue
+                                    _fh.write(json.dumps(
+                                        {"t": round(_now(), 2), "chain": chain_id,
+                                         "prn": _p2, "inst": _tag2,
+                                         "probe": _p2 in probe_set,
+                                         "keff": round(_v2["keff"], 1),
+                                         "hop": _v2["hop"],
+                                         "u": [[float("%.5g" % r), float("%.5g" % i)]
+                                               for r, i in _v2["u"]],
+                                         "p2": [float("%.5g" % x) for x in _v2["p2"]],
+                                         "q": [float("%.5g" % x) for x in _v2["q"]]},
+                                        separators=(",", ":")) + "\n")
+                except Exception as e:
+                    _log_rl("elemgain-err",
+                            "ELEM-GAIN: cycle failed (%s) -- table unchanged" % e)
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the

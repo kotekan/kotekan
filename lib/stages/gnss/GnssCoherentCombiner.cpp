@@ -347,6 +347,10 @@ void GnssCoherentCombiner::main_thread() {
         kotekan::restServer::instance().register_get_callback(
             unique_name + "/get_records",
             std::bind(&GnssCoherentCombiner::get_records_callback, this, _1));
+    if (_n_elements > 0)
+        kotekan::restServer::instance().register_get_callback(
+            unique_name + "/get_elements",
+            std::bind(&GnssCoherentCombiner::get_elements_callback, this, _1));
 
     std::vector<frameID> in_ids;
     for (Buffer* b : in_bufs)
@@ -385,6 +389,9 @@ void GnssCoherentCombiner::main_thread() {
     _acc_epow_el.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_ear.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_eai.assign((size_t)_n_prn * _n_elements, 0.0);
+    _acc_eu_r.assign((size_t)_n_prn * _n_elements, 0.0);
+    _acc_eu_i.assign((size_t)_n_prn * _n_elements, 0.0);
+    _acc_euq.assign((size_t)_n_prn * _n_elements, 0.0);
     _alpha_el = 1.0 / (double)_integration_length;
     long long n_roll = 0;      // rolling: total records seen (for EMA bias correction)
     long long win_hop = -1;    // absolute hop index labelling the current E/P/L window
@@ -544,19 +551,47 @@ void GnssCoherentCombiner::main_thread() {
             // a time. |A_e|^2 is incoherent -- it needs no per-antenna phase model and grows
             // like sqrt(K) -- while <A_e> keeps the phase for the complex gain.
             if (_n_elements > 0) {
+                // Array sum of the raw per-antenna prompts, for the LEAVE-ONE-OUT reference
+                // below. Unweighted on purpose: the raw G_e are upstream of the element cal,
+                // so nothing non-causal (#62) and no element's own noise (via a weight fitted
+                // to it) can enter its reference.
+                double gsum_r = 0.0, gsum_i = 0.0;
+                for (int el = 0; el < _n_elements; ++el) {
+                    gsum_r += _ge_r[el];
+                    gsum_i += _ge_i[el];
+                }
                 for (int el = 0; el < _n_elements; ++el) {
                     const double aer = energy > 0.0 ? _ge_r[el] / energy : 0.0;
                     const double aei = energy > 0.0 ? _ge_i[el] / energy : 0.0;
                     const double p2e = aer * aer + aei * aei;
+                    // THE COMPLEX GAIN'S PER-RECORD PRODUCT (task #57 step 2):
+                    // A_e * conj(ref_e), ref_e = the OTHER elements' sum, THIS record. The
+                    // sky phase is common to A_e and ref_e and cancels here, per record --
+                    // which is exactly what the raw mean _acc_ear cannot do (it averages the
+                    // phase itself, near-white in time, and collapses). The mean of this
+                    // product is unbiased for g_e * <|s_ref|^2>: the element's noise is
+                    // uncorrelated with its leave-one-out reference, so noise averages down
+                    // COHERENTLY instead of rectifying -- no debias term needed in the mean.
+                    const double rr = energy > 0.0 ? (gsum_r - _ge_r[el]) / energy : 0.0;
+                    const double ri = energy > 0.0 ? (gsum_i - _ge_i[el]) / energy : 0.0;
+                    const double eur = aer * rr + aei * ri;
+                    const double eui = aei * rr - aer * ri;
+                    const double euq = rr * rr + ri * ri;
                     const size_t k = (size_t)p * _n_elements + el;
                     if (_rolling) {
                         _acc_epow_el[k] += _alpha_el * (p2e - _acc_epow_el[k]);
                         _acc_ear[k] += _alpha_el * (aer - _acc_ear[k]);
                         _acc_eai[k] += _alpha_el * (aei - _acc_eai[k]);
+                        _acc_eu_r[k] += _alpha_el * (eur - _acc_eu_r[k]);
+                        _acc_eu_i[k] += _alpha_el * (eui - _acc_eu_i[k]);
+                        _acc_euq[k] += _alpha_el * (euq - _acc_euq[k]);
                     } else {
                         _acc_epow_el[k] += p2e;
                         _acc_ear[k] += aer;
                         _acc_eai[k] += aei;
+                        _acc_eu_r[k] += eur;
+                        _acc_eu_i[k] += eui;
+                        _acc_euq[k] += euq;
                     }
                 }
             }
@@ -1170,6 +1205,12 @@ void GnssCoherentCombiner::main_thread() {
             // CMB_ELEM_AMP_INCOH is directly comparable with rec[3] -- for a single-antenna
             // configuration with reference_element = e they are the same number.
             if (_n_elements > 0) {
+                // The element-gain REST snapshot rides the same emit, same `inv`
+                // normalization, under the status mutex (REST reads it from another thread).
+                std::lock_guard<std::mutex> elk(_st_mtx);
+                if (_st_elem.size() != (size_t)_n_prn * _n_elements * 4)
+                    _st_elem.assign((size_t)_n_prn * _n_elements * 4, 0.0f);
+                _st_elem_keff = Keff;
                 for (int el = 0; el < _n_elements; ++el) {
                     float* eb = rec + gnss::RECORD_FLOATS + (size_t)el * gnss::ELEM_FLOATS;
                     const size_t k = (size_t)p * _n_elements + el;
@@ -1178,6 +1219,11 @@ void GnssCoherentCombiner::main_thread() {
                     eb[gnss::CMB_ELEM_MEAN_RE] = (float)mr;
                     eb[gnss::CMB_ELEM_MEAN_IM] = (float)mi;
                     eb[gnss::CMB_ELEM_AMP_COH] = (float)std::hypot(mr, mi);
+                    float* se = _st_elem.data() + k * 4;
+                    se[0] = (float)(_acc_eu_r[k] * inv);
+                    se[1] = (float)(_acc_eu_i[k] * inv);
+                    se[2] = (float)(_acc_epow_el[k] * inv);
+                    se[3] = (float)(_acc_euq[k] * inv);
                 }
             }
             // DLL observables (gnssRecord.hpp): window-averaged full-band Early/Late powers and
@@ -2315,6 +2361,36 @@ void GnssCoherentCombiner::get_records_callback(kotekan::connectionInstance& con
                          // is the exact cross-node key, re/im are energy-normalized (so directly
                          // comparable across instances), energy is the ML combining weight.
                          {"records", _st_recex[p]}});
+    }
+    conn.send_json_reply(reply);
+}
+
+void GnssCoherentCombiner::get_elements_callback(kotekan::connectionInstance& conn) {
+    // THE PER-ELEMENT COMPLEX GAIN export (task #57 step 2). Per PRN, per element:
+    // [u_re, u_im, p2, q] where u = <A_e * conj(LOO ref)> (the gain, phase relative to the
+    // array-mean convention), p2 = <|A_e|^2> (the incoherent beam-map power, still biased --
+    // its debias is the broker's job, from the probes), q = <|LOO ref|^2> (the normalizer:
+    // amp_e ~ |u|/q in array-mean units). keff is the effective record count behind the EMA,
+    // which is what a significance needs. Raw parts on purpose: a combined number can always
+    // be rebuilt from the parts; parts can never be recovered from a combined number.
+    nlohmann::json reply = nlohmann::json::array();
+    std::lock_guard<std::mutex> lk(_st_mtx);
+    if (_st_elem.size() == (size_t)_n_prn * _n_elements * 4) {
+        for (int p = 0; p < _n_prn; ++p) {
+            if (_st_prn[p] < 0)
+                continue;
+            nlohmann::json els = nlohmann::json::array();
+            for (int el = 0; el < _n_elements; ++el) {
+                const float* se = _st_elem.data() + ((size_t)p * _n_elements + el) * 4;
+                els.push_back({se[0], se[1], se[2], se[3]});
+            }
+            reply.push_back({{"prn", _st_prn[p]},
+                             {"doppler_hz", _st_dop[p]},
+                             {"pow_hop", _st_pow_hop},
+                             {"keff", _st_elem_keff},
+                             {"n_elem", _n_elements},
+                             {"elems", els}});
+        }
     }
     conn.send_json_reply(reply);
 }

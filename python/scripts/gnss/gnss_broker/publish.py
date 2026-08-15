@@ -162,7 +162,7 @@ class FleetPublisher:
                 # 404 rather than an empty list, because gps_feed.js already documents "a 404 on
                 # a missing gal_/bds_ stage just skips that chain" -- so the column goes away
                 # instead of going quietly blank, and curl says which chains DO exist.
-                _EPS = ("get_status", "get_detections", "get_chains")
+                _EPS = ("get_status", "get_detections", "get_chains", "get_elements")
                 asked = want
                 if asked is None and len(segs) >= 2 and segs[-1] in _EPS:
                     asked = segs[-2]
@@ -184,6 +184,14 @@ class FleetPublisher:
                                            for c in pub._order]).encode()
                     elif p.endswith("get_detections"):
                         body = json.dumps(pub._collect(ids, "dets")).encode()
+                    elif p.endswith("get_elements"):
+                        # One chain asked -> its table directly (the viewer's shape); no
+                        # selector -> {chain: table}, so the merged form can never be
+                        # mistaken for a single chain's (the /zzz lesson above).
+                        _et = {c: pub._chains[c].get("elem") or {} for c in ids}
+                        body = json.dumps(_et[ids[0]] if (asked in pub._chains
+                                                          and len(ids) == 1)
+                                          else _et).encode()
                     elif p.endswith("get_status"):
                         body = json.dumps(pub._collect(ids, "rows")).encode()
                     else:
@@ -281,7 +289,7 @@ class FleetPublisher:
         unchanged whether it is the only chain or one of five."""
         with self._lock:
             if chain not in self._chains:
-                self._chains[chain] = {"rows": [], "dets": [], "meta": {},
+                self._chains[chain] = {"rows": [], "dets": [], "meta": {}, "elem": {},
                                        "ctl": {"carrier_trim_const": None},
                                        "sig": signal, "band": band,
                                        "desc": dict(meta or {}, chain=chain,
@@ -318,6 +326,18 @@ class FleetPublisher:
             st = self._chains.get(chain) if chain else None
             v = st["ctl"]["carrier_trim_const"] if st else self._ctl["carrier_trim_const"]
         return fallback if v is None else v
+
+    def set_elements(self, table, chain=None):
+        """The per-element complex-gain table (task #57 step 2), served on /get_elements.
+
+        {prn: {probe, inst: {tag: {keff, amp[], ph[], sig[]}}}} -- amplitude AND phase per
+        antenna per instance, the beam/peel coefficients (gnss_broker/elemgain.py). Stored
+        whole and replaced whole; a stamped `utc` rides along so a stalled producer is
+        visible as an aging table rather than a fresh-looking stale one."""
+        with self._lock:
+            st = self._chains.get(chain)
+            if st is not None:
+                st["elem"] = {"utc": _now(), "prns": table}
 
     def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
                pcn0=None):
@@ -679,3 +699,6 @@ class _ChainView(object):
 
     def carrier_trim_const(self, fallback):
         return self._pub.carrier_trim_const(fallback, chain=self._chain)
+
+    def set_elements(self, table):
+        return self._pub.set_elements(table, chain=self._chain)
