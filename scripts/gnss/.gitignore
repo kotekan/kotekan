@@ -7,3 +7,4 @@ sumtrack_test
 *.cx[0-9]*
 *.o
 *.o.d
+carrier_nco_gate

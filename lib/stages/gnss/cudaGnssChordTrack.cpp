@@ -111,8 +111,12 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // faster than the effect (deep_snr max swung 52-197 in four minutes, 2026-08-13).
     // ⚠️ MUST be set on the despread the same way in BOTH producers, or path A and path B
     // silently run different arms on the same node and the comparison means nothing.
-    despread->set_carrier_phase_from_ref(
-        config.get_default<bool>(unique_name, "carrier_phase_from_ref", true));
+    // #71: `carrier_phase_mode` supersedes the bool, and DEFAULTS TO IT so nothing moves
+    // until a config says so -- arm 2 changes the replica's phase history and has to be armed
+    // deliberately, on a node restart, with the continuity gate run against it.
+    despread->set_carrier_phase_mode(config.get_default<int>(
+        unique_name, "carrier_phase_mode",
+        config.get_default<bool>(unique_name, "carrier_phase_from_ref", true) ? 1 : 0));
     // MUST follow the construction above: enabling it next to the config read dereferenced a
     // null unique_ptr and the node SEGV'd 12 s into startup. The cf06 build did not catch it --
     // the aggregator links this file but never instantiates cudaGnssChordTrack.

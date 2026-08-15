@@ -2,6 +2,7 @@
 
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
+#include "gnssCarrierNco.hpp"
 
 #include <cuda_runtime.h>
 #include <cmath>
@@ -24,7 +25,38 @@ struct GnssCudaDespread::Impl {
     long long window_start = 0;
     /// A/B arm for task #52 -- see gnss_cuda::DespreadParams::carrier_phase_from_ref.
     /// ⚠️ TEMPORARY (task #55). Default = the fix.
+    ///   0 = absolute sample (pre-86349ac4d), 1 = referenced to the window (#52's fix),
+    ///   2 = ACCUMULATED (#71) -- see ang0_acc_for. The KERNEL is identical for 1 and 2;
+    ///       only the host's choice of ang0 differs, so arm 2 cannot perturb the arithmetic.
     int carrier_phase_from_ref = 1;
+
+    /// ── #71: THE ACCUMULATOR, i.e. an actual NCO ────────────────────────────────────────
+    /// Arms 0 and 1 both evaluate the phase as f * n0 with n0 an ABSOLUTE sample index, so
+    /// the replica's whole phase history hangs off the CURRENT frequency estimate. n0/fs is
+    /// the uptime (~5.85e5 s at a week), which makes that a lever of catastrophic length: a
+    /// Doppler change of 2.7e-7 Hz rotates the phase by a full radian. And the Doppler is
+    /// re-propagated EVERY RECORD (cudaGnssChordTrack.cpp: propagate_seed per record, moving
+    /// it by dop_rate * 10.5 ms = 1e-4..6e-3 Hz), so every record's replica phase is offset
+    /// by a large, essentially arbitrary constant. It is invisible to |A| -- tracking, q, the
+    /// DLL and the incoherent C/N0 are all POWER -- and fatal to everything cross-record.
+    ///
+    /// ⚠️ THIS IS THE SAME BUG THE L1 PATH FIXED ON 2026-07-10. GnssChannelizedTracker.cpp
+    /// says it plainly: "retuning its frequency by df mid-stream rotates the whole phase
+    /// history by 2*pi*df*t_abs ... this was the root cause of the L1 deep decay". That path
+    /// pins the replica frequency between re-anchors and integrates the correction in an NCO
+    /// (phi += 2*pi*f*dt). The CHORD path never got the same treatment.
+    ///
+    /// The cure is to stop asking "what is the phase at absolute sample n0" and start asking
+    /// "how much phase has accrued since the last record" -- the lever becomes ONE RECORD
+    /// (3.36e7 samples) instead of the uptime, and a frequency update changes the SLOPE
+    /// going forward rather than teleporting the value.
+    ///
+    /// TRAPEZOIDAL IN f, not the last frequency held constant: the Doppler moves linearly
+    /// between records (dop_rate is exactly that model), so averaging the interval's two
+    /// endpoints integrates it EXACTLY rather than to first order. That is also what makes a
+    /// short gap safe -- a dropped record still integrates correctly across the hole.
+    std::vector<gnss::CarrierNco> pacc;
+    unsigned long long pacc_reanchor = 0;
 
     // Device buffers (persistent).
     float2* d_data = nullptr;                  // [n_chan][n_hops]
@@ -77,6 +109,7 @@ struct GnssCudaDespread::Impl {
         Lf = bank.fft_len() * 4; // num_taps -- matches the bank's prototype (pfb num_taps)
         // NB the bank doesn't expose num_taps; derive Lf from a probe filter below instead.
         all_chans = ids;
+        pacc.assign((size_t)np, gnss::CarrierNco{}); // one NCO per PRN slot (#71)
         // Validate against the spectrum, and reject duplicates: a repeated bin would double
         // that channel's weight in the coherent sum and quietly bias every correlation.
         for (int i = 0; i < nc; ++i) {
@@ -215,6 +248,32 @@ struct GnssCudaDespread::Impl {
         return (double)(TWO_PI_L * fr);
     }
 
+    /// Arm 2's ang0: the phase ACCRUED since this PRN's previous record, not the phase at an
+    /// absolute sample. See PhaseAcc for why. Stateful and therefore ORDER-DEPENDENT -- it
+    /// must be called once per PRN per record, in record order, which is how build_jobs runs.
+    ///
+    /// ⚠️ THE ABSOLUTE VALUE IS MEANINGLESS AND THAT IS FINE. Only phase DIFFERENCES between
+    /// records are observable in a correlation; the constant of integration cancels. What
+    /// this buys is that the difference is now the physical one instead of
+    /// 2*pi*df*uptime of bookkeeping.
+    double ang0_acc_for(int p, double doppler_hz, double ctrim_hz, long long n0) {
+        const double f_now = bank.carrier_offset(p) + doppler_hz + ctrim_hz;
+        if ((size_t)p >= pacc.size())
+            return ang0_for(p, doppler_hz, ctrim_hz, n0);
+        // A gap longer than this cannot be integrated honestly: only the endpoint frequencies
+        // are known and the Doppler may have been re-seeded inside the hole, so re-anchor and
+        // SAY SO rather than extrapolate. 64 records ~ 0.67 s; the trapezoid's own error over
+        // that is < 1e-3 cycles at a 0.5 Hz/s dop_rate, so the bound is about not trusting the
+        // model through a re-seed, not about arithmetic.
+        const long long GAP_MAX = 64LL * 2048LL * 16384LL;
+        // Seed a re-anchor from the absolute form: any value is admissible (only phase
+        // DIFFERENCES are observable), and this one keeps arm 2 numerically comparable to
+        // arm 1 on the first record of a track.
+        return gnss::carrier_nco_advance(pacc[(size_t)p], f_now, n0, fs,
+                                         ang0_for(p, doppler_hz, ctrim_hz, n0), GAP_MAX,
+                                         &pacc_reanchor);
+    }
+
     // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz.
     PhiCache& ensure_phi(int p, double doppler) {
         PhiCache& pc = phi[(size_t)p];
@@ -287,6 +346,16 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
 
 void GnssCudaDespread::set_carrier_phase_from_ref(bool on) {
     _impl->carrier_phase_from_ref = on ? 1 : 0;
+}
+
+void GnssCudaDespread::set_carrier_phase_mode(int mode) {
+    // Clamped rather than trusted: an out-of-range arm would silently fall through to the
+    // absolute-sample path, which is the one arm nobody wants and the hardest to notice.
+    _impl->carrier_phase_from_ref = (mode < 0) ? 0 : ((mode > 2) ? 2 : mode);
+}
+
+unsigned long long GnssCudaDespread::carrier_phase_reanchors() const {
+    return _impl->pacc_reanchor;
 }
 
 void GnssCudaDespread::enable_split_timing(bool on) {
@@ -374,8 +443,11 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
                         1.0 / cps,
                         wc,
                         // Same n0 the kernel is handed below (par.n0) -- hop's LAST sample.
-                        im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
-                                    im.window_start + im.bank.fft_len() - 1),
+                        (im.carrier_phase_from_ref == 2
+                             ? im.ang0_acc_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
+                                               im.window_start + im.bank.fft_len() - 1)
+                             : im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
+                                           im.window_start + im.bank.fft_len() - 1)),
                         im.code_offset[(size_t)sp.p],
                         (int)im.code_len,
                         mask,
@@ -461,8 +533,11 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
                         cps,
                         1.0 / cps,
                         wc,
-                        im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
-                                    window_start_sample + im.bank.fft_len() - 1),
+                        (im.carrier_phase_from_ref == 2
+                             ? im.ang0_acc_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
+                                               window_start_sample + im.bank.fft_len() - 1)
+                             : im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
+                                           window_start_sample + im.bank.fft_len() - 1)),
                         im.code_offset[(size_t)sp.p],
                         (int)im.code_len,
                         mask,

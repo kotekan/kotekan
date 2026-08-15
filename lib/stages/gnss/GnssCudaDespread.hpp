@@ -96,6 +96,16 @@ public:
     /// half the fleet can run each arm and be compared IN ONE POLL, because the sky churns
     /// faster than a before/after across two restarts can resolve.
     void set_carrier_phase_from_ref(bool on);
+    /// #71: the same arm as an explicit MODE. 0 = absolute sample, 1 = window-referenced
+    /// (#52's fix), 2 = ACCUMULATED across records -- a real NCO, which is the only one of the
+    /// three whose phase DIFFERENCES are physical. The bool setter above stays for callers that
+    /// only ever knew about arms 0/1; it maps false->0, true->1 and can never select 2.
+    void set_carrier_phase_mode(int mode);
+    /// #71, arm 2 only: how many times the accumulator had to RE-ANCHOR (first sight of a PRN,
+    /// or a gap too long to integrate through). Each one is a genuine phase discontinuity, so a
+    /// cross-record estimator wanting to trust a span must be able to ask whether one fell
+    /// inside it. Monotone; 0 in arms 0 and 1.
+    unsigned long long carrier_phase_reanchors() const;
 
     void enable_split_timing(bool on);
     /// Last frame's split, milliseconds. False if timing is off or the events are not resolved.
