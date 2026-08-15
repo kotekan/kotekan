@@ -245,10 +245,17 @@ A-B-A by parking the gather, median cycle time (the per-chain `active=` line), a
 | A gather up, 62832 B | 18.6 | 15.7 | 16.4 | 16.5 | 16.1 | **16.5 s** |
 | B gather PARKED | 11.5 | 14.2 | 11.5 | 10.3 | 11.7 | **11.5 s** |
 | A2 gather up again | 17.8 | 20.0 | 21.6 | 12.8 | 16.8 | **17.8 s** |
-| **C 25200 B, telemetry live** | 11.7 | 11.2 | 14.3 | 11.5 | 12.4 | **11.7 s** |
+| **C 25200 B, telemetry live** | 12.0 | 13.0 | 14.6 | 11.5 | 13.1 | **13.0 s** |
 
 11.5 s is the pre-transport baseline (11.8 s on 2026-08-12). Four of those chains run no
 broker-side comb code, so this was the transport, not task #63.
+
+Row C is **~75% of the regression recovered**, not all of it — and note it carries MORE
+traffic than row A did, because the previously-wedged instances rejoined in the same restart
+(40 → 50 senders). ⚠️ The first reading of row C was 11.7 s on n=6–8 per chain and was
+reported as a full recovery; at n=14–17 it is 13.0 s. A ~1 s effect needs more than six
+cycles, and the residual ~1.2 s above baseline is NOT the comb DLL — the worst chain
+(bds_b2a, 14.6 s) does not run it.
 
 ⚠️ **THE FIRST TEST AIMED AT THE WRONG SYMPTOM.** The *search pass rate* is unchanged with the
 gather parked (3 passes/60 s either way — its merge is compute-bound in `refine`), and that
