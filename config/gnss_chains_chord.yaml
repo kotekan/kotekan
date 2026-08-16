@@ -487,8 +487,19 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # but it is inherited, not measured here -- if the loop chases and loses (disc ramping
     # -0.9 -> +0.9 through each q maximum, the 1.4/s failure mode), that is the number to move.
     # Revert: delete these two lines and restart the broker.
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
+    # ⚠️ DISARMED 2026-08-16 01:45 -- ARMING THIS REMOVED THE PULL-IN PATH AND KILLED THE
+    # CHAIN. Setting fleet-trim-url makes the broker SKIP the Python slow trim entirely
+    # (`if not args.fleet_trim_url:` in gps_distributed_broker.py), and the C++ fleet loop
+    # only trims PRNs that are ARMED, i.e. that already passed presence. This chain has NO
+    # detectors -- it is dead-reckon only -- so the slow trim was its ONLY route from
+    # off-peak to on-peak. With both gone it observed 0 armed PRNs and no code loop at all.
+    # gps_l5 survives the same config because its SEARCH re-acquires independently and hands
+    # presence to the C++ loop; these four chains have nothing that can do that.
+    # ⚠️ RE-ARM ONLY WITH A HANDOVER: the Python trim must keep running for NOT-YET-ARMED
+    # PRNs (acquisition authority) and stand down once the C++ loop takes a PRN. Arming
+    # without that is #49's latch made absolute.
+    # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    # fleet-trim-bandwidth: 2.5
     # ── #33 P3 step 3, LIVE ARM (2026-08-13, KV): the carrier loop CLOSED on this chain ──
     # carrier_correction_hz() -> carrier_trim_hz per (sat, band): receiver f_carrier + this
     # sat's orbital rrate, one command, one controller. CONTROLS, both in the same poll:
@@ -839,8 +850,19 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # its same-satellite control, exactly as gal_e5b is gal_e5a's.
     # ⚠️ This keeps #33's same-carrier pair intact: gal_e5a and bds_b2a are now BOTH code-armed,
     # so that comparison still differs only in the carrier command, which is the point of it.
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
+    # ⚠️ DISARMED 2026-08-16 01:45 -- ARMING THIS REMOVED THE PULL-IN PATH AND KILLED THE
+    # CHAIN. Setting fleet-trim-url makes the broker SKIP the Python slow trim entirely
+    # (`if not args.fleet_trim_url:` in gps_distributed_broker.py), and the C++ fleet loop
+    # only trims PRNs that are ARMED, i.e. that already passed presence. This chain has NO
+    # detectors -- it is dead-reckon only -- so the slow trim was its ONLY route from
+    # off-peak to on-peak. With both gone it observed 0 armed PRNs and no code loop at all.
+    # gps_l5 survives the same config because its SEARCH re-acquires independently and hands
+    # presence to the C++ loop; these four chains have nothing that can do that.
+    # ⚠️ RE-ARM ONLY WITH A HANDOVER: the Python trim must keep running for NOT-YET-ARMED
+    # PRNs (acquisition authority) and stand down once the C++ loop takes a PRN. Arming
+    # without that is #49's latch made absolute.
+    # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    # fleet-trim-bandwidth: 2.5
     # #33: COMMAND-OFF on purpose -- the same-carrier control arm for gal_e5a's closed
     # loop (its feed auto-prefers deep_rate_full_* once the tracker restart serves them).
     trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,http://cx27:12049/gnss{0..1}_b2a_inject,\
@@ -891,8 +913,19 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
     # gal_e5a only, OFF here and on bds_b2a/bds_b2b. With every chain now code-armed, that
     # comparison differs in the carrier command ALONE, which is what it was always meant to
     # isolate. (Between 20:32Z and now it was briefly confounded; see gal_e5a's note.)
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
+    # ⚠️ DISARMED 2026-08-16 01:45 -- ARMING THIS REMOVED THE PULL-IN PATH AND KILLED THE
+    # CHAIN. Setting fleet-trim-url makes the broker SKIP the Python slow trim entirely
+    # (`if not args.fleet_trim_url:` in gps_distributed_broker.py), and the C++ fleet loop
+    # only trims PRNs that are ARMED, i.e. that already passed presence. This chain has NO
+    # detectors -- it is dead-reckon only -- so the slow trim was its ONLY route from
+    # off-peak to on-peak. With both gone it observed 0 armed PRNs and no code loop at all.
+    # gps_l5 survives the same config because its SEARCH re-acquires independently and hands
+    # presence to the C++ loop; these four chains have nothing that can do that.
+    # ⚠️ RE-ARM ONLY WITH A HANDOVER: the Python trim must keep running for NOT-YET-ARMED
+    # PRNs (acquisition authority) and stand down once the C++ loop takes a PRN. Arming
+    # without that is #49's latch made absolute.
+    # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    # fleet-trim-bandwidth: 2.5
     trackers: "http://cx19:12049/gnss{0..1}_e5b_inject,\
 http://cx27:12049/gnss{0..1}_e5b_inject,\
 http://cx42:12049/gnss{0..1}_e5b_inject,\
@@ -941,8 +974,19 @@ http://cx51:12049/gnss{0..1}_e5b_n2combine"
     # disc with no peak is what NOISE looks like, not what on-peak looks like, so do not read
     # an improvement here as the loop working. Judge it on q, and on whether p_pow leaves the
     # noise floor at all.
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
+    # ⚠️ DISARMED 2026-08-16 01:45 -- ARMING THIS REMOVED THE PULL-IN PATH AND KILLED THE
+    # CHAIN. Setting fleet-trim-url makes the broker SKIP the Python slow trim entirely
+    # (`if not args.fleet_trim_url:` in gps_distributed_broker.py), and the C++ fleet loop
+    # only trims PRNs that are ARMED, i.e. that already passed presence. This chain has NO
+    # detectors -- it is dead-reckon only -- so the slow trim was its ONLY route from
+    # off-peak to on-peak. With both gone it observed 0 armed PRNs and no code loop at all.
+    # gps_l5 survives the same config because its SEARCH re-acquires independently and hands
+    # presence to the C++ loop; these four chains have nothing that can do that.
+    # ⚠️ RE-ARM ONLY WITH A HANDOVER: the Python trim must keep running for NOT-YET-ARMED
+    # PRNs (acquisition authority) and stand down once the C++ loop takes a PRN. Arming
+    # without that is #49's latch made absolute.
+    # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    # fleet-trim-bandwidth: 2.5
     trackers: "http://cx19:12049/gnss{0..1}_b2b_inject,\
 http://cx27:12049/gnss{0..1}_b2b_inject,\
 http://cx42:12049/gnss{0..1}_b2b_inject,\
