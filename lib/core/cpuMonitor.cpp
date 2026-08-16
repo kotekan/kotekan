@@ -84,6 +84,7 @@ void CpuMonitor::track_cpu() {
         }
 
         // Read each thread stats based on tid
+        std::unique_lock<std::mutex> lock(ult_lock);
         for (auto stage : tid_list) {
             for (auto tid : stage.second) {
                 char fname[40];
@@ -158,6 +159,8 @@ void CpuMonitor::track_cpu() {
                 }
             }
         }
+        lock.unlock();
+
         // Update cpu time
         prev_cpu_time = cpu_time;
 
@@ -175,6 +178,7 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
         return;
     }
 
+    std::lock_guard<std::mutex> lock(ult_lock);
     for (auto& stage : ult_list) {
         nlohmann::json stage_cpu_ult = {};
         for (auto& thread : stage.second) {
