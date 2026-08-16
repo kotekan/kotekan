@@ -84,6 +84,7 @@ from gnss_broker.fleet import (               # noqa: E402
     fit_spectrum_delay,
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
+from gnss_broker.seed import Seed                          # noqa: E402  (task #83)
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
@@ -4086,8 +4087,9 @@ def main(argv=None, rx=None, publisher=None):
             # t_abs*f_chip*(dop-seed_dop)/f_c offset -- chips off-peak for any mid-run
             # acquisition, before tracking even starts).
             ((_, cp_seed_cur),) = cp_to_seed_currency([(ref_hop, cp, dop)], seed_dop)
-            seed = {"doppler_hz": seed_dop, "code_phase_chips": cp_seed_cur,
-                    "code_phase_rate": 0.0, "ref_hop": ref_hop}
+            seed = Seed.born("det", epoch=ref_hop,
+                             doppler_hz=seed_dop, code_phase_chips=cp_seed_cur,
+                             code_phase_rate=0.0, ref_hop=ref_hop)
             # 2nd-order carrier feed-forward: hand the tracker the almanac Doppler RATE (Hz/s, sign-
             # applied like doppler_hz); the tracker integrates it in its NCO (never a replica
             # retune -- that walks the absolutely-anchored code/carrier off-peak) so the deep-
@@ -4928,13 +4930,15 @@ def main(argv=None, rx=None, publisher=None):
             for p in deep_low:
                 if p not in seeds:
                     _log("noise probe PRN %d seeded (elev %.0f)" % (p, pred[p][2]))
-                seeds[p] = {"doppler_hz": pred[p][0] + clock_bias,
-                            "code_phase_chips": 0.0,
-                            "code_phase_rate": cp_rate_from_code_bias(
-                                pred[p][0], code_bias_ema or 0.0, args.hops_per_sec,
-                                args.chip_rate_hz, args.carrier_hz),
-                            "ref_hop": 0,
-                            "doppler_rate_hz_s": pred[p][1]}
+                seeds[p] = Seed.born(
+                    "probe", epoch=0,
+                    doppler_hz=pred[p][0] + clock_bias,
+                    code_phase_chips=0.0,
+                    code_phase_rate=cp_rate_from_code_bias(
+                        pred[p][0], code_bias_ema or 0.0, args.hops_per_sec,
+                        args.chip_rate_hz, args.carrier_hz),
+                    ref_hop=0,
+                    doppler_rate_hz_s=pred[p][1])
         # TRACK WATCHDOG (--watchdog-s, default off): a sat the SEARCH sees STRONGLY that
         # has not produced a single coherent emit for this long is broken, whatever the
         # cause -- aliased NCO (the resid estimator cannot see past +-1/(4*T_rec)), a
@@ -6429,16 +6433,17 @@ def main(argv=None, rx=None, publisher=None):
                             # phase, which carries the clock EMA jitter raw. NOT popping
                             # dll_trim: same trajectory, later epoch; the trim's residual is
                             # still valid (the lesson of the reverted repin).
-                            seeds[prn] = {
-                                "doppler_hz": dop_seed,
-                                "code_phase_chips": dr_cp0(
+                            seeds[prn] = Seed.born(
+                                "dr_slew", epoch=h1,
+                                doppler_hz=dop_seed,
+                                code_phase_chips=dr_cp0(
                                     _held + _step, t_h, dop_seed,
                                     args.chip_rate_hz, args.carrier_hz,
                                     args.code_doppler_sign, _DR_MOD),
-                                "code_phase_rate": cp_rate_from_code_bias(
+                                code_phase_rate=cp_rate_from_code_bias(
                                     dop_seed, la, args.hops_per_sec,
                                     args.chip_rate_hz, args.carrier_hz),
-                                "ref_hop": h1, "doppler_rate_hz_s": drate}
+                                ref_hop=h1, doppler_rate_hz_s=drate)
                             # #45 STEP 6: ship the PHASE as well. propagate_seed prefers it
                             # and it carries no sample-0 lever, so a later dop edit cannot
                             # desynchronise the pair (#42's writer, #44's coast). Both are
@@ -6461,13 +6466,15 @@ def main(argv=None, rx=None, publisher=None):
                                  " rate %+.2f)" % (prn, v["el"], cp0, dop_seed, drate))
                         dll_trim.pop(prn, None)  # any old trim served the OLD anchor
                         dll_last.pop(prn, None)
-                        seeds[prn] = {
-                            "doppler_hz": dop_seed, "code_phase_chips": cp0,
-                            "code_phase_rate": cp_rate_from_code_bias(
+                        _rh_birth = int(round(t_now_abs * args.hops_per_sec))
+                        seeds[prn] = Seed.born(
+                            "dr_birth", epoch=_rh_birth,
+                            doppler_hz=dop_seed, code_phase_chips=cp0,
+                            code_phase_rate=cp_rate_from_code_bias(
                                 dop_seed, la, args.hops_per_sec,
                                 args.chip_rate_hz, args.carrier_hz),
-                            "ref_hop": int(round(t_now_abs * args.hops_per_sec)),
-                            "doppler_rate_hz_s": drate}
+                            ref_hop=_rh_birth,
+                            doppler_rate_hz_s=drate)
                         # #45 STEP 6, birth/re-pin arm. cp0 was just built FROM this phase
                         # (cp_predicted + _off at t_now_abs), so shipping it costs nothing
                         # and removes the round trip the tracker would otherwise redo.
