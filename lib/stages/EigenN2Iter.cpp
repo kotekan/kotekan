@@ -15,7 +15,7 @@
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>     // for copy, copy_backward, equal, max, min
+#include <algorithm>     // for copy, copy_backward, equal, find, max, min
 #include <atomic>        // for atomic_bool
 #include <blaze/Blaze.h> // for DynamicMatrix, DMatDeclHermExpr, band, HermitianMatrix
 #include <cblas.h>       // for openblas_set_num_threads
@@ -24,7 +24,6 @@
 #include <deque>         // for deque
 #include <exception>     // for exception
 #include <functional>    // for _Bind_helper<>::type, bind, function
-#include <iostream>      // for basic_ostream::operator<<, operator<<, basic_ostream<>:...
 #include <memory>        // for make_unique
 #include <regex>         // for match_results<>::_Base_type
 #include <stdexcept>     // for runtime_error, out_of_range
@@ -62,6 +61,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _block_fill_size(config.get_default<size_t>(unique_name, "block_fill_size", 0)),
     _diagonal_bands_filled(config.get_default<std::vector<std::pair<size_t, size_t>>>(
         unique_name, "diagonal_bands_filled", {})),
+    _mask_flagged_inputs(config.get_default<bool>(unique_name, "mask_flagged_inputs", true)),
 
     comp_time_seconds_metric(
         Metrics::instance().add_gauge("kotekan_eigenN2iter_comp_time_seconds", unique_name)),
@@ -74,7 +74,13 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     eigenvector_convergence_metric(Metrics::instance().add_gauge(
         "kotekan_eigenN2iter_eigenvector_convergence", unique_name, {"freq_id"})),
     num_failed_eigencalc(
-        Metrics::instance().add_counter("kotekan_eigenN2iter_num_failed_eigencalc", unique_name)) {
+        Metrics::instance().add_counter("kotekan_eigenN2iter_num_failed_eigencalc", unique_name)),
+    masked_elements_metric(
+        Metrics::instance().add_gauge("kotekan_eigenN2iter_masked_elements", unique_name)),
+    num_mask_updates(
+        Metrics::instance().add_counter("kotekan_eigenN2iter_num_mask_updates", unique_name)),
+    num_insufficient_elements(Metrics::instance().add_counter(
+        "kotekan_eigenN2iter_num_insufficient_elements", unique_name)) {
 
     in_buf->register_consumer(unique_name);
     out_buf->register_producer(unique_name);
@@ -144,7 +150,10 @@ void EigenN2Iter::main_thread() {
 
     DynamicHermitian<float> mask;
     uint32_t num_elements = 0;
-    bool initialized = false;
+    // Per-element flags the cached mask was built from. Empty until the first
+    // frame arrives, which is what forces the mask to be built.
+    std::vector<float> applied_flags;
+    size_t num_good_elements = 0;
 
     // Force serial BLAS so Blaze owns intra-op parallelism via its own OpenMP
     // path (per-stage team, inherits this stage's cpu_affinity). With a
@@ -180,26 +189,60 @@ void EigenN2Iter::main_thread() {
         // Start the calculation clock.
         double start_time = current_time();
 
-        // Initialise the mask
-        if (!initialized) {
+        // (Re)build the mask when the element count changes, or when the flags
+        // we are honouring differ from the ones the cached mask was built from.
+        // The flags are stable in normal operation, so this is rare; a flagging
+        // update that lands mid-stream costs one rebuild per frequency as each
+        // of them crosses it.
+        const bool flags_changed =
+            _mask_flagged_inputs
+            && !std::equal(applied_flags.begin(), applied_flags.end(), input_frame.flags.begin(),
+                           input_frame.flags.end());
+        if (num_elements != input_frame.num_elements || flags_changed) {
             num_elements = input_frame.num_elements;
-            mask = calculate_mask(num_elements);
-            initialized = true;
+            if (input_frame.flags.size() != num_elements)
+                FATAL_ERROR("Frame reports {:d} elements but carries {:d} per-element flags.",
+                            num_elements, input_frame.flags.size());
+            applied_flags.assign(num_elements, 1.0f);
+            if (_mask_flagged_inputs)
+                std::copy(input_frame.flags.begin(), input_frame.flags.end(),
+                          applied_flags.begin());
+
+            mask = calculate_mask(num_elements, applied_flags);
+            num_good_elements = count_good_elements(num_elements, applied_flags);
+
+            masked_elements_metric.set(num_elements - num_good_elements);
+            num_mask_updates.inc(1);
+            INFO("Mask updated: {:d} of {:d} elements masked out.",
+                 num_elements - num_good_elements, num_elements);
+            if (num_good_elements <= _num_eigenvectors)
+                WARN("Only {:d} of {:d} elements are unmasked, too few to ask for {:d} "
+                     "eigenpairs. Frames will be reported as failed until this changes.",
+                     num_good_elements, num_elements, _num_eigenvectors);
         }
 
         // Copy the visibilties into a blaze container
         DynamicHermitian<cfloat> vis = to_blaze_herm(input_frame.vis);
 
         // Perform the actual eigen-decomposition
-        try {
-            std::tie(eigpair, stats) =
-                eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
-                                      _max_iterations, _num_ev_conv, _krylov, _subspace);
-        } catch (const std::runtime_error& e) {
-            ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
-                  _max_iterations, input_frame.fpga_start_tick, e.what());
-            num_failed_eigencalc.inc(1);
+        if (num_good_elements <= _num_eigenvectors) {
+            // Nothing to say about num_ev eigenpairs from fewer than that many
+            // unmasked elements, and with everything masked the solver divides
+            // by a zero mask sum when it renormalises the RMS. The mask update
+            // above logs this, so only count it here.
+            num_insufficient_elements.inc(1);
             failed = true;
+        } else {
+            try {
+                std::tie(eigpair, stats) =
+                    eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
+                                          _max_iterations, _num_ev_conv, _krylov, _subspace);
+            } catch (const std::runtime_error& e) {
+                ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
+                      _max_iterations, input_frame.fpga_start_tick, e.what());
+                num_failed_eigencalc.inc(1);
+                failed = true;
+            }
         }
 
         // Failed frames are routed to failed_buf when configured; otherwise they fall
@@ -299,7 +342,24 @@ void EigenN2Iter::update_metrics(int freq_id, double elapsed_time, const eig_t<c
 }
 
 
-DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements) const {
+DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements,
+                                                    const std::vector<float>& flags) const {
+    // Blaze does not bounds check element access in a release build, so a
+    // config containing an out of bounds element would corrupt memory.
+    for (auto iexclude : _exclude_inputs) {
+        if (iexclude >= num_elements)
+            FATAL_ERROR("The `exclude_inputs` entry {:d} is out of range for frames with {:d} "
+                        "elements. These are indices into the incoming frame's elements, which "
+                        "for a subsetted buffer are the subset's own indices.",
+                        iexclude, num_elements);
+    }
+    for (const auto& br : _diagonal_bands_filled) {
+        if (br.first > br.second || br.second > num_elements)
+            FATAL_ERROR("The `diagonal_bands_filled` range [{:d}, {:d}) is not a valid band range "
+                        "for frames with {:d} elements.",
+                        br.first, br.second, num_elements);
+    }
+
     blaze::DynamicMatrix<float, blaze::columnMajor> M;
     M.resize(num_elements, num_elements);
 
@@ -313,9 +373,22 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements) const {
         }
     }
 
+    // Zero out the rows and columns of elements flagged bad. The mask the
+    // solver takes is strictly binary: a fractional entry would blend the data
+    // with the low rank model rather than mask it (see eigen_masked_subspace),
+    // so treat any non-zero flag as good.
+    for (size_t i = 0; i < num_elements; i++) {
+        if (flags[i] != 0.0f)
+            continue;
+        for (size_t j = 0; j < num_elements; j++) {
+            M(i, j) = 0.0;
+            M(j, i) = 0.0;
+        }
+    }
+
     // Remove specified diagonal bands
     for (const auto& br : _diagonal_bands_filled) {
-        std::cout << br.first << " " << br.second << std::endl;
+        DEBUG("Masking diagonal bands [{:d}, {:d}).", br.first, br.second);
         for (size_t i = br.first; i < br.second; i++) {
             blaze::band(M, i) = 0.0;
             blaze::band(M, -i) = 0.0;
@@ -333,4 +406,18 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements) const {
     }
 
     return blaze::declherm(M);
+}
+
+
+size_t EigenN2Iter::count_good_elements(size_t num_elements,
+                                        const std::vector<float>& flags) const {
+    size_t num_good = 0;
+    for (size_t i = 0; i < num_elements; i++) {
+        if (flags[i] == 0.0f)
+            continue;
+        if (std::find(_exclude_inputs.begin(), _exclude_inputs.end(), i) != _exclude_inputs.end())
+            continue;
+        num_good++;
+    }
+    return num_good;
 }
