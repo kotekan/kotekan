@@ -182,9 +182,11 @@ h5py reads them natively as ``complex64``.
 **Sentinels.**
 Quantities that no upstream stage populated hold sentinel values rather than
 physical ones: ``erms`` = -1 or -FLT_MAX, ``gain`` = -1+0j,
-``radiometer_chi2`` = -1, ``flags`` = 0, and ``eval`` / ``evec`` = 0 when no
-eigensolver ran. Which of these are real in a given acquisition depends on
-the deployed pipeline.
+``radiometer_chi2`` = -1, and ``eval`` / ``evec`` = 0 when no eigensolver ran.
+Which of these are real in a given acquisition depends on the deployed
+pipeline. ``flags`` is not among them: 1.0 is a good element and 0.0 a bad
+one, so a pipeline with no flagging stage reports every element as good
+rather than holding a sentinel.
 
 **CHIME file mode.**
 With ``file_mode == CHIME`` (legacy), the flag-like datasets
@@ -472,8 +474,8 @@ uncompressed.
    * - ``flags``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - float32
-     - Per-input flag/weight factors from upstream flagging; 0 when
-       unpopulated.
+     - Per-input flags from upstream flagging: 1.0 for a good element, 0.0
+       for one flagged bad. All 1.0 when no flagging stage ran.
    * - ``radiometer_chi2``
      - (:math:`N_f`, :math:`N_t`, 3)
      - float32

@@ -209,7 +209,17 @@ void EigenN2Iter::main_thread() {
                           applied_flags.begin());
 
             mask = calculate_mask(num_elements, applied_flags);
-            num_good_elements = count_good_elements(num_elements, applied_flags);
+
+            // Count the elements neither the flags nor the config masks out.
+            num_good_elements = 0;
+            for (uint32_t i = 0; i < num_elements; i++) {
+                if (applied_flags[i] == 0.0f)
+                    continue;
+                if (std::find(_exclude_inputs.begin(), _exclude_inputs.end(), i)
+                    != _exclude_inputs.end())
+                    continue;
+                num_good_elements++;
+            }
 
             masked_elements_metric.set(num_elements - num_good_elements);
             num_mask_updates.inc(1);
@@ -406,18 +416,4 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements,
     }
 
     return blaze::declherm(M);
-}
-
-
-size_t EigenN2Iter::count_good_elements(size_t num_elements,
-                                        const std::vector<float>& flags) const {
-    size_t num_good = 0;
-    for (size_t i = 0; i < num_elements; i++) {
-        if (flags[i] == 0.0f)
-            continue;
-        if (std::find(_exclude_inputs.begin(), _exclude_inputs.end(), i) != _exclude_inputs.end())
-            continue;
-        num_good++;
-    }
-    return num_good;
 }

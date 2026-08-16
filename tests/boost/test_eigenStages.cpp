@@ -231,7 +231,9 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     fake_stage->start();
 
     // Wait for output frames
-    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    // Generous enough that a loaded machine does not trip it: the pipelines
+    // here take about a second each, and failing this way aborts the module.
+    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(60);
     bool timed_out = false;
     while (out_buf.get_num_full_frames() < (int)p.total_frames) {
         if (std::chrono::steady_clock::now() > timeout) {
@@ -593,7 +595,7 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a, const EigenStageTestP
     for (auto& s : sides)
         s.fake_stage->start();
 
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
     auto done = [&]() {
         for (const auto& s : sides) {
             if (s.out_buf->get_num_full_frames() < (int)s.params.total_frames)

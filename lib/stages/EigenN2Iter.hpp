@@ -139,9 +139,6 @@ private:
     DynamicHermitian<float> calculate_mask(size_t num_elements,
                                            const std::vector<float>& flags) const;
 
-    /// Count the elements that neither the config nor @c flags masks out.
-    size_t count_good_elements(size_t num_elements, const std::vector<float>& flags) const;
-
     Buffer* in_buf;
     Buffer* out_buf;
     Buffer* failed_buf;
