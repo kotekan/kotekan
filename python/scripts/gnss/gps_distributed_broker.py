@@ -4501,6 +4501,24 @@ def main(argv=None, rx=None, publisher=None):
                              code_phase_chips=prev["code_phase_chips"],
                              code_phase_rate=prev["code_phase_rate"],
                              ref_hop=prev["ref_hop"])
+                    # #80 FIX (2026-08-16): the at-ref phase is PART of the tuple and the
+                    # tracker PREFERS it (gnssSeedTransport.cpp:325 -- phase_ref_chips >= 0
+                    # wins over cp_chips unconditionally). Leaving the DETECTION's fresh
+                    # phase beside the frozen ref_hop commanded the despread off-peak by
+                    # the full inter-snapshot code advance (~4665 chips mod-period per
+                    # 6.29 s revisit, wrapping): measured on sky 2026-08-16 23:15 --
+                    # CP_ERR +1005..+4516 chips on ALL six held sats at hold_age 12-15 s,
+                    # prompt amps collapsed 21-77 -> 3-16 while the re-searching deep fold
+                    # kept sig above the release bar, so the mispaired hold NEVER let go
+                    # (#48's "prompt on noise", mechanism). Freeze means freeze: the phase
+                    # rides from prev (where it is paired with prev's ref_hop), or ships
+                    # not at all -- the tracker then falls back to the frozen (cp0, dop)
+                    # argument pair, which is the hold's original contract.
+                    if "code_phase_at_ref_chips" in prev:
+                        seed.put("hold_freeze", epoch=prev["ref_hop"],
+                                 code_phase_at_ref_chips=prev["code_phase_at_ref_chips"])
+                    else:
+                        seed.pop("code_phase_at_ref_chips", None)
                 else:
                     # ---- CURRENCY TRANSLATION (2026-07-14): a DOPPLER UPDATE IS NOT A LOSS
                     # OF LOCK. The replica is anchored at sample 0, so the tracker builds the
@@ -4539,6 +4557,16 @@ def main(argv=None, rx=None, publisher=None):
                              code_phase_rate=prev["code_phase_rate"],
                              ref_hop=prev["ref_hop"],
                              doppler_hz=seed["doppler_hz"])
+                    # #80 FIX, translate arm (the LIVE arm under --dop-continuous): same
+                    # as the freeze arm above. prev's at-ref phase is a PHYSICAL phase at
+                    # prev's ref_hop -- a doppler update does not move it (the new doppler
+                    # enters the forward propagation, not the anchor), so it rides
+                    # unchanged where the fresh detection's phase must not.
+                    if "code_phase_at_ref_chips" in prev:
+                        seed.put("translate", epoch=prev["ref_hop"],
+                                 code_phase_at_ref_chips=prev["code_phase_at_ref_chips"])
+                    else:
+                        seed.pop("code_phase_at_ref_chips", None)
                     if prn not in cp_translated:
                         cp_translated.add(prn)
                         _log("TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.2f Hz) -> cp0 shifted "
@@ -8331,7 +8359,7 @@ def main(argv=None, rx=None, publisher=None):
         # now that was a code-reading claim; this counts it per cycle, per PRN, with
         # the owner that wrote the skewed field. LOG ONLY -- the fix is Phase 2's,
         # and it starts from this number.
-        _skewN, _skew_ex = 0, []
+        _skewN, _skew_ex, _skew_f = 0, [], {}
         for _pS in sorted(seeds):
             _sS = seeds[_pS]
             if not isinstance(_sS, Seed):
@@ -8339,15 +8367,24 @@ def main(argv=None, rx=None, publisher=None):
             _sk = _sS.epoch_skew()
             if _sk:
                 _skewN += 1
+                for _kS in _sk:
+                    _skew_f[_kS] = _skew_f.get(_kS, 0) + 1
                 if len(_skew_ex) < 3:
                     _skew_ex.append("PRN %s: %s vs ref %s" % (_pS, ",".join(
                         "%s=%s@%s" % (k, v[0], v[1]) for k, v in sorted(_sk.items())),
                         _sS.get("ref_hop")))
         if _skewN:
+            # Per-field counts, because the classes are NOT equal: a skewed at-ref phase
+            # is the chips-scale #80 disease (fixed in the hold arms above -- its count
+            # here is the fix's regression gate, expected 0); a skewed doppler_rate is
+            # second-order (enters via the quadratic term only) and stays measured, not
+            # hidden, until its own fix.
             _log_rl("epochskew",
                     "EPOCH-SKEW %d/%d seed(s) ship an at-epoch field recorded against "
-                    "a different ref_hop (#80 measured): %s"
-                    % (_skewN, len(seeds), "; ".join(_skew_ex)), every_s=60.0)
+                    "a different ref_hop (#80 measured; by field: %s): %s"
+                    % (_skewN, len(seeds),
+                       " ".join("%s:%d" % _kv for _kv in sorted(_skew_f.items())),
+                       "; ".join(_skew_ex)), every_s=60.0)
         # TASK #51: hand the fast control thread this cycle's decisions. It substitutes ONLY
         # code_phase_chips into these exact dicts, so nothing the policy put in a seed can be
         # dropped by the faster actuator. `base_cp` is the UNTRIMMED phase, because the fast
