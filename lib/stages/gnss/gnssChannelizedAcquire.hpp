@@ -68,8 +68,25 @@ struct AcquisitionResult {
     double code_phase_chips; ///< peak code phase, chips
     double doppler_hz;       ///< peak Doppler from the grid, Hz
     long peak_tau_samples;   ///< peak lag, full-rate samples (= q*N + s)
-    double peak;             ///< peak |D|^2
+    double peak;             ///< peak |D|^2 (the raw grid sample)
     double snr;              ///< peak / mean of the |D|^2 surface
+    /// Scalloping-corrected peak |D|^2: the VALUE of the same parabola whose VERTEX position
+    /// already refines doppler_hz. Equals `peak` when interpolation was not possible (grid
+    /// edge / non-concave).
+    ///
+    /// ⚠️ THIS, not `peak`/`snr`, is the statistic for comparing HYPOTHESES (#41). The overlay
+    /// alignment decision is a GLRT whose Doppler is a CONTINUOUS nuisance parameter: each
+    /// hypothesis must be scored at its own continuous-f maximum. Comparing raw grid samples
+    /// instead makes the decision depend on where the satellite sits between Doppler bins --
+    /// the true peak scallops (0.405 of its power at mid-bin on the aggregator's critically
+    /// sampled 62.5 Hz grid) while an overlay-mismatch SIDEBAND lands exactly ON the grid
+    /// (the mismatch modulation is per-period, so its spectrum sits at multiples of
+    /// 1/16 ms = 62.5 Hz). Measured on sky 2026-08-16: same-tau sidebands at (nh +- 2,
+    /// +-1..2 bins) reached 0.68-1.00 of the raw peak and intermittently won, flipping the
+    /// reported overlay period by exactly +-2 -- task #41's seed flicker. Interpolated, the
+    /// true hypothesis scores ~1.0 while a sideband is bounded by its continuum max ~0.5-0.6
+    /// amplitude: the margin is structural again.
+    double peak_interp;
 };
 
 /// Dimensions of an accumulated acquisition surface (see @ref channelized_accumulate).

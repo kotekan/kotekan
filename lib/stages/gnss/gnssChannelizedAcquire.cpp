@@ -434,7 +434,7 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
 AcquisitionResult ms_split_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                 const std::vector<double>& doppler_grid, double sample_rate,
                                 double chip_rate, long code_length, double phi_r0, int sub_hops) {
-    AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0};
+    AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0, -1.0};
     const int sfine = dims.fine();
     const int sph = dims.sph;
     const double cps = chip_rate / sample_rate;
@@ -531,7 +531,7 @@ AcquisitionResult ms_split_peak(const std::vector<double>& surf, const Acquisiti
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length, int fine_lag_sign) {
-    AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0};
+    AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0, -1.0};
     double surf_sum = 0.0;
     long surf_n = 0;
     int best_d = 0, best_q = 0, best_i = 0;
@@ -578,7 +578,7 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                                       double chip_rate, long code_length, double peak, double mean,
                                       int best_d, int best_q, int best_i,
                                       const std::vector<double>& dop_peak, int fine_lag_sign) {
-    AcquisitionResult best{0.0, 0.0, 0, peak, 0.0};
+    AcquisitionResult best{0.0, 0.0, 0, peak, 0.0, peak};
     best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
     // Sub-grid Doppler refine: the correlation-vs-Doppler peak is smooth but sampled on a
     // coarse grid (doppler_step), so the cell max is only +-step/2 accurate. Fit a parabola to
@@ -595,6 +595,10 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
             double delta = 0.5 * (sm - sp) / denom; // parabola vertex, in grid cells (|delta|<=0.5)
             delta = std::max(-0.5, std::min(0.5, delta));
             best.doppler_hz += delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
+            // The VERTEX VALUE of the same parabola: the scalloping-corrected peak. This is
+            // what hypothesis comparisons must use -- see AcquisitionResult::peak_interp (#41).
+            // Same three points, so the position and the value stay consistent by construction.
+            best.peak_interp = s0 - 0.125 * (sm - sp) * (sm - sp) / denom;
         }
     }
     best.snr = (mean > 0.0) ? best.peak / mean : 0.0;

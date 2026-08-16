@@ -805,7 +805,17 @@ void GnssChannelizedSearch::search_snapshot() {
                                             _replica->chip_rate_hz(), _replica->code_length());
                 if (prof) t_acq += steady_s() - _t_p0;
             }
-            if (best_nh < 0 || ai.snr > a.snr) {
+            // #41: ALIGNMENTS ARE COMPARED ON THE SCALLOPING-CORRECTED PEAK, never the raw
+            // grid sample. The overlay decision is a GLRT with Doppler as a continuous
+            // nuisance parameter: the true alignment's peak sits BETWEEN Doppler bins
+            // (losing up to 60% of its power on the 62.5 Hz critically-sampled grid) while
+            // an overlay-mismatch sideband lands exactly ON a bin -- comparing raw samples
+            // let (nh +- 2, same tau) win intermittently, which was the +-2-code-period
+            // seed flicker. peak_interp restores each hypothesis to its continuous-f
+            // maximum, where the true alignment's margin is structural (>= ~4.7 dB).
+            // The SERVED det.snr stays the raw peak/mean -- every downstream gate is
+            // calibrated on it; only the hypothesis choice uses the corrected value.
+            if (best_nh < 0 || ai.peak_interp > a.peak_interp) {
                 a = ai;
                 best_nh = nh;
             }
