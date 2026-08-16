@@ -379,6 +379,11 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  # and path B each need their own copy or one silently keeps the default.
                  "carrier_phase_from_ref": (gpu == 0 if args.carrier_phase_from_ref == "ab"
                                             else args.carrier_phase_from_ref == "1"),
+                 # #71: supersedes the bool above (the stage prefers it and falls back). Same
+                 # per-GPU 'ab' trick and for the same reason -- see --carrier-phase-mode.
+                 "carrier_phase_mode": (2 if (gpu == 0 if args.carrier_phase_mode == "ab"
+                                              else args.carrier_phase_mode == "2")
+                                        else (1 if args.carrier_phase_from_ref != "0" else 0)),
                  # F-engine conjugation, measured on sky 2026-07-30 (see GnssChordDequantize).
                  "conjugate": True,
                  "gpu_mem_input": f"{pre}voltage",
@@ -763,6 +768,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  # and path B each need their own copy or one silently keeps the default.
                  "carrier_phase_from_ref": (gpu == 0 if args.carrier_phase_from_ref == "ab"
                                             else args.carrier_phase_from_ref == "1"),
+                 # #71: supersedes the bool above (the stage prefers it and falls back). Same
+                 # per-GPU 'ab' trick and for the same reason -- see --carrier-phase-mode.
+                 "carrier_phase_mode": (2 if (gpu == 0 if args.carrier_phase_mode == "ab"
+                                              else args.carrier_phase_mode == "2")
+                                        else (1 if args.carrier_phase_from_ref != "0" else 0)),
                  "voltage_name": "voltage",
                  # MUST match the tracker's `conjugate`. The N^2 kernel has no conj_data flag
                  # and its antenna input is production's, so the F-engine conjugation is
@@ -1845,6 +1855,22 @@ def main():
                          "restarts CANNOT resolve this -- measured 2026-08-13, deep_snr max "
                          "swung 52-197 inside four minutes and the seeded PRN count moved "
                          "12 -> 5 on geometry alone.")
+    ap.add_argument("--carrier-phase-mode", choices=("1", "2", "ab"), default="1",
+                    help="TASK #71. 2 = the replica carrier phase ACCUMULATES across records "
+                         "(a real NCO: phi += 2*pi*fbar*dn/fs) instead of being evaluated as "
+                         "f*n0 on the ABSOLUTE sample index. The old form hangs the whole "
+                         "phase history off the CURRENT frequency estimate over a lever of "
+                         "n0/fs = the UPTIME, so a Doppler change of 2.7e-7 Hz rotates it a "
+                         "full radian -- and propagate_seed moves the Doppler EVERY RECORD by "
+                         "dop_rate*10.5 ms. 1 (default) = arm 1, unchanged. 'ab' = GPU 0 "
+                         "accumulates and GPU 1 keeps arm 1 ON EVERY NODE: same node, same "
+                         "sky, same seeds, same poll, which is the only pairing that resolves "
+                         "this -- a before/after across two restarts cannot (deep_snr swung "
+                         "52-197 in four minutes on geometry alone, 2026-08-13).\n"
+                         "⚠️ JUDGE IT ON |r_1|/|r_4| (scripts/gnss/kcoh_phase_series.py, run "
+                         "ON cf06), which is RATE-BLIND and so cannot be rescued by a better "
+                         "rate -- never on C/N0. And do NOT expect eta to recover: this is the "
+                         "per-RECORD lever, not the per-FRAME jump that dominates eta.")
     ap.add_argument("--phase-track", action=argparse.BooleanOptionalAction, default=False,
                     help="combiner: leave-one-out common-phase tracker before the deep coherent "
                          "sum -- the batch form of the carrier loop the airspy chain closed, "

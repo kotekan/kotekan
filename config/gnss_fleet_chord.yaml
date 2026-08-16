@@ -65,6 +65,26 @@ common:
   # was FLAT between arms, so it is a real term and not the dominant one. Fleet set uniform on
   # the fix; the A/B has told us what it can.
   carrier-phase-from-ref: 1
+  # ── #71: THE CARRIER NCO, PAIRED PER GPU (2026-08-16) ───────────────────────────────
+  # 'ab' = GPU 0 accumulates the replica phase across records, GPU 1 keeps arm 1. The old
+  # arm evaluates the phase as f*n0 on the ABSOLUTE sample, so the whole phase history
+  # hangs off the CURRENT frequency estimate over a lever of n0/fs = the UPTIME: a Doppler
+  # change of 2.7e-7 Hz rotates it a full radian, and propagate_seed moves the Doppler
+  # EVERY RECORD by dop_rate*10.5 ms. Offline gate: scripts/gnss/carrier_nco_gate.cpp
+  # (accumulated 9e-16 rad under a ramp vs 1.2-2.8 rad for the absolute arm).
+  #
+  # PAIRED PER GPU BECAUSE THE SKY MOVES FASTER THAN A RESTART. Same node, same seeds,
+  # same poll -- the only pairing that resolves this, exactly as --carrier-phase-from-ref
+  # already does. ⚠️ It DOES cost the #52 ab arm if that is ever re-run: gpu 0 now differs
+  # from gpu 1 in two ways at once. #52's arm is currently pinned at 1 above, so nothing is
+  # confounded today.
+  #
+  # ⚠️ JUDGE ON |r_1|/|r_4| (scripts/gnss/kcoh_phase_series.py, ON cf06) -- RATE-BLIND, so
+  # unlike every C/N0 in this stack it cannot be rescued by a better rate. And do NOT
+  # expect eta to recover: this is the per-RECORD lever, and the per-FRAME jump that
+  # dominates eta is a separate, still-unidentified fault.
+  # Revert: set this to 1 and regenerate.
+  carrier-phase-mode: ab
 
   # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
