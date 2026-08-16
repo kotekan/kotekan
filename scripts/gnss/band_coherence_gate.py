@@ -137,6 +137,128 @@ def reductions(client, chain, wins, prns, tau_s=None):
     return out
 
 
+def delay_scan(client, chain, wins, prns, span_us=2.5, step_ns=5.0):
+    """{prn: (best_tau_s, peak, floor, n_rec)} -- the DELAY transform of the channel series.
+
+    For each record: D(tau) = sum_ch g_ch exp(-2i pi f_ch tau); accumulate |D(tau)|^2 over
+    records (incoherent in delay space, so a per-record common phase cannot hurt it). The peak
+    location IS the ramp's slope expressed as a delay. This is how a correlator finds delay --
+    a matched filter, not a free-parameter fit -- and it needs no phase reference at all.
+    `floor` is the median over the grid: the peak has to beat it, and a noise probe's peak/floor
+    is the null that says how much a pure-noise series scores by chance.
+    """
+    import cmath as _c
+    n = int(span_us * 1e-6 / (step_ns * 1e-9))
+    grid = [k * step_ns * 1e-9 for k in range(-n, n + 1)]
+    acc = {}
+    for w in wins:
+        fs_ = client.frame_set(chain, w)
+        if not fs_:
+            continue
+        n_rec = max((f.n_rec for f in fs_.values()), default=0)
+        for r in range(n_rec):
+            per = {}
+            for _inst, f in fs_.items():
+                if r >= f.n_rec or not f.has_record(r):
+                    continue
+                for prn in f.prns():
+                    if prn not in prns:
+                        continue
+                    cmb = f.comb_epl(r, prn)
+                    if not cmb:
+                        continue
+                    for fid, _E, P, _L, (_wE, wP, _wL) in cmb:
+                        if wP > 0.0:
+                            d = per.setdefault(prn, {})
+                            d[fid] = d.get(fid, 0j) + P * wP
+            for prn, chans in per.items():
+                if len(chans) < 8:
+                    continue
+                items = [((fid - 6024) * CHAN_HZ, g) for fid, g in chans.items()]
+                a_ = acc.setdefault(prn, [[0.0] * len(grid), 0])
+                for i, tau in enumerate(grid):
+                    D = 0j
+                    for fo, g in items:
+                        D += g * _c.exp(-2j * math.pi * fo * tau)
+                    a_[0][i] += abs(D) ** 2
+                a_[1] += 1
+    out = {}
+    for prn, (pw, nr) in acc.items():
+        if nr < 8:
+            continue
+        best = max(range(len(grid)), key=lambda i: pw[i])
+        med = statistics.median(pw)
+        # ⚠️ GRATING LOBES FIRST, ALWAYS. The channels are a STRIDED, INCOMPLETE comb
+        # (freq_id mod 8, and only the instances that reported), so the delay transform has
+        # repeating lobes and its ARGMAX is not the delay -- it is whichever lobe won. A
+        # measured 14-25 chips against a loop that holds ~0.16 chips is that failure, and it
+        # is on record: 2 nodes gave 13.188 chips of apparent offset, 8 nodes gave 0.373.
+        # So report the top peaks and their SPACING: evenly spaced peaks of similar height
+        # are lobes, and the true delay is the one near zero.
+        pk = sorted(range(len(grid)), key=lambda i: -pw[i])
+        tops, seen = [], []
+        for i in pk:
+            if all(abs(grid[i] - t) > 100e-9 for t in seen):
+                tops.append((grid[i], pw[i] / nr))
+                seen.append(grid[i])
+            if len(tops) >= 5:
+                break
+        out[prn] = (grid[best], pw[best] / nr, med / nr, nr, tops)
+    return out
+
+
+def per_channel_phase(client, chain, wins, prns):
+    """{prn: {freq_id: (phase, |vector mean|, n)}} -- each CHANNEL's phase relative to the same
+    record's full-band sum, vector-averaged over records.
+
+    Referencing on the record's own total removes the sky/carrier phase common to every channel
+    at that instant, leaving what differs BETWEEN channels. A radio telescope normally has a
+    per-channel instrumental (bandpass) phase; nothing in this pipeline measures or applies one,
+    and #32 fits only a linear SLOPE, which a real bandpass is not obliged to be.
+    """
+    import cmath
+    acc = {}
+    for w in wins:
+        fs_ = client.frame_set(chain, w)
+        if not fs_:
+            continue
+        n_rec = max((f.n_rec for f in fs_.values()), default=0)
+        for r in range(n_rec):
+            per = {}
+            for _inst, f in fs_.items():
+                if r >= f.n_rec or not f.has_record(r):
+                    continue
+                for prn in f.prns():
+                    if prn not in prns:
+                        continue
+                    cmb = f.comb_epl(r, prn)
+                    if not cmb:
+                        continue
+                    for fid, _E, P, _L, (_wE, wP, _wL) in cmb:
+                        if wP > 0.0:
+                            d = per.setdefault(prn, {})
+                            d[fid] = d.get(fid, 0j) + P * wP
+            for prn, chans in per.items():
+                if len(chans) < 4:
+                    continue
+                tot = sum(chans.values())
+                if tot == 0j:
+                    continue
+                for fid, g in chans.items():
+                    z = g * tot.conjugate()
+                    if z == 0j:
+                        continue
+                    e = acc.setdefault(prn, {}).setdefault(fid, [0j, 0])
+                    e[0] += z / abs(z)
+                    e[1] += 1
+    out = {}
+    for prn, per in acc.items():
+        for fid, (v, n) in per.items():
+            if n:
+                out.setdefault(prn, {})[fid] = (cmath.phase(v / n), abs(v / n), n)
+    return out
+
+
 def per_instance_phase(client, chain, wins, prns):
     """{prn: {inst: (mean_phase_rad, |vector mean|, n)}} -- each instance's prompt phase
     RELATIVE TO the same record's full-band sum, vector-averaged over records.
@@ -271,6 +393,22 @@ def main():
                          "is how the deep fold read 41 dB-Hz on noise), so it is here to "
                          "check whether the derived tau is near the optimum -- not to replace "
                          "it.")
+    ap.add_argument("--delay-scan", action="store_true",
+                    help="THE RIGHT INSTRUMENT FOR A RAMP: transform the per-channel complex "
+                         "series to DELAY and find the peak. D(tau) = sum_ch g_ch "
+                         "exp(-2i pi f_ch tau), |D|^2 averaged over records. Needs NO phase "
+                         "reference, so it cannot be broken by the self-reference that a "
+                         "ramp induces (the full-band sum CANCELS under a ramp, which is what "
+                         "made --per-channel swing 0.92 -> 0.22 between runs). Resolution "
+                         "1/B ~ 49 ns; unambiguous range 1/df ~ 5.1 us.")
+    ap.add_argument("--per-channel", action="store_true",
+                    help="THE DECISIVE ONE once the delay ramp is ruled out: each FREQUENCY "
+                         "CHANNEL's phase relative to the record's full-band sum, vector-"
+                         "averaged over records. |mean| ~ 1 = a STABLE per-channel constant, "
+                         "i.e. an ordinary instrumental bandpass phase that can be measured "
+                         "once and removed (and which nothing in this pipeline applies). "
+                         "|mean| ~ 0 = the per-channel phase re-rolls per record and there is "
+                         "nothing to calibrate -- the fault is upstream of the combine.")
     ap.add_argument("--per-instance", action="store_true",
                     help="also report each instance's PHASE relative to a reference instance, "
                          "and its stability over records. This is what separates a FIXABLE "
@@ -323,6 +461,8 @@ def main():
                     if cur is None or val > cur[1]:
                         scanned[prn] = (t, val)
     inst_ph = per_instance_phase(cl, a.chain, wins, held) if a.per_instance else {}
+    chan_ph = per_channel_phase(cl, a.chain, wins, held) if a.per_channel else {}
+    dscan = delay_scan(cl, a.chain, wins, held | probes) if a.delay_scan else {}
     cl.stop()
 
     if not got:
@@ -380,6 +520,95 @@ def main():
                   % (prn, tb * CHIP_HZ, td * CHIP_HZ, vb, "probe" if prn in probes else ""))
         print("    ⚠️ a probe whose eta_best rivals the satellites' means the scan is finding "
               "noise, and no tau read off it means anything.")
+    if dscan:
+        print("\n  DELAY SCAN (no phase reference): where is the across-band ramp?")
+        print("    %-5s %-12s %-12s %-10s %-8s %s"
+              % ("prn", "tau_peak(ns)", "= chips", "peak/floor", "n_rec", ""))
+        for prn in sorted(dscan):
+            tau, pk, fl, nr, _tops = dscan[prn]
+            print("    %-5d %-12.1f %-12.3f %-10.1f %-8d %s"
+                  % (prn, tau * 1e9, tau * CHIP_HZ, (pk / fl) if fl > 0 else float("nan"), nr,
+                     "probe" if prn in probes else ""))
+        print("\n    TOP PEAKS per satellite (evenly spaced + similar height = GRATING LOBES,"
+              " not a delay):")
+        for prn in sorted(dscan):
+            if prn in probes:
+                continue
+            tops = dscan[prn][4]
+            print("    %-5d %s" % (prn, "  ".join("%+.0fns(%.2g)" % (t * 1e9, v)
+                                                  for t, v in tops)))
+            if len(tops) >= 3:
+                ts = sorted(t for t, _ in tops)
+                gaps = [ (ts[i+1]-ts[i])*1e9 for i in range(len(ts)-1) ]
+                hs = [v for _, v in tops]
+                print("    %-5s   peak spacing %s ns; height ratio max/min %.2f"
+                      % ("", " ".join("%.0f" % g for g in gaps),
+                         (max(hs)/min(hs)) if min(hs) > 0 else float("nan")))
+        sats = [v for p, v in dscan.items() if p not in probes]
+        prb = [v for p, v in dscan.items() if p in probes]
+        if sats and prb:
+            ms = statistics.median([v[1] / v[2] for v in sats if v[2] > 0])
+            mp = statistics.median([v[1] / v[2] for v in prb if v[2] > 0])
+            print("    median peak/floor: satellites %.1f, probes %.1f (null)" % (ms, mp))
+            taus = [v[0] * 1e9 for v in sats]
+            print("    satellite tau spread: %.1f ns over %d sats (a shared INSTRUMENTAL delay "
+                  "would agree; a per-sat one would not)"
+                  % ((max(taus) - min(taus)) if len(taus) > 1 else 0.0, len(taus)))
+    if chan_ph:
+        print("\n  PER-CHANNEL PHASE vs the record's full-band sum (vector-averaged)")
+        print("    %-5s %-8s %-10s %-8s %s" % ("prn", "freq_id", "phase(rad)", "|mean|", "n"))
+        allm = []
+        for prn in sorted(chan_ph):
+            fids = sorted(chan_ph[prn])
+            for fid in fids[:10]:
+                ph, mag, n = chan_ph[prn][fid]
+                print("    %-5d %-8d %+10.3f %8.3f %d" % (prn, fid, ph, mag, n))
+            if len(fids) > 10:
+                print("    %-5s ... %d more channels" % ("", len(fids) - 10))
+            allm += [chan_ph[prn][f][1] for f in fids]
+            print()
+        if allm:
+            med = statistics.median(allm)
+            print("    median per-channel |vector mean| = %.3f over %d (prn,channel) pairs"
+                  % (med, len(allm)))
+            # ⚠️ THE NULL THAT DECIDES "INSTRUMENTAL". A bandpass belongs to the INSTRUMENT,
+            # so it must be the SAME for every satellite. A per-channel phase that differs
+            # source to source is not a bandpass -- it is something sat-specific (a delay, a
+            # model error) wearing the same costume. Referencing on the record's own total is
+            # mildly self-referential, and THIS is what makes the result falsifiable anyway:
+            # the agreement between independent sources is not something the reference can
+            # manufacture.
+            prns_l = sorted(chan_ph)
+            if len(prns_l) >= 2:
+                import cmath as _c
+                pairs, diffs = 0, []
+                for i in range(len(prns_l)):
+                    for j in range(i + 1, len(prns_l)):
+                        a_, b_ = chan_ph[prns_l[i]], chan_ph[prns_l[j]]
+                        common = [f for f in a_ if f in b_
+                                  and a_[f][1] > 0.5 and b_[f][1] > 0.5]
+                        if len(common) < 4:
+                            continue
+                        v = sum(_c.exp(1j * (a_[f][0] - b_[f][0])) for f in common) / len(common)
+                        pairs += 1
+                        diffs.append(abs(v))
+                if pairs:
+                    md = statistics.median(diffs)
+                    print("    cross-satellite agreement of the per-channel phase: %.3f over "
+                          "%d pair(s)  (1 = identical bandpass, 0 = unrelated)" % (md, pairs))
+                    print("    => %s" % (
+                        "INSTRUMENTAL: independent satellites see the SAME per-channel phase, "
+                        "so it is the instrument's bandpass and one calibration serves all."
+                        if md > 0.7 else
+                        "⚠️ NOT a shared bandpass -- the per-channel phase differs between "
+                        "satellites, so it is sat-specific and a single calibration cannot "
+                        "fix it."))
+            print("    => %s" % (
+                "STABLE per-channel phase: an ordinary instrumental BANDPASS. Measure it once "
+                "and apply it, and the band can be summed coherently."
+                if med > 0.5 else
+                "the per-channel phase RE-ROLLS per record: there is no bandpass to calibrate, "
+                "and the fault is upstream of the combine."))
     if inst_ph:
         print("\n  PER-INSTANCE PHASE vs the record's full-band sum (vector-averaged)")
         print("    %-5s %-10s %-9s %-7s %s" % ("prn", "inst", "phase(rad)", "|mean|", "n"))
