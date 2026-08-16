@@ -45,6 +45,7 @@ not means the band is NOT coherent and the reduction cannot simply be switched.
     ./band_coherence_gate.py --chain gps_l5        # on the gather host (cf06)
 """
 import argparse
+import cmath
 import json
 import math
 import os
@@ -57,8 +58,32 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "python", "scripts", "gnss"))
 from gnss_broker import telem  # noqa: E402
 
+# freq_id -> RF frequency. CHORD samples at 3200 MHz into N=8192 channels, so a channel is
+# 3200/2/8192 = 0.195312 MHz. N is PINNED, not assumed: of 2048/4096/8192/16384 only 8192
+# puts L5 (1176.45 MHz) inside the freq_ids this signal actually occupies (5972..6076) --
+# fid 6023.4, dead centre. The others land at 1506 / 3012 / 12047 and are excluded.
+CHAN_HZ = 3200.0e6 / 2 / 8192
+CHIP_HZ = 10.23e6
 
-def reductions(client, chain, wins, prns):
+
+def reductions(client, chain, wins, prns, tau_s=None):
+    """As below; `tau_s` = {prn: residual delay in seconds} derotates each channel by
+    exp(-2i pi f_k tau) BEFORE summing.
+
+    ⚠️ THE RAMP IS A DELAY, AND WE ALREADY MEASURE THE DELAY. A residual code error tau puts a
+    LINEAR PHASE RAMP 2*pi*f_k*tau across the channels, and nothing removes it today: the
+    per-channel prompt is NCO-derotated (carrier gone) but carries the delay phase, and #32's
+    band phase-slope fit is labelled "measurement-only" in the chain config. Over the 20.3 MHz
+    this signal occupies, 0.1 chip of delay error is 1.2 rad of ramp end-to-end and 0.5 chip is
+    6.1 rad -- so a coherent sum cannot survive until it is taken out.
+    ⚠️ DERIVE IT, NEVER FIT IT. tau comes from the tracker's own discriminator. Fitting a free
+    slope per record would be the combine fitting what it should derive -- the failure already
+    on record in this codebase. The scan below exists ONLY as a diagnostic, with a null.
+    ⚠️ AND IT BITES THE CURRENT REDUCTION TOO. `freq_id mod 8` DECIMATES the band across
+    instances rather than splitting it into contiguous blocks, so one instance's channels span
+    nearly the same 20.3 MHz as the whole fleet's. The ramp therefore damages today's
+    per-instance coherent sum about as much as it would damage a full-band one.
+    """
     """{prn: (P_pow, P_coh, n_rec, n_chan_total, n_inst)} summed over records.
 
     Both reductions are formed from the SAME per-channel complex values in the same pass, so
@@ -82,8 +107,14 @@ def reductions(client, chain, wins, prns):
                     if not cmb:
                         continue
                     gi, wi = 0j, 0.0
+                    t = (tau_s or {}).get(prn)
                     for _fid, _E, P, _L, (_wE, wP, _wL) in cmb:
-                        gi += P * wP
+                        v = P
+                        if t:
+                            # phase relative to an arbitrary reference fid: a CONSTANT phase
+                            # does not change |sum|, only the slope matters.
+                            v = v * cmath.exp(-2j * math.pi * (_fid - 6024) * CHAN_HZ * t)
+                        gi += v * wP
                         wi += wP
                     if wi <= 0.0:
                         continue
@@ -160,6 +191,57 @@ def per_instance_phase(client, chain, wins, prns):
     return out
 
 
+def self_test():
+    """A known ramp, planted and removed. No sky, no fleet, no excuses."""
+    fids = [5972 + 8 * k for k in range(14)]          # one instance: DECIMATED across the band
+    fail = 0
+
+    def band(tau_true, tau_removed):
+        """|sum g|^2 / mean|g|^2 for unit channels carrying a tau_true ramp, derotated by
+        tau_removed. 1.0 = perfectly aligned, ~0 = ramp intact."""
+        g = 0j
+        for fid in fids:
+            ph = 2 * math.pi * (fid - 6024) * CHAN_HZ * (tau_true - tau_removed)
+            g += cmath.exp(1j * ph)
+        return abs(g / len(fids)) ** 2
+
+    def chk(ok, what, got, want):
+        nonlocal fail
+        if not ok:
+            fail += 1
+            print("  FAIL %-52s got %.4f want %s" % (what, got, want))
+        else:
+            print("  ok   %-52s %.4f" % (what, got))
+
+    for dchip in (0.1, 0.3, 0.5):
+        tau = dchip / CHIP_HZ
+        raw = band(tau, 0.0)
+        fixed = band(tau, tau)
+        wrong = band(tau, -tau)          # sign flipped: doubles the ramp
+        chk(fixed > 0.999, "%.1f chip: derotated by the TRUE tau -> aligned" % dchip, fixed, "~1")
+        chk(raw < fixed, "%.1f chip: raw ramp costs coherence" % dchip, raw, "< fixed")
+        # ⚠️ THE SIGN CHECK ONLY BINDS WHILE THE RESPONSE IS MONOTONIC. Across this band one
+        # chip of delay is 1.99 cycles, so 0.5 chip already sits in the first null: raw (~1
+        # cycle) and wrong-sign (~2 cycles) are BOTH ~0.004 and comparing them is comparing
+        # two nulls. My first bar asserted wrong < raw everywhere and duly failed at 0.5 chip
+        # -- the BAR was wrong, not the code (the same trap as carrier_nco_gate's leg 0).
+        # What binds at every delay is that the wrong sign fails to ALIGN.
+        # The invariant that binds at EVERY delay: the TRUE tau is the maximum, so any other
+        # tau -- including the sign-flipped one -- scores strictly less. Anything stronger
+        # (a fixed fraction) is delay-dependent and produced two wrong bars already.
+        chk(wrong < fixed - 1e-6, "%.1f chip: WRONG SIGN scores below the true tau" % dchip,
+            wrong, "< fixed")
+        if dchip <= 0.125:   # monotonic while 2*tau*span < ~0.5 cycle
+            chk(wrong < raw, "%.1f chip: wrong sign worse than raw (monotonic regime)" % dchip,
+                wrong, "< raw")
+    chk(band(0.0, 0.0) > 0.999, "zero delay is left alone", band(0.0, 0.0), "~1")
+    # the 20.3 MHz span means a chip of error is catastrophic -- state it as a number
+    print("\n  ramp across the used band for 1 chip of delay error: %.2f cycles"
+          % ((6076 - 5972) * CHAN_HZ / CHIP_HZ))
+    print("\nband_coherence_gate self-test: %s" % ("FAILED" if fail else "PASS"))
+    return 1 if fail else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -168,6 +250,23 @@ def main():
     ap.add_argument("--chain", default="gps_l5")
     ap.add_argument("--seconds", type=float, default=20.0)
     ap.add_argument("--windows", type=int, default=32)
+    ap.add_argument("--self-test", action="store_true",
+                    help="synthetic: plant a KNOWN delay ramp across the channels and check "
+                         "the derotation removes it, that the WRONG SIGN makes it worse, and "
+                         "that a zero-delay band is left alone. Catches the sign and scale "
+                         "errors that would otherwise be discovered by a wasted sky run.")
+    ap.add_argument("--derotate", action="store_true",
+                    help="remove the across-band phase ramp before summing, using the delay "
+                         "DERIVED from the tracker's own discriminator (tau = dll_tau(disc)). "
+                         "This is step 2 of #72: the coherent combine cannot work until the "
+                         "ramp is out, and the ramp is a delay we already measure.")
+    ap.add_argument("--scan-tau", action="store_true",
+                    help="DIAGNOSTIC ONLY, never an estimator: also scan tau for the value "
+                         "that maximises the coherent sum, and report it beside the DERIVED "
+                         "one with the probes as a null. A scan always finds a maximum (that "
+                         "is how the deep fold read 41 dB-Hz on noise), so it is here to "
+                         "check whether the derived tau is near the optimum -- not to replace "
+                         "it.")
     ap.add_argument("--per-instance", action="store_true",
                     help="also report each instance's PHASE relative to a reference instance, "
                          "and its stability over records. This is what separates a FIXABLE "
@@ -176,6 +275,8 @@ def main():
                          "(nothing to calibrate; the fault is upstream). Vector-averaged, so "
                          "|mean| near 1 = stable, near 0 = random.")
     a = ap.parse_args()
+    if a.self_test:
+        return self_test()
 
     with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"), a.chain),
                                 timeout=10) as r:
@@ -195,7 +296,27 @@ def main():
     cl.start()
     time.sleep(a.seconds)
     wins = cl.windows(a.chain, lag=1)[-a.windows:]
-    got = reductions(cl, a.chain, wins, held | probes)
+    # tau DERIVED from the tracker's discriminator: dll_tau(disc, spacing) in chips -> seconds.
+    # Same expression as combdll.dll_tau / gnss::dll_tau (|tau| <= 0.25 chips by construction).
+    disc = {int(x["prn"]): (x.get("dll_disc") or 0.0) for x in rows}
+    spacing = 0.5
+    tau_s = None
+    if a.derotate:
+        tau_s = {p: (-max(-1.0, min(1.0, d)) / 4.0 * (spacing / 0.5)) / CHIP_HZ
+                 for p, d in disc.items()}
+    got = reductions(cl, a.chain, wins, held | probes, tau_s=tau_s)
+    base = reductions(cl, a.chain, wins, held | probes) if a.derotate else None
+    scanned = {}
+    if a.scan_tau:
+        grid = [i * 0.02 / CHIP_HZ for i in range(-50, 51)]   # +-1.0 chip, 0.02 chip steps
+        for t in grid:
+            g = reductions(cl, a.chain, wins, held | probes, tau_s={p: t for p in held | probes})
+            for prn, v in g.items():
+                if v[2] >= 8 and v[0] > 0:
+                    cur = scanned.get(prn)
+                    val = v[1] / v[0]
+                    if cur is None or val > cur[1]:
+                        scanned[prn] = (t, val)
     inst_ph = per_instance_phase(cl, a.chain, wins, held) if a.per_instance else {}
     cl.stop()
 
@@ -205,7 +326,9 @@ def main():
               "HOST:PORT, and the gather serves 127.0.0.1 only -- run this ON cf06).")
         return 1
 
-    print("chain %s: %d windows, probes %s\n" % (a.chain, len(wins), sorted(probes)))
+    print("chain %s: %d windows, probes %s%s\n"
+          % (a.chain, len(wins), sorted(probes),
+             "   [DEROTATED by the derived tau]" if a.derotate else ""))
     print("  %-5s %-7s %-8s %-11s %-11s %-8s %s"
           % ("prn", "cn0", "n_rec", "P_pow", "P_coh", "eta_band", "n_inst"))
     sat_eta, probe_eta, n_inst_seen = [], [], 0
@@ -229,6 +352,29 @@ def main():
     # drawn from self-inflicted contamination. Bimodal per-instance stability is the tell, and
     # it is detectable from the data itself, so the tool checks rather than trusting the
     # operator to remember.
+    if base:
+        print("\n  DEROTATION EFFECT (derived tau from dll_disc), eta_band:")
+        print("    %-5s %-9s %-11s %-11s %-9s %s"
+              % ("prn", "disc", "eta_raw", "eta_derot", "gain", ""))
+        for prn in sorted(got):
+            if prn not in base or base[prn][2] < 8 or base[prn][0] <= 0 or got[prn][0] <= 0:
+                continue
+            er = base[prn][1] / base[prn][0]
+            ed = got[prn][1] / got[prn][0]
+            print("    %-5d %+9.3f %-11.3f %-11.3f %-9.2fx %s"
+                  % (prn, disc.get(prn, 0.0), er, ed, (ed / er) if er > 0 else float("nan"),
+                     "probe" if prn in probes else ""))
+    if scanned:
+        print("\n  TAU SCAN (diagnostic, not an estimator) -- best tau vs the DERIVED one:")
+        print("    %-5s %-12s %-12s %-10s %s" % ("prn", "tau_best(chip)", "tau_derived",
+                                                 "eta_best", ""))
+        for prn in sorted(scanned):
+            tb, vb = scanned[prn]
+            td = (tau_s or {}).get(prn, 0.0)
+            print("    %-5d %-12.3f %-12.3f %-10.3f %s"
+                  % (prn, tb * CHIP_HZ, td * CHIP_HZ, vb, "probe" if prn in probes else ""))
+        print("    ⚠️ a probe whose eta_best rivals the satellites' means the scan is finding "
+              "noise, and no tau read off it means anything.")
     if inst_ph:
         print("\n  PER-INSTANCE PHASE vs the record's full-band sum (vector-averaged)")
         print("    %-5s %-10s %-9s %-7s %s" % ("prn", "inst", "phase(rad)", "|mean|", "n"))
