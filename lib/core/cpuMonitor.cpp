@@ -150,9 +150,17 @@ void CpuMonitor::track_cpu() {
                         }
                         fclose(thread_fp);
                     } else {
-                        // The thread has been terminated early, add 0 to stats
-                        (ult_list[stage.first])[tid].utime_usage->add_sample(0);
-                        (ult_list[stage.first])[tid].stime_usage->add_sample(0);
+                        // The thread exited between listing the tids and reading
+                        // its stats. Add 0 to stats, but only if it was already
+                        // being tracked: a tid first seen here has no trackers.
+                        auto stage_itr = ult_list.find(stage.first);
+                        if (stage_itr != ult_list.end()) {
+                            auto thread_itr = (stage_itr->second).find(tid);
+                            if (thread_itr != (stage_itr->second).end()) {
+                                (thread_itr->second).utime_usage->add_sample(0);
+                                (thread_itr->second).stime_usage->add_sample(0);
+                            }
+                        }
                         WARN_NON_OO("CPU monitor cannot read from {:s}", fname);
                     }
                 }
