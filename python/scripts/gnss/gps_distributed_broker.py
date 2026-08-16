@@ -4090,6 +4090,12 @@ def main(argv=None, rx=None, publisher=None):
             seed = Seed.born("det", epoch=ref_hop,
                              doppler_hz=seed_dop, code_phase_chips=cp_seed_cur,
                              code_phase_rate=0.0, ref_hop=ref_hop)
+            # The doppler SOURCE was arbitrated above (_dop_src: pred | dr | det), BEFORE
+            # the tuple existed, so the constructor's blanket "det" under-describes the
+            # one field three estimators fight over. Re-attribute -- same value, provenance
+            # only: the audit trail then separates a model-seeded doppler from a measured
+            # one, the very distinction Phase 3's per-PRN primacy gate decides on.
+            seed.put("dop_sel:" + _dop_src, epoch=ref_hop, doppler_hz=seed_dop)
             # 2nd-order carrier feed-forward: hand the tracker the almanac Doppler RATE (Hz/s, sign-
             # applied like doppler_hz); the tracker integrates it in its NCO (never a replica
             # retune -- that walks the absolutely-anchored code/carrier off-peak) so the deep-

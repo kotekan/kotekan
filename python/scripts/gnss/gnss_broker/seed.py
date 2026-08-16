@@ -41,7 +41,8 @@ FIELDS = {
 # itself here or its steps audit as "?file:line".
 OWNERS = {
     "det":          "REPLACE  detection birth / re-detection (whole tuple from the search)",
-    "dop_select":   "REPLACE  doppler source selection (pred | dr | det, last word wins)",
+    "dop_sel:*":    "REPLACE  doppler source selection, suffixed with the winner "
+                    "(pred | dr | dr(code-untrusted) | det | DET(grid) -- last word wins)",
     "dop_model":    "REPLACE  doppler_rate_hz_s from BRDC central/forward diff or almanac",
     "dop_fit":      "REPLACE  doppler_rate_hz_s from the measured-slope fit (model-vetoed)",
     "cp_fit":       "REPLACE  cp-rate fit: code_phase_rate + ref_hop + code_phase_chips",
