@@ -107,6 +107,12 @@ def main():
     ap.add_argument("--windows", type=int, default=64)
     ap.add_argument("--min-duty", type=float, default=0.5)
     ap.add_argument("--plot", default=None)
+    ap.add_argument("--derotate-phi0", action="store_true",
+                    help="THE #72 FIX, MEASURED: multiply every comb value by exp(+i*phi0) "
+                         "(record slot REC_PHI0) before analysing, removing the assembler's "
+                         "per-instance arbitrary NCO origin. Run the tool twice on the SAME "
+                         "capture, with and without: the pair is in TIME on one sky, which is "
+                         "the only honest way to A/B something that varies per instance.")
     ap.add_argument("--blocks", type=int, default=1,
                     help="cut the capture into N consecutive blocks and report each\n"
                          "instance's constant per block: the TIMESCALE on which it\n"
@@ -128,10 +134,14 @@ def main():
     cl.start()
     time.sleep(a.seconds)
     wins = cl.windows(a.chain, lag=1)[-a.windows:]
-    ser, owner = collect(cl, a.chain, wins, held | probes)
+    ser, owner = collect(cl, a.chain, wins, held | probes,
+                         derotate_phi0=a.derotate_phi0)
     cl.stop()
     if not ser:
         raise SystemExit("no records -- run this ON cf06 (--gather is HOST:PORT)")
+    if a.derotate_phi0:
+        print("\n  [--derotate-phi0: comb multiplied by exp(+i*REC_PHI0), removing the "
+              "assembler's\n   per-instance arbitrary NCO origin]")
 
     alias_ns = 1e9 / (16 * CHAN_HZ)
     print("\nchannel step %.4f MHz;  same-instance stride 16 = %.4f MHz  ->  delay aliases "

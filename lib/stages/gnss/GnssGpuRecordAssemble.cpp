@@ -462,6 +462,13 @@ void GnssGpuRecordAssemble::main_thread() {
                     _phi_cyc[p] += c.f_nco * dt;
                 }
                 const std::complex<double> rot = std::polar(1.0, -_phi[p]);
+                // #72: PUBLISH THE CURRENCY. `rot` is about to be applied to slots 3/4 and to
+                // every comb column, and its exponent has a per-instance ARBITRARY origin. Ship
+                // it so a consumer can rotate every instance onto one common reference; see
+                // gnss::REC_PHI0, and the SpecWindow's W.phi0[p] which does the same for
+                // /get_spectrum. Written BEFORE the rotation is used, so it can never describe
+                // a different record's phase than the one it rode out with.
+                rec[gnss::REC_PHI0] = (float)_phi[p];
                 const std::complex<double> g_corr = g3[1] * rot;
                 rec[3] = (float)g_corr.real();
                 rec[4] = (float)g_corr.imag();

@@ -60,7 +60,7 @@ CHIP_HZ = 10.23e6
 FID_REF = 6024                     # L5 centre, 1176.45 MHz -> fid 6023.4
 
 
-def collect(client, chain, wins, prns):
+def collect(client, chain, wins, prns, derotate_phi0=False):
     """{prn: (fids, [ {fid: complex g} per record ])} -- the raw per-channel prompt series.
 
     g is the energy-weighted prompt exactly as the shipping reduction forms it (P * wP), so
@@ -80,9 +80,18 @@ def collect(client, chain, wins, prns):
                 for prn in f.prns():
                     if prn not in prns:
                         continue
+                    # #72: the comb was exported rotated by exp(-i*phi0) with a PER-INSTANCE
+                    # arbitrary origin. Undo it and every instance lands on one common
+                    # reference (ang0, measured bit-identical fleet-wide).
+                    und = 1.0
+                    if derotate_phi0:
+                        row = f.row(r, prn)
+                        if row is None:
+                            continue
+                        und = cmath.exp(1j * row[telem.REC_PHI0])
                     for fid, _E, P, _L, (_wE, wP, _wL) in f.comb_epl(r, prn):
                         if wP > 0.0:
-                            per.setdefault(prn, {})[fid] = P * wP
+                            per.setdefault(prn, {})[fid] = P * wP * und
                             owner[fid] = inst
             for prn, chans in per.items():
                 if len(chans) >= 8:

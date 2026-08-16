@@ -120,7 +120,9 @@ namespace gnss {
 /// GnssCoherentCombiner) and die loudly instead of corrupting memory.
 /// 26 -> 28 on 2026-08-16: @ref REC_ANG0 and @ref REC_PHI_DDOP, the two per-(instance, PRN)
 /// carrier-phase quantities #72 needs and that no external measurement can reach.
-constexpr int RECORD_FLOATS = 28;
+/// 28 -> 29 same day: @ref REC_PHI0, the comb's phase currency -- #72's root cause, made
+/// recoverable by the consumer instead of left implicit.
+constexpr int RECORD_FLOATS = 29;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // THE HOP-ORDER CONTRACT (decided 2026-08-06, docs/gnss_gpu_search.md 11.3): every hop-indexed
@@ -213,6 +215,36 @@ constexpr int REC_SKY_IM = 25;    ///< prompt correlation, but with each ELEMENT
 /// points at the synthesis (Phi) instead; unequal ang0 IS the bug, located.
 /// float32 holds ~1e-7 rad here, four orders finer than the ~1 rad effect under test.
 constexpr int REC_ANG0 = 26;
+
+/// THE COMB'S PHASE CURRENCY, radians in [-pi, pi]: the value of the assembler's carrier NCO
+/// accumulator `_phi[p]` at this record -- i.e. the rotation `exp(-i*phi0)` that was APPLIED to
+/// record slots 3/4 and to EVERY comb column before export.
+///
+/// ⚠️ THIS IS #72's ROOT CAUSE MADE RECOVERABLE. `_phi[p]` is continuous in time but its ZERO
+/// is set at a per-instance fresh acquisition, so its absolute value is ARBITRARY AND DIFFERENT
+/// ON EVERY INSTANCE. Exporting g*exp(-i*_phi) therefore stamps each instance's comb with its
+/// own arbitrary constant, which leaves INTRA-instance coherence untouched (a constant does not
+/// tilt a ramp) and destroys INTER-instance coherence. Measured on sky 2026-08-16: same-instance
+/// channel pairs cohere at 0.65-0.81 while pairs 16x CLOSER in frequency but in different
+/// instances manage only 0.33-0.37 -- coherence tracking the `freq_id mod 8` transport grouping
+/// instead of frequency, which is the signature of a bug rather than of physics.
+///
+/// ⚠️ PUBLISH THE CURRENCY -- DO NOT RE-REFERENCE IT LOCALLY, AND DO NOT DROP THE ROTATION.
+/// Both alternatives have been tried and both were wrong. Subtracting a per-window origin
+/// (45fe3a438) destroyed window-to-window continuity (coherence 0.38 against a 0.378 random
+/// baseline). Dropping the rotation would put the full commanded carrier ramp back into every
+/// cross-RECORD use of the comb, which is the one thing the un-accumulated comb exists for.
+/// The SpecWindow path already solved this the right way -- it publishes `W.phi0[p]` so a
+/// consumer can rotate onto a common reference exactly -- and this slot extends that same
+/// (value, currency, epoch) discipline to the telemetry row, which is what the fleet combine
+/// actually reads. See the long note at GnssGpuRecordAssemble.cpp:493.
+///
+/// CONSUMER CONTRACT: multiply the comb (and slots 3/4) by `exp(+i*phi0)` to recover the raw,
+/// despread-referenced value. That reference is `ang0`, which was MEASURED bit-identical across
+/// all twelve instances (spread exactly 0, every PRN, 160 records, 2026-08-16), so once phi0 is
+/// removed every instance is on one common phase reference and the band can be summed
+/// coherently across its full 20.31 MHz.
+constexpr int REC_PHI0 = 28;
 
 /// PHI-CACHE STALENESS, Hz: doppler_now - the Doppler this PRN's channelizer filter was BUILT
 /// at. GnssCudaDespread::ensure_phi rebuilds only when the Doppler moves further than
