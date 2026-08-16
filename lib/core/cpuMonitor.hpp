@@ -90,7 +90,7 @@ private:
     // callbacks read it.
     std::mutex ult_list_lock;
     std::map<std::string, Stage*> stages;
-    uint32_t prev_cpu_time;
+    uint32_t prev_cpu_time = 0;
     uint16_t track_len = 2;
 };
 
