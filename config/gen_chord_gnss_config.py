@@ -1849,14 +1849,15 @@ def main():
                          "the carrier phase comes from DespreadJob::ang0 at the window's "
                          "reference sample, so the ~1.18 GHz carrier's rounding never "
                          "multiplies the absolute sample index. 0 = the pre-86349ac4d "
-                         "wc*n_abs expression. 'ab' = GPU 0 gets the fix and GPU 1 the old "
-                         "code ON EVERY NODE, which is the tightest pairing available: same "
+                         "wc*n_abs expression. " "⚠️⚠️ 'ab' IS NOT SAFE AND SHOULD NOT BE USED. An instance is an ARBITRARY GROUP OF FREQUENCY CHANNELS (freq_id mod 8, applied AFTER the signal path -- one PFB, one set of raw samples), so splitting the arm by GPU runs TWO DIFFERENT PHASE CONVENTIONS ON DIFFERENT CHANNELS OF THE SAME SIGNAL and corrupts every across-band phase measurement -- and we DO fit the carrier phase across the band (#32). It reads as a tidy paired A/B only if one believes instances are independent, which they are not: they run in lockstep and any mismatch between them is a BUG. Pick one arm fleet-wide and pair in TIME instead. "
+                         "'ab' = GPU 0 gets the fix and GPU 1 the old "
+                         "code ON EVERY NODE, which LOOKS like the tightest pairing: same "
                          "node, same sky, same seeds, same poll. A before/after across two "
                          "restarts CANNOT resolve this -- measured 2026-08-13, deep_snr max "
                          "swung 52-197 inside four minutes and the seeded PRN count moved "
                          "12 -> 5 on geometry alone.")
     ap.add_argument("--carrier-phase-mode", choices=("1", "2", "ab"), default="1",
-                    help="TASK #71. 2 = the replica carrier phase ACCUMULATES across records "
+                    help="TASK #71. ⚠️⚠️ 'ab' IS NOT SAFE AND SHOULD NOT BE USED. An instance is an ARBITRARY GROUP OF FREQUENCY CHANNELS (freq_id mod 8, applied AFTER the signal path -- one PFB, one set of raw samples), so splitting the arm by GPU runs TWO DIFFERENT PHASE CONVENTIONS ON DIFFERENT CHANNELS OF THE SAME SIGNAL and corrupts every across-band phase measurement -- and we DO fit the carrier phase across the band (#32). It reads as a tidy paired A/B only if one believes instances are independent, which they are not: they run in lockstep and any mismatch between them is a BUG. Pick one arm fleet-wide and pair in TIME instead. 2 = the replica carrier phase ACCUMULATES across records "
                          "(a real NCO: phi += 2*pi*fbar*dn/fs) instead of being evaluated as "
                          "f*n0 on the ABSOLUTE sample index. The old form hangs the whole "
                          "phase history off the CURRENT frequency estimate over a lever of "

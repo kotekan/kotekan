@@ -454,9 +454,24 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
 
     Per (PRN, instance): Abar = (1/n) sum_k A_k exp(-2 pi i f t_k), t_k = hop_k * hop_s
     (absolute hops -- exact, shared across the fleet). Fleet: mean over instances of
-    |Abar|^2 (incoherent across instances: cross-instance coherence is the delay-alignment
-    problem and belongs to the combine, not the radiometry). Debias against the probes'
-    clipped-mean folded power (the Gamma-median lesson, [[chord-cn0-prompt-estimator]]).
+    |Abar|^2. Debias against the probes' clipped-mean folded power (the Gamma-median
+    lesson, [[chord-cn0-prompt-estimator]]).
+
+    ⚠️ THE POWER MEAN OVER INSTANCES IS A KNOWN LIMITATION, NOT A DESIGN. This used to
+    carry a comment calling cross-instance coherence "the delay-alignment problem [that]
+    belongs to the combine, not the radiometry". THAT WAS FALSE and it has misled work
+    repeatedly. An instance is an ARBITRARY GROUP OF FREQUENCY CHANNELS -- `freq_id mod 8`
+    routing applied AFTER the signal path, one PFB, one set of raw samples. Channels inside
+    one instance do not cohere any better than channels in different ones; there is nothing
+    physical at the boundary. The instances run in lockstep, and ANY mismatch between them
+    is a BUG, full stop -- never a property to design around. We already fit the carrier
+    phase ACROSS THE BAND (#32), which is exactly a cross-instance phase measurement.
+
+    So summing |Abar|^2 instead of coherently combining Abar throws away real sensitivity
+    (~10log10(n_inst) at 12 instances) and, worse, makes the estimator BLIND to the very
+    cross-instance phase errors that would be bugs. Fixing it is its own change with its
+    own gate; until then this is a floor to be lifted, and no reader should take the shape
+    of this reduction as evidence that instances are independent.
     C/N0 = 10log10(rho / T_coh), T_coh = n_rec_mean * t_rec; identical currency to
     cn0_prompt by construction, so on a strong stationary satellite THE TWO MUST AGREE --
     that standing cross-check is the point of serving both.
@@ -520,7 +535,9 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
             return None, 0, 0.0
         return abs(s / n) ** 2, n, pw / n
 
-    # Per-PRN fleet reduction: per-instance folds, then the mean over instances.
+    # Per-PRN fleet reduction: per-instance folds, then the POWER mean over instances.
+    # ⚠️ See the docstring: instances are an arbitrary freq_id grouping, they must cohere,
+    # and this power mean is a limitation to lift -- not a statement about the sky.
     # ⚠️ RATE SANITY CLAMP. Physics bounds the residual at ~±10 Hz (decohered sats,
     # [[chord-deep-rate-alias]]); a rate fit taken on a re-acquiring fleet hands back
     # ±30-45 Hz of pure noise (measured 2026-08-15 16:52, minutes after a node restart),
