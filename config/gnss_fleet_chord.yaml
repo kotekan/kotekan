@@ -84,7 +84,24 @@ common:
   # expect eta to recover: this is the per-RECORD lever, and the per-FRAME jump that
   # dominates eta is a separate, still-unidentified fault.
   # Revert: set this to 1 and regenerate.
-  carrier-phase-mode: ab
+  # ⚠️ REVERTED TO 1 ON SKY, 2026-08-16 00:30. Arm 2 measured WORSE in the paired A/B it was
+  # built for (kcoh_phase_series.py --split-gpu, gps_l5, both arms off the SAME records):
+  #     |r_m|/|r_4|      m=1     m=2     m=8     m=32    m=64
+  #     arm2 (NCO)      0.799   0.595   0.977   0.484   0.218
+  #     arm1 (old)      0.788   0.582   0.996   0.691   0.480
+  # and the per-record phase step went from +0.09 rad (arm 1, PRN 4) to -3.11 rad (arm 2),
+  # satellite-dependent: PRN 11 read -0.95. Arm 2 makes the replica phase LESS continuous, not
+  # more. |A| is unaffected (0.909 vs 0.907), so tracking never noticed either way.
+  #
+  # ⚠️ WHY THE OFFLINE GATE MISSED IT. carrier_nco_gate drives the accumulator against MY OWN
+  # model of the truth, in isolation. It never checked the CONTRACT WITH THE KERNEL -- that
+  # ang0 must be the phase at n0 for a ramp the kernel then continues at wc across the record.
+  # A gate on a formula is not a gate on an interface, and this one passed at 9e-16 rad while
+  # the thing it validated was wrong where it meets its caller.
+  #
+  # The prediction that DID hold: |r_1|/|r_4| is unchanged between arms (0.799 vs 0.788), so
+  # the frame-periodic fault is untouched by anything per-record -- exactly as stated.
+  carrier-phase-mode: 1
 
   # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.

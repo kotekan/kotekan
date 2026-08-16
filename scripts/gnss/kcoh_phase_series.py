@@ -118,6 +118,12 @@ def main():
     ap.add_argument("--windows", type=int, default=32)
     ap.add_argument("--blocks", type=int, default=3)
     ap.add_argument("--seconds", type=float, default=15.0)
+    ap.add_argument("--split-gpu", action="store_true",
+                    help="#71: report each GPU's instances SEPARATELY. Instances are keyed "
+                         "<node>.<gpu>, and gen_fleet's carrier-phase-mode 'ab' puts arm 2 "
+                         "(the accumulating NCO) on gpu 0 and arm 1 on gpu 1 across the whole "
+                         "fleet -- so this reads BOTH ARMS OFF THE SAME RECORDS in one poll. "
+                         "A before/after across two restarts cannot resolve it.")
     a = ap.parse_args()
 
     with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"), a.chain),
@@ -137,6 +143,7 @@ def main():
     cl = telem.TelemClient(host=host, port=port, depth=4096, chains={a.chain})
     cl.start()
     sat_raw, probe_raw = {m: [] for m in lags}, {m: [] for m in lags}
+    arm1_raw = {m: [] for m in lags}
     incs = {}
     try:
         for b in range(a.blocks):
@@ -150,6 +157,33 @@ def main():
                   % (b, 1000 * T_REC))
             print("    %-6s %-7s %s" % ("prn", "rate1", "  ".join("m=%-6d" % m
                                                                   for m in lags)))
+            if a.split_gpu:
+                # ⚠️ SAME RECORDS, SAME SATELLITES, SAME POLL -- only the arm differs. The two
+                # groups are disjoint sets of INSTANCES, so nothing is shared between them
+                # except the sky, which is the point.
+                for arm, suffix in ((2, ".0"), (1, ".1")):
+                    print("    -- arm %d (instances %s) --" % (arm, suffix))
+                    for x in held:
+                        p = int(x["prn"])
+                        v = got.get(p)
+                        if not v or "series" not in v:
+                            continue
+                        sub = {k: r for k, r in v["series"].items() if k.endswith(suffix)}
+                        if not sub:
+                            continue
+                        c, r1 = curve(sub, lags)
+                        if 1 not in c or 4 not in c or c[4] <= 0:
+                            continue
+                        print("    %-6d %-7s %s" % (p, ("%+.2f" % r1) if r1 is not None else "--",
+                                                    "  ".join("%-8.3f" % c.get(m, float("nan"))
+                                                              for m in lags)))
+                        fi = frame_increments(sub)
+                        if fi:
+                            incs.setdefault((arm, p), {}).update(fi)
+                        for m in lags:
+                            if m in c:
+                                (sat_raw if arm == 2 else arm1_raw)[m].append(c[m])
+                continue
             for x in held + [{"prn": p, "_probe": True} for p in sorted(probes)]:
                 p = int(x["prn"])
                 v = got.get(p)
@@ -176,6 +210,23 @@ def main():
     if not sat_raw[1]:
         print("\nINCONCLUSIVE: no satellite series collected.")
         return 1
+    if a.split_gpu:
+        print("\n  ARM COMPARISON, |r_m| / |r_4|   (same records, same poll)")
+        print("    %-10s %s" % ("", "  ".join("m=%-6d" % m for m in lags)))
+        for name, raw in (("arm2 (NCO)", sat_raw), ("arm1 (old)", arm1_raw)):
+            if not raw.get(4):
+                continue
+            med = {m: statistics.median(v) for m, v in raw.items() if v}
+            print("    %-10s %s" % (name, "  ".join("%-8.3f" % (med[m] / med[4])
+                                                    if m in med else "--" for m in lags)))
+        print("\n  PHASE STEP BY POSITION IN FRAME, per arm (rad)")
+        print("    %-4s %-5s %s" % ("arm", "prn",
+                                    "  ".join("%d->%d    " % (j, (j + 1) % REC_PER_FRAME)
+                                              for j in range(REC_PER_FRAME))))
+        for (arm, p), inc in sorted(incs.items()):
+            steps = [inc.get(j, (float("nan"),))[0] for j in range(REC_PER_FRAME)]
+            print("    %-4d %-5d %s" % (arm, p, "  ".join("%+8.3f" % v for v in steps)))
+        return 0
     print("\n  SHAPE, |r_m| / |r_4|  (normalised on ONE FRAME, not on lag 1)")
     print("    %-10s %s" % ("", "  ".join("m=%-6d" % m for m in lags)))
     # ⚠️ NORMALISE ON m=4, NOT m=1. The first cut divided by |r_1| and reported "flat, so it
