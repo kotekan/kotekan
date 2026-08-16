@@ -170,19 +170,35 @@ private:
     /// overlay costs 20 surfaces per PRN and is ~92% of a pass (measured 2026-08-04: acquire
     /// 40.00 s vs refine 3.62 s at live parameters).
     ///
-    /// It is redundant work. The alignment advances exactly one index per primary code period,
-    /// and a period is an exact hop count, so
+    /// The alignment advances exactly one index per primary code period, so
     ///     nh(H) = (nh0 + (H - H0) / period_hops) mod n_nh
-    /// is pure F-engine counter arithmetic. NO absolute clock, no range model, no utc0_sample0
-    /// -- deliberately unlike the combiner's --cl-hint, whose GPS-time route carries a
-    /// bootstrap dependency and an anchor-latency failure mode. The hint only ever refines
-    /// something THIS stage already measured and reported, so there is nothing to bootstrap:
-    /// no hint scans all n_nh (the old behaviour), the first detection establishes it, and a
-    /// stale hint expires back to the full scan.
+    /// needs NO absolute clock, no range model, no utc0_sample0 -- deliberately unlike the
+    /// combiner's --cl-hint, whose GPS-time route carries a bootstrap dependency and an
+    /// anchor-latency failure mode. The hint only ever refines something THIS stage already
+    /// measured and reported: no hint scans all n_nh (the old behaviour), the first detection
+    /// establishes it, and a stale hint expires back to the full scan.
     ///
-    /// Accuracy comes from the revisit being short. An entirely unmodelled 4 kHz Doppler slips
-    /// the period count by 0.041 periods over 12 s -- but 4.3 periods over the 1276 s revisit
-    /// this fleet had before 2026-08-04, where the hint would have been worse than useless.
+    /// ⚠️ IT IS NOT EXACT COUNTER ARITHMETIC, AND THE ±1 IS STRUCTURAL. An earlier version of
+    /// this comment asserted "a period is an exact hop count". **That is false at every geometry
+    /// this tree has ever run.** At CHORD period_hops = (10230/10.23e6)*3.2e9/16384 = 195.3125
+    /// hops, and snapshot hops are multiples of the 8192-hop FRAME, giving 8192/195.3125 =
+    /// 41.9430 periods per frame -- neither is an integer. (The airspy geometry it was presumably
+    /// written for is no better: 19.5312 hops/period at fs 20 MHz, fft 1024.)
+    ///
+    /// The true advance is a difference of floors, floor(H1/T) - floor(H0/T), while the code
+    /// computes llround((H1-H0)/T). Those differ by exactly 1 whenever the sub-period phases of
+    /// H0 and H1 straddle the rounding boundary, so **pred is off by one period at a rate set by
+    /// the fractional geometry, not by signal quality.** Nothing detects this: the ±nh_hint_span
+    /// scan silently absorbs it.
+    ///
+    /// MEASURED ON SKY 2026-08-16 (112 transitions, 241 s, gps_l5, all dhop = 8192):
+    ///     d = best_nh - pred:   0: 37.5%   -1: 23.2%   |d| == span: 20.5%   |d| > span: 16.1%
+    /// |d| > span is IMPOSSIBLE with a fresh hint, so ~16% of passes ran the blind scan. The
+    /// scatter tracks SNR, not the counter -- see task #41 and docs/CHORD_CONTROL_AUDIT.md §3.
+    ///
+    /// Accuracy also degrades with revisit. An entirely unmodelled 4 kHz Doppler slips the period
+    /// count by 0.041 periods over 12 s -- but 4.3 periods over the 1276 s revisit this fleet had
+    /// before 2026-08-04, where the hint would have been worse than useless.
     struct NhHint {
         bool valid = false;
         int nh = 0;             ///< alignment index measured at ref_hop

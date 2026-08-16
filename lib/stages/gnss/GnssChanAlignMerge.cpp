@@ -39,6 +39,10 @@ GnssChanAlignMerge::GnssChanAlignMerge(Config& config, const std::string& unique
     _n_hops = config.get<int>(unique_name, "samples_per_data_set");
     // ABSENT-SENDER TIMEOUT. 0 disables (block forever, the historical behaviour).
     _input_timeout_s = config.get_default<double>(unique_name, "input_timeout_s", 5.0);
+    // RE-PROBE COST for an input ALREADY known absent -- see the wait-budget note in
+    // main_thread(). Must be long enough to pick up a frame that is already queued (which is
+    // all a rejoining sender needs) and short enough that dead feeds are free.
+    _absent_probe_s = config.get_default<double>(unique_name, "absent_probe_s", 0.002);
 
     if (in_bufs.empty() || _in_chans.size() != in_bufs.size()) {
         FATAL_ERROR("GnssChanAlignMerge: {:d} in_bufs but {:d} in_channels entries",
@@ -89,6 +93,32 @@ void GnssChanAlignMerge::main_thread() {
     //
     // Absence is not permanent: a timed-out input is retried every cycle, so a node that
     // restarts rejoins on its own. `present` is only about THIS frame.
+    //
+    // ⚠️ THE COST OF THAT RETRY IS THE WHOLE STAGE'S THROUGHPUT. The reacquire sweep at the end
+    // of the loop calls acquire() for EVERY input, SEQUENTIALLY, and an input that is still
+    // absent blocks the FULL _input_timeout_s before timing out again. So the merge's output
+    // period is n_absent x _input_timeout_s -- it degrades with the number of DEAD feeds, which
+    // is precisely the case it was written to survive.
+    //
+    // MEASURED 2026-08-16 (task #81): 3 absent inputs (cx43's two GPUs + cx51.1) x 5.0 s = a
+    // 15.0 s merge period against a 41.94 ms frame. Predicted 15.0, measured 15.0. Downstream,
+    // GnssChannelizedSearch reported "20 frames (0.1/s), blocked 100%, 0 frames discarded while
+    // the worker was busy" -- 356x starved and NOT compute-bound -- and its detections ran 48.9 s
+    // behind the sky. A stale detection is not merely late: the clock-bias solve is
+    // median(det_dop - pred_dop) with pred at NOW, so lag x dop_rate is a pure fabricated bias
+    // (~44 Hz here). gps_distributed_broker.py:3457 documents the same failure at 90 s costing
+    // +68 Hz and dragging a tracker off a 55-sigma satellite.
+    //
+    // THE FIX: an input ALREADY KNOWN ABSENT is POLLED (_absent_probe_s), not waited on. A
+    // rejoining sender has frames queued, so the poll takes one immediately and rejoin stays as
+    // prompt as before -- absence costs microseconds instead of seconds.
+    //
+    // ⚠️ DO NOT extend this to a total per-frame wait budget that also short-polls PRESENT
+    // inputs. Frames arrive every 41.94 ms; a healthy input polled 2 ms after its last frame was
+    // consumed will usually NOT be ready, and the timeout path ZEROES it. That would silently
+    // zero healthy feeds every frame -- turning a throughput bug into a sensitivity bug that
+    // looks like the sky. A present feed must be genuinely waited for. If a SLOW-but-alive feed
+    // ever needs bounding, measure that it exists first: it is not what #81 was.
     std::vector<uint8_t> present(n_in, 0);
     std::vector<uint8_t> ever(n_in, 0);      // acquired at least once -- gates the spread check
     std::vector<uint8_t> announced(n_in, 0); // so join/leave logs once per transition, not per frame
@@ -106,10 +136,13 @@ void GnssChanAlignMerge::main_thread() {
     // nothing. Detect BOTH shapes: a single feed jumping backwards, and a spread across feeds
     // too large to be sender lag.
     std::vector<int64_t> last_seq(n_in, -1);
+    const auto now_s = [] {
+        return std::chrono::duration<double>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
     double last_warn = 0.0;
     const auto warn_rate_limited = [&](const std::string& msg) {
-        const double now = std::chrono::duration<double>(
-                               std::chrono::steady_clock::now().time_since_epoch()).count();
+        const double now = now_s();
         if (now - last_warn < 10.0)
             return;
         last_warn = now;
@@ -118,10 +151,14 @@ void GnssChanAlignMerge::main_thread() {
 
     auto acquire = [&](int i) -> bool {
         if (_input_timeout_s > 0.0) {
+            // An input already declared ABSENT is polled, not waited on -- otherwise every dead
+            // feed costs a full timeout on every output frame and the merge period becomes
+            // n_absent x _input_timeout_s. See the wait-budget note above (#81).
+            const double wait_s = announced[i] ? _absent_probe_s : _input_timeout_s;
             clock_gettime(CLOCK_REALTIME, &ts_timeout);
-            const double whole = std::floor(_input_timeout_s);
+            const double whole = std::floor(wait_s);
             ts_timeout.tv_sec += (time_t)whole;
-            ts_timeout.tv_nsec += (long)((_input_timeout_s - whole) * 1e9);
+            ts_timeout.tv_nsec += (long)((wait_s - whole) * 1e9);
             if (ts_timeout.tv_nsec >= 1000000000L) {
                 ts_timeout.tv_nsec -= 1000000000L;
                 ts_timeout.tv_sec += 1;
@@ -210,6 +247,13 @@ void GnssChanAlignMerge::main_thread() {
             return;
 
     bool logged_first = false;
+    // THROUGHPUT VISIBILITY. #81 stayed hidden because nothing here ever said what rate this
+    // stage was achieving. The search's own log DID show it starving ("0.1/s, blocked 100%"),
+    // but with no counterpart at the producer there was nothing to connect it to, and the
+    // symptom -- no detections, stale detections, a walking clock bias -- points at the sky.
+    // The absent set is printed alongside the rate because it is the CAUSE of the rate.
+    long n_out = 0;
+    double t_rate0 = now_s();
     while (!stop_thread) {
         // Advance every input to the maximum epoch currently held. Each release/reacquire can
         // RAISE the target (the lagging input may leapfrog if the sender dropped frames), so
@@ -270,6 +314,29 @@ void GnssChanAlignMerge::main_thread() {
         }
 
         out_buf->mark_frame_full(unique_name, out_id++);
+
+        ++n_out;
+        if (now_s() - t_rate0 >= 60.0) {
+            const double el = now_s() - t_rate0;
+            std::string absent;
+            int n_absent = 0;
+            for (int i = 0; i < n_in; ++i)
+                if (announced[i]) {
+                    absent += (absent.empty() ? "" : ",") + std::to_string(i);
+                    ++n_absent;
+                }
+            const double hz = (double)n_out / el;
+            // The nominal rate is one output per input frame; anything far below it means the
+            // sky reaching the search is OLD, not merely sparse.
+            INFO("GnssChanAlignMerge[{:s}]: {:.2f} frames/s ({:d} in {:.0f}s), {:d}/{:d} inputs "
+                 "absent [{:s}]{:s}",
+                 unique_name, hz, n_out, el, n_absent, n_in, absent,
+                 (n_absent && hz < 1.0)
+                     ? " -- OUTPUT IS GATED BY ABSENT FEEDS; downstream sky is stale"
+                     : "");
+            n_out = 0;
+            t_rate0 = now_s();
+        }
         for (int i = 0; i < n_in; ++i) {
             if (present[i])
                 in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);

@@ -75,6 +75,12 @@ private:
     /// 0 = block forever (historical). A config declaring more inputs than there are running
     /// nodes otherwise stalls the whole aggregator silently -- see main_thread.
     double _input_timeout_s = 5.0;
+    /// Seconds to wait on an input ALREADY declared absent. Must be a POLL, not a wait: the
+    /// reacquire sweep is sequential over inputs, so at the full timeout n dead feeds set the
+    /// merge period to n x _input_timeout_s. Measured 2026-08-16: 3 dead feeds gave a 15.0 s
+    /// period against a 41.94 ms frame, starving the search 356x and putting its detections
+    /// 48.9 s behind the sky -- which the clock solve reads as ~44 Hz of bias. Task #81.
+    double _absent_probe_s = 0.002;
 };
 
 #endif // GNSS_CHAN_ALIGN_MERGE_HPP

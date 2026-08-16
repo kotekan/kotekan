@@ -706,8 +706,10 @@ void GnssChannelizedSearch::search_snapshot() {
         // WHICH ALIGNMENTS TO SCAN. Each one costs a FULL acquisition surface, so with a
         // 20-chip overlay this loop is ~92% of a pass (measured: acquire 40.00 s vs refine
         // 3.62 s at live parameters). The alignment advances exactly one index per primary code
-        // period and a period is an exact hop count, so a hint from OUR OWN last detection
-        // propagates by counter arithmetic alone -- no clock, nothing to bootstrap. See NhHint.
+        // period, so a hint from OUR OWN last detection propagates without a clock and with
+        // nothing to bootstrap. ⚠️ It does NOT propagate by exact counter arithmetic -- a period
+        // is 195.3125 hops here, so the llround below is a real rounding and pred is off by one
+        // period whenever the sub-period phases straddle the boundary. See NhHint.
         std::vector<int> nh_scan;
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
