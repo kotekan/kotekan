@@ -4099,20 +4099,22 @@ def main(argv=None, rx=None, publisher=None):
             if v2_dr is not None and v0_dr is not None:
                 # BRDC doppler rate, CENTRAL difference over the +/-2 s pair straddling now_w
                 # (task #52). Centred, so the rate is tagged at now_w rather than 2 s late.
-                seed["doppler_rate_hz_s"] = (args.doppler_sign
-                                             * (-(v2_dr["range_rate_mps"]
-                                                  - v0_dr["range_rate_mps"]) / 4.0)
-                                             / C_LIGHT * args.carrier_hz)
+                seed.put("dop_model", epoch=ref_hop,
+                         doppler_rate_hz_s=(args.doppler_sign
+                                            * (-(v2_dr["range_rate_mps"]
+                                                 - v0_dr["range_rate_mps"]) / 4.0)
+                                            / C_LIGHT * args.carrier_hz))
             elif v_dr is not None and v2_dr is not None:
                 # Fallback for the first cycle, before pd0 exists: the OLD forward form, and
                 # it is deliberately still here rather than silently emitting nothing -- but it
                 # is 2 s mis-tagged, so it must not be the steady state.
-                seed["doppler_rate_hz_s"] = (args.doppler_sign
-                                             * (-(v2_dr["range_rate_mps"]
-                                                  - v_dr["range_rate_mps"]) / 2.0)
-                                             / C_LIGHT * args.carrier_hz)
+                seed.put("dop_model", epoch=ref_hop,
+                         doppler_rate_hz_s=(args.doppler_sign
+                                            * (-(v2_dr["range_rate_mps"]
+                                                 - v_dr["range_rate_mps"]) / 2.0)
+                                            / C_LIGHT * args.carrier_hz))
             elif args.almanac and prn in pred:
-                seed["doppler_rate_hz_s"] = pred[prn][1]
+                seed.put("dop_model", epoch=ref_hop, doppler_rate_hz_s=pred[prn][1])
             # MEASURED rate beats the model's, and it is the LAST word here for the same reason
             # --seed-doppler det is: the model exists to own sats we have not measured. Gated on
             # enough points over enough baseline that the slope is real rather than fitted to
@@ -4137,21 +4139,21 @@ def main(argv=None, rx=None, publisher=None):
                 # comes from an orbit rather than from detection noise, and say so.
                 dop_rate_rejected[prn] = (_dr, _model_dr)
             elif _dr is not None:
-                seed["doppler_rate_hz_s"] = _dr
+                seed.put("dop_fit", epoch=ref_hop, doppler_rate_hz_s=_dr)
                 dop_rate_fitted[prn] = _dr
             elif args.force_doppler_rate is not None:
                 # Replay-bench override: a recorded capture's sky is at another epoch (no almanac),
                 # so inject a known rate into every seed to exercise the NCO feed-forward offline.
-                seed["doppler_rate_hz_s"] = args.force_doppler_rate
+                seed.put("dop_force", epoch=ref_hop,
+                         doppler_rate_hz_s=args.force_doppler_rate)
             fit = fit_cp_rate(
                 cp_to_seed_currency(h, seed_dop,
                                     float(seed.get("doppler_rate_hz_s", 0.0) or 0.0)),
                 CODE_LEN)
             if fit is not None:
                 rate, h0, cp_ref = fit
-                seed["code_phase_rate"] = rate
-                seed["ref_hop"] = h0
-                seed["code_phase_chips"] = cp_ref
+                seed.put("cp_fit", epoch=h0,
+                         code_phase_rate=rate, ref_hop=h0, code_phase_chips=cp_ref)
                 fitted.add(prn)
                 cp_fit_slope[prn] = rate * args.hops_per_sec   # chips/s, for CARRIER-FROM-CODE
                 # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
@@ -4190,8 +4192,9 @@ def main(argv=None, rx=None, publisher=None):
                 # carries the period. Reconstructing it here -- from `nh`, or from absolute
                 # time via --cl-assist -- means re-deriving a convention the search already
                 # knows, which is where every previous attempt went wrong.
-                seed["code_phase_chips"] = ((cp_long + args.nh_period_offset * CODE_LEN)
-                                            % (LC_SEG * CODE_LEN))
+                seed.put("nh_lift", epoch=ref_hop,
+                         code_phase_chips=((cp_long + args.nh_period_offset * CODE_LEN)
+                                           % (LC_SEG * CODE_LEN)))
                 cl_report.append("PRN %d long-cp (search)" % prn)
                 # And carry the PHASE at the search's own epoch. cp0 back-references to sample
                 # 0 through a Doppler-scaled rate, which multiplies the reported Doppler's
@@ -4263,10 +4266,12 @@ def main(argv=None, rx=None, publisher=None):
                     # would change nothing the tracker ever reads. ph_hist keeps the UNSHIFTED
                     # phase so the continuity check still compares like with like.
                     ph = (ph + args.nh_period_offset * CODE_LEN) % LLc
-                    seed["code_phase_at_ref_chips"] = ph
+                    seed.put("nh_lift", epoch=ref_hop, code_phase_at_ref_chips=ph)
             elif det_nh >= 0 and LC_SEG > 1:
-                seed["code_phase_chips"] = ((seed["code_phase_chips"] % CODE_LEN)
-                                            + (det_nh % LC_SEG) * CODE_LEN) % (LC_SEG * CODE_LEN)
+                seed.put("nh_lift", epoch=ref_hop,
+                         code_phase_chips=((seed["code_phase_chips"] % CODE_LEN)
+                                           + (det_nh % LC_SEG) * CODE_LEN)
+                                          % (LC_SEG * CODE_LEN))
                 cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
             elif args.cl_assist and utc0_sample0 and args.almanac and prn in pred:
                 tau = pred[prn][3] / C_LIGHT
@@ -4275,7 +4280,9 @@ def main(argv=None, rx=None, publisher=None):
                 cp_cm = seed["code_phase_chips"]
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
                 fine_ms = (cl_chips - cp_cm - k * CODE_LEN) / args.chip_rate_hz * 1e3
-                seed["code_phase_chips"] = (cp_cm + (k % LC_SEG) * CODE_LEN) % (LC_SEG * CODE_LEN)
+                seed.put("cl_assist", epoch=ref_hop,
+                         code_phase_chips=(cp_cm + (k % LC_SEG) * CODE_LEN)
+                                          % (LC_SEG * CODE_LEN))
                 cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % LC_SEG, fine_ms))
             # HOLD-ON-LOCK: once a PRN shows a real lock, FREEZE its cp anchor + rate and let the
             # DLL trim own the sub-chip residual. The search's per-fix cp is only good to ~1-2
@@ -4478,15 +4485,16 @@ def main(argv=None, rx=None, publisher=None):
                              " -- clamping. A real MEO moves <1 Hz/cycle: SUSPECT THE MODEL."
                              % (prn, ddop, args.dop_max_rate_hz))
                     ddop = math.copysign(args.dop_max_rate_hz, ddop)
-                    seed["doppler_hz"] = prev["doppler_hz"] + ddop
+                    seed.put("dop_clamp", doppler_hz=prev["doppler_hz"] + ddop)
                 # DESIGN (b): translate EVERY cycle (no fence). The freeze branch survives only
                 # for --no-dop-continuous, and for the zero-motion case where it is a no-op.
                 if (not args.dop_continuous and abs(ddop) <= args.hold_max_dop_hz) or ddop == 0.0:
                     # Currency frozen: the whole tuple rides unchanged.
-                    seed["doppler_hz"] = prev["doppler_hz"]
-                    seed["code_phase_chips"] = prev["code_phase_chips"]
-                    seed["code_phase_rate"] = prev["code_phase_rate"]
-                    seed["ref_hop"] = prev["ref_hop"]
+                    seed.put("hold_freeze", epoch=prev["ref_hop"],
+                             doppler_hz=prev["doppler_hz"],
+                             code_phase_chips=prev["code_phase_chips"],
+                             code_phase_rate=prev["code_phase_rate"],
+                             ref_hop=prev["ref_hop"])
                 else:
                     # ---- CURRENCY TRANSLATION (2026-07-14): a DOPPLER UPDATE IS NOT A LOSS
                     # OF LOCK. The replica is anchored at sample 0, so the tracker builds the
@@ -4514,13 +4522,17 @@ def main(argv=None, rx=None, publisher=None):
                     # better estimate of the truth), so code_phase_rate is left alone -- only
                     # the retroactive part needs absorbing.
                     t_now = ref_hop / args.hops_per_sec
-                    seed["code_phase_chips"] = (
-                        prev["code_phase_chips"]
-                        - t_now * args.chip_rate_hz * args.code_doppler_sign
-                          * ddop / args.carrier_hz) % CODE_LEN
-                    seed["code_phase_rate"] = prev["code_phase_rate"]
-                    seed["ref_hop"] = prev["ref_hop"]
-                    # seed["doppler_hz"] keeps its NEW value -- that is the point.
+                    # doppler_hz keeps its NEW value -- that is the point -- and is
+                    # re-attributed here because the translation is what makes the
+                    # (cp0, dop) pair valid at the shipped ref_hop by construction.
+                    seed.put("translate", epoch=prev["ref_hop"],
+                             code_phase_chips=(
+                                 prev["code_phase_chips"]
+                                 - t_now * args.chip_rate_hz * args.code_doppler_sign
+                                 * ddop / args.carrier_hz) % CODE_LEN,
+                             code_phase_rate=prev["code_phase_rate"],
+                             ref_hop=prev["ref_hop"],
+                             doppler_hz=seed["doppler_hz"])
                     if prn not in cp_translated:
                         cp_translated.add(prn)
                         _log("TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.2f Hz) -> cp0 shifted "
@@ -5108,14 +5120,17 @@ def main(argv=None, rx=None, publisher=None):
                     # a partial correction still beats the raw-dop overwrite it replaced.
                     _t_retag = ((now_w - utc0_sample0) if utc0_sample0
                                 else seeds[prn].get("ref_hop", 0) / args.hops_per_sec)
-                    seeds[prn]["code_phase_chips"] = retag_seed_doppler(
-                        seeds[prn].get("code_phase_chips", 0.0), old_dop, new_dop,
-                        _t_retag, args.chip_rate_hz, args.carrier_hz,
-                        args.code_doppler_sign, CODE_LEN)
-                    # STORE AT ref_hop, not at now (see the note above).
-                    seeds[prn]["doppler_hz"] = new_dop - _rate_eff * _age
+                    seeds[prn].put(
+                        "coast_retag", epoch=seeds[prn].get("ref_hop"),
+                        code_phase_chips=retag_seed_doppler(
+                            seeds[prn].get("code_phase_chips", 0.0), old_dop, new_dop,
+                            _t_retag, args.chip_rate_hz, args.carrier_hz,
+                            args.code_doppler_sign, CODE_LEN),
+                        # STORE AT ref_hop, not at now (see the note above).
+                        doppler_hz=new_dop - _rate_eff * _age)
                 if "doppler_rate_hz_s" in seeds[prn]:
-                    seeds[prn]["doppler_rate_hz_s"] = _rate_new
+                    seeds[prn].put("coast_retag", epoch=seeds[prn].get("ref_hop"),
+                                   doppler_rate_hz_s=_rate_new)
             rec = status.get(prn, {})
             if have_sig:
                 metric, thresh = sig_of(rec), args.lock_snr
@@ -6449,11 +6464,13 @@ def main(argv=None, rx=None, publisher=None):
                             # desynchronise the pair (#42's writer, #44's coast). Both are
                             # emitted so a tracker that ignores the field is unaffected.
                             if args.seed_phase_transport:
-                                seeds[prn]["code_phase_at_ref_chips"] = seed_phase_at_ref(
-                                    _held + _step, dop_seed, args.chip_rate_hz,
-                                    args.hops_per_sec, args.carrier_hz,
-                                    args.code_doppler_sign, _DR_MOD, args.search_fft_len
-                                    or None)
+                                seeds[prn].put(
+                                    "phase_xport", epoch=h1,
+                                    code_phase_at_ref_chips=seed_phase_at_ref(
+                                        _held + _step, dop_seed, args.chip_rate_hz,
+                                        args.hops_per_sec, args.carrier_hz,
+                                        args.code_doppler_sign, _DR_MOD,
+                                        args.search_fft_len or None))
                             dr_state["pin"][prn] = now_w
                             _log_rl("drslew-%d" % prn,
                                     "dead-reckon SLEW PRN %d: model-held %+.3f chips, "
@@ -6479,11 +6496,13 @@ def main(argv=None, rx=None, publisher=None):
                         # (cp_predicted + _off at t_now_abs), so shipping it costs nothing
                         # and removes the round trip the tracker would otherwise redo.
                         if args.seed_phase_transport:
-                            seeds[prn]["code_phase_at_ref_chips"] = seed_phase_at_ref(
-                                (cp_predicted(v, t_now_abs) + _off) % _DR_MOD, dop_seed,
-                                args.chip_rate_hz, args.hops_per_sec, args.carrier_hz,
-                                args.code_doppler_sign, _DR_MOD,
-                                args.search_fft_len or None)
+                            seeds[prn].put(
+                                "phase_xport", epoch=_rh_birth,
+                                code_phase_at_ref_chips=seed_phase_at_ref(
+                                    (cp_predicted(v, t_now_abs) + _off) % _DR_MOD,
+                                    dop_seed, args.chip_rate_hz, args.hops_per_sec,
+                                    args.carrier_hz, args.code_doppler_sign, _DR_MOD,
+                                    args.search_fft_len or None))
                         dr_state["seeded"].add(prn)
                         dr_state["pin"][prn] = now_w
                     if planned:
@@ -7121,8 +7140,10 @@ def main(argv=None, rx=None, publisher=None):
                         # the whole correction on one unproven number.
                         _step = max(-args.reseed_max_chips,
                                     min(args.reseed_max_chips, args.reseed_gain * _t))
-                        seeds[prn]["code_phase_chips"] = (
-                            seeds[prn].get("code_phase_chips", 0.0) + _step) % args.code_length
+                        seeds[prn].put(
+                            "reseed", epoch=seeds[prn].get("ref_hop"),
+                            code_phase_chips=(seeds[prn].get("code_phase_chips", 0.0)
+                                              + _step) % args.code_length)
                         # The at-ref phase is a DERIVED leg of the same triple; leaving it
                         # stale would ship a seed whose two phases disagree, which is the
                         # transport disease of #45 in miniature. Drop it and let the normal
@@ -8011,9 +8032,10 @@ def main(argv=None, rx=None, publisher=None):
                 # ref_hop jumps the extrapolated cp.
                 if prn in cp_held:
                     continue
-                seed["code_phase_rate"] = cp_rate_from_code_bias(
-                    seed["doppler_hz"], cb_to_seed, args.hops_per_sec,
-                    args.chip_rate_hz, args.carrier_hz)
+                seed.put("la_rate", epoch=seed.get("ref_hop"),
+                         code_phase_rate=cp_rate_from_code_bias(
+                             seed["doppler_hz"], cb_to_seed, args.hops_per_sec,
+                             args.chip_rate_hz, args.carrier_hz))
                 n_seeded += 1
             if n_seeded:
                 _log_rl("la-seed", "seeded code rate from (l-a) %+.3f ppm%s -> %d sat(s)"
