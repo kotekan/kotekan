@@ -94,6 +94,10 @@ namespace gnss {
 
 /// "GTL1" -- bumped only for an INCOMPATIBLE layout change; `version` covers the rest.
 constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
+/// v4 (2026-08-16): RECORD_FLOATS 26 -> 28 for REC_ANG0 + REC_PHI_DDOP (#72). The row grew, so
+/// the frame did: a v3 sender against a v4 gather (or the reverse) mis-strides every row, which
+/// is why this is a version bump and not a quiet append -- the header's `n_row` check below
+/// rejects the mismatch instead of reading plausible numbers at the wrong offsets.
 /// v3 (2026-08-14): the comb carries EARLY, PROMPT and LATE per channel (CHAN_FLOATS
 /// 3 -> 9), which is what lets the DLL move off the tracker's summed slots and so what
 /// makes the sum deletable. Columns 0-2 keep their v2 meaning (prompt re, im, energy).
@@ -102,7 +106,7 @@ constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
 /// each instance, that's *never* what we want to do" -- the cross-channel sum destroys the
 /// frequency axis a delay lives on, so the broker was left FITTING a per-instance constant
 /// where it should DERIVE one from the ramp across ~106 channels.
-constexpr uint16_t TELEM_VERSION = 3;
+constexpr uint16_t TELEM_VERSION = 4;
 
 /// Comb columns reserved per row. Instances hold 6-7 covering channels today; the frame is a
 /// fixed size for every sender (one bufferRecv, one buffer, no per-chain plumbing), so this is

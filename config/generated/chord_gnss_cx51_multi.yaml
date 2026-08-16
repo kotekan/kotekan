@@ -284,7 +284,7 @@ gnss0_b2a_n2assemble_tiles:
   out_buf: gnss0_b2a_n2epl_buf
   tiles_buf: gnss0_b2a_n2tiles_buf
 gnss0_b2a_n2cmb_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -379,7 +379,7 @@ gnss0_b2a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32 + 24 * 7 * 9 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32 + 24 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -399,7 +399,7 @@ gnss0_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -498,7 +498,7 @@ gnss0_b2b_n2assemble_tiles:
   out_buf: gnss0_b2b_n2epl_buf
   tiles_buf: gnss0_b2b_n2tiles_buf
 gnss0_b2b_n2cmb_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -593,7 +593,7 @@ gnss0_b2b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32 + 24 * 7 * 9 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32 + 24 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -613,7 +613,7 @@ gnss0_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -653,7 +653,7 @@ gnss0_b2b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -725,7 +725,7 @@ gnss0_e5a_n2assemble_tiles:
   out_buf: gnss0_e5a_n2epl_buf
   tiles_buf: gnss0_e5a_n2tiles_buf
 gnss0_e5a_n2cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -820,7 +820,7 @@ gnss0_e5a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -840,7 +840,7 @@ gnss0_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -947,7 +947,7 @@ gnss0_e5b_n2assemble_tiles:
   out_buf: gnss0_e5b_n2epl_buf
   tiles_buf: gnss0_e5b_n2tiles_buf
 gnss0_e5b_n2cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1042,7 +1042,7 @@ gnss0_e5b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1062,7 +1062,7 @@ gnss0_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1169,7 +1169,7 @@ gnss0_n2assemble_tiles:
   out_buf: gnss0_n2epl_buf
   tiles_buf: gnss0_n2tiles_buf
 gnss0_n2cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1264,7 +1264,7 @@ gnss0_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1319,7 +1319,7 @@ gnss0_srch_tap:
   n_elements: 1
   out_buf: gnss0_srch_buf
 gnss0_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1393,7 +1393,7 @@ gnss1_b2a_n2assemble_tiles:
   out_buf: gnss1_b2a_n2epl_buf
   tiles_buf: gnss1_b2a_n2tiles_buf
 gnss1_b2a_n2cmb_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1487,7 +1487,7 @@ gnss1_b2a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32 + 24 * 6 * 9 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32 + 24 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1507,7 +1507,7 @@ gnss1_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1580,7 +1580,7 @@ gnss1_b2b_n2assemble_tiles:
   out_buf: gnss1_b2b_n2epl_buf
   tiles_buf: gnss1_b2b_n2tiles_buf
 gnss1_b2b_n2cmb_buf:
-  frame_size: 24 * 410 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1674,7 +1674,7 @@ gnss1_b2b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_n2rec_buf:
-  frame_size: 24 * 410 * sizeof_float32 + 24 * 6 * 9 * sizeof_float32
+  frame_size: 24 * 412 * sizeof_float32 + 24 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1694,7 +1694,7 @@ gnss1_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1733,7 +1733,7 @@ gnss1_b2b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1772,7 +1772,7 @@ gnss1_e5a_n2assemble_tiles:
   out_buf: gnss1_e5a_n2epl_buf
   tiles_buf: gnss1_e5a_n2tiles_buf
 gnss1_e5a_n2cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1866,7 +1866,7 @@ gnss1_e5a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1886,7 +1886,7 @@ gnss1_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1959,7 +1959,7 @@ gnss1_e5b_n2assemble_tiles:
   out_buf: gnss1_e5b_n2epl_buf
   tiles_buf: gnss1_e5b_n2tiles_buf
 gnss1_e5b_n2cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2053,7 +2053,7 @@ gnss1_e5b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2073,7 +2073,7 @@ gnss1_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2146,7 +2146,7 @@ gnss1_n2assemble_tiles:
   out_buf: gnss1_n2epl_buf
   tiles_buf: gnss1_n2tiles_buf
 gnss1_n2cmb_buf:
-  frame_size: 32 * 410 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2240,7 +2240,7 @@ gnss1_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_n2rec_buf:
-  frame_size: 32 * 410 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
+  frame_size: 32 * 412 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2294,7 +2294,7 @@ gnss1_srch_tap:
   n_elements: 1
   out_buf: gnss1_srch_buf
 gnss1_telem_buf:
-  frame_size: 25200
+  frame_size: 25712
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32

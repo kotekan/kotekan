@@ -51,7 +51,7 @@ _MAGIC = 0x314C5447
 # v2: the row carries the UNSUMMED COMB after the record header, and the header carries the
 # columns' freq_ids. The cross-channel sum in the tracker destroyed the frequency axis a delay
 # lives on, which forced fleet_coherent to FIT a per-instance constant instead of DERIVING one.
-_VERSION = 3
+_VERSION = 4
 _HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
 _HDR_BYTES = 112
 _MAX_CHAN = 8
@@ -62,7 +62,7 @@ CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8    # LATE
 # gnssRecord.hpp RECORD_FLOATS. Verified against every frame's own n_row field, because a
 # tracker rebuilt with a wider record and a broker that was not is precisely the silent
 # mis-stride this transport exists to stop tolerating.
-_ROW_FLOATS = 26
+_ROW_FLOATS = 28
 
 # Row slots we name here (gnssRecord.hpp). The rest of the row travels intact and is available
 # through `row()` -- this is a transport, not a schema.
@@ -81,6 +81,10 @@ REC_E_IM = 12
 REC_L_RE = 13
 REC_L_IM = 14
 REC_CPHASE = 15
+# #72: the two per-(instance, PRN) carrier quantities that no external measurement can reach --
+# ang0 as the KERNEL got it, and the Phi-cache staleness. See gnssRecord.hpp REC_ANG0.
+REC_ANG0 = 26
+REC_PHI_DDOP = 27
 REC_PH_RE = 16
 REC_PH_IM = 17
 REC_PH_ENERGY = 18

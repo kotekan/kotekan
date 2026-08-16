@@ -297,6 +297,14 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         if (!specs.empty()) {
             S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy,
                                          (void*)stream);
+            // #72: ang0 only exists once the despread has built the jobs, so this is a SECOND
+            // pass -- pctl above is written before the enqueue. Taken from the despread's own
+            // record of what it handed the kernel, never re-derived here.
+            for (const auto& sp2 : specs) {
+                gnss_gpu::PrnCtl& cc = pctl[(size_t)r * S.n_prn + sp2.p];
+                cc.ang0 = S.despread->last_ang0(sp2.p);
+                cc.phi_ddop = S.despread->last_phi_ddop(sp2.p);
+            }
             // The consumer needs the TRUE replica energy to undo the pack's per-lane scale
             // (11.11): the quantizer normalizes every lane to a constant M^2, so V/M^2 alone
             // carries a spurious sqrt(E_R) that would weight the channel combine by the PFB

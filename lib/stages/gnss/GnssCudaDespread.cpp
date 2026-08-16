@@ -6,6 +6,7 @@
 
 #include <cuda_runtime.h>
 #include <cmath>
+#include <limits>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -75,6 +76,15 @@ struct GnssCudaDespread::Impl {
         float2 *d_A = nullptr, *d_B = nullptr; // float32 tables (mixed-precision kernel)
     };
     std::vector<PhiCache> phi;
+
+    /// WHAT THE KERNEL ACTUALLY GOT, recorded per PRN slot as build_jobs runs (#72).
+    /// ⚠️ RECORDED, NEVER RECOMPUTED. A producer that re-derives ang0 from the same inputs
+    /// agrees with itself by construction and would keep agreeing while the kernel diverged --
+    /// exactly how carrier_nco_gate passed at 9e-16 rad against a sky that got worse (#71).
+    /// NaN means "this PRN built no job this record", which a consumer must read as absent
+    /// rather than as zero.
+    std::vector<double> last_ang0;      ///< DespreadJob::ang0, radians
+    std::vector<double> last_phi_ddop;  ///< doppler_now - the Doppler this PRN's Phi was built at
     std::vector<int> all_chans;
     int Lf = 0;
 
@@ -148,6 +158,10 @@ struct GnssCudaDespread::Impl {
         ck(cudaMalloc(&d_energy, maxb * nc * sizeof(double)), "alloc energy");
         ck(cudaStreamCreate(&stream), "stream");
         phi.resize(np);
+        // NaN, not 0: "no job built for this PRN this record" must not read as ang0 == 0,
+        // which is a perfectly legal value of frac(f*n0/fs).
+        last_ang0.assign((size_t)np, std::numeric_limits<double>::quiet_NaN());
+        last_phi_ddop.assign((size_t)np, std::numeric_limits<double>::quiet_NaN());
         stage.resize((size_t)nc * nh);
         h_jobs.resize(maxs);
         h_corr.resize(maxb * nc);
@@ -329,6 +343,16 @@ GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn
 
 GnssCudaDespread::~GnssCudaDespread() = default;
 
+double GnssCudaDespread::last_ang0(int p) const {
+    return (p >= 0 && (size_t)p < _impl->last_ang0.size())
+               ? _impl->last_ang0[(size_t)p] : std::numeric_limits<double>::quiet_NaN();
+}
+
+double GnssCudaDespread::last_phi_ddop(int p) const {
+    return (p >= 0 && (size_t)p < _impl->last_phi_ddop.size())
+               ? _impl->last_phi_ddop[(size_t)p] : std::numeric_limits<double>::quiet_NaN();
+}
+
 void GnssCudaDespread::upload_window(const std::complex<float>* window,
                                      long long window_start_sample) {
     Impl& im = *_impl;
@@ -455,6 +479,13 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
                         pc.d_B,
                         pc.n_chips,
                         0};
+        // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
+        // A producer-side re-derivation agrees with itself by construction and would keep
+        // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
+        // the sky got worse, #71).
+        im.last_ang0[(size_t)sp.p] = im.h_jobs[i].ang0;
+        im.last_phi_ddop[(size_t)sp.p] = pc.valid ? (sp.doppler_hz - pc.doppler)
+                                                  : std::numeric_limits<double>::quiet_NaN();
     }
     ck(cudaMemcpyAsync(im.d_jobs, im.h_jobs.data(),
                        (size_t)n_spec * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice,
@@ -545,6 +576,13 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
                         pc.d_B,
                         pc.n_chips,
                         m_head};
+        // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
+        // A producer-side re-derivation agrees with itself by construction and would keep
+        // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
+        // the sky got worse, #71).
+        im.last_ang0[(size_t)sp.p] = im.h_jobs[i].ang0;
+        im.last_phi_ddop[(size_t)sp.p] = pc.valid ? (sp.doppler_hz - pc.doppler)
+                                                  : std::numeric_limits<double>::quiet_NaN();
     }
     ck(cudaMemcpyAsync(d_jobs_slot, im.h_jobs.data(),
                        (size_t)n_spec * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice,

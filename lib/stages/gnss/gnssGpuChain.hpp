@@ -104,6 +104,14 @@ struct PrnCtl {
     /// rail, -40 Hz in ten minutes). Occupies the slot formerly reserved as energy_scale (1.0,
     /// never read).
     double ctrim_hz;
+    /// REPLICA CARRIER PHASE ANCHOR the kernel actually used this record, radians (#72).
+    /// Copied verbatim into record slot gnss::REC_ANG0 -- see that constant for why it is
+    /// exported and how to read it. NaN = this PRN built no job. Producers that do not run a
+    /// despread leave it NaN; the assembler passes NaN through as 0 is NOT acceptable here,
+    /// because 0 is a legal ang0.
+    double ang0;
+    /// Phi-cache staleness, Hz (record slot gnss::REC_PHI_DDOP). NaN if no Phi was built.
+    double phi_ddop;
     double fcar;        ///< replica carrier f_ref (Hz): the assembler needs it to reconstruct the
                         ///< COMMANDED carrier phase f_ref*t_abs + phi/2pi (record slot 15). NOT
                         ///< derivable from fcar_report, which folds out the re-pin step on purpose.
@@ -125,7 +133,11 @@ struct PrnCtl {
     /// step exact. The producer is the only place that domain still exists.
     double dcyc;
 };
-static_assert(sizeof(PrnCtl) == 64, "PrnCtl must stay 16-byte aligned");
+/// 64 -> 80 on 2026-08-16 (#72's @ref PrnCtl::ang0 + @ref PrnCtl::phi_ddop). 80 is still a
+/// multiple of 16, which is what the check is actually for; the literal is restated rather
+/// than computed so that adding a field stays a deliberate act. It caught this one.
+static_assert(sizeof(PrnCtl) == 80, "PrnCtl must stay 16-byte aligned");
+static_assert(sizeof(PrnCtl) % 16 == 0, "PrnCtl must stay 16-byte aligned");
 
 /// Output rows (corr/energy) per frame: @c rows_spec per active PRN per record.
 constexpr int max_jobs(int n_prn, int rows_spec = ROWS_PLAIN) {

@@ -741,6 +741,13 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                                                    S.elem_stride, S.frame_chan_stride, wstart,
                                                    specs, d_jobs + (size_t)n_out_rows, d_corr,
                                                    d_energy, (void*)stream, S._conjugate);
+        // #72: second pass -- ang0 only exists once the despread has built the jobs. Taken
+        // from what the despread recorded, never re-derived here (see gnss::REC_ANG0).
+        for (const auto& sp2 : specs) {
+            gnss_gpu::PrnCtl& cc = pctl[(size_t)r * S.n_prn + sp2.p];
+            cc.ang0 = S.despread->last_ang0(sp2.p);
+            cc.phi_ddop = S.despread->last_phi_ddop(sp2.p);
+        }
     }
     hdr->n_jobs = n_out_rows;
 

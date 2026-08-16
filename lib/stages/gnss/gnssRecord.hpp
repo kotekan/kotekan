@@ -118,7 +118,9 @@ namespace gnss {
 /// frame and the producers write past the end of it -- so the record producers now assert the
 /// frame is big enough at construction (see GnssChannelizedTracker / GnssGpuRecordAssemble /
 /// GnssCoherentCombiner) and die loudly instead of corrupting memory.
-constexpr int RECORD_FLOATS = 26;
+/// 26 -> 28 on 2026-08-16: @ref REC_ANG0 and @ref REC_PHI_DDOP, the two per-(instance, PRN)
+/// carrier-phase quantities #72 needs and that no external measurement can reach.
+constexpr int RECORD_FLOATS = 28;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // THE HOP-ORDER CONTRACT (decided 2026-08-06, docs/gnss_gpu_search.md 11.3): every hop-indexed
@@ -184,6 +186,41 @@ constexpr int REC_SKY_IM = 25;    ///< prompt correlation, but with each ELEMENT
                                   ///< coherent sum stays unbiased (a full-sum derotation would
                                   ///< rectify noise). ZERO when the cal is cold or elem_sum is
                                   ///< off -- consumers read zero as "absent" and fall back.
+
+/// REPLICA CARRIER PHASE ANCHOR, radians in [0, 2*pi) -- ang0 EXACTLY AS THE KERNEL GOT IT.
+///
+/// ⚠️ EXPORTED BECAUSE THE QUESTION CANNOT BE ANSWERED FROM OUTSIDE (#72, 2026-08-16). The
+/// across-band phase carries an INTERCEPT that differs per (instance, PRN): all twelve
+/// instances agree on the delay SLOPE to ~3 ns (|R| 0.997-1.000 against probes at 0.09-0.19),
+/// but their constants do not agree across satellites (mean |R| 0.220 over 10 sats, null E
+/// 0.280, 95% 0.536). That is a carrier-phase constant built PER SATELLITE, i.e. in the
+/// replica -- and by the lockstep rule it is a BUG, since instances are only `freq_id mod 8`
+/// routing (gnssTelem.hpp, [[chord-nothing-is-per-node]]).
+///
+/// Every input to ang0 checks out fleet-common -- f_offset identical in every generated
+/// config, doppler/ctrim from the shared broker seed, record UTC spread EXACTLY 0 at double
+/// precision -- but that does NOT clear ang0, because @ref REC_DOPPLER is a float32 whose ulp
+/// at 10 kHz is ~1e-3 Hz while ang0's absolute-sample lever (n0 ~ 1.9e15, 6.8 days) turns
+/// 5e-7 Hz into a FULL RADIAN. The telemetry is four orders too coarse to see the effect size,
+/// so no external measurement can settle it: an experiment that cannot succeed.
+///
+/// ⚠️ RECORDED BY THE DESPREAD, NOT RECOMPUTED BY THE PRODUCER. The value shipped is the one
+/// GnssCudaDespread actually put in DespreadJob::ang0 for this record, so a producer-side
+/// re-derivation cannot agree by construction while the kernel disagrees -- the failure that
+/// let carrier_nco_gate pass at 9e-16 rad while the sky got worse (#71).
+///
+/// READING IT: equal ang0 across instances for the same (PRN, record) EXONERATES ang0 and
+/// points at the synthesis (Phi) instead; unequal ang0 IS the bug, located.
+/// float32 holds ~1e-7 rad here, four orders finer than the ~1 rad effect under test.
+constexpr int REC_ANG0 = 26;
+
+/// PHI-CACHE STALENESS, Hz: doppler_now - the Doppler this PRN's channelizer filter was BUILT
+/// at. GnssCudaDespread::ensure_phi rebuilds only when the Doppler moves further than
+/// `refresh_hz` (default 100), so each instance holds a Phi pinned at whatever Doppler it last
+/// crossed that threshold on -- genuine per-(instance, PRN) state, and therefore the other
+/// candidate for an intercept that differs per instance. Small and slow-moving by design;
+/// a spread across instances comparable to refresh_hz is the tell.
+constexpr int REC_PHI_DDOP = 27;
 
 // Combiner-record slots
 constexpr int CMB_AMP_INCOH = 3;

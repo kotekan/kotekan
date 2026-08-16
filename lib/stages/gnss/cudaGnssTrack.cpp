@@ -1018,6 +1018,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         std::vector<GnssCudaDespread::PeelSpec> pspecs;
         for (int p = 0; p < S.n_prn; ++p) {
             PrnCtl& c = pctl[(size_t)n_rec * S.n_prn + p];
+            // #72: this producer exports no ang0. NaN, not the memset 0 -- 0 is a legal
+            // value of frac(f*n0/fs) and would read as a real measurement.
+            c.ang0 = std::numeric_limits<double>::quiet_NaN();
+            c.phi_ddop = std::numeric_limits<double>::quiet_NaN();
             c.job0 = -1;
             if (!active[p]) {
                 S.f_ref[p] = std::nan(""); // forget the loop; re-acquire when it returns

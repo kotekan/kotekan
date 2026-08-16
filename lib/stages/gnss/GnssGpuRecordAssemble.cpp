@@ -433,6 +433,12 @@ void GnssGpuRecordAssemble::main_thread() {
                     _phi_cyc[p] += dcyc;
                     _phi[p] = std::remainder(_phi[p] + 2.0 * M_PI * dcyc, 2.0 * M_PI);
                 }
+                // #72 DIAGNOSTIC PASS-THROUGH. Both are recorded by the despread as the values
+                // it actually handed the kernel; this stage only copies them. Unconditional --
+                // NOT inside the dt/_a_prev_ok guard below -- because the question they answer
+                // is asked per record, including the first of an arc.
+                rec[gnss::REC_ANG0] = (float)c.ang0;
+                rec[gnss::REC_PHI_DDOP] = (float)c.phi_ddop;
                 const double dt = (double)(wstart - _wstart_prev[p]) / _sample_rate;
                 if (_a_prev_ok[p] && dt > 0.0) {
                     // Commanded-trim increment (slot 19, see gnssRecord.hpp): the trim the

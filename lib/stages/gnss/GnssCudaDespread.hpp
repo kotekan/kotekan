@@ -120,6 +120,18 @@ public:
     /// H2D fails with "jobs upload: invalid argument" a long way from the cause.
     int max_batch_specs() const;
 
+    /// ang0 the KERNEL was given for PRN slot @p p on the most recent job build, radians.
+    /// NaN if that slot built no job. See gnss::REC_ANG0 for why this is exported at all:
+    /// every input to ang0 is fleet-common as far as any external measurement can tell, but
+    /// the telemetry's float32 Doppler is four orders too coarse to see the 5e-7 Hz that
+    /// costs a radian through the absolute-sample lever (#72).
+    double last_ang0(int p) const;
+
+    /// doppler_now - the Doppler PRN slot @p p's Phi was actually built at, Hz (NaN if none).
+    /// ensure_phi rebuilds only past `refresh_hz`, so this is genuine per-(instance, PRN)
+    /// state and the other candidate for a per-instance phase intercept.
+    double last_phi_ddop(int p) const;
+
     /// Single-PRN convenience (= despread_batch of one Spec).
     std::array<gnss::DespreadResult, 3> despread3(int p, double cp_seed, double spacing_chips,
                                                   double doppler_hz,
