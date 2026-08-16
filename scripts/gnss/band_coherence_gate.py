@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""DO THE FREQUENCY CHANNELS COHERE ACROSS THE WHOLE BAND? -- measurement only, nothing changes.
+
+THE REDUCTION WE SHIP TODAY collapses the phase one step too early. Per record, per PRN, the
+despread hands up a COMPLEX prompt PER FREQUENCY CHANNEL. Both arms -- combdll.prompt_cn0 /
+coh_cn0 in the broker, and gnss::FleetDll in the gather -- then do:
+
+    within one instance:   gP += P * wP            (coherent over that instance's channels)
+    across instances:      t.p += |gP/wP|^2        (POWER, phase discarded)
+
+⚠️ AN INSTANCE IS AN ARBITRARY GROUP OF FREQUENCY CHANNELS -- `freq_id mod 8`, applied AFTER
+the signal path (one PFB, one set of raw samples). There is nothing physical at that boundary
+and channels inside one instance do not cohere any better than channels across two. So the
+split point of that coherent/incoherent switch is meaningless, and the phase thrown away at it
+is real, usable phase: #32 fits the carrier phase ACROSS THE BAND, which is exactly a
+cross-instance phase measurement.
+
+WHAT THIS MEASURES. Both reductions on the SAME records:
+
+    P_pow  = sum_inst |sum_{ch in inst} g_ch|^2 / (...)      <- what ships
+    P_coh  = |sum_{all ch, all inst} g_ch|^2 / (...)         <- the whole band, one sum
+    eta_band = P_coh / P_pow
+
+Both are normalised by their own total weight, so they estimate the SAME normalised power:
+aligned phases give eta_band -> 1, and completely unrelated phases give eta_band -> 1/M
+(summing M random complex vectors gains M in power, not M^2). ⚠️ NOT "-> M": that was the
+first version of this note and it is wrong -- coherent combining does not raise the normalised
+signal power, it lowers the NOISE. A gate expecting M would call a healthy band broken.
+
+⚠️ THE VALUE OF THE C/N0 DOES NOT MOVE EITHER WAY, and a gate expecting it to would fail
+against a correct fix. Writing A_i = s + n_i: the incoherent mean is |s|^2 + sigma^2 and the
+coherent one is |s|^2 + sigma^2/M, so AFTER the probe debias both estimate |s|^2. What
+improves is the VARIANCE -- the residual noise falls by M. This is a sensitivity change, not
+a calibration change.
+
+⚠️ AND THE INCOHERENT AXIS IS TIME, NEVER INSTANCE. The probe floor has to be formed with the
+IDENTICAL reduction as the signal it debiases, then averaged over RECORDS, which are genuinely
+independent draws. Averaging |.|^2 over instances instead is not a variance estimate of
+anything -- it is the arbitrary grouping leaking into the statistic.
+
+NULL: the noise probes. They have no carrier, so their eta_band must sit at ~1 however the
+channels are grouped. A satellite that beats its probes is the evidence; a satellite that does
+not means the band is NOT coherent and the reduction cannot simply be switched.
+
+    ./band_coherence_gate.py --chain gps_l5        # on the gather host (cf06)
+"""
+import argparse
+import json
+import math
+import os
+import statistics
+import sys
+import time
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "python", "scripts", "gnss"))
+from gnss_broker import telem  # noqa: E402
+
+
+def reductions(client, chain, wins, prns):
+    """{prn: (P_pow, P_coh, n_rec, n_chan_total, n_inst)} summed over records.
+
+    Both reductions are formed from the SAME per-channel complex values in the same pass, so
+    nothing but the grouping differs between them.
+    """
+    out = {}
+    for w in wins:
+        fs = client.frame_set(chain, w)
+        if not fs:
+            continue
+        n_rec = max((f.n_rec for f in fs.values()), default=0)
+        for r in range(n_rec):
+            per_prn = {}
+            for inst, f in fs.items():
+                if r >= f.n_rec or not f.has_record(r):
+                    continue
+                for prn in f.prns():
+                    if prn not in prns:
+                        continue
+                    cmb = f.comb_epl(r, prn)
+                    if not cmb:
+                        continue
+                    gi, wi = 0j, 0.0
+                    for _fid, _E, P, _L, (_wE, wP, _wL) in cmb:
+                        gi += P * wP
+                        wi += wP
+                    if wi <= 0.0:
+                        continue
+                    d = per_prn.setdefault(prn, {"g": 0j, "w": 0.0, "pow": 0.0,
+                                                 "nch": 0, "ninst": 0})
+                    d["g"] += gi                      # keep it complex: the WHOLE band
+                    d["w"] += wi
+                    d["pow"] += abs(gi / wi) ** 2     # what ships: per-instance, then power
+                    d["nch"] += len(cmb)
+                    d["ninst"] += 1
+            for prn, d in per_prn.items():
+                if d["ninst"] < 2 or d["w"] <= 0.0:
+                    continue    # a single instance makes the two reductions identical
+                o = out.setdefault(prn, [0.0, 0.0, 0, 0, 0])
+                o[0] += d["pow"] / d["ninst"]              # mean over instances
+                o[1] += abs(d["g"] / d["w"]) ** 2         # one coherent sum, whole band
+                o[2] += 1
+                o[3] += d["nch"]
+                o[4] = max(o[4], d["ninst"])
+    return out
+
+
+def per_instance_phase(client, chain, wins, prns):
+    """{prn: {inst: (mean_phase_rad, |vector mean|, n)}} -- each instance's prompt phase
+    RELATIVE TO the same record's full-band sum, vector-averaged over records.
+
+    Referencing against the record's own total removes the sky/carrier phase that is common to
+    every instance at that instant, leaving only what differs BETWEEN instances -- which by the
+    lockstep rule should be nothing. |vector mean| ~ 1 means a stable per-instance constant
+    (measurable, removable); ~0 means it re-rolls per record and there is nothing to calibrate.
+    """
+    import cmath
+    acc = {}
+    for w in wins:
+        fs = client.frame_set(chain, w)
+        if not fs:
+            continue
+        n_rec = max((f.n_rec for f in fs.values()), default=0)
+        for r in range(n_rec):
+            per = {}
+            for inst, f in fs.items():
+                if r >= f.n_rec or not f.has_record(r):
+                    continue
+                for prn in f.prns():
+                    if prn not in prns:
+                        continue
+                    cmb = f.comb_epl(r, prn)
+                    if not cmb:
+                        continue
+                    gi = 0j
+                    for _fid, _E, P, _L, (_wE, wP, _wL) in cmb:
+                        gi += P * wP
+                    if gi != 0j:
+                        per.setdefault(prn, {})[inst] = gi
+            for prn, gs in per.items():
+                if len(gs) < 2:
+                    continue
+                tot = sum(gs.values())
+                if tot == 0j:
+                    continue
+                for inst, gi in gs.items():
+                    # unit phasor of (this instance) vs (the whole band this record)
+                    z = gi * tot.conjugate()
+                    if z == 0j:
+                        continue
+                    d = acc.setdefault(prn, {}).setdefault(inst, [0j, 0])
+                    d[0] += z / abs(z)
+                    d[1] += 1
+    out = {}
+    for prn, per in acc.items():
+        for inst, (v, n) in per.items():
+            if n:
+                out.setdefault(prn, {})[inst] = (cmath.phase(v / n), abs(v / n), n)
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--gather", default="127.0.0.1:11061")
+    ap.add_argument("--broker", default="http://127.0.0.1:12060")
+    ap.add_argument("--chain", default="gps_l5")
+    ap.add_argument("--seconds", type=float, default=20.0)
+    ap.add_argument("--windows", type=int, default=32)
+    ap.add_argument("--per-instance", action="store_true",
+                    help="also report each instance's PHASE relative to a reference instance, "
+                         "and its stability over records. This is what separates a FIXABLE "
+                         "per-instance constant (a calibration/timing offset -- measure it and "
+                         "remove it, then the band coheres) from a per-record random phase "
+                         "(nothing to calibrate; the fault is upstream). Vector-averaged, so "
+                         "|mean| near 1 = stable, near 0 = random.")
+    a = ap.parse_args()
+
+    with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"), a.chain),
+                                timeout=10) as r:
+        rows = json.loads(r.read().decode())
+    probes = {int(x["prn"]) for x in rows if x.get("noise_probe")}
+    held = {int(x["prn"]) for x in rows
+            if not x.get("noise_probe") and x.get("cn0_prompt_db") is not None
+            and (x.get("cn0_prompt_duty") or 0) >= 0.5}
+    if not held:
+        raise SystemExit("INCONCLUSIVE: nothing held at duty >= 0.5 on %s." % a.chain)
+    if not probes:
+        raise SystemExit("no noise probes -- no null, no gate")
+    cn0 = {int(x["prn"]): x.get("cn0_prompt_db") for x in rows}
+
+    host, port = telem.parse_endpoint(a.gather)
+    cl = telem.TelemClient(host=host, port=port, depth=4096, chains={a.chain})
+    cl.start()
+    time.sleep(a.seconds)
+    wins = cl.windows(a.chain, lag=1)[-a.windows:]
+    got = reductions(cl, a.chain, wins, held | probes)
+    inst_ph = per_instance_phase(cl, a.chain, wins, held) if a.per_instance else {}
+    cl.stop()
+
+    if not got:
+        print("⚠️ NO RECORDS with 2+ instances -- nothing to compare, and that is NOT a "
+              "measurement of incoherence. Check the telemetry connected (--gather takes "
+              "HOST:PORT, and the gather serves 127.0.0.1 only -- run this ON cf06).")
+        return 1
+
+    print("chain %s: %d windows, probes %s\n" % (a.chain, len(wins), sorted(probes)))
+    print("  %-5s %-7s %-8s %-11s %-11s %-8s %s"
+          % ("prn", "cn0", "n_rec", "P_pow", "P_coh", "eta_band", "n_inst"))
+    sat_eta, probe_eta, n_inst_seen = [], [], 0
+    for prn in sorted(got):
+        p_pow, p_coh, n_rec, nch, ninst = got[prn]
+        if n_rec < 8 or p_pow <= 0.0:
+            continue
+        eta = p_coh / p_pow
+        n_inst_seen = max(n_inst_seen, ninst)
+        tag = "probe" if prn in probes else ""
+        print("  %-5d %-7s %-8d %-11.3e %-11.3e %-8.2f %d %s"
+              % (prn, ("%.1f" % cn0[prn]) if cn0.get(prn) is not None else "--",
+                 n_rec, p_pow / n_rec, p_coh / n_rec, eta, ninst, tag))
+        (probe_eta if prn in probes else sat_eta).append(eta)
+
+    # ⚠️ REFUSE ON A NON-UNIFORM FLEET. If some instances carry a stable phase and others are
+    # random, the instances are NOT running the same code, and every number above is a
+    # measurement of that split rather than of the sky. This happened on the first run
+    # (2026-08-16): half the instances were still serving different phases pending a tracker
+    # restart, and the headline read "the band does not cohere" -- a confident wrong answer
+    # drawn from self-inflicted contamination. Bimodal per-instance stability is the tell, and
+    # it is detectable from the data itself, so the tool checks rather than trusting the
+    # operator to remember.
+    if inst_ph:
+        print("\n  PER-INSTANCE PHASE vs the record's full-band sum (vector-averaged)")
+        print("    %-5s %-10s %-9s %-7s %s" % ("prn", "inst", "phase(rad)", "|mean|", "n"))
+        stab = []
+        for prn in sorted(inst_ph):
+            for inst in sorted(inst_ph[prn]):
+                ph, mag, n = inst_ph[prn][inst]
+                print("    %-5d %-10s %+9.3f %7.3f %d" % (prn, inst, ph, mag, n))
+                stab.append(mag)
+            print()
+        if stab:
+            lo = [x for x in stab if x < 0.4]
+            hi = [x for x in stab if x > 0.7]
+            if lo and hi and len(lo) >= 2 and len(hi) >= 2:
+                print("\n⚠️ NON-UNIFORM FLEET -- NO CONCLUSION AVAILABLE. %d instance(s) carry a "
+                      "STABLE phase (|mean| > 0.7) and %d are RANDOM (< 0.4). Instances run in "
+                      "lockstep, so that split means they are not running the same code -- a "
+                      "pending restart, a mixed arm, a half-deployed change. Every eta_band "
+                      "above is measuring THAT, not the sky. Make the fleet uniform and re-run."
+                      % (len(hi), len(lo)))
+                return 1
+            med = statistics.median(stab)
+            print("    median |vector mean| = %.3f -- %s" % (
+                med,
+                "STABLE: a per-instance CONSTANT. Measure it once and remove it, and the band "
+                "coheres." if med > 0.5 else
+                "RANDOM per record: there is no constant to calibrate away. The phase is being "
+                "destroyed upstream of the combine, so fix that before touching the reduction."))
+
+    print()
+    if not sat_eta or not probe_eta:
+        print("INCONCLUSIVE: need at least one held satellite AND one probe.")
+        return 1
+    ms, mp = statistics.median(sat_eta), statistics.median(probe_eta)
+    print("  median eta_band: satellites %.2f, probes %.2f (null)   n_inst = %d"
+          % (ms, mp, n_inst_seen))
+    print("  aligned phases read eta_band ~ 1; completely unrelated phases read ~ 1/n_inst "
+          "= %.3f" % (1.0 / max(n_inst_seen, 1)))
+    print()
+    if ms < 1.5 * max(mp, 1e-9):  # the satellite must beat its own null, whatever the level
+        print("⚠️ THE BAND DOES NOT COHERE: satellites (%.2f) do not beat their own probe null "
+              "(%.2f). Switching the reduction to a full-band coherent sum would DESTROY "
+              "signal, not recover it -- the per-instance power sum is accidentally robust to "
+              "exactly this. Find the cross-channel phase error first; by the lockstep rule it "
+              "is a BUG, not a property." % (ms, mp))
+        return 1
+    frac = ms
+    print("✅ THE BAND COHERES: eta_band %.2f against a %.2f null (ideal 1.0, random %.3f). "
+          "Combining coherently across the whole band is valid; expect the C/N0 VALUE to be "
+          "unchanged and its VARIANCE to fall by up to ~%dx."
+          % (ms, mp, 1.0 / max(n_inst_seen, 1), n_inst_seen))
+    if frac < 0.7:
+        print("⚠️ but %.2f is short of the ideal 1.0 -- a residual cross-channel phase error "
+              "costs the rest. #32's band phase-slope fit is what should remove it." % frac)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
