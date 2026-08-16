@@ -62,6 +62,13 @@ OWNERS = {
 
 import sys
 
+# Every owner tag that wrote any seed in this process's lifetime -- the COVERAGE
+# CENSUS. The equivalence gate can only vouch for the writers its transcript actually
+# drives, so the replay logs this set at completion and the gap is explicit instead of
+# assumed (an unexercised writer path is exactly where a "gated" refactor breaks).
+# Shared across chains/threads on purpose; set.add is atomic under the GIL.
+SEEN_OWNERS = set()
+
 
 class Seed(dict):
     """One (chain, PRN) seed: the dict the trackers are POSTed, plus who wrote it.
@@ -89,12 +96,14 @@ class Seed(dict):
         dict literal had.
         """
         s = cls(fields)
+        SEEN_OWNERS.add(owner)
         for k in fields:
             s.prov[k] = (owner, epoch)
         return s
 
     def put(self, owner, epoch=None, **fields):
         """Attributed field writes: same values, same order, plus who and at-what-epoch."""
+        SEEN_OWNERS.add(owner)
         for k, v in fields.items():
             dict.__setitem__(self, k, v)
             self.prov[k] = (owner, epoch)
@@ -105,8 +114,9 @@ class Seed(dict):
         # migration's own to-do list, and a tripwire for any NEW writer added without
         # declaring itself in OWNERS.
         f = sys._getframe(1)
-        self.prov[k] = ("?%s:%d" % (f.f_code.co_filename.rsplit("/", 1)[-1], f.f_lineno),
-                        None)
+        tag = "?%s:%d" % (f.f_code.co_filename.rsplit("/", 1)[-1], f.f_lineno)
+        SEEN_OWNERS.add(tag)
+        self.prov[k] = (tag, None)
         dict.__setitem__(self, k, v)
 
     def pop(self, k, *default):

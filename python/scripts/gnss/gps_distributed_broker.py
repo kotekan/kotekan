@@ -8296,10 +8296,14 @@ def main(argv=None, rx=None, publisher=None):
             if abs(_stp) > 5.0:
                 _lev_hz = _stp / max(1.0, (_h_new / args.hops_per_sec)
                                      * args.chip_rate_hz / args.carrier_hz)
+                # #83: name the writers that produced this tuple. A step's first
+                # question was always "who wrote that" -- now the line answers it.
+                _sdA = seeds.get(d["prn"])
                 _log("SEEDAUDIT STEP PRN %d: %+.2f chips (= %+.4f Hz x lever) "
-                     "ddop %+.3f Hz dt %.1f s trim %+.3f"
+                     "ddop %+.3f Hz dt %.1f s trim %+.3f%s"
                      % (d["prn"], _stp, _lev_hz, _ddopA, _dtA,
-                        dll_trim.get(d["prn"], 0.0)))
+                        dll_trim.get(d["prn"], 0.0),
+                        ("  [%s]" % _sdA.owners()) if isinstance(_sdA, Seed) else ""))
         for _pA in list(seed_audit_prev):
             if _pA not in seeds:
                 del seed_audit_prev[_pA]
@@ -8313,6 +8317,31 @@ def main(argv=None, rx=None, publisher=None):
                     % (_n, _aud_steps[_n // 2][0],
                        _aud_steps[min(_n - 1, int(_n * 0.9))][0],
                        _wA, _wp, _ws, _wd, _wt), every_s=60.0)
+        # EPOCH-SKEW CENSUS (#83 -> #80, measurement first). A seed whose at-epoch
+        # field (doppler, rate, at-ref phase) was recorded against one ref_hop but
+        # ships beside another is #80's disease -- the hold branches restore the tuple
+        # from prev and never touch code_phase_at_ref_chips, and the cp-rate fit can
+        # anchor at an older history hop than the phase the overlay lift wrote. Until
+        # now that was a code-reading claim; this counts it per cycle, per PRN, with
+        # the owner that wrote the skewed field. LOG ONLY -- the fix is Phase 2's,
+        # and it starts from this number.
+        _skewN, _skew_ex = 0, []
+        for _pS in sorted(seeds):
+            _sS = seeds[_pS]
+            if not isinstance(_sS, Seed):
+                continue
+            _sk = _sS.epoch_skew()
+            if _sk:
+                _skewN += 1
+                if len(_skew_ex) < 3:
+                    _skew_ex.append("PRN %s: %s vs ref %s" % (_pS, ",".join(
+                        "%s=%s@%s" % (k, v[0], v[1]) for k, v in sorted(_sk.items())),
+                        _sS.get("ref_hop")))
+        if _skewN:
+            _log_rl("epochskew",
+                    "EPOCH-SKEW %d/%d seed(s) ship an at-epoch field recorded against "
+                    "a different ref_hop (#80 measured): %s"
+                    % (_skewN, len(seeds), "; ".join(_skew_ex)), every_s=60.0)
         # TASK #51: hand the fast control thread this cycle's decisions. It substitutes ONLY
         # code_phase_chips into these exact dicts, so nothing the policy put in a seed can be
         # dropped by the faster actuator. `base_cp` is the UNTRIMMED phase, because the fast
@@ -8749,6 +8778,13 @@ if __name__ == "__main__":
         # digest on stdout so a bare `--transcript-read` is useful without the harness.
         _log("transcript replay complete (%s); %d posts, digest %s"
              % (e, len(_TR.posts), _TR.digest()))
+        # #83 COVERAGE CENSUS: which seed writers this fixture actually drove. The
+        # gate vouches for exactly this set and nothing else -- an owner missing here
+        # is a migration path the transcript never exercised, and any '?file:line'
+        # entry is an unattributed writer that slipped past the migration.
+        from gnss_broker import seed as _seed_mod
+        _log("seed writers exercised: %s"
+             % (", ".join(sorted(_seed_mod.SEEN_OWNERS)) or "NONE"))
         print(_TR.digest())
     finally:
         _TR.close()
