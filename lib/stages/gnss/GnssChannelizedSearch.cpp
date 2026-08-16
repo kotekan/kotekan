@@ -809,9 +809,29 @@ void GnssChannelizedSearch::search_snapshot() {
                 a = ai;
                 best_nh = nh;
             }
+            _nh_prof.push_back({nh, ai.snr, ai.peak_tau_samples, ai.doppler_hz});
         }
 
         const bool detected = a.snr >= _acquire_snr;
+        // #41 INSTRUMENT: the per-alignment profile, one line per strong detection. Three
+        // shapes distinguish three hypotheses about the ±2-period label flicker:
+        //   PARTNER FAMILY (healthy): tau shifts ~one period (=195.3 hops * fft_len samples)
+        //     per alignment step, snr peaked at the true alignment with ~ratio(e)=rho(e)
+        //     sidelobes -- the argmax is choosing among label-INVARIANT hypotheses.
+        //   LOTTERY (overlay discrimination broken): snr ~flat across alignments AND tau
+        //     ~IDENTICAL -- the label is then best_nh + const, i.e. whatever alignment noise
+        //     picked, which is exactly a bistable +-span label error.
+        //   GENUINE SECOND PEAK: one off-alignment cell beats rho() -- points at the data.
+        if (detected && a.snr >= 100.0 && !_nh_prof.empty()) {
+            std::string prof_s;
+            for (const auto& e : _nh_prof)
+                prof_s += fmt::format(" {:d}:{:.0f}@{:d}d{:+.0f}", e.nh, e.snr,
+                                      (long long)e.tau, e.dop);
+            INFO("GnssChannelizedSearch[{:s}]: PRN {:d} NHPROF snr {:.0f} best_nh {:d} "
+                 "|{:s}",
+                 unique_name, _prns[p], a.snr, best_nh, prof_s);
+        }
+        _nh_prof.clear();
         if (a.snr > best_any) {
             best_any = a.snr;
             best_any_prn = _prns[p];

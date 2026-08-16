@@ -207,6 +207,15 @@ private:
     };
     std::vector<NhHint> _nh_hints;      ///< live, updated by REST
     std::vector<NhHint> _nh_snap_hints; ///< frozen with the snapshot, like _snap_hints
+    /// #41 instrument: per-alignment (nh, snr, peak_tau_samples) for the pass in flight,
+    /// logged as NHPROF for strong detections. Worker-thread only.
+    struct NhProfEntry {
+        int nh;
+        double snr;
+        long tau;
+        double dop; ///< that alignment's peak Doppler (internal sign) -- the sideband tell
+    };
+    std::vector<NhProfEntry> _nh_prof;
     /// Alignments scanned either side of the predicted one. 1 (three of twenty) keeps ~6.7x of
     /// the saving while tolerating an off-by-one hint; 0 takes the full 20x and trusts it.
     int _nh_hint_span = 1;
