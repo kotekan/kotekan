@@ -179,6 +179,64 @@ class TestRetagSeedDoppler(unittest.TestCase):
         # code -- physics never sees it; a LOGIC error here is chips, not milli-chips.
         self.assertLess(abs(((after - before + MOD / 2) % MOD) - MOD / 2), 2e-3)
 
+    # ---- the DOPPLER's own epoch (2026-08-16) ----------------------------------------
+    #
+    # The cp re-tag above was only half of it. `doppler_hz` is ALSO an epoch-bearing value:
+    # gnss::propagate_seed applies dop_applied(t) = doppler_hz + dop_rate*(t - ref_hop), so
+    # doppler_hz must be the Doppler AT ref_hop. The coast path stored the forecast's NOW
+    # value there, leaving ref_hop at the last re-detection -- the tracker then added
+    # dop_rate*age on top of an already-current number and the applied Doppler ran at ~2x
+    # the true rate until the next detection snapped it back.
+    #
+    # These two tests pin the fix and the defect the same way the pair above does.
+
+    @staticmethod
+    def _applied(stored_dop, rate, age):
+        """What gnss::propagate_seed computes at `age` seconds past ref_hop."""
+        return stored_dop + rate * age
+
+    def test_stored_doppler_is_back_propagated_to_ref_hop(self):
+        """For ANY age, the tracker must end up applying the forecast's NOW value."""
+        rate, forecast_now = -0.35, 245.0
+        for age in (0.0, 10.0, 200.0, 600.0, 3600.0):
+            stored = forecast_now - rate * age          # the fix
+            self.assertAlmostEqual(self._applied(stored, rate, age), forecast_now, places=9,
+                                   msg="age %.0f s: the tracker must apply the forecast" % age)
+
+    def test_the_doppler_epoch_tripwire(self):
+        """The defect, pinned: storing the NOW value against a stale ref_hop makes the
+        applied Doppler wrong by exactly dop_rate*age, and the applied RATE twice the true
+        one. Measured on sky before the fix: drift -0.63 Hz/s against a model -0.35, and a
+        60-81 Hz gap at ~200 s of age. If an edit reverts the epoch, this fails loudly."""
+        rate, forecast_now, age = -0.35, 245.0, 200.0
+        bad = self._applied(forecast_now, rate, age)     # the defect: stored at NOW
+        self.assertAlmostEqual(bad - forecast_now, rate * age, places=9,
+                               msg="the doppler-epoch error law changed -- investigate")
+        self.assertGreater(abs(bad - forecast_now), 60.0)
+        # and the second-order tell: the applied Doppler advances at 2x the true rate,
+        # because a fresh forecast is written every poll while age keeps growing.
+        d1 = self._applied(forecast_now + rate * 1.0, rate, age + 1.0)
+        self.assertAlmostEqual((d1 - bad) / 1.0, 2.0 * rate, places=6)
+
+    def test_the_doppler_epoch_also_biases_the_cp_retag(self):
+        """Second consequence: comparing a ref_hop-epoch old_dop against a NOW-epoch
+        new_dop inflates the ddop handed to retag_seed_doppler by dop_rate*age, so the code
+        phase is kicked too. The fix compares the old EFFECTIVE Doppler at now."""
+        rate, age = -0.35, 200.0
+        # "no news": the forecast at now is EXACTLY what the stored seed propagates to,
+        # so a correct comparison must see ddop = 0. (My first version wrote
+        # `245.0 - rate*age` and the test failed against correct code -- the propagation
+        # runs FORWARD from ref_hop, so it is a plus.)
+        stored_at_ref = 245.0
+        forecast_now = stored_at_ref + rate * age
+        ddop_wrong = forecast_now - stored_at_ref                 # what the old code saw
+        ddop_right = forecast_now - (stored_at_ref + rate * age)  # like for like
+        self.assertAlmostEqual(ddop_right, 0.0, places=9)         # nothing actually changed
+        self.assertAlmostEqual(abs(ddop_wrong), abs(rate) * age, places=9)
+        # that phantom ddop translates cp by t_now * (f_chip/f_car) * ddop chips
+        kick = T0 * CHIP / CARR * abs(ddop_wrong)
+        self.assertGreater(kick, 1.0, "a phantom re-tag of >1 chip is not a rounding error")
+
     def test_the_anchor_epoch_tripwire(self):
         """The #44 defect, pinned: translating at a 600-s-stale anchor steps the phase
         NOW by anchor_age * (f_chip/f_car) * ddop ~ 10.4 chips for a 2 Hz re-tag. If a

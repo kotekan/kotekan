@@ -5050,8 +5050,41 @@ def main(argv=None, rx=None, publisher=None):
                 # (PRN 39: TLE el <5 vs BRDC el 10), so BRDC governs these sats entirely.
                 pass
             elif args.almanac and prn in pred:
-                new_dop = pred[prn][0] + clock_bias
-                old_dop = seeds[prn].get("doppler_hz", new_dop)
+                # ⚠️ THE SEED'S DOPPLER IS VALID AT ref_hop, NOT AT NOW (2026-08-16).
+                # gnss::propagate_seed computes
+                #     dop_applied(t) = sd.doppler_hz + sd.dop_rate * (t - ref_hop)
+                # so writing the forecast's NOW value into `doppler_hz` while leaving
+                # `ref_hop` at the last re-detection makes the tracker add dop_rate*age on
+                # top of a value that is ALREADY current. The applied Doppler then advances
+                # at ~2x the true rate until the next detection re-anchors ref_hop, and
+                # snaps back when it does -- the sawtooth measured on sky: drift -0.63 Hz/s
+                # against a model -0.35, gap 60-81 Hz just before the snap, and
+                # 69 Hz = 0.60 chips/s of CODE rate, which drags the prompt tap off-peak in
+                # under two seconds. That is the churn (deep sig 1600 -> 3 on G23).
+                #
+                # Same disease as REC_PHI0 and as #44 itself: a VALUE updated to now while
+                # its EPOCH says otherwise ([[#45]] value/currency/epoch). Two consequences,
+                # both fixed here:
+                #   1. store the Doppler BACK-PROPAGATED to ref_hop, so propagate_seed
+                #      reconstructs the forecast exactly at now for ANY age;
+                #   2. compare like with like when re-tagging cp -- the old EFFECTIVE
+                #      Doppler at now, not the ref_hop-epoch number, or the ddop handed to
+                #      retag_seed_doppler is inflated by that same dop_rate*age and kicks
+                #      the code phase as well.
+                # age = 0 whenever the sample-0 anchor is unknown, which reduces this to the
+                # previous behaviour rather than guessing.
+                _rate_new = pred[prn][1]
+                # the rate the TRACKER will actually propagate with: absent key => 0, and
+                # then there is no double-count to undo.
+                _rate_eff = _rate_new if "doppler_rate_hz_s" in seeds[prn] else 0.0
+                _age = 0.0
+                if utc0_sample0:
+                    _age = max(0.0, (now_w - utc0_sample0)
+                               - seeds[prn].get("ref_hop", 0) / args.hops_per_sec)
+                new_dop = pred[prn][0] + clock_bias           # the forecast AT NOW
+                _old_rate = seeds[prn].get("doppler_rate_hz_s", 0.0)
+                # what the tracker is APPLYING at this instant, i.e. the currency cp is in
+                old_dop = seeds[prn].get("doppler_hz", new_dop) + _old_rate * _age
                 if new_dop != old_dop:
                     # CURRENCY-CORRECT the coast, UNCONDITIONALLY (2026-07-19 audit A4): cp0
                     # is meaningful only in its doppler's currency -- updating the forecast
@@ -5075,9 +5108,10 @@ def main(argv=None, rx=None, publisher=None):
                         seeds[prn].get("code_phase_chips", 0.0), old_dop, new_dop,
                         _t_retag, args.chip_rate_hz, args.carrier_hz,
                         args.code_doppler_sign, CODE_LEN)
-                    seeds[prn]["doppler_hz"] = new_dop
+                    # STORE AT ref_hop, not at now (see the note above).
+                    seeds[prn]["doppler_hz"] = new_dop - _rate_eff * _age
                 if "doppler_rate_hz_s" in seeds[prn]:
-                    seeds[prn]["doppler_rate_hz_s"] = pred[prn][1]
+                    seeds[prn]["doppler_rate_hz_s"] = _rate_new
             rec = status.get(prn, {})
             if have_sig:
                 metric, thresh = sig_of(rec), args.lock_snr
