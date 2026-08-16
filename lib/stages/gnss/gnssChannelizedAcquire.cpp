@@ -596,31 +596,26 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
             delta = std::max(-0.5, std::min(0.5, delta));
             best.doppler_hz += delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
         }
-        // SCALLOPING-CORRECTED PEAK (#41) -- the statistic for comparing HYPOTHESES.
+        // SCALLOPING-ROBUST PEAK (#41) -- the statistic for comparing HYPOTHESES.
         //
-        // ⚠️ NOT the parabola vertex. The Doppler axis of a 16 ms coherent window is a SINC
-        // lobe (zeros every 1/T = one bin), and a 3-point parabola on |sinc|^2 samples
-        // radically under-recovers off-bin: at mid-bin the samples are (0.045, 0.405, 0.405)
-        // and the vertex evaluates to 0.45 of the true power -- which left the corrected true
-        // peak in a NEAR-TIE with an on-bin overlay sideband, and PRN 32 kept flipping at
-        // snr ~100 within minutes of that version deploying (2026-08-16 21:00).
+        // THIRD FORM, each predecessor DISPROVED ON SKY the same evening (2026-08-16):
+        //  1. Parabola vertex on |sinc|^2 samples: under-recovers 2.2x at mid-bin (the three
+        //     points are 0.045/0.405/0.405 -> vertex 0.45) -- PRN 32 flipped at snr 104
+        //     within minutes.
+        //  2. Two-bin sinc ratio (delta = r/(1+r), A = y0/sinc(delta)): EXACT for one tone,
+        //     but the overlay-mismatch spectrum has ADJACENT strong tones (d=2 -> k=1 and
+        //     k=2 together), and two neighbouring tones fake a mid-bin single tone: the
+        //     division then inflates the sideband by up to 1.57x, corrected ~0.9 of true --
+        //     PRN 1 flipped +-1/+-5 at snr 117-132.
         //
-        // The exact estimator for a sinc mainlobe from its two largest samples: with the peak
-        // delta bins from the larger sample, r = |y1|/|y0| = delta/(1-delta) EXACTLY (the
-        // sin(pi*delta) factor cancels in the ratio), so delta = r/(1+r) and A = y0/sinc(delta).
-        // Applied uniformly it recovers EVERY hypothesis's own continuum amplitude -- each
-        // overlay sideband is itself a sinc lobe of its own tone -- so the comparison margin
-        // is the continuum one (true 1.0 vs mismatch <= ~0.5-0.6 amplitude) at EVERY grid
-        // phase. Worst-case inflation of any structure is bounded by 4/pi in amplitude.
-        const double y0 = std::sqrt(std::max(0.0, s0));
-        const double y1 = std::sqrt(std::max(0.0, std::max(sm, sp)));
-        if (y0 > 0.0 && y1 >= 0.0 && y1 <= y0) {
-            const double r = y1 / y0;            // in [0, 1] by the guard
-            const double dl = r / (1.0 + r);     // in [0, 0.5]
-            const double sc = (dl < 1e-9) ? 1.0 : std::sin(M_PI * dl) / (M_PI * dl);
-            const double amp = y0 / std::max(0.5, sc); // sinc(0.5)=0.637, so the floor is slack
-            best.peak_interp = amp * amp;
-        }
+        // The MAINLOBE PAIR-SUM has the property both lacked: it can NEVER over-recover,
+        // because there is no division -- it is monotone in the underlying spectrum. For a
+        // single tone at any grid phase the pair carries |sinc(d)|^2 + |sinc(1-d)|^2 in
+        // [0.81, 1.05] of the continuum power (19% ripple, vs 59% single-bin). For a
+        // multi-tone mismatch it is bounded by that spectrum's best adjacent PAIR, <= ~0.5
+        // by Parseval on a +-1 sequence. Worst-case margin ~2 dB, typical 3-5 dB, at every
+        // grid phase, with no model of the interference required.
+        best.peak_interp = s0 + std::max(sm, sp);
     }
     best.snr = (mean > 0.0) ? best.peak / mean : 0.0;
 
