@@ -88,6 +88,28 @@ protected:
     /// Rate limit for the "still waiting for stream IDs" warning (see first_run).
     double _last_incomplete_warn = 0.0;
 
+    /// ⚠️ RATE LIMIT FOR THE OUT-OF-RANGE DROP -- THIS ONE TOOK NODES OFF THE AIR.
+    /// The drop below is a PER-PACKET condition: once the stream runs ahead of the two active
+    /// frames, EVERY packet takes that branch. Logged unthrottled at CRS rates that is
+    /// terabytes per hour -- measured 2026-08-16, /tmp/gnss_node.log at 2.7 TB on cx19 and
+    /// 2.0 TB on cx42, root filesystem full, both nodes dead. Deleting the file did not even
+    /// free the space, because the process still held the fd.
+    ///
+    /// The cascade is what makes it dangerous: a momentary stall puts the stream outside the
+    /// window, the drop logs per packet, the log fills the disk, and a node that might have
+    /// recovered on its own instead dies completely. cx19 came straight back to 88% GPU the
+    /// moment the disk was freed, so the drop was survivable and the LOG was not.
+    ///
+    /// One line per second, carrying the count since the last line so nothing is hidden -- the
+    /// rate is the diagnosis anyway, not any individual sequence number.
+    double _last_range_drop_log = 0.0;
+    uint64_t _range_drops_since_log = 0;
+    /// Total out-of-range drops, for the stats endpoint: a rising count is the real signal.
+    uint64_t range_drop_count = 0;
+    /// Same throttle for the prefetch-not-ready drop, which is also per packet.
+    double _last_prefetch_drop_log = 0.0;
+    uint64_t _prefetch_drops_since_log = 0;
+
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
                                      uint16_t source_id);
@@ -278,10 +300,21 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         if (prefetch_service->has_error() || prefetch_service->is_complete())
             return -1;
 
+        // ⚠️ THROTTLED for the same reason as the out-of-range drop below: this is a
+        // per-PACKET branch, and an unthrottled line here is the same terabyte-per-hour
+        // failure mode with a different message.
         if (seq_num >= prefetch_service->get_start_seq()) {
-            WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because "
-                 "prefetch service is not ready (start_seq: {:d})",
-                 port, worker_id, seq_num, prefetch_service->get_start_seq());
+            _prefetch_drops_since_log++;
+            const double now_pf = current_time();
+            if (now_pf - _last_prefetch_drop_log > 1.0) {
+                WARN("Port: {:d}, Worker: {:d}; dropping packets, prefetch service not ready "
+                     "(start_seq {:d}) -- {:d} in the last {:.1f}s",
+                     port, worker_id, prefetch_service->get_start_seq(),
+                     _prefetch_drops_since_log,
+                     (_last_prefetch_drop_log > 0.0) ? (now_pf - _last_prefetch_drop_log) : 0.0);
+                _last_prefetch_drop_log = now_pf;
+                _prefetch_drops_since_log = 0;
+            }
         }
         return 0;
     }
@@ -309,11 +342,29 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             return 0;
         }
 
-        // Packet is outside the range of the two active frames, drop it
-        ERROR("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} outside active "
-              "frame range [{:d}, {:d}]",
-              port, worker_id, seq_num, active_f0->start_seq,
-              active_f1->start_seq + time_samples_per_frame);
+        // Packet is outside the range of the two active frames, drop it.
+        // ⚠️ THROTTLED -- see _last_range_drop_log. This is a per-PACKET condition and logging
+        // it per packet filled a 3.5 TB root filesystem and killed two nodes.
+        range_drop_count++;
+        _range_drops_since_log++;
+        const double now_rd = current_time();
+        if (now_rd - _last_range_drop_log > 1.0) {
+            const uint64_t ahead = (seq_num >= active_f1->start_seq + time_samples_per_frame)
+                                       ? seq_num - (active_f1->start_seq + time_samples_per_frame)
+                                       : 0;
+            const uint64_t behind = (seq_num < active_f0->start_seq)
+                                        ? active_f0->start_seq - seq_num : 0;
+            ERROR("Port: {:d}, Worker: {:d}; DROPPING PACKETS outside the active frame range "
+                  "[{:d}, {:d}] -- {:d} in the last {:.1f}s, {:d} total. This packet seq {:d} is "
+                  "{:d} ahead / {:d} behind. A SUSTAINED count means the window is not tracking "
+                  "the stream and this pipeline is producing nothing.",
+                  port, worker_id, active_f0->start_seq,
+                  active_f1->start_seq + time_samples_per_frame, _range_drops_since_log,
+                  (_last_range_drop_log > 0.0) ? (now_rd - _last_range_drop_log) : 0.0,
+                  range_drop_count, seq_num, ahead, behind);
+            _last_range_drop_log = now_rd;
+            _range_drops_since_log = 0;
+        }
         return -1;
     }
 
