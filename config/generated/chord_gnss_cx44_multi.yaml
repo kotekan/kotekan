@@ -308,7 +308,7 @@ gnss0_b2a_n2combine:
   record_export: 128
   sky_deep: true
 gnss0_b2a_n2ctl_buf:
-  frame_size: 98480
+  frame_size: 104624
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -372,7 +372,7 @@ gnss0_b2a_n2dual:
     host_gnss_n2ctl: gnss0_b2a_n2ctl_buf
     host_gnss_tiles: gnss0_b2a_n2tiles_buf
 gnss0_b2a_n2epl_buf:
-  frame_size: 4817072
+  frame_size: 4823216
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -520,7 +520,7 @@ gnss0_b2b_n2combine:
   record_export: 128
   sky_deep: true
 gnss0_b2b_n2ctl_buf:
-  frame_size: 110768
+  frame_size: 116912
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -585,7 +585,7 @@ gnss0_b2b_n2dual:
     host_gnss_n2ctl: gnss0_b2b_n2ctl_buf
     host_gnss_tiles: gnss0_b2b_n2tiles_buf
 gnss0_b2b_n2epl_buf:
-  frame_size: 5615792
+  frame_size: 5621936
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -746,7 +746,7 @@ gnss0_e5a_n2combine:
   record_export: 128
   sky_deep: true
 gnss0_e5a_n2ctl_buf:
-  frame_size: 131248
+  frame_size: 139440
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -810,7 +810,7 @@ gnss0_e5a_n2dual:
     host_gnss_n2ctl: gnss0_e5a_n2ctl_buf
     host_gnss_tiles: gnss0_e5a_n2tiles_buf
 gnss0_e5a_n2epl_buf:
-  frame_size: 6422704
+  frame_size: 6430896
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -966,7 +966,7 @@ gnss0_e5b_n2combine:
   record_export: 128
   sky_deep: true
 gnss0_e5b_n2ctl_buf:
-  frame_size: 147632
+  frame_size: 155824
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1031,7 +1031,7 @@ gnss0_e5b_n2dual:
     host_gnss_n2ctl: gnss0_e5b_n2ctl_buf
     host_gnss_tiles: gnss0_e5b_n2tiles_buf
 gnss0_e5b_n2epl_buf:
-  frame_size: 7487664
+  frame_size: 7495856
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1187,7 +1187,7 @@ gnss0_n2combine:
   record_export: 128
   sky_deep: true
 gnss0_n2ctl_buf:
-  frame_size: 131248
+  frame_size: 139440
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1251,7 +1251,7 @@ gnss0_n2dual:
     host_gnss_n2ctl: gnss0_n2ctl_buf
     host_gnss_tiles: gnss0_n2tiles_buf
 gnss0_n2epl_buf:
-  frame_size: 6422704
+  frame_size: 6430896
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1409,7 +1409,7 @@ gnss1_b2a_n2combine:
   record_export: 128
   sky_deep: true
 gnss1_b2a_n2ctl_buf:
-  frame_size: 110768
+  frame_size: 116912
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1474,7 +1474,7 @@ gnss1_b2a_n2dual:
     host_gnss_n2ctl: gnss1_b2a_n2ctl_buf
     host_gnss_tiles: gnss1_b2a_n2tiles_buf
 gnss1_b2a_n2epl_buf:
-  frame_size: 5615792
+  frame_size: 5621936
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1598,7 +1598,7 @@ gnss1_b2b_n2combine:
   record_export: 128
   sky_deep: true
 gnss1_b2b_n2ctl_buf:
-  frame_size: 98480
+  frame_size: 104624
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1662,7 +1662,7 @@ gnss1_b2b_n2dual:
     host_gnss_n2ctl: gnss1_b2b_n2ctl_buf
     host_gnss_tiles: gnss1_b2b_n2tiles_buf
 gnss1_b2b_n2epl_buf:
-  frame_size: 4817072
+  frame_size: 4823216
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1791,7 +1791,7 @@ gnss1_e5a_n2combine:
   record_export: 128
   sky_deep: true
 gnss1_e5a_n2ctl_buf:
-  frame_size: 147632
+  frame_size: 155824
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1856,7 +1856,7 @@ gnss1_e5a_n2dual:
     host_gnss_n2ctl: gnss1_e5a_n2ctl_buf
     host_gnss_tiles: gnss1_e5a_n2tiles_buf
 gnss1_e5a_n2epl_buf:
-  frame_size: 7487664
+  frame_size: 7495856
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1980,7 +1980,7 @@ gnss1_e5b_n2combine:
   record_export: 128
   sky_deep: true
 gnss1_e5b_n2ctl_buf:
-  frame_size: 131248
+  frame_size: 139440
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2044,7 +2044,7 @@ gnss1_e5b_n2dual:
     host_gnss_n2ctl: gnss1_e5b_n2ctl_buf
     host_gnss_tiles: gnss1_e5b_n2tiles_buf
 gnss1_e5b_n2epl_buf:
-  frame_size: 6422704
+  frame_size: 6430896
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2168,7 +2168,7 @@ gnss1_n2combine:
   record_export: 128
   sky_deep: true
 gnss1_n2ctl_buf:
-  frame_size: 147632
+  frame_size: 155824
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2233,7 +2233,7 @@ gnss1_n2dual:
     host_gnss_n2ctl: gnss1_n2ctl_buf
     host_gnss_tiles: gnss1_n2tiles_buf
 gnss1_n2epl_buf:
-  frame_size: 7487664
+  frame_size: 7495856
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4

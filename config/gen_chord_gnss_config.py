@@ -45,7 +45,7 @@ sys.path.insert(0, CONF)
 from chord_band_plan import (all_band_channels, covering_channels,  # noqa: E402
                              node_channels, signal_table)
 from gnss_record_layout import (record_stride, telem_frame_bytes,  # noqa: E402
-                                chan_floats)
+                                chan_floats, prnctl_bytes)
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
@@ -719,11 +719,17 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     n2rec_buf = f"{pre}n2rec_buf"
     # epl frame: gnss_gpu::frame_bytes(n_prn, n_chan, ROWS_PLAIN=4, n_elem) -- the SAME
     # expression the tracker's epl_buf uses, since the consumer emits that exact layout.
-    epl_bytes = (48 + 8 * 16 + 64 * 16 * n_prn
+    # ⚠️ THE 64 HERE WAS sizeof(PrnCtl) AS A LITERAL, AND IT TOOK THE FLEET DOWN
+    # (2026-08-16). #72 added two doubles to PrnCtl, it became 80, this stayed 64, and every
+    # node refused to start on a frame 6144 B = (80-64)*16*n_prn short. The stage's guard
+    # caught it loudly instead of corrupting memory -- but the drift should not be possible,
+    # so READ it, exactly as record_floats below is read.
+    prnctl = prnctl_bytes()
+    epl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn
                  + 16 * 4 * n_prn * 16 * n_chan * n_live
                  + 8 * 4 * n_prn * 16 * n_chan)
     # control block = the same minus the corr array.
-    ctl_bytes = (48 + 8 * 16 + 64 * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
+    ctl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
     # READ from gnssRecord.hpp, never restated: this line used to be the literal `26 + n_live*12`
     # -- the exact drift config/gnss_record_layout.py was written to make impossible, left behind
     # in this branch when the path-A one was fixed (2026-08-07).

@@ -22,6 +22,8 @@ HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "lib", "stages", "gnss", "gnssRecord.hpp")
 TELEM_HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "..", "lib", "stages", "gnss", "gnssTelem.hpp")
+CHAIN_HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "lib", "stages", "gnss", "gnssGpuChain.hpp")
 
 
 def _read(name, header=None):
@@ -48,6 +50,35 @@ def elem_floats(header=None):
 def record_stride(n_elem, header=None):
     """Full per-PRN stride: RECORD_FLOATS + n_elem * ELEM_FLOATS."""
     return record_floats(header) + n_elem * elem_floats(header)
+
+
+def prnctl_bytes():
+    """sizeof(gnss_gpu::PrnCtl) -- parsed from its static_assert in gnssGpuChain.hpp.
+
+    ⚠️ THIS EXISTS BECAUSE THE LITERAL 64 TOOK THE FLEET DOWN (2026-08-16). The CHORD
+    generator sized the path-B epl/ctl frames by restating gnss_gpu::frame_bytes() inline,
+    `48 + 8*16 + 64*16*n_prn + ...`, where the 64 was sizeof(PrnCtl). Adding two doubles to
+    PrnCtl for #72 grew it to 80, the generated frame stayed 6144 B short
+    (= (80-64)*16*24), and EVERY NODE refused to start:
+
+        GnssN2RecordAssemble: out_buf frame_size 5615792 < 5621936 needed
+
+    The stage's own guard caught it loudly rather than corrupting memory, which is the design
+    working -- but the drift should not have been possible. Same medicine as record_floats:
+    read the number, never restate it.
+
+    Parsed from the static_assert rather than a constexpr because the size is the compiler's
+    to decide; the assert is the one place the expected value is written down, and it is
+    checked against reality at every build.
+    """
+    with open(CHAIN_HEADER) as fh:
+        text = fh.read()
+    m = re.search(r"static_assert\s*\(\s*sizeof\s*\(\s*PrnCtl\s*\)\s*==\s*(\d+)", text)
+    if not m:
+        raise SystemExit("%s: could not parse the sizeof(PrnCtl) static_assert -- the header's "
+                         "shape changed and config/gnss_record_layout.py needs updating"
+                         % CHAIN_HEADER)
+    return int(m.group(1))
 
 
 def telem_header_bytes():
