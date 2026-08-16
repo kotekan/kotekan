@@ -248,6 +248,10 @@ def main():
     ap.add_argument("--gather", default="127.0.0.1:11061")
     ap.add_argument("--broker", default="http://127.0.0.1:12060")
     ap.add_argument("--chain", default="gps_l5")
+    ap.add_argument("--min-duty", type=float, default=0.5,
+                    help="duty bar for 'held'. Lower it to inspect a fleet that is acquiring "
+                         "but not holding -- the per-instance PHASE check only needs signal, "
+                         "not a sustained lock, though eta_band still wants a real hold.")
     ap.add_argument("--seconds", type=float, default=20.0)
     ap.add_argument("--windows", type=int, default=32)
     ap.add_argument("--self-test", action="store_true",
@@ -284,9 +288,10 @@ def main():
     probes = {int(x["prn"]) for x in rows if x.get("noise_probe")}
     held = {int(x["prn"]) for x in rows
             if not x.get("noise_probe") and x.get("cn0_prompt_db") is not None
-            and (x.get("cn0_prompt_duty") or 0) >= 0.5}
+            and (x.get("cn0_prompt_duty") or 0) >= a.min_duty}
     if not held:
-        raise SystemExit("INCONCLUSIVE: nothing held at duty >= 0.5 on %s." % a.chain)
+        raise SystemExit("INCONCLUSIVE: nothing held at duty >= %.2f on %s."
+                         % (a.min_duty, a.chain))
     if not probes:
         raise SystemExit("no noise probes -- no null, no gate")
     cn0 = {int(x["prn"]): x.get("cn0_prompt_db") for x in rows}
