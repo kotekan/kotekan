@@ -76,13 +76,20 @@ common:
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
   # slew target, both = that number times 10.23 Mcps.
   dr-fengine-axis: 1
-  # #83 2(d) re-validation (2026-08-17, caa1e92c3): INNOV for DR-OWNED seeds too -- valid
-  # only under dr-fengine-axis (hard-tied in code: armed alone it is ignored). Pure
-  # observability in practice: DR chains have no detections hence no holds, and gps_l5's
-  # dr-owned sats are flipped ones, which can never be cp_held (ENTER discards the hold).
-  # VALIDATE the served p95s against MINNOV on sky (want: same few-chip scale, no
-  # thousands) before the referee is allowed to trust it anywhere.
-  innov-dr-seeds: 1
+  # #83 2(d) re-validation: ⚠️ ARMED 22:11, FALSIFIED 22:30, DISARMED. The axis fix did
+  # NOT make INNOV valid for dr-owned seeds. First flip after arming (PRN 4, 22:30:01):
+  # INNOV +2201.31 chips, p95 2198.42, while every unflipped sat in the SAME line read
+  # 2.39-2.64. Pre-registered falsification bar was "hundreds/thousands -> disarm", and
+  # this is it.
+  # WHY, and it is not the old reason: 2201 chips = 215 us, i.e. the SUB-MILLISECOND part
+  # of the telemetry lag (integer ms vanish -- 1 ms = one L5 code period). t_now_abs rides
+  # the newest pow_hop, which trails the sky by the gather/serve latency (-99.6 ms median,
+  # 59 ms IQR measured; a +1.07 s excursion was caught live on gal_e5b at 22:24 by
+  # --clock-step-guard-s, with chrony clean). So the dr axis is drift-free but STALE, and
+  # its sub-ms residue lands straight in the chip domain of any cross-axis comparison.
+  # The exclusion stands; MINNOV remains the referee for dr-owned/flipped sats. Re-arming
+  # needs lag COMPENSATION on t_now_abs first, not a flag flip.
+  innov-dr-seeds: 0
   # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
   # SAME records and each reply lands on one phase reference. Without this the per-instance
   # phase is free and the fit absorbs it -- which is #52's defect, not a modelling choice.

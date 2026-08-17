@@ -1208,8 +1208,15 @@ def main(argv=None, rx=None, publisher=None):
                          "--dr-fengine-axis: without it this flag is ignored, because a "
                          "cross-axis INNOV would feed the escape referee garbage "
                          "(cp_err = _inv in the hold branch -- one number, two "
-                         "consumers). Default OFF; arm in yaml, validate the served p95s "
-                         "on sky before trusting the referee with it.")
+                         "consumers). ⚠️ ARMED AND FALSIFIED ON SKY 2026-08-17 22:30, "
+                         "DISARMED: first flip after arming (PRN 4) served INNOV "
+                         "+2201.31 chips / p95 2198.42 while unflipped sats in the SAME "
+                         "line read 2.39-2.64. The axis fix removed the NTP DRIFT but not "
+                         "the STALENESS: 2201 chips = 215 us = the sub-millisecond part of "
+                         "the telemetry lag (integer ms vanish, 1 ms = one L5 period), and "
+                         "t_now_abs rides the newest pow_hop, which trails the sky by "
+                         "-99.6 ms median / 59 ms IQR. Re-arming requires LAG COMPENSATION "
+                         "on t_now_abs, not a flag flip. MINNOV referees dr-owned sats.")
     ap.add_argument("--model-primacy-max", type=int, default=0,
                     help="#83 P3-3b, THE FLIP: at most this many PRNs run MODEL-PRIMARY on "
                          "a search-backed chain -- their seeds come from the dr-slew path "
