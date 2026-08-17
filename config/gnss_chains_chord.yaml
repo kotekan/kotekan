@@ -458,6 +458,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # meant to attack. The gate that qualified this consumer on GPS stands on its own
     # measurements and is unaffected.
     joint-consume: rate,slew
+    # #83 Phase 3 step 2 (2026-08-17): the ROTATING COAST TEST -- withhold the
+    # best-established satellite from the joint solve, coast 600 s, log the
+    # residual-vs-age curve, rotate. Measurement-only (the masked sat is still seeded
+    # normally). What accumulates is the distribution of "how well does the shared state
+    # carry a satellite it is not being told about" across satellites and elevations --
+    # the model-primacy flip gate's number, and a measurement of q_b. gps_l5 only: the
+    # coast residual needs detections to be measured against, and only this chain has a
+    # search.
+    joint-p2c-rotate: true
     # PER-SUBBAND ARCHIVE (task #25). fleet_spectrum already computes per-channel,
     # per-instance amplitudes for the tau fit and then discards them; this persists the
     # raw points before the collapse. The per-freq x per-element axis IS the science
