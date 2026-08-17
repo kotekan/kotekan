@@ -100,13 +100,16 @@ fix first**: both broker trim-application sites write only `code_phase_chips`, n
 `code_phase_at_ref_chips`, so enabling transport on the DR chains would silently disable their
 only code loop. Fix the write, then enable. [carried, audit 08-16]
 
-### A4. #76 — the broker is blind to the trim it commanded
-Confirmed the hard way tonight: `/fleet_trim/get_dll` exposes disc/q but **no trim value**, and
-the tracker's `/get_trim` 404s on the live node config (endpoint names differ from the generated
-config I checked). So there is currently *no* way to read the applied C++ trim, and the broker
-prints `trim +0.00` for satellites it is actively trimming — a false statement in the log. This
-blinds the escape referee and feeds the vector filter a measurement missing its own control
-input. [verified 08-17]
+### A4. #76 — ✅ FIXED (eb30892b3, deployed 08-17 02:06): the trim readback
+`/fleet_trim/get_dll` now serves the integrator per PRN (`trim_chips`/steps/railed/skipped/win
++ `armed`; a MISSING key means "no standing trim", distinct from a trim passing through 0.0),
+and the broker GETs it back each cycle right after `/set_policy` into `_ft_readback` + a
+rate-limited `FLEET-TRIM READBACK` log line. Flag-gated (`--fleet-trim-readback`, yaml-armed
+on gps_l5 + gal_e5a) because pre-#76 fixtures have no get_dll entries in their get streams —
+all four fixtures EQUIVALENT with the flag off. Read-only: consumption is #83 2(d).
+**First minutes of data**: gal_e5a's armed PRNs carry LARGE fast-growing trims
+(21: −2.28 chips within ~90 s of integrator birth) — the re-armed loop is absorbing real
+standing code error on Galileo; watch for #78's clamp at 3.0. [fixed 08-17]
 
 ---
 
