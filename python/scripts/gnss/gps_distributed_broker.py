@@ -2921,9 +2921,13 @@ def main(argv=None, rx=None, publisher=None):
                             if abs(t_new) >= 2.999:
                                 fast_stats["rail"] += 1
                             dll_trim[prn] = t_new
-                            d0, base_cp = tmpl[prn]
+                            d0, base_cp, base_aref = tmpl[prn]
                             d = dict(d0)
                         d["code_phase_chips"] = (base_cp + t_new) % args.code_length
+                        # §4.6: the phase moves with the trim or the tracker ignores it.
+                        if base_aref is not None:
+                            _tmod = ((LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN)
+                            d["code_phase_at_ref_chips"] = (base_aref + t_new) % _tmod
                         posted.append(d)
                         fast_stats["updates"] += 1
                     if posted:
@@ -8333,6 +8337,18 @@ def main(argv=None, rx=None, publisher=None):
             d = dict(prn=prn, **v)
             if dll_trim.get(prn):
                 d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
+                # ⚠️ AUDIT §4.6 (#83 2(b) precondition): THE TRIM MUST MOVE THE PHASE TOO.
+                # propagate_seed PREFERS code_phase_at_ref_chips whenever the payload
+                # carries it -- which the search-fed path always does -- so a trim written
+                # only into cp0 was written into the field the tracker ignores: the Python
+                # slow trim has been a NO-OP on every phase-carrying seed, and enabling
+                # --seed-phase-transport on the DR chains would have silently disabled
+                # their only code loop. One trim, both currencies, same instant.
+                if d.get("code_phase_at_ref_chips", -1.0) is not None \
+                        and d.get("code_phase_at_ref_chips", -1.0) >= 0.0:
+                    _tmod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
+                    d["code_phase_at_ref_chips"] = (
+                        d["code_phase_at_ref_chips"] + dll_trim[prn]) % _tmod
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
             if _jrc is not None and prn not in probe_set:
@@ -8694,7 +8710,16 @@ def main(argv=None, rx=None, publisher=None):
                     if _p is None:
                         continue
                     _base = _d.get("code_phase_chips", 0.0) - dll_trim.get(_p, 0.0)
-                    fast_tmpl[_p] = (dict(_d), _base)
+                    # §4.6: the fast arm substitutes BOTH currencies (see the POST-time
+                    # site above) -- the template records the untrimmed phase beside the
+                    # untrimmed argument, or None when the payload carries no phase.
+                    _ba = _d.get("code_phase_at_ref_chips")
+                    if _ba is not None and _ba >= 0.0:
+                        _tmod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
+                        _ba = (_ba - dll_trim.get(_p, 0.0)) % _tmod
+                    else:
+                        _ba = None
+                    fast_tmpl[_p] = (dict(_d), _base, _ba)
                 fast_prns.clear()
                 # Only PRNs this cycle judged present AND trimmable. Presence, floors and the
                 # deep gate all stay here; the fast thread never re-decides who to touch.
