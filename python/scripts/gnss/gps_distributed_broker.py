@@ -1149,6 +1149,32 @@ def main(argv=None, rx=None, publisher=None):
                          "one fine sample outweighs ~64 coarse ones; the row is then "
                          "governed by phase and merely SUPERVISED by frequency. 1.0 "
                          "disables the handoff (both feeds at face value).")
+    ap.add_argument("--rrate-kcoh-feed", type=int, default=0,
+                    help="#83 Phase 3 step 1: feed the joint rrate state the KCOH fold's "
+                         "remaining rate (rate_hz + rate_resid_hz, task #57) -- a "
+                         "PHASE-PROGRESSION estimator (segment-phasor lag products over "
+                         "the fleet-summed prompt), which is the different KIND the "
+                         "coarse feed's own post-mortem asked for: deep_rate is a "
+                         "spectral argmax with a flat structure function (~5.6 Hz of "
+                         "pure noise) and fcoh's spectral fit failed for sharing its "
+                         "peak selection. This one is probe-calibrated and alive on "
+                         "satellites a single tracker cannot hold -- the DR chains' "
+                         "first credible carrier-rate measurement. Referenced like the "
+                         "coarse feed: REC_P is already derotated by the applied "
+                         "command, so remaining + applied re-references y to the BASE "
+                         "seed. While a satellite has a fresh kcoh acceptance its "
+                         "coarse measurements are deweighted exactly like the fine "
+                         "hold. Default OFF for the replay gate (recorded argv rules); "
+                         "armed in the yaml globals.")
+    ap.add_argument("--rrate-kcoh-min-sig", type=float, default=20.0,
+                    help="minimum KCOH fold significance for the kcoh rrate feed: below "
+                         "this the fold has not caught the satellite and its residual "
+                         "is the fit chasing noise (the probe floor sits at sig ~1; 20 "
+                         "is well clear of the tail). The per-measurement sigma also "
+                         "scales with the fold: min(0.3, max(0.03, 2/sqrt(sig))) Hz -- "
+                         "a first cut anchored at the synthetic gate's ~0.03 Hz "
+                         "strong-signal recovery accuracy, to be re-derived from the "
+                         "innovation stream once this has flown.")
     ap.add_argument("--rrate-fine-hold-s", type=float, default=240.0,
                     help="how long a fine acceptance keeps a satellite in the "
                          "phase-governed regime. On expiry the coarse feed returns to "
@@ -2984,6 +3010,12 @@ def main(argv=None, rx=None, publisher=None):
                          # it is what walked arm 1)
     adr_prev = {}        # prn -> ((arc, records, res_cycles), cmd_then) at the last poll --
                          # the PLL fine observable differences THESE (#33 phase-step feed)
+    rr_kcoh_t = {}       # prn -> t of the last ACCEPTED kcoh rate feed (#83 P3 step 1);
+                         # holds the coarse deweight like rr_fine_t, same hold window.
+    rr_kcoh_fed = {}     # {"last": <the kcoh dict object last fed>} -- the estimator is
+                         # THROTTLED (_run_est), so _est_last serves the same dict for
+                         # several cycles; re-feeding it would count one measurement as
+                         # many and the filter would grow confident on repetition.
     rr_fine_t = {}       # prn -> t of the last ACCEPTED fine measurement. The FLL->PLL
                          # handoff reads this: while the lock is fresh the coarse feed is
                          # de-weighted, and on expiry it silently returns to full weight.
@@ -7631,6 +7663,49 @@ def main(argv=None, rx=None, publisher=None):
                 _p: _rv for _p, _rv in _rr2_resid.items()
                 if ((status.get(_p) or {}).get("coherence_s") or 0.0) > 0.0
                 or ((status.get(_p) or {}).get("coh_frac") or 0.0) >= 0.3}
+        # ── #83 PHASE 3 STEP 1: the fleet-coherent rate feed (see --rrate-kcoh-feed) ──
+        # Runs BEFORE the coarse loop so a fresh acceptance here deweights this cycle's
+        # coarse measurements for the same satellite (the FLL->PLL pattern, third feed).
+        # _est_last, never the loop-local _kcoh: that name is only bound once the
+        # telemetry block has run at least once this thread, and a NameError in the guard
+        # would sit outside the try.
+        _kco = _est_last.get("kcoh")
+        if _kco is rr_kcoh_fed.get("last"):
+            _kco = None   # same estimate object as last cycle: already fed once
+        if args.rrate_state and args.rrate_kcoh_feed and _kco:
+            rr_kcoh_fed["last"] = _kco
+            try:
+                _jrk = rx.joint_receiver(band_id, CODE_LEN)
+                _nk = 0
+                _krows = []
+                for _p, _kv in sorted(_kco.items()):
+                    if (_kv.get("probe")
+                            or (_kv.get("sig") or 0.0) < args.rrate_kcoh_min_sig
+                            or (_kv.get("rate_pairs") or 0) < 8):
+                        continue
+                    _rem = ((_kv.get("rate_hz") or 0.0)
+                            + (_kv.get("rate_resid_hz") or 0.0))
+                    # Fold safety, same bound as the fine feed: the per-record fold is
+                    # unambiguous to ~+-23 Hz; beyond 20 the estimate is suspect.
+                    if abs(_rem) >= 20.0:
+                        continue
+                    _yk = _rem + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                    _sigk = min(0.3, max(0.03, 2.0 / math.sqrt(_kv["sig"])))
+                    _k2 = (args.dr_constellation, int(_p))
+                    if _jrk.update_rrate(_k2, _yk, t_now_abs, args.carrier_hz,
+                                         sigma_hz=_sigk) is not None:
+                        rr_kcoh_t[_p] = t0
+                        _nk += 1
+                        _krows.append("%d:%+.2f+-%.2f" % (_p, _yk, _sigk))
+                if _nk:
+                    _jrk.gauge_rrate()
+                    _log_rl("jrr-kcoh",
+                            "JRR-KCOH %s: %d sat(s) fed from the fold's remaining rate "
+                            "(y = remaining + applied, Hz): %s"
+                            % (log_tag() or args.signal, _nk, " ".join(_krows)),
+                            every_s=60.0)
+            except Exception as e:
+                _log_rl("jrr-kcoh-err", "JRR-KCOH: failed (%s) -- cycle continues" % e)
         if args.rrate_state and _rr2_resid:
             try:
                 _jrr = rx.joint_receiver(band_id, CODE_LEN)
@@ -7699,7 +7774,9 @@ def main(argv=None, rx=None, publisher=None):
                         _sig_c = min(max(_srec, 0.02), 0.2)
                         _n_rec_fed += 1
                     if (args.rrate_coarse_deweight > 1.0
-                            and t0 - rr_fine_t.get(_p, -1e9) <= args.rrate_fine_hold_s):
+                            and (t0 - rr_fine_t.get(_p, -1e9) <= args.rrate_fine_hold_s
+                                 or t0 - rr_kcoh_t.get(_p, -1e9)
+                                 <= args.rrate_fine_hold_s)):
                         _sig_c *= args.rrate_coarse_deweight
                         _n_gov += 1
                     if _jrr.update_rrate(_k, _y, t_now_abs, args.carrier_hz,

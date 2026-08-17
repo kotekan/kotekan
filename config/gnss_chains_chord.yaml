@@ -66,6 +66,11 @@ common:
   element-poll: true
   element-archive-dir: /home/kvand/gnss/fixtures/obs
   rrate-state: true
+  # #83 Phase 3 step 1 (2026-08-17): the fleet-coherent carrier-rate feed -- KCOH's
+  # remaining rate (rate_hz + rate_resid_hz, #57's phase-progression estimator,
+  # probe-calibrated) into the joint rrate state, sig-gated, coarse-deweighting like the
+  # fine hold. The DR chains' first credible carrier-rate measurement.
+  rrate-kcoh-feed: 1
   # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
   # SAME records and each reply lands on one phase reference. Without this the per-instance
   # phase is free and the fit absorbs it -- which is #52's defect, not a modelling choice.
