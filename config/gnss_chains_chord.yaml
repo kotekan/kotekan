@@ -169,6 +169,14 @@ chains:
   # GPS L5 -- the only chain with a SEARCH. Its detections are what solve the receiver
   # clock, which every other chain here now consumes in-process.
   gps_l5:
+    # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
+    # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
+    # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
+    # prefers it and it carries NO t_abs back-reference -- this kills the ~5600
+    # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
+    # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
+    # q duty. Revert: delete this line on the affected chain + broker restart.
+    seed-phase-transport: true
     signal: gps_l5
     # ⚠️ TEMPORARY EXPERIMENT (task #52, 2026-08-14) -- ON THIS CHAIN ONLY, deliberately.
     #
@@ -466,6 +474,14 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
   # transfer is an attribute read rather than a JSON file with a flush cadence, an age gate
   # and a two-read slew test. (Those still exist, unchanged, for cross-PROCESS siblings.)
   gal_e5a:
+    # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
+    # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
+    # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
+    # prefers it and it carries NO t_abs back-reference -- this kills the ~5600
+    # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
+    # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
+    # q duty. Revert: delete this line on the affected chain + broker restart.
+    seed-phase-transport: true
     signal: gal_e5a
     dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 20:30: the code loop, on the chains that could not hold ──────
@@ -889,6 +905,14 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
   # but the node's lane budget is spent at generation time, so the trim lives in
   # config/gnss_fleet_chord.yaml.
   bds_b2a:
+    # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
+    # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
+    # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
+    # prefers it and it carries NO t_abs back-reference -- this kills the ~5600
+    # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
+    # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
+    # q duty. Revert: delete this line on the affected chain + broker restart.
+    seed-phase-transport: true
     signal: bds_b2a
     dr-clock-adopt: true
     # #49 ARMED 2026-08-15 20:30 -- see the long note in gal_e5a for the measurement and the
@@ -940,6 +964,14 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
   # across two bands -- the code clock is per BAND by doctrine, and this is the first
   # configuration that can actually test that claim rather than assert it).
   gal_e5b:
+    # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
+    # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
+    # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
+    # prefers it and it carries NO t_abs back-reference -- this kills the ~5600
+    # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
+    # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
+    # q duty. Revert: delete this line on the affected chain + broker restart.
+    seed-phase-transport: true
     signal: gal_e5b
     dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
@@ -1011,6 +1043,14 @@ http://cx51:12049/gnss{0..1}_e5b_n2combine"
   # that lands. It is here for the BAND, not yet for the sensitivity -- judge it on
   # tau/lock, not on deep_snr, and do not "fix" a low deep that is simply this.
   bds_b2b:
+    # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
+    # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
+    # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
+    # prefers it and it carries NO t_abs back-reference -- this kills the ~5600
+    # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
+    # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
+    # q duty. Revert: delete this line on the affected chain + broker restart.
+    seed-phase-transport: true
     signal: bds_b2b
     dr-clock-adopt: true
     # #49 ARMED 2026-08-15 21:15Z -- see gal_e5b's note. All five chains now run the C++ code
