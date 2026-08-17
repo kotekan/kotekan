@@ -1149,6 +1149,43 @@ def main(argv=None, rx=None, publisher=None):
                          "one fine sample outweighs ~64 coarse ones; the row is then "
                          "governed by phase and merely SUPERVISED by frequency. 1.0 "
                          "disables the handoff (both feeds at face value).")
+    ap.add_argument("--model-primacy-max", type=int, default=0,
+                    help="#83 P3-3b, THE FLIP: at most this many PRNs run MODEL-PRIMARY on "
+                         "a search-backed chain -- their seeds come from the dr-slew path "
+                         "(BRDC + joint clk + b_sat, the 'slew' consumer), their "
+                         "detections feed ONLY the filter, the innovations and the "
+                         "referee, never the seed. Admission is per-PRN on the MEASURED "
+                         "model innovation (see --model-primacy-p95); the best-p95 "
+                         "eligible PRNs are flipped and the remaining eligible ones are "
+                         "the in-poll controls. 0 = off (the default, and the replay "
+                         "gate's requirement). MEASURED BASIS for the flip (2026-08-17 "
+                         "12:08): MINNOV p95 1.4-1.9 chips vs INNOV p95 2.2-2.5 on the "
+                         "SAME established satellites -- the model forecasts the sky "
+                         "BETTER than the search-anchored seed, whose every re-anchor "
+                         "injects the search's own 1-2 chip per-fix scatter; and the "
+                         "rotating coast test carried a withheld sat at -0.13/-0.19/-0.31 "
+                         "chips banded over 600 s.")
+    ap.add_argument("--model-primacy-p95", type=float, default=2.0,
+                    help="ENTER gate: a PRN is flip-eligible when its 10-min MINNOV p95 "
+                         "is below this (chips) with at least --model-primacy-min-n "
+                         "samples. From the measured distribution (1.4-1.9 on healthy "
+                         "established sats), not the old 1-chip guess.")
+    ap.add_argument("--model-primacy-min-n", type=int, default=30,
+                    help="ENTER gate: minimum MINNOV samples in the 10-min window. Births "
+                         "read thousands of chips at n=1 (cold model vs first fix); a "
+                         "p95 needs a population before it means anything.")
+    ap.add_argument("--model-primacy-exit-p95", type=float, default=3.0,
+                    help="EXIT gate (hysteresis above the enter gate): MINNOV p95 beyond "
+                         "this hands the PRN back to the search, which re-anchors on its "
+                         "next detection. MINNOV is the flip's own referee: a walking "
+                         "model (the 2(b) DR-chain class, ~0.6 chips/min) crosses this "
+                         "in minutes.")
+    ap.add_argument("--model-primacy-starve-s", type=float, default=600.0,
+                    help="EXIT gate: no MINNOV sample for this long (satellite faded, "
+                         "search stopped seeing it, joint row evicted) also exits the "
+                         "flip -- a model-primary sat whose referee has gone silent is "
+                         "the #48 noise-parking shape, and nothing may hold a seed "
+                         "unrefereed.")
     ap.add_argument("--rrate-kcoh-feed", type=int, default=0,
                     help="#83 Phase 3 step 1: feed the joint rrate state the KCOH fold's "
                          "remaining rate (rate_hz + rate_resid_hz, task #57) -- a "
@@ -3002,6 +3039,11 @@ def main(argv=None, rx=None, publisher=None):
     minnov_hist = {}      # prn -> [(t, minnov_chips)] -- #83 P3-3a: the MODEL innovation
                           # (detection vs the joint state's clk + b_sat + tau, prior-state),
                           # the model-primacy flip gate's number; served, never consumed
+    mp_flipped = set()    # #83 P3-3b: PRNs currently MODEL-PRIMARY (seeds from the dr-slew
+                          # path; detections feed filter/innovations/referee only). Written
+                          # ONLY by _mp_update below; consumed by the det loop and the dr
+                          # loop's eligibility guards.
+    mp_last_det = {}      # prn -> t of the last detection seen while flipped (starve exit)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
@@ -4485,6 +4527,17 @@ def main(argv=None, rx=None, publisher=None):
                 # Bounds MEMORY only: the 10-minute statistic is cut by time at read
                 # (the publish block), so this cap can never shorten the window.
                 del _ih[:-120]
+            # ── #83 P3-3b: MODEL-PRIMARY PRNs stop here ──
+            # This detection has already done everything it is allowed to do: the #79
+            # deep-gate stamp (above), INNOV (above), and the joint feed + MINNOV run in
+            # their own block from `offs`. The SEED stays the MODEL's -- the dr slew path
+            # owns it via the eligibility exceptions there -- so the re-anchor, the
+            # hold/escape machinery and the commit below are all bypassed. The search
+            # remains the referee THROUGH MINNOV: its exit gate (p95 hysteresis +
+            # starvation) hands the PRN back, and the next detection re-anchors normally.
+            if prn in mp_flipped:
+                mp_last_det[prn] = t0
+                continue
             if (prev is not None and prn in cp_held
                     and all(k in seed for k in ("code_phase_chips", "code_phase_rate",
                                                 "ref_hop"))):
@@ -6447,7 +6500,11 @@ def main(argv=None, rx=None, publisher=None):
                             continue  # block does not carry this signal (GPS L1C/L5/L2C)
                         # +0.5 deg hysteresis vs the drop mask: a sat riding the mask
                         # otherwise flickers drop->reseed every few cycles
-                        if (ctag != tag or v["el"] < args.mask_deg + 0.5 or prn in best
+                        # #83 P3-3b: a MODEL-PRIMARY PRN is dr-owned even while the search
+                        # detects it -- that is the whole point of the flip. (It can never
+                        # be in cp_held: the flip's ENTER discards the hold.)
+                        if (ctag != tag or v["el"] < args.mask_deg + 0.5
+                                or (prn in best and prn not in mp_flipped)
                                 or prn in probe_set or prn in cp_held
                                 or prn in dr_untrusted):   # model is wrong for this sat
                             continue
@@ -6485,7 +6542,8 @@ def main(argv=None, rx=None, publisher=None):
                                     % (prn, hold_prev.get(prn, 0.0),
                                        sig_of(status.get(prn, {})), args.lock_snr),
                                     every_s=60.0)
-                        _slew = (prn in seeds and not detectors
+                        _slew = (prn in seeds
+                                 and (not detectors or prn in mp_flipped)
                                  and prn in dr_state["seeded"]
                                  and (sig_of(status.get(prn, {})) >= args.lock_snr or _held))
                         if (not _slew and prn in seeds
@@ -6742,9 +6800,12 @@ def main(argv=None, rx=None, publisher=None):
                             seeds.pop(prn, None)
                             low_hits.pop(prn, None)
             # a fresh detection re-anchors via the seed loop (search = fallback); a
-            # dropped seed (set below horizon) clears the model-owned state with it
+            # dropped seed (set below horizon) clears the model-owned state with it.
+            # #83 P3-3b: EXCEPT a model-primary PRN -- its detections feed the filter and
+            # the referee, never the seed, so they must not evict its dr ownership (they
+            # would every single cycle, orphaning the flip the moment it started).
             for prn in list(dr_state["seeded"]):
-                if prn in best or prn not in seeds:
+                if (prn in best and prn not in mp_flipped) or prn not in seeds:
                     dr_state["seeded"].discard(prn)
                     dr_state["pin"].pop(prn, None)
 
@@ -7300,6 +7361,65 @@ def main(argv=None, rx=None, publisher=None):
                     "minnov_chips": _win[-1][1],
                     "minnov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
                     "minnov_n_10m": len(_win)})
+            # ── #83 P3-3b: THE FLIP DECISION (see --model-primacy-max) ──
+            # One writer for mp_flipped, once per cycle, from the MEASURED p95s built
+            # above. ENTER: p95 < gate with enough samples; the best-p95 eligible PRNs
+            # fill the cap, the rest are the in-poll controls. EXIT: p95 beyond the
+            # hysteresis bound, or the referee starved (no detection while flipped for
+            # --model-primacy-starve-s). Every transition is one loud line -- a flip
+            # whose firing cannot be seen is how gates fail here.
+            if args.model_primacy_max > 0:
+                _mp_p95 = {int(_p): (v["minnov_p95_10m"], v["minnov_n_10m"])
+                           for _p, v in _innov_pub.items() if "minnov_chips" in v}
+                for _p in sorted(mp_flipped):
+                    _pv = _mp_p95.get(_p)
+                    _starved = (_now() - mp_last_det.get(_p, _now())
+                                > args.model_primacy_starve_s)
+                    if _p in dr_untrusted:
+                        # The model just failed its own integrity gate for this sat: the
+                        # dr loop would refuse to seed it and the det loop is bypassing
+                        # the re-anchor -- an orphan in one more cycle. Hand it back NOW.
+                        mp_flipped.discard(_p)
+                        dr_state["seeded"].discard(_p)
+                        dr_state["pin"].pop(_p, None)
+                        _log("MODEL-PRIMACY EXIT PRN %d: dr integrity flagged the model "
+                             "(dr_untrusted) -- the search re-anchors on its next "
+                             "detection" % _p)
+                    elif _pv is not None and _pv[0] > args.model_primacy_exit_p95:
+                        mp_flipped.discard(_p)
+                        dr_state["seeded"].discard(_p)
+                        dr_state["pin"].pop(_p, None)
+                        _log("MODEL-PRIMACY EXIT PRN %d: minnov p95 %.2f > %.2f -- the "
+                             "search re-anchors on its next detection" %
+                             (_p, _pv[0], args.model_primacy_exit_p95))
+                    elif _pv is None or _starved:
+                        mp_flipped.discard(_p)
+                        dr_state["seeded"].discard(_p)
+                        dr_state["pin"].pop(_p, None)
+                        _log("MODEL-PRIMACY EXIT PRN %d: referee starved (no fresh "
+                             "MINNOV/detection in %.0f s) -- nothing holds a seed "
+                             "unrefereed" % (_p, args.model_primacy_starve_s))
+                _elig = sorted(
+                    (_pv[0], _p) for _p, _pv in _mp_p95.items()
+                    if _p not in mp_flipped and _p not in probe_set
+                    and _p not in dr_untrusted
+                    and _pv[1] >= args.model_primacy_min_n
+                    and _pv[0] < args.model_primacy_p95)
+                for _v95, _p in _elig:
+                    if len(mp_flipped) >= args.model_primacy_max:
+                        break
+                    mp_flipped.add(_p)
+                    dr_state["seeded"].add(_p)
+                    # A standing hold is a SEARCH-currency freeze; the model owns the
+                    # seed now, so the freeze is released (the dr guard relies on this).
+                    cp_held.discard(_p)
+                    mp_last_det[_p] = _now()
+                    _log("MODEL-PRIMACY ENTER PRN %d: minnov p95 %.2f (n>=%d) -- seed is "
+                         "now the MODEL's (dr slew, clk+b_sat); detections feed the "
+                         "filter and the referee only. Controls (eligible, unflipped): %s"
+                         % (_p, _v95, args.model_primacy_min_n,
+                            ",".join(str(q) for _, q in _elig
+                                     if q not in mp_flipped) or "none"))
             if _innov_pub:
                 _log_rl("innov",
                         "INNOV %s: %s"
