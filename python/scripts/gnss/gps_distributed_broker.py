@@ -1149,6 +1149,25 @@ def main(argv=None, rx=None, publisher=None):
                          "one fine sample outweighs ~64 coarse ones; the row is then "
                          "governed by phase and merely SUPERVISED by frequency. 1.0 "
                          "disables the handoff (both feeds at face value).")
+    ap.add_argument("--dr-fengine-axis", type=int, default=0,
+                    help="#83 THE AXIS FIX: derive the dead-reckon time base from the "
+                         "F-ENGINE hop counter (newest telemetry pow_hop + wall-ELAPSED "
+                         "since its fetch) instead of wall-minus-anchor. MEASURED basis "
+                         "(2026-08-17): the nodes' hop->utc mapping is PPS-true to 3 us "
+                         "(implied utc0 spread 0.000 ms across 32 sats), while the "
+                         "broker's wall axis carries ~1.45 ms of absolute NTP error "
+                         "(chrony root dispersion 1.5 ms) DRIFTING at ~1 us/min. The "
+                         "static part hides in the solved receiver clock (common-mode) "
+                         "and only bites at axis crossings -- the flip's 14865-chip slew "
+                         "target = 1.4531 ms exactly, the INNOV giants on dr seeds -- but "
+                         "the DRIFT is the 2(b) phase-transport walk (~0.6 chips/min = "
+                         "1 us/min x 10.23 Mcps): under cp0 transport the back-reference "
+                         "round trip cancels it, under phase transport nothing does, and "
+                         "on chains whose clock is ADOPTED (no detections) nothing "
+                         "re-solves it away. With this axis, wall time enters only as a "
+                         "sub-cycle DIFFERENCE (NTP slew x seconds = ns). Default OFF for "
+                         "the replay gate; arming it moves every dr seed's epoch, so "
+                         "fixtures that exercise dr paths re-bless.")
     ap.add_argument("--model-primacy-max", type=int, default=0,
                     help="#83 P3-3b, THE FLIP: at most this many PRNs run MODEL-PRIMARY on "
                          "a search-backed chain -- their seeds come from the dr-slew path "
@@ -2755,6 +2774,7 @@ def main(argv=None, rx=None, publisher=None):
     # Telemetry-walk estimator throttle (--estimator-every-s): last results + next-run time,
     # staggered per chain so five chains never walk in the same beat.
     _est_last = {"pcn0": None, "kcoh": None}
+    fe_axis = [None]  # (newest telemetry pow_hop, wall at its fetch) -- #83 the axis fix
     _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
@@ -4852,6 +4872,13 @@ def main(argv=None, rx=None, publisher=None):
                 _u = [float(r["utc"]) for r in status.values() if r.get("utc")]
                 if _u:
                     _alm_file_pos[0] = max(_u) - args.almanac_epoch_utc0
+            # #83 THE AXIS FIX: capture the newest F-engine hop AT FETCH TIME. The pair
+            # (hop, wall-at-fetch) lets the dr block build its "now" on the F-engine axis
+            # with wall entering only as the elapsed-since-fetch difference.
+            _fh = max((float(r.get("pow_hop") or 0.0) for r in status.values()),
+                      default=0.0)
+            if _fh > 0.0:
+                fe_axis[0] = (_fh, _now())
         except Exception as e:
             status = {}
             _log("get_status failed: %s" % e)
@@ -5487,6 +5514,18 @@ def main(argv=None, rx=None, publisher=None):
             if dr_state["eph"] or _use_decoded:
                 tag = args.dr_constellation
                 t_now_abs = now_w - utc0_sample0
+                # ── #83 THE AXIS FIX (see --dr-fengine-axis) ── "now" from the F-engine
+                # hop counter: newest telemetry hop at its fetch instant, plus the wall
+                # ELAPSED since -- so NTP's absolute offset never enters and its slew
+                # contributes only (drift x sub-cycle seconds) = nanoseconds. Every label
+                # this block stamps (h1, _rh_birth) and every phase it evaluates then
+                # lives on the axis the tracker actually runs. The static difference
+                # between this axis and the old wall one lands in the solved receiver
+                # clock exactly as the old anchor error did (common-mode), so nothing
+                # steps at the flip of the flag except the labels' MEANING.
+                if args.dr_fengine_axis and fe_axis[0] is not None:
+                    _feh, _few = fe_axis[0]
+                    t_now_abs = _feh / args.hops_per_sec + (now_w - _few)
                 la = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
                       else (code_bias_ema if code_bias_ema is not None else None))
                 # TASK #30, LAYER 1: A DETECTOR-LESS CHAIN CANNOT MEASURE (l-a) -- BORROW THE

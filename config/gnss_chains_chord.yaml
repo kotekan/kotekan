@@ -71,6 +71,11 @@ common:
   # probe-calibrated) into the joint rrate state, sig-gated, coarse-deweighting like the
   # fine hold. The DR chains' first credible carrier-rate measurement.
   rrate-kcoh-feed: 1
+  # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
+  # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
+  # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
+  # slew target, both = that number times 10.23 Mcps.
+  dr-fengine-axis: 1
   # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
   # SAME records and each reply lands on one phase reference. Without this the per-instance
   # phase is free and the fit absorbs it -- which is #52's defect, not a modelling choice.
@@ -508,7 +513,13 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
     # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
     # re-arming here.
-    seed-phase-transport: false
+# ⚠️ RE-ARMED 2026-08-17 ~14:45 AS THE AXIS-FIX DISCRIMINATING TEST: same chain, same
+    # instrument (trim readback), same signature as last night's walk (+0.6 chips/min
+    # common-signed to the 3.0 clamp in 11 min). With dr-fengine-axis the NTP drift no
+    # longer enters the seed epoch, so the walk should be GONE. If trims climb
+    # common-signed again within ~15 min: re-set to false + broker restart, and the
+    # mechanism hunt reopens.
+    seed-phase-transport: true
     signal: gal_e5a
     dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 20:30: the code loop, on the chains that could not hold ──────
