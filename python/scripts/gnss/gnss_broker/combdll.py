@@ -423,8 +423,25 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
 
 
 def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=None,
-            min_instances=2, hop_s=5.12e-6, keep_series=False):
+            min_instances=2, hop_s=5.12e-6, keep_series=False, resid_s=0.05):
     """THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold, with NO fit in it.
+
+    ⚠️ #57 AMENDMENT (2026-08-17): "no fit in it" is no longer literally true -- see THE
+    RESIDUAL-RATE FIT below. The injected rate is one cycle old and the true residual
+    wobbles +-8 Hz poll-to-poll against a ~1 s fold, so the headline duty-cycled 60 dB on
+    whether the injection happened to match (eta 0<->68 on G9 while code q sat at 3.0-3.5
+    -- the fleet-wide "sig oscillation" of 08-17, [[chord-carrier-is-the-gate]]). The fix
+    is a ONE-PARAMETER within-integration correction: derotate at the injected rate, bin
+    each instance's series into `resid_s` segments, and take the single-lag phase step
+    f_res = arg(sum_k,inst S_{k+1} conj(S_k)) / (2 pi resid_s) -- per-instance phase
+    offsets cancel exactly in the product, no unwrap, Nyquist +-1/(2 resid_s) = +-10 Hz at
+    the default, covering the measured wobble. Everything then folds at injected + f_res.
+    THE CALIBRATION BURDEN MOVES TO THE PROBES: a fitted rate always gains a little on
+    noise, so the probes ride the IDENTICAL fit and the floor absorbs that gain -- `sig`
+    stays probe-calibrated by construction, and `floor_white` still audits whiteness.
+    f_res is served per PRN (`rate_resid_hz`, with `rate_pairs` lag-pair support): it is
+    the per-satellite carrier-rate innovation the #83 Phase 3 controller will consume,
+    measured here first. resid_s=0 restores the pure no-fit fold.
 
     The deep fold's defect was never coherence -- it was the per-integration rate RE-SEARCH,
     which re-finds a satellite wherever the tap sits and carries ~20 dB of its own paired
@@ -545,31 +562,83 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
     # statement is "rate unknown": fold at 0 and say so in rate_src, so eta carries the
     # cost visibly instead of the C/N0 silently eating it.
     RATE_MAX_HZ = 15.0
+    # ---- #57 THE RESIDUAL-RATE FIT (see the docstring amendment) ----------------------
+    # Grouped per PRN first: the residual is a property of the SATELLITE, common across
+    # instances, and the single-lag product S_{k+1}*conj(S_k) cancels each instance's
+    # constant phase offset exactly -- so all instances pool into one estimate instead of
+    # twelve noisy ones. Probes go through this same path: the fit's noise gain lands in
+    # the floor, where it belongs.
+    by_prn = {}
+    for (prn, inst), rows in ser.items():
+        by_prn.setdefault(prn, {})[inst] = rows
     acc = {}
     clamped = set()
-    for (prn, inst), rows in ser.items():
+    resid = {}   # prn -> (f_res_hz, n_lag_pairs)
+    for prn, insts in by_prn.items():
         f_hz = float(rates.get(prn) or 0.0)
         if abs(f_hz) > RATE_MAX_HZ:
             f_hz = 0.0
             clamped.add(prn)
-        pr, nr, pinc = _fold(rows, f_hz, 0)
-        ps, ns, pinc_s = _fold(rows, f_hz, 1)
-        if pr is None:
-            continue
-        d = acc.setdefault(prn, {"raw": [], "sky": [], "inc": [], "inc_sky": [], "n": [],
-                                 "insts": 0, "series": {}})
-        d["raw"].append(pr)
-        d["inc"].append(pinc)
-        d["n"].append(nr)
-        if ps is not None and ns >= max(4, nr // 2):
-            d["sky"].append(ps)
-            d["inc_sky"].append(pinc_s)
-        d["insts"] += 1
-        if keep_series:
-            d["series"][inst] = [(h, a.real, a.imag,
-                                  s.real if s is not None else None,
-                                  s.imag if s is not None else None)
-                                 for h, a, s in rows]
+        f_res, n_pair = 0.0, 0
+        if resid_s and resid_s > 0.0:
+            segs = []
+            for rows in insts.values():
+                seg = {}
+                for hop, a, sky in rows:
+                    t = hop * hop_s
+                    seg.setdefault(int(t / resid_s), []).append(
+                        a * cmath.exp(-2j * math.pi * f_hz * t))
+                segs.append({k: sum(v) for k, v in seg.items()})
+            R = 0j
+            for ph in segs:
+                for k, s1 in ph.items():
+                    s2 = ph.get(k + 1)
+                    if s2 is not None:
+                        R += s2 * s1.conjugate()
+                        n_pair += 1
+            # >= 4 adjacent-segment pairs before believing the step: a 1-2-pair "fit" is
+            # a coin flip, and folding at a coin flip is the deep fold's old disease.
+            if n_pair >= 4 and abs(R) > 0.0:
+                f_res = cmath.phase(R) / (2.0 * math.pi * resid_s)
+                # TWO-STAGE, because the self-test failed the single stage: lag-1 noise
+                # (~0.1 Hz at these segment counts) times a multi-second fold is a real
+                # dB loss -- the synthetic gate measured -1.2 dB on a CLEAN series at the
+                # exact rate. The long lag divides the phase-noise-to-frequency lever by
+                # M; its narrow Nyquist (+-1/(2 M resid_s) = +-1.25 Hz at the defaults)
+                # is safe because stage 1 already brought the residual inside ~0.1 Hz.
+                M = 8
+                R2 = 0j
+                n2 = 0
+                for ph in segs:
+                    for k, s1 in ph.items():
+                        s2 = ph.get(k + M)
+                        if s2 is not None:
+                            R2 += s2 * s1.conjugate()
+                            n2 += 1
+                if n2 >= 4 and abs(R2) > 0.0:
+                    rot = cmath.exp(-2j * math.pi * f_res * M * resid_s)
+                    f_res += (cmath.phase(R2 * rot)
+                              / (2.0 * math.pi * M * resid_s))
+        resid[prn] = (f_res, n_pair)
+        for inst, rows in insts.items():
+            pr, nr, pinc = _fold(rows, f_hz + f_res, 0)
+            ps, ns, pinc_s = _fold(rows, f_hz + f_res, 1)
+            if pr is None:
+                continue
+            d = acc.setdefault(prn, {"raw": [], "sky": [], "inc": [], "inc_sky": [],
+                                     "n": [], "insts": 0, "series": {}})
+            d["raw"].append(pr)
+            d["inc"].append(pinc)
+            d["n"].append(nr)
+            if ps is not None and ns >= max(4, nr // 2):
+                d["sky"].append(ps)
+                d["inc_sky"].append(pinc_s)
+            d["insts"] += 1
+            if keep_series:
+                d["series"][inst] = [(h, a.real, a.imag,
+                                      s.real if s is not None else None,
+                                      s.imag if s is not None else None)
+                                     for h, a, s in rows]
 
     def _mean(v):
         return sum(v) / len(v) if v else None
@@ -630,6 +699,11 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
                "eta": ((pw - fl) * n_rec / (pinc - s2_inc)
                        if (pinc is not None and pinc > s2_inc and rho > 0.0) else None),
                "rate_hz": 0.0 if prn in clamped else float(rates.get(prn) or 0.0),
+               # #57: the within-integration residual (see the docstring amendment) --
+               # the fold above ran at rate_hz + rate_resid_hz. This is the per-satellite
+               # carrier-rate innovation the #83 Phase 3 controller will consume.
+               "rate_resid_hz": resid.get(prn, (0.0, 0))[0],
+               "rate_pairs": resid.get(prn, (0.0, 0))[1],
                "rate_src": ("clamped" if prn in clamped
                             else "rate" if rates.get(prn) else "zero"),
                "t_coh_s": t_coh,

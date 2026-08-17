@@ -227,6 +227,25 @@ def self_test():
         fails.append("probe sig median %.2f, expected ~1 (%s)"
                      % (psigs[len(psigs) // 2],
                         ", ".join("%.2f" % x for x in psigs)))
+    # #57 RECOVERY leg (2026-08-17): the live failure mode is an injected rate WRONG by
+    # a few Hz (the +-8 Hz poll-to-poll wobble against a one-cycle-old fit) -- the fold
+    # then duty-cycles 60 dB. With the residual-rate fit, coh_cn0 must RECOVER the fold
+    # to truth and NAME the error in rate_resid_hz. A probe must NOT grow a significant
+    # fold from the same fit (its noise gain lands in the shared floor).
+    got_off = combdll.coh_cn0(fc, "fake", rates={23: f0 + 2.0}, n_win=64,
+                              probe_prns={91, 92, 93}, hop_s=T_REC)
+    vo = got_off.get(23, {})
+    err_rec = ((vo.get("cn0_sky_db") - cn0_true)
+               if vo.get("cn0_sky_db") is not None else 99.0)
+    print("SELF-TEST #57 recovery: injected +2.00 Hz off -> sky err %+.2f dB, "
+          "rate_resid %+.2f Hz (want -2.00)"
+          % (err_rec, vo.get("rate_resid_hz", 99.0)))
+    if abs(err_rec) > 0.5:
+        fails.append("#57 off-rate recovery err %+.2f dB (fit failed to save the fold)"
+                     % err_rec)
+    if abs(vo.get("rate_resid_hz", 99.0) + 2.0) > 0.3:
+        fails.append("#57 rate_resid %+.2f Hz, want -2.00"
+                     % vo.get("rate_resid_hz", 99.0))
     if fails:
         print("SELF-TEST: FAIL\n  " + "\n  ".join(fails))
         return 1

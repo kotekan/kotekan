@@ -7137,10 +7137,10 @@ def main(argv=None, rx=None, publisher=None):
                             "KCOH: failed (%s) -- rows served without it" % e)
                 _est_last["kcoh"] = _kcoh
                 if _kcoh:
-                    _kv = ["PRN %d %.1f dB-Hz (sig %.0f, eta %s, f %+.2f)"
+                    _kv = ["PRN %d %.1f dB-Hz (sig %.0f, eta %s, f %+.2f%+.2f)"
                            % (p, v["cn0_db"], v["sig"],
                               "%.0f" % v["eta"] if v["eta"] is not None else "--",
-                              v["rate_hz"])
+                              v["rate_hz"], v.get("rate_resid_hz", 0.0))
                            for p, v in sorted(_kcoh.items())
                            if v["cn0_db"] is not None and not v["probe"] and v["sig"] > 3.0]
                     _log_rl("kcoh",
