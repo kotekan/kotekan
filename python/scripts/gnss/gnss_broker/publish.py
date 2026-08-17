@@ -340,11 +340,13 @@ class FleetPublisher:
                 st["elem"] = {"utc": _now(), "prns": table}
 
     def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
-               pcn0=None, kcoh=None):
+               pcn0=None, kcoh=None, innov=None, cpp_trim=None):
         rows = []
         fcoh = fcoh or {}
         pcn0 = pcn0 or {}
         kcoh = kcoh or {}
+        innov = innov or {}
+        cpp_trim = cpp_trim or {}
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
             sd = seeds.get(prn, {})
@@ -401,7 +403,19 @@ class FleetPublisher:
                 # walks the code several chips per seed interval and no loop can hold that.
                 "doppler_rate_hz_s": sd.get("doppler_rate_hz_s"),
                 "dll_trim": dll_trim.get(prn, 0.0),
+                # #76: the C++ fleet loop's standing trim, read back from
+                # /fleet_trim/get_dll. `dll_trim` above is the PYTHON arm only, which on an
+                # armed chain is exactly the arm that stands down (the handover) -- so
+                # before this field the viewer showed "trim +0.00" for satellites being
+                # actively trimmed. The applied correction is the SUM of the two.
+                "dll_trim_cpp": cpp_trim.get(prn, 0.0),
             })
+            # #83 2(d): the innovation rides the row when this PRN has recent detections --
+            # innov_chips (freshest), innov_age_s, innov_p95_10m, innov_n_10m. Absent keys
+            # mean "no detection in the window", which is a statement, not a zero.
+            iv = innov.get(prn)
+            if iv:
+                row.update(iv)
             # FLEET-COHERENT OVERRIDE. This is what overturns the "BEST-OF a single instance"
             # rule in the class docstring above: the coherent statistics ARE mergeable now,
             # because fleet_coherent solves the cross-node phase alignment that the power

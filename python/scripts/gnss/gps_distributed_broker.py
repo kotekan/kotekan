@@ -2968,6 +2968,7 @@ def main(argv=None, rx=None, publisher=None):
     cp_escape = {}      # prn -> consecutive track-vs-search cp disagreements (hold referee)
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
     cp_err_hist = {}      # prn -> last 9 cp_err samples (median gate: noise cannot sustain it)
+    innov_hist = {}       # prn -> [(t, innov_chips)] -- #83 2(d): served, never consumed here
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
@@ -4387,6 +4388,25 @@ def main(argv=None, rx=None, publisher=None):
             # the referee: persistent disagreement beyond the capture range releases
             # the freeze so the seed re-anchors on the true peak.
             cp_err = None
+            # #76/#83 2(d): the EFFECTIVE trim -- what the tracker is actually adding to
+            # the model phase right now: the Python slow integrator's value PLUS the C++
+            # fleet loop's standing trim, read back last cycle (#76; ~one cycle old, since
+            # the readback rides the policy block which runs after this loop). The handover
+            # (180429f07) means at most one arm is normally nonzero per PRN, but the sum is
+            # correct in every regime, including the release ramp when both exist. Until
+            # #76 every consumer here used dll_trim alone: an armed PRN was judged as if
+            # untrimmed while up to 3 chips of command stood at the trackers.
+            _trim_eff = (dll_trim.get(prn, 0.0)
+                         + ((_ft_readback.get(prn) or {}).get("trim_chips", 0.0)))
+            # THE DETECTION'S OWN PHYSICAL PHASE at its epoch: cp0 and dop were published
+            # together, so undoing the pair reintroduces no translation -- which is the
+            # entire #42 fix. (cp_at_ref would be better conditioned but lives in the C++
+            # last-sample convention and carries the anchor Doppler term; see
+            # track_vs_fit_chips.) Hoisted out of the hold branch: the innovation below
+            # wants it for every detection.
+            _cpe_recon = (cp + (ref_hop / args.hops_per_sec) * args.chip_rate_hz
+                          * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
+                          ) % CODE_LEN
             if (prev is not None and prn in cp_held
                     and all(k in seed for k in ("code_phase_chips", "code_phase_rate",
                                                 "ref_hop"))):
@@ -4402,24 +4422,18 @@ def main(argv=None, rx=None, publisher=None):
                 # dr_seed_phys puts the tracker's despread. test_track_vs_fit.py pins
                 # the discriminating pair (bias step: old ~1700/Hz, new ~0; real lobe
                 # park: both read +-3.27) and drives the SHIPPED function.
-                # THE DETECTION'S OWN PHYSICAL PHASE at its epoch: cp0 and dop were
-                # published together, so undoing the pair reintroduces no translation --
-                # which is the entire #42 fix. (cp_at_ref would be better conditioned but
-                # lives in the C++ last-sample convention and carries the anchor Doppler
-                # term; see track_vs_fit_chips.)
-                _cpe_recon = (cp + (ref_hop / args.hops_per_sec) * args.chip_rate_hz
-                              * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
-                              ) % CODE_LEN
                 cp_err = track_vs_fit_chips(
-                    prev, _cpe_recon, ref_hop, dll_trim.get(prn, 0.0),
+                    prev, _cpe_recon, ref_hop, _trim_eff,
                     args.hops_per_sec, args.chip_rate_hz, args.carrier_hz,
                     args.code_doppler_sign, CODE_LEN)
                 if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
                     _log_rl("cperr-%d" % prn,
                             "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
-                            "search cp_at_ref vs held propagation; trim %+.2f, "
-                            "hold_age %.0f s)"
-                            % (prn, cp_err, ref_hop, dll_trim.get(prn, 0.0),
+                            "search cp_at_ref vs held propagation; trim %+.2f "
+                            "= py %+.2f + cpp %+.2f, hold_age %.0f s)"
+                            % (prn, cp_err, ref_hop, _trim_eff,
+                               dll_trim.get(prn, 0.0),
+                               (_ft_readback.get(prn) or {}).get("trim_chips", 0.0),
                                (ref_hop - prev["ref_hop"]) / args.hops_per_sec),
                             every_s=60.0)
                 if cp_err is not None:
@@ -4435,6 +4449,28 @@ def main(argv=None, rx=None, publisher=None):
                 # single-point noise, only by a persistent physical walk.
                 cp_err_hist.setdefault(prn, []).append(cp_err)
                 del cp_err_hist[prn][:-9]
+            # ── #83 2(d): THE INNOVATION, computed for EVERY accepted detection ──
+            # Measurement minus forecast (chips, wrapped to one period): the same
+            # commensurable at-epoch pair as cp_err above and the same effective trim
+            # (#76), but UNCONDITIONAL on holds -- it asks how well the standing seed
+            # forecast the sky since the last command, evaluated before this cycle
+            # overwrites the seed with the very detection being judged. This is the number
+            # Phase 3's per-PRN model-primacy gate reads (p95 |innov| < ~1 chip over
+            # 10 min) and the one-controller carrier design's code-side measurement.
+            # SERVED ONLY (log + publisher rows); nothing consumes it for control yet.
+            if (prev is not None
+                    and all(k in prev for k in ("code_phase_chips", "code_phase_rate",
+                                                "ref_hop"))):
+                _inv = track_vs_fit_chips(prev, _cpe_recon, ref_hop, _trim_eff,
+                                          args.hops_per_sec, args.chip_rate_hz,
+                                          args.carrier_hz, args.code_doppler_sign,
+                                          CODE_LEN)
+                if _inv is not None:
+                    _ih = innov_hist.setdefault(prn, [])
+                    _ih.append((t0, _inv))
+                    # Bounds MEMORY only: the 10-minute statistic is cut by time at read
+                    # (the publish block), so this cap can never shorten the window.
+                    del _ih[:-120]
             # Count only SIGN-CONSISTENT disagreements: a real wrong-lobe park is
             # one-signed; search-fit noise on a weak sat alternates (first deploy:
             # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
@@ -7144,12 +7180,42 @@ def main(argv=None, rx=None, publisher=None):
                 except Exception as e:
                     _log_rl("elemgain-err",
                             "ELEM-GAIN: cycle failed (%s) -- table unchanged" % e)
+            # #83 2(d): the served innovation -- freshest value + 10-minute p95 per PRN.
+            # The statistic is cut by TIME here at read, not by count at write: a PRN
+            # detected once in ten minutes reports that one sample, and a PRN that set
+            # 20 minutes ago stops being served instead of fossilizing its last window.
+            _innov_pub = {}
+            for _p, _ih in list(innov_hist.items()):
+                if _now() - _ih[-1][0] > 1200.0:
+                    del innov_hist[_p]
+                    continue
+                _win = [(tt, vv) for tt, vv in _ih if _now() - tt <= 600.0]
+                if not _win:
+                    continue
+                _av = sorted(abs(vv) for _, vv in _win)
+                _innov_pub[_p] = {
+                    "innov_chips": _win[-1][1],
+                    "innov_age_s": _now() - _win[-1][0],
+                    "innov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
+                    "innov_n_10m": len(_win),
+                }
+            if _innov_pub:
+                _log_rl("innov",
+                        "INNOV %s: %s"
+                        % (log_tag() or args.signal,
+                           " ".join("%d:%+.2f(p95 %.2f, n%d)"
+                                    % (_p, v["innov_chips"], v["innov_p95_10m"],
+                                       v["innov_n_10m"])
+                                    for _p, v in sorted(_innov_pub.items()))),
+                        every_s=60.0)
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
                 # input that produced a given correction.
                 publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, fcoh,
-                                 pcn0=_pcn0, kcoh=_kcoh)
+                                 pcn0=_pcn0, kcoh=_kcoh, innov=_innov_pub,
+                                 cpp_trim={_p: (_r.get("trim_chips") or 0.0)
+                                           for _p, _r in _ft_readback.items()})
             dll_report = []
             for prn in list(seeds):
                 rec = status.get(prn, {})
