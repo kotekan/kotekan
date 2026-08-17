@@ -4460,17 +4460,34 @@ def main(argv=None, rx=None, publisher=None):
             # SERVED ONLY (log + publisher rows); nothing consumes it for control yet.
             if (prev is not None
                     and all(k in prev for k in ("code_phase_chips", "code_phase_rate",
-                                                "ref_hop"))):
-                _inv = track_vs_fit_chips(prev, _cpe_recon, ref_hop, _trim_eff,
-                                          args.hops_per_sec, args.chip_rate_hz,
-                                          args.carrier_hz, args.code_doppler_sign,
-                                          CODE_LEN)
-                if _inv is not None:
-                    _ih = innov_hist.setdefault(prn, [])
-                    _ih.append((t0, _inv))
-                    # Bounds MEMORY only: the 10-minute statistic is cut by time at read
-                    # (the publish block), so this cap can never shorten the window.
-                    del _ih[:-120]
+                                                "ref_hop", "doppler_hz"))):
+                # FORECAST WHAT THE TRACKER RUNS, not the cp0 fiction. The first deploy of
+                # this block used track_vs_fit_chips (= dr_seed_phys, the cp0-argument
+                # path): every PRN read thousands of chips, sign-flipping, p95 ~5000 --
+                # wrap-uniform, two uncorrelated phases -- while q and the trims said the
+                # taps were fine. The tracker prefers code_phase_at_ref_chips
+                # (propagate_seed), and seed writers legitimately move doppler_hz without
+                # re-projecting cp0, so the cp0-implied phase swings by the t_abs lever
+                # (~5600 chips/Hz). tracker_phase_at picks the same reference
+                # propagate_seed does (#45 step 7 -- same lesson as #43's 90,000-chip
+                # fiction). The measurement moves to the same LAST-SAMPLE convention with
+                # its OWN doppler (the hop-epoch convention: 52.37 chips if mixed).
+                _fc = tracker_phase_at(prev, ref_hop, args.hops_per_sec,
+                                       args.chip_rate_hz, args.carrier_hz,
+                                       args.code_doppler_sign, CODE_LEN,
+                                       args.search_fft_len or None)
+                _hop_off_det = (args.chip_rate_hz / args.hops_per_sec
+                                * (1.0 + args.code_doppler_sign * dop
+                                   / args.carrier_hz))
+                if args.search_fft_len:
+                    _hop_off_det *= 1.0 - 1.0 / args.search_fft_len
+                _inv = ((_cpe_recon + _hop_off_det - _fc - _trim_eff + CODE_LEN / 2.0)
+                        % CODE_LEN) - CODE_LEN / 2.0
+                _ih = innov_hist.setdefault(prn, [])
+                _ih.append((t0, _inv))
+                # Bounds MEMORY only: the 10-minute statistic is cut by time at read
+                # (the publish block), so this cap can never shorten the window.
+                del _ih[:-120]
             # Count only SIGN-CONSISTENT disagreements: a real wrong-lobe park is
             # one-signed; search-fit noise on a weak sat alternates (first deploy:
             # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
