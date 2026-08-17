@@ -2847,6 +2847,11 @@ def main(argv=None, rx=None, publisher=None):
     _fleet_trim_nominal_hz = 23.84
     _fleet_trim_stat = {"posts": 0, "fail": 0, "armed": 0, "last_err": ""}
     _ft_hold = {}   # prn -> last time PRESENT (the arming hold; see --fleet-trim-hold-s)
+    # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
+    # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
+    # cycle is about to compute. The Python integrator stands down per-PRN against this, so
+    # authority is never held by both arms and never by neither.
+    _ft_armed_last = set()
 
     def _fast_trim_loop():
         """Run the DLL integrator and the seed POST at --fast-trim-hz. See the notes above.
@@ -7265,7 +7270,28 @@ def main(argv=None, rx=None, publisher=None):
                 # this one bakes its trim into the SEED cp while the fleet loop's arrives at
                 # the tracker, so they stack invisibly. The slow loop still MEASURES (the
                 # disc/q log lines and the far-regime re-seed stay); it just stops actuating.
-                if not args.fleet_trim_url:
+                # THE HANDOVER, not a flag-day (#79; the condition eec1d2f12 attached to any
+                # re-arm). The old test was `not args.fleet_trim_url` -- chain-wide, so setting
+                # the flag silenced the Python integrator for EVERY PRN while the C++ loop
+                # trimmed only those already armed. On a chain whose search hands presence to
+                # the C++ side that is harmless; on the four DEAD-RECKON chains it removed the
+                # only route from off-peak to on-peak and left 0-1 armed with no code loop at
+                # all -- measured, and the reason #49 was disarmed there.
+                #
+                # So: authority is per-PRN and follows the LAST POSTED armed set (what the C++
+                # loop is actuating this instant, not what this cycle is about to decide).
+                # Python integrates for PRNs the fast loop is not touching -- acquisition
+                # authority -- and stands down for each one as the fast loop takes it. Never
+                # both (two integrators on one state is the #52 disease), never neither.
+                #
+                # The standing trim is NOT popped at handover: it is baked into the seed's
+                # code_phase_chips at post time and stays a valid offset, which the C++ loop
+                # then corrects the residual of, starting from zero. That keeps the phase
+                # continuous across the transition in the direction that matters (acquire ->
+                # track). ⚠️ The reverse transition still steps: a disarmed C++ trim expires at
+                # the tracker's 4 s TTL while Python resumes from its standing value. That is
+                # the pre-existing expiry-is-a-step hazard (audit section 6), not new here.
+                if prn not in _ft_armed_last:
                     dll_trim[prn] = combdll.dll_integrate(
                         dll_trim.get(prn, 0.0), disc, args.dll_gain, leak, 3.0,
                         args.dll_spacing)
@@ -8479,6 +8505,13 @@ def main(argv=None, rx=None, publisher=None):
             # PRESENCE WITH A HOLD, not presence sampled at an instant -- see the flag.
             _armed = sorted(_p for _p, _t in _ft_hold.items()
                             if time.time() - _t < args.fleet_trim_hold_s)
+            # THE HANDOVER'S HALF-STEP: record what we are about to hand the fast loop, so
+            # NEXT cycle's slow integrator stands down for exactly the PRNs the C++ side is
+            # actuating. Recorded before the POST rather than after, because a failed POST
+            # leaves the controller running its LAST policy -- which is this one either way,
+            # and the trims expire at the trackers if it never recovers.
+            _ft_armed_last.clear()
+            _ft_armed_last.update(_armed)
             _pol = {"chains": {telem_chain: {
                 "armed": _armed,
                 # BANDWIDTH, not per-update gain -- the controller converts with its measured

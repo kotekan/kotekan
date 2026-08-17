@@ -80,6 +80,18 @@ admit its *band siblings* where the PRN maps across; (c) extend #49's hand list,
 scale. But note (i): on these chains admission may not even be the binding constraint — pull-in
 rate is. [verified 08-17]
 
+### A5. Re-arm the fast loop on the dead-reckon chains — now unblocked
+The four gal/bds chains have **no fast loop of any kind**: no C++ fleet DLL (23.84 Hz), no
+5 Hz Python fast thread. They get the ~12 s broker cycle only, and only for PRNs that pass
+presence. `eec1d2f12` disarmed the C++ loop there last night because arming it *removed* their
+pull-in path, and set one condition for re-arming: a per-PRN handover, so the Python arm keeps
+acquisition authority for not-yet-armed PRNs and stands down as the fast loop takes each.
+**That handover is now implemented** (authority follows the LAST POSTED armed set, so never
+both arms and never neither). Arm ONE chain, keep the others as controls, and judge on
+duty — not on a single satellite. ⚠️ Note #85 first: on these chains the binding constraint may
+be that the seed is being swept by model error, in which case a faster loop chasing a moving
+seed is not obviously the win. Arm it as an experiment with a control, not as a fix.
+
 ### A3. #83 Phase 2(b) — enable seed phase transport, kill the clock lever
 `--seed-phase-transport` is committed but OFF. Enabling it removes the sample-0 back-reference
 whose lever (~5300 chips/Hz at a week of run age) converts a ~3.5 Hz fleet clock wobble into
@@ -233,10 +245,15 @@ seed object before picking one up. [carried]
   consistency rather than speed.
 * **C2 — two `test_gnss_channelized_acquire` failures**: closed (#20) — not pre-existing; the
   fine-lag sign is a bank property, now explicit, 16/16.
-* **The per-PRN Python/C++ trim handover** (the audit's proposed #79 fix): retired as a
-  **no-op**. Only gps_l5 sets `fleet-trim-url`; both arms gate on presence and armed ⊇ present,
-  so the set it would have served is empty. The coverage gap was always presence, not the split.
-  [verified 08-17]
+* ~~**The per-PRN Python/C++ trim handover**: retired as a no-op.~~ ⚠️ **UN-RETIRED 01:15 —
+  that conclusion was scoped to gps_l5 and does not generalise.** It is true that on gps_l5
+  the set it would serve is ~empty (armed ⊇ present, and the search hands presence to the C++
+  side). But on the four DEAD-RECKON chains the handover is the whole ballgame: `eec1d2f12`
+  disarmed #49 there precisely because setting `fleet-trim-url` silences the Python integrator
+  chain-wide while the C++ loop trims only already-present PRNs — measured result, **0 armed on
+  three chains, 1 on the fourth, and no code loop at all**. That commit's own condition for any
+  re-arm is this handover. Implemented 01:15; see A5. My "no-op" reading came from testing the
+  idea only against the chain where it happens to be inert.
 
 ---
 
