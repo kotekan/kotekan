@@ -119,13 +119,14 @@ duty — not on a single satellite. ⚠️ Note #85 first: on these chains the b
 be that the seed is being swept by model error, in which case a faster loop chasing a moving
 seed is not obviously the win. Arm it as an experiment with a control, not as a fix.
 
-### A3. #83 Phase 2(b) — enable seed phase transport, kill the clock lever
-`--seed-phase-transport` is committed but OFF. Enabling it removes the sample-0 back-reference
-whose lever (~5300 chips/Hz at a week of run age) converts a ~3.5 Hz fleet clock wobble into
-20k-chip seed steps — the residual churn class after #41. ⚠️ **Blocked on the audit's §4.6
-fix first**: both broker trim-application sites write only `code_phase_chips`, never
-`code_phase_at_ref_chips`, so enabling transport on the DR chains would silently disable their
-only code loop. Fix the write, then enable. [carried, audit 08-16]
+### A3. ✅ #83 Phase 2(b) — ENABLED 08-17 ~03:40 (5e4b93a17 + de0fa367a)
+§4.6 fixed FIRST: both trim-application sites now move `code_phase_at_ref_chips` with the
+trim (verified by replay diff: aref-only deltas equal to the standing trim; three goldens
+re-blessed — and the diff **proved the Python slow trim had been a no-op on every
+phase-carrying seed**, the exact hazard §4.6 predicted). Then `seed-phase-transport: true`
+on all five chains: DR/slew seeds ship the phase, propagate_seed prefers it, the ~5600
+chips/Hz t_abs clock lever is gone for them. Judge on the SEEDAUDIT step census (the
+INEXACT large-step class should die), INNOV p95, q duty. [enabled 08-17]
 
 ### A4. #76 — ✅ FIXED (eb30892b3, deployed 08-17 02:06): the trim readback
 `/fleet_trim/get_dll` now serves the integrator per PRN (`trim_chips`/steps/railed/skipped/win
