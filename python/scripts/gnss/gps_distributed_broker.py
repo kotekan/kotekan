@@ -4407,57 +4407,15 @@ def main(argv=None, rx=None, publisher=None):
             _cpe_recon = (cp + (ref_hop / args.hops_per_sec) * args.chip_rate_hz
                           * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
                           ) % CODE_LEN
-            if (prev is not None and prn in cp_held
-                    and all(k in seed for k in ("code_phase_chips", "code_phase_rate",
-                                                "ref_hop"))):
-                # AT-EPOCH COMPARISON (#42 -> #45 step 1, 2026-08-12). The sample-0
-                # currency comparison that lived here manufactured -t_abs*k*d(clock_bias)
-                # chips of phantom whenever the seed-vs-detection dop bias moved (an EMA
-                # DESIGNED to move): 145 CP_ERR-DECOMP specimens in 7 min, seven false
-                # ESCAPES in one evening against tracks healthy at 40 dB-Hz. The
-                # candidate tuple reaching this point can be PAIR-INCONSISTENT (label
-                # stepped, cp0 unmoved) and no translation survives that. So: compare
-                # physical phases at the DETECTION's epoch instead -- the search's own
-                # cp_at_ref (dt=0, its Doppler estimate does not enter) against where
-                # dr_seed_phys puts the tracker's despread. test_track_vs_fit.py pins
-                # the discriminating pair (bias step: old ~1700/Hz, new ~0; real lobe
-                # park: both read +-3.27) and drives the SHIPPED function.
-                cp_err = track_vs_fit_chips(
-                    prev, _cpe_recon, ref_hop, _trim_eff,
-                    args.hops_per_sec, args.chip_rate_hz, args.carrier_hz,
-                    args.code_doppler_sign, CODE_LEN)
-                if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
-                    _log_rl("cperr-%d" % prn,
-                            "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
-                            "search cp_at_ref vs held propagation; trim %+.2f "
-                            "= py %+.2f + cpp %+.2f, hold_age %.0f s)"
-                            % (prn, cp_err, ref_hop, _trim_eff,
-                               dll_trim.get(prn, 0.0),
-                               (_ft_readback.get(prn) or {}).get("trim_chips", 0.0),
-                               (ref_hop - prev["ref_hop"]) / args.hops_per_sec),
-                            every_s=60.0)
-                if cp_err is not None:
-                    cp_err_hist.setdefault(prn, []).append(cp_err)
-                    del cp_err_hist[prn][:-9]
-                # MEDIAN GATE (2026-07-19): the per-detection cp noise is 0.03-0.5 chips
-                # (per-sat conditions -- multipath/BOC refine; measured same-instrument at
-                # t_abs 100 s AND 27000 s, i.e. FLAT in run age: the earlier 'growth law'
-                # was the logged cp_ref coordinate wobbling with dop_seed x t_abs, which
-                # the currency translation above cancels in cp_err by construction). The
-                # 5-consecutive-sign rule alone still lets a noisy-conditions sat sustain
-                # a false accusation; a 9-sample median cannot be dragged over the bar by
-                # single-point noise, only by a persistent physical walk.
-                cp_err_hist.setdefault(prn, []).append(cp_err)
-                del cp_err_hist[prn][:-9]
             # ── #83 2(d): THE INNOVATION, computed for EVERY accepted detection ──
-            # Measurement minus forecast (chips, wrapped to one period): the same
-            # commensurable at-epoch pair as cp_err above and the same effective trim
-            # (#76), but UNCONDITIONAL on holds -- it asks how well the standing seed
-            # forecast the sky since the last command, evaluated before this cycle
-            # overwrites the seed with the very detection being judged. This is the number
-            # Phase 3's per-PRN model-primacy gate reads (p95 |innov| < ~1 chip over
-            # 10 min) and the one-controller carrier design's code-side measurement.
-            # SERVED ONLY (log + publisher rows); nothing consumes it for control yet.
+            # Measurement minus forecast (chips, wrapped to one period), evaluated BEFORE
+            # this cycle overwrites the seed with the very detection being judged. SERVED
+            # (log + publisher rows) and, when the PRN is held, it IS the escape referee's
+            # statistic below -- one number, two consumers, so the referee and the
+            # published innovation can never disagree. This is also the number Phase 3's
+            # per-PRN model-primacy gate reads (p95 |innov| < ~1 chip over 10 min) and the
+            # one-controller carrier design's code-side measurement.
+            _inv = None
             if (prev is not None
                     and all(k in prev for k in ("code_phase_chips", "code_phase_rate",
                                                 "ref_hop", "doppler_hz"))):
@@ -4488,6 +4446,58 @@ def main(argv=None, rx=None, publisher=None):
                 # Bounds MEMORY only: the 10-minute statistic is cut by time at read
                 # (the publish block), so this cap can never shorten the window.
                 del _ih[:-120]
+            if (prev is not None and prn in cp_held
+                    and all(k in seed for k in ("code_phase_chips", "code_phase_rate",
+                                                "ref_hop"))):
+                # AT-EPOCH COMPARISON (#42 -> #45 step 1, 2026-08-12). The sample-0
+                # currency comparison that lived here manufactured -t_abs*k*d(clock_bias)
+                # chips of phantom whenever the seed-vs-detection dop bias moved (an EMA
+                # DESIGNED to move): 145 CP_ERR-DECOMP specimens in 7 min, seven false
+                # ESCAPES in one evening against tracks healthy at 40 dB-Hz. The
+                # candidate tuple reaching this point can be PAIR-INCONSISTENT (label
+                # stepped, cp0 unmoved) and no translation survives that. So: compare
+                # physical phases at the DETECTION's epoch instead -- the search's own
+                # cp_at_ref (dt=0, its Doppler estimate does not enter) against where
+                # dr_seed_phys puts the tracker's despread. test_track_vs_fit.py pins
+                # the discriminating pair (bias step: old ~1700/Hz, new ~0; real lobe
+                # park: both read +-3.27) and drives the SHIPPED function.
+                # #83 2(d) ADDENDUM (2026-08-17): the referee now CONSUMES THE INNOVATION
+                # above -- forecast by tracker_phase_at, the reference propagate_seed
+                # actually prefers -- instead of track_vs_fit_chips' dr_seed_phys (the
+                # cp0-argument path). On sky the cp0 fiction read wrap-uniform thousands
+                # of chips (p95 ~5000) on satellites tracking cleanly: seed writers move
+                # doppler_hz without re-projecting cp0, and the implied phase swings on
+                # the t_abs lever (~5600 chips/Hz). That is the named mechanism behind
+                # the +-700-4500-chip CP_ERR reports of 08-16/17 -- the referee had been
+                # accusing healthy tracks with a number drawn from a uniform
+                # distribution, and only the sign-consistency + median gates kept it
+                # from escaping constantly. Confirmed as a discriminating pair on the
+                # holds fixture: same replay, forecast swapped, innovations collapse to
+                # p95 1.6-2.3 chips.
+                cp_err = _inv
+                if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
+                    _log_rl("cperr-%d" % prn,
+                            "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
+                            "search cp_at_ref vs held propagation; trim %+.2f "
+                            "= py %+.2f + cpp %+.2f, hold_age %.0f s)"
+                            % (prn, cp_err, ref_hop, _trim_eff,
+                               dll_trim.get(prn, 0.0),
+                               (_ft_readback.get(prn) or {}).get("trim_chips", 0.0),
+                               (ref_hop - prev["ref_hop"]) / args.hops_per_sec),
+                            every_s=60.0)
+                if cp_err is not None:
+                    cp_err_hist.setdefault(prn, []).append(cp_err)
+                    del cp_err_hist[prn][:-9]
+                # MEDIAN GATE (2026-07-19): the per-detection cp noise is 0.03-0.5 chips
+                # (per-sat conditions -- multipath/BOC refine; measured same-instrument at
+                # t_abs 100 s AND 27000 s, i.e. FLAT in run age: the earlier 'growth law'
+                # was the logged cp_ref coordinate wobbling with dop_seed x t_abs, which
+                # the currency translation above cancels in cp_err by construction). The
+                # 5-consecutive-sign rule alone still lets a noisy-conditions sat sustain
+                # a false accusation; a 9-sample median cannot be dragged over the bar by
+                # single-point noise, only by a persistent physical walk.
+                cp_err_hist.setdefault(prn, []).append(cp_err)
+                del cp_err_hist[prn][:-9]
             # Count only SIGN-CONSISTENT disagreements: a real wrong-lobe park is
             # one-signed; search-fit noise on a weak sat alternates (first deploy:
             # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
