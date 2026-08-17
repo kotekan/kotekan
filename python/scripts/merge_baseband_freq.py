@@ -781,7 +781,9 @@ def write_attributes(dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, ar
 # ---------------------------------------------------------------------------
 
 
-def merge_copy(groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, args, log):
+def merge_copy(
+    groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, out_path, args, log
+):
     """Stream the sources into a new dataset, one time block at a time."""
 
     itemsize = ref.dtype.itemsize
@@ -862,7 +864,7 @@ def merge_copy(groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upcha
             buf = np.empty((block_rows, n_freq_out) + ref.trailing, dtype=ref.dtype)
             scratch = np.empty((task_rows, max_group_freq) + ref.trailing, dtype=ref.dtype)
 
-        with h5py.File(args.output, "w", rdcc_nbytes=args.output_cache) as fout:
+        with h5py.File(out_path, "w", rdcc_nbytes=args.output_cache) as fout:
             dset = create_output_dataset(
                 fout,
                 args.dataset_name,
@@ -963,7 +965,9 @@ def merge_copy(groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upcha
     )
 
 
-def merge_vds(groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, args, log):
+def merge_vds(
+    groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, out_path, args, log
+):
     """Map the sources into one virtual dataset without copying any data."""
 
     fill = args.fill_value
@@ -971,7 +975,7 @@ def merge_vds(groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan
         fill = default_fill_value(ref.dtype, ref.attrs.get("type", ""))
 
     layout = h5py.VirtualLayout(shape=out_shape, dtype=ref.dtype)
-    out_dir = os.path.dirname(os.path.abspath(args.output))
+    out_dir = os.path.dirname(os.path.abspath(out_path))
     n_map = 0
 
     for group in groups:
@@ -995,7 +999,7 @@ def merge_vds(groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan
                     ]
                     n_map += 1
 
-    with h5py.File(args.output, "w") as fout:
+    with h5py.File(out_path, "w") as fout:
         dset = fout.create_virtual_dataset(args.dataset_name, layout, fillvalue=fill)
         write_attributes(dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, args)
         dset.attrs["merge_mode"] = "virtual"
@@ -1007,7 +1011,7 @@ def merge_vds(groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan
     )
 
 
-def verify(groups, ref, out_shape, seq0, seq_step, args, log):
+def verify(groups, ref, out_shape, seq0, seq_step, out_path, args, log):
     """Spot-check the merged file against the sources at random time samples."""
 
     count = args.verify or 16
@@ -1015,22 +1019,22 @@ def verify(groups, ref, out_shape, seq0, seq_step, args, log):
     rows = np.unique(rng.integers(0, out_shape[0], size=min(count, out_shape[0])))
     checked = 0
 
-    with h5py.File(args.output, "r") as fout:
+    with h5py.File(out_path, "r") as fout:
         if args.dataset_name not in fout:
             raise MergeError(
-                "{} has no dataset '{}'".format(args.output, args.dataset_name)
+                "{} has no dataset '{}'".format(out_path, args.dataset_name)
             )
         merged = fout[args.dataset_name]
         if tuple(merged.shape) != tuple(out_shape):
             raise MergeError(
                 "{}: shape {} does not match the {} implied by the sources".format(
-                    args.output, merged.shape, out_shape
+                    out_path, merged.shape, out_shape
                 )
             )
         if int(merged.attrs.get("fpga_seq_num", seq0)) != seq0:
             raise MergeError(
                 "{}: starts at tick {}, expected {}".format(
-                    args.output, int(merged.attrs["fpga_seq_num"]), seq0
+                    out_path, int(merged.attrs["fpga_seq_num"]), seq0
                 )
             )
         with FilePool(args.max_open_files, args.source_cache) as pool:
@@ -1053,6 +1057,44 @@ def verify(groups, ref, out_shape, seq0, seq_step, args, log):
                     checked += 1
 
     log("verified {} node/time samples across {} time rows".format(checked, rows.size))
+
+
+# ---------------------------------------------------------------------------
+# splitting the output across several files
+# ---------------------------------------------------------------------------
+
+
+def plan_output_parts(output, out_shape, seq0, seq_step, split_rows, frame_rows):
+    """Break the merged time axis into one entry per output file.
+
+    Returns ``(path, part_seq0, part_shape)`` tuples.  With ``split_rows`` unset
+    there is a single entry writing the whole range to ``output`` unchanged.
+
+    The numeric suffix counts ``frame_rows``-sized frames rather than output
+    files, which reproduces hdf5FileWrite's own ``.<frame counter>.h5`` naming:
+    with 8192-row frames and 20 frames per file the parts come out as
+    ``.00000000.h5``, ``.00000020.h5``, ... exactly like the inputs.
+    """
+
+    if not split_rows:
+        return [(output, seq0, tuple(out_shape))]
+
+    stem, ext = os.path.splitext(output)
+    if not ext:
+        ext = ".h5"
+
+    parts = []
+    for row0 in range(0, out_shape[0], split_rows):
+        rows = min(split_rows, out_shape[0] - row0)
+        index = row0 // frame_rows
+        parts.append(
+            (
+                "{}.{:08d}{}".format(stem, index, ext),
+                seq0 + row0 * seq_step,
+                (rows,) + tuple(out_shape[1:]),
+            )
+        )
+    return parts
 
 
 # ---------------------------------------------------------------------------
@@ -1095,6 +1137,28 @@ def build_parser():
     parser.add_argument("--start-seq", type=int, default=None, help="first FPGA tick to merge")
     parser.add_argument(
         "--end-seq", type=int, default=None, help="stop before this FPGA tick"
+    )
+
+    parser.add_argument(
+        "--frame-rows",
+        type=int,
+        default=None,
+        help="time samples in one kotekan frame (samples_per_data_set); sets the "
+        "unit for --split-frames and the numeric suffix of split outputs",
+    )
+    split = parser.add_mutually_exclusive_group()
+    split.add_argument(
+        "--split-frames",
+        type=int,
+        default=None,
+        help="write a series of output files holding this many frames each, "
+        "instead of one large file; requires --frame-rows",
+    )
+    split.add_argument(
+        "--split-rows",
+        type=int,
+        default=None,
+        help="as --split-frames, but expressed directly in time samples",
     )
 
     parser.add_argument(
@@ -1226,13 +1290,22 @@ def main(argv=None):
     if args.vds and args.compression != "none":
         raise MergeError("--vds cannot compress; it does not copy any data")
 
+    if args.split_frames is not None:
+        if not args.frame_rows:
+            raise MergeError("--split-frames needs --frame-rows to size a frame")
+        if args.split_frames < 1:
+            raise MergeError("--split-frames must be >= 1")
+        split_rows = args.split_frames * args.frame_rows
+    else:
+        split_rows = args.split_rows
+    if split_rows is not None and split_rows < 1:
+        raise MergeError("--split-rows must be >= 1")
+    # The suffix counts frames when we know how big one is, output files otherwise.
+    frame_rows = args.frame_rows or split_rows
+
     paths = expand_inputs(args.inputs, args.pattern)
     if not paths:
         raise MergeError("no input files matched {}".format(args.inputs))
-
-    output_abs = os.path.abspath(args.output)
-    if output_abs in paths:
-        raise MergeError("the output file is also an input: {}".format(args.output))
 
     log("scanning {} files".format(len(paths)))
     sources = [scan_file(p, args.dataset) for p in paths]
@@ -1280,6 +1353,21 @@ def main(argv=None):
             out_shape[0], out_shape[1], seq0, seq1
         )
     )
+
+    parts = plan_output_parts(args.output, out_shape, seq0, seq_step, split_rows, frame_rows)
+    source_set = set(paths)
+    for path, _, _ in parts:
+        if os.path.abspath(path) in source_set:
+            raise MergeError("the output file is also an input: {}".format(path))
+    if len(parts) > 1:
+        log(
+            "split into {} files of {} samples ({} .. {})".format(
+                len(parts),
+                split_rows,
+                os.path.basename(parts[0][0]),
+                os.path.basename(parts[-1][0]),
+            )
+        )
     log("")
 
     if args.dataset_name is None:
@@ -1290,28 +1378,37 @@ def main(argv=None):
         return 0
 
     if args.verify_only:
-        if not os.path.exists(output_abs):
-            raise MergeError("--verify-only: {} does not exist".format(args.output))
-        verify(groups, ref, out_shape, seq0, seq_step, args, log)
+        for path, part_seq0, part_shape in parts:
+            if not os.path.exists(path):
+                raise MergeError("--verify-only: {} does not exist".format(path))
+            verify(groups, ref, part_shape, part_seq0, seq_step, path, args, log)
         return 0
 
-    out_dir = os.path.dirname(output_abs)
+    out_dir = os.path.dirname(os.path.abspath(args.output))
     if out_dir and not os.path.isdir(out_dir):
         os.makedirs(out_dir, exist_ok=True)
 
-    if args.vds:
-        merge_vds(
-            groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, args, log
+    merge = merge_vds if args.vds else merge_copy
+    for n, (path, part_seq0, part_shape) in enumerate(parts, 1):
+        if len(parts) > 1:
+            log("[{}/{}] {}".format(n, len(parts), os.path.basename(path)))
+        merge(
+            groups,
+            ref,
+            part_shape,
+            part_seq0,
+            seq_step,
+            coarse,
+            upchan_idx,
+            upchan_fac,
+            path,
+            args,
+            log,
         )
-    else:
-        merge_copy(
-            groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, args, log
-        )
+        if args.verify:
+            verify(groups, ref, part_shape, part_seq0, seq_step, path, args, log)
+        log("wrote {}".format(path))
 
-    if args.verify:
-        verify(groups, ref, out_shape, seq0, seq_step, args, log)
-
-    log("wrote {}".format(args.output))
     return 0
 
 
