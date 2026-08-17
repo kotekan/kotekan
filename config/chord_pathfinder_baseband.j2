@@ -67,7 +67,7 @@
 # the number of frames written out (~42 ms / ~96 MiB of subset data each).
 # The DPDK threads exit once these frames have been handed off, leaving the rest of kotekan
 # running so the file writer can flush; the writer then shuts kotekan down.
-{% set num_capture_frames = 100 %}
+{% set num_capture_frames = 400 %}
 
 # RFI Detection Parameters
 {% set rfi_downsampling_factor = 256 %}
@@ -187,7 +187,7 @@ n2_pool:
 
 # Buffers
 network_input_buffers:
-    num_frames: host_side_buffer_depth
+    num_frames: {{ num_capture_frames }}
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
@@ -253,7 +253,7 @@ subset_voltage_buffer_1:
 
 packet_receipt_bitmap_buffers:
     log_level: info
-    num_frames: host_side_buffer_depth
+    num_frames: {{ num_capture_frames }}
     frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
     metadata_pool: main_pool
     use_hugepages: true
@@ -347,7 +347,7 @@ dpdk:
     # timestamped folder. Unscheduled, their starts can differ by one frame (~42 ms), which
     # now and then rounds to two different folder names. Harmless for merging (point
     # merge_baseband_freq.py at /scratch/baseband and it recurses into both), but untidy.
-    capture_start_time_utc: "2026-08-10 20:24:00"
+    capture_start_time_utc: "2026-08-11 13:28:00"
     #
     # capture_n_frames: stop after this many frames, 0 = record until kotekan is stopped.
     capture_n_frames: {{ num_capture_frames }}
@@ -528,7 +528,7 @@ hdf5_write_baseband_0:
     # capture produced and then exits.
     max_frames: {{ num_capture_frames }}
     # Frames appended to each file before rolling over to a new one
-    frames_per_file: 10
+    frames_per_file: 20
     # bitshuffle+zstd cannot keep up with the full subset data rate
     use_compression: false
     log_level: info
@@ -544,7 +544,7 @@ hdf5_write_baseband_1:
     frequency_pool_rank: 1
     frequency_pool_size: 2
     max_frames: {{ num_capture_frames }}
-    frames_per_file: 10
+    frames_per_file: 20
     use_compression: false
     log_level: info
 
@@ -557,13 +557,5 @@ hex_dump_1:
     #kotekan_stage: hexDump
     in_buf: host_voltage_buffer_1
     len: 8192
-
-buffer_send_baseband:
-    #kotekan_stage: bufferSend
-    buf: subset_voltage_buffer_0
-    server_ip: 10.222.0.51
-    server_port: 11025
-    retry_time: 10.0
-    drop_frames: true
 
 
