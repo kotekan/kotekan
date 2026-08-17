@@ -45,6 +45,33 @@ config:210). The other four are dead-reckon only. Whatever fixes them is NOT "ar
 
 ---
 
+## ✅ SHIPPED 08-17 early AM — #83 build-out steps 1–3 (commits eb30892b3..68a8b8eea)
+
+1. **#76 the trim readback** (A4 below): `get_dll` serves the integrator; broker reads it
+   back each cycle. First data: trims settle sub-chip on gps_l5; the −3.0 rails seen at
+   integrator birth were re-convergence transients.
+2. **#83 2(d) the INNOVATION, served**: measurement − forecast per accepted detection,
+   forecast by `tracker_phase_at` (what the tracker RUNS). ⚠️ The first deploy forecast
+   with `dr_seed_phys` (the cp0 argument) and read wrap-uniform thousands of chips on
+   healthy satellites — **that same cp0 fiction is the resolved mechanism behind the
+   ±700–4500-chip CP_ERR reports**: the escape referee had been drawing accusations from
+   a uniform distribution, neutered only by its sign/median gates. The referee now
+   consumes the innovation (one number, two consumers). Live: gps_l5 p95 |innov| 1.2–2.8
+   chips, n≈90/10 min — Phase 3's gate statistic exists on sky. DR chains have NO search
+   (`detectors=0`) so no detection-innovation is possible there — their far-regime signal
+   is #84/#50's spec_tau or a fold-based innovation, still open.
+3. **#57 the residual-rate fold**: coh_cn0 fits a one-parameter within-integration
+   residual (50 ms segment phasors, single-lag + lag-8 refine; probes ride the identical
+   fit so the floor stays calibrated) and serves `rate_resid_hz` — the per-satellite
+   carrier-rate innovation Phase 3 will consume. Synthetic gate extended: injected
+   +2.00 Hz off → sky err +0.06 dB, rate_resid −2.01 Hz. This is the fix for the
+   fleet-wide 60 dB KCOH sig flap (the fold duty-cycling on a one-cycle-old rate).
+
+All three landed with the 4-fixture digest gate EQUIVALENT throughout (the readback and
+innovation are flag-gated/serve-only; holds golden 9b2fab5c intact).
+
+---
+
 ## 🔴 Active — the next levers, ranked
 
 ### A1. Widen the #79 search bar, one notch at a time — gps_l5 [ready now]
