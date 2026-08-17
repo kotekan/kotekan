@@ -481,7 +481,15 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
     # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
     # q duty. Revert: delete this line on the affected chain + broker restart.
-    seed-phase-transport: true
+    # ⚠️ 2(b) REVERTED ON THIS CHAIN 08-17 ~04:00 after 11 min on sky: the C++ trims
+    # climbed COMMON-SIGNED at ~0.6 chips/min toward the 3.0 clamp (gal_e5a 9/21/23/31
+    # at +2.3-2.7 and rising; pre-flip they sat settled sub-1.3 mixed-sign), discs
+    # one-signed -- the DR model WALKS under phase transport. ~0.6 chips/min = 0.009
+    # ppm = the adopted (l-a) code-clock rate: suspected DOUBLE-COUNT (the clock in
+    # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
+    # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
+    # re-arming here.
+    seed-phase-transport: false
     signal: gal_e5a
     dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 20:30: the code loop, on the chains that could not hold ──────
@@ -912,7 +920,15 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
     # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
     # q duty. Revert: delete this line on the affected chain + broker restart.
-    seed-phase-transport: true
+    # ⚠️ 2(b) REVERTED ON THIS CHAIN 08-17 ~04:00 after 11 min on sky: the C++ trims
+    # climbed COMMON-SIGNED at ~0.6 chips/min toward the 3.0 clamp (gal_e5a 9/21/23/31
+    # at +2.3-2.7 and rising; pre-flip they sat settled sub-1.3 mixed-sign), discs
+    # one-signed -- the DR model WALKS under phase transport. ~0.6 chips/min = 0.009
+    # ppm = the adopted (l-a) code-clock rate: suspected DOUBLE-COUNT (the clock in
+    # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
+    # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
+    # re-arming here.
+    seed-phase-transport: false
     signal: bds_b2a
     dr-clock-adopt: true
     # #49 ARMED 2026-08-15 20:30 -- see the long note in gal_e5a for the measurement and the
@@ -971,7 +987,15 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
     # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
     # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
     # q duty. Revert: delete this line on the affected chain + broker restart.
-    seed-phase-transport: true
+    # ⚠️ 2(b) REVERTED ON THIS CHAIN 08-17 ~04:00 after 11 min on sky: the C++ trims
+    # climbed COMMON-SIGNED at ~0.6 chips/min toward the 3.0 clamp (gal_e5a 9/21/23/31
+    # at +2.3-2.7 and rising; pre-flip they sat settled sub-1.3 mixed-sign), discs
+    # one-signed -- the DR model WALKS under phase transport. ~0.6 chips/min = 0.009
+    # ppm = the adopted (l-a) code-clock rate: suspected DOUBLE-COUNT (the clock in
+    # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
+    # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
+    # re-arming here.
+    seed-phase-transport: false
     signal: gal_e5b
     dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
@@ -1050,7 +1074,15 @@ http://cx51:12049/gnss{0..1}_e5b_n2combine"
     # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
     # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
     # q duty. Revert: delete this line on the affected chain + broker restart.
-    seed-phase-transport: true
+    # ⚠️ 2(b) REVERTED ON THIS CHAIN 08-17 ~04:00 after 11 min on sky: the C++ trims
+    # climbed COMMON-SIGNED at ~0.6 chips/min toward the 3.0 clamp (gal_e5a 9/21/23/31
+    # at +2.3-2.7 and rising; pre-flip they sat settled sub-1.3 mixed-sign), discs
+    # one-signed -- the DR model WALKS under phase transport. ~0.6 chips/min = 0.009
+    # ppm = the adopted (l-a) code-clock rate: suspected DOUBLE-COUNT (the clock in
+    # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
+    # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
+    # re-arming here.
+    seed-phase-transport: false
     signal: bds_b2b
     dr-clock-adopt: true
     # #49 ARMED 2026-08-15 21:15Z -- see gal_e5b's note. All five chains now run the C++ code
