@@ -76,6 +76,13 @@ common:
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
   # slew target, both = that number times 10.23 Mcps.
   dr-fengine-axis: 1
+  # #83 2(d) re-validation (2026-08-17, caa1e92c3): INNOV for DR-OWNED seeds too -- valid
+  # only under dr-fengine-axis (hard-tied in code: armed alone it is ignored). Pure
+  # observability in practice: DR chains have no detections hence no holds, and gps_l5's
+  # dr-owned sats are flipped ones, which can never be cp_held (ENTER discards the hold).
+  # VALIDATE the served p95s against MINNOV on sky (want: same few-chip scale, no
+  # thousands) before the referee is allowed to trust it anywhere.
+  innov-dr-seeds: 1
   # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
   # SAME records and each reply lands on one phase reference. Without this the per-instance
   # phase is free and the fit absorbs it -- which is #52's defect, not a modelling choice.
