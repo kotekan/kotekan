@@ -54,14 +54,31 @@ each step on disc/q duty with the still-unadmitted satellites as in-poll control
 own history warns that admitting everything at once trades the latch for an oscillation and
 makes the A/B unreadable — hence notches. [verified 08-17: armed and stable, 8-min watch]
 
-### A2. The four dead-reckon chains have no admission route at all
-gal/bds have no search, so the presence latch that #79 broke on gps_l5 is **still closed on
-them**, and their only escape hatch is #49's hand-typed `dll-deep-gate` list (currently one PRN
-on gal_e5a, one on bds_b2a). Options, in order of appeal: (a) give the DR chains an admission
-statistic that is not tap-derived — the cross-channel `spec_tau` ratio (#50) is a shuffled-null
-significance and is the natural candidate; (b) let the gps_l5 search admit its *band siblings*
-(same satellites, same geometry, different signal) where the PRN maps across; (c) extend the
-hand list, which does not scale and does not track the sky. [verified 08-17]
+### A2. The dead-reckon chains: rate-limited pull-in, and one dead instrument
+⚠️ **Rewritten 00:55 after investigating C20 — my first version of this entry was wrong.**
+
+Two separate faults, both measured on bds_b2a:
+
+**(i) #85 — the corrector cannot outrun the error.** C20 is strong (34.2 dB-Hz, KCOH sig 3270
+when the tap lands) but its model error GROWS ~1.4 chips/min while every logged slew is railed
+at the 0.05-chip cap (~1.5 chips/min of authority). So the commanded phase sweeps *through* the
+peak — a transient 30× spike, then away. This is per-satellite, not the clock: every other PRN
+on that chain sits at model-held 0.02–1.28 chips; C20 alone runs 1.3 → 4.7 → 7.0 (16.8 earlier).
+**And the instrument already measures the cause**: `deep_rate_full_hz` reads −8 to −10 Hz for
+C20 at q 10–17, mixed-sign across the chain (so per-sat, not a chain offset), and nothing
+consumes it here. That points at #33 P3 / #71, re-judged against far better evidence than the
+first attempt had.
+
+**(ii) #84 — `spec_tau` is FROZEN on all five chains.** 42–43 identical samples per PRN, to
+three decimals, over 25 minutes, every line reading "7 ch/1 inst" with peak/floor 0.8–1.3
+(sometimes *below* 1). It is served as `spec_tau_chips` too. So the admission statistic I
+proposed in the first draft of this entry **does not currently measure anything**, and #50's
+premise ("the signal already exists, wire it in") is false until that is fixed.
+
+Remaining options for admission, then: (a) fix #84 and reconsider; (b) let the gps_l5 search
+admit its *band siblings* where the PRN maps across; (c) extend #49's hand list, which does not
+scale. But note (i): on these chains admission may not even be the binding constraint — pull-in
+rate is. [verified 08-17]
 
 ### A3. #83 Phase 2(b) — enable seed phase transport, kill the clock lever
 `--seed-phase-transport` is committed but OFF. Enabling it removes the sample-0 back-reference
