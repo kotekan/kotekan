@@ -32,7 +32,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     upchan_factor = config.get_default<uint32_t>(unique_name, "upchan_factor", 1);
     num_components = config.get<uint32_t>(unique_name, "num_components");
     scaling_factor = config.get_default<float>(unique_name, "scaling_factor", 1.0);
-    conj = config.get_default<bool>(unique_name, "conj", false);
+    conjugate_gains = config.get_default<bool>(unique_name, "conjugate_gains", false);
 
     // Input gain buffers
     json in_buf_list = config.get_value(unique_name, "gain_buffers");
@@ -109,7 +109,7 @@ void processFeedGains::copy_upchannelize(float* frame, size_t beam_id) {
     }
 
     // conjugate if gains are complex
-    if (conj && num_components > 1) {
+    if (conjugate_gains && num_components > 1) {
         size_t num_beam_elements = num_elements * num_local_freq * upchan_factor * num_components;
 
         for (size_t i = 1; i < num_beam_elements; i += 2) {
