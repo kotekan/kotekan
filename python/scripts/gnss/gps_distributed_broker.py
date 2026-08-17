@@ -1168,6 +1168,20 @@ def main(argv=None, rx=None, publisher=None):
                          "sub-cycle DIFFERENCE (NTP slew x seconds = ns). Default OFF for "
                          "the replay gate; arming it moves every dr seed's epoch, so "
                          "fixtures that exercise dr paths re-bless.")
+    ap.add_argument("--innov-dr-seeds", type=int, default=0,
+                    help="#83 2(d): compute INNOV for DR-OWNED seeds too. The exclusion "
+                         "exists because dr writers historically stamped ref_hop from "
+                         "WALL time while detections ride the F-engine hop counter -- a "
+                         "cross-axis dh reads the sub-second wall-vs-F-engine offset x "
+                         "chip rate (measured: flipped G26 INNOV p95 2598 while MINNOV "
+                         "1.27 and q 3.12 said the tap was fine). Under --dr-fengine-axis "
+                         "the dr stamps ride the F-engine axis and the exclusion's "
+                         "premise is gone; this flag re-admits them. HARD-TIED to "
+                         "--dr-fengine-axis: without it this flag is ignored, because a "
+                         "cross-axis INNOV would feed the escape referee garbage "
+                         "(cp_err = _inv in the hold branch -- one number, two "
+                         "consumers). Default OFF; arm in yaml, validate the served p95s "
+                         "on sky before trusting the referee with it.")
     ap.add_argument("--model-primacy-max", type=int, default=0,
                     help="#83 P3-3b, THE FLIP: at most this many PRNs run MODEL-PRIMARY on "
                          "a search-backed chain -- their seeds come from the dr-slew path "
@@ -4529,8 +4543,11 @@ def main(argv=None, rx=None, publisher=None):
             # p95 1.27, q 3.12 and trim -1.4 all said the tap was fine. The same axis
             # mismatch is the leading suspect for the 2(b) DR-chain audit steps. MINNOV is
             # the dr-owned satellites' referee; INNOV resumes when the search re-anchors.
+            # Under --dr-fengine-axis the dr stamps ride the F-engine axis and
+            # --innov-dr-seeds re-admits them (both flags, or the exclusion stands).
             if (prev is not None
-                    and (dr_state is None or prn not in dr_state["seeded"])
+                    and ((args.innov_dr_seeds and args.dr_fengine_axis)
+                         or dr_state is None or prn not in dr_state["seeded"])
                     and all(k in prev for k in ("code_phase_chips", "code_phase_rate",
                                                 "ref_hop", "doppler_hz"))):
                 # FORECAST WHAT THE TRACKER RUNS, not the cp0 fiction. The first deploy of
