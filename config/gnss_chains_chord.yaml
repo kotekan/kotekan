@@ -467,6 +467,11 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # coast residual needs detections to be measured against, and only this chain has a
     # search.
     joint-p2c-rotate: true
+    # #83 P3-3b ARMED (2026-08-17, KV-approved): up to TWO PRNs run model-primary on the
+    # measured MINNOV gate; the remaining eligible PRNs are the in-poll controls. Judge
+    # flipped-vs-control on MINNOV/INNOV p95, q, trim behavior; every ENTER/EXIT is one
+    # loud log line. Revert: set 0 (or delete) + broker restart.
+    model-primacy-max: 2
     # PER-SUBBAND ARCHIVE (task #25). fleet_spectrum already computes per-channel,
     # per-instance amplitudes for the tau fit and then discards them; this persists the
     # raw points before the collapse. The per-freq x per-element axis IS the science
