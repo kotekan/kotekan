@@ -46,7 +46,8 @@ testDataGenFewHot::testDataGenFewHot(Config& config, const std::string& unique_n
                     fmt::format("{:s}", fmt::join(elemns, ", ")), NUM_ELEMNS);
 
     assert(buf->frame_size
-           == 1024*256*NUM_ELEMNS * sizeof(kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type));
+           == 1024 * 256 * NUM_ELEMNS
+                  * sizeof(kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type));
 
     //_manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "manual_freq_ids",
     //                                                             std::vector<uint32_t>());
@@ -80,16 +81,16 @@ void testDataGenFewHot::main_thread() {
         chordmeta->set_array_dimension(0, 1024, "Tbar", 16);
         chordmeta->set_array_dimension(1, 256, "Fbar", 1);
         chordmeta->set_array_dimension(2, 2, "P", 1);
-        chordmeta->set_array_dimension(3, NUM_ELEMNS/2, "D", 1);
+        chordmeta->set_array_dimension(3, NUM_ELEMNS / 2, "D", 1);
         chordmeta->set_strides_simple();
         chordmeta->type = kotekan::int4x2_swapped_withoffset;
         std::vector<int> coarse_freq(NUM_FREQ);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int> freq_upchan_index(coarse_freq.size());
-        for(int f = 0 ; f < 256 ; f++) {
-          coarse_freq.at(f) = freq_id.at(f/16);
-          freq_upchan_factor.at(f) = 16;
-          freq_upchan_index.at(f) = f % 16;
+        for (int f = 0; f < 256; f++) {
+            coarse_freq.at(f) = freq_id.at(f / 16);
+            freq_upchan_factor.at(f) = 16;
+            freq_upchan_index.at(f) = f % 16;
         }
 
         chordmeta->set_coarse_freq(coarse_freq);
@@ -98,14 +99,17 @@ void testDataGenFewHot::main_thread() {
 
         chordmeta->set_frame_counter(seq_num);
 
-        buf->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::int4x2_swapped_withoffset,
-                                         "Ebar", std::vector<ptrdiff_t>{1024,256,2, NUM_ELEMNS/2}, std::vector<kotekan::Symbol>{"Tbar", "Fbar", "P", "D"}, std::vector<ptrdiff_t>{16,1,1,1}));
+        buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int4x2_swapped_withoffset, "Ebar",
+            std::vector<ptrdiff_t>{1024, 256, 2, NUM_ELEMNS / 2},
+            std::vector<kotekan::Symbol>{"Tbar", "Fbar", "P", "D"},
+            std::vector<ptrdiff_t>{16, 1, 1, 1}));
         /* test that things are consistent */
         chordmeta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
-        std::memset(frame, 0x88 /* 0 volts */, 1024*256*NUM_ELEMNS);
+        std::memset(frame, 0x88 /* 0 volts */, 1024 * 256 * NUM_ELEMNS);
 
-        for (int i = 0; i < 1024*256; ++i) {
+        for (int i = 0; i < 1024 * 256; ++i) {
             for (const auto el : elemns) {
                 frame[i * NUM_ELEMNS + el] += 0x10;
             }
