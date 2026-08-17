@@ -72,6 +72,32 @@ innovation are flag-gated/serve-only; holds golden 9b2fab5c intact).
 
 ---
 
+## ✅ SHIPPED 08-17 midday — #83 PHASE 3, first arm (commits 5d339f2fc..44ce01e76)
+
+The one-controller build-out reached its first closed loop, each step measured before the
+next was allowed:
+
+1. **P3-1** `--rrate-kcoh-feed`: #57's probe-calibrated remaining rate into the joint
+   rrate state, all five chains — the DR chains' first credible carrier-rate measurement
+   (live: 1-2 sats/cycle/chain at σ 0.03-0.30 Hz).
+2. **P3-2** `--joint-p2c-rotate` on gps_l5: the rotating coast test. First results: G28
+   withheld 600 s → banded residual −0.13/−0.19/−0.31 chips. The shared state carries a
+   satellite it is not told about.
+3. **P3-3a** MINNOV served: the MODEL innovation per established satellite. Measured:
+   **p95 1.4-1.9 chips vs INNOV p95 2.2-2.5 on the same satellites** — the model forecasts
+   the sky better than the search-anchored seed (each re-anchor injects the search's own
+   1-2 chip per-fix scatter).
+4. **P3-3b THE FLIP** (armed gps_l5, cap 2, KV-approved): flipped PRNs seed from the model
+   (dr-slew: BRDC + joint clk/b_sat, 'slew' consumer); detections feed only the filter,
+   the innovations and the referee. Enter on measured minnov_p95 < 2.0 (n≥30); exit loud
+   on p95 > 3.0 / referee starvation (600 s) / dr-integrity flag. Eligible-unflipped PRNs
+   are the in-poll controls. Three would-be orphaning bugs found and fixed pre-arm (det
+   eviction of dr ownership each cycle; the slew's no-detectors guard; dr_untrusted).
+
+All four fixtures EQUIVALENT throughout (every new consumer default-off, yaml-armed).
+
+---
+
 ## 🔴 Active — the next levers, ranked
 
 ### A1. Widen the #79 search bar, one notch at a time — gps_l5 [ready now]
