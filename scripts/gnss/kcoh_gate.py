@@ -246,6 +246,19 @@ def self_test():
     if abs(vo.get("rate_resid_hz", 99.0) + 2.0) > 0.3:
         fails.append("#57 rate_resid %+.2f Hz, want -2.00"
                      % vo.get("rate_resid_hz", 99.0))
+    # #57 WILD-injection leg: the live fcoh rate swings +-10 Hz cycle-to-cycle, so the
+    # injection can be wrong by more than one fit's capture -- the ZERO-centered second
+    # hypothesis must rescue the fold (truth f0=3.7 Hz is within +-20 Hz of zero).
+    got_wild = combdll.coh_cn0(fc, "fake", rates={23: f0 + 9.0}, n_win=64,
+                               probe_prns={91, 92, 93}, hop_s=T_REC)
+    vw = got_wild.get(23, {})
+    err_wild = ((vw.get("cn0_sky_db") - cn0_true)
+                if vw.get("cn0_sky_db") is not None else 99.0)
+    print("SELF-TEST #57 wild-injection: +9.00 Hz off -> sky err %+.2f dB, "
+          "rate_resid %+.2f Hz (want -9.00)"
+          % (err_wild, vw.get("rate_resid_hz", 99.0)))
+    if abs(err_wild) > 0.5:
+        fails.append("#57 wild-injection recovery err %+.2f dB" % err_wild)
     if fails:
         print("SELF-TEST: FAIL\n  " + "\n  ".join(fails))
         return 1

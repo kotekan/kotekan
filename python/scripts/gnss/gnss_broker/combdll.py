@@ -423,7 +423,7 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
 
 
 def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=None,
-            min_instances=2, hop_s=5.12e-6, keep_series=False, resid_s=0.05):
+            min_instances=2, hop_s=5.12e-6, keep_series=False, resid_s=0.025):
     """THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold, with NO fit in it.
 
     ⚠️ #57 AMENDMENT (2026-08-17): "no fit in it" is no longer literally true -- see THE
@@ -431,11 +431,15 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
     wobbles +-8 Hz poll-to-poll against a ~1 s fold, so the headline duty-cycled 60 dB on
     whether the injection happened to match (eta 0<->68 on G9 while code q sat at 3.0-3.5
     -- the fleet-wide "sig oscillation" of 08-17, [[chord-carrier-is-the-gate]]). The fix
-    is a ONE-PARAMETER within-integration correction: derotate at the injected rate, bin
-    each instance's series into `resid_s` segments, and take the single-lag phase step
+    is a ONE-PARAMETER within-integration correction: derotate at a center rate, bin each
+    instance's series into `resid_s` segments, and take the single-lag phase step
     f_res = arg(sum_k,inst S_{k+1} conj(S_k)) / (2 pi resid_s) -- per-instance phase
-    offsets cancel exactly in the product, no unwrap, Nyquist +-1/(2 resid_s) = +-10 Hz at
-    the default, covering the measured wobble. Everything then folds at injected + f_res.
+    offsets cancel exactly in the product, no unwrap, Nyquist +-1/(2 resid_s) = +-20 Hz at
+    the default -- then a lag-8 refine. TWO CENTERS are tried, injected and ZERO, picked
+    on stage-1 |R|: 12 min on sky showed the injected rate itself swings +-10 Hz
+    cycle-to-cycle (the fcoh fit's own noise) and a single fit centered there aliases,
+    while physics bounds the TRUE residual near zero ([[chord-deep-rate-alias]]).
+    Everything then folds at the picked center + f_res.
     THE CALIBRATION BURDEN MOVES TO THE PROBES: a fitted rate always gains a little on
     noise, so the probes ride the IDENTICAL fit and the floor absorbs that gain -- `sig`
     stays probe-calibrated by construction, and `floor_white` still audits whiteness.
@@ -579,50 +583,74 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
         if abs(f_hz) > RATE_MAX_HZ:
             f_hz = 0.0
             clamped.add(prn)
-        f_res, n_pair = 0.0, 0
-        if resid_s and resid_s > 0.0:
+        def _fit_about(f_c):
+            """Two-stage residual about center rate f_c: (f_res, n_pair, |R|_lag1).
+
+            Stage 1 is the single-lag segment product summed over instances --
+            per-instance phase offsets cancel exactly in S_{k+1}conj(S_k), Nyquist
+            +-1/(2 resid_s). Stage 2 (lag M) exists because the self-test FAILED the
+            single stage: ~0.1 Hz of lag-1 noise times a multi-second fold measured
+            -1.2 dB on a clean series at the exact rate; the long lag divides the
+            phase-to-frequency lever by M, and its narrow Nyquist is safe because
+            stage 1 already brought the residual inside a fraction of a Hz.
+            |R| at lag 1 is returned as the coherence score for the hypothesis pick.
+            """
             segs = []
             for rows in insts.values():
                 seg = {}
                 for hop, a, sky in rows:
                     t = hop * hop_s
                     seg.setdefault(int(t / resid_s), []).append(
-                        a * cmath.exp(-2j * math.pi * f_hz * t))
+                        a * cmath.exp(-2j * math.pi * f_c * t))
                 segs.append({k: sum(v) for k, v in seg.items()})
             R = 0j
+            n1 = 0
             for ph in segs:
                 for k, s1 in ph.items():
                     s2 = ph.get(k + 1)
                     if s2 is not None:
                         R += s2 * s1.conjugate()
-                        n_pair += 1
-            # >= 4 adjacent-segment pairs before believing the step: a 1-2-pair "fit" is
-            # a coin flip, and folding at a coin flip is the deep fold's old disease.
-            if n_pair >= 4 and abs(R) > 0.0:
-                f_res = cmath.phase(R) / (2.0 * math.pi * resid_s)
-                # TWO-STAGE, because the self-test failed the single stage: lag-1 noise
-                # (~0.1 Hz at these segment counts) times a multi-second fold is a real
-                # dB loss -- the synthetic gate measured -1.2 dB on a CLEAN series at the
-                # exact rate. The long lag divides the phase-noise-to-frequency lever by
-                # M; its narrow Nyquist (+-1/(2 M resid_s) = +-1.25 Hz at the defaults)
-                # is safe because stage 1 already brought the residual inside ~0.1 Hz.
-                M = 8
-                R2 = 0j
-                n2 = 0
-                for ph in segs:
-                    for k, s1 in ph.items():
-                        s2 = ph.get(k + M)
-                        if s2 is not None:
-                            R2 += s2 * s1.conjugate()
-                            n2 += 1
-                if n2 >= 4 and abs(R2) > 0.0:
-                    rot = cmath.exp(-2j * math.pi * f_res * M * resid_s)
-                    f_res += (cmath.phase(R2 * rot)
-                              / (2.0 * math.pi * M * resid_s))
-        resid[prn] = (f_res, n_pair)
+                        n1 += 1
+            # >= 4 adjacent-segment pairs before believing the step: a 1-2-pair "fit"
+            # is a coin flip, and folding at a coin flip is the deep fold's disease.
+            if n1 < 4 or abs(R) == 0.0:
+                return 0.0, n1, 0.0
+            fr = cmath.phase(R) / (2.0 * math.pi * resid_s)
+            M = 8
+            R2 = 0j
+            n2 = 0
+            for ph in segs:
+                for k, s1 in ph.items():
+                    s2 = ph.get(k + M)
+                    if s2 is not None:
+                        R2 += s2 * s1.conjugate()
+                        n2 += 1
+            if n2 >= 4 and abs(R2) > 0.0:
+                rot = cmath.exp(-2j * math.pi * fr * M * resid_s)
+                fr += cmath.phase(R2 * rot) / (2.0 * math.pi * M * resid_s)
+            return fr, n1, abs(R)
+
+        f_res, n_pair = 0.0, 0
+        f_center = f_hz
+        if resid_s and resid_s > 0.0:
+            # TWO HYPOTHESES, because 12 min on sky said one is not enough: the INJECTED
+            # rate itself swings +-10 Hz cycle-to-cycle (the fcoh fit's own noise), which
+            # lands outside a single fit's capture and aliases -- gal_e5a PRN 6 read sig
+            # 8869 -> 316 -> 20424 in 70 s. Physics bounds the TRUE residual at ~+-10 Hz
+            # ([[chord-deep-rate-alias]]), so a second fit centered at ZERO reaches
+            # everything a wild injection loses. Picked on stage-1 |R| (coherence of the
+            # segment stream, magnitude only); probes ride the identical two-way pick, so
+            # its noise gain prices itself into the floor. This is a 2-hypothesis choice,
+            # not a rate search -- the deep fold's disease was a GRID argmax.
+            f_res, n_pair, score = _fit_about(f_hz)
+            if f_hz != 0.0:
+                fr0, n0, score0 = _fit_about(0.0)
+                if score0 > score:
+                    f_center, f_res, n_pair = 0.0, fr0, n0
+        resid[prn] = (f_center + f_res - f_hz, n_pair)
         for inst, rows in insts.items():
-            pr, nr, pinc = _fold(rows, f_hz + f_res, 0)
-            ps, ns, pinc_s = _fold(rows, f_hz + f_res, 1)
+            pr, nr, pinc = _fold(rows, f_center + f_res, 0)
+            ps, ns, pinc_s = _fold(rows, f_center + f_res, 1)
             if pr is None:
                 continue
             d = acc.setdefault(prn, {"raw": [], "sky": [], "inc": [], "inc_sky": [],
