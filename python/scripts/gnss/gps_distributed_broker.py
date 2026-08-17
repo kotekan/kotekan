@@ -1180,6 +1180,22 @@ def main(argv=None, rx=None, publisher=None):
                          "sub-cycle DIFFERENCE (NTP slew x seconds = ns). Default OFF for "
                          "the replay gate; arming it moves every dr seed's epoch, so "
                          "fixtures that exercise dr paths re-bless.")
+    ap.add_argument("--clock-step-guard-s", type=float, default=0.5,
+                    help="Log loudly when the offset between cf06's wall clock and the "
+                         "F-engine's GPS-disciplined axis JUMPS by more than this (s). "
+                         "LOG ONLY -- never a control input, and deliberately not a "
+                         "correction. Motivation: the orbit model is evaluated at wall time "
+                         "(the one consumer needing absolute UTC to be true, not merely "
+                         "self-consistent), and nothing bounds what that clock may do; a "
+                         "step moves every model seed on every chain at once, fleet-common "
+                         "and otherwise unattributable. ⚠️ RESOLUTION LIMIT, measured: the "
+                         "observable F-engine 'now' is the newest telemetry pow_hop, which "
+                         "trails the sky by the gather/serve latency -- -99.6 ms median with "
+                         "a 59 ms IQR over broker_onsky_e5a's 520 cycles. So this sees "
+                         "STEPS well above that jitter (the seconds-scale ones NTP actually "
+                         "makes) and is blind below it. That same lag is why the epoch was "
+                         "NOT moved onto this axis: it would trade 1.45 ms of NTP error for "
+                         "~100 ms of pipeline lag (measured 0.6-2.4 chips of seed motion).")
     ap.add_argument("--innov-dr-seeds", type=int, default=0,
                     help="#83 2(d): compute INNOV for DR-OWNED seeds too. The exclusion "
                          "exists because dr writers historically stamped ref_hop from "
@@ -5555,6 +5571,56 @@ def main(argv=None, rx=None, publisher=None):
                 if args.dr_fengine_axis and fe_axis[0] is not None:
                     _feh, _few = fe_axis[0]
                     t_now_abs = _feh / args.hops_per_sec + (now_w - _few)
+                # ── THE EPHEMERIS EPOCH STAYS ON WALL TIME, AND HERE IS THE MEASUREMENT ──
+                # Orbit evaluation (predict_all / predict_from_decoders below) is the ONE
+                # consumer in this file that needs absolute UTC to be TRUE rather than
+                # merely self-consistent: everything else either differences two wall reads
+                # (immune to a slewing offset) or uses wall on both sides of a round trip
+                # (it cancels). A wrong epoch here is a wrong satellite POSITION and no
+                # round trip removes it, so moving it onto the F-engine axis looked
+                # obviously right -- utc0_sample0 is GPS-disciplined, cf06's wall carries
+                # ~1.45 ms of NTP error (chrony root dispersion 1.489 ms, measured).
+                #
+                # ⚠️ TRIED 2026-08-17, MEASURED WORSE BY ~65x, REVERTED. The F-engine "now"
+                # we can OBSERVE is not the F-engine's now: it is the newest telemetry
+                # pow_hop, which is behind the sky by the gather/merge/serve latency.
+                # Measured over the 520 cycles of broker_onsky_e5a: (utc0 + hop/hps) - wall
+                # = -99.6 ms MEDIAN with a 59 ms interquartile spread. Feeding that to the
+                # ephemeris trades 1.45 ms of NTP error for ~100 ms of pipeline lag -- 80 m,
+                # 2.7 chips at L5 -- and the armed replay showed exactly that: seed cp0
+                # moved 0.6-2.4 chips per PRN, scaling with each satellite's range rate.
+                # The axis is drift-free, which is why it is right for LABELS (a label and
+                # its phase are stamped at the same t and the tracker propagates from the
+                # label -- staleness cancels); it is wrong for an EPOCH, where staleness is
+                # the whole error. Fixing this properly needs lag compensation, i.e. an
+                # estimate of the pipeline delay -- not a substitution.
+                #
+                # What survives is the reason the question was asked: a wall STEP is bounded
+                # by nothing, and would move every model seed on all five chains at once,
+                # fleet-common and unattributable. The two axes are compared below as a
+                # TRIPWIRE (log only, never a control input) -- it cannot see a step smaller
+                # than the lag jitter, and does not pretend to.
+                if fe_axis[0] is not None and utc0_sample0:
+                    # unpacked HERE, not borrowed from the axis-fix block above: that block
+                    # runs only under --dr-fengine-axis and this tripwire must work either way
+                    _axh, _axw = fe_axis[0]
+                    _dax = (utc0_sample0 + _axh / args.hops_per_sec) - _axw
+                    _dprev = dr_state.get("ax_off")
+                    if _dprev is not None and abs(_dax - _dprev) > args.clock_step_guard_s:
+                        _log("*** WALL-vs-F-ENGINE OFFSET JUMPED %+.3f s (%.3f -> %.3f, "
+                             "bar %.3f s). TWO CAUSES, and this line cannot tell them "
+                             "apart: (a) cf06's wall clock stepped -- the F-engine axis is "
+                             "GPS-disciplined, so every model-evaluated seed on every chain "
+                             "just moved with it, ~%.0f chips at 800 m/s of range rate, "
+                             "fleet-common; (b) the telemetry lag jumped -- the observable "
+                             "F-engine 'now' is the newest pow_hop and trails the sky by "
+                             "the gather/serve latency (-99.6 ms median, 59 ms IQR "
+                             "measured), so anything near that scale is lag, not the clock. "
+                             "Discriminate with chronyc tracking. Nothing here corrects "
+                             "either -- this exists so the next hour is attributable."
+                             % (_dax - _dprev, _dprev, _dax, args.clock_step_guard_s,
+                                abs(_dax - _dprev) * 800.0 / 29.3))
+                    dr_state["ax_off"] = _dax
                 la = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
                       else (code_bias_ema if code_bias_ema is not None else None))
                 # TASK #30, LAYER 1: A DETECTOR-LESS CHAIN CANNOT MEASURE (l-a) -- BORROW THE
