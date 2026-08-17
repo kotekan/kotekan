@@ -1550,7 +1550,8 @@ FRB:
         num_local_freq: num_freq_gpu_buf
         upchan_factor: factor_upchan_out
         frb1_swap_MN: true
-        scaling_factor: 1.0 / 32
+        conj: true
+        scaling_factor: 1.0 / 128
         gain_buffers:
           - host_frb1_phase_buffer
         # This reads the mask on the host side, not from the GPU ringbuffer, and it reads it as
