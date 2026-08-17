@@ -399,6 +399,10 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # through each q maximum. Paired with fleet-trim-windows 2 at the gather, which halves the
     # measurement delay that bounds this bandwidth (stability wants bandwidth x delay < ~0.5).
     fleet-trim-bandwidth: 2.5
+    # #76 (2026-08-17): read back the C++ loop's standing per-PRN trims each cycle. The
+    # broker commanded up to 3 chips of correction it could not see; seed + this readback
+    # is where the tap actually sits. Read-only (log + _ft_readback) until #83 2(d).
+    fleet-trim-readback: 1
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
@@ -539,6 +543,10 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # Revert: re-comment these two lines and restart the broker (broker-only, no node restart).
     fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     fleet-trim-bandwidth: 2.5
+    # #76: same readback as gps_l5 -- and on THIS chain it doubles as the arm-verdict
+    # instrument for #49 (the standing trims are the direct record of what the re-armed
+    # loop is doing to each Galileo PRN).
+    fleet-trim-readback: 1
     # ── #33 P3 step 3, LIVE ARM (2026-08-13, KV): the carrier loop CLOSED on this chain ──
     # carrier_correction_hz() -> carrier_trim_hz per (sat, band): receiver f_carrier + this
     # sat's orbital rrate, one command, one controller. CONTROLS, both in the same poll:

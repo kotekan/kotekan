@@ -591,6 +591,24 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
                 {"n_chan", s.n_chan}, {"n_rec", s.n_rec}, {"hop", s.hop},
                 {"win", s.win},     {"n_updates", s.n_updates}, {"src", "comb_cpp"}};
         }
+        // ⚠️ THE TRIM RIDES THE SAME REPLY (#76). This endpoint served the discriminator but
+        // not the integrator: the broker could see the error signal and NOT the standing
+        // correction it had commanded, so every consumer of the seed (the escape referee,
+        // the innovation) judged the model as if untrimmed -- while up to clamp chips of
+        // command stood at the trackers. The trim map is walked separately from `row`
+        // because they genuinely differ: a disarmed PRN decaying through the leak has a trim
+        // and no fresh row, and a PRN with signal but not yet armed has a row and no trim.
+        // A MISSING trim_chips key therefore means "no standing trim", which is not the same
+        // statement as trim_chips == 0.0 (an armed integrator passing through zero).
+        for (const auto& tv : cv.second.trim) {
+            nlohmann::json& row = prns[std::to_string(tv.first)];
+            row["trim_chips"] = tv.second.trim;
+            row["trim_steps"] = tv.second.n_steps;
+            row["trim_railed"] = tv.second.n_railed;
+            row["trim_skipped"] = tv.second.n_skipped;
+            row["trim_win"] = tv.second.last_win;
+            row["armed"] = cv.second.armed.count(tv.first) != 0;
+        }
         reply[cv.first] = prns;
     }
     conn.send_json_reply(reply);

@@ -1597,6 +1597,18 @@ def main(argv=None, rx=None, publisher=None):
                          "(gain 0.25, leak 0.05 per update) capped it at 1.25 chips -- "
                          "measured max |trim| 1.140 over 8 h, the clamp unreachable BY "
                          "CONSTRUCTION.")
+    ap.add_argument("--fleet-trim-readback", type=int, default=0,
+                    help="TASK #76: after posting /set_policy, GET <fleet-trim-url>/get_dll "
+                         "and read back the controller's STANDING PER-PRN TRIMS (chips). The "
+                         "broker commanded these corrections and was blind to them: the "
+                         "escape referee and the innovation (task #83 2(d)) judge the seed as "
+                         "if untrimmed while up to 3 chips of command stand at the trackers. "
+                         "⚠️ Default OFF for the replay gate's sake, not by preference: the "
+                         "harness re-invokes a fixture with the RECORDED argv, and a "
+                         "recording made before this flag existed has no get_dll entries in "
+                         "its get stream -- an unconditional GET would diverge every pre-#76 "
+                         "fixture at the first cycle. Arm it in the chain yaml next to "
+                         "fleet-trim-url; a new recording then carries it natively.")
     ap.add_argument("--fast-trim-hz", type=float, default=0.0,
                     help="TASK #51: run the CODE LOOP at this rate, on its own thread, instead "
                          "of once per policy cycle. 0 = off (the loop stays on the cycle).\n"
@@ -2845,8 +2857,16 @@ def main(argv=None, rx=None, publisher=None):
     # arm did, and the only thing that changed is how often it steps. That is deliberate: one
     # variable at a time.
     _fleet_trim_nominal_hz = 23.84
-    _fleet_trim_stat = {"posts": 0, "fail": 0, "armed": 0, "last_err": ""}
+    _fleet_trim_stat = {"posts": 0, "fail": 0, "armed": 0, "last_err": "",
+                        "rb": 0, "rb_fail": 0}
     _ft_hold = {}   # prn -> last time PRESENT (the arming hold; see --fleet-trim-hold-s)
+    # #76 THE READBACK: the C++ controller's standing per-PRN trim state, as last read from
+    # <fleet-trim-url>/get_dll (prn -> {trim_chips, trim_steps, trim_railed, ...}). Empty
+    # when --fleet-trim-readback is off or the poll failed. This is the number every
+    # downstream judge of the seed was missing: seed + THIS is where the tracker's tap
+    # actually sits. Consumers: the log instrument below today; the innovation (#83 2(d))
+    # next; #77's pop-vs-accumulator mismatch is measurable against it at last.
+    _ft_readback = {}
     # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
     # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
     # cycle is about to compute. The Python integrator stands down per-PRN against this, so
@@ -8540,6 +8560,38 @@ def main(argv=None, rx=None, publisher=None):
                        ("  last err %s" % _fleet_trim_stat["last_err"])
                        if _fleet_trim_stat["last_err"] else ""),
                     every_s=30.0)
+            # #76 THE READBACK -- close the loop this block opened. GET the controller's
+            # standing trims right after handing it policy, so this cycle's view of "where
+            # does the tracker's tap actually sit" is seed + trim rather than seed alone.
+            # READ-ONLY: nothing here feeds control yet (that is #83 2(d)); it fills
+            # _ft_readback and the log. On failure the dict is CLEARED, not held: a stale
+            # trim served as current is the exact blindness this exists to remove, and
+            # "missing = unknown" is the truthful state ([[chord-stale-artifacts]]).
+            if args.fleet_trim_readback:
+                try:
+                    _rb = _get("%s/get_dll" % args.fleet_trim_url.rstrip("/"), timeout=2.0)
+                    _rows = (_rb or {}).get(telem_chain) or {}
+                    _ft_readback.clear()
+                    for _p, _r in _rows.items():
+                        if isinstance(_r, dict) and "trim_chips" in _r:
+                            _ft_readback[int(_p)] = _r
+                    _fleet_trim_stat["rb"] += 1
+                    _log_rl("fleet-trim-rb",
+                            "FLEET-TRIM READBACK %s: %s"
+                            % (log_tag() or args.signal,
+                               " ".join("%d:%+.3f%s"
+                                        % (_p, _ft_readback[_p]["trim_chips"],
+                                           "" if _ft_readback[_p].get("armed") else "(rel)")
+                                        for _p in sorted(_ft_readback))
+                               or "no standing trim"),
+                            every_s=30.0)
+                except Exception as _e:
+                    # Same rule as the POST above: never take the cycle down for the fast
+                    # loop. Counted and surfaced, and the dict stays empty until a poll
+                    # succeeds again.
+                    _ft_readback.clear()
+                    _fleet_trim_stat["rb_fail"] += 1
+                    _fleet_trim_stat["last_err"] = str(_e)
 
         if args.fast_trim_hz > 0.0:
             with fast_lock:
