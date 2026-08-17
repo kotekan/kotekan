@@ -958,7 +958,11 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
     # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
     # re-arming here.
-    seed-phase-transport: false
+# ✅ RE-ARMED 2026-08-17 ~15:05: the walk was the WALL-AXIS NTP DRIFT (the axis fix,
+    # 2d9c8c160, keeps it out of the seed epoch) -- confirmed on gal_e5a as the
+    # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
+    # only per-sat #85-class error remains. Revert: false + broker restart.
+    seed-phase-transport: true
     signal: bds_b2a
     dr-clock-adopt: true
     # #49 ARMED 2026-08-15 20:30 -- see the long note in gal_e5a for the measurement and the
@@ -1025,7 +1029,11 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
     # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
     # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
     # re-arming here.
-    seed-phase-transport: false
+# ✅ RE-ARMED 2026-08-17 ~15:05: the walk was the WALL-AXIS NTP DRIFT (the axis fix,
+    # 2d9c8c160, keeps it out of the seed epoch) -- confirmed on gal_e5a as the
+    # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
+    # only per-sat #85-class error remains. Revert: false + broker restart.
+    seed-phase-transport: true
     signal: gal_e5b
     dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
@@ -1112,7 +1120,11 @@ http://cx51:12049/gnss{0..1}_e5b_n2combine"
     # the transported phase AND in code_phase_rate). gps_l5 keeps the flag (healthy,
     # search-backed). Investigate cp_predicted-vs-code_phase_rate accounting before
     # re-arming here.
-    seed-phase-transport: false
+# ✅ RE-ARMED 2026-08-17 ~15:05: the walk was the WALL-AXIS NTP DRIFT (the axis fix,
+    # 2d9c8c160, keeps it out of the seed epoch) -- confirmed on gal_e5a as the
+    # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
+    # only per-sat #85-class error remains. Revert: false + broker restart.
+    seed-phase-transport: true
     signal: bds_b2b
     dr-clock-adopt: true
     # #49 ARMED 2026-08-15 21:15Z -- see gal_e5b's note. All five chains now run the C++ code
