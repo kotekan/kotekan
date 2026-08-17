@@ -129,72 +129,68 @@ All four fixtures EQUIVALENT for both commits.
 
 ---
 
-## 🔴 Active — the next levers, ranked
+## 🔴 Active — the next levers, ranked  [rewritten 2026-08-17 23:00]
 
-### A1. Widen the #79 search bar, one notch at a time — gps_l5 [ready now]
-Task #79 shipped `--dll-deep-gate-from-search` and armed it at snr **100**, admitting 2 new
-satellites (armed 3 → 8). The search sees PRNs down to snr 30. Widen 100 → ~50 → 30, judging
-each step on disc/q duty with the still-unadmitted satellites as in-poll controls. The flag's
-own history warns that admitting everything at once trades the latch for an oscillation and
-makes the A/B unreadable — hence notches. [verified 08-17: armed and stable, 8-min watch]
+State: broker `09a8dc52e`, five chains, 0 tracebacks. THE FLIP holds >1 h on gps_l5.
+#41/#76/#79/#80/#81/#84 all closed on sky today. #49 has its verdict.
 
-### A2. The dead-reckon chains: rate-limited pull-in, and one dead instrument
-⚠️ **Rewritten 00:55 after investigating C20 — my first version of this entry was wrong.**
+### A1. THE LAG IS A FIRST-CLASS DEFECT — and it now has a number  [#46, #67, new tonight]
+The observable F-engine "now" (newest telemetry `pow_hop`) trails the sky by **-99.6 ms
+median, 59 ms IQR** over 520 recorded cycles, with a **+1.07 s excursion caught live** on
+gal_e5b (22:24, chrony clean — so it is pipeline lag, not the clock). This is almost
+certainly the same animal as #46's "0.15 s instance spread" and #67's 25%-delivery reader,
+and it has now bitten twice in one evening: it made the F-engine axis WRONG as an ephemeris
+epoch (retracted, `2db3eec1f`), and its sub-millisecond residue falsified `--innov-dr-seeds`
+within 20 min of arming (+2201 chips = 215 us x 10.23 Mcps, `09a8dc52e`).
+**Next: measure where the lag is spent** (node serve vs gather vs broker read), then either
+compensate `t_now_abs` for it or bound it. Until then, treat the F-engine axis as
+drift-free-but-stale: right for LABELS, wrong for EPOCHS. `--clock-step-guard-s` watches it.
 
-Two separate faults, both measured on bds_b2a:
+### A2. #85 — the DR chains sweep THROUGH their peaks, and the fix is now unblocked
+Model error grows ~1.4 chips/min while every slew rails at the 0.05-chip cap, so the seed
+sweeps through the peak (bds_b2a PRN 33: model-held -240 chips WHILE KCOH folds at sig
+4-6k -- the seed is on signal, the MODEL is per-sat wrong). The 0.05 cap is PROTECTION
+against a wrong model, not the bug. The missing term is per-sat b_sat for DR sats -- and
+**#84's fix restored the measurement tonight**: BSAT now accepts (n up to 51, biases
+±0.001-0.15 chips, rej 2-30). Next: correlate SPEC-FIT tau against the model-held offsets
+on the same sats, then feed joint b_sat, then re-judge the slews.
+⚠️ spec_tau is now PLAUSIBLE, not STRONG: p/f still ~0.8-2.4 (median ~1.0). #50 stays
+blocked on significance, not on plumbing.
 
-**(i) #85 — the corrector cannot outrun the error.** C20 is strong (34.2 dB-Hz, KCOH sig 3270
-when the tap lands) but its model error GROWS ~1.4 chips/min while every logged slew is railed
-at the 0.05-chip cap (~1.5 chips/min of authority). So the commanded phase sweeps *through* the
-peak — a transient 30× spike, then away. This is per-satellite, not the clock: every other PRN
-on that chain sits at model-held 0.02–1.28 chips; C20 alone runs 1.3 → 4.7 → 7.0 (16.8 earlier).
-**And the instrument already measures the cause**: `deep_rate_full_hz` reads −8 to −10 Hz for
-C20 at q 10–17, mixed-sign across the chain (so per-sat, not a chain offset), and nothing
-consumes it here. That points at #33 P3 / #71, re-judged against far better evidence than the
-first attempt had.
+### A3. #49 — arm the second chain
+VERDICT IN (6.4 h, paired in time): q>=2.2 duty **gal_e5a 0.81 / gps_l5 0.64** (armed) vs
+**gal_e5b 0.42 / bds_b2a 0.43** (control). Cleanest pair is gal_e5a vs gal_e5b -- same
+constellation, both dataless pilots, adjacent bands -- 0.81 vs 0.42. The fast code loop
+roughly doubles on-peak duty. bds_b2b's 0.21 is structural (data-only, see A6), not a loop
+verdict. **Next: arm gal_e5b, keep bds_b2a/bds_b2b as controls**, confirm the effect
+transfers rather than being a gal_e5a peculiarity.
 
-**(ii) #84 — `spec_tau` is FROZEN on all five chains.** 42–43 identical samples per PRN, to
-three decimals, over 25 minutes, every line reading "7 ch/1 inst" with peak/floor 0.8–1.3
-(sometimes *below* 1). It is served as `spec_tau_chips` too. So the admission statistic I
-proposed in the first draft of this entry **does not currently measure anything**, and #50's
-premise ("the signal already exists, wire it in") is false until that is fixed.
+### A4. #83 — the one-controller build-out: what is left
+Flip holds >1 h with MINNOV as referee and honest exits only. Remaining, in order:
+(a) **carrier command fleet-wide** (`--rrate-command`, currently OFF everywhere;
+`carrier_correction_hz()` is implemented and consumed at one site but no chain arms it,
+`carrier-gain: 0.0` on all five) -- judge on KCOH duty + `rate_resid_hz`, and re-judge #71's
+NCO INSIDE this design rather than as a bolt-on; (b) lag compensation (A1) before any
+epoch-sensitive consumer; (c) the flipped-sat `dr_state["integ"]` staleness (a diagnostic
+prints a frozen number as if live -- PRN 8 printed +2.75 identically 12x over 56 min).
 
-Remaining options for admission, then: (a) fix #84 and reconsider; (b) let the gps_l5 search
-admit its *band siblings* where the PRN maps across; (c) extend #49's hand list, which does not
-scale. But note (i): on these chains admission may not even be the binding constraint — pull-in
-rate is. [verified 08-17]
+### A5. #79 — widen the search bar, one notch
+Armed at snr 100 (armed 3 -> 8 sats). Search sees down to 30. Widen 100 -> 50 -> 30, one
+notch at a time, unadmitted sats as in-poll controls. Stable for a full day now. [ready]
 
-### A5. Re-arm the fast loop on the dead-reckon chains — now unblocked
-The four gal/bds chains have **no fast loop of any kind**: no C++ fleet DLL (23.84 Hz), no
-5 Hz Python fast thread. They get the ~12 s broker cycle only, and only for PRNs that pass
-presence. `eec1d2f12` disarmed the C++ loop there last night because arming it *removed* their
-pull-in path, and set one condition for re-arming: a per-PRN handover, so the Python arm keeps
-acquisition authority for not-yet-armed PRNs and stands down as the fast loop takes each.
-**That handover is now implemented** (authority follows the LAST POSTED armed set, so never
-both arms and never neither). Arm ONE chain, keep the others as controls, and judge on
-duty — not on a single satellite. ⚠️ Note #85 first: on these chains the binding constraint may
-be that the seed is being swept by model error, in which case a faster loop chasing a moving
-seed is not obviously the win. Arm it as an experiment with a control, not as a fix.
+### A6. #31 — B2b needs nav-bit wipe, and that is the whole story there
+`BDS_B2B_I` is `pilot=false`, `secondary_length=0`, `nav_symbol_s=1e-3`: the open PPP-B2b
+service has NO dataless pilot and B-CNAV3 runs 1000 sps = exactly one symbol per code
+period, so the sign can flip EVERY 1 ms. Coherent integration past 1 ms needs wipe-off,
+which the tracker does not have -- worse than GPS L1 C/A's 20 ms. Its 0.21 duty / sig
+median 9 is structural. The B-CNAV3 predictor exists (`beidou_bcnav3.py`,
+`bcnav3_predictor.py`); wiring it is #31. **Do not "fix" B2b's low deep -- it is this.**
 
-### A3. ✅ #83 Phase 2(b) — ENABLED 08-17 ~03:40 (5e4b93a17 + de0fa367a)
-§4.6 fixed FIRST: both trim-application sites now move `code_phase_at_ref_chips` with the
-trim (verified by replay diff: aref-only deltas equal to the standing trim; three goldens
-re-blessed — and the diff **proved the Python slow trim had been a no-op on every
-phase-carrying seed**, the exact hazard §4.6 predicted). Then `seed-phase-transport: true`
-on all five chains: DR/slew seeds ship the phase, propagate_seed prefers it, the ~5600
-chips/Hz t_abs clock lever is gone for them. Judge on the SEEDAUDIT step census (the
-INEXACT large-step class should die), INNOV p95, q duty. [enabled 08-17]
-
-### A4. #76 — ✅ FIXED (eb30892b3, deployed 08-17 02:06): the trim readback
-`/fleet_trim/get_dll` now serves the integrator per PRN (`trim_chips`/steps/railed/skipped/win
-+ `armed`; a MISSING key means "no standing trim", distinct from a trim passing through 0.0),
-and the broker GETs it back each cycle right after `/set_policy` into `_ft_readback` + a
-rate-limited `FLEET-TRIM READBACK` log line. Flag-gated (`--fleet-trim-readback`, yaml-armed
-on gps_l5 + gal_e5a) because pre-#76 fixtures have no get_dll entries in their get streams —
-all four fixtures EQUIVALENT with the flag off. Read-only: consumption is #83 2(d).
-**First minutes of data**: gal_e5a's armed PRNs carry LARGE fast-growing trims
-(21: −2.28 chips within ~90 s of integrator birth) — the re-armed loop is absorbing real
-standing code error on Galileo; watch for #78's clamp at 3.0. [fixed 08-17]
+### A7. #56 / #8 — the 5x fleet-wide swings, still un-instrumented
+Amplitudes swing 5-10x on flipped AND unflipped sats together (re-confirmed tonight while
+clearing a false alarm about the flip). Root is upstream of tracking and of the combine.
+#8's 4+4b clip-fraction monitor + band-power log is the missing instrument and blocks a
+real diagnosis.
 
 ---
 
