@@ -6555,10 +6555,15 @@ def main(argv=None, rx=None, publisher=None):
                         # #83 P3-3b: a MODEL-PRIMARY PRN is dr-owned even while the search
                         # detects it -- that is the whole point of the flip. (It can never
                         # be in cp_held: the flip's ENTER discards the hold.)
+                        # dr_untrusted is the LEGACY a0 integrity (EMA clock, no b_sat,
+                        # ~1-chip bar); a flipped sat's seed is the JOINT model's and its
+                        # referee is MINNOV -- gating the slew on the legacy flag would
+                        # orphan the sat seedless (its detections bypass re-anchor).
                         if (ctag != tag or v["el"] < args.mask_deg + 0.5
                                 or (prn in best and prn not in mp_flipped)
                                 or prn in probe_set or prn in cp_held
-                                or prn in dr_untrusted):   # model is wrong for this sat
+                                or (prn in dr_untrusted
+                                    and prn not in mp_flipped)):  # model wrong for this sat
                             continue
                         if prn in seeds and prn not in dr_state["seeded"]:
                             continue  # search-anchored coast: not ours to touch
@@ -7428,17 +7433,18 @@ def main(argv=None, rx=None, publisher=None):
                     _starved = (_now() - mp_last_det.get(_p, _now())
                                 > args.model_primacy_starve_s)
                     if _p in dr_untrusted:
-                        # The model just failed its own integrity gate for this sat: the
-                        # dr loop would refuse to seed it and the det loop is bypassing
-                        # the re-anchor -- an orphan in one more cycle. Hand it back NOW.
-                        mp_flipped.discard(_p)
-                        mp_cooldown[_p] = _now()
-                        dr_state["seeded"].discard(_p)
-                        dr_state["pin"].pop(_p, None)
-                        _log("MODEL-PRIMACY EXIT PRN %d: dr integrity flagged the model "
-                             "(dr_untrusted) -- the search re-anchors on its next "
-                             "detection" % _p)
-                    elif _pv is not None and _pv[0] > args.model_primacy_exit_p95:
+                        # The legacy a0 integrity (EMA clock, no b_sat, ~1-chip bar)
+                        # judges a model the flip does not run: the flipped seed is the
+                        # JOINT model's (clk+b_sat via the slew). MINNOV referees flipped
+                        # sats -- the p95/starve exits below. The dr loop's seeding guard
+                        # exempts flipped sats for the same reason (BOTH sites, or the
+                        # sat is orphaned seedless). Keep the disagreement visible:
+                        _log_rl("mp-legacy-%d" % _p,
+                                "MODEL-PRIMACY NOTE PRN %d: legacy integrity flags the "
+                                "EMA model (%s) -- overridden while flipped; MINNOV "
+                                "referees this sat" % (_p, dr_untrusted[_p]),
+                                every_s=300.0)
+                    if _pv is not None and _pv[0] > args.model_primacy_exit_p95:
                         mp_flipped.discard(_p)
                         mp_cooldown[_p] = _now()
                         dr_state["seeded"].discard(_p)
