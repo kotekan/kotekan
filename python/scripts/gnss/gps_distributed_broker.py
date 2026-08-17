@@ -1397,6 +1397,36 @@ def main(argv=None, rx=None, publisher=None):
                          "fleet at once makes 72%% of it newly trimmable against a slew cap "
                          "already railing 67-100%% of the time, which trades the latch for an "
                          "oscillation and makes the A/B uninterpretable.")
+    ap.add_argument("--dll-deep-gate-from-search", type=float, default=0.0, metavar="SNR",
+                    help="task #79: AUTO-GENERATE the --dll-deep-gate set from the SEARCH. Any "
+                         "PRN the search detects at snr >= this, within "
+                         "--dll-deep-gate-search-hold-s, joins the deep-gated set for that "
+                         "window (unioned with any hand-listed PRNs). 0 = off. "
+                         "WHY THE SEARCH AND NOT A TAP STATISTIC: presence decides whether a "
+                         "satellite may be CORRECTED, and every tap-derived statistic tried so "
+                         "far answers it with a number that is itself suppressed when the tap "
+                         "is off-peak -- q first, then prompt power, both on-peak-biased, both "
+                         "latching an off-peak satellite out of its own correction (see the "
+                         "--dll-deep-gate note: the same defect fixed twice with the same "
+                         "class of statistic). The search is the one estimator that is "
+                         "INDEPENDENT OF WHERE THE TAP SITS: it re-derives code phase over the "
+                         "full period every pass, so it detects the satellite wherever the "
+                         "tracker happens to be looking. It is also preferable to deep_snr, "
+                         "which fires on noise (a below-horizon PRN has been measured at 11.2x "
+                         "its own floor, uncorrelated with search SNR) -- the deep fold "
+                         "re-searches rate AND phase, so its detection statistic keeps a "
+                         "maximum over nuisance parameters that a pure-noise cell can win. "
+                         "The bar is in the search's own snr units, where the acquire "
+                         "threshold is 30 and the pure-noise ceiling ~17.")
+    ap.add_argument("--dll-deep-gate-search-hold-s", type=float, default=90.0,
+                    help="task #79: how long a search detection keeps a PRN in the "
+                         "auto-generated deep-gate set (default 90 s). Must exceed the search "
+                         "REVISIT (90-270 s at CHORD's cadence is the observed range, and a "
+                         "PRN is not re-detected every cycle), or presence flaps on and off "
+                         "with the search's luck and the trim is armed and disarmed under a "
+                         "satellite that never changed. This is a HOLD, not a staleness "
+                         "budget: it answers 'is this satellite up and detectable', which does "
+                         "not stop being true between passes.")
     ap.add_argument("--dll-deep-gate-margin", type=float, default=3.0,
                     help="fleet DLL: the deep gate's bar in units of deep_floor (default 3.0). "
                          "The floor is the combiner's own rectification level, so this is a "
@@ -2274,6 +2304,10 @@ def main(argv=None, rx=None, publisher=None):
         _deep_gate = {int(x) for x in _dg.replace(",", " ").split()}
     else:
         _deep_gate = None
+    # #79: PRN -> last time the SEARCH saw it at/above --dll-deep-gate-from-search. The
+    # auto-generated half of the deep-gate set; unioned with _deep_gate each cycle.
+    _dg_seen = {}
+    _dg_auto_last = [set()]   # last logged auto set, so the line prints on CHANGE only
     _rs = (args.reseed_spec_tau or "").strip()
     if _rs.lower() == "all":
         _reseed_prns = True
@@ -3962,6 +3996,13 @@ def main(argv=None, rx=None, publisher=None):
                 # mismaps some BDS birds (PRN 39: TLE el<5 vs BRDC el 10)
                 if v_dr is None or v_dr["el"] < args.mask_deg:
                     continue
+            # #79: THE SEARCH IS THE ADMISSION AUTHORITY for the trim presence gate. Stamped
+            # here -- after the visibility filter, so a spurious below-horizon detection
+            # cannot arm a correction, and before every seeding-policy filter below, because
+            # eligibility asks "is this satellite up and detectable", not "did this cycle
+            # like the detection well enough to re-seed from it".
+            if args.dll_deep_gate_from_search > 0.0 and snr >= args.dll_deep_gate_from_search:
+                _dg_seen[prn] = t0
             _dop_src = "pred" if (args.almanac and prn in pred) else "DET(grid)"
             seed_dop = (pred[prn][0] + clock_bias) if (args.almanac and prn in pred) else dop
             # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
@@ -6577,9 +6618,28 @@ def main(argv=None, rx=None, publisher=None):
             # instance that reports the same window, then form ONE discriminator. Ratios do not
             # sum -- (SUM E - SUM L)/(SUM E + SUM L) is not any function of the per-instance
             # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
+            # #79: the effective deep-gate set = hand-listed PRNs UNION the ones the search
+            # is currently detecting. `True` (--dll-deep-gate all) stays absorbing.
+            _deep_gate_eff = _deep_gate
+            if args.dll_deep_gate_from_search > 0.0 and _deep_gate is not True:
+                _fresh_dg = {p for p, _ts in _dg_seen.items()
+                             if t0 - _ts <= args.dll_deep_gate_search_hold_s}
+                if _fresh_dg:
+                    _deep_gate_eff = set(_deep_gate or ()) | _fresh_dg
+                    if _fresh_dg != _dg_auto_last[0]:
+                        _log("DEEP GATE (auto, #79): search-admitted PRN %s at snr >= %.0f "
+                             "(hold %.0f s)%s"
+                             % (",".join(str(p) for p in sorted(_fresh_dg)),
+                                args.dll_deep_gate_from_search,
+                                args.dll_deep_gate_search_hold_s,
+                                "" if not _deep_gate else
+                                " + hand-listed %s"
+                                % ",".join(str(p) for p in sorted(_deep_gate))))
+                        _dg_auto_last[0] = set(_fresh_dg)
             fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
                               args.dll_quality_sigma, args.dll_quality_min,
-                              deep_gate_prns=_deep_gate, deep_gate_margin=args.dll_deep_gate_margin,
+                              deep_gate_prns=_deep_gate_eff,
+                              deep_gate_margin=args.dll_deep_gate_margin,
                               # the noise ANCHOR for the presence floor (#49): without it
                               # the bar is built from the tracked population and becomes a
                               # peer competition. See the note in fleet_dll.
@@ -6604,7 +6664,11 @@ def main(argv=None, rx=None, publisher=None):
                         min_instances=args.dll_min_instances,
                         k_sigma=args.dll_quality_sigma, q_fallback=args.dll_quality_min,
                         prns=set(seeds) or None, probe_prns=probe_set,
-                        deep_gate_prns=_deep_gate,
+                        # #79: the SAME effective set as the polled arm above. This is the
+                        # arm that ships on gps_l5 (COMB-DLL replaces `fleet` below), so
+                        # gating it on the hand-listed set alone would compute the
+                        # auto-admission and then throw it away.
+                        deep_gate_prns=_deep_gate_eff,
                         deep_gate_margin=args.dll_deep_gate_margin,
                         # deep_snr / deep_floor / coherence_s AND the quadrature fallback,
                         # from the arm that has them

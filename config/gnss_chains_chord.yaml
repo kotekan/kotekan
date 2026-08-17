@@ -314,6 +314,26 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # as a regression from the restart that shipped it.
     # Revert: delete this line and restart the broker.
     dll-deep-gate: "4 9 27"
+    # -- #79: LET THE SEARCH DECIDE WHO MAY BE CORRECTED -----------------------------------
+    # The hand list above is three PRNs from #49's rollout, and a hand list cannot track a
+    # sky that turns over. Worse, everything NOT on it falls back to the prompt gate, which
+    # is on-peak-biased and therefore a LATCH: off-peak -> low prompt power -> fails presence
+    # -> never trimmed -> stays off-peak. The search is the one admission statistic that does
+    # not care where the tap sits (it re-derives the code phase over the full period every
+    # pass), and unlike deep_snr it does not fire on noise.
+    #
+    # MEASURED THE MOMENT IT WAS ARMED (2026-08-16, this chain): the search saw 7 PRNs at snr
+    # 30.8-445, while only 3 were trimmable. PRN 26 sat at SEARCH SNR 445 WITH PROMPT AMP 0.0
+    # -- unmistakably present, tap parked on noise, and structurally unable to earn its own
+    # correction. That is the latch in one satellite.
+    #
+    # BAR 100 ADMITS EXACTLY TWO NEW SATELLITES TODAY (26 at 445, 11 at 393; the union with
+    # the hand list keeps 27 at snr 56). Deliberately an increment, not a widening: the
+    # --dll-deep-gate note warns that admitting the whole fleet at once trades the latch for
+    # an oscillation and makes the A/B unreadable. Widen only after this pair is judged.
+    # Revert: delete these two lines and restart.
+    dll-deep-gate-from-search: 100
+    dll-deep-gate-search-hold-s: 90
     # -- #51: THE CODE LOOP ON THE TELEMETRY CLOCK, THIS CHAIN ONLY -------------------------
     # THE DEFECT: the DLL's authority is a step PER UPDATE and the update rate was the ~12 s
     # policy cycle, so the loop ran 23x slower than the drift and could never hold lock.
