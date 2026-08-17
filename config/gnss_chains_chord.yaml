@@ -518,8 +518,27 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # ⚠️ RE-ARM ONLY WITH A HANDOVER: the Python trim must keep running for NOT-YET-ARMED
     # PRNs (acquisition authority) and stand down once the C++ loop takes a PRN. Arming
     # without that is #49's latch made absolute.
-    # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    # fleet-trim-bandwidth: 2.5
+    #
+    # ✅ RE-ARMED 2026-08-17 01:20 -- THE HANDOVER LANDED (180429f07). The Python integrator
+    # now stands down per-PRN against the LAST POSTED armed set, so the slow loop keeps
+    # acquisition authority for everything the fast loop has not been given, and the failure
+    # above (no code loop at all) cannot recur by that route. Verified on the holds fixture:
+    # 25 of 150 trim entries nonzero where every one had been zero.
+    #
+    # THIS CHAIN ONLY. gal_e5b / bds_b2a / bds_b2b stay unarmed as the CONTROL GROUP:
+    # gal_e5b is the same constellation on the sibling band and bds_b2a carries C20 (#85),
+    # so both are paired comparisons in the same sky. Judge on q and |disc| duty over HOURS,
+    # paired against gal_e5b -- never on deep_snr / cn0_coh (#66: a below-horizon PRN reads
+    # 11.2x its floor).
+    #
+    # ⚠️ EXPECT UNDRAMATIC, POSSIBLY NULL. #85 says these chains' seeds are being SWEPT by
+    # per-sat model error (E21's model-held grows monotonically while its slew rails at the
+    # cap), and a faster loop chasing a seed that is being dragged is not obviously a win.
+    # This is an experiment with a control, not a fix. If disc ramps -0.9 -> +0.9 through
+    # each q maximum (the 1.4/s failure mode named above), bandwidth is the number to move.
+    # Revert: re-comment these two lines and restart the broker (broker-only, no node restart).
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
     # ── #33 P3 step 3, LIVE ARM (2026-08-13, KV): the carrier loop CLOSED on this chain ──
     # carrier_correction_hz() -> carrier_trim_hz per (sat, band): receiver f_carrier + this
     # sat's orbital rrate, one command, one controller. CONTROLS, both in the same poll:
