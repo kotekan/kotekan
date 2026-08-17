@@ -98,6 +98,37 @@ All four fixtures EQUIVALENT throughout (every new consumer default-off, yaml-ar
 
 ---
 
+## ✅ SHIPPED 08-17 afternoon — the axis fix soak PASSED + THE FLIP HOLDS (3c43d0ace..10286ffa6)
+
+1. **2(b) fleet-wide soak PASSED** (30 min, all five chains under seed-phase-transport +
+   dr-fengine-axis): SEEDAUDIT |step| med ≤0.9 / p90 2-6 chips **mixed-sign** (pre-fix:
+   +6..+14 chain-common), KCOH folding real signal everywhere (bds_b2a sig up to 5937),
+   zero tracebacks. No chain reverted. The gal_e5a trim sawtooth to the 3.0 rail
+   (~1 chip/min) is the pre-existing #78/plant-oscillation behavior — same rate with the
+   OPPOSITE sign at 02:06 before any of the day's changes, both signs in-window — not the
+   walk.
+2. **The flip integrity veto fixed** (`3c43d0ace`, deployed 15:47): dr_untrusted's a0
+   residual judges the LEGACY model (EMA clock, no b_sat, ~1-chip bar) — a model the
+   flipped sats don't run; on sky it flapped PRNs in/out every ~30 s and killed every flip
+   in minutes. Flipped sats are now exempt at BOTH sites (flip exit + dr-loop seeding
+   guard; either alone orphans the sat seedless) with MINNOV as their referee (p95/starve
+   exits untouched) and a rate-limited MODEL-PRIMACY NOTE keeping the disagreement loud.
+   **ON SKY: G23 flipped 16:04 (minnov p95 0.84) and HELD past 13 min at q 3.0, prompt
+   68-80×** (record under the old veto: 16-18 s); G10 flipped 16:15, legacy-flagged +1.59
+   five seconds later, overridden, q 3.6 at 177-197× — both as good as or better than
+   every search-anchored sat in the same poll. Steady-state slew targets read CHIPS
+   (±0.05..2.2) — the axis-fix prediction confirmed on the flip path. ⚠️ New cosmetic
+   wart: the FIRST slew after ENTER can log a cross-currency model-held (G10 +101463.4
+   chips ≈ 19.9 Hz × the 5095 chips/Hz lever); 0.05-chip actual motion, self-clears.
+3. **`--innov-dr-seeds` staged** (`caa1e92c3` + yaml `10286ffa6`, rides the next restart):
+   re-admits DR-owned seeds to INNOV now that dr stamps ride the F-engine axis; hard-tied
+   to dr-fengine-axis in code. Validation on sky: served p95s vs MINNOV, few-chip scale
+   expected.
+
+All four fixtures EQUIVALENT for both commits.
+
+---
+
 ## 🔴 Active — the next levers, ranked
 
 ### A1. Widen the #79 search bar, one notch at a time — gps_l5 [ready now]
