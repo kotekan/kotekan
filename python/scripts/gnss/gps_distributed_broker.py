@@ -2999,6 +2999,9 @@ def main(argv=None, rx=None, publisher=None):
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
     cp_err_hist = {}      # prn -> last 9 cp_err samples (median gate: noise cannot sustain it)
     innov_hist = {}       # prn -> [(t, innov_chips)] -- #83 2(d): served, never consumed here
+    minnov_hist = {}      # prn -> [(t, minnov_chips)] -- #83 P3-3a: the MODEL innovation
+                          # (detection vs the joint state's clk + b_sat + tau, prior-state),
+                          # the model-primacy flip gate's number; served, never consumed
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
@@ -5738,6 +5741,26 @@ def main(argv=None, rx=None, publisher=None):
                                        - (time.time() - broker_t0),
                                        args.joint_feed_warmup_s), every_s=60.0)
                         else:
+                            # ── #83 P3-3a: THE MODEL INNOVATION (MINNOV) ──
+                            # The same residual P2C measures one coasted satellite at a
+                            # time -- wrap(d - predicted - tau), against the PRIOR state,
+                            # before this cycle's measurements are consumed -- computed
+                            # continuously for every ESTABLISHED satellite: "could the
+                            # joint state have placed this satellite without this
+                            # detection?". This is the per-PRN model-primacy flip gate's
+                            # number (INNOV judges the commanded seed; MINNOV judges the
+                            # MODEL). Established-rows-only: a birth row's prediction is
+                            # its own first measurement. SERVED ONLY (publisher + log).
+                            for _p3, _d3 in offs:
+                                _k3 = (tag, _p3)
+                                if (_snr.get(_p3, 0.0) >= args.joint_min_snr
+                                        and _k3 in _js._idx
+                                        and _js._n.get(_k3, 0) >= args.joint_mask_after):
+                                    _mi = _js.wrap(_d3 - _js.predicted(_k3)
+                                                   - _js.tau(band_id))
+                                    _mh = minnov_hist.setdefault(_p3, [])
+                                    _mh.append((t0, _mi))
+                                    del _mh[:-120]
                             _js.cycle([((tag, p), d, args.joint_sigma, band_id)
                                        for p, d in offs
                                        if _snr.get(p, 0.0) >= args.joint_min_snr
@@ -7262,6 +7285,21 @@ def main(argv=None, rx=None, publisher=None):
                     "innov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
                     "innov_n_10m": len(_win),
                 }
+            # #83 P3-3a: the MODEL innovation rides the same rows -- minnov_* keys. A PRN
+            # can carry either or both (INNOV needs a standing seed, MINNOV an established
+            # joint row); absent keys mean "not measurable", never zero.
+            for _p, _mh in list(minnov_hist.items()):
+                if _now() - _mh[-1][0] > 1200.0:
+                    del minnov_hist[_p]
+                    continue
+                _win = [(tt, vv) for tt, vv in _mh if _now() - tt <= 600.0]
+                if not _win:
+                    continue
+                _av = sorted(abs(vv) for _, vv in _win)
+                _innov_pub.setdefault(_p, {}).update({
+                    "minnov_chips": _win[-1][1],
+                    "minnov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
+                    "minnov_n_10m": len(_win)})
             if _innov_pub:
                 _log_rl("innov",
                         "INNOV %s: %s"
@@ -7269,8 +7307,17 @@ def main(argv=None, rx=None, publisher=None):
                            " ".join("%d:%+.2f(p95 %.2f, n%d)"
                                     % (_p, v["innov_chips"], v["innov_p95_10m"],
                                        v["innov_n_10m"])
-                                    for _p, v in sorted(_innov_pub.items()))),
+                                    for _p, v in sorted(_innov_pub.items())
+                                    if "innov_chips" in v)),
                         every_s=60.0)
+                _mv = ["%d:%+.2f(p95 %.2f, n%d)"
+                       % (_p, v["minnov_chips"], v["minnov_p95_10m"], v["minnov_n_10m"])
+                       for _p, v in sorted(_innov_pub.items()) if "minnov_chips" in v]
+                if _mv:
+                    _log_rl("minnov",
+                            "MINNOV %s (model vs sky, flip-gate statistic): %s"
+                            % (log_tag() or args.signal, " ".join(_mv)),
+                            every_s=60.0)
             if publisher is not None:
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
