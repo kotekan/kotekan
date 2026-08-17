@@ -51,6 +51,8 @@ using std::vector;
  * @conf   upchan_factor                         Int. Frequency upchannelization factor.
  * @conf   num_components                        Int. Number of gain components. Should be either
  *                                                   1 (real) or 2 (real/imag).
+ * @conf conjugate_gains                         Bool. If true, save the conjugate of the input
+ *                                                   gains.
  *
  * @author Liam Gray
  *
@@ -105,7 +107,7 @@ private:
     uint32_t out_num_values;
 
     /// Whether or not to conjugate the gains
-    bool conj;
+    bool conjugate_gains;
 
     /// Fixed buffers used to hold gains separately from the kotekan buffers
     std::vector<float16_t> gain_store_buf;
