@@ -109,6 +109,17 @@ common:
   # cycle on cx42: re-anchored fraction 1.00 -> 0.00 on gps_l5/gal_e5a/bds_b2a, 0.01 on
   # gal_e5b (one genuine re-acquisition in 99).
   spectrum-aligned: true
+  # #84 THE SPEC-WINDOW PIN (2026-08-17): the aligned gather's common index was min(hi)
+  # over ALL addressable instances, and cx19's bench-state n2assemble (frozen buffer, hi
+  # never advancing) pinned SPEC-WINDOW at 605351 on all five chains -- 11/12 healthy
+  # instances dropped every poll, spec_tau a noise fit over one dead instance (p/f ~1,
+  # bit-identical amp/energy). This margin excludes instances trailing the fleet's newest
+  # window by more than 8 (healthy lag is a few records, #46) before the min, naming them
+  # in the dropped list. Expected on arming: SPEC-WINDOW advances again, 11/12 served,
+  # cx19 named as stale; SPEC-FIT p/f rises off ~1; the BSAT feed (min_inst 6, innovation
+  # 1.0, clamp 1.0) resumes its designed function -- watch BSAT lines and judge taus
+  # against disc before anything new consumes them.
+  spectrum-stale-margin: 8
   # TASK #59: the frame-synced telemetry gather. CONNECT ONLY -- this fills the store and logs
   # the TELEM line; it consumes NOTHING and changes no number this broker publishes. Turning
   # the feed on is a separate flag (--telem-coherent), deliberately, so the transport can be

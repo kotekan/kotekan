@@ -1016,6 +1016,18 @@ def main(argv=None, rx=None, publisher=None):
                          "default only because the aligned path issues two GETs per instance "
                          "where the legacy path issues one, and replay is strict-ordered: an "
                          "old transcript replayed with it on would diverge.")
+    ap.add_argument("--spectrum-stale-margin", type=int, default=0,
+                    help="#84 THE SPEC-WINDOW PIN: exclude instances whose newest available "
+                         "window trails the fleet's newest by more than this many windows "
+                         "BEFORE choosing the common index (which is min over the rest). "
+                         "0 = off (the replay gate's requirement): plain min(hi), which "
+                         "hands the index to the slowest member forever -- measured "
+                         "2026-08-17 as SPEC-WINDOW pinned at 605351 on all five chains by "
+                         "cx19's bench-state n2assemble (frozen buffer, bit-identical "
+                         "amp/energy every poll), 11/12 healthy instances dropped, and "
+                         "spec_tau a noise fit over the one dead instance. Healthy "
+                         "inter-instance lag is a few records (#46); ~8 is a generous "
+                         "margin. Excluded instances are named in the dropped list.")
     ap.add_argument("--spectrum-endpoints", default="",
                     help="FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md "
                          "P1): comma-separated GnssGpuRecordAssemble endpoints ({a..b} ranges "
@@ -7172,7 +7184,8 @@ def main(argv=None, rx=None, publisher=None):
                     # would diverge. Same pattern as --spectrum-endpoints itself.
                     if args.spectrum_aligned:
                         _spec, _smeta = fleet_spectrum_aligned(
-                            spectrum_endpoints, prns=set(seeds) or None, log=_log)
+                            spectrum_endpoints, prns=set(seeds) or None, log=_log,
+                            stale_margin=args.spectrum_stale_margin)
                         _log_rl("specwin",
                                 "SPEC-WINDOW %s: %d/%d instance(s) served%s%s"
                                 % (_smeta.get("window"), len(_smeta.get("served") or {}),

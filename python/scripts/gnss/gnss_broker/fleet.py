@@ -891,7 +891,7 @@ def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
             len(insts))
 
 
-def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None):
+def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_margin=0):
     """Poll every instance for the SAME hop-quantised window (task #53) and gather the
     per-channel points across the whole fleet.
 
@@ -938,6 +938,22 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None):
                 % (len(degraded), ", ".join(degraded)))
         return {}, {"window": None, "served": {}, "dropped": dropped, "degraded": degraded}
 
+    # ⚠️ #84 (2026-08-17): min(hi) over ALL addressable instances hands the common index
+    # to the SLOWEST member forever. A bench-state instance (cx19's n2assemble, frozen
+    # buffer, hi never advancing) pinned SPEC-WINDOW at one index for days: the 11 healthy
+    # instances refused a window they had long rotated out, the frozen one served
+    # bit-identical bytes every poll, and spec_tau became a noise fit over one dead
+    # instance (p/f ~1) on all five chains. The docstring's "never block on unanimity"
+    # rule was honored; anchoring on the slowest recreated the same disease inverted --
+    # the frozen member did not empty the combine, it BECAME the combine. stale_margin > 0
+    # excludes instances whose hi trails the fleet's newest by more than that many windows
+    # (healthy lag is a few records, task #46) before taking the min, and names them.
+    if stale_margin and avail:
+        _mx = max(hi for _, hi in avail.values())
+        for url in [u for u, (_, hi) in avail.items() if hi < _mx - stale_margin]:
+            dropped.append((url, "stale (hi %d, fleet newest %d, margin %d)"
+                            % (avail[url][1], _mx, stale_margin)))
+            del avail[url]
     idx = int(window) if window is not None else min(hi for _, hi in avail.values())
     out, w0s, w1s = {}, set(), set()
     for url, (lo, hi) in avail.items():
