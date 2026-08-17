@@ -3044,6 +3044,9 @@ def main(argv=None, rx=None, publisher=None):
                           # ONLY by _mp_update below; consumed by the det loop and the dr
                           # loop's eligibility guards.
     mp_last_det = {}      # prn -> t of the last detection seen while flipped (starve exit)
+    mp_cooldown = {}      # prn -> t of the last EXIT: no re-entry for 300 s (G23 measured
+                          # enter->integrity-exit->enter twice in 5 min -- churn, not
+                          # information; the sky does not change in 20 s)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
@@ -4497,7 +4500,17 @@ def main(argv=None, rx=None, publisher=None):
             # per-PRN model-primacy gate reads (p95 |innov| < ~1 chip over 10 min) and the
             # one-controller carrier design's code-side measurement.
             _inv = None
+            # ⚠️ DR-OWNED SEEDS ARE EXCLUDED (2026-08-17 13:20, found by the flip's first
+            # arm): their ref_hop is stamped from WALL time (int(t_now_abs*hops_per_sec))
+            # while a detection's ref_hop rides the F-ENGINE hop counter -- a cross-axis
+            # dh, so the "innovation" reads the wall-vs-F-engine offset's sub-second part
+            # times the chip rate (ms -> thousands of chips; integer seconds vanish, 1 s =
+            # 100.0 periods exactly). Measured on flipped G26: INNOV p95 2598 while MINNOV
+            # p95 1.27, q 3.12 and trim -1.4 all said the tap was fine. The same axis
+            # mismatch is the leading suspect for the 2(b) DR-chain audit steps. MINNOV is
+            # the dr-owned satellites' referee; INNOV resumes when the search re-anchors.
             if (prev is not None
+                    and (dr_state is None or prn not in dr_state["seeded"])
                     and all(k in prev for k in ("code_phase_chips", "code_phase_rate",
                                                 "ref_hop", "doppler_hz"))):
                 # FORECAST WHAT THE TRACKER RUNS, not the cp0 fiction. The first deploy of
@@ -7380,6 +7393,7 @@ def main(argv=None, rx=None, publisher=None):
                         # dr loop would refuse to seed it and the det loop is bypassing
                         # the re-anchor -- an orphan in one more cycle. Hand it back NOW.
                         mp_flipped.discard(_p)
+                        mp_cooldown[_p] = _now()
                         dr_state["seeded"].discard(_p)
                         dr_state["pin"].pop(_p, None)
                         _log("MODEL-PRIMACY EXIT PRN %d: dr integrity flagged the model "
@@ -7387,6 +7401,7 @@ def main(argv=None, rx=None, publisher=None):
                              "detection" % _p)
                     elif _pv is not None and _pv[0] > args.model_primacy_exit_p95:
                         mp_flipped.discard(_p)
+                        mp_cooldown[_p] = _now()
                         dr_state["seeded"].discard(_p)
                         dr_state["pin"].pop(_p, None)
                         _log("MODEL-PRIMACY EXIT PRN %d: minnov p95 %.2f > %.2f -- the "
@@ -7394,6 +7409,7 @@ def main(argv=None, rx=None, publisher=None):
                              (_p, _pv[0], args.model_primacy_exit_p95))
                     elif _pv is None or _starved:
                         mp_flipped.discard(_p)
+                        mp_cooldown[_p] = _now()
                         dr_state["seeded"].discard(_p)
                         dr_state["pin"].pop(_p, None)
                         _log("MODEL-PRIMACY EXIT PRN %d: referee starved (no fresh "
@@ -7403,6 +7419,7 @@ def main(argv=None, rx=None, publisher=None):
                     (_pv[0], _p) for _p, _pv in _mp_p95.items()
                     if _p not in mp_flipped and _p not in probe_set
                     and _p not in dr_untrusted
+                    and _now() - mp_cooldown.get(_p, -1e9) > 300.0
                     and _pv[1] >= args.model_primacy_min_n
                     and _pv[0] < args.model_primacy_p95)
                 for _v95, _p in _elig:
