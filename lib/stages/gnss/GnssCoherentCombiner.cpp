@@ -484,14 +484,6 @@ void GnssCoherentCombiner::main_thread() {
                           : -1;
             if (_rolling || n_acc == 0) // rolling: the newest record, as ref_utc is; block: the
                 win_hop = cur_hop;      // window's first, as ref_utc is
-            // #46/A1: the newest hop INGESTED, regardless of windowing. Served as `now_hop`
-            // so a consumer needing "what time is it on the F-engine axis" reads it instead
-            // of inferring it from pow_hop, which labels a completed window and is therefore
-            // stale by construction (measured: 217 ms median, of which ~105 ms is the
-            // 40960-hop window quantum). Relaxed order: this is a monotone progress counter
-            // read by a REST thread, not a synchronisation point.
-            if (cur_hop >= 0)
-                _st_cur_hop.store(cur_hop, std::memory_order_relaxed);
         }
 
         // Cost clock starts only AFTER wait_for_full_frame returns: blocking on input is IDLE,
@@ -2395,7 +2387,6 @@ void GnssCoherentCombiner::get_elements_callback(kotekan::connectionInstance& co
             reply.push_back({{"prn", _st_prn[p]},
                              {"doppler_hz", _st_dop[p]},
                              {"pow_hop", _st_pow_hop},
-                             {"now_hop", _st_cur_hop.load(std::memory_order_relaxed)},
                              {"keff", _st_elem_keff},
                              {"n_elem", _n_elements},
                              {"elems", els}});
@@ -2483,12 +2474,6 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // never mix hops and samples by accident. -1 = no metadata on the
                          // record frames at all.
                          {"pow_hop", _st_pow_hop},
-                         // #46/A1: the newest hop INGESTED at serve time. pow_hop labels a
-                         // COMPLETED WINDOW, so it is stale by construction; now_hop is what
-                         // a consumer needing an EPOCH (rather than a label) must read.
-                         // now_hop - pow_hop = windowing latency; wall - now_hop = ingestion
-                         // latency. -1 = no record seen yet.
-                         {"now_hop", _st_cur_hop.load(std::memory_order_relaxed)},
                          {"pow_fft_len", _fft_len},
                          // boundary fraction f: where the code-period boundary sits inside
                          // the despread window (segmented-wipe diagnostic; ~0.5 was the old
