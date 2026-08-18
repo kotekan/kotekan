@@ -44,10 +44,20 @@ using log_event_handler = void (*)(log_event kind, const char* file, int line,
 inline std::atomic<log_event_handler> log_event_hook{nullptr};
 
 /// Reports a log event to the installed handler, if there is one.
+///
+/// The message is formatted with fmt::vformat, matching what
+/// kotekanLogging::internal_logging does with the same format string: it is passed
+/// as a plain string_view, so it is not checked against the argument types at
+/// compile time. Using fmt::format here instead would subject every ERROR and WARN
+/// format string in the code base to fmt's compile-time checking for the first
+/// time, which is a worthwhile change but not this one -- it does not compile
+/// today (see e.g. the three "{:d}" specifiers applied to a std::string in
+/// lib/testing/FakeVisPattern.cpp).
+template<typename... Args>
 inline void report_log_event(const log_event kind, const char* const file, const int line,
-                             const std::string& message) {
+                             const fmt::basic_string_view<char> format, const Args&... args) {
     if (const log_event_handler handler = log_event_hook.load(std::memory_order_relaxed))
-        handler(kind, file, line, message);
+        handler(kind, file, line, fmt::vformat(format, fmt::make_format_args(args...)));
 }
 
 } // namespace kotekan
@@ -55,20 +65,14 @@ inline void report_log_event(const log_event kind, const char* const file, const
 // Report an error/warning to the installed log event handler.
 //
 // These must expand to the same tokens in every translation unit; see the comment
-// on kotekan::log_event_handler above. Checking for a handler first avoids
-// formatting the message when there is none, which is the case in production.
+// on kotekan::log_event_handler above. report_log_event() checks for a handler
+// before formatting, so production pays one relaxed load rather than a string
+// format on every ERROR and WARN.
 #define KTK_REPORT_ERROR(m, ...)                                                                   \
-    do {                                                                                           \
-        if (kotekan::log_event_hook.load(std::memory_order_relaxed))                               \
-            kotekan::report_log_event(kotekan::log_event::error, __FILE__, __LINE__,               \
-                                      FORMAT(m, ##__VA_ARGS__));                                   \
-    } while (0)
+    kotekan::report_log_event(kotekan::log_event::error, __FILE__, __LINE__, fmt(m), ##__VA_ARGS__)
 #define KTK_REPORT_WARNING(m, ...)                                                                 \
-    do {                                                                                           \
-        if (kotekan::log_event_hook.load(std::memory_order_relaxed))                               \
-            kotekan::report_log_event(kotekan::log_event::warning, __FILE__, __LINE__,             \
-                                      FORMAT(m, ##__VA_ARGS__));                                   \
-    } while (0)
+    kotekan::report_log_event(kotekan::log_event::warning, __FILE__, __LINE__, fmt(m),             \
+                              ##__VA_ARGS__)
 
 // Macro to pass a string and arguments to fmt::format including a compile-time string format check.
 #define FORMAT(m, ...) fmt::format(FMT_STRING(m), ##__VA_ARGS__)
