@@ -818,7 +818,17 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # coupling-sign regression needs (E sats with b_sat rows AND the fine carrier feed),
     # and the detection path keeps the SNR + _track_ok gated population. Expectations:
     # fixtures/expectations_20260818_e5a_joint_feed.txt. Revert = delete this line.
-    joint-shadow: true
+    # ⚠️ ABORTED 2026-08-18 12:2x, ~13 min after arming: clk walked 151->173 with rate
+    # +0.24 chips/s and biases inflating to +-20 (control: the 10:27 restart at matched
+    # age was stable at clk 142-148 / rate -0.03), and gal_e5a's JOINT-CLK consumer
+    # ADOPTED a +4.52-chip-wrong joint clk that slipped under the 5.0/0.50 bounds after
+    # three REFUSEDs. NO E rows ever appeared in _idx (rej 18->52 instead) -- suspected
+    # mechanism: E5a measurements arrive offset by the unmodeled cross-band tau, are
+    # mass-rejected, and the CORROBORATED ESCAPE (E sats agree with each other about the
+    # wrong frame) yanks the shared clk instead of the tau row -- the tau bootstrap
+    # deadlock (tau learns only from accepted measurements; acceptance needs tau).
+    # DO NOT RE-ARM until the tau_band bootstrap admits a new band's offset explicitly.
+    # joint-shadow: true
     # joint-model-primary: true
     # ── P2b STEP 2: CONSUME (2026-08-11 16:2x) ─────────────────────────────────────────
     # THE FIRST THING TODAY THAT CHANGES A SEED. Everything above is measurement; this
