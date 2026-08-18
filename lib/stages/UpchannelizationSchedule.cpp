@@ -20,13 +20,12 @@ std::map<int, int> UpchannelizationSchedule::make_frequency_channels_to_indices(
     return channels_to_indices;
 }
 
-std::set<int> UpchannelizationSchedule::make_upchan_factors() const {
-    const auto upchan_factors = config.get<std::vector<int>>(unique_name, "upchan_factors");
-    return std::set<int>(upchan_factors.begin(), upchan_factors.end());
+std::vector<int> UpchannelizationSchedule::make_upchan_factors() const {
+    return config.get<std::vector<int>>(unique_name, "upchan_factors");
 }
 
-std::map<int, std::set<int>> UpchannelizationSchedule::make_upchan_factors_to_channels() const {
-    std::map<int, std::set<int>> upchan_factors_to_channels;
+std::map<int, std::vector<int>> UpchannelizationSchedule::make_upchan_factors_to_channels() const {
+    std::map<int, std::vector<int>> upchan_factors_to_channels;
     // for (const int upchan_factor : upchan_factors) {
     //     std::ostringstream key;
     //     key << "upchan_U" << upchan_factor << "_channels";
@@ -39,23 +38,23 @@ std::map<int, std::set<int>> UpchannelizationSchedule::make_upchan_factors_to_ch
         key << "upchan_channel_ranges/" << upchan_factor << "";
         const auto& range = config.get<std::vector<int>>(unique_name, key.str());
         assert(range.size() == 2);
-        std::set<int> channels;
+        std::vector<int> channels;
         for (int channel = range.at(0); channel < range.at(1); ++channel) {
             // Only include the local channels
             if (has_frequency_channel(channel))
-                channels.insert(channel);
+                channels.push_back(channel);
         }
         upchan_factors_to_channels[upchan_factor] = channels;
     }
     return upchan_factors_to_channels;
 }
 
-std::map<int, std::set<int>> UpchannelizationSchedule::make_upchan_channels_to_factors() const {
-    std::map<int, std::set<int>> upchan_channels_to_factors;
+std::map<int, std::vector<int>> UpchannelizationSchedule::make_upchan_channels_to_factors() const {
+    std::map<int, std::vector<int>> upchan_channels_to_factors;
     for (const int upchan_factor : upchan_factors) {
         const auto& channels = get_upchan_channels(upchan_factor);
         for (const int channel : channels)
-            upchan_channels_to_factors[channel].insert(upchan_factor);
+            upchan_channels_to_factors[channel].push_back(upchan_factor);
     }
     return upchan_channels_to_factors;
 }
@@ -139,10 +138,11 @@ bool UpchannelizationSchedule::invariant() const {
             if (!has_frequency_channel(channel))
                 return false;
             const auto& factors = get_upchan_factors(channel);
-            if (!factors.count(factor))
+            if (std::find(factors.begin(), factors.end(), factor) == factors.end())
                 return false;
             for (const int factor2 : factors) {
-                if (!get_upchan_channels(factor2).count(channel))
+                const auto& channels2 = get_upchan_channels(factor2);
+                if (std::find(channels2.begin(), channels2.end(), channel) == channels2.end())
                     return false;
             }
         }
@@ -150,13 +150,15 @@ bool UpchannelizationSchedule::invariant() const {
     for (const int channel : upchan_channels) {
         const auto& factors = get_upchan_factors(channel);
         for (const int factor : factors) {
-            if (!upchan_factors.count(factor))
+            if (std::find(upchan_factors.begin(), upchan_factors.end(), factor)
+                == upchan_factors.end())
                 return false;
             const auto& channels = get_upchan_channels(factor);
-            if (!channels.count(channel))
+            if (std::find(channels.begin(), channels.end(), channel) == channels.end())
                 return false;
             for (const int channel2 : channels) {
-                if (!get_upchan_factors(channel2).count(factor))
+                const auto& factors2 = get_upchan_factors(channel2);
+                if (std::find(factors2.begin(), factors2.end(), factor) == factors2.end())
                     return false;
             }
         }
@@ -198,17 +200,18 @@ const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Conf
 ////////////////////////////////////////////////////////////////////////////////
 
 // Map upchannelization factors to channels and back
-const std::set<int>& UpchannelizationSchedule::get_upchan_channels(const int upchan_factor) const {
+const std::vector<int>&
+UpchannelizationSchedule::get_upchan_channels(const int upchan_factor) const {
     if (!upchan_factors_to_channels.count(upchan_factor)) {
-        static const std::set<int> empty_set;
+        static const std::vector<int> empty_set;
         return empty_set;
     }
     return upchan_factors_to_channels.at(upchan_factor);
 }
 
-const std::set<int>& UpchannelizationSchedule::get_upchan_factors(const int channel) const {
+const std::vector<int>& UpchannelizationSchedule::get_upchan_factors(const int channel) const {
     if (!upchan_channels_to_factors.count(channel)) {
-        static const std::set<int> empty_set;
+        static const std::vector<int> empty_set;
         return empty_set;
     }
     return upchan_channels_to_factors.at(channel);
