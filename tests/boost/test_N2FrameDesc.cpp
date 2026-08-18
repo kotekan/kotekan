@@ -6,23 +6,12 @@
 #include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
-#include <csignal>
 #include <iostream>
 #include <set>
 #include <stdexcept>
 #include <vector>
 
 using namespace kotekan;
-
-// N2FrameDesc validation failures are fatal: FATAL_ERROR_NON_OO signals kotekan
-// shutdown (SIGTERM) before throwing FatalError. Ignore the signal so the tests
-// observe the throw instead of being terminated.
-struct IgnoreSigterm {
-    IgnoreSigterm() {
-        std::signal(SIGTERM, SIG_IGN);
-    }
-};
-BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
 
 
 BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);

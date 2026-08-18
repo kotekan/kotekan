@@ -3,7 +3,6 @@
 #include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
-#include <csignal>   // for signal, SIG_IGN, SIGTERM
 #include <cstddef>   // for ptrdiff_t, size_t
 #include <map>       // for map
 #include <memory>    // for shared_ptr
@@ -27,15 +26,6 @@ using kotekan::Symbol;
 
 using json = nlohmann::json;
 
-// NDArray descriptor validation failures are fatal: FATAL_ERROR_NON_OO signals
-// kotekan shutdown (SIGTERM) before throwing FatalError. Ignore the signal so
-// the tests observe the throw instead of being terminated.
-struct IgnoreSigterm {
-    IgnoreSigterm() {
-        std::signal(SIGTERM, SIG_IGN);
-    }
-};
-BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
 
 // Config::eval evaluates numbers and expression strings in a config scope.
 
@@ -223,9 +213,10 @@ BOOST_AUTO_TEST_CASE(buffer_factory_ndarray) {
         Symbol("gains"), {16, 4}, {Symbol("F"), Symbol("G")}, {1, 1}));
     BOOST_CHECK(buf->get_frame_desc<kotekan::GenericNDArray>() == desc);
 
-    // ... and a MISMATCHING declare call is fatal. (Under the boost test
-    // build, FATAL_ERROR throws std::runtime_error via KTK_BOOST_ERR before
-    // raising SIGTERM, so the fatal paths are testable with CHECK_THROW.)
+    // ... and a MISMATCHING declare call is fatal. (kotekan_logging_fixture
+    // installs a handler that throws std::runtime_error on a logged error, which
+    // FATAL_ERROR reports before raising SIGTERM, so the fatal paths are testable
+    // with CHECK_THROW.)
     // Same byte size, swapped extents/dimnames -- reaches the field checks:
     BOOST_CHECK_THROW((buf->ensure_frame_desc(kotekan::NDArray<float, 2>::describe(
                           Symbol("gains"), {4, 16}, {Symbol("G"), Symbol("F")}, {1, 1}))),

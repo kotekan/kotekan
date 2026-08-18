@@ -26,7 +26,6 @@
 #include <boost/test/included/unit_test.hpp>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -43,29 +42,6 @@
 #include <unistd.h> // for gethostname
 #include <utility>
 #include <vector>
-
-// SIGTERM handler to allow tests to catch FATAL_ERROR_NON_OO exceptions
-// (which call exit_kotekan and raise SIGTERM before throwing FatalError)
-namespace {
-volatile sig_atomic_t g_sigterm_received = 0;
-void sigterm_handler(int /*sig*/) {
-    g_sigterm_received = 1;
-}
-struct SigtermGuard {
-    struct sigaction old_action;
-    SigtermGuard() {
-        struct sigaction new_action;
-        new_action.sa_handler = sigterm_handler;
-        sigemptyset(&new_action.sa_mask);
-        new_action.sa_flags = 0;
-        sigaction(SIGTERM, &new_action, &old_action);
-    }
-    ~SigtermGuard() {
-        sigaction(SIGTERM, &old_action, nullptr);
-    }
-};
-static SigtermGuard g_sigterm_guard;
-} // namespace
 
 using std::string;
 
