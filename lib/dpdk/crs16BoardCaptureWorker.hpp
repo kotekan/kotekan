@@ -110,6 +110,29 @@ protected:
     double _last_prefetch_drop_log = 0.0;
     uint64_t _prefetch_drops_since_log = 0;
 
+    /// AHEAD-RESYNC (2026-08-18). Max frames to advance in one go when the stream has moved
+    /// PAST the active window; 0 = off (the historical behaviour: drop and stay put).
+    ///
+    /// ⚠️ WHY THIS EXISTS. `advance()` below is reachable ONLY from the in-range path, so a
+    /// packet past the window is dropped and returns before anything can move the window
+    /// forward. That makes the state self-latching: once the stream is ahead, every packet is
+    /// ahead, and nothing ever brings the window back. Measured on cx19 port 1, 2026-08-16:
+    /// the FIRST stray packet was 5472 samples past the end -- less than ONE 8192-sample
+    /// frame, i.e. a single advance() would have recovered it -- and 25 hours later the
+    /// window still read the identical [123976286208, 123976302592] having dropped
+    /// 18,716,211,314 packets at ~195k/s, with GPU1 idle and cold and its whole pipeline
+    /// starved. The existing ERROR even names the state ("the window is not tracking the
+    /// stream") but only logs it.
+    ///
+    /// BEHIND is deliberately NOT resynced: those packets are genuinely late and the window
+    /// cannot rewind without corrupting frames already being filled.
+    uint32_t _resync_max_advances = 0;
+    /// Resyncs performed, for the stats endpoint. A rising count is a REAL fault upstream
+    /// (or a node that cannot keep up) even though the pipeline now survives it -- this must
+    /// stay visible, or the fix silently hides the thing it recovers from.
+    uint64_t resync_count = 0;
+    double _last_resync_log = 0.0;
+
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
                                      uint16_t source_id);
@@ -127,6 +150,11 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
     worker_id(worker_id), packet_size(config.get<uint32_t>(unique_name, "packet_size")),
     payload_size(config.get<uint32_t>(unique_name, "payload_size")),
     num_expected_stream_ids(config.get<uint32_t>(unique_name, "num_expected_stream_ids")) {
+
+    // Default 0 = OFF: this is the production N^2 receive path, so the recovery is opt-in
+    // and a node that does not set it behaves exactly as before.
+    _resync_max_advances =
+        config.get_default<uint32_t>(unique_name, "resync_max_advances", 0);
 
     out_buf->register_producer(unique_name);
     receipt_bitmap_buf->register_producer(unique_name);
@@ -342,6 +370,50 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             return 0;
         }
 
+        // AHEAD-RESYNC: walk the window forward to the stream instead of dropping forever.
+        // Only when purely AHEAD (never rewind), and bounded, so a wild sequence number
+        // cannot make us spin the prefetch service through the whole ring. Each advance is
+        // the SAME operation the in-range path performs below, including the sfence.
+        if (_resync_max_advances > 0
+            && seq_num >= active_f1->start_seq + time_samples_per_frame) {
+            const uint64_t before = active_f0->start_seq;
+            uint32_t moved = 0;
+            while (moved < _resync_max_advances
+                   && seq_num >= active_f1->start_seq + time_samples_per_frame) {
+                _mm_sfence(); // NT stores complete before the frame is handed on
+                prefetch_service->advance();
+                active_f0 = prefetch_service->get_frame(0);
+                active_f1 = prefetch_service->get_frame(1);
+                moved++;
+                if (unlikely(active_f0 == nullptr || active_f1 == nullptr)) {
+                    if (prefetch_service->has_error() || prefetch_service->is_complete())
+                        return -1;
+                    active_f0 = nullptr;
+                    active_f1 = nullptr;
+                    return 0;
+                }
+            }
+            if (moved > 0) {
+                resync_count += moved;
+                const double now_rs = current_time();
+                if (now_rs - _last_resync_log > 1.0) {
+                    WARN("Port: {:d}, Worker: {:d}; RESYNC advanced {:d} frame(s) to follow the "
+                         "stream ({:d} -> {:d}, packet seq {:d}); {:d} total. The pipeline "
+                         "survives, but a rising count is a REAL upstream fault -- this used to "
+                         "be a permanent stall.",
+                         port, worker_id, moved, before, active_f0->start_seq, seq_num,
+                         resync_count);
+                    _last_resync_log = now_rs;
+                }
+            }
+        }
+
+        // STILL out of range -- behind (never recoverable), or ahead by more than the bound?
+        // Then drop, exactly as before. If the resync above brought us back in range this
+        // test is false and we fall through to the normal copy path.
+        if (seq_num < active_f0->start_seq
+            || seq_num >= active_f1->start_seq + time_samples_per_frame) {
+
         // Packet is outside the range of the two active frames, drop it.
         // ⚠️ THROTTLED -- see _last_range_drop_log. This is a per-PACKET condition and logging
         // it per packet filled a 3.5 TB root filesystem and killed two nodes.
@@ -366,6 +438,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             _range_drops_since_log = 0;
         }
         return -1;
+        } // end: still-out-of-range drop (resync above may have recovered instead)
     }
 
     // If we are at least 160 time samples past the start of the next frame,
