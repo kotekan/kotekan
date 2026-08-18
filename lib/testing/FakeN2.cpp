@@ -283,7 +283,7 @@ void FakeN2::main_thread() {
 }
 
 
-void FakeN2::fill_non_vis(N2FrameView& frame, int64_t frame_index) {
+void FakeN2::fill_non_vis(N2FrameView& frame, int64_t time_index) {
     // Set ev section
     for (uint32_t i = 0; i < num_eigenvectors; i++) {
         for (uint32_t j = 0; j < num_elements; j++) {
@@ -306,9 +306,9 @@ void FakeN2::fill_non_vis(N2FrameView& frame, int64_t frame_index) {
     }
 
     // Set flags and gains. 1.0 is a good element; the configured elements are
-    // reported bad once the frame index reaches flag_start_frame.
+    // reported bad once the time index reaches flag_start_frame.
     std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
-    if (frame_index >= flag_start_frame) {
+    if (time_index >= flag_start_frame) {
         for (auto i : flagged_inputs)
             frame.flags[i] = 0.0;
     }

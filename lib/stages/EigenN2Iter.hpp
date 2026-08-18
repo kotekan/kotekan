@@ -70,9 +70,9 @@
  * @conf  mask_flagged_inputs  Bool, default true. Also mask the inputs the
  *                         incoming frame flags as bad, i.e. those whose entry in
  *                         the frame's per-element `flags` is zero (1.0 == good).
- *                         The mask is rebuilt whenever those flags change. Set
- *                         false to ignore the frame's flags and mask only what
- *                         the config names.
+ *                         The mask is rebuilt when the set of zero flags
+ *                         changes. Set false to ignore the frame's flags and
+ *                         mask only what the config names.
  * @conf  tol_eval         Float, default 1e-6. Fractional change in evals must be less
  *                         than this for convergence.
  * @conf  tol_evec         Float, default 1e-5. Total eigenvector overlap must be less
@@ -108,8 +108,8 @@
  *         the flags change, so a steadily climbing count means the flagging
  *         upstream is unstable.
  * @metric kotekan_eigenN2iter_num_insufficient_elements
- *         The number of frames not decomposed because too few elements were
- *         left unmasked to support `num_ev` eigenpairs.
+ *         The number of frames not decomposed because no more elements were
+ *         left unmasked than the `num_ev` eigenpairs requested.
  *
  *
  * @author Richard Shaw, Kiyoshi Masui
@@ -132,9 +132,9 @@ private:
      *        per-element flags in effect.
      *
      * @param num_elements  Number of elements in the frames being decomposed.
-     * @param flags         Per-element flags, one per element, zero for an
-     *                      element to mask. All ones when @c mask_flagged_inputs
-     *                      is off.
+     * @param flags         Binarized per-element flags, zero for an element to
+     *                      mask and one otherwise. All ones when
+     *                      @c mask_flagged_inputs is off.
      */
     DynamicHermitian<float> calculate_mask(size_t num_elements,
                                            const std::vector<float>& flags) const;

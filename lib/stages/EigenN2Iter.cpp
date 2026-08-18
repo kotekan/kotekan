@@ -15,7 +15,7 @@
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>     // for copy, copy_backward, equal, find, max, min
+#include <algorithm>     // for find, min
 #include <atomic>        // for atomic_bool
 #include <blaze/Blaze.h> // for DynamicMatrix, DMatDeclHermExpr, band, HermitianMatrix
 #include <cblas.h>       // for openblas_set_num_threads
@@ -140,6 +140,20 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
         FATAL_ERROR("The `max_iterations` config parameter must be greater than zero.");
 }
 
+// Whether a frame's flags match the binarized flags the cached mask was built
+// from. The mask only depends on which flags are zero, so comparing binarized
+// values keeps a fractional or NaN flag from forcing a rebuild of an identical
+// mask every frame.
+static bool flags_match(const std::vector<float>& applied, const gsl_lite::span<float>& flags) {
+    if (applied.size() != flags.size())
+        return false;
+    for (size_t i = 0; i < applied.size(); i++) {
+        if (applied[i] != (flags[i] != 0.0f ? 1.0f : 0.0f))
+            return false;
+    }
+    return true;
+}
+
 void EigenN2Iter::main_thread() {
 
     frameID input_frame_id(in_buf);
@@ -150,10 +164,12 @@ void EigenN2Iter::main_thread() {
 
     DynamicHermitian<float> mask;
     uint32_t num_elements = 0;
-    // Per-element flags the cached mask was built from. Empty until the first
-    // frame arrives, which is what forces the mask to be built.
+    // Binarized per-element flags the cached mask was built from (any non-zero
+    // incoming flag counts as good). Empty until the first frame forces a build.
     std::vector<float> applied_flags;
     size_t num_good_elements = 0;
+    // When a degenerate-mask warning was last logged
+    double last_degenerate_warn = 0.0;
 
     // Force serial BLAS so Blaze owns intra-op parallelism via its own OpenMP
     // path (per-stage team, inherits this stage's cpu_affinity). With a
@@ -189,24 +205,18 @@ void EigenN2Iter::main_thread() {
         // Start the calculation clock.
         double start_time = current_time();
 
-        // (Re)build the mask when the element count changes, or when the flags
-        // we are honouring differ from the ones the cached mask was built from.
-        // The flags are stable in normal operation, so this is rare; a flagging
-        // update that lands mid-stream costs one rebuild per frequency as each
-        // of them crosses it.
+        // (Re)build the mask when the element count changes or when the flags
+        // differ from the cached mask. Flags change infrequently in normal operation,
+        // so this should not happen often.
         const bool flags_changed =
-            _mask_flagged_inputs
-            && !std::equal(applied_flags.begin(), applied_flags.end(), input_frame.flags.begin(),
-                           input_frame.flags.end());
+            _mask_flagged_inputs && !flags_match(applied_flags, input_frame.flags);
         if (num_elements != input_frame.num_elements || flags_changed) {
             num_elements = input_frame.num_elements;
-            if (input_frame.flags.size() != num_elements)
-                FATAL_ERROR("Frame reports {:d} elements but carries {:d} per-element flags.",
-                            num_elements, input_frame.flags.size());
             applied_flags.assign(num_elements, 1.0f);
-            if (_mask_flagged_inputs)
-                std::copy(input_frame.flags.begin(), input_frame.flags.end(),
-                          applied_flags.begin());
+            if (_mask_flagged_inputs) {
+                for (uint32_t i = 0; i < num_elements; i++)
+                    applied_flags[i] = input_frame.flags[i] != 0.0f ? 1.0f : 0.0f;
+            }
 
             mask = calculate_mask(num_elements, applied_flags);
 
@@ -225,24 +235,32 @@ void EigenN2Iter::main_thread() {
             num_mask_updates.inc(1);
             INFO("Mask updated: {:d} of {:d} elements masked out.",
                  num_elements - num_good_elements, num_elements);
-            if (num_good_elements <= _num_eigenvectors)
-                WARN("Only {:d} of {:d} elements are unmasked, too few to ask for {:d} "
-                     "eigenpairs. Frames will be reported as failed until this changes.",
+            if (num_good_elements <= _num_eigenvectors) {
+                WARN("Only {:d} of {:d} elements are unmasked; solving for {:d} eigenpairs "
+                     "needs more than that. Frames will be reported as failed until this "
+                     "changes.",
                      num_good_elements, num_elements, _num_eigenvectors);
+                last_degenerate_warn = current_time();
+            }
         }
-
-        // Copy the visibilties into a blaze container
-        DynamicHermitian<cfloat> vis = to_blaze_herm(input_frame.vis);
 
         // Perform the actual eigen-decomposition
         if (num_good_elements <= _num_eigenvectors) {
-            // Nothing to say about num_ev eigenpairs from fewer than that many
-            // unmasked elements, and with everything masked the solver divides
-            // by a zero mask sum when it renormalises the RMS. The mask update
-            // above logs this, so only count it here.
+            // A decomposition needs more unmasked elements than the eigenpairs
+            // requested. The mask update above warns once; re-warn every ten
+            // minutes so a stream failing every frame stays visible in the logs.
             num_insufficient_elements.inc(1);
             failed = true;
+            if (current_time() - last_degenerate_warn > 600.0) {
+                WARN("Only {:d} of {:d} elements are unmasked; frames are still being "
+                     "reported as failed.",
+                     num_good_elements, num_elements);
+                last_degenerate_warn = current_time();
+            }
         } else {
+            // Copy the visibilities into a blaze container
+            DynamicHermitian<cfloat> vis = to_blaze_herm(input_frame.vis);
+
             try {
                 std::tie(eigpair, stats) =
                     eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
@@ -383,10 +401,8 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements,
         }
     }
 
-    // Zero out the rows and columns of elements flagged bad. The mask the
-    // solver takes is strictly binary: a fractional entry would blend the data
-    // with the low rank model rather than mask it (see eigen_masked_subspace),
-    // so treat any non-zero flag as good.
+    // Zero out the rows and columns of elements flagged bad. The flags here
+    // are already binarized, as the solver's mask must be strictly binary.
     for (size_t i = 0; i < num_elements; i++) {
         if (flags[i] != 0.0f)
             continue;
@@ -399,7 +415,8 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements,
     // Remove specified diagonal bands
     for (const auto& br : _diagonal_bands_filled) {
         DEBUG("Masking diagonal bands [{:d}, {:d}).", br.first, br.second);
-        for (size_t i = br.first; i < br.second; i++) {
+        // Signed so that -i below is a genuine negation, not size_t wraparound.
+        for (int64_t i = br.first; i < (int64_t)br.second; i++) {
             blaze::band(M, i) = 0.0;
             blaze::band(M, -i) = 0.0;
         }
