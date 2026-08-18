@@ -523,6 +523,17 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
   # transfer is an attribute read rather than a JSON file with a flush cadence, an age gate
   # and a two-read slew test. (Those still exist, unchanged, for cross-PROCESS siblings.)
   gal_e5a:
+    # #46/A1 THE FORECAST EPOCH, armed HERE ONLY 2026-08-18 (d4c679f2b). Seeds are built
+    # for hop H = newest pow_hop + 1.0 s instead of for "now", so the measured ~217 ms
+    # telemetry lag (105 ms window quantisation + ~100 ms pipeline, 59 ms IQR) stops
+    # entering the seed arithmetic and only eats margin. 1.0 s is ~5x the lag and well
+    # inside the linear range-rate budget (~0.003 chips of range-acceleration error).
+    # WHY THIS CHAIN: model-seeded (no search) so the effect is undiluted, and the only
+    # such chain with the trim readback -- if the seeds land better, the C++ loop has less
+    # to correct, which is directly measurable. The other four chains are the IN-POLL
+    # CONTROLS (pair in time, never against history).
+    # REVERT: delete this line + broker restart.
+    dr-forecast-lead-s: 1.0
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
