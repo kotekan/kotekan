@@ -145,12 +145,33 @@ common:
   # chain. ⚠️ Needs a NODE RESTART to take effect (sudo -- KV's), and that same restart also
   # deploys the DPDK resync fleet-wide, since the binary is ahead of every running node.
   #
-  # ✅ ARMED 2026-08-18 (KV): bring up N^2 alongside GNSS. Our frames now land beside
-  # choco's at 10.222.0.51 (11025 subset / 11027 full). Everything upstream was already
-  # stock-equivalent and measured so -- this flag only adds the four bufferSend legs the
-  # stock config has and we did not, so what changes is the LAST HOP, not the science.
-  # Revert = set false, regenerate, restart.
-  n2-send: true
+  # ⚠️⚠️ DISARMED 2026-08-18 23:0x -- ARMING THIS CORE-DUMPED THE WHOLE FLEET IN ~1 MINUTE.
+  #
+  #   ERROR: /eigencalc: Exception in stage /eigencalc: Invalid assignment to diagonal
+  #          matrix element
+  #   terminate called after throwing an instance of 'std::invalid_argument'
+  #   systemctl: Result=core-dump, ExecMainStatus=6, on every node
+  #
+  # THE MECHANISM, and it is worth understanding before re-arming. `n2_eigen_buffer` had
+  # NO CONSUMER: eigencalc (EigenN2Iter) produced into it, nothing drained it, so after
+  # num_frames the stage blocked on wait_for_empty_frame and simply parked. It has been
+  # parked for the entire life of this instrument. Adding buffer_send_n2_subset gave it a
+  # consumer, so eigencalc RAN FOR THE FIRST TIME -- and threw immediately.
+  #
+  # So the "no consumer" fact recorded below was not merely a missing last hop; it was the
+  # only reason a broken stage never executed. The subset leg is not a transport change,
+  # it is a code path that has never been exercised on our data.
+  #
+  # ⚠️ THE TWO LEGS ARE NOT EQUALLY RISKY, and a re-arm should split them:
+  #   FULL   (n2_buffer -> 11027): n2_buffer ALREADY has a consumer (n2_subset), so it is
+  #          flowing today. Adding a second consumer is a genuine last-hop-only change.
+  #   SUBSET (n2_eigen_buffer -> 11025): unblocks eigencalc. THIS is what cored the fleet.
+  # See --n2-send-legs. Do not re-arm the subset leg until eigencalc is fixed upstream.
+  #
+  # (Also observed, and separate: 10.222.0.51 REFUSED connections on both ports -- the
+  # receiver was not listening. Harmless by itself, drop_frames absorbs it, but it means
+  # nothing was being delivered even before the crash.)
+  n2-send: false
 
   # ── #8: THE RF-PATH MONITOR (2026-08-18) ────────────────────────────────────────────────
   # Flip to `true` to serve 4+4b clip fraction and per-channel band power from each GPU's
