@@ -13,7 +13,8 @@
 #include <memory>     // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
 #include <mutex>      // for mutex, lock_guard
 #include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
-#include <string.h>   // for strnlen, strncpy
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for strnlen
 #include <string>     // for basic_string, char_traits, operator==, string, operator<<
 #include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
@@ -27,8 +28,6 @@
 #include "json.hpp"         // for basic_json, json
 #include "jsonMetadata.hpp" // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
 
-// One of the warning-silencing pragmas below only applied for gcc >= 8
-#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
 // Maximum number of frequencies in metadata array
@@ -36,9 +35,21 @@ const int CHORD_META_MAX_FREQ = 12288;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
+static_assert(CHORD_META_MAX_DIM == int(kotekan::GenericNDArray::max_rank),
+              "CHORD_META_MAX_DIM must match GenericNDArray::max_rank");
 
-// Maximum length of dimension names for arrays
+// Maximum length of array names and dimension names.
+//
+// These names are stored in fixed-size char arrays that are NOT NUL-terminated:
+// a name of exactly CHORD_META_MAX_DIMNAME characters fills its field
+// completely. The fields are NUL-padded, so shorter names do end in a NUL, but
+// no code may rely on that. Read them via get_name() and get_dimension_name(),
+// which bound the length with strnlen; never pass them to strlen, strcpy,
+// printf("%s") or fmt, all of which read until they find a NUL.
 const int CHORD_META_MAX_DIMNAME = 24;
+
+// Maximum number of stream IDs in metadata array
+const int CHORD_META_MAX_STREAM_IDS = 64;
 
 // Maximum number of visibility matrix samples in a frame
 const int CHORD_META_MAX_VIS_SAMPLES = 64;
@@ -52,8 +63,8 @@ public:
     /// the given frame descriptor, issuing a non-fatal error for any inconsistencies.
     void check_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const;
 
-    /// Copies array structure information (type, dimensions, dimension names, extents, strides)
-    /// from the given frame descriptor into this metadata object. Does not copy the array name.
+    /// Copies array structure information (name, type, dimensions, dimension names, extents,
+    /// strides) from the given frame descriptor into this metadata object.
     void set_from_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc);
 
     /// copy object
@@ -79,18 +90,26 @@ public:
     public:
         almost_copyable_mutex() : std::mutex() {}
         almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {}
-        almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
+        almost_copyable_mutex& operator=(const almost_copyable_mutex& /*other*/) {
+            // A mutex is not copied; this object keeps its own.
             return *this;
         }
     } lock;
 
     // TODO: Replace by NDArray
-    char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
+    /// The name of the array, e.g. "E", "J", "I". NUL-padded but not
+    /// NUL-terminated when the name uses all CHORD_META_MAX_DIMNAME characters;
+    /// use set_name() and get_name() instead of accessing the field directly.
+    char name[CHORD_META_MAX_DIMNAME];
     kotekan::DataType type;
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
-    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
+    /// The names of the dimensions, e.g. "F", "T", "D". NUL-padded but not
+    /// NUL-terminated when a name uses all CHORD_META_MAX_DIMNAME characters; use
+    /// set_dimension_name() and get_dimension_name() instead of accessing the
+    /// fields directly.
+    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
     int64_t dim_scaling[CHORD_META_MAX_DIM];
     // The stride counts elements, not bytes
     int64_t stride[CHORD_META_MAX_DIM];
@@ -99,10 +118,17 @@ public:
 
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
+        if (dims < 1)
+            FATAL_ERROR("sample_bytes: the array description is not set (dims={:d})", dims);
+        if (stride[0] < 0)
+            FATAL_ERROR("sample_bytes: stride[0] is not set (stride[0]={:d})", stride[0]);
         return type_total_bytes(type) * stride[0];
     }
 
     std::string get_dimension_name(size_t i) const {
+        if (i >= size_t(CHORD_META_MAX_DIM))
+            FATAL_ERROR("get_dimension_name: dimension {:d} is out of range [0, {:d})", i,
+                        CHORD_META_MAX_DIM);
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
     }
 
@@ -121,17 +147,18 @@ public:
     }
 
     void set_array_dimension(int dim, int size, const std::string& name, int64_t scaling) {
-        assert(dim < CHORD_META_MAX_DIM);
+        set_dimension_name(dim, name); // checks the range of `dim` before we index anything
         this->dim[dim] = size;
-        // GCC helpfully tries to warn us that the destination string may end up not
-        // NUL-terminated, which we know.
-#pragma GCC diagnostic push
-#if GCC_VERSION > 80000
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-#endif
-        strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
-#pragma GCC diagnostic pop
         this->dim_scaling[dim] = scaling;
+    }
+
+    /// Sets the name of dimension @p dim, truncating it (with a warning) to
+    /// CHORD_META_MAX_DIMNAME characters.
+    void set_dimension_name(int dim, const std::string& name) {
+        if (dim < 0 || dim >= CHORD_META_MAX_DIM)
+            FATAL_ERROR("set_dimension_name: dimension {:d} is out of range [0, {:d})", dim,
+                        CHORD_META_MAX_DIM);
+        set_string_field(this->dim_name[dim], name, "dimension name");
     }
 
     void set_strides_simple() {
@@ -150,17 +177,10 @@ public:
         return (strnlen(this->name, CHORD_META_MAX_DIMNAME) > 0);
     }
 
+    /// Sets the name of the array, truncating it (with a warning) to
+    /// CHORD_META_MAX_DIMNAME characters.
     void set_name(const std::string& name) {
-        // Manually copying in a for loop to avoid possibly buggy GCC warning
-        // about array bounds and stringop-truncation.
-
-        int len = name.length() < CHORD_META_MAX_DIMNAME ? name.length() : CHORD_META_MAX_DIMNAME;
-
-        for (int i = 0; i < len; i++)
-            this->name[i] = name[i];
-        // Fill the remaining space with 0s
-        for (int i = len; i < CHORD_META_MAX_DIMNAME; i++)
-            this->name[i] = '\0';
+        set_string_field(this->name, name, "array name");
     }
 
     std::string get_name() const {
@@ -263,9 +283,15 @@ public:
     }
 
     // TODO: this should really be a freq_id_t array
+    /// Sets the coarse frequencies. Like the other per-frequency arrays this is
+    /// either unset or non-empty; see @c has_coarse_freq.
     void set_coarse_freq(const std::vector<int>& coarse_freq) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+        std::lock_guard<std::mutex> guard(this->lock);
+        if (coarse_freq.empty())
+            FATAL_ERROR("set_coarse_freq: the per-frequency arrays must not be empty");
+        if (coarse_freq.size() > size_t(CHORD_META_MAX_FREQ))
+            FATAL_ERROR("set_coarse_freq: {:d} frequencies exceed CHORD_META_MAX_FREQ={:d}",
+                        coarse_freq.size(), CHORD_META_MAX_FREQ);
         metadata[jsonMetadata::COARSE_FREQ] = coarse_freq;
     }
 
@@ -281,7 +307,10 @@ public:
 
     // Stream IDs - the stream identifiers for packets received
     void set_stream_ids(const std::vector<uint32_t>& stream_ids) {
-        std::lock_guard<std::mutex> lock(this->lock);
+        std::lock_guard<std::mutex> guard(this->lock);
+        if (stream_ids.size() > size_t(CHORD_META_MAX_STREAM_IDS))
+            FATAL_ERROR("set_stream_ids: {:d} stream IDs exceed CHORD_META_MAX_STREAM_IDS={:d}",
+                        stream_ids.size(), CHORD_META_MAX_STREAM_IDS);
         metadata[jsonMetadata::STREAM_IDS] = stream_ids;
     }
 
@@ -369,18 +398,28 @@ public:
         return metadata.at(jsonMetadata::LOST_TIMESAMPLES).template get<int32_t>();
     }
 
+    /// Adds to the lost time sample count. The count must already be set;
+    /// otherwise there is no way to tell "no samples lost" from "not counted".
     void atomic_add_lost_timesamples(const int32_t lost_samples) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        metadata.at(jsonMetadata::LOST_TIMESAMPLES) =
-            metadata.at(jsonMetadata::LOST_TIMESAMPLES).template get<int32_t>() + lost_samples;
+        std::lock_guard<std::mutex> guard(this->lock);
+        const auto it = metadata.find(jsonMetadata::LOST_TIMESAMPLES);
+        if (it == metadata.end())
+            throw std::runtime_error(
+                "atomic_add_lost_timesamples: LOST_TIMESAMPLES has not been set");
+        *it = it->template get<int32_t>() + lost_samples;
     }
 
     // Per-frequency arrays
 
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
+    /// Either unset or non-empty, like the other per-frequency arrays.
     void set_freq_upchan_factor(const std::vector<int>& freq_upchan_factor) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+        std::lock_guard<std::mutex> guard(this->lock);
+        if (freq_upchan_factor.empty())
+            FATAL_ERROR("set_freq_upchan_factor: the per-frequency arrays must not be empty");
+        if (freq_upchan_factor.size() > size_t(CHORD_META_MAX_FREQ))
+            FATAL_ERROR("set_freq_upchan_factor: {:d} frequencies exceed CHORD_META_MAX_FREQ={:d}",
+                        freq_upchan_factor.size(), CHORD_META_MAX_FREQ);
         metadata[jsonMetadata::FREQ_UPCHAN_FACTOR] = freq_upchan_factor;
     }
 
@@ -395,9 +434,14 @@ public:
     }
 
     // the upchannelization index for each frequency (0 ... upchannelization factor - 1)
+    /// Either unset or non-empty, like the other per-frequency arrays.
     void set_freq_upchan_index(const std::vector<int>& freq_upchan_index) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        assert(freq_upchan_index.size() <= CHORD_META_MAX_FREQ);
+        std::lock_guard<std::mutex> guard(this->lock);
+        if (freq_upchan_index.empty())
+            FATAL_ERROR("set_freq_upchan_index: the per-frequency arrays must not be empty");
+        if (freq_upchan_index.size() > size_t(CHORD_META_MAX_FREQ))
+            FATAL_ERROR("set_freq_upchan_index: {:d} frequencies exceed CHORD_META_MAX_FREQ={:d}",
+                        freq_upchan_index.size(), CHORD_META_MAX_FREQ);
         metadata[jsonMetadata::FREQ_UPCHAN_INDEX] = freq_upchan_index;
     }
 
@@ -428,9 +472,12 @@ public:
     }
 
     // Second stage RFI excision (whole GPU frames) thresholds
-    void set_rfi_frame_excision_thresholds(const std::vector<std::array<float, 2>> thresholds) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        assert(thresholds.size() <= MAX_NUM_RFI_THRESHOLDS);
+    void set_rfi_frame_excision_thresholds(const std::vector<std::array<float, 2>>& thresholds) {
+        std::lock_guard<std::mutex> guard(this->lock);
+        if (thresholds.size() > size_t(MAX_NUM_RFI_THRESHOLDS))
+            FATAL_ERROR("set_rfi_frame_excision_thresholds: {:d} thresholds exceed "
+                        "MAX_NUM_RFI_THRESHOLDS={:d}",
+                        thresholds.size(), MAX_NUM_RFI_THRESHOLDS);
         metadata[jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS] = thresholds;
     }
 
@@ -502,6 +549,13 @@ public:
     }
 
 private:
+    /// Copies @p str into a fixed-size name field, padding it with NULs and
+    /// truncating (with a warning naming @p what) if it does not fit. A name that
+    /// fills the field leaves it without a terminating NUL; see
+    /// CHORD_META_MAX_DIMNAME.
+    void set_string_field(char (&field)[CHORD_META_MAX_DIMNAME], const std::string& str,
+                          const char* what);
+
     jsonMetadata::metadata metadata;
 
     // these are not thread safe
