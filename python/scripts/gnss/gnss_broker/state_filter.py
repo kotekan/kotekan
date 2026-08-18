@@ -13,6 +13,28 @@ The clock/rate/carrier states arrive in SHADOW MODE next: updated and logged bes
 EMAs they will replace, consumed by nothing until the comparison says so.
 """
 import math
+import threading
+
+
+def _locked(fn):
+    """Serialize a JointReceiverState entry point on the instance lock.
+
+    THE 07:05 INCIDENT (2026-08-18): the joint state is ONE object shared by five chain
+    threads -- gps_l5's code cycle(), every chain's kcoh update_rrate(), gal_e5a's fine
+    phase feed, gauges, predict(), and the age-out _drop() -- and Receiver.joint_receiver()
+    locks only the LOOKUP. Every structure mutation (x and P resized in two adjacent
+    statements) was racing every other; at 07:05:17 a thread switch landed between them
+    during a C-sat rejection storm and x/P desynced by one row (112 vs 111), after which
+    every birth appended into inconsistent geometry (the mismatch grew to 771) and the
+    broker's per-consumer guard reported "disabled this cycle" for three hours. The
+    matrices are ~100x100 -- the lock costs nothing against a 2 s poll cycle."""
+    def _wrap(self, *a, **k):
+        with self._lk:
+            return fn(self, *a, **k)
+    _wrap.__name__ = fn.__name__
+    _wrap.__qualname__ = getattr(fn, "__qualname__", fn.__name__)
+    _wrap.__doc__ = fn.__doc__
+    return _wrap
 
 
 class SatBiasFilter:
@@ -163,6 +185,7 @@ class JointReceiverState:
                  clk0=0.0, escape_min_sats=3, p_floor=0.04):
         import numpy as np
         self._np = np
+        self._lk = threading.RLock()   # see _locked: five chain threads share this object
         self.L = float(code_len)
         self.sigma_clk0 = float(sigma_clk0)
         self.sigma_rate0 = float(sigma_rate0)
@@ -524,7 +547,15 @@ class JointReceiverState:
         self.P[0, 0] += 4.0
 
     # -- filter ------------------------------------------------------------------
+    @_locked
     def predict(self, t_now):
+        # Geometry tripwire. Under the lock this cannot desync; if it ever reads unequal
+        # again the cause is a NEW unlocked mutation path, and the loud named error beats
+        # three hours of "matmul: core dimension" (the 07:05 incident's actual symptom).
+        if self.x.size != self.P.shape[0]:
+            raise RuntimeError("JOINT STATE DESYNC: x has %d rows, P has %d -- an "
+                               "unlocked mutation path corrupted the filter"
+                               % (self.x.size, self.P.shape[0]))
         if self._t is None:
             self._t = t_now
             return
@@ -637,6 +668,7 @@ class JointReceiverState:
     def wrap(self, v):
         return ((v + self.L / 2.0) % self.L) - self.L / 2.0
 
+    @_locked
     def update(self, key, y_chips, sigma_chips, t_now, band=None):
         """Feed one y_i = clk + b_i observation. Returns the normalized innovation, or
         None if rejected/deferred. A NEW satellite is BORN AT ITS MEASUREMENT (b0 = y - clk)
@@ -826,6 +858,7 @@ class JointReceiverState:
         self.n_updates += 1
         return z
 
+    @_locked
     def gauge(self):
         """Pin the unobservable common mode: mean(b over active sats) = 0."""
         np = self._np
@@ -893,6 +926,7 @@ class JointReceiverState:
                 n += 1
         return n
 
+    @_locked
     def cycle(self, measurements, t_now):
         """predict -> updates -> gauge -> expire, in the one order that is correct.
 
@@ -945,6 +979,7 @@ class JointReceiverState:
         self._fcar_idx = i
         return i
 
+    @_locked
     def update_carrier(self, y_hz, t_now, sigma_hz=1.0):
         """One carrier-frequency measurement, in Hz, common to every satellite.
 
@@ -1000,6 +1035,7 @@ class JointReceiverState:
         self._rr_t_seen[key] = t_now
         return i
 
+    @_locked
     def update_rrate(self, key, y_hz, t_now, f_band_hz, sigma_hz=0.2):
         """One carrier-frequency measurement for ONE satellite, from ONE band.
 
@@ -1093,6 +1129,7 @@ class JointReceiverState:
         self.n_rrate += 1
         return innov
 
+    @_locked
     def gauge_rrate(self):
         """Pin mean(rrate) = 0 over the active satellites.
 
@@ -1117,27 +1154,32 @@ class JointReceiverState:
             H[i] = 1.0 / len(use)
         self._scalar_update(H, -float(H @ self.x), self.rr_gauge_sigma ** 2)
 
+    @_locked
     def rrate(self, key):
         """This satellite's range-rate model error, m/s. 0.0 if never measured."""
         i = self._rr_idx.get(key)
         return 0.0 if i is None else float(self.x[i])
 
+    @_locked
     def rrate_sigma(self, key):
         """1-sigma, m/s. inf when unmeasured -- an unmeasured state must not read as a
         confident zero, which is how a dead feed passes for a healthy one."""
         i = self._rr_idx.get(key)
         return float("inf") if i is None else float(self.P[i, i]) ** 0.5
 
+    @_locked
     def rrate_dot(self, key):
         """d(rrate)/dt, m/s per s. 0.0 if never measured. THIS IS #48's OBSERVABLE: the
         per-sat drift the churn investigation needs, estimated live."""
         i = self._rrd_idx.get(key)
         return 0.0 if i is None else float(self.x[i])
 
+    @_locked
     def rrate_dot_sigma(self, key):
         i = self._rrd_idx.get(key)
         return float("inf") if i is None else float(self.P[i, i]) ** 0.5
 
+    @_locked
     def carrier_correction_hz(self, key, f_band_hz):
         """THE ONE COMMAND: total carrier correction for this satellite in this band, Hz.
 
@@ -1152,10 +1194,12 @@ class JointReceiverState:
         fc = float(self.x[self._fcar_idx]) if self._fcar_idx is not None else 0.0
         return (f_b / f_ref) * fc - (f_b / self.C_LIGHT) * self.rrate(key)
 
+    @_locked
     def f_carrier(self):
         """Receiver-wide carrier frequency offset (Hz). 0.0 before any measurement."""
         return float(self.x[self._fcar_idx]) if self._fcar_idx is not None else 0.0
 
+    @_locked
     def f_carrier_sigma(self):
         """Its 1-sigma uncertainty (Hz). inf before any measurement -- an UNMEASURED state
         must not read as a confident zero, which is how a dead feed passes for a healthy one."""
@@ -1163,16 +1207,19 @@ class JointReceiverState:
             return float("inf")
         return float(self.P[self._fcar_idx, self._fcar_idx]) ** 0.5
 
+    @_locked
     def tau(self, band):
         """Differential group delay of `band` against the reference band, chips. 0 for the
         reference (it has no row -- that is the gauge, not a special case)."""
         i = self._band_idx.get(band)
         return 0.0 if i is None else float(self.x[i])
 
+    @_locked
     def tau_sigma(self, band):
         i = self._band_idx.get(band)
         return 0.0 if i is None else float(self._np.sqrt(max(self.P[i, i], 0.0)))
 
+    @_locked
     def tau_observability(self, band):
         """How many satellites have been measured in BOTH this band and the reference.
 
@@ -1203,14 +1250,17 @@ class JointReceiverState:
     # value (sigma) / 0.0 (bias) is what the caller would have gotten a moment earlier,
     # and a DIAGNOSTIC must never be able to kill a chain. The real membership lock is
     # #33's business; these guards make stale READS safe regardless.
+    @_locked
     def bias(self, key):
         i = self._idx.get(key)
         return float(self.x[i]) if i is not None and i < len(self.x) else 0.0
 
+    @_locked
     def predicted(self, key):
         """clk + b_i: what a seed for this sat should add to the pure model."""
         return self.clk + self.bias(key)
 
+    @_locked
     def sigma(self, key=None):
         """1-sigma on clk (key None) or on this sat's clk+b_i."""
         np = self._np
@@ -1222,10 +1272,12 @@ class JointReceiverState:
         v = self.P[0, 0] + 2.0 * self.P[0, i] + self.P[i, i]
         return math.sqrt(max(0.0, v))
 
+    @_locked
     def age(self, key, t_now):
         t = self._t_seen.get(key)
         return None if t is None else (t_now - t)
 
+    @_locked
     def summary(self, t_now, max_sats=12):
         parts = []
         for key, i in sorted(self._idx.items(), key=lambda kv: -abs(self.x[kv[1]])):
