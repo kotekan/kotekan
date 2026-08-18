@@ -129,6 +129,37 @@ All four fixtures EQUIVALENT for both commits.
 
 ---
 
+## ✅ SHIPPED 08-17 night / 08-18 early — the wedge, the lag, and three retractions
+
+1. **THE FLIP HOLDS** (`3c43d0ace`): dr_untrusted judged the LEGACY model (EMA clock, no
+   b_sat) and killed every flip in minutes. Flipped sats exempt at BOTH sites, MINNOV
+   referees. PRN 8 held 65 min, PRN 10 70+ min against a 16-18 s record; zero dr_untrusted
+   exits; all exits honest.
+2. **#84 CLOSED** (`461cebddc`): the aligned gather anchored on the slowest instance, so one
+   frozen bench instance pinned SPEC-WINDOW fleet-wide. `--spectrum-stale-margin 8` →
+   1/12 → 12/12 served, n_inst 1 → 10, and **b_sat finally accepts** (n≈600).
+3. **THE cx19 WEDGE, root-caused** (`478797a84` + `4ddb8aca6`): the DPDK capture window's
+   `advance()` is reachable only from the in-range path, so once the stream runs past it
+   NOTHING brings it back. First stray packet was 5472 samples — under one frame — and 25 h
+   later the window was unchanged with 18.7 BILLION packets dropped. Hit gnss1/port 1, then
+   gnss0/port 0 after the recovery restart, which froze the broker's time base and took
+   every clock-adopting chain down (#75). Ahead-resync armed on cx19 as canary.
+4. **A1, the telemetry lag, decomposed**: 217 ms = 105 ms window quantisation + ~100 ms
+   pipeline + 5 ms HTTP.
+5. **`--fe-axis-stale-s`** (`9ffa65c06`): names a frozen time base. Not yet verified against
+   a real stall.
+6. **`--dr-forecast-lead-s`** (`d4c679f2b`, armed gal_e5a): seeds built for a CHOSEN future
+   hop instead of "now" — KV's reframing, which dissolved the problem two failed fixes were
+   trying to engineer around.
+
+⚠️ **THREE RETRACTIONS, all measured**: serving `now_hop` (reverted — a seed never needed
+"now"); the ephemeris epoch on the F-engine axis (**65x worse**, reverted); and
+`--innov-dr-seeds` (falsified 20 min after arming, +2201 chips = the sub-ms residue of the
+lag). Plus a fourth: my own falsifier for the forecast lead had no control clause and
+tripped on an innocent change. A bar with no control clause measures the sky.
+
+---
+
 ## 🔴 Active — the next levers, ranked  [rewritten 2026-08-17 23:00]
 
 State: broker `09a8dc52e`, five chains, 0 tracebacks. THE FLIP holds >1 h on gps_l5.
