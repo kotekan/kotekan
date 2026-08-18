@@ -429,8 +429,8 @@ baseband_merge:
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
-    value_type: int8
-    extents: [num_polarizations, num_dishes]
+    value_type: uint8
+    extents: [num_elements]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
