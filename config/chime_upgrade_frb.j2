@@ -449,8 +449,8 @@ baseband_merge:
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
-    value_type: int8
-    extents: [num_polarizations, num_dishes]
+    value_type: uint8
+    extents: [num_elements]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
@@ -1799,6 +1799,12 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb1_U16_phase_buffer
             file_name: host_frb1_U16_phase_buffer
+        host_bad_input_mask:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_weights
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_bf_mask_buffer
+            file_name: host_bf_mask_buffer
 {% endif %}
 
 {% if False %}
