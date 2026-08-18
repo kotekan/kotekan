@@ -735,7 +735,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     }
 
 
-def write_j2_vars(path, node, out, per_gpu_vars):
+def write_j2_vars(path, node, cfg, out, per_gpu_vars):
     """Serialize the computed vars as the j2 fragment config/gnss/gnss_chain.j2 consumes.
 
     The receiver-wide constants and the per-GPU search leg are read back from the config
@@ -770,8 +770,9 @@ def write_j2_vars(path, node, out, per_gpu_vars):
     pk0, snk0 = out[pre0 + "telem_pack"], out[pre0 + "n2sink"]
     consts = [
         ("node", node), ("frame0_utc", repr(inj0["frame0_utc"])),
-        ("sample_rate_hz", repr(inj0["sample_rate"])),
-        ("sample_rate_mhz", asm0["sample_rate"]),
+        # ONE sample rate, in Hz, from the F-engine block that every other site derives
+        # it from -- not read back out of a stage this function just wrote.
+        ("sample_rate_hz", repr(float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6)),
         ("fft_len", inj0["fft_length"]), ("hops_per_record", inj0["hops_per_record"]),
         ("num_synth", inj0["num_synth"]), ("trim_ttl_s", inj0["trim_ttl_s"]),
         ("carrier_phase_from_ref", str(inj0["carrier_phase_from_ref"]).lower()),
@@ -2767,7 +2768,7 @@ def main():
 
     # --- the j2 vars, computed as the branch was built --------------------------------------
     if args.emit_j2_vars:
-        write_j2_vars(args.emit_j2_vars, args.node, out, J2_VARS)
+        write_j2_vars(args.emit_j2_vars, args.node, cfg, out, J2_VARS)
         print("  j2 vars       %s (%d chain(s) over %d GPU(s))"
               % (args.emit_j2_vars, sum(len(v) for v in J2_VARS.values()), len(J2_VARS)),
               file=sys.stderr)

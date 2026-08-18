@@ -113,7 +113,12 @@
   prns: {{ c.prns }}
   n_elements: {{ gnss.n_live_elements }}
   reference_element: {{ gnss.reference_element }}
-  sample_rate: {{ gnss.sample_rate_mhz }}
+  {# THE SAME F-engine sample rate the inject command gets, in Hz. It was briefly two
+     vars -- sample_rate_hz and a "sample_rate_mhz" -- because the value was first read off
+     a dump truncated mid-number and taken for 3200 MHz. Every site in the generator builds
+     it from one expression, float(fengine.sampling_rate_MHz) * 1e6, so a second name could
+     only ever be the same number wearing a wrong unit. #}
+  sample_rate: {{ gnss.sample_rate_hz }}
   chan_export: true
   elem_sum: true
   {# #25's per-subband spectrum ring. Invariant across every chain; kept here rather than

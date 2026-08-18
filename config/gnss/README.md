@@ -91,7 +91,7 @@ scripts/gnss/j2_chain_equiv.py config/generated/chord_gnss_cx19_multi.yaml
 That last row is the one that matters: the branch rendered from *today's upstream template*
 is what we are actually running.
 
-**The gates have caught four real errors so far**, none of them visible by reading the code:
+**The gates have caught five real errors so far**, none of them visible by reading the code:
 
 1. `spectrum_ring_depth` / `spectrum_window_samples` were missing from the template — the
    `n2assemble` block had been templated from a dump truncated at 420 characters.
@@ -104,6 +104,18 @@ is what we are actually running.
    became committed artifacts, at which point one run destroyed six tracked files. It now
    writes a dot-prefixed check copy unless `--keep`. A check that mutates its inputs is not
    a check.
+5. **A duplicated variable, spotted by KV reading the emitted file** rather than by any
+   gate: `sample_rate_hz` and `sample_rate_mhz` both held 3200000000.0. Not two values
+   disagreeing — one value with a name carrying the wrong unit, because it had first been
+   read off a dump truncated mid-number and taken for 3200 MHz (the same truncation that
+   caused finding 1). Every site in the generator derives it from one expression,
+   `float(fengine.sampling_rate_MHz) * 1e6`, so a second name could only ever be the same
+   number wearing a wrong unit. Collapsed to `sample_rate_hz`, now computed from the
+   F-engine block rather than read back out of a stage the writer had just written.
+
+**Every variable in the emitted file is consumed by the template** — audited by matching
+each key against `gnss.<k>` / `c.<k>` / `g.<k>` in `gnss_chain.j2`; 29 receiver-wide,
+per-chain and per-GPU entries, no dead data.
 
 ## ⚠️ Two orphan buffers, found by doing this
 
