@@ -1,7 +1,8 @@
 #define BOOST_TEST_MODULE "test_configTracker"
 
-#include "configTracker.hpp" // for ConfigTracker
-#include "restServer.hpp"    // for restServer
+#include "configTracker.hpp"      // for ConfigTracker
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "restServer.hpp"         // for restServer
 
 #include "json.hpp" // for json_ref, basic_json<>::object_t, json
 
@@ -38,6 +39,9 @@ constexpr const char* kCmake = "CMAKE_BUILD_TYPE=Release";
 } // namespace
 
 BOOST_FIXTURE_TEST_SUITE(ConfigTrackerTests, ConfigFixture)
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(set_local_config) {
     auto& tracker = ConfigTracker::instance();

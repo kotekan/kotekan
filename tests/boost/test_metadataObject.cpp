@@ -1,10 +1,15 @@
 #define BOOST_TEST_MODULE "test_metadataObject"
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+
 #include <boost/test/included/unit_test.hpp>
 #include <chordMetadata.hpp>
 #include <iostream>
 
 using namespace kotekan;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     std::cout << "Testing chordMetadata class...\n";

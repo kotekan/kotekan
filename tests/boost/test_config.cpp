@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_config"
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cstdint>                           // for int32_t
 #include <exception>                         // for exception
@@ -16,6 +18,9 @@
 using kotekan::Config;
 
 using json = nlohmann::json;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_get_value_recursive) {
     json json_config = {

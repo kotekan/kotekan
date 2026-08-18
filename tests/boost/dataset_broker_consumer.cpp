@@ -1,15 +1,16 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_consumer"
 
-#include "Config.hpp"         // for Config
-#include "Hash.hpp"           // for operator<<
-#include "dataset.hpp"        // for dataset
-#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
-#include "datasetState.hpp"   // for freqState, inputState, prodState, datasetState
-#include "errors.h"           // for __enable_syslog, _global_log_level
-#include "restClient.hpp"     // for restClient, restClient::restReply
-#include "restServer.hpp"     // for restServer
-#include "test_utils.hpp"     // for CompareCTypes
-#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for operator<<
+#include "dataset.hpp"            // for dataset
+#include "datasetManager.hpp"     // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"       // for freqState, inputState, prodState, datasetState
+#include "errors.h"               // for __enable_syslog, _global_log_level
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "restClient.hpp"         // for restClient, restClient::restReply
+#include "restServer.hpp"         // for restServer
+#include "test_utils.hpp"         // for CompareCTypes
+#include "visUtil.hpp"            // for input_ctype, prod_ctype, freq_ctype
 
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
@@ -54,6 +55,9 @@ int read_from_argv() {
     BOOST_CHECK(broker_port);
     return broker_port;
 }
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
     int broker_port = read_from_argv();

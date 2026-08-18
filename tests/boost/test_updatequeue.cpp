@@ -1,7 +1,8 @@
 #define BOOST_TEST_MODULE "test_updateQueue"
 
-#include "updateQueue.hpp" // for updateQueue
-#include "visUtil.hpp"     // for operator==
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "updateQueue.hpp"        // for updateQueue
+#include "visUtil.hpp"            // for operator==
 
 #include "fmt.hpp" // for format
 
@@ -26,6 +27,9 @@ timespec three = {3, 0};
 timespec four = {4, 0};
 timespec five = {5, 0};
 timespec six = {6, 0};
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_updateQueue_return_all) {
     updateQueue<int> q(3);

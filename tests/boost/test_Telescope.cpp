@@ -4,7 +4,8 @@
 #include "Config.hpp"
 #include "Telescope.hpp"
 #include "configUpdater.hpp"
-#include "errors.h" // _global_log_level
+#include "errors.h"               // _global_log_level
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "timeUtil.hpp"
@@ -251,6 +252,8 @@ BOOST_TEST_GLOBAL_FIXTURE(RestServerFixture);
  *
  ******************/
 
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_FIXTURE_TEST_CASE(_name_tel, TelescopeFixture) {
     const Telescope& tel = Telescope::instance();

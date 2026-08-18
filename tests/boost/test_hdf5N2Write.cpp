@@ -14,7 +14,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "configUpdater.hpp"
-#include "hdf5N2Write.hpp" // for hdf5N2Write
+#include "hdf5N2Write.hpp"        // for hdf5N2Write
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "test_utils.hpp"
@@ -272,6 +273,9 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
 /***********************************/
 
 // Test 1: add_frame for a single (f,t) slot, verify data stored correctly in memory
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
+
 BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     N2Metadata force_link_marker;
     const size_t num_input = 3;
