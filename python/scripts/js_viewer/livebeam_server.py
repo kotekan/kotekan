@@ -510,14 +510,8 @@ class KotekanPowerStream:
                 reactor.stop()
             return
 
-        # At most one on_frame per tick, carrying the most recent finalized
-        # block. If several blocks finalized this tick (we were behind), the
-        # older ones were intentionally dropped; _emit_idx jumped by k*N so
-        # the client renders the skipped span as grey.
-        if self._block_ready:
-            self._block_ready = False
-            if self.on_frame is not None:
-                self.on_frame()
+        # Frames are emitted per finalized block in _on_integration (above),
+        # so bursty multi-block ticks no longer drop all but the newest block.
 
         if self.connected:
             reactor.callLater(0.001, self._tick)
@@ -535,6 +529,16 @@ class KotekanPowerStream:
                 self.frame_idx - self.frame_idx0
             )
             pf.accumulate(self.databuf, t)
+        # Emit each finalized block as it completes. kotekan often delivers
+        # several integrations at once (bursty TCP), so more than one block can
+        # finalize in a single _tick; emitting only the newest per tick (the
+        # old behaviour) would drop the others and the client paints the skipped
+        # blocks as grey gap rows -- even though we're not behind (livebeam is
+        # ~3% CPU here). Per-block emit keeps the waterfall continuous.
+        if self._block_ready:
+            self._block_ready = False
+            if self.on_frame is not None:
+                self.on_frame()
 
     def _fold_integration(self):
         """Add the just-read integration to the current block; finalize the

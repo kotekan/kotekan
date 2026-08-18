@@ -455,12 +455,37 @@ export class WaterfallView {
         c.putImageData(imageData, 0, 0);
 
         if (want_fit && fit_n > 8) {
-            const a = fit_vals.subarray(0, fit_n);
-            a.sort();  // Float32Array.sort is numeric
-            const q = (p) => a[Math.min(fit_n - 1, Math.max(0, Math.round(p * (fit_n - 1))))];
-            const lo = q(0.01), hi = q(0.99);
-            s.request_color_fit = false;
-            if (hi > lo) this.bus.emit("waterfall:fit_color", {lo, hi});
+            let a;
+            if (!median_on && !baseline_on && s.nvis > 1) {
+                // Dual/multi-pol raw view: fit the shared colour bar to ALL
+                // pols, so a per-pol level offset (e.g. XX ~3 dB above YY)
+                // doesn't push one pol below the range and clamp it to a single
+                // colour. (median/baseline modes already centre every pol near
+                // 0, so the primary view alone is representative there.)
+                const all = new Float32Array(s.nvis * nbins * ndisp);
+                let m = 0;
+                for (let j = disp_start; j < scd.length; j++) {
+                    const full = scd[j];
+                    for (let p = 0; p < s.nvis; p++) {
+                        const off = p * nfreq + freq_lo;
+                        for (let i = 0; i < nbins; i++) {
+                            const v = tx(full[off + i]);
+                            if (v === v && v !== Infinity && v !== -Infinity) all[m++] = v;
+                        }
+                    }
+                }
+                a = all.subarray(0, m);
+            } else {
+                a = fit_vals.subarray(0, fit_n);
+            }
+            if (a.length > 8) {
+                a.sort();  // Float32Array.sort is numeric
+                const n = a.length;
+                const q = (p) => a[Math.min(n - 1, Math.max(0, Math.round(p * (n - 1))))];
+                const lo = q(0.01), hi = q(0.99);
+                s.request_color_fit = false;
+                if (hi > lo) this.bus.emit("waterfall:fit_color", {lo, hi});
+            }
         }
 
         // Update axes to match the displayed data.
