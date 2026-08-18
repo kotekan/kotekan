@@ -71,11 +71,35 @@ config into the new structure and makes it permanent. The gate lists them as NOT
 on every run so the discrepancy stays visible until the generator stops emitting them —
 which is a one-line change plus a regenerate, and wants a node restart to land.
 
+## Wired into `chord_pathfinder.j2`
+
+The include is now called from the stock template, guarded so it renders nothing unless a
+node is named:
+
+```
+kotekan -c config/chord_pathfinder.j2 -j '{"gnss_node": "cx19"}'
+```
+
+Verified three ways:
+
+| check | result |
+|---|---|
+| stock render (no `gnss_node`) | 145 keys, **0 GNSS** — byte-unchanged |
+| with `gnss_node=cx19` | 282 keys, 137 GNSS |
+| non-GNSS blocks vs a stock render | **identical** |
+| 137 rendered blocks vs the deployed config, all 6 nodes | **identical** |
+
+That last row is the one that matters: the GNSS branch rendered from *today's upstream
+template* is field-for-field what we are actually running.
+
 ## What is NOT done yet
 
-* **The vars file is a bridge, not the source of truth.** It is currently *extracted from
-  generator output* so the template could be gated before the generator changes. The end
-  state is `gen_chord_gnss_config.py` emitting it directly from the node table.
+* **The vars files are still produced by extraction, not computed.**
+  `scripts/gnss/j2_chain_equiv.py --keep` writes them from a generated config, which is why
+  they agree by construction. The remaining generator work is to compute them from the node
+  table directly and delete the block-building in `build_n2dual_branch` -- at which point
+  the CPU-core rotation and the frame-size formulas live in exactly one place instead of
+  two, and this template becomes the only definition of the stage graph.
 * ~~Per-GPU singletons~~ **DONE** (second pass, same day). Two findings made it cheap:
   the **primary chain is not a special case** — `gnss0_n2combine` is structurally
   identical to `gnss0_e5a_n2combine` field for field, including its command list, so it is
