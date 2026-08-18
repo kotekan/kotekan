@@ -33,7 +33,13 @@ fengine:
   # a stale epoch is invisible downstream: every cross-record estimator uses differences, so a
   # uniformly-wrong epoch stays uniform and nothing complains. This value sat 13.78 days stale
   # from 2026-07-24 until 2026-08-07 and no measurement ever flagged it.
-  frame0_utc: 1786285988.000002870
+  # ⚠️ RE-READ 2026-08-18 22:5x: the F-engine restarted TODAY at 18:30:42 UTC during the
+  # site work, moving frame0 by 791854 s = 9.165 days from the 2026-08-09 value below it.
+  # Caught by this file's own check on KV's node_up.sh run -- three of the six nodes that
+  # were up all served 1787077842000002870 and the generator refused to emit against the
+  # stale one. The sub-second part is UNCHANGED (.000002870), i.e. the same F-engine phase
+  # an integer number of seconds later, which is what a clean restart looks like.
+  frame0_utc: 1787077842.000002870   # was 1786285988.000002870 (2026-08-09 14:33:08 UTC)
   pfb_taps: 4                   # "Ntaps=4-tap Hamming window ... 18-bit coefficient resolution"
   pfb_window: hamming
   pfb_critically_sampled: true  # CASPER pfb_fir_real block
