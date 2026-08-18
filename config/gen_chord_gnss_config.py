@@ -1934,6 +1934,26 @@ def main():
                          "built. config/gnss/gnss_chain.j2 renders the stage graph from "
                          "it, and chord_pathfinder.j2 includes that. Emitting is "
                          "side-effect-free: the YAML this run writes is unchanged.")
+    ap.add_argument("--n2-send-legs", choices=("both", "full", "subset"), default="both",
+                    help="WHICH --n2-send legs to build (default both). Legs not selected are "
+                         "DELETED from the config, not merely left unaddressed -- a bufferSend "
+                         "is a buffer CONSUMER whether or not its socket connects, and that is "
+                         "the whole point of this flag.\n"
+                         "\n"
+                         "⚠️ THE TWO LEGS CARRY DIFFERENT RISK, learned the hard way on "
+                         "2026-08-18 when arming both core-dumped all six nodes in a minute:\n"
+                         "  full   = n2_buffer, the ACCUMULATED VISIBILITIES. n2_buffer already "
+                         "has a consumer (n2_subset), so it is flowing today and a second "
+                         "consumer changes nothing upstream. This is the genuine last-hop-only "
+                         "change, and it is the N^2 data.\n"
+                         "  subset = n2_eigen_buffer, the EIGEN products. That buffer has NO "
+                         "consumer, so eigencalc (EigenN2Iter) has been blocked at "
+                         "wait_for_empty_frame for the life of this instrument. Arming this leg "
+                         "makes it run for the first time -- and it throws immediately: "
+                         "'Invalid assignment to diagonal matrix element' from blaze's "
+                         "HermitianMatrix, i.e. a visibility DIAGONAL (an autocorrelation) "
+                         "arrived with a non-zero imaginary part. Stock data, stock stages, our "
+                         "config merely uncovered it. Keep this off until it is fixed upstream.")
     ap.add_argument("--rf-stats", action="store_true",
                     help="ARM THE RF-PATH MONITOR on each GPU's search tap (task #8): 4+4b clip "
                          "fraction and per-channel band power, sampled at --rf-stats-period-s. "
@@ -2647,6 +2667,15 @@ def main():
     n2_send_kept = []
     for key in list(out.keys()):
         if args.n2_send and key.startswith("buffer_send_n2"):
+            # A leg we are not building must be DELETED, not skipped: leaving it in the
+            # config leaves a consumer on the buffer, which is exactly what unblocked
+            # eigencalc and cored the fleet.
+            want = ("subset" in key) if args.n2_send_legs == "subset" else \
+                   ("subset" not in key) if args.n2_send_legs == "full" else True
+            if not want:
+                del out[key]
+                dropped.append(key)
+                continue
             # THE LAST HOP, stamped rather than inherited. The captured base already holds
             # the right destination, but a config that only works because the capture
             # happened to be right is a config nobody can review -- so write the endpoint

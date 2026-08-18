@@ -171,7 +171,13 @@ common:
   # (Also observed, and separate: 10.222.0.51 REFUSED connections on both ports -- the
   # receiver was not listening. Harmless by itself, drop_frames absorbs it, but it means
   # nothing was being delivered even before the crash.)
-  n2-send: false
+  # ✅ RE-ARMED 2026-08-18 23:2x -- FULL LEG ONLY. The full leg is the one that carries the
+  # N^2 VISIBILITIES (n2_buffer, the N2Accumulate product); the subset leg carries the eigen
+  # decomposition and is what cored the fleet. n2_buffer already has a consumer (n2_subset),
+  # so adding bufferSend there unblocks nothing and changes no upstream stage -- which is the
+  # last-hop-only change the first attempt wrongly claimed for all four legs.
+  n2-send: true
+  n2-send-legs: full
 
   # ── #8: THE RF-PATH MONITOR (2026-08-18) ────────────────────────────────────────────────
   # Flip to `true` to serve 4+4b clip fraction and per-channel band power from each GPU's
