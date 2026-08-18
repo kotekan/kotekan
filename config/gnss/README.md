@@ -39,7 +39,16 @@ and the per-chain channel / PRN / size data.
   which is per-GPU rather than per-chain because one voltage tap serves every signal on
   that GPU. Then `gnss_pool`.
 * **`gnss_vars_<node>.j2`** — data. One `set gnss = {...}` with the receiver-wide constants
-  and a `gpus[].chains[]` list. One file per node; all six are committed.
+  and a `gpus[].chains[]` list. One file per node; all six are committed, and all six are
+  **emitted by the generator**:
+
+  ```
+  gen_chord_gnss_config.py ... --emit-j2-vars config/gnss/gnss_vars_cx19.j2
+  ```
+
+  `gnss_chain_vars()` computes them and `build_n2dual_branch()` *consumes* them, so the
+  CPU-core rotation and the frame-size formulas exist in exactly one place. Emitting is
+  side-effect-free: the YAML that run writes is unchanged (`gen_fleet --check` passes).
 
 **The primary chain is not a special case.** `gnss0_n2combine` is structurally identical to
 `gnss0_e5a_n2combine` — same field set, same command list, differing only in signal and
@@ -82,14 +91,19 @@ scripts/gnss/j2_chain_equiv.py config/generated/chord_gnss_cx19_multi.yaml
 That last row is the one that matters: the branch rendered from *today's upstream template*
 is what we are actually running.
 
-**The gate earned its keep on its first run**, failing twice and naming both causes:
+**The gates have caught four real errors so far**, none of them visible by reading the code:
 
-1. `spectrum_ring_depth` / `spectrum_window_samples` were missing from the template — I had
-   templated `n2assemble` from a dump truncated at 420 characters and never saw them.
+1. `spectrum_ring_depth` / `spectrum_window_samples` were missing from the template — the
+   `n2assemble` block had been templated from a dump truncated at 420 characters.
 2. `n2assemble_tiles` has its **own** CPU core. The record assembler's is per-GPU (31 / 57);
-   the tiles assembler's is per-chain (59, 24, 31, 62). I had assumed they shared one.
-
-Neither would have been visible by reading the template.
+   the tiles assembler's is per-chain (59, 24, 31, 62).
+3. The `rec` buffer's `frame_size` carries a chan-export term that `cmb`'s does not
+   (`+ n_prn * n_chan * chan_floats()`, present whenever telemetry is on). The first
+   `gnss_chain_vars()` wrote both as the same expression, under-sizing `rec`.
+4. This checker used to write a vars file and then delete it — harmless until those files
+   became committed artifacts, at which point one run destroyed six tracked files. It now
+   writes a dot-prefixed check copy unless `--keep`. A check that mutates its inputs is not
+   a check.
 
 ## ⚠️ Two orphan buffers, found by doing this
 
@@ -105,13 +119,11 @@ a one-line change plus a regenerate, wanting a node restart to land.
 
 ## What is left
 
-* **The vars files are produced by extraction, not computed.**
-  `scripts/gnss/j2_chain_equiv.py --keep` writes them from a generated config, so they
-  agree with it by construction — weaker than it looks. Closing this means computing them
-  in `gen_chord_gnss_config.py` from the node table and deleting the block-building in
-  `build_n2dual_branch`, after which the CPU-core rotation and the frame-size formulas live
-  in exactly one place instead of two, and this template becomes the only definition of the
-  stage graph.
+* **Deleting the block-building.** `build_n2dual_branch()` now consumes the vars rather
+  than recomputing them, so the duplication is gone — but it still assembles the ~137
+  blocks that the template also renders. Removing that code is the step that makes the
+  template the single definition of the stage graph; it is mechanical, and gate 2 is what
+  proves it safe.
 * **Moving deployment onto this path.** Once the above lands, `node_up.sh` can render
   `chord_pathfinder.j2` directly and `config/base/live_config_20260730.json` — our frozen
   July copy of production — goes away, which is what actually stops us drifting from

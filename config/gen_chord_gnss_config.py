@@ -69,6 +69,11 @@ DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 #
 # The rule: drop only what nothing surviving CONSUMES from. --dry-run now checks this
 # (buffers left with consumers but no producer) instead of leaving it to a live stall.
+# Filled by build_n2dual_branch as it goes, drained by --emit-j2-vars. These are the SAME
+# objects the blocks were built from, so an emitted vars file cannot describe a config the
+# generator did not produce.
+J2_VARS = {}
+
 N2_STAGE_PREFIXES = (
     "run_n2k", "n2_accumulate", "eigencalc", "n2_subset", "hex_dump",
     "buffer_send_n2", "compute_RFI_frame_mask", "count_rfi_mask", "rfi_sk_metrics",
@@ -648,6 +653,178 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
     return blocks, record_floats, n_elem
 
 
+def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
+    """THE VARIABLE DATA for one chain on one GPU -- everything the j2 include needs.
+
+    This is the source of truth for the numbers that differ between chains: the channel
+    and PRN lists, the CPU-core rotation, and the frame sizes. build_n2dual_branch below
+    CONSUMES it rather than recomputing, so the rotation and the size formulas exist
+    exactly once; config/gnss/gnss_chain.j2 renders the structure from the same values.
+
+    That is the whole point of the split (Jim Mertens, 2026-08-18). While both paths
+    exist, `scripts/gnss/j2_chain_equiv.py` checks that rendering these vars through the
+    template reproduces the blocks the builder emits, field for field. When the builder is
+    finally deleted, this function is what survives -- so anything computed here must be a
+    PROPERTY OF THE CHAIN, never a detail of how a block happens to be assembled.
+    """
+    sig, rt, arr = cfg["signals"], cfg["runtime"], cfg["array"]
+    cores = rt["cpu_affinity"]
+    nc = len(cores)
+    tag = chain["tag"] if chain else ""
+    n_chan = len(chan_idx)
+    prns = chain["prns"] if chain else args.prns
+    n_prn = len(prns)
+    ordv = chain["ord"] if chain else 0
+    n_live = arr["live_elements"][1] - arr["live_elements"][0] + 1
+    num_synth = 128
+
+    # --- frame sizes (see build_n2dual_branch for the scars behind each) -----------------
+    n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
+    na16, nt16 = 128 // 16, (128 + num_synth) // 16
+    mixed = (nt16 - na16) * ((n_live + 15) // 16)
+    bb = (nt16 - na16) * (nt16 - na16 + 1) // 2
+    tiles_frame_bytes = n_rec_per_frame * n_chan * (mixed + bb) * 512 * 4
+    prnctl = prnctl_bytes()          # READ, never restated -- it took the fleet down once
+    epl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn
+                 + 16 * 4 * n_prn * 16 * n_chan * n_live
+                 + 8 * 4 * n_prn * 16 * n_chan)
+    ctl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
+    record_floats = record_stride(n_live)      # READ from gnssRecord.hpp, same reason
+
+    # --- the CPU-core rotation ----------------------------------------------------------
+    # 3*ordv on the two GPU-adjacent stages spreads chains across cores; the others are
+    # per-GPU only. The dual offset is NOT (gpu+5): that put gnss1_n2dual on the same core
+    # as gnss0_gpu (two cudaProcess threads on one core), fixed 2026-08-06.
+    return {
+        "tag": tag,
+        # The BROKER-FACING chain label (gps_l5, gal_e5a, ...), derived the one way the
+        # rest of the generator derives it -- from the signal, via broker_chain_name.
+        "chain": broker_chain_name(chain["signal"] if chain else sig["primary"]),
+        # The TRACKED signal descriptor (GPS_L5_Q_NH, GAL_E5A_Q_CS, ...). Different thing:
+        # the label names the chain, this names the code being despread.
+        "signal": chain["tracker"] if chain else sig.get("tracker", sig["primary"]),
+        "channel_ids": list(freq_ids),
+        "local_channels": list(chan_idx),
+        "prns": list(prns),
+        "f_offset_hz": float(chain["carrier_hz"]) if chain else float(sig["carrier_hz"]),
+        "cores": {
+            "dual":     cores[(5 - 2 * gpu + 3 * ordv) % nc],
+            "tiles":    cores[(gpu + 9 + 3 * ordv) % nc],
+            "assemble": cores[(gpu + 2) % nc],
+            "combine":  cores[(gpu + 4) % nc],
+            "telem":    cores[(gpu + 5) % nc],
+            "send":     cores[(gpu + 6) % nc],
+            "sink":     cores[(gpu + 7) % nc],
+        },
+        "sizes": {
+            "tiles": tiles_frame_bytes,
+            "ctl":   ctl_bytes,
+            "epl":   epl_bytes,
+            # ⚠️ rec CARRIES THE CHAN-EXPORT TERM, cmb does NOT. The record buffer grows by
+            # n_prn * n_chan * chan_floats() whenever telemetry is enabled, because the
+            # assembler appends the per-channel spectrum rows (#32) that /get_spectrum and
+            # the fleet delay fit read. Writing the two as the same expression -- which is
+            # what a first pass at this function did -- under-sizes rec by that term, and
+            # the equivalence gate caught it against the deployed config.
+            "rec":   (f"{n_prn} * {record_floats} * sizeof_float32"
+                      + (f" + {n_prn} * {n_chan} * {chan_floats()} * sizeof_float32"
+                         if args.telem_host else "")),
+            "cmb":   f"{n_prn} * {record_floats} * sizeof_float32",
+            "telem": telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn),
+        },
+    }
+
+
+def write_j2_vars(path, node, out, per_gpu_vars):
+    """Serialize the computed vars as the j2 fragment config/gnss/gnss_chain.j2 consumes.
+
+    The receiver-wide constants and the per-GPU search leg are read back from the config
+    just built -- they are single-valued for the node, so there is nothing to recompute and
+    reading them keeps this writer from becoming a second opinion about them. The per-CHAIN
+    values, which are the ones that actually vary, come from gnss_chain_vars() via
+    per_gpu_vars: those were never round-tripped through the output.
+    """
+    def lit(v):
+        # A numeric-looking STRING (frame0_utc and sample_rate_hz arrive as repr() so their
+        # full precision survives) must be emitted BARE, not quoted -- jinja would hand the
+        # template a string and the rendered YAML would carry quotes the config schema does
+        # not expect. float() is the test, never a digits-and-dots regex: that regex once
+        # accepted the telemetry host 10.222.3.6 and emitted it unquoted, which jinja parsed
+        # as 10.222 subscripted by .3.
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            try:
+                float(v)
+            except ValueError:
+                return '"%s"' % v
+            return v
+        return '"%s"' % v
+
+    gpus = sorted(per_gpu_vars)
+    pre0 = "gnss%d%s_" % (gpus[0], per_gpu_vars[gpus[0]][0]["tag"])
+    dual0 = out[pre0 + "n2dual"]
+    inj0 = next(c for c in dual0["commands"] if c.get("name") == "cudaGnssInject")
+    corr0 = next(c for c in dual0["commands"] if c.get("name") == "cudaCorrelatorDual")
+    asm0, cmb0 = out[pre0 + "n2assemble"], out[pre0 + "n2combine"]
+    pk0, snk0 = out[pre0 + "telem_pack"], out[pre0 + "n2sink"]
+    consts = [
+        ("node", node), ("frame0_utc", repr(inj0["frame0_utc"])),
+        ("sample_rate_hz", repr(inj0["sample_rate"])),
+        ("sample_rate_mhz", asm0["sample_rate"]),
+        ("fft_len", inj0["fft_length"]), ("hops_per_record", inj0["hops_per_record"]),
+        ("num_synth", inj0["num_synth"]), ("trim_ttl_s", inj0["trim_ttl_s"]),
+        ("carrier_phase_from_ref", str(inj0["carrier_phase_from_ref"]).lower()),
+        ("carrier_phase_mode", inj0["carrier_phase_mode"]),
+        ("n_live_elements", corr0["num_live_elements"]),
+        ("num_elements", out[pre0 + "n2assemble_tiles"]["num_elements"]),
+        ("reference_element", asm0["reference_element"]),
+        ("spectrum_ring_depth", asm0["spectrum_ring_depth"]),
+        ("spectrum_window_samples", asm0["spectrum_window_samples"]),
+        ("integration_length", cmb0["integration_length"]),
+        ("record_export", cmb0["record_export"]),
+        ("deep_rate_min_q", cmb0["deep_rate_min_q"]),
+        ("sky_deep", str(cmb0["sky_deep"]).lower()),
+        ("max_prn", pk0["max_prn"]), ("records_per_frame", pk0["records_per_frame"]),
+        ("telem_host", out[pre0 + "telem_send"]["server_ip"]),
+        ("telem_port", out[pre0 + "telem_send"]["server_port"]),
+        ("sink_dir", snk0["base_dir"]),
+        ("buffer_depth", out[pre0 + "n2ctl_buf"]["num_frames"]),
+        ("telem_frames", out[pre0 + "telem_buf"]["num_frames"]),
+        ("search_host", out["gnss%d_srch_send" % gpus[0]]["server_ip"]),
+        ("search_port_base", out["gnss%d_srch_send" % gpus[0]]["server_port"]),
+        ("pool_objects", out["gnss_pool"]["num_metadata_objects"]),
+    ]
+    L = ["{#", "  The variable GNSS data for %s, emitted by" % node,
+         "  gen_chord_gnss_config.py --emit-j2-vars from gnss_chain_vars().",
+         "",
+         "  Structure lives in gnss_chain.j2 and is included by chord_pathfinder.j2;",
+         "  this file is only numbers. DO NOT HAND-EDIT -- regenerate.",
+         "#}", "{% set gnss = {"]
+    L += ['    "%s": %s,' % (k, lit(v)) for k, v in consts]
+    L.append('    "gpus": [')
+    for g in gpus:
+        srch = out.get("gnss%d_srch_tap" % g, {})
+        search = {"tap_core": srch["cpu_affinity"][0],
+                  "send_core": out["gnss%d_srch_send" % g]["cpu_affinity"][0],
+                  "chan_ids": srch["chan_ids"],
+                  "element_offset": srch["element_offset"]} if srch else None
+        L.append('        {"gpu": %d, "search": %r, "chains": [' % (g, search))
+        for V in per_gpu_vars[g]:
+            L.append('            {"tag": "%s", "chain": "%s", "signal": "%s",'
+                     % (V["tag"], V["chain"], V["signal"]))
+            L.append('             "channel_ids": %s,' % V["channel_ids"])
+            L.append('             "local_channels": %s,' % V["local_channels"])
+            L.append('             "prns": %s,' % V["prns"])
+            L.append('             "f_offset_hz": %r,' % V["f_offset_hz"])
+            L.append('             "cores": %r,' % V["cores"])
+            L.append('             "sizes": %r},' % V["sizes"])
+        L.append("        ]},")
+    L += ["    ],", "} %}"]
+    with open(path, "w") as f:
+        f.write("\n".join(L) + "\n")
+
+
 def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     """GNSS path B (--n2-dual): one GPU's cudaGnssInject + cudaCorrelatorDual process.
 
@@ -724,12 +901,14 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # node refused to start on a frame 6144 B = (80-64)*16*n_prn short. The stage's guard
     # caught it loudly instead of corrupting memory -- but the drift should not be possible,
     # so READ it, exactly as record_floats below is read.
-    prnctl = prnctl_bytes()
-    epl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn
-                 + 16 * 4 * n_prn * 16 * n_chan * n_live
-                 + 8 * 4 * n_prn * 16 * n_chan)
-    # control block = the same minus the corr array.
-    ctl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn + 8 * 4 * n_prn * 16 * n_chan)
+    # ONE SOURCE OF TRUTH for the frame sizes and the core rotation: gnss_chain_vars()
+    # computes them, this builder consumes them, and config/gnss/gnss_chain.j2 renders from
+    # the same values. Recomputing either here would be exactly the drift the prnctl
+    # incident above is a monument to. When this builder is retired in favour of the
+    # template, the vars function is what stays.
+    V = gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain)
+    J2_VARS.setdefault(gpu, []).append(V)
+    epl_bytes, ctl_bytes = V["sizes"]["epl"], V["sizes"]["ctl"]
     # READ from gnssRecord.hpp, never restated: this line used to be the literal `26 + n_live*12`
     # -- the exact drift config/gnss_record_layout.py was written to make impossible, left behind
     # in this branch when the path-A one was fixed (2026-08-07).
@@ -751,7 +930,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # heavy GPU-submission loops (one of them driving a 3.1 ms N^2 plus synthesis) on
             # one core. The light stages in this config do share cores, and always have; two
             # cudaProcess stages must not. Explicit, not arithmetic, so it stays checkable.
-            "cpu_affinity": [cores[(5 - 2 * gpu + 3 * ordv) % len(cores)]],
+            "cpu_affinity": [V["cores"]["dual"]],
             "in_buffers": {"host_voltage_ringbuffer": ring},
             # --n2-primary: the N^2 PREFIX leaves the GPU on the standard leg, so
             # host_correlation_buffer{,_1} -> N2Accumulate -> the science pipeline is fed by
@@ -948,7 +1127,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "n_gnss_channels": n_chan,
             "n_prn": n_prn,
             "hops_per_record": args.hops_per_record,
-            "cpu_affinity": [cores[(gpu + 9 + 3 * ordv) % len(cores)]],
+            "cpu_affinity": [V["cores"]["tiles"]],
         },
         # ... and then the EXISTING record assembler, unchanged.
         f"{pre}n2assemble": {
@@ -995,7 +1174,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}b.txt"}
                if args.chan_dump_prn >= 0 else {}),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
-            "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
+            "cpu_affinity": [V["cores"]["assemble"]],
         },
         # PATH B'S OWN COMBINER. Gives the path-B record stream a REST endpoint
         # (/gnssN_n2combine/get_status, /get_records) so path A and path B can be compared
@@ -1044,7 +1223,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "record_export": 128,
             "phase_dump_prns": [],
             "phase_dump_path": f"/tmp/gnss_n2phase_{node}_{gpu}.txt",
-            "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
+            "cpu_affinity": [V["cores"]["combine"]],
         },
         f"{pre}n2sink": (
             {"kotekan_stage": "rawFileWrite",
@@ -1056,7 +1235,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
              # path); we write raw bytes and the reader supplies the layout, which is fixed
              # by construction (see cudaCorrelatorDual.hpp's tile-list note).
              "allow_ndarray": True,
-             "cpu_affinity": [cores[(gpu + 7) % len(cores)]]}
+             "cpu_affinity": [V["cores"]["sink"]]}
             if args.n2_dump else
             {"kotekan_stage": "dropAllFrames",
              "in_buf": f"{pre}n2cmb_buf"}),
@@ -1119,7 +1298,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # configured copy on its side cannot drift out of step with the node.
                 "chan_export": True,
                 "channel_ids": list(freq_ids),
-                "cpu_affinity": [cores[(gpu + 5) % len(cores)]],
+                "cpu_affinity": [V["cores"]["telem"]],
             },
             f"{pre}telem_send": {
                 "kotekan_stage": "bufferSend",
@@ -1146,7 +1325,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # none, so left to default the two disagree by one header field and the stream
                 # shifts, surfacing as an unrelated-looking "Frame size does not match".
                 "use_config_tracker": False,
-                "cpu_affinity": [cores[(gpu + 6) % len(cores)]],
+                "cpu_affinity": [V["cores"]["send"]],
             },
         })
     return blocks
@@ -1634,7 +1813,7 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 # pass. (The 640 ns code-phase ambiguity the comb DOES cause is a property of
                 # the measurement, not a defect in the algorithm, and the BRDC model resolves it
                 # with >=16x margin.)
-                "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
+                "cpu_affinity": [V["cores"]["assemble"]],
             },
             f"{pre}search": search_stage(cfg, args, f"{pre}f_buf",
                                           [fid for fid, _ in pairs],
@@ -1704,6 +1883,12 @@ def main():
     ap.add_argument("--enable-outputs", dest="disable_outputs", action="store_false",
                     help="DANGEROUS on a shared node: re-enables the bufferSend legs to the "
                          "downstream N2 consumer")
+    ap.add_argument("--emit-j2-vars", default=None, metavar="PATH",
+                    help="write config/gnss/gnss_vars_<node>.j2 -- the variable GNSS data "
+                         "for this node, computed by gnss_chain_vars() as the branch is "
+                         "built. config/gnss/gnss_chain.j2 renders the stage graph from "
+                         "it, and chord_pathfinder.j2 includes that. Emitting is "
+                         "side-effect-free: the YAML this run writes is unchanged.")
     ap.add_argument("--n2-send", action="store_true",
                     help="SHIP THE N^2 VISIBILITIES to the standard downstream consumer, i.e. "
                          "run stock-equivalent on the science pipeline. Keeps the four "
@@ -2579,6 +2764,13 @@ def main():
         # science storage, so the destination is printed at generate time, not
         # discovered at deploy time.
         print("  N2 SEND ARMED  " + "; ".join(n2_send_kept), file=sys.stderr)
+
+    # --- the j2 vars, computed as the branch was built --------------------------------------
+    if args.emit_j2_vars:
+        write_j2_vars(args.emit_j2_vars, args.node, out, J2_VARS)
+        print("  j2 vars       %s (%d chain(s) over %d GPU(s))"
+              % (args.emit_j2_vars, sum(len(v) for v in J2_VARS.values()), len(J2_VARS)),
+              file=sys.stderr)
 
     # EXTRA CHAINS: state what they cost. A 10-core pool does not grow, so a multi-chain node
     # oversubscribes it; the rotation only guarantees that no two chains put the SAME heavy

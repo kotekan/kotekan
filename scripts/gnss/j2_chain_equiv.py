@@ -178,7 +178,7 @@ def write_vars(g, path):
         f.write("\n".join(out) + "\n")
 
 
-def render(node):
+def render(vars_name):
     import jinja2
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(GNSS_DIR))
     # ⚠️ IMPORT the vars, INCLUDE the structure. Jinja passes the parent context DOWN into
@@ -187,8 +187,8 @@ def render(node):
     # undefined"). {% import %} does export top-level assignments. This is the one
     # mechanical constraint on the split and it belongs in the top-level file.
     tmpl = env.from_string(
-        '{%% import "gnss_vars_%s.j2" as gv %%}{%% set gnss = gv.gnss %%}'
-        '{%% include "gnss_chain.j2" %%}' % node)
+        '{%% import "%s" as gv %%}{%% set gnss = gv.gnss %%}'
+        '{%% include "gnss_chain.j2" %%}' % os.path.basename(vars_name))
     return yaml.safe_load(tmpl.render())
 
 
@@ -203,10 +203,16 @@ def main():
     node = re.search(r"chord_gnss_(\w+?)_", os.path.basename(a.generated)).group(1)
     g = extract(cfg, node)
     os.makedirs(GNSS_DIR, exist_ok=True)
-    vars_path = os.path.join(GNSS_DIR, "gnss_vars_%s.j2" % node)
+    # ⚠️ NEVER WRITE OVER THE COMMITTED VARS unless asked. Those files are now real
+    # artifacts (the generator emits them with --emit-j2-vars and chord_pathfinder.j2
+    # includes them), and this checker used to write one and then DELETE it -- which was
+    # harmless when nothing was committed there and destroyed six tracked files the first
+    # time it ran afterwards. A check that mutates its inputs is not a check.
+    vars_path = os.path.join(GNSS_DIR, ("gnss_vars_%s.j2" if a.keep
+                                        else ".gnss_vars_%s.check.j2") % node)
     write_vars(g, vars_path)
 
-    got = render(node)
+    got = render(vars_path)
     want = {k: v for k, v in cfg.items()
             if (CHAIN_RE.match(k) and CHAIN_RE.match(k).group(3) in SUFFIXES)
             or re.match(r"^gnss[01]_(%s)$" % "|".join(SEARCH_SUFFIXES), k)
@@ -236,7 +242,7 @@ def main():
         for f, (w, gv) in sample.items():
             print("        %-22s generator=%.60r  j2=%.60r" % (f, w, gv))
     if not a.keep:
-        os.remove(vars_path)
+        os.remove(vars_path)          # only ever the dot-prefixed check copy
     ok = not (missing or extra or bad)
     print("\n%s" % ("EQUIVALENT -- the j2 include reproduces every GNSS block."
                     if ok else "*** NOT EQUIVALENT (%d missing, %d extra, %d differing)"
