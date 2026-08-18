@@ -178,6 +178,28 @@ common:
   # last-hop-only change the first attempt wrongly claimed for all four legs.
   n2-send: true
   n2-send-legs: full
+  # ⚠️ RETRACTION 2026-08-18 23:4x -- KV asked "are we certain we didn't mess up the N^2 in
+  # our manipulations?" and the honest answer is NO, not certain. The previous note claimed
+  # eigencalc "has been parked for the life of this instrument" and that we merely uncovered
+  # an upstream bug. THE CAPTURED PRODUCTION BASE CONTRADICTS THAT: it carries
+  # buffer_send_n2_subset consuming n2_eigen_buffer, so eigencalc HAD a consumer and was
+  # presumably running in production. The claim was built on our own config's shape and I
+  # generalised it to everyone's.
+  #
+  # WHAT SURVIVES THE CHECK (verified, not asserted): all 15 stock N^2 objects -- run_n2k,
+  # accum_*, n2_subset*, eigencalc*, and every buffer -- are BYTE-IDENTICAL to the captured
+  # base; host_correlation_buffer has exactly ONE producer (run_n2k), and cudaCorrelatorDual
+  # references none of the N^2 buffers. So we changed no parameter and inject no data.
+  #
+  # WHAT DOES NOT: if production runs the same stages with the same parameters AND the subset
+  # leg, eigencalc works there and died here, so SOMETHING differs and it is not yet found.
+  # Ranked candidates: (1) a startup race -- it threw twice immediately then died, and our
+  # nodes carry far more stages, so accum may emit before run_n2k has produced valid data and
+  # an uninitialised diagonal is complex; (2) the base is a 2026-07-30 capture and production
+  # may have disabled that leg SINCE, possibly for this very reason -- ask Jim, it is the
+  # cheapest question; (3) resource pressure, least likely to give this exact exception.
+  # First measurement: guard to_blaze_herm's diagonal and log imag -- frames 1-2 only means
+  # a race, every frame means the data.
 
   # ── #8: THE RF-PATH MONITOR (2026-08-18) ────────────────────────────────────────────────
   # Flip to `true` to serve 4+4b clip fraction and per-channel band power from each GPU's
