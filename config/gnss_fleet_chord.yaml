@@ -108,6 +108,22 @@ common:
   keep-n2: true
   n2-dual: true
 
+  # ✅ WIDENED FLEET-WIDE 2026-08-18 14:15, and the sky forced the question. On KV's
+  # full-fleet restart at ~14:05, FOUR instances wedged on startup -- cx42/gnss0,
+  # cx43/gnss0, cx44/gnss1, cx51/gnss0 -- every one of them on a node where this guard was
+  # OFF, while cx19 (the only armed node) came up clean. Measured on cx42/port 0: window
+  # frozen at [151567122432, 151567138816] with the stream 52.5 MILLION samples ahead and
+  # 195,313 packets/s -- the entire stream -- dropped; the instance served stale rows
+  # forever (pow_hop advanced 0 hops in 30 s) while its REST endpoint answered 200, which
+  # is why "all 12 respond" is not "all 12 are alive". THE ONSET GAP WAS 35,568 SAMPLES
+  # = 4.34 frames, so the bound of 8 would have closed it with 1.8x headroom.
+  # 32 rather than 8 for real headroom: one advance discards one 8192-sample frame, so 32
+  # bounds the recovery at 1.34 s of data, cheap against a pipeline that otherwise produces
+  # NOTHING until an operator notices. The bound still exists to stop a garbage sequence
+  # number teleporting the window into the future -- that failure is also a wedge, just
+  # facing the other way.
+  dpdk-resync-max-advances: 32
+
   # ── SHIP THE N^2 VISIBILITIES (the last hop; 2026-08-18) ────────────────────────────────
   # Flip to `true` to run stock-equivalent on the science pipeline. Everything upstream is
   # ALREADY stock-equivalent and measured so: run_n2k's command list is byte-identical to
@@ -283,8 +299,7 @@ nodes:
   # time base and took every clock-adopting chain down). 8 is a small bound: at ~195k pkt/s
   # even one advance per packet closes a gap at once. Watch the RESYNC lines in the node log
   # -- a rising count is a REAL upstream fault that we now survive rather than die from.
-  # Widen to the rest of the fleet only after this node has run clean.
-  cx19: {search-port-base: 11040, dpdk-resync-max-advances: 8}
+  cx19: {search-port-base: 11040}
   cx27: {search-port-base: 11042}
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
