@@ -30,12 +30,13 @@ PY
 cmd="${1:-start}"
 case "$cmd" in
   stop)
-    pkill -f 'livebeam_server.py' 2>/dev/null; sleep 1
-    pkill -f 'livebeam_server.py' 2>/dev/null   # catch any that just respawned
+    # SIGKILL defeats the respawn loop (SIGTERM lets it relaunch); the [l]
+    # bracket keeps the pattern from matching the shell running this pkill.
+    for i in 1 2 3; do pkill -9 -f '[l]ivebeam_server.py' 2>/dev/null; sleep 1; done
     echo "hub stopped."; exit 0;;
   status)
     read_sources | while read -r name hp wp kp sf dt; do
-      pgrep -f "source-name $name" >/dev/null && s=RUNNING || s=down
+      pgrep -f "[s]ource-name $name" >/dev/null && s=RUNNING || s=down
       printf "  %-10s http:%-5s ws:%-5s kotekan:%-5s sum-freq:%-3s [%s]\n" \
              "$name" "$hp" "$wp" "$kp" "$sf" "$s"
     done; exit 0;;
@@ -46,7 +47,7 @@ esac
 # Detach so instances survive this script (and the ssh session) exiting. setsid
 # (Linux) fully detaches; nohup is the portable fallback (e.g. macOS testing).
 DETACH=$(command -v setsid >/dev/null 2>&1 && echo setsid || echo nohup)
-pkill -f 'livebeam_server.py' 2>/dev/null; sleep 1
+pkill -9 -f '[l]ivebeam_server.py' 2>/dev/null; sleep 1
 # Process substitution (not a pipe) so the loop runs in this shell and the
 # backgrounded jobs are ours to disown, rather than dying with a subshell.
 while read -r name hp wp kp sf dt; do
