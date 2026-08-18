@@ -163,11 +163,13 @@ void chordMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
     // order locks so that there is no race condition if two chordMetadata a and
     // b are deepCopy'ed into each other a the same time
     std::scoped_lock<std::mutex, std::mutex> guard(this->lock, chord_other->lock);
-    // The copy assignment operator copies the base class as well, which would
-    // adopt the other object's metadata pool. This object stays in its own pool.
-    const std::weak_ptr<metadataPool> my_pool = this->parent_pool;
+    // This copies the base class too, so `this` adopts the other object's metadata
+    // pool. That is load-bearing rather than accidental: parent_pool doubles as the
+    // type tag that metadata_is_chord() reads, and cudaCopyFromRingbuffer,
+    // cudaCopyToRingbuffer and cudaCopyNToRingbuffer deliberately create detached
+    // copies with make_shared<chordMetadata>(). Those have no pool of their own, so
+    // without inheriting one here they trip metadata_is_chord()'s assert(pool).
     *this = *chord_other;
-    this->parent_pool = my_pool;
 }
 
 struct chordMetadataFormat {
