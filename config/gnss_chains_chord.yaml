@@ -810,7 +810,15 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # rate limit (47% of steps railed at 0.05 chips/event), so nothing here was ever shown
     # to help. Leaving them on would make gal_e5a differ from its control in two ways.
     # Re-enable together, and only with a measurement that can see them.
-    # joint-shadow: true
+    # ── RE-ARMED 2026-08-18 12:0x (KV): FEED ONLY, joint-shadow alone ───────────────────
+    # The disarm reason above (one-variable #49) EXPIRED with #49's banked verdict; both
+    # stated re-enable preconditions (_track_ok 2d5bccacd, warm start 3afff78b9) are met,
+    # plus the filter LOCK (6a1da13b1) -- the mass-birth window is also a mass-MUTATION
+    # window and needed it. joint-model-primary stays OFF: detection-fed rows are all the
+    # coupling-sign regression needs (E sats with b_sat rows AND the fine carrier feed),
+    # and the detection path keeps the SNR + _track_ok gated population. Expectations:
+    # fixtures/expectations_20260818_e5a_joint_feed.txt. Revert = delete this line.
+    joint-shadow: true
     # joint-model-primary: true
     # ── P2b STEP 2: CONSUME (2026-08-11 16:2x) ─────────────────────────────────────────
     # THE FIRST THING TODAY THAT CHANGES A SEED. Everything above is measurement; this
