@@ -50,6 +50,14 @@ const MODES = {
                fmt: ".2f", zero: true},
     beam_ph:  {label: "beam φ",  axis: "element phase spread (deg RMS)", unit: "°",
                fmt: ".0f", zero: true},
+    // q -- THE CODE-LOOP QUALITY over time (2026-08-18). The fleet discriminator's
+    // prompt-vs-shoulder ratio, i.e. "is the code loop on the peak". This is the series
+    // that would have shown #87's stale-trim regression the moment it started: gal_e5b's
+    // q fell 2.09 -> 1.09 and sat there for 3.5 h while every C/N0 trace looked normal.
+    // Judge lock HERE, not on sig/C-N0 -- the deep fold re-searches and will certify a
+    // satellite whose prompt tap is on noise (#47). ~2.2 is the working lock bar.
+    q:       {label: "q",        axis: "code-loop quality (fleet discriminator)", unit: "",
+              fmt: ".2f", zero: true},
     sig:     {label: "sig",      axis: "significance (σ)", unit: "σ", fmt: ".1f", zero: true},
     coh_s:   {label: "coh",      axis: "coherent window (s)", unit: " s", fmt: ".3f", zero: true},
     dop:     {label: "dop",      axis: "tracked Doppler (Hz)", unit: " Hz", fmt: ".1f"},
@@ -57,7 +65,7 @@ const MODES = {
     peel:    {label: "peel",     axis: "voltage-peel depth (dB)", unit: " dB", fmt: ".1f",
               zero: true},
 };
-const MODE_ORDER = ["cn0", "cn0_kcoh", "beam_amp", "beam_ph", "sig", "coh_s", "dop",
+const MODE_ORDER = ["cn0", "cn0_kcoh", "q", "beam_amp", "beam_ph", "sig", "coh_s", "dop",
                     "snr", "peel"];
 
 // ICD minimum received power per TRACKED COMPONENT, as a C/N₀ floor with
@@ -141,7 +149,7 @@ export class GpsAmpHistoryPanel {
         // `bound` parallels `peel`: true where the residual sat at the combiner's detection
         // floor, i.e. the point is a LOWER BOUND. Kept as its own array so the plot can never
         // render a bound as a measurement (see the header note).
-        return {t: [], cn0: [], cn0_kcoh: [], beam_amp: [], beam_ph: [], sig: [],
+        return {t: [], cn0: [], cn0_kcoh: [], q: [], beam_amp: [], beam_ph: [], sig: [],
                 coh_s: [], dop: [], snr: [], dr: [], peel: [], bound: []};
     }
 
@@ -176,6 +184,7 @@ export class GpsAmpHistoryPanel {
         // history plot has no room for a qualifier, so the honest rendering is a GAP.
         h.cn0_kcoh.push((src.cn0_kcoh != null && src.kcoh_eta != null && src.kcoh_n
                          && src.kcoh_eta >= 0.25 * src.kcoh_n) ? src.cn0_kcoh : null);
+        h.q.push(src.q != null ? src.q : null);
         h.beam_amp.push(src.beam_amp != null ? src.beam_amp : null);
         h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);

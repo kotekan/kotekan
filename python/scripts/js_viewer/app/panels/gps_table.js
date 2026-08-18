@@ -92,6 +92,26 @@ const METRICS = {
            fmt: m => m && m.duty != null ? (100 * m.duty).toFixed(0) + "%" : null},
     hold: {label: "hold", field: "hold",    unit: "x",
            fmt: m => m && m.hold ? m.hold.toFixed(1) : null},
+    // q -- THE CODE-LOOP QUALITY (2026-08-18). The fleet discriminator's prompt-vs-shoulder
+    // ratio: "is the code loop on the peak", which every power metric in this table is blind
+    // to (the deep fold re-searches, so sig/C-N0 can be healthy while the prompt tap sits on
+    // noise -- #47). Published by the broker as fleet_q since the fleet DLL landed; unshown
+    // until now, which is why a 2x q regression on gal_e5b (#87) ran for 3.5 h with the C/N0
+    // columns looking normal. Coloured against the broker's OWN measured floor rather than a
+    // hardcoded bar: >= 2.2 is a solid lock, floor-to-2.2 is marginal, at/below floor is
+    // off-peak. Hover carries the floor and the contributing instance count.
+    q:    {label: "q", field: "q", unit: "",
+           fmt: m => {
+               if (!m || m.q == null) return null;
+               const v = m.q.toFixed(2);
+               const fl = m.q_floor, n = m.q_inst;
+               const tip = `code-loop quality; floor ${fl != null ? fl.toFixed(2) : "?"}`
+                         + `${n != null ? `, ${n} instances` : ""}`
+                         + ` -- >=2.2 solid, near the floor means the prompt tap is OFF-PEAK`;
+               const col = m.q >= 2.2 ? "#7fd67f"
+                         : (fl != null && m.q <= fl * 1.15) ? "#e06666" : "#e0c060";
+               return `<span style="color:${col}" title="${tip}">${v}</span>`;
+           }},
     sig:  {label: "sig",  field: "sig",     unit: "σ",
            fmt: m => m && m.sig ? m.sig.toFixed(0) : null},
     coh:  {label: "coh",  field: "coh_s",   unit: "s",

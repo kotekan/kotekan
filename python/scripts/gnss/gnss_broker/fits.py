@@ -462,3 +462,35 @@ def tracker_phase_at(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_s
             + (per_hop + seed.get("code_phase_rate", 0.0) or 0.0) * dh
             + 0.5 * (chip_hz / carrier_hz)
               * (seed.get("doppler_rate_hz_s", 0.0) or 0.0) * dt * dt) % mod
+
+
+def q_stall_verdict(hist, now, window_s, frac, min_best, best, min_samples=10):
+    """#70/#87 THE q STALL VERDICT: has this chain been quietly degraded?
+
+    `hist` is [(t, duty)] appended once per broker cycle, `best` the highest windowed
+    duty seen so far this session (None before any verdict). Returns
+    (new_best, verdict_or_None); the verdict is (current, best, frac_of_best).
+
+    WHY A PURE FUNCTION, AND WHY IT LIVES HERE: the first version of this lived inline in
+    main() and could not be tested -- the on-sky fixtures run ~11 cycles at a duty that
+    never falls, so a forced-trip replay could not make it fire, and "it did not fire"
+    was indistinguishable from "it cannot fire". A guard nobody can trip is not a guard
+    (chord-a-gate-that-cannot-fail), so the decision is separated from the plumbing and
+    tested against a constructed collapse.
+
+    SELF-REFERENTIAL BY DESIGN: chains differ ~4x in duty by construction (#49), so the
+    baseline is the chain's own best, never a fleet-common bar. The baseline only RISES:
+    a degrading chain must not be allowed to redefine "normal" downward, which is exactly
+    how #87 ran for 3.5 h. min_best exempts a chain with no headroom to fall from
+    (bds_b2b lives near 0.2 for structural nav-bit reasons, #31).
+    """
+    cut = now - window_s
+    recent = [d for t, d in hist if t >= cut]
+    if len(recent) < min_samples:
+        return best, None
+    cur = sorted(recent)[len(recent) // 2]
+    if best is None or cur > best:
+        return cur, None
+    if best >= min_best and cur < best * frac:
+        return best, (cur, best, (cur / best) if best else 0.0)
+    return best, None

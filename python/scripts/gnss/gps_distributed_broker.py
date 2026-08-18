@@ -77,7 +77,7 @@ from gnss_broker import elemgain                           # noqa: E402  (task #
 from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
-    cp_rate_from_code_bias, dr_cp0, dr_seed_phys, adr_fine_rate,
+    cp_rate_from_code_bias, dr_cp0, dr_seed_phys, adr_fine_rate, q_stall_verdict,
 )
 from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fleet_spectrum_aligned,
@@ -1150,6 +1150,27 @@ def main(argv=None, rx=None, publisher=None):
                          "The feed inflates this by the command's motion over the span: "
                          "sigma_eff = sqrt(sigma^2 + (0.5*dcmd)^2), the worst-case "
                          "span-mean reference error for an unknown application time.")
+    ap.add_argument("--q-stall-window", type=float, default=600.0,
+                    help="#70/#87 THE q STALL GUARD: trailing window (s) over which this "
+                         "chain's q duty is judged against its own best this session. "
+                         "0 disables. 600 s is ~30-45 broker cycles -- long enough that a "
+                         "transit or one bad poll cannot trip it, short enough to catch a "
+                         "degradation in minutes rather than the 3.5 h #87 ran for.")
+    ap.add_argument("--q-stall-bar", type=float, default=2.2,
+                    help="q at or above this counts as a locked satellite for the duty "
+                         "(the working lock bar, chord-trim-quality-gate)")
+    ap.add_argument("--q-stall-frac", type=float, default=0.6,
+                    help="notice when the trailing duty falls below this fraction of the "
+                         "chain's best. 0.6 is deliberately loose: #87's regression was a "
+                         "0.44 -> 0.19 collapse (43%% of best), and a tighter bar on a "
+                         "statistic with this much transit-driven variance would cry wolf.")
+    ap.add_argument("--q-stall-min-best", type=float, default=0.25,
+                    help="do not judge a chain whose best duty is below this -- bds_b2b "
+                         "lives near 0.2 for structural reasons (#31 nav bits) and has no "
+                         "headroom to fall from. A guard that fires on a chain doing its "
+                         "normal thing is a guard that gets ignored.")
+    ap.add_argument("--q-stall-notice-s", type=float, default=300.0,
+                    help="rate limit (s) on the stall notice")
     ap.add_argument("--rr-bsat-chips-per-m", type=float, default=0.0,
                     help="#33 gap 3, THE CARRIER-AIDED CODE LOOP: couple the joint "
                          "state's per-sat range-rate rows into its code-bias rows, "
@@ -7957,6 +7978,52 @@ def main(argv=None, rx=None, publisher=None):
                            "" if any_fl["q_med"] is None
                            else " (noise median %.2f, sigma %.3f)"
                                 % (any_fl["q_med"], any_fl["q_sigma"])))
+            # ── THE q STALL GUARD (#70/#87, 2026-08-18) ────────────────────────────────
+            # WHY THIS EXISTS: on 08-18 three chains sat in a degraded steady state for
+            # 3.5 h after the RFI outage railed their C++ trims -- gal_e5b at q_med 1.09
+            # against its own 2.09 baseline -- and NOTHING said so. The numbers were in
+            # this very log the whole time; it took a same-time-of-day comparison, run by
+            # hand because someone asked for a status check, to see it. A degradation
+            # that only a human comparison can find is a degradation that runs for hours.
+            #
+            # WHAT IT WATCHES: this chain's own q duty (fraction of judged sats at
+            # q >= --q-stall-bar) over a trailing window, against the BEST duty this chain
+            # has reached in this process's lifetime. Self-referential on purpose: chains
+            # differ 4x in duty by construction (#49), so a fleet-common bar would either
+            # cry wolf on bds_b2b or never fire on gps_l5. The baseline only RISES, so a
+            # chain that degrades cannot quietly redefine "normal" downward -- which is
+            # exactly how the 3.5 h went unnoticed.
+            #
+            # ⚠️ IT IS A NOTICE, NOT A CONTROL. It changes nothing and gates nothing: a
+            # guard that acts on a statistic this noisy would be a new failure mode, and
+            # the honest recovery (a NODE restart, which clears the C++ trim state a
+            # broker restart cannot) is not the broker's to perform.
+            if args.q_stall_window > 0 and fleet:
+                _qs = [v["q"] for v in fleet.values() if v.get("q") is not None]
+                if _qs:
+                    _duty = sum(1 for q in _qs if q >= args.q_stall_bar) / float(len(_qs))
+                    _qh = dr_state.setdefault("q_hist", [])
+                    _qh.append((t0, _duty))
+                    del _qh[:max(0, len(_qh) - 4000)]
+                    # The decision itself is a PURE function in fits.py so it can be
+                    # tested against a constructed collapse (test_q_stall.py) -- the
+                    # on-sky fixtures run ~11 cycles at a duty that never falls, so a
+                    # replay cannot distinguish "did not fire" from "cannot fire".
+                    _qb, _qv = q_stall_verdict(_qh, t0, args.q_stall_window,
+                                               args.q_stall_frac, args.q_stall_min_best,
+                                               dr_state.get("q_duty_best"))
+                    dr_state["q_duty_best"] = _qb
+                    if _qv is not None:
+                        _log_rl("qstall",
+                                "⚠️ q STALL: duty %.2f over the last %.0f s vs %.2f best "
+                                "this session (%.0f%% of it, bar q>=%.1f, %d sat(s)). "
+                                "This chain has been degraded, not absent -- the usual "
+                                "cause is railed C++ trim state, which a BROKER restart "
+                                "does NOT clear (#87). Judge against the same time of day, "
+                                "then a NODE restart."
+                                % (_qv[0], args.q_stall_window, _qv[1], 100.0 * _qv[2],
+                                   args.q_stall_bar, len(_qs)),
+                                every_s=args.q_stall_notice_s)
             for k in list(dll_trim):
                 if k not in seeds:
                     del dll_trim[k]

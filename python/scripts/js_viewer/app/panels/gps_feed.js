@@ -136,6 +136,20 @@ export function signal_metrics(s, t_rec) {
     // fold keeps failing to certify it. `hold` below is the number that does not flicker.
     m.duty = s.det_duty_s != null ? s.det_duty_s : null;
     m.hold = s.prompt_hold != null ? s.prompt_hold : null;
+    // THE CODE-LOOP QUALITY, q (2026-08-18). The broker has published fleet_q per PRN since
+    // the fleet DLL landed and nothing consumed it, which left the most load-bearing
+    // tracking metric in the logs only. q is the fleet discriminator's quality ratio: the
+    // prompt-vs-shoulder statistic the DLL itself gates on, so it answers "is the code
+    // loop ON the correlation peak", which no power metric can. It is the number every
+    // sky verdict this week was actually decided on -- #49's fast-loop verdict, #87's
+    // stale-trim regression (q_med 2.09 -> 1.09 while C/N0 stayed put), the flip's holds.
+    // ⚠️ JUDGE LOCK ON q, NEVER ON sig/deep/C-N0: those ride the deep fold, which
+    // re-searches and will certify a satellite whose prompt tap is on noise (#47).
+    // q_floor is the per-cycle noise median the broker measured, so the display can show
+    // the bar this q is being judged against rather than a hardcoded 2.2.
+    m.q = s.fleet_q != null ? s.fleet_q : null;
+    m.q_floor = s.fleet_q_floor != null ? s.fleet_q_floor : null;
+    m.q_inst = s.fleet_instances != null ? s.fleet_instances : null;
     m.inst_n = s.inst_snr_n != null ? s.inst_snr_n : null;
     m.inst_spread = (s.inst_snr_hi != null && s.inst_snr_lo != null) ?
                     (s.inst_snr_hi - s.inst_snr_lo) : null;
