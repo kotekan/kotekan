@@ -45,6 +45,11 @@ export class AirspyStatsPanel {
     }
 
     _update(payload) {
+        // #8: CHORD's front end health, kept beside the airspy front ends because it is the
+        // same question -- "is the thing feeding the pipeline healthy?" -- asked of a
+        // different receiver. Stored, not returned on: a CHORD page has no airspy rows and
+        // an airspy page has no GNSS rows, and a page with both should show both.
+        if (payload && payload.gnss_rf !== undefined) this._gnss = payload.gnss_rf;
         // UNIFIED: one page, three physical front ends -> a compact row per band.
         if (payload && Array.isArray(payload.rf_health)) return this._update_rf(payload.rf_health);
         const adc = payload && payload.adc;
@@ -151,7 +156,8 @@ export class AirspyStatsPanel {
         }
 
         this.el.innerHTML =
-            `<div style="display:flex;flex-wrap:wrap;align-items:stretch;">${cells}</div>`;
+            `<div style="display:flex;flex-wrap:wrap;align-items:stretch;">${cells}</div>`
+            + this._gnss_block();
     }
 
     // Unified: push each band's ADC + valve counters onto its own rings, then render one
@@ -208,6 +214,96 @@ export class AirspyStatsPanel {
             <div style="flex:0 0 5.5em;padding:.1em .5em;">ADC drop</div>
             <div style="flex:0 0 5.5em;padding:.1em .5em;">valve 15s</div>
             <div style="flex:0 0 5.5em;padding:.1em .5em;">valve lost</div></div>`;
-        this.el.innerHTML = hdr + rows;
+        this.el.innerHTML = hdr + rows + this._gnss_block();
+    }
+
+    // ── #8: THE F-ENGINE FRONT END ─────────────────────────────────────────────────────
+    // One row per LOBE, aggregated across the fleet's twelve instances.
+    //
+    // WHY LOBE INDEX IS A VALID KEY ACROSS INSTANCES, which is not obvious: a lobe is a run
+    // of contiguous LOCAL comb indices, and local index tracks frequency order within a
+    // node's comb -- so lobe 0 is the lower band (1176.45) on every instance and lobe 1 the
+    // upper (1207.14), even though the nodes hold different channel subsets and so different
+    // absolute indices. If instances ever disagree on lobe COUNT the row says so rather than
+    // blending two different things.
+    //
+    // ⚠️ CLIP IS THE HEADLINE AND IT IS A MAX, NOT A MEAN. One railing channel on one
+    // instance is a real fault; averaging it across a healthy fleet is how it stays
+    // invisible. The worst instance is NAMED for the same reason.
+    //
+    // ⚠️ "NOT ARMED" MUST NOT LOOK LIKE "QUIET". Off and unreachable render grey with an
+    // explicit word, never as a green zero -- a dark strip that reads as "no RFI" when it
+    // means "nothing is measuring" is worse than no strip at all.
+    _gnss_block() {
+        const g = this._gnss;
+        if (!g || !g.instances) return "";
+        const inst = Object.entries(g.instances);
+        if (!inst.length) return "";
+        const on = inst.filter(([, v]) => v && v.state === "on");
+        const unreach = inst.filter(([, v]) => v && v.state === "unreachable").length;
+        const short = u => u.replace(/^https?:\/\//, "").replace(/:\d+/, "");
+        const cell = (v, color, tip) =>
+            `<div style="flex:0 0 5.5em;padding:.15em .5em;" title="${tip}">
+               <span style="font-size:1.05em;font-weight:600;color:${color};">${v}</span></div>`;
+        const hdr = `<div style="display:flex;align-items:center;font-size:.72em;opacity:.6;
+                                 margin-top:.5em;border-top:1px solid #dfe3e8;">
+            <div style="flex:0 0 11em;padding:.1em .5em;">F-engine (GNSS)</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">rail</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">power</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">armed</div>
+            <div style="flex:0 0 9em;padding:.1em .5em;">worst</div></div>`;
+        if (!on.length) {
+            const why = unreach === inst.length ? `${unreach} unreachable`
+                                                : "monitor not armed";
+            return hdr + `<div style="display:flex;align-items:center;
+                                      border-top:1px solid #f0f0f0;">
+                <div style="flex:0 0 11em;padding:.15em .5em;color:#8a8f98;">—</div>
+                <div style="padding:.15em .5em;color:#8a8f98;font-size:.9em;">${why}
+                  — these cells are NOT a measurement of zero (rf-stats is off, or the
+                  broker has no get_rf)</div></div>`;
+        }
+        const nLobe = Math.max(...on.map(([, v]) => (v.lobes || []).length));
+        const mixed = on.some(([, v]) => (v.lobes || []).length !== nLobe);
+        let rows = "";
+        for (let i = 0; i < nLobe; i++) {
+            const have = on.map(([u, v]) => [u, (v.lobes || [])[i]]).filter(([, l]) => l);
+            if (!have.length) continue;
+            let worstU = null, worstC = -1;
+            let pw = [];
+            for (const [u, l] of have) {
+                const c = (l.clip_lo || 0) + (l.clip_hi || 0);
+                if (c > worstC) { worstC = c; worstU = u; }
+                pw.push(l.power || 0);
+            }
+            pw.sort((a, b) => a - b);
+            const med = pw[Math.floor(pw.length / 2)];
+            // >1% of nibbles at a rail = the quantiser is discarding signal, not headroom.
+            const cCol = worstC > 0.01 ? "#d64550" : worstC > 0.001 ? "#e8a13c" : "#3fb26f";
+            const rng = have[0][1];
+            rows += `<div style="display:flex;align-items:center;
+                                 border-top:1px solid #f0f0f0;">
+                <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;
+                            white-space:nowrap;" title="local comb channels ${rng.chan0}-${rng.chan1} on the first reporting instance; nodes hold different subsets, so lobe ORDER is the stable identity -- lobe 0 is the lower band">lobe ${i} · ch ${rng.chan0}-${rng.chan1}</div>`
+                + cell((worstC * 100).toPrecision(2) + "%", cCol,
+                       "WORST instance's fraction of 4+4b nibbles at a rail, this lobe. "
+                       + "Max not mean: one railing channel on one instance is a real fault. "
+                       + "Above ~1% the quantiser is losing signal, not just headroom, and "
+                       + "every C/N0 below it is understated for a reason that is not the sky.")
+                + cell(med != null ? med.toPrecision(3) : "—", "#5a6472",
+                       "median |x|^2 across reporting instances, this lobe. Compare LOBES: a "
+                       + "source that lifts one and not the other is band-selective and "
+                       + "external, which is the 2026-08-18 signature.")
+                + cell(`${have.length}/${inst.length}`,
+                       have.length === inst.length ? "#3fb26f" : "#e8a13c",
+                       "instances reporting this lobe" + (unreach ? `; ${unreach} unreachable` : ""))
+                + `<div style="flex:0 0 9em;padding:.15em .5em;font-size:.85em;
+                               color:#8a8f98;white-space:nowrap;overflow:hidden;"
+                        title="${worstU || ""}">${worstU ? short(worstU) : "—"}</div>`
+                + "</div>";
+        }
+        if (mixed)
+            rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
+                ⚠️ instances disagree on lobe count — rows may compare different bands</div>`;
+        return hdr + rows;
     }
 }

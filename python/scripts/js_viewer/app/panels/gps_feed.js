@@ -353,6 +353,16 @@ export class GpsFeed {
             // element export) resolves null and every beam cell renders "—".
             jget(k.stageGet(u.combiner, "get_elements")),
         ]));
+        // #8: RF-PATH HEALTH from the broker publisher (get_rf). ONE call per tick, not one
+        // per unit -- the voltage tap is per GPU and serves every signal on it, so this is a
+        // property of the RECEIVER and the broker publishes it receiver-wide. Any registered
+        // chain's path reaches the same document.
+        //
+        // ⚠️ The comment below used to say CHORD's front end "exposes none of this". As of
+        // 2026-08-18 it exposes clip fraction and per-band power (task #8); a 404 here just
+        // means the broker predates it, or the node-side monitor is not armed.
+        const rfP = units.length
+            ? jget(k.stageGet(units[0].combiner, "get_rf")) : Promise.resolve(null);
         // Stream health, unified: watch all three front ends but poll ONE airspy's /adcstat
         // per tick, ROUND-ROBIN -- NOT all three concurrently. /adcstat runs on restServer's
         // single libevent thread with a bounded cv.wait (THE WEDGE, 5988f657); three
@@ -375,8 +385,9 @@ export class GpsFeed {
             // which exposes none of this; skip rather than fabricate a request.
             adcStage ? jget(k.stageGet(adcStage, "adcstat")) : Promise.resolve(null),
             k.metrics(),
+            rfP,
             ...per_unit,
-        ]).then(([sky, adc, metrics, ...res]) => {
+        ]).then(([sky, adc, metrics, gnss_rf, ...res]) => {
             this._inflight = false;
             // Hold the last good value per feed: one slow/failed poll must not
             // blank every |A| for a frame (that would look like a mass drop).
@@ -394,6 +405,10 @@ export class GpsFeed {
                         valve: this._valve_for(metrics, b.airspy)}));
             }
             if (metrics) last.valve = this._valve_for(metrics, this.airspy_stage);
+            // Hold the last good RF document. An empty instances map is a broker that has
+            // not polled yet and must NOT evict a good one -- the same rule as `elem` below.
+            if (gnss_rf && gnss_rf.instances
+                && Object.keys(gnss_rf.instances).length) last.gnss_rf = gnss_rf;
             // Unified stores per-SIGNAL (keyed by combiner); legacy stores per-CONSTELLATION.
             const store = (last.units = last.units || {});
             units.forEach((u, i) => {
@@ -589,6 +604,7 @@ export class GpsFeed {
             vis: this.vis, chains: this.chains,
             unified: this.unified, signals: this.signals,
             rf_health: this._last.rf_health || null,
+            gnss_rf: this._last.gnss_rf || null,      // #8: F-engine clip + per-band power
         };
         for (const cb of this._listeners) {
             try { cb(payload); } catch (e) { console.error("gps feed listener:", e); }
