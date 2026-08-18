@@ -1099,8 +1099,22 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
     # coarse (#40) is a rumor, not a calibration. Judge: fine-fed count on the JRRP
     # line + rrate sigma dropping toward mm/s, vs the still-unarmed chains in the same
     # polls. Revert: delete both lines + broker restart.
-    rrate-phase-sign: 1.0
-    rrate-phase-feed: true
+    # ⚠️ DISARMED 2026-08-18 13:1x -- THE PRE-REGISTERED FALSIFIER FIRED. gal_e5b q_med
+    # sat at 0.79-1.04 for the 2.5 h since this arming (10:27) against its own 1.7-2.1
+    # overnight range, while all four controls -- including gal_e5a, the band sibling on
+    # THE SAME satellites, which has run this same feed harmlessly since 08-13 -- returned
+    # to their normal ranges in the same polls. Disarm first, reason second
+    # (fixtures/expectations_20260818_deploy_lock_and_e5b_fine.txt).
+    # ⚠️ THE MECHANISM IS NOT OBVIOUS AND THAT IS THE FINDING: with rrate-command off and
+    # carrier-gain 0.0 this feed should be tracking-inert (it writes only joint
+    # rrate/f_carrier rows), and gal_e5a proves the feed CAN be inert. Either an
+    # undocumented consumption path is live on THIS chain, or the e5b step-pair sign is
+    # wrong in a way that matters to something real, or the q drop shares a root with #86
+    # (the same restart armed both). Judge after the post-disarm restart: e5b q back in
+    # its 1.7-2.1 band => the feed did it, find the path before re-arming; still low =>
+    # the feed was innocent and this comment gets a retraction.
+    # rrate-phase-sign: 1.0
+    # rrate-phase-feed: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
     # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
     # same PRN, same instant, both bands, across the 20:32Z arming of gal_e5a:
