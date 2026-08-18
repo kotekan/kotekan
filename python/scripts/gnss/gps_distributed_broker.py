@@ -1150,6 +1150,24 @@ def main(argv=None, rx=None, publisher=None):
                          "The feed inflates this by the command's motion over the span: "
                          "sigma_eff = sqrt(sigma^2 + (0.5*dcmd)^2), the worst-case "
                          "span-mean reference error for an unknown application time.")
+    ap.add_argument("--rr-bsat-chips-per-m", type=float, default=0.0,
+                    help="#33 gap 3, THE CARRIER-AIDED CODE LOOP: couple the joint "
+                         "state's per-sat range-rate rows into its code-bias rows, "
+                         "d(b_sat)/dt = this * rrate (chips per m/s). 0.0 (default) is "
+                         "the uncoupled filter, F identity -- state_filter.py implements "
+                         "the link and demands the SIGN be measured on sky before arming "
+                         "(|value| = f_chip/c = 0.03412 on the 10.23 Mcps bands). "
+                         "MEASURED 2026-08-18 03:00 on 4 h of sky: with the fold-fed "
+                         "(Hz-class) rrate feed, d(b_sat)/dt vs rrate regresses to "
+                         "+0.00017 chips per m/s, rho +0.07 -- 200x below physics, i.e. "
+                         "that feed carries no code-predictive information and arming on "
+                         "it would inject noise-driven drift into b_sat at up to "
+                         "~4 chips/min. DO NOT ARM until --rrate-phase-feed (mHz class) "
+                         "is live and the regression is re-run with a measurable input. "
+                         "⚠️ The joint state is ONE object per receiver, created by "
+                         "whichever chain touches it first: arm in the COMMON yaml "
+                         "section, never per-chain, or the value silently depends on "
+                         "thread startup order (the _joint_state near-miss class).")
     ap.add_argument("--rrate-coarse-deweight", type=float, default=8.0,
                     help="THE FLL->PLL HANDOFF. While a satellite holds a fresh fine lock "
                          "(see --rrate-fine-hold-s), its COARSE measurements enter at "
@@ -5998,6 +6016,14 @@ def main(argv=None, rx=None, publisher=None):
                         # the filter once it is running. #28's lesson, applied one filter on.
                         _js = rx.joint_receiver(band_id, CODE_LEN,
                                                 clk0=float(dr_state.get("clk") or 0.0))
+                        # #33 gap 3: refresh the coupling constant on the SHARED object
+                        # every cycle rather than only at construction -- any consumer
+                        # site can be the creator (thread startup order), and a kwarg
+                        # passed only here would silently lose that race. Idempotent:
+                        # the flag lives in the common yaml section, same value from
+                        # every chain. A change of value is logged by the filter's own
+                        # F-matrix taking effect (0.0 = identity, no code path change).
+                        _js.rr_bsat_chips_per_m = float(args.rr_bsat_chips_per_m)
                         # SNR GATE, caller-side. The broker's own comment 60 lines up
                         # measures it: below --period-check-snr a detection's phase is
                         # noise, "~2000-chip within-period residuals against a few chips
@@ -6113,6 +6139,7 @@ def main(argv=None, rx=None, publisher=None):
                     try:
                         _js = rx.joint_receiver(band_id, CODE_LEN,   # warm start, see above
                                                 clk0=float(dr_state.get("clk") or 0.0))
+                        _js.rr_bsat_chips_per_m = float(args.rr_bsat_chips_per_m)  # see 3a
                         _h1 = int(round(t_now_abs * args.hops_per_sec))
                         _th = _h1 / args.hops_per_sec
                         _mm = []
