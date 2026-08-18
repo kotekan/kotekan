@@ -43,10 +43,6 @@
 #include <utility>
 #include <vector>
 
-// Lets the tests below catch FATAL_ERROR_NON_OO exceptions, which call
-// exit_kotekan and raise SIGTERM before throwing FatalError.
-static kotekan_test_logging::SigtermGuard g_sigterm_guard;
-
 using std::string;
 
 using HighFive::File;

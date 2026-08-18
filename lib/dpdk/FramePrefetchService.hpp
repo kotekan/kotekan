@@ -273,7 +273,7 @@ void FramePrefetchService::prefetcher_loop() {
                 metadata->set_stream_ids(stream_ids_vec);
 
 
-#ifdef DEBUG
+#ifdef DEBUGGING
                 // Print a list of the frequency IDs corresponding to the expected stream IDs
                 std::string freq_id_list;
                 for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream();
