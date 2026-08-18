@@ -145,6 +145,34 @@ common:
   # chain. ⚠️ Needs a NODE RESTART to take effect (sudo -- KV's), and that same restart also
   # deploys the DPDK resync fleet-wide, since the binary is ahead of every running node.
   n2-send: false
+
+  # ── #8: THE RF-PATH MONITOR (2026-08-18) ────────────────────────────────────────────────
+  # Flip to `true` to serve 4+4b clip fraction and per-channel band power from each GPU's
+  # search tap, at <node>:12049/gnss{0,1}_srch_tap/rf_stats.
+  #
+  # WHY IT EXISTS. Amplitudes swing 5-10x per hour across the whole fleet, on flipped and
+  # unflipped satellites together (#56). The root is upstream of tracking AND of the combine,
+  # and nothing in this pipeline measures whether the quantiser is railing or how power sits
+  # across the band -- so the swing that keeps confounding our A/Bs is the one thing we cannot
+  # see. It already cost a false alarm about THE FLIP, cleared only by pairing in time.
+  #
+  # WHAT MAKES IT DIAGNOSTIC: the channel list is the UNION of every chain's covering
+  # channels on that GPU, so both lobes are watched in the SAME sample -- 14 local channels
+  # on cx19/gnss0, 277-283 (1176.45 MHz) and 287-293 (1207.14 MHz). The 08-18 event was
+  # +16 dB on 1176 with 1207 flat; one band alone cannot tell an external source from the
+  # sky or the gain moving.
+  #
+  # COST, MEASURED at production shape (8192 hops x 384 chan x 128 elem, 14 channels, stride
+  # 32) rather than estimated: 1.0-1.2 ms per pass = ~0.01% duty at the 10 s period. The pass
+  # reads the frame IN PLACE. Copying it out first -- the obvious "grab it and release" shape
+  # -- would cost ~40 ms of DRAM traffic for a 402 MB frame against a 41.94 ms frame period,
+  # so computing inline holds the frame for ~35x LESS time than copying it would.
+  #
+  # It also runs ABOVE the tap's drop check, so a backed-up GNSS branch does not blind the
+  # monitor -- which is when you most want it.
+  # ⚠️ Needs a NODE RESTART (sudo -- KV's). Off means the pass never runs, not that it runs
+  # and reports nothing: config/gates/rf_stats_gate.py's control arm checks exactly that.
+  rf-stats: false
   # PATH A OFF (task #26, 2026-08-09). The primary chain's path-A tracker is not
   # instantiated: the broker seeds gnss*_inject and reads gnss*_n2combine, validated on sky
   # before this landed (PRN 10 deep 88.9, same bias structure as path A, clk within 0.6

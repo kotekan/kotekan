@@ -158,6 +158,28 @@ def broker_chain_name(name):
     return "_".join(name.split("_")[:2]).lower()
 
 
+def rf_monitor_channels(cfg, node, gpu, args, primary_freq_ids, primary_local):
+    """Every channel any chain on THIS GPU covers, as LOCAL frame indices -- the RF watch list.
+
+    The union, not the primary's set. The instrument runs chains at 1176.45 and 1207.14 MHz,
+    and the one thing separating "an external source is up" from "the sky or the gain moved"
+    is whether the OTHER band moved with it. A single band cannot make that call, and the
+    2026-08-18 event is the case in point: +16 dB at 1176 with 1207 flat.
+
+    ⚠️ TWO AXES, AND THEY LOOK ALIKE. A chain's `chans` are GLOBAL freq_ids (5972..6228 here);
+    the tap indexes its frame by LOCAL comb position (0..num_local_freq). Unioning them raw
+    produced band_power_chans containing 5972 for a 384-channel frame -- caught only because
+    the stage bounds-checks at construction and would have refused to start. gpu_pairs_for()
+    is the conversion, and it also drops channels that live on the OTHER GPU, which a set
+    union would silently have kept. Never merge channel lists without checking the axis
+    (cf. the two hop axes: never difference ref_hops across writers without both).
+    """
+    idx = set(primary_local)
+    for ch in parse_extra_signals(cfg, args, node, list(primary_freq_ids)):
+        idx.update(i for _, i in gpu_pairs_for(cfg, node, gpu, ch["chans"]))
+    return sorted(idx)
+
+
 def parse_extra_signals(cfg, args, node, primary_chans):
     """--extra-signal NAME:PRNS -> chain dicts, with their covering channels resolved.
 
@@ -525,6 +547,22 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             "frame_elem_stride": "num_elements",
             "fft_length": cfg["fengine"]["fft_length"],
             "cpu_affinity": [core(gpu + 1)],
+            # ── #8: THE RF MONITOR RIDES THE SEARCH TAP ──────────────────────────────────
+            # Not a new stage, deliberately. This tap already IS the valve (it drops rather
+            # than blocks so the GNSS branch can never back-pressure the F-engine ingest),
+            # already holds the whole frame, and already decodes 4+4b for element_power. A
+            # second consumer on host_voltage_buffer would add another thing that must mark
+            # frames empty promptly -- another way to stall the science pipeline -- to read
+            # bytes this stage is holding anyway.
+            #
+            # THE CHANNEL SET IS THE UNION ACROSS CHAINS, which is the whole point: the
+            # chains span 1176.45 AND 1207.14 MHz, and a band-selective source is only
+            # diagnosable against a band that is quiet in the SAME sample. The search tap's
+            # own chan_ids are the primary's covering set alone and would see one band.
+            **({"band_power_chans": rf_monitor_channels(cfg, node, gpu, args, freq_ids,
+                                                        chan_idx),
+                "band_power_period_s": args.rf_stats_period_s,
+                "band_power_hop_stride": args.rf_stats_hop_stride} if args.rf_stats else {}),
         },
         f"{pre}srch_send": {
             "kotekan_stage": "bufferSend",
@@ -1890,6 +1928,34 @@ def main():
                          "built. config/gnss/gnss_chain.j2 renders the stage graph from "
                          "it, and chord_pathfinder.j2 includes that. Emitting is "
                          "side-effect-free: the YAML this run writes is unchanged.")
+    ap.add_argument("--rf-stats", action="store_true",
+                    help="ARM THE RF-PATH MONITOR on each GPU's search tap (task #8): 4+4b clip "
+                         "fraction and per-channel band power, sampled at --rf-stats-period-s. "
+                         "OFF by default and OFF means the pass never runs -- the stage reports "
+                         "enabled=false at <tap>/rf_stats rather than serving zeros.\n"
+                         "\n"
+                         "WHY WE ARE BLIND WITHOUT IT. Fleet-wide amplitudes swing 5-10x per "
+                         "hour on flipped and unflipped satellites together (#56), the root is "
+                         "upstream of tracking AND of the combine, and nothing in this pipeline "
+                         "measures whether the quantiser is railing or how power is distributed "
+                         "across the band. The 2026-08-18 event settled that the source is real "
+                         "and BAND-SELECTIVE (+16 dB at 1176 only), which is exactly what a "
+                         "per-channel series shows and a scalar cannot.\n"
+                         "\n"
+                         "The channel set is the UNION of every chain's covering channels on "
+                         "this node, so both the 1176.45 and 1207.14 MHz lobes are watched: a "
+                         "band-selective source is only diagnosable against a band that is "
+                         "quiet at the same instant. Cost measured at production shape (8192 "
+                         "hops x 384 chan x 128 elem, 14 channels, stride 32): 1.0-1.2 ms per "
+                         "pass, i.e. ~0.01%% duty at the 10 s default.")
+    ap.add_argument("--rf-stats-period-s", type=float, default=10.0,
+                    help="Seconds between RF-monitor passes (default 10). The pass reads the "
+                         "frame IN PLACE -- it does not copy it -- so this bounds a ~1 ms cost, "
+                         "not a 402 MB memcpy.")
+    ap.add_argument("--rf-stats-hop-stride", type=int, default=32,
+                    help="Sample every Nth hop within an RF-monitor pass (default 32, matching "
+                         "the element_power sampler). 256 of 8192 hops is still 32768 samples "
+                         "per channel-element pair -- far more than clip fraction needs.")
     ap.add_argument("--n2-send", action="store_true",
                     help="SHIP THE N^2 VISIBILITIES to the standard downstream consumer, i.e. "
                          "run stock-equivalent on the science pipeline. Keeps the four "
