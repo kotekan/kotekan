@@ -7,7 +7,7 @@
       "http_port": 8080,
       "ws_port": 8539,
       "kotekan_port": 2056,
-      "sum_freq": 4,
+      "sum_freq": 8,
       "power_dtype": "uint32"
     },
     {
@@ -16,7 +16,7 @@
       "http_port": 8081,
       "ws_port": 8540,
       "kotekan_port": 2057,
-      "sum_freq": 4,
+      "sum_freq": 8,
       "power_dtype": "uint32"
     },
     {
@@ -25,7 +25,7 @@
       "http_port": 8082,
       "ws_port": 8541,
       "kotekan_port": 2058,
-      "sum_freq": 24,
+      "sum_freq": 48,
       "power_dtype": "uint32"
     }
   ]

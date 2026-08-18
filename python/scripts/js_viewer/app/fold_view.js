@@ -116,12 +116,17 @@ export class FoldView {
         if (this._ph) { this._ph.remove(); this._ph = null; }
         this._last = fold;
         this._last_render = Date.now();
-        this._draw_profile(fold);
-        this._draw_heatmaps(fold);
+        // Per-pol median (if median-subtract on) computed once here and shared
+        // by the profile and heatmap draws, rather than twice each.
+        const {nphase, nfreq, nvis, pols} = this._split(fold);
+        const meds = this.state.median_subtract
+            ? pols.map((row) => this._pol_medians(row, nphase, nfreq)) : null;
+        this._draw_profile(fold, meds);
+        this._draw_heatmaps(fold, meds);
     }
 
     // Per-pol profile: nanmean over freq -> dB, drawn as a line with a light grid.
-    _draw_profile(fold) {
+    _draw_profile(fold, meds) {
         const {nphase, nfreq, nvis, pols} = this._split(fold);
         const cv = this.prof_canvas[0];
         const W = cv.clientWidth || 400, H = cv.clientHeight || 150;
@@ -131,12 +136,11 @@ export class FoldView {
 
         // profiles[p][ph] = mean over freq of the (optionally median-subtracted)
         // per-channel dB -- i.e. the mean of what the heatmap shows.
-        const median_on = !!this.state.median_subtract;
         const profiles = [];
         let lo = Infinity, hi = -Infinity;
         for (let p = 0; p < nvis; p++) {
             const row = pols[p];
-            const med = median_on ? this._pol_medians(row, nphase, nfreq) : null;
+            const med = meds ? meds[p] : null;
             const prof = new Float32Array(nphase);
             for (let ph = 0; ph < nphase; ph++) {
                 let sum = 0, n = 0;
@@ -198,10 +202,9 @@ export class FoldView {
 
     // Per-pol phase-frequency heatmap: x = freq (ascending), y = phase (0 top).
     // Respects the median-subtract toggle (per-channel median over phase).
-    _draw_heatmaps(fold) {
+    _draw_heatmaps(fold, meds) {
         const {nphase, nfreq, nvis, pols} = this._split(fold);
         const cb = this.cb;
-        const median_on = !!this.state.median_subtract;
         for (let p = 0; p < nvis && p < this.hm_canvases.length; p++) {
             const cv = this.hm_canvases[p][0];
             cv.width = nfreq; cv.height = nphase;
@@ -209,7 +212,7 @@ export class FoldView {
             g.imageSmoothingEnabled = false;
             const img = g.createImageData(nfreq, nphase);
             const row = pols[p];
-            const med = median_on ? this._pol_medians(row, nphase, nfreq) : null;
+            const med = meds ? meds[p] : null;
             for (let ph = 0; ph < nphase; ph++) {
                 const base = ph * nfreq;
                 for (let f = 0; f < nfreq; f++) {
