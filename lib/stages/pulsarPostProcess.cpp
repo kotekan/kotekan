@@ -198,8 +198,8 @@ void pulsarPostProcess::main_thread() {
         for (unsigned int f = 1; f < _num_freqs_per_gpu; f++)
             thread_ids[f] = thread_ids[0];
 
-#if 0   // station id is strange since more than one F-engine would have contributed anyway, so for
-        // now, just make up something
+#if 0 // station id is strange since more than one F-engine would have contributed anyway, so for
+      // now, just make up something
         ice_stream_id_t stream_id = ice_extract_stream_id_t(get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_stream_id());
         psr_header.station_id =
             (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32);
