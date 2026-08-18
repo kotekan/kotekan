@@ -1773,6 +1773,14 @@ def main():
                          "seeds predict the wrong code phase, and every PRN despreads noise "
                          "while looking like a clock or geometry bug.")
     ap.add_argument("--prns", type=int, nargs="*", default=list(range(1, 33)))
+    ap.add_argument("--dpdk-resync-max-advances", type=int, default=None,
+                    help="Inject dpdk.resync_max_advances into the captured base's dpdk block: "
+                         "how many frames a capture worker may advance in one go when the "
+                         "stream has run PAST its active window. The base is captured from a "
+                         "live node and is not edited in place, so fleet policy like this is "
+                         "INJECTED here and declared in the manifest. 0/omitted keeps the "
+                         "historical behaviour (drop and stay put), which is self-latching: a "
+                         "sub-frame hiccup stalled cx19 twice in ~30 h, once for 25 h.")
     ap.add_argument("--extra-signal", action="append", default=[], metavar="NAME:PRNS",
                     help="add a SECOND tracker chain for another signal, e.g. "
                          "--extra-signal GAL_E5A_Q_CS:1,2,3. Repeatable. PRNs are REQUIRED "
@@ -2354,6 +2362,12 @@ def main():
             if key == "dpdk" or key.startswith("transpose_voltage"):
                 del out[key]
                 dropped.append(key)
+
+    # FLEET POLICY INTO THE CAPTURED BASE: the dpdk block comes from the live capture and is
+    # never hand-edited (a hand-edit is exactly what node_up.sh's manifest check catches), so
+    # anything we want true fleet-wide is injected here and declared in the manifest.
+    if args.dpdk_resync_max_advances is not None and isinstance(out.get("dpdk"), dict):
+        out["dpdk"]["resync_max_advances"] = int(args.dpdk_resync_max_advances)
 
     # --- metadata pool for the GNSS chain -----------------------------------------------------
     out["gnss_pool"] = {"kotekan_metadata_pool": "GnssChanMetadata",

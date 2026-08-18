@@ -15,7 +15,7 @@
 #       GAL_E5B_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
 #       BDS_B2B_I:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
-#       --search-port-base 11040
+#       --search-port-base 11040 --dpdk-resync-max-advances 8
 # Prefer `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml`, which holds the
 # whole fleet's flags in one versioned file and can --check them against these.
 # Edit config/chord_gnss_node.yaml and regenerate instead of hand-editing here.
@@ -80,17 +80,6 @@ cpu_affinity:
 - 14
 - 15
 dpdk:
-  # AHEAD-RESYNC (2026-08-18, 478797a84). Set at the dpdk: level so all four capture
-  # workers inherit it. When the stream runs PAST the active frame window, walk the
-  # window forward (bounded) instead of dropping forever. Without this a sub-frame
-  # hiccup is permanent: measured twice in ~30 h on this node -- gnss1 port 1 stalled
-  # 25 h from a 5472-sample overshoot, then gnss0 port 0 stalled the same way after the
-  # recovery restart, freezing the broker's whole time base and taking every
-  # clock-adopting chain down with it.
-  # 8 frames is a deliberately small bound: packets arrive at ~195k/s, so even one
-  # advance per packet closes a gap almost instantly, and a small cap keeps a wild
-  # sequence number from spinning the prefetch ring.
-  resync_max_advances: 8
   burst_size: 32
   handlers:
   - dpdk_handler: crs16BoardDistributor
@@ -125,6 +114,7 @@ dpdk:
   - '0000:37:00.1'
   - 0000:b5:00.0
   - 0000:b5:00.1
+  resync_max_advances: 8
   rx_ring_size: 4096
   worker_ring_map:
   - name: worker_ring_0

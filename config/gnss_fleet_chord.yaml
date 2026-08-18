@@ -254,7 +254,15 @@ nodes:
   # stages that did not exist on those two nodes, and fleet_coherent skips an unreachable
   # instance without failing. scripts/gnss/check_chain_endpoints.py now catches that class,
   # but not having the asymmetry at all is better than catching it.
-  cx19: {search-port-base: 11040}
+  # AHEAD-RESYNC canary (2026-08-18). cx19 ONLY for now: the capture window's advance is
+  # reachable only from the in-range path, so once the stream runs past it nothing brings it
+  # back -- this node stalled twice in ~30 h (gnss1/port 1 for 25 h from a 5472-sample
+  # overshoot; then gnss0/port 0 after the recovery restart, which froze the broker's whole
+  # time base and took every clock-adopting chain down). 8 is a small bound: at ~195k pkt/s
+  # even one advance per packet closes a gap at once. Watch the RESYNC lines in the node log
+  # -- a rising count is a REAL upstream fault that we now survive rather than die from.
+  # Widen to the rest of the fleet only after this node has run clean.
+  cx19: {search-port-base: 11040, dpdk-resync-max-advances: 8}
   cx27: {search-port-base: 11042}
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
