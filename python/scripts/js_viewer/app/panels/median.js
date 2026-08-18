@@ -39,6 +39,7 @@ export class MedianSubtractPanel {
             // with a much smaller spread than the raw bandpass.
             self.state.request_color_fit = true;
             self.bus.emit("state:redraw_requested");
+            self.bus.emit("state:display_changed");
         });
 
         $("<div/>")

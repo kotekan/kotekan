@@ -127,6 +127,7 @@ export class ColorPanel {
                 cb.max = self._raw_to_db(ui.values[1]);
                 self._update_labels();
                 self.bus.emit("state:redraw_requested");
+                self.bus.emit("state:display_changed");
             },
         });
 
@@ -189,6 +190,7 @@ export class ColorPanel {
         if (this._cbslider) this._cbslider.slider("values", this._db_to_raw(lo, hi));
         this._update_labels();
         this.bus.emit("state:redraw_requested");
+        this.bus.emit("state:display_changed");
     }
 
     _change_palette(name) {
@@ -198,5 +200,6 @@ export class ColorPanel {
             this._cb_bar.css("background", cb.cssGradString(cb.colormaps[name]));
         }
         this.bus.emit("state:redraw_requested");
+        this.bus.emit("state:display_changed");
     }
 }

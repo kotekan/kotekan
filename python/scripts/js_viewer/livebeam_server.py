@@ -569,8 +569,13 @@ class KotekanPowerStream:
         if self.sum_freq > 1:
             s = s.reshape(self.frame_nvis, self.pulsefold.nphase,
                           self.send_nfreq, self.sum_freq)
+            # Match display_spectrum, which SUMS adjacent channels -- otherwise
+            # the fold reads sum_freq x (e.g. 9 dB) below the waterfall and rails
+            # against the shared, waterfall-fit colour bar. nanmean * sum_freq
+            # gives the summed level while tolerating empty (NaN) phase bins
+            # (all-NaN group -> NaN; a partly-filled group is extrapolated).
             with np.errstate(invalid="ignore"):
-                s = np.nanmean(s, axis=3)
+                s = np.nanmean(s, axis=3) * self.sum_freq
         if self._flip_freq:
             s = s[:, :, ::-1]
         return np.ascontiguousarray(s, dtype=np.float32)
