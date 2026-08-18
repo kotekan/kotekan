@@ -144,7 +144,13 @@ common:
   # stays true, so an absent or slow receiver degrades rather than backpressuring the GPU
   # chain. ⚠️ Needs a NODE RESTART to take effect (sudo -- KV's), and that same restart also
   # deploys the DPDK resync fleet-wide, since the binary is ahead of every running node.
-  n2-send: false
+  #
+  # ✅ ARMED 2026-08-18 (KV): bring up N^2 alongside GNSS. Our frames now land beside
+  # choco's at 10.222.0.51 (11025 subset / 11027 full). Everything upstream was already
+  # stock-equivalent and measured so -- this flag only adds the four bufferSend legs the
+  # stock config has and we did not, so what changes is the LAST HOP, not the science.
+  # Revert = set false, regenerate, restart.
+  n2-send: true
 
   # ── #8: THE RF-PATH MONITOR (2026-08-18) ────────────────────────────────────────────────
   # Flip to `true` to serve 4+4b clip fraction and per-channel band power from each GPU's
