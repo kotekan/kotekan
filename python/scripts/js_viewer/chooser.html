@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARO viewer - source chooser</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px;
+         background: #f5f6f8; color: #1b1f24; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14171a; color: #e6e6e6; }
+    .card { background: #1e2226 !important; border-color: #333 !important; }
+    .sub { color: #9aa4ad !important; }
+    a.open { background: #2a2f34 !important; color: #e6e6e6 !important; border-color:#3a4046 !important;}
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .hint { color: #6a737d; font-size: 13px; margin: 0 0 20px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .card { background: #fff; border: 1px solid #dfe3e8; border-radius: 8px;
+          padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 9px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto;
+         background: #c0c6cc; box-shadow: 0 0 3px rgba(0,0,0,.3); }
+  .dot.live { background: #23a559; }
+  .dot.off  { background: #c94f4f; }
+  .name { font-weight: 650; font-size: 16px; }
+  .sub { color: #6a737d; font-size: 12.5px; }
+  .meta { font-size: 12.5px; line-height: 1.5; min-height: 2.6em; }
+  .meta b { font-weight: 600; }
+  a.open { text-decoration: none; text-align: center; padding: 7px 10px;
+           border: 1px solid #cdd3d9; border-radius: 6px; background: #f0f2f4;
+           color: #1b1f24; font-size: 13.5px; }
+  a.open[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+  .status-word { font-size: 12px; margin-left: auto; }
+  .status-word.live { color: #23a559; } .status-word.off { color: #c94f4f; }
+</style>
+</head>
+<body>
+  <h1>ARO live viewer</h1>
+  <p class="hint">Pick the machine currently running kotekan. Green = streaming now.
+     Status refreshes every few seconds.</p>
+  <div id="grid" class="grid"></div>
+
+<script>
+const POLL_MS = 4000, TIMEOUT_MS = 2500;
+const host = location.hostname;           // LAN host, or localhost over an SSH tunnel
+const cards = new Map();
+
+function urlFor(s, path) { return `http://${host}:${s.http_port}${path}`; }
+
+function card(s) {
+  const el = document.createElement("div"); el.className = "card";
+  el.innerHTML = `
+    <div class="row">
+      <span class="dot" data-dot></span>
+      <span class="name">${s.name}</span>
+      <span class="status-word" data-word>checking...</span>
+    </div>
+    <div class="sub">${s.label || ""}</div>
+    <div class="meta" data-meta>&nbsp;</div>
+    <a class="open" data-open aria-disabled="true"
+       href="${urlFor(s, "/?ws=" + s.ws_port)}">Open viewer</a>`;
+  cards.set(s.name, {el, s,
+    dot: el.querySelector("[data-dot]"), word: el.querySelector("[data-word]"),
+    meta: el.querySelector("[data-meta]"), open: el.querySelector("[data-open]")});
+  return el;
+}
+
+function setLive(c, st) {
+  c.dot.className = "dot live"; c.word.className = "status-word live";
+  c.word.textContent = "live"; c.open.setAttribute("aria-disabled", "false");
+  const b = st.band_mhz, band = (b && b.length === 2)
+    ? `${(+b[0]).toFixed(0)}-${(+b[1]).toFixed(0)} MHz` : "?";
+  const cad = st.frame_period_s ? (st.frame_period_s * 1000).toFixed(0) + " ms" : "?";
+  c.meta.innerHTML =
+    `<b>${st.mode || "?"}</b> &middot; ${st.nfreq || "?"} ch &middot; ${band}<br>` +
+    `cadence ${cad} &middot; ${st.clients || 0} viewer(s)`;
+}
+function setOff(c) {
+  c.dot.className = "dot off"; c.word.className = "status-word off";
+  c.word.textContent = "offline"; c.open.setAttribute("aria-disabled", "true");
+  c.meta.innerHTML = "not streaming<br>(kotekan not connected to this source)";
+}
+
+async function poll(c) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(urlFor(c.s, "/status"), {cache: "no-store", signal: ctrl.signal});
+    setLive(c, await r.json());
+  } catch (e) { setOff(c); }
+  finally { clearTimeout(t); }
+}
+
+fetch("sources.json", {cache: "no-store"}).then(r => r.json()).then(cfg => {
+  const grid = document.getElementById("grid");
+  for (const s of cfg.sources) grid.appendChild(card(s));
+  const tick = () => cards.forEach(poll);
+  tick(); setInterval(tick, POLL_MS);
+}).catch(e => {
+  document.getElementById("grid").textContent = "Could not load sources.json: " + e;
+});
+</script>
+</body>
+</html>

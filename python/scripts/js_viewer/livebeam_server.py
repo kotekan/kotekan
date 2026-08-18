@@ -505,6 +505,9 @@ class KotekanPowerStream:
         except Exception as e:
             log_.warning("kotekan recv: %s", e)
             self.close()
+            if getattr(self, "exit_on_disconnect", False) and reactor.running:
+                log_.info("exit-on-disconnect: stopping so the supervisor re-accepts")
+                reactor.stop()
             return
 
         # At most one on_frame per tick, carrying the most recent finalized
@@ -625,6 +628,7 @@ def build_viewer_config(kotekan, args):
     return {
         "version": VIEWER_PROTOCOL_VERSION,
         "mode": mode,
+        "source": getattr(kotekan, "source_name", None),
         "nfreq": int(kotekan.send_nfreq),
         "nvis": int(kotekan.frame_nvis),
         "vis_labels": kotekan.vis_labels,
@@ -960,6 +964,39 @@ class ModeResource(resource.Resource):
         return json.dumps({"mode": self.kotekan.mode}).encode("utf-8")
 
 
+class StatusResource(resource.Resource):
+    """``GET /status`` -> JSON describing this source instance, for the
+    multi-source chooser page. CORS-open (`Access-Control-Allow-Origin: *`) so
+    a chooser served by one instance can poll all the others cross-origin.
+
+    Because the HTTP server only comes up once kotekan has connected, simply
+    *reaching* /status already means this source is live; the body adds the
+    detail (mode, channels, band, client count) the chooser shows."""
+
+    isLeaf = True
+
+    def __init__(self, kotekan, ws_factory, viewer_config):
+        resource.Resource.__init__(self)
+        self.kotekan = kotekan
+        self.ws_factory = ws_factory
+        self.viewer_config = viewer_config or {}
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Access-Control-Allow-Origin", [b"*"])
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        k, vc = self.kotekan, self.viewer_config
+        return json.dumps({
+            "source": getattr(k, "source_name", None),
+            "connected": bool(getattr(k, "connected", False)),
+            "mode": getattr(k, "mode", None),
+            "nfreq": vc.get("nfreq"),
+            "nvis": vc.get("nvis"),
+            "band_mhz": (vc.get("ui") or {}).get("freq_range_mhz"),
+            "frame_period_s": vc.get("frame_period_s"),
+            "clients": len(self.ws_factory.clients),
+        }).encode("utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Bridge kotekan networkPowerStream to a browser viewer."
@@ -974,6 +1011,20 @@ def main():
         default=23401,
         type=int,
         help="TCP port for kotekan input (default 23401)",
+    )
+    ap.add_argument(
+        "--source-name",
+        default=None,
+        help="Human label for this source (e.g. 'squirrel'); shown in the "
+        "viewer title/metadata and reported at /status. Used by the multi-"
+        "source chooser (see ARO_OPERATIONS.md).",
+    )
+    ap.add_argument(
+        "--exit-on-disconnect",
+        action="store_true",
+        help="Exit when the kotekan connection drops (instead of idling), so a "
+        "supervisor (systemd Restart=always) respawns us and we re-accept. "
+        "Used for the always-on multi-source hub; leave off for one-shot runs.",
     )
     ap.add_argument(
         "--ws-port",
@@ -1082,6 +1133,8 @@ def main():
         power_dtype=args.power_dtype,
         sum_freq=args.sum_freq,
     )
+    kotekan.source_name = args.source_name
+    kotekan.exit_on_disconnect = args.exit_on_disconnect
     kotekan.start()  # blocks on accept until kotekan connects
 
     if kotekan.mode == "unknown":
@@ -1111,6 +1164,7 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
+    root.putChild(b"status", StatusResource(kotekan, ws_factory, viewer_config))
     reactor.listenTCP(args.http_port, server.Site(root))
 
     def _on_shutdown():

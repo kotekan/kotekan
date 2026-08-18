@@ -144,6 +144,43 @@ unit) stays on node 1.
 
 (`PORT` on node 1 is the `networkPowerStream` `destination_port`, e.g. 2056.)
 
+## Multi-source hub (several kotekan machines)
+
+Several machines can run kotekan (squirrel, cloyd, gidney) with very different
+bands (gidney: 300-1500 MHz, 6144 ch vs squirrel/cloyd: 400-800, 1024). Rather
+than multiplex them in one server, run **one livebeam per source** on the
+receiver box, each configured for its source, and pick between them with a
+chooser page. Independent processes = per-source config, isolation, and a
+clean re-init on switch (a fresh page load reshapes for each source's band).
+
+`sources.json` (in `js_viewer/`) is the single source of truth -- read by both
+the launcher and the chooser. One entry per machine; ports are on the receiver:
+
+```json
+{"sources": [
+  {"name":"squirrel","http_port":8080,"ws_port":8539,"kotekan_port":2056,"sum_freq":4,"power_dtype":"uint32"},
+  {"name":"cloyd",   "http_port":8081,"ws_port":8540,"kotekan_port":2057,"sum_freq":4,"power_dtype":"uint32"},
+  {"name":"gidney",  "http_port":8082,"ws_port":8541,"kotekan_port":2058,"sum_freq":24,"power_dtype":"uint32"}
+]}
+```
+
+Each machine's kotekan points its `networkPowerStream` at `receiver:<kotekan_port>`.
+On the receiver:
+
+```sh
+./run_hub.sh start      # one livebeam per source (auto-respawns; re-accepts)
+./run_hub.sh status     # which sources' loops are up
+./run_hub.sh stop
+```
+
+Then open the chooser: `http://<receiver>:8080/chooser.html`. It polls each
+instance's `/status` and shows a green dot for whichever machine is streaming;
+clicking opens that source's viewer (with the right `?ws=` port). Because each
+instance runs `--exit-on-disconnect` under a respawn loop, it drops when its
+kotekan stops and re-accepts when it returns -- the chooser dot and the browser
+both follow automatically. Note an instance only serves HTTP while its kotekan
+is connected, so "offline" on the chooser == "that source isn't streaming."
+
 ## Where things live
 
 - **Repo (`kv/aro`)**, `python/scripts/js_viewer/`: `livebeam_server.py`, `app/`,

@@ -50,6 +50,7 @@ export class MetadataPanel {
             $("<span/>").text(value).appendTo(grid);
         };
 
+        if (m.source) row("Source", m.source);
         if (m.mode) row("Mode", m.mode + (m.vis_labels ? ` (${m.vis_labels.join("/")})` : ""));
         if (m.band) row("Band", `${m.band[0].toFixed(1)}–${m.band[1].toFixed(1)} MHz`);
         if (m.nchan) {

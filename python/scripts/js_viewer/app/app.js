@@ -396,9 +396,11 @@ export class App {
             .css({flex: "1 1 0", "min-width": "0"}).appendTo("#control_card");
         const btn_mount = $("<div/>").uniqueId()
             .css({flex: "0 0 auto"}).appendTo("#control_card");
+        if (cfg.source) document.title = "ARO viewer — " + cfg.source;
         this.panels.push(new MetadataPanel({
             app: this, target: meta_mount.attr("id"),
             meta: {
+                source: cfg.source,
                 mode: cfg_mode,
                 vis_labels: this.state.vis_labels,
                 band,

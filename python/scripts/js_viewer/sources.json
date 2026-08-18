@@ -1,0 +1,32 @@
+{
+  "_comment": "Master source table for the multi-source hub (Option A). Read by run_hub.sh to launch one livebeam_server per source, and by chooser.html to build the picker. One entry per machine that can run kotekan; ports are on the RECEIVER box (all instances run there). kotekan_port must match each machine's networkPowerStream destination_port.",
+  "sources": [
+    {
+      "name": "squirrel",
+      "label": "Squirrel - 400-800 MHz, 1024 ch",
+      "http_port": 8080,
+      "ws_port": 8539,
+      "kotekan_port": 2056,
+      "sum_freq": 4,
+      "power_dtype": "uint32"
+    },
+    {
+      "name": "cloyd",
+      "label": "Cloyd - 400-800 MHz, 1024 ch",
+      "http_port": 8081,
+      "ws_port": 8540,
+      "kotekan_port": 2057,
+      "sum_freq": 4,
+      "power_dtype": "uint32"
+    },
+    {
+      "name": "gidney",
+      "label": "Gidney - 300-1500 MHz, 6144 ch",
+      "http_port": 8082,
+      "ws_port": 8541,
+      "kotekan_port": 2058,
+      "sum_freq": 24,
+      "power_dtype": "uint32"
+    }
+  ]
+}
