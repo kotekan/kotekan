@@ -1113,6 +1113,21 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
     # (the same restart armed both). Judge after the post-disarm restart: e5b q back in
     # its 1.7-2.1 band => the feed did it, find the path before re-arming; still low =>
     # the feed was innocent and this comment gets a retraction.
+    # ✅ RETRACTION, 13:45: THE FEED IS EXONERATED. 35 min disarmed (restart 13:09:47):
+    # gal_e5b q_med 1.09 / duty 0.19 -- IDENTICAL to armed (1.09/0.20). The disarm changed
+    # nothing, so the fine feed did not cause the drop, and its inertness argument (nothing
+    # commands rrate/f_carrier) stands. Re-arm freely when the coupling work resumes; left
+    # off here only to keep ONE variable while the real e5b regression below is open.
+    # ⚠️ BUT THE REGRESSION IS REAL AND IS NOT THE SKY (see #87): same-time-of-day control
+    # from 08-17 12:00-14:00 has gal_e5b at q_med 2.09 / duty 0.43 where today reads
+    # 1.09/0.19, while every other chain matches yesterday within noise (gps_l5 3.15/3.10,
+    # gal_e5a 2.99/2.88, bds_b2b 1.64/1.89). Same 9 satellites as gal_e5a, comparable
+    # C/N0 maxima (40 vs 41 dB-Hz) -- so it is the CODE LOOP on this chain, not the signal.
+    # Onset is bracketed to 10:00-10:45, which contains both the RFI event and the 10:27
+    # restart. Leading suspect: railed C++ TrimState on this chain, which survives broker
+    # restarts (only a NODE restart or a re-anchor clears it) -- consistent with the large
+    # one-signed discs seen here (PRN 23 -0.889, PRN 26 +0.484). Cheap test: KV's next node
+    # restart, which is coming anyway for --n2-send.
     # rrate-phase-sign: 1.0
     # rrate-phase-feed: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
