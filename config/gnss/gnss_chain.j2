@@ -57,8 +57,8 @@
     n_channels: {{ c.channel_ids | length }}
     prns: {{ c.prns }}
     f_offset_hz: {{ c.f_offset_hz }}
-    frame0_utc: {{ gnss.frame0_utc }}
-    sample_rate: {{ gnss.sample_rate_hz }}
+{% if gnss.frame0_utc is defined %}    frame0_utc: {{ gnss.frame0_utc }}
+{% endif %}    sample_rate: {{ gnss.sample_rate_hz }}
     fft_length: {{ gnss.fft_len }}
     hops_per_record: {{ gnss.hops_per_record }}
     n_elements: 1

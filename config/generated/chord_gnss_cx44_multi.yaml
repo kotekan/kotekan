@@ -322,7 +322,6 @@ gnss0_b2a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss0_b2a_n2ctl
     gnss_local_channels: &id003
     - 278
@@ -534,7 +533,6 @@ gnss0_b2b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss0_b2b_n2ctl
     gnss_local_channels: &id006
     - 287
@@ -760,7 +758,6 @@ gnss0_e5a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss0_e5a_n2ctl
     gnss_local_channels: &id009
     - 278
@@ -980,7 +977,6 @@ gnss0_e5b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss0_e5b_n2ctl
     gnss_local_channels: &id012
     - 287
@@ -1201,7 +1197,6 @@ gnss0_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss0_n2ctl
     gnss_local_channels: &id015
     - 278
@@ -1423,7 +1418,6 @@ gnss1_b2a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss1_b2a_n2ctl
     gnss_local_channels: &id017
     - 277
@@ -1612,7 +1606,6 @@ gnss1_b2b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss1_b2b_n2ctl
     gnss_local_channels: &id019
     - 287
@@ -1805,7 +1798,6 @@ gnss1_e5a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss1_e5a_n2ctl
     gnss_local_channels: &id021
     - 277
@@ -1994,7 +1986,6 @@ gnss1_e5b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss1_e5b_n2ctl
     gnss_local_channels: &id023
     - 287
@@ -2182,7 +2173,6 @@ gnss1_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
-    frame0_utc: 1787077842.0000029
     gnss_ctl_name: gnss1_n2ctl
     gnss_local_channels: &id025
     - 277

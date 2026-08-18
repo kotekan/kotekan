@@ -101,7 +101,8 @@ def extract(cfg, node):
                              cfg[pre0 + "telem_pack"], cfg[pre0 + "n2sink"])
     g = {
         "node": node,
-        "frame0_utc": repr(inj0["frame0_utc"]),
+        # Only when pinned -- the epoch normally comes from the telescope at runtime.
+        **({"frame0_utc": repr(inj0["frame0_utc"])} if "frame0_utc" in inj0 else {}),
         "sample_rate_hz": repr(inj0["sample_rate"]),
         "sample_rate_mhz": asm0["sample_rate"],
         "fft_len": inj0["fft_length"], "hops_per_record": inj0["hops_per_record"],

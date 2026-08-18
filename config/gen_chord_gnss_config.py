@@ -471,7 +471,8 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  # those keys were being written into a stage that ignores them (2026-08-04).
                  # GPS-disciplined UTC of absolute sample 0 -- without it the assembler
                  # stamps records with HOST wall clock (see cudaGnssChordTrack.cpp).
-                 "frame0_utc": float(cfg["fengine"].get("frame0_utc", 0.0))},
+                 **({"frame0_utc": float(cfg["fengine"]["frame0_utc"])}
+                    if cfg["fengine"].get("frame0_utc") else {})},
                 {"name": "cudaSyncOutput"},
                 {"name": "cudaOutputData", "gpu_mem": f"{pre}epl",
                  "out_buf": "gnss_epl_out"},
@@ -807,7 +808,11 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
     asm0, cmb0 = out[pre0 + "n2assemble"], out[pre0 + "n2combine"]
     pk0, snk0 = out[pre0 + "telem_pack"], out[pre0 + "n2sink"]
     consts = [
-        ("node", node), ("frame0_utc", repr(inj0["frame0_utc"])),
+        ("node", node),
+        # Present ONLY when an operator pinned the epoch (see chord_gnss_node.yaml). The
+        # default path takes it from the telescope at runtime, so there is no var to carry
+        # and the template must not invent one.
+        *([("frame0_utc", repr(inj0["frame0_utc"]))] if "frame0_utc" in inj0 else []),
         # ONE sample rate, in Hz, from the F-engine block that every other site derives
         # it from -- not read back out of a stage this function just wrote.
         ("sample_rate_hz", repr(float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6)),
@@ -1049,7 +1054,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  # throughout -- because they are per-record and use no time base at all. Only
                  # the cross-record estimators (rate search, coherence_s, carrier fit) read
                  # UTC, which is exactly the set that failed.
-                 "frame0_utc": float(cfg["fengine"].get("frame0_utc", 0.0))},
+                 **({"frame0_utc": float(cfg["fengine"]["frame0_utc"])}
+                    if cfg["fengine"].get("frame0_utc") else {})},
                 {"name": "cudaCorrelatorDual",
                  # ONE VISIBILITY PER RECORD, not per frame. Measured 2026-08-06: with the
                  # frame-length window path B's amplitude was 0.55 of path A's, because the
@@ -2404,7 +2410,23 @@ def main():
     # it. Advisory when nothing answers (the F-engine and chive have both been down this week
     # and the generator must still work), hard error when something does -- a mismatch is
     # always a real staleness, never noise.
-    live_t0 = live_frame0_utc(cfg, args)
+    # ── THE EPOCH IS THE TELESCOPE'S UNLESS AN OPERATOR OVERRODE IT (2026-08-18) ────────
+    # cudaGnssChordTrack now takes frame0_utc from Telescope::to_time_ns(0) -- the live GPS
+    # time0 the process already fetches -- whenever the config does not carry one. So the
+    # DEFAULT path emits no frame0_utc at all and there is nothing left to go stale: the
+    # class of bug that bit on 2026-07-24 (13.78 days) and again tonight (9.165 days) is
+    # gone rather than guarded.
+    #
+    # The checks below therefore only apply when a value IS being emitted, i.e. when the
+    # node file still pins one or --frame0-nano was passed. Checking a value nobody uses
+    # would be theatre, and worse, it would fail a perfectly good generation whenever the
+    # F-engine moved -- which is exactly what blocked KV's restart tonight.
+    pinned = bool(cfg["fengine"].get("frame0_utc")) or bool(args.frame0_nano)
+    live_t0 = live_frame0_utc(cfg, args) if pinned else None
+    if not pinned:
+        print("  epoch     frame0_utc NOT emitted -- the stages take it from the telescope's "
+              "live GPS time0 (week-rollover corrected). Nothing to keep in step.",
+              file=sys.stderr)
     if live_t0 is not None:
         have = float(cfg["fengine"].get("frame0_utc", 0.0))
         if abs(have - live_t0) > 1e-3:
@@ -2415,7 +2437,9 @@ def main():
                 f"carry the wrong epoch and nothing downstream would say so.\n"
                 f"Fix it:  sed -i 's/^  frame0_utc: .*/  frame0_utc: {live_t0:.9f}/' "
                 f"{args.node_file}\n"
-                f"(or pass --frame0-nano to override both this and the telescope block.)")
+                f"(or pass --frame0-nano to override both this and the telescope block.)\n"
+                f"BETTER: DELETE frame0_utc from {args.node_file} entirely -- the stages now "
+                f"read the live telescope epoch and this whole class of staleness goes away.")
     elif not args.frame0_nano:
         # stderr for the same reason as the frame0-disagreement warning above: stdout IS the
         # config when --out is absent, and this fires whenever the fleet is mid-restart.

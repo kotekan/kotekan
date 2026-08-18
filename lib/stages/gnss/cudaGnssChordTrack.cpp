@@ -1,5 +1,7 @@
 #include "cudaGnssChordTrack.hpp"
 
+#include "Telescope.hpp" // for Telescope (the LIVE record epoch, not a config copy)
+
 #include <chrono>
 
 #include "cudaGnssChordDespread.hpp"
@@ -55,7 +57,64 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     trim_quality_min = config.get_default<double>(unique_name, "trim_quality_min", 2.2);
     trim_pow_alpha = config.get_default<double>(unique_name, "trim_pow_alpha", 0.05);
     trim_ref_elem = config.get_default<int>(unique_name, "trim_ref_elem", 0);
-    frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
+    // ── THE RECORD EPOCH COMES FROM THE TELESCOPE, NOT FROM THE CONFIG ──────────────────
+    // utc0 is the UTC of ABSOLUTE SAMPLE 0, and this process already knows it exactly:
+    // CHORDTelescope::to_time_ns(seq) = time0_ns + seq*dt_ns, where time0_ns is fetched
+    // live from the FPGA controller at startup (query_gps/require_gps) WITH the GPS
+    // week-rollover correction applied. to_time_ns(0) is therefore the same quantity the
+    // config's frame0_utc has been hand-carrying -- from a better source.
+    //
+    // ⚠️ WHY THIS CHANGED (2026-08-18). The config copy went stale twice: 13.78 days from
+    // 2026-07-24, and 9.165 days tonight when the F-engine restarted at 18:30 UTC during
+    // site work. Both times /telescope served the truth while every GNSS record would have
+    // been stamped days in the past, and nothing downstream could tell -- every
+    // cross-record estimator works in differences, so a uniformly-wrong epoch stays
+    // uniform. The generator grew a check against the running fleet to catch it; that
+    // check was a workaround for a duplicated source of truth, and this removes the
+    // duplication instead. A value the process can look up should never be pasted into a
+    // config.
+    //
+    // The config key SURVIVES as an explicit override, because --frame0-nano exists to
+    // start without chive's timing service and that path must keep working. Precedence:
+    // an explicitly-configured value wins (it is a deliberate operator act), otherwise the
+    // telescope, otherwise 0 -> the assembler's host-clock fallback and its loud warning.
+    const double cfg_frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
+    double tel_frame0_utc = 0.0;
+    {
+        const auto& tel = Telescope::instance();
+        if (tel.gps_time_enabled()) {
+            const int64_t t0 = tel.to_time_ns(0);
+            if (t0 > 0)
+                tel_frame0_utc = (double)t0 * 1e-9;
+        }
+    }
+    frame0_utc = cfg_frame0_utc > 0.0 ? cfg_frame0_utc : tel_frame0_utc;
+    if (tel_frame0_utc > 0.0 && cfg_frame0_utc > 0.0
+        && std::abs(cfg_frame0_utc - tel_frame0_utc) > 1e-3) {
+        // The generator refuses to EMIT a disagreeing config, but it can only check at
+        // generation time -- an F-engine restart after that is invisible to it and not to
+        // us. Do not silently prefer one: an operator who set frame0_utc meant it, and an
+        // operator who did not needs to know their file is stale.
+        WARN("cudaGnssChordTrack: frame0_utc CONFLICT -- config {:.9f}, telescope {:.9f} "
+             "({:.3f} days apart). USING THE CONFIG because an explicit value is an "
+             "operator decision, but this almost always means the F-engine restarted and "
+             "the config was not regenerated. Every record from this node is stamped "
+             "{:.3f} days off, and nothing downstream can see it. Clear frame0_utc from "
+             "the node file to follow the telescope.",
+             cfg_frame0_utc, tel_frame0_utc,
+             std::abs(cfg_frame0_utc - tel_frame0_utc) / 86400.0,
+             std::abs(cfg_frame0_utc - tel_frame0_utc) / 86400.0);
+    } else if (tel_frame0_utc > 0.0 && cfg_frame0_utc <= 0.0) {
+        INFO("cudaGnssChordTrack: record epoch from the TELESCOPE, frame0_utc {:.9f} "
+             "(live GPS time0, week-rollover corrected). No config value to go stale.",
+             frame0_utc);
+    } else if (tel_frame0_utc <= 0.0) {
+        WARN("cudaGnssChordTrack: the telescope has no GPS time0; record epoch falls back "
+             "to the config's frame0_utc {:.9f}. That value cannot self-correct across an "
+             "F-engine restart -- verify it against telescope/time0_ns before trusting any "
+             "absolute record time.",
+             frame0_utc);
+    }
     // 0 = never expire (the old latching behaviour). The broker re-seeds every --interval (2 s
     // live), so 60 s is ~30 refreshes of margin while still retiring a set satellite promptly.
     seed_ttl_s = config.get_default<double>(unique_name, "seed_ttl_s", 60.0);
