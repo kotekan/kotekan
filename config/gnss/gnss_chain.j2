@@ -188,3 +188,48 @@
 {{ pre }}_telem_buf:   {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: {{ gnss.telem_frames }}, frame_size: {{ c.sizes.telem }}}
 {% endfor %}
 {% endfor %}
+
+{#  ── THE PER-GPU SEARCH LEG ───────────────────────────────────────────────────────────
+    Not per-chain: ONE voltage tap per GPU feeds the acquisition search for every signal
+    on that GPU, which is why it sits outside the chain loop. It taps the voltage buffer
+    directly (in_buf host_voltage_buffer_<gpu>), so it survives whatever the tracker
+    chains do -- it is what detects GPS and therefore solves the clock for all five
+    chains (see the --no-path-a note in the generator).
+    ⚠️ n_elements: 1 -- the search runs on ONE element, not the array. The despread is the
+    thing that combines; a search over 32 elements would cost 32x for no acquisition gain.
+#}
+{% for g in gnss.gpus %}
+gnss{{ g.gpu }}_srch_tap:
+  kotekan_stage: GnssChordVoltageTap
+  cpu_affinity: [{{ g.search.tap_core }}]
+  in_buf: host_voltage_buffer_{{ g.gpu }}
+  out_buf: gnss{{ g.gpu }}_srch_buf
+  chan_ids: {{ g.search.chan_ids }}
+  n_elements: 1
+  element_offset: {{ g.search.element_offset }}
+  fft_length: {{ gnss.fft_len }}
+  frame_chan_stride: num_local_freq
+  frame_elem_stride: num_elements
+
+gnss{{ g.gpu }}_srch_buf:
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: {{ gnss.buffer_depth }}
+  frame_size: "samples_per_data_set * {{ g.search.chan_ids | length }} * 1"
+
+gnss{{ g.gpu }}_srch_send:
+  kotekan_stage: bufferSend
+  cpu_affinity: [{{ g.search.send_core }}]
+  buf: gnss{{ g.gpu }}_srch_buf
+  server_ip: {{ gnss.search_host }}
+  server_port: {{ gnss.search_port_base + g.gpu }}
+  drop_frames: true
+  reconnect_time: 5
+  send_timeout: 2
+  use_config_tracker: false
+{% endfor %}
+
+{#  The GNSS metadata pool: one for the whole node, sized by the generator. #}
+gnss_pool:
+  kotekan_metadata_pool: GnssChanMetadata
+  num_metadata_objects: {{ gnss.pool_objects }}

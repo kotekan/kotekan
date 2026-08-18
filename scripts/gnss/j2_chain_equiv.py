@@ -37,7 +37,18 @@ GNSS_DIR = os.path.join(ROOT, "config", "gnss")
 SUFFIXES = ("n2dual", "n2assemble_tiles", "n2assemble", "n2combine", "n2sink",
             "telem_pack", "telem_send", "n2ctl_buf", "n2tiles_buf", "n2epl_buf",
             "n2rec_buf", "n2cmb_buf", "telem_buf")
-CHAIN_RE = re.compile(r"^gnss([01])_(e5a|e5b|b2a|b2b)_(.+)$")
+# The PRIMARY chain carries no tag -- gnss0_n2combine rather than gnss0_e5a_n2combine --
+# and is otherwise structurally IDENTICAL to a tagged one (verified field by field: same
+# keys, same command list, differing only in signal and data). So it is not a special
+# case, it is a chain whose tag is the empty string, and the same loop body renders it.
+CHAIN_RE = re.compile(r"^gnss([01])_(e5a_|e5b_|b2a_|b2b_)?(.+)$")
+# Per-GPU, NOT per-chain: one voltage tap per GPU feeds acquisition for every signal on it.
+SEARCH_SUFFIXES = ("srch_tap", "srch_buf", "srch_send")
+# ⚠️ ORPHANS, deliberately NOT rendered: gnss{0,1}_cmb_buf are defined in every deployed
+# node config and referenced by NOTHING (checked against every string in the config).
+# Templating them would launder dead config into the new structure; they are reported
+# instead, for the generator to stop emitting.
+ORPHANS = ("cmb_buf",)
 
 
 def extract(cfg, node):
@@ -47,10 +58,16 @@ def extract(cfg, node):
         m = CHAIN_RE.match(key)
         if not m or m.group(3) not in SUFFIXES:
             continue
-        gpu, tag = int(m.group(1)), "_" + m.group(2)
+        gpu, tag = int(m.group(1)), ("_" + m.group(2)[:-1] if m.group(2) else "")
         g = gpus.setdefault(gpu, {"gpu": gpu, "chains": {}})
         g["chains"].setdefault(tag, {"tag": tag})
     for gpu, g in gpus.items():
+        tap = cfg.get("gnss%d_srch_tap" % gpu)
+        if tap is not None:
+            g["search"] = {"tap_core": tap["cpu_affinity"][0],
+                           "send_core": cfg["gnss%d_srch_send" % gpu]["cpu_affinity"][0],
+                           "chan_ids": tap["chan_ids"],
+                           "element_offset": tap["element_offset"]}
         for tag, c in g["chains"].items():
             pre = "gnss%d%s_" % (gpu, tag)
             dual = cfg[pre + "n2dual"]
@@ -106,7 +123,11 @@ def extract(cfg, node):
         "sink_dir": snk0["base_dir"],
         "buffer_depth": cfg[pre0 + "n2ctl_buf"]["num_frames"],
         "telem_frames": cfg[pre0 + "telem_buf"]["num_frames"],
-        "gpus": [{"gpu": k, "chains": [v["chains"][t] for t in sorted(v["chains"])]}
+        "search_host": cfg["gnss0_srch_send"]["server_ip"],
+        "search_port_base": cfg["gnss0_srch_send"]["server_port"],
+        "pool_objects": cfg["gnss_pool"]["num_metadata_objects"],
+        "gpus": [{"gpu": k, "chains": [v["chains"][t] for t in sorted(v["chains"])],
+                  "search": v.get("search")}
                  for k, v in sorted(gpus.items())],
     }
     return g
@@ -139,7 +160,8 @@ def write_vars(g, path):
         out.append('    "%s": %s,' % (k, lit(v)))
     out.append('    "gpus": [')
     for gp in g["gpus"]:
-        out.append('        {"gpu": %d, "chains": [' % gp["gpu"])
+        out.append('        {"gpu": %d, "search": %r, "chains": ['
+                   % (gp["gpu"], gp["search"]))
         for c in gp["chains"]:
             out.append('            {"tag": "%s", "chain": "%s", "signal": "%s",'
                        % (c["tag"], c["chain"], c["signal"]))
@@ -186,7 +208,11 @@ def main():
 
     got = render(node)
     want = {k: v for k, v in cfg.items()
-            if CHAIN_RE.match(k) and CHAIN_RE.match(k).group(3) in SUFFIXES}
+            if (CHAIN_RE.match(k) and CHAIN_RE.match(k).group(3) in SUFFIXES)
+            or re.match(r"^gnss[01]_(%s)$" % "|".join(SEARCH_SUFFIXES), k)
+            or k == "gnss_pool"}
+    orphans = sorted(k for k in cfg
+                     if re.match(r"^gnss[01]_(%s)$" % "|".join(ORPHANS), k))
 
     missing = sorted(set(want) - set(got))
     extra = sorted(set(got) - set(want))
@@ -197,7 +223,10 @@ def main():
             diff = [f for f in sorted(set(wf) | set(gf)) if wf.get(f) != gf.get(f)]
             bad.append((k, diff, {f: (wf.get(f), gf.get(f)) for f in diff[:3]}))
 
-    print("node %s: %d chain blocks expected, %d rendered" % (node, len(want), len(got)))
+    print("node %s: %d GNSS blocks expected, %d rendered" % (node, len(want), len(got)))
+    if orphans:
+        print("  NOT RENDERED (orphans in the generator's output, nothing references "
+              "them): %s" % ", ".join(orphans))
     if missing:
         print("  MISSING from the template : %s" % ", ".join(missing[:8]))
     if extra:
@@ -209,7 +238,7 @@ def main():
     if not a.keep:
         os.remove(vars_path)
     ok = not (missing or extra or bad)
-    print("\n%s" % ("EQUIVALENT -- the j2 include reproduces every per-chain block."
+    print("\n%s" % ("EQUIVALENT -- the j2 include reproduces every GNSS block."
                     if ok else "*** NOT EQUIVALENT (%d missing, %d extra, %d differing)"
                                % (len(missing), len(extra), len(bad))))
     return 0 if ok else 1
