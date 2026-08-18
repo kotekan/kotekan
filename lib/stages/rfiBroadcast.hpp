@@ -13,7 +13,6 @@
 
 #include <netinet/in.h> // for sockaddr_in
 #include <stddef.h>     // for size_t
-#include <stdint.h>     // for uint16_t
 #include <string>       // for string, basic_string
 
 /*
@@ -103,6 +102,10 @@ private:
     size_t samples_per_data_set;           // base number of FPGA time samples
     size_t rfi_downsampling_factor;        // Downsampling rate to high-cadence SK
     size_t rfi_second_downsampling_factor; // Additional downsampling factor for low-cadence SK
+
+    // The table to reorder from beamformer to cylinder order.
+    // reorder[beamformer_idx] = cylinder_idx;
+    std::vector<size_t> reorder;
 
     // Derived buffer shapes
     size_t _downsampled_samples_per_data_set;
