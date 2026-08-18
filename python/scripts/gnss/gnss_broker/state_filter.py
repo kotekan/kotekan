@@ -656,6 +656,22 @@ class JointReceiverState:
         if S <= 0.0:
             return 0.0
         K = PH / S
+        # RATE FORENSICS (2026-08-18, the +0.27 chips/s lock). Twice on sky a fresh
+        # filter's clk_rate pinned at 0.26-0.34 (650x truth) within minutes of a restart
+        # into a healthy sky and self-locked behind its own innovation gate -- and three
+        # offline reproductions (mass birth, staggered march, sparse-then-burst at sky
+        # accept density) all HEALED instead of locking, so the teaching path is not
+        # understood. Log every update that moves the rate by >0.01 chips/s (25x truth)
+        # with enough context to name the teacher: the measurement row shape, innovation,
+        # and gain. Log-only; the POST digest cannot see it.
+        _dr = float(K[1] * y) if self.x.size > 1 else 0.0
+        if abs(_dr) > 0.01:
+            _hn = [i for i in range(len(H)) if H[i] != 0.0]
+            self._note("RATE-TEACH %+.4f chips/s (rate %+.4f -> %+.4f): innov %+.3f, "
+                       "K1 %+.5f, H rows %s, P01 %+.3f P11 %+.5f S %.4f"
+                       % (_dr, float(self.x[1]), float(self.x[1]) + _dr, y,
+                          float(K[1]), _hn[:6], float(self.P[0, 1]),
+                          float(self.P[1, 1]), S))
         self.x = self.x + K * y
         # Joseph form: this filter runs for days at 2 s cadence with sats entering and
         # leaving, and the simple (I-KH)P loses symmetry/positivity over that many updates.
