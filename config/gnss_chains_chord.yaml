@@ -1072,6 +1072,17 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
     seed-phase-transport: true
     signal: gal_e5b
     dr-clock-adopt: true
+    # ── #33 PLL FINE STAGE armed 2026-08-18 (second chain) ──────────────────────────────
+    # Sign +1 measured by the COMMANDED-STEP PAIR (±2 Hz /set_carrier_trim holds,
+    # 03:00-03:22, pre-registered: fixtures/expectations_20260818_jrrp_sign_probe.txt):
+    # JRRP fine AND coarse flipped with the step in both directions, dfine/dcoarse > 0
+    # both times, controls flat. ⚠️ The passive fine-vs-coarse regression on this chain
+    # read the sign NEGATIVE -- a passive correlation against the sideband-diseased
+    # coarse (#40) is a rumor, not a calibration. Judge: fine-fed count on the JRRP
+    # line + rrate sigma dropping toward mm/s, vs the still-unarmed chains in the same
+    # polls. Revert: delete both lines + broker restart.
+    rrate-phase-sign: 1.0
+    rrate-phase-feed: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
     # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
     # same PRN, same instant, both bands, across the 20:32Z arming of gal_e5a:
