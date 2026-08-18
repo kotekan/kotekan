@@ -11,7 +11,8 @@ lived in two prose sections that only a reader of the whole document would find
 single answer. This is that answer. The two sections above remain the narrative; this is the
 index, and it is the one to keep current.
 
-Last reconciled: **2026-08-17 ~00:45 UTC**, against session tasks #6–#83.
+Last reconciled: **2026-08-18 (offline review)**, against session tasks #6–#88.
+Previous reconcile 2026-08-17 ~00:45 against #6–#83.
 Previous reconcile was 2026-08-06 against #6–#20 — eleven days and sixty items stale, which is
 why this pass rewrote rather than appended.
 
@@ -160,68 +161,93 @@ tripped on an innocent change. A bar with no control clause measures the sky.
 
 ---
 
-## 🔴 Active — the next levers, ranked  [rewritten 2026-08-17 23:00]
+## 🔴 Active — the next levers, ranked  [rewritten 2026-08-18 offline review]
 
-State: broker `09a8dc52e`, five chains, 0 tracebacks. THE FLIP holds >1 h on gps_l5.
-#41/#76/#79/#80/#81/#84 all closed on sky today. #49 has its verdict.
+State: HEAD `15b5e1bb6`, tree clean. **Nodes are POWERED DOWN** (site work); broker up on cf06
+carrying the q stall guard. The C++ binary (`build/kotekan/kotekan`, 18 Aug 02:27) is current
+with HEAD and is AHEAD of every node that was running — so the next restart deploys the DPDK
+resync fix as well as whatever else lands in the binary before then.
 
-### A1. THE LAG IS A FIRST-CLASS DEFECT — and it now has a number  [#46, #67, new tonight]
-The observable F-engine "now" (newest telemetry `pow_hop`) trails the sky by **-99.6 ms
-median, 59 ms IQR** over 520 recorded cycles, with a **+1.07 s excursion caught live** on
-gal_e5b (22:24, chrony clean — so it is pipeline lag, not the clock). This is almost
-certainly the same animal as #46's "0.15 s instance spread" and #67's 25%-delivery reader,
-and it has now bitten twice in one evening: it made the F-engine axis WRONG as an ephemeris
-epoch (retracted, `2db3eec1f`), and its sub-millisecond residue falsified `--innov-dr-seeds`
-within 20 min of arming (+2201 chips = 215 us x 10.23 Mcps, `09a8dc52e`).
-**Next: measure where the lag is spent** (node serve vs gather vs broker read), then either
-compensate `t_now_abs` for it or bound it. Until then, treat the F-engine axis as
-drift-free-but-stale: right for LABELS, wrong for EPOCHS. `--clock-step-guard-s` watches it.
+**THE ORGANIZING PRINCIPLE FOR THIS RANKING: the node restart is the scarce resource.**
+It needs sudo, it costs an observing window, and one is already owed (`n2-send`, the fleet-wide
+`resync_max_advances: 32`). Anything node-side that is not in the binary when that restart
+happens waits for the one after. So work that is (a) buildable offline and (b) node-side ranks
+above work that is merely important, and the offline window is exactly the time to write it.
 
-### A2. #85 — the DR chains sweep THROUGH their peaks, and the fix is now unblocked
-Model error grows ~1.4 chips/min while every slew rails at the 0.05-chip cap, so the seed
-sweeps through the peak (bds_b2a PRN 33: model-held -240 chips WHILE KCOH folds at sig
-4-6k -- the seed is on signal, the MODEL is per-sat wrong). The 0.05 cap is PROTECTION
-against a wrong model, not the bug. The missing term is per-sat b_sat for DR sats -- and
-**#84's fix restored the measurement tonight**: BSAT now accepts (n up to 51, biases
-±0.001-0.15 chips, rej 2-30). Next: correlate SPEC-FIT tau against the model-held offsets
-on the same sats, then feed joint b_sat, then re-judge the slews.
-⚠️ spec_tau is now PLAUSIBLE, not STRONG: p/f still ~0.8-2.4 (median ~1.0). #50 stays
-blocked on significance, not on plumbing.
+### R1. #46 — SERVE A CLOCK, don't infer one  [node-side, build offline, rides the restart]
+Verified in code this pass: `GnssCoherentCombiner::get_status_callback` serves `pow_hop` and
+`utc` **from the last completed window and carries no serve-time timestamp at all**
+(`GnssCoherentCombiner.cpp:2389,2497`). So one number is doing two jobs, and the broker has to
+infer record-staleness and serve-latency from it — which is precisely why the axis is
+drift-free but stale, right for LABELS and wrong for EPOCHS.
+The minimum fix is **additive JSON fields in a REST callback**: a serve-time wall clock, and
+the newest hop the node has INGESTED beside the newest it has PROCESSED. That converts the
+inference into a measurement, and it is cheap and low-risk (no wire shape, no pipeline change).
+**Why it ranks first: it unblocks two things already retracted for want of it** — the ephemeris
+epoch on the F-engine axis (measured 65x worse, reverted) and `--innov-dr-seeds` (falsified in
+20 min by the lag's sub-ms residue). Both are real fixes waiting on one number.
+⚠️ The full version — the CURRENT F-engine hop from the capture stage — is more plumbing than
+the additive one. Do the additive version first and measure with it before designing the rest.
 
-### A3. #49 — arm the second chain
-VERDICT IN (6.4 h, paired in time): q>=2.2 duty **gal_e5a 0.81 / gps_l5 0.64** (armed) vs
-**gal_e5b 0.42 / bds_b2a 0.43** (control). Cleanest pair is gal_e5a vs gal_e5b -- same
-constellation, both dataless pilots, adjacent bands -- 0.81 vs 0.42. The fast code loop
-roughly doubles on-peak duty. bds_b2b's 0.21 is structural (data-only, see A6), not a loop
-verdict. **Next: arm gal_e5b, keep bds_b2a/bds_b2b as controls**, confirm the effect
-transfers rather than being a gal_e5a peculiarity.
+### R2. #8 — the clip-fraction + band-power monitor  [node-side, build offline, same restart]
+Unchanged in substance and now more urgent, because #56 has stopped being a curiosity: the
+08-18 1176 MHz event proves a **band-selective external source exists**, and the chronic 5-10x
+swings contaminate every amplitude judgement we make — they already produced one false alarm
+about THE FLIP, cleared only by pairing in time. We are blind to the very swing we keep
+tripping over. 4+4b clip fraction + a low-cadence band-power log is the instrument.
+Pairing it into the same restart as R1 is the efficient shape: two node-side items, one window.
 
-### A4. #83 — the one-controller build-out: what is left
-Flip holds >1 h with MINNOV as referee and honest exits only. Remaining, in order:
-(a) **carrier command fleet-wide** (`--rrate-command`, currently OFF everywhere;
-`carrier_correction_hz()` is implemented and consumed at one site but no chain arms it,
-`carrier-gain: 0.0` on all five) -- judge on KCOH duty + `rate_resid_hz`, and re-judge #71's
-NCO INSIDE this design rather than as a bolt-on; (b) lag compensation (A1) before any
-epoch-sensitive consumer; (c) the flipped-sat `dr_state["integ"]` staleness (a diagnostic
-prints a frozen number as if live -- PRN 8 printed +2.75 identically 12x over 56 min).
+### R3. #70 — the instance liveness guard  [broker-side, NO restart, deploy the moment nodes return]
+We now know the exact signature, measured twice: **a REST endpoint answering 200 is not a live
+instance.** cx42/port 0 sat with its window frozen and the entire 195,313 pkt/s stream dropped
+while serving plausible rows; `pow_hop` advanced 0 hops in 30 s against a healthy ~5.9M.
+The guard is a poll-twice-and-diff in the broker — cheap, Python, no restart, and it would have
+caught the 25 h cx19 wedge, the four wedges on the 14:05 restart, and #87's frozen instance.
+This closes the open half of #87.
 
-### A5. #79 — widen the search bar, one notch
-Armed at snr 100 (armed 3 -> 8 sats). Search sees down to 30. Widen 100 -> 50 -> 30, one
-notch at a time, unadmitted sats as in-poll controls. Stable for a full day now. [ready]
+### R4. #88 — finish the j2 restructure  [pure offline; Jim is reviewing right now]
+Delete the block-building in `build_n2dual_branch` (the template already renders 137/137 on
+every node, so gate 2 is what proves the deletion safe), then move deployment off the captured
+base. The second half is what actually stops us drifting from upstream. Doing it while Jim
+reviews is free parallelism, and it makes his review of the structure a review of the thing we
+will actually deploy.
 
-### A6. #31 — B2b needs nav-bit wipe, and that is the whole story there
-`BDS_B2B_I` is `pilot=false`, `secondary_length=0`, `nav_symbol_s=1e-3`: the open PPP-B2b
-service has NO dataless pilot and B-CNAV3 runs 1000 sps = exactly one symbol per code
-period, so the sign can flip EVERY 1 ms. Coherent integration past 1 ms needs wipe-off,
-which the tracker does not have -- worse than GPS L1 C/A's 20 ms. Its 0.21 duty / sig
-median 9 is structural. The B-CNAV3 predictor exists (`beidou_bcnav3.py`,
-`bcnav3_predictor.py`); wiring it is #31. **Do not "fix" B2b's low deep -- it is this.**
+---
 
-### A7. #56 / #8 — the 5x fleet-wide swings, still un-instrumented
-Amplitudes swing 5-10x on flipped AND unflipped sats together (re-confirmed tonight while
-clearing a false alarm about the flip). Root is upstream of tracking and of the combine.
-#8's 4+4b clip-fraction monitor + band-power log is the missing instrument and blocks a
-real diagnosis.
+**Then, when the nodes return — sky-gated, in this order:**
+
+### R5. #86 — harvest RATE-TEACH, first thing, before anything else runs
+Costs nothing: `grep RATE-TEACH /tmp/gnss_broker.log`. The 14:51 broker restart was itself a
+~2/3 trigger and the forensics were armed before it, so the log may already name the teacher.
+Three offline reproductions all HEAL, so the mechanism is live-only and this log is the only
+instrument that will ever see it. **Do NOT restart-loop to hunt it.** #33 is blocked here.
+
+### R6. #79/A5 — widen the search bar one notch, 100 -> 50
+Ready, unchanged, stable for a day. Unadmitted sats are the in-poll controls. Cheap.
+
+### R7. #49/A3 — arm the fast code loop on gal_e5b
+⚠️ **Status corrected this pass: the prerequisite is SATISFIED.** eec1d2f12 made any re-arm
+conditional on a per-PRN trim handover, and that handover is implemented and live —
+`gps_distributed_broker.py:7887`, `if prn not in _ft_armed_last`: Python keeps acquisition
+authority for PRNs the C++ loop is not touching and stands down per-PRN as it takes them.
+It is not a flag, which is why searching for one finds nothing. So this is one yaml line plus
+a broker restart, and the verdict it confirms is already paid for (0.81 vs 0.42 duty, paired).
+
+### R8. #85/#50 — spec_tau against the model-held offsets
+#84's fix revived the measurement (BSAT accepts, n up to 51). Correlate SPEC-FIT tau against
+the model-held offsets on the SAME sats before feeding anything. ⚠️ spec_tau is PLAUSIBLE, not
+STRONG (p/f median ~1.0) — #50 is blocked on significance, not on plumbing, and `reseed-spec-tau`
+has a RESEED count of 0 for the broker's entire life.
+
+### R9. #33 GAP 1 — arm the carrier command on one chain
+`carrier_correction_hz()` is implemented and consumed at one site and armed by nobody
+(`carrier-gain: 0.0` on all five, `rrate-command` off everywhere). gal_e5a is the canary.
+Judge on KCOH duty and `rate_resid_hz`, against the unarmed chains IN THE SAME POLLS — never on
+sig. This is also where #71's carrier NCO gets re-judged: it failed 3x as a bolt-on because the
+seed is the reference and is re-pinned every window, and one controller owning seed and carrier
+is the entire point.
+BEHIND IT: GAP 2 (three chains consume nothing from the joint state) and GAP 3 (code and
+carrier are not coupled — the unwritten physics). Both wait on #86.
 
 ---
 
