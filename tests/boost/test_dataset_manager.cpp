@@ -1,13 +1,14 @@
 #define BOOST_TEST_MODULE "test_datasetManager"
 
-#include "Config.hpp"         // for Config
-#include "Hash.hpp"           // for operator<<
-#include "dataset.hpp"        // for dataset
-#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"   // for inputState, prodState, freqState, datasetState
-#include "errors.h"           // for _global_log_level, __enable_syslog
-#include "test_utils.hpp"     // for CompareCTypes
-#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for operator<<
+#include "dataset.hpp"            // for dataset
+#include "datasetManager.hpp"     // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"       // for inputState, prodState, freqState, datasetState
+#include "errors.h"               // for _global_log_level, __enable_syslog
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "test_utils.hpp"         // for CompareCTypes
+#include "visUtil.hpp"            // for input_ctype, prod_ctype, freq_ctype
 
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
@@ -33,6 +34,8 @@ using namespace std::string_literals;
 // The datasetManager uses the restServer, but it's not started by this test.
 // That leads to a warnings message from the restServer on exit we can ignore.
 
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {
     _global_log_level = 5;

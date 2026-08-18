@@ -4,6 +4,7 @@
 #include "N2Layout.hpp"
 #include "N2Metadata.hpp"
 #include "N2Util.hpp"
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <csignal>
@@ -23,6 +24,9 @@ struct IgnoreSigterm {
     }
 };
 BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_layout_requires_product_list) {
     std::cout << "Testing layout_requires_product_list()...\n";

@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_Symbol"
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+
 #include <Symbol.hpp>
 #include <boost/test/included/unit_test.hpp>
 #include <cassert>
@@ -8,6 +10,9 @@
 #include <unordered_set>
 
 using namespace kotekan;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test1) {
     std::cout << "Testing Symbol class...\n";

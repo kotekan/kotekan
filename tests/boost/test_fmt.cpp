@@ -1,12 +1,16 @@
 #define BOOST_TEST_MODULE "test_fmt"
 #include "errors.h"
-#include "kotekanLogging.hpp" // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
+#include "kotekanLogging.hpp"     // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include "fmt.hpp" // for format
 
 #include <boost/test/included/unit_test.hpp>
 #include <chrono> // for duration, operator-, seconds, operator/, operator>, tim...
 #include <thread>
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_output_macros) {
     _global_log_level = 4;

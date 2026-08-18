@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_NDArrayBufferConfig"
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+
 #include <boost/test/included/unit_test.hpp>
 #include <csignal>   // for signal, SIG_IGN, SIGTERM
 #include <cstddef>   // for ptrdiff_t, size_t
@@ -36,6 +38,9 @@ struct IgnoreSigterm {
 BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
 
 // Config::eval evaluates numbers and expression strings in a config scope.
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
+
 BOOST_AUTO_TEST_CASE(config_eval) {
     json json_config = {{"num_local_freq", 16}, {"samples_per_data_set", 1024}};
     Config config;

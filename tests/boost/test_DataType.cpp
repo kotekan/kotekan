@@ -1,9 +1,14 @@
 #define BOOST_TEST_MODULE "test_DataType"
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+
 #include <DataType.hpp>
 #include <boost/test/included/unit_test.hpp>
 
 using namespace kotekan;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test1) {
     std::cout << "Testing DataType class...\n";
