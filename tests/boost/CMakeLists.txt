@@ -5,6 +5,11 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
+# kotekanTestLogging.hpp includes kotekanLogging.hpp, which lives in lib/core.
+# Only some tests link kotekan_core, which is what exports that directory, so add
+# it here for every test in this directory.
+include_directories(${KOTEKAN_SOURCE_DIR}/lib/core)
+
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 
