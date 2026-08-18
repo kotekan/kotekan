@@ -1,12 +1,13 @@
 #define BOOST_TEST_MODULE "test_FrameDescSerialize"
 
-#include "DataType.hpp"    // for DataType, string_to_type
-#include "FrameDesc.hpp"   // for FrameDesc
-#include "N2FrameDesc.hpp" // for N2FrameDesc
-#include "N2Layout.hpp"    // for N2Layout
-#include "N2Util.hpp"      // for N2::prod_ctype
-#include "NDArray.hpp"     // for GenericNDArray
-#include "Symbol.hpp"      // for Symbol
+#include "DataType.hpp"           // for DataType, string_to_type
+#include "FrameDesc.hpp"          // for FrameDesc
+#include "N2FrameDesc.hpp"        // for N2FrameDesc
+#include "N2Layout.hpp"           // for N2Layout
+#include "N2Util.hpp"             // for N2::prod_ctype
+#include "NDArray.hpp"            // for GenericNDArray
+#include "Symbol.hpp"             // for Symbol
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include "json.hpp" // for json
 
@@ -35,6 +36,9 @@ static std::shared_ptr<const FrameDesc> round_trip(const FrameDesc& desc) {
     const std::string bytes = desc.to_json().dump();
     return FrameDesc::from_json(nlohmann::json::parse(bytes));
 }
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(ndarray_round_trip_with_labels) {
     // Use a non-unit dimscaling so the round trip exercises scaling transmission.

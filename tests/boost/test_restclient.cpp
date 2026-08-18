@@ -1,9 +1,10 @@
 #define BOOST_TEST_MODULE "test_restClient"
 
-#include "errors.h"           // for __enable_syslog, _global_log_level
-#include "kotekanLogging.hpp" // for ERROR_NON_OO, INFO_NON_OO
-#include "restClient.hpp"     // for restClient::restReply, restClient
-#include "restServer.hpp"     // for restServer, connectionInstance, HTTP_RESPONSE
+#include "errors.h"               // for __enable_syslog, _global_log_level
+#include "kotekanLogging.hpp"     // for ERROR_NON_OO, INFO_NON_OO
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "restClient.hpp"         // for restClient::restReply, restClient
+#include "restServer.hpp"         // for restServer, connectionInstance, HTTP_RESPONSE
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json, basic_json<>::value_type, opera...
@@ -154,6 +155,9 @@ struct TestContext {
         }
     }
 };
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
     _global_log_level = 4;

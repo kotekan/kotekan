@@ -12,6 +12,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "configUpdater.hpp"
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "metadata.hpp"
 #include "test_utils.hpp"
 
@@ -91,6 +92,9 @@ static void fill_input_frame(Buffer* buf, int frame_id) {
     fv.erms = 1.0f;
     fv.emethod = N2EigenMethod::none;
 }
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_fulluppertri_to_autocorrelations) {
     std::cout << "Testing N2Subset: FullUpperTri -> Autocorrelations...\n";

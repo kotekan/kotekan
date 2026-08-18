@@ -1,5 +1,6 @@
 #define BOOST_TEST_MODULE "test_timeUtil"
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "timeUtil.hpp"
 
 #include "fmt.hpp"
@@ -137,6 +138,9 @@ void TimeData::setup() {
 }
 
 BOOST_TEST_GLOBAL_FIXTURE(TimeData);
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_time_to_ut1) {
 

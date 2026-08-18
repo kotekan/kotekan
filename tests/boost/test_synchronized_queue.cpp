@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_SynchronizedQueue"
 
-#include "SynchronizedQueue.hpp" // for SynchronizedQueue
+#include "SynchronizedQueue.hpp"  // for SynchronizedQueue
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
 #include <optional>                          // for optional
@@ -9,6 +10,9 @@
 /*
  * A basic check that you `get` what you `put` into the queue.
  */
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
+
 BOOST_AUTO_TEST_CASE(put_get) {
     SynchronizedQueue<int> q;
     q.put(42);

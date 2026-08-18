@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_updateQueue"
 
-#include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Counter, Gauge
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "prometheusMetrics.hpp"  // for Metrics, MetricFamily, Counter, Gauge
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
 #include <cmath>                             // for sqrt, log
@@ -9,6 +10,8 @@
 
 using kotekan::prometheus::Metrics;
 
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(simple_metrics) {
     Metrics& metrics = Metrics::instance();

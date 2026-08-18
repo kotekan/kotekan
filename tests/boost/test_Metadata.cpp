@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_Metadata"
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+
 #include <NDMetadata.hpp>
 #include <algorithm>
 #include <boost/test/included/unit_test.hpp>
@@ -97,6 +99,9 @@ void readMetadata(const std::shared_ptr<const Metadata>& meta) {
     BOOST_CHECK(isequal(meta->get_string_vector("some strings"),
                         std::vector<std::string>{"hello", "world"}));
 }
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test1) {
     std::cout << "Testing Metadata class...\n";

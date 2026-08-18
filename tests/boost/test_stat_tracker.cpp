@@ -1,10 +1,14 @@
 #define BOOST_TEST_MODULE "test_stat_tracker"
 
-#include "visUtil.hpp" // for StatTracker
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "visUtil.hpp"            // for StatTracker
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cmath>                             // for isnan
 #include <string>                            // for string
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_stat_tracker_get_max_optimized) {
     StatTracker buf("test", "none", 3, true);

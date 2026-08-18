@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_config"
 
-#include "Hash.hpp" // for Hash, hash
+#include "Hash.hpp"               // for Hash, hash
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for json
@@ -12,6 +13,9 @@
 
 
 using json = nlohmann::json;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_test_serialise) {
 
