@@ -16,6 +16,48 @@ import statistics
 from .transport import _get, _log_rl
 
 
+def poll_rf_stats(endpoints, lobes_fn):
+    """GET <tap>/rf_stats from each endpoint -> {url: summary}. Task #8, the broker half.
+
+    Each node tap serves clip fraction and power per monitored channel plus per ABSOLUTE
+    element; this reduces both to something a viewer can render and a log can carry, and
+    keeps the per-element ARRAYS on the node. 128 elements x 12 instances is 1536 floats a
+    poll to answer a question -- "is one antenna railing?" -- that three numbers answer. If
+    the array is ever wanted, it is one curl away at the source.
+
+    ⚠️ An instance whose monitor is not armed reports enabled=false, which is NOT the same as
+    quiet and must not be published as zeros: it is recorded as off so a dark panel reads as
+    "not armed" rather than "no RFI". Unreachable is a third state again, and also not zero.
+    """
+    out = {}
+    for url in endpoints:
+        try:
+            r = _get("%s/rf_stats" % url)
+        except Exception as e:
+            _log_rl("rf-stats-%s" % url, "rf stats: %s unreachable (%s)" % (url, e))
+            out[url] = {"state": "unreachable"}
+            continue
+        if not r.get("enabled"):
+            out[url] = {"state": "off"}
+            continue
+        ec = r.get("elem_clip") or []
+        ep = r.get("elem_power") or []
+        out[url] = {
+            "state": "on",
+            "lobes": lobes_fn(r.get("chans") or [], r.get("power") or [],
+                              r.get("clip_lo") or [], r.get("clip_hi") or []),
+            # per-element reduced to the question it answers, not the array
+            "elem_clip_max": max(ec) if ec else None,
+            "elem_clip_worst": (max(range(len(ec)), key=lambda i: ec[i]) if ec else None),
+            "elem_power_med": (sorted(ep)[len(ep) // 2] if ep else None),
+            "passes": r.get("passes"),
+            "cost_ms": r.get("cost_ms"),
+            "age_s": r.get("age_s"),
+            "fpga_seq": r.get("fpga_seq"),
+        }
+    return out
+
+
 def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
               deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.

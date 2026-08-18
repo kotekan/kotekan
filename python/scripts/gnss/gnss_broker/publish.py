@@ -67,6 +67,7 @@ class FleetPublisher:
     """
 
     def __init__(self, port, log):
+        self._rf = {"t": None, "instances": {}}   # #8: receiver-wide RF health
         # ONE PORT, MANY CHAINS (task #27 M6). Each registered chain gets its own row/det
         # store; a request selects one chain or gets them all, tagged. Before this, one
         # publisher served one chain on one port, which is why CHORD needed a viewer
@@ -192,6 +193,10 @@ class FleetPublisher:
                         body = json.dumps(_et[ids[0]] if (asked in pub._chains
                                                           and len(ids) == 1)
                                           else _et).encode()
+                    elif p.endswith("get_rf"):
+                        # RECEIVER-WIDE, so it ignores the chain selector entirely rather
+                        # than pretending a per-chain view exists.
+                        body = json.dumps(pub._rf).encode()
                     elif p.endswith("get_status"):
                         body = json.dumps(pub._collect(ids, "rows")).encode()
                     else:
@@ -319,6 +324,18 @@ class FleetPublisher:
         if len(ids) == 1 and ids[0] in self._chains:
             return self._chains[ids[0]]["meta"]
         return {"chains": {c: self._chains[c]["meta"] for c in ids if c in self._chains}}
+
+    def set_rf(self, rf, t):
+        """Publish the fleet's RF-path health (#8). NOT per-chain, deliberately.
+
+        The voltage tap is per GPU and serves every signal on it, so clip fraction and band
+        power are properties of the RECEIVER, not of a tracking chain. Filing them under a
+        chain would invite exactly the mistake the numbers exist to prevent -- reading an
+        instrument-wide saturation as one chain's problem, which is how the 08-18 event was
+        first written up.
+        """
+        with self._lock:
+            self._rf = {"t": t, "instances": rf}
 
     def carrier_trim_const(self, fallback, chain=None):
         """The REST override if one has been posted, else the command-line value."""

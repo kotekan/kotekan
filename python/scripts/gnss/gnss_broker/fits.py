@@ -464,6 +464,55 @@ def tracker_phase_at(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_s
               * (seed.get("doppler_rate_hz_s", 0.0) or 0.0) * dt * dt) % mod
 
 
+def rf_lobes(chans, power, clip_lo, clip_hi):
+    """Group one tap's per-channel RF stats into contiguous LOBES. Pure; see test_rf_lobes.py.
+
+    The tap serves a flat channel list because that is what it walks. But the list is the
+    UNION of every chain's covering set on that GPU, so it arrives as one contiguous run per
+    BAND -- 277..283 (1176.45 MHz) and 287..293 (1207.14) on cx19/gnss0. Contiguity is
+    therefore the band grouping, and it needs no extra configuration and no second place that
+    has to be kept in step with the generator.
+
+    ⚠️ LOBES ARE NUMBERED, NOT NAMED. Naming them by frequency needs the node's GLOBAL channel
+    map and the tap serves LOCAL comb indices -- the same two axes that put freq_id 5972 into
+    a 384-channel frame while this was being built. Rather than guess a mapping here, the
+    channel range is published and the consumer labels it. Numbering is ordered by channel, so
+    lobe 0 is always the lower band.
+
+    POWER IS MEANED, CLIP IS MAXED, and the asymmetry is deliberate: power is a LEVEL and the
+    band's average is the honest summary, while clip is DAMAGE -- one railing channel corrupts
+    what passes through it, and averaging it across thirteen quiet neighbours hides exactly the
+    narrowband case this exists to catch (#56, and the 08-18 event was one band of two).
+    """
+    n = min(len(chans), len(power), len(clip_lo), len(clip_hi))
+    if n == 0:
+        return []
+    order = sorted(range(n), key=lambda i: chans[i])
+    out, run = [], []
+
+    def flush(run):
+        if not run:
+            return
+        lo = max(range(len(run)), key=lambda k: clip_lo[run[k]])
+        hi = max(range(len(run)), key=lambda k: clip_hi[run[k]])
+        out.append({
+            "lobe": len(out),
+            "chan0": chans[run[0]], "chan1": chans[run[-1]], "n_chan": len(run),
+            "power": sum(power[i] for i in run) / float(len(run)),
+            "power_max": max(power[i] for i in run),
+            "clip_lo": clip_lo[run[lo]], "clip_lo_chan": chans[run[lo]],
+            "clip_hi": clip_hi[run[hi]], "clip_hi_chan": chans[run[hi]],
+        })
+
+    for i in order:
+        if run and chans[i] != chans[run[-1]] + 1:
+            flush(run)
+            run = []
+        run.append(i)
+    flush(run)
+    return out
+
+
 def instance_stall_verdict(prev, cur, now, min_stall_s, min_frac_advancing=0.5):
     """Which instances are SERVING but not ADVANCING. Pure; see test_instance_stall.py.
 

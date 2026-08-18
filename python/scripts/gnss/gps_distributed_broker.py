@@ -79,10 +79,12 @@ from gnss_broker.fits import (                # noqa: E402
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys, adr_fine_rate, q_stall_verdict,
     instance_stall_verdict,
+    rf_lobes,
 )
 from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fleet_spectrum_aligned,
     fit_spectrum_delay,
+    poll_rf_stats,
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker.seed import Seed                          # noqa: E402  (task #83)
@@ -1151,6 +1153,27 @@ def main(argv=None, rx=None, publisher=None):
                          "The feed inflates this by the command's motion over the span: "
                          "sigma_eff = sqrt(sigma^2 + (0.5*dcmd)^2), the worst-case "
                          "span-mean reference error for an unknown application time.")
+    ap.add_argument("--rf-stats-endpoints", default="",
+                    help="Comma/brace list of VOLTAGE TAP endpoints to poll for RF-path "
+                         "health (#8), e.g. http://cx19:12049/gnss{0..1}_srch_tap. Empty = "
+                         "OFF. Serves clip fraction and per-band power at the publisher's "
+                         "get_rf.\n"
+                         "\n"
+                         "⚠️ ARM THIS ON ONE CHAIN ONLY. The voltage tap is per GPU and "
+                         "serves every signal on it, so the RF path is a property of the "
+                         "RECEIVER, not of a chain -- arming it in `common:` would poll the "
+                         "same twelve endpoints five times a cycle for five identical "
+                         "answers, and print the alarm five times.\n"
+                         "\n"
+                         "The node side is default-off too (config band_power_chans): an "
+                         "unarmed instance reports enabled=false, which is recorded as OFF "
+                         "and never published as zeros -- a dark panel must read 'not armed', "
+                         "not 'no RFI'.")
+    ap.add_argument("--rf-stats-poll-s", type=float, default=30.0,
+                    help="Seconds between RF-health polls (default 30). The node refreshes "
+                         "every ~10 s, so a faster poll re-reads the same pass; the point of "
+                         "the bound is that the broker's cycle is on cf06's single 1 GbE, "
+                         "which telemetry has already inflated once (#64).")
     ap.add_argument("--instance-stall-s", type=float, default=90.0,
                     help="Say so when an INSTANCE serves rows whose newest pow_hop has not "
                          "advanced for this many seconds while the rest of the fleet does "
@@ -2914,6 +2937,7 @@ def main(argv=None, rx=None, publisher=None):
     # staggered per chain so five chains never walk in the same beat.
     _est_last = {"pcn0": None, "kcoh": None}
     fe_axis = [None]  # (newest telemetry pow_hop, wall at its fetch) -- #83 the axis fix
+    _rf_last = [0.0]  # #8: wall of the last RF-health poll (rate-limits it)
     _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
@@ -7586,6 +7610,50 @@ def main(argv=None, rx=None, publisher=None):
             # combiners' /get_elements (raw leave-one-out cross-products accumulated per
             # record node-side, where the element axis lives), significance-anchored on the
             # noise probes per (instance, element). Measurement-only; touches no loop.
+            # ── #8: RF-PATH HEALTH, POLLED ──────────────────────────────────────────────
+            # Clip fraction and per-band power from each GPU's voltage tap. Measurement
+            # only: it steers nothing and gates nothing, exactly like the element poll below.
+            #
+            # ⚠️ THIS IS THE ONE NUMBER THAT SEPARATES "LOUD" FROM "RAILED", and we have
+            # never had it. The fleet's amplitudes swing 5-10x an hour (#56) with the root
+            # upstream of both tracking and the combine, and on 08-18 something lit up the
+            # band hard enough to take chains down for hours -- with no way to tell whether
+            # the front end saturated or merely saw a large linear signal. Those two have
+            # different fixes and we could not distinguish them.
+            #
+            # Grouped into LOBES by channel contiguity (rf_lobes), because the tap's channel
+            # list is the union of every chain's covering set and therefore arrives as one
+            # run per band. A band-selective source is only diagnosable against a band that
+            # was quiet in the SAME sample.
+            if args.rf_stats_endpoints and publisher is not None:
+                _rf_ep = parse_endpoints(args.rf_stats_endpoints, base)
+                if _rf_ep and t0 - _rf_last[0] >= args.rf_stats_poll_s:
+                    _rf_last[0] = t0
+                    _rf = poll_rf_stats(_rf_ep, rf_lobes)
+                    publisher.set_rf(_rf, t0)
+                    _on = [v for v in _rf.values() if v.get("state") == "on"]
+                    if _on:
+                        _clip = max((max((l["clip_lo"] + l["clip_hi"]) for l in v["lobes"])
+                                     for v in _on if v.get("lobes")), default=0.0)
+                        _log_rl("rfstats",
+                                "RF PATH: %d/%d instance(s) armed, worst clip %.4f of "
+                                "nibbles, %d lobe(s)/instance, pass cost %.2f ms"
+                                % (len(_on), len(_rf_ep), _clip,
+                                   max((len(v.get("lobes") or []) for v in _on), default=0),
+                                   max((v.get("cost_ms") or 0.0) for v in _on)),
+                                every_s=300.0)
+                        # A rail is not a level, it is DAMAGE: past a few percent the
+                        # quantiser is discarding the signal it is meant to carry, and
+                        # everything downstream reads it as a coherence loss.
+                        if _clip > 0.01:
+                            _log_rl("rfclip",
+                                    "⚠️ RF CLIPPING: %.2f%% of nibbles at a rail. Above ~1%% "
+                                    "the 4+4b quantiser is losing signal, not just headroom, "
+                                    "and every C/N0 and coherence below this point is "
+                                    "understated for a reason that is NOT the sky. Check "
+                                    "which lobe (get_rf) before blaming a chain."
+                                    % (100.0 * _clip), every_s=120.0)
+
             if args.element_poll and dll_combiners:
                 try:
                     _pe, _srv = elemgain.poll_elements(dll_combiners)

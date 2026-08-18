@@ -449,6 +449,22 @@ http://cx51:12049/gnss{0..1}_n2combine"
     narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
+    # ── #8 THE RF-PATH MONITOR, ARMED ON THIS CHAIN ONLY (2026-08-18) ─────────────────
+    # ⚠️ ONE CHAIN, DELIBERATELY, and gps_l5 only because it is first. The voltage tap is
+    # per GPU and serves EVERY signal on it, so clip fraction and band power are properties
+    # of the RECEIVER, not of a chain. Putting this in `common:` would poll the same twelve
+    # endpoints five times a cycle for five identical answers and print the alarm five
+    # times -- and would invite reading an instrument-wide saturation as one chain's fault,
+    # which is exactly how the 08-18 event was first written up.
+    #
+    # INERT UNTIL THE NODE SIDE IS ARMED TOO: `rf-stats: false` in gnss_fleet_chord.yaml
+    # means every tap reports enabled=false, which the broker records as OFF and never
+    # publishes as zeros. So this line can land now and start reporting the moment the
+    # nodes come up with the monitor on -- no second broker restart needed.
+    rf-stats-endpoints: "http://cx19:12049/gnss{0..1}_srch_tap,\
+http://cx27:12049/gnss{0..1}_srch_tap,http://cx42:12049/gnss{0..1}_srch_tap,\
+http://cx43:12049/gnss{0..1}_srch_tap,http://cx44:12049/gnss{0..1}_srch_tap,\
+http://cx51:12049/gnss{0..1}_srch_tap"
     spectrum-endpoints: "http://cx19:12049/gnss{0..1}_n2assemble,http://cx27:12049/gnss{0..1}_n2assemble,\
 http://cx42:12049/gnss{0..1}_n2assemble,http://cx43:12049/gnss{0..1}_n2assemble,\
 http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
