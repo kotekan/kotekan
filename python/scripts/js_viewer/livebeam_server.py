@@ -100,18 +100,19 @@ WS_PING_INTERVAL_S = 20
 WS_PING_TIMEOUT_S = 10
 
 # Backpressure tuning. This is a *real-time* viewer, so we want frames to
-# drop quickly when the network can't keep up rather than queuing and
-# falling seconds behind. Both the kernel send buffer (SO_SNDBUF) and
-# Twisted's per-transport ``bufferSize`` (the pauseProducing threshold)
-# are sized to a small number of *frames*, computed per-connection from
-# the actual frame size -- a fixed byte cap was the bug: 16 KB is ~4
-# autocorr frames but ~1 crosscorr frame (4 streams x 1024 x f32 =
-# 16 KB), so every single crosscorr frame filled the buffer and tripped
-# pause/resume even though throughput was trivial.
+# drop when the network genuinely can't keep up rather than queuing and
+# falling seconds behind -- but the buffer must still be big enough that a
+# single large frame (or a few-ms client hiccup) doesn't trip it. Both the
+# kernel send buffer (SO_SNDBUF) and Twisted's per-transport ``bufferSize``
+# (the pauseProducing threshold) are sized per-connection from the actual
+# frame sizes (see onOpen): a couple of *fold* frames (the largest message)
+# plus a few power frames of slack. A fixed byte cap was the original bug --
+# 16 KB was ~1 crosscorr frame and ~1/8 of a fold frame, so those frames
+# tripped pause/resume on their own even though throughput was trivial.
 #
-# A client whose buffer genuinely can't keep up sees frames dropped
+# A client that genuinely can't keep up past that buffer sees frames dropped
 # server-side; the JS gap detector then paints the missed span grey.
-WS_BUFFER_FRAMES = 4  # frames of slack before backpressure
+WS_BUFFER_FRAMES = 4  # power-frame slack on top of the fold-frame headroom
 WS_BUFFER_MIN_BYTES = 16 * 1024  # floor (also the autocorr value)
 
 # Defense-in-depth: if a client stays paused (TCP buffer full, slow / hung
@@ -747,7 +748,18 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         # (a fixed byte cap was ~1 crosscorr frame, tripping pause/resume
         # on every single frame).
         frame_bytes = 9 + kotekan.frame_nvis * kotekan.send_nfreq * 4
-        buf_bytes = max(WS_BUFFER_MIN_BYTES, WS_BUFFER_FRAMES * frame_bytes)
+        # The fold frame (MSG_FOLD, nvis*nphase*send_nfreq f32) is ~100x a power
+        # frame -- if the write buffer can't hold one, the fold frame alone
+        # trips pauseProducing and power frames get dropped for the few ms it
+        # takes to drain (the "gap on every fold update" symptom). Size the
+        # buffer to a couple of fold frames plus some power-frame slack so brief
+        # hiccups ride through instead of dropping. Bounded so a genuinely stuck
+        # client still can't queue more than a fraction of a second.
+        nphase = getattr(kotekan.pulsefold, "nphase", DEFAULT_NPHASE)
+        fold_bytes = 5 + kotekan.frame_nvis * nphase * kotekan.send_nfreq * 4
+        buf_bytes = max(WS_BUFFER_MIN_BYTES,
+                        WS_BUFFER_FRAMES * frame_bytes,
+                        2 * fold_bytes + WS_BUFFER_FRAMES * frame_bytes)
         try:
             self.transport.getHandle().setsockopt(
                 socket.SOL_SOCKET, socket.SO_SNDBUF, buf_bytes
