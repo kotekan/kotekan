@@ -58,20 +58,13 @@ export class FoldView {
         });
 
         this._placeholder(prof_cell);
+        // Render only when a new fold frame arrives (a few seconds apart). The
+        // fold data doesn't change between frames, so re-rendering the two
+        // heatmaps + profile on every waterfall redraw (40 Hz) was pure wasted
+        // client work -- with fold enabled that starved the WS drain and the
+        // server dropped power frames (waterfall gap-stripes). A median-subtract
+        // toggle or card resize takes effect on the next fold frame.
         this.bus.on("state:fold_received", (f) => this.render(f));
-        // Re-render (throttled) on redraw requests so the median-subtract
-        // toggle and card resizes take effect without waiting for the next
-        // fold frame. Throttled so it doesn't run at the 40 Hz frame rate.
-        this.bus.on("state:redraw_requested", () => this._throttled_rerender());
-    }
-
-    _throttled_rerender() {
-        if (!this._last) return;
-        const now = Date.now();
-        if (this._last_render && now - this._last_render < 250) return;
-        this._last_render = now;
-        this._draw_profile(this._last);
-        this._draw_heatmaps(this._last);
     }
 
     // Median of the first ``n`` entries of ``buf`` (sorts that slice in place).

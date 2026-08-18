@@ -62,8 +62,11 @@ MSG_FOLD = 3      # bytes[1:5] = int32 nphase
 DM_CONST_S = 4.148808e-3
 
 # How often the folded profile is pushed to clients (s). The fold accumulates
-# every kotekan integration; only the *emission* is throttled.
-FOLD_EMIT_INTERVAL_S = 0.5
+# every kotekan integration; only the *emission* is throttled. Each fold frame
+# is large (nvis*nphase*nfreq floats) and the browser re-renders two heatmaps
+# per frame, so keep this well above the waterfall's frame rate -- the fold
+# builds up slowly and doesn't need frequent refreshes.
+FOLD_EMIT_INTERVAL_S = 1.0
 
 # Default number of pulse-phase bins.
 DEFAULT_NPHASE = 128
@@ -771,35 +774,15 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
             isBinary=True,
         )
 
-    def send_power_frame(self):
-        kotekan = self.factory.kotekan
-        if not kotekan.connected:
-            self.transport.loseConnection()
-            return
-
-        # Skip the frame entirely if the transport is back-pressured -- the
-        # client's own time-gap detector will paint the missed span grey.
+    def send_binary(self, msg):
+        """Send already-serialised bytes to this client. The factory builds each
+        frame once and hands the same bytes to every client (so display_spectrum
+        / fold_display run once per broadcast, not once per client). Skips the
+        frame if this client's transport is back-pressured -- its own time-gap
+        detector paints the missed span grey."""
         if self._paused:
             return
-        t = np.float64(kotekan.sample_time())
-        spectrum = kotekan.display_spectrum()  # (nvis, send_nfreq), ascending
-        self.sendMessage(
-            np.int8(MSG_TIMESTEP).tobytes() + t.tobytes() + spectrum.tobytes(),
-            isBinary=True,
-        )
-
-    def send_fold_frame(self):
-        kotekan = self.factory.kotekan
-        pf = kotekan.pulsefold
-        if self._paused or not kotekan.connected or pf is None or not pf.enabled:
-            return
-        fold = kotekan.fold_display()  # (nvis, nphase, send_nfreq) float32
-        self.sendMessage(
-            np.int8(MSG_FOLD).tobytes()
-            + np.int32(pf.nphase).tobytes()
-            + fold.tobytes(),
-            isBinary=True,
-        )
+        self.sendMessage(msg, isBinary=True)
 
     def onMessage(self, payload, isBinary):
         # Fold control is the one thing clients send us (JSON, text). Everything
@@ -882,32 +865,33 @@ class LiveBeamWSFactory(WebSocketServerFactory):
         the server is restarted; the iter-over-copy + try/except below
         cleans up the broken client instead.
         """
-        for c in list(self.clients):
-            try:
-                c.send_power_frame()
-            except Exception as e:
-                log_.warning(
-                    "WS %s: send_power_frame raised %s; dropping client",
-                    getattr(c, "peer", "?"),
-                    e,
-                )
-                try:
-                    c.transport.loseConnection()
-                except Exception:
-                    pass
+        k = self.kotekan
+        if not k.connected or not self.clients:
+            return
+        # Serialise the frame ONCE and reuse for every client.
+        t = np.float64(k.sample_time())
+        spectrum = k.display_spectrum()  # (nvis, send_nfreq), ascending
+        msg = np.int8(MSG_TIMESTEP).tobytes() + t.tobytes() + spectrum.tobytes()
+        self._send_all(msg, "power")
 
     def broadcast_fold(self):
         """Push the current folded profile to every client (throttled by a
         timer in main). No-op unless a fold is active."""
         pf = self.kotekan.pulsefold
-        if pf is None or not pf.enabled:
+        if pf is None or not pf.enabled or not self.clients:
             return
+        fold = self.kotekan.fold_display()  # (nvis, nphase, send_nfreq) float32 -- once
+        msg = (np.int8(MSG_FOLD).tobytes() + np.int32(pf.nphase).tobytes()
+               + fold.tobytes())
+        self._send_all(msg, "fold")
+
+    def _send_all(self, msg, kind):
         for c in list(self.clients):
             try:
-                c.send_fold_frame()
+                c.send_binary(msg)
             except Exception as e:
-                log_.warning("WS %s: send_fold_frame raised %s; dropping client",
-                             getattr(c, "peer", "?"), e)
+                log_.warning("WS %s: %s send raised %s; dropping client",
+                             getattr(c, "peer", "?"), kind, e)
                 try:
                     c.transport.loseConnection()
                 except Exception:
