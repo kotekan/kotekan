@@ -1,0 +1,131 @@
+##########################################
+#
+# aro_record_quadband_viewer.yaml
+#
+# VIEWER (no-disk) variant of aro_record_multiple_inputs.yaml.
+# Captures 8 consecutive iceboard elements as ONE thread = 4 sub-bands x 2 pols,
+# computes dual-pol power, and streams it to the fearless viewer hub (:23402).
+# NOTHING is written to disk (no nDiskFileWrite stage).
+#
+# computeDualpolPower emits one autopower per element, so the wire carries 8
+# element-spectra. The element->RF sub-band mapping is reconstructed on the
+# VIEWER side (livebeam_server.py --band-map bandmap_quadband.yaml), because the
+# single freq/sample_bw below cannot describe a multi-sub-band capture.
+#
+# Assumed wiring (per aro_record_multiple_inputs.yaml comments): elements
+#   6&7 = 0-400,  8&9 = 400-800,  10&11 = 800-1200,  12&13 = 1200-1600 MHz.
+# If the real wiring differs, change `offsets` here and/or edit the viewer
+# band-map, then restart.
+##########################################
+---
+type: config
+log_level: INFO
+
+telescope:
+  name: ICETelescope
+  require_gps: true
+  query_gps: true
+  gps_host: 127.0.0.1 # Set this to the fpga_master host
+
+instrument_name: aro
+
+power_integration_length: 512
+
+# Capture 8 consecutive elements (one thread), full 1024 channels each.
+# offsets: [6] -> elements 6..13.
+num_threads: 1
+num_elements: 8
+num_freq: 1024
+offsets: [6]
+frequencies: [0]
+
+samples_per_data_set: 32768
+# No disk write, so keep the (large, 8-element) vdif_buffer to a few frames.
+buffer_depth: 4
+num_disks: 1
+num_links: 8
+timesamples_per_packet: 2
+num_data_sets: 1
+cpu_affinity: [8,9,18,19]
+
+sizeof_float: 4
+sizeof_short: 2
+vdif_header_size: 32
+vdif_payload_size: num_freq * num_elements
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+vdif_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set * num_threads * (vdif_payload_size + vdif_header_size)
+    metadata_pool: main_pool
+
+lost_samples_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+
+power_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set/power_integration_length) * (vdif_payload_size + 1) * num_threads * sizeof_float
+    metadata_pool: main_pool
+
+# Stages
+dpdk:
+    num_mem_channels: 4
+    kotekan_stage: dpdkCore
+    mbuf_cache_size: 500
+    lcore_cpu_map: [0, 1, 2, 3, 4, 5, 6, 7]
+    main_lcore_cpu: 4
+    fpga_packet_size: 4680
+    alignment: samples_per_data_set * 100
+    lcore_port_map: # 1 stream/lcore, 16 streams
+        - [0]
+        - [1]
+        - [2]
+        - [3]
+        - [4]
+        - [5]
+        - [6]
+        - [7]
+    handlers:
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+    out_buf: vdif_buffer
+    lost_samples_buf: lost_samples_buffer
+
+zero_samples:
+    kotekan_stage: invalidateVDIFframes
+    out_buf: vdif_buffer
+    lost_samples_buf: lost_samples_buffer
+
+# Live-view path only -- NO nDiskFileWrite, nothing is written to disk.
+power_integration:
+   kotekan_stage: computeDualpolPower
+   vdif_in_buf: vdif_buffer
+   power_out_buf: power_buffer
+
+power_stream:
+   # Single freq/sample_bw is a placeholder; the viewer's --band-map rebuilds
+   # the true per-sub-band RF axis. Keep sample_bw > 0 (ascending wire order).
+   freq: 600.0
+   sample_bw: 400.0
+   destination_protocol: TCP
+   stream_fearless:
+      kotekan_stage: networkPowerStream
+      in_buf: power_buffer
+      destination_port: 23402
+      destination_ip: 10.70.1.8

@@ -1,0 +1,29 @@
+# bandmap_quadband.yaml
+#
+# How livebeam_server.py (--band-map) reassembles cloyd's quad-band capture
+# (aro_record_quadband_viewer.yaml) into an ordinary ascending dual-pol spectrum.
+#
+# The kotekan config captures 8 consecutive iceboard elements as ONE thread
+# (num_elements: 8), and computeDualpolPower emits one autopower PER element, so
+# the wire carries npol*len(subbands) element-spectra in CAPTURED order. Each
+# consecutive group of `npol` elements is the polarizations of one sub-band,
+# listed below in that captured order (config offsets=[6] -> elements 6..13).
+#
+# EDIT THIS to match the real element->RF wiring, then restart just the cloyd
+# viewer instance on the receiver (`sudo systemctl restart aro-viewer-hub`) --
+# no kotekan restart needed:
+#   - reorder / relabel `subbands` if the captured element order differs,
+#   - fix f_lo_mhz / f_hi_mhz for each sub-band's true RF range,
+#   - flip `invert` if a sub-band comes out mirrored (channel 0 = high edge).
+#     Even Nyquist zones (400-800, 1200-1600) are typically inverted.
+
+npol: 2                      # elements (polarizations) per sub-band
+pol_labels: [X, Y]
+
+# In CAPTURED element order (offsets=[6], num_elements=8 -> elements 6..13).
+# Assumed wiring, per the aro_record_multiple_inputs.yaml comments:
+subbands:
+  - {name: "0-400",     f_lo_mhz: 0,    f_hi_mhz: 400,  invert: false}   # elems 6,7
+  - {name: "400-800",   f_lo_mhz: 400,  f_hi_mhz: 800,  invert: true}    # elems 8,9
+  - {name: "800-1200",  f_lo_mhz: 800,  f_hi_mhz: 1200, invert: false}   # elems 10,11
+  - {name: "1200-1600", f_lo_mhz: 1200, f_hi_mhz: 1600, invert: true}    # elems 12,13

@@ -29,7 +29,8 @@ read_sources() {
 import json, sys
 for s in json.load(open(sys.argv[1]))["sources"]:
     print(s["name"], s["http_port"], s["ws_port"], s["kotekan_port"],
-          s.get("sum_freq", 1), s.get("power_dtype", "uint32"))
+          s.get("sum_freq", 1), s.get("power_dtype", "uint32"),
+          s.get("band_map", "-"))
 PY
 }
 
@@ -61,7 +62,7 @@ case "$cmd" in
     done
     echo "hub stopped."; exit 0;;
   status)
-    read_sources | while read -r name hp wp kp sf dt; do
+    read_sources | while read -r name hp wp kp sf dt bm; do
       pgrep -f "[s]ource-name $name" >/dev/null && s=RUNNING || s=down
       printf "  %-10s http:%-5s ws:%-5s kotekan:%-5s sum-freq:%-3s [%s]\n" \
              "$name" "$hp" "$wp" "$kp" "$sf" "$s"
@@ -87,10 +88,12 @@ DETACH=$(command -v setsid >/dev/null 2>&1 && echo setsid || echo nohup)
 pkill -9 -f '[l]ivebeam_server.py' 2>/dev/null; sleep 1
 # Process substitution (not a pipe) so the loop runs in this shell and the
 # backgrounded jobs are ours to disown, rather than dying with a subshell.
-while read -r name hp wp kp sf dt; do
+while read -r name hp wp kp sf dt bm; do
   log="$LOGDIR/$name.log"
   CMD="\"$PY\" \"$HERE/livebeam_server.py\" --source-name $name --power-dtype $dt \
 --sum-freq $sf --kotekan-port $kp --http-port $hp --ws-port $wp --exit-on-disconnect"
+  # Optional per-source band-map (multi-sub-band de-interleave); "-" = none.
+  [ "$bm" != "-" ] && CMD="$CMD --band-map \"$HERE/$bm\""
   $DETACH bash -c "while true; do $CMD >> \"$log\" 2>&1; \
     echo \"[hub] $name livebeam exited; re-accepting in 3s\" >> \"$log\"; sleep 3; done" \
     < /dev/null > /dev/null 2>&1 &

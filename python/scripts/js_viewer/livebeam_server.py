@@ -255,6 +255,7 @@ class KotekanPowerStream:
         emit_interval_s=DEFAULT_VIEWER_INTEGRATION_MS / 1000.0,
         power_dtype="float32",
         sum_freq=1,
+        band_map=None,
     ):
         self.host = host
         self.port = port
@@ -284,6 +285,18 @@ class KotekanPowerStream:
         self.band_inverted = False
         # Pulsar fold accumulator, built in start() once nfreq is known.
         self.pulsefold = None
+        # Optional multi-sub-band reassembly (see _apply_band_map). A capture
+        # that maps several iceboard elements to different RF sub-bands arrives
+        # as ``read_nvis`` element-autopowers; the band-map de-interleaves them
+        # into ``frame_nvis`` pols x ``frame_nfreq`` channels on the true,
+        # contiguous ascending RF axis. Off (band_map=None) => wire dims are the
+        # display dims and _raw is databuf (no reassembly, zero overhead).
+        self.band_map_path = band_map
+        self._bandmap = None     # parsed map dict when active
+        self._gather = None      # (frame_nvis, frame_nfreq) indices into _raw.flat
+        self._raw = None         # (read_nvis, read_nfreq) wire buffer
+        self.read_nvis = 0
+        self.read_nfreq = 0
 
     def start(self):
         """Bind, ``accept`` (blocking), parse the handshake, and prime the loop."""
@@ -318,6 +331,16 @@ class KotekanPowerStream:
         self.frame_elems = np.frombuffer(
             info[self.frame_nfreq * 4 * 2 :], dtype=np.int8
         )
+
+        # Wire dims = what kotekan actually sends per integration. A multi-sub-band
+        # source is de-interleaved here, after which the DISPLAY dims (frame_nvis /
+        # frame_nfreq / frame_freqs) describe the reassembled per-pol RF spectra and
+        # may differ from these wire dims. All the flip/downsample/buffer setup below
+        # then keys off the (possibly overridden) display dims, unchanged.
+        self.read_nvis = int(self.frame_nvis)
+        self.read_nfreq = int(self.frame_nfreq)
+        if self.band_map_path:
+            self._apply_band_map()
 
         # ARO runs with sample_bw < 0 (channel 0 on top), which makes kotekan
         # report a *negative* raw_cadence. That's a frequency-ordering signal,
@@ -357,6 +380,10 @@ class KotekanPowerStream:
             )
 
         self.databuf = np.zeros((self.frame_nvis, self.frame_nfreq), dtype=np.float32)
+        # Wire read buffer: the same object as databuf unless a band-map
+        # reassembles the raw elements into a different (pol, freq) shape.
+        self._raw = (self.databuf if self._gather is None
+                     else np.zeros((self.read_nvis, self.read_nfreq), dtype=np.float32))
         # Pulsar fold accumulator (native channel centres / order).
         self.pulsefold = PulseFolder(self.frame_freqs.mean(axis=1), self.frame_nvis)
         self.frame_idx = self.frame_idx0
@@ -402,6 +429,77 @@ class KotekanPowerStream:
         self.connection.settimeout(0.1)
         reactor.callLater(0.001, self._tick)
 
+    def _apply_band_map(self):
+        """Reassemble a multi-sub-band capture into per-pol RF spectra.
+
+        A kotekan capture that maps several iceboard elements to different RF
+        sub-bands (e.g. aro_record_quadband_viewer.yaml: 8 elements = 4 sub-bands
+        x 2 pols) emits one *autopower per element* from computeDualpolPower, so
+        the wire carries ``read_nvis = npol * nsub`` element-spectra in captured
+        order -- each consecutive ``npol`` elements are the pols of one sub-band.
+        The single ``freq``/``sample_bw`` in the config can't describe that, so we
+        rebuild the axis here from an editable band-map YAML and de-interleave the
+        elements into ``npol`` pols x (nsub * nfreq) channels on the true,
+        contiguous ascending RF axis. Everything downstream then treats it as an
+        ordinary ascending dualpol spectrum.
+
+        Sets frame_nvis/frame_nfreq/frame_freqs/frame_elems and self._gather (an
+        index array into the raw wire buffer). On any mismatch it logs and leaves
+        the stream untouched (no reassembly).
+        """
+        try:
+            import yaml  # lazy: only multi-sub-band sources need PyYAML
+            with open(self.band_map_path) as fh:
+                bm = yaml.safe_load(fh)
+            npol = int(bm.get("npol", 2))
+            subbands = list(bm["subbands"])
+            pol_labels = bm.get("pol_labels") or [f"pol{p}" for p in range(npol)]
+        except Exception as e:  # bad/missing file -> fall back to raw stream
+            log_.error("band-map %s: %s; streaming raw", self.band_map_path, e)
+            return
+        nsub = len(subbands)
+        nf = self.read_nfreq
+        if self.read_nvis != npol * nsub:
+            log_.error(
+                "band-map: wire nvis=%d != npol(%d) * nsub(%d); streaming raw",
+                self.read_nvis, npol, nsub)
+            return
+
+        combined = nsub * nf
+        freqs = np.zeros((combined, 2), dtype=np.float32)   # (lo, hi) Hz, ascending
+        gather = np.zeros((npol, combined), dtype=np.int64)  # -> index into _raw.flat
+        # Lay sub-bands out low->high RF; within each, order channels ascending in
+        # RF (reverse the raw channel index for an inverted / even-Nyquist band).
+        order = sorted(range(nsub), key=lambda si: float(subbands[si]["f_lo_mhz"]))
+        out_c = 0
+        for si in order:
+            sb = subbands[si]
+            flo = float(sb["f_lo_mhz"])
+            fhi = float(sb["f_hi_mhz"])
+            inv = bool(sb.get("invert", False))
+            step = (fhi - flo) / nf
+            for k in range(nf):                       # k ascends in RF
+                c = (nf - 1 - k) if inv else k        # -> raw channel index
+                freqs[out_c, 0] = (flo + k * step) * 1e6
+                freqs[out_c, 1] = (flo + (k + 1) * step) * 1e6
+                base = si * npol
+                for p in range(npol):
+                    gather[p, out_c] = (base + p) * nf + c
+                out_c += 1
+
+        self._bandmap = {"npol": npol,
+                         "pol_labels": [str(x) for x in pol_labels],
+                         "subbands": subbands}
+        self._gather = gather
+        self.frame_nvis = npol
+        self.frame_nfreq = combined
+        self.frame_freqs = freqs
+        self.frame_elems = np.zeros(npol, dtype=np.int8)  # labels via pol_labels
+        log_.info(
+            "band-map: %d elems -> %d pol x %d sub-band -> %d ch (%.0f-%.0f MHz)",
+            self.read_nvis, npol, nsub, combined,
+            float(freqs[0, 0] / 1e6), float(freqs[-1, 1] / 1e6))
+
     @property
     def mode(self):
         """``'autocorr'`` nvis=1, ``'dualpol'`` nvis=2, ``'crosscorr'`` nvis=4."""
@@ -415,6 +513,8 @@ class KotekanPowerStream:
         RR/LL, etc.) so the viewer names the pols correctly for whatever the
         instrument actually sent, rather than a hardcoded pair.
         """
+        if self._bandmap is not None:
+            return list(self._bandmap["pol_labels"])[: self.frame_nvis]
         if self.mode == "dualpol":
             elems = getattr(self, "frame_elems", None)
             if elems is not None:
@@ -450,9 +550,11 @@ class KotekanPowerStream:
         return b"".join(chunks)
 
     def _read_one_integration(self):
-        """Read ``frame_nvis`` subframes into :attr:`databuf`. May raise
-        socket.timeout (no data right now) or on a closed connection."""
-        for i in range(self.frame_nvis):
+        """Read ``read_nvis`` wire subframes into :attr:`_raw`, then (if a
+        band-map is active) de-interleave them into :attr:`databuf`. Without a
+        band-map ``_raw is databuf`` and this fills ``databuf`` directly. May
+        raise socket.timeout (no data right now) or on a closed connection."""
+        for i in range(self.read_nvis):
             d = self._recv_exact(
                 self.subframe_hdr_len + self.frame_length, self.connection
             )
@@ -463,13 +565,16 @@ class KotekanPowerStream:
                 log_.warning(
                     "Out-of-order subframe: expected elem %d, got %d", i, elem_idx
                 )
-                self.databuf[i, :] = 0
+                self._raw[i, :] = 0
                 break
             vals = np.frombuffer(d[self.subframe_hdr_len :], dtype=self._np_dtype)
             vals = vals.astype(np.float32)
             if self._normalize_counts and self.samples_summed:
                 vals = vals / self.samples_summed
-            self.databuf[elem_idx, :] = vals
+            self._raw[elem_idx, :] = vals
+        if self._gather is not None:
+            # De-interleave element-autopowers -> (npol, combined) on the RF axis.
+            self.databuf[:] = self._raw.reshape(-1)[self._gather]
 
     def _socket_has_data(self):
         """True if at least one more byte is buffered on the kotekan socket
@@ -1079,6 +1184,13 @@ def main():
         f"{DEFAULT_VIEWER_INTEGRATION_MS}). Larger = less "
         "data / smoother; smaller = finer time resolution.",
     )
+    ap.add_argument(
+        "--band-map",
+        default=None,
+        help="YAML band-map for a multi-sub-band capture: de-interleave the "
+        "element-autopowers into per-pol spectra on the true RF axis "
+        "(see bandmap_quadband.yaml). Omit for an ordinary single-band source.",
+    )
     ap.add_argument("-v", "--verbose", action="store_true")
 
     g = ap.add_argument_group("viewer modules")
@@ -1137,6 +1249,7 @@ def main():
         emit_interval_s=args.viewer_integration_ms / 1000.0,
         power_dtype=args.power_dtype,
         sum_freq=args.sum_freq,
+        band_map=args.band_map,
     )
     kotekan.source_name = args.source_name
     kotekan.exit_on_disconnect = args.exit_on_disconnect
