@@ -1,17 +1,28 @@
 # The GNSS branch as a j2 include
 
 Jim Mertens' suggestion, 2026-08-18: *"keep the variable gnss data in a separate file, and
-include it from the main j2. Maybe some loops could condense it too."* This directory is
-step one of that restructure, with a gate proving it faithful before anything moves.
+include it from the main j2. Maybe some loops could condense it too."*
 
-## Why it is worth doing, measured
+**Status: done and wired.** `config/chord_pathfinder.j2` calls the include. It renders
+nothing unless a node is named, and what it does render is field-for-field what we deploy.
+
+```
+kotekan -c config/chord_pathfinder.j2 -j '{"gnss_node": "cx19"}'
+```
+
+⚠️ **Deployment has NOT moved yet.** `node_up.sh` still runs the generated
+`config/generated/chord_gnss_<node>_multi.yaml`, and the generator still injects into the
+captured base. This template is proven equivalent to that; switching deployment onto it is
+a separate change — see *What is left*.
+
+## Why the split is worth it, measured
 
 Counted on the deployed `chord_gnss_cx19_multi.yaml`, not assumed:
 
 | | |
 |---|---|
 | GNSS keys in a node config | **139** |
-| distinct structural patterns | **31** (8× per-chain, 2× per-GPU) |
+| distinct structural patterns | **31** (8x per-chain, 2x per-GPU) |
 | fields across the repeated patterns | 233 |
 | of those, **identical in every copy** | **161 (69%)** |
 
@@ -21,66 +32,45 @@ and the per-chain channel / PRN / size data.
 
 ## The split
 
-* **`gnss_chain.j2`** — structure. Every per-chain block (13 of them: the dual-correlator
-  cudaProcess, both record assemblers, the combiner, the sink, telemetry pack + send, and
-  six buffers), rendered by a nested loop over GPUs and chains. No node-specific values.
-* **`gnss_vars_<node>.j2`** — data. One `{% set gnss = {...} %}` with the receiver-wide
-  constants and a `gpus[].chains[]` list.
+* **`gnss_chain.j2`** — structure, no node-specific values. A nested loop over GPUs and
+  chains renders the 13 per-chain blocks (dual-correlator cudaProcess, both record
+  assemblers, combiner, sink, telemetry pack + send, six buffers). A second short loop
+  renders the per-GPU acquisition **search leg** (`srch_tap` / `srch_buf` / `srch_send`),
+  which is per-GPU rather than per-chain because one voltage tap serves every signal on
+  that GPU. Then `gnss_pool`.
+* **`gnss_vars_<node>.j2`** — data. One `set gnss = {...}` with the receiver-wide constants
+  and a `gpus[].chains[]` list. One file per node; all six are committed.
+
+**The primary chain is not a special case.** `gnss0_n2combine` is structurally identical to
+`gnss0_e5a_n2combine` — same field set, same command list, differing only in signal and
+data. It is a chain whose tag is the empty string, and the same loop body renders it.
 
 ⚠️ **Import the vars, include the structure.** Jinja passes the parent context *down* into
-an `{% include %}` but does not export that include's `{% set %}` names back *up*, so a
-vars file that is merely included is invisible and the render dies with `'gnss' is
-undefined`. `{% import %}` does export top-level assignments:
+an include but does not export that include's assignments back *up*, so a vars file that is
+merely included is invisible and the render dies with `'gnss' is undefined`. Import does
+export top-level assignments, which is why `chord_pathfinder.j2` carries two lines rather
+than one:
 
 ```jinja
-{% import "gnss_vars_cx19.j2" as gv %}{% set gnss = gv.gnss %}
-{% include "gnss_chain.j2" %}
+{% import "gnss/gnss_vars_cx19.j2" as gnss_vars %}{% set gnss = gnss_vars.gnss %}
+{% include "gnss/gnss_chain.j2" %}
 ```
 
-This is the one mechanical constraint the split imposes, and it is why the top-level file
-has to name the vars file rather than the chain template doing it.
+⚠️ And a trap when documenting it: **jinja parses `{%` `%}` inside YAML comments**, because a
+YAML comment is not a jinja comment. Prose describing jinja syntax must avoid the brace
+sequences or be wrapped in `raw` — the template failed to compile until it was.
 
-## The gate
+## The gates
+
+**1. The include vs the generator**, field by field:
 
 ```
 scripts/gnss/j2_chain_equiv.py config/generated/chord_gnss_cx19_multi.yaml
 ```
 
-renders the template and compares every per-chain block, field by field, against what the
-Python generator emits today. **All six nodes: EQUIVALENT, 137/137 blocks each** — the entire GNSS branch.
+**All six nodes: EQUIVALENT, 137/137 blocks each** — the entire GNSS branch.
 
-It earned its keep immediately — it failed twice on the first run and named both causes:
-
-1. `spectrum_ring_depth` / `spectrum_window_samples` were missing from the template. I had
-   templated `n2assemble` from a dump truncated at 420 characters and never saw them.
-2. `n2assemble_tiles` has its **own** CPU core, distinct from `n2assemble`'s. The record
-   assembler's core is per-GPU (31 / 57); the tiles assembler's is per-chain (59, 24, 31,
-   62). I had assumed they shared one.
-
-Neither would have been visible by reading the template.
-
-## ⚠️ Two orphan buffers, found by doing this
-
-`gnss0_cmb_buf` and `gnss1_cmb_buf` are defined in **every** deployed node config and
-referenced by **nothing** — checked against every string in the config, and contrast the
-identically-named-but-live `gnss{N}_n2cmb_buf`. They cost ~206 KB per GPU, so this is
-tidiness rather than a leak, but they are dead config that a reader has to rule out.
-
-The template deliberately does **not** render them: templating an orphan launders dead
-config into the new structure and makes it permanent. The gate lists them as NOT RENDERED
-on every run so the discrepancy stays visible until the generator stops emitting them —
-which is a one-line change plus a regenerate, and wants a node restart to land.
-
-## Wired into `chord_pathfinder.j2`
-
-The include is now called from the stock template, guarded so it renders nothing unless a
-node is named:
-
-```
-kotekan -c config/chord_pathfinder.j2 -j '{"gnss_node": "cx19"}'
-```
-
-Verified three ways:
+**2. `chord_pathfinder.j2` itself**, checked when the wiring landed:
 
 | check | result |
 |---|---|
@@ -89,27 +79,41 @@ Verified three ways:
 | non-GNSS blocks vs a stock render | **identical** |
 | 137 rendered blocks vs the deployed config, all 6 nodes | **identical** |
 
-That last row is the one that matters: the GNSS branch rendered from *today's upstream
-template* is field-for-field what we are actually running.
+That last row is the one that matters: the branch rendered from *today's upstream template*
+is what we are actually running.
 
-## What is NOT done yet
+**The gate earned its keep on its first run**, failing twice and naming both causes:
 
-* **The vars files are still produced by extraction, not computed.**
-  `scripts/gnss/j2_chain_equiv.py --keep` writes them from a generated config, which is why
-  they agree by construction. The remaining generator work is to compute them from the node
-  table directly and delete the block-building in `build_n2dual_branch` -- at which point
-  the CPU-core rotation and the frame-size formulas live in exactly one place instead of
-  two, and this template becomes the only definition of the stage graph.
-* ~~Per-GPU singletons~~ **DONE** (second pass, same day). Two findings made it cheap:
-  the **primary chain is not a special case** — `gnss0_n2combine` is structurally
-  identical to `gnss0_e5a_n2combine` field for field, including its command list, so it is
-  simply a chain whose tag is `""` and the same loop body renders it. Only the per-GPU
-  **search leg** (`srch_tap` / `srch_buf` / `srch_send`) is genuinely different, because
-  one voltage tap per GPU serves every signal on that GPU; it gets its own short loop
-  outside the chain loop. Plus `gnss_pool`.
-* **The real prize is dropping the captured base.** Today the generator injects the GNSS
-  branch into `config/base/live_config_20260730.json`, a frozen copy of production taken
-  in July. Once the branch is a clean include, it can be included *into*
-  `chord_pathfinder.j2` itself and the frozen copy goes away — which is the part that
-  actually stops us drifting from upstream. That is a config-deployment change and wants
-  its own review.
+1. `spectrum_ring_depth` / `spectrum_window_samples` were missing from the template — I had
+   templated `n2assemble` from a dump truncated at 420 characters and never saw them.
+2. `n2assemble_tiles` has its **own** CPU core. The record assembler's is per-GPU (31 / 57);
+   the tiles assembler's is per-chain (59, 24, 31, 62). I had assumed they shared one.
+
+Neither would have been visible by reading the template.
+
+## ⚠️ Two orphan buffers, found by doing this
+
+`gnss0_cmb_buf` and `gnss1_cmb_buf` are defined in **every** deployed node config and
+referenced by **nothing** — checked against every string in the config; contrast the
+identically-shaped but live `gnss{N}_n2cmb_buf`. About 206 KB per GPU, so tidiness rather
+than a leak, but dead config a reader has to rule out.
+
+The template deliberately does **not** render them: templating an orphan launders dead
+config into the new structure and makes it permanent. The gate lists them as NOT RENDERED
+on every run so the discrepancy stays visible until the generator stops emitting them —
+a one-line change plus a regenerate, wanting a node restart to land.
+
+## What is left
+
+* **The vars files are produced by extraction, not computed.**
+  `scripts/gnss/j2_chain_equiv.py --keep` writes them from a generated config, so they
+  agree with it by construction — weaker than it looks. Closing this means computing them
+  in `gen_chord_gnss_config.py` from the node table and deleting the block-building in
+  `build_n2dual_branch`, after which the CPU-core rotation and the frame-size formulas live
+  in exactly one place instead of two, and this template becomes the only definition of the
+  stage graph.
+* **Moving deployment onto this path.** Once the above lands, `node_up.sh` can render
+  `chord_pathfinder.j2` directly and `config/base/live_config_20260730.json` — our frozen
+  July copy of production — goes away, which is what actually stops us drifting from
+  upstream. That changes how configs are produced and deployed, so it wants review and a
+  restart window rather than a quiet switch.
