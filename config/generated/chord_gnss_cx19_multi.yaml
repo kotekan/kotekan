@@ -80,6 +80,17 @@ cpu_affinity:
 - 14
 - 15
 dpdk:
+  # AHEAD-RESYNC (2026-08-18, 478797a84). Set at the dpdk: level so all four capture
+  # workers inherit it. When the stream runs PAST the active frame window, walk the
+  # window forward (bounded) instead of dropping forever. Without this a sub-frame
+  # hiccup is permanent: measured twice in ~30 h on this node -- gnss1 port 1 stalled
+  # 25 h from a 5472-sample overshoot, then gnss0 port 0 stalled the same way after the
+  # recovery restart, freezing the broker's whole time base and taking every
+  # clock-adopting chain down with it.
+  # 8 frames is a deliberately small bound: packets arrive at ~195k/s, so even one
+  # advance per packet closes a gap almost instantly, and a small cap keeps a wild
+  # sequence number from spinning the prefetch ring.
+  resync_max_advances: 8
   burst_size: 32
   handlers:
   - dpdk_handler: crs16BoardDistributor

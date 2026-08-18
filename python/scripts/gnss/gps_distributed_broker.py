@@ -1198,6 +1198,18 @@ def main(argv=None, rx=None, publisher=None):
                          "ample against a 0.2-0.3 s lag -- but not so large that the "
                          "linear range-rate propagation in cp_predicted degrades (range "
                          "acceleration ~0.2 m/s^2 gives ~0.4 m = 0.013 chips at 2 s).")
+    ap.add_argument("--fe-axis-stale-s", type=float, default=30.0,
+                    help="Log loudly when the newest telemetry hop -- the thing t_now_abs is "
+                         "built from -- has not advanced for this many seconds. 0 disables. "
+                         "LOG ONLY. Motivation (2026-08-18): cx19/gnss0 deadlocked its DPDK "
+                         "capture window, its pow_hop froze, and because the broker takes the "
+                         "time base from that ONE combiner without a staleness test, "
+                         "t_now_abs froze too. det_age went negative and grew at 1 s/s, the "
+                         "clock solve saw every residual as enormous and latched at a frozen "
+                         "value, and all four clock-ADOPTING chains lost tracking together "
+                         "(#75) -- with nothing in the log naming the cause. Judged as a "
+                         "tracking failure it is unfixable; named as a stalled instance it is "
+                         "a node restart.")
     ap.add_argument("--clock-step-guard-s", type=float, default=0.5,
                     help="Log loudly when the offset between cf06's wall clock and the "
                          "F-engine's GPS-disciplined axis JUMPS by more than this (s). "
@@ -4948,6 +4960,27 @@ def main(argv=None, rx=None, publisher=None):
             _fh = max((float(r.get("pow_hop") or 0.0) for r in status.values()),
                       default=0.0)
             if _fh > 0.0:
+                # ⚠️ THE TIME BASE MUST NEVER FREEZE SILENTLY (2026-08-18, the cx19 collapse).
+                # t_now_abs is built from this hop, and this hop comes from ONE combiner. When
+                # cx19/gnss0 deadlocked its capture window, its pow_hop stopped advancing while
+                # the broker kept polling it happily -- so t_now_abs froze, det_age went
+                # NEGATIVE and grew at 1 s/s, every integrity residual read as enormous, the
+                # clock solve declared "the CLOCK moved" and latched, and all four chains that
+                # ADOPT that clock lost their seeds together (#75). Not one line said the time
+                # base had stopped. This is that line.
+                _fh_prev = fe_axis[0]
+                if (_fh_prev is not None and _fh <= _fh_prev[0]
+                        and args.fe_axis_stale_s > 0.0
+                        and _now() - _fh_prev[1] > args.fe_axis_stale_s):
+                    _log_rl("fe-stale",
+                            "*** TIME BASE FROZEN: newest telemetry hop has not advanced in "
+                            "%.0f s (hop %.0f, combiner %s). t_now_abs is built from this, so "
+                            "the receiver clock, every det_age and every model-evaluated seed "
+                            "on this chain are now standing still while the sky is not. This "
+                            "is an INSTANCE stall upstream, not a tracking fault -- check that "
+                            "combiner's pow_hop and its node's capture window."
+                            % (_now() - _fh_prev[1], _fh, combiner),
+                            every_s=60.0)
                 fe_axis[0] = (_fh, _now())
         except Exception as e:
             status = {}
