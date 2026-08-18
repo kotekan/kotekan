@@ -78,6 +78,7 @@ from gnss_broker.fits import (                # noqa: E402
     retag_seed_doppler, seed_phase_at_ref, track_vs_fit_chips, tracker_phase_at,
     fit_cp_rate, fit_dop_rate, code_clock_bias_sample, rate_residuals,
     cp_rate_from_code_bias, dr_cp0, dr_seed_phys, adr_fine_rate, q_stall_verdict,
+    instance_stall_verdict,
 )
 from gnss_broker.fleet import (               # noqa: E402
     fleet_dll, _coherent_sum, fleet_coherent, fleet_spectrum, fleet_spectrum_aligned,
@@ -1150,6 +1151,26 @@ def main(argv=None, rx=None, publisher=None):
                          "The feed inflates this by the command's motion over the span: "
                          "sigma_eff = sqrt(sigma^2 + (0.5*dcmd)^2), the worst-case "
                          "span-mean reference error for an unknown application time.")
+    ap.add_argument("--instance-stall-s", type=float, default=90.0,
+                    help="Say so when an INSTANCE serves rows whose newest pow_hop has not "
+                         "advanced for this many seconds while the rest of the fleet does "
+                         "(#70; 0 disables). Costs no extra polling -- the hop comes from the "
+                         "fleet DLL poll already being made.\n"
+                         "\n"
+                         "⚠️ THIS IS NOT --fe-axis-stale-s. That one watches the MAXIMUM hop "
+                         "across instances and answers 'has the whole time base frozen?'. It "
+                         "cannot see one instance of twelve wedged, because the other eleven "
+                         "keep the maximum climbing -- on 2026-08-18 FOUR wedged at once and "
+                         "it stayed correctly silent throughout.\n"
+                         "\n"
+                         "⚠️ AND A REST ENDPOINT ANSWERING 200 IS NOT A LIVE INSTANCE. Every "
+                         "wedged instance served plausible, well-formed rows the entire time; "
+                         "cx42/port 0 was dropping the whole 195,313 pkt/s stream while doing "
+                         "so. Reachability said nothing, which is why this keys on a COUNTER. "
+                         "Healthy advance is ~5.9M hops/30 s, wedged is exactly 0.\n"
+                         "\n"
+                         "90 s is ~7 broker cycles: conservative against a poll race, and "
+                         "still 1000x faster than the 25 h the cx19 wedge ran undetected.")
     ap.add_argument("--q-stall-window", type=float, default=600.0,
                     help="#70/#87 THE q STALL GUARD: trailing window (s) over which this "
                          "chain's q duty is judged against its own best this session. "
@@ -7123,6 +7144,7 @@ def main(argv=None, rx=None, publisher=None):
                                 " + hand-listed %s"
                                 % ",".join(str(p) for p in sorted(_deep_gate))))
                         _dg_auto_last[0] = set(_fresh_dg)
+            _inst_hops_now = {}
             fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
                               args.dll_quality_sigma, args.dll_quality_min,
                               deep_gate_prns=_deep_gate_eff,
@@ -7130,7 +7152,11 @@ def main(argv=None, rx=None, publisher=None):
                               # the noise ANCHOR for the presence floor (#49): without it
                               # the bar is built from the tracked population and becomes a
                               # peer competition. See the note in fleet_dll.
-                              probe_prns=probe_set)
+                              probe_prns=probe_set,
+                              # #70: collect the per-instance newest hop from the poll we are
+                              # already making. No extra HTTP -- fleet_dll parses pow_hop for
+                              # the currency check and then aggregates the axis away.
+                              src_hops=_inst_hops_now)
             # TASK #63: THE SAME DISCRIMINATOR, FORMED HERE FROM THE UN-SUMMED COMB. The powers
             # above were built by each tracker summing across its own channels -- "the one
             # combine the broker can never undo" -- and everything derived from them inherits
@@ -7978,6 +8004,49 @@ def main(argv=None, rx=None, publisher=None):
                            "" if any_fl["q_med"] is None
                            else " (noise median %.2f, sigma %.3f)"
                                 % (any_fl["q_med"], any_fl["q_sigma"])))
+            # ── THE INSTANCE LIVENESS GUARD (#70, 2026-08-18) ──────────────────────────
+            # WHY THIS EXISTS, and why the guard we already had could not do it. On 08-18's
+            # full-fleet restart FOUR instances came up wedged -- cx42/gnss0, cx43/gnss0,
+            # cx44/gnss1, cx51/gnss0 -- each with its DPDK capture window frozen and the
+            # ENTIRE 195,313 pkt/s stream being dropped, and each serving plausible,
+            # well-formed rows to every poll for as long as it was left alone. An earlier
+            # instance of the same fault ran on cx19 for 25 HOURS and 18.7 billion dropped
+            # packets before a human noticed.
+            #
+            # ⚠️ "ALL 12 RESPOND" IS NOT "ALL 12 ARE ALIVE". That is the whole trap, and it
+            # is why this keys on a COUNTER and never on reachability: healthy is ~5.9M
+            # hops per 30 s, wedged is exactly 0, and both answer 200.
+            #
+            # ⚠️ AND IT IS NOT --fe-axis-stale-s, which watches the MAXIMUM hop over
+            # instances. That question ("has the time base frozen?") is real and that guard
+            # caught the cx19 collapse -- but eleven healthy instances keep the maximum
+            # climbing, so it was correctly silent through all four wedges. The axis it
+            # cannot resolve is per-instance, and this is that axis. Both stay.
+            #
+            # FREE: the hop comes from the fleet DLL poll above, which already parses
+            # pow_hop for its currency check and then aggregates the per-instance axis away.
+            # The decision is a pure function in fits.py (test_instance_stall.py) with a
+            # CONTROL CLAUSE -- if most of the fleet is also standing still this is global
+            # (a paused F-engine, a replay, a clock step) and accusing an instance would
+            # point the next hour in the wrong direction, so it says nothing instead.
+            if args.instance_stall_s > 0 and _inst_hops_now:
+                _ih, _stalled = instance_stall_verdict(
+                    dr_state.get("inst_hops", {}), _inst_hops_now, t0,
+                    args.instance_stall_s)
+                dr_state["inst_hops"] = _ih
+                if _stalled:
+                    _log_rl("inststall",
+                            "⚠️ INSTANCE STALLED: %d of %d serving but NOT ADVANCING -- %s. "
+                            "These answer 200 with plausible rows; their pow_hop has not "
+                            "moved (healthy is ~5.9M hops/30 s). The usual cause is a frozen "
+                            "DPDK capture window dropping the whole stream, which no amount "
+                            "of waiting clears -- check the node log for RESYNC lines, then "
+                            "restart that node. Bandwidth is degraded fleet-wide until then."
+                            % (len(_stalled), len(_ih),
+                               ", ".join("%s stuck at hop %d for %.0f s" % (u, h, dt_)
+                                         for u, h, dt_ in _stalled[:4])),
+                            every_s=300.0)
+
             # ── THE q STALL GUARD (#70/#87, 2026-08-18) ────────────────────────────────
             # WHY THIS EXISTS: on 08-18 three chains sat in a degraded steady state for
             # 3.5 h after the RFI outage railed their C++ trims -- gal_e5b at q_med 1.09

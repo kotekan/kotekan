@@ -17,7 +17,7 @@ from .transport import _get, _log_rl
 
 
 def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
-              deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None):
+              deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -83,6 +83,11 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
                         "regenerate that node's config" % url)
                 continue
             prn = int(r["prn"])
+            # #70: THE NEWEST HOP THIS INSTANCE SERVED, per URL. Free -- we are already
+            # parsing it for the currency check above; the aggregate below throws the
+            # per-instance axis away, and that axis is the one a wedge lives on.
+            if src_hops is not None and hop > src_hops.get(url, -1):
+                src_hops[url] = hop
             rows.setdefault(prn, []).append(
                 (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0))))
             # BEST-OF for the COHERENT statistics. deep_amplitude / deep_snr / coherence_s come

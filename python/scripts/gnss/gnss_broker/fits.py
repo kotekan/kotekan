@@ -464,6 +464,49 @@ def tracker_phase_at(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_s
               * (seed.get("doppler_rate_hz_s", 0.0) or 0.0) * dt * dt) % mod
 
 
+def instance_stall_verdict(prev, cur, now, min_stall_s, min_frac_advancing=0.5):
+    """Which instances are SERVING but not ADVANCING. Pure; see test_instance_stall.py.
+
+    `prev` is {url: (hop, first_seen_at_this_hop)} carried across cycles, `cur` is {url: hop}
+    from this cycle. Returns (new_prev, stalled) where `stalled` is a list of
+    (url, hop, seconds_stuck) for instances whose newest hop has not moved in >= min_stall_s
+    while the fleet around them advanced.
+
+    ⚠️ WHY THIS EXISTS WHEN --fe-axis-stale-s ALREADY WATCHES THE HOP. That guard watches the
+    MAXIMUM hop across instances, which answers "has the whole time base frozen?" -- a real
+    question, and it caught the cx19 collapse. It cannot see ONE instance of twelve wedged,
+    because the eleven healthy ones keep the maximum climbing. On 2026-08-18 four instances
+    wedged at once and that guard stayed correctly silent the entire time. This one is
+    per-instance, which is the axis the other cannot resolve.
+
+    ⚠️ AND IT KEYS ON THE COUNTER, NEVER ON REACHABILITY, because the whole trap is that a
+    wedged instance ANSWERS. cx42/port 0 served plausible, well-formed rows while its capture
+    window was frozen and the entire 195,313 pkt/s stream was being dropped; "all 12 respond"
+    said nothing. An instance missing from `cur` is UNREACHABLE, a different fault that is
+    already visible as n_src falling -- it is dropped from the state here, never accused.
+
+    `min_frac_advancing` is the control clause: if most of the fleet is also standing still,
+    this is not a per-instance stall but something global (a paused F-engine, a clock step,
+    a replay), and calling it an instance fault would point the next hour in the wrong
+    direction. Returns no accusations in that case -- deliberately silent rather than wrong.
+    """
+    new = {}
+    for url, hop in cur.items():
+        old = prev.get(url)
+        new[url] = (hop, old[1] if (old is not None and old[0] == hop) else now)
+    if not new:
+        return new, []
+    advancing = sum(1 for url, (hop, t0) in new.items() if t0 >= now)
+    if advancing < max(1, int(round(min_frac_advancing * len(new)))):
+        return new, []          # fleet-wide, not per-instance -- say nothing
+    stalled = []
+    for url, (hop, t0) in sorted(new.items()):
+        stuck = now - t0
+        if stuck >= min_stall_s:
+            stalled.append((url, hop, stuck))
+    return new, stalled
+
+
 def q_stall_verdict(hist, now, window_s, frac, min_best, best, min_samples=10):
     """#70/#87 THE q STALL VERDICT: has this chain been quietly degraded?
 
