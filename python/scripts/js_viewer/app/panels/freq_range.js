@@ -58,6 +58,10 @@ export class FreqRangePanel {
                 handle_label_0.text(self.state.disp_freq[0].toFixed(2));
                 handle_label_1.text(self.state.disp_freq[1].toFixed(2));
                 self.bus.emit("state:redraw_requested");
+                // The fold view ignores the 40Hz redraw (too heavy) and listens
+                // to display_changed instead, so nudge it to re-crop to the new
+                // freq window too (throttled client-side re-render, safe).
+                self.bus.emit("state:display_changed");
             },
         });
 

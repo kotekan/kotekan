@@ -140,14 +140,31 @@ export class FoldView {
         // Per-pol median (if median-subtract on) computed once here and shared
         // by the profile and heatmap draws, rather than twice each.
         const {nphase, nfreq, nvis, pols} = this._split(fold);
+        // Respect the Freq Range slider: restrict the displayed channels to the
+        // same [freq_lo, freq_hi] window the waterfall shows.
+        const [f_lo, f_hi] = this._freq_window(nfreq);
         const meds = this.state.median_subtract
             ? pols.map((row) => this._pol_medians(row, nphase, nfreq)) : null;
-        this._draw_profile(fold, meds);
-        this._draw_heatmaps(fold, meds);
+        this._draw_profile(fold, meds, f_lo, f_hi);
+        this._draw_heatmaps(fold, meds, f_lo, f_hi);
     }
 
-    // Per-pol profile: nanmean over freq -> dB, drawn as a line with a light grid.
-    _draw_profile(fold, meds) {
+    // Map the Freq Range slider (state.disp_freq, MHz) to fold channel indices,
+    // using the same formula WaterfallView uses so the fold tracks the waterfall
+    // exactly. Falls back to the full band if the freq list isn't known yet.
+    _freq_window(nfreq) {
+        const fl = this.state.freq_list, df = this.state.disp_freq;
+        if (!fl || fl.length < 2 || !df) return [0, nfreq];
+        const freq_sc = fl[fl.length - 1] - fl[0];
+        if (!freq_sc) return [0, nfreq];
+        const lo = Math.max(0,     Math.floor(nfreq * (df[0] - fl[0]) / freq_sc));
+        const hi = Math.min(nfreq, Math.ceil (nfreq * (df[1] - fl[0]) / freq_sc));
+        return hi > lo ? [lo, hi] : [0, nfreq];
+    }
+
+    // Per-pol profile: nanmean over the displayed freq window -> dB, drawn as a
+    // line with a light grid.
+    _draw_profile(fold, meds, f_lo, f_hi) {
         const {nphase, nfreq, nvis, pols} = this._split(fold);
         const cv = this.prof_canvas[0];
         const W = cv.clientWidth || 400, H = cv.clientHeight || 150;
@@ -166,7 +183,7 @@ export class FoldView {
             for (let ph = 0; ph < nphase; ph++) {
                 let sum = 0, n = 0;
                 const base = ph * nfreq;
-                for (let f = 0; f < nfreq; f++) {
+                for (let f = f_lo; f < f_hi; f++) {
                     const v = row[base + f];
                     if (v === v && v > 0) { sum += dB(v) - (med ? med[f] : 0); n++; }
                 }
@@ -221,24 +238,26 @@ export class FoldView {
         }
     }
 
-    // Per-pol phase-frequency heatmap: x = freq (ascending), y = phase (0 top).
-    // Respects the median-subtract toggle (per-channel median over phase).
-    _draw_heatmaps(fold, meds) {
+    // Per-pol phase-frequency heatmap: x = freq (ascending, cropped to the
+    // displayed window), y = phase (0 top). Respects the median-subtract toggle
+    // (per-channel median over phase) and the Freq Range slider.
+    _draw_heatmaps(fold, meds, f_lo, f_hi) {
         const {nphase, nfreq, nvis, pols} = this._split(fold);
+        const nbins = Math.max(1, f_hi - f_lo);
         const cb = this.cb;
         for (let p = 0; p < nvis && p < this.hm_canvases.length; p++) {
             const cv = this.hm_canvases[p][0];
-            cv.width = nfreq; cv.height = nphase;
+            cv.width = nbins; cv.height = nphase;
             const g = cv.getContext("2d");
             g.imageSmoothingEnabled = false;
-            const img = g.createImageData(nfreq, nphase);
+            const img = g.createImageData(nbins, nphase);
             const row = pols[p];
             const med = meds ? meds[p] : null;
             for (let ph = 0; ph < nphase; ph++) {
                 const base = ph * nfreq;
-                for (let f = 0; f < nfreq; f++) {
+                for (let f = f_lo; f < f_hi; f++) {
                     const v = row[base + f];
-                    if (v === v && v > 0) cb.setPixel(img, f, ph, dB(v) - (med ? med[f] : 0));
+                    if (v === v && v > 0) cb.setPixel(img, f - f_lo, ph, dB(v) - (med ? med[f] : 0));
                     // else: leave transparent (empty phase bin)
                 }
             }
