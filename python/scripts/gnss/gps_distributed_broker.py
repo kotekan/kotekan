@@ -1180,6 +1180,24 @@ def main(argv=None, rx=None, publisher=None):
                          "sub-cycle DIFFERENCE (NTP slew x seconds = ns). Default OFF for "
                          "the replay gate; arming it moves every dr seed's epoch, so "
                          "fixtures that exercise dr paths re-bless.")
+    ap.add_argument("--dr-forecast-lead-s", type=float, default=0.0,
+                    help="#46/A1 THE FORECAST EPOCH. Build dead-reckon seeds for the hop "
+                         "H = (newest telemetry pow_hop) + this many seconds, instead of for "
+                         "\"now\". 0 = off (the replay gate's requirement, and exactly the "
+                         "historical behaviour). A seed is a forecast WITH A LABEL "
+                         "(ref_hop, phase, doppler, rate) and is defined entirely on the hop "
+                         "axis, so it never needed a notion of \"now\" -- asking for one is "
+                         "what dragged the wall clock, NTP and the telemetry lag into the "
+                         "seed path, and it is why an ephemeris-epoch substitution measured "
+                         "65x WORSE (reverted 2db3eec1f) and --innov-dr-seeds was falsified "
+                         "in 20 minutes (09a8dc52e). Forecasting to a CHOSEN hop removes the "
+                         "question: the measured ~217 ms lag (105 ms window quantisation + "
+                         "~100 ms pipeline, 59 ms IQR, occasional 1 s excursions) no longer "
+                         "enters the arithmetic and only sets how large this lead must be. "
+                         "Pick it to exceed transport + install with margin -- 1-2 s is "
+                         "ample against a 0.2-0.3 s lag -- but not so large that the "
+                         "linear range-rate propagation in cp_predicted degrades (range "
+                         "acceleration ~0.2 m/s^2 gives ~0.4 m = 0.013 chips at 2 s).")
     ap.add_argument("--clock-step-guard-s", type=float, default=0.5,
                     help="Log loudly when the offset between cf06's wall clock and the "
                          "F-engine's GPS-disciplined axis JUMPS by more than this (s). "
@@ -5578,6 +5596,27 @@ def main(argv=None, rx=None, publisher=None):
                 if args.dr_fengine_axis and fe_axis[0] is not None:
                     _feh, _few = fe_axis[0]
                     t_now_abs = _feh / args.hops_per_sec + (now_w - _few)
+                # ── THE FORECAST EPOCH (see --dr-forecast-lead-s) ──
+                # A seed is a FORECAST WITH A LABEL: (ref_hop, phase, doppler, rate). Its
+                # correctness is defined entirely on the hop axis, so producing one needs no
+                # notion of "now" at all -- and asking for one is what dragged the wall clock,
+                # the NTP offset and the telemetry lag into the seed path in the first place.
+                # Instead choose the hop we are forecasting TO: H = newest telemetry hop +
+                # lead. Then the pipeline lag never enters the arithmetic; it only sets how
+                # large the lead must be (it must exceed transport + install, or the seed
+                # lands after the epoch it describes), and the lag's jitter merely eats
+                # margin. H is an exact integer hop, so int(round(t_fc_abs*hps)) == H and the
+                # label carries no rounding of its own.
+                # ⚠️ ONE EPOCH, USED CONSISTENTLY. The phase and the label must be built from
+                # the SAME t or the tracker's back-reference no longer cancels (see the note
+                # at h1 below). Filter/bookkeeping sites deliberately keep t_now_abs: ages,
+                # update_rrate and the joint cycle are measurements at NOW, and shifting them
+                # into the future would inflate every age by the lead.
+                t_fc_abs = t_now_abs
+                if args.dr_forecast_lead_s > 0.0 and fe_axis[0] is not None:
+                    _fch = int(round(fe_axis[0][0]
+                                     + args.dr_forecast_lead_s * args.hops_per_sec))
+                    t_fc_abs = _fch / args.hops_per_sec
                 # ── THE EPHEMERIS EPOCH STAYS ON WALL TIME, AND HERE IS THE MEASUREMENT ──
                 # Orbit evaluation (predict_all / predict_from_decoders below) is the ONE
                 # consumer in this file that needs absolute UTC to be TRUE rather than
@@ -6788,8 +6827,8 @@ def main(argv=None, rx=None, publisher=None):
                                 _off = _leg_off + _d3
                                 # ...and how well we know it, for the rate limit below.
                                 _off_sigma = _jr3.sigma((tag, prn))
-                        cp0 = ((cp_predicted(v, t_now_abs) + _off)
-                               - t_now_abs * args.chip_rate_hz
+                        cp0 = ((cp_predicted(v, t_fc_abs) + _off)
+                               - t_fc_abs * args.chip_rate_hz
                                  * (1.0 + args.code_doppler_sign
                                     * dop_seed / args.carrier_hz)) % _DR_MOD
                         if args.dr_dry_run:
@@ -6817,7 +6856,7 @@ def main(argv=None, rx=None, publisher=None):
                             # subtraction, so the skew cancels against the tracker's
                             # back-reference to first order. A cross-epoch DIFFERENCE has no
                             # such cancellation.)
-                            h1 = int(round(t_now_abs * args.hops_per_sec))
+                            h1 = int(round(t_fc_abs * args.hops_per_sec))
                             t_h = h1 / args.hops_per_sec
                             _held = dr_seed_phys(
                                 seeds[prn], h1, args.hops_per_sec, args.chip_rate_hz,
@@ -6922,7 +6961,7 @@ def main(argv=None, rx=None, publisher=None):
                                  " rate %+.2f)" % (prn, v["el"], cp0, dop_seed, drate))
                         dll_trim.pop(prn, None)  # any old trim served the OLD anchor
                         dll_last.pop(prn, None)
-                        _rh_birth = int(round(t_now_abs * args.hops_per_sec))
+                        _rh_birth = int(round(t_fc_abs * args.hops_per_sec))
                         seeds[prn] = Seed.born(
                             "dr_birth", epoch=_rh_birth,
                             doppler_hz=dop_seed, code_phase_chips=cp0,
@@ -6938,7 +6977,7 @@ def main(argv=None, rx=None, publisher=None):
                             seeds[prn].put(
                                 "phase_xport", epoch=_rh_birth,
                                 code_phase_at_ref_chips=seed_phase_at_ref(
-                                    (cp_predicted(v, t_now_abs) + _off) % _DR_MOD,
+                                    (cp_predicted(v, t_fc_abs) + _off) % _DR_MOD,
                                     dop_seed, args.chip_rate_hz, args.hops_per_sec,
                                     args.carrier_hz, args.code_doppler_sign, _DR_MOD,
                                     args.search_fft_len or None))
