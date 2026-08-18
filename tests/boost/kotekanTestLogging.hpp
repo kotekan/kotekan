@@ -1,5 +1,5 @@
-#ifndef KOTEKAN_TEST_LOGGING_HPP
-#define KOTEKAN_TEST_LOGGING_HPP
+#ifndef KOTEKAN_LOGGING_FIXTURE_HPP
+#define KOTEKAN_LOGGING_FIXTURE_HPP
 
 #include "kotekanLogging.hpp" // for log_event, log_event_handler, log_event_hook
 
@@ -9,6 +9,11 @@
 #include <string>    // for string, to_string
 
 /// Boost fixture that makes an error logged by kotekan fail the test.
+///
+/// Note: test_logging.hpp in this directory is a separate, opt-in helper
+/// (kotekan_test_logging::configure()) that raises the log level and prints
+/// kotekan's stored error message on SIGTERM. The two are independent; a test may
+/// use either or both. Worth consolidating, but not in this change.
 ///
 /// Install it by adding
 ///
@@ -51,4 +56,4 @@ struct kotekan_logging_fixture {
     }
 };
 
-#endif // KOTEKAN_TEST_LOGGING_HPP
+#endif // KOTEKAN_LOGGING_FIXTURE_HPP
