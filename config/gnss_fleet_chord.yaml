@@ -107,6 +107,28 @@ common:
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
   keep-n2: true
   n2-dual: true
+
+  # ── SHIP THE N^2 VISIBILITIES (the last hop; 2026-08-18) ────────────────────────────────
+  # Flip to `true` to run stock-equivalent on the science pipeline. Everything upstream is
+  # ALREADY stock-equivalent and measured so: run_n2k's command list is byte-identical to
+  # chord_pathfinder.j2's, host_correlation_buffer has the identical shape/dtype, and
+  # n2_accumulate carries identical parameters (238 subints/bin, bin_in_ERA over 8640,
+  # CHORDBeamformer, EvenOddPosDef, no fringestop). We compute the visibilities every 10 s
+  # and currently drop them: n2_eigen_buffer has no consumer and n2_buffer's only reference
+  # is an inert hex_dump (which is commented out in the stock config too). This one flag
+  # adds the four bufferSend legs the stock config has and we don't.
+  #
+  # Endpoint defaults to the standard receiver (10.222.0.51, ports 11025 subset / 11027
+  # full) -- the SAME destination choco's production nodes use, so our frames land beside
+  # theirs. KV's call 2026-08-18: that is the intent (stock-equivalent), pending a word to
+  # the rest of the team. Override with n2-send-ip / n2-send-port-{full,subset} to point at
+  # our own receiver instead.
+  #
+  # COST measured from the schema: 7.7 MB/s per node, 0.37 Gbps fleet-wide. drop_frames
+  # stays true, so an absent or slow receiver degrades rather than backpressuring the GPU
+  # chain. ⚠️ Needs a NODE RESTART to take effect (sudo -- KV's), and that same restart also
+  # deploys the DPDK resync fleet-wide, since the binary is ahead of every running node.
+  n2-send: false
   # PATH A OFF (task #26, 2026-08-09). The primary chain's path-A tracker is not
   # instantiated: the broker seeds gnss*_inject and reads gnss*_n2combine, validated on sky
   # before this landed (PRN 10 deep 88.9, same bias structure as path A, clk within 0.6

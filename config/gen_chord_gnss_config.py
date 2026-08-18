@@ -1704,6 +1704,39 @@ def main():
     ap.add_argument("--enable-outputs", dest="disable_outputs", action="store_false",
                     help="DANGEROUS on a shared node: re-enables the bufferSend legs to the "
                          "downstream N2 consumer")
+    ap.add_argument("--n2-send", action="store_true",
+                    help="SHIP THE N^2 VISIBILITIES to the standard downstream consumer, i.e. "
+                         "run stock-equivalent on the science pipeline. Keeps the four "
+                         "buffer_send_n2_* legs from the captured base (n2_eigen_buffer -> "
+                         "--n2-send-port-subset, n2_buffer -> --n2-send-port-full, both GPUs) "
+                         "and STAMPS the endpoint explicitly rather than inheriting whatever "
+                         "the capture happened to hold -- a silently inherited destination is "
+                         "not a destination you can grep for before a deploy.\n"
+                         "\n"
+                         "MEASURED 2026-08-18: our nodes already COMPUTE these products. The "
+                         "run_n2k command list is byte-identical to chord_pathfinder.j2's, "
+                         "host_correlation_buffer has the identical shape/dtype, and "
+                         "n2_accumulate carries identical parameters (238 subints/bin, "
+                         "bin_in_ERA over 8640, CHORDBeamformer, EvenOddPosDef, no fringestop) "
+                         "-- the products just had no consumer and were dropped on the floor. "
+                         "This flag is the last hop, not a new pipeline.\n"
+                         "\n"
+                         "COST: 7.7 MB/s per node (full 128-element FullUpperTri + the 32-element "
+                         "eigen subset), 0.37 Gbps fleet-wide. drop_frames stays true, so a slow "
+                         "or absent receiver degrades instead of backpressuring the GPU chain.\n"
+                         "\n"
+                         "⚠️ REQUIRES --keep-n2 (enforced below): without it n2_accumulate, "
+                         "n2_subset and eigencalc are dropped and the send legs would have no "
+                         "producer. ⚠️ AND IT WRITES INTO SHARED SCIENCE STORAGE -- the default "
+                         "endpoint is the same host and ports choco's production nodes use, so "
+                         "our frames land beside theirs. Flip it on deliberately.")
+    ap.add_argument("--n2-send-ip", default="10.222.0.51",
+                    help="destination host for --n2-send (default: the standard CHORD N^2 "
+                         "receiver, matching chord_pathfinder.j2)")
+    ap.add_argument("--n2-send-port-full", type=int, default=11027,
+                    help="port for the full n2_buffer leg (default 11027, stock)")
+    ap.add_argument("--n2-send-port-subset", type=int, default=11025,
+                    help="port for the n2_eigen_buffer subset leg (default 11025, stock)")
     ap.add_argument("--no-ingest", action="store_true",
                     help="drop dpdk + the transposes, leaving host_voltage_buffer unfed. The "
                          "GNSS branch still CONSTRUCTS, so --dry-run validates it without "
@@ -2332,7 +2365,25 @@ def main():
 
     # --- safety: don't inject into the downstream science consumer ----------------------------
     dropped = []
+    if args.n2_send and not args.keep_n2:
+        raise SystemExit("--n2-send needs --keep-n2: without it n2_accumulate/n2_subset/"
+                         "eigencalc are dropped and the send legs would have no producer")
+    n2_send_kept = []
     for key in list(out.keys()):
+        if args.n2_send and key.startswith("buffer_send_n2"):
+            # THE LAST HOP, stamped rather than inherited. The captured base already holds
+            # the right destination, but a config that only works because the capture
+            # happened to be right is a config nobody can review -- so write the endpoint
+            # in from the flags and leave it greppable in the generated file.
+            leg = out[key]
+            if isinstance(leg, dict):
+                leg["server_ip"] = args.n2_send_ip
+                leg["server_port"] = (args.n2_send_port_subset if "subset" in key
+                                      else args.n2_send_port_full)
+                leg.setdefault("drop_frames", True)
+                n2_send_kept.append("%s(%s -> %s:%d)" % (key, leg.get("buf"),
+                                                         leg["server_ip"], leg["server_port"]))
+            continue
         if args.disable_outputs and key.startswith("buffer_send"):
             del out[key]
             dropped.append(key)
@@ -2523,6 +2574,11 @@ def main():
     print(f"  record_floats {record_floats} (26 header + n_elem*12)", file=sys.stderr)
     print(f"  rest port     {port}", file=sys.stderr)
     print(f"  dropped       {len(dropped)} production blocks", file=sys.stderr)
+    if n2_send_kept:
+        # Loud on purpose: this is the one flag that puts our frames into shared
+        # science storage, so the destination is printed at generate time, not
+        # discovered at deploy time.
+        print("  N2 SEND ARMED  " + "; ".join(n2_send_kept), file=sys.stderr)
 
     # EXTRA CHAINS: state what they cost. A 10-core pool does not grow, so a multi-chain node
     # oversubscribes it; the rotation only guarantees that no two chains put the SAME heavy
