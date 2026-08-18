@@ -168,24 +168,50 @@ Each machine's kotekan points its `networkPowerStream` at `receiver:<kotekan_por
 On the receiver:
 
 ```sh
-./run_hub.sh start      # one livebeam per source (auto-respawns; re-accepts)
-./run_hub.sh status     # which sources' loops are up
+./run_hub.sh start      # all source livebeams + the landing server (auto-respawn)
+./run_hub.sh status     # which sources' loops (and the landing server) are up
+./run_hub.sh landing    # (re)start ONLY the landing server; leaves live streams up
 ./run_hub.sh stop
 ```
 
-Then open the chooser: `http://<receiver>:8080/chooser.html`. It polls each
-instance's `/status` and shows a green dot for whichever machine is streaming;
-clicking opens that source's viewer (with the right `?ws=` port). Because each
-instance runs `--exit-on-disconnect` under a respawn loop, it drops when its
-kotekan stops and re-accepts when it returns -- the chooser dot and the browser
-both follow automatically. Note an instance only serves HTTP while its kotekan
-is connected, so "offline" on the chooser == "that source isn't streaming."
+`run_hub.sh` also starts a small **static landing server** (default `:8090`,
+`landing_server.py`) that serves `chooser.html` as `/`. Unlike the per-source
+livebeam instances -- which only serve HTTP while their kotekan is connected --
+the landing server holds no kotekan connection, so the chooser is **always up**
+regardless of which sources are streaming. It's a plain static file server;
+`./run_hub.sh landing` (re)starts just it, so you can redeploy the chooser
+without bouncing live streams.
+
+**Port 80 (`http://<receiver>/`).** So people can just type the hostname, tcp/80
+is redirected to the landing high-port with a firewalld rule (the landing server
+itself stays unprivileged). One-time root setup on the receiver:
+
+```sh
+sudo firewall-cmd --permanent --add-port=8090/tcp                                 # landing (post-redirect INPUT)
+sudo firewall-cmd --permanent --add-port=80/tcp                                   # belt-and-suspenders
+sudo firewall-cmd --permanent --add-forward-port=port=80:proto=tcp:toport=8090    # 80 -> 8090 REDIRECT
+sudo firewall-cmd --reload
+# If curl to :80 refuses (some firewalld builds gate nat on masquerade):
+#   sudo firewall-cmd --permanent --add-masquerade && sudo firewall-cmd --reload
+```
+
+The chooser polls each instance's `/status` and shows a green dot for whichever
+machine is streaming; clicking opens that source's viewer (with the right `?ws=`
+port). Those viewer/`/status` links point at each source's own `http_port`
+(8080/8081/...), not at the landing server, and are built from
+`window.location.hostname`, so they keep working whether you entered via
+`http://<receiver>/`, `:8090`, or an SSH tunnel. Because each source instance
+runs `--exit-on-disconnect` under a respawn loop, it drops when its kotekan stops
+and re-accepts when it returns -- the chooser dot and the browser both follow
+automatically ("offline" on the chooser == "that source isn't streaming").
 
 ## Where things live
 
-- **Repo (`kv/aro`)**, `python/scripts/js_viewer/`: `livebeam_server.py`, `app/`,
-  `psrcat_b.json`, `tools/fake_aro_stream.py` (offline synthetic producer), this
-  doc. This is the source of truth -- deploy to node 2 by rsync.
+- **Repo (`kv/aro`)**, `python/scripts/js_viewer/`: `livebeam_server.py`,
+  `landing_server.py` (static chooser server for `/` on :8090), `run_hub.sh`,
+  `sources.json`, `chooser.html`, `app/`, `psrcat_b.json`,
+  `tools/fake_aro_stream.py` (offline synthetic producer), this doc. This is the
+  source of truth -- deploy to node 2 by rsync.
 - **Node 1 (squirrel) `~arofrb/kv/`**: `aro_monitor.yaml` (monitor kotekan
   config), `run_monitor.sh` (start the monitor as the `aro-monitor` systemd
   unit). The kotekan binary/configs live under `~arofrb/kotekan/`.
