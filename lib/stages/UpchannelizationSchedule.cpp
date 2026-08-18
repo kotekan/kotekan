@@ -39,9 +39,11 @@ std::map<int, std::vector<int>> UpchannelizationSchedule::make_upchan_factors_to
         const auto& range = config.get<std::vector<int>>(unique_name, key.str());
         assert(range.size() == 2);
         std::vector<int> channels;
-        for (int channel = range.at(0); channel < range.at(1); ++channel) {
-            // Only include the local channels
-            if (has_frequency_channel(channel))
+        const auto& upchan_channels = get_frequency_channels();
+        // Only include local channels, in local order
+        for (const auto channel: upchan_channels) {
+            // Only include the requested channels
+            if (range.at(0) <= channel && channel < range.at(1))
                 channels.push_back(channel);
         }
         upchan_factors_to_channels[upchan_factor] = channels;
