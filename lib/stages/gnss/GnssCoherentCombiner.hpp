@@ -17,6 +17,7 @@
 #include "restServer.hpp"        // for connectionInstance
 
 #include <array>   // for array (per-rung ladder dump)
+#include <atomic>  // for atomic (the served current-hop, #46/A1)
 #include <complex> // for complex
 #include <cstdint> // for int8_t
 #include <cstdio>  // for FILE (phase-dump instrumentation)
@@ -400,6 +401,19 @@ private:
     /// Absolute HOP index the E/P/L window ends on (rolling: the newest record; block: the
     /// window's first). The fleet combine groups instances by this -- see _fft_len.
     long long _st_pow_hop = -1;
+    /// THE NEWEST HOP THIS STAGE HAS INGESTED, updated per record and served as `now_hop`
+    /// (#46/A1, 2026-08-17). `pow_hop` above labels a COMPLETED WINDOW and therefore can
+    /// never be current: measured from cf06, wall-minus-(utc0 + pow_hop/hps) ran 217 ms
+    /// median with pow_hop advancing in 40960-hop (209.7 ms) quanta, so ~105 ms of that is
+    /// pure quantisation and ~100 ms is real pipeline depth. A consumer that needs "what
+    /// time is it on the F-engine axis" (an EPOCH, as opposed to a LABEL) cannot get it by
+    /// inference -- the sawtooth is what made the axis unusable for the ephemeris epoch and
+    /// what falsified the broker's --innov-dr-seeds. So serve it instead of inferring it:
+    /// now_hop - pow_hop is then the windowing latency and (wall - now_hop) the ingestion
+    /// latency, separately visible for the first time. ATOMIC, not under _st_mtx: this is
+    /// written on every record at ~24 Hz x n_chan and the status lock is held across a
+    /// whole JSON build.
+    std::atomic<long long> _st_cur_hop{-1};
     /// EVERY ladder rung's significance, not only the winner's (2026-08-04). The winner is a MAX
     /// over rungs, so a low deep_snr cannot distinguish "the signal never cohered" from "it cohered
     /// but no window was long enough to clear the bar" -- and those two want opposite fixes. Each
