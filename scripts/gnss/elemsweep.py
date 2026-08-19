@@ -31,6 +31,7 @@ PORT = 12048
 AGG_HOST = "cf06"
 AGG_LOG = "/tmp/gnss_agg_final.log"
 TAPS = ["gnss0_srch_tap", "gnss1_srch_tap"]
+RECORD_FLOATS = 29   # gnssRecord.hpp; grew 26->29 (sky-phase + phi0 slots). ELEM_FLOATS=12.
 
 
 def _get(url, timeout=8):
@@ -51,7 +52,7 @@ def power_table(nodes):
     for n in nodes:
         try:
             # the tracking tap sees all elements; the search tap sees one
-            d = _get("http://%s:%d/gnss0_tap/element_power" % (n, PORT))
+            d = _get("http://%s:%d/gnss0_srch_tap/element_power" % (n, PORT))
             out[n] = d.get("element_power", [])
         except Exception as e:
             print("  %s: unreachable (%s)" % (n, e), file=sys.stderr)
@@ -138,9 +139,11 @@ def health_table(node, prns_used=4):
     import tempfile
     import numpy as np
 
-    pw = _get("http://%s:%d/gnss0_tap/element_power" % (node, PORT))["element_power"]
+    pw = _get("http://%s:%d/gnss0_srch_tap/element_power" % (node, PORT))["element_power"]
     name = subprocess.run(["ssh", "-o", "ConnectTimeout=8", node,
-                           "ls -t /tmp/gnss/ | grep gnss0_cmb | head -1"],
+                           "ls -U /tmp/gnss 2>/dev/null | grep gnss0_n2rec | "
+                           "awk -F'[_.]' '{print $(NF-1),$0}' | sort -n | "
+                           "tail -1 | cut -d' ' -f2"],
                           capture_output=True, text=True, timeout=30).stdout.strip()
     if not name:
         print("no combiner record on %s -- is the chain running?" % node, file=sys.stderr)
@@ -149,13 +152,13 @@ def health_table(node, prns_used=4):
     subprocess.run(["scp", "-q", "-o", "ConnectTimeout=8",
                     "%s:/tmp/gnss/%s" % (node, name), tmp.name], timeout=60)
 
-    STR = 26 + 32 * 12          # RECORD_FLOATS + n_elem*ELEM_FLOATS (gnssRecord.hpp)
+    STR = RECORD_FLOATS + 32 * 12   # RECORD_FLOATS + n_elem*ELEM_FLOATS (gnssRecord.hpp)
     a = np.fromfile(tmp.name, dtype=np.float32)[1:]   # 1-float file header
     r = a[:32 * STR].reshape(32, STR)
     m = np.zeros((32, 32))
     for p in range(32):
         for e in range(32):
-            b = 26 + e * 12
+            b = RECORD_FLOATS + e * 12
             m[p, e] = np.hypot(r[p, b], r[p, b + 1])
     strongest = np.argsort(-m.sum(axis=1))[:prns_used]
     sig = m[strongest].mean(axis=0)
@@ -165,7 +168,7 @@ def health_table(node, prns_used=4):
     print("  POWER CANNOT SEE THIS: an oscillating amp is loud and carries no GPS.\n")
     print("  %-5s %10s %12s %14s" % ("elem", "power", "|P| corr", "corr/sqrt(pw)"))
     rank = []
-    for e in range(16):
+    for e in range(len(sig)):   # ALL live elements (was 16; the array is 32 now)
         h = sig[e] / (pw[e] ** 0.5) if pw[e] > 0.1 else 0.0
         rank.append((h, e))
         print("  %-5d %10.2f %12.3e %14.3e" % (e, pw[e], sig[e], h))
