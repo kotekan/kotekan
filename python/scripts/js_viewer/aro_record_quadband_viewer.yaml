@@ -23,8 +23,11 @@ log_level: info
 
 telescope:
   name: ICETelescope
-  require_gps: true
-  query_gps: true
+  # Viewer/monitor: fall back to system time if the fpga_master GPS isn't up.
+  # (The live waterfall + fold only need relative frame timing.) Set both back to
+  # true once the fpga_master is serving GPS on gps_host if you want GPS-locked time.
+  require_gps: false
+  query_gps: false
   gps_host: 127.0.0.1 # Set this to the fpga_master host
 
 instrument_name: aro

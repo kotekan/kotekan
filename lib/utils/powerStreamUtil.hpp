@@ -2,6 +2,7 @@
 #define POWER_STREAM_UTIL
 
 struct __attribute__((__packed__)) IntensityHeader {
+    int protocol_version;   // - wire protocol version (>=2: per-element freq map + stokes)
     int packet_length;      // - packet length
     int header_length;      // - header length
     int samples_per_packet; // - number of samples in packet

@@ -11,6 +11,7 @@
 #include <functional>           // for bind, function
 #include <string>               // for allocator, basic_string, operator==, char_traits, string
 #include <memory>               // for shared_ptr
+#include <stdexcept>            // for runtime_error
 
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
@@ -32,6 +33,30 @@ using kotekan::Config;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(networkPowerStream);
+
+// Read a per-element config value: either a scalar (broadcast to every element)
+// or a length-num_elements integer array (one value per element). Used for
+// ``freq`` / ``sample_bw`` so a single stream can describe several sub-bands.
+// Values are returned scaled by ``scale`` (e.g. 1e6 for MHz -> Hz); array entries
+// are integers (integer MHz is plenty for this metadata), a scalar may be float.
+static std::vector<float> read_per_elem(Config& config, const std::string& base,
+                                        const std::string& key, int nelem, float scale,
+                                        float dflt) {
+    std::vector<float> out;
+    try {
+        std::vector<int> v = config.get<std::vector<int>>(base, key);
+        for (int x : v)
+            out.push_back((float)x * scale);
+    } catch (...) {
+        out.assign(1, config.get_default<float>(base, key, dflt) * scale);
+    }
+    if ((int)out.size() == 1)
+        out.assign(nelem, out[0]); // broadcast a scalar to all elements
+    if ((int)out.size() != nelem)
+        throw std::runtime_error("networkPowerStream: '" + key
+                                 + "' must be a scalar or a length-num_elements array");
+    return out;
+}
 
 networkPowerStream::networkPowerStream(Config& config, const std::string& unique_name,
                                        bufferContainer& buffer_container) :
@@ -56,8 +81,28 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
     // the expected layout for any later consumer/producer.
     in_buf->ensure_frame_desc(kotekan_airspy::make_power_corr_desc(elems * times, freqs));
 
-    freq0 = config.get_default<float>(unique_name, "freq", 600.) * 1e6;
-    sample_bw = config.get_default<float>(unique_name, "sample_bw", 200.) * 1e6;
+    // Per-element band centre / bandwidth (scalar broadcasts to all elements).
+    freq0s = read_per_elem(config, unique_name, "freq", elems, 1e6f, 600.f);
+    sample_bws = read_per_elem(config, unique_name, "sample_bw", elems, 1e6f, 200.f);
+    // Per-element Stokes/pol id; default XX, YY, XY, YX, ... (-5, -6, -7, ...).
+    std::vector<int> st;
+    try {
+        st = config.get<std::vector<int>>(unique_name, "stokes");
+    } catch (...) {
+    }
+    if (st.empty()) {
+        st.resize(elems);
+        for (int e = 0; e < elems; e++)
+            st[e] = -5 - e;
+    } else if ((int)st.size() == 1) {
+        st.assign(elems, st[0]);
+    }
+    if ((int)st.size() != elems)
+        throw std::runtime_error("networkPowerStream: 'stokes' must be a scalar "
+                                 "or a length-num_elements array");
+    stokes_ids = st;
+    freq0 = freq0s[0]; // kept for logging / back-compat
+    sample_bw = sample_bws[0];
 
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
@@ -65,11 +110,15 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
 
     atomic_flag_clear(&socket_lock);
 
+    header.protocol_version = 2;                  // per-element freq map + stokes
     header.packet_length = freqs * sizeof(float);
     header.header_length = sizeof(IntensityPacketHeader);
     header.samples_per_packet = freqs;
-    header.sample_type = 4;                       // uint32
-    header.raw_cadence = 1 / (sample_bw / freqs); // 2.56e-6;
+    header.sample_type = 4; // uint32
+    // Timing only: magnitude of the (per-element, all equal) bandwidth. Band
+    // direction / inversion is now carried per element in the freq map below.
+    float bw0 = sample_bws[0] < 0 ? -sample_bws[0] : sample_bws[0];
+    header.raw_cadence = 1 / (bw0 / freqs); // 2.56e-6
     header.num_freqs = freqs;
     header.num_elems = elems;
     header.samples_summed = config.get<int>(unique_name, "power_integration_length");
@@ -243,20 +292,27 @@ void networkPowerStream::tcpConnect() {
             atomic_flag_clear(&socket_lock);
             return;
         }
-        // FIXME: remove hardcoding of freq & Stokes
-        int info_size = freqs * 2 * sizeof(float) + elems * sizeof(char);
+        // Protocol v2: a freq map PER ELEMENT (elems x freqs x [lo, hi] Hz) then
+        // one Stokes/pol id per element, so a single stream can carry several
+        // sub-bands (e.g. a split 0-1600 MHz feed). Per-element centre/bandwidth
+        // come from the config freq/sample_bw arrays; a negative bandwidth means
+        // channel 0 is the top of that element's band (inverted).
+        int info_size = elems * freqs * 2 * sizeof(float) + elems * sizeof(char);
         void* info = malloc(info_size);
-        for (int f = 0; f < freqs; f++) {
-            ((float*)info)[2 * f] = freq0 - sample_bw / 2 + sample_bw / freqs * ((float)f);
-            ((float*)info)[2 * f + 1] = freq0 - sample_bw / 2 + sample_bw / freqs * ((float)f + 1);
-            //            ((float*)info)[2*f]   = 800e6 - 400e6* f   /1024;
-            //            ((float*)info)[2*f+1] = 800e6 - 400e6*(f+1)/1024;
+        float* finfo = (float*)info;
+        for (int e = 0; e < elems; e++) {
+            float f0 = freq0s[e], bw = sample_bws[e];
+            for (int f = 0; f < freqs; f++) {
+                finfo[2 * (e * freqs + f)] = f0 - bw / 2 + bw / freqs * ((float)f);
+                finfo[2 * (e * freqs + f) + 1] = f0 - bw / 2 + bw / freqs * ((float)f + 1);
+            }
         }
-        // - description of stream (e.g. V / H pol, Stokes-I / Q / U / V)
+        // - description of each stream: Stokes / pol id per element.
         //  -8  -7  -6  -5  -4  -3  -2  -1  1   2   3   4
         //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
+        char* sinfo = (char*)info + elems * freqs * 2 * sizeof(float);
         for (int e = 0; e < elems; e++)
-            ((char*)((char*)info + info_size - elems * sizeof(char)))[e] = -5 - e;
+            sinfo[e] = (char)stokes_ids[e];
         bytes_sent = send(socket_fd, info, info_size, 0);
         free(info);
         if (bytes_sent != info_size) {

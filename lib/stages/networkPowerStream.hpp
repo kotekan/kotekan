@@ -18,6 +18,7 @@
 #include <string>      // for string, basic_string
 #include <sys/types.h> // for uint
 #include <thread>      // for thread
+#include <vector>      // for vector
 
 /**
  * @class networkPowerStream
@@ -98,6 +99,13 @@ private:
     float freq0;
     /// Bandwidth of the data stream. Temporary until we have better metadata.
     float sample_bw;
+    /// Per-element band centre (Hz), bandwidth (Hz, signed: <0 = inverted), and
+    /// Stokes/element id. Config ``freq``/``sample_bw``/``stokes`` may be a scalar
+    /// (broadcast to every element) or a length-num_elements array, letting one
+    /// stream carry several sub-bands (protocol v2 sends these per element).
+    std::vector<float> freq0s;
+    std::vector<float> sample_bws;
+    std::vector<int> stokes_ids;
 
     /// Index of active frame in input buffer.
     uint frame_idx = 0;
