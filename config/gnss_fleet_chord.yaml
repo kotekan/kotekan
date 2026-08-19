@@ -205,7 +205,11 @@ common:
   # nodes on 12048 and we listen on 12049, so the control plane has never been able to
   # reach us. 12048 is FREE on our six (nothing answered there; stock cx47/cx52 do answer),
   # because our kotekan replaced production's on these nodes rather than joining it.
-  n2-send: false
+  # ✅ ARMED 2026-08-19 02:3x -- FULL LEG, fleet-wide. The blocker is gone: the EOP table is
+  # current on all six (2026-08-16 -> 08-21, matching stock cx47) and cx19's "Requesting EOP
+  # later" counter is FROZEN, so dUT1 is right and the frame metadata that killed recv1's
+  # writer should now agree with the stock nodes'.
+  n2-send: true
   n2-send-legs: full
   # ⚠️ RETRACTION 2026-08-18 23:4x -- KV asked "are we certain we didn't mess up the N^2 in
   # our manipulations?" and the honest answer is NO, not certain. The previous note claimed
@@ -417,7 +421,16 @@ nodes:
   # so this should SURVIVE and produce the measurement. The other five stay on `full`, so a
   # repeat failure costs one node, not the fleet.
   # Revert: delete n2-send-legs here, regenerate, restart cx19.
-  cx19: {search-port-base: 11040, n2-send-legs: both}
+  # ⚠️ cx19's `n2-send-legs: both` REMOVED 2026-08-19. It carried the #89 subset test, which
+  # read clean all night (zero non-real diagonals while eigencalc produced at ~38 fps). But
+  # the ordering that matters now is: prove recv1 ACCEPTS our frames on the full leg before
+  # handing it the subset leg too. We have already cost that receiver one outage; a second
+  # would be ours to own twice.
+  # ⚠️ COST OF THIS CHOICE, stated so it is a decision and not an oversight: parking the
+  # subset leg parks eigencalc again, and with it the Hermitian diagonal check that is our
+  # only detector for #89. Restore `n2-send-legs: both` here once recv1 is confirmed writing
+  # our full-leg frames.
+  cx19: {search-port-base: 11040}
   cx27: {search-port-base: 11042}
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
