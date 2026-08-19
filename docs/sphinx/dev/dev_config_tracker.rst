@@ -22,10 +22,12 @@ regular upstream entry: a single combined ``{"config": ..., "timing": ...}``
 JSON, keyed by the controller's REST ``(host, port)``. The hostname is
 resolved to a canonical IPv4 string up front so downstream peers
 transitively land on the same key. Any change to either part after the
-initial fetch indicates a controller reset and is fatal. The FPGA snapshot
-rides along on the same propagation path as peer kotekan configs, so an
-HDF5 writer downstream of the FPGA-adjacent node sees it as an ordinary
-upstream entry.
+initial fetch indicates a controller reset. The startup fetch treats such a
+change as fatal; ``checkFpgaTracking()`` re-reads the controller without
+inserting or exiting, so a poller can decide what a deviation means. The
+FPGA snapshot rides along on the same propagation
+path as peer kotekan configs, so an HDF5 writer downstream of the
+FPGA-adjacent node sees it as an ordinary upstream entry.
 
 The tracker exposes four REST endpoints:
 
@@ -59,10 +61,11 @@ The tracker is enabled by default. Its behaviour is configured by an optional to
       upstream_fetch_retries: 2             # retries per HTTP request
       upstream_fetch_timeout_seconds: 10    # per-attempt HTTP timeout
 
-The retry/timeout policy applies to every upstream fetch — both the one-shot
-FPGA controller fetch at startup and the per-frame peer fetches triggered by
-``bufferRecv``'s wire flag. After retries are exhausted on any fetch, the call
-is fatal (no silent skip).
+The retry/timeout policy applies to every upstream fetch — the one-shot FPGA
+controller fetch at startup, the per-frame peer fetches triggered by
+``bufferRecv``'s wire flag, and the repeat reads made by ``checkFpgaTracking()``.
+After retries are exhausted, the first two are fatal (no silent skip);
+``checkFpgaTracking()`` reports the failure to its caller instead.
 
 The controller's two endpoint paths live on the controller block itself so the
 Telescope (which reads ``timing_endpoint`` from the same block via
