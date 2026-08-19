@@ -283,10 +283,10 @@ dpdk:
 zero_samples:
   duplicate_ls_buffer: False
 {%- for id in range(num_freq_gpu_buf) %}
-  zero_{{ shuffled_host_buffers[id] }}:
+  zero_{{ id }}:
     kotekan_stage: zeroSamples
     lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
-    out_buf: host_voltage_buffer_{{ shuffled_host_buffers[id] }}
+    out_buf: host_voltage_buffer_{{ id }}
 {%- endfor %}
 
 {%- else %}
