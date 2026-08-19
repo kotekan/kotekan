@@ -209,6 +209,24 @@ common:
   # current on all six (2026-08-16 -> 08-21, matching stock cx47) and cx19's "Requesting EOP
   # later" counter is FROZEN, so dUT1 is right and the frame metadata that killed recv1's
   # writer should now agree with the stock nodes'.
+  # ⚠️⚠️ RESTART ORDER: NODES FIRST, THEN recv1 -- EVERY TIME THE NODE CONFIG CHANGES.
+  #
+  # recv1's ConfigTracker keys each upstream by (host, REST port) -- 10.222.1.19:12048 for
+  # cx19 -- and remembers the config that identity advertised. Reconnecting from the same
+  # host:port with DIFFERENT content is FATAL by design (configTracker.hpp:895,
+  # _config_info_matches -> FATAL_ERROR_NON_OO), and it takes recv1's bufferRecv workers
+  # down with it.
+  #
+  # That is exactly what happened on 2026-08-19 02:46: recv1 had learned our full-leg-only
+  # config at 02:08, we regenerated with the subset leg plus rf-stats, restarted the nodes,
+  # and cx19 came back as the same identity with different content. The "Address already in
+  # use" errors that followed were SECONDARY -- systemd restarting faster than the old
+  # listening sockets closed. Restart recv1 as stop -> confirm the process is gone and
+  # 11025/11027 are free -> start, not a single `restart`.
+  #
+  # This bites us harder than production because we regenerate far more often than they do.
+  # Any flag in this file that changes a node's emitted config -- n2-send, n2-send-legs,
+  # rf-stats, extra-signal, the resync bound -- means a recv1 restart after the node cycle.
   n2-send: true
   # ✅ BOTH LEGS, FLEET-WIDE 2026-08-19 (KV). The full leg is proven: 2 connections per node
   # to recv1:11027, dropped-frame count 0 and flat on all twelve legs, and recv1 alive
