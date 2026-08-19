@@ -986,6 +986,9 @@ host_n2k_PLcounts_buffer:
     value_type: int32
     # produced by CountLostPLSamplesScalar (out_buf): {num_integrations, num_local_freq}
     extents: [samples_per_data_set / n2k_sub_integration_ntime, num_freq_gpu_buf]
+    quantity_name: "pl_lost_counts_scalar"
+    dimnames: [ "Tc", "F" ]
+    dimscalings: [ n2k_sub_integration_ntime, 1 ]
     metadata_pool: main_pool
 
 # Stages
