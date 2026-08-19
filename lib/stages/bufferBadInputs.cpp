@@ -78,9 +78,12 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         for (size_t idx = 0; idx < num_elements; ++idx)
             reorder.at(idx) = idx;
     } else {
-        for (size_t output_idx = 0; output_idx < num_elements; ++output_idx) {
-            station_id_t st_id = tel.element_index_to_station_id(output_idx, output_order);
-            reorder.at(tel.station_id_to_element_index(st_id, input_order)) = output_idx;
+        // Note: this is overkill. The input received by this stage's REST
+        // endpoint takes channel ids (which happen to by element indices in
+        // cylinder order in CHIME).
+        for (station_id_t station_id = 0; station_id < num_elements; ++station_id) {
+            const int output_idx = tel.station_id_to_element_index(station_id, output_order);
+            reorder.at(tel.station_id_to_element_index(station_id, input_order)) = output_idx;
         }
     }
 
