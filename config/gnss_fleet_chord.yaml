@@ -382,7 +382,13 @@ nodes:
   # time base and took every clock-adopting chain down). 8 is a small bound: at ~195k pkt/s
   # even one advance per packet closes a gap at once. Watch the RESYNC lines in the node log
   # -- a rising count is a REAL upstream fault that we now survive rather than die from.
-  cx19: {search-port-base: 11040}
+  # ⚠️ cx19 IS THE #89 TEST NODE (2026-08-19). It alone builds the SUBSET leg, which gives
+  # eigencalc a consumer and makes it run. On 08-18 that core-dumped every node; the
+  # diagonal diagnostic in to_blaze_herm now logs the offending element instead of throwing,
+  # so this should SURVIVE and produce the measurement. The other five stay on `full`, so a
+  # repeat failure costs one node, not the fleet.
+  # Revert: delete n2-send-legs here, regenerate, restart cx19.
+  cx19: {search-port-base: 11040, n2-send-legs: both}
   cx27: {search-port-base: 11042}
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
