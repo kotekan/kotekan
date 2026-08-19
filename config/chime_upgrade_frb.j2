@@ -1381,7 +1381,7 @@ FRB:
 
     run_set_upchan_U16_gain:
         kotekan_stage: setUpchanGain
-        upchannelization_schedule_name: FRB/upchannelization
+        upchannelization_schedule_name: /FRB/upchannelization
         upchan_factor: factor_upchan_out
         upchan_max_num_channels: upchan_U16_max_num_channels
         upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
@@ -1493,6 +1493,7 @@ FRB:
 
     run_calc_frb2_weights:
         kotekan_stage: cudaCalcFRB2Weights
+        upchannelization_schedule_name: /FRB/upchannelization
         frb2_num_frequencies: upchan_U16_max_num_output_channels
         frb2_beam_positions: host_frb2_beam_positions_buffer
         frb1_swap_MN: true # yes, this is used by FRB 2
