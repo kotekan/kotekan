@@ -27,7 +27,17 @@ using float16_t = __half;
 using float16_t = _Float16;
 #define KOTEKAN_FLOAT16 1
 #else
-// There is no float16 type
+// This compiler has no _Float16 (x86 needs gcc>=12, or use CUDA's __half).
+// Provide a 16-bit storage-only stand-in so that base stages which merely
+// *declare* `float16_t` (e.g. `std::vector<float16_t>` in processFeedGains,
+// setUpchanGain, FRB weight/phase stages) still compile on this toolchain.
+// KOTEKAN_FLOAT16 stays 0, so every real half-float code path -- the
+// GetType<float16>/<cfloat16> specializations, the math/isfinite helpers, the
+// ostream operator -- remains disabled. This type is NOT a working half float
+// (arithmetic on it is integer); it only satisfies declarations. None of these
+// stages are used by the ARO VDIF-capture pipeline. Remove this and build with
+// gcc>=12 (Ubuntu 24.04) for genuine float16 support.
+using float16_t = std::uint16_t;
 #define KOTEKAN_FLOAT16 0
 #endif
 #endif
@@ -662,12 +672,13 @@ template<>
 struct GetType<int64> {
     using type = std::int64_t;
 };
-#if KOTEKAN_FLOAT16
+// Always define GetType<float16> so template dispatch over all DataTypes (NDArray,
+// processFeedGains, ...) instantiates cleanly. `float16_t` is the real _Float16 on
+// capable compilers, or the 16-bit storage stand-in otherwise (see its typedef).
 template<>
 struct GetType<float16> {
     using type = float16_t;
 };
-#endif
 template<>
 struct GetType<float32> {
     using type = float;
@@ -708,12 +719,12 @@ template<>
 struct GetType<cint64> {
     using type = std::complex<std::int64_t>;
 };
-#if KOTEKAN_FLOAT16
+// Always defined (see GetType<float16> note). std::complex<float16_t> mirrors the
+// std::complex<std::uint16_t> already used for cuint16 when float16_t is the stand-in.
 template<>
 struct GetType<cfloat16> {
     using type = std::complex<float16_t>;
 };
-#endif
 template<>
 struct GetType<cfloat32> {
     using type = std::complex<float>;
