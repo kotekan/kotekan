@@ -215,7 +215,10 @@ gnss{{ g.gpu }}_srch_tap:
   fft_length: {{ gnss.fft_len }}
   frame_chan_stride: num_local_freq
   frame_elem_stride: num_elements
-
+{% if g.search.band_power_chans is defined %}  band_power_chans: {{ g.search.band_power_chans }}
+  band_power_period_s: {{ g.search.band_power_period_s }}
+  band_power_hop_stride: {{ g.search.band_power_hop_stride }}
+{% endif %}
 gnss{{ g.gpu }}_srch_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool

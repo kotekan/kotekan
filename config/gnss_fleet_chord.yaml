@@ -210,7 +210,17 @@ common:
   # later" counter is FROZEN, so dUT1 is right and the frame metadata that killed recv1's
   # writer should now agree with the stock nodes'.
   n2-send: true
-  n2-send-legs: full
+  # ✅ BOTH LEGS, FLEET-WIDE 2026-08-19 (KV). The full leg is proven: 2 connections per node
+  # to recv1:11027, dropped-frame count 0 and flat on all twelve legs, and recv1 alive
+  # through it where it previously died in under a minute.
+  #
+  # ⚠️ WIDER THAN THE TEST WAS. #89 exercised the subset leg on cx19 ALONE. What justifies
+  # the widening is that the thing which killed recv1's subset writer was FRAME METADATA --
+  # a 5.007 ms dUT1 from the stale EOP table -- and the subset leg carries the same metadata
+  # the full leg does, which recv1 is now demonstrably accepting. eigencalc itself ran clean
+  # on cx19 for hours: zero non-real diagonals at ~38 fps.
+  # Rollback if recv1's writer complains again: n2-send-legs: full, regenerate, restart.
+  n2-send-legs: both
   # ⚠️ RETRACTION 2026-08-18 23:4x -- KV asked "are we certain we didn't mess up the N^2 in
   # our manipulations?" and the honest answer is NO, not certain. The previous note claimed
   # eigencalc "has been parked for the life of this instrument" and that we merely uncovered
@@ -260,7 +270,11 @@ common:
   # monitor -- which is when you most want it.
   # ⚠️ Needs a NODE RESTART (sudo -- KV's). Off means the pass never runs, not that it runs
   # and reports nothing: config/gates/rf_stats_gate.py's control arm checks exactly that.
-  rf-stats: false
+  # ✅ ARMED 2026-08-19 (KV). Clip fraction + per-band power from each GPU's voltage tap,
+  # served at <node>:12048/gnss{0,1}_srch_tap/rf_stats, polled by the broker (gps_l5 only)
+  # and rendered in the viewer's stream-health strip. Cost measured at production shape:
+  # 1.0-1.2 ms per pass, ~0.01% duty at the 10 s period. Rollback: rf-stats: false.
+  rf-stats: true
   # PATH A OFF (task #26, 2026-08-09). The primary chain's path-A tracker is not
   # instantiated: the broker seeds gnss*_inject and reads gnss*_n2combine, validated on sky
   # before this landed (PRN 10 deep 88.9, same bias structure as path A, clk within 0.6

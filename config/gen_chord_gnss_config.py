@@ -854,7 +854,15 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         search = {"tap_core": srch["cpu_affinity"][0],
                   "send_core": out["gnss%d_srch_send" % g]["cpu_affinity"][0],
                   "chan_ids": srch["chan_ids"],
-                  "element_offset": srch["element_offset"]} if srch else None
+                  "element_offset": srch["element_offset"],
+                  # #8's RF monitor, PER GPU (the channel union differs -- each GPU holds a
+                  # different slice of the node's comb). Present only when --rf-stats armed
+                  # it, so the template must render these conditionally, exactly as with
+                  # frame0_utc.
+                  **({"band_power_chans": srch["band_power_chans"],
+                      "band_power_period_s": srch["band_power_period_s"],
+                      "band_power_hop_stride": srch["band_power_hop_stride"]}
+                     if "band_power_chans" in srch else {})} if srch else None
         L.append('        {"gpu": %d, "search": %r, "chains": [' % (g, search))
         for V in per_gpu_vars[g]:
             L.append('            {"tag": "%s", "chain": "%s", "signal": "%s",'

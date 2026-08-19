@@ -67,7 +67,16 @@ def extract(cfg, node):
             g["search"] = {"tap_core": tap["cpu_affinity"][0],
                            "send_core": cfg["gnss%d_srch_send" % gpu]["cpu_affinity"][0],
                            "chan_ids": tap["chan_ids"],
-                           "element_offset": tap["element_offset"]}
+                           "element_offset": tap["element_offset"],
+                           # #8's RF monitor, per GPU and only when armed. This checker
+                           # rebuilds the vars from the GENERATED config rather than reading
+                           # the committed ones, so every field the template renders has to be
+                           # extracted here too -- a field added in three places and not the
+                           # fourth reads as "the template lost it".
+                           **({k: tap[k] for k in ("band_power_chans",
+                                                   "band_power_period_s",
+                                                   "band_power_hop_stride")}
+                              if "band_power_chans" in tap else {})}
         for tag, c in g["chains"].items():
             pre = "gnss%d%s_" % (gpu, tag)
             dual = cfg[pre + "n2dual"]
