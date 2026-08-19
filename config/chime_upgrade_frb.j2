@@ -293,7 +293,7 @@ zero_samples:
 
 # read fengine simulated data
 #{#
-{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ] %}
+{% set frequency_channels = [ 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954  ] %}
 {% for id in range(16) %}   # num_frequencies = 16
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileReadSingleFile
