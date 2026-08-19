@@ -291,6 +291,7 @@ class KotekanPowerStream:
         # into ``frame_nvis`` pols x ``frame_nfreq`` channels on the true,
         # contiguous ascending RF axis. Off (band_map=None) => wire dims are the
         # display dims and _raw is databuf (no reassembly, zero overhead).
+        self.protocol_version = 1  # set from the handshake; v2 = per-element freqs
         self.band_map_path = band_map
         self._bandmap = None     # parsed map dict when active
         self._gather = None      # (frame_nvis, frame_nfreq) indices into _raw.flat
@@ -309,7 +310,18 @@ class KotekanPowerStream:
         self.connection, peer = sock.accept()
         log_.info("Connected to kotekan: %s", peer)
 
-        self.packed_header = self._recv_exact(self.HEADER_LEN, self.connection)
+        # Protocol version: v2 prepends a small ``protocol_version`` int to the
+        # 48-byte v1 header. v1's first int is packet_length (nfreq*4, always
+        # large), so a small leading int unambiguously marks v2.
+        first4 = self._recv_exact(4, self.connection)
+        (v0,) = struct.unpack("=i", first4)
+        if 0 < v0 < 64:
+            self.protocol_version = v0
+            hdr = self._recv_exact(self.HEADER_LEN, self.connection)
+        else:
+            self.protocol_version = 1
+            hdr = first4 + self._recv_exact(self.HEADER_LEN - 4, self.connection)
+        self.packed_header = hdr
         (
             self.frame_length,  # packet_length: bytes of float32 spectrum per subframe
             self.subframe_hdr_len,  # bytes of subframe header (should == SUBFRAME_HDR_LEN)
@@ -321,26 +333,35 @@ class KotekanPowerStream:
             self.frame_int_len,  # samples_summed per integration
             self.frame_idx0,  # handshake_idx (zero offset for frame_idx)
             self.frame_utc0,  # handshake_utc (zero offset for sample_time)
-        ) = struct.unpack(self.HEADER_FMT, self.packed_header)
-
-        info_len = self.frame_nfreq * 4 * 2 + self.frame_nvis * 1
-        info = self._recv_exact(info_len, self.connection)
-        self.frame_freqs = np.frombuffer(
-            info[: self.frame_nfreq * 4 * 2], dtype=np.float32
-        ).reshape(-1, 2)
-        self.frame_elems = np.frombuffer(
-            info[self.frame_nfreq * 4 * 2 :], dtype=np.int8
-        )
+        ) = struct.unpack(self.HEADER_FMT, hdr)
 
         # Wire dims = what kotekan actually sends per integration. A multi-sub-band
-        # source is de-interleaved here, after which the DISPLAY dims (frame_nvis /
+        # source is de-interleaved below, after which the DISPLAY dims (frame_nvis /
         # frame_nfreq / frame_freqs) describe the reassembled per-pol RF spectra and
-        # may differ from these wire dims. All the flip/downsample/buffer setup below
+        # may differ from these wire dims; the flip/downsample/buffer setup below
         # then keys off the (possibly overridden) display dims, unchanged.
         self.read_nvis = int(self.frame_nvis)
         self.read_nfreq = int(self.frame_nfreq)
-        if self.band_map_path:
-            self._apply_band_map()
+        if self.protocol_version >= 2:
+            # v2 info: a freq map PER ELEMENT (nvis x nfreq x [lo, hi]) then one
+            # stokes/pol id per element. The display layout (pols x sub-bands) is
+            # derived straight from this -- no viewer-side band-map needed.
+            nfb = self.read_nvis * self.read_nfreq * 4 * 2
+            info = self._recv_exact(nfb + self.read_nvis, self.connection)
+            per_elem_freqs = np.frombuffer(info[:nfb], dtype=np.float32).reshape(
+                self.read_nvis, self.read_nfreq, 2)
+            self.frame_elems = np.frombuffer(info[nfb:], dtype=np.int8).copy()
+            self._derive_layout_v2(per_elem_freqs)
+        else:
+            # v1 info: a single shared freq map + one stokes id per element.
+            info_len = self.frame_nfreq * 4 * 2 + self.frame_nvis * 1
+            info = self._recv_exact(info_len, self.connection)
+            self.frame_freqs = np.frombuffer(
+                info[: self.frame_nfreq * 4 * 2], dtype=np.float32).reshape(-1, 2)
+            self.frame_elems = np.frombuffer(
+                info[self.frame_nfreq * 4 * 2 :], dtype=np.int8)
+            if self.band_map_path:  # legacy: reassemble a v1 multi-sub-band stream
+                self._apply_band_map()
 
         # ARO runs with sample_bw < 0 (channel 0 on top), which makes kotekan
         # report a *negative* raw_cadence. That's a frequency-ordering signal,
@@ -428,6 +449,59 @@ class KotekanPowerStream:
 
         self.connection.settimeout(0.1)
         reactor.callLater(0.001, self._tick)
+
+    def _derive_layout_v2(self, per_elem_freqs):
+        """Build the display layout from the v2 per-element freq map + stokes.
+
+        Each wire element carries its own freq bins and a stokes/pol id. Elements
+        that share a stokes id are the same polarization in different sub-bands;
+        we group by stokes, order each pol's elements + channels by ascending RF,
+        and concatenate -> npol pols x (nsub*nfreq) channels on the true ascending
+        axis. This subsumes the old --band-map: a plain dualpol single band, and a
+        split 0-1600 MHz feed, both fall out of the same rule with no viewer config.
+
+        Sets frame_nvis/frame_nfreq/frame_freqs/frame_elems and self._gather (an
+        index array into the raw wire buffer). Leaves the stream as-is on a
+        malformed (uneven sub-bands per pol) layout.
+        """
+        stokes = [int(s) for s in self.frame_elems]
+        distinct = []
+        for s in stokes:
+            if s not in distinct:
+                distinct.append(s)
+        npol = len(distinct)
+        pol_elems = {s: [e for e in range(self.read_nvis) if stokes[e] == s]
+                     for s in distinct}
+        nsub = len(pol_elems[distinct[0]])
+        if any(len(pol_elems[s]) != nsub for s in distinct):
+            log_.warning("v2 layout: uneven sub-bands per pol %s; streaming raw",
+                         {s: len(pol_elems[s]) for s in distinct})
+            return
+        centres = per_elem_freqs.mean(axis=2)               # (read_nvis, read_nfreq)
+        combined = nsub * self.read_nfreq
+        gather = np.zeros((npol, combined), dtype=np.int64)
+        freqs = np.zeros((combined, 2), dtype=np.float32)
+        for p, s in enumerate(distinct):
+            elems_p = sorted(pol_elems[s], key=lambda e: float(centres[e].mean()))
+            out_c = 0
+            for e in elems_p:                               # sub-bands low RF -> high
+                for k in np.argsort(centres[e]):            # channels ascending in RF
+                    gather[p, out_c] = e * self.read_nfreq + int(k)
+                    if p == 0:                              # pols share the RF axis
+                        freqs[out_c] = per_elem_freqs[e, int(k)]
+                    out_c += 1
+        self._bandmap = {"npol": npol,
+                         "pol_labels": [STOKES_LOOKUP.get(s, f"pol{i}")
+                                        for i, s in enumerate(distinct)]}
+        self._gather = gather
+        self.frame_nvis = npol
+        self.frame_nfreq = combined
+        self.frame_freqs = freqs
+        self.frame_elems = np.array(distinct, dtype=np.int8)
+        log_.info("v2 layout: %d elems -> %d pol x %d sub-band -> %d ch "
+                  "(%.0f-%.0f MHz), pols=%s", self.read_nvis, npol, nsub, combined,
+                  float(freqs[0, 0] / 1e6), float(freqs[-1, 1] / 1e6),
+                  self._bandmap["pol_labels"])
 
     def _apply_band_map(self):
         """Reassemble a multi-sub-band capture into per-pol RF spectra.

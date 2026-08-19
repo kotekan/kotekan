@@ -142,19 +142,23 @@ power_integration:
    power_out_buf: power_buffer
 
 power_stream:
-   # center frequency and bandwidth, in MHz.
-   # Use negative bandwidth if channel 0 is on top.
-   # Regular CHIME band has freq: 600.0 and sample_bw: -400.0.
-   freq: 600.0
-   sample_bw: -400.0
+   # PER-ELEMENT band centre / bandwidth / Stokes (protocol v2). Each of the 8
+   # captured elements (0..7) carries a different RF sub-band x pol:
+   #   elems 0,1 = 0-400   2,3 = 400-800   4,5 = 800-1200   6,7 = 1200-1600 MHz
+   #   even elems = XX (-5), odd elems = YY (-6).
+   # A negative sample_bw means channel 0 is the TOP of that element's band
+   # (inverted -- even Nyquist zones 400-800 & 1200-1600). The viewer reads this
+   # map straight off the wire and reconstructs the ascending 0-1600 dual-pol
+   # spectrum -- no viewer-side band-map file. If a sub-band looks mirrored, flip
+   # its sample_bw sign here and restart kotekan.
+   freq:      [200, 200, 600, 600, 1000, 1000, 1400, 1400]
+   sample_bw: [400, 400, -400, -400, 400, 400, -400, -400]
+   stokes:    [-5, -6, -5, -6, -5, -6, -5, -6]
    destination_protocol: TCP
-   # MONITOR VARIANT: only the single local stream to the viewer is kept.
    # The viewer (livebeam_server.py) must be listening on this port before
    # kotekan starts, since networkPowerStream connects out to it.
    stream_fearless:
       # Quad-band feed to the fearless viewer hub (cloyd tile, :23402).
-      # livebeam --band-map de-interleaves the 8 element-autopowers into
-      # 2 pols x 4 sub-bands (0-1600 MHz); see bandmap_quadband.yaml.
       kotekan_stage: networkPowerStream
       in_buf: power_buffer
       destination_port: 23402

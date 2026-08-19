@@ -90,16 +90,31 @@ def _open_outfile(args, meta):
 
 def _handle(conn, args):
     dtype = np.uint32 if args.power_dtype == "uint32" else np.float32
+    # Protocol version: v2 prepends a small int; v1's first int is packet_length
+    # (large), so a small leading int marks v2.
+    first4 = _recv_exact(conn, 4)
+    (v0,) = struct.unpack("=i", first4)
+    if 0 < v0 < 64:
+        version, hdr = v0, _recv_exact(conn, HEADER_LEN)
+    else:
+        version, hdr = 1, first4 + _recv_exact(conn, HEADER_LEN - 4)
     (pkt_len, sub_len, nsamp, samp_type, raw_cad, nfreq, nvis,
-     samples_summed, idx0, utc0) = struct.unpack(HEADER_FMT,
-                                                  _recv_exact(conn, HEADER_LEN))
-    info = _recv_exact(conn, nfreq * 4 * 2 + nvis * 1)
-    freqs = np.frombuffer(info[:nfreq * 4 * 2], dtype=np.float32).reshape(-1, 2)
-    elems = np.frombuffer(info[nfreq * 4 * 2:], dtype=np.int8)
+     samples_summed, idx0, utc0) = struct.unpack(HEADER_FMT, hdr)
+    if version >= 2:
+        # per-element freq map (nvis x nfreq x [lo, hi]) + one stokes per element
+        nfb = nvis * nfreq * 4 * 2
+        info = _recv_exact(conn, nfb + nvis)
+        freqs = np.frombuffer(info[:nfb], dtype=np.float32).reshape(nvis, nfreq, 2)
+        elems = np.frombuffer(info[nfb:], dtype=np.int8)
+    else:
+        info = _recv_exact(conn, nfreq * 4 * 2 + nvis)
+        freqs = np.frombuffer(info[:nfreq * 4 * 2], dtype=np.float32).reshape(-1, 2)
+        elems = np.frombuffer(info[nfreq * 4 * 2:], dtype=np.int8)
     period = abs(raw_cad) * samples_summed  # seconds between integrations
 
     meta = {
         "magic": MAGIC.decode(), "version": 1,
+        "wire_protocol_version": int(version),
         "source": args.source, "power_dtype": args.power_dtype,
         "nfreq": int(nfreq), "nvis": int(nvis),
         "sample_type": int(samp_type),
