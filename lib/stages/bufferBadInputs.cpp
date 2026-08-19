@@ -1,7 +1,8 @@
 #include "bufferBadInputs.hpp"
 
-#include "Config.hpp"         // for Config
-#include "N2Util.hpp"         // for frameID
+#include "Config.hpp" // for Config
+#include "N2Util.hpp" // for frameID
+#include "NDArray.hpp"
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"      // for Telescope, station_id_t
 #include "buffer.hpp"         // for Buffer
@@ -34,7 +35,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     out_buf->register_producer(unique_name);
 
     // Construct the cylinder -> beamformer reorder table.
-    // reorder[beamformer_idx] = cylinder_idx;
+    // want reorder[cylinder_idx] = beamformer_idx
     reorder.resize(num_elements);
 
     // initialize the mask (1 == good)
@@ -42,12 +43,15 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     const Telescope& tel = Telescope::instance();
 
-    for (size_t beamformer_idx = 0; beamformer_idx < num_elements; ++beamformer_idx) {
-        station_id_t st_id =
-            tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
-        reorder.at(beamformer_idx) =
-            tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
+    // cylinder order is already gives the station id
+    for (station_id_t cyl_idx = 0; cyl_idx < num_elements; ++cyl_idx) {
+        reorder.at(cyl_idx) =
+            tel.station_id_to_element_index(cyl_idx, ElementOrder::CHIMEBeamformer);
     }
+
+    // Set the frame description
+    out_buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::uint8>, 1>::describe(
+        "bad_inputs", {static_cast<ptrdiff_t>(num_elements)}, {"E"}, {1}));
 
     // Listen for bad input list updates
     std::string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
@@ -88,7 +92,8 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     // Reset the mask (1 == good)
     std::fill(input_mask.begin(), input_mask.end(), 1);
 
-    // now update the mask
+    // now update the mask. Elements are in _cylinder_ order, but the
+    // output map should be in _beamformer_ order
     for (int element : bad_inputs) {
         input_mask.at(reorder[element]) = 0;
     }
@@ -119,7 +124,13 @@ void bufferBadInputs::main_thread() {
 
         // Set metadata and release
         out_buf->allocate_new_metadata_object(frame_id);
-        get_chord_metadata(out_buf, frame_id)->set_rfi_num_bad_inputs(nbad);
+        auto meta = get_chord_metadata(out_buf, frame_id);
+        meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta->set_name("bad_inputs");
+        meta->set_rfi_num_bad_inputs(nbad);
+        // Verify the frame desc and metadata match
+        meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
+
         out_buf->mark_frame_full(unique_name, frame_id);
         frame_id++;
     }
