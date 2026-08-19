@@ -7,6 +7,7 @@
 #include "bufferContainer.hpp"
 #include "gnssElemCal.hpp"
 #include "restServer.hpp"
+#include "json.hpp"    // nlohmann::json for the set_elem_gain POST
 
 #include <complex>
 #include <mutex>
@@ -156,11 +157,17 @@ private:
     std::vector<SpecWindow> _spec_ring;          ///< depth from config; index -> idx % depth
     int64_t _spec_max_idx = -1;                  ///< newest index SEEN; complete windows are < this
     std::mutex _spec_mtx;                        ///< guards _spec_* between main_thread and REST
+    // PATH B: an injected per-element complex gain prior (e.g. N^2 eigenvector, sky removed).
+    // The REST callback stages it here; main_thread swaps it out and seeds every PRN's ElemCal.
+    std::mutex _gain_mtx;                         ///< guards _pending_gain between REST and main_thread
+    std::vector<std::complex<double>> _pending_gain;
+    bool _pending_gain_set = false;
     std::vector<std::complex<double>> _spec_scratch; ///< [n_elem] per-channel cal-combine input
     /// Accumulate one record's channels into the window that owns `wstart`, opening/clearing
     /// the ring slot on a boundary crossing. Caller holds _spec_mtx.
     SpecWindow& spec_window_for(int64_t wstart);
     void spectrum_callback(kotekan::connectionInstance& conn);
+    void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 };
 
 #endif

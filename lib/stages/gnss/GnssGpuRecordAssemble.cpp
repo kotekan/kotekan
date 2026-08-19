@@ -176,6 +176,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_spectrum",
         std::bind(&GnssGpuRecordAssemble::spectrum_callback, this, _1));
+    if (_elem_sum)
+        kotekan::restServer::instance().register_post_callback(
+            unique_name + "/set_elem_gain",
+            std::bind(&GnssGpuRecordAssemble::set_elem_gain_callback, this, _1, _2));
 }
 
 GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
@@ -198,6 +202,22 @@ void GnssGpuRecordAssemble::main_thread() {
             FATAL_ERROR("GnssGpuRecordAssemble: frame n_prn {:d} != config {:d}", hdr.n_prn,
                         n_prn);
             return;
+        }
+        // PATH B: a newly-injected per-element gain prior seeds every PRN's cal here, once,
+        // before this frame's records are combined. seed() also stores it, so each subsequent
+        // reset() (re-anchor) re-applies it rather than going cold -- the whole point.
+        if (_elem_sum) {
+            std::vector<std::complex<double>> pend;
+            {
+                std::lock_guard<std::mutex> lk(_gain_mtx);
+                if (_pending_gain_set) {
+                    pend.swap(_pending_gain);
+                    _pending_gain_set = false;
+                }
+            }
+            if ((int)pend.size() == _n_elements)
+                for (auto& ec : _cal)
+                    ec.seed(pend.data(), _n_elements);
         }
         const int n_chan = hdr.n_chan;
         // Output rows per spec: 4 normally, 6 when the writer peels (rows 4/5 = the peel
@@ -877,4 +897,46 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     }
     reply["prns"] = prns;
     conn.send_json_reply(reply);
+}
+
+
+// PATH B endpoint: inject a per-element complex gain prior into every PRN's ElemCal so the
+// coherent combine starts warm on (re)acquisition. Parse FIRST, lock LAST: main_thread takes
+// _gain_mtx only for the swap, never across a parse.
+void GnssGpuRecordAssemble::set_elem_gain_callback(kotekan::connectionInstance& conn,
+                                                   nlohmann::json& request) {
+    if (!_elem_sum) {
+        conn.send_error("elem_sum is OFF on this stage: no per-element cal to seed",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    std::vector<std::complex<double>> gains;
+    try {
+        auto& arr = request.at("gain");   // [[re,im], ...], length n_elements; [] or all-zero clears
+        if (!arr.is_array())
+            throw std::runtime_error("'gain' must be an array of [re, im] pairs");
+        gains.reserve(arr.size());
+        for (auto& e : arr) {
+            if (!e.is_array() || e.size() != 2)
+                throw std::runtime_error("each gain must be [re, im]");
+            gains.emplace_back(e[0].get<double>(), e[1].get<double>());
+        }
+    } catch (const std::exception& ex) {
+        conn.send_error(std::string("set_elem_gain: ") + ex.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    if (!gains.empty() && (int)gains.size() != _n_elements) {
+        conn.send_error("set_elem_gain: gain length != n_elements",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    if (gains.empty())   // explicit "clear the prior": a full-length zero vector -> seed() clears
+        gains.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
+    {
+        std::lock_guard<std::mutex> lk(_gain_mtx);
+        _pending_gain.swap(gains);
+        _pending_gain_set = true;
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }

@@ -56,7 +56,11 @@ public:
         reset();
     }
 
-    /// Drop all state (fresh acquisition: the fringes may have moved arbitrarily).
+    /// Drop all state (fresh acquisition: the fringes may have moved arbitrarily). If a
+    /// per-element gain PRIOR was injected (path B: seed()), re-apply it as a warm start
+    /// instead of going cold -- the instrumental phase does not move between a drop and its
+    /// re-acquisition, so the combine can be coherent from the first record rather than
+    /// spending ~3 tau bootstrapping (which, under rapid re-anchoring, it never completes).
     void reset() {
         _u.assign((size_t)_n, cd(0.0, 0.0));
         _p.assign((size_t)_n, 0.0);
@@ -67,6 +71,30 @@ public:
         _wsum = 0.0;
         _warmth = 0.0;
         _anchor = _ref;
+        if (!_prior.empty())
+            apply_prior();
+    }
+
+    /// PATH B: inject an external per-element complex gain prior (e.g. from the N^2
+    /// eigendecomposition, sky removed). @p g_prior[e] is the element's complex gain -- its
+    /// PHASE is what matters (the instrumental cable/component phase the raw-voltage pipeline
+    /// never corrects); relative magnitude is used for the initial MRC weighting and refined
+    /// by update(). Stored so every subsequent reset() re-applies it. Passing n_elem != _n or
+    /// an all-zero prior clears it (back to cold self-bootstrap).
+    void seed(const cd* g_prior, int n_elem) {
+        if (g_prior == nullptr || n_elem != _n) {
+            _prior.clear();
+            return;
+        }
+        double s = 0.0;
+        for (int e = 0; e < _n; ++e)
+            s += std::norm(g_prior[(size_t)e]);
+        if (!(s > 0.0)) {                 // all-zero prior = "no prior"
+            _prior.clear();
+            return;
+        }
+        _prior.assign(g_prior, g_prior + _n);
+        apply_prior();
     }
 
     /// True once the weights have integrated ~3 time constants and the sum should be used.
@@ -223,6 +251,29 @@ public:
     }
 
 private:
+    /// Load the stored prior into the cal state so warm() is true and combine() coheres at
+    /// once. u_e carries the prior's phase+magnitude; a nominal seed SNR sets the noise floor
+    /// so the MRC weights are finite (update() then refines both from the data).
+    void apply_prior() {
+        if ((int)_prior.size() != _n)
+            return;
+        constexpr double SEED_SNR = 4.0;  // signal/noise the prior is trusted at, per element
+        for (int e = 0; e < _n; ++e) {
+            const cd g = _prior[(size_t)e];
+            _u[(size_t)e] = g;                               // per-element gain direction+mag
+            _q[(size_t)e] = 1.0;                             // reference power normalization
+            _p[(size_t)e] = std::norm(g) * (1.0 + 1.0 / SEED_SNR);  // total = signal + floor
+        }
+        // rebuild_weights gates each element at GATE sigma, and the bar is GATE^2 / n_eff with
+        // n_eff set by _alpha. A trusted prior stands in for many integrated records, so give it
+        // a small alpha (large n_eff): otherwise the default n_eff=1 makes the 3-sigma bar 9,
+        // which the correlation coefficient (<=1) can never clear and every seeded element is
+        // rejected. update() overwrites _alpha from dt_s on the first real record.
+        _alpha = 0.1;     // n_eff ~ 19 -> gate ~ 0.47, comfortably below the seed's rho^2 ~ 0.8
+        _warmth = 0.96;   // just past warm() so the seeded combine is used immediately
+        rebuild_weights();
+    }
+
     void rebuild_weights() {
         std::fill(_w.begin(), _w.end(), cd(0.0, 0.0));
         _wsum = 0.0;
@@ -355,6 +406,7 @@ private:
     std::vector<uint8_t> _half; ///< split-aperture side per element (0=A, 1=B)
     int _split_ok = 0;      ///< both halves non-empty -> combine_split() is available
     double _alpha = 0.0;    ///< last EMA coefficient (sets n_eff for the significance gate)
+    std::vector<cd> _prior; ///< injected per-element gain prior (path B); empty = cold bootstrap
 };
 
 } // namespace gnss
