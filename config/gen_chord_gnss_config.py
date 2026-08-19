@@ -30,12 +30,14 @@ the N2 chain as well competes for the same GPUs for no benefit while debugging.
 
 import argparse
 import copy
+import datetime
 import hashlib
 import json
 import os
 import shlex
 import sys
 import textwrap
+import time
 
 import yaml
 
@@ -1867,6 +1869,51 @@ def build_search_instance(cfg, node, per_gpu, args, port):
     return out
 
 
+def live_eop_table(cfg, args, timeout=3.0):
+    """The FRESHEST Earth-orientation table any reachable kotekan is serving, or None.
+
+    Returns (table, source_host, last_ns) where `table` is the BareEOP list in the shape
+    receive_eop_updates() accepts -- t_inst_ns / delta_UT1_inst / xp_as / yp_as, and nothing
+    else, because ERA_deg and t_ut1_ns are DERIVED by to_EOP() and are not BareEOP fields.
+
+    ⚠️ WHY THIS EXISTS. The EOP table is a top-level `earth_rotation_data` block in the config,
+    and ours was inherited verbatim from config/base/live_config_20260730.json. It is a rolling
+    SIX-ENTRY, ~5-DAY window, so a captured base goes stale within a week and then stays stale
+    forever. Ours ran 18.1 days past its end: cx19 logged 17,085,672 "Requesting EOP later than
+    in table" warnings against stock cx47's zero, dUT1 was 5.007 ms wrong, and the frame
+    metadata that error produced killed recv1's hdf5 writer on 2026-08-19.
+
+    Same disease as frame0_utc, same cure: ask the running fleet instead of pasting a number.
+    The difference is that EOP goes stale on its OWN, with no restart to blame -- so this
+    reports coverage rather than just agreement, and says so when nobody has a current table.
+    """
+    import urllib.request
+
+    port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"]
+    # Our own nodes first, then the reference (stock) nodes: ours are usually right, but
+    # after a long outage the stock fleet is the one still being refreshed.
+    hosts = list(cfg["nodes"]) + [h for h in cfg["runtime"].get("eop_reference_nodes", [])
+                                  if h not in cfg["nodes"]]
+    best = None
+    for host in hosts:
+        try:
+            url = f"http://{host}:{port}/telescope/eop_table"
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                tbl = json.loads(r.read().decode()).get("eop_table") or []
+        except Exception:
+            continue
+        if not tbl:
+            continue
+        bare = [{"t_inst_ns": int(e["t_inst_ns"]),
+                 "delta_UT1_inst": float(e["delta_UT1_inst"]),
+                 "xp_as": float(e["xp_as"]), "yp_as": float(e["yp_as"])} for e in tbl]
+        bare.sort(key=lambda e: e["t_inst_ns"])
+        last = bare[-1]["t_inst_ns"]
+        if best is None or last > best[2]:
+            best = (bare, host, last)
+    return best
+
+
 def live_frame0_utc(cfg, args, timeout=3.0):
     """The F-engine epoch as the RUNNING FLEET reports it, or None if nobody answers.
 
@@ -2684,6 +2731,35 @@ def main():
     # site network and serves nothing but diagnostics.
     out["rest_server"] = {"port": port, "cpu_affinity": cfg["runtime"]["cpu_affinity"],
                           "enable_cors": True}
+
+    # --- EARTH ORIENTATION: take the fleet's, never the capture's ----------------------------
+    # The base's earth_rotation_data is a six-entry, ~5-day rolling window frozen at the
+    # capture date. Emitting it verbatim is how our nodes ended up 18.1 days past the end of
+    # their own table, with dUT1 5.007 ms wrong and frames that killed recv1's writer.
+    #
+    # ⚠️ THIS ONE GOES STALE WITH NO RESTART TO BLAME, which is what makes it nastier than
+    # frame0_utc. There is no event to notice: the config is unchanged, the node is healthy,
+    # and the table simply ages out from under it while the log fills at frame rate with a
+    # warning everyone has learned to ignore (#68). So this refuses to be quiet about it.
+    _eop = live_eop_table(cfg, args)
+    if _eop is not None:
+        _tbl, _src, _last = _eop
+        out.setdefault("earth_rotation_data", {})["earth_orientation_parameter_table"] = _tbl
+        _cov = (_last / 1e9) - time.time()
+        print("  eop       %d entries from %s, ends %s (%+.1f days from now)"
+              % (len(_tbl), _src,
+                 datetime.datetime.utcfromtimestamp(_last / 1e9).strftime("%Y-%m-%d"),
+                 _cov / 86400.0), file=sys.stderr)
+        if _cov < 0:
+            print("  WARNING   the FRESHEST table any node serves already ENDS IN THE PAST. "
+                  "Every node is extrapolating, ours and production's alike -- this is not a "
+                  "GNSS problem and regenerating will not fix it. Someone must refresh the "
+                  "fleet's EOP.", file=sys.stderr)
+    else:
+        print("  WARNING   no node served telescope/eop_table -- keeping the BASE's earth "
+              "rotation table, which is frozen at the capture date and is almost certainly "
+              "stale. Records will carry a wrong dUT1 and any collator that checks frame "
+              "metadata will reject them.", file=sys.stderr)
 
     # --- safety: don't inject into the downstream science consumer ----------------------------
     dropped = []

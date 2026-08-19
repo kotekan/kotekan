@@ -272,6 +272,11 @@ runtime:
   # moving the node port would have dragged it from 12050 to 12049 and broken the
   # `detectors:` URL for no reason. Two different hosts should not share one number.
   aggregator_rest_port: 12050
+  # STOCK nodes to fall back on when asking the fleet for a current Earth-orientation table
+  # (see live_eop_table). Ours are asked first; these are the ones production keeps refreshed,
+  # and after a long outage of our own they are the only current source on site. Not in
+  # `nodes:` because we do not generate or run anything on them.
+  eop_reference_nodes: [cx47, cx52]
   # /home is NFS (shared across all four nodes -- good for code/config, wrong for records).
   # /tmp/gnss, NOT /data/gnss. /data exists ONLY on cx19 -- the other seven nodes have no
   # such path, and rawFileWrite takes base_dir straight from the config and dies on a

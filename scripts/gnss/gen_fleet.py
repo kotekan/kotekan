@@ -31,6 +31,33 @@ GEN = os.path.join(K, "config", "gen_chord_gnss_config.py")
 OUTDIR = os.path.join(K, "config", "generated")
 
 
+def _drop_eop(text):
+    """Blank the earth_orientation_parameter_table entries out of a rendered config.
+
+    Line-based on purpose: the block is emitted by yaml.safe_dump as an indented list under
+    `earth_rotation_data:`, and this runs on the rendered TEXT (which is what --check
+    compares) rather than reparsing. Everything outside the table stays byte-exact, so a real
+    difference anywhere else -- including elsewhere in earth_rotation_data -- still fails.
+    """
+    out, skipping = [], False
+    for line in text.splitlines(True):
+        if line.startswith("  earth_orientation_parameter_table:"):
+            out.append(line)
+            skipping = True
+            continue
+        if skipping:
+            # yaml.safe_dump renders the entries as "  - delta_UT1_inst: ..." followed by
+            # "    t_inst_ns: ...", i.e. a list item at the SAME two-space indent as the key
+            # plus four-space continuations. An earlier version required three spaces and so
+            # ended the block on its very first entry -- which passed the happy-path check and
+            # failed the falsification, because nothing it was meant to skip was skipped.
+            if line.startswith("  - ") or line.startswith("    "):
+                continue
+            skipping = False
+        out.append(line)
+    return "".join(out)
+
+
 def flags_from(mapping):
     """Manifest keys -> generator flags, same convention as gnss_chains_chord.yaml:
     true -> a bare flag, false/None -> omitted, anything else -> --key value.
@@ -137,6 +164,19 @@ def main():
             bad.append(node)
             continue
         have = open(out).read()
+
+        # ⚠️ THE EARTH-ROTATION TABLE IS LIVE DATA, NOT A DECLARED CHOICE (2026-08-19).
+        # It is fetched from the running fleet at generation time and is a rolling ~5-day
+        # window, so it MOVES ON ITS OWN roughly daily. Comparing it here would report drift
+        # on all six nodes every morning for a reason nobody intends to reproduce -- and this
+        # file's own docstring is about why that is worse than not checking: a gate that
+        # cries wolf is a gate people learn to skip. Normalise it out of BOTH sides and let
+        # everything else stay byte-exact.
+        have_c, text_c = _drop_eop(have), _drop_eop(text)
+        if have_c == text_c and have != text:
+            print("ok*      %s  (differs only in the live EOP table)"
+                  % os.path.relpath(out, K))
+            continue
         if have == text:
             print("ok       %s" % os.path.relpath(out, K))
         else:
