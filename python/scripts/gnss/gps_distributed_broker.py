@@ -1169,6 +1169,16 @@ def main(argv=None, rx=None, publisher=None):
                          "unarmed instance reports enabled=false, which is recorded as OFF "
                          "and never published as zeros -- a dark panel must read 'not armed', "
                          "not 'no RFI'.")
+    ap.add_argument("--rfi-stats", action="store_true",
+                    help="Also poll each rf-stats instance's spectral-kurtosis RFI metrics "
+                         "(rfi_sk_metrics/sk_metrics_{gpu}) and fold an SK summary into get_rf. "
+                         "Default off; rides the SAME endpoints as --rf-stats-endpoints (the SK "
+                         "url is derived per instance), so no second endpoint list.")
+    ap.add_argument("--drop-stats", action="store_true",
+                    help="Also poll each rf-stats instance's node /metrics for drop counters "
+                         "(gnss{gpu} srch/telem buffer-send drops, node dpdk rx-missed and "
+                         "ring-full) and fold them into get_rf. Default off. One /metrics fetch "
+                         "per HOST per poll, shared across its two GPU instances.")
     ap.add_argument("--rf-stats-poll-s", type=float, default=30.0,
                     help="Seconds between RF-health polls (default 30). The node refreshes "
                          "every ~10 s, so a faster poll re-reads the same pass; the point of "
@@ -7629,7 +7639,9 @@ def main(argv=None, rx=None, publisher=None):
                 _rf_ep = parse_endpoints(args.rf_stats_endpoints, base)
                 if _rf_ep and t0 - _rf_last[0] >= args.rf_stats_poll_s:
                     _rf_last[0] = t0
-                    _rf = poll_rf_stats(_rf_ep, rf_lobes)
+                    _rf = poll_rf_stats(_rf_ep, rf_lobes,
+                                        fetch_sk=args.rfi_stats,
+                                        fetch_drops=args.drop_stats)
                     publisher.set_rf(_rf, t0)
                     _on = [v for v in _rf.values() if v.get("state") == "on"]
                     if _on:

@@ -304,6 +304,47 @@ export class AirspyStatsPanel {
         if (mixed)
             rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
                 ⚠️ instances disagree on lobe count — rows may compare different bands</div>`;
+
+        // #8+: RFI (spectral kurtosis) — same get_rf instances, folded in by --rfi-stats.
+        const skOn = on.filter(([, v]) => v && v.sk);
+        if (skOn.length) {
+            let worstU = null, worstSK = 1, totFlag = 0, band = null;
+            for (const [u, v] of skOn) {
+                const sk = v.sk; totFlag += sk.sk_flagged || 0; band = sk;
+                if (Math.abs((sk.sk_max || 1) - 1) > Math.abs(worstSK - 1)) { worstSK = sk.sk_max; worstU = u; }
+            }
+            const skCol = totFlag > 0 ? "#d64550" : "#3fb26f";
+            rows += `<div style="display:flex;align-items:center;border-top:1px solid #f0f0f0;">
+                <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;white-space:nowrap;"
+                     title="spectral kurtosis per channel: 1.0 is clean gaussian noise; RFI drives it away in either direction. Flag band ${band ? band.sk_lo + "–" + band.sk_hi : ""} (3σ at ${band ? band.ema_frames : "?"} frames).">RFI · SK &nbsp;max/flag</div>`
+                + cell(worstSK != null ? worstSK.toPrecision(3) : "—", skCol,
+                       "worst per-channel SK across reporting instances (furthest from 1.0). Inside the band = clean; outside = a channel is jammed.")
+                + cell(String(totFlag), totFlag > 0 ? "#d64550" : "#3fb26f",
+                       "total channels flagged (SK outside the band) across all instances")
+                + cell(`${skOn.length}/${inst.length}`, skOn.length === inst.length ? "#3fb26f" : "#e8a13c",
+                       "instances reporting SK")
+                + `<div style="flex:0 0 9em;padding:.15em .5em;font-size:.85em;color:#8a8f98;white-space:nowrap;overflow:hidden;" title="${worstU || ""}">${worstU ? short(worstU) : "—"}</div></div>`;
+        }
+
+        // #8+: drop counters (cumulative) — folded in by --drop-stats. Worst instance per class.
+        const drOn = on.filter(([, v]) => v && v.drops);
+        if (drOn.length) {
+            const worst = (key) => { let u = null, val = -1;
+                for (const [uu, v] of drOn) { const x = (v.drops || {})[key] || 0; if (x > val) { val = x; u = uu; } }
+                return [u, val]; };
+            const [suU, su] = worst("srch_send_drops");
+            const [, tu] = worst("telem_send_drops");
+            const [, mu] = worst("dpdk_missed");
+            const dc = (v) => v > 0 ? "#e8a13c" : "#3fb26f";
+            rows += `<div style="display:flex;align-items:center;border-top:1px solid #f0f0f0;">
+                <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;white-space:nowrap;"
+                     title="cumulative dropped-frame counters since instance start — watch the RATE across ticks, not the absolute. Worst instance shown per class.">drops &nbsp;srch/telem/nic</div>`
+                + cell(su >= 0 ? su.toLocaleString() : "—", dc(su), "worst instance: search-send frames dropped (send buffer full)")
+                + cell(tu >= 0 ? tu.toLocaleString() : "—", dc(tu), "worst instance: telemetry-send frames dropped")
+                + cell(mu >= 0 ? mu.toLocaleString() : "—", dc(mu), "worst instance: NIC rx-missed packets (dpdk)")
+                + `<div style="flex:0 0 9em;padding:.15em .5em;font-size:.85em;color:#8a8f98;white-space:nowrap;overflow:hidden;" title="${suU || ""}">${suU ? short(suU) : "—"}</div></div>`;
+        }
+
         return hdr + rows;
     }
 }

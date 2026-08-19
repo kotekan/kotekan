@@ -11,24 +11,98 @@ import cmath
 import collections
 import math
 import random
+import re
 import statistics
 
 from .transport import _get, _log_rl
 
 
-def poll_rf_stats(endpoints, lobes_fn):
-    """GET <tap>/rf_stats from each endpoint -> {url: summary}. Task #8, the broker half.
+
+def sk_url_for(tap_url):
+    """Derive the SK-metrics endpoint for a search-tap url:
+    .../gnssG_srch_tap -> .../rfi_sk_metrics/sk_metrics_G . Returns None if it does not match."""
+    m = re.search(r"/gnss(\d)_srch_tap/?$", tap_url)
+    if not m:
+        return None
+    return tap_url[:m.start()] + "/rfi_sk_metrics/sk_metrics_" + m.group(1) + "/sk"
+
+
+def sk_summary(r):
+    """Reduce the per-element spectral-kurtosis array to what a viewer renders. SK ~ 1 is clean;
+    RFI drives it away in EITHER direction. The flag band scales with the estimator's
+    accumulation (ema_frames): the generalized-SK variance is ~4/M, so sigma ~ sqrt(4/M) and we
+    flag |SK-1| > 3 sigma. Unpopulated channels report null and are dropped (a dead slot is not
+    a jammed channel). Keeps the 128-element array on the node, exactly as rf-stats does."""
+    sk = r.get("sk") or []
+    valid = [(i, v) for i, v in enumerate(sk) if isinstance(v, (int, float))]
+    if not valid:
+        return None
+    m = r.get("ema_frames") or 256
+    sig = math.sqrt(4.0 / max(m, 1))
+    lo, hi = 1.0 - 3.0 * sig, 1.0 + 3.0 * sig
+    flagged = sum(1 for _, v in valid if v < lo or v > hi)
+    worst_i, _ = max(valid, key=lambda iv: abs(iv[1] - 1.0))
+    vals = [v for _, v in valid]
+    return {
+        "sk_n": len(valid),
+        "sk_flagged": flagged,
+        "sk_max": max(vals),
+        "sk_worst": worst_i,
+        "sk_med": sorted(vals)[len(vals) // 2],
+        "ema_frames": m,
+        "sk_lo": round(lo, 3),
+        "sk_hi": round(hi, 3),
+    }
+
+
+def parse_drops(metrics_text, gpu):
+    """Pull this instance's drop counters out of a node's /metrics dump. buffer-send drops are
+    per gnss{gpu} stage; dpdk misses/ring-full are node-level (shared by both GPUs, reported so
+    a single congested NIC is visible on every instance rather than nowhere)."""
+    out = {}
+    srch = re.search(r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_srch_send"\}\s+([0-9.eE+-]+)' % gpu, metrics_text)
+    telem = re.search(r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_telem_send"\}\s+([0-9.eE+-]+)' % gpu, metrics_text)
+    if srch:
+        out["srch_send_drops"] = int(float(srch.group(1)))
+    if telem:
+        out["telem_send_drops"] = int(float(telem.group(1)))
+    miss = [int(float(x)) for x in re.findall(r'kotekan_dpdk_nic_rx_missed_total\{[^}]*\}\s+([0-9.eE+-]+)', metrics_text)]
+    ring = [int(float(x)) for x in re.findall(r'kotekan_dpdk_distributor_ring_full_dropped_packets_total\{[^}]*\}\s+([0-9.eE+-]+)', metrics_text)]
+    if miss:
+        out["dpdk_missed"] = max(miss)
+    if ring:
+        out["dpdk_ring_full"] = sum(ring)
+    return out
+
+
+def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
+    """GET <tap>/rf_stats from each endpoint -> {url: per-instance STREAM HEALTH}. Task #8 (the
+    broker half), extended: power/clip lobes, spectral-kurtosis RFI (fetch_sk), and drop
+    counters (fetch_drops). All three are per-instance receiver-wide health -- NOT per-sat -- so
+    they ride the get_rf pathway to the viewer's stream-health panel, not the gather.
 
     Each node tap serves clip fraction and power per monitored channel plus per ABSOLUTE
-    element; this reduces both to something a viewer can render and a log can carry, and
-    keeps the per-element ARRAYS on the node. 128 elements x 12 instances is 1536 floats a
-    poll to answer a question -- "is one antenna railing?" -- that three numbers answer. If
-    the array is ever wanted, it is one curl away at the source.
+    element; this reduces them to something a viewer can render and a log can carry, and keeps
+    the per-element ARRAYS on the node. If the array is ever wanted, it is one curl away.
 
     ⚠️ An instance whose monitor is not armed reports enabled=false, which is NOT the same as
     quiet and must not be published as zeros: it is recorded as off so a dark panel reads as
     "not armed" rather than "no RFI". Unreachable is a third state again, and also not zero.
+    SK and drops are best-effort add-ons: a failure to fetch them leaves the field absent (the
+    viewer renders "—"), it never downgrades the rf state or drops the instance.
     """
+    metrics_cache = {}  # host_base -> /metrics text, fetched once per host per poll
+
+    def _metrics(host_base):
+        if host_base not in metrics_cache:
+            try:
+                import urllib.request
+                with urllib.request.urlopen(host_base + "/metrics", timeout=6) as resp:
+                    metrics_cache[host_base] = resp.read().decode("utf-8", "replace")
+            except Exception:
+                metrics_cache[host_base] = ""
+        return metrics_cache[host_base]
+
     out = {}
     for url in endpoints:
         try:
@@ -42,19 +116,35 @@ def poll_rf_stats(endpoints, lobes_fn):
             continue
         ec = r.get("elem_clip") or []
         ep = r.get("elem_power") or []
-        out[url] = {
+        ep_live = [p for p in ep if p > 0.0]   # the 96 unpopulated slots are exactly 0; a
+                                               # median over all 128 reads 0 and hides the signal
+        summ = {
             "state": "on",
             "lobes": lobes_fn(r.get("chans") or [], r.get("power") or [],
                               r.get("clip_lo") or [], r.get("clip_hi") or []),
-            # per-element reduced to the question it answers, not the array
             "elem_clip_max": max(ec) if ec else None,
             "elem_clip_worst": (max(range(len(ec)), key=lambda i: ec[i]) if ec else None),
-            "elem_power_med": (sorted(ep)[len(ep) // 2] if ep else None),
+            "elem_power_med": (sorted(ep_live)[len(ep_live) // 2] if ep_live else None),
+            "n_live_elem": len(ep_live) if ep else None,
             "passes": r.get("passes"),
             "cost_ms": r.get("cost_ms"),
             "age_s": r.get("age_s"),
             "fpga_seq": r.get("fpga_seq"),
         }
+        if fetch_sk:
+            sk_url = sk_url_for(url)
+            if sk_url:
+                try:
+                    summ["sk"] = sk_summary(_get(sk_url))
+                except Exception as e:
+                    _log_rl("sk-%s" % url, "rfi SK: %s unreachable (%s)" % (sk_url, e))
+        if fetch_drops:
+            m = re.search(r"^(https?://[^/]+)/gnss(\d)_srch_tap", url)
+            if m:
+                d = parse_drops(_metrics(m.group(1)), int(m.group(2)))
+                if d:
+                    summ["drops"] = d
+        out[url] = summ
     return out
 
 

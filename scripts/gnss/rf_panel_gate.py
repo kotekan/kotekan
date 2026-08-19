@@ -140,12 +140,52 @@ def main():
     else:
         print("ok  instances disagree on lobe count -> warns instead of blending")
 
+    # 8. RFI SK: a jammed channel (SK outside band) -> RED, flagged count shown, worst named.
+    sk_doc = {"t": 1.0, "instances": {
+        "http://cx43:12048/gnss0_srch_tap": {"state": "on", "lobes": TWO,
+            "sk": {"sk_n": 32, "sk_flagged": 3, "sk_max": 5.2, "sk_worst": 7,
+                   "sk_med": 1.0, "ema_frames": 256, "sk_lo": 0.625, "sk_hi": 1.375}},
+        "http://cx44:12048/gnss0_srch_tap": {"state": "on", "lobes": TWO,
+            "sk": {"sk_n": 32, "sk_flagged": 0, "sk_max": 1.1, "sk_worst": 2,
+                   "sk_med": 1.0, "ema_frames": 256, "sk_lo": 0.625, "sk_hi": 1.375}}}}
+    h = make(sk_doc)
+    if "RFI · SK" not in h:
+        fails.append("SK row absent when instances carry sk")
+    elif RED not in h or "5.20" not in h:
+        fails.append("flagged SK did not render red / worst value: %s" % h[-400:])
+    elif "cx43" not in h:
+        fails.append("SK row did not name the worst instance")
+    else:
+        print("ok  RFI SK jam -> RED, worst SK 5.20 and cx43 named")
+
+    # 9. CLEAN SK on every instance -> green, zero flagged, no false alarm.
+    clean = {"t": 1.0, "instances": {"http://cx43:12048/gnss0_srch_tap": {"state": "on",
+        "lobes": TWO, "sk": {"sk_n": 32, "sk_flagged": 0, "sk_max": 1.12, "sk_worst": 1,
+        "sk_med": 1.0, "ema_frames": 256, "sk_lo": 0.625, "sk_hi": 1.375}}}}
+    h = make(clean)
+    if "RFI · SK" not in h or RED in h:
+        fails.append("clean SK rendered red or absent")
+    else:
+        print("ok  clean SK -> green, no false RFI alarm")
+
+    # 10. DROPS: a non-zero drop counter renders (amber) and the worst instance is named.
+    dr = {"t": 1.0, "instances": {"http://cx27:12048/gnss0_srch_tap": {"state": "on",
+        "lobes": TWO, "drops": {"srch_send_drops": 80537, "telem_send_drops": 92488,
+        "dpdk_missed": 44490, "dpdk_ring_full": 0}}}}
+    h = make(dr)
+    if "drops" not in h:
+        fails.append("drops row absent when instances carry drops")
+    elif AMBER not in h or "80537" not in h:
+        fails.append("nonzero drops did not render amber / localeString: %s" % h[-400:])
+    else:
+        print("ok  drops -> amber, 80537 (browser adds commas) search-send drops shown")
+
     print("-" * 70)
     if fails:
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 7 arms, run in QuickJS against the real panel source")
+    print("GATE GOOD: 10 arms, run in QuickJS against the real panel source")
     return 0
 
 

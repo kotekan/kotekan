@@ -465,6 +465,13 @@ http://cx51:12048/gnss{0..1}_n2combine"
 http://cx27:12048/gnss{0..1}_srch_tap,http://cx42:12048/gnss{0..1}_srch_tap,\
 http://cx43:12048/gnss{0..1}_srch_tap,http://cx44:12048/gnss{0..1}_srch_tap,\
 http://cx51:12048/gnss{0..1}_srch_tap"
+    # #8+ stream health: fold RFI (spectral kurtosis) and drop counters into the same
+    # get_rf payload the rf-stats poll already publishes. Default-off flags; the SK url is
+    # derived per instance from the rf-stats endpoints above, drops come from each host
+    # /metrics. Both are receiver-wide, so they live on THIS chain only (same rule as
+    # rf-stats-endpoints), not in common:.
+    rfi-stats: true
+    drop-stats: true
     spectrum-endpoints: "http://cx19:12048/gnss{0..1}_n2assemble,http://cx27:12048/gnss{0..1}_n2assemble,\
 http://cx42:12048/gnss{0..1}_n2assemble,http://cx43:12048/gnss{0..1}_n2assemble,\
 http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
