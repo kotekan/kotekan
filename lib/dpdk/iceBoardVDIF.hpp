@@ -317,6 +317,11 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
 
     out_buf->allocate_new_metadata_object(out_buf_frame_id);
 
+    // Initialise the lost-sample count so invalidateVDIFframes can
+    // atomic_add_lost_timesamples() to it: chordMetadata's JSON-backed storage
+    // throws out_of_range on a read/update of a key that was never set.
+    get_chord_metadata(out_buf, out_buf_frame_id)->set_lost_timesamples(0);
+
     if (port == 0)
         get_chord_metadata(out_buf, out_buf_frame_id)->set_first_packet_recv_time(now);
 
