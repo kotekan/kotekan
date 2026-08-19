@@ -192,14 +192,14 @@ class TestFleetCombine(unittest.TestCase):
         for k in combdll.COH_KEYS:
             self.assertIsNone(bare[k], k)
         polled = {1: {"coh_row": {"deep_snr": 40.0, "deep_floor": 2.0, "coherence_s": 1.0},
-                      "coh_src": "http://cx19:12049/x", "coh_quad": (55.0, 7)}}
+                      "coh_src": "http://cx19:12048/x", "coh_quad": (55.0, 7)}}
         fed = combdll.fleet_dll_comb(c, "gps_l5", n_win=4, lag=0, coh_from=polled,
                                      deep_gate_prns=True)[1]
         self.assertEqual(fed["present_gate"], "deep")
         self.assertTrue(fed["present"])
         # ALL THREE keys travel. coh_quad is the publisher's continuity fallback; losing it
         # is a 5-8 dB step in the served C/N0 that looks like a display quirk (docs 11.31).
-        self.assertEqual(fed["coh_src"], "http://cx19:12049/x")
+        self.assertEqual(fed["coh_src"], "http://cx19:12048/x")
         self.assertEqual(fed["coh_quad"], (55.0, 7))
 
 

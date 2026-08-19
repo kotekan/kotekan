@@ -25,8 +25,8 @@ b._log_rl = lambda k, m: None  # the probe is not the broker; do not narrate its
 
 # cx19/cx51 were regenerated with --combine-gpus (ONE merged 14-channel combiner); the other
 # six still expose two 7-channel ones. See STATE 8.16.4.
-EPS = (["http://cx19:12049/gnss0_combine", "http://cx51:12049/gnss0_combine"]
-       + ["http://%s:12049/gnss%d_combine" % (n, g)
+EPS = (["http://cx19:12048/gnss0_combine", "http://cx51:12048/gnss0_combine"]
+       + ["http://%s:12048/gnss%d_combine" % (n, g)
           for n in ("cx27", "cx42", "cx43", "cx44", "cx47", "cx52") for g in (0, 1)])
 
 label = sys.argv[1] if len(sys.argv) > 1 else ""

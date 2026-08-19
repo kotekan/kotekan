@@ -36,7 +36,7 @@ N = int(sys.argv[1]) if len(sys.argv) > 1 else 20
 OUT = sys.argv[2] if len(sys.argv) > 2 else "/tmp/ab_paths.jsonl"
 
 def urls(stage, nodes=UNIFORM):
-    return ["http://%s:12049/gnss%d_%s" % (n, g, stage) for n in nodes for g in (0, 1)]
+    return ["http://%s:12048/gnss%d_%s" % (n, g, stage) for n in nodes for g in (0, 1)]
 
 A, B = urls("combine"), urls("n2combine")
 
@@ -94,7 +94,7 @@ def per_hop(nodes=UNIFORM):
             def grab(stage):
                 try:
                     with urllib.request.urlopen(
-                            "http://%s:12049/gnss%d_%s/get_records" % (n, g, stage), timeout=6) as r:
+                            "http://%s:12048/gnss%d_%s/get_records" % (n, g, stage), timeout=6) as r:
                         return {rr["prn"]: {int(x[0]): complex(x[1], x[2])
                                             for x in rr["records"] if x[3] > 0}
                                 for rr in json.load(r)}

@@ -66,11 +66,11 @@ PY=/home/kvand/gnss/venv/bin/python
 cd "$K"
 
 # One merged combiner (--combine-gpus nodes)
-MERGED="http://cx19:12049/gnss0_combine,http://cx51:12049/gnss0_combine"
+MERGED="http://cx19:12048/gnss0_combine,http://cx51:12048/gnss0_combine"
 # Two per-GPU combiners (the rest)
 SPLIT=""
 for n in cx27 cx42 cx43 cx44; do
-    SPLIT="$SPLIT,http://$n:12049/gnss{0..1}_combine"
+    SPLIT="$SPLIT,http://$n:12048/gnss{0..1}_combine"
 done
 
 # cx19's gnss{0..1}_inject entries are the PATH-B injector endpoints (cudaGnssInject) -- the
@@ -79,12 +79,12 @@ done
 # logs "set_seeds ... failed" for them each cycle, which is benign (the per-endpoint try/except
 # posts everything else regardless).
 exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
-    --rest-url http://cx19:12049 \
+    --rest-url http://cx19:12048 \
     --detectors http://localhost:12050/gps_search \
-    --trackers "http://cx19:12049/gnss{0..1}_track,http://cx27:12049/gnss{0..1}_track,\
-http://cx42:12049/gnss{0..1}_track,http://cx43:12049/gnss{0..1}_track,\
-http://cx44:12049/gnss{0..1}_track,http://cx51:12049/gnss{0..1}_track,\
-http://cx19:12049/gnss{0..1}_inject,\
+    --trackers "http://cx19:12048/gnss{0..1}_track,http://cx27:12048/gnss{0..1}_track,\
+http://cx42:12048/gnss{0..1}_track,http://cx43:12048/gnss{0..1}_track,\
+http://cx44:12048/gnss{0..1}_track,http://cx51:12048/gnss{0..1}_track,\
+http://cx19:12048/gnss{0..1}_inject,\
 http://127.0.0.1:12099/sink_track" \
     --combiner gnss0_combine \
     --dll-combiners "${MERGED}${SPLIT}" \

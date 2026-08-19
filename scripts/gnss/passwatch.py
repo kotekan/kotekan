@@ -33,8 +33,8 @@ import gnss_ephemeris as ge
 
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 BOR_AZ, BOR_EL = 180.0, 90.0 - 8.59      # dishes 8.59 deg south of zenith; see the memory note
-EPS = (["http://cx19:12049/gnss0_combine", "http://cx51:12049/gnss0_combine"]
-       + ["http://%s:12049/gnss%d_combine" % (n, g)
+EPS = (["http://cx19:12048/gnss0_combine", "http://cx51:12048/gnss0_combine"]
+       + ["http://%s:12048/gnss%d_combine" % (n, g)
           for n in ("cx27", "cx42", "cx43", "cx44", "cx47", "cx52") for g in (0, 1)])
 
 ap = argparse.ArgumentParser()

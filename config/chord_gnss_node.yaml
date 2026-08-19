@@ -254,7 +254,24 @@ runtime:
   # DPDK poll cores (5-7, 21-23 and their isolcpus siblings 37-39, 53-55) are at 0% idle
   # and must never be touched. NUMA1 keeps us on the same domain as host_voltage_buffer_1.
   cpu_affinity: [19, 24, 31, 57, 58, 59, 60, 61, 62, 63]
-  rest_port: 12049              # production owns 12048
+  # ⚠️ MOVED 12049 -> 12048 ON 2026-08-19, AND THE REASON IS THE CONTROL PLANE, NOT A
+  # PREFERENCE. Earth-orientation data is PUSHED to each node over REST
+  # (telescope.eop_updatable_config = /earth_rotation_data), and that push targets 12048.
+  # Sitting on 12049 meant we never received it: our EOP table froze at 2026-08-01 and
+  # cx19 logged 17,085,672 "Requesting EOP later than in table" warnings against stock node
+  # cx47's ZERO. The consequence was not cosmetic -- dUT1 was 5.007 ms wrong, which put the
+  # same error into every frame's time_center_ut1_ns and bin_t_inst_ns and killed recv1's
+  # hdf5 writer the moment we sent it N^2 (2026-08-19 01:45).
+  #
+  # THE OLD COMMENT SAID "production owns 12048", and that was true of stock nodes but not
+  # of ours: nothing answers on 12048 across cx19/27/42/43/44/51, while cx47/cx52 do. Our
+  # kotekan REPLACED production's on these six rather than joining it, so the port was free
+  # all along and the separation was costing us the updates we needed.
+  rest_port: 12048
+  # PINNED, not derived. The search aggregator runs on cf06 and used to be rest_port + 1;
+  # moving the node port would have dragged it from 12050 to 12049 and broken the
+  # `detectors:` URL for no reason. Two different hosts should not share one number.
+  aggregator_rest_port: 12050
   # /home is NFS (shared across all four nodes -- good for code/config, wrong for records).
   # /tmp/gnss, NOT /data/gnss. /data exists ONLY on cx19 -- the other seven nodes have no
   # such path, and rawFileWrite takes base_dir straight from the config and dies on a

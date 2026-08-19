@@ -49,8 +49,8 @@ from concurrent.futures import ThreadPoolExecutor
 # (STATE 8.20.21: the residual is comb-specific, r drops 0.99 -> 0.55 the moment the comb
 # changes, and it does not matter whether the host changes with it).
 DEFAULT_ENDPOINTS = [
-    "http://cx19:12049/gnss0_combine", "http://cx51:12049/gnss0_combine",
-] + ["http://%s:12049/gnss%d_combine" % (n, g)
+    "http://cx19:12048/gnss0_combine", "http://cx51:12048/gnss0_combine",
+] + ["http://%s:12048/gnss%d_combine" % (n, g)
      for n in ("cx27", "cx42", "cx43", "cx44") for g in (0, 1)]
 
 ap = argparse.ArgumentParser()

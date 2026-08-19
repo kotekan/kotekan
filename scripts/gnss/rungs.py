@@ -29,8 +29,8 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, "/home/kvand/gnss/kotekan/python/scripts/gnss")
 
 DEFAULT_ENDPOINTS = [
-    "http://cx19:12049/gnss0_combine", "http://cx51:12049/gnss0_combine",
-] + ["http://%s:12049/gnss%d_combine" % (n, g)
+    "http://cx19:12048/gnss0_combine", "http://cx51:12048/gnss0_combine",
+] + ["http://%s:12048/gnss%d_combine" % (n, g)
      for n in ("cx27", "cx42", "cx43", "cx44", "cx47", "cx52") for g in (0, 1)]
 
 ap = argparse.ArgumentParser()

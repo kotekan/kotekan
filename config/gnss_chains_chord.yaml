@@ -20,7 +20,7 @@
 
 common:
   # -- the RECEIVER: one telescope, one site, one F-engine ------------------------------
-  rest-url: http://cx19:12049      # must name a real NODE; cf06 runs no gnss node itself
+  rest-url: http://cx19:12048      # must name a real NODE; cf06 runs no gnss node itself
   time0-endpoint: telescope/time0_ns
   hops-per-sec: 195312.5           # F-engine record geometry -- not a signal property
   lat: 49.32075144444
@@ -264,24 +264,24 @@ chains:
     # and path B alike -- reads 2048. Same cadence, so --coh-min-records, the DLL hop window
     # and fit-gap all see exactly what they saw before. Path B at this cadence is already
     # proven in production by E5a/B2a, which have run on nothing else.
-    trackers: "http://cx19:12049/gnss{0..1}_inject,\
-http://cx27:12049/gnss{0..1}_inject,\
-http://cx42:12049/gnss{0..1}_inject,\
-http://cx43:12049/gnss{0..1}_inject,\
-http://cx44:12049/gnss{0..1}_inject,\
-http://cx51:12049/gnss{0..1}_inject"
+    trackers: "http://cx19:12048/gnss{0..1}_inject,\
+http://cx27:12048/gnss{0..1}_inject,\
+http://cx42:12048/gnss{0..1}_inject,\
+http://cx43:12048/gnss{0..1}_inject,\
+http://cx44:12048/gnss{0..1}_inject,\
+http://cx51:12048/gnss{0..1}_inject"
     combiner: gnss0_n2combine
     # NOT uniform: cx19 and cx51 were regenerated with --combine-gpus and expose ONE merged
     # 14-channel combiner; the rest predate it and expose two 7-channel ones. Regenerate all
     # node configs and this collapses to the {0..1} form everywhere.
     # Path B's combiners are uniform {0..1} on every node -- the --combine-gpus asymmetry
     # that forced the hand-written list below was a path-A artefact and dies with it.
-    dll-combiners: &l5_cmb "http://cx19:12049/gnss{0..1}_n2combine,\
-http://cx27:12049/gnss{0..1}_n2combine,\
-http://cx42:12049/gnss{0..1}_n2combine,\
-http://cx43:12049/gnss{0..1}_n2combine,\
-http://cx44:12049/gnss{0..1}_n2combine,\
-http://cx51:12049/gnss{0..1}_n2combine"
+    dll-combiners: &l5_cmb "http://cx19:12048/gnss{0..1}_n2combine,\
+http://cx27:12048/gnss{0..1}_n2combine,\
+http://cx42:12048/gnss{0..1}_n2combine,\
+http://cx43:12048/gnss{0..1}_n2combine,\
+http://cx44:12048/gnss{0..1}_n2combine,\
+http://cx51:12048/gnss{0..1}_n2combine"
     n2-combiners: *l5_cmb
     # TASK #59 A/B -- ON THIS CHAIN ONLY, and it is a PAIRED test rather than a before/after.
     #
@@ -461,13 +461,13 @@ http://cx51:12049/gnss{0..1}_n2combine"
     # means every tap reports enabled=false, which the broker records as OFF and never
     # publishes as zeros. So this line can land now and start reporting the moment the
     # nodes come up with the monitor on -- no second broker restart needed.
-    rf-stats-endpoints: "http://cx19:12049/gnss{0..1}_srch_tap,\
-http://cx27:12049/gnss{0..1}_srch_tap,http://cx42:12049/gnss{0..1}_srch_tap,\
-http://cx43:12049/gnss{0..1}_srch_tap,http://cx44:12049/gnss{0..1}_srch_tap,\
-http://cx51:12049/gnss{0..1}_srch_tap"
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_n2assemble,http://cx27:12049/gnss{0..1}_n2assemble,\
-http://cx42:12049/gnss{0..1}_n2assemble,http://cx43:12049/gnss{0..1}_n2assemble,\
-http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
+    rf-stats-endpoints: "http://cx19:12048/gnss{0..1}_srch_tap,\
+http://cx27:12048/gnss{0..1}_srch_tap,http://cx42:12048/gnss{0..1}_srch_tap,\
+http://cx43:12048/gnss{0..1}_srch_tap,http://cx44:12048/gnss{0..1}_srch_tap,\
+http://cx51:12048/gnss{0..1}_srch_tap"
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_n2assemble,http://cx27:12048/gnss{0..1}_n2assemble,\
+http://cx42:12048/gnss{0..1}_n2assemble,http://cx43:12048/gnss{0..1}_n2assemble,\
+http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     nh-hint: true
     nh-hint-span: 2
     acquire-snr: 30
@@ -767,18 +767,18 @@ http://cx44:12049/gnss{0..1}_n2assemble,http://cx51:12049/gnss{0..1}_n2assemble"
     # -- do that in daylight, confirm fine fires every poll, and only THEN re-try the
     # handoff. Overnight state = flat weights + fine feed live (stable 20:49-23:43).
     rrate-coarse-deweight: 1.0
-    trackers: "http://cx19:12049/gnss{0..1}_e5a_inject,http://cx27:12049/gnss{0..1}_e5a_inject,\
-http://cx42:12049/gnss{0..1}_e5a_inject,http://cx43:12049/gnss{0..1}_e5a_inject,\
-http://cx44:12049/gnss{0..1}_e5a_inject,http://cx51:12049/gnss{0..1}_e5a_inject"
+    trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,\
+http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
+http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
     combiner: gnss0_e5a_n2combine
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_e5a_n2assemble,\
-http://cx27:12049/gnss{0..1}_e5a_n2assemble,http://cx42:12049/gnss{0..1}_e5a_n2assemble,\
-http://cx43:12049/gnss{0..1}_e5a_n2assemble,http://cx44:12049/gnss{0..1}_e5a_n2assemble,\
-http://cx51:12049/gnss{0..1}_e5a_n2assemble"
-    dll-combiners: &e5a_cmb "http://cx19:12049/gnss{0..1}_e5a_n2combine,\
-http://cx27:12049/gnss{0..1}_e5a_n2combine,http://cx42:12049/gnss{0..1}_e5a_n2combine,\
-http://cx43:12049/gnss{0..1}_e5a_n2combine,http://cx44:12049/gnss{0..1}_e5a_n2combine,\
-http://cx51:12049/gnss{0..1}_e5a_n2combine"
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5a_n2assemble,\
+http://cx27:12048/gnss{0..1}_e5a_n2assemble,http://cx42:12048/gnss{0..1}_e5a_n2assemble,\
+http://cx43:12048/gnss{0..1}_e5a_n2assemble,http://cx44:12048/gnss{0..1}_e5a_n2assemble,\
+http://cx51:12048/gnss{0..1}_e5a_n2assemble"
+    dll-combiners: &e5a_cmb "http://cx19:12048/gnss{0..1}_e5a_n2combine,\
+http://cx27:12048/gnss{0..1}_e5a_n2combine,http://cx42:12048/gnss{0..1}_e5a_n2combine,\
+http://cx43:12048/gnss{0..1}_e5a_n2combine,http://cx44:12048/gnss{0..1}_e5a_n2combine,\
+http://cx51:12048/gnss{0..1}_e5a_n2combine"
     n2-combiners: *e5a_cmb
     # ── P2b STEP 1 for the model-primary chains (task #33), 2026-08-11 ──────────────────
     # FEED ONLY. There is deliberately no `joint-consume` here: this puts E5a's satellites
@@ -1056,18 +1056,18 @@ http://cx51:12049/gnss{0..1}_e5a_n2combine"
     # fleet-trim-bandwidth: 2.5
     # #33: COMMAND-OFF on purpose -- the same-carrier control arm for gal_e5a's closed
     # loop (its feed auto-prefers deep_rate_full_* once the tracker restart serves them).
-    trackers: "http://cx19:12049/gnss{0..1}_b2a_inject,http://cx27:12049/gnss{0..1}_b2a_inject,\
-http://cx42:12049/gnss{0..1}_b2a_inject,http://cx43:12049/gnss{0..1}_b2a_inject,\
-http://cx44:12049/gnss{0..1}_b2a_inject,http://cx51:12049/gnss{0..1}_b2a_inject"
+    trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,\
+http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,\
+http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
     combiner: gnss0_b2a_n2combine
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_b2a_n2assemble,\
-http://cx27:12049/gnss{0..1}_b2a_n2assemble,http://cx42:12049/gnss{0..1}_b2a_n2assemble,\
-http://cx43:12049/gnss{0..1}_b2a_n2assemble,http://cx44:12049/gnss{0..1}_b2a_n2assemble,\
-http://cx51:12049/gnss{0..1}_b2a_n2assemble"
-    dll-combiners: &b2a_cmb "http://cx19:12049/gnss{0..1}_b2a_n2combine,\
-http://cx27:12049/gnss{0..1}_b2a_n2combine,http://cx42:12049/gnss{0..1}_b2a_n2combine,\
-http://cx43:12049/gnss{0..1}_b2a_n2combine,http://cx44:12049/gnss{0..1}_b2a_n2combine,\
-http://cx51:12049/gnss{0..1}_b2a_n2combine"
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2a_n2assemble,\
+http://cx27:12048/gnss{0..1}_b2a_n2assemble,http://cx42:12048/gnss{0..1}_b2a_n2assemble,\
+http://cx43:12048/gnss{0..1}_b2a_n2assemble,http://cx44:12048/gnss{0..1}_b2a_n2assemble,\
+http://cx51:12048/gnss{0..1}_b2a_n2assemble"
+    dll-combiners: &b2a_cmb "http://cx19:12048/gnss{0..1}_b2a_n2combine,\
+http://cx27:12048/gnss{0..1}_b2a_n2combine,http://cx42:12048/gnss{0..1}_b2a_n2combine,\
+http://cx43:12048/gnss{0..1}_b2a_n2combine,http://cx44:12048/gnss{0..1}_b2a_n2combine,\
+http://cx51:12048/gnss{0..1}_b2a_n2combine"
     n2-combiners: *b2a_cmb
 
   # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
@@ -1177,25 +1177,25 @@ http://cx51:12049/gnss{0..1}_b2a_n2combine"
     # without that is #49's latch made absolute.
     # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     # fleet-trim-bandwidth: 2.5
-    trackers: "http://cx19:12049/gnss{0..1}_e5b_inject,\
-http://cx27:12049/gnss{0..1}_e5b_inject,\
-http://cx42:12049/gnss{0..1}_e5b_inject,\
-http://cx43:12049/gnss{0..1}_e5b_inject,\
-http://cx44:12049/gnss{0..1}_e5b_inject,\
-http://cx51:12049/gnss{0..1}_e5b_inject"
+    trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,\
+http://cx27:12048/gnss{0..1}_e5b_inject,\
+http://cx42:12048/gnss{0..1}_e5b_inject,\
+http://cx43:12048/gnss{0..1}_e5b_inject,\
+http://cx44:12048/gnss{0..1}_e5b_inject,\
+http://cx51:12048/gnss{0..1}_e5b_inject"
     combiner: gnss0_e5b_n2combine
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx27:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx42:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx43:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx44:12049/gnss{0..1}_e5b_n2assemble,\
-http://cx51:12049/gnss{0..1}_e5b_n2assemble"
-    dll-combiners: &e5b_cmb "http://cx19:12049/gnss{0..1}_e5b_n2combine,\
-http://cx27:12049/gnss{0..1}_e5b_n2combine,\
-http://cx42:12049/gnss{0..1}_e5b_n2combine,\
-http://cx43:12049/gnss{0..1}_e5b_n2combine,\
-http://cx44:12049/gnss{0..1}_e5b_n2combine,\
-http://cx51:12049/gnss{0..1}_e5b_n2combine"
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,\
+http://cx27:12048/gnss{0..1}_e5b_n2assemble,\
+http://cx42:12048/gnss{0..1}_e5b_n2assemble,\
+http://cx43:12048/gnss{0..1}_e5b_n2assemble,\
+http://cx44:12048/gnss{0..1}_e5b_n2assemble,\
+http://cx51:12048/gnss{0..1}_e5b_n2assemble"
+    dll-combiners: &e5b_cmb "http://cx19:12048/gnss{0..1}_e5b_n2combine,\
+http://cx27:12048/gnss{0..1}_e5b_n2combine,\
+http://cx42:12048/gnss{0..1}_e5b_n2combine,\
+http://cx43:12048/gnss{0..1}_e5b_n2combine,\
+http://cx44:12048/gnss{0..1}_e5b_n2combine,\
+http://cx51:12048/gnss{0..1}_e5b_n2combine"
     n2-combiners: *e5b_cmb
 
   # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
@@ -1258,23 +1258,23 @@ http://cx51:12049/gnss{0..1}_e5b_n2combine"
     # without that is #49's latch made absolute.
     # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     # fleet-trim-bandwidth: 2.5
-    trackers: "http://cx19:12049/gnss{0..1}_b2b_inject,\
-http://cx27:12049/gnss{0..1}_b2b_inject,\
-http://cx42:12049/gnss{0..1}_b2b_inject,\
-http://cx43:12049/gnss{0..1}_b2b_inject,\
-http://cx44:12049/gnss{0..1}_b2b_inject,\
-http://cx51:12049/gnss{0..1}_b2b_inject"
+    trackers: "http://cx19:12048/gnss{0..1}_b2b_inject,\
+http://cx27:12048/gnss{0..1}_b2b_inject,\
+http://cx42:12048/gnss{0..1}_b2b_inject,\
+http://cx43:12048/gnss{0..1}_b2b_inject,\
+http://cx44:12048/gnss{0..1}_b2b_inject,\
+http://cx51:12048/gnss{0..1}_b2b_inject"
     combiner: gnss0_b2b_n2combine
-    spectrum-endpoints: "http://cx19:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx27:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx42:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx43:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx44:12049/gnss{0..1}_b2b_n2assemble,\
-http://cx51:12049/gnss{0..1}_b2b_n2assemble"
-    dll-combiners: &b2b_cmb "http://cx19:12049/gnss{0..1}_b2b_n2combine,\
-http://cx27:12049/gnss{0..1}_b2b_n2combine,\
-http://cx42:12049/gnss{0..1}_b2b_n2combine,\
-http://cx43:12049/gnss{0..1}_b2b_n2combine,\
-http://cx44:12049/gnss{0..1}_b2b_n2combine,\
-http://cx51:12049/gnss{0..1}_b2b_n2combine"
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2b_n2assemble,\
+http://cx27:12048/gnss{0..1}_b2b_n2assemble,\
+http://cx42:12048/gnss{0..1}_b2b_n2assemble,\
+http://cx43:12048/gnss{0..1}_b2b_n2assemble,\
+http://cx44:12048/gnss{0..1}_b2b_n2assemble,\
+http://cx51:12048/gnss{0..1}_b2b_n2assemble"
+    dll-combiners: &b2b_cmb "http://cx19:12048/gnss{0..1}_b2b_n2combine,\
+http://cx27:12048/gnss{0..1}_b2b_n2combine,\
+http://cx42:12048/gnss{0..1}_b2b_n2combine,\
+http://cx43:12048/gnss{0..1}_b2b_n2combine,\
+http://cx44:12048/gnss{0..1}_b2b_n2combine,\
+http://cx51:12048/gnss{0..1}_b2b_n2combine"
     n2-combiners: *b2b_cmb

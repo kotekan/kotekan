@@ -65,7 +65,7 @@ def main():
     fails = []
 
     # 1. HEALTHY FLEET: two lobe rows, both green, all instances counted.
-    doc = {"t": 1.0, "instances": {"http://cx%d:12049/gnss%d_srch_tap" % (n, g): inst(TWO)
+    doc = {"t": 1.0, "instances": {"http://cx%d:12048/gnss%d_srch_tap" % (n, g): inst(TWO)
                                    for n in (19, 27, 42, 43, 44, 51) for g in (0, 1)}}
     h = make(doc)
     # Count ROW LABELS, not the substring: the label tooltip legitimately says "lobe 0 is
@@ -82,7 +82,7 @@ def main():
         print("ok  healthy 12-instance fleet -> 2 lobe rows, 12/12, all green")
 
     # 2. ⚠️ THE ONE THAT MATTERS: NOT ARMED must not look like QUIET.
-    doc_off = {"t": 1.0, "instances": {"http://cx19:12049/gnss0_srch_tap": {"state": "off"}}}
+    doc_off = {"t": 1.0, "instances": {"http://cx19:12048/gnss0_srch_tap": {"state": "off"}}}
     h = make(doc_off)
     if GREEN in h:
         fails.append("an UNARMED monitor rendered green -- reads as 'no RFI'")
@@ -94,7 +94,7 @@ def main():
         print("ok  monitor OFF -> grey, says 'not armed', disclaims the zero (not green)")
 
     # 3. UNREACHABLE is a third state, distinct from off and from quiet.
-    doc_un = {"t": 1.0, "instances": {"http://cx19:12049/gnss0_srch_tap": {"state": "unreachable"}}}
+    doc_un = {"t": 1.0, "instances": {"http://cx19:12048/gnss0_srch_tap": {"state": "unreachable"}}}
     h = make(doc_un)
     if "unreachable" not in h or GREEN in h:
         fails.append("unreachable not distinguished: %s" % h[:200])
@@ -103,9 +103,9 @@ def main():
 
     # 4. A RAIL ON ONE INSTANCE MUST GO RED and name that instance -- the whole point of
     #    maxing rather than meaning. One bad instance in twelve.
-    bad = {"http://cx%d:12049/gnss%d_srch_tap" % (n, g): inst(TWO)
+    bad = {"http://cx%d:12048/gnss%d_srch_tap" % (n, g): inst(TWO)
            for n in (19, 27, 42, 43, 44, 51) for g in (0, 1)}
-    bad["http://cx43:12049/gnss0_srch_tap"] = inst([lobe(0, 277, 283, lo=0.20), lobe(1, 287, 293)])
+    bad["http://cx43:12048/gnss0_srch_tap"] = inst([lobe(0, 277, 283, lo=0.20), lobe(1, 287, 293)])
     h = make({"t": 1.0, "instances": bad})
     if RED not in h:
         fails.append("20%% rail on one instance did not go red")
@@ -116,7 +116,7 @@ def main():
 
     # 5. BAND-SELECTIVE POWER must be visible as a DIFFERENCE between the two rows --
     #    the 2026-08-18 signature. If both rows showed the same number it would be useless.
-    sel = {"http://cx19:12049/gnss0_srch_tap":
+    sel = {"http://cx19:12048/gnss0_srch_tap":
            inst([lobe(0, 277, 283, pw=40.0), lobe(1, 287, 293, pw=1.0)])}
     h = make({"t": 1.0, "instances": sel})
     if "40.0" not in h or "1.00" not in h:
@@ -132,8 +132,8 @@ def main():
         print("ok  no RF document -> renders nothing (airspy pages unaffected)")
 
     # 7. MIXED LOBE COUNTS must warn rather than silently compare different bands.
-    mix = {"http://cx19:12049/gnss0_srch_tap": inst(TWO),
-           "http://cx27:12049/gnss0_srch_tap": inst([lobe(0, 277, 283)])}
+    mix = {"http://cx19:12048/gnss0_srch_tap": inst(TWO),
+           "http://cx27:12048/gnss0_srch_tap": inst([lobe(0, 277, 283)])}
     h = make({"t": 1.0, "instances": mix})
     if "disagree on lobe count" not in h:
         fails.append("mixed lobe counts did not warn")

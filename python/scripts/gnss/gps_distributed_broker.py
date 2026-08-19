@@ -1155,7 +1155,7 @@ def main(argv=None, rx=None, publisher=None):
                          "span-mean reference error for an unknown application time.")
     ap.add_argument("--rf-stats-endpoints", default="",
                     help="Comma/brace list of VOLTAGE TAP endpoints to poll for RF-path "
-                         "health (#8), e.g. http://cx19:12049/gnss{0..1}_srch_tap. Empty = "
+                         "health (#8), e.g. http://cx19:12048/gnss{0..1}_srch_tap. Empty = "
                          "OFF. Serves clip fraction and per-band power at the publisher's "
                          "get_rf.\n"
                          "\n"
@@ -7369,7 +7369,7 @@ def main(argv=None, rx=None, publisher=None):
                         continue
 
                     def _tag(u):
-                        # http://cx19:12049/gnss1_n2combine -> cx19/1. Values are TAGGED
+                        # http://cx19:12048/gnss1_n2combine -> cx19/1. Values are TAGGED
                         # rather than positional so a missing instance cannot shift the
                         # columns of every instance after it.
                         m = re.search(r"//(\w+):\d+/\w*?(\d)[^/]*$", u)

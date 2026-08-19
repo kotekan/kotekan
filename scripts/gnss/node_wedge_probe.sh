@@ -46,13 +46,13 @@ for t in /proc/$PID/task/*; do
     esac
 done
 # --- ring drops per port: the consequence, in packets thrown away
-curl -s --max-time 5 http://localhost:12049/metrics 2>/dev/null \
+curl -s --max-time 5 http://localhost:12048/metrics 2>/dev/null \
  | awk -F"[{}]" "/ring_full_dropped/ && !/^#/ {split(\$2,a,\"port=\"); gsub(/[^0-9]/,\"\",a[2]); n=\$3+0; printf \"  port %s ring-drop %.0f%s\n\", a[2], n, (n>0 ? \"   <-- STARVING ITS PIPELINE\" : \"\")}"
 # --- GPU state: proves the device is idle rather than hung
 nvidia-smi --query-gpu=index,utilization.gpu,temperature.gpu --format=csv,noheader 2>/dev/null \
  | awk "{printf \"  gpu%s util %s temp %s\n\", \$1, \$2\$3, \$4}"
 # --- per-stage last-activity: which side of the node stopped, and when
-curl -s --max-time 5 http://localhost:12049/metrics 2>/dev/null \
+curl -s --max-time 5 http://localhost:12048/metrics 2>/dev/null \
  | awk "/gnss_combiner_last_emit_time_us\{/ {split(\$0,a,\"\\\"\"); ts=\$NF; print a[2], ts}" \
  | sort | awk "{n=split(\$1,p,\"/\"); print \"  \" \$1, \$2}" | head -4
 [ "$bad" -gt 0 ] && echo "  ==> WEDGED: $bad dpdk worker(s) blocked; this node is dropping packets at the ring."

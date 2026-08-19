@@ -172,7 +172,7 @@ REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/nu
         --working-directory=$K \
         --property=StandardOutput=append:$LOG \
         --property=StandardError=append:$LOG \
-        '$BIN' --config '$CFG' --bind-address 0.0.0.0:12049"
+        '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"
 
 # ---------------------------------------------------------------------------------------
 # START, THEN VERIFY, THEN RETRY -- because starting is not deterministic (2026-08-08).
@@ -193,7 +193,7 @@ REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/nu
 # exactly what the `restart` action exists to avoid.
 #
 # WAIT ON THE PORT, NOT ON THE UNIT. `systemctl is-active` goes active the moment systemd-run
-# forks, long before kotekan has bound 12049 or fetched anything; on 2026-08-08 five nodes
+# forks, long before kotekan has bound 12048 or fetched anything; on 2026-08-08 five nodes
 # reported active and then exited. The REST port answering is the first honest evidence the
 # process got past ConfigTracker. And if the unit DIES, stop waiting immediately rather than
 # burning the budget -- fail fast on death, wait patiently while alive.
@@ -202,13 +202,13 @@ REMOTE_START_VERIFY="for attempt in 1 2 3; do \
       $REMOTE_UP || { echo \"node_up: config unreadable\"; exit 2; }; \
       ok=0; \
       for i in \$(seq 1 100); do \
-        if curl -sf -m 2 -o /dev/null http://localhost:12049/telescope/time0_ns 2>/dev/null; \
+        if curl -sf -m 2 -o /dev/null http://localhost:12048/telescope/time0_ns 2>/dev/null; \
           then ok=1; break; fi; \
         systemctl is-active --quiet gnss-node || break; \
         sleep 2; \
       done; \
       if [ \$ok = 1 ]; then echo \"node_up: up on attempt \$attempt\"; exit 0; fi; \
-      echo \"node_up: attempt \$attempt did not reach :12049 -- retrying\"; \
+      echo \"node_up: attempt \$attempt did not reach :12048 -- retrying\"; \
     done; \
     echo \"node_up: FAILED after 3 attempts; last 15 log lines:\"; tail -15 '$LOG'; exit 1"
 # ---------------------------------------------------------------------------------------
@@ -259,7 +259,7 @@ case "$ACT" in
         --property=StandardOutput=append:/tmp/gnss_node_dbg.log \
         --property=StandardError=append:/tmp/gnss_node_dbg.log \
         /usr/bin/gdb --batch -ex run -ex 'thread apply all bt' -ex 'info registers' \
-          --args '$DBG' --config '$CFG' --bind-address 0.0.0.0:12049" \
+          --args '$DBG' --config '$CFG' --bind-address 0.0.0.0:12048" \
       && sleep 5 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node \
       && echo "backtrace (if it faults) lands in /tmp/gnss_node_dbg.log on $N"
     ;;

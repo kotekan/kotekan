@@ -68,8 +68,8 @@ esac
 CMB=""
 TRK=""
 for n in cx19 cx27 cx42 cx43 cx44 cx51; do
-    CMB="${CMB:+$CMB,}http://$n:12049/gnss{0..1}_${CHAIN}_n2combine"
-    TRK="${TRK:+$TRK,}http://$n:12049/gnss{0..1}_${CHAIN}_inject"
+    CMB="${CMB:+$CMB,}http://$n:12048/gnss{0..1}_${CHAIN}_n2combine"
+    TRK="${TRK:+$TRK,}http://$n:12048/gnss{0..1}_${CHAIN}_inject"
 done
 
 # --signal REPLACES the nine constants that used to be typed here (constellation, carrier,
@@ -82,7 +82,7 @@ done
 # computed mod the wrong length and the seed lands in an effectively random one of the 100
 # periods". That is precisely the shape of the 2026-08-08 E5a defect.
 exec $PY -u python/scripts/gnss/gps_distributed_broker.py \
-    --rest-url http://cx19:12049 \
+    --rest-url http://cx19:12048 \
     --trackers "$TRK" \
     --combiner "gnss0_${CHAIN}_n2combine" \
     --dll-combiners "$CMB" \

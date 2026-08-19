@@ -27,7 +27,7 @@ import time
 import urllib.request
 
 NODES = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
-PORT = 12049
+PORT = 12048
 AGG_HOST = "cf06"
 AGG_LOG = "/tmp/gnss_agg_final.log"
 TAPS = ["gnss0_srch_tap", "gnss1_srch_tap"]
