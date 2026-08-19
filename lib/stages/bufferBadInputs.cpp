@@ -59,11 +59,6 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
-    // The buffer must be declared in the config; this checks that we agree with it. The buffer
-    // factory attaches the configured descriptor before any stage is constructed.
-    out_buf->require_frame_desc(kotekan::NDArray<int8_t, 3>::describe(
-        "bf_mask", {1, num_polarizations, num_dishes}, {"Tbf", "P", "D"},
-        {bf_mask_lifetime_in_samples, 1, 1}));
 
     // Optional clock: the produced frames' FPGA sequence numbers start at the sequence number
     // of this buffer's first frame instead of at zero. See main_thread().
@@ -111,6 +106,10 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
              "configured; masking no element on dish type.");
         std::fill(baseline_mask.begin(), baseline_mask.end(), 1u);
     }
+
+    // Set the frame description
+    out_buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::uint8>, 1>::describe(
+        "bad_inputs", {static_cast<ptrdiff_t>(num_elements)}, {"E"}, {1}));
 
     // Listen for bad input list updates. The initial config block arrives
     // through this callback during subscribe().
@@ -271,6 +270,9 @@ void bufferBadInputs::main_thread() {
         meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
         if (!coarse_freq.empty())
             meta->set_coarse_freq(coarse_freq);
+        // Verify the frame desc and metadata match
+        meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
+
         out_buf->mark_frame_full(unique_name, frame_id);
     }
 }
