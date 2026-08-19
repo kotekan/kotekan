@@ -1,10 +1,21 @@
 ---
 # configTracker test 1
 
+# Participate in config tracking. The block must be a mapping; the older
+# bare-bool `config_tracker: true` form is no longer accepted.
+config_tracker:
+    enabled: true
+
 type: config
 log_level: debug
 
 cpu_affinity: [1, 2, 3, 4]
+
+# Every kotekan mode instantiates the Telescope singleton, so even a test that
+# only moves opaque frames needs a minimal one.
+telescope:
+    num_polarizations: 2
+    num_dishes: 2
 
 num_frame_samples: 2048
 buffer_depth: 2
