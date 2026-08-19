@@ -24,7 +24,8 @@ resolved to a canonical IPv4 string up front so downstream peers
 transitively land on the same key. Any change to either part after the
 initial fetch indicates a controller reset. The startup fetch treats such a
 change as fatal; ``checkFpgaTracking()`` re-reads the controller without
-inserting or exiting, so a poller can decide what a deviation means. The
+inserting or exiting, so a poller can decide what a deviation means (see
+:ref:`fpga-monitor`). The
 FPGA snapshot rides along on the same propagation
 path as peer kotekan configs, so an HDF5 writer downstream of the
 FPGA-adjacent node sees it as an ordinary upstream entry.
@@ -130,6 +131,37 @@ Threading & Safety
 - The tracker is process-local; network exchange happens via the REST client/servers under the hood.
 - Hash collisions are unlikely in practice. If a different hash is found at the same endpoint,
   execution aborts to avoid state contamination.
+
+.. _fpga-monitor:
+
+Monitoring the FPGA controller
+------------------------------
+The tracker reads the FPGA controller once, at startup, and hands that snapshot
+to every downstream node. Nothing re-reads it afterwards, so a controller that
+is reprogrammed or resynced mid-acquisition leaves the pipeline describing data
+it no longer produced.
+
+The ``FPGAMonitor`` stage closes that gap. It re-reads the two endpoints the
+tracker registered, at the address the tracker resolved, and compares them
+against the record. It requires ``/config_tracker/fpga_host_info`` to be set on
+the same instance::
+
+  fpga_monitor:
+      kotekan_stage: FPGAMonitor
+      poll_interval_seconds: 5     # default
+      fetch_timeout_seconds: 5     # default; keep below poll_interval_seconds
+      fatal_on_change: true        # default
+      fatal_on_unreachable: false  # default
+      max_consecutive_failures: 3  # default
+
+A deviation from the record is fatal by default: every config the tracker has
+already propagated downstream is wrong from that point on. A controller that
+cannot be read is tolerated instead, escalating from a warning to an error after
+``max_consecutive_failures`` polls in a row, so a REST restart does not end an
+acquisition.
+
+Nothing is ever written back to the tracker by a poll — the record stays the
+snapshot taken at startup.
 
 Per-Connection REST Ports
 -------------------------
