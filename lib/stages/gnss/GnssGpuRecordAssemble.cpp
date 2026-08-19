@@ -216,7 +216,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 }
             }
             if (!pend.empty())
-                INFO("set_elem_gain: consuming {:d} gains (n_elem={:d}, {:d} cals)",
+                WARN("set_elem_gain: consuming {:d} gains (n_elem={:d}, {:d} cals)",
                      (int)pend.size(), _n_elements, (int)_cal.size());
             if ((int)pend.size() == _n_elements) {
                 for (auto& ec : _cal)
@@ -225,7 +225,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 for (auto& ec : _cal)
                     if (ec.warm())
                         ++nwarm;
-                INFO("set_elem_gain: seeded, {:d}/{:d} cals warm right after seed",
+                WARN("set_elem_gain: seeded, {:d}/{:d} cals warm right after seed",
                      nwarm, (int)_cal.size());
             }
         }
@@ -361,10 +361,11 @@ void GnssGpuRecordAssemble::main_thread() {
                 std::complex<double> g_sky(0.0, 0.0); // LOO sky-phase-corrected prompt (slot 24/25)
                 if (_elem_sum) {
                     gnss::ElemCal& ec = _cal[p];
-                    if (c.reanchored == 1) {
+                    if (c.reanchored == 1)
                         ec.reset(); // fresh acquisition: the fringes may have moved arbitrarily
-                        _anchor_warned[p] = 0;
-                    }
+                    // NB: do NOT reset _anchor_warned on re-anchor -- the trackers can re-anchor
+                    // every record, and re-arming the WARN there ballooned the node log to tens
+                    // of GB. The "reference too weak" message is worth exactly once per PRN.
                     if (ec.warm()) {
                         for (int t = 0; t < n_rows_spec; ++t)
                             g3[t] = ec.combine(&_g_elem[(size_t)t * n_e]);
@@ -384,8 +385,7 @@ void GnssGpuRecordAssemble::main_thread() {
                                  _prns[p], _reference_element);
                             _anchor_warned[p] = 1;
                         }
-                    } else
-                        _anchor_warned[p] = 0;
+                    }
                 }
                 // Per-channel PROMPT dump (diagnostic, see hpp): raw pre-rotation per-channel
                 // correlations -- the cross-channel relative phases are the observable.

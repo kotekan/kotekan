@@ -170,8 +170,8 @@ preflight() {
 REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
       test -r '$CFG' && sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
-        --property=StandardOutput=append:$LOG \
-        --property=StandardError=append:$LOG \
+        --property=StandardOutput=truncate:$LOG \
+        --property=StandardError=inherit \
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"
 
 # ---------------------------------------------------------------------------------------
