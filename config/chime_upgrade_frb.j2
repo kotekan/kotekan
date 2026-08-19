@@ -459,9 +459,6 @@ lostSamplesToPLMask:
     # num_polarizations: num_polarizations # set via a global
     pl_mask_buf: host_pl_mask_buffer
     lost_samples_buffers:
-    # TODO: this wrong for shuffled_host_buffers not being trivial since the
-    # C++ code assumes a fixed relation betwene the lost_samples buffers and
-    # the host voltage buffers, which is no longer true
 {%- for id in range(num_freq_gpu_buf // 4) %}
       - lost_samples_buffer_{{ id }}
 {%- endfor %}
@@ -1002,9 +999,6 @@ run_n2k_counts:
         # num_elements: num_elements
         rfi_mask_buf: host_rfi_RFImask_buffer
         lost_samples_buffers:
-        # TODO: this likely is wrong for non-trivial shuffled_host_buffers
-        # since it assumes a fixed relation between lost_samples and
-        # host_voltage buffers
 {%- for id in range(num_freq_gpu_buf // 4) %}
         - lost_samples_buffer_{{ id }}
 {%- endfor %}
