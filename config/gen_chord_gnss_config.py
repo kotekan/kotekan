@@ -502,6 +502,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # is bootstrap MRC from the satellite itself; until warm (~3 tau) the output is
             # byte-identical to reference-element-only.
             "elem_sum": args.elem_sum,
+            "elem_sum_tau_s": args.elem_sum_tau_s,
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
             # feature that was off, which is exactly the drift that makes "is the deployed
@@ -1214,6 +1215,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             **({"chan_export": True} if args.telem_host else {}),
             "reference_element": args.reference_element,
             "elem_sum": args.elem_sum,
+            "elem_sum_tau_s": args.elem_sum_tau_s,
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
             # feature that was off, which is exactly the drift that makes "is the deployed
@@ -2215,6 +2217,12 @@ def main():
                          "competes under the same measured floor as every other candidate, "
                          "so a cold or bad cal loses on merit rather than corrupting the "
                          "fold (docs 11.32).")
+    ap.add_argument("--elem-sum-tau-s", type=float, default=2.0,
+                    help="ElemCal integration time constant (s). warm() is ~3 tau, so this sets "
+                         "how long a CONTINUOUS lock the per-element self-cal needs before it "
+                         "combines the array instead of the reference element alone. Default "
+                         "lowered 5->2 (warm ~6s not ~15s) so it survives between re-anchors; "
+                         "shorter = noisier gains, but the L5 array is already phase-coherent.")
     ap.add_argument("--elem-sum", action=argparse.BooleanOptionalAction, default=True,
                     help="record HEADER = self-calibrated weighted mean over ALL elements "
                          "(bootstrap MRC, reference-anchored phase, 'one element' scale) instead "

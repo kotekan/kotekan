@@ -192,10 +192,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0092128
-    t_inst_ns: 1786838400000000000
-    xp_as: 0.222949
-    yp_as: 0.352111
   - delta_UT1_inst: 0.0081834
     t_inst_ns: 1786924800000000000
     xp_as: 0.223145
@@ -216,6 +212,10 @@ earth_rotation_data:
     t_inst_ns: 1787270400000000000
     xp_as: 0.222121
     yp_as: 0.349471
+  - delta_UT1_inst: 0.008006
+    t_inst_ns: 1787356800000000000
+    xp_as: 0.221813
+    yp_as: 0.348559
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -266,6 +266,7 @@ gnss0_b2a_n2assemble:
   cpu_affinity:
   - 31
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss0_b2a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -477,6 +478,7 @@ gnss0_b2b_n2assemble:
   cpu_affinity:
   - 31
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss0_b2b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -694,6 +696,7 @@ gnss0_e5a_n2assemble:
   cpu_affinity:
   - 31
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss0_e5a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -913,6 +916,7 @@ gnss0_e5b_n2assemble:
   cpu_affinity:
   - 31
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss0_e5b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -1133,6 +1137,7 @@ gnss0_n2assemble:
   cpu_affinity:
   - 31
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss0_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -1402,6 +1407,7 @@ gnss1_b2a_n2assemble:
   cpu_affinity:
   - 57
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss1_b2a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -1590,6 +1596,7 @@ gnss1_b2b_n2assemble:
   cpu_affinity:
   - 57
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss1_b2b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -1782,6 +1789,7 @@ gnss1_e5a_n2assemble:
   cpu_affinity:
   - 57
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss1_e5a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -1970,6 +1978,7 @@ gnss1_e5b_n2assemble:
   cpu_affinity:
   - 57
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss1_e5b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
@@ -2157,6 +2166,7 @@ gnss1_n2assemble:
   cpu_affinity:
   - 57
   elem_sum: true
+  elem_sum_tau_s: 2.0
   in_buf: gnss1_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32

@@ -215,9 +215,19 @@ void GnssGpuRecordAssemble::main_thread() {
                     _pending_gain_set = false;
                 }
             }
-            if ((int)pend.size() == _n_elements)
+            if (!pend.empty())
+                INFO("set_elem_gain: consuming {:d} gains (n_elem={:d}, {:d} cals)",
+                     (int)pend.size(), _n_elements, (int)_cal.size());
+            if ((int)pend.size() == _n_elements) {
                 for (auto& ec : _cal)
                     ec.seed(pend.data(), _n_elements);
+                int nwarm = 0;
+                for (auto& ec : _cal)
+                    if (ec.warm())
+                        ++nwarm;
+                INFO("set_elem_gain: seeded, {:d}/{:d} cals warm right after seed",
+                     nwarm, (int)_cal.size());
+            }
         }
         const int n_chan = hdr.n_chan;
         // Output rows per spec: 4 normally, 6 when the writer peels (rows 4/5 = the peel
