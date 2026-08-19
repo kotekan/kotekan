@@ -168,9 +168,18 @@ Per-Connection REST Ports
 When receiving frames over the network, ``bufferRecv`` may need to pull upstream configurations
 from the sender's REST server (only when the config tracker is enabled).
 
-- Default: the receiver assumes the sender's REST server is on port ``12048`` (``PORT_REST_SERVER``).
-- Override: use the stage config key ``upstream_rest_endpoints`` to specify non‑standard ports
-  per client. Entries are matched against the client IP as seen by ``bufferRecv``.
+Nothing on the wire carries the sender's REST port, so it has to come from
+config on the receiving side.
+
+- Default: the port this instance's own REST server is bound to, i.e. whatever
+  ``--bind-address`` gave it. A fleet launched on one port therefore agrees with
+  no extra config.
+- ``upstream_rest_port``: states that port explicitly. Set it when the senders
+  bind a different port than this receiver does — the two are unrelated, and the
+  default only happens to be right when they match.
+- ``upstream_rest_endpoints``: per-client overrides as ``"host:port"`` entries,
+  matched against the client IP as seen by ``bufferRecv``. These win over
+  ``upstream_rest_port``.
 
 Example::
 
@@ -178,13 +187,19 @@ Example::
     type: bufferRecv
     listen_port: 11024
     use_config_tracker: true
+    upstream_rest_port: 12050
     upstream_rest_endpoints:
       - "10.1.2.3:13000"
       - "192.168.5.10:14080"
 
 Notes
-- This setting is only meaningful when ``use_config_tracker: true``.
-- If a client IP:port is not listed, the default port ``12048`` is used for the IP.
+
+- These settings are only meaningful when ``use_config_tracker: true``.
+- If a client IP is not listed in ``upstream_rest_endpoints``, ``upstream_rest_port``
+  is used for it.
+- The default changed: receivers previously always assumed ``12048``. A receiver
+  bound to another port while its senders stay on ``12048`` now needs
+  ``upstream_rest_port: 12048`` set explicitly.
 
 Enabling or disabling the tracker
 ---------------------------------
