@@ -176,7 +176,36 @@ common:
   # decomposition and is what cored the fleet. n2_buffer already has a consumer (n2_subset),
   # so adding bufferSend there unblocks nothing and changes no upstream stage -- which is the
   # last-hop-only change the first attempt wrongly claimed for all four legs.
-  n2-send: true
+  # ⚠️⚠️ DISARMED 2026-08-19 01:5x -- OUR FRAMES KILLED recv1's hdf5 writer.
+  #
+  #   /hdf5_N2_write_subset: FatalError: N2FileData: frame information mismatch at (f=12,t=0)
+  #     time_center_ut1_ns  stored ... != incoming ...   (+5.007339 ms)
+  #     bin_t_inst_ns       stored ... != incoming ...   (-5.007339 ms)
+  #     bin_delta_ut1_inst  0.00757906138607267 != 0.0125864 (deg)
+  #     bin_xp_as / bin_yp_as also differ
+  #
+  # ONE ROOT CAUSE, not five: the delta_ut1 difference is 0.005007339, which is EXACTLY the
+  # 5.007339 ms shift in both time fields, with the sign flip UT1 = UTC + dUT1 predicts. Our
+  # Earth-orientation numbers are wrong, and the two timestamps are derived from them.
+  #
+  # WHY: OUR EOP TABLE ENDS 2026-08-01 AND IS 18.1 DAYS STALE. The telescope block carries
+  # `eop_updatable_config: /earth_rotation_data`, i.e. EOP is PUSHED to each node over REST
+  # and ours never receives it -- cx19 has logged 17,085,672 "Requesting EOP later than in
+  # table" warnings while stock node cx47 has logged ZERO. We have been treating that flood
+  # as log noise (#68); it was the instrument telling us its Earth orientation was frozen.
+  # Our values are the clamped last table row (6 significant figures); production's are
+  # interpolated to the instant (full double). recv1's writer collates our frames with the
+  # stock nodes' and requires the metadata to agree, so ours are fatal to it.
+  #
+  # ⚠️ DO NOT RE-ARM UNTIL THE EOP TABLE IS CURRENT. Our N^2 VISIBILITIES are fine -- #89's
+  # diagonal check reads clean -- but the frames carry time metadata that no collator can
+  # reconcile, and sending them takes down a shared receiver for everyone.
+  #
+  # THE LIKELY FIX IS THE PORT, and this is what KV was reaching for: the EOP push targets
+  # nodes on 12048 and we listen on 12049, so the control plane has never been able to
+  # reach us. 12048 is FREE on our six (nothing answered there; stock cx47/cx52 do answer),
+  # because our kotekan replaced production's on these nodes rather than joining it.
+  n2-send: false
   n2-send-legs: full
   # ⚠️ RETRACTION 2026-08-18 23:4x -- KV asked "are we certain we didn't mess up the N^2 in
   # our manipulations?" and the honest answer is NO, not certain. The previous note claimed
