@@ -180,6 +180,13 @@ export class AirspyStatsPanel {
 
     _render_rf(rf) {
         if (!this.el) return;
+        // ADC rms / drop and valve counters are AIRSPY front-end telemetry; CHORD's rf_health
+        // carries the band labels with none of it, so those rows render as an all-"—" strip
+        // left over from the airspy days. Drop any band with no real front-end data, and if
+        // none remain (the CHORD case) show only the F-engine (GNSS) section below.
+        const real = (rf || []).filter(b => (b.adc && b.adc.samples_total != null) || b.valve);
+        if (!real.length) { this.el.innerHTML = this._gnss_block(); return; }
+        rf = real;
         const fmt = f => f == null ? "n/a" : f === 0 ? "0"
             : f < 1e-6 ? "<1e-6" : (f * 100).toPrecision(2) + "%";
         const cell = (v, color, tip) =>

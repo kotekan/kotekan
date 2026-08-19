@@ -47,6 +47,23 @@ def make(doc):
     return ctx.eval("P._gnss_block()")
 
 
+def make_rf(rf_health, gnss=None):
+    """Drive _render_rf (the airspy 'front end' strip) with a stubbed DOM el, return innerHTML."""
+    src = open(SRC).read()
+    body = src[src.index("export class AirspyStatsPanel"):]
+    body = body.replace("export class", "class", 1)
+    body = re.sub(r"constructor\(\{target, feed\}\) \{.*?\n    \}\n",
+                  "constructor() { this.el = {innerHTML:''}; this._rf = new Map(); this._gnss = null; }\n",
+                  body, count=1, flags=re.S)
+    ctx = quickjs.Context()
+    ctx.eval(body)
+    ctx.eval("var P = new AirspyStatsPanel();")
+    if gnss is not None:
+        ctx.eval("P._gnss = %s;" % json.dumps(gnss))
+    ctx.eval("P._render_rf(%s);" % json.dumps(rf_health))
+    return ctx.eval("P.el.innerHTML")
+
+
 def inst(lobes, state="on"):
     return {"state": state, "lobes": lobes}
 
@@ -180,12 +197,33 @@ def main():
     else:
         print("ok  drops -> amber, 80537 (browser adds commas) search-send drops shown")
 
+    # 11. CHORD rf_health (band labels, no ADC/valve) -> NO airspy 'front end' strip, but the
+    #     F-engine (GNSS) section still renders.
+    cx_rf = [{"band": "l5", "label": "GPS L5 · 1176.45 MHz", "adc": {}, "valve": None},
+             {"band": "e5b", "label": "· 1207.14 MHz", "adc": {}, "valve": None}]
+    gnss = {"t": 1.0, "instances": {"http://cx43:12048/gnss0_srch_tap": inst(TWO)}}
+    h = make_rf(cx_rf, gnss)
+    if "front end" in h or "valve" in h:
+        fails.append("empty airspy bands still rendered the front-end strip: %s" % h[:200])
+    elif "F-engine (GNSS)" not in h:
+        fails.append("dropping airspy bands also dropped the GNSS section")
+    else:
+        print("ok  CHORD empty bands -> no airspy strip, GNSS section kept")
+
+    # 12. A band WITH real airspy data still renders (airspy pages unaffected).
+    ap_rf = [{"band": "l5", "label": "airspy L5", "adc": {"samples_total": 1000, "samples_dropped": 0, "rms": 25}, "valve": {"dropped": 0, "passed": 1000}}]
+    h = make_rf(ap_rf, None)
+    if "front end" not in h:
+        fails.append("a band with real ADC data lost its front-end strip")
+    else:
+        print("ok  airspy band with data -> front-end strip preserved")
+
     print("-" * 70)
     if fails:
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 10 arms, run in QuickJS against the real panel source")
+    print("GATE GOOD: 12 arms, run in QuickJS against the real panel source")
     return 0
 
 
