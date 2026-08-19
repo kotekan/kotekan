@@ -791,3 +791,15 @@ class _ChainView(object):
 
     def set_elements(self, table):
         return self._pub.set_elements(table, chain=self._chain)
+
+    def set_rf(self, rf, t):
+        # RECEIVER-WIDE, so it forwards WITHOUT a chain tag -- the voltage tap is per GPU and
+        # serves every signal on it (#8). The view exists to keep per-chain call sites working;
+        # this one is deliberately not per-chain, and still has to be here.
+        #
+        # ⚠️ ITS ABSENCE KILLED gps_l5 ON 2026-08-19. set_rf was added to FleetPublisher but
+        # not to this proxy, and the broker only ever holds a _ChainView -- so the one chain
+        # with rf-stats-endpoints armed threw AttributeError at its first poll and died, while
+        # the other four ran on. That is the worst shape for this bug: the chain that carries
+        # the only search, and whose clock the other four adopt, is the one that stops.
+        return self._pub.set_rf(rf, t)
