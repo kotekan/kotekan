@@ -459,6 +459,9 @@ host_pl_mask_buffer:
     value_type: uint1x8
     # produced by lostSamplesToPLMask (also asserted by CountLostPLSamplesScalar consumer)
     extents: [samples_per_data_set / 2 / 64, num_freq_gpu_buf / 4, num_polarizations, num_dishes / 8, 64 / 8]
+    quantiy_name: "pl_mask"
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
