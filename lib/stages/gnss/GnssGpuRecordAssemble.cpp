@@ -56,6 +56,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     // the element axis exists.
     _elem_sum = config.get_default<bool>(unique_name, "elem_sum", false) && _n_elements > 0;
     _elem_sum_tau_s = config.get_default<double>(unique_name, "elem_sum_tau_s", 5.0);
+    _elem_hold_on_reanchor =
+        config.get_default<bool>(unique_name, "elem_sum_hold_on_reanchor", true);
     _elem_sum_min_w = config.get_default<double>(unique_name, "elem_sum_min_w", 0.02);
     const int n = (int)_prns.size();
     // Record width is a C++ constant; the frame is sized in yaml (n_prn * record_floats *
@@ -361,8 +363,14 @@ void GnssGpuRecordAssemble::main_thread() {
                 std::complex<double> g_sky(0.0, 0.0); // LOO sky-phase-corrected prompt (slot 24/25)
                 if (_elem_sum) {
                     gnss::ElemCal& ec = _cal[p];
-                    if (c.reanchored == 1)
-                        ec.reset(); // fresh acquisition: the fringes may have moved arbitrarily
+                    if (c.reanchored == 1 && !_elem_hold_on_reanchor)
+                        ec.reset(); // fresh acquisition: full reset (legacy behavior)
+                    // HOLD across a carrier re-anchor by default: the per-element cal is
+                    // E_e*conj(E_ref), which the COMMON carrier cancels out of -- so a carrier
+                    // re-pin (reanchored==1) does not change the element gains, and resetting
+                    // them there is exactly what kept ElemCal from ever warming under the
+                    // near-every-record re-anchoring (measured 0%% warm). The L5 array is phase-
+                    // coherent, so the held gains stay valid; update() refreshes any drift.
                     // NB: do NOT reset _anchor_warned on re-anchor -- the trackers can re-anchor
                     // every record, and re-arming the WARN there ballooned the node log to tens
                     // of GB. The "reference too weak" message is worth exactly once per PRN.

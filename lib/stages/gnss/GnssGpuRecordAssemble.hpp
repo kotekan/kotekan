@@ -58,6 +58,7 @@ private:
     int _n_elements = 0;
     /// Which antenna the record HEADER's correlation slots carry -- the broker's loop reference.
     int _reference_element = 0;
+    bool _elem_hold_on_reanchor = true;  ///< keep element cal across a carrier re-anchor
     /// SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp; CHORD_GNSS_STATE 8.21.5). When enabled the
     /// header correlation slots carry the calibrated weighted MEAN over all elements instead of
     /// the bare reference element: same phase convention (reference-anchored), same "one
