@@ -1126,6 +1126,23 @@ def main(argv=None, rx=None, publisher=None):
                          "count is in the JRR-CMD line -- a rail that never clears means "
                          "the target is out of reach, not converging (the dr slew cap's "
                          "lesson).")
+    ap.add_argument("--rrate-feed-applied", type=int, default=1,
+                    help="ARM-13 (the E25 lesson, 2026-08-20): how the rrate feeds "
+                         "reference the standing carrier command. 1 (default) = add the "
+                         "posted command back to the measured residual -- CORRECT for the "
+                         "command-AWARE plant (pre-08-14 trackers, whose records carried "
+                         "the actuation, so measured = remaining and y = remaining + "
+                         "applied). 0 = the command-BLIND plant: since the 08-14 tracker "
+                         "cycle the assembler folds the applied ctrim out of every record "
+                         "(e2e [4e] MEASURED commanded == control), so the fold/record "
+                         "observables already read the FULL standing residual and the "
+                         "add-back DOUBLE-COUNTS: the row integrates its own actuation "
+                         "and every sat with a real residual ramps at exactly slew rate "
+                         "(E25: sig 12776, resid pinned +5..+15 while its command walked "
+                         "1 -> 10). Set 0 on any chain whose trackers run the folded "
+                         "assembler -- i.e., every CHORD chain today. The fine PHASE feed "
+                         "is untouched either way: its reference handles the command "
+                         "explicitly (command-HELD gate + measured applied trim).")
     ap.add_argument("--rrate-cmd-min-sig", type=float, default=0.0,
                     help="ARM-12 GUARD (the E4 lesson, 2026-08-20): a row may COMMAND only "
                          "when its satellite's own kcoh detection significance meets this "
@@ -8349,7 +8366,8 @@ def main(argv=None, rx=None, publisher=None):
                     # unambiguous to ~+-23 Hz; beyond 20 the estimate is suspect.
                     if abs(_rem) >= 20.0:
                         continue
-                    _yk = _rem + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                    _yk = _rem + (rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                                  if args.rrate_feed_applied else 0.0)
                     _sigk = min(0.3, max(0.03, 2.0 / math.sqrt(_kv["sig"])))
                     _k2 = (args.dr_constellation, int(_p))
                     if _jrk.update_rrate(_k2, _yk, t_now_abs, args.carrier_hz,
@@ -8361,8 +8379,11 @@ def main(argv=None, rx=None, publisher=None):
                     _jrk.gauge_rrate()
                     _log_rl("jrr-kcoh",
                             "JRR-KCOH %s: %d sat(s) fed from the fold's remaining rate "
-                            "(y = remaining + applied, Hz): %s"
-                            % (log_tag() or args.signal, _nk, " ".join(_krows)),
+                            "(y = remaining%s, Hz): %s"
+                            % (log_tag() or args.signal, _nk,
+                               " + applied" if args.rrate_feed_applied else
+                               " ALONE, blind plant",
+                               " ".join(_krows)),
                             every_s=60.0)
             except Exception as e:
                 _log_rl("jrr-kcoh-err", "JRR-KCOH: failed (%s) -- cycle continues" % e)
@@ -8380,7 +8401,11 @@ def main(argv=None, rx=None, publisher=None):
                     # command happened to be. A frequency from a reference, never from an
                     # argument: feeding the bare residual would make every commanded sat
                     # read as "solved" and the filter would unlearn its own correction.
-                    _y = _rv + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                    # ⚠️ ONLY on the command-AWARE plant (--rrate-feed-applied). On the
+                    # folded assembler the observable never lost the command, and adding
+                    # it back is the arm-12 integrator runaway. See the flag's help.
+                    _y = _rv + (rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                                if args.rrate_feed_applied else 0.0)
                     _k = (args.dr_constellation, int(_p))
                     # FLL->PLL HANDOFF: a phase-governed satellite takes its coarse
                     # measurements at inflated sigma (see --rrate-coarse-deweight). Never
@@ -8427,7 +8452,8 @@ def main(argv=None, rx=None, publisher=None):
                     _fcr = (fcoh or {}).get(_p) or {}
                     _rrec, _srec = _fcr.get("rate_hz"), _fcr.get("rate_sigma_hz")
                     if _use_rec and _rrec is not None and _srec is not None:
-                        _y = _rrec + rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                        _y = _rrec + (rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
+                                      if args.rrate_feed_applied else 0.0)
                         # never claim better than the fold's grid can resolve, and never
                         # worse than the old blanket 0.2 -- a split-half of exactly 0 is
                         # two halves landing in one bin, not infinite precision.

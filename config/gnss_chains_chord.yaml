@@ -787,6 +787,17 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # loop (trip at |cmd| >= 9.0, sustained rails, payoff vs controls, auto-disarm on 2).
     rrate-cmd-min-sig: 100
     carrier-max-hz: 10.0
+    # ── ARM 13 (2026-08-20 ~11:4x): the feed stops integrating its own command ─────────
+    # Arm 12's E25 runaway was STRUCTURAL, not junk: since the 08-14 tracker cycle the
+    # assembler folds the applied ctrim out of every record (e2e [4e] measured commanded
+    # == control), so the fold/record observables are command-BLIND and the feeds'
+    # y = remaining + applied DOUBLE-COUNTS -- the row integrates its own actuation and
+    # any sat with a real residual ramps at slew rate (E25: sig 12776, resid pinned
+    # +5..+15 through the whole 1 -> 10 climb). rrate-feed-applied 0 = y = remaining
+    # alone, the correct reconstruction for the blind plant. Arm-12 gates stay. Expected:
+    # commands converge to each sat's standing residual and HOLD; pre-registered in
+    # fixtures/expectations_20260820_arm13.txt. All 4 digests EQUIVALENT flag-off.
+    rrate-feed-applied: 0
     rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
