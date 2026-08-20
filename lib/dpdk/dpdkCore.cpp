@@ -83,22 +83,27 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     uint32_t max_rx_pkt_len = config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 9000);
     port_conf.rxmode.max_lro_pkt_size = max_rx_pkt_len;
     port_conf.rxmode.mtu = max_rx_pkt_len;
-    port_conf.rxmode.offloads =
-        RTE_ETH_RX_OFFLOAD_KEEP_CRC | RTE_ETH_RX_OFFLOAD_IPV4_CKSUM | RTE_ETH_RX_OFFLOAD_UDP_CKSUM;
+    // NOTE: checksum offloads (IPV4/UDP) are deliberately NOT enabled here. On the
+    // i40e NICs they force the slow scalar RX path (vector RX is disabled when
+    // L3/L4 cksum offload is on), which cannot keep up with the FPGA packet rate
+    // and drops ~80% of packets. The FPGA packets carry no valid UDP checksum
+    // anyway, so check_packet only needs the "unknown" (not "bad") flag. KEEP_CRC
+    // is retained so pkt_len matches fpga_packet_size.
+    port_conf.rxmode.offloads = RTE_ETH_RX_OFFLOAD_KEEP_CRC;
 
-
-    // Change hardcoded 2048 to support jumbo frames if configured
-    // We add RTE_PKTMBUF_HEADROOM to max_rx_pkt_len to ensure the payload fits comfortably
-    // or simply use a fixed large size like 9600 if max_rx_pkt_len is high.
     uint32_t configured_mbuf_size =
         config.get_default<uint32_t>(unique_name, "mbuf_data_size", 2048);
 
-    // If the user hasn't explicitly set mbuf_data_size, but has set a large max_rx_pkt_len,
-    // we should probably default to the larger size to avoid scatter-gather.
-    if (configured_mbuf_size == 2048 && max_rx_pkt_len > 2048) {
-        configured_mbuf_size = max_rx_pkt_len + RTE_PKTMBUF_HEADROOM;
-        // Align to 1024 for sanity, though not strictly required
-        configured_mbuf_size = ((configured_mbuf_size + 1023) / 1024) * 1024;
+    // If a packet can exceed one mbuf's data room, use scattered (chained) RX rather
+    // than allocating one huge mbuf per packet. This matches the known-good legacy
+    // (17.11) config: small 2048-byte mbufs + scatter. Huge single mbufs (e.g. 9472 B
+    // for a 9000-byte MTU) are far more expensive per buffer, so for a fixed memory
+    // budget you get far fewer of them; the pool then depletes and RX drops climb over
+    // time once the pool's initial slack is consumed. Scatter keeps buffers small and
+    // the i40e vector RX path usable. Set mbuf_data_size >= max_rx_pkt_len in the config
+    // to force single-mbuf RX instead.
+    if (max_rx_pkt_len > configured_mbuf_size) {
+        port_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_SCATTER;
     }
 
     const uint32_t max_data_size = configured_mbuf_size;
