@@ -239,15 +239,29 @@ the model-held offsets on the SAME sats before feeding anything. ⚠️ spec_tau
 STRONG (p/f median ~1.0) — #50 is blocked on significance, not on plumbing, and `reseed-spec-tau`
 has a RESEED count of 0 for the broker's entire life.
 
-### R9. #33 GAP 1 — arm the carrier command on one chain
+### R9. #33 GAP 1 — arm the carrier command on one chain  [BLOCKER CLEARED 2026-08-20]
 `carrier_correction_hz()` is implemented and consumed at one site and armed by nobody
 (`carrier-gain: 0.0` on all five, `rrate-command` off everywhere). gal_e5a is the canary.
+**2026-08-20 03:1x: the 398f31de5 payoff blocker is CLEARED, two-instrument verdict.**
+(1) e2e [4e] (eb38a418b): the full offline arithmetic — shipped propagate + shipped despread
+kernel at live t_abs + assembler-verbatim dcyc/f_nco fold — is CLEAN under constant ctrim, a
+live-like command staircase, a 4x-aggressive staircase, and noise; only the known ~mcyc-scale
+step-pairing drip (f_nco*dt uses the new ctrim over the old gap) remains. (2) The live payoff
+re-measurement on the WARM plant (fixtures/expectations_20260820_gap1_payoff_remeasure.txt,
+pre-registered, /set_carrier_trim +2 Hz hold + ±2 Hz toggle stream, b2a + e5b same-poll
+controls): the commanded chain sat INSIDE its controls at every poll on both convicting
+statistics, and PRN 28 — the 08-14 66x case — ran coh 0.72-0.83 while commanded. The 08-14
+negative was a property of the 08-14 plant (never-warm ElemCal: records rode the single
+weakest feed), not of commanding.
+RE-ARM: one yaml line (`rrate-command: true` on gal_e5a) + broker restart. Acceptance gate =
+fixtures/payoff_split.py, same controls, plus the frozen-command feedback discriminator.
 Judge on KCOH duty and `rate_resid_hz`, against the unarmed chains IN THE SAME POLLS — never on
 sig. This is also where #71's carrier NCO gets re-judged: it failed 3x as a bolt-on because the
 seed is the reference and is re-pinned every window, and one controller owning seed and carrier
 is the entire point.
 BEHIND IT: GAP 2 (three chains consume nothing from the joint state) and GAP 3 (code and
-carrier are not coupled — the unwritten physics). Both wait on #86.
+carrier are not coupled — the unwritten physics). #86 RATE-TEACH: harvested clean 08-20
+(0 events, live + archived logs) — no longer blocking.
 
 ---
 
