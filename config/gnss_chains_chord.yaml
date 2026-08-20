@@ -827,7 +827,20 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # itself was clean: bounded, mixed-sign, mean-reverting, no clamp pins, no ramps.
     # The watch's payoff gate now carries the cross-node control clause. Same arm, longer
     # soak; the benefit gates (q/eta duty vs controls) judge at >=1 h.
-    rrate-command: true
+    # ── ARM 14b VERDICT (14:0x): STABLE BUT USELESS at current row precision -- the
+    # pre-registered ambiguous outcome, disarmed per pre-registration. 2 h, 107 command
+    # lines, zero pathology (no pins, no ramps, payoff clean and EQUAL on both nodes --
+    # even cx43-e5a's standing excess washed out). But |dcmd|/poll flattened at ~1.0 Hz
+    # (quarters 1.38/1.00/0.99/1.07): the loop tracks kcoh measurement noise forever,
+    # because kcoh per-poll scatter (~2-5 Hz) ~ the true residuals (~1-5 Hz), S/N ~ 1.
+    # And the benefit gates read NIL: eta>10 duty e5a 0.72 vs e5b 0.79 / b2a 0.64,
+    # locks equal. Commanding at this precision mirrors noise -- harmless, pointless.
+    # THE MACHINERY IS VALIDATED (three feedback paths dead, actuator exact, records
+    # clean under command); what is missing is a QUIET ROW. Next fork: arm 15 = e5b
+    # fine feed (uncommanded sibling, sign calibrated +1 by the 08-18 step pair) feeding
+    # the shared E rows at mHz sigma -- or pivot to GAP 2 (the DR chains' code-side
+    # consumption, where the fleet's actual weakness lives).
+    # rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
