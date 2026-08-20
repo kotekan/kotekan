@@ -1,0 +1,130 @@
+##############################################################################
+# ARO wideband complex-sample capture: 300-1500 MHz, BOTH pols, full rate.
+#
+# Writes raw VDIF to a RAM disk (/dev/shm) -- far too fast for spinning disks,
+# but we only need a couple of seconds. Trickle off to /drives afterward with
+# trickle_off.sh.
+#
+# Uses MHvK's multi-input frequency-chunk capture (num_threads/offsets/
+# frequencies), based on config/aro_record_multiple_inputs.yaml. NO viewer and
+# NO dualpol power computation -- just gather the bands, clip to 300-1500, write.
+#
+# Band -> (offset=Nyquist zone, frequency=channel-start) mapping, 256 ch/chunk
+# (each zone = 1024 ch x 0.390625 MHz; offset 0/2/4/6 = 0-400/400-800/800-1200/
+# 1200-1600 MHz; input offset,offset+1 = XX,YY):
+#   300- 400  zone0-400  ch 768-1023          offset 0  freq 768
+#   400- 800  zone2      ch    0-1023 (full)  offset 2  freq 0,256,512,768
+#   800-1200  zone4      ch    0-1023 (full)  offset 4  freq 0,256,512,768
+#  1200-1500  zone6*     ch  256-1023 (*inv)  offset 6  freq 256,512,768
+# => 12 threads, num_elements 2 (both pols), num_freq 256.
+##############################################################################
+
+# ---- global options ----
+log_level: info
+
+telescope:
+  name: ICETelescope
+  # No live viewer here, and only relative frame timing matters for a raw dump,
+  # so fall back to system time rather than requiring the fpga_master GPS.
+  require_gps: false
+  query_gps: false
+  gps_host: 127.0.0.1
+
+instrument_name: aro
+num_local_freq: 128
+
+# ---- frequency clip (MHvK multi-input scheme) ----
+num_threads: 12
+num_elements: 2          # 2 = both pols (offset, offset+1 = XX, YY)
+num_freq: 256            # 256 ch = 100 MHz per chunk (1024 % 256 == 0)
+offsets:     [0,   2,   2,   2,   2,   4,   4,   4,   4,   6,   6,   6]
+frequencies: [768, 0,   256, 512, 768, 0,   256, 512, 768, 256, 512, 768]
+
+# ---- sizing ----
+samples_per_data_set: 32768
+buffer_depth: 8
+num_links: 8
+timesamples_per_packet: 2
+num_data_sets: 1
+cpu_affinity: [1, 7, 5, 11]   # squirrel: writer-thread affinity
+
+sizeof_float: 4
+sizeof_short: 2
+vdif_header_size: 32
+vdif_payload_size: num_freq * num_elements   # 512 bytes/time-sample/thread
+# num_disks doubles as (a) # of nDiskFileWrite writer threads and
+# (b) vdif_buffer depth multiplier. 2 threads x ~1.3 GB/s each = ample for RAM.
+num_disks: 2
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+# vdif_buffer: 16 frames x ~214 MB = ~3.2 GiB ring buffer (vs the viewer's ~28 GB).
+vdif_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set * num_threads * (vdif_payload_size + vdif_header_size)
+    metadata_pool: main_pool
+
+lost_samples_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+
+# Stages
+# dpdk settings copied from the proven squirrel quad-band viewer config.
+dpdk:
+    num_mem_channels: 4
+    kotekan_stage: dpdkCore
+    mbuf_cache_size: 500
+    # MHvK's aro_record_multiple_inputs mapping: DPDK poll lcores on CPUs
+    # {0,2,3,4,6,8,9,10} (both HT threads of physical cores 0,2,3,4), leaving
+    # cores 1 & 5 (CPUs 1,7,5,11) free for the nDiskFileWrite writer threads.
+    # Do NOT use the viewer's contiguous [0-7] map here -- it collides with the
+    # writers (cpu_affinity [1,7,5,11]) on CPUs 1/5/7 and starves the pollers.
+    lcore_cpu_map: [0, 2, 3, 4, 6, 8, 9, 10]   # squirrel (recording)
+    main_lcore_cpu: 4
+    fpga_packet_size: 4680
+    alignment: samples_per_data_set * 100
+    lcore_port_map:            # 1 stream/lcore, 8 links
+        - [0]
+        - [1]
+        - [2]
+        - [3]
+        - [4]
+        - [5]
+        - [6]
+        - [7]
+    handlers:                  # one iceBoardVDIF per port
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+    out_buf: vdif_buffer
+    lost_samples_buf: lost_samples_buffer
+
+zero_samples:
+    kotekan_stage: invalidateVDIFframes
+    out_buf: vdif_buffer
+    lost_samples_buf: lost_samples_buffer
+
+# Raw capture -> RAM disk. Pre-create /dev/shm/REC/{0,1}/ before running.
+raw_capture:
+    kotekan_stage: nDiskFileWrite
+    note: ARO 300-1500 MHz wideband complex, both pols (ramdisk)
+    instrument_name: aro
+    write_to_disk: True
+    write_metadata_and_gains: False
+    gain_files: Null
+    disk_base: /dev/shm
+    disk_set: REC
+    # num_disks inherited from top-level (2)
+    in_buf: vdif_buffer

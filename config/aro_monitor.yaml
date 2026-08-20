@@ -1,0 +1,172 @@
+##########################################
+#
+# aro_monitor.yaml
+#
+# Monitor-only variant of aro_record_46m_prime.yaml for the kv/aro live
+# viewer. Same live capture path (dpdkCore -> computeDualpolPower ->
+# networkPowerStream) but with disk recording DISABLED and only the single
+# stream to the local viewer kept. Nothing else (DPDK, GPS/telescope,
+# buffers) is changed from the production config.
+#
+# Author: Jacob Taylor, Andre Renard (monitor variant: kv/aro)
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+
+telescope:
+  name: ICETelescope
+  require_gps: true
+  query_gps: true
+  gps_host: 127.0.0.1 # Set this to the fpga_master host
+
+instrument_name: aro
+
+power_integration_length: 2048
+num_freq: 1024
+num_local_freq: 128
+num_elements: 2
+samples_per_data_set: 32768
+buffer_depth: 10
+num_links: 8
+timesamples_per_packet: 2
+num_data_sets: 1
+#cpu_affinity: [1,11,5,15] #like squirrel
+#cpu_affinity: [1,7,5,11] #squirrel
+cpu_affinity: [8, 9, 10, 11] #squirrel
+#cpu_affinity: [8,9,18,19] - best cloyd 
+
+sizeof_float: 4
+sizeof_short: 2
+vdif_header_size: 32
+num_disks: 10
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+vdif_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set * num_elements * (num_freq + vdif_header_size)
+    metadata_pool: main_pool
+
+lost_samples_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+
+power_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set/power_integration_length) * (num_freq + 1) * num_elements * sizeof_float
+    metadata_pool: main_pool
+
+# Stages
+
+# The core mapping here is setup for a 6 core CPU with 12 threads (vcores)
+# and setup to use the first 4 real cores (8 vcores)
+dpdk:
+    num_mem_channels: 4 #6 - looks like it makes it worse: 8-11 p. lost 
+    kotekan_stage: dpdkCore
+    mbuf_cache_size: 500 
+    # Format is index = lcore, value = cpu core
+    lcore_cpu_map: [0, 1, 2, 3, 4, 5, 6, 7] # squirrel test with affin. [8, 9, 10, 11]
+    #lcore_cpu_map: [0,2,3,4,6,8,9,10] #squirrel lost p. 12-13
+    #lcore_cpu_map: [0, 1, 2, 3, 4, 5, 6, 7] #random lost p. 3-6. with affin.[8,9,18,19] !!!!!the best so far
+    main_lcore_cpu: 8 #8 - 4-8p. lost, 4 - 4-8p. lost (nothing changes)
+    fpga_packet_size: 4680
+    alignment: samples_per_data_set * 100
+    # Format is index = lcore, value = array of port IDs
+    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+    # and lcore 1 to service ports 2 and 3.
+    #lcore_port_map: # 1 stream/lcore, 16 streams
+    #    - [0]
+    #    - [1]
+    #    - [2]
+    #    - [3]
+    #    - [4]
+    #    - [5]
+    #    - [6]
+    #    - [7]
+    lcore_port_map: # 1 stream/lcore, 16 streams
+        - [0]
+        - [1]
+        - [2]
+        - [3]
+        - [4]
+        - [5]
+        - [6]
+        - [7]
+    # One handler must be given per port on the system.
+    handlers:
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+        - dpdk_handler: iceBoardVDIF
+    out_buf: vdif_buffer
+    lost_samples_buf: lost_samples_buffer
+    # offset values for the CHORD prime focus feed:
+    # 0: 0-400 MHz, 2: 400-800, 4: 800-1200, 6: 1200-1600
+    offset: 2
+    # See also aro_record_multiple_inputs, but recording more
+    # than one cannot use live viewer (as of 2025-08-02, MHvK).
+
+zero_samples:
+    kotekan_stage: invalidateVDIFframes
+    out_buf: vdif_buffer
+    lost_samples_buf: lost_samples_buffer
+
+# MONITOR VARIANT: the nDiskFileWrite (raw_capture) recording stage is removed
+# entirely -- this config is for live viewing only, so there is no disk I/O at
+# all. To record, use the production aro_record_46m_prime.yaml instead.
+# vdif_buffer still has two consumers (zero_samples + computeDualpolPower).
+
+power_integration:
+   kotekan_stage: computeDualpolPower
+   vdif_in_buf: vdif_buffer
+   power_out_buf: power_buffer
+
+power_stream:
+   # center frequency and bandwidth, in MHz.
+   # Use negative bandwidth if channel 0 is on top.
+   # Regular CHIME band has freq: 600.0 and sample_bw: -400.0.
+   freq: 600.0
+   sample_bw: -400.0
+   destination_protocol: TCP
+   # MONITOR VARIANT: only the single local stream to the viewer is kept.
+   # The viewer (livebeam_server.py) must be listening on this port before
+   # kotekan starts, since networkPowerStream connects out to it.
+   stream_1:
+      kotekan_stage: networkPowerStream
+      in_buf: power_buffer
+      destination_port: 2056
+      destination_ip: 10.70.1.4
+   stream_2:
+      # Live feed to the fearless.aro Pi 4B viewer (10.70.1.8:23401).
+      kotekan_stage: networkPowerStream
+      in_buf: power_buffer
+      destination_port: 23401
+      destination_ip: 10.70.1.8
+
+# record_power:
+#    kotekan_stage: nDiskFileWrite
+#    write_to_disk: True
+#    num_disks: 1
+#    disk_base: /drives
+#    disk_set: FRB
+#    write_metadata_and_gains: false
+#    in_buf: power_buffer
+
+
