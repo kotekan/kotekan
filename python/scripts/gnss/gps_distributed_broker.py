@@ -1126,6 +1126,19 @@ def main(argv=None, rx=None, publisher=None):
                          "count is in the JRR-CMD line -- a rail that never clears means "
                          "the target is out of reach, not converging (the dr slew cap's "
                          "lesson).")
+    ap.add_argument("--rrate-cmd-min-sig", type=float, default=0.0,
+                    help="ARM-12 GUARD (the E4 lesson, 2026-08-20): a row may COMMAND only "
+                         "when its satellite's own kcoh detection significance meets this "
+                         "bar this cycle. The sigma gate cannot catch a CONFIDENT estimate "
+                         "of noise -- E4 (kcoh sig 10-36, raw rate swinging +-13 Hz) was "
+                         "served sigma 0.03-0.30, passed rrate-cmd-max-sigma, and chased "
+                         "its own actuation +2 -> +15.5 Hz in 12 min at exactly slew rate, "
+                         "while every sig-thousands sat held +-1 Hz commands. Sigma "
+                         "describes the FIT; this bar demands the SIGNAL. ~100 cleanly "
+                         "separates the two populations. 0 = off (default). A sat that "
+                         "loses this bar (or any command gate) now SLEWS its standing "
+                         "command back to 0 instead of stepping -- see the release-slew "
+                         "below the command site.")
     ap.add_argument("--rrate-phase-feed", action="store_true",
                     help="#33 PLL fine stage: feed the joint state's rrate rows from the "
                          "ADR's residual half (res_cycles per adr_records -- ~5 mHz over "
@@ -9053,6 +9066,7 @@ def main(argv=None, rx=None, publisher=None):
                     _jrc = None
         _rr_cmd_new = {}
         _rr_railed = 0
+        _rr_released = 0
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
@@ -9082,7 +9096,16 @@ def main(argv=None, rx=None, publisher=None):
                 # (usually 0 on CHORD): commanding from a wide row would inject the
                 # filter's own transient into the NCO.
                 _k = (args.dr_constellation, int(prn))
-                if _jrc.rrate_sigma(_k) <= args.rrate_cmd_max_sigma:
+                # ARM-12 GUARD: the row's own satellite must be DETECTED this cycle
+                # (kcoh sig >= --rrate-cmd-min-sig) before it may command. The sigma
+                # gate alone admitted E4's confident-noise row (see the flag's help).
+                # No kcoh row (throttled estimator at startup, or the sat absent from
+                # the fold) counts as NOT detected: no evidence, no command.
+                _cmd_sig_ok = True
+                if args.rrate_cmd_min_sig > 0.0:
+                    _cmd_sig_ok = (((_kcoh or {}).get(prn) or {}).get("sig") or 0.0) \
+                                  >= args.rrate_cmd_min_sig
+                if _cmd_sig_ok and _jrc.rrate_sigma(_k) <= args.rrate_cmd_max_sigma:
                     _cmd = _jrc.carrier_correction_hz(_k, args.carrier_hz)
                     if args.carrier_max_hz > 0.0:
                         _cmd = max(-args.carrier_max_hz, min(args.carrier_max_hz, _cmd))
@@ -9101,6 +9124,23 @@ def main(argv=None, rx=None, publisher=None):
                         _cmd = _prev + _stp
                     d["carrier_trim_hz"] = _cmd
                     _rr_cmd_new[prn] = _cmd
+            # RELEASE-SLEW (arm 12). A sat that exits the command set -- sig bar lost,
+            # sigma widened, receiver row gone -- used to fall back to car_trim/0 in ONE
+            # poll: an instant step of its whole standing command, the exact reference
+            # discontinuity the slew bound exists to prevent, taken at release instead
+            # of at pull-in. Walk it back at the same bounded rate; drop out only once
+            # within one step of zero.
+            if (args.rrate_command and prn not in _rr_cmd_new and prn not in probe_set
+                    and rr_cmd_applied.get(prn)):
+                _prev = rr_cmd_applied[prn]
+                _stp = args.rrate_cmd_slew_hz if args.rrate_cmd_slew_hz > 0.0 else 0.0
+                if _stp > 0.0 and abs(_prev) > _stp:
+                    _cmd = _prev - math.copysign(_stp, _prev)
+                    d["carrier_trim_hz"] = _cmd
+                    _rr_cmd_new[prn] = _cmd
+                    _rr_released += 1
+                # else: within one step of zero (or slew disabled) -- final sub-slew
+                # step back to car_trim/0, and the sat leaves rr_cmd_applied.
             if prn in car_repin_pending:
                 # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
                 # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
@@ -9206,10 +9246,10 @@ def main(argv=None, rx=None, publisher=None):
         if _rr_cmd_new:
             _log_rl("jrr-cmd",
                     "JRR-CMD[%s]: %s Hz (rrate rows -> carrier_trim_hz, %d sat(s), "
-                    "%d slew-railed)"
+                    "%d slew-railed, %d releasing)"
                     % (args.dr_constellation,
                        " ".join("%d:%+.2f" % kv for kv in sorted(_rr_cmd_new.items())),
-                       len(_rr_cmd_new), _rr_railed), every_s=60.0)
+                       len(_rr_cmd_new), _rr_railed, _rr_released), every_s=60.0)
         # WHERE THE PEEL'S SIGNS ACTUALLY CAME FROM this cycle. Without this the only symptom
         # of a source that silently supplies nothing is `nobits` in a health line 10 s later on
         # a different process, which is what made the 30 s-horizon bug hard to see.
