@@ -751,6 +751,16 @@ host_rfi_skbartilde_ringbuffer_1:
 
 # Stages
 
+##  Monitor the F-engine for drift ##
+# The config tracker reads the F-engine controller once at startup and hands
+# that snapshot downstream; this re-reads it so a controller that is
+# reprogrammed or resynced mid-acquisition is caught rather than silently
+# invalidating every config already propagated.
+fpga_monitor:
+    kotekan_stage: FPGAMonitor
+    poll_interval_seconds: 5
+    fetch_timeout_seconds: 5
+
 ##  Packet capture from the F-engine ##
 dpdk:
     kotekan_stage: dpdkCore

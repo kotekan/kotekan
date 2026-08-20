@@ -19,6 +19,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
 #include <deque>              // for deque
 #include <errno.h>            // for EAGAIN, EDEADLK
@@ -61,10 +62,17 @@ class connInstance;
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
+ * @conf upstream_rest_port  Int, default: this instance's own REST port. The
+ *        REST port to reach a sender on when fetching config-tracker state.
+ *        Nothing on the wire carries the sender's REST port, so it has to be
+ *        stated here; the default assumes the fleet runs on one port, which
+ *        holds when every instance is launched with the same --bind-address.
+ *        Set it explicitly when the senders bind a different port than this
+ *        receiver does.
  * @conf upstream_rest_endpoints  List[str], default empty. Optional list of
  *        "host:port" entries specifying non-standard upstream REST ports to use for
  *        particular senders. If the client IP (as seen by bufferRecv) matches a host in this
- *        list, that port overrides the default REST port (PORT_REST_SERVER) for that connection.
+ *        list, that port overrides @c upstream_rest_port for that connection.
  *
  * @par Metrics
  * @metric kotekan_buffer_recv_transfer_time_seconds
@@ -133,6 +141,9 @@ private:
 
     /// Whether to drop frames when buffer starts filling up
     bool drop_frames;
+
+    /// REST port used to reach a sender that has no per-host override
+    uint16_t default_upstream_rest_port;
 
     /// Optional per-host overrides for upstream REST ports
     std::map<std::string, uint16_t> upstream_rest_port_overrides;
@@ -215,8 +226,9 @@ private:
     /// Condition variable for the state (empty or not) of the work queue
     std::condition_variable work_cv;
 
-    /// Set to true to stop the worker threads
-    bool worker_stop_thread = false;
+    /// Set to true to stop the worker threads. Read by the workers and by the
+    /// read callbacks, which do not hold @c work_queue_lock.
+    std::atomic<bool> worker_stop_thread = false;
 
     /**
      * @brief The worker thread for handing read callbacks.
