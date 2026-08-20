@@ -1242,8 +1242,19 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # restarts (only a NODE restart or a re-anchor clears it) -- consistent with the large
     # one-signed discs seen here (PRN 23 -0.889, PRN 26 +0.484). Cheap test: KV's next node
     # restart, which is coming anyway for --n2-send.
-    # rrate-phase-sign: 1.0
-    # rrate-phase-feed: true
+    # ── ARM 15 (2026-08-20 14:1x, KV): the QUIET ROW -- e5b's fine feed, at last ────────
+    # The 08-18 calibration paid for this line: sign = +1 measured by the commanded
+    # +-2 Hz step PAIR (fixtures/expectations_20260818_jrrp_sign_probe.txt), both
+    # directions, controls flat. THIS chain is uncommanded, so the fine reference's
+    # "only exact under a constant command" clause is satisfied by construction --
+    # the moving-command failure that killed arm 13 on e5a cannot occur here. Feeds
+    # the SAME (E, prn) rows e5a commands from (the cross-band design's whole point).
+    # PRE-REGISTERED (fixtures/expectations_20260820_arm15.txt): E-row median sigma
+    # drops 0.160 -> mHz-class on fine-fed sats; rate series smooth; G/C rows =
+    # same-poll controls, unchanged. Falsifier: E-row rates WALK vs controls, or the
+    # reject counter ramps => wrong sign or a bad reference; disarm (re-comment).
+    rrate-phase-sign: 1.0
+    rrate-phase-feed: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
     # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
     # same PRN, same instant, both bands, across the 20:32Z arming of gal_e5a:
