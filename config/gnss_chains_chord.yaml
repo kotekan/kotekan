@@ -810,7 +810,18 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # (gnss_broker_20260820_arm13_*.log.gz), per-sat feed attribution -- which feed
     # served E10/E2's rows vs E25's during the arm. Do NOT re-arm before that.
     rrate-feed-applied: 0
-    # rrate-command: true
+    # ── ARM 14 (2026-08-20 ~12:0x, KV): the fine feed steps aside on the commanded chain ──
+    # Arm 13's attribution: kcoh-fed E25 converged & released exactly as predicted; the
+    # E2/E10 ramps were the FINE PHASE FEED feeding DURING the slew ("2 fine-fed") past
+    # its command-HELD gate -- its reference is documented "only exact under a constant
+    # command". Zero new code: phase-feed OFF on THIS chain only. The cross-band design
+    # covers the loss -- gal_e5b's UNCOMMANDED fine feed keeps refining the same (E, prn)
+    # rows, so e5a commands from e5b-fine + e5a-kcoh-blind. JRRP stays shadow (sign
+    # calibration continues). Judge: converge-and-hold on ALL commanded sats; then the
+    # benefit gates (q/eta duty vs controls, same polls).
+    # Pre-registered: fixtures/expectations_20260820_arm14.txt.
+    rrate-phase-feed: false
+    rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
@@ -819,7 +830,9 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # span, coherent, |fine| < 0.3 Hz. Fed at sigma 0.02 Hz into the SAME rrate rows --
     # the Kalman blends coarse acquisition and fine tracking with no mode switch.
     rrate-phase-sign: 1.0
-    rrate-phase-feed: true
+    # rrate-phase-feed: true  # ← ARM 14: superseded by the `false` above (was a duplicate
+    #                            key -- loader last-wins would have silently re-armed it).
+    #                            Sign stays for the shadow JRRP calibration.
     # ⚠️ THE FLL->PLL HANDOFF (96cc120f7) IS DISABLED OVERNIGHT -- it REGRESSED the chain.
     # Measured 23:5x on the SAME satellites (e5b = cross-band control): commanded coh_frac
     # worse on 5 of 6 -- 7: 0.90|0.95, 8: 0.77|0.91, 26: 0.91|0.99, 29: 0.83|0.92, and
