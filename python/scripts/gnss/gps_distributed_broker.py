@@ -1126,6 +1126,23 @@ def main(argv=None, rx=None, publisher=None):
                          "count is in the JRR-CMD line -- a rail that never clears means "
                          "the target is out of reach, not converging (the dr slew cap's "
                          "lesson).")
+    ap.add_argument("--kcoh-rate-from-row", type=int, default=0,
+                    help="ARM-17 (the churn killer): inject the JOINT ROW's y-space "
+                         "prediction (carrier_correction_hz) into the KCOH fold instead "
+                         "of the previous cycle's record-stream fit, per seeded sat whose "
+                         "row is converged. The fold's headline (sig/eta) duty-cycles on "
+                         "the fit's own +-10 Hz cycle-to-cycle noise -- the fleet-wide "
+                         "'sig oscillation' -- while the row (e5b fine feed + kcoh, arms "
+                         "15/16) is 5-10x smoother. The record stream is command-blind on "
+                         "this plant, so the row's estimate IS the stream's residual rate "
+                         "on commanded and uncommanded chains alike. Probes have no rows "
+                         "and keep their zero/fit entries: the floor stays "
+                         "self-calibrated. 0 = off (default).")
+    ap.add_argument("--kcoh-row-max-sigma", type=float, default=1.0,
+                    help="row y-space 1-sigma bar (Hz) for --kcoh-rate-from-row: "
+                         "(f_band/c)*rrate_sigma + f_carrier_sigma must be at or under "
+                         "this before a row's prediction replaces the fit. An unmeasured "
+                         "row reads inf and never injects.")
     ap.add_argument("--rrate-feed-applied", type=int, default=1,
                     help="ARM-13 (the E25 lesson, 2026-08-20): how the rrate feeds "
                          "reference the standing carrier command. 1 (default) = add the "
@@ -7614,9 +7631,28 @@ def main(argv=None, rx=None, publisher=None):
             # the two telemetry-walk blocks in cycle order).
             _kcoh = _est_last["kcoh"]
             if _run_est:
+                # ARM 17: overlay converged rows' predictions onto the fit-fed rates.
+                # See --kcoh-rate-from-row. Fallback for any sat without a converged
+                # row (and every probe) is exactly the old path.
+                _rates_in = dict(_kcoh_rates)
+                _row_inj = 0
+                if args.kcoh_rate_from_row and args.rrate_state:
+                    try:
+                        _jri = rx.joint_receiver(band_id, CODE_LEN)
+                        for _pi in (set(seeds) - probe_set):
+                            _ki = (args.dr_constellation, int(_pi))
+                            _sy = ((args.carrier_hz / _jri.C_LIGHT)
+                                   * _jri.rrate_sigma(_ki) + _jri.f_carrier_sigma())
+                            if _sy <= args.kcoh_row_max_sigma:
+                                _rates_in[_pi] = _jri.carrier_correction_hz(
+                                    _ki, args.carrier_hz)
+                                _row_inj += 1
+                    except Exception as e:
+                        _log_rl("kcoh-row-err",
+                                "KCOH row-injection skipped: %s" % e, every_s=300.0)
                 try:
                     _kcoh = combdll.coh_cn0(
-                        telem_client, telem_chain, rates=dict(_kcoh_rates),
+                        telem_client, telem_chain, rates=_rates_in,
                         n_win=(args.telem_dll_windows or args.telem_windows),
                         min_instances=args.dll_min_instances,
                         prns=set(seeds) or None, probe_prns=probe_set,
@@ -7635,10 +7671,12 @@ def main(argv=None, rx=None, publisher=None):
                            if v["cn0_db"] is not None and not v["probe"] and v["sig"] > 3.0]
                     _log_rl("kcoh",
                             "KCOH %s: %s | %d PRNs folded, floor from %d probe folds"
+                            "%s"
                             % (telem_chain,
                                "; ".join(_kv) if _kv else "no fold above the probe floor",
                                len(_kcoh),
-                               next(iter(_kcoh.values()))["n_probe"]),
+                               next(iter(_kcoh.values()))["n_probe"],
+                               (", %d row-injected" % _row_inj) if _row_inj else ""),
                             every_s=30.0)
             # NOW the rates for the NEXT cycle, from THIS cycle's record-stream fit.
             for _p, _fc2 in (fcoh or {}).items():
