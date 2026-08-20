@@ -1441,7 +1441,8 @@ FRB:
         upchan_factor: factor_upchan_out
         frb1_swap_MN: true
         conjugate_gains: true
-        scaling_factor: 1.0 / 128
+        # empirically, this made CYG_A have an intermediate intesity2 of 37000
+        scaling_factor: 1.0 / 512
         gain_buffers:
           - host_frb1_phase_buffer
         in_mask_buf: host_bf_mask_buffer
