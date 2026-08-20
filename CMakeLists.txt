@@ -8,6 +8,19 @@ project(
     KOTEKAN
     DESCRIPTION "A high performance radio data processing pipeline"
     LANGUAGES C CXX)
+
+# Default to an optimized build when the user hasn't chosen a build type. An empty
+# CMAKE_BUILD_TYPE compiles at -O0, which is ~100x slower in hot loops (e.g. the
+# per-packet VDIF copy in the DPDK capture path) and silently cripples real-time
+# capture -- the packets are dropped at the NIC because the poll thread can't keep up.
+# Developers who want an unoptimized build can still pass -DCMAKE_BUILD_TYPE=Debug.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    message(STATUS "No CMAKE_BUILD_TYPE set; defaulting to RelWithDebInfo (-O2 -g).")
+    set(CMAKE_BUILD_TYPE
+        RelWithDebInfo
+        CACHE STRING "Build type (Debug/Release/RelWithDebInfo/MinSizeRel)" FORCE)
+endif()
+
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 include(cmake/Color.cmake)
 include(cmake/Options.cmake)
