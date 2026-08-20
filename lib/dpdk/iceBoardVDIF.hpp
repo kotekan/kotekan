@@ -84,6 +84,12 @@ protected:
     int32_t out_buf_frame_id = 0;
     uint8_t* out_buf_frame;
 
+    /// Cached base FPGA seq number of the current out_buf_frame (equals the frame's
+    /// chordMetadata fpga_seq_num). Cached here to avoid a per-packet string-keyed JSON
+    /// lookup (metadata.at("FPGA_SEQ_NUM")) on the hot copy path; the value is invariant
+    /// within a frame and is refreshed only when the frame advances.
+    int64_t out_buf_frame_fpga_seq = 0;
+
     /// The flag buffer tracking lost samples
     Buffer* lost_samples_buf;
 
@@ -327,6 +333,8 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
 
     // required for gps_time (which is computed from this)
     get_chord_metadata(out_buf, out_buf_frame_id)->set_fpga_seq_num(new_seq);
+    // Cache it for the per-packet hot path (avoids re-reading it from the JSON metadata).
+    out_buf_frame_fpga_seq = (int64_t)new_seq;
 
     if (tel.gps_time_enabled()) {
         struct timespec gps_time = tel.to_time(new_seq);
@@ -348,8 +356,7 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
 inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
 
     int64_t lost_sample_location =
-        last_seq + samples_per_packet
-        - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
+        last_seq + samples_per_packet - out_buf_frame_fpga_seq;
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
@@ -370,8 +377,7 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
 
 void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
-    int64_t vdif_frame_location =
-        cur_seq - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
+    int64_t vdif_frame_location = cur_seq - out_buf_frame_fpga_seq;
 
     if (unlikely((size_t)(vdif_frame_location * vdif_frameset_size) == out_buf->frame_size)) {
         advance_vdif_frame(cur_seq);
@@ -449,6 +455,12 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                 } // end of while; input pointer is at sample.
                 if (num_elements == 2) {  // allow optimization of most common case.
                     std::copy_n(in, 2, out);
+                } else if (num_elements == 8) {
+                    // ARO wideband (8 elements = one 64-bit word): compile-time-constant
+                    // count so the compiler emits a single 8-byte move instead of a
+                    // runtime-length memmove call ~576x/packet. Eases per-core execution
+                    // pressure, which is what limits the HT-paired RX cores.
+                    std::copy_n(in, 8, out);
                 } else {
                     std::copy_n(in, num_elements, out);
                 }
