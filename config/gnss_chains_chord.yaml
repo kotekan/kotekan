@@ -797,8 +797,20 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # alone, the correct reconstruction for the blind plant. Arm-12 gates stay. Expected:
     # commands converge to each sat's standing residual and HOLD; pre-registered in
     # fixtures/expectations_20260820_arm13.txt. All 4 digests EQUIVALENT flag-off.
+    # ⚠️ ARM 13 DISARMED 11:4x by its own pre-registered falsifier, ~15 min in. MIXED
+    # verdict, and the mixture is the finding: E25 CONVERGED AND RELEASED exactly as
+    # predicted (+6.4 -> +0.9 -> -0.5, y falling +4.96 -> +1.90) -- but E10 pinned the
+    # 10 Hz clamp for 4 straight polls and E2 ramped +2.7 -> +7.7 past 1.5x its ~+2.4
+    # residual. Same chain, same feed flag, opposite dynamics => the third feedback path
+    # is PER-SAT, i.e. per-FEED-SOURCE: a row is fed by kcoh (sigma floor 0.03 needs sig
+    # ~4400), the deep/coarse feed, AND the fine PHASE feed (sigma 0.02, command-aware
+    # reference with its own gates) -- the blind-plant fix corrected the first two and
+    # NOT the fine feed, whose reference under a MOVING command is exactly its documented
+    # weak spot ("only exact under a constant command"). NEXT: from the archived log
+    # (gnss_broker_20260820_arm13_*.log.gz), per-sat feed attribution -- which feed
+    # served E10/E2's rows vs E25's during the arm. Do NOT re-arm before that.
     rrate-feed-applied: 0
-    rrate-command: true
+    # rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
