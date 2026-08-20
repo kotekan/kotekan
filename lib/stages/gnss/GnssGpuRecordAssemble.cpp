@@ -84,6 +84,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _fcar_prev_ok.assign(n, 0);
     _a_prev.assign(n, {0.0, 0.0});
     _a_prev_ok.assign(n, 0);
+    _elem_prev_ok.assign(n, 0);
     _wstart_prev.assign(n, 0);
     // PER-CHANNEL PROMPT SPECTRUM (hpp note; task #32). Keyed on `channel_ids` being present:
     // the generator wires the same per-GPU freq_id list the despread runs, so the export knows
@@ -310,6 +311,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 const PrnCtl& c = pctl[(size_t)r * n_prn + p];
                 if (!c.run) {
                     _a_prev_ok[p] = 0;
+                    _elem_prev_ok[p] = 0;
                     _fcar_prev_ok[p] = 0;
                     _phi_cyc[p] = 0.0;
                     _phi_cmd_ok[p] = 0;
@@ -382,7 +384,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         // that IS the ADR observable (gnssRecord.hpp REC_SKY_RE).
                         g_sky = ec.combine_split(&_g_elem[(size_t)1 * n_e]);
                     }
-                    if (_a_prev_ok[p] && wstart > _wstart_prev[p])
+                    if (_elem_prev_ok[p] && wstart > _wstart_prev[p])
                         ec.update(&_g_elem[(size_t)1 * n_e],
                                   (double)(wstart - _wstart_prev[p]) / _sample_rate);
                     if (ec.anchor_moved()) {
@@ -430,6 +432,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     _phi[p] = 0.0;
                     _phi_cyc[p] = 0.0;
                     _a_prev_ok[p] = 0;
+                    if (!_elem_hold_on_reanchor)
+                        _elem_prev_ok[p] = 0; // legacy: also break element continuity
                     _phi_cmd_ok[p] = 0;
                 } else if (repin) {
                     // PHASE-CONTINUOUS RE-PIN. Re-pinning f_ref steps the ABSOLUTELY-ANCHORED
@@ -718,6 +722,7 @@ void GnssGpuRecordAssemble::main_thread() {
 
                 _a_prev[p] = (e3[1] > 0.0) ? g_corr / e3[1] : std::complex<double>(0.0, 0.0);
                 _a_prev_ok[p] = 1;
+                _elem_prev_ok[p] = 1;
                 _wstart_prev[p] = wstart;
 
                 // COMMANDED CARRIER PHASE (cycles mod 1), the GPU twin of the CPU tracker's
