@@ -764,7 +764,18 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     #       bounded, not monotone across sats,
     #   (3) KCOH eta duty + rate_resid_hz vs the unarmed chains, same polls.
     # Revert = re-comment this line + broker restart (broker-only, no node restart).
-    rrate-command: true
+    # ⚠️ ARM 11 DISARMED 03:4x, ~15 min in: E4's command ran away +2.00 -> +15.46 Hz in
+    # 12 min, railed at full slew nearly every poll, PAST the ±10 Hz physics bound -- a
+    # rail that never clears. PER-SAT, not the arm-8 fleet-common ramp: the other 11 sats
+    # held ±1 Hz-class commands the whole time. E4's kcoh feed row was CONFIDENT (sigma
+    # 0.05) and big -- the junk got in through a tight-sigma row, so the sigma gate cannot
+    # catch this class; the missing gate is a physics bound on the COMMAND ITSELF
+    # (carrier_max_hz is 40; it should be ~10) and/or on the row's |y|. The payoff verdict
+    # (records clean under command) still stands -- this is a FEED/gating failure, not the
+    # 08-14 record-corruption class. Fleet-wide sig was also off-trajectory 15 min
+    # post-restart on ALL chains including never-commanded ones; this restart-without-arm
+    # is the paired control for that question.
+    # rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
