@@ -840,7 +840,15 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # fine feed (uncommanded sibling, sign calibrated +1 by the 08-18 step pair) feeding
     # the shared E rows at mHz sigma -- or pivot to GAP 2 (the DR chains' code-side
     # consumption, where the fleet's actual weakness lives).
-    # rrate-command: true
+    # ── ARM 16 (2026-08-20 16:5x): the command returns, on QUIET rows ───────────────────
+    # Arm 15 delivered: e5b fine feed live, E-row measured rates 5-10x smoother (med
+    # |drate| 0.20 vs 1-2 m/s), acceptance 36% -> 64%, no falsifier. 14b's verdict was
+    # "stable but useless BECAUSE the row mirrored kcoh noise" -- so the re-arm's judge
+    # is QUIETNESS FIRST: median |dcmd|/poll must drop well below 14b's flat 1.0 Hz
+    # (expect ~0.3-0.5), rails toward 0, THEN the benefit gates (eta/q duty vs controls).
+    # Same gates as 14 (min-sig 100, carrier-max 10, feed-applied 0, fine feed off on
+    # THIS chain -- e5b supplies the fine precision from the uncommanded side).
+    rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
