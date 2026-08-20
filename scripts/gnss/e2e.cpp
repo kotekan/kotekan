@@ -164,6 +164,22 @@ struct Opt {
     /// the boundary. The printed boundary step, compared against +-ctrim*t_abs mod 1,
     /// reads the fold term the assembler must subtract -- sign and magnitude, offline.
     double bench_ctrim = 0.0;
+    /// [4e] command-stream bench: the LIVE arming pattern rather than [4d]'s single clean
+    /// step. ctrim on job 0 is either held CONSTANT (--bench-cmd-const: validates the
+    /// assembler's f_nco*dt slope term, which the sky has never exercised outside the
+    /// arms -- carrier-gain has been 0.0 everywhere else) or slewed in a staircase
+    /// (--bench-cmd-slew/every/max: +-slew Hz every `every` records, triangle between
+    /// +-max -- the broker's 0.5 Hz/poll slew, compressed to bench cadence). A THIRD
+    /// despread job rides every record with the SAME seed and ctrim == 0: the in-run
+    /// control, exactly the unarmed chain in the same poll. The analysis replicates the
+    /// assembler's NCO fold (dcyc + f_nco*dt, GnssGpuRecordAssemble) verbatim on both
+    /// series and prints the two statistics that convicted the last arm on sky
+    /// (398f31de5): within-buffer half/half coherence decay and even/odd split-half
+    /// rate agreement.
+    double bench_cmd_const = 0.0; ///< constant ctrim on job 0 (Hz); 0 = off
+    double bench_cmd_slew = 0.0;  ///< staircase step (Hz per event); 0 = off
+    int bench_cmd_every = 4;      ///< records between staircase steps (4 = one GPU frame)
+    double bench_cmd_max = 3.0;   ///< staircase turnaround (Hz)
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
     int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
@@ -234,7 +250,13 @@ static void usage() {
         "  --skip-search      seed straight from truth -- isolates the tracker/despread leg\n"
         "  --trim X           commanded DLL trim, chips (task #51). With --skip-search this\n"
         "                     IS a known code error: the sign test for the actuator.\n"
-        "  --code-doppler-sign S   (default +1)\n");
+        "  --code-doppler-sign S   (default +1)\n"
+        "  --bench-cmd-const X  [4e] constant carrier trim on job 0 (Hz) + a ctrim-0\n"
+        "                     control job: validates the assembler's f_nco*dt slope term\n"
+        "  --bench-cmd-slew X   [4e] ctrim staircase, X Hz per step (the live command\n"
+        "                     stream, compressed); control job rides every record\n"
+        "  --bench-cmd-every N  [4e] records between staircase steps (default 4)\n"
+        "  --bench-cmd-max X    [4e] staircase turnaround (default 3.0 Hz)\n");
 }
 
 static bool arg_eq(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
@@ -334,6 +356,10 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
         else if (arg_eq(a, "--truth-dop-rate")) o.truth_dop_rate = next_d();
         else if (arg_eq(a, "--bench-ctrim")) o.bench_ctrim = next_d();
+        else if (arg_eq(a, "--bench-cmd-const")) o.bench_cmd_const = next_d();
+        else if (arg_eq(a, "--bench-cmd-slew")) o.bench_cmd_slew = next_d();
+        else if (arg_eq(a, "--bench-cmd-every")) o.bench_cmd_every = (int)next_d();
+        else if (arg_eq(a, "--bench-cmd-max")) o.bench_cmd_max = next_d();
         else if (arg_eq(a, "--trim")) o.trim_chips = next_d();
         else if (arg_eq(a, "--signal")) o.signal = argv[++i];
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
@@ -441,11 +467,11 @@ int main(int argc, char** argv) {
     }
     gnss::ChannelizedReplicaBank sbank(*sig_s, o.sample_rate, o.f_offset, o.spectrum_length,
                                        o.num_taps, dsp::Window::Hamming, {o.prn});
-    // Two slots holding the SAME PRN: slot 0 takes the tracker's commanded phase, slot 1 the
-    // truth, so both despreads ride one kernel launch against one uploaded window (the device
-    // job arena is sized by PRN slot count).
+    // Three slots holding the SAME PRN: slot 0 takes the tracker's commanded phase, slot 1
+    // the truth, slot 2 the [4e] control (same seed, ctrim 0) -- all ride one kernel launch
+    // against one uploaded window (the device job arena is sized by PRN slot count).
     gnss::ChannelizedReplicaBank tbank(*sig_t, o.sample_rate, o.f_offset, o.spectrum_length,
-                                       o.num_taps, dsp::Window::Hamming, {o.prn, o.prn});
+                                       o.num_taps, dsp::Window::Hamming, {o.prn, o.prn, o.prn});
     sbank.code_doppler_sign = o.code_doppler_sign;
     // TRUNCATE THE ANALYSIS BANK ONLY. sbank builds the SEARCH's replica; the synthetic sky comes
     // from tbank (channels_hoprate at [1]). Capping both would make the measurement
@@ -1010,7 +1036,7 @@ int main(int argc, char** argv) {
     // -----------------------------------------------------------------------------------------
     printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n",
            o.age_s, o.rec_gap_s);
-    GnssCudaDespread ds(tbank, 2, t_chans, o.hops_per_record, o.sample_rate, o.f_offset);
+    GnssCudaDespread ds(tbank, 3, t_chans, o.hops_per_record, o.sample_rate, o.f_offset);
     printf("    rec   age_s        cp cmd    phase err     per   |   P/P_true    q=2P/(E+L)      disc\n");
 
     const long long age_hops = (long long)std::llround(o.age_s / hop_s);
@@ -1022,6 +1048,14 @@ int main(int argc, char** argv) {
     std::vector<double> rec_ctrim;             // per-record applied ctrim, for the [4d] bench
     // Independent of the search realization, so a tracker sweep is reproducible on its own.
     std::mt19937 trk_rng(o.nseed + 1000u);
+    // [4e] the command staircase state, and the control job's prompt series.
+    const bool cmd_bench = (o.bench_cmd_const != 0.0 || o.bench_cmd_slew != 0.0);
+    double cmd_now = o.bench_cmd_const;
+    int cmd_dir = +1;
+    std::vector<std::complex<double>> prompts_ctl;
+    std::vector<std::complex<double>> prompts_tru; // [4e] truth job, complex: the common-mode
+                                                   // reference (overlay sign + shared kernel
+                                                   // structure), divided out of both series
     for (int r = 0; r < o.nrec; ++r) {
         const long long h = o.hop0 + age_hops + (long long)r * gap_hops;
         const long long W = h * (long long)FFT;
@@ -1085,11 +1119,27 @@ int main(int argc, char** argv) {
 
         // Job 0 = the tracker's commanded phase; job 1 = perfect knowledge, the normalizer.
         // [4d]: job 0 carries the bench ctrim on the second half of the records.
-        const double ctrim_r = (o.bench_ctrim != 0.0 && r >= o.nrec / 2) ? o.bench_ctrim : 0.0;
+        // [4e]: or the command stream -- a staircase stepped every bench_cmd_every records.
+        if (o.bench_cmd_slew != 0.0 && r > 0 && (r % std::max(o.bench_cmd_every, 1)) == 0) {
+            cmd_now += (double)cmd_dir * o.bench_cmd_slew;
+            if (std::fabs(cmd_now) >= o.bench_cmd_max)
+                cmd_dir = -cmd_dir;
+        }
+        const double ctrim_r =
+            cmd_bench ? cmd_now
+                      : ((o.bench_ctrim != 0.0 && r >= o.nrec / 2) ? o.bench_ctrim : 0.0);
         GnssCudaDespread::Spec s0{0, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov};
         s0.ctrim_hz = ctrim_r;
-        auto res = ds.despread_batch({s0, {1, o.cp204, o.dll_spacing, o.dop, t_cov}});
+        std::vector<GnssCudaDespread::Spec> jobs{s0,
+                                                 {1, o.cp204, o.dll_spacing, o.dop, t_cov}};
+        if (cmd_bench) // the in-run control: same seed, ctrim 0 -- the unarmed chain
+            jobs.push_back({2, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov});
+        auto res = ds.despread_batch(jobs);
         rec_ctrim.push_back(ctrim_r);
+        if (cmd_bench) {
+            prompts_ctl.push_back(res[2][1].correlation);
+            prompts_tru.push_back(res[1][1].correlation);
+        }
         const double P = std::norm(res[0][1].correlation);
         const double E = std::norm(res[0][0].correlation);
         const double La = std::norm(res[0][2].correlation);
@@ -1300,6 +1350,150 @@ int main(int argc, char** argv) {
                        "ctrim*dT -> %+8.4f\n",
                        o.bench_ctrim, h2, wrapc(meas), inhalf,
                        wrapc(cand), wrapc(-cand), wrapc(o.bench_ctrim * dTb));
+            }
+            if (cmd_bench) {
+                // [4e] THE COMMAND-STREAM BENCH. Replicate the assembler's NCO fold
+                // (GnssGpuRecordAssemble pass 2) VERBATIM on the commanded prompts:
+                //   dcyc  = d(applied_total) * t_abs   (the producer's re-pin step,
+                //           reanchored == 3 -- cudaGnssChordTrack/_dop_prev history)
+                //   phi  += 2*pi*dcyc; phi += 2*pi*f_nco*dt   (f_nco = ctrim on CHORD)
+                //   P^    = P * exp(-i*phi)
+                // The control series rides the IDENTICAL fold with ctrim == 0 (its dcyc
+                // still folds the per-record Doppler moves -- exactly the live unarmed
+                // chain in the same poll). Then the two statistics that convicted the
+                // last live arm (398f31de5): within-buffer half/half coherence decay and
+                // even/odd split-half rate agreement. Noiseless, any commanded excess
+                // over the control beyond the printed step-pairing drip is ARITHMETIC,
+                // not sky.
+                const int Ne = (int)prompts.size();
+                auto fold = [&](const std::vector<std::complex<double>>& src, bool cmd) {
+                    std::vector<std::complex<double>> out(src.size());
+                    double phi = 0.0, prev_applied = 0.0;
+                    bool have = false;
+                    for (int k = 0; k < (int)src.size(); ++k) {
+                        const double ct = cmd ? rec_ctrim[(size_t)k] : 0.0;
+                        const double applied = rec_dop[(size_t)k] + ct;
+                        const double dtk =
+                            k > 0 ? rec_tabs[(size_t)k] - rec_tabs[(size_t)k - 1] : 0.0;
+                        if (have) {
+                            const double dcyc =
+                                (applied - prev_applied) * rec_tabs[(size_t)k];
+                            phi += 2.0 * M_PI * dcyc;    // the re-pin fold (reanchored=3)
+                            phi += 2.0 * M_PI * ct * dtk; // f_nco*dt (the slope term)
+                            phi = std::remainder(phi, 2.0 * M_PI);
+                        }
+                        prev_applied = applied;
+                        have = true;
+                        out[(size_t)k] = src[(size_t)k] * std::polar(1.0, -phi);
+                    }
+                    return out;
+                };
+                struct EStat {
+                    double rate, eo, c1, c2, rms1, rms2;
+                };
+                auto stats = [&](const std::vector<std::complex<double>>& f) {
+                    // single-lag unwrap, then an LS rate on any index subset of it
+                    const int n = (int)f.size();
+                    std::vector<double> uw((size_t)n, 0.0);
+                    double u = 0.0, pv = std::arg(f[0]);
+                    for (int i = 1; i < n; ++i) {
+                        double d = std::arg(f[(size_t)i]) - pv;
+                        while (d > M_PI)
+                            d -= 2.0 * M_PI;
+                        while (d < -M_PI)
+                            d += 2.0 * M_PI;
+                        u += d;
+                        pv = std::arg(f[(size_t)i]);
+                        uw[(size_t)i] = u;
+                    }
+                    auto lsrate = [&](int i0, int step) {
+                        double sx = 0, sy = 0, sxx = 0, sxy = 0;
+                        int m = 0;
+                        for (int i = i0; i < n; i += step) {
+                            const double x = rec_tabs[(size_t)i] - rec_tabs[0];
+                            sx += x;
+                            sy += uw[(size_t)i];
+                            sxx += x * x;
+                            sxy += x * uw[(size_t)i];
+                            ++m;
+                        }
+                        const double dn = m * sxx - sx * sx;
+                        return dn != 0.0 ? (m * sxy - sx * sy) / dn / (2.0 * M_PI) : 0.0;
+                    };
+                    EStat st{};
+                    st.rate = lsrate(0, 1);
+                    st.eo = std::fabs(lsrate(0, 2) - lsrate(1, 2));
+                    // remove the common fitted rate, then per-half coherence + RMS phase
+                    // about each half's own mean phase (the noiseless instrument)
+                    auto half = [&](int i0, int i1, double& coh, double& rms) {
+                        std::complex<double> sum(0, 0);
+                        double mag = 0.0;
+                        std::vector<double> ph;
+                        for (int i = i0; i < i1; ++i) {
+                            const double x = rec_tabs[(size_t)i] - rec_tabs[0];
+                            const std::complex<double> v =
+                                f[(size_t)i]
+                                * std::polar(1.0, -2.0 * M_PI * st.rate * x);
+                            sum += v;
+                            mag += std::abs(v);
+                            ph.push_back(std::arg(v));
+                        }
+                        coh = mag > 0.0 ? std::abs(sum) / mag : 0.0;
+                        const double m0 = std::arg(sum);
+                        double s2 = 0.0;
+                        for (double q : ph) {
+                            double d = q - m0;
+                            while (d > M_PI)
+                                d -= 2.0 * M_PI;
+                            while (d < -M_PI)
+                                d += 2.0 * M_PI;
+                            s2 += d * d;
+                        }
+                        rms = ph.empty() ? 0.0
+                                         : std::sqrt(s2 / (double)ph.size())
+                                               / (2.0 * M_PI) * 1e3; // mcyc
+                    };
+                    half(0, n / 2, st.c1, st.rms1);
+                    half(n / 2, n, st.c2, st.rms2);
+                    return st;
+                };
+                // Divide out the truth job's unit phase FIRST: it carries the NH/secondary
+                // overlay sign and any shared kernel structure (identical window, no ctrim,
+                // no seed error), so what remains on both series is pure commanded-reference
+                // arithmetic -- the thing under test.
+                auto detruth = [&](std::vector<std::complex<double>> v) {
+                    for (size_t k = 0; k < v.size(); ++k) {
+                        const double m = std::abs(prompts_tru[k]);
+                        if (m > 0.0)
+                            v[k] *= std::conj(prompts_tru[k]) / m;
+                    }
+                    return v;
+                };
+                const EStat sc = stats(fold(detruth(prompts), true));
+                const EStat sk = stats(fold(detruth(prompts_ctl), false));
+                double drip = 0.0; // the known step-pairing residue: |dctrim|*dt per step
+                for (int k = 1; k < Ne; ++k)
+                    drip += std::fabs(rec_ctrim[(size_t)k] - rec_ctrim[(size_t)k - 1])
+                            * (rec_tabs[(size_t)k] - rec_tabs[(size_t)k - 1]);
+                printf("[4e] COMMAND-STREAM bench (const %+.2f Hz, slew %.2f Hz / %d rec, "
+                       "max %.2f Hz, %d records):\n"
+                       "       series      rate_fit_hz  |even-odd|mHz   coh 1st/2nd     "
+                       "ratio   rms 1st/2nd (mcyc)\n"
+                       "       commanded   %+10.4f   %12.3f   %.4f/%.4f   %6.3f   %8.3f/%8.3f\n"
+                       "       control     %+10.4f   %12.3f   %.4f/%.4f   %6.3f   %8.3f/%8.3f\n"
+                       "       step-pairing drip (sum |dctrim|*dt): %.3f mcyc total\n",
+                       o.bench_cmd_const, o.bench_cmd_slew, o.bench_cmd_every,
+                       o.bench_cmd_max, Ne, sc.rate, sc.eo * 1e3, sc.c1, sc.c2,
+                       sc.c2 > 0.0 ? sc.c1 / sc.c2 : 0.0, sc.rms1, sc.rms2, sk.rate,
+                       sk.eo * 1e3, sk.c1, sk.c2, sk.c2 > 0.0 ? sk.c1 / sk.c2 : 0.0,
+                       sk.rms1, sk.rms2, drip * 1e3);
+                const bool repro = (sc.rms2 > 5.0 * std::max(sk.rms2, 1e-9)
+                                    && sc.rms2 > 2.0 * drip * 1e3);
+                printf("       VERDICT: %s\n",
+                       repro ? "COMMANDED EXCESS -- the fold arithmetic degrades under a "
+                               "command stream (reproduced offline)"
+                             : "no commanded excess beyond the known drip -- the offline "
+                               "arithmetic is clean; the live degradation is in the plant");
             }
             printf("[4c] fitted rate after fold (Hz):  t_abs sgn- %+8.3f  sgn+ %+8.3f | "
                    "age sgn- %+8.3f  sgn+ %+8.3f | raw %+8.3f\n",
