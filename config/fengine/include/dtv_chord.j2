@@ -109,6 +109,12 @@ run_dtv_detector:
           # fine_calibration.status is "calibrated", coarse rational mask
           # otherwise. "coarse" forces the coarse mask everywhere.
           decision_mode: auto
+          # Telescope operation must never silently demote an uncalibrated
+          # pilot channel to the high-cost coarse survey flag.  This keeps the
+          # include fail-closed until the per-channel calibration campaign has
+          # produced a validated runtime bundle.  Development harnesses may
+          # set false while explicitly characterizing the coarse path.
+          require_fine_calibration: true
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
         - name: cudaSyncOutput

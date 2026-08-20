@@ -5,12 +5,15 @@
 ---
 name: kotekan-ci-tests
 on:
+  workflow_dispatch:
   pull_request:
     branches:
     - develop
+    - pilotproxy-dtv-detector
   push:
     branches:
     - develop
+    - pilotproxy-dtv-detector
 
 # Cancel a superseded PR run on a new commit; let push runs finish.
 concurrency:
@@ -22,8 +25,20 @@ env:
 
 jobs:
 
+  pilotproxy-vendor:
+    name: PilotProxy vendor integrity
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: python3 tools/check_vendored_pilotproxy.py --offline
+
   # Kotekan docker image build and push
   kotekan-docker:
+    needs: pilotproxy-vendor
     permissions: write-all
     uses: ./.github/workflows/build_push_docker.yaml
 
@@ -324,8 +339,19 @@ jobs:
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+              -DPILOTPROXY_EXPORT_BUNDLE=ON
+            pre_build: |
+              PP_COMMIT="$(python3 -c 'import json, os; print(json.load(open(os.environ["GITHUB_WORKSPACE"] + "/external/pilotproxy/VENDOR.json"))["upstream_commit"])')"
+              echo "Installing the pilot-proxy CLI at ${PP_COMMIT}"
+              python3 -m pip install --upgrade "git+https://github.com/WVURAIL/pilot-proxy@${PP_COMMIT}"
+              command -v pilot-proxy
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
+              PIPELINE_DIR="$RUNNER_TEMP/pilotproxy_pipeline_test"
+              mkdir -p "$PIPELINE_DIR/fake_data/pilotproxy_bundle" "$PIPELINE_DIR/fake_data/pilotproxy_verify"
+              cp "$GITHUB_WORKSPACE/build-2404/pilotproxy_bundle/"* "$PIPELINE_DIR/fake_data/pilotproxy_bundle/"
+              (cd "$PIPELINE_DIR" && "$GITHUB_WORKSPACE/build-2404/kotekan/kotekan" --config "$GITHUB_WORKSPACE/config/tests/verify_pilotproxy_pipeline.yaml")
+              python3 "$GITHUB_WORKSPACE/tools/verify_pilotproxy_pipeline.py" --dump-dir "$PIPELINE_DIR/fake_data/pilotproxy_verify" --bundle-dir "$PIPELINE_DIR/fake_data/pilotproxy_bundle"
             runs_on: self-hosted
 
           # run yamls in config/ci-tests/gpu_batch
@@ -339,8 +365,19 @@ jobs:
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+              -DPILOTPROXY_EXPORT_BUNDLE=ON
+            pre_build: |
+              PP_COMMIT="$(python3 -c 'import json, os; print(json.load(open(os.environ["GITHUB_WORKSPACE"] + "/external/pilotproxy/VENDOR.json"))["upstream_commit"])')"
+              echo "Installing the pilot-proxy CLI at ${PP_COMMIT}"
+              python3 -m pip install --upgrade "git+https://github.com/WVURAIL/pilot-proxy@${PP_COMMIT}"
+              command -v pilot-proxy
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
+              PIPELINE_DIR="$RUNNER_TEMP/pilotproxy_pipeline_release"
+              mkdir -p "$PIPELINE_DIR/fake_data/pilotproxy_bundle" "$PIPELINE_DIR/fake_data/pilotproxy_verify"
+              cp "$GITHUB_WORKSPACE/build-2404/pilotproxy_bundle/"* "$PIPELINE_DIR/fake_data/pilotproxy_bundle/"
+              (cd "$PIPELINE_DIR" && "$GITHUB_WORKSPACE/build-2404/kotekan/kotekan" --config "$GITHUB_WORKSPACE/config/tests/verify_pilotproxy_pipeline.yaml")
+              python3 "$GITHUB_WORKSPACE/tools/verify_pilotproxy_pipeline.py" --dump-dir "$PIPELINE_DIR/fake_data/pilotproxy_verify" --bundle-dir "$PIPELINE_DIR/fake_data/pilotproxy_bundle"
             runs_on: self-hosted
 
           # /data dir test"
