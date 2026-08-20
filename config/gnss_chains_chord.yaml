@@ -751,7 +751,20 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # within-window timing of when the tracker actually adopts a new ctrim vs the record
     # the fold charges it to. The morning's coh_frac-based 'no harm' read was made
     # through the deep fold, which #58 has since shown flickers ~50% of the time.
-    # rrate-command: true
+    # ── RE-ARMED 2026-08-20 03:2x (KV, arm 11): the 398f31de5 payoff blocker is CLEARED ──
+    # Two instruments, same night: e2e [4e] (eb38a418b) exonerated the whole offline
+    # arithmetic, and the warm-plant payoff re-measurement (fixtures/
+    # expectations_20260820_gap1_payoff_remeasure.txt, pre-registered, +-2 Hz hold AND
+    # toggle stream, b2a + e5b same-poll controls) put the commanded chain INSIDE its
+    # controls at every poll -- PRN 28, the 08-14 66x case, ran coh 0.72-0.83 WHILE
+    # COMMANDED. The 08-14 negative was the never-warm-ElemCal plant (records rode the
+    # single weakest feed), not commanding. Acceptance gates for THIS arm, watched live:
+    #   (1) payoff_split.py medians stay within ~1.5x of the b2a/e5b controls,
+    #   (2) no fleet-common command ramp (the arm-8 feedback signature): rr_cmd values
+    #       bounded, not monotone across sats,
+    #   (3) KCOH eta duty + rate_resid_hz vs the unarmed chains, same polls.
+    # Revert = re-comment this line + broker restart (broker-only, no node restart).
+    rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
