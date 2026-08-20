@@ -72,9 +72,9 @@ kotekanMode::~kotekanMode() {
     KotekanTrackers::instance().set_kotekan_mode_ptr(nullptr);
 
 #if !defined(MAC_OSX)
-    // Stop (and join) the CPU monitor before deleting the stages its
-    // tracking thread reads. Normally already done in stop_stages(), but
-    // teardown on a failed start skips that path.
+    // Stop the CPU monitor before deleting the stages its tracking thread
+    // reads. stop_stages() has normally done this already, but teardown after
+    // a failed start does not go through that path.
     cpu_monitor.stop();
 #endif
 
