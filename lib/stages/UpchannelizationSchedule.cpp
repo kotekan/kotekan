@@ -36,7 +36,7 @@ std::map<int, std::vector<int>> UpchannelizationSchedule::make_upchan_factors_to
         std::vector<int> channels;
         const auto& upchan_channels = get_frequency_channels();
         // Only include local channels, in local order
-        for (const auto channel: upchan_channels) {
+        for (const auto channel : upchan_channels) {
             // Only include the requested channels
             if (range.at(0) <= channel && channel < range.at(1))
                 channels.push_back(channel);
