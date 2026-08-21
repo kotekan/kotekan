@@ -183,6 +183,13 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_gain",
             std::bind(&GnssGpuRecordAssemble::set_elem_gain_callback, this, _1, _2));
+    // LIVE REFERENCE SWAP (KV, 2026-08-20). Registered whenever the element axis exists --
+    // the header's correlation slots carry the reference even with elem_sum off, so the
+    // swap is meaningful either way. See set_reference_element_callback.
+    if (_n_elements > 0)
+        kotekan::restServer::instance().register_post_callback(
+            unique_name + "/set_reference_element",
+            std::bind(&GnssGpuRecordAssemble::set_reference_element_callback, this, _1, _2));
 }
 
 GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
@@ -205,6 +212,38 @@ void GnssGpuRecordAssemble::main_thread() {
             FATAL_ERROR("GnssGpuRecordAssemble: frame n_prn {:d} != config {:d}", hdr.n_prn,
                         n_prn);
             return;
+        }
+        // LIVE REFERENCE SWAP, applied at the frame boundary so every record in a frame
+        // sees ONE reference. Rebuilds the cal set COLD: every learned per-element gain
+        // (and any stored path-B prior) is phase-anchored to the OLD reference element and
+        // does not transfer -- carrying them across would hand the combine a wrong phase
+        // convention with full confidence. The header rides the new bare reference while
+        // the cal re-warms (~3 tau); downstream sees one phase step, exactly as it does on
+        // any fresh acquisition, and the WARN below is the operator's receipt.
+        {
+            int newref = -1;
+            {
+                std::lock_guard<std::mutex> lk(_gain_mtx);
+                if (_pending_ref >= 0) {
+                    newref = _pending_ref;
+                    _pending_ref = -1;
+                }
+            }
+            if (newref >= 0 && newref != _reference_element) {
+                const int oldref = _reference_element;
+                _reference_element = newref;
+                if (_elem_sum) {
+                    _cal.assign(_prns.size(),
+                                gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
+                                              _elem_sum_min_w));
+                    std::fill(_anchor_warned.begin(), _anchor_warned.end(), 0);
+                    std::fill(_elem_prev_ok.begin(), _elem_prev_ok.end(), 0);
+                }
+                WARN("set_reference_element: header reference {:d} -> {:d} at the frame "
+                     "boundary. Element cal rebuilt COLD ({} PRNs, re-warm ~{:.1f} s); "
+                     "downstream sees one phase step on every PRN (fresh-acquisition class).",
+                     oldref, newref, _cal.size(), 3.0 * _elem_sum_tau_s);
+            }
         }
         // PATH B: a newly-injected per-element gain prior seeds every PRN's cal here, once,
         // before this frame's records are combined. seed() also stores it, so each subsequent
@@ -962,4 +1001,38 @@ void GnssGpuRecordAssemble::set_elem_gain_callback(kotekan::connectionInstance& 
         _pending_gain_set = true;
     }
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+void GnssGpuRecordAssemble::set_reference_element_callback(kotekan::connectionInstance& conn,
+                                                           nlohmann::json& request) {
+    // Body: {"element": N}. Staged only; main_thread applies at the next frame boundary
+    // (see the swap block there for the exact semantics). Validation mirrors the
+    // construction-time FATAL: the same bounds, answered as a 400 instead of a crash.
+    int el = -1;
+    try {
+        el = request.at("element").get<int>();
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("set_reference_element: bad payload (want {\"element\": N}): ")
+                            + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    if (el < 0 || el >= _n_elements) {
+        conn.send_error(fmt::format("set_reference_element: element {:d} outside "
+                                    "[0, n_elements={:d})",
+                                    el, _n_elements),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    int prev;
+    {
+        std::lock_guard<std::mutex> lk(_gain_mtx);
+        _pending_ref = el;
+        prev = _reference_element;
+    }
+    nlohmann::json reply{{"reference_element", prev},
+                         {"pending", el},
+                         {"applies", "next frame boundary"},
+                         {"rewarm_s", _elem_sum ? 3.0 * _elem_sum_tau_s : 0.0}};
+    conn.send_json_reply(reply);
 }

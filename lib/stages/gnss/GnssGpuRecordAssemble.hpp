@@ -164,12 +164,21 @@ private:
     std::mutex _gain_mtx;                         ///< guards _pending_gain between REST and main_thread
     std::vector<std::complex<double>> _pending_gain;
     bool _pending_gain_set = false;
+    /// LIVE REFERENCE SWAP (KV, 2026-08-20): /set_reference_element stages the new element
+    /// here; main_thread applies it at the next frame boundary -- atomically with respect to
+    /// the per-record loop, under the same producer/consumer pattern as the gain prior above.
+    /// -1 = nothing pending. Applying rebuilds every PRN's ElemCal COLD (the stored prior and
+    /// all learned gains are phase-anchored to the OLD reference and do not transfer), so the
+    /// header rides the new bare reference for ~3 tau while the cal re-warms.
+    int _pending_ref = -1;
     std::vector<std::complex<double>> _spec_scratch; ///< [n_elem] per-channel cal-combine input
     /// Accumulate one record's channels into the window that owns `wstart`, opening/clearing
     /// the ring slot on a boundary crossing. Caller holds _spec_mtx.
     SpecWindow& spec_window_for(int64_t wstart);
     void spectrum_callback(kotekan::connectionInstance& conn);
     void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    void set_reference_element_callback(kotekan::connectionInstance& conn,
+                                        nlohmann::json& request);
 };
 
 #endif
