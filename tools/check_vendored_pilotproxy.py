@@ -130,11 +130,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--offline",
+        dest="fetch",
+        action="store_false",
+        help="verify only the local vendor manifest (the default)",
+    )
+    mode.add_argument(
         "--fetch",
         action="store_true",
         help="also diff against upstream at the pinned commit (needs network)",
     )
+    parser.set_defaults(fetch=False)
     args = parser.parse_args()
 
     if not MANIFEST.is_file():
