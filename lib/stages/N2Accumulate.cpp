@@ -33,6 +33,7 @@
 #include <math.h>     // for floor
 #include <memory>     // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
 #include <ostream>    // for ostream, basic_ostream
+#include <utility>    // for swap
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
@@ -77,7 +78,17 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
-    _tel(Telescope::instance()),
+    _tel(Telescope::instance()), _input_order(config.get_default<ElementOrder>(
+                                     unique_name, "input_order", _tel.fiducial_element_order())),
+    _output_order(config.get_default<ElementOrder>(unique_name, "output_order",
+                                                   _tel.fiducial_element_order())),
+    _reorder([&]() {
+        std::vector<int> reorder(_num_elements);
+        for (int idx_in = 0; idx_in < _num_elements; ++idx_in)
+            reorder.at(idx_in) = _tel.station_id_to_element_index(
+                _tel.element_index_to_station_id(idx_in, _input_order), _output_order);
+        return reorder;
+    }()),
     _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _tel.fiducial_element_order())),
     n_valid_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_valid_fpga_ticks",
                                                 unique_name, {"freq_id"})),
@@ -1026,13 +1037,21 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                     for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
                         for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
                             // 2D indices into the N2K matrix.
-                            int64_t i = ilo + _n2k_correlation_blocksize * ihi;
-                            int64_t j = jlo + _n2k_correlation_blocksize * jhi;
+                            const int64_t i_in = ilo + _n2k_correlation_blocksize * ihi;
+                            const int64_t j_in = jlo + _n2k_correlation_blocksize * jhi;
 
                             // Only proceed if we're in the *true* lower-triangular section of the
                             // matrix
-                            if (j > i)
+                            if (j_in > i_in)
                                 continue;
+
+                            bool swapped = false;
+                            int64_t i_out = _reorder.at(i_in);
+                            int64_t j_out = _reorder.at(j_in);
+                            if (j_out > i_out) { // re-ordering may (will) change relative ordering
+                                swapped = true;
+                                std::swap(i_out, j_out);
+                            }
 
                             // index into the intermediate N2K-shaped array
                             int64_t idx =
@@ -1054,11 +1073,13 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                             //
                             // vis_N2(i, j) = vis_n2k(j, i)*
 
-                            int64_t n2_idx = N2::cmap(j, i, _num_elements);
+                            int64_t n2_idx = N2::cmap(j_out, i_out, _num_elements);
 
                             // Populate the visibility matrix, remember the upper-tri element
                             // is the conjugate of the lower-tri element.
-                            N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
+                            N2::cfloat v{
+                                (float)_vis[2 * idx],
+                                (float)(swapped ? +_vis[2 * idx + 1] : -_vis[2 * idx + 1])};
                             out_vis.vis[n2_idx] = ins * std::conj(v);
 
                             out_vis.weight[n2_idx] = calc_out_vis_weight(idx, v);
