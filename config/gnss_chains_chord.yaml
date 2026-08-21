@@ -83,7 +83,7 @@ common:
   # itself is sound and benched (bench_mass_birth.py / bench_gauge_churn.py) -- it is
   # default-off code, not withdrawn -- but it is unobservable on a healthy state, so it
   # rides with the feed when the rebuild problem above is fixed.
-  joint-rereference: true
+  # joint-rereference: true
   # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
   # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
@@ -1001,7 +1001,26 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # pre-registration (fixtures/expectations_20260821_joint_feed.txt), plus the new
     # specific gate: n must GROW past 5 and KEEP its G rows -- if the state comes back
     # all-E again the migration did not take.
-    joint-model-primary: true
+    # ⚠️ DISARMED AGAIN 14:41. THE REBUILD WAS NOT THE BLOCKER -- my hypothesis was wrong.
+    # With the migration fix live (ec572655e) the state STILL came back n=9 all-Galileo and
+    # the clock STILL walked: 160.0 -> 163.1 -> 166.3 -> 170.6 -> 171.1 chips in ~4 min,
+    # rate pinned at +0.131 chips/s, SEED-OFFSET drifting +14 -> +31.8 chips vs legacy,
+    # JOINT-CLK 14 REFUSED / 2 ADOPTED.
+    # WHAT THE NUMBERS SAY: the biases stay SMALL and stable (+-1.1) and rejections stay
+    # modest (22/80) -- so the Galileo satellites AGREE WITH EACH OTHER and are walking
+    # TOGETHER. A common-mode walk of every satellite at a constant rate is not a filter
+    # pathology, it is a CLOCK RATE, and the filter is tracking it faithfully. The
+    # model-primary measurement is (cp_measured - cp_model), so its reference is the DR
+    # chain's own model -- and that model is drifting at ~0.13 chips/s against the
+    # GPS-disciplined truth the GPS-fed state reads (+0.099). The feed injects its own
+    # reference error as receiver clock rate.
+    # ⇒ THE REAL PREREQUISITE: a model-primary measurement must be referred to a
+    # NON-DRIFTING reference, or its drift must be estimated as a per-chain term rather
+    # than absorbed into the shared clock. That is unwritten physics, not a flag.
+    # (The migration fix stands on its own gate and stays in -- it was a real bug, just
+    # not this one. ⚠️ Note it may not even have been exercised here: gal_e5a appears to
+    # create the state first, so the shorter-code join never happens.)
+    # joint-model-primary: true
     # ── P2b STEP 2: CONSUME (2026-08-11 16:2x) ─────────────────────────────────────────
     # THE FIRST THING TODAY THAT CHANGES A SEED. Everything above is measurement; this
     # line makes the seed's clock+bias offset come from the joint clk + b_sat instead of
@@ -1106,7 +1125,26 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # pre-registration (fixtures/expectations_20260821_joint_feed.txt), plus the new
     # specific gate: n must GROW past 5 and KEEP its G rows -- if the state comes back
     # all-E again the migration did not take.
-    joint-model-primary: true
+    # ⚠️ DISARMED AGAIN 14:41. THE REBUILD WAS NOT THE BLOCKER -- my hypothesis was wrong.
+    # With the migration fix live (ec572655e) the state STILL came back n=9 all-Galileo and
+    # the clock STILL walked: 160.0 -> 163.1 -> 166.3 -> 170.6 -> 171.1 chips in ~4 min,
+    # rate pinned at +0.131 chips/s, SEED-OFFSET drifting +14 -> +31.8 chips vs legacy,
+    # JOINT-CLK 14 REFUSED / 2 ADOPTED.
+    # WHAT THE NUMBERS SAY: the biases stay SMALL and stable (+-1.1) and rejections stay
+    # modest (22/80) -- so the Galileo satellites AGREE WITH EACH OTHER and are walking
+    # TOGETHER. A common-mode walk of every satellite at a constant rate is not a filter
+    # pathology, it is a CLOCK RATE, and the filter is tracking it faithfully. The
+    # model-primary measurement is (cp_measured - cp_model), so its reference is the DR
+    # chain's own model -- and that model is drifting at ~0.13 chips/s against the
+    # GPS-disciplined truth the GPS-fed state reads (+0.099). The feed injects its own
+    # reference error as receiver clock rate.
+    # ⇒ THE REAL PREREQUISITE: a model-primary measurement must be referred to a
+    # NON-DRIFTING reference, or its drift must be estimated as a per-chain term rather
+    # than absorbed into the shared clock. That is unwritten physics, not a flag.
+    # (The migration fix stands on its own gate and stays in -- it was a real bug, just
+    # not this one. ⚠️ Note it may not even have been exercised here: gal_e5a appears to
+    # create the state first, so the shorter-code join never happens.)
+    # joint-model-primary: true
     joint-consume: clk
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
