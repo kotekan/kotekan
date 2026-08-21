@@ -1,7 +1,6 @@
-# This re-usable workflow conditionally builds and pushes both the kotekan
-# `cpu` and `gpu` docker builds. It returns a full image location plus tag
-# for the pushed builds, corresponding to CPU_IMG and GPU_IMG locations
-# below, and a changed branch or PR base as a tag.
+# This re-usable workflow conditionally builds and pushes the kotekan `cpu`,
+# `intel`, and `gpu` Docker builds. It returns each full image location plus
+# tag, using a changed branch or PR base as the tag source.
 # 
 #  - If this workflow is triggered by a PR open, PR update, or push, it
 #    should only execute if the Dockerfile has changed since the last
@@ -21,6 +20,9 @@ name: Build and optionally push docker images
 
 env:
   REGISTRY: ghcr.io
+  IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+
+permissions: {}
 
 on:
   workflow_call:
@@ -42,9 +44,11 @@ on:
 jobs:
 
   build-push-docker:
-    name: "Build and push CPU and GPU docker images"
+    name: "Build and push CPU, Intel, and GPU docker images"
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: read
+      packages: write
 
     outputs:
       docker_cpu_img_name: ${{ steps.docker_img.outputs.cpu_img_name }}
@@ -52,7 +56,15 @@ jobs:
       docker_intel_img_name: ${{ steps.docker_img.outputs.intel_img_name }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Test Docker tag sanitizer
+        if: >-
+          ${{ github.event_name != 'pull_request' ||
+              github.event.pull_request.head.repo.full_name == github.repository }}
+        run: python3 tools/docker/test_sanitize_image_tag.py
 
       - name: Normalize container image namespace
         shell: bash
@@ -68,7 +80,7 @@ jobs:
       # Has the Dockerfile ever changed vs base branch? (for tag selection)
       - name: Check Dockerfile diff vs base
         id: changed-vs-base
-        uses: tj-actions/changed-files@v47
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
           files: |
             tools/docker/24.04/Dockerfile
@@ -76,18 +88,18 @@ jobs:
        # Has the Dockerfile changed in the latest push? (for rebuild decision)
       - name: Check Dockerfile diff in latest push
         id: changed-latest
-        uses: tj-actions/changed-files@v47
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
           files: |
             tools/docker/24.04/Dockerfile
           since_last_remote_commit: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Login to GitHub Container Registry
         if: ${{ env.ACT == '' }} # Don't log in if running locally
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -101,34 +113,65 @@ jobs:
           BUILD_BRANCH: ${{ inputs.build_branch }}
         run: |
           set -euo pipefail
-          echo "docker_build=0" >> "$GITHUB_OUTPUT"
           event="$GITHUB_EVENT_NAME"
+          is_fork_pr="${IS_FORK_PR:-false}"
           force_build=0
           tag=""
+
+          if [[ "$event" == "pull_request_target" ]]; then
+            echo "::error::This reusable workflow refuses pull_request_target events because Docker builds execute repository code."
+            exit 1
+          fi
 
           # determine "safe" head/base branches
           head_branch="$GITHUB_REF_NAME"
           base_branch="$GITHUB_REF_NAME"
-          if [[ "$event" == "pull_request" || "$event" == "pull_request_target" ]]; then
+          if [[ "$event" == "pull_request" ]]; then
             head_branch="$GITHUB_HEAD_REF"
             base_branch="$GITHUB_BASE_REF"
           fi
-          safe_head=${head_branch//\//.}
-          safe_base=${base_branch//\//.}
+
+          # Never execute scripts from a fork checkout in this registry job.
+          # Trusted events use the collision-resistant sanitizer; fork PRs are
+          # restricted to an already-valid base-branch tag.
+          safe_head=""
+          safe_base=""
+          if [[ "$is_fork_pr" == "true" ]]; then
+            if [[ ! "$base_branch" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "::error::The base branch cannot be represented directly as a Docker tag; a maintainer must publish a trusted tag."
+              exit 1
+            fi
+            safe_base="$base_branch"
+          else
+            safe_head=$(python3 tools/docker/sanitize_image_tag.py -- "$head_branch")
+            safe_base=$(python3 tools/docker/sanitize_image_tag.py -- "$base_branch")
+          fi
 
           echo "DOCKERFILE_EVER_CHANGED=${DOCKERFILE_EVER_CHANGED}"
           echo "DOCKERFILE_RECENT_CHANGED=${DOCKERFILE_RECENT_CHANGED}"
           echo "event=${event}"
+          echo "is_fork_pr=${is_fork_pr}"
 
           # If build_branch is provided, we use that as the tag and always rebuild
           override_branch="${BUILD_BRANCH:-}"
-          if [[ -n "$override_branch" ]]; then
+          if [[ "$is_fork_pr" == "true" ]]; then
+            if [[ -n "$override_branch" ]]; then
+              echo "::error::Fork pull requests cannot override or publish Docker image tags."
+              exit 1
+            fi
+            if [[ "$DOCKERFILE_EVER_CHANGED" == "true" ]]; then
+              echo "::error::Dockerfile changes from fork pull requests require validation from a maintainer-owned branch."
+              exit 1
+            fi
+            echo "Fork pull request: using the trusted base-branch images without rebuilding."
+            tag="$safe_base"
+          elif [[ -n "$override_branch" ]]; then
             echo "build_branch input provided: $override_branch. Forcing docker rebuild for that tag."
-            tag="${override_branch//\//.}"
+            tag=$(python3 tools/docker/sanitize_image_tag.py -- "$override_branch")
             force_build=1
           else
             # 1) Decide which branch/tag to use
-            if [[ "$event" == "pull_request" || "$event" == "pull_request_target" ]]; then
+            if [[ "$event" == "pull_request" ]]; then
               if [[ "$DOCKERFILE_EVER_CHANGED" == "true" ]]; then
                 echo "Dockerfile changed at some point in this PR. Using HEAD branch tag."
                 tag="$safe_head"
@@ -145,27 +188,29 @@ jobs:
           # 2) Decide whether we actually build
           needs_build=0
 
-          # Force rebuild for manual/scheduled runs
-          if [[ "$event" == "workflow_dispatch" || "$event" == "schedule" ]]; then
-            echo "Manual or scheduled trigger (${event}). Forcing docker rebuild."
-            needs_build=1
-          fi
+          if [[ "$is_fork_pr" != "true" ]]; then
+            # Force rebuild for manual/scheduled runs
+            if [[ "$event" == "workflow_dispatch" || "$event" == "schedule" ]]; then
+              echo "Manual or scheduled trigger (${event}). Forcing docker rebuild."
+              needs_build=1
+            fi
 
-          # Rebuild if Dockerfile changed in the latest push
-          if [[ "$DOCKERFILE_RECENT_CHANGED" == "true" ]]; then
-            echo "Dockerfile changed in latest push. Forcing docker rebuild."
-            needs_build=1
-          fi
+            # Rebuild if Dockerfile changed in the latest push
+            if [[ "$DOCKERFILE_RECENT_CHANGED" == "true" ]]; then
+              echo "Dockerfile changed in latest push. Forcing docker rebuild."
+              needs_build=1
+            fi
 
-          # Or if DOCKER_BUILD is set
-          if [[ -n "${DOCKER_BUILD:-}" ]]; then
-            echo "DOCKER_BUILD set. Forcing docker rebuild."
-            needs_build=1
-          fi
+            # Or if DOCKER_BUILD is set
+            if [[ -n "${DOCKER_BUILD:-}" ]]; then
+              echo "DOCKER_BUILD set. Forcing docker rebuild."
+              needs_build=1
+            fi
 
-          # Or if override_branch logic requested a build
-          if [[ "$force_build" -eq 1 ]]; then
-            needs_build=1
+            # Or if override_branch logic requested a build
+            if [[ "$force_build" -eq 1 ]]; then
+              needs_build=1
+            fi
           fi
 
           CPU_IMAGE_TAG="${CPU_IMG}:${tag}"
@@ -194,6 +239,10 @@ jobs:
             fi
 
             if [[ "$missing" -eq 1 ]]; then
+              if [[ "$is_fork_pr" == "true" ]]; then
+                echo "::error::One or more trusted base-branch images are missing; a maintainer must publish them before this fork PR can run."
+                exit 1
+              fi
               echo "One or more images missing; forcing docker rebuild."
               needs_build=1
             fi
@@ -201,10 +250,12 @@ jobs:
             echo "ACT detected; skipping remote image existence check."
           fi
 
-          echo "docker_build=$needs_build"   >> "$GITHUB_OUTPUT"
-          echo "cpu_img_name=$CPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "gpu_img_name=$GPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "intel_img_name=$INTEL_IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          {
+            echo "docker_build=$needs_build"
+            echo "cpu_img_name=$CPU_IMAGE_TAG"
+            echo "gpu_img_name=$GPU_IMAGE_TAG"
+            echo "intel_img_name=$INTEL_IMAGE_TAG"
+          } >> "$GITHUB_OUTPUT"
 
           echo "CPU image: $CPU_IMAGE_TAG"
           echo "GPU image: $GPU_IMAGE_TAG"
@@ -235,7 +286,10 @@ jobs:
 
       # This takes about a minute to clean, so only run it when we need to.
       - name: "Github-hosted runner cleanup"
-        if: ${{ !contains(inputs.runs_on || '', 'self-hosted') && steps.docker_img.outputs.docker_build == '1' }}
+        if: >-
+          ${{ steps.docker_img.outputs.docker_build == '1' &&
+              (github.event_name != 'pull_request' ||
+               github.event.pull_request.head.repo.full_name == github.repository) }}
         run: |
           df -h
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -244,40 +298,58 @@ jobs:
           df -h
 
       - name: Build CPU (target=cpu) image
-        if: steps.docker_img.outputs.docker_build == '1'
-        uses: docker/build-push-action@v7
+        if: >-
+          ${{ steps.docker_img.outputs.docker_build == '1' &&
+              (github.event_name != 'pull_request' ||
+               github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: tools/docker/24.04/Dockerfile
           target: cpu
           tags: ${{ steps.docker_img.outputs.cpu_img_name }}
-          push: ${{ env.ACT == '' }} # true on GitHub, false under act
+          push: >-
+            ${{ env.ACT == '' &&
+                (github.event_name != 'pull_request' ||
+                 github.event.pull_request.head.repo.full_name == github.repository) }}
           load: ${{ env.ACT != '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build Intel (target=intel) image
-        if: steps.docker_img.outputs.docker_build == '1'
-        uses: docker/build-push-action@v7
+        if: >-
+          ${{ steps.docker_img.outputs.docker_build == '1' &&
+              (github.event_name != 'pull_request' ||
+               github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: tools/docker/24.04/Dockerfile
           target: intel
           tags: ${{ steps.docker_img.outputs.intel_img_name }}
-          push: ${{ env.ACT == '' }} # true on GitHub, false under act
+          push: >-
+            ${{ env.ACT == '' &&
+                (github.event_name != 'pull_request' ||
+                 github.event.pull_request.head.repo.full_name == github.repository) }}
           load: ${{ env.ACT != '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build GPU (target=gpu) image
-        if: steps.docker_img.outputs.docker_build == '1'
-        uses: docker/build-push-action@v7
+        if: >-
+          ${{ steps.docker_img.outputs.docker_build == '1' &&
+              (github.event_name != 'pull_request' ||
+               github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: tools/docker/24.04/Dockerfile
           target: gpu
           tags: ${{ steps.docker_img.outputs.gpu_img_name }}
-          push: ${{ env.ACT == '' }} # true on GitHub, false under act
+          push: >-
+            ${{ env.ACT == '' &&
+                (github.event_name != 'pull_request' ||
+                 github.event.pull_request.head.repo.full_name == github.repository) }}
           load: ${{ env.ACT != '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

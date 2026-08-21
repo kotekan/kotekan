@@ -1,5 +1,4 @@
 # tools/docker/24.04/Dockerfile
-# check=skip=UndefinedVar
 
 ###################
 # Base Docker Image
@@ -238,7 +237,7 @@ RUN wget -qO /usr/share/keyrings/oneapi-archive-keyring.asc \
 # keep the compilers reachable even where the image ENV is not
 # propagated (e.g. some CI step runners).
 ENV PATH="/opt/intel/oneapi/compiler/latest/bin${PATH:+:${PATH}}"
-ENV LD_LIBRARY_PATH="/opt/intel/oneapi/compiler/latest/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV LD_LIBRARY_PATH="/opt/intel/oneapi/compiler/latest/lib:/usr/local/lib"
 RUN ln -s /opt/intel/oneapi/compiler/latest/bin/icx /usr/local/bin/icx && \
     ln -s /opt/intel/oneapi/compiler/latest/bin/icpx /usr/local/bin/icpx
 
@@ -278,5 +277,5 @@ RUN mkdir src && \
 
 ENV CUDADIR=/usr/local/cuda
 ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include"

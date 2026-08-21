@@ -3,6 +3,8 @@
 
 name: kotekan-docker-image-merge-build
 
+permissions: {}
+
 on:
   pull_request:
     types: [closed]
@@ -13,6 +15,9 @@ jobs:
   build-docker-on-merge:
     # Only run if the PR was actually merged (not just closed)
     if: ${{ github.event.pull_request.merged == true }}
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build_push_docker.yaml
     # No build_branch here: let build_push_docker.yaml decide tags
     # based on base/head and whether the Dockerfile changed.

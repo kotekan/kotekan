@@ -1,4 +1,7 @@
 name: Scheduled Tasks
+
+permissions: {}
+
 on:
   workflow_dispatch:
     inputs:
@@ -33,6 +36,8 @@ jobs:
           echo "Actor: ${{ github.actor }}"
 
   log-selfhosted-execution:
+    # Leave false/unset while no self-hosted runner is provisioned.
+    if: ${{ vars.ENABLE_SELF_HOSTED_TASKS == 'true' }}
     runs-on: self-hosted
     steps:
       - name: Log execution context

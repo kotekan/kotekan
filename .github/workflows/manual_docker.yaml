@@ -3,17 +3,22 @@
 ---
 name: manual-docker-image-build
 
+permissions: {}
+
 on:
   workflow_dispatch:
     inputs:
       build_branch:
         description: "Tag/branch name to use for the Docker images (will be sanitized for tag)"
         required: true
-        default: 'develop'
+        default: 'pilotproxy-dtv-detector'
         type: string
 
 jobs:
   manual-build-docker:
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build_push_docker.yaml
     with:
       build_branch: ${{ github.event.inputs.build_branch }}

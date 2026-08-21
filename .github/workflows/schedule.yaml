@@ -5,6 +5,8 @@
 ---
 name: Daily Job Scheduler
 
+permissions: {}
+
 on:
   schedule:
     # Run every day at 8 AM UTC (4 AM ET / 1 AM PT)
@@ -20,24 +22,29 @@ on:
 jobs:
   determine-branches:
     runs-on: ubuntu-latest
+    permissions: {}
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Determine which branches to run
         id: set-matrix
-        uses: actions/github-script@v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH_INPUT: ${{ inputs.branches }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         with:
           script: |
             let branches = [];
+            const input = process.env.BRANCH_INPUT || '';
 
-            if (context.eventName === 'workflow_dispatch' && '${{ github.event.inputs.branches }}') {
+            if (context.eventName === 'workflow_dispatch' && input) {
               // Manual trigger with custom branches
-              const input = '${{ github.event.inputs.branches }}';
               branches = input.split(',').map(b => b.trim()).filter(b => b);
               console.log('Manual trigger for branches:', branches);
             } else {
               // Scheduled trigger or manual without custom branches
-              branches = ['develop'];
+              const defaultBranch = process.env.DEFAULT_BRANCH || context.ref.replace('refs/heads/', '');
+              branches = [defaultBranch];
               console.log('Running scheduled branches:', branches);
             }
 
@@ -56,11 +63,13 @@ jobs:
       fail-fast: false
     steps:
       - name: Trigger workflow on ${{ matrix.branch }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TARGET_BRANCH: ${{ matrix.branch }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const branch = '${{ matrix.branch }}';
+            const branch = process.env.TARGET_BRANCH;
 
             try {
               // Check if branch exists
