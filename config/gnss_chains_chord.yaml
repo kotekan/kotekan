@@ -1093,7 +1093,14 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # CONTROLS, in-chain and in-poll: PRNs 31/12/16 are equally bright and equally
     # latched and stay OUT (deep 69.2/54.9/15.5, all above the 3x-floor bar of 8.0).
     # Pre-registered: fixtures/expectations_20260821_deepgate_e5a.txt. Revert: back to "33".
-    dll-deep-gate: "33 23 26"
+    # ⚠️ REVERTED to "33" 2026-08-21 12:1x: the widening was UNPROVEN and is now a
+    # confound. The real fault was the wedged cf06 gather (the C++ code loop had been dead
+    # since the 08-20 20:09 F-engine restart -- [[chord-gather-wedges-on-frame0-reset]]).
+    # With the loop alive, the in-chain CONTROLS recovered just as hard without being
+    # admitted (PRN 31 q 0.98->2.99, PRN 16 0.89->2.64), so ordinary prompt-power presence
+    # works fine on a healthy loop and the latch was not what was binding. Re-judge the
+    # latch, if at all, one variable at a time on the healthy instrument.
+    dll-deep-gate: "33"
     # ── #50 FAR-REGIME RE-SEED, same satellite, 2026-08-12 ────────────────────────────
     # The deep gate above admits E33 to the loop; this gives the loop something to follow
     # when it gets there. Far off-peak E, P and L are ALL noise, so q -> 1.0 and disc -> 0 --
