@@ -1078,7 +1078,22 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # and its excursions should be SHORTER -- the claim is faster pull-in, not immunity.
     # NOT on C/N0 -- cn0_coh cannot see code error at all (#47).
     # Widen with --dll-deep-gate all once the pull-in rate is measured. Revert: delete.
-    dll-deep-gate: "33"
+    # ── GAP 2 STEP 1 (2026-08-21 ~11:1x, KV): break the presence latch on this chain ────
+    # E23 near boresight, overnight q ~1: deep_snr 84.8, coh_frac 0.94, kcoh_sig 900 --
+    # bright and coherent -- with dll_disc RAILED at -0.946, L/P 7.7 (peak late of the
+    # tap), trim 0.00, and absent from the trim readback entirely. That is #79's latch:
+    # the presence gate is summed-prompt-power, which is suppressed exactly when the tap
+    # is off-peak, so an off-peak sat is never trimmed back. gps_l5 escapes it via
+    # dll-deep-gate-from-search (the SEARCH admits, tap-independent); the DR chains have
+    # no search, and this opt-in set has stood at ONE PRN since 08-12.
+    # deep_snr is the right admission statistic by this flag's own design note: the deep
+    # fold re-searches rate AND phase, so it detects the satellite wherever the tap sits.
+    # NOT "all" -- the flag warns that admitting the fleet at once makes ~72% newly
+    # trimmable against a railing slew cap, trading the latch for an oscillation.
+    # CONTROLS, in-chain and in-poll: PRNs 31/12/16 are equally bright and equally
+    # latched and stay OUT (deep 69.2/54.9/15.5, all above the 3x-floor bar of 8.0).
+    # Pre-registered: fixtures/expectations_20260821_deepgate_e5a.txt. Revert: back to "33".
+    dll-deep-gate: "33 23 26"
     # ── #50 FAR-REGIME RE-SEED, same satellite, 2026-08-12 ────────────────────────────
     # The deep gate above admits E33 to the loop; this gives the loop something to follow
     # when it gets there. Far off-peak E, P and L are ALL noise, so q -> 1.0 and disc -> 0 --
