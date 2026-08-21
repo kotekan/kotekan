@@ -71,6 +71,15 @@ common:
   # probe-calibrated) into the joint rrate state, sig-gated, coarse-deweighting like the
   # fine hold. The DR chains' first credible carrier-rate measurement.
   rrate-kcoh-feed: 1
+  # ── JOINT GAUGE: a membership change is a change of COORDINATES (2026-08-21) ─────────
+  # b_i -= mean(b); clk += mean(b); P through the same map. clk + b_i -- the only thing a
+  # consumer reads -- is invariant, mean(b)=0 holds exactly, and NO uncertainty is injected
+  # because none was created. Replaces the legacy P[0,0] += 4 per join, which made the
+  # clock uncertain and let the next measurement yank it into clk_rate. Benched:
+  # bench_mass_birth.py 11-sat birth steps clk +0.011 vs +1.794 chips; bench_gauge_churn.py
+  # observable p95 2.77 -> 0.76. Receiver-wide state, so it belongs here, not per-chain.
+  # Armed WITH the model-primary feed below -- mass birth is what it protects.
+  joint-rereference: true
   # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
   # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
@@ -1052,6 +1061,18 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # the band hand-carry). JUDGE on DRCLK flatness + disc/rail%, treated vs bds_b2a at
     # matched time-since-restart -- NOT on C/N0 through the restart transient. Revert by
     # deleting this line.
+    # ── GAP 2 STEP 3 (2026-08-21 14:2x, KV): FEED Galileo into the joint state ──────────
+    # The per-sat invariant consumer (slew -> predicted() = clk + b_i) is built, correct,
+    # and firing on gps_l5 right now. It cannot fire here for ONE reason: this chain has no
+    # rows in the state (n=5, all G). This is the whole of GAP 2's remaining work.
+    # The original blocker is gone: _track_ok (2d5bccacd) gates the model-primary
+    # measurement on coherence_s > 0 AND deep_snr AND coh_frac, which is what was missing
+    # on 2026-08-10 when clk walked to +445 chips.
+    # ONE CHAIN, per the flag's own instruction, and the state is SHARED -- gps_l5's
+    # SEED-OFFSET/JOINT-CLK lines are the free early-warning control.
+    # Pre-registered: fixtures/expectations_20260821_joint_feed.txt. Revert: delete this
+    # line + the common joint-rereference, then restart the broker.
+    joint-model-primary: true
     joint-consume: clk
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
