@@ -21,9 +21,6 @@ name: Build and optionally push docker images
 
 env:
   REGISTRY: ghcr.io
-  CPU_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404-cpu"
-  GPU_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404"
-  INTEL_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404-intel"
 
 on:
   workflow_call:
@@ -56,6 +53,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Normalize container image namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          repository_lower=$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "CPU_IMG=${REGISTRY}/${repository_lower}/kotekan-2404-cpu"
+            echo "GPU_IMG=${REGISTRY}/${repository_lower}/kotekan-2404"
+            echo "INTEL_IMG=${REGISTRY}/${repository_lower}/kotekan-2404-intel"
+          } >> "$GITHUB_ENV"
 
       # Has the Dockerfile ever changed vs base branch? (for tag selection)
       - name: Check Dockerfile diff vs base
