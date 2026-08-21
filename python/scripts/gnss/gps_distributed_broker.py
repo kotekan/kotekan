@@ -1608,6 +1608,23 @@ def main(argv=None, rx=None, publisher=None):
                          "self-consistent. Seeds/holds settle in ~3 min; 240 is that plus "
                          "margin. The filter object itself is still created (warm-started) "
                          "immediately -- only the feed waits.")
+    ap.add_argument("--joint-rereference", action="store_true",
+                    help="JOINT FILTER: treat a membership change as a change of "
+                         "COORDINATES rather than as an observation. On a join/leave the "
+                         "gauge (mean(b)=0) is re-referenced EXACTLY -- b_i -= mean(b), "
+                         "clk += mean(b), P carried through the same linear map -- so "
+                         "clk + b_i, the only quantity a consumer reads, is invariant and "
+                         "mean(b)=0 holds without gauge() having to move anything. The "
+                         "legacy path instead inflates P[0,0] by 4 chips^2 per event, which "
+                         "makes the clock uncertain, lets the next measurement yank it, and "
+                         "(via the clk<->rate correlation predict() rebuilds) feeds that "
+                         "yank into clk_rate. Sound at 6+ sats; self-defeating at 4, where "
+                         "it produced the 15-chip clock swing that made both Galileo chains "
+                         "refuse the state. MEASURED (bench_gauge_churn.py): observable "
+                         "error p95 2.77 -> 0.76 chips under churn, and a mass birth of 11 "
+                         "satellites steps the clock +0.011 instead of +1.794 chips -- the "
+                         "operation that diverged the state on 2026-08-10 and 08-18. The "
+                         "legacy rate shield (P[0,1] = 0) is kept either way.")
     ap.add_argument("--joint-clk-max-chips", type=float, default=5.0,
                     help="P2b consumer 'clk': refuse the joint CLOCK if it disagrees with "
                          "the legacy median by more than this. The median's measured "
@@ -2916,7 +2933,7 @@ def main(argv=None, rx=None, publisher=None):
         because consumer 3's shadow log printed nothing and the reason had to be chased
         (docs 11.31)."""
         try:
-            js = rx_.joint_receiver(band, CODE_LEN)
+            js = rx_.joint_receiver(band, CODE_LEN, rereference=a.joint_rereference)
             return js if len(js._idx) >= a.joint_min_sats else None
         except Exception:
             return None
@@ -7638,7 +7655,7 @@ def main(argv=None, rx=None, publisher=None):
                 _row_inj = 0
                 if args.kcoh_rate_from_row and args.rrate_state:
                     try:
-                        _jri = rx.joint_receiver(band_id, CODE_LEN)
+                        _jri = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
                         for _pi in (set(seeds) - probe_set):
                             _ki = (args.dr_constellation, int(_pi))
                             _sy = ((args.carrier_hz / _jri.C_LIGHT)
@@ -8390,7 +8407,7 @@ def main(argv=None, rx=None, publisher=None):
         if args.rrate_state and args.rrate_kcoh_feed and _kco:
             rr_kcoh_fed["last"] = _kco
             try:
-                _jrk = rx.joint_receiver(band_id, CODE_LEN)
+                _jrk = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
                 _nk = 0
                 _krows = []
                 for _p, _kv in sorted(_kco.items()):
@@ -8427,7 +8444,7 @@ def main(argv=None, rx=None, publisher=None):
                 _log_rl("jrr-kcoh-err", "JRR-KCOH: failed (%s) -- cycle continues" % e)
         if args.rrate_state and _rr2_resid:
             try:
-                _jrr = rx.joint_receiver(band_id, CODE_LEN)
+                _jrr = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
                 _n_ok = 0
                 _n_gov = 0   # sats in the PHASE-GOVERNED regime this poll
                 _n_rec_fed = 0
@@ -8538,7 +8555,7 @@ def main(argv=None, rx=None, publisher=None):
                 _rec_dt = 2048.0 / args.hops_per_sec
                 _jpp = []
                 _n_fine = 0
-                _jrf = rx.joint_receiver(band_id, CODE_LEN)
+                _jrf = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
                 for _p, _rec in (status or {}).items():
                     if not isinstance(_rec, dict):
                         continue
@@ -8635,7 +8652,7 @@ def main(argv=None, rx=None, publisher=None):
         # produced nothing this poll, so a dead feed shows n=0 rather than vanishing).
         if state_w is not None and args.rrate_state:
             try:
-                _jro = rx.joint_receiver(band_id, CODE_LEN)
+                _jro = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
                 _ks = [k for k in _jro._rr_idx if k[0] == args.dr_constellation]
                 _vs = sorted(_jro.rrate(k) for k in _ks)
                 state_w.observe(
@@ -9122,7 +9139,7 @@ def main(argv=None, rx=None, publisher=None):
                         "(old tracker binary?) -- shadow only", every_s=120.0)
             else:
                 try:
-                    _j = rx.joint_receiver(band_id, CODE_LEN)
+                    _j = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
                     # No receiver-wide term solved yet -> nothing to command. The sigma
                     # gate below then handles per-sat convergence one row at a time.
                     _jrc = _j if _j.f_carrier_sigma() != float("inf") else None
