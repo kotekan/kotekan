@@ -848,6 +848,14 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # (expect ~0.3-0.5), rails toward 0, THEN the benefit gates (eta/q duty vs controls).
     # Same gates as 14 (min-sig 100, carrier-max 10, feed-applied 0, fine feed off on
     # THIS chain -- e5b supplies the fine precision from the uncommanded side).
+    # ── ARM 16 RE-FLY (2026-08-21 ~01:0x, KV): the 08-20 17:00 abort was the F-ENGINE
+    # freeze, not the arm -- the trip fired on a near-clamp command measured on a dying
+    # stream and "confirmed" on byte-identical frozen data (the watch now carries a
+    # staleness guard for exactly that). Same arm as 16: command on the quiet rows
+    # (arm 15's e5b fine feed is live), same gates (min-sig 100, carrier-max 10,
+    # feed-applied 0, fine feed off on THIS chain). Judge: |dcmd|/poll well below 14b's
+    # flat 1.0 Hz, rails toward 0, THEN benefit (eta/q duty vs controls). Arm 17
+    # (kcoh-rate-from-row) follows only after this holds.
     rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
