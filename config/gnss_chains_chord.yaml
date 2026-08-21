@@ -79,7 +79,11 @@ common:
   # bench_mass_birth.py 11-sat birth steps clk +0.011 vs +1.794 chips; bench_gauge_churn.py
   # observable p95 2.77 -> 0.76. Receiver-wide state, so it belongs here, not per-chain.
   # Armed WITH the model-primary feed below -- mass birth is what it protects.
-  joint-rereference: true
+  # Reverted to the known-good baseline alongside the feed disarm (14:19). The gauge fix
+  # itself is sound and benched (bench_mass_birth.py / bench_gauge_churn.py) -- it is
+  # default-off code, not withdrawn -- but it is unobservable on a healthy state, so it
+  # rides with the feed when the rebuild problem above is fixed.
+  # joint-rereference: true
   # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
   # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
@@ -1072,7 +1076,23 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # SEED-OFFSET/JOINT-CLK lines are the free early-warning control.
     # Pre-registered: fixtures/expectations_20260821_joint_feed.txt. Revert: delete this
     # line + the common joint-rereference, then restart the broker.
-    joint-model-primary: true
+    # ⚠️ DISARMED 14:19, ~3 min in, BY ITS OWN PRE-REGISTERED FALSIFIER. Two hits:
+    # (1) the joint clock WALKED -- 149.15 -> 144.18 -> 142.23 chips in ~40 s at
+    #     -0.12 chips/s, monotone;
+    # (2) the CONTROL degraded -- JOINT-CLK went from 92-of-94 ADOPTED to 7 REFUSED and
+    #     SEED-OFFSET refused at -14 to -18 chips.
+    # THE MECHANISM, and it is not the one the flag warns about: arming this chain
+    # REBUILT the receiver-wide state (joint_receiver rebuilds when a shorter code joins,
+    # and gal_e5a's CODE_LEN differs), so the 5 healthy GPS rows were WIPED and the state
+    # came back n=9 ALL-E. The clock then re-converged onto the GALILEO population, ~14
+    # chips from the Galileo legacy clock -- so every consumer, GPS included, refused it.
+    # Biases stayed sane throughout (-1.90..+1.49) and rej stayed low (9/28): the filter
+    # was not diverging, it was correctly describing a DIFFERENT clock than the one the
+    # consumers are bounded against.
+    # ⇒ THE REAL PREREQUISITE FOR GAP 2 IS THE MODULUS/REBUILD PATH, not the feed quality
+    # gate. Feeding a second constellation must ADD rows, never rebuild the state out from
+    # under the population that is already working. Fix that first, then re-arm.
+    # joint-model-primary: true
     joint-consume: clk
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
