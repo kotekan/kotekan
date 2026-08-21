@@ -1,12 +1,14 @@
 # This re-usable workflow builds and runs post-build commands on a kotekan install.
 # The inputs documented below should generally be supplied when this workflow is called.
 # Notes:
-# - we verify the architecture is x86_64 on github runners
+# - we verify the architecture is x86_64 on every runner
 # - we use -DARCH=haswell for compatibility across runners
 # - Because this runs inside a container rather than on the host runner itself, the
 #   14 GB space limits (including image) apply.
 ---
 name: Test Kotekan Build
+
+permissions: {}
 
 on:
   workflow_call:
@@ -33,6 +35,9 @@ on:
 jobs:
   test:
     runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      packages: read
     container:
       image: ${{ inputs.container_image }}
       credentials:
@@ -55,10 +60,12 @@ jobs:
     steps:
       
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Cache ccache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .ccache
           key: ccache-${{ inputs.ccache_key }}-${{ github.sha }}
@@ -84,7 +91,6 @@ jobs:
           echo "==========="
 
       - name: Verify architecture is x86_64
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
         run: |
           arch=$(uname -m)
           echo "Detected architecture: $arch"
@@ -105,10 +111,12 @@ jobs:
         if: inputs.cmake_defs
         run: |
           set -euo pipefail
-          mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
+          mkdir "$GITHUB_WORKSPACE/build-2404" && cd "$GITHUB_WORKSPACE/build-2404"
           ccache -s
+          # cmake_defs is intentionally supplied as a whitespace-split argument list.
+          # shellcheck disable=SC2086
           cmake -DARCH=haswell -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ inputs.cmake_defs }} ..
-          make -j $(nproc)
+          make -j "$(nproc)"
           ccache -s
 
       - name: Run commands
