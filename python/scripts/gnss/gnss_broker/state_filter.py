@@ -172,7 +172,7 @@ class JointReceiverState:
     a chain solve its own clock in isolation.
     """
 
-    def __init__(self, code_len=10230.0, sigma_clk0=200.0, sigma_rate0=1.0,
+    def __init__(self, code_len=10230.0, sigma_clk0=200.0, sigma_rate0=0.05,
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013, rereference=False,
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5, escape_spread=5.0,
@@ -188,6 +188,24 @@ class JointReceiverState:
         self._lk = threading.RLock()   # see _locked: five chain threads share this object
         self.L = float(code_len)
         self.sigma_clk0 = float(sigma_clk0)
+        # ⚠️ THE RATE PRIOR IS PHYSICS, NOT A CEILING (2026-08-21; task #86's root).
+        # This defaulted to 1.0 chips/s -- the SAME value as rate_max, the absolute garbage
+        # ceiling, which this class's own note describes as "0.1 ppm ... 2500x the truth".
+        # A prior that wide makes clk_rate almost a free parameter at birth, so the first
+        # innovations land in it: measured, ONE 0.94-chip innovation taught -0.1002 chips/s
+        # (K1 0.107) -- and predict() then integrates that rate, walking the clock away from
+        # a state that can no longer accept the measurements which would correct it. Seen
+        # live 2026-08-21: clk +684 against a legacy truth of 151, rate +0.53 chips/s,
+        # updates frozen, sigma still reporting 0.040. That is #86's "fresh filter pins
+        # clk_rate at hundreds of times truth and self-locks", and the RATE-TEACH forensics
+        # already in this file name it in one line.
+        # The receiver's actual drift, measured the same day on all five chains
+        # independently (DRCLK): 0.0006-0.0065 chips/s. 0.05 is ~8x the largest of those --
+        # generous for anything physical, 20x tighter than the ceiling, and it changes ONLY
+        # the transient: the converged state is identical (clk 151.50, rate +0.00089 at
+        # every setting tried), while the worst birth excursion falls 0.0395 -> 0.0077.
+        # rate_max stays 1.0 as the separate garbage bound; a prior and a ceiling are
+        # different statements and should never have shared a number.
         self.sigma_rate0 = float(sigma_rate0)
         self.sigma_b0 = float(sigma_b0)
         # process noise, per sqrt(second)
@@ -246,6 +264,21 @@ class JointReceiverState:
         self._rej_band = {}            # key -> band of its rejected run, for the corroboration
         self.rate_max = float(rate_max)   # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
         self.diverged = False   # latched: an escape was refused as non-physical
+        # DEAFNESS DETECTOR (2026-08-21). A state that is badly wrong rejects every
+        # measurement, so it never corrects, so it stays wrong -- and meanwhile predict()
+        # keeps integrating clk_rate, which walks the clock away at whatever rate it last
+        # believed. Observed live: clk +684 against a legacy truth of 151, rate +0.53
+        # chips/s, updates frozen at 101 while rejections climbed past 140, sigma reporting
+        # 0.040 -- i.e. the filter claiming 25x better than its real error by a factor of
+        # 13000 -- and NOT ONE log line, for ten minutes. The escape hatch cannot help
+        # here: it fires per satellite on a coherent run, and a state this far out rejects
+        # newcomers at BIRTH (birth_max), which never touches _rej_hist. So nothing
+        # noticed. Consumers were safe only because their own delta bounds refused it,
+        # which is luck rather than design: a state that has stopped listening must SAY SO
+        # and must not be served as if healthy.
+        self.deaf_after = 40       # consecutive rejections with zero accepts -> DEAF
+        self.rej_since_upd = 0     # rejections since the last ACCEPTED update
+        self.deaf = False          # latched: this state has stopped accepting anything
         self.escapes = 0
         # birth_max default 50 -> 12 (2026-08-12): the 00:08 zombie's garbage biases
         # (+-20-46 chips) all slid UNDER 50. Real biases measure <= ~6 (G28 -5.7 the
@@ -493,6 +526,23 @@ class JointReceiverState:
             return "%s%d" % (key[0][0].upper(), int(key[1]))
         except Exception:
             return str(key)
+
+    def _reject(self, why=None):
+        """Count a rejection and latch DEAFNESS if nothing has been accepted for a long
+        run. See the rej_since_upd note in __init__: the failure this catches is a state
+        that is wrong enough to refuse every measurement, which then never corrects while
+        clk_rate keeps walking it further away. Silent for ten minutes when it happened."""
+        self.rejected += 1
+        self.rej_since_upd += 1
+        if (not self.deaf) and self.rej_since_upd >= self.deaf_after:
+            self.deaf = True
+            self._note("DEAF: %d consecutive rejections with NOTHING accepted (clk %+.1f "
+                       "chips, rate %+.4f chips/s, sigma %.3f, n=%d). The state is refusing "
+                       "every measurement, so it cannot correct itself, and predict() keeps "
+                       "integrating the rate. NOT FIT TO CONSUME until it accepts again%s"
+                       % (self.rej_since_upd, float(self.x[0]), float(self.x[1]),
+                          math.sqrt(max(0.0, self.P[0, 0])), len(self._idx),
+                          "" if why is None else " (%s)" % why))
 
     def _note(self, msg):
         """Queue a one-line operator note; the broker drains `notes` each cycle. Bounded, so
@@ -812,7 +862,7 @@ class JointReceiverState:
             if (self.birth_max is not None and len(self._idx) >= 2
                     and self.P[0, 0] < 100.0
                     and abs(self.wrap(y_chips - self.x[0] - _tau_val)) > self.birth_max):
-                self.rejected += 1
+                self._reject("birth")
                 return None
             self._add(key, 0.0, t_now)
         i = self._idx[key]
@@ -894,7 +944,7 @@ class JointReceiverState:
                     # +-L/2 is not read as maximally scattered
                     spread = max(abs(self.wrap(v - hist[0])) for v in hist)
                 if spread is None or spread > self.escape_spread:
-                    self.rejected += 1
+                    self._reject("incoherent-run")
                     if spread is not None:
                         # The run is long but INCOHERENT: this satellite is feeding noise,
                         # which is a tracking failure and not a state failure. Say so --
@@ -928,7 +978,7 @@ class JointReceiverState:
                     # spread test onto y does not arise for the comparison BETWEEN sats.
                     _corr = self._corroborators(key, innov)
                     if _corr + 1 < self.escape_min_sats:
-                        self.rejected += 1
+                        self._reject("escape-refused")
                         self.diverged = True
                         self._note("ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips "
                                    "but implying a %+.1f chip step (bound %.0f on a %.0f-chip "
@@ -959,6 +1009,8 @@ class JointReceiverState:
         self._t_seen[key] = t_now
         self._n[key] = self._n.get(key, 0) + 1
         self.n_updates += 1
+        self.rej_since_upd = 0      # it is listening again
+        self.deaf = False
         return z
 
     @_locked

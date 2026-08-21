@@ -2934,7 +2934,14 @@ def main(argv=None, rx=None, publisher=None):
         (docs 11.31)."""
         try:
             js = rx_.joint_receiver(band, CODE_LEN, rereference=a.joint_rereference)
-            return js if len(js._idx) >= a.joint_min_sats else None
+            if len(js._idx) < a.joint_min_sats:
+                return None
+            # A DEAF STATE IS NOT FIT TO CONSUME (2026-08-21). It rejects everything, so it
+            # cannot correct itself, while predict() keeps integrating clk_rate -- observed
+            # walking to clk +684 against a legacy 151 with sigma still reporting 0.040.
+            # Every consumer's own delta bound happened to refuse it, which is luck, not
+            # design: refuse it HERE, once, where "fit to be consumed" is decided.
+            return None if getattr(js, "deaf", False) else js
         except Exception:
             return None
 
