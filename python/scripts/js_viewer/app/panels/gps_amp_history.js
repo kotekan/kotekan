@@ -100,6 +100,12 @@ export class GpsAmpHistoryPanel {
         this.mode = "cn0";
         this._dirty = false;
         this._plotted = false;
+        // Signals the user has toggled OFF, by signal column ("E5a-Q", "E5b-Q", ...).
+        // Kept by SIGNAL rather than by series key so the choice survives changing PRN --
+        // "show me only E5a" is a viewing mode, not a per-satellite decision. Plotly's own
+        // legend click cannot do this job here: _redraw_unified calls Plotly.react on every
+        // feed tick with freshly built traces, which resets legend visibility a second later.
+        this._hidden = new Set();
         this._maxDr = 0;         // largest deep_records seen = the converged (~1 s) window
 
         const root = $("#" + target);
@@ -125,6 +131,15 @@ export class GpsAmpHistoryPanel {
             this._redraw();
         });
         this._info = $("<span/>").css({color: "#666", marginLeft: "4px"}).appendTo(bar);
+        // Click a signal label to show/hide that trace. Delegated: _info's html is rebuilt
+        // on every redraw, so binding the spans themselves would go stale immediately.
+        this._info.on("click", "[data-sig]", ev => {
+            const sig = $(ev.currentTarget).attr("data-sig");
+            if (this._hidden.has(sig)) this._hidden.delete(sig);
+            else this._hidden.add(sig);
+            this._plotted = false;   // force newPlot so the y-axis rescales to what is left
+            this._redraw();
+        });
         $("<button/>").text("clear").css({fontSize: "11px", marginLeft: "auto"})
             .appendTo(bar).on("click", () => {
                 if (this.selected != null && this.hist.has(this.selected))
@@ -299,15 +314,29 @@ export class GpsAmpHistoryPanel {
             const col = (this.meta.get(k) || {}).col || k;
             const color = SIG_PALETTE[i % SIG_PALETTE.length];
             const V = h[this.mode];
+            const off = this._hidden.has(col);
             traces.push({
                 x: h.t.slice(), y: V.map(v => (v == null ? null : v)),
                 type: "scatter", mode: "markers", name: col,
                 marker: {size: 4, color},
+                // "legendonly" keeps the trace in the legend but out of the plot AND out of
+                // the y-axis autoscale -- which is the point of hiding it.
+                visible: off ? "legendonly" : true,
                 hovertemplate: `${col} · %{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit}<extra></extra>`,
             });
-            // latest non-null for the summary line
+            // latest non-null for the summary line. The label is the toggle: struck through
+            // and greyed when hidden, so the control shows its own state.
+            const style = off ? `color:#bbb;text-decoration:line-through` : `color:${color}`;
+            const cell = v => `<span data-sig="${col}" title="click to show/hide ${col}" `
+                            + `style="${style};cursor:pointer">${col}${v}</span>`;
+            let shown = false;
             for (let j = V.length - 1; j >= 0; j--)
-                if (V[j] != null) { now_bits.push(`<span style="color:${color}">${col} ${V[j].toFixed(this.mode === "coh_s" ? 2 : 1)}</span>`); break; }
+                if (V[j] != null) {
+                    now_bits.push(cell(" " + V[j].toFixed(this.mode === "coh_s" ? 2 : 1)));
+                    shown = true; break;
+                }
+            // A hidden signal still gets its label, or it could never be turned back on.
+            if (!shown && off) now_bits.push(cell(""));
         });
         this._info.html(now_bits.length
             ? `${this.selected} · ${M.label}: ${now_bits.join(" · ")}${M.unit}`
