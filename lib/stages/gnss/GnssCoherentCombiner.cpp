@@ -466,6 +466,26 @@ void GnssCoherentCombiner::main_thread() {
             _prev_utc0 = rec_utc(ins[0]);
         }
 
+        // #46 INGESTION CLOCK. One number was doing two jobs: pow_hop/utc describe the last
+        // COMPLETED window, and the broker had to infer both record-staleness and
+        // serve-latency from it -- which is exactly why the F-engine axis reads drift-free
+        // but stale (right for labels, wrong for epochs; two fixes were retracted for want
+        // of this measurement). Record here, at the moment of ingestion and BEFORE any
+        // processing: the newest capture UTC just gathered, and the wall clock that gathered
+        // it. Served additively in get_status; nothing downstream changes shape.
+        {
+            double newest_utc = 0.0;
+            for (const float* fin : ins)
+                newest_utc = std::max(
+                    newest_utc, *reinterpret_cast<const double*>(fin + RECORD_UTC_SLOT));
+            const double wall = std::chrono::duration<double>(
+                                    std::chrono::system_clock::now().time_since_epoch())
+                                    .count();
+            std::lock_guard<std::mutex> lk(_st_mtx);
+            _ingest_utc = newest_utc;
+            _ingest_unix = wall;
+        }
+
         // ABSOLUTE HOP INDEX of this record's window, from the frame metadata the record
         // producer already stamps (GnssGpuRecordAssemble / GnssChannelizedTracker set
         // sample_seq = window_start). This is the fleet DLL's grouping key: every node's
@@ -2495,6 +2515,19 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // its id, its length in records, and how long it has held (s). 0
                          // cycles with a bumped arc id means the arc just restarted.
                          {"utc", _st_utc[p]},
+                         // #46: the three clocks that make staleness a MEASUREMENT.
+                         // serve_unix = wall clock of THIS reply (epoch sanity in one poll:
+                         // |utc - serve_unix| hours off = a stale F-engine frame0, the
+                         // 2026-08-20 chive trap). ingest_utc = newest capture UTC the node
+                         // has INGESTED (vs utc = newest PROCESSED: the gap is processing
+                         // lag, not sky). ingest_unix = the wall clock at that ingestion
+                         // (serve_unix - ingest_unix = how stale this snapshot is).
+                         {"serve_unix",
+                          std::chrono::duration<double>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count()},
+                         {"ingest_utc", _ingest_utc},
+                         {"ingest_unix", _ingest_unix},
                          {"adr_cycles", _st_adr[p]},
                          // #33 PLL fine observable: the RESIDUAL half of the ADR alone
                          // (sum of measured dres, same arc). d(res_cycles)/d(adr_records)

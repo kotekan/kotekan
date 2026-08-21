@@ -400,6 +400,10 @@ private:
     /// Absolute HOP index the E/P/L window ends on (rolling: the newest record; block: the
     /// window's first). The fleet combine groups instances by this -- see _fft_len.
     long long _st_pow_hop = -1;
+    // #46 ingestion clock (guarded by _st_mtx): newest capture UTC gathered + the wall
+    // clock at that gather -- BEFORE processing, vs pow_hop/_st_utc which are AFTER.
+    double _ingest_utc = 0.0;
+    double _ingest_unix = 0.0;
     /// EVERY ladder rung's significance, not only the winner's (2026-08-04). The winner is a MAX
     /// over rungs, so a low deep_snr cannot distinguish "the signal never cohered" from "it cohered
     /// but no window was long enough to clear the bar" -- and those two want opposite fixes. Each
