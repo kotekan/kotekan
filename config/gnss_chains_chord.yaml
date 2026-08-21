@@ -1177,7 +1177,25 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # THE FALSIFIABLE PREDICTION: y must STOP RAMPING. Per-segment slope -0.150 -> < 0.02
     # chips/s, spread(y-clk) holding 1-2 chips instead of growing 1.5 -> 35. If it ramps
     # anyway, the mirror explanation is WRONG and the l-a rate was not the source.
-    joint-model-primary: true
+    # ⚠️⚠️ FEED DISARMED 23:0x -- ON A MODEL-PRIMARY CHAIN, FEEDING AND CONSUMING ARE
+    # CIRCULAR, AND `slew` WAS ONLY THE FAST VERSION. y = held - cp_pred, and `held` is the
+    # propagation of THE SEED THE CONSUMER JUST SET, so ANY joint output that reaches the
+    # seed closes the loop. `slew` closed it fast (+0.065 chips/s, dead in 10 min). `rate`
+    # closes it SLOWLY, because a rate must integrate before it shows -- attempt 6 looked
+    # immaculate at t+10 min and wound up over the next ~30.
+    # WHAT WALKS IS NOT THE CLOCK, IT IS b_sat: E15 +15.09 (db/dt +0.0179 chips/s), E5
+    # +8.68, E31 -6.00, E34 -4.27, all diverging, against a physical scale of < ~6 chips
+    # (P1 measured +-0.09). The gauge pins mean(b)=0, so the asymmetric spread (mean +3.5)
+    # is pushed into clk -- THAT is the clock walk: delta +4.2 -> +8.6, all REFUSED, spreads
+    # to 2049 chips, notes 0 -> 6. y ramping +0.0134 chips/s (attempt 6: -0.0055).
+    # gps_l5 is immune because it does NOT feed: its y comes from SEARCH DETECTIONS, an
+    # independent look at the sky, so the loop is open at the detector. A model-primary
+    # chain has no detector and therefore no anchor.
+    # ⇒ REVISED RULE (my earlier one was too narrow): A CHAIN THAT FEEDS THE JOINT STATE
+    # MUST NOT CONSUME ANY JOINT OUTPUT THAT REACHES ITS SEED. Feed, or consume, never both.
+    # Left at attempt 5 (`clk,rate`, no feed): the loop is OPEN and this is the configuration
+    # that gave the churn fix KV saw in the viewer (mean |dq| 0.103 vs gps_l5 0.487).
+    # joint-model-primary: true
     # ── ATTEMPT 5, ARMED 2026-08-21 22:0x -- CONSUME THE RATE BEFORE FEEDING ────────
     # Attempt 4's forensics: this chain's seeds took their code rate from the l-a EMA
     # (-0.0210 ppm = -0.215 chips/s), dr_seed_phys propagates `held` with it, so
