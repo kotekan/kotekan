@@ -1168,7 +1168,21 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # BASELINE AT ARM: delta +0.313 chips, sigma 0.124, n 7; gps_l5 SEED-OFFSET 7 sats,
     # median +1.72, sigmas 0.13-0.33.
     # joint-model-primary: true
-    joint-consume: clk
+    # ── ATTEMPT 5, ARMED 2026-08-21 22:0x -- CONSUME THE RATE BEFORE FEEDING ────────
+    # Attempt 4's forensics: this chain's seeds took their code rate from the l-a EMA
+    # (-0.0210 ppm = -0.215 chips/s), dr_seed_phys propagates `held` with it, so
+    # y = held - cp_pred RAMPED at exactly that rate -- common-mode across every sat,
+    # which the joint filter can only read as clk_rate. It learned -0.1967 chips/s and
+    # walked the clock 147 -> 85. The feed was a MIRROR of this chain's own seeded error.
+    # gps_l5 never had this because it consumes `rate` and refuses the l-a.
+    # ⇒ A CHAIN MUST CONSUME THE JOINT RATE BEFORE IT MAY FEED THE JOINT STATE.
+    # ⚠️ THE GATE IS INSENSITIVE TODAY, ON PURPOSE-STATED-IN-ADVANCE: at 22:00 the l-a EMA
+    # has CONVERGED to +0.0002 ppm and the joint rate reads +0.0004, so the two agree and
+    # this switch changes ~nothing measurable right now. Attempt 4 caught l-a at -0.021 ppm
+    # because it was COLD (6 fitted sats, minutes after a fleet restart). So this arm is
+    # judged on DOING NO HARM, not on a payoff -- the payoff is immunity to the next cold
+    # start, which is exactly when the feed would otherwise be poisoned again.
+    joint-consume: clk,rate
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
     # when the tap is off-peak -- so an off-peak satellite fails the gate and is never trimmed
