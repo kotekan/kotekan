@@ -6299,7 +6299,27 @@ def main(argv=None, rx=None, publisher=None):
                             _held = dr_seed_phys(_sd, _h1, args.hops_per_sec,
                                                  args.chip_rate_hz, args.carrier_hz,
                                                  args.code_doppler_sign, _DR_MOD)
-                            _y = ((_held + dll_trim.get(_prn, 0.0)
+                            # ⚠️ THE TRIM THE TRACKER ACTUALLY APPLIED, not the one this
+                            # process happens to hold (2026-08-21). Authority over the code
+                            # trim is per-PRN: Python integrates only for PRNs the C++ fleet
+                            # loop is NOT actuating (`if prn not in _ft_armed_last`), so on a
+                            # chain the fast loop owns -- gal_e5a owns nearly all of it --
+                            # dll_trim is ZERO for exactly the satellites carrying a real
+                            # standing trim. Measured 15:01 on gal_e5a: C++ held 11:+1.601
+                            # 19:+1.795 25:+2.920 29:+1.984 while dll_trim read +0.00/-0.03.
+                            # So this measurement was systematically wrong by up to ~3 chips
+                            # per satellite, and -- because the trims MOVE (PRN 11 3.000 ->
+                            # 1.601, PRN 25 1.652 -> 2.920 inside a minute) -- their drifting
+                            # mean was injected into the shared state as a spurious CLOCK
+                            # RATE (~0.011 chips/s from the readback alone). A feed that does
+                            # not know what the actuator did is measuring its own loop.
+                            # #76's readback is exactly this number; it is one cycle old
+                            # (populated later in the cycle), which is causal and correct.
+                            _trim_applied = (
+                                float((_ft_readback.get(_prn) or {}).get("trim_chips") or 0.0)
+                                if _prn in _ft_armed_last
+                                else dll_trim.get(_prn, 0.0))
+                            _y = ((_held + _trim_applied
                                    - cp_predicted(_v, _th)) % _DR_MOD)
                             if _p2c_hold(_js, (tag, _prn)):
                                 if True:
