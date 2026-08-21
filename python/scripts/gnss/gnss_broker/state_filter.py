@@ -173,7 +173,7 @@ class JointReceiverState:
     """
 
     def __init__(self, code_len=10230.0, sigma_clk0=200.0, sigma_rate0=1.0,
-                 sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013,
+                 sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013, rereference=False,
                  gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5, escape_spread=5.0,
                  birth_max=12.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
@@ -201,6 +201,10 @@ class JointReceiverState:
         # root-second. Anything looser just re-imports the l-a EMA's +-0.007 ppm scatter,
         # which is what this state exists to remove.
         self.q_rate = float(q_rate)
+        # Membership changes re-reference the gauge EXACTLY instead of inflating the clock
+        # (see _membership_changed). Default off: this changes filter behaviour on a state
+        # that has diverged twice, so it arms deliberately.
+        self.rereference = bool(rereference)
         self.q_b = float(q_b)          # per-sat bias walk: SLOW is the whole point
         self.gauge_sigma = float(gauge_sigma)
         self.max_age_s = float(max_age_s)
@@ -542,9 +546,59 @@ class JointReceiverState:
         over, so the gauge legitimately steps clk (~1 chip at 6 sats -- measured). That step
         is a GAUGE artefact, not clock motion, and must not be differentiated into clk_rate:
         untreated it spikes the rate ~0.005 chips/s per event, which is 12x the true value.
-        Break the correlation and widen the clock so the step is absorbed as offset."""
+
+        TWO TREATMENTS, and the second supersedes the first.
+
+        LEGACY (rereference=False): break the clk/rate correlation and widen the clock so
+        the step is absorbed as offset rather than as rate. It works at 6+ satellites, but
+        it treats the artefact as NEW INFORMATION -- P[0,0] += 4 makes the clock uncertain
+        to ~2 chips, so the next measurement moves it hard, and predict() rebuilds the
+        clk<->rate correlation immediately (F[0,1] = dt), which feeds the yank into the
+        rate, which integrates back into the clock. MEASURED 2026-08-21 at n=4 with
+        per-cycle churn: clk swinging 15 chips over 3 min and clk_rate wandering 0.0275
+        chips/s -- 80x the 0.00035 sd this q_rate is chosen to give -- so BOTH Galileo
+        chains' joint-clk consumers refused the state on every cycle (delta > 5 chip bound)
+        and GAP 2 could not proceed. The treatment is sound at large n and self-defeating
+        at small n, which is exactly when the state most needs to survive.
+
+        EXACT RE-REFERENCE (rereference=True): a gauge change is a change of COORDINATES,
+        not an observation. Shift the common mode out of the biases and into clk:
+
+            delta = mean(b over the new membership);  b_i -= delta;  clk += delta
+
+        Then clk + b_i -- the only observable any consumer reads -- is INVARIANT for every
+        satellite, and mean(b) = 0 holds exactly, so gauge() has nothing to do and there is
+        no step for anyone to absorb. No uncertainty is injected because none was created:
+        the filter knows exactly as much after the relabelling as before. P is carried
+        through the same linear map (P -> A P A^T) so the covariance stays consistent with
+        the shifted state rather than silently describing the old parameterisation."""
+        if not self.rereference:
+            self.P[0, 1] = self.P[1, 0] = 0.0
+            self.P[0, 0] += 4.0
+            return
+        np = self._np
+        idx = list(self._idx.values())
+        if not idx:
+            return
+        delta = float(np.mean([self.x[i] for i in idx]))
+        if delta == 0.0:
+            return
+        # x' = A x, with A: clk += mean(b), b_i -= mean(b). Everything else untouched.
+        A = np.eye(self.x.size)
+        w = 1.0 / len(idx)
+        for i in idx:
+            A[0, i] += w              # clk picks up the mean of the biases
+            for j in idx:
+                A[i, j] -= w          # every bias loses it
+        self.x = A @ self.x
+        self.P = A @ self.P @ A.T
+        # KEEP THE RATE SHIELD. The legacy treatment's other half is still right and is
+        # independent of the inflation: a gauge relabelling is not clock MOTION, so it must
+        # not be differentiable into clk_rate. Dropping this alongside the inflation doubled
+        # the rate wander in the churn bench (range 0.0053 -> 0.0114 chips/s); keeping it
+        # with the exact re-reference gets both -- no injected uncertainty AND no rate
+        # contamination.
         self.P[0, 1] = self.P[1, 0] = 0.0
-        self.P[0, 0] += 4.0
 
     # -- filter ------------------------------------------------------------------
     @_locked
