@@ -810,6 +810,18 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # (gnss_broker_20260820_arm13_*.log.gz), per-sat feed attribution -- which feed
     # served E10/E2's rows vs E25's during the arm. Do NOT re-arm before that.
     rrate-feed-applied: 0
+    # ── ARM 17 (2026-08-21 ~01:4x, KV): the fold folds at the ROW's rate ────────────────
+    # The kcoh fold's injected rate comes from the previous cycle's record-stream fit,
+    # whose ±10 Hz cycle-to-cycle noise IS the eta duty-cycling (the fleet-wide "sig
+    # oscillation"). This overlays converged rows' y-space predictions
+    # (carrier_correction_hz; valid because the plant is command-blind) onto the fit-fed
+    # rates -- probes and unconverged sats keep the fit path, so the floor stays
+    # self-calibrated. 16b stands beneath it (command stable-and-harmless at ±2 Hz).
+    # JUDGE, same polls: e5a kcoh sig/eta duty vs the e5b + b2a folds (fit-fed controls);
+    # KCOH lines show "N row-injected". FALSIFIER: e5a's kcoh sig class COLLAPSES vs
+    # controls (a wrong row rate folds the signal away - the exact opposite signature
+    # of the intended fix) => disarm this flag alone, keep 16b.
+    kcoh-rate-from-row: 1
     # ── ARM 14 (2026-08-20 ~12:0x, KV): the fine feed steps aside on the commanded chain ──
     # Arm 13's attribution: kcoh-fed E25 converged & released exactly as predicted; the
     # E2/E10 ramps were the FINE PHASE FEED feeding DURING the slew ("2 fine-fed") past
