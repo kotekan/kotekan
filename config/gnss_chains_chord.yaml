@@ -83,7 +83,8 @@ common:
   # itself is sound and benched (bench_mass_birth.py / bench_gauge_churn.py) -- it is
   # default-off code, not withdrawn -- but it is unobservable on a healthy state, so it
   # rides with the feed when the rebuild problem above is fixed.
-  # joint-rereference: true
+  # ── ATTEMPT 6, ARMED 2026-08-21 22:1x (as attempt 4; rereference rides the birth)
+  joint-rereference: true
   # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
   # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
@@ -1167,7 +1168,16 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # prime; JOINT-CLK 77 ADOPTED / 10 REFUSED (all 10 cold-start); 0 filter notes.
     # BASELINE AT ARM: delta +0.313 chips, sigma 0.124, n 7; gps_l5 SEED-OFFSET 7 sats,
     # median +1.72, sigmas 0.13-0.33.
-    # joint-model-primary: true
+    # ── ATTEMPT 6, ARMED 2026-08-21 22:1x ─────────────────────────────────────────
+    # IDENTICAL to attempt 4 except ONE variable: this chain now consumes `clk,rate`, so
+    # its seeds propagate on the JOINT clk_rate instead of the l-a EMA. Attempt 4's y
+    # ramped at -0.150 chips/s = exactly the l-a rate its seeds carried, common-mode over
+    # every sat, which the filter could only read as clk_rate (learned -0.1967) -> the
+    # clock walked 147 -> 85 -> DEAF -> every consumer refused.
+    # THE FALSIFIABLE PREDICTION: y must STOP RAMPING. Per-segment slope -0.150 -> < 0.02
+    # chips/s, spread(y-clk) holding 1-2 chips instead of growing 1.5 -> 35. If it ramps
+    # anyway, the mirror explanation is WRONG and the l-a rate was not the source.
+    joint-model-primary: true
     # ── ATTEMPT 5, ARMED 2026-08-21 22:0x -- CONSUME THE RATE BEFORE FEEDING ────────
     # Attempt 4's forensics: this chain's seeds took their code rate from the l-a EMA
     # (-0.0210 ppm = -0.215 chips/s), dr_seed_phys propagates `held` with it, so
