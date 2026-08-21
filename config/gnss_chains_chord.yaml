@@ -1144,8 +1144,14 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # (The migration fix stands on its own gate and stays in -- it was a real bug, just
     # not this one. ⚠️ Note it may not even have been exercised here: gal_e5a appears to
     # create the state first, so the shorter-code join never happens.)
-    # ⚠️ THE DIAGNOSIS ABOVE WAS RETRACTED THE SAME AFTERNOON. "the feed injects its own
-    # reference drift" was my third wrong explanation in a row, and #86 (5e3e9ab5d, 15:21)
+    # ⚠️ PARTLY RE-INSTATED 22:0x AFTER ATTEMPT 4's FORENSICS: "the feed injects its own
+    # reference drift" had the RIGHT SHAPE and the wrong reference. The drift is not the
+    # Galileo MODEL's -- it is the l-a EMA that SEEDS this chain's code rate (-0.021 ppm =
+    # -0.215 chips/s), which makes y ramp at exactly that rate, common-mode across every
+    # sat, so the filter reads it as clk_rate. gps_l5 does not ramp because it consumes
+    # `rate` and refuses the l-a. ⇒ A CHAIN MUST CONSUME THE JOINT RATE BEFORE IT MAY FEED
+    # THE JOINT STATE. See chord-joint-feed-is-a-mirror. My retraction below was too broad;
+    # #86 (5e3e9ab5d, 15:21) is a REAL and SEPARATE bug that bounded the birth transient:
     # explains attempts 1-3 with ONE bug: sigma_rate0 defaulted to rate_max, the garbage
     # CEILING (1.0 chips/s), so a single 0.94-chip innovation could teach -0.1 chips/s and
     # predict() then walked the clock away at exactly the "constant common-mode rate" I
