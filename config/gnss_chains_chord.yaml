@@ -1192,6 +1192,38 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # because it was COLD (6 fitted sats, minutes after a fleet restart). So this arm is
     # judged on DOING NO HARM, not on a payoff -- the payoff is immunity to the next cold
     # start, which is exactly when the feed would otherwise be poisoned again.
+    # ── GAP 2, THE ACTUAL ARM -- 2026-08-21 22:2x ─────────────────────────────────
+    # `slew` makes this chain's dead-reckon SLEW TARGET come from predicted() = clk + b_i,
+    # the gauge-INVARIANT per-satellite quantity, with sigma from the full cross-covariance
+    # -- instead of the clock EMA plus the SatBiasFilter. THE FIRST TIME A DEAD-RECKON
+    # CHAIN CONSUMES A PER-SATELLITE CODE CORRECTION, which is the whole point of #33.
+    # Earned by attempts 5+6: the feed now runs at 100% accepted, y slope -0.0055 chips/s
+    # (was -0.150), n 16 with Galileo and GPS rows in ONE state, JOINT-CLK delta +0.004.
+    # The consumer has been firing in shadow here at sub-chip diffs (PRN 16 -0.195 s0.125,
+    # PRN 31 -1.517 s0.121) and has been live on gps_l5 for days.
+    # OUTCOME METRIC, measured pre-arm at 22:26 and to be re-measured at MATCHED AGE after
+    # the restart (~10 min, since a restart re-cools everything): mean |dq| per 15 s --
+    # gal_e5a 0.103 (q 2.96-3.39, ranges < 0.2), gal_e5b 0.283, gps_l5 0.487.
+    # ⚠️ KV sees this in the viewer as "slow stable wander where it was swinging 0<->4".
+    # That payoff came from attempt 5, which I had recorded as "pays nothing today" --
+    # I measured WHICH RATE SOURCE WAS TAKEN and never measured the OUTCOME. Measure the
+    # thing you actually care about, not just the mechanism you changed.
+    # ⚠️⚠️ DISARMED 22:41 BY ITS FALSIFIER, ~10 min in. `slew` CLOSES A FEEDBACK LOOP.
+    # This chain FEEDS the joint state (joint-model-primary) and would now also CONSUME its
+    # per-sat prediction as the slew target -- so the seed moves to clk+b_i, `held` follows,
+    # and y = held - cp_pred reports back the state's OWN output. No independent reference
+    # is left in the loop. Measured: joint-vs-legacy walked +8.456 -> +13.211 -> +16.356
+    # chips in 122 s (~+0.065 chips/s, monotone), JOINT-CLK delta +8.607 -> REFUSED, and
+    # gal_e5a's q stability regressed 0.103 -> 0.549 mean |dq| per 15 s (5.3x) at matched
+    # post-restart age, against gal_e5b 0.283 -> 0.672 (2.4x, unchanged chain = the sky's
+    # share) and gps_l5 flat.
+    # WHY gps_l5 CONSUMES `slew` SAFELY AND THIS CHAIN CANNOT: gps_l5 does NOT feed. Its y
+    # comes from SEARCH DETECTIONS -- an independent measurement of the sky -- so consuming
+    # the prediction cannot move its own input. A model-primary chain has no such anchor.
+    # ⇒ ONE-CONTROLLER RULE, code domain: A CHAIN MAY FEED THE JOINT STATE OR CONSUME ITS
+    # PER-SAT PREDICTION, NOT BOTH -- unless something outside the loop pins its input.
+    # Reverted to the attempt-6 configuration, which is measured-good (100% accepted, y
+    # slope -0.0055 chips/s, n 16, q |dq| 0.103).
     joint-consume: clk,rate
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
