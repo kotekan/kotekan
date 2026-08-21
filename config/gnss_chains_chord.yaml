@@ -1346,6 +1346,29 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # without that is #49's latch made absolute.
     # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     # fleet-trim-bandwidth: 2.5
+    # ── BASELINE PARITY WITH gal_e5a (2026-08-21 12:5x, KV) ─────────────────────────────
+    # "If we want to use E5b as a control we need to update which vector bits it consumes
+    # to match E5a" -- until now e5b had NO code loop at all, so it read as "not good"
+    # rather than as a control. This is also R7/#49, verdict already paid for (0.81 vs
+    # 0.42 |disc| duty, paired), and its old blocker is gone: the Python->C++ trim
+    # handover is per-PRN since eec1d2f12, so fleet-trim-url no longer silences the slow
+    # integrator chain-wide and strands a dead-reckon chain with no code loop at all.
+    # MATCHED to e5a: fleet code loop, joint CLOCK consumer, deep-gate opt-in, and the
+    # command-safety gates (inert here -- nothing commands on this chain).
+    # DELIBERATELY NOT MATCHED: rrate-command -- that is the variable under test on e5a.
+    # ⚠️ REMAINING ASYMMETRY, on purpose: e5b keeps rrate-phase-feed TRUE (arm 15) while
+    # e5a has it FALSE, because a fine feed under a MOVING command is what broke arm 13.
+    # Rows are shared per (tag, prn), so e5b's fine feed is what makes e5a's rows quiet --
+    # symmetry there would cost the precision the pair exists to exploit. Any carrier A/B
+    # across this pair must account for it.
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
+    fleet-trim-readback: 1
+    joint-consume: clk
+    dll-deep-gate: "33"
+    rrate-cmd-min-sig: 100
+    carrier-max-hz: 10.0
+    rrate-feed-applied: 0
     trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,\
 http://cx27:12048/gnss{0..1}_e5b_inject,\
 http://cx42:12048/gnss{0..1}_e5b_inject,\
