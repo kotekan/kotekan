@@ -6504,21 +6504,63 @@ def main(argv=None, rx=None, publisher=None):
                                 # seeding from -- E5a tracks fine at deep_snr 80+, so the
                                 # legacy number is the working reference and y has to be
                                 # compared to it, not to zero.
-                                _dk = _mm[0][0]
-                                _dsd = seeds.get(_dk[1]) or {}
-                                _dv = pd.get(_dk)
-                                if _dv is not None and "ref_hop" in _dsd:
+                                # ⚠️⚠️ THIS DIAGNOSTIC PRINTED THE WRONG VARIABLE UNTIL
+                                # 2026-08-21 23:3x, AND IT NEARLY BOUGHT A WRONG CONCLUSION.
+                                # It logged `dll_trim` -- the PYTHON dict -- while the actual
+                                # measurement `_y` a few lines above uses `_trim_applied`,
+                                # the C++ READBACK. For an armed PRN dll_trim is zero BY
+                                # DESIGN (Python stands down; see #51), so the line read
+                                # "dll_trim +0.000" on 22 of 27 samples and invited the
+                                # reading "there is no sky term in y" -- when the fleet DLL
+                                # was reporting disc +0.13..+0.51 chips at q>3 on those very
+                                # satellites. A diagnostic that prints a different quantity
+                                # than the code under test is worse than no diagnostic.
+                                #
+                                # WHAT THIS NOW ANSWERS, and it is the question KV put:
+                                # a Kalman loop is SUPPOSED to feed and consume -- that is
+                                # vector tracking -- and closing the loop is stabilising
+                                # PROVIDED the fed-back quantity is an OBSERVATION. A
+                                # discriminator is an observation (it correlates the replica
+                                # against the sky). `held - cp_pred` is a difference of two
+                                # PREDICTIONS and observes nothing. So the diagnosis turns
+                                # entirely on HOW MUCH SKY IS IN y, which is what `trim` and
+                                # `disc` measure. Print them, per satellite, next to the term
+                                # they are supposed to correct.
+                                # `fleet` carries the previous cycle's per-PRN disc (it is
+                                # rebuilt later in this cycle) -- one cycle old, the same
+                                # causality the readback already has, and guarded because it
+                                # does not exist on the first pass.
+                                try:
+                                    _dfl = fleet
+                                except NameError:
+                                    _dfl = {}
+                                for _dk, _dyy, _dsg, _dbd in _mm[:4]:
+                                    _dsd = seeds.get(_dk[1]) or {}
+                                    _dv = pd.get(_dk)
+                                    if _dv is None or "ref_hop" not in _dsd:
+                                        continue
                                     _dheld = dr_seed_phys(_dsd, _h1, args.hops_per_sec,
                                                           args.chip_rate_hz, args.carrier_hz,
                                                           args.code_doppler_sign, _DR_MOD)
                                     _dcp = cp_predicted(_dv, _th)
-                                    _log("JFEED-TERMS %s PRN %d: held %+.3f  dll_trim %+.3f"
-                                         "  cp_pred %+.3f  -> y %+.3f (mod %.0f) | legacy "
-                                         "clk %+.3f + b %+.3f = %+.3f | joint clk %+.3f"
-                                         % (band_id, _dk[1], _dheld,
-                                            dll_trim.get(_dk[1], 0.0), _dcp,
-                                            ((_dheld + dll_trim.get(_dk[1], 0.0) - _dcp)
-                                             % _DR_MOD), _DR_MOD,
+                                    _darm = _dk[1] in _ft_armed_last
+                                    _dtrim = (float((_ft_readback.get(_dk[1]) or {})
+                                                    .get("trim_chips") or 0.0)
+                                              if _darm else dll_trim.get(_dk[1], 0.0))
+                                    _drow = _dfl.get(_dk[1]) or {}
+                                    _ddisc = _drow.get("disc")
+                                    _dq = _drow.get("q")
+                                    _log("JFEED-TERMS %s PRN %d [%s]: held %+.3f  "
+                                         "trim_applied %+.4f (py %+.4f)  disc %s q %s  "
+                                         "cp_pred %+.3f -> y %+.3f | legacy clk %+.3f + b "
+                                         "%+.3f = %+.3f | joint clk %+.3f"
+                                         % (band_id, _dk[1],
+                                            "ARMED-cpp" if _darm else "python",
+                                            _dheld, _dtrim, dll_trim.get(_dk[1], 0.0),
+                                            ("%+.4f" % _ddisc) if _ddisc is not None else "-",
+                                            ("%.2f" % _dq) if _dq is not None else "-",
+                                            _dcp,
+                                            ((_dheld + _dtrim - _dcp) % _DR_MOD),
                                             clk_now, bsat.get(_dk[1], now_w),
                                             clk_now + bsat.get(_dk[1], now_w), _js.clk))
                             _nok = _js.cycle(_mm, t_now_abs)
