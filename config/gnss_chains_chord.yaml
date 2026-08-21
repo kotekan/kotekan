@@ -821,7 +821,17 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # KCOH lines show "N row-injected". FALSIFIER: e5a's kcoh sig class COLLAPSES vs
     # controls (a wrong row rate folds the signal away - the exact opposite signature
     # of the intended fix) => disarm this flag alone, keep 16b.
-    kcoh-rate-from-row: 1
+    # ⚠️ ARM 17 DISARMED 04:1x after 2.5 h / 163 folds: A WASH -- pre-registered ambiguous.
+    # Injection fired (3-7 sats/fold) and injected sats folded at smooth row-class rates,
+    # but: e5a eta duty 0.77 vs e5b 0.88 / b2a 0.82 over 12 paired polls (marginal
+    # deficit, no collapse), and the dose-response is FLAT (frac(sig>100) 0.35-0.44
+    # across 1-7 injections -- no trend, no harm, no help). The quiet row is real but
+    # ~0.5-1 Hz STALE against the plant's 0.02 Hz/s drift -- right at the 1 s fold's
+    # decoherence edge -- so quiet-but-stale ties noisy-but-fresh. The overnight
+    # DISARMED window is the paired control; judge the A/B delta in the morning.
+    # Next levers if re-tried: kcoh-row-max-sigma 0.5 (confident rows only), or a
+    # drift-extrapolated row prediction (rate + rrate_dot forward to the fold epoch).
+    # kcoh-rate-from-row: 1
     # ── ARM 14 (2026-08-20 ~12:0x, KV): the fine feed steps aside on the commanded chain ──
     # Arm 13's attribution: kcoh-fed E25 converged & released exactly as predicted; the
     # E2/E10 ramps were the FINE PHASE FEED feeding DURING the slew ("2 fine-fed") past
