@@ -1368,7 +1368,7 @@ int main(int argc, char** argv) {
                 const int Ne = (int)prompts.size();
                 auto fold = [&](const std::vector<std::complex<double>>& src, bool cmd) {
                     std::vector<std::complex<double>> out(src.size());
-                    double phi = 0.0, prev_applied = 0.0;
+                    double phi = 0.0, prev_applied = 0.0, ct_prev = 0.0;
                     bool have = false;
                     for (int k = 0; k < (int)src.size(); ++k) {
                         const double ct = cmd ? rec_ctrim[(size_t)k] : 0.0;
@@ -1379,10 +1379,16 @@ int main(int argc, char** argv) {
                             const double dcyc =
                                 (applied - prev_applied) * rec_tabs[(size_t)k];
                             phi += 2.0 * M_PI * dcyc;    // the re-pin fold (reanchored=3)
-                            phi += 2.0 * M_PI * ct * dtk; // f_nco*dt (the slope term)
+                            // MIDPOINT pairing: neither endpoint survives the bench --
+                            // ct(new) and ct(prev) both leave ~|dctrim|*dt-class rms
+                            // under an aggressive staircase, because a step also moves
+                            // the record's PHASE CENTROID (window-center, not window-
+                            // start): the effective slope over the gap is the average.
+                            phi += 2.0 * M_PI * 0.5 * (ct_prev + ct) * dtk;
                             phi = std::remainder(phi, 2.0 * M_PI);
                         }
                         prev_applied = applied;
+                        ct_prev = ct;
                         have = true;
                         out[(size_t)k] = src[(size_t)k] * std::polar(1.0, -phi);
                     }
@@ -1481,7 +1487,8 @@ int main(int argc, char** argv) {
                        "ratio   rms 1st/2nd (mcyc)\n"
                        "       commanded   %+10.4f   %12.3f   %.4f/%.4f   %6.3f   %8.3f/%8.3f\n"
                        "       control     %+10.4f   %12.3f   %.4f/%.4f   %6.3f   %8.3f/%8.3f\n"
-                       "       step-pairing drip (sum |dctrim|*dt): %.3f mcyc total\n",
+                       "       old-pairing drip (sum |dctrim|*dt, now charged to the "
+                       "correct gap): %.3f mcyc\n",
                        o.bench_cmd_const, o.bench_cmd_slew, o.bench_cmd_every,
                        o.bench_cmd_max, Ne, sc.rate, sc.eo * 1e3, sc.c1, sc.c2,
                        sc.c2 > 0.0 ? sc.c1 / sc.c2 : 0.0, sc.rms1, sc.rms2, sk.rate,

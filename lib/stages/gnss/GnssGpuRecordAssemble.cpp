@@ -81,6 +81,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _phi_cmd_prev.assign(n, 0.0);
     _phi_cmd_ok.assign(n, 0);
     _fcar_prev.assign(n, 0.0);
+    _fnco_prev.assign(n, 0.0);
     _fcar_prev_ok.assign(n, 0);
     _a_prev.assign(n, {0.0, 0.0});
     _a_prev_ok.assign(n, 0);
@@ -531,7 +532,20 @@ void GnssGpuRecordAssemble::main_thread() {
                     // it evaluated to (ctrim - f_offset)/2, MHz-scale garbage (see the
                     // PrnCtl::ctrim_hz doc, gnssGpuChain.hpp).
                     rec[gnss::REC_TRIM_INC] = (float)(c.ctrim_hz * dt);
-                    _phi[p] += 2.0 * M_PI * c.f_nco * dt;
+                    // ⚠️ THE MIDPOINT of the previous and current f_nco (e2e [4e],
+                    // 2026-08-21, MEASURED): neither endpoint is right. dt spans
+                    // [t_prev, t_now]; charging the NEW slope over that gap left a
+                    // persistent |dctrim|*dt offset per command step (the "[4e] drip"),
+                    // but charging the OLD slope leaves the same-size residue with the
+                    // opposite lineage, because a step also moves the record's PHASE
+                    // CENTROID (the prompt integrates over the window; its phase sits at
+                    // window CENTER, the argument anchor at window START). The average is
+                    // exact: bench commanded rms 7.8 vs control 7.5 mcyc under a
+                    // 4x-live staircase, from ~20-26 for either endpoint. REC_TRIM_INC
+                    // above deliberately keeps THIS record's ctrim: it documents what the
+                    // producer applied to this record's despread -- a different (and
+                    // correct) statement.
+                    _phi[p] += 2.0 * M_PI * 0.5 * (_fnco_prev[p] + c.f_nco) * dt;
                     // Keep the ROTATION phase bounded, but track the NCO phase UNWRAPPED (in
                     // cycles) for the carrier-phase export. remainder() slides phi by whole
                     // multiples of 2*pi, which a rotation cannot see and a mod-1 phase export
@@ -540,8 +554,9 @@ void GnssGpuRecordAssemble::main_thread() {
                     // about one cycle per wrap: measured as a per-satellite ADR-rate error of a
                     // few Hz, scaling with each satellite's carrier trim (2026-07-13).
                     _phi[p] = std::remainder(_phi[p], 2.0 * M_PI);
-                    _phi_cyc[p] += c.f_nco * dt;
+                    _phi_cyc[p] += 0.5 * (_fnco_prev[p] + c.f_nco) * dt;
                 }
+                _fnco_prev[p] = c.f_nco; // AFTER the charge: next record's gap rides this value
                 const std::complex<double> rot = std::polar(1.0, -_phi[p]);
                 // #72: PUBLISH THE CURRENCY. `rot` is about to be applied to slots 3/4 and to
                 // every comb column, and its exponent has a per-instance ARBITRARY origin. Ship
