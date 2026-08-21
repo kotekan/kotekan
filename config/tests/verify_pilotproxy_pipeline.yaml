@@ -17,6 +17,14 @@
 # uint64 powers and coarse rational mask from the dumped voltage plus the
 # runtime bundle and compares bit-for-bit.
 #
+# This harness selects `decision_mode: coarse` deliberately: freshly exported
+# development bundles remain `pending_campaign`, so the production
+# `require_fine_calibration: true` gate must reject them. The separate
+# gpu_batch/test_pilotproxy_detector.yaml sweep exercises calibrated fine-mask
+# arithmetic against its CPU oracle; this file exercises the complete Kotekan
+# metadata/bundle/packer/output path without pretending that pending
+# calibration is deployable.
+#
 # Requires a PilotProxy runtime bundle on disk (default
 # fake_data/pilotproxy_bundle; see config/fengine/include/dtv_chord.j2 for the
 # export command) and an output directory (default fake_data/pilotproxy_verify):
@@ -150,6 +158,7 @@ run_dtv_detector:
               dtv_powers_name: dtv_powers
               num_frequencies: num_local_freq
               decision_mode: coarse
+              require_fine_calibration: false
               # pilot_profiles_path / weights_path inherited from the top level
             - name: cudaSyncOutput
             - name: cudaOutputData
