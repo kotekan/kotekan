@@ -6147,6 +6147,23 @@ def main(argv=None, rx=None, publisher=None):
                             and float(_row.get("coh_frac", 0) or 0)
                             >= args.joint_min_coh_frac)
 
+                # ⚠️ NOTES MUST ESCAPE EVEN WITH NO DETECTIONS (2026-08-21). The shadow
+                # block below is gated on `offs` -- this chain's OWN detections -- so on a
+                # model-primary chain the filter's notes were never drained and never
+                # logged. Measured: the state rejected 494 measurements in a row with
+                # updates frozen at 3, the DEAF latch fired exactly as designed, and not
+                # one line reached the operator. Identical in shape to the DRCLK defect
+                # recorded a few hundred lines below (the four model-primary chains never
+                # log the clock they consume). Drain first, unconditionally.
+                if args.rrate_state or args.joint_shadow:
+                    try:
+                        _jsn = rx.joint_receiver(band_id, CODE_LEN,
+                                                 rereference=args.joint_rereference)
+                        for _n in _jsn.drain_notes():
+                            _log_rl("joint-note", "JOINT %s: %s" % (band_id, _n),
+                                    every_s=10.0)
+                    except Exception:
+                        pass
                 if args.joint_shadow and offs:
                     try:
                         # P3: ONE state for the whole receiver, band carried as a
@@ -6226,6 +6243,7 @@ def main(argv=None, rx=None, publisher=None):
                         for _n in _js.drain_notes():
                             _log_rl("joint-note", "JOINT %s: %s" % (band_id, _n),
                                     every_s=10.0)
+                        _drained = True
                         _p2c_tick(_js, t_now_abs)
                         for _p, _d in offs:
                             if _p2c_hold(_js, (tag, _p)):
