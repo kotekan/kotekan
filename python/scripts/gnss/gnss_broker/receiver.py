@@ -111,11 +111,20 @@ class Receiver(object):
             # which thread happened to construct the filter first.
             if cur is not None and "rereference" in kw:
                 cur.rereference = bool(kw["rereference"])
-            if cur is None or float(code_len) < cur.L:
+            if cur is None:
                 kw = dict(kw)
-                kw["code_len"] = float(code_len) if cur is None else min(float(code_len), cur.L)
+                kw["code_len"] = float(code_len)
                 kw.setdefault("ref_band", band)
                 self._joint["__receiver__"] = JointReceiverState(**kw)
+            elif float(code_len) < cur.L:
+                # ADOPT THE SHORTER PERIOD IN PLACE -- never rebuild. Rebuilding discarded
+                # every row, so a second constellation joining WIPED the population already
+                # working (measured 2026-08-21 14:16: 5 healthy GPS rows lost the instant
+                # gal_e5a was fed, state back as all-Galileo, clock re-converged ~14 chips
+                # away, every consumer refused it including GPS). Reducing a modulus loses
+                # no information -- see JointReceiverState.shorten_modulus -- so the state
+                # migrates instead: same rows, same covariance, clk re-wrapped.
+                cur.shorten_modulus(float(code_len))
             return self._joint["__receiver__"]
 
     def joint_ambiguous(self):

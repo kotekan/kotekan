@@ -739,6 +739,39 @@ class JointReceiverState:
         return ((v + self.L / 2.0) % self.L) - self.L / 2.0
 
     @_locked
+    def shorten_modulus(self, code_len):
+        """Adopt a SHORTER code period, keeping every row (task GAP-2, 2026-08-21).
+
+        A chain with a shorter code joining the receiver used to REBUILD this object from
+        scratch, discarding x and P -- so feeding a second constellation wiped the
+        population that was already working. Measured live 14:16-14:19: arming Galileo on
+        gal_e5a (whose CODE_LEN differs from gps_l5's) dropped 5 healthy GPS rows, the
+        state came back all-Galileo, its clock re-converged onto the new population ~14
+        chips from the Galileo legacy clock, and every consumer -- GPS included -- refused
+        it. The filter was correct throughout; the BOOKKEEPING threw away the answer.
+
+        Reducing the modulus is well defined and loses no information (the class note's own
+        rule: 'reducing to a shorter period is well defined, lengthening is not'):
+          * the biases, tau_band and clk_rate are small SIGNED offsets, not modular
+            residues -- they carry over untouched;
+          * the covariance is unchanged: knowing a value mod a shorter period does not make
+            any estimate less certain;
+          * only clk is a modular residue, so it alone is re-wrapped into the new period.
+        Refuses to LENGTHEN, because a measurement known only mod 10230 cannot be promoted
+        to mod 1023000 without inventing the segment -- the same asymmetry the clock
+        adoption's modulus rule rests on.
+
+        Returns True if the modulus changed.
+        """
+        L_new = float(code_len)
+        if not (L_new > 0.0) or L_new >= self.L:
+            return False
+        self.L = L_new
+        # clk is the only modular quantity in the state. Everything else is an offset.
+        self.x[0] = ((float(self.x[0]) + L_new / 2.0) % L_new) - L_new / 2.0
+        return True
+
+    @_locked
     def update(self, key, y_chips, sigma_chips, t_now, band=None):
         """Feed one y_i = clk + b_i observation. Returns the normalized innovation, or
         None if rejected/deferred. A NEW satellite is BORN AT ITS MEASUREMENT (b0 = y - clk)
