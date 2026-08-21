@@ -17,8 +17,8 @@
 #include "json.hpp" // for json
 
 #include <array>              // for array
-#include <cassert>            // for assert
 #include <bitset>             // for bitset
+#include <cassert>            // for assert
 #include <cctype>             // for isxdigit
 #include <cmath>              // for isfinite
 #include <cstddef>            // for ptrdiff_t
@@ -127,8 +127,7 @@ private:
         json pilot_profiles;
         profiles_file >> pilot_profiles;
 
-        if (pilot_profiles.value("schema_version", "")
-            != "pilotproxy_runtime_pilot_profiles_v1")
+        if (pilot_profiles.value("schema_version", "") != "pilotproxy_runtime_pilot_profiles_v1")
             throw std::runtime_error(
                 "cudaPilotProxyDetector: unsupported or missing pilot_profiles schema_version");
         if (!pilot_profiles.contains("profiles") || !pilot_profiles.at("profiles").is_array()
@@ -175,9 +174,9 @@ private:
                     fmt("cudaPilotProxyDetector: physical channel {:d} is outside ATSC 14-36"),
                     profile.physical_channel));
             if (!physical_channels.insert(profile.physical_channel).second)
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: duplicate physical channel {:d}"),
-                    profile.physical_channel));
+                throw std::runtime_error(
+                    fmt::format(fmt("cudaPilotProxyDetector: duplicate physical channel {:d}"),
+                                profile.physical_channel));
             // chord_channel_id is the kotekan chordMetadata coarse_freq
             // namespace (CHORDTelescope::to_freq_id). Rows without it cannot
             // be bound on a CHORD node and are skipped with a note at
@@ -185,11 +184,12 @@ private:
             if (row.contains("chord_channel_id") && !row.at("chord_channel_id").is_null()) {
                 profile.chord_channel_id = row.at("chord_channel_id").get<int>();
                 if (profile.chord_channel_id < 0)
-                    throw std::runtime_error("cudaPilotProxyDetector: chord_channel_id is negative");
+                    throw std::runtime_error(
+                        "cudaPilotProxyDetector: chord_channel_id is negative");
                 if (!chord_channel_ids.insert(profile.chord_channel_id).second)
-                    throw std::runtime_error(fmt::format(
-                        fmt("cudaPilotProxyDetector: duplicate chord_channel_id {:d}"),
-                        profile.chord_channel_id));
+                    throw std::runtime_error(
+                        fmt::format(fmt("cudaPilotProxyDetector: duplicate chord_channel_id {:d}"),
+                                    profile.chord_channel_id));
                 has_chord_channel_id = true;
             }
             profile.pilot_frequency_hz = row.at("pilot_frequency_hz").get<double>();
@@ -226,8 +226,8 @@ private:
                 throw std::runtime_error(fmt::format(
                     fmt("cudaPilotProxyDetector: weight offset {:d} is not the expected contiguous "
                         "offset {:d} for physical channel {:d}"),
-                    std::int64_t(profile.weight_offset_bytes),
-                    std::int64_t(expected_weight_offset), profile.physical_channel));
+                    std::int64_t(profile.weight_offset_bytes), std::int64_t(expected_weight_offset),
+                    profile.physical_channel));
             expected_weight_offset += profile.weight_nbytes;
 
             if (!row.contains("fine_calibration") || !row.at("fine_calibration").is_object())
@@ -254,8 +254,7 @@ private:
                         "compiled detector core does not support them");
                 profile.fine_calibrated = true;
                 profile.anchor_bin = calibration.at("anchor_bin").get<int>();
-                profile.designated_half_width =
-                    calibration.at("designated_half_width").get<int>();
+                profile.designated_half_width = calibration.at("designated_half_width").get<int>();
                 profile.cfar_rank = calibration.at("cfar_rank").get<int>();
                 profile.multiplier_q16 =
                     calibration.at("cfar_multiplier_q16").get<unsigned long long>();
@@ -292,8 +291,7 @@ private:
                     if (parsed != encoded.size())
                         throw std::runtime_error(
                             "cudaPilotProxyDetector: trailing data in bulk mask word");
-                    bulk_population +=
-                        std::bitset<64>(profile.bulk_mask_words[word]).count();
+                    bulk_population += std::bitset<64>(profile.bulk_mask_words[word]).count();
                 }
                 if (profile.cfar_rank >= bulk_population)
                     throw std::runtime_error(
@@ -302,8 +300,7 @@ private:
                 // one independent-bin guard on each side. With the frozen
                 // 2x fine padding this is two padded bins beyond the set.
                 const int exclusion_half_width = profile.designated_half_width + 2;
-                for (int offset = -exclusion_half_width; offset <= exclusion_half_width;
-                     ++offset) {
+                for (int offset = -exclusion_half_width; offset <= exclusion_half_width; ++offset) {
                     const int bin = (profile.anchor_bin + offset + fine_bins) % fine_bins;
                     if ((profile.bulk_mask_words[bin >> 6] >> (bin & 63)) & 1ULL)
                         throw std::runtime_error(

@@ -131,15 +131,21 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
 # We want the `python` command to point to python3
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
-# Install Blaze for the eigenvalue processes
+# Install Blaze for the eigenvalue processes.  Its automatic cache probe can
+# report the build host's aggregate LLC (hundreds of MiB on hosted runners),
+# then bake an invalid, host-specific value into the installed headers.  Use
+# Blaze's conservative 3 MiB default so this container stays portable.
 RUN mkdir src && \
     ( \
+        cd src && \
         git clone -b v3.8.2 https://bitbucket.org/blaze-lib/blaze.git blaze && \
         cd blaze && \
         git checkout && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBLAZE_CACHE_SIZE_AUTO=OFF \
+            -DBLAZE_CACHE_SIZE=3145728 \
             && \
         cmake --build cmake-build --parallel $(nproc) && \
         cmake --install cmake-build && \

@@ -283,6 +283,9 @@ jobs:
 
   kotekan-gpu-tests:
     name: "GPU"
+    # Requires an online self-hosted x86_64 CUDA runner with /data mounted;
+    # leave false/unset until one is provisioned.
+    if: ${{ vars.ENABLE_SELF_HOSTED_GPU_TESTS == 'true' }}
     needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yaml
     with:
