@@ -83,8 +83,7 @@ common:
   # itself is sound and benched (bench_mass_birth.py / bench_gauge_churn.py) -- it is
   # default-off code, not withdrawn -- but it is unobservable on a healthy state, so it
   # rides with the feed when the rebuild problem above is fixed.
-  # ── ARMED 2026-08-21 21:3x with GAP 2 ATTEMPT 4 (the first honest test) ──────
-  joint-rereference: true
+  # joint-rereference: true
   # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
   # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
@@ -1162,7 +1161,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # prime; JOINT-CLK 77 ADOPTED / 10 REFUSED (all 10 cold-start); 0 filter notes.
     # BASELINE AT ARM: delta +0.313 chips, sigma 0.124, n 7; gps_l5 SEED-OFFSET 7 sats,
     # median +1.72, sigmas 0.13-0.33.
-    joint-model-primary: true
+    # joint-model-primary: true
     joint-consume: clk
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
