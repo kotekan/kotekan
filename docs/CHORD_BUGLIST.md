@@ -320,6 +320,45 @@ estimators rather than two measurements, which has already produced one retracte
 today (the "e5b is 30x less sensitive" claim, killed by a time series).
 [verified 08-22: trims and fold rates read per-chain from the live fleet]
 
+### A0b. THE SATELLITE CLOCK CARRIES NO GROUP-DELAY TERM (TGD/BGD/ISC)  [new 2026-08-22]
+VERIFIED IN CODE, `gnss_ephemeris.py:504`:
+
+    clk = af0 + af1*tc + af2*tc**2 + F_REL*ecc*sqrta*sin(ek)
+
+Polynomial plus relativistic, and nothing else. TGD appears in the repo ONLY inside nav
+decoders (`gps_navdecode.py`, `gps_lnav_encode.py`); nothing feeds it into the correction
+path. Broadcast clocks are referenced to an IONOSPHERE-FREE COMBINATION -- L1/L2 for GPS
+(so an L5 user owes TGD + ISC_L5), E1/E5a for Galileo F/NAV and E1/E5b for I/NAV (so a
+single-frequency E5 user owes the corresponding BGD). None of it is applied.
+
+⚠️ AND THE STRUCTURE EXPLAINS THE SHAPE OF WHAT WE MEASURE. A delay common to every
+satellite of a constellation is DEGENERATE with the receiver clock, so a chain that SOLVES
+its own clock absorbs it and never sees it. A chain that ADOPTS another chain's clock
+inherits the reference chain's convention and shows the difference as a constant. Measured
+2026-08-22, signed median trim by chain:
+
+    gps_l5   -0.005 chips   <- solves its own clock: absorbs its own group delay
+    gal_e5a  +0.848         <- adopts gps_l5's clock
+    gal_e5b  +1.201         <- adopts gps_l5's clock
+    (sign test on the Galileo trims: 13 of 14 positive, p = 0.0009)
+
+⚠️⚠️ BUT THE MAGNITUDE DOES NOT CLOSE, AND THIS ENTRY MUST NOT BE READ AS THE EXPLANATION.
+Broadcast group delays are 5-20 ns = 0.05-0.2 chips. The observed common mode is 85-120 ns
+(+0.85..+1.20 chips) -- about 10x too large -- and e5a/e5b differ by 0.35 chips (34 ns)
+where their BGDs should differ by a few ns. So this accounts for the SHAPE and roughly a
+tenth of the SIZE. The remaining ~90 ns is constellation-common AND band-dependent, which
+points at the replica/code-phase convention or the cross-band adoption arithmetic, not at
+the ephemeris.
+
+THE LEVER: add the group-delay term to `_sat_clock` (per-signal: TGD+ISC for GPS L5, BGD
+E1/E5a and E1/E5b for Galileo). It is one term, it is a genuine correctness bug, and it
+removes a known-wrong constant -- but it will NOT by itself remove the offset, and anyone
+measuring afterwards should expect ~90% of it to remain.
+⚠️ The trims are the ONLY reason we can see this at all: they are the receiver telling us
+the model is wrong by a constant. Do not "fix" the trims by widening a clamp or feeding
+them into an estimator before the constant is accounted for -- three interventions have
+already failed that way (the ungated feed, the gated feed, the slew arm).
+
 ### A1. THE GATHER WEDGES ON A FRAME0 RESET, silently, and it kills the code loop fleet-wide
 **Rank 1 because it VOIDS EXPERIMENTS, and it has done so at least three times.** `FleetDll`
 keeps a strictly monotonic per-chain high-water mark. An F-engine restart moves `frame0`, so the
