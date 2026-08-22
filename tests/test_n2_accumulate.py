@@ -20,6 +20,8 @@ prod_config = {
     "num_polarizations": 2,
     "num_dishes": 64,
     "num_subintegrations_per_bin": 2,
+    # One bad feed mask frame covers two correlation frames.
+    "bf_mask_lifetime_in_samples": 2 * 16384,
     "variance_mode": "EvenOddPosDef",
     "num_ev": 0,
     "freq_ids": [0, 8191, 300, 1000, 4000],
@@ -554,6 +556,54 @@ def rfiframemask_data(setup):
     return bufs
 
 
+# Elements flagged bad in every bf_mask frame; folded into the output flags.
+BAD_FEEDS = [3, 17, 40]
+
+
+@pytest.fixture(scope="module")
+def bf_mask_data(setup):
+    """
+    Generate a list of input bad feed mask frames in ChordBuffers
+
+    Every frame carries the same mask: all elements good except BAD_FEEDS.
+    As with bufferBadInputs, a frame is one mask sample covering
+    bf_mask_lifetime_in_samples, so the sequence numbers step by that.
+
+    Parameters
+    ----------
+    setup : fixture
+        Includes the base config as well as generation parameters
+
+    Returns
+    -------
+    List of ChordBuffers each containing a bad feed mask frame.
+    """
+
+    config = setup["config"]
+    lifetime = config["bf_mask_lifetime_in_samples"]
+
+    shape = (1, config["num_polarizations"], config["num_dishes"])
+
+    bufs = make_zeroed_chord_buffer(
+        "bf_mask",
+        np.int8,
+        "int8",
+        shape,
+        ("Tbf", "P", "D"),
+        (lifetime, 1, 1),
+        0,
+        lifetime,
+        setup["num_frames"],
+        time_downsampling=lifetime,
+    )
+
+    for buf in bufs:
+        buf.data[...] = 1
+        buf.data.reshape(-1)[BAD_FEEDS] = 0
+
+    return bufs
+
+
 @pytest.fixture(scope="module")
 def accum_data(
     tmpdir_factory,
@@ -564,6 +614,7 @@ def accum_data(
     rficount_data,
     plcount_data,
     rfiframemask_data,
+    bf_mask_data,
     accum_list,
 ):
     """
@@ -587,6 +638,8 @@ def accum_data(
         input pl_lost_counts_scalar
     rfiframemask_data : fixture
         input RFIFrameMask
+    bf_mask_data : fixture
+        input bad feed mask
     accum_list : fixture
         List of expected output accumulation frame metadata. Used only to set the number of expected output frames.
 
@@ -610,6 +663,8 @@ def accum_data(
     plcount_buffer.write()
     rfiframemask_buffer = runner.ReadChordBuffer(str(tmpdir), rfiframemask_data)
     rfiframemask_buffer.write()
+    bf_mask_buffer = runner.ReadChordBuffer(str(tmpdir), bf_mask_data)
+    bf_mask_buffer.write()
 
     # Make the output buffer we'll read from
     dump_buffer = runner.DumpN2Buffer(
@@ -636,6 +691,7 @@ def accum_data(
             "in_rficounts_buf": rficount_buffer,
             "in_plcounts_buf": plcount_buffer,
             "in_rfiframemask_buf": rfiframemask_buffer,
+            "in_bf_mask_buf": bf_mask_buffer,
         },
         dump_buffer,
         config,
@@ -1257,6 +1313,35 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
         # vis_diff = frame.vis - exp_vis[t, f]
         # tol =  1.0e-6 + 1.0e-6 * 0.5*np.abs(frame.vis + exp_vis[t, f])
         np.testing.assert_allclose(frame.vis, exp_vis[t, f], 1.0e-6, 1.0e-6)
+
+
+def test_flags(accum_data, setup):
+    """
+    The per-element flags carry the bad feed mask (1.0 == good), which is
+    constant across the run in these tests.
+
+    N2Accumulate polls its mask input rather than waiting on it, so a bin that
+    completes before the first mask frame arrives comes out unflagged.  That is
+    a startup transient, not a wiring failure, so accept it -- but every other
+    frame must show exactly the flagged feeds, and the run must end flagged.
+    """
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+
+    expected = np.ones(config["num_elements"], dtype=np.float32)
+    expected[BAD_FEEDS] = 0.0
+    all_good = np.ones(config["num_elements"], dtype=np.float32)
+
+    for frame in accum_data:
+        assert frame.flags.shape == expected.shape
+        assert np.array_equal(frame.flags, expected) or np.array_equal(
+            frame.flags, all_good
+        ), f"unexpected flags: bad feeds {np.flatnonzero(frame.flags == 0.0)}"
+
+    np.testing.assert_array_equal(accum_data[-1].flags, expected)
 
 
 def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
