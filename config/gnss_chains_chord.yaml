@@ -1278,7 +1278,27 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # PER-SAT PREDICTION, NOT BOTH -- unless something outside the loop pins its input.
     # Reverted to the attempt-6 configuration, which is measured-good (100% accepted, y
     # slope -0.0055 chips/s, n 16, q |dq| 0.103).
-    joint-consume: clk,rate
+    # ── CLOCK CONSUMER DISARMED 2026-08-22 ~20:00, e5a ONLY (the twinned pair's first
+    # single-axis A/B) ─────────────────────────────────────────────────────────────
+    # `clk` replaces the adopted GPS clock LEVEL with the joint filter's every cycle
+    # (:7119). Measured over 2 h on 2026-08-22: JOINT-CLK ADOPTED fired 195x on this chain
+    # and 187x on e5b, against 1 on bds_b2a and 2 on gps_l5 -- and PAIRED IN TIME against
+    # gps_l5 the clocks read bds_b2a +0.001 chips, gal_e5a +0.550, gal_e5b +0.575, wandering
+    # 0 -> +1.3 over 20-min blocks. Seeds go at model+clk, so a clock +0.55 high forces the
+    # whole constellation's DLL to trim it back: measured common trim gal_e5a -0.938,
+    # gal_e5b -0.967, gps_l5 -0.019 (its seeds are sky-anchored, so its trim never sees the
+    # model -- which is why it was never a valid control for this).
+    # ⇒ THE "GALILEO CONSTELLATION OFFSET" (-75 ns, banked 08-22 evening) IS THIS FLAG, not
+    # GGTO/BGD/an inter-system bias. bds_b2a is model-primary DR on the SAME 1176.45 MHz
+    # band, a different constellation, and shows NOTHING. Change the constellation: nothing.
+    # Change the clock source: everything.
+    # ONE CHAIN ON PURPOSE: e5b keeps `clk,rate` as the same-satellite/same-sky control, and
+    # bds_b2a is the cross-constellation one. `rate` STAYS -- it is the fix for the ~80x
+    # biased l-a EMA and is not implicated.
+    # JUDGE ON (~10 min, no soak): gal_e5a-gps_l5 clock paired in time -> bds_b2a's +0.001
+    # (from +0.550) while e5b stays ~+0.575; gal_e5a common trim -> ~0 (from -0.938).
+    # REVERT: restore `clk,rate` on this line + broker restart.
+    joint-consume: rate
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
     # when the tap is off-peak -- so an off-peak satellite fails the gate and is never trimmed
@@ -1436,8 +1456,27 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # ⚠️ RE-ARM ONLY WITH A HANDOVER: the Python trim must keep running for NOT-YET-ARMED
     # PRNs (acquisition authority) and stand down once the C++ loop takes a PRN. Arming
     # without that is #49's latch made absolute.
-    # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    # fleet-trim-bandwidth: 2.5
+    # ── FLEET CODE LOOP RE-ARMED 2026-08-22 ~20:00 ───────────────────────────────────
+    # The 08-16 blocker above is GONE: the Python->C++ trim handover is per-PRN since
+    # eec1d2f12 (the chain-wide `not args.fleet_trim_url` test is dead, :8464), so the slow
+    # integrator keeps acquisition authority for NOT-YET-ARMED PRNs and stands down per PRN
+    # as the C++ loop takes them -- exactly the handover the disarm note demanded.
+    # EXISTENCE PROOF: gal_e5a and gal_e5b are the same class of chain (model-primary, no
+    # detectors, dead-reckon), both run this same fleet-trim-url, and both lock 5-6 sats
+    # with real trims. e5b was re-armed this way on 2026-08-22 and held.
+    # WHY NOW: bds_b2a has no code loop at all -- every trim in /fleet_trim/get_dll reads
+    # exactly 0.000 while its q is computed and ignored. It is not failing to lock; nothing
+    # is trying to lock it. This is orthogonal to the clock question, so it does NOT spend
+    # bds_b2a as the clock-provenance control (no joint-consume here, deliberately) -- it
+    # ADDS a trim-side control beside the clock-side one.
+    # ⚠️ DELIBERATELY NOT ADDED: joint-consume. Arming `rate` in the same restart would make
+    # neither change attributable, and this chain has no ramp to fix (pooled model-held
+    # slope -0.00045 chips/s at r=-0.04, against gal_e5a's -0.0056 at r=-0.68).
+    # JUDGE ON (~10 min): bds_b2a trims going NONZERO in /fleet_trim/get_dll and armed-PRN
+    # count > 0 in the FLEET-TRIM policy line. REVERT: re-comment these three lines.
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
+    fleet-trim-readback: 1
     # #33: COMMAND-OFF on purpose -- the same-carrier control arm for gal_e5a's closed
     # loop (its feed auto-prefers deep_rate_full_* once the tracker restart serves them).
     trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,\

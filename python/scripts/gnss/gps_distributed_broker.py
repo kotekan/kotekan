@@ -7279,10 +7279,29 @@ def main(argv=None, rx=None, publisher=None):
                         v2 = pd2.get((ctag, prn))
                         dop_geo = -v["range_rate_mps"] / dr_eph_mod.C_LIGHT * args.carrier_hz
                         dop_seed = args.doppler_sign * dop_geo + clock_bias
+                        # ⚠️ THE HALVED DRATE (found 2026-08-22, the per-sat ramp's root).
+                        # This line predates the task #52 pair centring: when pd2 sat at
+                        # now_w+4 the /4.0 was a correct forward difference, but pd2 moved
+                        # to now_w+2 (and pd0 to now_w-2) and this consumer kept /4.0 over
+                        # a 2 s span -- so every model-primary seed's doppler_rate_hz_s was
+                        # EXACTLY HALF the truth. The missing half leaks into held-vs-model
+                        # as (f_chip/f_c) * (drate/2) * T/2 per re-pin interval T: measured
+                        # ramp = 0.0549 chips/s per Hz/s of drate over Galileo (r=+0.68,
+                        # 29 chain-PRNs), implying T ~ 25 s -- the observed re-pin cadence.
+                        # drate < 0 for EVERY satellite (Doppler falls through a pass), so
+                        # the per-sat ramps all share a sign and pooled they masqueraded as
+                        # a constellation-common drift. The centred pair is what :4670 (the
+                        # dop_model seed slot) already uses; this is the same fix, same
+                        # first-cycle fallback.
                         drate = 0.0
-                        if v2 is not None:
+                        v0 = (dr_state.get("pd0") or {}).get((ctag, prn))
+                        if v2 is not None and v0 is not None:
                             drate = (args.doppler_sign
-                                     * (-(v2["range_rate_mps"] - v["range_rate_mps"]) / 4.0)
+                                     * (-(v2["range_rate_mps"] - v0["range_rate_mps"]) / 4.0)
+                                     / dr_eph_mod.C_LIGHT * args.carrier_hz)
+                        elif v2 is not None:
+                            drate = (args.doppler_sign
+                                     * (-(v2["range_rate_mps"] - v["range_rate_mps"]) / 2.0)
                                      / dr_eph_mod.C_LIGHT * args.carrier_hz)
                         # inverse of cp_loc above: physical cp -> sample-0 cp0 removes the
                         # nominal advance AND the code-Doppler drift (the seed currency)
