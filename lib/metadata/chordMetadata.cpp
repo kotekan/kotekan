@@ -173,9 +173,6 @@ struct chordMetadataFormat {
     // the upchannelization index for each frequency (0 ... freq_upchan_factor - 1)
     int32_t freq_upchan_index[CHORD_META_MAX_FREQ];
 
-    // NUL-terminated; empty when no flagging update is in effect
-    char bad_inputs_update_id[CHORD_META_MAX_UPDATE_ID];
-
     int32_t rfi_flagged_samples;
     int32_t lost_timesamples;
 
@@ -238,10 +235,6 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
     if (fmt->coarse_freq[0] != -1) // -1 is an invalid frequency index
         this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq + nfreq));
 
-    if (fmt->bad_inputs_update_id[0] != '\0')
-        this->set_bad_inputs_update_id(
-            std::string(fmt->bad_inputs_update_id,
-                        strnlen(fmt->bad_inputs_update_id, sizeof(fmt->bad_inputs_update_id))));
     if (fmt->rfi_flagged_samples != -1)
         this->set_rfi_flagged_samples(fmt->rfi_flagged_samples);
     if (fmt->lost_timesamples != -1)
@@ -317,11 +310,6 @@ size_t chordMetadata::serialize(char* bytes) {
                     this->get_nfreq()
                         * sizeof(fmt->coarse_freq[0])); // set bytes not ints but is ok for now
 
-    // empty (all-NUL from the memset) encodes unset; strncpy keeps the last
-    // byte NUL, truncating an over-long ID
-    if (this->has_bad_inputs_update_id())
-        std::strncpy(fmt->bad_inputs_update_id, this->get_bad_inputs_update_id().c_str(),
-                     sizeof(fmt->bad_inputs_update_id) - 1);
     if (this->has_rfi_flagged_samples())
         fmt->rfi_flagged_samples = this->get_rfi_flagged_samples();
     else
@@ -399,9 +387,6 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
         m.metadata.emplace(jsonMetadata::COARSE_FREQ, j.at(jsonMetadata::COARSE_FREQ));
     if (j.contains(jsonMetadata::DATASET_ID))
         m.metadata.emplace(jsonMetadata::DATASET_ID, j.at(jsonMetadata::DATASET_ID));
-    if (j.contains(jsonMetadata::BAD_INPUTS_UPDATE_ID))
-        m.metadata.emplace(jsonMetadata::BAD_INPUTS_UPDATE_ID,
-                           j.at(jsonMetadata::BAD_INPUTS_UPDATE_ID));
     if (j.contains(jsonMetadata::RFI_FLAGGED_SAMPLES))
         m.metadata.emplace(jsonMetadata::RFI_FLAGGED_SAMPLES,
                            j.at(jsonMetadata::RFI_FLAGGED_SAMPLES));
@@ -451,11 +436,6 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
     // TODO: this misses dish_positions etc
 }
 
-
-void copy_bad_inputs_metadata(const chordMetadata& from, chordMetadata& to) {
-    if (from.has_bad_inputs_update_id())
-        to.set_bad_inputs_update_id(from.get_bad_inputs_update_id());
-}
 
 bool metadata_is_chord(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");

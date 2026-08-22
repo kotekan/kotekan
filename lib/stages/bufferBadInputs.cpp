@@ -159,11 +159,6 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
                 throw std::invalid_argument("received bad value 'update_id': "
                                             + json.at("update_id").dump());
             update_id = json.at("update_id").get<std::string>();
-            // Reject IDs that chordMetadata serialization would truncate.
-            if (update_id.size() >= (size_t)CHORD_META_MAX_UPDATE_ID)
-                throw std::invalid_argument("received update_id longer than "
-                                            + std::to_string(CHORD_META_MAX_UPDATE_ID - 1)
-                                            + " characters: " + update_id);
         }
     } catch (std::exception const& e) {
         ERROR("Failed to parse bad input update, ignoring it:\n{:s}", e.what());
@@ -210,7 +205,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
          "for start time {:f} (seq {:d}).",
          update_id, bad_inputs.size(), ts_to_double(start_ts), effective_seq);
 
-    updates.insert(start_ts, {std::move(update_id), std::move(mask)});
+    updates.insert(start_ts, {std::move(mask)});
 
     return true;
 }
@@ -247,8 +242,6 @@ void bufferBadInputs::main_thread() {
         // `bf_mask_lifetime_in_samples` FPGA samples.
         meta->set_fpga_seq_num(frame_index * bf_mask_lifetime_in_samples);
         meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
-        if (update != nullptr && !update->update_id.empty())
-            meta->set_bad_inputs_update_id(update->update_id);
         out_buf->mark_frame_full(unique_name, frame_id);
     }
 }

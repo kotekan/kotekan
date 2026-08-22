@@ -134,10 +134,11 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
  * @buffer  in_bf_mask_buf  Optional bad feed mask (1 == good), folded over each
- * accumulation bin into the output frames' per-element flags. Its frames arrive far more
- * slowly than the correlation frames -- one per @c bf_mask_lifetime_in_samples -- so this
- * stage polls it rather than waiting on it, ANDing every mask it sees during a bin and
- * carrying the newest one forward. Without it the flags stay at their sentinel value (0).
+ * accumulation bin into the output frames' per-element flags. Its cadence is independent of
+ * the correlation frames: one mask covers @c bf_mask_lifetime_in_samples, which may be
+ * longer or shorter than a correlation frame. This stage therefore polls the input and
+ * drains whatever has arrived rather than waiting for a frame, ANDing every mask it sees
+ * during a bin and carrying the newest one forward. Without it the flags are all good.
  *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
  *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.

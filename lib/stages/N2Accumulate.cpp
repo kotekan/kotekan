@@ -382,12 +382,15 @@ void N2Accumulate::main_thread() {
         if (rfiframemask == nullptr)
             break;
 
-        // Take in whatever bad feed masks have arrived.  One mask frame covers
-        // bf_mask_lifetime_in_samples, far more than one correlation frame, so waiting on
-        // this input would stall the accumulation; poll it with a deadline already in the
-        // past instead.  Every mask seen during a bin is ANDed into that bin's flags -- a
-        // feed flagged at any point in the bin is flagged for the whole bin -- and the
-        // newest one is carried forward to cover the bins that see no new frame.
+        // Take in whatever bad feed masks have arrived.  One mask covers
+        // bf_mask_lifetime_in_samples, which is independent of the correlation frame length
+        // and may be longer or shorter than it, so this neither waits for a frame -- which
+        // would stall the accumulation whenever masks are the slower of the two -- nor
+        // assumes one per iteration, since they can equally be the faster.  Poll with a
+        // deadline already in the past and drain everything queued.  Every mask seen during
+        // a bin is ANDed into that bin's flags -- a feed flagged at any point in the bin is
+        // flagged for the whole bin -- and the newest is carried forward to cover the bins
+        // that see no new frame.
         if (in_bf_mask_buf != nullptr) {
             // A deadline already in the past turns the wait into a poll.
             const timespec poll = {0, 0};

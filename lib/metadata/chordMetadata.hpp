@@ -43,9 +43,6 @@ const int CHORD_META_MAX_DIMNAME = 24;
 // Maximum number of visibility matrix samples in a frame
 const int CHORD_META_MAX_VIS_SAMPLES = 64;
 
-// Maximum length of the bad-inputs flagging update ID, including its NUL
-const int CHORD_META_MAX_UPDATE_ID = 64;
-
 class chordMetadata : public metadataObject {
 public:
     chordMetadata();
@@ -320,24 +317,6 @@ public:
         return tel.to_time(this->get_fpga_seq_num());
     }
 
-    /// Identifier of the bad-inputs (bad feed) flagging update in effect when
-    /// this frame's data was processed. Serialization truncates it to
-    /// @c CHORD_META_MAX_UPDATE_ID bytes.
-    void set_bad_inputs_update_id(const std::string& update_id) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        metadata[jsonMetadata::BAD_INPUTS_UPDATE_ID] = update_id;
-    }
-
-    bool has_bad_inputs_update_id() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata.contains(jsonMetadata::BAD_INPUTS_UPDATE_ID);
-    }
-
-    std::string get_bad_inputs_update_id() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata.at(jsonMetadata::BAD_INPUTS_UPDATE_ID).template get<std::string>();
-    }
-
     /// The number of FPGA frames flagged as containing RFI.
     /// NOTE: This value might contain overlap with lost samples, so it can count
     /// missing samples as samples with RFI.  For renormalization this value
@@ -518,10 +497,6 @@ private:
 
 void to_json(nlohmann::json& j, const chordMetadata& m);
 void from_json(const nlohmann::json& j, chordMetadata& m);
-
-/// Copy the bad-inputs flagging fields from @p from onto @p to, skipping any
-/// @p from does not carry.
-void copy_bad_inputs_metadata(const chordMetadata& from, chordMetadata& to);
 
 bool metadata_is_chord(Buffer* buf, int);
 bool metadata_is_chord(const std::shared_ptr<metadataObject>& mc);
