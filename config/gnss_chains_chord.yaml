@@ -1195,6 +1195,32 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # MUST NOT CONSUME ANY JOINT OUTPUT THAT REACHES ITS SEED. Feed, or consume, never both.
     # Left at attempt 5 (`clk,rate`, no feed): the loop is OPEN and this is the configuration
     # that gave the churn fix KV saw in the viewer (mean |dq| 0.103 vs gps_l5 0.487).
+    # ── GAP 2 FEED: TESTED PROPERLY 2026-08-22 01:24-02:07, AND IT FAILS ─────────────
+    # The standing question was whether feed + `clk,rate` winds up on a HEALTHY state or
+    # whether the 22:42-23:07 degradation was just residue from the slew episode. Answered:
+    # it fails on its own. From the best baseline of the session (clk +149.710 +- 0.094,
+    # 16% rejection, |b| <= 5.3, 0 notes) it went, over 37 min:
+    #     t+378   rej 88 /upd 79    |b|  6.3   clk 133.5
+    #     t+1282  rej 431/upd 396   |b| 23.0   clk 178.4   <- |b|>20 falsifier breached
+    #     t+2186  rej 737/upd 629   |b| 46.9   clk 153.6   notes 0 -> 6
+    # ⚠️ I FAILED TO ABORT ON THE FALSIFIER. It was breached at t+1282 and the run continued
+    # 15 more minutes, because the monitor only RECORDED and had no abort. Saying a
+    # falsifier is armed is not the same as arming it.
+    # THE MECHANISM IS NOT (mainly) THE FEEDBACK LOOP. Measured per-satellite scatter of y
+    # about its own straight line -- so a real slow bias is not counted as noise:
+    #     E8 13.3   E16 17.3   E25 15.7   E2 10.8   E32 12.6   E3 9.0   chips
+    #     POOLED 12.5 chips, fed to the filter as joint-sigma = 0.30  ->  UNDERSTATED 42x.
+    # A measurement declared 42x more precise than it is gets ~half its samples rejected,
+    # and the half that survive are the tail nearest the state -- biased sampling that drags
+    # b_sat a little further every cycle while the gauge sloshes it into clk. That also
+    # explains why attempt 6 looked immaculate: its spread was 1.5-3.8 chips. Same config,
+    # quieter sky. The config was never the variable.
+    # ⚠️ AND 12.5 chips of scatter against a physical bias scale under 6 chips may mean the
+    # measurement carries NO per-satellite information at all -- in which case honest
+    # weighting makes the filter correctly ignore it, which is NOT "GAP 2 works now".
+    # OPEN LEAD: y inherits the seed's own steps (r = +0.71 with p90 |seed step|, startup
+    # excluded). The ~150-chip startup class is fixed (--dr-clock-wait-s); the ordinary
+    # 5-30 chip churn is the live thread.
     # joint-model-primary: true
     # ── ATTEMPT 5, ARMED 2026-08-21 22:0x -- CONSUME THE RATE BEFORE FEEDING ────────
     # Attempt 4's forensics: this chain's seeds took their code rate from the l-a EMA
