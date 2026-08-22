@@ -1358,6 +1358,18 @@ def main(argv=None, rx=None, publisher=None):
                          "true drift is ~4e-4 chips/s on this GPS-disciplined clock, so 1.0 "
                          "rejects nothing real (2026-08-09: +223 and -36 chips/s observed "
                          "after node restarts).")
+    ap.add_argument("--joint-feed-max-trim", type=float, default=1.0,
+                    help="only feed the joint state from satellites whose APPLIED DLL trim is "
+                         "inside this many chips, and whose fleet q is at least --lock-q "
+                         "(0 = no gate, the pre-2026-08-22 behaviour). The model-primary "
+                         "measurement y = held + trim - cp_predicted is sky-anchored ONLY "
+                         "while the DLL can hold the tap on the peak: move the seed and the "
+                         "trim moves oppositely, leaving y invariant. Past ~1 chip the "
+                         "correlation triangle has no gradient, the trim stops compensating, "
+                         "and y degenerates into a readback of the consumer's own output. "
+                         "Measured 2026-08-22: median |model - held| 1.8-2.5 chips, so most "
+                         "satellites were ALREADY outside that range when the feed was armed "
+                         "ungated -- which is why it diverged rather than converged.")
     ap.add_argument("--lock-q", type=float, default=2.2,
                     help="treat a satellite as LOCKED for the dead-reckon slew/re-birth "
                          "decision when its fleet discriminator q is at least this "
@@ -6485,6 +6497,7 @@ def main(argv=None, rx=None, publisher=None):
                         _h1 = int(round(t_now_abs * args.hops_per_sec))
                         _th = _h1 / args.hops_per_sec
                         _mm = []
+                        _fd_skip = 0
                         for _prn, _sd in seeds.items():
                             _v = pd.get((tag, _prn))
                             if _v is None or "ref_hop" not in _sd:
@@ -6498,6 +6511,34 @@ def main(argv=None, rx=None, publisher=None):
                             # +445 against a true ~150 with 67-82% of updates rejected.
                             if not _track_ok(_prn):
                                 continue
+                            # ── THE DLL MUST BE IN ITS LINEAR RANGE (2026-08-22) ──────────
+                            # y = held + trim - cp_predicted. The tracker despreads at S+T
+                            # (seed + applied trim) and the DLL drives T so that S+T sits on
+                            # the peak -- so S+T is SKY-ANCHORED and y is a real measurement:
+                            # move S and the DLL moves T oppositely, leaving y invariant.
+                            # THAT is why feeding and consuming on one chain is legitimate in
+                            # principle, and it is the answer to "a Kalman filter is supposed
+                            # to feed and consume".
+                            # IT ONLY HOLDS WHILE THE DLL CAN DO ITS HALF. Past ~1 chip the
+                            # correlation triangle has no gradient, so T stops compensating,
+                            # S+T follows S, and y reports the consumer's own output -- the
+                            # loop closes with no observation in it. Measured 2026-08-22:
+                            # median |model - held| is 1.8-2.5 chips, i.e. ALREADY outside the
+                            # measurable range for most satellites, which is why the feed
+                            # diverged when it was armed with no gate at all.
+                            # So feed only satellites the loop is demonstrably holding: q at
+                            # the lock bar AND a trim well inside the clamp. A railed or
+                            # near-railed trim means the seed error exceeds what the
+                            # discriminator can see, and that satellite's y is not evidence.
+                            if args.joint_feed_max_trim > 0.0:
+                                _fl_i = (fleet or {}).get(_prn) or {}
+                                _q_i = _fl_i.get("q")
+                                _tr_i = abs(float((_ft_readback.get(_prn) or {})
+                                                  .get("trim_chips") or 0.0))
+                                if (_q_i is None or _q_i < args.lock_q
+                                        or _tr_i >= args.joint_feed_max_trim):
+                                    _fd_skip += 1
+                                    continue
                             _held = dr_seed_phys(_sd, _h1, args.hops_per_sec,
                                                  args.chip_rate_hz, args.carrier_hz,
                                                  args.code_doppler_sign, _DR_MOD)

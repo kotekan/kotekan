@@ -294,6 +294,32 @@ not abort. None of that cost code; all of it cost verdicts. So the ranking below
 arm produce a verdict that survives** — which puts the instrument's own silent-failure modes and
 the honesty of its declared uncertainties AHEAD of new features.
 
+### A0. THE SAME PHYSICAL QUANTITY IS ESTIMATED TWICE, PER BAND  [new 2026-08-22, KV]
+E5a and E5b are the SAME SATELLITE on the SAME CLOCK. Geometric range, satellite clock and
+receiver clock are identical; the only physical difference is ionospheric, and iono scales
+as 1/f^2, so across 1176.45 -> 1207.14 MHz the differential is (1.0261)^2 = 1.053 -- about
+**0.01 chips** on a 0.2-chip iono delay. The code phase is one number, not two.
+
+Yet the system estimates it twice, independently, per band:
+  * the **DLL trim** is per chain (measured 2026-08-22: E31 |model-held| 12.98 chips on e5a
+    against 3.24 on e5b; E33 1.36 against 10.03 -- disagreements of 4-7x on a quantity that
+    should agree to 0.01);
+  * the **fold rate** is per chain, from each chain's own record-stream fit (`_kcoh_rates`).
+    Cross-band sign agreement measured at 38-62%, i.e. COIN FLIP, and the observed b/a ratio
+    scatters -2.25..+10.12 against a predicted 1.026. Two independent estimates of one
+    physical residual, and they do not even agree on its sign.
+
+This doubles the noise on every shared quantity and lets the two halves of one satellite
+disagree. It is the same structural error in two places, and it is exactly what the joint
+state exists to remove -- `rrate` already lands both carriers of a Galileo satellite on ONE
+m/s row (1.0261 apart) by design; the code side has no equivalent.
+⇒ THE LEVER: one per-satellite code-phase state shared across the bands of a constellation,
+with only the (tiny, computable) iono differential applied per band -- not two free
+variables. Until then, every cross-band comparison in this project is comparing two
+estimators rather than two measurements, which has already produced one retracted finding
+today (the "e5b is 30x less sensitive" claim, killed by a time series).
+[verified 08-22: trims and fold rates read per-chain from the live fleet]
+
 ### A1. THE GATHER WEDGES ON A FRAME0 RESET, silently, and it kills the code loop fleet-wide
 **Rank 1 because it VOIDS EXPERIMENTS, and it has done so at least three times.** `FleetDll`
 keeps a strictly monotonic per-chain high-water mark. An F-engine restart moves `frame0`, so the
