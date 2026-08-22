@@ -114,7 +114,22 @@ class Receiver(object):
             if cur is None:
                 kw = dict(kw)
                 kw["code_len"] = float(code_len)
-                kw.setdefault("ref_band", band)
+                # ⚠️ REF_BAND IS NO LONGER SET BY WHOEVER CONSTRUCTED THE STATE (2026-08-22).
+                # `setdefault("ref_band", band)` latched it to the FIRST CALLER, i.e. to
+                # thread startup order -- so on some restarts the reference became a band
+                # that carries no code measurements at all, and the band that does carry
+                # them (1176.45 MHz, where gps_l5/gal_e5a/bds_b2a all live) got a tau row
+                # instead. Measured 2026-08-21 across four runs of the SAME code and config:
+                # three latched 1176.45 and held sigma(clk) 0.11-0.30; the fourth latched
+                # the other band, gave 1176.45 a `dual 0` tau row, and sigma(clk) sat at
+                # 19.901 forever with biases reaching -1693 chips. Identical inputs, opposite
+                # outcomes, decided by a race -- which is why the same arm looked immaculate
+                # once and catastrophic an hour later.
+                # The filter now latches ref_band on the FIRST MEASUREMENT instead (see
+                # _add_band): measurements only arrive from chains that have data, which is
+                # a property of the instrument rather than of thread scheduling. Residual
+                # order-dependence is harmless now that a non-reference band cannot get a
+                # row it has no evidence for.
                 self._joint["__receiver__"] = JointReceiverState(**kw)
             elif float(code_len) < cur.L:
                 # ADOPT THE SHORTER PERIOD IN PLACE -- never rebuild. Rebuilding discarded

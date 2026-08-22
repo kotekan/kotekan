@@ -182,7 +182,8 @@ class JointReceiverState:
                  sigma_rr0=2.0, q_rr=0.02, rr_gauge_sigma=0.5, f_ref_hz=None,
                  sigma_rrd0=0.0, q_rrd=0.0, rrd_max=8e-3,
                  rr_bsat_chips_per_m=0.0,
-                 clk0=0.0, escape_min_sats=3, p_floor=0.04):
+                 clk0=0.0, escape_min_sats=3, p_floor=0.04,
+                 tau_min_dual=1, birth_gate_after=30):
         import numpy as np
         self._np = np
         self._lk = threading.RLock()   # see _locked: five chain threads share this object
@@ -294,6 +295,12 @@ class JointReceiverState:
         # better than the floor; healthy runs measure sigma 0.05-0.08, so 0.04 caps
         # confidence just below the best honest reading without touching normal operation.
         self.p_floor = float(p_floor)
+        # tau is estimated only where it is OBSERVABLE (see _add_band); 0 restores the old
+        # unconditional behaviour for anyone reproducing the failure.
+        self.tau_min_dual = int(tau_min_dual)
+        self._tau_denied = {}      # band -> True once its row has been refused (log once)
+        # ...and bootstrap is bounded by accepted updates as well as by P00 (see update()).
+        self.birth_gate_after = int(birth_gate_after)
         # Events worth an operator's attention (escapes, incoherent runs, gauge fallbacks).
         # The filter has no logger of its own, so it queues one-line notes and the broker
         # drains them. The single most damaging event of 2026-08-10 fired SILENTLY.
@@ -502,13 +509,49 @@ class JointReceiverState:
 
     def _add_band(self, band, t_now):
         """Give a band its own tau row. The FIRST band seen becomes the reference and gets
-        no row at all -- that is the gauge, not an optimisation."""
+        no row at all -- that is the gauge, not an optimisation.
+
+        ⚠️ AND A ROW IS ONLY CREATED WHEN tau IS OBSERVABLE (2026-08-22). tau_band separates
+        from clk ONLY through satellites measured in BOTH this band and the reference -- one
+        ray, two carriers. With zero of them the two are EXACTLY DEGENERATE, and creating the
+        row anyway does not estimate tau, it destroys the clock: measured 2026-08-21, a row
+        born with `dual 0` pinned sigma(clk) at 19.901 (== sigma_tau0) through 116 accepted
+        updates, i.e. the clock never converged at all. Every downstream gate keyed on clock
+        confidence then failed open -- birth_max is conditioned on P00 < 100 and P00 sat at
+        396 forever, so EVERY birth went unvetted, biases reached -1693 chips, and clk and
+        the biases traded the degenerate common mode (clk stepped -180 while every bias
+        jumped +160 at one birth). Runs where this row happened NOT to exist held sigma(clk)
+        at 0.11-0.30 on the same code and config.
+        THE EVIDENCE THAT IT WAS NEVER WORTH ESTIMATING: every tau this receiver has ever
+        logged is +1.44..+1.47 +- 19.901 chips -- 0.07 sigma from zero, and the class note
+        already says such a value "is an artefact of the priors". Physically it should be:
+        one ADC and one PFB, so 1176.45 and 1207.14 MHz are different BINS OF THE SAME FFT,
+        and +1.45 chips is 142 ns of differential group delay across 30.7 MHz where the
+        analogue chain gives nanoseconds (~0.01-0.03 chips). The real differential effect
+        between those frequencies is IONOSPHERIC, which is per-RAY and therefore per-sat --
+        already carried by b_sat, and not representable by a per-band scalar at all.
+        So: estimate tau only where it is observable, and pin it at 0 (no row) otherwise.
+        Do not estimate what you cannot observe."""
         np = self._np
         if self.ref_band is None:
             self.ref_band = band
         if band == self.ref_band or band in self._band_idx:
             self._band_seen[band] = t_now
             return self._band_idx.get(band)
+        # OBSERVABILITY PRECONDITION. Counted on history, so the row appears on the cycle
+        # AFTER the first dual-band satellite -- which is the correct order: the evidence
+        # must exist before the parameter does.
+        _dual_n = sum(1 for _bs in self._dual.values()
+                      if band in _bs and self.ref_band in _bs)
+        if _dual_n < self.tau_min_dual:
+            self._band_seen[band] = t_now
+            if not self._tau_denied.get(band):
+                self._tau_denied[band] = True
+                self._note("TAU-PINNED %s: no satellite measured in both this band and the "
+                           "reference (%s) -- tau is degenerate with clk here, so it is "
+                           "pinned at 0 rather than estimated (needs %d dual-band sat(s))"
+                           % (band, self.ref_band, self.tau_min_dual))
+            return None
         i = self.x.size
         self.x = np.append(self.x, 0.0)
         P = np.zeros((i + 1, i + 1))
@@ -517,6 +560,9 @@ class JointReceiverState:
         self.P = P
         self._band_idx[band] = i
         self._band_seen[band] = t_now
+        self._tau_denied[band] = False
+        self._note("TAU-ROW %s: %d dual-band satellite(s) now separate tau from clk -- "
+                   "estimating it" % (band, _dual_n))
         return i
 
     @staticmethod
@@ -859,8 +905,17 @@ class JointReceiverState:
             # refuse a newborn whose measurement is implausibly far from it: a real bias is
             # chips, a weak-sat detection is hundreds. While the clock is still unknown
             # (large P00) everything is accepted, because that is the bootstrap.
+            # ⚠️ "LARGE P00 MEANS BOOTSTRAP" IS AN ASSUMPTION, AND IT FAILED (2026-08-22).
+            # P00 < 100 was meant to read "the clock is determined yet?", but a degenerate
+            # tau row pinned P00 at 396 PERMANENTLY, so this gate -- the only thing standing
+            # between a weak-sat measurement and a birth -- was open for the entire run, not
+            # just during bootstrap. Biases reached -1693 chips. A gate whose enabling
+            # condition can be held false forever by an unrelated fault is not a gate.
+            # So bootstrap is ALSO bounded by evidence: once the state has accepted
+            # birth_gate_after updates it is past bootstrap by definition, whatever P00 says.
             if (self.birth_max is not None and len(self._idx) >= 2
-                    and self.P[0, 0] < 100.0
+                    and (self.P[0, 0] < 100.0
+                         or self.n_updates >= self.birth_gate_after)
                     and abs(self.wrap(y_chips - self.x[0] - _tau_val)) > self.birth_max):
                 self._reject("birth")
                 return None
