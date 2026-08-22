@@ -1358,6 +1358,19 @@ def main(argv=None, rx=None, publisher=None):
                          "true drift is ~4e-4 chips/s on this GPS-disciplined clock, so 1.0 "
                          "rejects nothing real (2026-08-09: +223 and -36 chips/s observed "
                          "after node restarts).")
+    ap.add_argument("--lock-q", type=float, default=2.2,
+                    help="treat a satellite as LOCKED for the dead-reckon slew/re-birth "
+                         "decision when its fleet discriminator q is at least this "
+                         "(0 = ignore q, the pre-2026-08-22 behaviour). q is the metric this "
+                         "project judges lock on everywhere else -- the viewer's own note "
+                         "says 'judge lock HERE, not on sig/C-N0' with 2.2 as the working "
+                         "bar -- but the seeder's lock test used amp_snr/deep_snr and a "
+                         "prompt-vs-fleet-median ratio instead. Measured 2026-08-22: both of "
+                         "those read below their bars on tracking satellites (sig_of 0.00, "
+                         "hold_prev 0.76-1.61 against 3.0), so 24%% of re-births hit sats at "
+                         "q >= 2.2 and five stepped the seed 1.3-4.5 chips -- outside the "
+                         "+-1 chip correlation triangle, where the DLL has no gradient left "
+                         "to recover with. That is the bimodal q collapse.")
     ap.add_argument("--dr-clock-wait-s", type=float, default=30.0,
                     help="withhold dead-reckon seeding while the receiver clock is still the "
                          "--dr-clock-chips PRIME rather than a measurement (0 = never wait). "
@@ -3126,6 +3139,7 @@ def main(argv=None, rx=None, publisher=None):
     # runs before this cycle's fleet_dll. See the --lock-prompt-hold note for why the gate
     # needs a fold-independent term at all.
     hold_prev = {}
+    hold_q = {}                    # prn -> fleet discriminator q, previous cycle (--lock-q)
     _elem_arch_t = [0.0]   # last per-element archive append (--element-archive-every-s)
     # #57 step 3: the residual carrier rates the known-rate coherent fold derotates with.
     # Updated AFTER each cycle's fold from that cycle's record-stream fit, so the fold only
@@ -7181,8 +7195,25 @@ def main(argv=None, rx=None, publisher=None):
                         # the fold's ~50%% certification flicker toggles lock state and
                         # re-pins a satellite the despread never lost -- and the re-pin then
                         # steps the phase reference the fold is trying to integrate across.
-                        _held = (args.lock_prompt_hold > 0.0
-                                 and hold_prev.get(prn, 0.0) >= args.lock_prompt_hold)
+                        # ⚠️ AND THE ONE METRIC THIS PROJECT ACTUALLY JUDGES LOCK ON.
+                        # The viewer's own q annotation says it: "Judge lock HERE, not on
+                        # sig/C-N0 -- the deep fold re-searches and will certify a satellite
+                        # whose prompt tap is on noise (#47). ~2.2 is the working lock bar."
+                        # This decision used neither q nor anything correlated with it:
+                        # sig_of is amp_snr (measured 0-1 on tracking satellites) upgraded by
+                        # a deep fold that certifies as little as 17% of polls, and
+                        # lock_prompt_hold wants 3x the FLEET MEDIAN prompt, which most of the
+                        # fleet cannot clear by construction (measured 0.76-1.61).
+                        # So both gates failed together, every cycle, and 24% of re-births
+                        # landed on satellites at q >= 2.2 -- five of them stepping the seed
+                        # 1.3-4.5 chips, i.e. clean outside the +-1 chip correlation triangle,
+                        # which destroys the very lock the gate exists to protect. PRN 13 was
+                        # thrown +2.42 chips at q 3.01 and +4.47 at q 2.24.
+                        _q_locked = (args.lock_q > 0.0
+                                     and hold_q.get(prn, 0.0) >= args.lock_q)
+                        _held = (_q_locked
+                                 or (args.lock_prompt_hold > 0.0
+                                     and hold_prev.get(prn, 0.0) >= args.lock_prompt_hold))
                         if _held and sig_of(status.get(prn, {})) < args.lock_snr:
                             _log_rl("hold-prompt",
                                     "HOLD-BY-PROMPT: PRN %d held through a deep-fold dropout "
@@ -7451,7 +7482,10 @@ def main(argv=None, rx=None, publisher=None):
                                         "BIRTH-STEP PRN %d: old_phys %+.3f -> new_phys %+.3f"
                                         "  step %+.3f chips | off %+.3f = leg %+.3f"
                                         " (clk %+.3f + b %+.3f) %s |"
-                                        " age %.1f s ddop %+.3f Hz | prev [%s]"
+                                        " age %.1f s ddop %+.3f Hz"
+                                        " | WHY-BIRTH: sig_of %.2f vs lock_snr %.1f,"
+                                        " hold_prev %.2f vs %.1f -> held %s;"
+                                        " in_seeds %s in_seeded %s | prev [%s]"
                                         % (prn, _oldphys, _newphys, _bstep, _off, _leg_off,
                                            clk_now, bsat.get(prn, now_w),
                                            ("+ d3 %+.3f [joint %s]"
@@ -7459,6 +7493,21 @@ def main(argv=None, rx=None, publisher=None):
                                            if _joff is not None else "[joint absent]",
                                            (_rh_birth - int(_pv["ref_hop"])) / args.hops_per_sec,
                                            dop_seed - float(_pv.get("doppler_hz", dop_seed)),
+                                           # ⚠️ WHY WAS THE SLEW BRANCH NOT TAKEN? Reaching
+                                           # this line means `_slew` was False for a satellite
+                                           # the tracker may well be holding -- and on
+                                           # 2026-08-22 that cost E13 a 3.75-chip snap off the
+                                           # correlation triangle and 28 minutes of q < 1.
+                                           # sig_of() is amp_snr, or max(amp, deep) ONLY when
+                                           # the deep fold certifies (coherence_s > 0) -- and
+                                           # measured live, amp_snr sits at 0-1 against a
+                                           # lock_snr of 3.0 while the fold certifies as
+                                           # little as 17% of polls. So print every input to
+                                           # the decision rather than inferring which failed.
+                                           sig_of(status.get(prn, {})), args.lock_snr,
+                                           hold_prev.get(prn, 0.0), args.lock_prompt_hold,
+                                           _held, prn in seeds,
+                                           prn in dr_state["seeded"],
                                            _pv.owners() if hasattr(_pv, "owners") else "?"),
                                         every_s=20.0)
                             except Exception as _e:      # diagnostics never break seeding
@@ -7611,10 +7660,16 @@ def main(argv=None, rx=None, publisher=None):
             # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
             # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
             hold_prev.clear()
+            hold_q.clear()
             for _p, _fl in (fleet or {}).items():
                 _pm = _fl.get("p_med")
                 if _pm:
                     hold_prev[_p] = _fl["p_pow"] / _pm
+                # ...and the FLEET DISCRIMINATOR QUALITY, from the same dict, for the same
+                # next-cycle gate. See --lock-q: q is the metric this project judges lock on
+                # everywhere EXCEPT, until now, the one decision that can destroy a lock.
+                if _fl.get("q") is not None:
+                    hold_q[_p] = float(_fl["q"])
             # CROSS-NODE COHERENT COMBINE. Separate from the DLL on purpose: the DLL sums
             # POWERS (phase-free, which is what makes it cheap) while this removes the common
             # per-record PHASE, and the two answer different questions off the same endpoints.
