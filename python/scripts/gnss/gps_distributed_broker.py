@@ -1358,6 +1358,19 @@ def main(argv=None, rx=None, publisher=None):
                          "true drift is ~4e-4 chips/s on this GPS-disciplined clock, so 1.0 "
                          "rejects nothing real (2026-08-09: +223 and -36 chips/s observed "
                          "after node restarts).")
+    ap.add_argument("--dr-clock-wait-s", type=float, default=30.0,
+                    help="withhold dead-reckon seeding while the receiver clock is still the "
+                         "--dr-clock-chips PRIME rather than a measurement (0 = never wait). "
+                         "A seed born without a clock steps by the WHOLE clock at its first "
+                         "re-birth after BOOTSTRAP -- measured 2026-08-22: 40 events, all "
+                         "inside 57 s of broker start, step/off = 0.9958, the entire fleet "
+                         "moving together to 0.08%. The wait is short (gps_l5 bootstraps ~1 s "
+                         "in, the model-primary chains adopt cross-band a few seconds later). "
+                         "⚠️ IT IS A TIMEOUT, NOT A PRECONDITION: a DETECTOR-LESS chain never "
+                         "solves a clock at all -- that is what the prime is for -- so after "
+                         "this many seconds we seed on the prime and log that we did. A guard "
+                         "that can leave a chain dark forever is worse than the step it "
+                         "removes.")
     ap.add_argument("--joint-consume", default="",
                     help="P2b: comma-separated JOINT-state consumers to switch LIVE, one "
                          "name per commit so each is A/B-able on its own. Empty (default) "
@@ -5833,6 +5846,51 @@ def main(argv=None, rx=None, publisher=None):
                 and _now() >= dr_state["next"]):
             now_w = _now()
             dr_state["next"] = now_w + args.dr_refresh_s
+            # ── DO NOT SEED ON A GUESSED CLOCK (2026-08-22) ──────────────────────────────
+            # Measured with the BIRTH-STEP diagnostic: every satellite born before the clock
+            # bootstraps carries NO clock, and the first re-birth after BOOTSTRAP adds it --
+            # so the whole fleet steps by one clock at once. 40 events, all within 57 s of
+            # broker start and none after 60 s, with step/off = 0.9958: the step IS `_off`,
+            # to 0.4%. Five satellites agreeing to 0.08% with unrelated Doppler is what gave
+            # it away -- nothing per-satellite can do that.
+            # The fix is to wait, because the wait is SHORT and the clock is imminent: the
+            # solve snaps on its first median (gps_l5 bootstraps ~1 s after start) and the
+            # model-primary chains adopt it cross-band within a few seconds of that.
+            # ⚠️ BUT IT MUST NOT BE AN INDEFINITE WAIT, and that is the whole design of the
+            # prime. --dr-clock-chips exists precisely so a DETECTOR-LESS chain can seed at
+            # all: `offs` is always empty there, so the solve never runs and no bootstrap is
+            # ever coming. Refusing to seed until a measurement arrives would leave exactly
+            # those chains dark forever -- trading a 150-chip startup step for a dead chain.
+            # So: withhold while the clock is admittedly a guess, but only for
+            # --dr-clock-wait-s, then seed on the prime and SAY SO. A guard that can deadlock
+            # the instrument is worse than the artefact it removes.
+            _dr_hold = False
+            if dr_state.get("clk_primed") and args.dr_clock_wait_s > 0.0:
+                _waited = now_w - dr_state.get("clk_t", now_w)
+                if _waited < args.dr_clock_wait_s:
+                    _log_rl("clkwait", "dead-reckon: WITHHOLDING seeds -- the clock is still "
+                                       "the %.2f-chip PRIME, not a measurement (%.0f of %.0f s"
+                                       " waited). Seeding now would anchor every cp0 without "
+                                       "a clock and step the whole fleet by ~%.0f chips at the"
+                                       " first re-birth after BOOTSTRAP."
+                            % (dr_state.get("clk") or 0.0, _waited, args.dr_clock_wait_s,
+                               abs(dr_state.get("clk") or 0.0) or 150.0),
+                            every_s=10.0)
+                    dr_state["next"] = now_w + min(2.0, args.dr_refresh_s)
+                    _dr_hold = True
+                # ⚠️ elif, NOT a second if. Written as a bare `if` this fired in the SAME
+                # MILLISECOND as the withhold above -- "seeding on the PRIME after waiting
+                # 30 s" logged 0 s in, because reaching the warning never depended on the
+                # wait having expired. An alarm that cannot distinguish "waiting" from
+                # "gave up waiting" is worse than none: it would have taught us to ignore it.
+                elif not dr_state.get("clk_wait_warned"):
+                    dr_state["clk_wait_warned"] = True
+                    _log("dead-reckon: ⚠️ seeding on the %.2f-chip PRIME after waiting %.0f s "
+                         "-- no clock measurement arrived. Expected on a DETECTOR-LESS chain "
+                         "with no sibling to adopt from; on a chain that HAS detectors it "
+                         "means the solve is not running, and every seed below is anchored on "
+                         "a guess." % (dr_state.get("clk") or 0.0,
+                                       now_w - dr_state.get("clk_t", now_w)))
             # THE DEAD-RECKON MODEL MUST WORK AT THE CODE THE TRACKER ACTUALLY DESPREADS.
             # This was CODE_LEN / chip_rate -- ONE PRIMARY PERIOD -- so t0m and every predicted
             # phase were reduced mod 1 ms and the secondary segment was discarded before a seed
@@ -7178,6 +7236,8 @@ def main(argv=None, rx=None, publisher=None):
                         # FIRE: the chains that slew have no satellites in the state, and
                         # the chain with satellites in the state does not slew. Covering
                         # cp0 as well is what gives it a live arm today, on GPS births.
+                        if _dr_hold:
+                            continue      # clock is still a prime; see the withhold note
                         _leg_off = clk_now + bsat.get(prn, now_w)
                         _off = _leg_off
                         _off_sigma = None      # set only when a JOINT offset is adopted
@@ -7354,6 +7414,56 @@ def main(argv=None, rx=None, publisher=None):
                         dll_trim.pop(prn, None)  # any old trim served the OLD anchor
                         dll_last.pop(prn, None)
                         _rh_birth = int(round(t_fc_abs * args.hops_per_sec))
+                        # ── BIRTH-STEP DECOMPOSITION (2026-08-22) ────────────────────────
+                        # Measured overnight: when several satellites are re-born in the SAME
+                        # cycle they all step by the SAME amount -- E5 +142.84, E13 +142.76,
+                        # E16 +142.78, E26 +142.80, E31 +142.87 chips, agreeing to 0.11 chips
+                        # (0.08%) with completely unrelated ddop (-0.76..-6.96 Hz) and seed
+                        # ages. Nothing per-satellite can do that: it is ONE SHARED CONSTANT
+                        # entering every seed at once, and its size is the receiver clock.
+                        # Three candidate explanations were falsified BEFORE this line was
+                        # written, which is why it logs terms rather than a verdict:
+                        #   * a rate rewrite under a stale anchor -> implied rate change
+                        #     0.44 chips/s vs the 0.001-0.02 the filter carries, and
+                        #     r(|step|, seed age) = -0.11 when the mechanism needs
+                        #     proportionality;
+                        #   * a Doppler edit through the cp-currency lever -> r = +0.08,
+                        #     step-equivalent 0.055 Hz against an actual ddop of 4.08 Hz;
+                        #   * a feedback loop -> the steps are discrete and SHARED, and a
+                        #     loop cannot synchronise independent satellites to 0.08%.
+                        # So: print where the OLD seed said the signal was, where the NEW one
+                        # puts it, and every term that differs between the two branches. The
+                        # slew branch anchors on `_held` (the TRACKER's own propagation); this
+                        # branch anchors on model + `_off`. If the clock term is what flips,
+                        # `step` lands on `_off` (or on `_d3`, the joint-vs-legacy correction
+                        # that comes and goes with ADOPTED/REFUSED) and the line says so
+                        # outright instead of leaving it to be inferred from a magnitude.
+                        _pv = seeds.get(prn)
+                        if _pv is not None and "ref_hop" in _pv:
+                            try:
+                                _oldphys = dr_seed_phys(_pv, _rh_birth, args.hops_per_sec,
+                                                        args.chip_rate_hz, args.carrier_hz,
+                                                        args.code_doppler_sign, _DR_MOD)
+                                _newphys = (cp_predicted(v, t_fc_abs) + _off) % _DR_MOD
+                                _bstep = ((_newphys - _oldphys + _DR_MOD / 2.0) % _DR_MOD
+                                          ) - _DR_MOD / 2.0
+                                _log_rl("birthstep-%d" % prn,
+                                        "BIRTH-STEP PRN %d: old_phys %+.3f -> new_phys %+.3f"
+                                        "  step %+.3f chips | off %+.3f = leg %+.3f"
+                                        " (clk %+.3f + b %+.3f) %s |"
+                                        " age %.1f s ddop %+.3f Hz | prev [%s]"
+                                        % (prn, _oldphys, _newphys, _bstep, _off, _leg_off,
+                                           clk_now, bsat.get(prn, now_w),
+                                           ("+ d3 %+.3f [joint %s]"
+                                            % (_d3, "ADOPTED" if _ok3 else "REFUSED"))
+                                           if _joff is not None else "[joint absent]",
+                                           (_rh_birth - int(_pv["ref_hop"])) / args.hops_per_sec,
+                                           dop_seed - float(_pv.get("doppler_hz", dop_seed)),
+                                           _pv.owners() if hasattr(_pv, "owners") else "?"),
+                                        every_s=20.0)
+                            except Exception as _e:      # diagnostics never break seeding
+                                _log_rl("birthstep-err", "BIRTH-STEP unavailable: %s" % _e,
+                                        every_s=300.0)
                         seeds[prn] = Seed.born(
                             "dr_birth", epoch=_rh_birth,
                             doppler_hz=dop_seed, code_phase_chips=cp0,
