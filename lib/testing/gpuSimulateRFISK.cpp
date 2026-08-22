@@ -77,8 +77,8 @@ using kotekan::Config;
  *         @buffer_metadata chordMetadata time_downsample_fpga[] = rfi_total_downsampling_factor
  * @buffer in_bf_mask_buf       The bad feed mask
  *         @buffer_format uint8
- *         @buffer_shape [num_polarizations, num_dishes]
- *         @buffer_metadata chordMetadata
+ *         @buffer_shape [1, num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata time_downsample_fpga[] = bf_mask_lifetime_in_samples
  * @buffer out_rfi_sk_buf       Buffer of single feed (SK, bias, sigma) values
  *         @buffer_format float32
  *         @buffer_shape [samples_per_data_set/rfi_total_downsampling_factor, num_local_freq, 3,
@@ -101,6 +101,9 @@ using kotekan::Config;
  * @conf  rfi_total_downsampling_factor   Int. Number of fast times `t` in a `t_rfi`. Must divide
  *                              `samples_per_data_set`. Output SK buffers will contain
  *                              `samples_per_data_set` / `downsampling_factor` time samples.
+ * @conf  bf_mask_lifetime_in_samples     Int. Number of FPGA samples that one bad feed mask is
+ *                              valid for. This stage consumes one mask per input frame, so this
+ *                              should be `samples_per_data_set`.
  * @conf  bar_mode              Bool. Whether to output an SKbar buffer or SK buffer.
  * @conf  rfi_sk_rfimask_sigmas             Double. SK sigma threshold for RFI mask.
  * @conf  rfi_single_feed_min_good_frac     Double. Threshold of good sample coverage for inclusion
@@ -135,6 +138,7 @@ private:
     const int64_t _num_local_freq;
     const int64_t _samples_per_data_set;
     const int64_t _rfi_downsampling_factor;
+    const int64_t _bf_mask_lifetime_in_samples;
     const bool _bar_mode;
     const double _rfi_sk_rfimask_sigmas;
     const double _rfi_single_feed_min_good_frac;
@@ -178,6 +182,7 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_total_downsampling_factor")),
+    _bf_mask_lifetime_in_samples(config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples")),
     _bar_mode(config.get<bool>(unique_name, "bar_mode")),
     _rfi_sk_rfimask_sigmas(config.get<double>(unique_name, "rfi_sk_rfimask_sigmas")),
     _rfi_single_feed_min_good_frac(
@@ -217,8 +222,11 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
         _bar_mode ? "S012bar" : "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
         {_bar_mode ? "Trfibar" : "Trfi", "F", "S", "P", "D"},
         {_rfi_downsampling_factor, 1, 1, 1, 1}));
-    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
-        "bf_mask", {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
+    // The bad feed mask has a leading (length one) time dimension, as it is a time series of
+    // masks. This stage consumes one mask per input frame.
+    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 3>::describe(
+        "bf_mask", {1, _num_polarizations, _num_dishes}, {"Tbf", "P", "D"},
+        {_bf_mask_lifetime_in_samples, 1, 1}));
 
     // Make frame desc for produced buffers
     if (_bar_mode) {

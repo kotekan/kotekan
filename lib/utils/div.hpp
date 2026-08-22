@@ -17,6 +17,17 @@ auto round_down(T x, U y) {
     return r;
 }
 
+// Round up `x` to the next higher multiple of `y`
+template<typename T, typename U>
+auto round_up(T x, U y) {
+    assert(x >= 0);
+    assert(y > 0);
+    auto r = (x + y - 1) / y * y;
+    assert(r % y == 0);
+    assert(0 <= r && r - y < x && r >= x);
+    return r;
+}
+
 // Calculate `x div y`
 template<typename T, typename U>
 auto div_noremainder(T x, U y) {

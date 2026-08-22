@@ -1,174 +1,242 @@
 #include "bufferBadInputs.hpp"
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope, dishInputFields, DishType
-#include "Config.hpp"         // for Config
-#include "N2Util.hpp"         // for frameID
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"      // for Telescope, station_id_t
-#include "buffer.hpp"         // for Buffer
-#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
-#include "configUpdater.hpp"  // for configUpdater
-#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
+#include "CHORDTelescope.hpp"    // for CHORDTelescope, dishInputFields, DishType
+#include "Config.hpp"            // for Config
+#include "NDArray.hpp"           // for NDArray, GenericNDArray
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope, station_id_t
+#include "buffer.hpp"            // for Buffer
+#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
+#include "configUpdater.hpp"     // for configUpdater
+#include "kotekanLogging.hpp"    // for DEBUG, ERROR, FATAL_ERROR, INFO, WARN
+#include "prometheusMetrics.hpp" // for Metrics, Counter
+#include "visUtil.hpp"           // for current_time, double_to_ts, ts_to_double
 
-#include <algorithm>  // for count, fill
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <json.hpp>   // for json
-#include <mutex>      // for lock_guard, mutex
-#include <stdint.h>   // for uint8_t
+#include <memory>     // for shared_ptr
+#include <stdexcept>  // for invalid_argument
+#include <stdint.h>   // for int64_t, uint8_t
+#include <time.h>     // for timespec
+#include <utility>    // for move
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferBadInputs);
 
 
 bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)),
+    late_updates_counter(
+        Metrics::instance().add_counter("kotekan_bufferbadinputs_late_update_count", unique_name)),
+    invalid_updates_counter(Metrics::instance().add_counter(
+        "kotekan_bufferbadinputs_invalid_update_count", unique_name)) {
 
     num_elements = config.get<size_t>(unique_name, "num_elements");
+    num_polarizations = config.get<int>(unique_name, "num_polarizations");
+    num_dishes = config.get<int>(unique_name, "num_dishes");
+    bf_mask_lifetime_in_samples = config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples");
 
-    // Element order of the incoming bad_inputs indices and of the produced
-    // mask. The defaults preserve the original CHIME behaviour (flags are
-    // broadcast in cylinder order, the mask is in beamformer order); CHORD
-    // sends and masks in the same [P][D] order, so both are CHORDBeamformer.
-    auto input_order =
+    // The mask is written as a flat array whose element `output_idx` is
+    // `polarization * num_dishes + dish`, so describing it as
+    // [1, num_polarizations, num_dishes] is only a reinterpretation, and it is valid only if
+    // the shape covers the whole mask.
+    if (num_elements != size_t(num_polarizations) * size_t(num_dishes))
+        FATAL_ERROR("num_elements {:d} must equal num_polarizations {:d} * num_dishes {:d}",
+                    num_elements, num_polarizations, num_dishes);
+
+    // Element orders of the posted bad_inputs indices and of the produced mask.
+    const ElementOrder input_order =
         config.get_default<ElementOrder>(unique_name, "input_order", ElementOrder::CHIMECylinder);
-    auto output_order = config.get_default<ElementOrder>(unique_name, "output_order",
-                                                         ElementOrder::CHIMEBeamformer);
+    const ElementOrder output_order = config.get_default<ElementOrder>(
+        unique_name, "output_order", ElementOrder::CHIMEBeamformer);
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+    // The buffer must be declared in the config; this checks that we agree with it. The buffer
+    // factory attaches the configured descriptor before any stage is constructed.
+    out_buf->require_frame_desc(kotekan::NDArray<int8_t, 3>::describe(
+        "bf_mask", {1, num_polarizations, num_dishes}, {"Tbf", "P", "D"},
+        {bf_mask_lifetime_in_samples, 1, 1}));
+
+    updates.resize(config.get_default<uint32_t>(unique_name, "num_kept_updates", 5));
 
     // Construct the input -> output reorder table.
-    // reorder[output_idx] = input_idx;
+    // reorder[input_idx] = output_idx;
     reorder.resize(num_elements);
-
-    // initialize the mask (1 == good)
-    input_mask = std::vector<uint8_t>(num_elements, 1u);
 
     const Telescope& tel = Telescope::instance();
 
     if (input_order == output_order) {
-        // Identity; skip the telescope round-trip so orders the telescope
-        // cannot map (and equal orders on any telescope) always work.
+        // Identity; also covers orders the telescope cannot map, like the
+        // CHIME defaults on a CHORD telescope.
         for (size_t idx = 0; idx < num_elements; ++idx)
             reorder.at(idx) = idx;
     } else {
-        // The key defaults are the CHIME orders; a CHORD telescope cannot map
-        // them and the calls below abort with "Cannot handle element order".
-        // Name the fix first.
-        ElementOrder fiducial = tel.fiducial_element_order();
-        if ((fiducial == ElementOrder::CHORDEarly || fiducial == ElementOrder::CHORDBeamformer)
-            && (input_order == ElementOrder::CHIMECylinder
-                || output_order == ElementOrder::CHIMEBeamformer))
-            ERROR("bad-input element orders ({} -> {}) are the CHIME defaults; set "
-                  "input_order/output_order explicitly for this telescope (fiducial order: {}).",
-                  input_order, output_order, fiducial);
-
         for (size_t output_idx = 0; output_idx < num_elements; ++output_idx) {
             station_id_t st_id = tel.element_index_to_station_id(output_idx, output_order);
-            reorder.at(output_idx) = tel.station_id_to_element_index(st_id, input_order);
+            reorder.at(tel.station_id_to_element_index(st_id, input_order)) = output_idx;
         }
     }
 
-    // Baseline mask from the telescope's dish table: elements whose dish is
-    // not a real array dish (Fake or an RFI antenna) are never valid inputs
-    // and stay masked independent of the posted bad-inputs list.
+    // Baseline mask from the telescope's dish table: elements whose dish is not a real
+    // array dish (Fake or an RFI antenna) are never valid inputs and stay masked
+    // independent of the posted bad-inputs list.
     baseline_mask = std::vector<uint8_t>(num_elements, 1u);
-    const auto* chord_tel = dynamic_cast<const CHORDTelescope*>(&tel);
+    const CHORDTelescope* const chord_tel = dynamic_cast<const CHORDTelescope*>(&tel);
     if (chord_tel != nullptr) {
         dishInputFields dish_inputs;
         chord_tel->fill_input_maps(dish_inputs);
         for (size_t el = 0; el < num_elements; ++el) {
             uint64_t dish;
             uint64_t pol;
-            station_id_t st_id = tel.element_index_to_station_id(el, output_order);
+            const station_id_t st_id = tel.element_index_to_station_id(el, output_order);
             chord_tel->decode_station_id(st_id, dish, pol);
             if (dish_inputs.type.at(dish) != DishType::ArrayDish)
                 baseline_mask[el] = 0;
         }
     }
 
-    // initialize the mask (1 == good, non-array dishes already masked)
-    input_mask = baseline_mask;
-    num_bad_inputs = std::count(input_mask.begin(), input_mask.end(), 0u);
-
-    // Listen for bad input list updates
+    // Listen for bad input list updates. The initial config block arrives
+    // through this callback during subscribe().
     std::string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
     configUpdater::instance().subscribe(
         badInputs,
         std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
+
+    // From here on a rejected update must not stop kotekan; see the callback.
+    initialised = true;
 }
 
 bufferBadInputs::~bufferBadInputs() {}
 
 bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
-    INFO("update_bad_inputs_callback(): Received update to bad inputs list.");
+    // Returning false from a configUpdater callback stops kotekan, so it is
+    // reserved for a malformed *initial* config block; a bad update POSTed to
+    // a running correlator is logged, counted and ignored instead.
+    const bool fatal_on_error = !initialised;
+
+    std::vector<int> bad_inputs;
+    // A missing start_time keys the update to the present: apply immediately,
+    // superseding everything earlier.
+    timespec start_ts = double_to_ts(current_time());
+    std::string update_id;
 
     try {
-        bad_inputs = json["bad_inputs"].get<std::vector<int>>();
+        bad_inputs = json.at("bad_inputs").get<std::vector<int>>();
+
+        // start_time and update_id are optional; config blocks predating them
+        // keep working.
+        if (json.contains("start_time")) {
+            if (!json.at("start_time").is_number())
+                throw std::invalid_argument("received bad value 'start_time': "
+                                            + json.at("start_time").dump());
+            if (json.at("start_time").get<double>() < 0)
+                throw std::invalid_argument("received negative start_time: "
+                                            + json.at("start_time").dump());
+            start_ts = double_to_ts(json.at("start_time").get<double>());
+        }
+        if (json.contains("update_id")) {
+            if (!json.at("update_id").is_string())
+                throw std::invalid_argument("received bad value 'update_id': "
+                                            + json.at("update_id").dump());
+            update_id = json.at("update_id").get<std::string>();
+            // Reject IDs that chordMetadata serialization would truncate.
+            if (update_id.size() >= (size_t)CHORD_META_MAX_UPDATE_ID)
+                throw std::invalid_argument("received update_id longer than "
+                                            + std::to_string(CHORD_META_MAX_UPDATE_ID - 1)
+                                            + " characters: " + update_id);
+        }
     } catch (std::exception const& e) {
-        ERROR("Failed to parse bad input list:\n{:s}", e.what());
-        return false;
+        ERROR("Failed to parse bad input update, ignoring it:\n{:s}", e.what());
+        invalid_updates_counter.inc();
+        return !fatal_on_error;
     }
 
-    // validate all inputs before changing the mask
-    std::vector<bool> is_present(num_elements, false);
+    // validate all inputs before accepting the update
     for (int element : bad_inputs) {
         if (element >= (int)num_elements || element < 0) {
-            ERROR("Received input with invalid index: {:d}", element);
-            return false;
+            ERROR("Received input with invalid index {:d} (num_elements {:d}), "
+                  "ignoring the update.",
+                  element, num_elements);
+            invalid_updates_counter.inc();
+            return !fatal_on_error;
         }
-        if (is_present.at(element)) {
-            ERROR("Received input with duplicate index: {:d}", element);
-            return false;
-        }
-        is_present.at(element) = true;
     }
 
-    // hold lock for the mask update (parsing and validation stay outside it)
-    std::lock_guard<std::mutex> lock(mtx);
-
-    // Reset to the baseline mask (1 == good, non-array dishes stay masked)
-    input_mask = baseline_mask;
-
-    // now update the mask
-    for (int element : bad_inputs) {
-        input_mask.at(reorder[element]) = 0;
+    // An update starting before one already queued could never take effect;
+    // drop it rather than hide it in the queue.
+    const auto queued = updates.get_all_updates();
+    if (!queued.empty() && queued.back().first > start_ts) {
+        WARN("Ignoring out-of-order update '{:s}': its start time {:f} precedes the newest "
+             "queued update's start time {:f}.",
+             update_id, ts_to_double(start_ts), ts_to_double(queued.back().first));
+        late_updates_counter.inc();
+        return true;
     }
-    num_bad_inputs = std::count(input_mask.begin(), input_mask.end(), 0u);
 
-    DEBUG("update_bad_inputs_callback(): Bad inputs reordered and buffered.");
+    // Build the update's mask (1 == good) in output_order, on top of the dishes the
+    // telescope says are never valid inputs.
+    std::vector<uint8_t> mask(baseline_mask);
+    for (int element : bad_inputs)
+        mask[reorder[element]] = 0;
+
+    // The seq the update takes effect at -- via the telescope, so identical on every node --
+    // or -1 when it predates the run and constrains nothing. Logged for diagnostics only: the
+    // frames' FPGA sequence numbers count mask samples, so there is nowhere to put it. The
+    // clamp also keeps to_seq()'s unsigned conversion from wrapping.
+    const Telescope& tel = Telescope::instance();
+    const int64_t effective_seq = start_ts > tel.to_time(0) ? (int64_t)tel.to_seq(start_ts) : -1;
+
+    INFO("update_bad_inputs_callback(): queued update '{:s}' ({:d} bad inputs) "
+         "for start time {:f} (seq {:d}).",
+         update_id, bad_inputs.size(), ts_to_double(start_ts), effective_seq);
+
+    updates.insert(start_ts, {std::move(update_id), std::move(mask)});
 
     return true;
 }
 
 void bufferBadInputs::main_thread() {
-    N2::frameID frame_id(out_buf);
-    size_t nbad; // copy num bad inputs for access outside lock
+    // Always present: the constructor requires it.
+    const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
+        out_buf->get_frame_desc<kotekan::GenericNDArray>();
 
-    while (!stop_thread) {
-        // get an output frame
+    // `frame_index` counts all frames produced, not just the current slot, because the FPGA
+    // sequence number has to keep increasing.
+    for (int64_t frame_index = 0; !stop_thread; ++frame_index) {
+        const int frame_id = frame_index % out_buf->num_frames;
+
+        // Blocking here paces production to the consumers; null means shutdown.
         uint8_t* out_frame = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
-        if (out_frame == nullptr) {
+        if (out_frame == nullptr)
             return;
-        }
 
-        // Copy from the permanent buffer
-        {
-            std::lock_guard<std::mutex> lock(mtx);
-            std::copy_n(input_mask.begin(), num_elements, out_frame);
-            nbad = num_bad_inputs;
-        }
+        // Sample the wall clock only now: the wait above can outlast a
+        // pending update.
+        const timespec ref_ts = double_to_ts(current_time());
+
+        // Compose the frame from the active update; the bare baseline until one applies.
+        const std::shared_ptr<const badInputUpdate> update = updates.get_update(ref_ts).second;
+        for (size_t el = 0; el < num_elements; ++el)
+            out_frame[el] = update != nullptr ? update->mask[el] : baseline_mask[el];
 
         // Set metadata and release
         out_buf->allocate_new_metadata_object(frame_id);
-        get_chord_metadata(out_buf, frame_id)->set_rfi_num_bad_inputs(nbad);
+        const std::shared_ptr<chordMetadata> meta = get_chord_metadata(out_buf, frame_id);
+        meta->set_from_frame_desc(frame_desc);
+        // Each frame is one bad feed mask sample, and each sample is valid for
+        // `bf_mask_lifetime_in_samples` FPGA samples.
+        meta->set_fpga_seq_num(frame_index * bf_mask_lifetime_in_samples);
+        meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
+        if (update != nullptr && !update->update_id.empty())
+            meta->set_bad_inputs_update_id(update->update_id);
         out_buf->mark_frame_full(unique_name, frame_id);
-        frame_id++;
     }
 }

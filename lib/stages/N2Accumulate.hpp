@@ -133,6 +133,13 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * excise.
  *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
+ * @buffer  in_bf_mask_buf  Optional bad feed mask (1 == good), folded over each
+ * accumulation bin into the output frames' per-element flags. Its frames arrive far more
+ * slowly than the correlation frames -- one per @c bf_mask_lifetime_in_samples -- so this
+ * stage polls it rather than waiting on it, ANDing every mask it sees during a bin and
+ * carrying the newest one forward. Without it the flags stay at their sentinel value (0).
+ *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
@@ -234,6 +241,7 @@ private:
     Buffer* in_rficounts_buf;    /// Buffer containing input rficounts
     Buffer* in_plcounts_buf;     /// Buffer containing input plcounts
     Buffer* in_rfiframemask_buf; /// Buffer containing input rfiframemask
+    Buffer* in_bf_mask_buf;      /// Optional buffer containing the bad feed mask; may be null
     Buffer* out_buf;             /// Output for the main vis dataset only
 
     // Parameters saved from the config files
@@ -287,6 +295,12 @@ private:
     std::vector<float> _n_valid_sample_diff_sq_sum;
     std::vector<uint64_t> _n_rfi_samples_in_vis;
     std::vector<uint64_t> _n_pl_samples_in_vis;
+    /// Bad feed mask folded (AND) over the current accumulation bin (1 == good)
+    std::vector<uint8_t> _accum_bf_mask;
+    /// The most recently received bad feed mask, applied to bins that see no new frame
+    std::vector<uint8_t> _current_bf_mask;
+    /// FPGA samples one bad feed mask frame is valid for; only read when the input is wired
+    int64_t _bf_mask_lifetime_in_samples;
     int64_t _vis_samples_in_out_frame;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
