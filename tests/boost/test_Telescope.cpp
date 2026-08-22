@@ -15,6 +15,7 @@
 #include <boost/test/included/unit_test.hpp>
 #include <boost/test/tools/output_test_stream.hpp>
 #include <complex>
+#include <csignal>
 #include <filesystem>
 #include <inttypes.h>
 #include <iostream>
@@ -51,6 +52,7 @@ public:
     TestTelescope(const Config& config, const std::string& path) :
         Telescope(path, config.get<std::string>(path, "log_level"),
                   config.get<bool>(path, "require_eop"),
+                  config.get_default<bool>(path, "fatal_eop_out_of_range", false),
                   config.get<std::string>(path, "eop_updatable_config"),
                   GeoFrame(config.get<std::string>(path, "log_level"), "grid",
                            config.get_default<double>(path, "inst_lat", 0.0),
@@ -192,7 +194,7 @@ struct TelescopeFixture {
 };
 
 struct TelescopeEOPFixture {
-    TelescopeEOPFixture() {
+    TelescopeEOPFixture(bool fatal_eop_out_of_range = false) {
         json json_config = json::parse(default_tel_config_str);
 
         N = 5;
@@ -221,6 +223,7 @@ struct TelescopeEOPFixture {
         }
 
         json_config["telescope"]["require_eop"] = true;
+        json_config["telescope"]["fatal_eop_out_of_range"] = fatal_eop_out_of_range;
         json_config["telescope"]["eop_updatable_config"] = "/eop_update";
         json_config["eop_update"] = {{"kotekan_update_endpoint", "json"},
                                      {"earth_orientation_parameter_table", fix_bare_eop_table}};
@@ -241,9 +244,23 @@ struct TelescopeEOPFixture {
     std::vector<BareEOP> fix_bare_eop_table;
 };
 
+// The same EOP table, but out-of-range requests are fatal.
+struct TelescopeFatalEOPFixture : public TelescopeEOPFixture {
+    TelescopeFatalEOPFixture() : TelescopeEOPFixture(true) {}
+};
+
+// FATAL_ERROR raises SIGTERM to shut kotekan down before throwing FatalError.
+// Ignore the signal so the tests observe the throw instead of being terminated.
+struct IgnoreSigtermFixture {
+    IgnoreSigtermFixture() {
+        std::signal(SIGTERM, SIG_IGN);
+    }
+};
+
 // Uncomment to show kotekan logs to stdout during test run.
 // BOOST_TEST_GLOBAL_FIXTURE(LoggingFixture);
 BOOST_TEST_GLOBAL_FIXTURE(RestServerFixture);
+BOOST_TEST_GLOBAL_FIXTURE(IgnoreSigtermFixture);
 
 /******************
  *
@@ -429,4 +446,34 @@ BOOST_FIXTURE_TEST_CASE(_get_eop_at_ut1, TelescopeEOPFixture) {
             check_eop_close(tel_eop, test_eop);
         }
     }
+}
+
+/*
+ * @brief   With `fatal_eop_out_of_range` set, requests off the ends of the EOP
+ *          table are fatal, while requests within it behave as usual.
+ */
+BOOST_FIXTURE_TEST_CASE(_get_eop_out_of_range_fatal, TelescopeFatalEOPFixture) {
+    const Telescope& tel = Telescope::instance();
+
+    int64_t giga = 1'000'000'000;
+
+    std::vector<EOP> eop_table = tel.get_current_EOP_table();
+
+    const EOP& eop_first = eop_table.front();
+    const EOP& eop_last = eop_table.back();
+
+    // Times within the table, including both end points, are fine.
+    BOOST_CHECK_NO_THROW(tel.get_EOP_at_time_ns(eop_first.t_inst_ns));
+    BOOST_CHECK_NO_THROW(tel.get_EOP_at_time_ns(eop_last.t_inst_ns));
+    BOOST_CHECK_NO_THROW(tel.get_EOP_at_time(nanosec_i64_to_timespec(eop_first.t_inst_ns + giga)));
+    BOOST_CHECK_NO_THROW(tel.get_EOP_at_UT1(eop_first.t_ut1_ns));
+    BOOST_CHECK_NO_THROW(tel.get_EOP_at_UT1(eop_last.t_ut1_ns));
+
+    // Times off either end of the table are not.
+    BOOST_CHECK_THROW(tel.get_EOP_at_time_ns(eop_first.t_inst_ns - giga), FatalError);
+    BOOST_CHECK_THROW(tel.get_EOP_at_time_ns(eop_last.t_inst_ns + giga), FatalError);
+    BOOST_CHECK_THROW(tel.get_EOP_at_time(nanosec_i64_to_timespec(eop_first.t_inst_ns - giga)),
+                      FatalError);
+    BOOST_CHECK_THROW(tel.get_EOP_at_UT1(eop_first.t_ut1_ns - giga), FatalError);
+    BOOST_CHECK_THROW(tel.get_EOP_at_UT1(eop_last.t_ut1_ns + giga), FatalError);
 }
