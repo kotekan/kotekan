@@ -12,6 +12,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for current_time, double_to_ts, ts_to_double
 
+#include <algorithm>  // for count
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <json.hpp>   // for json
@@ -88,18 +89,29 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     // Baseline mask from the telescope's dish table: elements whose dish is not a real
     // array dish (Fake or an RFI antenna) are never valid inputs and stay masked
     // independent of the posted bad-inputs list.
+    //
+    // Every dish missing from `dish_inputs` is reported as Fake, so a telescope configured
+    // without a dish table reports all of them that way. That means the table is absent,
+    // not that every feed is bad, so leave the baseline all-good rather than mask the whole
+    // array.
     baseline_mask = std::vector<uint8_t>(num_elements, 1u);
     const CHORDTelescope* const chord_tel = dynamic_cast<const CHORDTelescope*>(&tel);
     if (chord_tel != nullptr) {
         dishInputFields dish_inputs;
         chord_tel->fill_input_maps(dish_inputs);
-        for (size_t el = 0; el < num_elements; ++el) {
-            uint64_t dish;
-            uint64_t pol;
-            const station_id_t st_id = tel.element_index_to_station_id(el, output_order);
-            chord_tel->decode_station_id(st_id, dish, pol);
-            if (dish_inputs.type.at(dish) != DishType::ArrayDish)
-                baseline_mask[el] = 0;
+        if (std::count(dish_inputs.type.begin(), dish_inputs.type.end(), DishType::ArrayDish)
+            == 0) {
+            WARN("The telescope reports no array dishes, so its dish table is not configured; "
+                 "masking no element on dish type.");
+        } else {
+            for (size_t el = 0; el < num_elements; ++el) {
+                uint64_t dish;
+                uint64_t pol;
+                const station_id_t st_id = tel.element_index_to_station_id(el, output_order);
+                chord_tel->decode_station_id(st_id, dish, pol);
+                if (dish_inputs.type.at(dish) != DishType::ArrayDish)
+                    baseline_mask[el] = 0;
+            }
         }
     }
 
