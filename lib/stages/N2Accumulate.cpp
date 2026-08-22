@@ -110,6 +110,16 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rfiframemask_buf = get_buffer("in_rfiframemask_buf");
     in_rfiframemask_buf->register_consumer(unique_name);
 
+    // Optional bad feed mask (1 == good), folded into the output frames'
+    // per-element flags.
+    in_bf_mask_buf =
+        config.exists(unique_name, "in_bf_mask_buf") ? get_buffer("in_bf_mask_buf") : nullptr;
+    if (in_bf_mask_buf != nullptr) {
+        in_bf_mask_buf->register_consumer(unique_name);
+        _bf_mask_lifetime_in_samples =
+            config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples");
+    }
+
     // Sanity checks on initialization
     {
         // number of frequencies in incoming frames from n2k
@@ -203,6 +213,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_valid_sample_diff_sq_sum = std::vector<float>(_num_freq_per_n2k_frame, 0);
     _n_rfi_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
     _n_pl_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
+    _accum_bf_mask = std::vector<uint8_t>(_num_elements, 1u);
+    _current_bf_mask = std::vector<uint8_t>(_num_elements, 1u);
 
     _vis_samples_in_out_frame = 0;
     _accum_fpga_start_tick = -1;
@@ -235,6 +247,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rfiframemask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
         {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
+
+    if (in_bf_mask_buf != nullptr)
+        in_bf_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int8, "bf_mask", {1, _num_polarizations, _num_dishes}, {"Tbf", "P", "D"},
+            {_bf_mask_lifetime_in_samples, 1, 1}));
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
@@ -276,6 +293,7 @@ void N2Accumulate::main_thread() {
     frameID in_rficounts_frame_id(in_rficounts_buf);
     frameID in_plcounts_frame_id(in_plcounts_buf);
     frameID in_rfiframemask_frame_id(in_rfiframemask_buf);
+    int in_bf_mask_frame_id = 0; // only used when the mask input is wired
     frameID out_frame_id(out_buf);
 
     int previous_in_frame_id = -1;
@@ -363,6 +381,42 @@ void N2Accumulate::main_thread() {
             unique_name, in_rfiframemask_frame_id);
         if (rfiframemask == nullptr)
             break;
+
+        // Take in whatever bad feed masks have arrived.  One mask covers
+        // bf_mask_lifetime_in_samples, which is independent of the correlation frame length
+        // and may be longer or shorter than it, so this neither waits for a frame -- which
+        // would stall the accumulation whenever masks are the slower of the two -- nor
+        // assumes one per iteration, since they can equally be the faster.  Poll with a
+        // deadline already in the past and drain everything queued.  Every mask seen during
+        // a bin is ANDed into that bin's flags -- a feed flagged at any point in the bin is
+        // flagged for the whole bin -- and the newest is carried forward to cover the bins
+        // that see no new frame.
+        if (in_bf_mask_buf != nullptr) {
+            // A deadline already in the past turns the wait into a poll.
+            const timespec poll = {0, 0};
+            bool shutting_down = false;
+            for (;;) {
+                const int status = in_bf_mask_buf->wait_for_full_frame_timeout(
+                    unique_name, in_bf_mask_frame_id, poll);
+                if (status != 0) {
+                    shutting_down = status < 0;
+                    break; // 1: no mask frame waiting, -1: shutting down
+                }
+                const uint8_t* bf_mask = in_bf_mask_buf->frames[in_bf_mask_frame_id];
+                for (int64_t el = 0; el < _num_elements; ++el) {
+                    _current_bf_mask[el] = bf_mask[el];
+                    if (!bf_mask[el])
+                        _accum_bf_mask[el] = 0;
+                }
+                in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id);
+                in_bf_mask_frame_id = (in_bf_mask_frame_id + 1) % in_bf_mask_buf->num_frames;
+            }
+            if (shutting_down)
+                break;
+            for (int64_t el = 0; el < _num_elements; ++el)
+                if (!_current_bf_mask[el])
+                    _accum_bf_mask[el] = 0;
+        }
 
         // Get metadata for all incoming frames.
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
@@ -1116,7 +1170,16 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
         // Fill with sentinel values to be filled by another stage.
         std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
-        std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
+
+        // Per-element flags from the mask folded over the bin, 1.0 == good. With no mask
+        // input wired nothing here knows about bad feeds, so report every element good:
+        // that is the convention every other producer of these flags follows, and filling
+        // zero would instead tell a consumer that every element is bad.
+        if (in_bf_mask_buf != nullptr)
+            for (int64_t el = 0; el < _num_elements; ++el)
+                out_vis.flags[el] = _accum_bf_mask[el] ? 1.0f : 0.0f;
+        else
+            std::fill(out_vis.flags.begin(), out_vis.flags.end(), 1.0f);
         std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
         std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(255u));
     } // f
@@ -1161,6 +1224,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
     std::fill(_n_pl_samples_in_vis.begin(), _n_pl_samples_in_vis.end(), 0);
+    std::fill(_accum_bf_mask.begin(), _accum_bf_mask.end(), 1u);
 
 #ifdef WITH_OMP
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
