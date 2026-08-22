@@ -60,6 +60,8 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     dset_id_t dataset_id = hash("Mary had a little lamb");
     meta0.set_dataset_id(dataset_id);
 
+    meta0.set_bad_inputs_update_id("flags-2026-08-05T00:00:00");
+
     chordMetadata::beamCoord beam_coord = {.right_ascension =
                                                {
                                                    217.80,
