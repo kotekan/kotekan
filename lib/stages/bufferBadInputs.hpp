@@ -44,6 +44,10 @@
  * number is that sample's seq -- so it grows by the lifetime from frame to
  * frame, which is what the bad feed mask ring buffer requires.
  *
+ * Each frame's metadata also carries the @c update_id of the update in force,
+ * which the RFI commands copy onto their outputs so that a frame can be traced
+ * back to the flagging it was processed under.
+ *
  * Out-of-order and malformed updates are counted and ignored while running
  * -- a bad POST must not stop the correlator -- but a malformed *initial*
  * config block is still fatal.
@@ -78,7 +82,7 @@
  *                                      "start_time"  Optional UNIX time the update takes
  *                                                    effect (default: immediately).
  *                                      "update_id"   Optional string identifying the update,
- *                                                    used in this stage's log messages.
+ *                                                    stamped into the mask frames' metadata.
  * @conf   num_kept_updates  Int. Default 5.  Number of updates kept in the queue.
  * @conf   input_order   ElementOrder. Default CHIMECylinder.  Order of the posted
  *                       "bad_inputs" indices.
@@ -105,6 +109,8 @@ public:
 private:
     /// A posted update, ready to be written into a mask frame.
     struct badInputUpdate {
+        /// Identifier of the update, empty if it was posted without one.
+        std::string update_id;
         /// The mask in output_order, 1 == good.
         std::vector<uint8_t> mask;
     };
