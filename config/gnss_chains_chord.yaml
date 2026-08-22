@@ -1221,7 +1221,17 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # OPEN LEAD: y inherits the seed's own steps (r = +0.71 with p90 |seed step|, startup
     # excluded). The ~150-chip startup class is fixed (--dr-clock-wait-s); the ordinary
     # 5-30 chip churn is the live thread.
-    # joint-model-primary: true
+    # ── GATED FEED, ARMED 2026-08-22 ~17:2x ───────────────────────────────────────
+    # First arm of the model-primary feed WITH --joint-feed-max-trim in force. Every earlier
+    # attempt fed every satellite; measured today, median |model - held| is 1.8-2.5 chips,
+    # i.e. most satellites were outside the +-1 chip range where y is sky-anchored at all,
+    # so the feed was reading back the consumer's own output. Now only satellites the DLL is
+    # demonstrably holding contribute (q >= --lock-q AND |applied trim| < 1.0 chip).
+    # EXPECT ~2 SATELLITES, not twelve. E8 and E16 qualify on this chain right now. That is
+    # too few to expect a payoff and about right for a first arm -- if 2 rows are born with
+    # sane b_sat and the GPS population is undisturbed, the mechanism is validated and the
+    # gate can widen as seeds improve.
+    # joint-model-primary: true   # DISARMED 17:34 -- the gate admitted ONE sat, see below
     # ── ATTEMPT 5, ARMED 2026-08-21 22:0x -- CONSUME THE RATE BEFORE FEEDING ────────
     # Attempt 4's forensics: this chain's seeds took their code rate from the l-a EMA
     # (-0.0210 ppm = -0.215 chips/s), dr_seed_phys propagates `held` with it, so
