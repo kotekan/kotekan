@@ -1165,18 +1165,19 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
         out_vis.erms = -1;
 
-        // Fill with sentinel values to be filled by another stage.
-        std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
-
-        // Per-element flags from the mask folded over the bin, 1.0 == good. With no mask
-        // input wired nothing here knows about bad feeds, so report every element good:
-        // that is the convention every other producer of these flags follows, and filling
-        // zero would instead tell a consumer that every element is bad.
+        // Per-element flags from the bad feed mask folded over the bin, 1.0 == good. With
+        // no mask input wired nothing here knows about bad feeds, so report every element
+        // good: that is the convention every other producer of these flags follows, and
+        // filling zero would instead tell a consumer honouring them that every element is
+        // bad.
         if (in_bf_mask_buf != nullptr)
             for (int64_t el = 0; el < _num_elements; ++el)
                 out_vis.flags[el] = _accum_bf_mask[el] ? 1.0f : 0.0f;
         else
             std::fill(out_vis.flags.begin(), out_vis.flags.end(), 1.0f);
+
+        // Fill with sentinel values to be filled by another stage.
+        std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
         std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
         std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(255u));
     } // f
