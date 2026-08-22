@@ -892,7 +892,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # feed-applied 0, fine feed off on THIS chain). Judge: |dcmd|/poll well below 14b's
     # flat 1.0 Hz, rails toward 0, THEN benefit (eta/q duty vs controls). Arm 17
     # (kcoh-rate-from-row) follows only after this holds.
-    rrate-command: true
+    # rrate-command: true      # OFF on both -- arm 16b's verdict is VOID
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
@@ -1530,7 +1530,7 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # same-poll controls, unchanged. Falsifier: E-row rates WALK vs controls, or the
     # reject counter ramps => wrong sign or a bad reference; disarm (re-comment).
     rrate-phase-sign: 1.0
-    rrate-phase-feed: true
+    # rrate-phase-feed: true   # OFF on both -- arm 15's verdict is VOID
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
     # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
     # same PRN, same instant, both bands, across the 20:32Z arming of gal_e5a:
@@ -1580,7 +1580,36 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     fleet-trim-bandwidth: 2.5
     fleet-trim-readback: 1
-    joint-consume: clk
+    # ── MATCHED TO gal_e5a 2026-08-22 ─────────────────────────────────────────────
+    # e5b was NOT on e5a's baseline despite the R7/#49 pass: it still took its seed code
+    # rate from the l-a EMA while e5a takes it from the joint state. Measured on the SAME
+    # satellites, same sky, one variable -- the model-vs-tracker gap drifts 12.8x faster
+    # here (paired median 0.0706 vs 0.0055 chips/s), and 5 of 9 satellites exceed the slew
+    # cap against 3 of 9 on e5a. E21 15x, E27 76x, E26 31x worse on this chain alone.
+    # That gap is what the slew then rails against at 96% of steps, running `held` out to
+    # -27..-52 chips before a re-birth snaps it back -- the seed churn the joint feed
+    # inherits as its 12.5-chip "noise".
+    # ⚠️ ONLY joint-consume is matched. rrate-command and rrate-phase-feed stay DELIBERATELY
+    # different: this chain is the control for the carrier arm (see the note below), and
+    # blanket-matching would destroy the only A/B we have there.
+    # ── TWINNED WITH ITS SIBLING 2026-08-22 ──────────────────────────────────────
+    # KV: "doesn't keeping four axes different just confound any a/b testing?" -- yes, and
+    # it had already confounded one: the 12.8x drift ratio I attributed to `joint-consume`
+    # was measured across a pair that also differed in dr-forecast-lead-s,
+    # rrate-coarse-deweight, rrate-command and rrate-phase-feed.
+    # Nothing was being protected. The two arms those axes carried are BOTH VOID -- arm 15
+    # (e5b fine feed, 08-20 16:03) and arm 16 (command on e5a, 16:49) were armed INTO the
+    # gather wedge, with the C++ code loop dead. So the pair is now matched on every axis,
+    # and any future A/B changes exactly ONE.
+    # DIRECTION, chosen per axis rather than blanket-copied:
+    #   dr-forecast-lead-s 1.0     -> matched UP: it compensates a MEASURED ~217 ms lag.
+    #   rrate-coarse-deweight 1.0  -> matched UP to the sibling.
+    #   rrate-command / -phase-feed-> OFF on BOTH. Their verdicts are void, so arming a
+    #     second chain on an unproven feature is the wrong direction; the clean baseline is
+    #     the lower-authority one. Re-fly them later as a single-axis A/B on a live loop.
+    dr-forecast-lead-s: 1.0
+    rrate-coarse-deweight: 1.0
+    joint-consume: clk,rate
     dll-deep-gate: "33"
     rrate-cmd-min-sig: 100
     carrier-max-hz: 10.0
