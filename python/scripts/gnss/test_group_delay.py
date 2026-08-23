@@ -132,5 +132,63 @@ class TestNegativeControls(unittest.TestCase):
                             "%s correction implausibly large -- units?" % sig)
 
 
+class TestDcbSource(unittest.TestCase):
+    """The DCB path (gnss_dcb) as a SOURCE for group_delay_s, with the controls that
+    matter: it must override the broadcast term when present, fall back cleanly when not,
+    and stay continuous across a Galileo record-type flip -- the same invariance the
+    broadcast path is tested for above, now through measured biases."""
+
+    def setUp(self):
+        import gnss_dcb
+        self.m = gnss_dcb
+        # b_C1C - b_C5Q = -4 ns, b_C1C - b_C7Q = -6 ns, b_C1P - b_C5P = +3, b_C1P - b_C6I = -2
+        self.tab = {("E", 7): {("C1C", "C5Q"): -4e-9, ("C1C", "C7Q"): -6e-9},
+                    ("C", 26): {("C1P", "C5P"): 3e-9, ("C1P", "C6I"): -2e-9}}
+
+    def test_bds_b2a_is_reachable_where_broadcast_is_not(self):
+        """THE WHOLE REASON THIS EXISTS. b_C6I - b_C5P = DSB(C1P,C5P) - DSB(C1P,C6I)."""
+        v = self.m.signal_bias_s(self.tab, "C", 26, "bds_b2a")
+        self.assertAlmostEqual(v, 5e-9, places=15)
+        self.assertEqual(group_delay_s(_c(tgd1=-4.3 * NS, tgd2=-4.3 * NS), "bds_b2a"), 0.0,
+                         "broadcast path must still be zero for B2a")
+
+    def test_dcb_overrides_the_broadcast_term(self):
+        e = dict(sys="C", prn=26, tgd=0.0, iodc=-4.3 * NS, l2_codes=0)
+        self.assertAlmostEqual(group_delay_s(e, "bds_b2a", self.tab), 5e-9, places=15)
+
+    def test_missing_satellite_falls_back_to_broadcast(self):
+        """A partial product must degrade per-satellite, not all-or-nothing."""
+        e = dict(sys="C", prn=99, tgd=0.0, iodc=-4.3 * NS, l2_codes=0)
+        self.assertAlmostEqual(group_delay_s(e, "bds_b2b", self.tab), +4.3 * NS, places=15)
+
+    def test_galileo_agrees_across_record_types(self):
+        """Same invariance as the broadcast path: reaching E5a from an I/NAV record must
+        equal reaching it from an F/NAV one. With full DSBs there is no approximation, so
+        this should hold EXACTLY rather than to a few ns."""
+        fnav = self.m.signal_bias_s(self.tab, "E", 7, "gal_e5a", gal_inav=False)
+        inav = self.m.signal_bias_s(self.tab, "E", 7, "gal_e5a", gal_inav=True)
+        d15, d17 = -4e-9, -6e-9
+        # the two DATUMS differ by  b_IF(1,5) - b_IF(1,7); removing it must reconcile them
+        offset = (GAMMA_E1E5A * d15 / (GAMMA_E1E5A - 1.0)
+                  - (d17 / (GAMMA_E1E5B - 1.0) + d15))
+        self.assertAlmostEqual(fnav - inav, offset, places=18)
+
+    def test_zero_mean_is_a_property_of_the_product(self):
+        """Guards the claim the flag help makes. If a future product drops the zero-mean
+        condition this test fails and the 'cannot explain a common offset' caveat must be
+        rewritten rather than silently carried forward."""
+        import os
+        p = self.m.fetch_dcb()
+        if not p or not os.path.exists(p):
+            self.skipTest("no DCB product available (no token/network)")
+        tab = self.m.parse_dcb(p)
+        v = [self.m.signal_bias_s(tab, "C", k[1], "bds_b2a") for k in tab if k[0] == "C"]
+        v = [x for x in v if x is not None]
+        self.assertGreater(len(v), 10)
+        self.assertLess(abs(sum(v) / len(v)) * 1e9, 0.5,
+                        "constellation mean is no longer ~0 -- the zero-mean condition "
+                        "changed and the 'per-sat only' caveat must be revisited")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

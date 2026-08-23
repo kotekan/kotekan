@@ -1396,6 +1396,18 @@ def main(argv=None, rx=None, publisher=None):
                          "this many seconds we seed on the prime and log that we did. A guard "
                          "that can leave a chain dark forever is worse than the step it "
                          "removes.")
+    ap.add_argument("--dcb-bias", action="store_true",
+                    help="use the MGEX (CAS) measured differential code biases in place of "
+                         "the broadcast TGD/BGD, per satellite, where the product covers the "
+                         "signal. THE POINT IS BeiDou B2a, whose broadcast term (TGD_B2ap) is "
+                         "a B-CNAV2 parameter that RINEX 3 does not carry at all -- so without "
+                         "this it gets NO group-delay correction. ⚠️ The product is ZERO-MEAN "
+                         "PER CONSTELLATION by construction, so it supplies the per-satellite "
+                         "spread and can never explain a constellation-common offset; measured "
+                         "2026-08-23 the BeiDou spread is -0.006..+0.121 chips against a "
+                         "+0.74..+1.3 chip common trim. Needs an Earthdata token "
+                         "($EARTHDATA_TOKEN or ~/.cache/kotekan_gps/.earthdata_token); without "
+                         "one it logs and falls back to the broadcast term.")
     ap.add_argument("--joint-consume", default="",
                     help="P2b: comma-separated JOINT-state consumers to switch LIVE, one "
                          "name per commit so each is A/B-able on its own. Empty (default) "
@@ -5960,6 +5972,30 @@ def main(argv=None, rx=None, publisher=None):
                     dr_state["eph_t"] = now_w
                     dr_state["t0m"] = dr_eph_mod.gpst_of_utc(utc0_sample0) % t_code
                     _log("dead-reckon: BRDC loaded (%d sats)" % len(dr_state["eph"]))
+                    # MEASURED CODE BIASES, refreshed on the ephemeris cadence (A0b, part 2).
+                    # Daily product, ~5 days of latency, biases stable over weeks -- so the
+                    # refresh rate is irrelevant and the fetch is cached. Optional by design:
+                    # no token or no network -> dcb stays None and group_delay_s falls back to
+                    # the broadcast term, which is what every run before 2026-08-23 did.
+                    if args.dcb_bias:
+                        try:
+                            import gnss_dcb as _dcbm
+                            _p = _dcbm.fetch_dcb()
+                            _t = _dcbm.parse_dcb(_p)
+                            dr_state["dcb"] = _t or None
+                            if _t:
+                                _n = sum(1 for k in _t if k[0] == args.dr_constellation)
+                                _log("dead-reckon: DCB loaded (%s; %d sats this "
+                                     "constellation) -- measured code biases override the "
+                                     "broadcast TGD/BGD per satellite"
+                                     % (os.path.basename(_p or "?"), _n))
+                            else:
+                                _log("dead-reckon: no DCB product (no token/network) -- "
+                                     "falling back to the broadcast group delay")
+                        except Exception as _de:
+                            dr_state["dcb"] = None
+                            _log("dead-reckon: DCB load failed (%s); broadcast term only"
+                                 % _de)
                 except Exception as e:
                     _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % e)
                     dr_state["eph_t"] = now_w - 7200 + 600
@@ -6159,7 +6195,7 @@ def main(argv=None, rx=None, publisher=None):
                         pd = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0,
-                            signal=args.signal)
+                            signal=args.signal, dcb=dr_state.get("dcb"))
                         # CENTRED PAIR (task #52): +/-2 s about now_w, not [now, now+4]. The
                         # old form was a FORWARD difference, so it estimated the rate at
                         # now+2 and handed it to the seed as if it were the rate at now -- the
@@ -6171,11 +6207,11 @@ def main(argv=None, rx=None, publisher=None):
                         pd2 = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w + 2.0, tz=timezone.utc),
-                            mask_deg=-90.0, signal=args.signal)
+                            mask_deg=-90.0, signal=args.signal, dcb=dr_state.get("dcb"))
                         pd0 = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w - 2.0, tz=timezone.utc),
-                            mask_deg=-90.0, signal=args.signal)
+                            mask_deg=-90.0, signal=args.signal, dcb=dr_state.get("dcb"))
                 except Exception as e:
                     pd, pd2, pd0 = {}, {}, {}
                     _log("dead-reckon: predict failed: %s" % e)

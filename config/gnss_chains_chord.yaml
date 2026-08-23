@@ -36,6 +36,11 @@ common:
   almanac-source: brdc
   dead-reckon: true
   dr-clock-chips: 0.0
+  # MEASURED CODE BIASES over the broadcast term (A0b part 2, 2026-08-23). Every chain:
+  # the per-satellite spread is real on all three constellations, and for bds_b2a it is the
+  # ONLY source there is (TGD_B2ap is B-CNAV2; RINEX 3 has nothing). ⚠️ Zero-mean per
+  # constellation by construction -> per-sat only, never a common offset.
+  dcb-bias: true
   carrier-from-code: true
   cl-assist: true
   seed-doppler: auto

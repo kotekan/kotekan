@@ -521,7 +521,7 @@ _GAL_CLK_E5A = 0x100
 _GAL_CLK_E5B = 0x200
 
 
-def group_delay_s(e, signal):
+def group_delay_s(e, signal, dcb=None):
     """Seconds to ADD to the broadcast clock so it refers to `signal`'s own code phase.
 
     THE BROADCAST CLOCK IS NOT REFERENCED TO OUR SIGNAL. Every constellation fits its clock
@@ -551,6 +551,23 @@ def group_delay_s(e, signal):
         return 0.0
     sig = str(signal).lower()
     sysc = e.get("sys")
+    # MEASURED BIAS BEATS BROADCAST, when we have it (2026-08-23). The MGEX DCB product
+    # covers every signal we track -- including BeiDou B2a, whose broadcast term is not in
+    # RINEX 3 at all -- and is a global-network estimate rather than the satellite's own.
+    # ⚠️ It is ZERO-MEAN PER CONSTELLATION by construction, so it supplies the PER-SAT
+    # spread and never a constellation-common level; the broadcast term is the only source
+    # of the latter, and for B2a there is none. Falls through to broadcast when a pair is
+    # missing, so a partial product degrades per-satellite rather than all-or-nothing.
+    if dcb:
+        try:
+            import gnss_dcb as _dcbmod
+            _inav = bool(int(e.get("l2_codes") or 0) & _GAL_CLK_E5B) if sysc == "E" else False
+            _v = _dcbmod.signal_bias_s(dcb, sysc, int(e.get("prn") or 0), sig,
+                                       gal_inav=_inav)
+            if _v is not None and math.isfinite(_v):
+                return _v
+        except Exception:
+            pass
     tgd = float(e.get("tgd") or 0.0)        # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
     tgd2 = float(e.get("iodc") or 0.0)      # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC(!)
     if sysc == "G":
@@ -649,7 +666,8 @@ def best_eph(records, t_gpst, max_age=14400.0):
     return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
 
 
-def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal=None):
+def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal=None,
+                dcb=None):
     """Per visible sat: az/el, geometric range (m) with Earth-rotation (Sagnac)
     correction, range-rate (m/s), sat clock (s). Receiver clock NOT included --
     solving it from measured-vs-predicted IS the time bootstrap.
@@ -695,7 +713,7 @@ def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal
         rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel)) / rng
         # A0b: the broadcast clock refers to some OTHER signal combination; make it refer
         # to ours. `signal=None` (every non-broker caller) keeps the old, uncorrected value.
-        _gd = group_delay_s(e, signal)
+        _gd = group_delay_s(e, signal, dcb)
         out[key] = dict(az=az, el=el, range_m=rng, range_rate_mps=rr,
                         sat_clk_s=clk + _gd, tgd_s=_gd,
                         toe_age_s=t - e["toe_gpst"])
