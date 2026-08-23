@@ -1643,7 +1643,18 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # same-poll controls, unchanged. Falsifier: E-row rates WALK vs controls, or the
     # reject counter ramps => wrong sign or a bad reference; disarm (re-comment).
     rrate-phase-sign: 1.0
-    # rrate-phase-feed: true   # OFF on both -- arm 15's verdict is VOID
+    # ── ARM 15 RE-FLOWN 2026-08-23 ~13:2x (GAP 3 step 1 of the ordered path) ─────────
+    # The original arm 15 ran INSIDE the gather wedge (C++ loop dead) and its verdict is
+    # VOID; this re-fly is on a VERIFIED-LIVE loop (hop advancing, pre-flight logged).
+    # The sign is the 08-18 commanded ±2 Hz step-pair calibration (+1 for THIS chain,
+    # served residuals respond +step both directions, gal_e5a controls flat) -- NOT the
+    # passive regression, which measured it backward. SINGLE AXIS: e5a keeps phase-feed
+    # false as the same-sky control.
+    # JUDGE (~15 min): JRR line flips fold-fed -> fine-fed; rrate sigmas drop toward mm/s
+    # from the fold feed's m/s; e5a controls unchanged in-poll; q duty flat vs e5a.
+    # THEN: step 2 = regress d(b_sat)/dt vs the fine-fed rrate for the coupling sign;
+    # step 3 = arm --rr-bsat-chips-per-m (GAP 3); step 4 = rrate-command on e5a (GAP 1).
+    rrate-phase-feed: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
     # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
     # same PRN, same instant, both bands, across the 20:32Z arming of gal_e5a:
