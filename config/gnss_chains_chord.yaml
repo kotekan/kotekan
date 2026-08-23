@@ -1298,7 +1298,24 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # JUDGE ON (~10 min, no soak): gal_e5a-gps_l5 clock paired in time -> bds_b2a's +0.001
     # (from +0.550) while e5b stays ~+0.575; gal_e5a common trim -> ~0 (from -0.938).
     # REVERT: restore `clk,rate` on this line + broker restart.
-    joint-consume: rate
+    # ── RE-ARMED 2026-08-23 ~02:2x UNDER THE MEDIAN GAUGE (the disarm above was measured
+    # under the MEAN gauge, and the gauge was the fault) ──────────────────────────────
+    # The wander that killed the first arm was the mean(b)=0 convention re-rolling by
+    # b_newcomer/n at every rise/set. state_filter now pins MEDIAN(b)=0 (294dbcba1), i.e.
+    # the SAME convention as the legacy circular median the seeds already fly -- so what
+    # `clk` consumption buys now is purely the filter: memory + a rate state + innovation
+    # gates over the same anchor. That is aimed at the two measured walking failures of
+    # 2026-08-22/23: the 1123-chip bootstrap excursion (garbage detections dragging a
+    # memoryless median; birth_max/innovation gates reject that class) and E28's smooth
+    # q decay (median churn under membership change; a filtered clock coasts).
+    # ⚠️ NO NEW INFORMATION: the state is still GPS-fed only (the b2a feed died on
+    # eligibility, see its note). This is a filtering claim and is judged as one.
+    # A/B, mirror of the 08-22 arm: THIS chain treated, e5b stays `rate` as the control.
+    # JUDGE (paired in time vs gps_l5, ~40 min): treated sd AT OR BELOW control (the mean
+    # gauge gave 0.92 treated vs 0.24 -- 4x WORSE); no lost locks vs e5b; behaviour through
+    # the next thin-GPS/bootstrap patch. If treated > control again, the median gauge did
+    # not fix what its commit claims -- revert to `rate` and say so.
+    joint-consume: clk,rate
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
     # when the tap is off-peak -- so an off-peak satellite fails the gate and is never trimmed
