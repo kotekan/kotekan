@@ -301,7 +301,26 @@ http://cx42:12048/gnss{0..1}_n2combine,\
 http://cx43:12048/gnss{0..1}_n2combine,\
 http://cx44:12048/gnss{0..1}_n2combine,\
 http://cx51:12048/gnss{0..1}_n2combine"
-    n2-combiners: *l5_cmb
+    # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
+    # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
+    # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
+    # cycle. Its result (fcoh_n2) feeds exactly one thing -- the "| B ..." half of the
+    # FLEET-COH log line. It publishes nothing, seeds nothing, touches no loop; the code
+    # comment at the call site says so.
+    #
+    # And the comparison was inert: the A/B is gathered-vs-polled, which needs
+    # --telem-coherent to put the telemetry feed on the FIRST arm. That flag is commented
+    # out (see `# telem-coherent: true` below), so _tsrc is None and BOTH arms poll the same
+    # twelve REST endpoints with the same estimator. What was left of the difference was the
+    # serial poll's own duration -- A and B fetch at different instants, so different
+    # instances fall in the window (observed A 112/8 | B 142/10 on one PRN, A 75/12 | B 49/12
+    # on another, sign flipping by chain). That is the poll-order artefact, not path B.
+    #
+    # Profiled cost, live, five chains, py-spy on the real workload: fleet_coherent was
+    # ~30% of chain CPU (18.15% in its endpoint poll, 10.7% in _solve) and half of that was
+    # this duplicate. Uncommenting the line restores it; turn --telem-coherent on at the same
+    # time or it measures nothing.
+    # n2-combiners: *l5_cmb
     # TASK #59 A/B -- ON THIS CHAIN ONLY, and it is a PAIRED test rather than a before/after.
     #
     # This broker runs fleet_coherent TWICE per cycle, and on CHORD `dll-combiners` and
@@ -968,7 +987,26 @@ http://cx51:12048/gnss{0..1}_e5a_n2assemble"
 http://cx27:12048/gnss{0..1}_e5a_n2combine,http://cx42:12048/gnss{0..1}_e5a_n2combine,\
 http://cx43:12048/gnss{0..1}_e5a_n2combine,http://cx44:12048/gnss{0..1}_e5a_n2combine,\
 http://cx51:12048/gnss{0..1}_e5a_n2combine"
-    n2-combiners: *e5a_cmb
+    # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
+    # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
+    # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
+    # cycle. Its result (fcoh_n2) feeds exactly one thing -- the "| B ..." half of the
+    # FLEET-COH log line. It publishes nothing, seeds nothing, touches no loop; the code
+    # comment at the call site says so.
+    #
+    # And the comparison was inert: the A/B is gathered-vs-polled, which needs
+    # --telem-coherent to put the telemetry feed on the FIRST arm. That flag is commented
+    # out (see `# telem-coherent: true` below), so _tsrc is None and BOTH arms poll the same
+    # twelve REST endpoints with the same estimator. What was left of the difference was the
+    # serial poll's own duration -- A and B fetch at different instants, so different
+    # instances fall in the window (observed A 112/8 | B 142/10 on one PRN, A 75/12 | B 49/12
+    # on another, sign flipping by chain). That is the poll-order artefact, not path B.
+    #
+    # Profiled cost, live, five chains, py-spy on the real workload: fleet_coherent was
+    # ~30% of chain CPU (18.15% in its endpoint poll, 10.7% in _solve) and half of that was
+    # this duplicate. Uncommenting the line restores it; turn --telem-coherent on at the same
+    # time or it measures nothing.
+    # n2-combiners: *e5a_cmb
     # ── P2b STEP 1 for the model-primary chains (task #33), 2026-08-11 ──────────────────
     # FEED ONLY. There is deliberately no `joint-consume` here: this puts E5a's satellites
     # INTO the shared receiver state and changes no seed. Consume is a separate commit,
@@ -1602,7 +1640,26 @@ http://cx51:12048/gnss{0..1}_b2a_n2assemble"
 http://cx27:12048/gnss{0..1}_b2a_n2combine,http://cx42:12048/gnss{0..1}_b2a_n2combine,\
 http://cx43:12048/gnss{0..1}_b2a_n2combine,http://cx44:12048/gnss{0..1}_b2a_n2combine,\
 http://cx51:12048/gnss{0..1}_b2a_n2combine"
-    n2-combiners: *b2a_cmb
+    # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
+    # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
+    # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
+    # cycle. Its result (fcoh_n2) feeds exactly one thing -- the "| B ..." half of the
+    # FLEET-COH log line. It publishes nothing, seeds nothing, touches no loop; the code
+    # comment at the call site says so.
+    #
+    # And the comparison was inert: the A/B is gathered-vs-polled, which needs
+    # --telem-coherent to put the telemetry feed on the FIRST arm. That flag is commented
+    # out (see `# telem-coherent: true` below), so _tsrc is None and BOTH arms poll the same
+    # twelve REST endpoints with the same estimator. What was left of the difference was the
+    # serial poll's own duration -- A and B fetch at different instants, so different
+    # instances fall in the window (observed A 112/8 | B 142/10 on one PRN, A 75/12 | B 49/12
+    # on another, sign flipping by chain). That is the poll-order artefact, not path B.
+    #
+    # Profiled cost, live, five chains, py-spy on the real workload: fleet_coherent was
+    # ~30% of chain CPU (18.15% in its endpoint poll, 10.7% in _solve) and half of that was
+    # this duplicate. Uncommenting the line restores it; turn --telem-coherent on at the same
+    # time or it measures nothing.
+    # n2-combiners: *b2a_cmb
 
   # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
   # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
@@ -1818,7 +1875,26 @@ http://cx42:12048/gnss{0..1}_e5b_n2combine,\
 http://cx43:12048/gnss{0..1}_e5b_n2combine,\
 http://cx44:12048/gnss{0..1}_e5b_n2combine,\
 http://cx51:12048/gnss{0..1}_e5b_n2combine"
-    n2-combiners: *e5b_cmb
+    # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
+    # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
+    # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
+    # cycle. Its result (fcoh_n2) feeds exactly one thing -- the "| B ..." half of the
+    # FLEET-COH log line. It publishes nothing, seeds nothing, touches no loop; the code
+    # comment at the call site says so.
+    #
+    # And the comparison was inert: the A/B is gathered-vs-polled, which needs
+    # --telem-coherent to put the telemetry feed on the FIRST arm. That flag is commented
+    # out (see `# telem-coherent: true` below), so _tsrc is None and BOTH arms poll the same
+    # twelve REST endpoints with the same estimator. What was left of the difference was the
+    # serial poll's own duration -- A and B fetch at different instants, so different
+    # instances fall in the window (observed A 112/8 | B 142/10 on one PRN, A 75/12 | B 49/12
+    # on another, sign flipping by chain). That is the poll-order artefact, not path B.
+    #
+    # Profiled cost, live, five chains, py-spy on the real workload: fleet_coherent was
+    # ~30% of chain CPU (18.15% in its endpoint poll, 10.7% in _solve) and half of that was
+    # this duplicate. Uncommenting the line restores it; turn --telem-coherent on at the same
+    # time or it measures nothing.
+    # n2-combiners: *e5b_cmb
 
   # -- 1207.14 MHz, the SECOND BAND (2026-08-09) -------------------------------------
   # Same machinery as its 1176.45 MHz sibling above; the ONLY thing that differs is the
@@ -1921,4 +1997,23 @@ http://cx42:12048/gnss{0..1}_b2b_n2combine,\
 http://cx43:12048/gnss{0..1}_b2b_n2combine,\
 http://cx44:12048/gnss{0..1}_b2b_n2combine,\
 http://cx51:12048/gnss{0..1}_b2b_n2combine"
-    n2-combiners: *b2b_cmb
+    # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
+    # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
+    # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
+    # cycle. Its result (fcoh_n2) feeds exactly one thing -- the "| B ..." half of the
+    # FLEET-COH log line. It publishes nothing, seeds nothing, touches no loop; the code
+    # comment at the call site says so.
+    #
+    # And the comparison was inert: the A/B is gathered-vs-polled, which needs
+    # --telem-coherent to put the telemetry feed on the FIRST arm. That flag is commented
+    # out (see `# telem-coherent: true` below), so _tsrc is None and BOTH arms poll the same
+    # twelve REST endpoints with the same estimator. What was left of the difference was the
+    # serial poll's own duration -- A and B fetch at different instants, so different
+    # instances fall in the window (observed A 112/8 | B 142/10 on one PRN, A 75/12 | B 49/12
+    # on another, sign flipping by chain). That is the poll-order artefact, not path B.
+    #
+    # Profiled cost, live, five chains, py-spy on the real workload: fleet_coherent was
+    # ~30% of chain CPU (18.15% in its endpoint poll, 10.7% in _solve) and half of that was
+    # this duplicate. Uncommenting the line restores it; turn --telem-coherent on at the same
+    # time or it measures nothing.
+    # n2-combiners: *b2b_cmb

@@ -1017,6 +1017,7 @@ def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
     """
     import cmath
     import random as _random
+    import numpy as _np
 
     if len(points) < 3:
         return None
@@ -1031,40 +1032,62 @@ def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
     # convention as fleet_coherent. Precompute E*A per point; phases fold around f*tau.
     f0 = min(fid for v in insts.values() for fid, _, _ in v)
 
-    def scan(store, taus, phi):
-        best_tau, best_mag = None, -1.0
-        for tau_s in taus:
-            total = 0.0j
-            for k, v in store.items():
-                s = 0.0j
-                for fid, a, en in v:
-                    s += en * a * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz
-                                            * tau_s)
-                total += s * cmath.exp(-1j * phi.get(k, 0.0))
-            m = abs(total)
-            if m > best_mag:
-                best_mag, best_tau = m, tau_s
-        return best_tau, best_mag
+    # ⚠️ VECTORISED 2026-08-23 -- THIS WAS ~17% OF THE WHOLE BROKER. It was three nested
+    # pure-Python loops (taus x instances x channels) with a cmath.exp in the innermost, run
+    # 294 tau-evaluations deep per `run` (201 coarse + 3 zoom rounds of 31) and TWICE per
+    # fit, since the shuffled null re-runs the identical alternation. Same arithmetic, same
+    # search grid, same rounds -- expressed as matrices. It also stops HOLDING THE GIL: numpy
+    # releases it, so the other four chain threads can actually run during the fit, which on
+    # a five-chain broker pinned at one core is worth as much as the arithmetic.
+    #
+    # ⚠️ The docstring's "stdlib only" no longer holds. numpy is already a hard dependency of
+    # this module (see _fit_record_rate) and of the broker, so this costs no new install --
+    # but a caller that relied on the pure-stdlib promise would break, and the summation
+    # order changed, so the broker_equiv digests move and must be re-blessed.
+    def _prep(store):
+        """Flatten a store to (dfreq, weights, group-matrix, n_inst).
 
-    def solve_phi(store, tau_s):
-        phi = {}
-        for k, v in store.items():
-            s = 0.0j
-            for fid, a, en in v:
-                s += en * a * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * tau_s)
-            if abs(s) > 0.0:
-                phi[k] = cmath.phase(s)
-        return phi
+        `f0` and the channel set are shared with the caller's `insts`, so the null store
+        preps to the same shapes -- only the values differ.
+        """
+        keys = sorted(store)
+        cols = {k: i for i, k in enumerate(keys)}
+        fid = _np.array([f for k in keys for f, _, _ in store[k]], dtype=float)
+        w = _np.array([en * a for k in keys for _, a, en in store[k]], dtype=complex)
+        g = _np.array([cols[k] for k in keys for _ in store[k]], dtype=int)
+        # one-hot (n_points x n_inst): a matmul is the group-sum, and n_inst is ~12 so it
+        # is far cheaper than np.add.at's fancy-index path.
+        G = _np.zeros((len(g), len(keys)), dtype=float)
+        G[_np.arange(len(g)), g] = 1.0
+        return (fid - f0) * chan_width_hz, w, G, len(keys)
+
+    def scan(prep, taus, phi):
+        df, w, G, _ = prep
+        t = _np.asarray(taus, dtype=float)
+        # (n_tau x n_points) phase ramp -> weight -> sum per instance -> derotate -> fold
+        E = _np.exp(2j * _np.pi * _np.outer(t, df))
+        total = ((E * w) @ G) @ _np.exp(-1j * phi)
+        m = _np.abs(total)
+        k = int(_np.argmax(m))
+        return float(t[k]), float(m[k])
+
+    def solve_phi(prep, tau_s):
+        df, w, G, _ = prep
+        s = (_np.exp(2j * _np.pi * tau_s * df) * w) @ G
+        # a zero-magnitude instance contributed no phase; the loop version simply left it
+        # out of the dict and scan's phi.get(k, 0.0) then used 0.0.
+        return _np.where(_np.abs(s) > 0.0, _np.angle(s), 0.0)
 
     def run(store):
+        prep = _prep(store)
         span_s = span_chips / chip_rate_hz
         step_s = coarse_step_chips / chip_rate_hz
         n = max(3, int(round(2.0 * span_s / step_s)) + 1)
         taus = [-span_s + i * (2.0 * span_s / (n - 1)) for i in range(n)]
-        tau, phi = 0.0, {}
+        tau, mag = 0.0, 0.0
         for _ in range(rounds):
-            phi = solve_phi(store, tau)
-            tau, mag = scan(store, taus, phi)
+            phi = solve_phi(prep, tau)
+            tau, mag = scan(prep, taus, phi)
             # zoom: next round scans +-3 coarse steps around the peak at 1/10 step
             taus = [tau + (i - 15) * step_s / 5.0 for i in range(31)]
         return tau, mag
