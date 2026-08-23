@@ -1807,8 +1807,23 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
     # ⚠️ RE-ARM ONLY WITH A HANDOVER: the Python trim must keep running for NOT-YET-ARMED
     # PRNs (acquisition authority) and stand down once the C++ loop takes a PRN. Arming
     # without that is #49's latch made absolute.
-    # fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    # fleet-trim-bandwidth: 2.5
+    # ── ARMED 2026-08-23 ~11:3x AS THE B2a-OFFSET DISCRIMINATOR ─────────────────────
+    # b2a (1176.45) carries a PERSISTENT +1.2 +- 0.4 chip common trim over 8.5 h while
+    # gal_e5a/e5b (same band / same clock / same DR path) read ~0 and gps_l5 +0.005.
+    # Ruled out with numbers: the clock (paired +0.001; trim-vs-clk regression r<0.33 at
+    # all lags to 900 s), BDT (seconds), broadcast TGD (absent), MGEX DCB (+0.066), the
+    # TRUE broadcast TGD_B2ap from RINEX 4 B-CNAV2 (+0.031 common over our birds).
+    # Remaining suspects split exactly on THIS chain: a BDS model-path term follows the
+    # CONSTELLATION (b2b would read ~+1.2); a B2a replica/code-phase convention follows
+    # the SIGNAL (b2b would read ~0, like Galileo). The offline e2e closure is currently
+    # non-discriminating (verdict 5.212 chips for BOTH _CS signals at ANY --dop -- a gate
+    # that cannot fail; rebuild before trusting it).
+    # ⚠️ This spends b2b's unarmed-control role from the 08-22 code-loop arming -- that
+    # experiment concluded (locks 1->5, rails cleared, verdict banked), so the control's
+    # residual value is smaller than this discriminator.
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
+    fleet-trim-readback: 1
     trackers: "http://cx19:12048/gnss{0..1}_b2b_inject,\
 http://cx27:12048/gnss{0..1}_b2b_inject,\
 http://cx42:12048/gnss{0..1}_b2b_inject,\
