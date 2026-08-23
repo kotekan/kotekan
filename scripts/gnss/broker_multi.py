@@ -32,10 +32,24 @@ silently missing chain looks exactly like a satellite-free band. Each thread log
 death loudly and the driver reports which chains are still alive on exit.
 """
 import argparse
+import faulthandler
 import os
+import signal
 import sys
 import threading
 import time
+
+# WHY: this process is five chain threads plus a telemetry reader, and when a cycle takes
+# 15 s nobody can say WHICH of them is waiting for what. `top` says 6% CPU, `wchan` says
+# futex, and neither names a line of Python. py-spy cannot attach after the fact either --
+# ptrace_scope is 1 on these hosts and the broker is daemonised, so it is nobody's child.
+#
+#     kill -USR1 $(pgrep -f '[b]roker_multi')      -> every thread's stack to stderr (the log)
+#
+# Free when unused, costs one signal handler, and answers the question in one line instead
+# of a restart under a profiler. Added 2026-08-23 after the cycle-time hunt spent an hour
+# inferring from wait channels.
+faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
