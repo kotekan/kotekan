@@ -922,7 +922,16 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # per-sat (arm 15's "5-10x smoother" was 0.20 vs 1-2 M/S -- never mm-class). Until a
     # quieter carrier observable exists, GAP 1 commands mirror noise and GAP 3's
     # regression (needs S/N against sub-cm/s truth) is heading to a BOUNDED NULL.
-    # rrate-command: true
+    # ── RE-ARM #3 (2026-08-23 ~16:1x, KV): the disarm was WRONG -- the benefit was real ──
+    # KV read it off the viewer (E27-e5b scatter quieting at the 14:07 arm) and the
+    # re-analysis with the right metric confirms: per-sat q SD on THIS chain 0.23 (pre) ->
+    # 0.14 (commanded) -> 0.68 (post-disarm) while e5b read 0.26/0.20/0.23 and b2a
+    # 0.40/0.50/0.41 -- the commanded chain quieted and DEGRADED on disarm, controls flat.
+    # The |dcmd| quietness gate measured the LOOP's churn, not the instrument's benefit:
+    # commanding the ~2 Hz common residual pays even while per-sat targets churn at the
+    # row noise floor. JUDGE FROM NOW ON: per-sat q SD vs in-poll controls (the metric
+    # that showed the effect); |dcmd| is descriptive only. Same safety gates unchanged.
+    rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
