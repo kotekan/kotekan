@@ -278,8 +278,10 @@ def compare_taps(py, cpp):
     return bad
 
 
-def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None):
+def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None):
     cmd = [exe, path, "--n-win", str(n_win), "--min-instances", str(min_instances), "--no-flush"]
+    if taps_win:
+        cmd += ["--taps-win", str(taps_win)]
     if arm:
         cmd += ["--arm", ",".join(str(p) for p in sorted(arm))]
         for k in ("gain", "leak", "clamp", "spacing"):
@@ -512,6 +514,32 @@ def main():
     n_ch = sum(len(d["chan"]) for ch in pt.values() for v in ch.values() for d in v.values())
     print("TAPS PASS -- %d (PRN, instance) taps and %d per-channel rows agree, e/p/l/n_chan "
           "to 1e-9 and n_rec/hop exactly." % (n_it, n_ch))
+
+    # ---- THE SHIPPING CONFIGURATION: taps_win != n_win ---------------------------------
+    # Production runs the loop on 2 windows and serves the broker 32 -- different questions,
+    # and they used to be answered with one number. A gate run only at taps_win == n_win would
+    # never touch the split, so it is exercised here, with BOTH halves asserted:
+    #   (a) the served taps deepen to the requested window count, and
+    #   (b) THE LOOP DOES NOT MOVE. That is the whole risk of sharing one ring: if aggregate()
+    #       started walking the deeper slice, the discriminator would silently average 8
+    #       windows where the policy says 2, and every trim step would be formed on stale sky.
+    deep = 2 * args.n_win
+    c_deep = cpp_arm(args.exe, path, args.n_win, args.min_instances, taps_win=deep)
+    if compare(py, c_deep):
+        print("FAIL -- deepening taps_win CHANGED the discriminator. aggregate() must keep "
+              "walking only the newest n_win of the ring.")
+        return 1
+    bad_d = compare_taps(python_taps(frames, deep), c_deep)
+    if bad_d:
+        print("FAIL -- %d disagreement(s) at taps_win=%d:" % (len(bad_d), deep))
+        for sev, msg in bad_d[:12]:
+            print("  %-11s %s" % (sev, msg))
+        return 1
+    if c_deep.get("taps_win") != deep:
+        print("FAIL -- asked for taps_win %d, tool reports %s" % (deep, c_deep.get("taps_win")))
+        return 1
+    print("SPLIT-RING PASS -- taps deepen to %d windows and the %d-window loop is unmoved."
+          % (deep, args.n_win))
 
     # ---- THE INTEGRATOR (F2) -----------------------------------------------------------
     # Two legs, deliberately separate, because a single end-to-end comparison would let a fold

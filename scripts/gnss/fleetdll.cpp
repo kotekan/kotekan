@@ -42,12 +42,12 @@
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s <frames.bin> [--n-win N] [--min-instances N] "
-                             "[--max-open-win N] [--no-flush]\n",
+                             "[--max-open-win N] [--taps-win N] [--no-flush]\n",
                      argv[0]);
         return 2;
     }
     const std::string path = argv[1];
-    int n_win = 4, min_inst = 2, max_open = 8;
+    int n_win = 4, min_inst = 2, max_open = 8, taps_win = 0;
     bool do_flush = true;
     std::set<int> arm;
     gnss::TrimPolicy pol;
@@ -59,6 +59,8 @@ int main(int argc, char** argv) {
             min_inst = std::atoi(argv[++i]);
         else if (a == "--max-open-win" && i + 1 < argc)
             max_open = std::atoi(argv[++i]);
+        else if (a == "--taps-win" && i + 1 < argc)
+            taps_win = std::atoi(argv[++i]); // 0 = follow --n-win
         else if (a == "--no-flush")
             do_flush = false;
         else if (a == "--arm" && i + 1 < argc) {
@@ -87,7 +89,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    gnss::FleetDll dll(n_win, min_inst, max_open);
+    gnss::FleetDll dll(n_win, min_inst, max_open, 3.0, taps_win);
     std::vector<uint8_t> buf;
     uint64_t n_frames = 0, n_bad = 0, n_late = 0;
 
@@ -154,6 +156,7 @@ int main(int argc, char** argv) {
     out["bad_frames"] = n_bad;
     out["late_frames"] = n_late;
     out["n_win"] = n_win;
+    out["taps_win"] = dll.taps_win();
     out["min_instances"] = min_inst;
     out["flushed"] = do_flush;
     nlohmann::json chains = nlohmann::json::object();

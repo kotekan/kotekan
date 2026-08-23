@@ -121,9 +121,17 @@ inline double dll_integrate(double trim, double disc, const TrimPolicy& p) {
  */
 class FleetDll {
 public:
-    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, double sig_k = 3.0) :
+    /// `taps_win` is the window depth SERVED BY taps(), independent of the loop's `n_win`.
+    /// They are different questions and were being answered with one number: the code loop
+    /// integrates the freshest 2 windows (authority is a step per update, so depth buys it
+    /// nothing), while the broker's policy cycle averages 32 for the SNR its gates need
+    /// (`telem-windows: 32`, matched to the REST feed's `record_export: 128`). 0 = follow
+    /// n_win, which is what the offline harness wants so both arms window identically.
+    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, double sig_k = 3.0,
+             int taps_win = 0) :
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
-        _max_open_win(std::max(2, max_open_win)), _sig_k(sig_k) {}
+        _max_open_win(std::max(2, max_open_win)), _sig_k(sig_k),
+        _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)) {}
 
     /// One comb COLUMN's three powers for one (instance, PRN), over the records of one window.
     /// `fid` is the F-engine freq_id off the frame header -- never assumed, never configured
@@ -400,8 +408,10 @@ public:
         std::map<std::string, std::map<int, std::map<std::string, InstTap>>> out;
         for (const auto& cv : _chain) {
             auto& per_prn = out[cv.first];
-            for (const WindowAcc& w : cv.second.closed)
-                for (const auto& iv : w.tap)
+            const auto& ring = cv.second.closed;
+            for (size_t k = ring.size() > (size_t)_taps_win ? ring.size() - _taps_win : 0;
+                 k < ring.size(); ++k)
+                for (const auto& iv : ring[k].tap)
                     for (const auto& pv : iv.second) {
                         InstTap& t = per_prn[pv.first][iv.first];
                         t.e += pv.second.e;
@@ -441,6 +451,9 @@ public:
     int n_win() const {
         return _n_win;
     }
+    int taps_win() const {
+        return _taps_win;
+    }
     int min_instances() const {
         return _min_instances;
     }
@@ -449,7 +462,11 @@ private:
     void close_oldest(Chain& c, bool forced) {
         c.closed.push_back(std::move(c.open.begin()->second));
         c.open.erase(c.open.begin());
-        while ((int)c.closed.size() > _n_win)
+        // ⚠️ THE RING IS THE DEEPER OF THE TWO CONSUMERS, and each takes the newest slice it
+        // asked for. Trimming to _n_win here (as this did while taps() did not exist) would
+        // silently cap the served depth at the loop's, and the broker would get a 2-window
+        // average where it configured 32 -- a 4x SNR loss that looks like the sky got worse.
+        while ((int)c.closed.size() > std::max(_n_win, _taps_win))
             c.closed.pop_front();
         c.n_closed++;
         if (forced)
@@ -465,7 +482,10 @@ private:
         };
         std::map<int, std::map<std::string, Acc>> by_prn;
         uint64_t win_hi = 0;
-        for (const WindowAcc& w : c.closed) {
+        // THE LOOP'S OWN DEPTH: the newest _n_win of the ring, never all of it.
+        for (size_t k = c.closed.size() > (size_t)_n_win ? c.closed.size() - _n_win : 0;
+             k < c.closed.size(); ++k) {
+            const WindowAcc& w = c.closed[k];
             win_hi = std::max(win_hi, w.win);
             for (const auto& iv : w.tap)
                 for (const auto& pv : iv.second) {
@@ -607,6 +627,10 @@ private:
 
     int _n_win, _min_instances, _max_open_win;
     double _sig_k = 3.0; ///< prompt power must exceed this x the window median
+    /// ⚠️ DECLARED AFTER _sig_k to match the constructor's initialiser list -- members
+    /// initialise in DECLARATION order, so the two disagreeing is a -Wreorder warning today
+    /// and a real read-before-init the moment one initialiser references another member.
+    int _taps_win = 1; ///< window depth served by taps() -- the POLICY cycle's, not the loop's
     std::map<std::string, Chain> _chain;
 };
 
