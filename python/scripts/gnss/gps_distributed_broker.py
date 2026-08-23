@@ -3205,6 +3205,20 @@ def main(argv=None, rx=None, publisher=None):
     # staggered per chain so five chains never walk in the same beat.
     _est_last = {"pcn0": None, "kcoh": None}
     fe_axis = [None]  # (newest telemetry pow_hop, wall at its fetch) -- #83 the axis fix
+    # ── THE FILTERED AXIS OFFSET (2026-08-23, the birth-epoch jitter fix) ──────────────
+    # fe_axis re-samples the newest hop every poll, so t_now_abs inherits the PIPELINE
+    # LAG's jitter (measured IQR ~59 ms) -- and the ephemeris range is evaluated on WALL
+    # time, so the frame mismatch lands in every rebirth as lag_jitter x range_rate:
+    # measured fleet-wide, routine birth steps scale with |dop| at 4.0e-4 chips/Hz =
+    # 46 ms of epoch jitter (2,476 births), with ~5 s excursions clustering multi-sat
+    # multi-chain every few minutes (749 births at 10-100 chips). The axis is DRIFT-FREE,
+    # so (hop_time - wall) is physically a constant minus a strictly-positive fluctuating
+    # lag: a MAX filter recovers the constant (NTP's minimum-delay idea) -- adopt any
+    # LARGER offset instantly (a fresher sample saw less lag), decay slowly downward
+    # (0.5 ms/s: follows real drift and NTP slew, rejects poll-to-poll lag churn), and
+    # SNAP on a >2 s disagreement (an F-engine restart genuinely moves the axis; a max
+    # filter must not ride a dead frame0 for hours).
+    fe_off = [None, 0.0]   # [filtered (hop/hps - wall) offset, wall of last update]
     _rf_last = [0.0]  # #8: wall of the last RF-health poll (rate-limits it)
     _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
@@ -5334,6 +5348,19 @@ def main(argv=None, rx=None, publisher=None):
                             % (_now() - _fh_prev[1], _fh, combiner),
                             every_s=60.0)
                 fe_axis[0] = (_fh, _now())
+                # the filtered offset (see fe_off at its definition)
+                _ow = _now()
+                _oi = _fh / args.hops_per_sec - _ow
+                if fe_off[0] is None or abs(_oi - fe_off[0]) > 2.0:
+                    if fe_off[0] is not None:
+                        _log("fe-axis offset SNAP: filtered %+.3f -> instantaneous %+.3f s "
+                             "(axis moved -- F-engine restart or frame0 step)"
+                             % (fe_off[0], _oi))
+                    fe_off[0] = _oi
+                else:
+                    _dec = 0.0005 * max(0.0, _ow - fe_off[1])
+                    fe_off[0] = max(_oi, fe_off[0] - _dec)
+                fe_off[1] = _ow
         except Exception as e:
             status = {}
             _log("get_status failed: %s" % e)
@@ -6048,8 +6075,14 @@ def main(argv=None, rx=None, publisher=None):
                 # clock exactly as the old anchor error did (common-mode), so nothing
                 # steps at the flip of the flag except the labels' MEANING.
                 if args.dr_fengine_axis and fe_axis[0] is not None:
-                    _feh, _few = fe_axis[0]
-                    t_now_abs = _feh / args.hops_per_sec + (now_w - _few)
+                    # FILTERED offset, not the freshest sample (2026-08-23): the raw form
+                    # _feh/hps + (now_w - _few) re-samples the pipeline lag every poll and
+                    # the jitter lands in every rebirth as lag x range_rate -- see fe_off.
+                    if fe_off[0] is not None:
+                        t_now_abs = fe_off[0] + now_w
+                    else:
+                        _feh, _few = fe_axis[0]
+                        t_now_abs = _feh / args.hops_per_sec + (now_w - _few)
                 # ── THE FORECAST EPOCH (see --dr-forecast-lead-s) ──
                 # A seed is a FORECAST WITH A LABEL: (ref_hop, phase, doppler, rate). Its
                 # correctness is defined entirely on the hop axis, so producing one needs no
@@ -6068,8 +6101,11 @@ def main(argv=None, rx=None, publisher=None):
                 # into the future would inflate every age by the lead.
                 t_fc_abs = t_now_abs
                 if args.dr_forecast_lead_s > 0.0 and fe_axis[0] is not None:
-                    _fch = int(round(fe_axis[0][0]
-                                     + args.dr_forecast_lead_s * args.hops_per_sec))
+                    # forecast from the FILTERED now (t_now_abs above), not the raw newest
+                    # hop -- same jitter, same fix. H stays an exact integer hop so the
+                    # label still carries no rounding of its own.
+                    _fch = int(round((t_now_abs + args.dr_forecast_lead_s)
+                                     * args.hops_per_sec))
                     t_fc_abs = _fch / args.hops_per_sec
                 # ── THE EPHEMERIS EPOCH STAYS ON WALL TIME, AND HERE IS THE MEASUREMENT ──
                 # Orbit evaluation (predict_all / predict_from_decoders below) is the ONE
