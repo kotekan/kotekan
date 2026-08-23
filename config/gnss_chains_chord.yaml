@@ -1321,6 +1321,19 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # the next thin-GPS/bootstrap patch. If treated > control again, the median gauge did
     # not fix what its commit claims -- revert to `rate` and say so.
     joint-consume: clk,rate
+    # ── #85 SPEC-ANCHORED FEED, ARMED 2026-08-23 ~13:4x — THIS CHAIN ONLY ────────────
+    # y = held + applied_trim + spec_tau - cp_pred = (sky - model) IDENTICALLY, so this
+    # chain may feed AND consume: a consumed clock moving the seed moves trim+spec_tau
+    # oppositely and y does not follow. First Galileo clock measurements into the joint
+    # state. Set gate >=3 (the 01:xx degenerate-feed lesson), spec gate ratio>=1.5 &
+    # age<=90 s, trim-gated fallback unchanged. e5b: same consumers, NO feed = the
+    # loop-detection control. FALSIFIER (abort, don't admire): JOINT-CLK delta trending
+    # one sign for >10 min (the 08-22 loop walked +0.065 chips/s) or e5a q duty falling
+    # vs e5b in-poll. JUDGE: JFEED n>=3 spread>0 acc>50%; joint sigma; P2C coast on a
+    # masked GPS sat improving through the next thin-GPS patch.
+    joint-shadow: true
+    joint-model-primary: true
+    joint-feed-spec: true
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
     # when the tap is off-peak -- so an off-peak satellite fails the gate and is never trimmed

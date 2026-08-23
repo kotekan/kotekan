@@ -1408,6 +1408,37 @@ def main(argv=None, rx=None, publisher=None):
                          "+0.74..+1.3 chip common trim. Needs an Earthdata token "
                          "($EARTHDATA_TOKEN or ~/.cache/kotekan_gps/.earthdata_token); without "
                          "one it logs and falls back to the broadcast term.")
+    ap.add_argument("--joint-feed-spec", action="store_true",
+                    help="task #85: anchor the model-primary joint feed on the SPECTRUM FIT. "
+                         "spec_tau is sky-minus-replica measured by the fleet slope fit, and "
+                         "the replica IS held+applied_trim -- so y = held + trim + spec_tau "
+                         "- cp_pred equals (sky - model) IDENTICALLY, at any displacement "
+                         "the fit can see. That is what breaks the mirror: a consumed clock "
+                         "moving the seed moves trim+spec_tau oppositely (the sky does not "
+                         "move), leaving y invariant -- so a chain may feed AND consume. "
+                         "With a fresh, significant spec fit the DLL-linear-range trim gate "
+                         "is bypassed (spec_tau measures past it); without one the satellite "
+                         "falls back to the trim-gated path unchanged.")
+    ap.add_argument("--joint-feed-min-ratio", type=float, default=1.5,
+                    help="minimum spec_peak_ratio for a spectrum fit to anchor the joint "
+                         "feed (--joint-feed-spec). Same shuffled-null significance the "
+                         "reseed gate uses, same default as --reseed-min-ratio: locked "
+                         "satellites read ~1.0-1.3 on residuals near zero (a small tau does "
+                         "not need a tall peak) but a DISPLACED satellite's peak stands well "
+                         "clear -- and the displaced ones are the ones the trim gate would "
+                         "otherwise exclude, which is the whole point.")
+    ap.add_argument("--joint-feed-spec-max-age-s", type=float, default=90.0,
+                    help="maximum age of the spectrum fit used to anchor the feed. The fit "
+                         "refreshes on the spectrum-poll cadence (~30 s); a stale tau "
+                         "re-anchors y on where the sky WAS.")
+    ap.add_argument("--joint-feed-min-set", type=int, default=3,
+                    help="do not feed the joint state at all unless at least this many "
+                         "satellites qualify THIS POLL. Eligibility is a property of the "
+                         "SET: a 1-2 satellite poll has spread(y-clk) ~ 0 by construction, "
+                         "and the 2026-08-23 01:xx arm fed exactly one rotating satellite "
+                         "per poll -- 19/19 polls DEGENERATE, single innovations to -6.8 "
+                         "chips, and the clock got WORSE (sd 1.635 -> 2.587). A thinned set "
+                         "must self-disarm, not feed degenerately.")
     ap.add_argument("--joint-consume", default="",
                     help="P2b: comma-separated JOINT-state consumers to switch LIVE, one "
                          "name per commit so each is A/B-able on its own. Empty (default) "
@@ -6573,7 +6604,21 @@ def main(argv=None, rx=None, publisher=None):
                             # the lock bar AND a trim well inside the clamp. A railed or
                             # near-railed trim means the seed error exceeds what the
                             # discriminator can see, and that satellite's y is not evidence.
-                            if args.joint_feed_max_trim > 0.0:
+                            # ── #85: SPEC ANCHORING ──────────────────────────────
+                            # sky = held + applied_trim + spec_tau IDENTICALLY (the fit
+                            # measures sky-minus-replica and the replica IS held+trim), so
+                            # with a fresh, significant fit y is sky-anchored at ANY
+                            # displacement -- including past the DLL's linear range, where
+                            # the trim gate below would otherwise exclude the satellite.
+                            # A consumed clock moving the seed moves trim+spec_tau
+                            # oppositely; y is invariant. THAT is the mirror's removal.
+                            _sp = ((dr_state.get("spec_y") or {}).get(_prn)
+                                   if args.joint_feed_spec else None)
+                            _sp_ok = (_sp is not None
+                                      and t_now_abs - _sp[2]
+                                      <= args.joint_feed_spec_max_age_s
+                                      and _sp[1] >= args.joint_feed_min_ratio)
+                            if args.joint_feed_max_trim > 0.0 and not _sp_ok:
                                 _fl_i = (fleet or {}).get(_prn) or {}
                                 _q_i = _fl_i.get("q")
                                 _tr_i = abs(float((_ft_readback.get(_prn) or {})
@@ -6606,6 +6651,7 @@ def main(argv=None, rx=None, publisher=None):
                                 if _prn in _ft_armed_last
                                 else dll_trim.get(_prn, 0.0))
                             _y = ((_held + _trim_applied
+                                   + (_sp[0] if _sp_ok else 0.0)
                                    - cp_predicted(_v, _th)) % _DR_MOD)
                             if _p2c_hold(_js, (tag, _prn)):
                                 if True:
@@ -6620,6 +6666,18 @@ def main(argv=None, rx=None, publisher=None):
                                                _r, _js.bias((tag, _prn)), _js.tau(band_id)), every_s=30.0)
                                 continue
                             _mm.append(((tag, _prn), _y, args.joint_sigma, band_id))
+                        # ── #85: THE SET GATE. Eligibility is a property of the SET --
+                        # 1-2 measurements have spread ~ 0 by construction and a single
+                        # bad y IS the poll (the 01:xx degenerate feed). Withhold rather
+                        # than feed thin; the state coasts on clk_rate, which is exactly
+                        # what it is for.
+                        if _mm and len(_mm) < args.joint_feed_min_set:
+                            _log_rl("jfeed-thin",
+                                    "JFEED %s: only %d satellite(s) qualify (< %d) -- "
+                                    "WITHHELD; a thin set feeds its own noise as clock"
+                                    % (band_id, len(_mm), args.joint_feed_min_set),
+                                    every_s=60.0)
+                            _mm = []
                         if _mm:
                             # ── JFEED: THE FORK THIS EXISTS TO SETTLE (task #33, 2026-08-11)
                             # Turning this feed on gave 9 Galileo b_sat all equal to +0.44
@@ -8043,6 +8101,14 @@ def main(argv=None, rx=None, publisher=None):
                             fleet[prn]["spec_tau"] = v["tau_chips"]
                             fleet[prn]["spec_ratio"] = v["peak"] / max(v["floor"], 1e-12)
                             fleet[prn]["bsat"] = bsat.get(prn, t0)
+                    # #85: stash (tau, ratio, t) for the model-primary joint feed, which
+                    # runs EARLIER in cycle order and so reads last cycle's fit -- one poll
+                    # stale, same causality as the trim readback it sits beside.
+                    if dr_state is not None:
+                        _sy = dr_state.setdefault("spec_y", {})
+                        for prn, v in spec_fit.items():
+                            _sy[prn] = (v["tau_chips"],
+                                        v["peak"] / max(v["floor"], 1e-12), t_now_abs)
             # THE SERVED C/N0 (task #57): per-record prompt power off the gather feed,
             # q-gated, debiased against the noise probes. Fits NOTHING -- the deep fold's
             # per-integration rate re-search is a fit on something the tracking loop already
