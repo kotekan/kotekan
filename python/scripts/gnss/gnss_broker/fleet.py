@@ -516,6 +516,101 @@ def _coherent_sum(a):
     return (mag / denom if denom > degen else 0.0), mag / n, (mag / tot_abs if tot_abs > 0 else 0.0)
 
 
+def _fit_record_rate(hops, tot, hop_rate_hz):
+    """RECORD-STREAM CARRIER RATE (#33, 2026-08-14): the phase slope of the fleet sum.
+
+    The rrate state's coarse feed used to be deep_rate_full_hz -- the DEEP FOLD's rate
+    argmax. Measured structure function of that input: rms change 1.44 m/s at 3 s lag rising
+    to only 2.07 at 24 s and FLAT thereafter. Flat = independent noise on every sample (a
+    moving state would keep growing as sqrt(lag)), so the fold delivers ~1.4 m/s = 5.6 Hz of
+    NOISE per sample around a state that barely moves. The filter was right to reject 98% of
+    it; loosening q_rr would only have let the noise in.
+
+    This fits the phase slope of the FLEET-SUMMED per-record series instead -- the same
+    quantity phaseslope.py measures at 15-500 mHz split-half on these satellites, i.e.
+    4-100x better than the fold. It is not a better search; it is the right estimator: the
+    fold's rate maximises the FOLD's amplitude over a coarse grid and was never an unbiased
+    frequency measurement (the #47 category error, one layer down).
+
+    Reuses the records already fetched by the caller -- no new GET, so replay stays ordered.
+
+    ⚠️ THIS WAS 78% OF THE ENTIRE BROKER (2026-08-23). It was written as a dense
+    matched-filter bank: `abs(exp(-2j*pi*outer(g, t)) @ z)` over a 4001-point grid, built
+    from scratch for the full fit and AGAIN for each split half -- 4001 x 128 complex
+    exponentials, three times, per satellite, per call, and `fleet_coherent` is called twice
+    a cycle. 90 ms per satellite. The broker sat at 90% of ONE core (five chain threads on
+    one GIL) on a box that was 96.9% idle, its 2 s cycle stretched to 15 s median / 43 s max,
+    and every chain therefore PUBLISHED a sawtooth of stale telemetry aging at 1.0 s/s out to
+    -33 s. That staleness was read as an 8-18 s "stale telemetry axis" and chased as an
+    F-engine/transport fault for days; the combiners were 0.24 s fresh the whole time.
+
+    THE RECORDS LIE ON A LATTICE, so this is an FFT. Measured on live data: every one of the
+    127 gaps in a 128-record window is exactly 2048 hops. Zero-filling is EXACT here, not an
+    approximation -- a missing hop contributes z = 0 to the sum, which is precisely what the
+    dense form did by omitting the term. 42.9 ms -> 0.47 ms, and the two peaks agree to
+    6.4e-5 Hz, four orders of magnitude below this observable's own ~1 Hz floor.
+
+    Do NOT "optimise" this back into a bigger matrix or a Cython rewrite: numpy's matvec was
+    already C. The cost was algorithmic (O(N*M) where an O(N log N) exists), and a brute
+    force in C is still ~25x slower than the FFT in Python.
+
+    Returns (rate_hz, rate_sigma_hz), either possibly None.
+    """
+    import numpy as _np
+    n = len(hops)
+    if n < 2 or not hop_rate_hz:
+        return None, None
+    _h0 = int(hops[0])
+    _hi = [int(h) - _h0 for h in hops]
+    _span_s = _hi[-1] / float(hop_rate_hz)
+    if _span_s <= 0.0:
+        return None, None
+    # SEARCH BAND UNCHANGED: the Nyquist of the AVERAGE spacing, which is what the dense
+    # form used (_dt = span/(n-1)). With no gaps that IS the lattice Nyquist and the band
+    # mask below is a no-op; with gaps the average spacing is coarser than the lattice, so
+    # keeping the old band is the conservative choice -- the FFT could see further, but
+    # nothing downstream has ever been offered those frequencies.
+    _fmax = 0.5 / (_span_s / (n - 1))
+    # The lattice. Decline rather than mis-grid if the hops are not on one.
+    _step = min(_hi[i + 1] - _hi[i] for i in range(n - 1))
+    if _step <= 0 or any(x % _step for x in _hi):
+        return None, None
+    _idx = [x // _step for x in _hi]
+    _L = _idx[-1] + 1
+    _dts = _step / float(hop_rate_hz)
+    # Bin width matched to the dense grid it replaces (4001 bins across 2*_fmax), rounded up
+    # to a power of two, and never coarser than the lattice can support.
+    _N = 4096
+    while _N < 4 * _L:
+        _N <<= 1
+    _g = _np.fft.fftshift(_np.fft.fftfreq(_N, _dts))
+    _band = _np.abs(_g) <= _fmax * (1.0 + 1e-12)
+    if not _band.any():
+        return None, None
+    _zf = _np.zeros(_L, dtype=complex)
+    _zf[_idx] = _np.asarray(tot, dtype=complex)
+
+    def _peak(lo, hi, refine):
+        # |DFT| is invariant to the time origin, so a slice needs no re-referencing.
+        _p = _np.abs(_np.fft.fftshift(_np.fft.fft(_zf[lo:hi], _N)))
+        _p = _np.where(_band, _p, 0.0)
+        _k = int(_np.argmax(_p))
+        _f = float(_g[_k])
+        if refine and 0 < _k < _N - 1:
+            _a, _b, _c = _p[_k - 1], _p[_k], _p[_k + 1]
+            _d = _a - 2 * _b + _c
+            if _d != 0.0:
+                _f += 0.5 * (_a - _c) / _d * (_g[1] - _g[0])
+        return _f
+
+    # SPLIT-HALF for an honest sigma: fit each half independently on the same grid and take
+    # their disagreement. This is the protocol that measured the fold's noise, applied to its
+    # replacement -- so the two are comparable and the filter gets a sigma it can gate on.
+    _m = n // 2
+    return _peak(0, _L, True), abs(_peak(0, _idx[_m - 1] + 1, False)
+                                   - _peak(_idx[_m], _L, False)) / 2.0
+
+
 def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
                    null_trials=1, floor_margin=3.0, seed=0, max_age_hops=1 << 20,
                    hop_rate_hz=None, source=None):
@@ -643,7 +738,7 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         if per:
             got[url] = per
 
-    def _solve(store):
+    def _solve(store, want_rate=True):
       out = {}
       all_prns = set()
       for per in store.values():
@@ -739,54 +834,16 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         urls = sorted(aligned)
         nrec = len(hops)
         tot = [sum(aligned[u][k] for u in urls) for k in range(nrec)]
-        # ---- RECORD-STREAM CARRIER RATE (#33, 2026-08-14) --------------------------------
-        # The rrate state's coarse feed has been deep_rate_full_hz -- the DEEP FOLD's rate
-        # argmax. Measured structure function of that input: rms change 1.44 m/s at 3 s lag
-        # rising to only 2.07 at 24 s and FLAT thereafter. Flat = independent noise on every
-        # sample (a moving state would keep growing as sqrt(lag)), so the fold delivers
-        # ~1.4 m/s = 5.6 Hz of NOISE per sample around a state that barely moves. The filter
-        # was right to reject 98% of it; loosening q_rr would only have let the noise in.
-        #
-        # This fits the phase slope of the FLEET-SUMMED per-record series instead -- the same
-        # quantity phaseslope.py measures at 15-500 mHz split-half on these satellites, i.e.
-        # 4-100x better than the fold. It is not a better search; it is the right estimator:
-        # the fold's rate maximises the FOLD's amplitude over a coarse grid and was never an
-        # unbiased frequency measurement (the #47 category error, one layer down).
-        #
-        # Reuses the records already fetched above -- no new GET, so replay stays ordered.
+        # ---- RECORD-STREAM CARRIER RATE (#33) -- see _fit_record_rate's docstring -------
+        # SKIPPED ON THE NULL PASS. _solve runs twice per call: once for real and once on
+        # shuffled data for the measured null floor, and the null reads only deep_snr and
+        # per_inst (see the loop after `nres = _solve(...)`). The rate fit was the single
+        # most expensive thing in the broker and HALF of it was computed for a caller that
+        # throws it away -- ~40% of the whole process, by profile, producing nothing.
         rate_hz = rate_sig = None
-        if hop_rate_hz and nrec >= 16:
+        if want_rate and hop_rate_hz and nrec >= 16:
             try:
-                import numpy as _np
-                _t = _np.array([h / float(hop_rate_hz) for h in hops])
-                _t -= _t[0]
-                _z = _np.array(tot, dtype=complex)
-                _span = _t[-1] - _t[0]
-                if _span > 0.0:
-                    # Grid to the record-rate Nyquist, then parabolic refine. Sized so the
-                    # bin is well inside the fold's noise: 1/(2*dt) over ~4000 bins.
-                    _dt = _span / max(len(_t) - 1, 1)
-                    _fmax = 0.5 / _dt
-                    _g = _np.linspace(-_fmax, _fmax, 4001)
-                    _p = _np.abs(_np.exp(-2j * _np.pi * _np.outer(_g, _t)) @ _z)
-                    _k = int(_np.argmax(_p))
-                    _f0 = float(_g[_k])
-                    if 0 < _k < len(_g) - 1:
-                        _a, _b, _c = _p[_k - 1], _p[_k], _p[_k + 1]
-                        _d = _a - 2 * _b + _c
-                        if _d != 0.0:
-                            _f0 += 0.5 * (_a - _c) / _d * (_g[1] - _g[0])
-                    # SPLIT-HALF for an honest sigma: fit each half independently at the same
-                    # grid and take their disagreement. This is the protocol that measured the
-                    # fold's noise, applied to its replacement -- so the two are comparable and
-                    # the filter gets a sigma it can actually gate on.
-                    _h = len(_t) // 2
-                    _hf = []
-                    for _sl in (slice(0, _h), slice(_h, None)):
-                        _pp = _np.abs(_np.exp(-2j * _np.pi * _np.outer(_g, _t[_sl])) @ _z[_sl])
-                        _hf.append(float(_g[int(_np.argmax(_pp))]))
-                    rate_hz = _f0
-                    rate_sig = abs(_hf[0] - _hf[1]) / 2.0
+                rate_hz, rate_sig = _fit_record_rate(hops, tot, hop_rate_hz)
             except Exception:
                 rate_hz = rate_sig = None
         # ---- per instance: leave THAT instance out of its own reference ----
@@ -909,7 +966,7 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
                 rng.shuffle(vals)
                 sp[prn] = {hops[i]: vals[i] for i in range(len(hops))}
             shuf[u] = sp
-        nres = _solve(shuf)
+        nres = _solve(shuf, want_rate=False)
         for v in nres.values():
             floor = max(floor, v["deep_snr"], *(v["per_inst"].values() or [0.0]))
     for v in out.values():
