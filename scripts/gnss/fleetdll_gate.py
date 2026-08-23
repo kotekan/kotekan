@@ -70,7 +70,25 @@ TARGETS = {4: (0.00, 1.00),    # on peak: disc ~ 0, q high
            27: (-0.31, 0.65),  # late shoulder
            3: (0.55, 0.40),    # far out
            11: (0.10, 0.50),   # ONE instance only -> must be excluded by min_instances
-           16: (0.00, 0.02)}   # essentially noise
+           16: (0.00, 0.02),   # essentially noise
+           # ⚠️ THE SIGNAL-FREE POPULATION IS LOAD-BEARING, NOT PADDING (added 2026-08-23).
+           # The C++ integrator's information test is `p_pow >= sig_k * MEDIAN(p_pow over this
+           # window's rows)` -- self-calibrating on the assumption that most PRNs are
+           # signal-free at any moment, which is true on sky (24-31 rows per chain, a handful
+           # live) and was NOT true of this fixture. With only 4/9/27/3/16 producing rows the
+           # median WAS a signal level: floor 1.156e-01 against a strongest target of 8.78e-02,
+           # so every armed PRN was SKIPPED, n_steps stayed 0, and the F2 leg could not run.
+           # It reported "the C++ integrator stepped on nothing" -- which read as a code fault
+           # and was a fixture fault. Same disease as the broker's own presence bar before
+           # --noise-probes: a median over a population with no signal-free members is not a
+           # noise level. These six carry rows and no signal, so the floor calibrates.
+           5: (0.00, 0.02), 12: (0.00, 0.015), 18: (0.00, 0.025),
+           21: (0.00, 0.018), 24: (0.00, 0.022), 30: (0.00, 0.017)}
+
+#: PRNs the F2 leg arms: real signal only. 11 is the min_instances exclusion; the noise PRNs
+#: above are deliberately NOT armed -- they exist to calibrate the floor, and arming them would
+#: assert that the loop steps on noise, which is the one thing the floor exists to prevent.
+SIGNAL_PRNS = [3, 4, 9, 27]
 
 
 def _R(x):
@@ -146,7 +164,7 @@ def build_fixture(n_win, seed=20260815):
                 # ROW COMPACTION (#64): the row->PRN map differs per instance and is NOT the
                 # configured PRN order. An arm that assumed row == PRN index would read another
                 # satellite's comb and produce a confident wrong discriminator.
-                prns = [4, 9, 27, 3, 16]
+                prns = [4, 9, 27, 3, 16, 5, 12, 18, 21, 24, 30]
                 if i == 0:
                     prns = prns + [11]        # PRN 11 on ONE instance only
                 order = list(prns)
@@ -310,8 +328,27 @@ def main():
     ap.add_argument("--self-test", action="store_true",
                     help="ALSO perturb the fixture and require the comparison to fail")
     ap.add_argument("--keep", help="directory to leave the fixture and both answers in")
+    ap.add_argument("--no-build", action="store_true",
+                    help="do NOT rebuild the C++ tool first (for bisecting a binary you built "
+                         "on purpose; the default builds, see the note below)")
     args = ap.parse_args()
 
+    # ⚠️ BUILD IT. DO NOT TRUST THE BINARY THAT IS THERE (2026-08-23).
+    # `fleetdll` is a SYMLINK to a per-host build (build_tool.sh writes $N.$HOSTNAME so two
+    # hosts sharing this NFS tree do not clobber each other). Checking only that the path
+    # exists therefore tests WHOEVER BUILT LAST, on WHATEVER SOURCE THEY HAD. Found the hard
+    # way: the link pointed at a cx19 binary from 08-15, the wire format went to v5 on 08-16
+    # (RECORD_FLOATS 28 -> 29), and every frame in the fixture came back BAD_HEADER. The gate
+    # had been red for eight days and reported it as "Python has a row, C++ does not" -- which
+    # reads as a fold disagreement, not a stale binary. This is exactly what
+    # "verify what RUNS, not what you built" is about, and a GATE is the last place that
+    # should get it wrong.
+    if not args.no_build:
+        b = subprocess.run([os.path.join(_HERE, "build_tool.sh"), "fleetdll"],
+                           capture_output=True, text=True, cwd=_HERE)
+        if b.returncode != 0:
+            raise SystemExit("build_tool.sh fleetdll FAILED:\n%s\n%s"
+                             % (b.stdout[-2000:], b.stderr[-2000:]))
     if not os.path.exists(args.exe):
         raise SystemExit("no %s -- build it with ./build_tool.sh fleetdll" % args.exe)
 
@@ -396,7 +433,7 @@ def main():
     #   (b) Python's dll_integrate, driven by that disc series, reproduces the C++ trim series.
     # (b) alone would be circular if (a) were not established; (a) alone is what F1 already did,
     # but only at the last window.
-    ARM = sorted(p for p in TARGETS if p != 11)   # 11 is the min_instances exclusion
+    ARM = list(SIGNAL_PRNS)   # see SIGNAL_PRNS: the noise PRNs calibrate, they do not arm
     cpp2 = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM)
     series = cpp2.get("series", {}).get("gps_l5", {})
     if not series:
@@ -458,7 +495,24 @@ def main():
         n_per_win = 2 * len(INSTANCES)  # two chains
         poke_at = (args.windows - 2) * n_per_win
         buf = bytearray(frames[poke_at][0])
-        off = telem._HDR_BYTES + telem._ROW_FLOATS * 4 + telem.CHAN_E_RE * 4
+        # ⚠️ POKE A PRN THAT CONTRIBUTES -- DO NOT POKE A FIXED ROW (2026-08-23).
+        # This used to poke row 0, whose PRN is whatever the fixture's SHUFFLE put there
+        # (row compaction, #64). It landed on PRN 11 -- the row that exists precisely to be
+        # EXCLUDED by min_instances -- so the "perturbation" was applied to the one satellite
+        # guaranteed not to reach the answer, and the self-test reported the comparison as
+        # insensitive when it was the poke that was inert. A self-test that can be defeated by
+        # reordering the fixture is not a self-test. Find the row by PRN.
+        _row = None
+        for _r in range(N_PRN):
+            _o = telem._HDR_BYTES + _r * telem._ROW_TOTAL * 4
+            if int(struct.unpack_from("<f", buf, _o)[0] + 0.5) in SIGNAL_PRNS:
+                _row = _r
+                break
+        if _row is None:
+            raise SystemExit("self-test: no SIGNAL_PRNS row in the poked frame -- the fixture "
+                             "changed shape and the poke would be inert")
+        off = (telem._HDR_BYTES + _row * telem._ROW_TOTAL * 4
+               + telem._ROW_FLOATS * 4 + telem.CHAN_E_RE * 4)
         (v,) = struct.unpack_from("<f", buf, off)
         struct.pack_into("<f", buf, off, v * 1.01 + 1.0)
         poked = frames[:poke_at] + [(bytes(buf), frames[poke_at][1])] + frames[poke_at + 1:]
@@ -474,7 +528,7 @@ def main():
             return 1
         moved = compare(py, cpp_arm(args.exe, p2, args.n_win, args.min_instances))
         if not moved:
-            print("SELF-TEST FAIL: a 1% perturbation of one channel (window %d, the newest "
+            print("SELF-TEST FAIL: a 1%% perturbation of one channel (window %d, the newest "
                   "closed one) changed NOTHING -- the comparison, the fixture, or the fold is "
                   "not doing what it claims." % (args.windows - 2))
             return 1
