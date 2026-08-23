@@ -206,6 +206,32 @@ common:
   # so the swap keeps monitoring itself. Per-cycle fallback to the polled discriminator
   # whenever the gather has no windows for a chain.
   telem-dll: true
+  # ⚠️ SHADOW (1), NOT ARMED (2) -- 2026-08-23. Takes the comb DLL's per-instance and
+  # per-channel taps from the gather's C++ reduction (<fleet-trim-url>/get_taps) instead of
+  # rebuilding them here by walking every (window, instance, record, PRN, channel) of the
+  # gathered stream: ~140k channel-tuples per chain per cycle, ~700k across the fleet, ~18% of
+  # chain CPU by live profile. This process is pinned at 100% of ONE core by the GIL and its
+  # CYCLE TIME IS the sum of the five chains' Python CPU, so that 18% is ~2 s of every cycle.
+  #
+  # The arithmetic is gated offline on IDENTICAL BYTES (scripts/gnss/fleetdll_gate.py:
+  # e/p/l/n_chan to 1e-9, n_rec and hop exact, per instance AND per channel). What that gate
+  # cannot see is a LIVE mismatch -- chain naming, window depth, instance tags -- which would
+  # give two self-consistent answers about different things. Nor can broker_equiv: the gather
+  # is a raw socket, not transport, so a replay carries no telemetry at all and falls back to
+  # the polled discriminator. Shadow measures exactly that: watch the COMB-TAPS line's
+  # |ddisc| / |dq| and its shared-PRN count before setting 2.
+  # ⚠️ ARMED (2) 2026-08-23, on this evidence, and revert to 1 or 0 with one line:
+  #   OFFLINE, identical bytes: e/p/l/n_chan agree to 1e-9, n_rec and hop EXACT, per instance
+  #     AND per channel (fleetdll_gate.py TAPS + SPLIT-RING legs).
+  #   LIVE shadow, all five chains: same PRN counts, ALL shared -- so chain naming, instance
+  #     tags and window depth line up, which is the thing the offline gate cannot see.
+  #   |ddisc| med 0.008-0.051 max 0.080, against the ESTABLISHED COMB-DLL control (the same
+  #     estimator sampled two ways) at med -0.008..+0.010 max 0.041-0.091. Same distribution.
+  #   And the difference is EXPLAINED: the C++ serves the gather's live ring while the Python
+  #     arm averages the broker's ring as of its cycle start -- measured 772 records = 8.1 s
+  #     apart. The C++ arm is FRESHER, which is the direction the code loop wants.
+  # A failed GET falls back to the polled discriminator, as a failed comb always has.
+  comb-taps-cpp: 2
   # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
   # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
