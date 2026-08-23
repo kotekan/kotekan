@@ -897,7 +897,21 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # feed-applied 0, fine feed off on THIS chain). Judge: |dcmd|/poll well below 14b's
     # flat 1.0 Hz, rails toward 0, THEN benefit (eta/q duty vs controls). Arm 17
     # (kcoh-rate-from-row) follows only after this holds.
-    # rrate-command: true      # OFF on both -- arm 16b's verdict is VOID
+    # ── ARM 16 RE-FLY #2 (2026-08-23 ~14:2x, KV): command on the quiet rows, live loop ──
+    # Both prior verdicts void (gather wedge / F-engine freeze -- neither arm ever ran on
+    # a live instrument; today's pre-flight: hop advancing, 0 tracebacks, all five chains
+    # healthy). Config identical to the arm-16 prescription, all of it already in place:
+    # min-sig 100, carrier-max 10.0, feed-applied 0, fine feed OFF on this chain (arm 14's
+    # lesson) with e5b's fine feed supplying the shared E rows from the uncommanded side.
+    # Rows pass the gate at sigma 0.08-0.14 m/s (bar 0.5). ORDERING NOTE (differs from the
+    # banked step-4-last path, KV-approved 14:1x): the command comes FIRST because fine
+    # precision was measured tracking command convergence on the 08-18 calibration night --
+    # closing the loop is what quiets the rows that step 2's regression needs.
+    # JUDGE (arm 16's own pre-registration): median |dcmd|/poll WELL below 14b's flat
+    # 1.0 Hz (expect 0.3-0.5); rails -> 0; THEN benefit gates (eta/q duty vs e5b/b2a
+    # in-poll). FALSIFIER: sustained one-way command ramp vs controls, q duty drop, or
+    # |cmd| pinning carrier-max -- fixtures/gap1_watch.py trips and auto-disarms.
+    rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
