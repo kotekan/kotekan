@@ -676,15 +676,23 @@ class JointReceiverState:
         idx = list(self._idx.values())
         if not idx:
             return
-        delta = float(np.mean([self.x[i] for i in idx]))
+        # MEDIAN, matching gauge() (2026-08-23): the re-reference must shift by the same
+        # statistic the gauge pins, or every membership change would leave a residual
+        # (mean - median) step for the next gauge() to grind out through gauge_sigma.
+        _ordered = sorted(idx, key=lambda i: float(self.x[i]))
+        _n = len(_ordered)
+        _sel = ([( _ordered[_n // 2], 1.0)] if _n % 2 else
+                [(_ordered[_n // 2 - 1], 0.5), (_ordered[_n // 2], 0.5)])
+        delta = sum(w * float(self.x[j]) for j, w in _sel)
         if delta == 0.0:
             return
-        # x' = A x, with A: clk += mean(b), b_i -= mean(b). Everything else untouched.
+        # x' = A x, with A: clk += median(b), b_i -= median(b) -- still an exact linear
+        # relabelling (the median rows are fixed at relabel time), so P -> A P A^T below
+        # stays the correct covariance transport.
         A = np.eye(self.x.size)
-        w = 1.0 / len(idx)
-        for i in idx:
-            A[0, i] += w              # clk picks up the mean of the biases
-            for j in idx:
+        for j, w in _sel:
+            A[0, j] += w              # clk picks up the median of the biases
+            for i in idx:
                 A[i, j] -= w          # every bias loses it
         self.x = A @ self.x
         self.P = A @ self.P @ A.T
@@ -1070,11 +1078,23 @@ class JointReceiverState:
 
     @_locked
     def gauge(self):
-        """Pin the unobservable common mode: mean(b over active sats) = 0."""
+        """Pin the unobservable common mode: MEDIAN(b over active sats) = 0.
+
+        ⚠️ MEDIAN, NOT MEAN (2026-08-23). The clock level is unobservable -- any gauge is a
+        CONVENTION -- and the instrument already has one: the legacy clock is the circular
+        MEDIAN of the same residuals, and every seed is placed against it. A mean(b)=0
+        convention made bare clk a different clock from the one the seeds fly, differing by
+        (mean - median) of a small skewed sample: measured 2026-08-22, the consumers that
+        read bare clk saw it wander +-1.3 chips as membership churned (steps of exactly
+        b_newcomer/n at each rise/set) while the median stayed put, sd 0.92 vs 0.13 chips
+        paired. Pinning the median makes bare clk SHARE the legacy convention -- the same
+        anchor, but filtered, with a rate state -- and a rise/set steps it only when the
+        middle element itself changes, not by every newcomer's b/n. clk + b_i (the only
+        gauge-invariant observable) is unchanged by construction either way."""
         np = self._np
-        # A wild bias gets no vote. The gauge is a MEAN, and the estimator it replaces was a
-        # circular MEDIAN -- robust by construction. Carrying the mean over without carrying
-        # the robustness is what let one bad detection move the clock (see the class note).
+        # A wild bias gets no vote. (Historically the pin was a MEAN over this inlier set;
+        # the pin itself is now the median, but the inlier screen below stays -- it is what
+        # keeps a wild bias from BECOMING the middle element of a small set.)
         #
         # INLIERS ARE RELATIVE TO THE MEDIAN, NOT TO ZERO, and that is the whole robustness
         # argument rather than a detail. Measuring |b_i| against zero silently assumes the
@@ -1106,8 +1126,16 @@ class JointReceiverState:
                        % (len(use), len(idx), med))
             use = idx
         H = np.zeros(self.x.size)
-        for i in use:
-            H[i] = 1.0 / len(use)
+        # The median element(s) of b over the inlier set: one row for an odd count, the two
+        # central rows at half weight for an even one -- H @ x IS the median, so the pin
+        # stays a linear measurement and _scalar_update propagates P exactly as before.
+        _ordered = sorted(use, key=lambda i: float(self.x[i]))
+        _n = len(_ordered)
+        if _n % 2:
+            H[_ordered[_n // 2]] = 1.0
+        else:
+            H[_ordered[_n // 2 - 1]] = 0.5
+            H[_ordered[_n // 2]] = 0.5
         self._scalar_update(H, -float(H @ self.x), self.gauge_sigma ** 2)
 
     def _corroborators(self, key, innov):

@@ -81,14 +81,15 @@ class TestEscapeHatch(unittest.TestCase):
             js.cycle([(k, TRUE_CLK + b + (step if k == moved else 0.0) + rng.gauss(0.0, 0.3),
                        0.3, None)
                       for k, b in biases.items()], t)
-        # The gauge splits it, and that IS the convention rather than an error: one sat
-        # moving by d shifts the fleet mean by d/N, so clk takes d/N and the sat keeps the
-        # rest. Asserting the full step here would be asserting that clk is NOT the fleet
-        # mean. Pinning both numbers documents the convention.
-        n = len(biases)
-        self.assertAlmostEqual(js.bias(moved), biases[moved] + step * (n - 1) / n, delta=1.5,
+        # MEDIAN CONVENTION (2026-08-23; was mean). One sat moving by d does not move the
+        # median at all, so the sat keeps the WHOLE step and clk stays put. This is the
+        # point of the change: under the mean gauge this same event leaked d/N into every
+        # consumer's clock (and a rise/set stepped it by b/n -- the measured +-1.3 chip
+        # wander of 2026-08-22). Pinning both numbers documents the new convention.
+        self.assertAlmostEqual(js.bias(moved), biases[moved] + step, delta=1.5,
                                msg="a real, repeatable step was never followed")
-        self.assertAlmostEqual(js.x[0], TRUE_CLK + step / n, delta=1.0)
+        self.assertAlmostEqual(js.x[0], TRUE_CLK, delta=1.0,
+                               msg="one satellite's step leaked into the median clock")
         # ...and the only thing any consumer can actually observe is untouched.
         self.assertAlmostEqual(js.x[0] + js.bias(moved), TRUE_CLK + biases[moved] + step,
                                delta=1.0, msg="the observable clk + b was not preserved")

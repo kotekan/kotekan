@@ -1439,6 +1439,21 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     seed-phase-transport: true
     signal: bds_b2a
     dr-clock-adopt: true
+    # ── THE FIRST NON-GPS CLOCK FEEDER (armed 2026-08-23 ~00:xx) ─────────────────────
+    # y = dr_seed_phys(seed) + APPLIED trim - cp_predicted, the P3 model-primary feed.
+    # WHY THIS CHAIN, AND WHY ONLY NOW. The feed's two historical failure modes are both
+    # structurally absent here: (1) the MIRROR -- a chain that feeds AND consumes closes a
+    # loop; this chain consumes NOTHING from the joint state (no clk/rate/slew), so it is
+    # feed-only by construction, not by gates. (2) the DEAD ANCHOR -- y is sky-anchored
+    # only through a LIVE dll trim, and this chain's C++ fleet loop first came alive
+    # 2026-08-22 (locks 1 -> 5 within the hour). Before that, this feed was IMPOSSIBLE to
+    # arm honestly on any BeiDou chain.
+    # The standing gates do the per-sat vetting: _track_ok (deep fold), joint-feed-max-trim
+    # 1.0 (the DLL's linear range) + lock-q. Same 1176.45 MHz band as gps_l5, so tau stays
+    # trivially consistent. JUDGE ON (~10 min): JOINT[shadow] n grows past GPS-only (~5),
+    # sigma drops, JFEED acc%/spread healthy (the degenerate gated feed read spread=0).
+    joint-shadow: true
+    joint-model-primary: true
     # #49 ARMED 2026-08-15 20:30 -- see the long note in gal_e5a for the measurement and the
     # C++ fix this depended on. This chain was the worst of the five (|disc| median 0.80, 7/13
     # railed, +0.63 chips off peak) and it is BeiDou's arm of the A/B: bds_b2b stays unarmed as
