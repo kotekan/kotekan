@@ -911,7 +911,18 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # 1.0 Hz (expect 0.3-0.5); rails -> 0; THEN benefit gates (eta/q duty vs e5b/b2a
     # in-poll). FALSIFIER: sustained one-way command ramp vs controls, q duty drop, or
     # |cmd| pinning carrier-max -- fixtures/gap1_watch.py trips and auto-disarms.
-    rrate-command: true
+    # ── RE-FLY #2 DISARMED 2026-08-23 ~15:1x BY THE QUIETNESS GATE (pre-registered) ──
+    # 46 command polls, zero pathology (bounded, |max| 4.7 vs clamp 10, mixed-sign, watch
+    # clean 6/6 passes) -- but median |dcmd|/poll 0.70/0.73 Hz (all/second-half) vs the
+    # <0.5 bar, rails NOT clearing, and THE ORDERING HYPOTHESIS FALSIFIED: e5b's fine
+    # scatter went 0.71 -> 1.02 Hz under the command (predicted: collapse). Flat dcmd +
+    # persistent rails + mixed signs = the TARGETS churn; the loop tracks row noise, 14b's
+    # verdict at a lower floor. The banked ordering (row precision FIRST) was right.
+    # ⚠️ THE REAL BLOCKER, now measured twice: the fine observable itself is ~0.7-1.0 Hz
+    # per-sat (arm 15's "5-10x smoother" was 0.20 vs 1-2 M/S -- never mm-class). Until a
+    # quieter carrier observable exists, GAP 1 commands mirror noise and GAP 3's
+    # regression (needs S/N against sub-cm/s truth) is heading to a BOUNDED NULL.
+    # rrate-command: true
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
