@@ -506,6 +506,92 @@ def sat_pos_clk(e, t_gpst):
     return (X, Y, Z), V, clk
 
 
+# -- BROADCAST GROUP DELAY (task A0b) -----------------------------------------------------
+# Carrier frequencies (Hz) and the gamma = (f_ref/f_signal)^2 scalings the ICDs use.
+F_E1 = F_L1 = 1575.42e6
+F_E5A = F_L5 = 1176.45e6
+F_E5B = 1207.14e6
+GAMMA_L1L5 = (F_L1 / F_L5) ** 2          # 1.79329
+GAMMA_E1E5A = (F_E1 / F_E5A) ** 2        # 1.79329
+GAMMA_E1E5B = (F_E1 / F_E5B) ** 2        # 1.70325
+
+# RINEX 3 GAL dataSources bits (BROADCAST ORBIT 5 field 2, parsed into e["l2_codes"]):
+# bit 8 = clock referenced to (E5a, E1)  [F/NAV];  bit 9 = referenced to (E5b, E1)  [I/NAV].
+_GAL_CLK_E5A = 0x100
+_GAL_CLK_E5B = 0x200
+
+
+def group_delay_s(e, signal):
+    """Seconds to ADD to the broadcast clock so it refers to `signal`'s own code phase.
+
+    THE BROADCAST CLOCK IS NOT REFERENCED TO OUR SIGNAL. Every constellation fits its clock
+    to some other combination -- GPS LNAV to L1/L2, Galileo F/NAV to E1/E5a and I/NAV to
+    E1/E5b, BeiDou legacy to B3I -- and a single-frequency user of anything else owes the
+    corresponding differential. Until 2026-08-23 nothing here applied it: the decoders
+    parsed TGD/BGD and the correction path ignored them (buglist A0b).
+
+    SIZE, MEASURED on the 2026-08-23 BRDC before writing this: the CONSTELLATION-COMMON
+    part is small -- GPS TGD median -8.4 ns -> +0.15 chips at L5, Galileo BGD -0.9 ns ->
+    +0.02 chips -- and a common term is degenerate with the receiver clock anyway, so a
+    chain that solves its own clock never sees it. What this actually buys is the PER-SAT
+    spread: GPS TGD ranges -17.7..+6.5 ns and BDS TGD +-45 ns, i.e. +-0.3..0.5 chips
+    landing straight in b_sat. Do NOT expect it to move a constellation offset.
+
+    OUR GALILEO BRDC IS MIXED, and best_eph picks by freshness: 19 sats carried F/NAV
+    (clock ref E5a,E1) and 11 carried I/NAV (clock ref E5b,E1) on 2026-08-23. So the
+    reference a satellite gets is arbitrary AND CAN FLIP at a refresh. Both cross-type
+    conversions are implemented from the ICD identity t_E1 = t_IF_a - BGD_a = t_IF_b -
+    BGD_b; without them a record-type flip would step that satellite's clock by a few ns.
+
+    Returns 0.0 when the term is unavailable rather than guessing -- notably BeiDou B2a,
+    whose TGD_B2ap lives in B-CNAV2 and is absent from RINEX 3 (only TGD1 B1I/B3I and
+    TGD2 B2I/B3I are broadcast there).
+    """
+    if not signal:
+        return 0.0
+    sig = str(signal).lower()
+    sysc = e.get("sys")
+    tgd = float(e.get("tgd") or 0.0)        # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
+    tgd2 = float(e.get("iodc") or 0.0)      # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC(!)
+    if sysc == "G":
+        # IS-GPS-705: an L5 user owes gamma_15 * TGD (plus ISC_L5I5, which is CNAV-only and
+        # not in RINEX 3 -- so this is the larger half of the term, not all of it).
+        if "l5" in sig:
+            return -GAMMA_L1L5 * tgd
+        if "l1" in sig:
+            return -tgd
+        return 0.0
+    if sysc == "E":
+        ds = int(e.get("l2_codes") or 0)
+        ref_a = bool(ds & _GAL_CLK_E5A)     # F/NAV: clock is the E1/E5a iono-free combination
+        ref_b = bool(ds & _GAL_CLK_E5B)     # I/NAV: clock is the E1/E5b iono-free combination
+        if not (ref_a or ref_b):
+            ref_a = True                    # unflagged records: treat as F/NAV, the ICD default
+        if "e5a" in sig:
+            if ref_a:
+                return -GAMMA_E1E5A * tgd
+            # I/NAV record used for E5a: t_IF_a = t_IF_b + BGD_a - BGD_b, then apply E5a's own.
+            return -(GAMMA_E1E5A - 1.0) * tgd - tgd2
+        if "e5b" in sig:
+            if ref_b:
+                return -GAMMA_E1E5B * tgd2
+            # F/NAV record used for E5b, the mirror of the above.
+            return -tgd - (GAMMA_E1E5B - 1.0) * tgd2
+        if "e1" in sig:
+            return -(tgd if ref_a else tgd2)
+        return 0.0
+    if sysc == "C":
+        # BDS legacy D1/D2 clock is B3I-referenced. B2b shares B2I's carrier (1207.14 MHz),
+        # so TGD2 is the right band term for it; B2a (1176.45) needs TGD_B2ap, which this
+        # message does not carry -- return 0 and stay honest rather than borrow TGD2.
+        if "b2b" in sig:
+            return -tgd2
+        if "b1" in sig:
+            return -tgd
+        return 0.0
+    return 0.0
+
+
 def _pos_only(e, t_gpst):
     mu = MU[e["sys"]]
     om_e = OMEGA_E[e["sys"]]
@@ -563,7 +649,7 @@ def best_eph(records, t_gpst, max_age=14400.0):
     return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
 
 
-def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0):
+def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal=None):
     """Per visible sat: az/el, geometric range (m) with Earth-rotation (Sagnac)
     correction, range-rate (m/s), sat clock (s). Receiver clock NOT included --
     solving it from measured-vs-predicted IS the time bootstrap.
@@ -607,8 +693,12 @@ def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0):
         if el < mask_deg:
             continue
         rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel)) / rng
+        # A0b: the broadcast clock refers to some OTHER signal combination; make it refer
+        # to ours. `signal=None` (every non-broker caller) keeps the old, uncorrected value.
+        _gd = group_delay_s(e, signal)
         out[key] = dict(az=az, el=el, range_m=rng, range_rate_mps=rr,
-                        sat_clk_s=clk, toe_age_s=t - e["toe_gpst"])
+                        sat_clk_s=clk + _gd, tgd_s=_gd,
+                        toe_age_s=t - e["toe_gpst"])
     return out
 
 

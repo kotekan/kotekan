@@ -350,10 +350,33 @@ tenth of the SIZE. The remaining ~90 ns is constellation-common AND band-depende
 points at the replica/code-phase convention or the cross-band adoption arithmetic, not at
 the ephemeris.
 
-THE LEVER: add the group-delay term to `_sat_clock` (per-signal: TGD+ISC for GPS L5, BGD
-E1/E5a and E1/E5b for Galileo). It is one term, it is a genuine correctness bug, and it
-removes a known-wrong constant -- but it will NOT by itself remove the offset, and anyone
-measuring afterwards should expect ~90% of it to remain.
+✅ FIXED 2026-08-23 (`gnss_ephemeris.group_delay_s`, wired into `predict_all(signal=...)`
+and the three dead-reckon call sites). MEASURED EFFECT on the live BRDC, per chain:
+
+    gps_l5   median +0.115 chips (+11.3 ns)   per-sat -0.085..+0.196   sd 0.112
+    gal_e5a  median +0.006                    per-sat -0.044..+0.098   sd 0.047
+    gal_e5b  median -0.001                    per-sat -0.049..+0.055   sd 0.030
+    bds_b2b  median -0.024                    per-sat -0.323..+0.335   sd 0.177
+    bds_b2a  0.000 -- THE TERM IS NOT BROADCAST (see below)
+
+So the prediction above held exactly: the CONSTELLATION-COMMON part is ~0.1 chips and the
++1.3-chip BeiDou / +0.85-chip Galileo offsets are untouched. What it does buy is the
+PER-SAT spread (sd 0.03-0.18 chips) landing correctly in b_sat instead of in the model.
+
+⚠️ B2a CANNOT BE CORRECTED FROM RINEX 3, and this is a data-source limit, not an omission:
+TGD_B2ap lives in B-CNAV2, while RINEX 3 BDS records carry only TGD1 (B1I/B3I) and TGD2
+(B2I/B3I). `group_delay_s` returns 0.0 rather than borrowing TGD2, which is a 1207 MHz
+delay applied to an 1176 MHz signal. This BLOCKS the multi-constellation clock feed (the
+2026-08-23 arm died on BeiDou's trims being outside the DLL's linear range) -- so the real
+lever for that is NOT here. RINEX 4 CNAV records, or decoding B-CNAV2 on sky, would supply it.
+
+⚠️⚠️ FOUND WHILE FIXING THIS -- OUR GALILEO BRDC IS MIXED, AND `best_eph` PICKS BY FRESHNESS.
+On 2026-08-23: 19 satellites carried F/NAV records (clock referenced to E5a,E1) and 11
+carried I/NAV (referenced to E5b,E1). Which reference a satellite gets is therefore
+arbitrary and CAN FLIP at a refresh, stepping that satellite's clock by (BGD_a - BGD_b).
+Both cross-type conversions are implemented from the ICD identity t_E1 = t_IF_a - BGD_a =
+t_IF_b - BGD_b, and `test_group_delay.py` asserts the invariance directly -- without them a
+record-type flip is a silent per-satellite step of a few ns.
 ⚠️ The trims are the ONLY reason we can see this at all: they are the receiver telling us
 the model is wrong by a constant. Do not "fix" the trims by widening a clamp or feeding
 them into an estimator before the constant is accounted for -- three interventions have

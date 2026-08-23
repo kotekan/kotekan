@@ -6150,9 +6150,16 @@ def main(argv=None, rx=None, publisher=None):
                                     else "BRDC network DOWN -> fallback",
                                     len(_ents), len(pd), ab))
                     else:
+                        # A0b (2026-08-23): `signal=` makes the returned sat_clk_s refer to
+                        # THIS chain's code rather than the constellation's own broadcast
+                        # reference (GPS L1/L2, GAL E1/E5a or E1/E5b, BDS B3I). It is the
+                        # clock cp_predicted consumes, so it moves the seed directly.
+                        # Measured before arming: ~+0.15 chips common at L5, +-0.3 per-sat --
+                        # a b_sat-scale correction, NOT a constellation-offset one.
                         pd = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
-                            datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                            datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0,
+                            signal=args.signal)
                         # CENTRED PAIR (task #52): +/-2 s about now_w, not [now, now+4]. The
                         # old form was a FORWARD difference, so it estimated the rate at
                         # now+2 and handed it to the seed as if it were the rate at now -- the
@@ -6164,11 +6171,11 @@ def main(argv=None, rx=None, publisher=None):
                         pd2 = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w + 2.0, tz=timezone.utc),
-                            mask_deg=-90.0)
+                            mask_deg=-90.0, signal=args.signal)
                         pd0 = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w - 2.0, tz=timezone.utc),
-                            mask_deg=-90.0)
+                            mask_deg=-90.0, signal=args.signal)
                 except Exception as e:
                     pd, pd2, pd0 = {}, {}, {}
                     _log("dead-reckon: predict failed: %s" % e)
