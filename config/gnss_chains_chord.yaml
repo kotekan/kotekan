@@ -1658,7 +1658,15 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     #     the lower-authority one. Re-fly them later as a single-axis A/B on a live loop.
     dr-forecast-lead-s: 1.0
     rrate-coarse-deweight: 1.0
-    joint-consume: clk,rate
+    # ── clk DROPPED 2026-08-23 ~00:1x, twinned with e5a (the A/B paid out twice) ──
+    # (1) VARIANCE: paired in time vs gps_l5 over n=80, this chain's clock read sd 0.920
+    # chips against e5a's 0.243 post-disarm -- 5.6x, same satellites, same sky, one flag.
+    # (2) LOST LOCKS: 23:50-23:53 the joint clock walked to -3.4 chips vs legacy; seeds sat
+    # outside the +-1 chip pull-in and E31 could not acquire HERE while locked on e5a; its
+    # lock appeared within ~2 polls of the 23:54 recovery. Bare clk is GAUGE-DEPENDENT
+    # (mean(b)=0 re-rolls by b_newcomer/n at every rise/set -- measured G25: -6.62/7 =
+    # -0.94 step); `rate` is gauge-shielded (P[0,1] zeroed on membership change) and STAYS.
+    joint-consume: rate
     dll-deep-gate: "33"
     rrate-cmd-min-sig: 100
     carrier-max-hz: 10.0
