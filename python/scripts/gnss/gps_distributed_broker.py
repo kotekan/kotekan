@@ -3218,7 +3218,18 @@ def main(argv=None, rx=None, publisher=None):
     # (0.5 ms/s: follows real drift and NTP slew, rejects poll-to-poll lag churn), and
     # SNAP on a >2 s disagreement (an F-engine restart genuinely moves the axis; a max
     # filter must not ride a dead frame0 for hours).
-    fe_off = [None, 0.0]   # [filtered (hop/hps - wall) offset, wall of last update]
+    fe_off = [None, 0.0, 0, 0.0]
+    # [filtered offset, wall of last update, consecutive-disagree count, candidate offset]
+    # ⚠️ THE SNAP NEEDS PERSISTENCE (2026-08-23, measured the same evening the filter went in).
+    # `_fh` is max(pow_hop) over the chain's CURRENT status rows -- a MAX OVER A CHURNING SET,
+    # the same disease as the clock median and the mean gauge. The rows span ~1.2 s live and
+    # up to ~6 s across chains, so when the freshest satellite drops out of one poll the max
+    # falls back several seconds and returns on the next. Measured: 14 SNAPs in 50 min
+    # oscillating between exactly two offsets 4.96 s apart, which IS the multi-sat multi-chain
+    # birth-glitch population (~100 chips at 2 kHz). A bare 2 s threshold reads every dropout
+    # as a real axis move, so the max-filter -- which would otherwise reject a stale sample
+    # by construction -- gets overridden precisely when it is right. Require the disagreement
+    # to REPEAT before believing it: a frame0 step persists, a dropout does not.
     _rf_last = [0.0]  # #8: wall of the last RF-health poll (rate-limits it)
     _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
@@ -5351,13 +5362,30 @@ def main(argv=None, rx=None, publisher=None):
                 # the filtered offset (see fe_off at its definition)
                 _ow = _now()
                 _oi = _fh / args.hops_per_sec - _ow
-                if fe_off[0] is None or abs(_oi - fe_off[0]) > 2.0:
-                    if fe_off[0] is not None:
-                        _log("fe-axis offset SNAP: filtered %+.3f -> instantaneous %+.3f s "
-                             "(axis moved -- F-engine restart or frame0 step)"
-                             % (fe_off[0], _oi))
+                if fe_off[0] is None:
                     fe_off[0] = _oi
+                elif abs(_oi - fe_off[0]) > 2.0:
+                    # disagreement: believe it only if it REPEATS at the same value
+                    if abs(_oi - fe_off[3]) < 0.5:
+                        fe_off[2] += 1
+                    else:
+                        fe_off[2] = 1
+                    fe_off[3] = _oi
+                    if fe_off[2] >= 3:
+                        _log("fe-axis offset SNAP: filtered %+.3f -> %+.3f s after %d "
+                             "consecutive polls (a real axis move -- F-engine restart or "
+                             "frame0 step; a dropout does not persist)"
+                             % (fe_off[0], _oi, fe_off[2]))
+                        fe_off[0] = _oi
+                        fe_off[2] = 0
+                    else:
+                        _log_rl("fe-axis-blip",
+                                "fe-axis: instantaneous offset %+.3f s disagrees with the "
+                                "filtered %+.3f by %.2f s -- HELD (%d/3). max(pow_hop) fell "
+                                "back, i.e. the freshest row dropped out of this poll."
+                                % (_oi, fe_off[0], _oi - fe_off[0], fe_off[2]), every_s=60.0)
                 else:
+                    fe_off[2] = 0
                     _dec = 0.0005 * max(0.0, _ow - fe_off[1])
                     fe_off[0] = max(_oi, fe_off[0] - _dec)
                 fe_off[1] = _ow
