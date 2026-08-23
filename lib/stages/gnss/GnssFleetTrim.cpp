@@ -168,13 +168,20 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     _dll(config.get_default<int>(unique_name, "n_win", 4),
          config.get_default<int>(unique_name, "min_instances", 2),
          config.get_default<int>(unique_name, "max_open_win", 8),
-         config.get_default<double>(unique_name, "sig_k", 3.0)) {
+         config.get_default<double>(unique_name, "sig_k", 3.0),
+         // THE BROKER'S DEPTH, NOT THE LOOP'S. 0 follows n_win; production wants this at the
+         // broker's `telem-windows` (32) so /get_taps serves the same integration length the
+         // Python arm computed for itself.
+         config.get_default<int>(unique_name, "taps_win", 0)) {
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
 
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_dll",
         std::bind(&GnssFleetTrim::dll_callback, this, std::placeholders::_1));
+    kotekan::restServer::instance().register_get_callback(
+        unique_name + "/get_taps",
+        std::bind(&GnssFleetTrim::taps_callback, this, std::placeholders::_1));
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_stats",
         std::bind(&GnssFleetTrim::stats_callback, this, std::placeholders::_1));
@@ -611,6 +618,44 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
         }
         reply[cv.first] = prns;
     }
+    conn.send_json_reply(reply);
+}
+
+/// `<unique_name>/get_taps` -- the per-instance, per-channel taps over the served window depth.
+///
+/// WHAT THIS REPLACES. combdll.instance_taps builds the identical object in Python by walking
+/// every (window, instance, record, PRN, channel) of the gathered stream: ~140k channel-tuples
+/// per chain per cycle, ~700k across the fleet, each allocating Python complex objects.
+/// Profiled live it is ~18% of chain CPU -- and the broker is pinned at 100% of ONE core by
+/// the GIL, where cycle time IS the sum of the five chains' Python CPU. The frames are already
+/// here. The reduction is ~6k numbers per chain against the 46 MB/s it reduces.
+///
+/// ⚠️ MEASUREMENTS ONLY. Presence, the noise floor, the deep gate and the arming verdict are
+/// POLICY and stay on the broker's cycle (see the class header). This endpoint invents no gate
+/// and drops no satellite: a PRN with a live comb on one instance appears here, and whether
+/// that is enough is the broker's call, exactly as it is when it walks the frames itself.
+void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json reply = nlohmann::json::object();
+    std::lock_guard<std::mutex> lk(_mtx);
+    for (const auto& cv : _dll.taps()) {
+        nlohmann::json pj = nlohmann::json::object();
+        for (const auto& pv : cv.second) {
+            nlohmann::json ij = nlohmann::json::object();
+            for (const auto& iv : pv.second) {
+                nlohmann::json cj = nlohmann::json::object();
+                for (const auto& ch : iv.second.chan)
+                    cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
+                                                    ch.second[3]};
+                ij[iv.first] = {{"e", iv.second.e},         {"p", iv.second.p},
+                                {"l", iv.second.l},         {"n_chan", iv.second.n_chan},
+                                {"n_rec", iv.second.n_rec}, {"hop", iv.second.hop},
+                                {"chan", cj}};
+            }
+            pj[std::to_string(pv.first)] = ij;
+        }
+        reply[cv.first] = pj;
+    }
+    reply["taps_win"] = _dll.taps_win();
     conn.send_json_reply(reply);
 }
 

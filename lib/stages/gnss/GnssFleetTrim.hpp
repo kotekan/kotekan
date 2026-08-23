@@ -118,6 +118,7 @@ private:
     };
 
     void dll_callback(kotekan::connectionInstance& conn);
+    void taps_callback(kotekan::connectionInstance& conn);
     void stats_callback(kotekan::connectionInstance& conn);
     void policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     static Target parse_target(const std::string& url, const std::string& chain);
