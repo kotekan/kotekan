@@ -24,6 +24,7 @@ fleet_trim:
   n_win: 2
   post_every_n_windows: 1
   post_threads: 4
+  taps_win: 32
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 4096

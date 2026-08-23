@@ -1772,6 +1772,14 @@ def build_gather_instance(cfg, args, port):
             "kotekan_stage": "GnssFleetTrim",
             "in_buf": "telem_buf",
             "n_win": args.fleet_trim_windows,
+            # THE BROKER'S DEPTH, NOT THE LOOP'S -- and they are genuinely different questions.
+            # The loop integrates the freshest n_win windows (its authority is a step per
+            # update, so depth buys it nothing); /get_taps serves the POLICY cycle, which
+            # averages `telem-windows` for the SNR its gates need. Serving at the loop's depth
+            # would hand the broker a 2-window average where its config says 32 -- a 4x SNR
+            # loss that reads as the sky getting worse. Gated: fleetdll_gate.py's SPLIT-RING
+            # leg requires the deeper taps AND an unmoved loop.
+            "taps_win": args.fleet_trim_taps_windows,
             "min_instances": args.fleet_trim_min_instances,
             # The ACTUATOR's cadence. Its TARGETS are not here: the broker publishes them with
             # /set_policy, because it already owns the tracker endpoint list and a second copy
@@ -2334,6 +2342,10 @@ def main():
                          "~1-4%% of one core at the fleet's 1430 frames/s. Use this to drop it "
                          "if it is ever suspected of back-pressuring the buffer -- which would "
                          "cost the BROKER frames too, since bufferRecv drops when it fills.")
+    ap.add_argument("--fleet-trim-taps-windows", type=int, default=32,
+                    help="window depth served by GnssFleetTrim/get_taps -- MATCH THE BROKER'S "
+                         "--telem-windows (32). 0 follows --fleet-trim-windows, which is the "
+                         "loop's depth and far too short for the policy cycle's statistics.")
     ap.add_argument("--fleet-trim-windows", type=int, default=4,
                     help="windows GnssFleetTrim averages into one discriminator. 4 windows = "
                          "16 records = 168 ms, matching --fast-trim-windows on the Python arm.")

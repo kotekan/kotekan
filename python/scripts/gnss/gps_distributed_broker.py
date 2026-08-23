@@ -2117,6 +2117,29 @@ def main(argv=None, rx=None, publisher=None):
                          "only once that fold also runs here. Falls back to the polled "
                          "discriminator, per cycle, whenever the gather has no windows for "
                          "this chain -- so a gather that dies costs a log line, not the loop.")
+    ap.add_argument("--comb-taps-cpp", type=int, default=0, choices=(0, 1, 2),
+                    help="TAKE THE COMB DLL's per-instance/per-channel taps from the gather's "
+                         "C++ reduction (<fleet-trim-url>/get_taps) instead of rebuilding them "
+                         "in Python from the gathered frames. "
+                         "0 = off; 1 = SHADOW (fetch and compare, still USE the Python arm, log "
+                         "the paired difference); 2 = ARMED (use the C++ arm).\n"
+                         "\n"
+                         "WHY. combdll.instance_taps walks every (window, instance, record, "
+                         "PRN, channel) of the stream -- ~140k channel-tuples per chain per "
+                         "cycle, ~700k across the fleet, each allocating Python complex "
+                         "objects, ~18%% of chain CPU by live profile. This process is pinned "
+                         "at 100%% of ONE core by the GIL and its CYCLE TIME IS the sum of the "
+                         "five chains' Python CPU (measured 12.09 s cycle against 12.77 s of "
+                         "CPU per cycle-set), so that 18%% is ~2 s of every cycle. The frames "
+                         "are already in C++ on the gather host; the reduction is ~6k numbers.\n"
+                         "\n"
+                         "⚠️ GO THROUGH 1 FIRST. The equivalence is gated offline on identical "
+                         "bytes (scripts/gnss/fleetdll_gate.py: e/p/l/n_chan to 1e-9, n_rec and "
+                         "hop exact, per instance and per channel) -- but that gate cannot see "
+                         "a LIVE mismatch of window depth, chain naming or instance tags, and "
+                         "broker_equiv is blind to this path entirely (the gather is a raw "
+                         "socket, not transport, so a replay carries no telemetry and falls "
+                         "back to the polled arm). Shadow mode is what measures those.")
     ap.add_argument("--fleet-trim-url", default="",
                     help="TASK #51 F3: base URL of the C++ fleet loop's stage, e.g. "
                          "http://cf06:12051/fleet_trim. Each cycle the broker POSTs "
@@ -7847,9 +7870,17 @@ def main(argv=None, rx=None, publisher=None):
             # loop's own cycles. Any cycle where the gather has nothing for this chain simply
             # keeps the polled fleet.
             if args.telem_dll and telem_client is not None:
+                # THE C++ TAPS ARM (--comb-taps-cpp). `taps_src` replaces the Python walk over
+                # the gathered frames; everything after it -- the aggregate, the per-channel
+                # merge, the presence policy -- is unchanged and stays here.
+                _tsrc_cpp = None
+                if args.comb_taps_cpp and args.fleet_trim_url:
+                    _tsrc_cpp = (lambda _ch, _pr: combdll.taps_from_rest(
+                        _get, args.fleet_trim_url, _ch, prns=_pr))
                 try:
                     _cf = combdll.fleet_dll_comb(
                         telem_client, telem_chain,
+                        taps_src=_tsrc_cpp if args.comb_taps_cpp >= 2 else None,
                         n_win=(args.telem_dll_windows or args.telem_windows),
                         min_instances=args.dll_min_instances,
                         k_sigma=args.dll_quality_sigma, q_fallback=args.dll_quality_min,
@@ -7867,6 +7898,40 @@ def main(argv=None, rx=None, publisher=None):
                     _cf = None
                     _log_rl("comb-dll-err",
                             "COMB-DLL: failed (%s) -- the polled discriminator is unchanged" % e)
+                # SHADOW: fetch the C++ taps, build the SAME product from them, and report the
+                # paired difference on the loop's own cycles. Costs one GET and one rebuild and
+                # changes nothing -- which is the point: the offline gate proves the arithmetic
+                # on identical bytes, and this proves the two arms are looking at the same sky
+                # through the same window depth with the same instance tags, which no offline
+                # fixture can.
+                if args.comb_taps_cpp == 1 and _tsrc_cpp is not None and _cf:
+                    try:
+                        _cx = combdll.fleet_dll_comb(
+                            telem_client, telem_chain, taps_src=_tsrc_cpp,
+                            n_win=(args.telem_dll_windows or args.telem_windows),
+                            min_instances=args.dll_min_instances,
+                            k_sigma=args.dll_quality_sigma, q_fallback=args.dll_quality_min,
+                            prns=set(seeds) or None, probe_prns=probe_set,
+                            deep_gate_prns=_deep_gate_eff,
+                            deep_gate_margin=args.dll_deep_gate_margin, coh_from=fleet)
+                        _sh = sorted(set(_cf) & set(_cx))
+                        if _sh:
+                            _dd = sorted(abs(_cf[p]["disc"] - _cx[p]["disc"]) for p in _sh)
+                            _dq = sorted(abs(_cf[p]["q"] - _cx[p]["q"]) for p in _sh)
+                            _log("COMB-TAPS shadow %s: %d shared PRN(s) (py %d, cpp %d); "
+                                 "|ddisc| med %.2e max %.2e; |dq| med %.2e max %.2e"
+                                 % (telem_chain, len(_sh), len(_cf), len(_cx),
+                                    _dd[len(_dd) // 2], _dd[-1], _dq[len(_dq) // 2], _dq[-1]))
+                        else:
+                            _log_rl("comb-taps-empty",
+                                    "COMB-TAPS shadow %s: NO SHARED PRNs (py %d, cpp %d) -- "
+                                    "that is a chain-name, window-depth or instance-tag "
+                                    "mismatch, not a rounding difference"
+                                    % (telem_chain, len(_cf), len(_cx)), every_s=60.0)
+                    except Exception as e:
+                        _log_rl("comb-taps-sh",
+                                "COMB-TAPS shadow failed (%s) -- nothing changed" % e,
+                                every_s=60.0)
                 if _cf:
                     _shared = sorted(set(_cf) & set(fleet or {}))
                     _dd = sorted(_cf[p]["disc"] - fleet[p]["disc"] for p in _shared)

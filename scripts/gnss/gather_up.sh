@@ -33,9 +33,15 @@ CFG=${1:-$K/config/generated/chord_gnss_gather.yaml}
 LOG=${2:-/tmp/gnss_gather.log}
 if [ ! -f "$CFG" ]; then
     echo "FAILED: no config at $CFG." >&2
+    # ⚠️ THE FULL ARGUMENT LIST, because the short one SILENTLY CHANGES THE DEPLOYMENT.
+    # Regenerating without --rest-port moves the REST server 12051 -> 12050 (every consumer of
+    # /get_dll and /set_policy 404s, and the broker's fleet-trim-url is a config away), and
+    # without --fleet-trim-windows the loop's depth goes 2 -> 4. Neither is visible in the
+    # diff unless you look, and the file says DO NOT HAND-EDIT, so the args ARE the source.
     echo "  regenerate: python3 $K/config/gen_chord_gnss_config.py \\" >&2
     echo "      --base $K/config/base/live_config_20260730.json --node cx19 \\" >&2
-    echo "      --gather-instance --out $CFG" >&2
+    echo "      --gather-instance --rest-port 12051 --fleet-trim-windows 2 \\" >&2
+    echo "      --out $CFG" >&2
     exit 1
 fi
 

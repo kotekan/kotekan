@@ -155,9 +155,50 @@ def instance_taps(client, chain, wins, prns=None, per_channel=True):
 COH_KEYS = ("coh_row", "coh_src", "coh_quad")
 
 
+def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
+    """`instance_taps`' object, fetched from the gather's C++ reduction instead of rebuilt.
+
+    ⚠️ THIS IS THE SAME ARITHMETIC, NOT AN APPROXIMATION OF IT. gnss::FleetDll forms these taps
+    from the same frames, and scripts/gnss/fleetdll_gate.py hands both arms IDENTICAL BYTES and
+    requires e/p/l/n_chan to agree to 1e-9 with n_rec/hop exact, per instance AND per channel.
+    That gate is the only thing standing behind this call: broker_equiv replays only what goes
+    through gnss_broker.transport, and the gather is a raw socket, so a replay runs with no
+    telemetry at all and quietly falls back to the polled discriminator.
+
+    WHY IT EXISTS. Rebuilding this in Python walks every (window, instance, record, PRN,
+    channel) of the gathered stream -- ~140k channel-tuples per chain per cycle, ~700k across
+    the fleet, each allocating Python complex objects, ~18% of chain CPU. The broker is pinned
+    at 100% of ONE core by the GIL, where cycle time IS the sum of the five chains' Python CPU,
+    so that 18% is ~2 s of every cycle. The reduction is ~6k numbers.
+
+    `get` is the caller's HTTP getter (transport._get), passed in so this module keeps its
+    no-transport-import property and so a replay records the fetch like any other.
+    """
+    d = get("%s/get_taps" % url.rstrip("/"), timeout=timeout) or {}
+    want = None if prns is None else set(int(p) for p in prns)
+    out = {}
+    for prn, insts in (d.get(chain) or {}).items():
+        p = int(prn)
+        if want is not None and p not in want:
+            continue
+        per = {}
+        for inst, v in insts.items():
+            # n_rec 0 cannot happen here (the C++ creates a Tap only for a record with a live
+            # comb, as the Python does) but fleet_dll_comb filters on it anyway and so do we:
+            # the two arms must agree about which instances EXIST, not just their numbers.
+            per[inst] = {"e": float(v["e"]), "p": float(v["p"]), "l": float(v["l"]),
+                         "n_chan": float(v["n_chan"]), "n_rec": int(v["n_rec"]),
+                         "hop": int(v["hop"]),
+                         "chan": {int(f): [float(c[0]), float(c[1]), float(c[2]), float(c[3])]
+                                  for f, c in (v.get("chan") or {}).items()}}
+        if per:
+            out[p] = per
+    return out
+
+
 def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
                    q_fallback=2.2, prns=None, probe_prns=None, deep_gate_prns=None,
-                   deep_gate_margin=3.0, coh_from=None, per_channel=True):
+                   deep_gate_margin=3.0, coh_from=None, per_channel=True, taps_src=None):
     """fleet_dll's dict, from the comb. {prn: {disc, q, p_pow, hop, n_src, n_chan, ...}}.
 
     Same keys, same meanings, same presence policy (apply_presence, shared with fleet_dll so
@@ -172,11 +213,19 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
     5-8 dB whenever the fleet gate flickered (docs 11.31). A missing key here would look like
     a display quirk and be a real regression in the C/N0 record.
     """
-    wins = client.windows(chain, lag=lag)
-    if not wins:
-        return {}
-    wins = wins[-int(n_win):]
-    per_prn = instance_taps(client, chain, wins, prns=prns, per_channel=per_channel)
+    if taps_src is not None:
+        # THE C++ ARM. No window selection here: the depth is the gather's `taps_win`, set to
+        # match this broker's telem-windows. Asking for a different one silently would be the
+        # 2-vs-32 window mismatch the split-ring gate exists to catch.
+        per_prn = taps_src(chain, prns)
+        if not per_prn:
+            return {}
+    else:
+        wins = client.windows(chain, lag=lag)
+        if not wins:
+            return {}
+        wins = wins[-int(n_win):]
+        per_prn = instance_taps(client, chain, wins, prns=prns, per_channel=per_channel)
     coh_from = coh_from or {}
     out = {}
     for prn, per_inst in per_prn.items():
