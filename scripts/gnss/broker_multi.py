@@ -49,6 +49,19 @@ import time
 # Free when unused, costs one signal handler, and answers the question in one line instead
 # of a restart under a profiler. Added 2026-08-23 after the cycle-time hunt spent an hour
 # inferring from wait channels.
+#
+# ⚠️⚠️ ONE DUMP AT A TIME. DO NOT USE THIS AS A SAMPLING PROFILER -- IT KILLED THE BROKER.
+# faulthandler walks every thread's frame objects from inside a signal handler, without the
+# GIL, while those threads are running and mutating them. That is fine for the occasional
+# look (12 signals at 0.9 s: survived; and it is what the module is FOR -- a process that is
+# usually already dying). Driven at 45 signals in 40 s against five busy chain threads it
+# raced and the process vanished mid-dump: no traceback, no fatal line, no OOM, nothing in
+# dmesg -- just a log that stops in the middle of a stack. Cost the instrument ~80 s of
+# downtime plus a settle, on 2026-08-23, to learn this.
+#
+# If you want a profile, profile a REPLAY (broker_equiv holds the transcripts and has no
+# side effects) or launch the broker as py-spy's child. Use this to answer "where is it
+# stuck RIGHT NOW", once.
 faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
