@@ -152,6 +152,8 @@ def main():
                                "publishes on ONE port (%d, from %s). Select with "
                                "?chain=%s or /%s/get_status." % (name, p, port, owner,
                                                                  name, name))
+    # Before any chain starts polling: name resolution was this process's cycle time.
+    transport.install_dns_cache()
     pub = publish.FleetPublisher(port, transport._log) if port else None
     if pub:
         transport._log("fleet publisher shared by every chain on :%d" % port)

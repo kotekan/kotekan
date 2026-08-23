@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -17,6 +18,83 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gnss_stages import resolve_stage  # noqa: E402
+
+
+# ---------------------------------------------------------------------------------------
+# DNS CACHE -- the broker's cycle time was name resolution (2026-08-23).
+#
+# THE MEASUREMENT. `urllib.request.urlopen` resolves the hostname on EVERY call: no
+# keep-alive, no connection pool, no cache. fleet_coherent walks its 12 combiner endpoints
+# SERIALLY, twice per chain per cycle, so one broker cycle costs ~480 getaddrinfo calls --
+# and /etc/resolv.conf carries three search domains, so a short name like "cx19" can cost
+# three queries each. On cf06 over 30 s:
+#
+#     getaddrinfo n=7314   median 0.4 ms   p90 0.7   p99 2.0   max 5005.6 ms
+#       >1 s: 6 calls  --  and those 6 ARE ~ALL 30.5 s of DNS time
+#
+# Six calls in seven thousand hit a 5-SECOND resolver timeout, and they were the entire
+# cycle budget: 15 s median, 43 s max, against --interval 2. Live stack sampling put 39.7%
+# of all chain-thread wall time in this ONE stdlib frame (76% in transport HTTP overall).
+#
+# WHY IT TIMES OUT, AND WHY IT IS NOT A DNS FAULT. cf06 resolves via a single server out
+# eno8303 -- the one 1 GbE that also carries the fleet's telemetry, measured at 402 Mbps and
+# bursty BY DESIGN (the senders are frame-synced, so they burst together). The query packets
+# drown in the burst and systemd-resolved falls back to its timeout. CONTROL, same names and
+# same server from a quiet host: 69,888 lookups, max 8.0 ms, ZERO over 1 s. So this is the
+# mechanism behind the telem-gather comment's "the transport costs ~5 s per cycle, and the
+# cost is ON THE WIRE" -- that A-B-A was right; it is DNS loss, not REST bandwidth. All 12
+# combiners answer in 0.26 s for 3.9 MB.
+#
+# ⚠️ THE LOCK IS NEVER HELD ACROSS A LOOKUP. Holding it would serialise every thread's
+# resolution behind whichever one is currently stalled for 5 s -- the exact failure this
+# exists to remove, made global. Two threads racing to resolve the same name simply both
+# resolve it; that is rare and harmless.
+#
+# ⚠️ STALE-IF-ERROR IS DELIBERATE. `_dns_good` is kept separately from the TTL cache, so a
+# lookup that FAILS falls back to the last answer that worked rather than taking the node
+# out of the fleet. These are fixed-address lab machines; a stale address is recoverable
+# (the connect fails and the poll is skipped for one cycle), a 5 s stall is not.
+_DNS_TTL_S = 300.0
+_dns_cache = {}          # key -> (expiry, result)
+_dns_good = {}           # key -> result, last one that resolved (never expires)
+_dns_lock = threading.Lock()
+_dns_real = None
+
+
+def install_dns_cache(ttl_s=None):
+    """Wrap socket.getaddrinfo with a TTL cache. Idempotent; safe to call per chain thread.
+
+    Set GNSS_NO_DNS_CACHE=1 to leave the stdlib alone (to reproduce the stalls, or if a name
+    ever needs to be re-resolved faster than the TTL).
+    """
+    global _dns_real, _DNS_TTL_S
+    if ttl_s is not None:
+        _DNS_TTL_S = float(ttl_s)
+    if _dns_real is not None or os.environ.get("GNSS_NO_DNS_CACHE"):
+        return
+    _dns_real = socket.getaddrinfo
+
+    def _cached(host, port, family=0, type=0, proto=0, flags=0):
+        key = (host, port, family, type, proto, flags)
+        now = time.time()
+        with _dns_lock:
+            hit = _dns_cache.get(key)
+        if hit is not None and hit[0] > now:
+            return hit[1]
+        try:
+            res = _dns_real(host, port, family, type, proto, flags)
+        except Exception:
+            with _dns_lock:
+                stale = _dns_good.get(key)
+            if stale is not None:
+                return stale
+            raise
+        with _dns_lock:
+            _dns_cache[key] = (now + _DNS_TTL_S, res)
+            _dns_good[key] = res
+        return res
+
+    socket.getaddrinfo = _cached
 
 
 # ---------------------------------------------------------------------------------------

@@ -69,7 +69,7 @@ from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name 
 # ---------------------------------------------------------------------------------------
 from gnss_broker.transport import (           # noqa: E402
     _TranscriptDone, _Transcript, _TR, _now, _get, _post, _log, _log_rl,
-    expand_token, resolve_prefix, parse_endpoints, log_tag,
+    expand_token, resolve_prefix, parse_endpoints, log_tag, install_dns_cache,
 )
 from gnss_broker import telem as _telem                    # noqa: E402  (task #59 gather)
 from gnss_broker import combdll                            # noqa: E402  (task #63 comb DLL)
@@ -779,6 +779,9 @@ _FROZEN = dict(
 # ── end frozen tuning ────────────────────────────────────────────────────────────────────
 
 def main(argv=None, rx=None, publisher=None):
+    # Name resolution was the broker's cycle time -- see transport.py's DNS CACHE note.
+    # Idempotent, so the per-chain threads under broker_multi all land on one cache.
+    install_dns_cache()
     # `--signal help` before the parser, because --trackers is required and listing the
     # known signals must not depend on being able to name a fleet first.
     if "help" in (argv if argv is not None else sys.argv[1:]):
