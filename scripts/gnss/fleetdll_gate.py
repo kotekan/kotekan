@@ -207,6 +207,77 @@ def python_arm(frames, n_win, min_instances):
     return out
 
 
+def python_taps(frames, n_win):
+    """combdll.instance_taps, per instance AND per channel, through the REAL client ring.
+
+    The object the C++ `taps()` accessor now forms on the gather host. Compared field by field
+    because THIS PATH HAS NO OTHER GATE: broker_equiv replays only what goes through
+    gnss_broker.transport, and the telemetry stream is a raw socket, so a replay runs with no
+    telemetry at all and quietly falls back to the polled discriminator. The digest stays green
+    while testing none of it.
+    """
+    client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
+    for buf, _chain in frames:
+        hdr = telem._HDR.unpack_from(buf, 0)
+        client._store_frame(telem.TelemFrame(hdr, buf, 0.0))
+    out = {}
+    for chain in client.chains():
+        wins = client.windows(chain, lag=1)[-int(n_win):]
+        out[chain] = combdll.instance_taps(client, chain, wins, per_channel=True)
+    return out
+
+
+#: Per-instance tap fields, with tolerances. The powers are means over records; `chan` is
+#: compared separately because its denominator is per channel, not per instance.
+TAP_FIELDS = [("e", 1e-9), ("p", 1e-9), ("l", 1e-9), ("n_chan", 1e-9),
+              ("n_rec", 0.0), ("hop", 0.0)]
+
+
+def compare_taps(py, cpp):
+    """[(severity, message)] -- empty means the per-instance/per-channel taps agree."""
+    bad = []
+    cj = cpp.get("taps", {})
+    for chain in sorted(set(py) | set(cj)):
+        p_prns = {int(k): v for k, v in (py.get(chain) or {}).items()}
+        c_prns = {int(k): v for k, v in (cj.get(chain) or {}).items()}
+        # Python creates an entry for any (prn, inst) with a live comb; a PRN whose every
+        # record was empty has n_rec 0 and is dropped by fleet_dll_comb, so compare on the
+        # populated set and say so if the SETS differ.
+        p_use = {p: {i: d for i, d in v.items() if d["n_rec"] > 0} for p, v in p_prns.items()}
+        p_use = {p: v for p, v in p_use.items() if v}
+        for prn in sorted(set(p_use) - set(c_prns)):
+            bad.append(("TAP-MISSING", "%s PRN %d: Python has taps, C++ does not" % (chain, prn)))
+        for prn in sorted(set(c_prns) - set(p_use)):
+            bad.append(("TAP-EXTRA", "%s PRN %d: C++ has taps, Python does not" % (chain, prn)))
+        for prn in sorted(set(p_use) & set(c_prns)):
+            pi, ci = p_use[prn], c_prns[prn]
+            for inst in sorted(set(pi) - set(ci)):
+                bad.append(("TAP-INST", "%s PRN %d: instance %s only in Python" % (chain, prn, inst)))
+            for inst in sorted(set(ci) - set(pi)):
+                bad.append(("TAP-INST", "%s PRN %d: instance %s only in C++" % (chain, prn, inst)))
+            for inst in sorted(set(pi) & set(ci)):
+                a, b = pi[inst], ci[inst]
+                for f, tol in TAP_FIELDS:
+                    x, y = float(a[f]), float(b[f])
+                    if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
+                        bad.append(("TAP", "%s PRN %d %s %s: py %.17g cpp %.17g"
+                                    % (chain, prn, inst, f, x, y)))
+                pc = {int(k): v for k, v in a["chan"].items()}
+                cc = {int(k): v for k, v in b["chan"].items()}
+                if set(pc) != set(cc):
+                    bad.append(("TAP-CHAN", "%s PRN %d %s: freq_id sets differ py %s cpp %s"
+                                % (chain, prn, inst, sorted(pc), sorted(cc))))
+                    continue
+                for fid in sorted(pc):
+                    for k, name in enumerate(("e", "p", "l", "n_rec")):
+                        x, y = float(pc[fid][k]), float(cc[fid][k])
+                        tol = 0.0 if name == "n_rec" else 1e-9
+                        if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
+                            bad.append(("TAP-CHAN", "%s PRN %d %s fid %d %s: py %.17g cpp %.17g"
+                                        % (chain, prn, inst, fid, name, x, y)))
+    return bad
+
+
 def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None):
     cmd = [exe, path, "--n-win", str(n_win), "--min-instances", str(min_instances), "--no-flush"]
     if arm:
@@ -425,6 +496,22 @@ def main():
               "folding it makes the aggregate depend on arrival order.")
         return 1
     print("LATE-FRAME PASS -- counted (1) and dropped; the answer is unchanged.")
+
+    # ---- THE PER-INSTANCE / PER-CHANNEL TAPS -------------------------------------------
+    # A tighter comparison than the discriminator legs above, and deliberately so: disc and q
+    # are RATIOS, so a common factor on E, P and L cancels and a whole class of fold error
+    # survives them. These are the unreduced numbers.
+    pt = python_taps(frames, args.n_win)
+    bad_t = compare_taps(pt, cpp)
+    if bad_t:
+        print("FAIL -- %d tap disagreement(s):" % len(bad_t))
+        for sev, msg in bad_t[:12]:
+            print("  %-11s %s" % (sev, msg))
+        return 1
+    n_it = sum(len(v) for ch in pt.values() for v in ch.values())
+    n_ch = sum(len(d["chan"]) for ch in pt.values() for v in ch.values() for d in v.values())
+    print("TAPS PASS -- %d (PRN, instance) taps and %d per-channel rows agree, e/p/l/n_chan "
+          "to 1e-9 and n_rec/hop exactly." % (n_it, n_ch))
 
     # ---- THE INTEGRATOR (F2) -----------------------------------------------------------
     # Two legs, deliberately separate, because a single end-to-end comparison would let a fold

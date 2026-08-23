@@ -41,6 +41,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -124,6 +125,15 @@ public:
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
         _max_open_win(std::max(2, max_open_win)), _sig_k(sig_k) {}
 
+    /// One comb COLUMN's three powers for one (instance, PRN), over the records of one window.
+    /// `fid` is the F-engine freq_id off the frame header -- never assumed, never configured
+    /// (gnssTelem.hpp: a fit over unlabelled columns returns a confident wrong tau).
+    struct ChanTap {
+        int fid = 0;
+        double e = 0.0, p = 0.0, l = 0.0;
+        int n_rec = 0;
+    };
+
     /// One (instance, PRN)'s three powers, accumulated over the records of ONE window.
     ///
     /// ⚠️ Records with no live comb contribute NOTHING rather than zeros. A zeroed record is not
@@ -134,6 +144,20 @@ public:
         double n_chan = 0.0;
         int n_rec = 0;
         int64_t hop = -1;
+        /// ONE CHANNEL's own three powers, kept UNSUMMED -- indexed by the sender's comb
+        /// column, labelled with the freq_id the frame header carries. This is
+        /// combdll.instance_taps' `chan` dict, which the broker builds by walking every
+        /// (window, instance, record, PRN, channel) in Python: ~140k channel-tuples per chain
+        /// per cycle, ~700k across the fleet, each allocating Python complex objects. The
+        /// arithmetic under that is ~1.4 MFLOP -- microseconds of real work wrapped in a
+        /// second of interpreter, on a process already pinned at one core by the GIL.
+        /// Formed here instead, where the frame already is.
+        ///
+        /// ⚠️ A channel reaches exactly ONE instance (freq_id mod 8 routing), so merging these
+        /// across instances downstream is a merge and never a sum over duplicates -- see the
+        /// duplicate handling in combdll.fleet_dll_comb, which names and DROPS a freq_id that
+        /// two instances both claim rather than adding two measurements of different things.
+        std::array<ChanTap, TELEM_MAX_CHAN> chan{};
     };
 
     struct WindowAcc {
@@ -275,6 +299,34 @@ public:
                 t.n_chan += used;
                 t.n_rec++;
                 t.hop = std::max(t.hop, hop);
+
+                // PER-CHANNEL, formed by the IDENTICAL expression one column at a time.
+                // Second pass over the same columns rather than folded into the loop above:
+                // the aggregate is only accumulated once `used > 0` is known, and the Python
+                // arm likewise creates its per-instance entry only for a record with a live
+                // comb (`if not cmb: continue` precedes it). Splitting the passes keeps that
+                // equivalence obvious instead of hidden in a guard.
+                //
+                // ⚠️ NORMALISE FIRST, THEN TAKE THE MAGNITUDE. Python computes
+                // `abs(complex(re/e, im/e))**2`; (re*re + im*im)/(e*e) is the same number in
+                // exact arithmetic and NOT the same float. The two arms are compared at 1e-9.
+                for (int ch = 0; ch < n_chan; ++ch) {
+                    const float* cc = row + telem_chan_offset(ch);
+                    const double eP = cc[CHAN_ENERGY];
+                    if (eP <= 0.0)
+                        continue;
+                    const double eE = cc[CHAN_E_ENERGY] != 0.0f ? cc[CHAN_E_ENERGY] : eP;
+                    const double eL = cc[CHAN_L_ENERGY] != 0.0f ? cc[CHAN_L_ENERGY] : eP;
+                    ChanTap& ct = t.chan[ch];
+                    ct.fid = (int)h->chan_id[ch];
+                    const double ae = std::hypot(cc[CHAN_E_RE] / eE, cc[CHAN_E_IM] / eE);
+                    const double ap = std::hypot(cc[CHAN_RE] / eP, cc[CHAN_IM] / eP);
+                    const double al = std::hypot(cc[CHAN_L_RE] / eL, cc[CHAN_L_IM] / eL);
+                    ct.e += ae * ae;
+                    ct.p += ap * ap;
+                    ct.l += al * al;
+                    ct.n_rec++;
+                }
             }
         }
 
@@ -314,6 +366,77 @@ public:
 
     const std::map<std::string, Chain>& chains() const {
         return _chain;
+    }
+
+    /// ONE (instance, PRN)'s taps over the closed window set, MEANED -- i.e. exactly what
+    /// `combdll.instance_taps` returns for one entry of `{prn: {inst: ...}}`.
+    struct InstTap {
+        double e = 0.0, p = 0.0, l = 0.0, n_chan = 0.0;
+        int n_rec = 0;
+        int64_t hop = -1;
+        std::map<int, std::array<double, 4>> chan; ///< freq_id -> {e, p, l, n_rec}
+    };
+
+    /// [chain][prn][instance] -- the per-instance, per-channel taps over the closed windows.
+    ///
+    /// THIS IS WHY IT EXISTS: `combdll.instance_taps` builds the identical object in Python by
+    /// walking every (window, instance, record, PRN, channel) of the gathered stream -- ~140k
+    /// channel-tuples per chain per cycle, ~700k across the fleet. Profiled on the live broker
+    /// it is ~18% of chain CPU, on a process pinned at 100% of ONE core by the GIL, where cycle
+    /// time IS the sum of the five chains' Python CPU. The frames are already here, in C++, so
+    /// the reduction belongs here and the broker should be handed the ~6k numbers that survive
+    /// it rather than the 46 MB/s that do not.
+    ///
+    /// ⚠️ THE MEANS ARE TAKEN OVER DIFFERENT DENOMINATORS ON PURPOSE, mirroring the Python:
+    /// the aggregate divides by the (instance, PRN)'s record count, and EACH CHANNEL divides by
+    /// ITS OWN -- a channel that was live for half the records is a mean over that half, not a
+    /// half-sized mean. Getting this wrong is invisible in the full-band numbers and shows up
+    /// only per channel, which is precisely where nobody looks.
+    ///
+    /// ⚠️ POLICY IS NOT HERE AND MUST NOT COME HERE. Presence, the noise floor, the deep gate,
+    /// who is armed -- all of that stays on the broker's cycle (GnssFleetTrim.hpp). This
+    /// returns measurements.
+    std::map<std::string, std::map<int, std::map<std::string, InstTap>>> taps() const {
+        std::map<std::string, std::map<int, std::map<std::string, InstTap>>> out;
+        for (const auto& cv : _chain) {
+            auto& per_prn = out[cv.first];
+            for (const WindowAcc& w : cv.second.closed)
+                for (const auto& iv : w.tap)
+                    for (const auto& pv : iv.second) {
+                        InstTap& t = per_prn[pv.first][iv.first];
+                        t.e += pv.second.e;
+                        t.p += pv.second.p;
+                        t.l += pv.second.l;
+                        t.n_chan += pv.second.n_chan;
+                        t.n_rec += pv.second.n_rec;
+                        t.hop = std::max(t.hop, pv.second.hop);
+                        for (const ChanTap& ct : pv.second.chan) {
+                            if (ct.n_rec <= 0)
+                                continue;
+                            std::array<double, 4>& a = t.chan[ct.fid];
+                            a[0] += ct.e;
+                            a[1] += ct.p;
+                            a[2] += ct.l;
+                            a[3] += ct.n_rec;
+                        }
+                    }
+            for (auto& pv : per_prn)
+                for (auto& iv : pv.second) {
+                    InstTap& t = iv.second;
+                    const double n = t.n_rec ? (double)t.n_rec : 1.0;
+                    t.e /= n;
+                    t.p /= n;
+                    t.l /= n;
+                    t.n_chan /= n;
+                    for (auto& cv2 : t.chan) {
+                        const double m = cv2.second[3] ? cv2.second[3] : 1.0;
+                        cv2.second[0] /= m;
+                        cv2.second[1] /= m;
+                        cv2.second[2] /= m;
+                    }
+                }
+        }
+        return out;
     }
     int n_win() const {
         return _n_win;

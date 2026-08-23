@@ -175,6 +175,33 @@ int main(int argc, char** argv) {
                             {"newest_win", cv.second.newest}};
     }
     out["chains"] = chains;
+    // THE PER-INSTANCE, PER-CHANNEL TAPS -- the object combdll.instance_taps builds in Python
+    // by walking every (window, instance, record, PRN, channel). Emitted so the gate can
+    // compare the two arms field by field on identical bytes, which is the only thing that
+    // makes moving the reduction off the broker safe: the telemetry path is INVISIBLE to
+    // broker_equiv (the gather is a raw socket, not gnss_broker.transport, so a replay runs
+    // with no telemetry at all and silently falls back to the polled discriminator). The
+    // digest would stay green while testing none of this.
+    nlohmann::json taps = nlohmann::json::object();
+    for (const auto& cv : dll.taps()) {
+        nlohmann::json pj = nlohmann::json::object();
+        for (const auto& pv : cv.second) {
+            nlohmann::json ij = nlohmann::json::object();
+            for (const auto& iv : pv.second) {
+                nlohmann::json cj = nlohmann::json::object();
+                for (const auto& ch : iv.second.chan)
+                    cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
+                                                    ch.second[3]};
+                ij[iv.first] = {{"e", iv.second.e},       {"p", iv.second.p},
+                                {"l", iv.second.l},       {"n_chan", iv.second.n_chan},
+                                {"n_rec", iv.second.n_rec}, {"hop", iv.second.hop},
+                                {"chan", cj}};
+            }
+            pj[std::to_string(pv.first)] = ij;
+        }
+        taps[cv.first] = pj;
+    }
+    out["taps"] = taps;
     if (!arm.empty()) {
         nlohmann::json sj = nlohmann::json::object();
         for (const auto& cv : series) {
