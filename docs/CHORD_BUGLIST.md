@@ -681,6 +681,46 @@ be one variable, on a verified-live loop, with the unadmitted sats as in-poll co
 
 ---
 
+## 🅿️ Parked 2026-08-24 — measured, root not chased (KV: "park as a thing to follow-up")
+
+**#34 — the FUTURE-HOP emitter: instances serve a hop EXACTLY 100 RECORDS ahead.**
+Link 2 of `docs/`-side lock-walkoff chain. Re-measured per INSTANCE 2026-08-24 (the new
+`AXIS INST` line, from `_inst_hops_now`): **13 events in 360 reports (3.6% of polls)**,
+~0.24/min fleet-wide, two classes.
+* *(A) startup, once*: all 12 instances on ALL FIVE chains at **+2.9..+3.1 s together**,
+  spread 0.06-0.15 s, 4 s after broker start. Moving together ⇒ a SHARED term. cf06's clock
+  is clean (chrony RMS 48 µs, no steps) ⇒ the `utc0_sample0` capture anchor.
+* *(B) steady state, 8 events*: a SUBSET of instances (1, 3, 4, 9, 11, 11, 12 of 12) jumps to
+  **+0.86..+0.98 s** while the rest hold −0.15 s. One chain at a time. A per-instance subset
+  IS a publisher defect, so the original attribution stands for this class.
+
+⚡ **THE LEAD: the class-(B) jump is +1.0486 s relative to the healthy rows, which at
+`hops-per-sec: 195312.5` is 204800 hops = EXACTLY 100 RECORDS = 25 FRAMES.** A round number in
+the F-engine's own units is a buffer or a ring lap, not jitter. The `WALL-vs-F-ENGINE OFFSET
+JUMPED ±1.04 s` alarms (~10 per 10 min) are the same thing seen through `max()`, which is why
+they never resolved. **Find what holds 100 records / 25 frames** — NOT the taps ring
+(`taps_win` 32 windows = 128 records).
+
+**#35 — re-measure links 3-7 of the walkoff chain; link 1 is GONE.**
+The F-engine axis lag was **−18.0..−19.3 s (gps/e5a) and −7.8 s (b2a) at the same instant** on
+08-23. Measured 08-24 per instance, n=360: **median −0.15 s, worst single instance −0.35 s,
+chain-dependence ~0.03 s.** ~100× smaller; the chain-dependence that made it diagnostically
+interesting is ~300× smaller.
+
+⚠️ **Everything downstream was measured under that lag** — the epoch-frame mixing,
+`eps = +420 ± 120 ms`, the GPS per-sat residual ramps (±5-10 chips over hours), the ±4-chip
+clock oscillation. None of it can be reasoned about from the old numbers. The named
+measurement: are per-sat residuals still walking, and do they still correlate with dop? Needs a
+span of HOURS — leave an instrument running, do not soak-and-judge.
+
+⚠️ Also unexplained: WHAT fixed link 1 between 08-23 and 08-24 (the fe_off persistence guard,
+the broker cycle speedup, or an F-engine restart). Only some of those are durable.
+
+⚠️ **Measurement trap, cost a wrong population once:** the obvious place for an axis instrument
+is beside `_fh = max(pow_hop)`, but that `status` is `{prn: row}` from ONE combiner and every
+PRN in a poll carries the SAME hop — it reports "spread 0.00 s across 32 rows" and says nothing
+about the fleet. Use `_inst_hops_now`.
+
 ## ⚪ Deferred / distant
 
 * **#21 / #26 — Path B (dual-input N² correlator)**: designed in full, injector endpoints exist.
