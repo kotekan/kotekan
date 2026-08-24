@@ -8256,8 +8256,21 @@ def main(argv=None, rx=None, publisher=None):
                         and _now() >= _est_next[0])
             if _run_est:
                 _est_next[0] = _now() + args.estimator_every_s
+            # ⚠️ THE THROTTLE EXISTS FOR THE *WALK*, NOT FOR THE ESTIMATOR. Its whole
+            # justification (see --estimator-every-s) is that these are "pure-Python walks over
+            # ~1500 record decodes each", which at every-cycle cadence across five chains ate
+            # ~75% of the interpreter and starved the telemetry reader. With --comb-taps-cpp
+            # armed, PROMPT-CN0 no longer walks anything: it fetches an already-reduced series
+            # from the gather. So the reason to throttle IT is gone, and throttling it now only
+            # costs the served C/N0 its freshness -- the rows keep serving a value up to
+            # --estimator-every-s old for no saving at all.
+            #
+            # KCOH still walks and stays throttled. They were gated together because they had
+            # the same cost; they no longer do, so they no longer share a gate.
+            _run_pcn0 = _run_est or (args.comb_taps_cpp >= 2 and args.fleet_trim_url
+                                     and telem_client is not None and probe_set)
             _pcn0 = _est_last["pcn0"]
-            if _run_est:
+            if _run_pcn0:
                 try:
                     _pcn0 = combdll.prompt_cn0(
                         telem_client, telem_chain,
