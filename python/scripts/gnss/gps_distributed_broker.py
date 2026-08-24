@@ -5374,37 +5374,6 @@ def main(argv=None, rx=None, publisher=None):
             # with wall entering only as the elapsed-since-fetch difference.
             _fh = max((float(r.get("pow_hop") or 0.0) for r in status.values()),
                       default=0.0)
-            # ── LINK 1 OF THE WALKOFF CHAIN, MEASURED PER ROW ──────────────────────────
-            # `_fh` above is max(pow_hop) -- the FRESHEST row -- and the tripwire at ~6205
-            # is built from it. On 2026-08-23 the axis was measured PER ROW at -18.0..-19.3 s
-            # on gps_l5/gal_e5a and -7.8 s on bds_b2a AT THE SAME INSTANT, and that lag is the
-            # first link in the lock-walkoff chain: it puts the model at wall-now while the
-            # records are of lag-old sky. Today the max-derived tripwire reads sub-second,
-            # which is either a real recovery or the max hiding a stale population behind one
-            # fresh row. A max cannot tell those apart. The distribution can.
-            #
-            # Same sign convention as _dax at ~6205: NEGATIVE = the row lags the wall.
-            # A POSITIVE value is a row claiming a hop the F-engine has not reached -- the
-            # FUTURE HOP of link 2, impossible for a processed record.
-            if utc0_sample0 and status:
-                _w = _now()
-                _ages = sorted(((utc0_sample0 + float(r.get("pow_hop") or 0.0)
-                                 / args.hops_per_sec) - _w, k)
-                               for k, r in status.items()
-                               if float(r.get("pow_hop") or 0.0) > 0.0)
-                if _ages:
-                    _md = _ages[len(_ages) // 2][0]
-                    _fut = [k for d, k in _ages if d > 0.5]
-                    _log_rl("axis-rows",
-                            "AXIS ROWS: n=%d  lag median %+.2f s  worst %+.2f s (%s)  "
-                            "freshest %+.2f s (%s)  spread %.2f s%s"
-                            % (len(_ages), _md, _ages[0][0], _ages[0][1],
-                               _ages[-1][0], _ages[-1][1],
-                               _ages[-1][0] - _ages[0][0],
-                               "" if not _fut else
-                               "  *** %d FUTURE row(s) >0.5 s AHEAD: %s"
-                               % (len(_fut), ",".join(sorted(_fut)[:4]))),
-                            every_s=30.0)
             if _fh > 0.0:
                 # ⚠️ THE TIME BASE MUST NEVER FREEZE SILENTLY (2026-08-18, the cx19 collapse).
                 # t_now_abs is built from this hop, and this hop comes from ONE combiner. When
@@ -8927,6 +8896,34 @@ def main(argv=None, rx=None, publisher=None):
             # CONTROL CLAUSE -- if most of the fleet is also standing still this is global
             # (a paused F-engine, a replay, a clock step) and accusing an instance would
             # point the next hour in the wrong direction, so it says nothing instead.
+            # ── LINK 1 OF THE WALKOFF CHAIN, MEASURED PER INSTANCE ────────────────────
+            # ⚠️ THE POPULATION IS THE POINT, AND I GOT IT WRONG ONCE. The obvious place for
+            # this is beside `_fh = max(pow_hop)` in the status block -- but that `status` is
+            # `{prn: row}` from ONE combiner, and every PRN in a poll carries the SAME
+            # pow_hop, so it reports spread 0.00 s across 32 rows and says nothing about the
+            # fleet ([[identical-numbers-are-not-agreement]]). The axis lag that link 1 is
+            # about is ACROSS INSTANCES: on 2026-08-23, gps_l5/gal_e5a read -18.0..-19.3 s
+            # while bds_b2a read -7.8 s at the same instant. `_inst_hops_now` is the right
+            # population -- the newest hop per combiner, from the poll fleet_dll already makes.
+            #
+            # Sign convention matches _dax below: NEGATIVE = that instance lags the wall.
+            # POSITIVE = a hop the F-engine has not reached, i.e. link 2's FUTURE HOP, which
+            # is impossible for a processed record and names the instance serving it.
+            if utc0_sample0 and _inst_hops_now:
+                _w = _now()
+                _ia = sorted(((utc0_sample0 + float(h) / args.hops_per_sec) - _w, str(k))
+                             for k, h in _inst_hops_now.items() if h)
+                if _ia:
+                    _fut = [k for d, k in _ia if d > 0.5]
+                    _log_rl("axis-inst",
+                            "AXIS INST: n=%d  lag median %+.2f s  worst %+.2f s (%s)  "
+                            "freshest %+.2f s (%s)  spread %.2f s%s"
+                            % (len(_ia), _ia[len(_ia) // 2][0], _ia[0][0], _ia[0][1],
+                               _ia[-1][0], _ia[-1][1], _ia[-1][0] - _ia[0][0],
+                               "" if not _fut else
+                               "  *** %d FUTURE instance(s) >0.5 s AHEAD: %s"
+                               % (len(_fut), ",".join(sorted(_fut)[:4]))),
+                            every_s=30.0)
             if args.instance_stall_s > 0 and _inst_hops_now:
                 _ih, _stalled = instance_stall_verdict(
                     dr_state.get("inst_hops", {}), _inst_hops_now, t0,
