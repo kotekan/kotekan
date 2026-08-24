@@ -13,6 +13,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <map>
 #include <string>
 
 /**
@@ -119,6 +120,21 @@ private:
 
     void dll_callback(kotekan::connectionInstance& conn);
     void taps_callback(kotekan::connectionInstance& conn);
+
+    /// THE TRIM STORE. The integrator is the only state here that cannot be rebuilt from the
+    /// stream, and a gather restart is the only thing that loses it -- measured 2026-08-23 as
+    /// q 2.0-3.7 -> ~1.0 fleet-wide for minutes. See gnssFleetDll.hpp trim_snapshot().
+    void save_trims();
+    void load_trims();
+    /// Restored trims awaiting the broker's first /set_policy for that PRN. NOT applied at
+    /// load: an unarmed trim leaks to erasure in ~5.6 s and the policy cycle is ~11 s.
+    std::map<std::string, std::map<int, double>> _restored;
+    std::string _trim_state_file;
+    double _trim_state_max_age_s = 300.0;
+    double _trim_state_save_s = 2.0;
+    double _trim_saved_at = 0.0;
+    double _restored_age_s = -1.0;
+    int _restored_adopted = 0, _restored_offered = 0;
     void stats_callback(kotekan::connectionInstance& conn);
     void policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     static Target parse_target(const std::string& url, const std::string& chain);

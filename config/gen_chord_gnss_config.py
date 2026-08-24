@@ -1780,6 +1780,15 @@ def build_gather_instance(cfg, args, port):
             # loss that reads as the sky getting worse. Gated: fleetdll_gate.py's SPLIT-RING
             # leg requires the deeper taps AND an unmoved loop.
             "taps_win": args.fleet_trim_taps_windows,
+            # THE TRIM STORE. The integrator is the only state in this process that cannot be
+            # rebuilt from the stream, and a restart used to lose it fleet-wide: measured
+            # 2026-08-23 as q 2.0-3.7 -> ~1.0 with 0-1 "present" per chain, because every
+            # tracker was left off-peak by however much trim was standing (one at the 3-chip
+            # clamp). LOCAL disk on purpose -- this is written every couple of seconds and
+            # NFS is neither the right latency nor the right failure mode. A host reboot
+            # clears it, which is correct: the store is only meaningful for a short outage.
+            "trim_state_file": args.fleet_trim_state_file,
+            "trim_state_max_age_s": args.fleet_trim_state_max_age,
             "min_instances": args.fleet_trim_min_instances,
             # The ACTUATOR's cadence. Its TARGETS are not here: the broker publishes them with
             # /set_policy, because it already owns the tracker endpoint list and a second copy
@@ -2342,6 +2351,14 @@ def main():
                          "~1-4%% of one core at the fleet's 1430 frames/s. Use this to drop it "
                          "if it is ever suspected of back-pressuring the buffer -- which would "
                          "cost the BROKER frames too, since bufferRecv drops when it fills.")
+    ap.add_argument("--fleet-trim-state-file", default="/tmp/gnss_fleet_trim.json",
+                    help="where GnssFleetTrim persists its standing code trims so a restart "
+                         "does not cost the fleet a pull-in. Empty disables it.")
+    ap.add_argument("--fleet-trim-state-max-age", type=float, default=300.0,
+                    help="refuse a trim store older than this (s). A trim corrects the BROKER'S "
+                         "MODEL, and after a long outage the model it describes is not the one "
+                         "about to be republished -- adopting it would command a code step at "
+                         "exactly the moment nothing is verified.")
     ap.add_argument("--fleet-trim-taps-windows", type=int, default=32,
                     help="window depth served by GnssFleetTrim/get_taps -- MATCH THE BROKER'S "
                          "--telem-windows (32). 0 follows --fleet-trim-windows, which is the "

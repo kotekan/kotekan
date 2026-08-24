@@ -372,6 +372,55 @@ public:
         c.policy = p;
     }
 
+    /// {chain: {prn: trim_chips}} -- THE ONLY STATE IN THIS PROCESS THAT CANNOT BE REBUILT
+    /// FROM THE STREAM, and therefore the only thing a restart genuinely loses.
+    ///
+    /// Measured across one gather restart, 2026-08-23: q on armed PRNs fell 2.0-3.7 -> ~1.0
+    /// fleet-wide with 0-1 "present" per chain, because every tracker was left off-peak by
+    /// however much trim had been standing (one PRN was at the 3-chip clamp). It re-acquires
+    /// on its own -- median q 0.90 -> 1.93 over a few minutes -- but everything derived from
+    /// the prompt tap reads as a dead fleet meanwhile, which looks exactly like whatever was
+    /// deployed having broken tracking.
+    ///
+    /// Counters are deliberately NOT here. n_steps/n_railed/n_skipped are rates since start;
+    /// carrying them across a restart would make "updates per second" a lie in the direction
+    /// that hides a stalled loop.
+    std::map<std::string, std::map<int, double>> trim_snapshot() const {
+        std::map<std::string, std::map<int, double>> out;
+        for (const auto& cv : _chain)
+            for (const auto& tv : cv.second.trim)
+                if (std::abs(tv.second.trim) >= 1e-3)
+                    out[cv.first][tv.first] = tv.second.trim;
+        return out;
+    }
+
+    /// Adopt a restored trim for a PRN THE BROKER HAS JUST ARMED. Returns true if adopted.
+    ///
+    /// ⚠️ WHY ADOPTION IS GATED ON ARMING RATHER THAN DONE AT LOAD. A trim on an unarmed PRN
+    /// decays through the graceful-release leak on every window close and is erased below
+    /// 1e-3 chips: at leak 0.05 and 23.84 closes/s that is a 0.84 s time constant and ~5.6 s
+    /// to erasure, while the broker's policy cycle is ~11 s. Restoring at load would put the
+    /// trims back and let them evaporate before the first /set_policy ever named them --
+    /// persistence that measures as working and buys nothing.
+    ///
+    /// It also keeps the rule intact: this stage still acts on no PRN the broker has not
+    /// armed. A restored trim is a PROPOSAL, and arming is the acceptance.
+    ///
+    /// Refuses if the PRN already has a trim of its own -- the live loop outranks a saved one.
+    bool adopt_trim(const std::string& chain, int prn, double trim_chips) {
+        auto ci = _chain.find(chain);
+        if (ci == _chain.end() || !ci->second.armed.count(prn))
+            return false;
+        if (!std::isfinite(trim_chips)
+            || std::abs(trim_chips) > ci->second.policy.clamp)
+            return false;
+        auto ti = ci->second.trim.find(prn);
+        if (ti != ci->second.trim.end() && (ti->second.n_steps != 0 || ti->second.trim != 0.0))
+            return false;
+        ci->second.trim[prn].trim = trim_chips;
+        return true;
+    }
+
     const std::map<std::string, Chain>& chains() const {
         return _chain;
     }

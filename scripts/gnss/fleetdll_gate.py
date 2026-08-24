@@ -278,10 +278,12 @@ def compare_taps(py, cpp):
     return bad
 
 
-def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None):
+def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, trim_in=None):
     cmd = [exe, path, "--n-win", str(n_win), "--min-instances", str(min_instances), "--no-flush"]
     if taps_win:
         cmd += ["--taps-win", str(taps_win)]
+    if trim_in:
+        cmd += ["--trim-in", trim_in]
     if arm:
         cmd += ["--arm", ",".join(str(p) for p in sorted(arm))]
         for k in ("gain", "leak", "clamp", "spacing"):
@@ -594,6 +596,62 @@ def main():
           "(%d PRNs, %d steps each)." % (n_disc, n_trim, len(series),
                                          len(next(iter(series.values())))))
     print("  final trims: %s" % ", ".join("PRN %d %+.4f" % (p, v) for p, v in sorted(finals.items())))
+    # ---- THE TRIM STORE: a gather restart must stop costing the fleet its pull-in --------
+    # GnssFleetTrim holds TrimState in process, so restarting it zeroed every integrator:
+    # measured 2026-08-23 as q 2.0-3.7 -> ~1.0 fleet-wide with 0-1 "present" per chain, because
+    # every tracker was left off-peak by however much trim was standing. This asserts the
+    # save/adopt path, INCLUDING its refusals -- a store that is adopted when it should not be
+    # is worse than none, because it commands a code step nothing verified.
+    snap = cpp2.get("trim_snapshot", {}).get("chains", {})
+    if not snap.get("gps_l5"):
+        print("FAIL -- the armed run produced no trim snapshot to persist.")
+        return 1
+    store = os.path.join(tmp, "trims.json")
+    with open(store, "w") as fh:
+        json.dump({"saved_unix": 0.0, "chains": snap}, fh)
+
+    # (a) ADOPTED when the broker arms the PRN, and the loop resumes FROM the stored value.
+    c_res = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, trim_in=store)
+    n_stored = sum(len(v) for v in snap.values())   # every chain, not just gps_l5
+    if c_res.get("trim_adopted", 0) != n_stored:
+        print("FAIL -- offered %d stored trim(s) across %d chain(s), adopted %d."
+              % (n_stored, len(snap), c_res.get("trim_adopted")))
+        return 1
+    # The restored run must NOT reproduce the cold run: it starts from the stored trims.
+    cold = cpp2.get("series", {}).get("gps_l5", {})
+    warm = c_res.get("series", {}).get("gps_l5", {})
+    first_cold = {p: v[0][2] for p, v in cold.items() if v}
+    first_warm = {p: v[0][2] for p, v in warm.items() if v}
+    if not first_warm or first_cold == first_warm:
+        print("FAIL -- the restored run's FIRST trim equals the cold run's. The store was "
+              "loaded and had no effect, which is persistence that measures as working.")
+        return 1
+
+    # (b) REFUSED when nothing armed that PRN. This is the whole reason adoption is gated on
+    # arming rather than done at load: policy stays with the broker.
+    c_noarm = cpp_arm(args.exe, path, args.n_win, args.min_instances, trim_in=store)
+    if c_noarm.get("trim_adopted", 0) != 0:
+        print("FAIL -- adopted %d stored trim(s) with NOTHING armed. A restored trim is a "
+              "proposal; arming is the acceptance." % c_noarm.get("trim_adopted"))
+        return 1
+
+    # (c) REFUSED when the value is not physical. A store is a file on disk and can be
+    # anything; the clamp is the contract.
+    bad = os.path.join(tmp, "trims_bad.json")
+    with open(bad, "w") as fh:
+        json.dump({"saved_unix": 0.0,
+                   "chains": {"gps_l5": {str(p): 1e9 for p in ARM}}}, fh)
+    c_bad = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, trim_in=bad)
+    if c_bad.get("trim_adopted", 0) != 0:
+        print("FAIL -- adopted a trim beyond the clamp (%d of them)."
+              % c_bad.get("trim_adopted"))
+        return 1
+    print("TRIM-STORE PASS -- %d trim(s) across %d chain(s) persist and are adopted AT ARMING "
+          "(max |trim| %.3f chips), refused unarmed (0 adopted) and refused beyond the clamp "
+          "(0 adopted)."
+          % (n_stored, len(snap),
+             max(abs(v) for c in snap.values() for v in c.values())))
+
     print("  leak ceiling gain*0.25/leak = %.3f chips; max |trim| here %.3f"
           % (ceiling, max(abs(v) for v in finals.values())))
 

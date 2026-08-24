@@ -1,5 +1,7 @@
 #include "GnssFleetTrim.hpp"
 
+#include <fstream>
+
 #include "StageFactory.hpp"
 #include "kotekanLogging.hpp"
 #include "visUtil.hpp" // for frameID, current_time
@@ -173,6 +175,10 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
          // broker's `telem-windows` (32) so /get_taps serves the same integration length the
          // Python arm computed for itself.
          config.get_default<int>(unique_name, "taps_win", 0)) {
+    _trim_state_file = config.get_default<std::string>(unique_name, "trim_state_file", "");
+    _trim_state_max_age_s =
+        config.get_default<double>(unique_name, "trim_state_max_age_s", 300.0);
+    _trim_state_save_s = config.get_default<double>(unique_name, "trim_state_save_s", 2.0);
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
 
@@ -231,6 +237,9 @@ void GnssFleetTrim::main_thread() {
          unique_name, _targets.empty() ? "OBSERVING (no post targets configured)" : "ACTUATING",
          _dll.n_win(), _dll.n_win() * 4 * 10.4857, _dll.min_instances());
 
+    load_trims();
+    _trim_saved_at = current_time();
+
     frameID in_id(in_buf);
     while (!stop_thread) {
         // TIMED WAIT, like the gather beside us: a fleet that goes silent must still let the
@@ -266,6 +275,13 @@ void GnssFleetTrim::main_thread() {
         // Re-derive the per-update leak from the MEASURED close rate before acting on it.
         rearm();
         post_trims();
+        // OUTSIDE THE FOLD LOCK and off the frame path's critical section. Saving on every
+        // window close would be ~24 writes/s for a file nothing reads until the next restart.
+        if (_trim_state_save_s > 0.0
+            && current_time() - _trim_saved_at >= _trim_state_save_s) {
+            _trim_saved_at = current_time();
+            save_trims();
+        }
 
         if (st == gnss::FoldStatus::BAD_HEADER && (_bad_frames % 100) == 1)
             ERROR("GnssFleetTrim[{:s}]: rejected a frame ({:d} so far) -- a sender is on a "
@@ -465,7 +481,105 @@ void GnssFleetTrim::rearm() {
             tp.leak = pv.second.leak;
         tp.leak = std::max(0.0, std::min(1.0, tp.leak));
         _dll.set_armed(pv.first, pv.second.armed, tp);
+        // ADOPT ANY RESTORED TRIM THE BROKER HAS JUST ARMED. This is the acceptance step: the
+        // saved value is a proposal until policy names the PRN, so this stage still acts on
+        // nothing the broker did not arm, and the trim cannot leak away unarmed while it waits.
+        auto ri = _restored.find(pv.first);
+        if (ri != _restored.end()) {
+            for (int prn : pv.second.armed) {
+                auto ti = ri->second.find(prn);
+                if (ti == ri->second.end())
+                    continue;
+                _restored_offered++;
+                if (_dll.adopt_trim(pv.first, prn, ti->second))
+                    _restored_adopted++;
+                ri->second.erase(ti); // offered once, either way
+            }
+            if (ri->second.empty())
+                _restored.erase(ri);
+        }
     }
+}
+
+void GnssFleetTrim::save_trims() {
+    if (_trim_state_file.empty())
+        return;
+    nlohmann::json j;
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+        nlohmann::json chains = nlohmann::json::object();
+        for (const auto& cv : _dll.trim_snapshot()) {
+            nlohmann::json pj = nlohmann::json::object();
+            for (const auto& tv : cv.second)
+                pj[std::to_string(tv.first)] = tv.second;
+            chains[cv.first] = pj;
+        }
+        j["chains"] = chains;
+    }
+    j["saved_unix"] = current_time();
+    j["note"] = "GnssFleetTrim standing code trims, chips. Adopted on ARMING, not on load.";
+    // ⚠️ WRITE-THEN-RENAME. A restart that lands mid-write would otherwise read a truncated
+    // file, and the failure mode of a HALF-PARSED trim map is adopting some satellites'
+    // corrections and not others -- worse than adopting none, and silent.
+    const std::string tmp = _trim_state_file + ".tmp";
+    {
+        std::ofstream fh(tmp, std::ios::trunc);
+        if (!fh) {
+            WARN_NON_OO("GnssFleetTrim[{:s}]: cannot write trim store {:s}", unique_name, tmp);
+            return;
+        }
+        fh << j.dump();
+    }
+    if (std::rename(tmp.c_str(), _trim_state_file.c_str()) != 0)
+        WARN_NON_OO("GnssFleetTrim[{:s}]: cannot rename {:s} -> {:s}", unique_name, tmp,
+                    _trim_state_file);
+}
+
+void GnssFleetTrim::load_trims() {
+    if (_trim_state_file.empty())
+        return;
+    std::ifstream fh(_trim_state_file);
+    if (!fh) {
+        INFO("GnssFleetTrim[{:s}]: no trim store at {:s} -- starting from zero trims, which "
+             "costs the fleet a pull-in (q ~1 until the loop re-acquires).",
+             unique_name, _trim_state_file);
+        return;
+    }
+    nlohmann::json j;
+    try {
+        fh >> j;
+    } catch (const std::exception& e) {
+        ERROR("GnssFleetTrim[{:s}]: trim store {:s} is unreadable ({:s}) -- ignoring it. "
+              "Starting from zero is correct here; half a trim map is not.",
+              unique_name, _trim_state_file, e.what());
+        return;
+    }
+    const double age = current_time() - j.value("saved_unix", 0.0);
+    _restored_age_s = age;
+    // ⚠️ AGE IS A REFUSAL, NOT A WARNING. A trim corrects the BROKER'S MODEL, and after a long
+    // outage the model this file describes is not the model that will be republished. Adopting
+    // a stale correction commands a code step at exactly the moment nothing is verified.
+    if (age < 0.0 || age > _trim_state_max_age_s) {
+        WARN_NON_OO("GnssFleetTrim[{:s}]: trim store is {:.0f} s old (bound {:.0f}) -- REFUSED. "
+                    "The fleet will pull in from zero.",
+                    unique_name, age, _trim_state_max_age_s);
+        return;
+    }
+    int n = 0;
+    // ⚠️ NAMED, not `j.value(...).items()`: value() returns a TEMPORARY and iterating it
+    // dangles the moment the full expression ends. -Werror caught it; it would have been a
+    // read of freed memory producing plausible trims.
+    const nlohmann::json chains = j.value("chains", nlohmann::json::object());
+    for (const auto& cv : chains.items()) {
+        for (const auto& pv : cv.value().items()) {
+            _restored[cv.key()][std::stoi(pv.key())] = pv.value().get<double>();
+            n++;
+        }
+    }
+    INFO("GnssFleetTrim[{:s}]: trim store {:.1f} s old, {:d} standing trim(s) on {:d} chain(s) "
+         "HELD pending arming -- they are adopted when the broker's /set_policy names each PRN, "
+         "never at load (an unarmed trim leaks to erasure in ~5.6 s).",
+         unique_name, age, n, (int)_restored.size());
 }
 
 void GnssFleetTrim::post_trims() {

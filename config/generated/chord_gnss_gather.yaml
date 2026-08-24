@@ -25,6 +25,8 @@ fleet_trim:
   post_every_n_windows: 1
   post_threads: 4
   taps_win: 32
+  trim_state_file: /tmp/gnss_fleet_trim.json
+  trim_state_max_age_s: 300.0
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 4096

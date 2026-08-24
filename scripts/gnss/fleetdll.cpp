@@ -42,12 +42,13 @@
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s <frames.bin> [--n-win N] [--min-instances N] "
-                             "[--max-open-win N] [--taps-win N] [--no-flush]\n",
+                             "[--max-open-win N] [--taps-win N] [--trim-in F] [--no-flush]\n",
                      argv[0]);
         return 2;
     }
     const std::string path = argv[1];
     int n_win = 4, min_inst = 2, max_open = 8, taps_win = 0;
+    std::string trim_in;
     bool do_flush = true;
     std::set<int> arm;
     gnss::TrimPolicy pol;
@@ -61,6 +62,8 @@ int main(int argc, char** argv) {
             max_open = std::atoi(argv[++i]);
         else if (a == "--taps-win" && i + 1 < argc)
             taps_win = std::atoi(argv[++i]); // 0 = follow --n-win
+        else if (a == "--trim-in" && i + 1 < argc)
+            trim_in = argv[++i]; // a trim store to offer at ARMING, as the stage does
         else if (a == "--no-flush")
             do_flush = false;
         else if (a == "--arm" && i + 1 < argc) {
@@ -90,6 +93,21 @@ int main(int argc, char** argv) {
     }
 
     gnss::FleetDll dll(n_win, min_inst, max_open, 3.0, taps_win);
+    std::map<std::string, std::map<int, double>> restore;
+    int n_adopted = 0;
+    if (!trim_in.empty()) {
+        std::ifstream tf(trim_in);
+        if (!tf) {
+            std::fprintf(stderr, "cannot read trim store %s\n", trim_in.c_str());
+            return 2;
+        }
+        nlohmann::json tj;
+        tf >> tj;
+        const nlohmann::json ch = tj.value("chains", nlohmann::json::object());
+        for (const auto& cv : ch.items())
+            for (const auto& pv : cv.value().items())
+                restore[cv.key()][std::stoi(pv.key())] = pv.value().get<double>();
+    }
     std::vector<uint8_t> buf;
     uint64_t n_frames = 0, n_bad = 0, n_late = 0;
 
@@ -129,6 +147,16 @@ int main(int argc, char** argv) {
         if (!arm.empty() && st == gnss::FoldStatus::OK && !series.count(chain)) {
             series[chain];
             dll.set_armed(chain, arm, pol);
+            // THE STAGE'S ADOPTION PATH, exercised here rather than modelled: a restored trim
+            // is offered ONLY once policy has armed the PRN. Offering it at load would let it
+            // leak to erasure before the first /set_policy (~5.6 s vs an ~11 s cycle).
+            if (!restore.empty()) {
+                auto ri = restore.find(chain);
+                if (ri != restore.end())
+                    for (const auto& tv : ri->second)
+                        if (dll.adopt_trim(chain, tv.first, tv.second))
+                            n_adopted++;
+            }
         }
         // Sample whatever stepped. `last_win` changing IS the step, so this cannot double-count
         // a window nor miss one -- a frame-count heuristic could do both.
@@ -205,6 +233,16 @@ int main(int argc, char** argv) {
         taps[cv.first] = pj;
     }
     out["taps"] = taps;
+    // The trim store the stage would persist, and how much of an offered one was adopted.
+    nlohmann::json ts = nlohmann::json::object();
+    for (const auto& cv : dll.trim_snapshot()) {
+        nlohmann::json pj = nlohmann::json::object();
+        for (const auto& tv : cv.second)
+            pj[std::to_string(tv.first)] = tv.second;
+        ts[cv.first] = pj;
+    }
+    out["trim_snapshot"] = {{"chains", ts}};
+    out["trim_adopted"] = n_adopted;
     if (!arm.empty()) {
         nlohmann::json sj = nlohmann::json::object();
         for (const auto& cv : series) {
