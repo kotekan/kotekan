@@ -67,7 +67,10 @@ import sys
 # CENSUS. The equivalence gate can only vouch for the writers its transcript actually
 # drives, so the replay logs this set at completion and the gap is explicit instead of
 # assumed (an unexercised writer path is exactly where a "gated" refactor breaks).
-# Shared across chains/threads on purpose; set.add is atomic under the GIL.
+# Shared across chains/threads on purpose. ⚠️ The justification is that set.add is atomic
+# for a BUILT-IN set -- which PEP 703 preserves in the free-threaded build -- NOT that
+# the GIL serialises it. The conclusion survives free-threading; the old reasoning did
+# not, and a stale reason is what gets copied to the next global that is not a set.
 SEEN_OWNERS = set()
 
 

@@ -597,7 +597,12 @@ class JointReceiverState:
         if len(self.notes) > 200:
             del self.notes[:-200]
 
+    @_locked
     def drain_notes(self):
+        # Locked like every other public method: the swap is read-then-rebind, so two chains
+        # draining at once can both take the list and one of them loses its notes. They are
+        # diagnostics, which is exactly why this went unnoticed -- a lost note is silence, and
+        # silence is what a healthy filter looks like.
         out, self.notes = self.notes, []
         return out
 

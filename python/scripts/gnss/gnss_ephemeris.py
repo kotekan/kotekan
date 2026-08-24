@@ -25,6 +25,7 @@ Self-test: python3 gnss_ephemeris.py            (fetch + predict, prints visible
 import gzip
 import math
 import os
+import threading
 import sys
 import time
 import urllib.request
@@ -49,10 +50,30 @@ def _atomic_write_bytes(path, data):
     lets another band's reader hit a half-written gzip mid-download -> parse exception ->
     'geometry omitted' -> a dropped az/el row (the L2C/L5 beam-map coverage gap). os.replace
     makes readers see only the old or the new file, never a torn one."""
-    tmp = path + ".tmp"
-    with open(tmp, "wb") as f:
-        f.write(data)
-    os.replace(tmp, path)
+    # ⚠️ THE TEMP NAME MUST BE UNIQUE PER WRITER, and this used a fixed `path + ".tmp"`.
+    # The docstring above already says the cache is SHARED across writers -- five chain
+    # threads, and a search instance beside them -- so two of them refreshing the same day's
+    # file both opened the SAME temp path, interleaved their bytes into it, and then both
+    # renamed. os.replace makes the RENAME atomic; it does nothing about two writers sharing
+    # the file being renamed. Usually the two downloads are identical and the corruption is
+    # invisible; the case that bites is one of them truncated (a timeout, a short read), which
+    # publishes a torn gzip that every reader then fails to parse.
+    #
+    # Not a free-threading bug -- file writes release the GIL, so this races today. Found by
+    # the concurrency audit for the free-threaded move (docs/CHORD_FREE_THREADING.md).
+    tmp = "%s.tmp.%d.%d" % (path, os.getpid(), threading.get_ident())
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except BaseException:
+        # Leaving a stray .tmp.<pid>.<tid> behind would accumulate one file per failed
+        # refresh per thread, forever, in a cache directory nobody prunes.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _earthdata_token():
