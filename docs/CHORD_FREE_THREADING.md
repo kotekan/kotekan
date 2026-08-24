@@ -166,10 +166,32 @@ them exercises concurrency**. A race would pass every one. That is the argument 
 being an audit rather than a test, and for step 3 being a digest comparison rather than a
 soak: a soak over a racy broker returns a plausible number (see `[[no-burn-in-waits]]`).
 
-If a concurrency gate is wanted later, the shape is a stress harness that drives `Receiver`
-and `JointReceiverState` from N threads with a deterministic seed and asserts the invariants
-(gauge median zero, membership consistency, no lost contributions) — not a longer run of the
-broker.
+**That gate now exists: `scripts/gnss/ft_stress.py`.** Three lanes — `Receiver` torn-read,
+`JointReceiverState` membership churn (the 2026-08-15 `P[0,57]`-on-a-57x57 shape, driven with
+OVERLAPPING PRN sets so threads actually collide on a row), and `drain_notes` accounting. All
+three pass on both interpreters at 8 and 16 threads.
+
+The lane that matters is the self-test, because it settles §6's claim by measurement rather
+than argument. `--selftest` reinstalls the pre-fix unlocked read-then-rebind and requires the
+NOTES lane to catch it:
+
+```
+3.12   GIL ON      20 attempts, nothing detected
+3.14t  GIL OFF     attempt 1-2, every time  (+2..+29 notes on 3200)
+```
+
+**The defect the audit fixed is invisible under the GIL and trips instantly without it.** That
+is the whole argument for step 1 being an audit: the gates could not have found it, and a soak
+would have returned a healthy-looking number. Non-detection on the GIL arm is reported
+INCONCLUSIVE rather than FAIL — it is the expected result there, and a gate that cries red when
+it merely could not tell teaches everyone to ignore its red.
+
+⚠️ The observed failure is **duplication, not loss** — two drainers take the same list object
+and both return its contents. An operator reads a note twice and concludes the filter acted
+twice, which is worse than silence.
+
+⚠️ A pass is evidence, not proof: it runs a fixed number of iterations, not a duration. Run it
+again rather than longer.
 
 
 ## 7. What it actually buys, measured
