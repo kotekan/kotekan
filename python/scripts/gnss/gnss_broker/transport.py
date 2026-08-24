@@ -357,6 +357,54 @@ def _http_record(kind, url, dt, ok):
                 e[3] += 1
 
 
+_cyc_lk = threading.RLock()
+_cyc = {}           # chain -> [n, total_busy_s, max_busy_s, n_overrun]
+
+
+def record_cycle(chain, busy_s, interval_s):
+    """How long one pass of the control loop ACTUALLY took, before its pacing sleep.
+
+    ⚠️ THE LOOP PERIOD IS NOT THE LOOP COST, and reading one for the other cost this project
+    real time. `--interval` paces the loop, so once the work fits inside it the observed
+    period pins to the interval and stops carrying any information about the work at all --
+    it reports the setting back to you. Worse, the headline number everyone was tracking is
+    the POLICY cadence at 5x the interval, which pins at 10.00 s and looks like a wall.
+
+    This is the number that actually moves: busy time per pass, and the fraction of passes
+    that overran. Slack here is the licence to lower --interval; overruns are the reason it
+    was raised.
+    """
+    with _cyc_lk:
+        e = _cyc.get(chain)
+        over = 1 if busy_s > interval_s else 0
+        if e is None:
+            _cyc[chain] = [1, busy_s, busy_s, over]
+        else:
+            e[0] += 1
+            e[1] += busy_s
+            if busy_s > e[2]:
+                e[2] = busy_s
+            e[3] += over
+
+
+def cycle_report(interval_s=None, reset=True):
+    with _cyc_lk:
+        snap = sorted(_cyc.items())
+        if reset:
+            _cyc.clear()
+    if not snap:
+        return []
+    out = ["CYCLE: busy time per control pass (interval %s):"
+           % ("?" if interval_s is None else "%.2f s" % interval_s)]
+    for c, (n, tot, mx, over) in snap:
+        mean = tot / n
+        out.append("  %-9s n=%4d  mean %5.2fs  max %5.2fs  overran %d (%.0f%%)%s"
+                   % (c, n, mean, mx, over, 100.0 * over / n,
+                      "" if interval_s is None
+                      else "  slack %.0f%%" % (100.0 * (1.0 - mean / interval_s))))
+    return out
+
+
 def http_timing_report(top=10, reset=True):
     """One block of lines: the endpoints this process actually waited on.
 

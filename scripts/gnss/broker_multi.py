@@ -194,6 +194,16 @@ def main():
     # the scale of minutes. A per-cycle dump would be six times the volume of the thing being
     # diagnosed. Reset-on-read, so each block covers exactly the interval since the last.
     every = float(os.environ.get("GNSS_HTTP_REPORT_S", "60"))
+    # For the slack column. Chains can in principle differ; they do not today, and a wrong
+    # denominator would be worse than none, so take it only when every chain agrees.
+    ivs = set()
+    for _, argv in chains:
+        if "--interval" in argv:
+            try:
+                ivs.add(float(argv[argv.index("--interval") + 1]))
+            except (ValueError, IndexError):
+                pass
+    interval = ivs.pop() if len(ivs) == 1 else None
     last, t_http = None, time.time()
     try:
         while any(t.is_alive() for t in threads):
@@ -207,6 +217,8 @@ def main():
             if every > 0 and time.time() - t_http >= every:
                 t_http = time.time()
                 transport.set_log_tag("driver")
+                for ln in transport.cycle_report(interval_s=interval):
+                    transport._log(ln)
                 for ln in transport.http_timing_report(top=12):
                     transport._log(ln)
     except KeyboardInterrupt:

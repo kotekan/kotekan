@@ -70,6 +70,7 @@ from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name 
 from gnss_broker.transport import (           # noqa: E402
     _TranscriptDone, _Transcript, _TR, _now, _get, _post, _log, _log_rl,
     expand_token, resolve_prefix, parse_endpoints, log_tag, install_dns_cache,
+    record_cycle,
 )
 from gnss_broker import telem as _telem                    # noqa: E402  (task #59 gather)
 from gnss_broker import combdll                            # noqa: E402  (task #63 comb DLL)
@@ -10621,7 +10622,9 @@ def main(argv=None, rx=None, publisher=None):
         # REAL elapsed time, not the frozen cycle clock: this is the one place in the loop
         # that must know how long the pass actually took, or the control cadence would
         # become interval + processing rather than interval.
-        dt = args.interval - (time.time() - t_wall)
+        _busy = time.time() - t_wall
+        record_cycle(log_tag().strip() or "chain", _busy, args.interval)
+        dt = args.interval - _busy
         if dt > 0 and _TR.mode != "read":
             time.sleep(dt)
 
