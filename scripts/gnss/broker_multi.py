@@ -186,7 +186,15 @@ def main():
         # arguments, which keeps the startup log readable and the shared fetches to one.
         time.sleep(0.25)
 
-    last = None
+    # WHERE THE CYCLE ACTUALLY GOES. The driver is the only thread that belongs to no chain,
+    # so it is the only place a PROCESS-WIDE number can be logged without picking a chain to
+    # blame. It also means this needed no change to the 5100-line main().
+    #
+    # Every 60 s, not every cycle: the report is ~10 lines and the thing it measures moves on
+    # the scale of minutes. A per-cycle dump would be six times the volume of the thing being
+    # diagnosed. Reset-on-read, so each block covers exactly the interval since the last.
+    every = float(os.environ.get("GNSS_HTTP_REPORT_S", "60"))
+    last, t_http = None, time.time()
     try:
         while any(t.is_alive() for t in threads):
             time.sleep(1.0)
@@ -196,6 +204,11 @@ def main():
                 transport._log("chains alive: %s" % (", ".join(sorted(now)) or "NONE"))
                 transport._log(rx.summary())
                 last = now
+            if every > 0 and time.time() - t_http >= every:
+                t_http = time.time()
+                transport.set_log_tag("driver")
+                for ln in transport.http_timing_report(top=12):
+                    transport._log(ln)
     except KeyboardInterrupt:
         transport.set_log_tag("driver")
         transport._log("interrupted; chains are daemon threads and exit with the process")

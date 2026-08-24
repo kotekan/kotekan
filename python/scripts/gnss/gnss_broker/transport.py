@@ -240,10 +240,13 @@ class _Transcript:
             if r.get("e"):
                 raise RuntimeError(r["e"])
             return r["r"]
+        _t0 = time.perf_counter()
         try:
             with urllib.request.urlopen(url, timeout=timeout) as h:
                 v = json.loads(h.read().decode())
+            _http_record("get", url, time.perf_counter() - _t0, True)
         except Exception as e:
+            _http_record("get", url, time.perf_counter() - _t0, False)
             if self._mine() and self.mode == "write":
                 self._emit({"k": "get", "u": url, "r": None, "e": repr(e)})
             raise
@@ -274,10 +277,13 @@ class _Transcript:
         data = json.dumps(payload).encode()
         req = urllib.request.Request(url, data=data, method="POST",
                                      headers={"Content-Type": "application/json"})
+        _t0 = time.perf_counter()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as h:
                 s = h.status
+            _http_record("post", url, time.perf_counter() - _t0, True)
         except Exception as e:
+            _http_record("post", url, time.perf_counter() - _t0, False)
             if self._mine() and self.mode == "write":
                 self._emit({"k": "post", "u": url, "s": None, "e": repr(e)})
             raise
@@ -294,6 +300,84 @@ class _Transcript:
             h.update(body.encode())
             h.update(b"\n")
         return h.hexdigest()
+
+
+
+# -- HTTP TIMING ----------------------------------------------------------------------
+# WHY THIS EXISTS. Free-threading landed (2026-08-24) and the cycle did not move: 10.04 s
+# before, 9.98 s after, with the process using 0.72 CORES. Five threads that can now truly
+# run at once are using less than one core between them, so the cycle is not compute at all
+# -- it is waiting, and no amount of parallelism shortens a wait.
+#
+# Attribution by log line could only say "~1.7 s elapses here", and said it after a dozen
+# UNRELATED lines, which is the signature of one blocking call whose caller varies rather
+# than of expensive work. That is as far as the log can take it. This measures the calls
+# themselves, in the process that makes them, which is the only place the number is real.
+#
+# Costs a perf_counter pair and a dict update per request against calls that take ~1 s.
+# NOT gated behind a flag: an instrument you have to switch on is one you do not have during
+# the incident that needed it.
+#
+# ⚠️ DIGEST-SAFE BY CONSTRUCTION. It touches neither `posts` nor control flow, so the
+# broker_equiv POST stream cannot move -- but re-run the four transcripts anyway, because
+# "cannot move" is a claim about code I just wrote.
+_http_lk = threading.RLock()
+_http = {}          # key -> [n, total_s, max_s, n_fail]
+
+
+def _http_key(url):
+    """host + endpoint, with the instance index folded out.
+
+    gnss0_e5a_inject and gnss1_e5a_inject are the same endpoint on two GPUs and belong in
+    one row; cx19 and cx51 are DIFFERENT MACHINES and must not be, because "one node is
+    slow" and "this endpoint is slow" call for opposite fixes and the whole point of the
+    tool is telling them apart.
+    """
+    try:
+        rest = url.split("://", 1)[1]
+        host = rest.split(":", 1)[0].split("/", 1)[0]
+        path = rest.split("/", 1)[1] if "/" in rest else ""
+    except Exception:
+        return url[:64]
+    return "%s %s" % (host, re.sub(r"gnss\d+", "gnssN", path))
+
+
+def _http_record(kind, url, dt, ok):
+    k = "%-4s %s" % (kind, _http_key(url))
+    with _http_lk:
+        e = _http.get(k)
+        if e is None:
+            _http[k] = [1, dt, dt, 0 if ok else 1]
+        else:
+            e[0] += 1
+            e[1] += dt
+            if dt > e[2]:
+                e[2] = dt
+            if not ok:
+                e[3] += 1
+
+
+def http_timing_report(top=10, reset=True):
+    """One block of lines: the endpoints this process actually waited on.
+
+    Sorted by TOTAL time, not by max. A 5 s outlier once a minute is a curiosity; forty
+    calls at 1.2 s is the cycle, and sorting by max buries the second behind the first --
+    which is how the 2026-08-23 hunt spent an hour on tail latency.
+    """
+    with _http_lk:
+        snap = sorted(_http.items(), key=lambda kv: -kv[1][1])
+        wall = sum(v[1] for _, v in snap)
+        calls = sum(v[0] for _, v in snap)
+        if reset:
+            _http.clear()
+    if not snap:
+        return []
+    out = ["HTTP: %d call(s), %.1f s of thread-seconds waiting, top %d by total:"
+           % (calls, wall, min(top, len(snap)))]
+    for k, (n, tot, mx, nf) in snap[:top]:
+        out.append("  %7.2fs %5d call(s) mean %6.3fs max %6.3fs%s  %s"
+                   % (tot, n, tot / n, mx, "" if not nf else " FAIL %d" % nf, k))
+    return out
 
 
 _TR = _Transcript()
