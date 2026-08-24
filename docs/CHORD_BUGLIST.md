@@ -701,7 +701,17 @@ JUMPED ±1.04 s` alarms (~10 per 10 min) are the same thing seen through `max()`
 they never resolved. **Find what holds 100 records / 25 frames** — NOT the taps ring
 (`taps_win` 32 windows = 128 records).
 
-**#35 — re-measure links 3-7 of the walkoff chain; link 1 is GONE.**
+**#35 — ✅ RESOLVED SAME DAY (d85644b7b): links 3-7 root-caused and FIXED — the
+cp_predicted epoch mixing.** `predict_all` ran at WALL, the range extrapolation baseline was
+AXIS age (`t_abs − t_now_abs`); under `--dr-fengine-axis` (fleet-wide since 08-17) that
+misplaces every sat by K·dop·lag chips. eps, the residual ramps, the ±4-chip clock oscillation
+and the E8 walkoffs all trace here. Falsifier PASSED: trim-vs-dop slope −1.0e-3 → +5.4e-5
+chips/Hz, railed 3.6% → 0.93%, bds_b2b q 1.87 → 2.71. ⚠️ the digest gate cannot see
+axis-regime defects (every fixture predates 08-17) — RECORD A NEW ON-SKY FIXTURE. ⚠️ the
+joint state's churn is PREDICTED to shrink (its feed was contaminated); not yet measured.
+The original re-measurement task below is superseded but kept for the record.
+
+**#35-old — re-measure links 3-7 of the walkoff chain; link 1 is GONE.**
 The F-engine axis lag was **−18.0..−19.3 s (gps/e5a) and −7.8 s (b2a) at the same instant** on
 08-23. Measured 08-24 per instance, n=360: **median −0.15 s, worst single instance −0.35 s,
 chain-dependence ~0.03 s.** ~100× smaller; the chain-dependence that made it diagnostically
