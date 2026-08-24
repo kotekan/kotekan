@@ -149,7 +149,9 @@ close to drop-in.
    when help is FORMATTED, so nothing that merely parses args noticed. 3.14 validates
    eagerly in `add_argument`, which turned a broken `--help` into a broker that would not
    start. Fixed in 17e921f34; an AST scan of every `add_argument` in the tree finds no other.
-4. **Measure one band on sky**, then all five chains. ⬅ NEXT. Expect cycle -> ~2-3 s.
+4. **Measure on sky.** ✅ done, all five chains — see section 8. The expectation in this line
+   ("cycle -> 2-3 s") was built on a misreading and is struck: the loop was ALREADY paced at
+   2 s and the 10 s number was a log throttle.
    `broker_restart.sh` already honours `GNSS_PY`, so this needs no code change:
    `GNSS_PY=/home/kvand/gnss/venv-ft/bin/python scripts/gnss/broker_restart.sh`.
    Pre-switch baseline archived at
@@ -235,3 +237,54 @@ shared and locked — those are covered by the §4 audit, by inspection, and by 
 speedup on sky will be lower than 3.6x because the cycle is more than this one estimator, and
 because 10.0 s > 8.9 s of CPU already: some of the cycle is waiting, and removing the GIL does
 not make an HTTP timeout shorter.
+
+
+## 8. On sky: the A/B/A, and what the headline number actually was
+
+⚠️⚠️ **FIRST, THE CORRECTION.** The "cycle time" this project drove from 15-19 s to 10.0 s is
+the spacing of the `fleet DLL [comb]` log line, which is emitted through
+`_log_rl(key, msg, every_s=10.0)` — **the log rate limiter's default throttle.** It is not a
+cadence and it does not scale with `--interval`. The control loop has been paced at
+`--interval` = 2.00 s all along.
+
+`_log_rl` fires on the first pass at or after 10 s and is skipped entirely when the path
+produces nothing, so the old 15-19 s was a 10 s floor plus how often the fleet-DLL path came
+back empty — **a reliability number wearing a latency number's clothes.** Driving it to 10.0
+was a real gain; it saturates there by construction and never measured speed.
+
+Two rules from getting this wrong:
+- **A line's period tells you its LOGGER's throttle until you check which logger it uses.**
+  `FLEET-INST` is plain `_log` and tracks the loop; `fleet DLL [comb]`, `nav_bits`,
+  `narrowed search` and `PRN N: meas` all sit at exactly 10.00 s because they share the default.
+- **Don't infer a rate from a log when a counter exists.** `cycle_report()` counts passes.
+
+### The measurement, A/B/A, same code and same instrument on both arms
+
+Busy time per control pass, against the 2.00 s interval:
+
+```
+arm            passes   mean busy   max      overran
+ft (1)           2697     0.48 s    4.87 s    8  (0.3%)
+3.12 GIL         1497     0.85 s    5.06 s   36  (2.4%)
+ft (2)           1499     0.49 s    4.54 s    8  (0.5%)
+```
+
+Alternated because the sky moves faster than the investigation and the two arms could not be
+paired in time. The middle arm is the slow one in **both** directions and the two free-threaded
+arms reproduce to 2%, so this is the interpreter, not a trend.
+
+**Free-threading: 0.85 -> 0.485 s per pass (1.75x), overruns 2.4% -> 0.4% (~6x).**
+
+### What that means — and what it does not
+
+The loop fits its interval with ~4x headroom, and **it also fit under 3.12**, at 0.85 s and
+2.4% overruns. The work-reduction campaign is what got us inside the window; free-threading
+arrived after the goal was met and bought **margin, not a fix**.
+
+The reason to keep it is scaling, not today's five chains. Under the GIL per-chain cost adds
+linearly — a sixth and seventh chain walk 0.85 s straight at the interval. Free-threaded, §7
+measured parallel wall time FLAT from n=1 to n=12. That is the difference between L1 being a
+config change and L1 forcing `--interval` back up.
+
+⚠️ Both arms show a rare tail: max 3.5-5.1 s, ~8 passes in 1500. Unexplained, present on both
+interpreters, and therefore not a free-threading artifact. Not chased.
