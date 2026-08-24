@@ -141,6 +141,7 @@ telescope:
     auto_correct_gps_week_rollover: True
 
     eop_updatable_config: /earth_rotation_data
+    fatal_eop_out_of_range: true  # Shut down rather than clamp to the ends of the EOP table
 
 earth_rotation_data:
     kotekan_update_endpoint: json
