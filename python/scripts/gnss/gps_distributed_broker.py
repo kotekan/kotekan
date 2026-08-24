@@ -2140,6 +2140,16 @@ def main(argv=None, rx=None, publisher=None):
                          "broker_equiv is blind to this path entirely (the gather is a raw "
                          "socket, not transport, so a replay carries no telemetry and falls "
                          "back to the polled arm). Shadow mode is what measures those.")
+    ap.add_argument("--element-poll-every-s", type=float, default=20.0,
+                    help="minimum seconds between /get_elements polls per chain (0 = every "
+                         "cycle). THE POLL IS NOT IN ANY LOOP: the per-element gain table is "
+                         "served for display and appended to the beam archive, and the archive "
+                         "is ALREADY throttled to --element-archive-every-s (60). Polling it "
+                         "every cycle costs 12 GETs of ~62 kB and, profiled live, 197 ms per "
+                         "chain per cycle -- ~1.0 s of the fleet's serialised cycle, for a "
+                         "product nothing consumes at that rate. The gains move on the cal EMA "
+                         "(~1 s) but the beam traces move on the TRANSIT timescale, which is "
+                         "the same argument that set the archive cadence at 60 s.")
     ap.add_argument("--fleet-trim-url", default="",
                     help="TASK #51 F3: base URL of the C++ fleet loop's stage, e.g. "
                          "http://cf06:12051/fleet_trim. Each cycle the broker POSTs "
@@ -3222,6 +3232,7 @@ def main(argv=None, rx=None, publisher=None):
     hold_prev = {}
     hold_q = {}                    # prn -> fleet discriminator q, previous cycle (--lock-q)
     _elem_arch_t = [0.0]   # last per-element archive append (--element-archive-every-s)
+    _elem_poll_t = [0.0]   # last /get_elements poll (--element-poll-every-s)
     # #57 step 3: the residual carrier rates the known-rate coherent fold derotates with.
     # Updated AFTER each cycle's fold from that cycle's record-stream fit, so the fold only
     # ever uses a rate estimated from EARLIER records -- causal by construction, which is
@@ -8427,7 +8438,9 @@ def main(argv=None, rx=None, publisher=None):
                                     "which lobe (get_rf) before blaming a chain."
                                     % (100.0 * _clip), every_s=120.0)
 
-            if args.element_poll and dll_combiners:
+            if (args.element_poll and dll_combiners
+                    and _now() - _elem_poll_t[0] >= args.element_poll_every_s):
+                _elem_poll_t[0] = _now()
                 try:
                     _pe, _srv = elemgain.poll_elements(dll_combiners)
                     # WEDGED INSTANCES ARE EXCLUDED AND NAMED (see elemgain.drop_stale):
