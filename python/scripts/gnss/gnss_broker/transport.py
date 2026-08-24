@@ -367,8 +367,18 @@ def record_cycle(chain, busy_s, interval_s):
     ⚠️ THE LOOP PERIOD IS NOT THE LOOP COST, and reading one for the other cost this project
     real time. `--interval` paces the loop, so once the work fits inside it the observed
     period pins to the interval and stops carrying any information about the work at all --
-    it reports the setting back to you. Worse, the headline number everyone was tracking is
-    the POLICY cadence at 5x the interval, which pins at 10.00 s and looks like a wall.
+    it reports the setting back to you.
+
+    ⚠️⚠️ AND THE HEADLINE "10 s CYCLE" WAS NEVER A CADENCE AT ALL. It is the spacing of the
+    `fleet DLL [comb]` line, which goes through `_log_rl(..., every_s=10.0)` -- the LOG RATE
+    LIMITER's default. It does not scale with `--interval`: halve the interval and that line
+    still prints every 10 s. `_log_rl` fires on the first pass at or after 10 s and is skipped
+    entirely when the path produces nothing, so the old 15-19 s was a 10 s floor plus how often
+    the fleet-DLL path came back empty -- a reliability number wearing a latency number's
+    clothes. A line's period tells you its LOGGER's throttle until you have checked which
+    logger it uses; `FLEET-INST` is plain `_log` and does track the loop.
+
+    Which is why this COUNTS passes instead of timing a log line. A counter has no throttle.
 
     This is the number that actually moves: busy time per pass, and the fraction of passes
     that overran. Slack here is the licence to lower --interval; overruns are the reason it
