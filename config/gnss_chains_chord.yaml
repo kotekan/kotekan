@@ -206,6 +206,31 @@ common:
   # so the swap keeps monitoring itself. Per-cycle fallback to the polled discriminator
   # whenever the gather has no windows for a chain.
   telem-dll: true
+  # ⚠️ ARMED 2026-08-24. fleet_coherent now reads the GATHERED stream instead of polling
+  # /get_records from twelve combiners. ONE ESTIMATOR, the other transport -- the flag only
+  # chooses what fills `got`; when a source is passed the endpoint list is emptied and the
+  # poll does not run at all.
+  #
+  # WHY IT IS BETTER, NOT JUST CHEAPER. Frame-synced records are addressed by absolute window
+  # index, so all twelve instances contribute THE SAME WINDOWS. The polled arm's records are
+  # "whatever accumulated since your last GET" (#53), so no two instances ever summed the same
+  # sky and the cross-node combine was partly incoherent by construction.
+  #
+  # MEASURED, fresh and paired in one session, A-vs-B on the FLEET-COH line
+  # (log10 of the fleet deep_snr ratio):
+  #   TREATMENT  gathered vs polled   n=474  median +0.106 (+1.06 dB)  IQR 0.288  within2x 68%
+  #   CONTROL    polled   vs polled   n=368  median -0.079 (-0.79 dB)  IQR 0.261  within2x 71%
+  # Identical scatter, so the gathered feed is no noisier. The control shows the A slot runs
+  # -0.79 dB low from POLL ORDER alone (B is polled second and has accumulated more), so the
+  # gathered arm sits ~1.85 dB above where a polled A would -- the coherence the addressing
+  # was built to buy. n_src median 12 on both arms: it sees the whole fleet.
+  #
+  # COST REMOVED: 439 ms per chain per cycle of JSON+HTTP, = 2.19 s of the 12.4 s cycle,
+  # profiled live and attributed to fleet_coherent's own poll.
+  # ⚠️ This does NOT remove fleet_dll's poll (0.53 s of cycle): deep_snr/deep_floor/
+  # coherence_s and the quadrature fallback come from the combiner's DEEP FOLD, which is not
+  # in the gathered stream. That poll still must be made.
+  telem-coherent: true
   # ⚠️ SHADOW (1), NOT ARMED (2) -- 2026-08-23. Takes the comb DLL's per-instance and
   # per-channel taps from the gather's C++ reduction (<fleet-trim-url>/get_taps) instead of
   # rebuilding them here by walking every (window, instance, record, PRN, channel) of the
