@@ -1746,6 +1746,17 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
     # only per-sat #85-class error remains. Revert: false + broker restart.
     seed-phase-transport: true
+    # ── GAP-3 BLOCKER DISCRIMINATOR: FLOWN AND JUDGED 2026-08-24 (armed ~16:10, verdict
+    # ~18:55; the two F-engine site outages between voided two windows first). Slew cap was
+    # HALVED here (0.025) against every other chain's 0.05, 18.8 min, same 6 satellites
+    # armed on both Galileo chains, in-poll: e5b median ramp 0.0088 vs e5a 0.0168 chips/s,
+    # RATIO 0.52 against hypothesis B's predicted ~0.5 (A predicted ~1.0). ⇒ THE TRIM-CLAMP
+    # LIMIT CYCLE IS THE TRIM FIGHTING THE SLEW: seeds dragged toward a chips-wrong model at
+    # cap rate, C++ trim countering at that same rate to hold sky. The 0.021 chips/s is NOT
+    # unmodelled clock physics, and carrier aiding (GAP 3) is NOT the fix -- the MODEL is.
+    # (e5b q rose slightly while armed, 2.57→2.67: a slower slew fights less. Palliative
+    # only; reverted for single-variable hygiene. fixtures/expectations_20260824_slewcap_
+    # discriminator.txt holds the pre-registration; /tmp/slewcap_samples.jsonl the data.)
     signal: gal_e5b
     dr-clock-adopt: true
     # ── #33 PLL FINE STAGE armed 2026-08-18 (second chain) ──────────────────────────────
