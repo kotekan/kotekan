@@ -797,6 +797,15 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     // affordable?" is answerable from this endpoint alone: 60 senders x 23.84 frames/s means
     // the whole fleet costs fold_us_per_frame x 1430 us per second of wall clock.
     reply["fold_s"] = _fold_s;
+    // THE TRIM STORE, VISIBLE. Persistence that cannot be checked is persistence nobody will
+    // trust after the first surprise -- and the failure that matters here is silent: a store
+    // that loads and is never adopted looks exactly like one that works. `offered` counts
+    // what arming actually asked about, so offered > 0 with adopted == 0 is the real alarm.
+    reply["trim_store"] = {{"file", _trim_state_file},
+                           {"age_s_at_load", _restored_age_s},
+                           {"offered", _restored_offered},
+                           {"adopted", _restored_adopted},
+                           {"pending", (int)_restored.size()}};
     reply["fold_us_per_frame"] = _frames ? 1e6 * _fold_s / (double)_frames : 0.0;
     reply["close_hz_measured"] = _close_hz;
     reply["policy_posts"] = _policy_posts;
