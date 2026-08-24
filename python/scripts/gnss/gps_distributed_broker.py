@@ -6354,14 +6354,30 @@ def main(argv=None, rx=None, publisher=None):
                     dr_state["pd"], dr_state["pd2"] = pd, pd2
                     dr_state["pd0"] = pd0
 
+                # THE EPHEMERIS'S OWN EPOCH, in capture age. predict_all above ran at
+                # now_w (WALL), so in capture-age units its rows are valid at
+                # now_w - utc0_sample0 -- which is t_now_abs on the WALL axis and is NOT
+                # t_now_abs under --dr-fengine-axis, where t_now_abs lags wall by the
+                # telemetry lag (~0.15 s live). cp_predicted used to extrapolate from
+                # t_now_abs unconditionally; under the axis fix that misplaces every
+                # satellite by rdot*lag metres = K*dop*lag chips, PER SAT, dop-signed --
+                # measured 2026-08-24 as the standing trim law trim ~ -1.0e-3 chips/Hz
+                # x dop (tau 115 ms = the live axis lag), the walkoff limit cycle's root.
+                # The clock median hides the common part, which is why 08-23's eps read
+                # +420 ms against an 8-18 s lag. Born WITH the axis fix (08-17): on the
+                # wall axis the two epochs coincide and the old form was exact.
+                _t_eph_age = now_w - utc0_sample0
                 def cp_predicted(v, t_abs):
                     """Physical code phase (chips) of the predicted signal at capture age
                     t_abs, EXCLUDING the receiver clock. One predict_all per cycle: the
                     range is propagated to other epochs through range_rate (fine over the
-                    few-second detection staleness). All mod arithmetic on small numbers
-                    (t0m is the sample-0 GPST pre-reduced mod the code period)."""
+                    few-second detection staleness), FROM THE EPOCH THE EPHEMERIS WAS
+                    ACTUALLY EVALUATED AT (_t_eph_age, wall) -- never from t_now_abs,
+                    which under --dr-fengine-axis is a different clock (see above). All
+                    mod arithmetic on small numbers (t0m is the sample-0 GPST pre-reduced
+                    mod the code period)."""
                     t_tx = (dr_state["t0m"] + t_abs
-                            - (v["range_m"] + v["range_rate_mps"] * (t_abs - t_now_abs))
+                            - (v["range_m"] + v["range_rate_mps"] * (t_abs - _t_eph_age))
                               / dr_eph_mod.C_LIGHT
                             + v["sat_clk_s"])
                     return (t_tx % t_code) * args.chip_rate_hz
