@@ -5374,6 +5374,37 @@ def main(argv=None, rx=None, publisher=None):
             # with wall entering only as the elapsed-since-fetch difference.
             _fh = max((float(r.get("pow_hop") or 0.0) for r in status.values()),
                       default=0.0)
+            # ── LINK 1 OF THE WALKOFF CHAIN, MEASURED PER ROW ──────────────────────────
+            # `_fh` above is max(pow_hop) -- the FRESHEST row -- and the tripwire at ~6205
+            # is built from it. On 2026-08-23 the axis was measured PER ROW at -18.0..-19.3 s
+            # on gps_l5/gal_e5a and -7.8 s on bds_b2a AT THE SAME INSTANT, and that lag is the
+            # first link in the lock-walkoff chain: it puts the model at wall-now while the
+            # records are of lag-old sky. Today the max-derived tripwire reads sub-second,
+            # which is either a real recovery or the max hiding a stale population behind one
+            # fresh row. A max cannot tell those apart. The distribution can.
+            #
+            # Same sign convention as _dax at ~6205: NEGATIVE = the row lags the wall.
+            # A POSITIVE value is a row claiming a hop the F-engine has not reached -- the
+            # FUTURE HOP of link 2, impossible for a processed record.
+            if utc0_sample0 and status:
+                _w = _now()
+                _ages = sorted(((utc0_sample0 + float(r.get("pow_hop") or 0.0)
+                                 / args.hops_per_sec) - _w, k)
+                               for k, r in status.items()
+                               if float(r.get("pow_hop") or 0.0) > 0.0)
+                if _ages:
+                    _md = _ages[len(_ages) // 2][0]
+                    _fut = [k for d, k in _ages if d > 0.5]
+                    _log_rl("axis-rows",
+                            "AXIS ROWS: n=%d  lag median %+.2f s  worst %+.2f s (%s)  "
+                            "freshest %+.2f s (%s)  spread %.2f s%s"
+                            % (len(_ages), _md, _ages[0][0], _ages[0][1],
+                               _ages[-1][0], _ages[-1][1],
+                               _ages[-1][0] - _ages[0][0],
+                               "" if not _fut else
+                               "  *** %d FUTURE row(s) >0.5 s AHEAD: %s"
+                               % (len(_fut), ",".join(sorted(_fut)[:4]))),
+                            every_s=30.0)
             if _fh > 0.0:
                 # ⚠️ THE TIME BASE MUST NEVER FREEZE SILENTLY (2026-08-18, the cx19 collapse).
                 # t_now_abs is built from this hop, and this hop comes from ONE combiner. When
