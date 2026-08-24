@@ -1392,7 +1392,7 @@ def main(argv=None, rx=None, publisher=None):
                          "A seed born without a clock steps by the WHOLE clock at its first "
                          "re-birth after BOOTSTRAP -- measured 2026-08-22: 40 events, all "
                          "inside 57 s of broker start, step/off = 0.9958, the entire fleet "
-                         "moving together to 0.08%. The wait is short (gps_l5 bootstraps ~1 s "
+                         "moving together to 0.08%%. The wait is short (gps_l5 bootstraps ~1 s "
                          "in, the model-primary chains adopt cross-band a few seconds later). "
                          "⚠️ IT IS A TIMEOUT, NOT A PRECONDITION: a DETECTOR-LESS chain never "
                          "solves a clock at all -- that is what the prime is for -- so after "
