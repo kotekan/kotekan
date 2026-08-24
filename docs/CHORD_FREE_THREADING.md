@@ -1,8 +1,10 @@
 # Parallelising the broker: the concurrency audit, and the free-threaded plan
 
-**Status 2026-08-24 — AUDIT DONE, NOTHING SWITCHED.** Two real defects fixed (both
-pre-existing, neither free-threading-specific); the rest of the shared state was already
-built for concurrent threads. No interpreter has been installed and no behaviour has changed.
+**Status 2026-08-24 — INTERPRETER BUILT AND PROVEN OFFLINE; THE FLEET IS STILL ON 3.12.**
+Steps 1-3 are done. Free-threaded CPython 3.14.3 is installed at `/home/kvand/gnss/venv-ft`,
+all four `broker_equiv` digests and all eight `fleetdll_gate` legs reproduce under it, and the
+hot path measures **1.117 s -> 0.307 s** for five chains on cf06 (section 7). What has NOT
+happened is the switch: the live broker still runs 3.12 and its 10.04 s cycle.
 
 ## 1. Why, as arithmetic
 
@@ -111,14 +113,47 @@ close to drop-in.
 
 1. **Audit and fix.** ✅ done (this section). Zero behaviour change; all four `broker_equiv`
    digests EQUIVALENT.
-2. **Build the interpreter.** Ubuntu 24.04 ships 3.12, so 3.13t/3.14t must come from
-   deadsnakes or a source build into `/home/kvand` (no root needed). A venv with free-threaded
-   numpy + PyYAML. **Infrastructure, not code, and reversible: the 3.12 venv stays.**
-3. **Prove the semantics survive.** Run the EXISTING broker under the free-threaded
-   interpreter against the recorded transcripts. If all four digests reproduce, the arithmetic
-   and the POST stream are unchanged by the interpreter. This is the cheapest possible
-   go/no-go and it needs no fleet.
-4. **Measure one band on sky**, then all five chains. Expect cycle -> ~2-3 s.
+2. **Build the interpreter.** ✅ done. No source build was needed and no root: `uv` serves
+   python-build-standalone binaries, so this was one command.
+
+   ```
+   uv python install 3.14.3+freethreaded
+   uv venv --python 3.14.3+freethreaded /home/kvand/gnss/venv-ft
+   uv pip install --python /home/kvand/gnss/venv-ft/bin/python 'numpy==2.5.1' PyYAML
+   ```
+
+   The interpreter lands in `~/.local/share/uv/python/`, which is on the shared home, so cf06
+   and every node see it with nothing to install per host (verified on cf06).
+
+   **numpy is PINNED to 2.5.1 because that is what the 3.12 venv has.** uv resolves 2.5.2 by
+   default, and taking it would have varied two axes at once — a moved digest could then have
+   been the interpreter or a numpy patch release, with no way to tell them apart. The 3.12
+   venv is untouched, so the switch is `GNSS_PY` and the rollback is unsetting it.
+3. **Prove the semantics survive.** ✅ done. All four `broker_equiv` digests reproduce
+   **byte-identically**, and the eight `fleetdll_gate` legs pass:
+
+   ```
+   broker_fake_l5          49f0a392ae1f3f67…   EQUIVALENT
+   broker_onsky_l5         8d14c1daa305a91a…   EQUIVALENT
+   broker_onsky_e5a        f2f9490f75bec2c6…   EQUIVALENT
+   broker_onsky_l5_holds   ed9b24b7e443aa02…   EQUIVALENT
+   ```
+
+   Both arms were run in the same session — 3.12 first, to confirm the goldens were green at
+   HEAD before asking whether the interpreter moved them. A gate you did not see pass cannot
+   tell you what its failure means.
+
+   ⚠️ **This surfaced one real defect**, and it was ours, not 3.14's: `--dr-clock-wait-s`
+   quoted a number as `"0.08%"` in its argparse help. Help strings are %-formatted, so
+   `--help` had been dead on all 278 flags for as long as that text existed — it fails only
+   when help is FORMATTED, so nothing that merely parses args noticed. 3.14 validates
+   eagerly in `add_argument`, which turned a broken `--help` into a broker that would not
+   start. Fixed in 17e921f34; an AST scan of every `add_argument` in the tree finds no other.
+4. **Measure one band on sky**, then all five chains. ⬅ NEXT. Expect cycle -> ~2-3 s.
+   `broker_restart.sh` already honours `GNSS_PY`, so this needs no code change:
+   `GNSS_PY=/home/kvand/gnss/venv-ft/bin/python scripts/gnss/broker_restart.sh`.
+   Pre-switch baseline archived at
+   `fixtures/brokerlogs/gnss_broker_20260824_pre_ft.log` (166 cycles/chain).
 5. **Then reconsider what is left.** At a 2 s cycle the remaining Python (~0.85 s in
    `coherent_source`, ~0.74 s in `fleet_dll`'s poll) stops being interesting and the C++
    moves can stop.
@@ -135,3 +170,46 @@ If a concurrency gate is wanted later, the shape is a stress harness that drives
 and `JointReceiverState` from N threads with a deterministic seed and asserts the invariants
 (gauge median zero, membership consistency, no lost contributions) — not a longer run of the
 broker.
+
+
+## 7. What it actually buys, measured
+
+`scripts/gnss/ft_scaling.py` drives the real `fleet_coherent` from N threads on N **distinct**
+inputs and compares every thread's result against its own serial run. Distinct inputs matter:
+handing every thread the same dict makes agreement trivially true and measures numpy's read
+scaling instead of ours — a gate that cannot fail.
+
+On cf06 (the broker host, live fleet running alongside), five chains, production 12x128 shape:
+
+```
+                       serial      parallel    speedup
+3.12   GIL ON          0.878 s      1.117 s      0.79x
+3.14t  GIL OFF         0.722 s      0.307 s      2.35x
+```
+
+**The GIL arm is slower threaded than serial.** That is not an anomaly, it is what a
+GIL-serialised process does when you add contention and switching to work that was already
+serial — and it is the honest baseline, so the number to compare is 1.117 -> 0.307.
+
+The result that matters for §1's warning about crowded bands is not the ratio but the
+**flatness**:
+
+```
+free-threaded, parallel wall time:   n=1  0.288 s
+                                     n=5  0.307 s
+                                     n=12 0.300 s
+```
+
+Twelve chains cost what one costs. Adding GLONASS L1OF or B1I to a band is then a scheduling
+question, not a cycle-time question.
+
+Per-thread free-threading penalty is **~22%** single-threaded (0.214 s vs 0.176 s/chain). It is
+paid once, and n=2 already swamps it. On the full replay workload it was not measurable at all
+— that path is numpy- and I/O-dominated, and the penalty lands on pure-Python bytecode.
+
+⚠️ **What this does NOT measure.** `fleet_coherent` is pure. The estimator scaling is real, but
+the broker's cycle also carries `Receiver`, `JointReceiverState` and `FleetPublisher`, which are
+shared and locked — those are covered by the §4 audit, by inspection, and by nothing else. The
+speedup on sky will be lower than 3.6x because the cycle is more than this one estimator, and
+because 10.0 s > 8.9 s of CPU already: some of the cycle is waiting, and removing the GIL does
+not make an HTTP timeout shorter.
