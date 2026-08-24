@@ -233,6 +233,22 @@ int main(int argc, char** argv) {
         taps[cv.first] = pj;
     }
     out["taps"] = taps;
+    // The per-record series (combdll.prompt_cn0's `recs`), flat and time-ordered:
+    // [win, slot, prn, n_inst, e, p, l]. Flat rather than nested because it is a SERIES --
+    // nesting it by window would invite a consumer to reduce it, which is the one thing the
+    // served C/N0 must not have done for it.
+    nlohmann::json rs = nlohmann::json::object();
+    for (const auto& cv : dll.rec_series()) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& r : cv.second)
+            arr.push_back({r.win, r.slot, r.prn, r.n_inst, r.e, r.p, r.l});
+        rs[cv.first] = arr;
+    }
+    out["rec_series"] = rs;
+    nlohmann::json hpr = nlohmann::json::object();
+    for (const auto& cv : dll.chains())
+        hpr[cv.first] = cv.second.hops_per_record;
+    out["hops_per_record"] = hpr;
     // The trim store the stage would persist, and how much of an offered one was adopted.
     nlohmann::json ts = nlohmann::json::object();
     for (const auto& cv : dll.trim_snapshot()) {

@@ -279,9 +279,36 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
                           deep_gate_prns=deep_gate_prns, deep_gate_margin=deep_gate_margin)
 
 
+def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
+    """`prompt_cn0`'s per-record series, fetched from the gather's C++ reduction.
+
+    Returns ({(win, slot): {prn: [e, p, l, n_inst]}}, hops_per_record).
+
+    ⚠️ SAME ARITHMETIC, GATED ON IDENTICAL BYTES: fleetdll_gate.py's REC-SERIES leg requires
+    e/p/l to 1e-9 and n_inst exactly, per (window, slot, PRN). That gate is the only thing
+    behind this call -- broker_equiv replays only what goes through transport, and the gather
+    is a raw socket, so a replay carries no telemetry and this path is never exercised.
+
+    WHY. prompt_cn0 walks the gathered frames a SECOND time, after the comb DLL has already
+    walked them for its own reduction: the same ~140k channel-tuples per chain per cycle,
+    twice over, on a process pinned at 100% of one core by the GIL.
+    """
+    d = get("%s/get_rec_taps" % url.rstrip("/"), timeout=timeout) or {}
+    want = None if prns is None else set(int(p) for p in prns)
+    recs = {}
+    for row in (d.get(chain) or []):
+        win, slot, prn, n_inst, e, p, l = row
+        prn = int(prn)
+        if want is not None and prn not in want:
+            continue
+        recs.setdefault((int(win), int(slot)), {})[prn] = [float(e), float(p), float(l),
+                                                           int(n_inst)]
+    return recs, int((d.get("hops_per_record") or {}).get(chain) or 0)
+
+
 def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
                k_sigma=3.0, min_instances=2, hop_s=5.12e-6, keep_records=False,
-               min_used=8):
+               min_used=8, recs_src=None):
     """THE SERVED C/N0 (task #57): per-record prompt power, q-gated, probe-debiased.
 
     Replaces the deep fold as the radiometry. The fold RE-SEARCHES a residual rate per
@@ -331,12 +358,18 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
     want = None
     if prns is not None:
         want = set(int(p) for p in prns) | probe_prns
-    wins = client.windows(chain, lag=lag)
-    if not wins:
-        return {}
-    wins = wins[-int(n_win):]
-    t_rec = None
-    recs = {}   # (win, slot) -> {prn: [e_sum, p_sum, l_sum, n_inst]}
+    if recs_src is not None:
+        # THE C++ ARM. Depth is the gather's taps_win, matched to this broker's telem-windows.
+        recs, _hpr = recs_src(chain, want)
+        t_rec = (_hpr * hop_s) if _hpr > 0 else None
+        wins = []
+    else:
+        wins = client.windows(chain, lag=lag)
+        if not wins:
+            return {}
+        wins = wins[-int(n_win):]
+        t_rec = None
+        recs = {}   # (win, slot) -> {prn: [e_sum, p_sum, l_sum, n_inst]}
     for w in wins:
         for inst, f in client.frame_set(chain, w).items():
             if t_rec is None and getattr(f, "hops_per_record", 0) > 0:

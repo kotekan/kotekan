@@ -120,6 +120,7 @@ private:
 
     void dll_callback(kotekan::connectionInstance& conn);
     void taps_callback(kotekan::connectionInstance& conn);
+    void rec_taps_callback(kotekan::connectionInstance& conn);
 
     /// THE TRIM STORE. The integrator is the only state here that cannot be rebuilt from the
     /// stream, and a gather restart is the only thing that loses it -- measured 2026-08-23 as

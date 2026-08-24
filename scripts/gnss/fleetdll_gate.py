@@ -278,6 +278,76 @@ def compare_taps(py, cpp):
     return bad
 
 
+def python_recs(frames, n_win):
+    """combdll.prompt_cn0's `recs`: {(win, slot): {prn: [e, p, l, n_inst]}}.
+
+    Lifted from prompt_cn0's own frame walk so the gate compares what that estimator consumes,
+    not a paraphrase of it. The statistics ON TOP of this -- the probe anchor, the Gamma-mean
+    debias, the q gate, the clip -- stay in Python and are not what this leg is about.
+    """
+    client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
+    for buf, _chain in frames:
+        hdr = telem._HDR.unpack_from(buf, 0)
+        client._store_frame(telem.TelemFrame(hdr, buf, 0.0))
+    out = {}
+    for chain in client.chains():
+        wins = client.windows(chain, lag=1)[-int(n_win):]
+        recs = {}
+        for w in wins:
+            for _inst, f in client.frame_set(chain, w).items():
+                for r in range(f.n_rec):
+                    if not f.has_record(r):
+                        continue
+                    for prn in f.prns():
+                        cmb = f.comb_epl(r, prn)
+                        if not cmb:
+                            continue
+                        gE = gP = gL = 0j
+                        eE = eP = eL = 0.0
+                        for _fid, E, P, L, (wE, wP, wL) in cmb:
+                            gE += E * wE
+                            gP += P * wP
+                            gL += L * wL
+                            eE += wE
+                            eP += wP
+                            eL += wL
+                        if eP <= 0.0:
+                            continue
+                        d = recs.setdefault((w, r), {}).setdefault(prn, [0.0, 0.0, 0.0, 0])
+                        d[0] += (abs(gE) / eE) ** 2 if eE > 0.0 else 0.0
+                        d[1] += (abs(gP) / eP) ** 2
+                        d[2] += (abs(gL) / eL) ** 2 if eL > 0.0 else 0.0
+                        d[3] += 1
+        out[chain] = recs
+    return out
+
+
+def compare_recs(py, cpp):
+    """[(severity, message)] -- empty means the per-record series agree."""
+    bad = []
+    cj = cpp.get("rec_series", {})
+    for chain in sorted(set(py) | set(cj)):
+        p_rows = py.get(chain) or {}
+        c_rows = {}
+        for win, slot, prn, n_inst, e, p, l in (cj.get(chain) or []):
+            c_rows[(int(win), int(slot), int(prn))] = [e, p, l, int(n_inst)]
+        p_flat = {(int(w), int(r), int(prn)): v
+                  for (w, r), per in p_rows.items() for prn, v in per.items()}
+        for k in sorted(set(p_flat) - set(c_rows))[:5]:
+            bad.append(("REC-MISSING", "%s (win %d, slot %d, PRN %d) only in Python" % ((chain,) + k)))
+        for k in sorted(set(c_rows) - set(p_flat))[:5]:
+            bad.append(("REC-EXTRA", "%s (win %d, slot %d, PRN %d) only in C++" % ((chain,) + k)))
+        for k in sorted(set(p_flat) & set(c_rows)):
+            a, b = p_flat[k], c_rows[k]
+            for i, name in enumerate(("e", "p", "l", "n_inst")):
+                x, y = float(a[i]), float(b[i])
+                tol = 0.0 if name == "n_inst" else 1e-9
+                if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
+                    bad.append(("REC", "%s (win %d, slot %d, PRN %d) %s: py %.17g cpp %.17g"
+                                % (chain, k[0], k[1], k[2], name, x, y)))
+    return bad
+
+
 def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, trim_in=None):
     cmd = [exe, path, "--n-win", str(n_win), "--min-instances", str(min_instances), "--no-flush"]
     if taps_win:
@@ -516,6 +586,18 @@ def main():
     n_ch = sum(len(d["chan"]) for ch in pt.values() for v in ch.values() for d in v.values())
     print("TAPS PASS -- %d (PRN, instance) taps and %d per-channel rows agree, e/p/l/n_chan "
           "to 1e-9 and n_rec/hop exactly." % (n_it, n_ch))
+
+    # ---- THE PER-RECORD SERIES (the served C/N0's input) --------------------------------
+    pr = python_recs(frames, args.n_win)
+    bad_r = compare_recs(pr, cpp)
+    if bad_r:
+        print("FAIL -- %d per-record disagreement(s):" % len(bad_r))
+        for sev, msg in bad_r[:12]:
+            print("  %-12s %s" % (sev, msg))
+        return 1
+    n_rr = sum(len(v) for ch in pr.values() for v in ch.values())
+    print("REC-SERIES PASS -- %d (window, slot, PRN) records agree, e/p/l to 1e-9 and n_inst "
+          "exactly." % n_rr)
 
     # ---- THE SHIPPING CONFIGURATION: taps_win != n_win ---------------------------------
     # Production runs the loop on 2 windows and serves the broker 32 -- different questions,

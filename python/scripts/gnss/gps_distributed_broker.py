@@ -8261,6 +8261,11 @@ def main(argv=None, rx=None, publisher=None):
                 try:
                     _pcn0 = combdll.prompt_cn0(
                         telem_client, telem_chain,
+                        # The same C++ arm as the comb taps, under the same flag: this walks
+                        # the gathered frames a SECOND time for the same channel-tuples.
+                        recs_src=((lambda _ch, _pr: combdll.recs_from_rest(
+                            _get, args.fleet_trim_url, _ch, prns=_pr))
+                            if (args.comb_taps_cpp >= 2 and args.fleet_trim_url) else None),
                         n_win=(args.telem_dll_windows or args.telem_windows),
                         min_instances=args.dll_min_instances,
                         k_sigma=args.dll_quality_sigma,

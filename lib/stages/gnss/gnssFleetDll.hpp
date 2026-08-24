@@ -168,9 +168,22 @@ public:
         std::array<ChanTap, TELEM_MAX_CHAN> chan{};
     };
 
+    /// One RECORD's three powers for one PRN, summed ACROSS INSTANCES (not meaned).
+    ///
+    /// A different reduction of the same numbers than Tap, and both are wanted: the code loop
+    /// and the comb DLL average over records, while the SERVED C/N0 (#57) needs the per-record
+    /// series -- it is a radiometric estimator whose whole point is that it fits nothing, so
+    /// it needs the samples, not their mean. `n_inst` is the instance count behind this record,
+    /// which is what makes a record with a dropped frame comparable to a full one.
+    struct RecTap {
+        double e = 0.0, p = 0.0, l = 0.0;
+        int n_inst = 0;
+    };
+
     struct WindowAcc {
         uint64_t win = 0;
         std::map<std::string, std::map<int, Tap>> tap; ///< [instance][prn]
+        std::map<int, std::map<int, RecTap>> rec;      ///< [record slot][prn]
     };
 
     /// One PRN's integrator state. `trim` is a correction to the BROKER'S MODEL, not to a
@@ -186,6 +199,10 @@ public:
 
     struct Chain {
         uint64_t newest = 0;
+        /// Record length in hops, off the wire header. Carried because the SERVED C/N0 needs
+        /// the integration time per record and must not assume it (gnssTelem.hpp: mixing a
+        /// sample index with a hop index is a 16384x error that looks like a clock).
+        uint32_t hops_per_record = 0;
         bool have_newest = false;
         std::map<uint64_t, WindowAcc> open; ///< ordered, so "close everything older" is a walk
         std::deque<WindowAcc> closed;       ///< the last n_win closed windows
@@ -224,6 +241,7 @@ public:
 
         Chain& c = _chain[chain];
         c.n_frames++;
+        c.hops_per_record = h->hops_per_record;
         if (c.have_newest && h->win < c.newest && !c.open.count(h->win)) {
             c.n_late++;
             return FoldStatus::LATE;
@@ -307,6 +325,15 @@ public:
                 t.n_chan += used;
                 t.n_rec++;
                 t.hop = std::max(t.hop, hop);
+
+                // THE SAME THREE POWERS, bucketed by RECORD SLOT and summed across instances
+                // -- combdll.prompt_cn0's `recs`. Formed here from the values already in hand
+                // rather than in a second pass over the frame.
+                RecTap& rt = w.rec[r][prn];
+                rt.e += wE > 0.0 ? (aE / wE) * (aE / wE) : 0.0;
+                rt.p += (aP / wP) * (aP / wP);
+                rt.l += wL > 0.0 ? (aL / wL) * (aL / wL) : 0.0;
+                rt.n_inst++;
 
                 // PER-CHANNEL, formed by the IDENTICAL expression one column at a time.
                 // Second pass over the same columns rather than folded into the loop above:
@@ -419,6 +446,38 @@ public:
             return false;
         ci->second.trim[prn].trim = trim_chips;
         return true;
+    }
+
+    /// One (window, record slot, PRN)'s three powers summed across instances, over the served
+    /// window depth -- combdll.prompt_cn0's `recs`, in time order.
+    ///
+    /// WHY A SECOND SHAPE OF THE SAME NUMBERS. The code loop and the comb DLL want records
+    /// AVERAGED; the served C/N0 wants the SERIES. It is a radiometric estimator that fits
+    /// nothing -- the rate is the tracker's, the tap is the loop's, the only arithmetic is a
+    /// debiased power ratio -- so its inputs are the individual records, q-gated one at a time
+    /// against a probe anchor. Meaning it away upstream would be exactly the #47 category error
+    /// this estimator exists to have removed.
+    ///
+    /// ⚠️ The gates that USE this stay in Python: the q gate, the probe anchor, the Gamma-mean
+    /// debias and the clip. This returns samples.
+    struct RecRow {
+        uint64_t win;
+        int slot, prn, n_inst;
+        double e, p, l;
+    };
+    std::map<std::string, std::vector<RecRow>> rec_series() const {
+        std::map<std::string, std::vector<RecRow>> out;
+        for (const auto& cv : _chain) {
+            auto& rows = out[cv.first];
+            const auto& ring = cv.second.closed;
+            for (size_t k = ring.size() > (size_t)_taps_win ? ring.size() - _taps_win : 0;
+                 k < ring.size(); ++k)
+                for (const auto& sv : ring[k].rec)       // slot, ordered
+                    for (const auto& pv : sv.second)     // prn, ordered
+                        rows.push_back({ring[k].win, sv.first, pv.first, pv.second.n_inst,
+                                        pv.second.e, pv.second.p, pv.second.l});
+        }
+        return out;
     }
 
     const std::map<std::string, Chain>& chains() const {

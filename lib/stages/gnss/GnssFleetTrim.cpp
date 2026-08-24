@@ -189,6 +189,9 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
         unique_name + "/get_taps",
         std::bind(&GnssFleetTrim::taps_callback, this, std::placeholders::_1));
     kotekan::restServer::instance().register_get_callback(
+        unique_name + "/get_rec_taps",
+        std::bind(&GnssFleetTrim::rec_taps_callback, this, std::placeholders::_1));
+    kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_stats",
         std::bind(&GnssFleetTrim::stats_callback, this, std::placeholders::_1));
     kotekan::restServer::instance().register_post_callback(
@@ -769,6 +772,35 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
         }
         reply[cv.first] = pj;
     }
+    reply["taps_win"] = _dll.taps_win();
+    conn.send_json_reply(reply);
+}
+
+/// `<unique_name>/get_rec_taps` -- the PER-RECORD three powers, summed across instances.
+///
+/// The served C/N0's input (#57). combdll.prompt_cn0 builds this by walking the gathered
+/// frames a SECOND time, after the comb DLL has already walked them for its own reduction --
+/// the same ~140k channel-tuples per chain per cycle, twice.
+///
+/// Rows are [win, slot, prn, n_inst, e, p, l], flat and time-ordered. Flat rather than nested
+/// because it is a SERIES: nesting it by window invites a consumer to reduce it, and the whole
+/// point of this estimator is that it fits and averages nothing upstream of its own q gate.
+///
+/// ⚠️ MEASUREMENTS ONLY, again. The probe anchor, the Gamma-mean debias, the q gate and the
+/// clip are statistics with judgement in them and stay on the broker's cycle.
+void GnssFleetTrim::rec_taps_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json reply = nlohmann::json::object();
+    nlohmann::json hpr = nlohmann::json::object();
+    std::lock_guard<std::mutex> lk(_mtx);
+    for (const auto& cv : _dll.rec_series()) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& r : cv.second)
+            arr.push_back({r.win, r.slot, r.prn, r.n_inst, r.e, r.p, r.l});
+        reply[cv.first] = arr;
+    }
+    for (const auto& cv : _dll.chains())
+        hpr[cv.first] = cv.second.hops_per_record;
+    reply["hops_per_record"] = hpr;
     reply["taps_win"] = _dll.taps_win();
     conn.send_json_reply(reply);
 }
