@@ -8438,8 +8438,20 @@ def main(argv=None, rx=None, publisher=None):
                                     "which lobe (get_rf) before blaming a chain."
                                     % (100.0 * _clip), every_s=120.0)
 
+            # ⚠️ NEVER THROTTLE IN REPLAY. A transcript is an ordered recording of every GET,
+            # checked by URL as it is consumed, so making FEWER calls than the recording
+            # desynchronises the stream: the next endpoint reads the previous one's response
+            # and `_get` catches the divergence per call, so the replay limps on producing
+            # garbage instead of stopping. Found the hard way -- this moved the holds digest
+            # and it looked like the (unrelated) _solve refactor until the two arms were
+            # diffed and BOTH gave the same moved digest. "TRANSCRIPT DIVERGENCE at get #116"
+            # was in the replay's own stderr the whole time.
+            #
+            # The general rule: broker_equiv can gate what a call COMPUTES, never how OFTEN it
+            # is made. Any cadence change is live-only and needs a live measurement.
             if (args.element_poll and dll_combiners
-                    and _now() - _elem_poll_t[0] >= args.element_poll_every_s):
+                    and (_TR.mode == "read"
+                         or _now() - _elem_poll_t[0] >= args.element_poll_every_s)):
                 _elem_poll_t[0] = _now()
                 try:
                     _pe, _srv = elemgain.poll_elements(dll_combiners)

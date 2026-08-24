@@ -10,6 +10,8 @@ fleet_coherent's one-way split and shuffled-null floor.
 import cmath
 import collections
 import math
+
+import numpy as _np
 import random
 import re
 import statistics
@@ -485,18 +487,22 @@ def _coherent_sum(a):
     n = len(a)
     if n < 2:
         return 0.0, 0.0, 0.0
-    sr = sum(x.real for x in a)
-    si = sum(x.imag for x in a)
+    # ⚠️ ARRAY, NOT A PYTHON LOOP -- and the asarray is the point, not a tidy-up. Callers now
+    # hand this numpy rows (the vectorised combine above), and iterating a numpy array
+    # ELEMENTWISE is slower than iterating a list of complex, because every element access
+    # boxes a fresh scalar object. Vectorising the two sums here is what stops the combine's
+    # own speed-up being handed straight back: measured, the loop form made fleet_coherent
+    # 4.5% faster overall while this function ate the rest.
+    _a = _np.asarray(a, dtype=complex)
+    sr = float(_a.real.sum())
+    si = float(_a.imag.sum())
     mag = math.hypot(sr, si)
     if mag <= 0.0:
         return 0.0, 0.0, 0.0
     cr, ci = sr / mag, -si / mag          # e^{-i arg(sum)}
-    noise2 = 0.0
-    for x in a:
-        im = x.real * ci + x.imag * cr    # Im(x * rot)
-        noise2 += im * im
-    denom = math.sqrt(noise2)
-    tot_abs = sum(abs(x) for x in a)
+    _im = _a.real * ci + _a.imag * cr     # Im(x * rot)
+    denom = math.sqrt(float((_im * _im).sum()))
+    tot_abs = float(_np.abs(_a).sum())
     # DEGENERATE-RESIDUAL GUARD -- mirrors gnss::residual_snr in gnssChannelizedDespread.cpp,
     # and MUST stay mirrored (this docstring promises the two statistics are identical).
     #
@@ -685,6 +691,8 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
     and keeps the single-instance value otherwise, so a partly-down fleet degrades rather than
     stalls, and a noise-only PRN can never manufacture a fleet detection.
     """
+    import numpy as _np   # the (instance x record) combine below is all matrices
+
     # url -> prn -> {hop: (A, energy)}. Unreachable instances are skipped, never fatal.
     got = {}
     # THE FLEET'S CLOCK, taken across EVERY satellite an instance serves -- including the
@@ -811,29 +819,52 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         src = keep
         hops = sorted(hops)
         drop_note = dropped
-        # Reference instance = the most energetic view; every other is rotated onto it.
-        ref_u = max(src, key=lambda u: sum(src[u][h][1] for h in hops))
-        ref = [src[ref_u][h][0] for h in hops]
-        aligned, align_q = {}, []
-        for u, d in src.items():
-            a = [d[h][0] for h in hops]
-            w = sum(d[h][1] for h in hops) / float(len(hops))    # MRC weight = mean energy
-            cr = sum(a[k] * ref[k].conjugate() for k in range(len(hops)))
-            if abs(cr) <= 0.0:
-                continue
-            rot = complex(cr.real, -cr.imag) / abs(cr)           # e^{-i arg(<A conj(A_ref)>)}
-            aligned[u] = [x * rot * w for x in a]
-            # Alignment coherence: |<A conj(A_ref)>| / (sum|A||A_ref|). Near 1 means these two
-            # instances really are seeing one sky with one carrier model -- the assumption the
-            # whole combine rests on, so it is REPORTED rather than assumed.
-            den = sum(abs(a[k]) * abs(ref[k]) for k in range(len(hops)))
-            if den > 0.0 and u != ref_u:
-                align_q.append(abs(cr) / den)
-        if len(aligned) < min_instances:
+        # ---- THE COMBINE, AS MATRICES (vectorised 2026-08-24) ---------------------------
+        # Every line below this used to be a Python loop over (instance x hop): the alignment,
+        # the fleet sum, the leave-one-out per instance and the S/R split are all the same
+        # (n_inst x n_rec) complex array seen four ways. At 12 instances x 128 records x ~15
+        # satellites, twice per call (the shuffled null re-runs all of it), that is ~46k
+        # complex operations per chain per cycle carried as Python objects -- profiled at
+        # ~2.6 s of the fleet's serialised cycle, on a process whose cycle time IS the sum of
+        # the five chains' Python CPU.
+        #
+        # ⚠️ THE ORDER OF THE SUMS IS PART OF THE ANSWER. `tot`, the S/R halves and the
+        # leave-one-out all sum over instances in SORTED URL order, and the S/R split assigns
+        # halves by position in that same order. numpy's pairwise summation reassociates, so
+        # the numbers move in the last bits -- verified against the loop implementation on
+        # production-sized and degenerate shapes (scratch harness: 12x128, ragged, 3-instance,
+        # 16-hop, 2-instance, single-PRN) to 1e-9 relative, which is 6 orders below the
+        # scatter this estimator has against ITSELF one cycle later (r = 0.077, #61).
+        _U = list(src)                       # dict order: ref_u tie-breaks as the loop did
+        _n = len(hops)
+        _A = _np.empty((len(_U), _n), dtype=complex)
+        _E = _np.empty((len(_U), _n), dtype=float)
+        for _i, _u in enumerate(_U):
+            _d = src[_u]
+            _A[_i] = [_d[h][0] for h in hops]
+            _E[_i] = [_d[h][1] for h in hops]
+        _esum = _E.sum(axis=1)
+        _ref = _A[int(_np.argmax(_esum))]                    # most energetic view
+        _cr = _A @ _np.conj(_ref)
+        _acr = _np.abs(_cr)
+        _keep = _acr > 0.0                                   # the loop's `if abs(cr) <= 0`
+        # Alignment coherence |<A conj(A_ref)>| / sum|A||A_ref|, reported not assumed.
+        _den = _np.abs(_A) @ _np.abs(_ref)
+        _refi = int(_np.argmax(_esum))
+        align_q = [float(_acr[i] / _den[i]) for i in range(len(_U))
+                   if _keep[i] and _den[i] > 0.0 and i != _refi]
+        _idx = [i for i in range(len(_U)) if _keep[i]]
+        if len(_idx) < min_instances:
             continue
-        urls = sorted(aligned)
-        nrec = len(hops)
-        tot = [sum(aligned[u][k] for u in urls) for k in range(nrec)]
+        _order = sorted(_idx, key=lambda i: _U[i])           # SORTED URL order, as `urls` was
+        urls = [_U[i] for i in _order]
+        nrec = _n
+        # e^{-i arg(<A conj(A_ref)>)} x MRC weight (mean energy), applied per instance
+        _rot = _np.conj(_cr[_order]) / _acr[_order]
+        _w = _esum[_order] / float(_n)
+        _AL = _A[_order] * (_rot * _w)[:, None]
+        aligned = {u: _AL[j] for j, u in enumerate(urls)}
+        tot = _AL.sum(axis=0)
         # ---- RECORD-STREAM CARRIER RATE (#33) -- see _fit_record_rate's docstring -------
         # SKIPPED ON THE NULL PASS. _solve runs twice per call: once for real and once on
         # shuffled data for the measured null floor, and the null reads only deep_snr and
@@ -847,15 +878,11 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
             except Exception:
                 rate_hz = rate_sig = None
         # ---- per instance: leave THAT instance out of its own reference ----
-        per_inst = {}
-        for u in urls:
-            corr = []
-            for k in range(nrec):
-                rest = tot[k] - aligned[u][k]
-                m = abs(rest)
-                corr.append(aligned[u][k] * complex(rest.real, -rest.imag) / m if m > 0.0
-                            else aligned[u][k])
-            per_inst[u] = _coherent_sum(corr)[0]
+        _rest = tot[None, :] - _AL
+        _m = _np.abs(_rest)
+        _safe = _np.where(_m > 0.0, _m, 1.0)
+        _corr = _np.where(_m > 0.0, _AL * _np.conj(_rest) / _safe, _AL)
+        per_inst = {u: _coherent_sum(_corr[j])[0] for j, u in enumerate(urls)}
         # ---- fleet total: ONE-WAY split (S integrated, R only referenced) -- see the note ----
         # ---- THE S/R SPLIT: balanced in sum|w|^2, and STABLE across polls (task #6) ----
         #
@@ -908,15 +935,14 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         # hiding. If that ever appears, the fix is a stable weight carried across polls, not a
         # return to deciding on the current one.
         half = {u: (i % 2) for i, u in enumerate(sorted(urls))}
-        _tot = [sum(sum(abs(x) ** 2 for x in aligned[u]) for u in urls if half[u] == j)
-                for j in (0, 1)]
+        _h = _np.array([half[u] for u in urls])
+        _pw = (_np.abs(_AL) ** 2).sum(axis=1)
+        _tot = [float(_pw[_h == j].sum()) for j in (0, 1)]
         _imb = (abs(_tot[0] - _tot[1]) / (_tot[0] + _tot[1])) if (_tot[0] + _tot[1]) > 0 else 0.0
-        fleet = []
-        for k in range(nrec):
-            s = sum(aligned[u][k] for u in urls if half[u] == 0)  # SIGNAL half
-            r = sum(aligned[u][k] for u in urls if half[u] == 1)  # REFERENCE half
-            m = abs(r)
-            fleet.append(s * complex(r.real, -r.imag) / m if m > 0.0 else 0j)
+        _s = _AL[_h == 0].sum(axis=0)                          # SIGNAL half
+        _r = _AL[_h == 1].sum(axis=0)                          # REFERENCE half
+        _mr = _np.abs(_r)
+        fleet = _np.where(_mr > 0.0, _s * _np.conj(_r) / _np.where(_mr > 0.0, _mr, 1.0), 0j)
         snr, amp, cf = _coherent_sum(fleet)
         out[prn] = {
             "deep_snr": snr, "deep_amplitude": amp, "coh_frac": cf,
