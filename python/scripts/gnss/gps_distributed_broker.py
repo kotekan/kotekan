@@ -8827,8 +8827,14 @@ def main(argv=None, rx=None, publisher=None):
                         # repeats its value, so it passes the consistency guard). Admission
                         # therefore requires the sat to have BEEN PRESENT this process:
                         # weak never-up sats are excluded, the E4-class latch is not.
+                        # ...and a 600 s STARTUP HOLD-OFF (flight 3a, 22:2x): presence
+                        # FLAPS during the startup solve (PRN 9: present q 2.32 at t+28 s,
+                        # absent by t+2 min, fired), so was-present alone does not fence
+                        # the startup regime. A natural latch takes tens of minutes to
+                        # develop; startup convergence self-heals and must not be steered.
                         if (args.reseed_admit_absent and prn in seeds
-                                and prn in _reseed_was_present):
+                                and prn in _reseed_was_present
+                                and time.time() - broker_t0 >= 600.0):
                             _now_w = time.time()
                             _tau_now = float(fl["spec_tau"])
                             if _now_w - _reseed_admit_cool.get(prn, 0.0) >= 180.0:
