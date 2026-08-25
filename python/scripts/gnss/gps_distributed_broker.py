@@ -2923,6 +2923,9 @@ def main(argv=None, rx=None, publisher=None):
     # gate. _reseed_admit_cool is the per-PRN post-fire cooldown stamp.
     _reseed_admit_pend = {}
     _reseed_admit_cool = {}
+    # PRNs that have been PRESENT at least once this process -- the flight-3 guard's
+    # memory: admission is for present->absent latches, never for never-yet-up sats.
+    _reseed_was_present = set()
     if _reseed_prns:
         _log("SPEC-TAU RE-SEED (#50) active on %s: q<%.2f, spec_peak_ratio>=%.2f, gain %.2f, "
              "cap %.2f chips, span +-%.1f. Fires only where the discriminator has NO GRADIENT "
@@ -8816,7 +8819,16 @@ def main(argv=None, rx=None, publisher=None):
                         # (the flight-2 harness bug cleared it on every ratio dip); it is
                         # cleared only by an INCONSISTENT qualifying fit (which replaces
                         # it), expiry, presence, or a fire.
-                        if args.reseed_admit_absent and prn in seeds:
+                        # FLIGHT-3 GUARD (22:1x 08-25): a TRUE latch is present->absent.
+                        # At process start EVERY sat is absent, so the whole constellation
+                        # accrued strikes and 6 fires landed inside the startup solve --
+                        # including PRN 34, never present, whose sidelobe-stable tau GREW
+                        # through two fires (+0.62 -> +0.82 despite the step: a sidelobe
+                        # repeats its value, so it passes the consistency guard). Admission
+                        # therefore requires the sat to have BEEN PRESENT this process:
+                        # weak never-up sats are excluded, the E4-class latch is not.
+                        if (args.reseed_admit_absent and prn in seeds
+                                and prn in _reseed_was_present):
                             _now_w = time.time()
                             _tau_now = float(fl["spec_tau"])
                             if _now_w - _reseed_admit_cool.get(prn, 0.0) >= 180.0:
@@ -8840,6 +8852,7 @@ def main(argv=None, rx=None, publisher=None):
                                             every_s=60.0)
                     elif fl.get("present"):
                         _reseed_admit_pend.pop(prn, None)
+                        _reseed_was_present.add(prn)
                     if _rs_qual and (fl.get("present") or _rs_admit):
                         _t = float(fl["spec_tau"])
                         # SPAN EDGE IS A SATURATION, NOT A MEASUREMENT. fit_spectrum_delay scans
