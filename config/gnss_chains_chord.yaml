@@ -1935,6 +1935,10 @@ http://cx43:12048/gnss{0..1}_e5b_inject,\
 http://cx44:12048/gnss{0..1}_e5b_inject,\
 http://cx51:12048/gnss{0..1}_e5b_inject"
     combiner: gnss0_e5b_n2combine
+    # GAP-1 v1 LIVE-FEED ARM (2026-08-25 11:2x UTC): 16 s span for the fine observable ON
+    # THE FED CHAIN (rrate-phase-feed true here) with the non-overlap feed throttle.
+    # Pre-reg: expectations_20260825_spanv1_e5b_feed.txt. e5a stays shadow reference.
+    rrate-phase-span-s: 16
     # #90 ARM re-fly (2026-08-25 ~00:2x UTC): the e5a arm never fired -- the 23:55 restart's
     # fresh solve healed e5a's E32 at birth (mechanism UNJUDGED), and the first flight found
     # the admission clause sitting BELOW the loop's own `if not present: continue` (dead code

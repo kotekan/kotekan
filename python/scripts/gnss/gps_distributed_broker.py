@@ -3613,6 +3613,8 @@ def main(argv=None, rx=None, publisher=None):
     rr_full_ok = False   # this poll's feed ran on the UNCAPPED fields -- the command requires
                          # it (a capped measurement past +-5 Hz is noise; feeding a loop with
                          # it is what walked arm 1)
+    _span_fed_t = {}     # prn -> t of the last span-mode FED fine value (the non-overlap
+                         # throttle; unused when --rrate-phase-span-s is 0)
     adr_ring = {}        # prn -> [((arc, records, res_cycles, trim), cmd, t), ...] -- the
                          # long-span baseline ring (--rrate-phase-span-s); oldest first,
                          # pruned to 2x span. Empty/unused when the flag is 0.
@@ -9466,7 +9468,17 @@ def main(argv=None, rx=None, publisher=None):
                             # command jumped for a non-loop reason (re-seed, probe) and
                             # the span is not a measurement.
                             _dcmd = _cmd_now - _pv[1]
+                            # SPAN-MODE NON-OVERLAP THROTTLE (2026-08-25): at poll cadence
+                            # consecutive 16 s-span values share 14/16 of their data --
+                            # feeding them as independent makes the row ~sqrt(8)x
+                            # overconfident. In span mode a sat feeds at most once per
+                            # span, so fed measurements are disjoint windows. The SHADOW
+                            # (JRRP) stays per-poll; only the feed is throttled.
+                            _span_ok = (args.rrate_phase_span_s <= 0.0
+                                        or t0 - _span_fed_t.get(_p, 0.0)
+                                        >= args.rrate_phase_span_s)
                             if (args.rrate_phase_feed and args.rrate_phase_sign != 0.0
+                                    and _span_ok
                                     and abs(_dcmd) <= 0.6
                                     and ((_rec.get("coherence_s") or 0.0) > 0.0
                                          or (_rec.get("coh_frac") or 0.0) >= 0.3)):
@@ -9521,6 +9533,7 @@ def main(argv=None, rx=None, publisher=None):
                                         # not attempts, so a sat whose fine values the
                                         # gate keeps rejecting stays coarse-governed.
                                         rr_fine_t[_p] = t0
+                                        _span_fed_t[_p] = t0
                     adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
                                      _rec.get("res_cycles"), _rec.get("trim_cycles")),
                                     _cmd_now, t0)
