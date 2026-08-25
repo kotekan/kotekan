@@ -683,6 +683,37 @@ be one variable, on a verified-live loop, with the unadmitted sats as in-poll co
 
 ## 🅿️ Parked 2026-08-24 — measured, root not chased (KV: "park as a thing to follow-up")
 
+**#91 — BAND-WIDE CARRIER-COHERENCE COLLAPSE takes fleet presence down on searchless chains (E3 case study, 2026-08-25 00:39-00:48 UTC).**
+The known kcoh sig churn (3 orders of magnitude, [[chord-carrier-is-the-gate]] class) has a
+worst case: gal_e5a's KCOH sig_sum fell 43,255 -> 97 -> 14, EVERY sat at once, for ~9 min --
+while gal_e5b held ~100k (arm 15's fine-fed quiet rows = coherent folds) and gps_l5 kept only
+its strongest sat. Presence rides the fold -> BOTH searchless 1176 chains disarmed to ZERO
+(e5a 6->0, b2a 5->0; l5 6->3 survived via the search), every standing trim released, and the
+(l-a) legacy clock -- measured FROM the collapsing population -- swung +-96 chips and its
+garbage rate (+0.041 ppm, 40x normal) was ADOPTED into seeds: a positive feedback that
+sustained the outage. Exonerated by direct measurement: RFI (noise floor flat 4.6-5.4 both
+bands), instruments (AXIS INST -0.15 s, n=12 throughout), joint clk/rate (148.18 +- 0.1,
++-0.001 chips/s, rock stable), E32's latched feed (era-split: delta 0.628 healthy vs 0.627
+latched). FIXES: (a) arm 17 (--kcoh-rate-from-row, staged) + the v1 long-span rows IS the
+designed churn killer -- this event is its cost-of-delay measurement; (b) interim: a
+presence BROWNOUT policy -- when the axis is fresh and the floor is flat, a presence loss
+should HOLD standing trims, not release them (the release turns a 9-min fold fade into a
+full re-pull per sat); (c) never adopt an (l-a) rate fitted on a population below a floor.
+
+**#92 — SEED RE-ANCHOR AND STANDING TRIM ARE UNCOORDINATED (E3's ~25-min sawtooth).**
+E3-e5a drifts model-vs-sky at ~0.06 chips/min (per-sat residual-rate class -- the GAP 3
+hole). The C++ standing trim absorbs it, ramping 0.16 -> 1.01 chips over 15 min with SPEC
+tau ~= 0 (tap ON the sky the whole time, q ~3). Then the joint b_sat row -- tracking the
+same offset -- re-anchors the seed (SEED-OFFSET mode flips (slew)->(cp0), BIRTH-STEP
+cluster, 01:05:24), the seed steps onto the sky, and the trim that was carrying the SAME
+chip is neither decremented nor adopted: tap transiently ~1 chip off, q craters, trim wiped
+and rebuilt from scratch. Period ~25 min = time to re-accumulate the trim. This is #83
+2(d)'s gap (the trim readback is read-only): A SEED RE-BASE OF DELTA MUST POST trim -=
+DELTA IN THE SAME CYCLE (the set_policy/store plumbing already exists). Bugs #91+#92
+superpose on the same plot -- which is why per-PRN structure looks so heterogeneous
+([[chord-plant-oscillation]]'s ~600 s cycle should be re-examined against #92, not only
+the epoch fix).
+
 **#90 — OFF-PEAK DISARM LATCH on chains with no search admission path (live case: E32, 2026-08-24 22:17-23:0x UTC).**
 The anatomy, fully instrumented in /tmp-era logs + fixtures/expectations_20260824_gap1_gonogo.txt notes:
 * E32 (gal_e5a + gal_e5b, dead-reckoned, dop +1600 falling, C/N0 33-38 dB-Hz) held a REAL
