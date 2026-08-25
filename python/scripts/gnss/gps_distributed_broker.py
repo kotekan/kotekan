@@ -2926,6 +2926,11 @@ def main(argv=None, rx=None, publisher=None):
     # PRNs that have been PRESENT at least once this process -- the flight-3 guard's
     # memory: admission is for present->absent latches, never for never-yet-up sats.
     _reseed_was_present = set()
+    # (t, n_present) history for the BROWNOUT guard (flight 3b): one entry per cycle,
+    # 600 s window. Admission is for a sat that fell out ALONE; when the CHAIN's present
+    # population collapses (measured 22:55-23:01: e5b 7 -> 3 sats while e5a held), the
+    # fold/band is the patient (#91) and stepping seeds treats the wrong organ.
+    _adm_pop = []
     if _reseed_prns:
         _log("SPEC-TAU RE-SEED (#50) active on %s: q<%.2f, spec_peak_ratio>=%.2f, gain %.2f, "
              "cap %.2f chips, span +-%.1f. Fires only where the discriminator has NO GRADIENT "
@@ -8846,9 +8851,32 @@ def main(argv=None, rx=None, publisher=None):
                         # absent by t+2 min, fired), so was-present alone does not fence
                         # the startup regime. A natural latch takes tens of minutes to
                         # develop; startup convergence self-heals and must not be steered.
-                        if (args.reseed_admit_absent and prn in seeds
-                                and prn in _reseed_was_present
-                                and time.time() - broker_t0 >= 600.0):
+                        _adm_ok93 = (args.reseed_admit_absent and prn in seeds
+                                     and prn in _reseed_was_present
+                                     and time.time() - broker_t0 >= 600.0)
+                        if _adm_ok93:
+                            # FLIGHT-3b BROWNOUT GUARD (23:0x 08-25): 4 fires rode a
+                            # band-wide e5b presence dip (7 -> 3 sats, 6 min; e5a
+                            # steady) -- a #91-class fold event, where seeds are not
+                            # the fault and per-sat steps just add churn. Suppress
+                            # admission while the chain's present count is under 60%
+                            # of its own 600 s peak (baseline >= 4 so tiny
+                            # constellations do not flap the ratio).
+                            _npn = sum(1 for _f0 in fleet.values()
+                                       if isinstance(_f0, dict) and _f0.get("present"))
+                            if not _adm_pop or _adm_pop[-1][0] != t0:
+                                _adm_pop.append((t0, _npn))
+                                while _adm_pop and t0 - _adm_pop[0][0] > 600.0:
+                                    _adm_pop.pop(0)
+                            _base93 = max(n for _, n in _adm_pop)
+                            if _base93 >= 4 and _npn < 0.6 * _base93:
+                                _adm_ok93 = False
+                                _log_rl("rs-admit-bw",
+                                        "RESEED-ADMIT suppressed: band-wide presence "
+                                        "dip (%d present vs %d baseline) -- #91-class, "
+                                        "holding, not re-seeding" % (_npn, _base93),
+                                        every_s=60.0)
+                        if _adm_ok93:
                             _now_w = time.time()
                             _tau_now = float(fl["spec_tau"])
                             if _now_w - _reseed_admit_cool.get(prn, 0.0) >= 180.0:
