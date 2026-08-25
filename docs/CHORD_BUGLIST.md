@@ -683,6 +683,85 @@ be one variable, on a verified-live loop, with the unadmitted sats as in-poll co
 
 ## 🅿️ Parked 2026-08-24 — measured, root not chased (KV: "park as a thing to follow-up")
 
+**#93 — GAP 3 RE-ARCHITECTURE: one joint per-sat drift estimator across both loops and both
+bands, replacing the K·rrate_row consume (TODO, KV-directed 2026-08-25; start after #92's
+numbers are in).**
+
+WHY (the 08-25 shadow verdict, fixtures/expectations_20260825_gap3_shadow.txt): the
+pre-registered "carrier row predicts code drift" premise died F1 (sign 57%, r 0.059 over 2 h,
+151 points, both gal chains) — but the autopsy says the design was wrong, not the physics:
+* *Reference mismatch*: the rows are gauged to mean(rrate)≡0 across sats (state_filter
+  gauge_rrate) while the trims are referenced to the (l−a) clock — two independent
+  common-mode conventions. De-meaning per poll (reconciling the gauge) lifted r 0.059→0.281,
+  a 5x, exactly as the gauge predicts.
+* *Amplitude*: rows carry 15–44 cm/s equivalent; measured trim ramps are ~0.9 cm/s — the
+  scale orbit/clock error actually has ([[chord-rrate-physics]] vindicated in the code
+  domain). The code loop is TODAY the better estimator of range-rate error; the rows are
+  ~97% carrier-only content. Usable content ≈ 1% of row value (0.28 r × 1/30 scale) — any
+  hand-set consume gain was going to be ~100x wrong.
+* *Divergence hint*: per-sat in-time r median −0.16 (9/12 sats negative) — the direction
+  iono code-carrier divergence produces. Suggestive only (n=6-12/sat).
+* *Regime caveat*: the whole window was a CALM plant; the E3 anchor (row matched drift
+  within 2x, right sign) came from a pathological episode. "Rows predict code drift when
+  the code actually drifts" was never exercised.
+
+THE MODEL (what a joint estimator estimates, per sat, in m/s at the tap):
+* `n_i` — NON-DISPERSIVE drift rate: orbit + clock + tropo model error. THE AIDING TARGET
+  (tropo is indistinguishable from geometry and the code loop needs it corrected anyway).
+* `i_i` — dispersive (iono) rate: code +, carrier −, the one term GUARANTEED to push the
+  two observables apart with opposite signs (textbook code-carrier divergence).
+* per-chain reference states `r_code` (what the (l−a) clock absorbs) and `r_carr` (what
+  the gauge pins) — estimated EXPLICITLY, never two independent pre-applied conventions.
+Observables, per sat: code y_c = n + i − r_code (trim-ramp; transfer g/(g+λ) = 2.5/2.62 =
+0.954 at shipped constants — a 5% correction, not the 30x); carrier y_φ = n − i − r_carr
+(+ junk j, the open question). Within one band: (y_c − y_φ)/2 = i + j-ish → THE IONO
+OBSERVABLE, geometry cancels; (y_c + y_φ)/2 = n + j-ish → the aiding estimate. Across the
+band pair (E5a 1176.45 / E5b 1207.14, same for B2a/B2b): iono scales 1/f², ratio
+(1207.14/1176.45)² = 1.053 ≈ equality → band-CONSISTENT divergence = real iono;
+band-INCONSISTENT divergence = junk. Four observables per sat over 2-3 states: observable.
+
+DESIGN DECISIONS (banked now, from the 08-25 evidence):
+* The carrier observable is the PER-SAT ADR INCREMENT per arc (res_cycles diffs,
+  trim_cycles-corrected, the accumulator-identity rule) — the same observable GAP 1's
+  long-span feed rides — NOT the rrate row, which is a filtered, gauged, cross-sat-coupled
+  product. GAP 1's span machinery is directly reusable.
+* One shared reference (or explicit reference states). Never compare per-sat values across
+  two loops that were pre-gauged independently.
+* Weights from MEASURED variances, so a 1%-reliable predictor gets ~1% weight from the
+  filter itself. The gain is an output of the estimator, never a hand-set K.
+* This is [[chord-vector-state-needs-coupling]] finished properly: b_sat and rrate are
+  position and velocity of one error, and the iono state is why d(b_sat)/dt ≠ rrate today.
+
+ORDERED PLAN (shadow-first, each step falsifiable before the next):
+0. PREREQ: #92 verdict (cleaner, longer trim windows — the sawtooth chopped the measured
+   side at ~25 min). ⚠️ NEW TRAP #92 CREATED: on gal_e5a the handover now MOVES the trim
+   by known posted deltas (REBASE-ADJUST lines carry timestamp + value); any ramp
+   estimator must SUBTRACT them (or window-reset) — below the 0.3-chip reset they
+   contaminate slopes silently. The current GAP3-SHADOW meas on e5a has this exposure.
+1. SHADOW v2: per-sat long-span ADR-rate vs trim-ramp, DE-MEANED per poll per chain, all
+   four model-primary chains. Measure: per-sat regression slope (THE candidate aiding
+   gain), r, and sign — sign calibrated by a commanded step (the rrate-phase-sign
+   precedent: +1 on e5b via ±2 Hz step pair), never by passive regression. Falsifier: if
+   de-meaned ADR-vs-ramp r < 0.3 IN A DISTURBED WINDOW TOO, the carrier genuinely cannot
+   aid the code and GAP 3 closes as "no aid" honestly.
+2. DIVERGENCE DECOMPOSITION: per sat per band, d = (y_c − y_φ)/2 and s = (y_c + y_φ)/2.
+   Predictions: s band-consistent ~1:1 (non-dispersive); d band-consistent ~1.05 with the
+   SAME sign. Band-consistent d ⇒ iono real ⇒ the iono-corrected (divergence-free) aiding
+   term exists. Band-inconsistent d ⇒ junk dominates ⇒ find its source before estimating.
+3. THE ESTIMATOR: per-sat states (n_i, i_i) + per-chain references; either extend the
+   joint filter (couple b_sat/rrate, add iono) or a standalone per-sat KF fed by both
+   loops. Consume n̂_i into cp_rate behind a default-off flag, sigma-weighted. Redo the
+   MIRROR CHECK for the NEW loop this creates: aid → code alignment → fold SNR → arc
+   breaks → ADR availability (value-clean but availability-coupled; the stale-row sigma
+   inflation clause carries over). Per-sat q SD clause (standing policy). Judge: trim-ramp
+   shrinkage + wipe frequency, paired vs an unaided control chain, verdicts recorded PER
+   PLANT REGIME (calm and disturbed separately — 08-25 proved they differ).
+
+TRAPS carried in: res_cycles arcs break at re-anchor (accumulator identity; wall_dt
+tripwire); don't fit across #91 collapses or restarts; [[one-observation-is-not-a-verdict]]
+on E3-class episodes; the calm-plant "1% usable" number is the PRIOR for step 1's slope,
+so a measured slope ~30x larger than that prior in a calm window is a red flag, not a win.
+
 **#91 — BAND-WIDE CARRIER-COHERENCE COLLAPSE takes fleet presence down on searchless chains (E3 case study, 2026-08-25 00:39-00:48 UTC).**
 The known kcoh sig churn (3 orders of magnitude, [[chord-carrier-is-the-gate]] class) has a
 worst case: gal_e5a's KCOH sig_sum fell 43,255 -> 97 -> 14, EVERY sat at once, for ~9 min --
