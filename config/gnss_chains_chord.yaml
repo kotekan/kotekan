@@ -1030,6 +1030,13 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
 http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
 http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
     combiner: gnss0_e5a_n2combine
+    # ARM 17 RE-FLY (2026-08-25 12:2x UTC): row-injected fold rates on the v1-fed rows.
+    # The 08-21 "wash" was VOID (dead gather loop); the 08-23 staleness objection is
+    # answered by the 16 s span feed (rows ~0.3 Hz, e5b-fed, shared per (E,prn)).
+    # Confident rows only (sigma bar 0.5, the void flight's named lever). Controls
+    # in-poll: gal_e5b + bds_b2a folds. Pre-reg: expectations_20260825_arm17_refly.txt.
+    kcoh-rate-from-row: 1
+    kcoh-row-max-sigma: 0.5
     # #90 ARM (2026-08-24 ~23:3x UTC, THIS CHAIN ONLY -- gal_e5b left off as the same-sat
     # in-time control while E32 is latched on BOTH bands): the #50 far-regime re-seed plus
     # the absent-admission clause. E32's latch anatomy and the pre-registered falsifier are
