@@ -1353,10 +1353,21 @@ class JointReceiverState:
                 # a genuinely mis-converged row is pulled in by NORMAL updates the moment
                 # its measurements turn consistent -- through a wide-open gate.
                 i_ = self._rr_idx[key]
+                # DECORRELATE, not just re-open (2026-08-25): setting the diagonal while
+                # keeping the row's stale cross-terms can leave |P_ij| > sqrt(P_ii P_jj)
+                # -- a non-PSD covariance whose later updates walk OTHER diagonals
+                # negative. That is how gal_e5a's rrate_sigma went COMPLEX at 05:42 (the
+                # escape path fires constantly in a churn storm, ~40 births/min). A row
+                # being re-opened is declared statistically suspect; its second-order
+                # links to every other state are part of what is suspect. Zero them.
+                self.P[i_, :] = 0.0
+                self.P[:, i_] = 0.0
                 self.P[i_, i_] = self.sigma_rr0 ** 2
                 _id = self._rrd_idx.get(key)
                 if _id is not None:
                     # the dot that tracked the row into rejection is as suspect as the row
+                    self.P[_id, :] = 0.0
+                    self.P[:, _id] = 0.0
                     self.P[_id, _id] = self.sigma_rrd0 ** 2
                 self._rr_reject_run[key] = 0
                 self._note("rrate ESCAPE %s: %d consistent rejections -- re-opening the "
@@ -1408,7 +1419,16 @@ class JointReceiverState:
         """1-sigma, m/s. inf when unmeasured -- an unmeasured state must not read as a
         confident zero, which is how a dead feed passes for a healthy one."""
         i = self._rr_idx.get(key)
-        return float("inf") if i is None else float(self.P[i, i]) ** 0.5
+        if i is None:
+            return float("inf")
+        # A NEGATIVE diagonal is a numerically broken covariance, and Python's
+        # **0.5 turns it into a COMPLEX number that detonates at whatever
+        # comparison touches it next (gal_e5a died 5.5 h on exactly this,
+        # 2026-08-25 05:42). Broken must read as UNMEASURED, never as confident:
+        # inf sends every sigma gate to its refuse branch. (not v >= 0 also
+        # catches NaN.)
+        _v = float(self.P[i, i])
+        return float("inf") if not (_v >= 0.0) else _v ** 0.5
 
     @_locked
     def rrate_dot(self, key):
@@ -1420,7 +1440,16 @@ class JointReceiverState:
     @_locked
     def rrate_dot_sigma(self, key):
         i = self._rrd_idx.get(key)
-        return float("inf") if i is None else float(self.P[i, i]) ** 0.5
+        if i is None:
+            return float("inf")
+        # A NEGATIVE diagonal is a numerically broken covariance, and Python's
+        # **0.5 turns it into a COMPLEX number that detonates at whatever
+        # comparison touches it next (gal_e5a died 5.5 h on exactly this,
+        # 2026-08-25 05:42). Broken must read as UNMEASURED, never as confident:
+        # inf sends every sigma gate to its refuse branch. (not v >= 0 also
+        # catches NaN.)
+        _v = float(self.P[i, i])
+        return float("inf") if not (_v >= 0.0) else _v ** 0.5
 
     @_locked
     def carrier_correction_hz(self, key, f_band_hz):
@@ -1448,7 +1477,9 @@ class JointReceiverState:
         must not read as a confident zero, which is how a dead feed passes for a healthy one."""
         if self._fcar_idx is None:
             return float("inf")
-        return float(self.P[self._fcar_idx, self._fcar_idx]) ** 0.5
+        _v = float(self.P[self._fcar_idx, self._fcar_idx])
+        # same negative-diagonal guard as rrate_sigma
+        return float("inf") if not (_v >= 0.0) else _v ** 0.5
 
     @_locked
     def tau(self, band):
