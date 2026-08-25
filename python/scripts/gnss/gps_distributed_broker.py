@@ -7831,10 +7831,21 @@ def main(argv=None, rx=None, publisher=None):
                                 # handover -- skipped loudly, wiped-and-rebuilt as
                                 # before. The gather echoes adjusted/refused per PRN
                                 # (refused = PRN not armed there, e.g. trim released).
+                                # Gated on _ft_armed_last: a PRN the fleet loop is
+                                # not actuating has no standing trim to hand over --
+                                # posting for the seeding-churn re-births (measured
+                                # live 18:53: PRNs 6/30 re-basing every ~10 s,
+                                # refused every time) is spam on both logs, and it
+                                # buries the one refusal that would MEAN something
+                                # (F2: an armed sat whose adjustment missed).
                                 if (args.fleet_trim_rebase_adjust
-                                        and args.fleet_trim_url):
+                                        and args.fleet_trim_url
+                                        and prn in _ft_armed_last):
                                     if abs(_bstep) <= 2.5:
                                         try:
+                                            # _post returns the HTTP status; the
+                                            # per-PRN adjusted/refused echo is in
+                                            # the GATHER's log and get_stats.
                                             _rep92 = _post(
                                                 "%s/adjust_trim"
                                                 % args.fleet_trim_url.rstrip("/"),
@@ -7842,13 +7853,8 @@ def main(argv=None, rx=None, publisher=None):
                                                             {str(prn): -_bstep}}},
                                                 timeout=2.0)
                                             _log("REBASE-ADJUST PRN %d: trim %+.3f "
-                                                 "posted to the gather -> %s"
-                                                 % (prn, -_bstep,
-                                                    ((_rep92 or {})
-                                                     .get(telem_chain, {})
-                                                     .get(str(prn), "no reply"))
-                                                    if isinstance(_rep92, dict)
-                                                    else _rep92))
+                                                 "posted to the gather (HTTP %s)"
+                                                 % (prn, -_bstep, _rep92))
                                         except Exception as _e92:
                                             # NEVER take seeding down for the
                                             # handover; a missed adjustment is one
