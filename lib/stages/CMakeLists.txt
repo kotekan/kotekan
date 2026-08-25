@@ -64,6 +64,7 @@ add_library(
     HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
+    frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
     bufferMerge.cpp
     bufferCopy.cpp
@@ -102,6 +103,7 @@ add_library(
     configTrackerWriter.cpp
     givenDataGen.cpp
     testDataGen.cpp
+    testDataGenFewHot.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp

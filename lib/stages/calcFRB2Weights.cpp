@@ -27,6 +27,7 @@
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
+#include <sched.h>
 #include <string>   // for allocator, basic_string, string
 #include <unistd.h> // for sleep
 #include <vector>   // for vector
@@ -83,6 +84,7 @@ class calcFRB2Weights : public kotekan::Stage {
 
     Buffer* const frb2_beam_positions_buffer;
     Buffer* const W2_buffer;
+    Buffer* const metadata_buffer;
 
 public:
     calcFRB2Weights(kotekan::Config& config, const std::string& unique_name,
@@ -92,7 +94,7 @@ public:
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         frb2_beam_positions_buffer(get_buffer("frb2_beam_positions")),
-        W2_buffer(get_buffer("frb2_weights"))
+        W2_buffer(get_buffer("frb2_weights")), metadata_buffer(get_buffer("metadata"))
     //
     {
         assert(frb2_beam_positions_buffer);
@@ -101,6 +103,7 @@ public:
             FATAL_ERROR("num_threads %d must be positive", num_threads);
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
+        metadata_buffer->register_consumer(unique_name);
 
         frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
@@ -123,8 +126,16 @@ public:
         const Telescope& telescope = Telescope::instance();
 
         // Upchannelization schedule
-        const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+        uint8_t const* const metadata_frame = metadata_buffer->wait_for_full_frame(unique_name, 0);
+        if (metadata_frame == nullptr)
+            return;
+        const auto& upchan_schedule = *[&]() {
+            const auto coarse_freq = get_chord_metadata(metadata_buffer, 0)->get_coarse_freq();
+            return &UpchannelizationSchedule::instance(config, upchannelization_schedule_name,
+                                                       coarse_freq);
+        }();
+        metadata_buffer->mark_frame_empty(unique_name, 0);
+        metadata_buffer->unregister_consumer(unique_name);
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();
@@ -230,8 +241,14 @@ public:
 
             std::atomic<int> nfreqs_done = 0;
 
+            // avoid over-subscribing the CPUs we can run on
+            cpu_set_t available_cpus;
+            CPU_ZERO(&available_cpus);
+            sched_getaffinity(0, sizeof(available_cpus), &available_cpus);
+            const int num_available_cpus = CPU_COUNT(&available_cpus);
+
 #ifdef WITH_OMP
-#pragma omp parallel num_threads(num_threads)
+#pragma omp parallel num_threads(std::min(num_available_cpus, num_threads))
 #endif
             {
                 std::vector<float> Up(frb1_num_beams_P);

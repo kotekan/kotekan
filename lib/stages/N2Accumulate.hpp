@@ -155,6 +155,10 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          the buffers.
  * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
  *                                          Default: False
+ * @conf    input_order                     String. Ordering of data in input correlation matrix.
+ *                                          Default: Telescope::fiducial_element_order()
+ * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
+ *                                          Default: Telescope::fiducial_element_order()
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -294,6 +298,11 @@ private:
 
     // The telescope
     const Telescope& _tel;
+
+    // these must bye after _tel sine their initialization requires _tel
+    const ElementOrder _input_order;  ///< ordering of data in input matrix
+    const ElementOrder _output_order; ///< ordering of data in output matrix
+    const std::vector<int> _reorder;  // cache of mapping input_order_index -> output_order_index
 
     const std::vector<vec3d_t>
         _feed_positions_m; ///< The position of each element in the telescope grid frame
