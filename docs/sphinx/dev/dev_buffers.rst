@@ -28,6 +28,13 @@ Points a stage writer should know:
   carries a frame descriptor (see below).
 - Frame memory is not zeroed between uses: a producer must overwrite (or
   zero) the whole frame unless zeroing is explicitly enabled.
+- A frame being copied by the ``/buffer_frame`` endpoint stays full until the
+  copy finishes, so a producer can occasionally find a frame occupied that no
+  consumer holds. Only that frame is affected, and it is the newest full one --
+  the last the producer returns to -- so this takes a copy longer than a lap of
+  the ring to happen at all. A producer that waits for empty frames waits it
+  out; one that sheds load on a full ring (``bufferRecv``, ``Valve``) drops the
+  data instead.
 - Buffers are declared in the YAML config as ``kotekan_buffer:`` blocks
   and built by the buffer factory at startup. The buffer's name is the
   path of its config block, and stages receive their buffers through the
