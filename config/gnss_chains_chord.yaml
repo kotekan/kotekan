@@ -1002,6 +1002,15 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # row noise floor. JUDGE FROM NOW ON: per-sat q SD vs in-poll controls (the metric
     # that showed the effect); |dcmd| is descriptive only. Same safety gates unchanged.
     rrate-command: true
+    # ── #92 THE HANDOVER (2026-08-25 19:0x): ARMED ON THIS CHAIN ONLY, e5b = control ─────
+    # A (slew)->(cp0) seed re-birth steps the seed while the C++ standing trim keeps
+    # carrying the same chips: the tap lands off the sky, q craters, trim wiped and
+    # rebuilt (E3's ~25-min sawtooth). With this on, the broker POSTs -birth_step to
+    # the gather's /adjust_trim in the SAME cycle (bounded 2.5 chips; the ~140-chip
+    # shared-clock births are skipped loudly). Needs the 08-25 gather binary.
+    # Pre-reg: fixtures/expectations_20260825_92_handover.txt (P2 = paired no-crater
+    # vs e5b; F2 = refusals dominate -> the same-cycle premise is wrong).
+    fleet-trim-rebase-adjust: 1
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
