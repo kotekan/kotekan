@@ -794,6 +794,14 @@ superpose on the same plot -- which is why per-PRN structure looks so heterogene
 the epoch fix).
 
 **#90 — OFF-PEAK DISARM LATCH on chains with no search admission path (live case: E32, 2026-08-24 22:17-23:0x UTC).**
+*STATUS 08-25 23:3x: flight 3 (v2 guards, "all" PRNs on e5b) DISARMED on F3 -- 8 fires in
+3 populations (startup convergence, band brownout, threshold flicker), ZERO deep-latch
+targets; fires 6-8 landed on flicker sats present 100-210 s prior. Guards 3a (startup
+hold-off + was-present) and 3b (band-brownout population floor) are in committed code and
+KEPT. The mechanism validated twice (PRN 28 startup arc; PRN 9 half-corrected tau); the
+TARGETING failed -- "absent" is too weak a proxy for "latched". v3 design in
+fixtures/expectations_20260825_90_v2_flight3.txt: minimum 300 s continuous absence +
+recent-lock gate (q >= 2.0 within 15 min before absence began). NOT armed.*
 The anatomy, fully instrumented in /tmp-era logs + fixtures/expectations_20260824_gap1_gonogo.txt notes:
 * E32 (gal_e5a + gal_e5b, dead-reckoned, dop +1600 falling, C/N0 33-38 dB-Hz) held a REAL
   ~0.5-0.9 chip model-vs-sky offset in its standing C++ trim (readback 32:-0.63..-0.91).
