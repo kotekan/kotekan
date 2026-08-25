@@ -198,6 +198,10 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
         unique_name + "/set_policy",
         std::bind(&GnssFleetTrim::policy_callback, this, std::placeholders::_1,
                   std::placeholders::_2));
+    kotekan::restServer::instance().register_post_callback(
+        unique_name + "/adjust_trim",
+        std::bind(&GnssFleetTrim::adjust_callback, this, std::placeholders::_1,
+                  std::placeholders::_2));
 
     // THE ACTUATOR'S TARGETS ARRIVE WITH THE POLICY, not from config. The broker already
     // owns the tracker endpoint list (--trackers, brace-expanded), it is the thing that knows
@@ -428,6 +432,44 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
     }
     rearm();
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+void GnssFleetTrim::adjust_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {
+    // #92: same payload shape as /set_policy ({"chains": {chain: {prn: delta_chips}}}),
+    // parse first, lock last. Every refusal is counted and echoed back per PRN so the
+    // broker's log can say WHICH handover was dropped -- a silently refused adjustment
+    // re-creates exactly the sawtooth this endpoint exists to end.
+    std::map<std::string, std::map<int, double>> got;
+    try {
+        const auto& chains = request.at("chains");
+        for (auto it = chains.begin(); it != chains.end(); ++it)
+            for (auto pit = it.value().begin(); pit != it.value().end(); ++pit)
+                got[it.key()][std::stoi(pit.key())] = pit.value().get<double>();
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("bad adjust payload: ") + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    nlohmann::json rep;
+    int n_ok = 0, n_ref = 0;
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+        for (const auto& cv : got)
+            for (const auto& pv : cv.second) {
+                const bool ok = _dll.adjust_trim(cv.first, pv.first, pv.second);
+                rep[cv.first][std::to_string(pv.first)] = ok ? "adjusted" : "refused";
+                (ok ? n_ok : n_ref)++;
+            }
+        _adjust_ok += n_ok;
+        _adjust_refused += n_ref;
+    }
+    // Rare by construction (one per seed re-base, not per window) -- a line each is signal.
+    for (const auto& cv : got)
+        for (const auto& pv : cv.second)
+            INFO("GnssFleetTrim[{:s}]: /adjust_trim {:s} PRN {:d} by {:+.3f} chips -> {:s}",
+                 unique_name, cv.first, pv.first, pv.second,
+                 rep[cv.first][std::to_string(pv.first)].get<std::string>());
+    conn.send_json_reply(rep);
 }
 
 void GnssFleetTrim::rearm() {
@@ -824,6 +866,8 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     reply["frames"] = _frames;
     reply["bad_frames"] = _bad_frames;
     reply["late_frames"] = _late_frames;
+    reply["adjust_ok"] = _adjust_ok;         // #92 handover adjustments applied
+    reply["adjust_refused"] = _adjust_refused;
     // THE BUDGET. This is a second consumer of the gather's buffer, so time spent here is time
     // the broker's own copy is not being handed out. Served as microseconds per frame so "is it
     // affordable?" is answerable from this endpoint alone: 60 senders x 23.84 frames/s means

@@ -2220,6 +2220,18 @@ def main(argv=None, rx=None, publisher=None):
                          "(gain 0.25, leak 0.05 per update) capped it at 1.25 chips -- "
                          "measured max |trim| 1.140 over 8 h, the clamp unreachable BY "
                          "CONSTRUCTION.")
+    ap.add_argument("--fleet-trim-rebase-adjust", type=int, default=0,
+                    help="#92 THE HANDOVER (default OFF). When a model-primary seed is "
+                         "RE-BORN (the (slew)->(cp0) flip) its physical position steps by "
+                         "the birth step while the C++ standing trim keeps carrying the "
+                         "same chips -- the tap lands a chip off the sky, q craters, and "
+                         "the trim is wiped and rebuilt (~25-min sawtooth, E3). With this "
+                         "on, the broker POSTs the compensating -birth_step to the "
+                         "gather's /adjust_trim in the SAME cycle, bounded at 2.5 chips "
+                         "(a larger step -- e.g. the shared-clock births at ~140 chips -- "
+                         "is not something a <=3-clamp trim was carrying; skipped loudly). "
+                         "Needs the gather binary serving /adjust_trim; a 404 logs as "
+                         "FAILED and the loop degrades to today's wipe-and-rebuild.")
     ap.add_argument("--fleet-trim-readback", type=int, default=0,
                     help="TASK #76: after posting /set_policy, GET <fleet-trim-url>/get_dll "
                          "and read back the controller's STANDING PER-PRN TRIMS (chips). The "
@@ -7808,6 +7820,46 @@ def main(argv=None, rx=None, publisher=None):
                                 _newphys = (cp_predicted(v, t_fc_abs) + _off) % _DR_MOD
                                 _bstep = ((_newphys - _oldphys + _DR_MOD / 2.0) % _DR_MOD
                                           ) - _DR_MOD / 2.0
+                                # ── #92 THE HANDOVER (--fleet-trim-rebase-adjust) ──
+                                # The seed is about to move by _bstep while the C++
+                                # standing trim carries the SAME chips: post the
+                                # compensating -_bstep to the gather in the SAME cycle
+                                # so the tap (seed + trim) never leaves the sky (E3's
+                                # ~25-min sawtooth). Bounded well under the 3.0 clamp:
+                                # a step the trim could not have been carrying (the
+                                # shared-clock births are hundreds of chips) is not a
+                                # handover -- skipped loudly, wiped-and-rebuilt as
+                                # before. The gather echoes adjusted/refused per PRN
+                                # (refused = PRN not armed there, e.g. trim released).
+                                if (args.fleet_trim_rebase_adjust
+                                        and args.fleet_trim_url):
+                                    if abs(_bstep) <= 2.5:
+                                        try:
+                                            _rep92 = _post(
+                                                "%s/adjust_trim"
+                                                % args.fleet_trim_url.rstrip("/"),
+                                                {"chains": {telem_chain:
+                                                            {str(prn): -_bstep}}},
+                                                timeout=2.0)
+                                            _log("REBASE-ADJUST PRN %d: trim %+.3f "
+                                                 "posted to the gather -> %s"
+                                                 % (prn, -_bstep,
+                                                    ((_rep92 or {})
+                                                     .get(telem_chain, {})
+                                                     .get(str(prn), "no reply"))
+                                                    if isinstance(_rep92, dict)
+                                                    else _rep92))
+                                        except Exception as _e92:
+                                            # NEVER take seeding down for the
+                                            # handover; a missed adjustment is one
+                                            # sawtooth -- the old steady state.
+                                            _log("REBASE-ADJUST PRN %d FAILED (%s)"
+                                                 " -- trim rebuilds the old way"
+                                                 % (prn, _e92))
+                                    else:
+                                        _log("REBASE-ADJUST PRN %d skipped: step "
+                                             "%+.3f beyond the 2.5-chip handover "
+                                             "bound" % (prn, _bstep))
                                 _log_rl("birthstep-%d" % prn,
                                         "BIRTH-STEP PRN %d: old_phys %+.3f -> new_phys %+.3f"
                                         "  step %+.3f chips | off %+.3f = leg %+.3f"

@@ -138,6 +138,11 @@ private:
     int _restored_adopted = 0, _restored_offered = 0;
     void stats_callback(kotekan::connectionInstance& conn);
     void policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    /// #92 handover: `/adjust_trim` -- the broker just re-based a seed and posts the
+    /// compensating trim delta so the tap (seed + trim) stays on the sky. See
+    /// FleetDll::adjust_trim for the refusal rules; this is parse + lock + counters.
+    void adjust_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    uint64_t _adjust_ok = 0, _adjust_refused = 0;
     static Target parse_target(const std::string& url, const std::string& chain);
     void post_trims();
     void post_loop(int slot);

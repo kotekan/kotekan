@@ -448,6 +448,30 @@ public:
         return true;
     }
 
+    /// #92 THE HANDOVER: the broker re-based a seed by some step and the standing trim
+    /// carrying the SAME chips must move with it in the same cycle, or the tap
+    /// (seed + trim) transiently lands a chip off the sky, q craters, and the trim is
+    /// wiped and rebuilt from scratch (E3's ~25-min sawtooth, docs/CHORD_BUGLIST.md #92).
+    /// `delta_chips` is ADDED to the standing trim; the broker owns the sign (it posts
+    /// -birth_step). Result is clamped to the chain's policy clamp.
+    ///
+    /// Refuses for a PRN that is not armed -- an unarmed trim is leak-decaying to
+    /// erasure and adjusting it manufactures a correction no loop will maintain -- and
+    /// for a non-finite or over-clamp delta: a step the trim could never have been
+    /// carrying is not a handover, it is a wrong number (the multi-hundred-chip shared
+    /// clock births land here and must be refused, not folded in).
+    bool adjust_trim(const std::string& chain, int prn, double delta_chips) {
+        auto ci = _chain.find(chain);
+        if (ci == _chain.end() || !ci->second.armed.count(prn))
+            return false;
+        const double c = ci->second.policy.clamp;
+        if (!std::isfinite(delta_chips) || std::abs(delta_chips) > c)
+            return false;
+        auto& ts = ci->second.trim[prn];
+        ts.trim = std::max(-c, std::min(c, ts.trim + delta_chips));
+        return true;
+    }
+
     /// One (window, record slot, PRN)'s three powers summed across instances, over the served
     /// window depth -- combdll.prompt_cn0's `recs`, in time order.
     ///
