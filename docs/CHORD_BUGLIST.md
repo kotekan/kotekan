@@ -683,6 +683,30 @@ be one variable, on a verified-live loop, with the unadmitted sats as in-poll co
 
 ## 🅿️ Parked 2026-08-24 — measured, root not chased (KV: "park as a thing to follow-up")
 
+**#90 — OFF-PEAK DISARM LATCH on chains with no search admission path (live case: E32, 2026-08-24 22:17-23:0x UTC).**
+The anatomy, fully instrumented in /tmp-era logs + fixtures/expectations_20260824_gap1_gonogo.txt notes:
+* E32 (gal_e5a + gal_e5b, dead-reckoned, dop +1600 falling, C/N0 33-38 dB-Hz) held a REAL
+  ~0.5-0.9 chip model-vs-sky offset in its standing C++ trim (readback 32:-0.63..-0.91).
+* 22:17 (e5a) / 22:25+22:29 (e5b): the SKY peak excursed ~+0.9 chips from the trimmed tap in
+  <1 min (SPEC-FIT tau -0.03 -> -0.61; transient, BAND-ALTERNATING, then permanent from
+  22:31). The fast loop correctly chased the railed disc (+0.86..+0.91) and drove the
+  standing trim to zero — the "wipe" is the loop obeying, not a reset. First event
+  recovered (trim rebuilt -0.27 -> -0.78 over 7 min at slew-class rate).
+* Second event stuck: q below the trim floor -> fleet presence lost -> the 90 s
+  fleet-trim-hold expired -> PRN DISARMED at ~22:32 -> trim released -> LATCHED off-peak.
+  Meanwhile SPEC-FIT still measures a peak at tau ~ -0.5 with p/f 1.3-2.4x EVERY MINUTE,
+  and per-instance A decays smoothly (95 -> 28-40 over 25 min) on BOTH bands.
+* THE DEFECT: on gps_l5, #79's fix re-admits via the narrowed search; the Galileo/BeiDou
+  chains HAVE no search (0 detections) — so once disarmed off-peak there is NO re-admission
+  path, even with a per-minute spectral fix sitting in SPEC-FIT. The obvious repair: let
+  SPEC-FIT (already spec-anchored, already feeding #85) be the admission/re-seed authority
+  for searchless chains — one-shot re-seed at model+tau when p/f is significant and q is
+  floored. UNBUILT.
+* The EXCURSIONS themselves (transient, band-alternating, growing as the sat descends) are
+  UNATTRIBUTED: multipath at falling elevation is the leading candidate (band-dependent
+  interference phase explains the alternation); ephemeris/clock event not excluded. Judge
+  on the next low-elevation repeat, not on this one sat.
+
 **#34 — the FUTURE-HOP emitter: instances serve a hop EXACTLY 100 RECORDS ahead.**
 Link 2 of `docs/`-side lock-walkoff chain. Re-measured per INSTANCE 2026-08-24 (the new
 `AXIS INST` line, from `_inst_hops_now`): **13 events in 360 reports (3.6% of polls)**,
