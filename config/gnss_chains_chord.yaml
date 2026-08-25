@@ -1030,6 +1030,16 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
 http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
 http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
     combiner: gnss0_e5a_n2combine
+    # #90 ARM (2026-08-24 ~23:3x UTC, THIS CHAIN ONLY -- gal_e5b left off as the same-sat
+    # in-time control while E32 is latched on BOTH bands): the #50 far-regime re-seed plus
+    # the absent-admission clause. E32's latch anatomy and the pre-registered falsifier are
+    # in fixtures/expectations_20260824_e32_readmission.txt. Disarm = comment these two out.
+    # reseed-spec-tau: "32"   # DISARMED 00:2x 08-25: F2 tripped (sign-alternating fires)
+    # reseed-admit-absent: 1
+    # GAP-1 v1 SHADOW ARM (2026-08-25 00:23 UTC): 16 s baseline for the fine phase
+    # observable. This chain's rrate-phase-feed is FALSE, so only the JRRP shadow changes;
+    # e5b (per-poll) is the control. Pre-reg: expectations_20260825_gap1_spanv1.txt.
+    rrate-phase-span-s: 16
     spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5a_n2assemble,\
 http://cx27:12048/gnss{0..1}_e5a_n2assemble,http://cx42:12048/gnss{0..1}_e5a_n2assemble,\
 http://cx43:12048/gnss{0..1}_e5a_n2assemble,http://cx44:12048/gnss{0..1}_e5a_n2assemble,\
@@ -1925,6 +1935,14 @@ http://cx43:12048/gnss{0..1}_e5b_inject,\
 http://cx44:12048/gnss{0..1}_e5b_inject,\
 http://cx51:12048/gnss{0..1}_e5b_inject"
     combiner: gnss0_e5b_n2combine
+    # #90 ARM re-fly (2026-08-25 ~00:2x UTC): the e5a arm never fired -- the 23:55 restart's
+    # fresh solve healed e5a's E32 at birth (mechanism UNJUDGED), and the first flight found
+    # the admission clause sitting BELOW the loop's own `if not present: continue` (dead code
+    # for its target -- fixed by hoisting, digests 4/4 EQUIVALENT). E32 is still latched on
+    # THIS chain with qualifying same-sign fits, so the arm moves here; e5a (recovered,
+    # q>2.6) is the healthy-side control: its arm stays and must NOT fire.
+    # reseed-spec-tau: "32"   # DISARMED 00:2x 08-25: F2 tripped -- see expectations file
+    # reseed-admit-absent: 1
     spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,\
 http://cx27:12048/gnss{0..1}_e5b_n2assemble,\
 http://cx42:12048/gnss{0..1}_e5b_n2assemble,\

@@ -710,13 +710,9 @@ _FROZEN = dict(
     reseed_q_max=1.2,
 
     # --reseed-spec-tau
-    #   task #50: PRNs allowed a FAR-REGIME RE-SEED from spec_tau (the cross-channel phase-ramp
-    #   delay fit, #32). Comma-separated PRNs or 'all'. DEFAULT OFF. Fires only where the
-    #   discriminator cannot help: the #49 deep gate says present, q < --reseed-q-max (E/P/L
-    #   carry no gradient), and spec_peak_ratio clears --reseed-min-ratio. Applied as a SEED
-    #   step, not a trim increment -- the slew cap would swallow a trim. Requires
-    #   --dll-deep-gate on the same PRN to be useful.
-    reseed_spec_tau='',
+    # (--reseed-spec-tau UNFROZEN 2026-08-24 for #90 -- the E32 off-peak disarm latch needed
+    #  it armed per-chain, which is exactly the "alongside the A/B that needs it" clause
+    #  above. It is a real flag again; see the argparse entry next to --dll-deep-gate.)
 
     # --rf-stats-poll-s
     #   Seconds between RF-health polls (default 30). The node refreshes every ~10 s, so a
@@ -1567,14 +1563,32 @@ def main(argv=None, rx=None, publisher=None):
                          "res_cycles rate onto the deep_rate_full_hz convention. 0 = "
                          "uncalibrated: the JRRP shadow comparison still logs, the fine "
                          "feed stays off regardless of --rrate-phase-feed.")
+    ap.add_argument("--rrate-phase-span-s", type=float, default=0.0,
+                    help="GAP-1 long baseline (2026-08-25): difference res_cycles against "
+                         "the newest snapshot at least this many seconds old, instead of "
+                         "last poll's. 0 = per-poll (legacy). MEASURED (gap1_tau_scaling.py "
+                         "08-24, two instances): per-sat sigma_rate 1.12 Hz at 2 s -> 0.31 "
+                         "at 16 s -> 0.18 at 32 s, converging 1/tau -- the error "
+                         "telescopes, so the long difference realizes what per-poll "
+                         "feeding cannot (the filter cannot know consecutive fine values "
+                         "share endpoints, so N per-poll feeds buy only 1/sqrt(N); this "
+                         "buys 1/span from the same data). The span-mean lags a drifting "
+                         "rate by span/2; that staleness is priced into sigma (drift class "
+                         "0.02 Hz/s), NOT into the measurement epoch -- the filter only "
+                         "predicts forward. 16-32 is the measured sweet spot (~0.35 Hz "
+                         "effective vs the 0.5 quietness bar); 60+ hands the gain back to "
+                         "staleness. Applies to the SHADOW (JRRP) and, where "
+                         "--rrate-phase-feed is armed, the feed -- same computed value.")
     ap.add_argument("--rrate-phase-sigma", type=float, default=0.05,
                     help="base measurement sigma (Hz) for the fine phase-step feed at the "
                          "1-poll span. NOT 0.02: res_cycles TELESCOPES (consecutive dres "
                          "share a record), so the span noise is sqrt(2)*sigma_phi/2pi "
                          "~ 0.07 cycles regardless of span length -- ~35-50 mHz over a "
-                         "2 s poll. (Long baselines are not the fix: the plant's rate "
-                         "itself drifts ~0.02 Hz/s, so a 60 s average lags the current "
-                         "rate by ~0.6 Hz. The mHz class needs a rate-of-rate state.) "
+                         "2 s poll. (The 08-21 'long baselines are not the fix' note is "
+                         "SUPERSEDED by measurement: at 16-32 s the staleness term is "
+                         "0.16-0.32 Hz against a 3-6x noise win -- see "
+                         "--rrate-phase-span-s. The mHz class still needs the rate-of-"
+                         "rate state carrying the lag.) "
                          "The feed inflates this by the command's motion over the span: "
                          "sigma_eff = sqrt(sigma^2 + (0.5*dcmd)^2), the worst-case "
                          "span-mean reference error for an unknown application time.")
@@ -1991,6 +2005,29 @@ def main(argv=None, rx=None, publisher=None):
                          "MAD-sigma over the live q population (most tracked PRNs are "
                          "signal-free at any moment, so the median IS the no-peak value), and "
                          "logged every time it is used.")
+    ap.add_argument("--reseed-spec-tau", default="",
+                    help="task #50: PRNs allowed a FAR-REGIME RE-SEED from spec_tau (the "
+                         "cross-channel phase-ramp delay fit, #32). Comma-separated PRNs or "
+                         "'all'. DEFAULT OFF. Fires only where the discriminator cannot help: "
+                         "the #49 deep gate says present, q < reseed_q_max (E/P/L carry no "
+                         "gradient), and spec_peak_ratio clears reseed_min_ratio. Applied as a "
+                         "SEED step, not a trim increment -- the slew cap would swallow a "
+                         "trim. (Was FROZEN off by #89; unfrozen 2026-08-24 for #90's arm. "
+                         "The gain/cap/ratio/q-max constants stay frozen.)")
+    ap.add_argument("--reseed-admit-absent", type=int, default=0,
+                    help="task #90: let the #50 re-seed fire on a PRN the presence gate calls "
+                         "ABSENT, provided it is still SEEDED (the model says it is up) and "
+                         "TWO consecutive qualifying spec fits within 600 s agree on the SIGN "
+                         "of tau. DEFAULT OFF. THE HOLE THIS CLOSES (E32, 2026-08-24 22:17): "
+                         "off-peak -> q floored -> presence lost -> fleet-trim disarmed -> "
+                         "trim released -> LATCHED, while SPEC-FIT measured a significant "
+                         "peak at tau -0.5 every minute. On gps_l5 the narrowed search "
+                         "re-admits (#79); the dead-reckon chains have NO search, so absent "
+                         "was absorbing forever. The two-strike same-sign gate is the noise "
+                         "guard the presence gate used to provide: on a truly faded sat the "
+                         "fit is noise and tau's sign is a coin flip, so consecutive "
+                         "agreement halves the false-fire rate per strike and a random walk "
+                         "cannot build.")
     ap.add_argument("--dll-deep-gate", default="",
                     help="fleet DLL (task #49): PRNs whose trim PRESENCE is gated on "
                          "deep_snr >= margin x deep_floor instead of on summed prompt power. "
@@ -2868,6 +2905,12 @@ def main(argv=None, rx=None, publisher=None):
         _reseed_prns = {int(x) for x in _rs.replace(",", " ").split()}
     else:
         _reseed_prns = None
+    # #90: PRN -> (tau, wall time) of the pending admission strike (a qualifying spec fit
+    # seen while the presence gate said absent). The clause fires on a CONSISTENT
+    # (|dtau| <= 0.5 chips) qualifying fit 60-600 s later; see the flight-2 guards at the
+    # gate. _reseed_admit_cool is the per-PRN post-fire cooldown stamp.
+    _reseed_admit_pend = {}
+    _reseed_admit_cool = {}
     if _reseed_prns:
         _log("SPEC-TAU RE-SEED (#50) active on %s: q<%.2f, spec_peak_ratio>=%.2f, gain %.2f, "
              "cap %.2f chips, span +-%.1f. Fires only where the discriminator has NO GRADIENT "
@@ -3570,6 +3613,9 @@ def main(argv=None, rx=None, publisher=None):
     rr_full_ok = False   # this poll's feed ran on the UNCAPPED fields -- the command requires
                          # it (a capped measurement past +-5 Hz is noise; feeding a loop with
                          # it is what walked arm 1)
+    adr_ring = {}        # prn -> [((arc, records, res_cycles, trim), cmd, t), ...] -- the
+                         # long-span baseline ring (--rrate-phase-span-s); oldest first,
+                         # pruned to 2x span. Empty/unused when the flag is 0.
     adr_prev = {}        # prn -> ((arc, records, res_cycles), cmd_then) at the last poll --
                          # the PLL fine observable differences THESE (#33 phase-step feed)
     rr_kcoh_t = {}       # prn -> t of the last ACCEPTED kcoh rate feed (#83 P3 step 1);
@@ -8644,6 +8690,133 @@ def main(argv=None, rx=None, publisher=None):
             for prn in list(seeds):
                 rec = status.get(prn, {})
                 fl = fleet.get(prn)
+                # #90 (2026-08-25): the re-seed is evaluated BEFORE the presence/rate/hop
+                # gates below -- those `continue`s exist to stop the TRIM integrating on a
+                # bad basis, and they used to skip the re-seed with it, which re-created
+                # #79's one-way door: the absent-admission clause was unreachable for the
+                # exact PRNs it exists for (measured on E32, 00:06-00:11 UTC: five
+                # consecutive qualifying fits, zero strikes logged). A policy decision
+                # about an off-peak satellite must not sit behind an on-peak gate.
+                if fl is not None:
+                    # ---- FAR-REGIME RE-SEED (task #50) ------------------------------------------
+                    # WHEN THE DISCRIMINATOR HAS NO GRADIENT, THE TRIM CANNOT HELP. Far off the
+                    # peak E, P and L are all noise, so q -> 1.0 and disc -> 0: #49's deep gate
+                    # admits the satellite to this loop but there is nothing for the loop to
+                    # follow. Measured immediately on deploying #49 (E33 on gal_e5a: q 0.96-1.04,
+                    # disc -0.02..-0.07, trim ~0, while deep_snr was 23-36).
+                    #
+                    # spec_tau measures the offset a different way -- the phase ramp ACROSS
+                    # CHANNELS (task #32) -- so it does not need E/P/L to straddle the peak, which
+                    # is exactly the regime that kills the discriminator.
+                    #
+                    # VALIDATED BEFORE BEING WIRED IN (2026-08-12): sign predicted A PRIORI from
+                    # the physics (disc<0 => L>E => peak later => tau>0, so anti-correlated) and
+                    # confirmed on the shoulder where disc is trustworthy, r -0.47..-0.62 over 222
+                    # samples, slope -0.67 chips per unit disc. In the far regime, judged against
+                    # cn0_inc (the prompt-based witness, disc never used) WITHIN satellite so the
+                    # off-peak/faint confound is removed: r -0.230 all, -0.375 strong fits. The
+                    # direction is established; THE SIZE IS NOT, which is why this steps by a
+                    # fraction and re-measures rather than jumping to the fitted value.
+                    #
+                    # ⚠️ A SEED STEP, NOT A TRIM INCREMENT. The slew cap (0.05 chips/event, already
+                    # railing 67-100% of the time) would swallow this whole if it went through the
+                    # trim -- see chord-slew-cap-saturation.
+                    #
+                    # spec_peak_ratio IS a shuffled-null significance (fit_spectrum_delay builds
+                    # the null from the same points, values reassigned within each instance), so
+                    # >= the bar means the fold beat its own null -- not a tuned constant.
+                    _rs = None
+                    _rs_qual = (_reseed_prns and fl is not None
+                                and (_reseed_prns is True or prn in _reseed_prns)
+                                and fl.get("q", 9.9) < args.reseed_q_max  # taps carry no gradient
+                                and (fl.get("spec_ratio") or 0.0) >= args.reseed_min_ratio
+                                and fl.get("spec_tau") is not None)
+                    # #90 ADMISSION CLAUSE: `present` is the #49 deep gate, and on the searchless
+                    # chains it is a one-way door -- off-peak kills presence, and with no search
+                    # to re-admit (#79 is gps_l5-only) the PRN can never earn its correction
+                    # back. A SEEDED absent PRN (the model says it is up; drop-on-set already
+                    # pruned the ones that are not) may fire the re-seed anyway, but only on the
+                    # SECOND consecutive qualifying fit that agrees on tau's SIGN: presence was
+                    # the noise guard, and on noise the sign is a coin flip, so same-sign
+                    # agreement is the replacement guard. One strike is recorded per qualifying
+                    # ABSENT fit; presence or a sign change resets the count.
+                    _rs_admit = False
+                    if _rs_qual and not fl.get("present"):
+                        # FLIGHT-2 GUARDS (F2 tripped 2026-08-25 00:16: fires alternated
+                        # sign chasing a swinging fit; ratios up to 3.2 attached to
+                        # contradictory taus seconds apart, so ratio-at-poll-cadence is not
+                        # significance in the latched regime). A fire now needs two strikes
+                        # that are DECORRELATED (>=60 s apart -- different fold windows) and
+                        # CONSISTENT (|dtau| <= 0.5 chips -- a real offset repeats its
+                        # value; noise and span-edge sidelobes do not), outside a 180 s
+                        # post-fire cooldown. Strike memory survives non-qualifying cycles
+                        # (the flight-2 harness bug cleared it on every ratio dip); it is
+                        # cleared only by an INCONSISTENT qualifying fit (which replaces
+                        # it), expiry, presence, or a fire.
+                        if args.reseed_admit_absent and prn in seeds:
+                            _now_w = time.time()
+                            _tau_now = float(fl["spec_tau"])
+                            if _now_w - _reseed_admit_cool.get(prn, 0.0) >= 180.0:
+                                _pv = _reseed_admit_pend.get(prn)
+                                if (_pv and abs(_tau_now - _pv[0]) <= 0.5
+                                        and _now_w - _pv[1] < 600.0):
+                                    if _now_w - _pv[1] >= 60.0:
+                                        _rs_admit = True
+                                        _reseed_admit_pend.pop(prn, None)
+                                        _reseed_admit_cool[prn] = _now_w
+                                    # consistent but too fresh: HOLD the pending strike
+                                    # unchanged -- the 60 s clock keeps running.
+                                elif _pv is None or abs(_tau_now - (_pv[0] if _pv else 0.0)) > 0.5 \
+                                        or _now_w - _pv[1] >= 600.0:
+                                    _reseed_admit_pend[prn] = (_tau_now, _now_w)
+                                    _log_rl("rs-admit-%d" % prn,
+                                            "RESEED-ADMIT PRN %d: strike 1 (tau %+.3f, "
+                                            "pk/fl %.2f, absent) -- fires on a consistent "
+                                            "(|dtau|<=0.5) qualifying fit 60-600 s from now"
+                                            % (prn, _tau_now, fl.get("spec_ratio") or 0.0),
+                                            every_s=60.0)
+                    elif fl.get("present"):
+                        _reseed_admit_pend.pop(prn, None)
+                    if _rs_qual and (fl.get("present") or _rs_admit):
+                        _t = float(fl["spec_tau"])
+                        # SPAN EDGE IS A SATURATION, NOT A MEASUREMENT. fit_spectrum_delay scans
+                        # +-span_chips (default 2.0); a fit sitting at the edge means the true
+                        # offset is unrepresentable, so the value carries no information about how
+                        # far to go. Refuse it rather than stepping by a rail.
+                        _edge = args.spec_span_chips * 0.95
+                        if abs(_t) >= _edge:
+                            _rs = "at span edge %+.2f -- refused" % _t
+                        else:
+                            # +tau = the sky arrives LATER than the replica, so the code phase must
+                            # INCREASE to meet it. Fractional step: the direction is validated, the
+                            # magnitude is not, so converge over a few opportunities (a strong fit
+                            # arrives ~every 5 min against 25-45 min excursions) instead of betting
+                            # the whole correction on one unproven number.
+                            _step = max(-args.reseed_max_chips,
+                                        min(args.reseed_max_chips, args.reseed_gain * _t))
+                            seeds[prn].put(
+                                "reseed", epoch=seeds[prn].get("ref_hop"),
+                                code_phase_chips=(seeds[prn].get("code_phase_chips", 0.0)
+                                                  + _step) % args.code_length)
+                            # The at-ref phase is a DERIVED leg of the same triple; leaving it
+                            # stale would ship a seed whose two phases disagree, which is the
+                            # transport disease of #45 in miniature. Drop it and let the normal
+                            # path rebuild it from the value we just moved.
+                            seeds[prn].pop("code_phase_at_ref_chips", None)
+                            # #90: the admission is seed step + ARMING WINDOW, not seed step
+                            # alone. On the dead-reckon chains the slew returns the seed to the
+                            # model at the cap rate (~7 s for this step), so the DURABLE per-sat
+                            # actuator is the C++ trim -- which only pulls while armed, and
+                            # arming rides the presence hold this stamp opens. The spectrum
+                            # admitted the PRN; give the trim loop the same 90 s the presence
+                            # path would have given it.
+                            if _rs_admit and args.fleet_trim_url:
+                                _ft_hold[prn] = time.time()
+                            _rs = ("tau %+.3f pk/fl %.2f q %.2f -> seed %+.3f chips%s"
+                                   % (_t, fl.get("spec_ratio") or 0.0, fl.get("q", 0.0), _step,
+                                      " [#90 ADMIT: absent, 2-strike]" if _rs_admit else ""))
+                    if _rs:
+                        _log("RESEED PRN %d: %s" % (prn, _rs))
                 if fl is not None:
                     # THE FLEET PATH. Gate on the summed q against a floor MEASURED from this
                     # cycle's own q population, not against a constant and not against the
@@ -8703,69 +8876,8 @@ def main(argv=None, rx=None, publisher=None):
                 # correction below the errors we actually have. The single-combiner fallback
                 # keeps the original leak: it has no such gate, and that is where the runaway
                 # happened.
-                # ---- FAR-REGIME RE-SEED (task #50) ------------------------------------------
-                # WHEN THE DISCRIMINATOR HAS NO GRADIENT, THE TRIM CANNOT HELP. Far off the
-                # peak E, P and L are all noise, so q -> 1.0 and disc -> 0: #49's deep gate
-                # admits the satellite to this loop but there is nothing for the loop to
-                # follow. Measured immediately on deploying #49 (E33 on gal_e5a: q 0.96-1.04,
-                # disc -0.02..-0.07, trim ~0, while deep_snr was 23-36).
-                #
-                # spec_tau measures the offset a different way -- the phase ramp ACROSS
-                # CHANNELS (task #32) -- so it does not need E/P/L to straddle the peak, which
-                # is exactly the regime that kills the discriminator.
-                #
-                # VALIDATED BEFORE BEING WIRED IN (2026-08-12): sign predicted A PRIORI from
-                # the physics (disc<0 => L>E => peak later => tau>0, so anti-correlated) and
-                # confirmed on the shoulder where disc is trustworthy, r -0.47..-0.62 over 222
-                # samples, slope -0.67 chips per unit disc. In the far regime, judged against
-                # cn0_inc (the prompt-based witness, disc never used) WITHIN satellite so the
-                # off-peak/faint confound is removed: r -0.230 all, -0.375 strong fits. The
-                # direction is established; THE SIZE IS NOT, which is why this steps by a
-                # fraction and re-measures rather than jumping to the fitted value.
-                #
-                # ⚠️ A SEED STEP, NOT A TRIM INCREMENT. The slew cap (0.05 chips/event, already
-                # railing 67-100% of the time) would swallow this whole if it went through the
-                # trim -- see chord-slew-cap-saturation.
-                #
-                # spec_peak_ratio IS a shuffled-null significance (fit_spectrum_delay builds
-                # the null from the same points, values reassigned within each instance), so
-                # >= the bar means the fold beat its own null -- not a tuned constant.
-                _rs = None
-                if (_reseed_prns and fl is not None
-                        and (_reseed_prns is True or prn in _reseed_prns)
-                        and fl.get("present")                      # #49 deep gate said so
-                        and fl.get("q", 9.9) < args.reseed_q_max   # taps carry no gradient
-                        and (fl.get("spec_ratio") or 0.0) >= args.reseed_min_ratio
-                        and fl.get("spec_tau") is not None):
-                    _t = float(fl["spec_tau"])
-                    # SPAN EDGE IS A SATURATION, NOT A MEASUREMENT. fit_spectrum_delay scans
-                    # +-span_chips (default 2.0); a fit sitting at the edge means the true
-                    # offset is unrepresentable, so the value carries no information about how
-                    # far to go. Refuse it rather than stepping by a rail.
-                    _edge = args.spec_span_chips * 0.95
-                    if abs(_t) >= _edge:
-                        _rs = "at span edge %+.2f -- refused" % _t
-                    else:
-                        # +tau = the sky arrives LATER than the replica, so the code phase must
-                        # INCREASE to meet it. Fractional step: the direction is validated, the
-                        # magnitude is not, so converge over a few opportunities (a strong fit
-                        # arrives ~every 5 min against 25-45 min excursions) instead of betting
-                        # the whole correction on one unproven number.
-                        _step = max(-args.reseed_max_chips,
-                                    min(args.reseed_max_chips, args.reseed_gain * _t))
-                        seeds[prn].put(
-                            "reseed", epoch=seeds[prn].get("ref_hop"),
-                            code_phase_chips=(seeds[prn].get("code_phase_chips", 0.0)
-                                              + _step) % args.code_length)
-                        # The at-ref phase is a DERIVED leg of the same triple; leaving it
-                        # stale would ship a seed whose two phases disagree, which is the
-                        # transport disease of #45 in miniature. Drop it and let the normal
-                        # path rebuild it from the value we just moved.
-                        seeds[prn].pop("code_phase_at_ref_chips", None)
-                        _rs = ("tau %+.3f pk/fl %.2f q %.2f -> seed %+.3f chips"
-                               % (_t, fl.get("spec_ratio") or 0.0, fl.get("q", 0.0), _step))
-                if _rs:
-                    _log("RESEED PRN %d: %s" % (prn, _rs))
+                # (FAR-REGIME RE-SEED moved above the presence/rate/hop gates
+                #  2026-08-25 -- see the #90 note at its new site.)
 
                 leak = args.dll_leak_present if fl is not None else args.dll_leak
                 # ONE EXPRESSION, ONE PLACE (2026-08-15). `tau` above and this recurrence used
@@ -9305,8 +9417,30 @@ def main(argv=None, rx=None, publisher=None):
                 for _p, _rec in (status or {}).items():
                     if not isinstance(_rec, dict):
                         continue
-                    _pv = adr_prev.get(_p)
                     _cmd_now = rr_cmd_applied.get(_p, 0.0)
+                    # GAP-1 LONG SPAN (2026-08-25): with --rrate-phase-span-s set, the
+                    # difference baseline is the newest ring snapshot AT LEAST span_s old,
+                    # not last poll's. res_cycles' error TELESCOPES (measured 08-24,
+                    # fixtures/gap1_tau_scaling.py: per-sat sigma_rate 1.12 Hz at 2 s ->
+                    # 0.31 at 16 s -> 0.18 at 32 s, converging 1/tau on both instances
+                    # checked), so a longer baseline buys noise down linearly while the
+                    # staleness cost is only drift*(span/2) ~ 0.02 Hz/s * span/2 -- the
+                    # 16-32 s window nets ~0.35 Hz effective, under the 0.5 Hz quietness
+                    # bar that parked arms 16b/17. All of adr_fine_rate's structural gates
+                    # (same accumulator arc, counter advanced, span-vs-wall) apply
+                    # unchanged; a ring entry that predates an arc break is rejected by
+                    # the arc gate exactly like a last-poll one.
+                    _ring = adr_ring.setdefault(_p, [])
+                    if args.rrate_phase_span_s > 0.0:
+                        while _ring and (t0 - _ring[0][2]) > 2.0 * args.rrate_phase_span_s:
+                            _ring.pop(0)
+                        _pv = None
+                        for _e in reversed(_ring):
+                            if (t0 - _e[2]) >= args.rrate_phase_span_s:
+                                _pv = _e
+                                break
+                    else:
+                        _pv = adr_prev.get(_p)
                     if _pv is not None:
                         _snap = {"adr_arc": _pv[0][0], "adr_records": _pv[0][1],
                                  "res_cycles": _pv[0][2]}
@@ -9367,6 +9501,18 @@ def main(argv=None, rx=None, publisher=None):
                                         _cmd_mid = 0.5 * (_cmd_now + _pv[1])
                                         _sig_f = (args.rrate_phase_sigma ** 2
                                                   + (0.5 * _dcmd) ** 2) ** 0.5
+                                    if args.rrate_phase_span_s > 0.0:
+                                        # sigma is defined AT THE 1-POLL SPAN and the
+                                        # noise telescopes (1/span, measured); the
+                                        # staleness term prices the span-mean lagging a
+                                        # ~0.02 Hz/s drifting rate by span/2. The
+                                        # measurement is timestamped at t_now (the filter
+                                        # predicts forward only), so the lag lives HERE,
+                                        # in the weight, not in the epoch.
+                                        _span_s = _nrec * _rec_dt
+                                        _sig_f = ((_sig_f * args.interval
+                                                   / max(_span_s, args.interval)) ** 2
+                                                  + (0.02 * 0.5 * _span_s) ** 2) ** 0.5
                                     if _jrf.update_rrate(
                                             _k, _yf + _cmd_mid, t_now_abs, args.carrier_hz,
                                             sigma_hz=_sig_f) is not None:
@@ -9378,16 +9524,21 @@ def main(argv=None, rx=None, publisher=None):
                     adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
                                      _rec.get("res_cycles"), _rec.get("trim_cycles")),
                                     _cmd_now, t0)
+                    if args.rrate_phase_span_s > 0.0:
+                        _ring.append(adr_prev[_p])
                 # A sat that has left the seed set is RE-ACQUIRING when it returns, which
                 # is the coarse feed's job -- drop its fine lock rather than let a stale
                 # one de-weight the very measurements that must pull it back in.
                 for _dead in [k for k in rr_fine_t if k not in seeds]:
                     rr_fine_t.pop(_dead, None)
                     adr_prev.pop(_dead, None)
+                    adr_ring.pop(_dead, None)
                 if _jpp:
                     _log_rl("jrrp",
-                            "JRRP[%s] fine|coarse Hz (fine in INTERNAL sign): %s%s"
+                            "JRRP[%s%s] fine|coarse Hz (fine in INTERNAL sign): %s%s"
                             % (args.dr_constellation,
+                               (" span %.0fs" % args.rrate_phase_span_s)
+                               if args.rrate_phase_span_s > 0.0 else "",
                                " ".join("%d:%+.3f|%+.3f" % t for t in _jpp),
                                (" -- %d fine-fed" % _n_fine) if _n_fine else ""),
                             every_s=60.0)
