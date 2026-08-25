@@ -1965,6 +1965,18 @@ http://cx51:12048/gnss{0..1}_e5b_inject"
     # q>2.6) is the healthy-side control: its arm stays and must NOT fire.
     # reseed-spec-tau: "32"   # DISARMED 00:2x 08-25: F2 tripped -- see expectations file
     # reseed-admit-absent: 1
+    # ── #90 v2 FLIGHT 3 (2026-08-25 21:5x): ARMED ON THIS CHAIN ONLY, e5a = control ─────
+    # The v2 guards fly for the first time (two DECORRELATED strikes >=60 s apart,
+    # |dtau| <= 0.5 value consistency, 180 s cooldown, flicker-proof strike memory --
+    # written after flight 2's F2: sign-alternating fires, ratio-at-poll-cadence is not
+    # significance in the latched regime). "all" not "32": the latch is generic (today
+    # E4 sat ABSENT here 85 min, 19:10-20:35 UTC, with per-minute qualifying fits) and
+    # a one-PRN arm misses the next episode. The #50 gates + v2 double-strike bound the
+    # surface. Pre-reg: expectations_20260825_90_v2_flight3.txt (P2 = absence-to-
+    # readmission < 15 min vs the 85-min baseline, paired vs e5a; F3 = any fire on a
+    # sat present within 300 s).
+    reseed-spec-tau: "all"
+    reseed-admit-absent: 1
     spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,\
 http://cx27:12048/gnss{0..1}_e5b_n2assemble,\
 http://cx42:12048/gnss{0..1}_e5b_n2assemble,\
