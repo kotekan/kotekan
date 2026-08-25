@@ -245,15 +245,23 @@ def adr_fine_rate(rec, prev, rec_dt, wall_dt=None):
     GATES, all structural: same arc (a break means unobserved whole cycles -- no
     measurement); the record counter advanced (a frozen combiner must read as absent,
     never as 0 Hz); both endpoints present; and, when the caller supplies wall_dt, the
-    record-implied span must agree with the wall-clock span. THAT LAST GATE IS THE
-    SERVING-LAYER CHURN DISCRIMINATOR (found 2026-08-14 with the honest trim_cycles as
-    in-band truth): the published row is best-of-instance and the winning instance churns
-    poll to poll; instances' arcs began minutes apart, so a cross-instance difference
-    passes the arc gate (every instance says arc 1) and n1 > n0 half the time, with a
-    span wrong by up to 12x. Measured on a held +5.00 Hz trim: same-instance pairs read
-    5.0000 exactly, cross-instance pairs read 0.23-16.7 Hz. Both halves of this
-    observable (res_cycles AND trim_cycles) ride the same row, so a span/wall mismatch
-    invalidates the whole difference, not just the applied reference. Returns
+    record-implied span must agree with the wall-clock span.
+
+    THE ACCUMULATOR-IDENTITY RULE (wall_dt's real job, restated 2026-08-24): res_cycles
+    and trim_cycles are accumulators private to ONE combiner process, each with its own
+    arbitrary arc zero -- so a difference is only defined between two snapshots of the
+    SAME accumulator. Never difference across accumulators; when the observable must
+    combine instances, self-difference each accumulator and FUSE the resulting rates
+    (they measure one physical quantity; the fusion weight is each accumulator's own
+    noise). That rule is instance-count-agnostic: it holds unchanged when an instance
+    carries 16 subbands or one. The wall_dt gate is the tripwire for a changed
+    accumulator identity slipping between snapshots (a restart, a re-config, or --
+    historically -- a serving path that picked best-of-instance per poll and so churned
+    the identity; measured 2026-08-14 on a held +5.00 Hz trim: same-accumulator pairs
+    read 5.0000 exactly, cross-accumulator pairs 0.23-16.7 Hz. The current status path
+    polls one configured combiner, so churn is gone, but the gate stays -- it is what
+    makes the pairing an invariant rather than a deployment accident). A span/wall
+    mismatch invalidates the whole difference, not just the applied reference. Returns
     (rate_cycles_per_s, n_records, applied_hz) in the
     combiner's INTERNAL (r2c-flipped) sign convention -- the caller applies the calibrated
     sign, which is measured on sky against deep_rate_full_hz, never assumed.
