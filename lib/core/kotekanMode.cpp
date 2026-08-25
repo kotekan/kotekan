@@ -455,11 +455,11 @@ void kotekanMode::buffer_frame_callback(connectionInstance& conn) {
         return;
     }
 
-    // Optional `len` query parameter; `len=0` requests metadata only. The copy
-    // runs under the buffer lock, so the default is bounded: a frame here is
-    // routinely hundreds of megabytes, and copying one whole would hold up every
-    // producer and consumer on the buffer for the length of the memcpy. A caller
-    // that wants more says so.
+    // Optional `len` query parameter; `len=0` requests metadata only. The reply
+    // is assembled whole in memory on the REST server's single thread, so the
+    // default is bounded: a frame here is routinely hundreds of megabytes, and
+    // copying one whole would block every other endpoint until it has been sent.
+    // A caller that wants more says so.
     size_t max_len = default_peek_len;
     auto len_arg = query.find("len");
     if (len_arg != query.end()) {

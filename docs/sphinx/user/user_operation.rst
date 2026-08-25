@@ -21,18 +21,23 @@ REST endpoints
 - ``/buffer_frame?name=<buffer>`` (GET) – copy of the newest full frame in ``<buffer>`` as
   JSON: base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``&len=N``
   sets how many data bytes come back (64 KiB without it; ``len=0`` for metadata only).
-  The copy is made with the buffer locked, which blocks every stage on that buffer for as
-  long as it takes, so ``len`` is what keeps this cheap: the 64 KiB default costs a few
-  microseconds, while one whole-frame request on a CHORD voltage buffer copies several
-  hundred MiB and holds the lock for roughly a frame period — long enough on its own to
-  cost the pipeline a frame, before any question of repeating it. The lock is not the only
-  cost: the reply is assembled whole in memory (about five times ``len``, once the base64
-  and the JSON are counted) on the REST server's single thread, so a large request also
-  holds that much memory and blocks every other endpoint — ``/status``, the Prometheus
-  scrape — until it has been sent. Ask for what you need to look at, and keep ``len``
-  small on the voltage and network-input buffers. If consumers recycle frames faster than
-  a peek can catch them, set ``peek_hold: true`` on the buffer's config block (see the
-  configuration docs). Frame buffers only; ring buffers are not peekable yet.
+  The copy holds only the frame it is reading — that frame stays full until the copy is
+  done — so the rest of the buffer runs on. The frame copied is the newest full one,
+  which is the last one the producing stage comes back to, so the hold is only felt if
+  the copy outlasts a lap of the ring: a whole-frame ``len`` on a shallow buffer can
+  still cost that stage a frame. Most producers wait that out; network receivers and
+  other producers that shed load on a full ring drop the data instead — for them the
+  cost is data lost, not delayed. ``len`` is what keeps this cheap:
+  the reply is assembled whole in memory (about five times ``len``, once the base64 and
+  the JSON are counted) on the REST server's single thread, so a large request holds that
+  much memory and blocks every other endpoint — ``/status``, the Prometheus scrape — until
+  it has been sent. Ask for what you need to look at, and keep ``len`` small on the
+  voltage and network-input buffers. The copy is best effort, for monitoring rather than
+  analysis: a frame being zeroed, or handed on by a stage that swaps frames between
+  buffers, can come back part way through the write, so peek again rather than reading
+  anything into one odd-looking frame. If consumers recycle frames faster than a peek can
+  catch them, set ``peek_hold: true`` on the buffer's config block (see the configuration
+  docs). Frame buffers only; ring buffers are not peekable yet.
 - Per-stage endpoints live under the stage ``unique_name`` (e.g., ``/<stage>/control``).
 
 Example:
