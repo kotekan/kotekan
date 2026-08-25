@@ -3505,6 +3505,15 @@ def main(argv=None, rx=None, publisher=None):
     # GAP 3 SHADOW (#33): per-sat standing-trim history for the measured RAMP RATE,
     # prn -> [(t, trim_chips), ...], window-reset on steps/release (see the shadow block).
     _g3_hist = {}
+    # #93 SHADOW v2: the direct per-sat ADR span rate (carrier frame, Hz), captured on
+    # the span-shadow path each poll: prn -> (y_phi_hz, t, n_rec). The rrate ROW stays
+    # logged beside it -- the 08-25 F1 said the row is ~97% carrier-only; v2 measures
+    # whether the RAW ADR observable does better against the trim ramp.
+    _adr_span_now = {}
+    # #92 posted handover deltas, CUMULATIVE per sat: the gather applies them to the
+    # standing trim, so the shadow's ramp series must subtract them or small (<0.3 chip)
+    # adjustments contaminate slopes silently (the #93 step-0 trap).
+    _g3_adjcum = {}
     # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
     # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
     # cycle is about to compute. The Python integrator stands down per-PRN against this, so
@@ -7858,6 +7867,11 @@ def main(argv=None, rx=None, publisher=None):
                                             _log("REBASE-ADJUST PRN %d: trim %+.3f "
                                                  "posted to the gather (HTTP %s)"
                                                  % (prn, -_bstep, _rep92))
+                                            # #93: the shadow's ramp series subtracts
+                                            # the cumulative posted deltas, so the
+                                            # handover never masquerades as drift.
+                                            _g3_adjcum[prn] = (_g3_adjcum.get(prn, 0.0)
+                                                               - _bstep)
                                         except Exception as _e92:
                                             # NEVER take seeding down for the
                                             # handover; a missed adjustment is one
@@ -9538,6 +9552,22 @@ def main(argv=None, rx=None, publisher=None):
                             _co = _rr2_resid.get(_p) if _rr2_resid else None
                             if _co is not None:
                                 _jpp.append((_p, _fy, _co))
+                            # ── #93 SHADOW v2 CAPTURE (read-only) ──────────────────
+                            # The sat's total carrier residual rate vs the seeded
+                            # model, reference-corrected EXACTLY as the feed would
+                            # (measured applied command when served and plausible,
+                            # else the posted-command span-mean) -- but on the shadow
+                            # path, so the unfed chain (e5a) measures it too. Sign
+                            # falls back to +1 where uncalibrated; the fold-safety
+                            # bound is the same 20 Hz as the feed.
+                            _sg93 = args.rrate_phase_sign or 1.0
+                            if abs(_sg93 * _fy) < 20.0:
+                                _ap93 = (_applied
+                                         if (_applied is not None
+                                             and abs(_applied) <= 50.0) else None)
+                                _cm93 = ((_sg93 * _ap93) if _ap93 is not None
+                                         else 0.5 * (_cmd_now + _pv[1]))
+                                _adr_span_now[_p] = (_sg93 * _fy + _cm93, t0, _nrec)
                             # COMMAND MOTION over the span enters the REFERENCE, not a
                             # stillness gate (a strict gate starved the feed to ~1/min --
                             # the coarse loop nudges the command every poll). Span-mean
@@ -10562,9 +10592,14 @@ def main(argv=None, rx=None, publisher=None):
                             _g3_hist.pop(_p, None)
                             continue
                         _h = _g3_hist.setdefault(_p, [])
-                        if _h and abs(float(_r["trim_chips"]) - _h[-1][1]) > 0.3:
+                        # #93: subtract the cumulative #92 handover deltas -- the
+                        # gather applied them to the trim, so removing them makes the
+                        # series continuous across re-bases (longer windows) and keeps
+                        # sub-0.3-chip adjustments out of the slope.
+                        _tc = float(_r["trim_chips"]) - _g3_adjcum.get(_p, 0.0)
+                        if _h and abs(_tc - _h[-1][1]) > 0.3:
                             del _h[:]
-                        _h.append((_t_rb, float(_r["trim_chips"])))
+                        _h.append((_t_rb, _tc))
                         while _h and _t_rb - _h[0][0] > 600.0:
                             _h.pop(0)
                         _spn = _h[-1][0] - _h[0][0]
@@ -10582,19 +10617,29 @@ def main(argv=None, rx=None, publisher=None):
                             _k3 = (args.dr_constellation, int(_p))
                             if _jg.rrate_sigma(_k3) < 99.0:
                                 _prd = _jg.rrate(_k3) * args.chip_rate_hz / C_LIGHT
-                        _g3_rows.append((_p, _prd, _msl, _ym, _spn))
+                        # #93 v2: the DIRECT ADR span rate, converted carrier Hz ->
+                        # code chips/s (K = f_chip/f_carrier ~ 0.0087). Fresh within
+                        # 60 s or absent.
+                        _av = _adr_span_now.get(_p)
+                        _adr = ((_av[0] * args.chip_rate_hz / args.carrier_hz)
+                                if (_av is not None and _t_rb - _av[1] <= 60.0)
+                                else None)
+                        _g3_rows.append((_p, _prd, _adr, _msl, _ym, _spn))
                     for _p in [p for p in _g3_hist if p not in _ft_readback]:
                         _g3_hist.pop(_p, None)
                     if _g3_rows:
                         _log_rl("gap3-shadow",
-                                "GAP3-SHADOW %s (chips/s; pred=rrate*fchip/c, "
-                                "meas=trim slope @mean trim): %s"
+                                "GAP3-SHADOW %s (chips/s; p=row a=ADR-span "
+                                "m=trim slope @mean trim): %s"
                                 % (log_tag() or args.signal,
-                                   " ".join("%d:p%s/m%+.5f@%+.2f(%ds)"
+                                   " ".join("%d:p%s/a%s/m%+.5f@%+.2f(%ds)"
                                             % (_p, ("%+.5f" % _pr)
                                                if _pr is not None else "--",
+                                               ("%+.5f" % _ad)
+                                               if _ad is not None else "--",
                                                _ms, _tmn, int(_sp))
-                                            for _p, _pr, _ms, _tmn, _sp in _g3_rows)),
+                                            for _p, _pr, _ad, _ms, _tmn, _sp
+                                            in _g3_rows)),
                                 every_s=60.0)
                 except Exception as _e:
                     _log_rl("gap3-shadow-err", "GAP3-SHADOW error (shadow only): %s" % _e,
