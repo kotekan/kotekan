@@ -3487,6 +3487,9 @@ def main(argv=None, rx=None, publisher=None):
     # actually sits. Consumers: the log instrument below today; the innovation (#83 2(d))
     # next; #77's pop-vs-accumulator mismatch is measurable against it at last.
     _ft_readback = {}
+    # GAP 3 SHADOW (#33): per-sat standing-trim history for the measured RAMP RATE,
+    # prn -> [(t, trim_chips), ...], window-reset on steps/release (see the shadow block).
+    _g3_hist = {}
     # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
     # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
     # cycle is about to compute. The Python integrator stands down per-PRN against this, so
@@ -10456,6 +10459,69 @@ def main(argv=None, rx=None, publisher=None):
                     _ft_readback.clear()
                     _fleet_trim_stat["rb_fail"] += 1
                     _fleet_trim_stat["last_err"] = str(_e)
+                # -- GAP 3 SHADOW (#33, READ-ONLY): does the row PREDICT the trim ramp? --
+                # Predicted per-sat code-rate aiding = rrate[m/s] * f_chip / c  (identically
+                # K*residual_doppler_hz, K = chip_rate/carrier ~ 0.0087). Measured = LS slope
+                # of the STANDING trim from consecutive readbacks. The window RESETS on any
+                # step > 0.3 chips (a #92 re-anchor/wipe is a discontinuity, not a rate) and
+                # on release (a released trim's slope is the LEAK, not the sky). Mean trim is
+                # logged beside the slope so the leak drag (leak_per_s * trim) stays
+                # computable offline -- in the tracking regime the equilibrium terms cancel
+                # in the derivative and the raw slope ~ gain/(gain+leak) of the sky rate.
+                # Nothing here feeds control; the consume step (GAP 3 step 3) is a separate
+                # default-off arm with its own pre-registration.
+                try:
+                    _t_rb = time.time()
+                    _jg = None
+                    try:
+                        _jg = rx.joint_receiver(band_id, CODE_LEN,
+                                                rereference=args.joint_rereference)
+                    except Exception:
+                        _jg = None
+                    _g3_rows = []
+                    for _p in sorted(_ft_readback):
+                        _r = _ft_readback[_p]
+                        if not _r.get("armed"):
+                            _g3_hist.pop(_p, None)
+                            continue
+                        _h = _g3_hist.setdefault(_p, [])
+                        if _h and abs(float(_r["trim_chips"]) - _h[-1][1]) > 0.3:
+                            del _h[:]
+                        _h.append((_t_rb, float(_r["trim_chips"])))
+                        while _h and _t_rb - _h[0][0] > 600.0:
+                            _h.pop(0)
+                        _spn = _h[-1][0] - _h[0][0]
+                        if len(_h) < 4 or _spn < 120.0:
+                            continue
+                        _n = len(_h)
+                        _tm = sum(x[0] for x in _h) / _n
+                        _ym = sum(x[1] for x in _h) / _n
+                        _sxx = sum((x[0] - _tm) ** 2 for x in _h)
+                        if _sxx <= 0.0:
+                            continue
+                        _msl = sum((x[0] - _tm) * (x[1] - _ym) for x in _h) / _sxx
+                        _prd = None
+                        if _jg is not None:
+                            _k3 = (args.dr_constellation, int(_p))
+                            if _jg.rrate_sigma(_k3) < 99.0:
+                                _prd = _jg.rrate(_k3) * args.chip_rate_hz / C_LIGHT
+                        _g3_rows.append((_p, _prd, _msl, _ym, _spn))
+                    for _p in [p for p in _g3_hist if p not in _ft_readback]:
+                        _g3_hist.pop(_p, None)
+                    if _g3_rows:
+                        _log_rl("gap3-shadow",
+                                "GAP3-SHADOW %s (chips/s; pred=rrate*fchip/c, "
+                                "meas=trim slope @mean trim): %s"
+                                % (log_tag() or args.signal,
+                                   " ".join("%d:p%s/m%+.5f@%+.2f(%ds)"
+                                            % (_p, ("%+.5f" % _pr)
+                                               if _pr is not None else "--",
+                                               _ms, _tmn, int(_sp))
+                                            for _p, _pr, _ms, _tmn, _sp in _g3_rows)),
+                                every_s=60.0)
+                except Exception as _e:
+                    _log_rl("gap3-shadow-err", "GAP3-SHADOW error (shadow only): %s" % _e,
+                            every_s=300.0)
 
         if args.fast_trim_hz > 0.0:
             with fast_lock:
