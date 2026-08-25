@@ -1975,8 +1975,8 @@ http://cx51:12048/gnss{0..1}_e5b_inject"
     # surface. Pre-reg: expectations_20260825_90_v2_flight3.txt (P2 = absence-to-
     # readmission < 15 min vs the 85-min baseline, paired vs e5a; F3 = any fire on a
     # sat present within 300 s).
-    reseed-spec-tau: "all"
-    reseed-admit-absent: 1
+    # reseed-spec-tau: "all"    # DISARMED 23:3x 08-25: F3 TRIPPED (fires on threshold-
+    # reseed-admit-absent: 1     # flicker sats present 100-210 s prior; see fixture)
     spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,\
 http://cx27:12048/gnss{0..1}_e5b_n2assemble,\
 http://cx42:12048/gnss{0..1}_e5b_n2assemble,\
