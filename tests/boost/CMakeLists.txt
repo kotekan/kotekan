@@ -44,8 +44,15 @@ target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotek
 # test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(test_buffer_peek PRIVATE pthread libexternal kotekan_libs kotekan_utils
-                                                   kotekan_core -Wl,-all_load kotekan_metadata)
+    target_link_libraries(
+        test_buffer_peek
+        PRIVATE pthread
+                libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
 else()
     target_link_libraries(
         test_buffer_peek
