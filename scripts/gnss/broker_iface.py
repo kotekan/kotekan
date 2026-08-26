@@ -147,9 +147,18 @@ def cmd_promote(argv):
 
     src = open(BROKER).read().splitlines(True)
     _, main, loop = _load(BROKER)
-    stmts = [s for s in loop.body if s.lineno >= lo and s.end_lineno <= hi]
-    assert stmts and stmts[0].lineno == lo and stmts[-1].end_lineno == hi, \
-        "range must be whole statements of the loop body"
+    # The range must be whole statements of SOME block -- the cycle loop's own body, or a
+    # block nested inside it (the DLL stage's instrument polls live one level down).
+    ok = False
+    for parent in ast.walk(main):
+        body = getattr(parent, "body", None)
+        if not isinstance(body, list):
+            continue
+        st = [s for s in body if getattr(s, "lineno", None) and s.lineno >= lo and s.end_lineno <= hi]
+        if st and st[0].lineno == lo and st[-1].end_lineno == hi:
+            ok = True
+            break
+    assert ok, "range must be whole statements of one block"
 
     _, carry, outs = analyze(main, lo, hi)
     missing = [c for c in sorted(set(carry) | set(outs)) if c not in declared]
@@ -164,13 +173,19 @@ def cmd_promote(argv):
 
     block = src[lo - 1:hi]
     ind = min(len(l) - len(l.lstrip()) for l in block if l.strip())
-    assert ind == 8, "expected loop-body indent 8, got %d" % ind
+    assert ind >= 8 and ind % 4 == 0, "unexpected block indent %d" % ind
+    if ind > 8:                      # a block nested inside another: dedent to routine body
+        cut = ind - 8
+        block = [(l[cut:] if l.strip() else l) for l in block]
     doc = open(docfile).read().rstrip("\n")
     head = ["    def %s():\n" % name, '        """%s"""\n' % doc.replace("\n", "\n        ")]
     if declared:
         head.append("        nonlocal %s\n" % ", ".join(declared))
+    # The CALL keeps the block's original indent -- a poll nested inside the DLL stage sits at
+    # 12, not at the loop body's 8. (Getting this wrong is an IndentationError, not a silent
+    # bug, but it wastes a gate run.)
     new = (src[:loop.lineno - 1] + head + block + ["\n"]
-           + src[loop.lineno - 1:lo - 1] + [" " * 8 + "%s()\n" % name] + src[hi:])
+           + src[loop.lineno - 1:lo - 1] + [" " * ind + "%s()\n" % name] + src[hi:])
     open(BROKER, "w").writelines(new)
     print("promoted %s: %d lines -> 1 call" % (name, hi - lo + 1))
 

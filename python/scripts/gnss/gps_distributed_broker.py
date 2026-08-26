@@ -796,6 +796,32 @@ def main(argv=None, rx=None, publisher=None):
     # Telemetry-walk estimator throttle (--estimator-every-s): last results + next-run time,
     # staggered per chain so five chains never walk in the same beat.
     _est_last = {"pcn0": None, "kcoh": None}
+
+    # ── THE DLL STAGE'S PER-CYCLE PRODUCTS ────────────────────────────────────────────────
+    # Diagnostics the DLL stage computes and LATER stages read: the fleet-coherent rows and
+    # the known-rate coherent estimate. They used to be bare locals assigned deep inside the
+    # DLL block, which had two consequences worth naming:
+    #
+    #   * the block could not be extracted. A name assigned only inside it and read outside
+    #     has no binding in main(), so `nonlocal` is a SyntaxError -- the extraction is
+    #     blocked not by the logic but by where the value happens to live.
+    #   * with --dll-gain 0 the block never runs and the readers hit a NameError, not a
+    #     missing value. Every reader already spells `(fcoh or {})`, so `None` is exactly the
+    #     "not measured this cycle" they were written for.
+    #
+    # AN OWNER OBJECT rather than more locals, because ATTRIBUTE ASSIGNMENT NEEDS NO nonlocal
+    # DECLARATION. That is the whole trick that lets the instrument polls below become
+    # routines: a poll that sets `_dllp.fcoh` can live anywhere, where one that set `fcoh`
+    # could only live in the frame that owned the name.
+    class _DllProducts(object):
+        """Per-cycle diagnostic products of the DLL stage. None means NOT MEASURED."""
+        __slots__ = ("fcoh", "kcoh")
+
+        def __init__(self):
+            self.fcoh = None
+            self.kcoh = None
+
+    _dllp = _DllProducts()
     fe_axis = [None]  # (newest telemetry pow_hop, wall at its fetch) -- #83 the axis fix
     # ── THE FILTERED AXIS OFFSET (2026-08-23, the birth-epoch jitter fix) ──────────────
     # fe_axis re-samples the newest hop every poll, so t_now_abs inherits the PIPELINE
@@ -3703,7 +3729,7 @@ def main(argv=None, rx=None, publisher=None):
                     # DIFFERENT KIND (the fine feed's res_cycles phase accumulation), not a
                     # better spectral fit over the same window. Set _use_rec to re-enable.
                     _use_rec = False
-                    _fcr = (fcoh or {}).get(_p) or {}
+                    _fcr = (_dllp.fcoh or {}).get(_p) or {}
                     _rrec, _srec = _fcr.get("rate_hz"), _fcr.get("rate_sigma_hz")
                     if _use_rec and _rrec is not None and _srec is not None:
                         _y = _rrec + (rr_cmd_applied.get(_p, car_trim.get(_p, 0.0))
@@ -6713,7 +6739,7 @@ def main(argv=None, rx=None, publisher=None):
             # It touches NO loop -- purely an observable, published for the viewer and the beam
             # map -- so a fault here can degrade what is displayed but can never move the code
             # or carrier loops.
-            fcoh = {}
+            _dllp.fcoh = {}
             # TASK #59. The gather feed, when it is asked for AND actually has this chain's
             # windows. `source=None` falls straight through to the REST poll below, so a gather
             # that is down, restarting, or simply not carrying this chain costs a rate-limited
@@ -6763,7 +6789,7 @@ def main(argv=None, rx=None, publisher=None):
                     _log_rl("telem-src", "telem: source failed (%s); using /get_records" % e)
             if args.fleet_coherent:
                 try:
-                    fcoh = fleet_coherent(dll_combiners, args.coh_min_instances,
+                    _dllp.fcoh = fleet_coherent(dll_combiners, args.coh_min_instances,
                                           args.coh_min_records, prns=set(seeds) or None,
                                           log=None, floor_margin=args.coh_floor_margin,
                                           seed=int(_now()),
@@ -6797,13 +6823,13 @@ def main(argv=None, rx=None, publisher=None):
                                              seed=int(_now()))
                 except Exception as e:
                     _log_rl("fleet-coh-n2", "fleet coherent (path B): skipped (%s)" % e)
-            if fcoh or fcoh_n2:
+            if _dllp.fcoh or fcoh_n2:
                 # One line, both paths, only PRNs one of them actually detected. per_inst is
                 # printed alongside the fleet number because the fleet total alone cannot
                 # distinguish "the combine worked" from "one instance was already strong".
                 rows = []
-                for prn in sorted(set(fcoh) | set(fcoh_n2)):
-                    a, b = fcoh.get(prn), fcoh_n2.get(prn)
+                for prn in sorted(set(_dllp.fcoh) | set(fcoh_n2)):
+                    a, b = _dllp.fcoh.get(prn), fcoh_n2.get(prn)
                     if not ((a and a.get("present")) or (b and b.get("present"))):
                         continue
 
@@ -6830,8 +6856,8 @@ def main(argv=None, rx=None, publisher=None):
                 # emit offline. Path A only -- path B's per_inst rides the same dict if
                 # ever needed. Instance order is SORTED BY URL, stable across polls, so a
                 # column in the log is a node/GPU throughout.
-                for prn in sorted(fcoh):
-                    v = fcoh[prn]
+                for prn in sorted(_dllp.fcoh):
+                    v = _dllp.fcoh[prn]
                     pi = v.get("per_inst") or {}
                     if len(pi) < 2:
                         continue
@@ -6853,7 +6879,7 @@ def main(argv=None, rx=None, publisher=None):
                 # dropped instances and how many hops they had in the window, so "we are
                 # combining fewer nodes than we own" is visible without polling by hand.
                 _dropped = {}
-                for prn, v in sorted(fcoh.items()):
+                for prn, v in sorted(_dllp.fcoh.items()):
                     for u, n_h in (v.get("dropped") or []):
                         _dropped.setdefault(u, []).append(n_h)
                 if _dropped:
@@ -7066,7 +7092,7 @@ def main(argv=None, rx=None, publisher=None):
             # Measurement-only; rides the same telemetry the comb DLL uses.
             # Same throttle gate as PROMPT-CN0 above (_run_est, set there -- the first of
             # the two telemetry-walk blocks in cycle order).
-            _kcoh = _est_last["kcoh"]
+            _dllp.kcoh = _est_last["kcoh"]
             if _run_est:
                 # ARM 17: overlay converged rows' predictions onto the fit-fed rates.
                 # See --kcoh-rate-from-row. Fallback for any sat without a converged
@@ -7088,35 +7114,35 @@ def main(argv=None, rx=None, publisher=None):
                         _log_rl("kcoh-row-err",
                                 "KCOH row-injection skipped: %s" % e, every_s=300.0)
                 try:
-                    _kcoh = combdll.coh_cn0(
+                    _dllp.kcoh = combdll.coh_cn0(
                         telem_client, telem_chain, rates=_rates_in,
                         n_win=(args.telem_dll_windows or args.telem_windows),
                         min_instances=args.dll_min_instances,
                         prns=set(seeds) or None, probe_prns=probe_set,
                         hop_s=1.0 / args.hops_per_sec)
                 except Exception as e:
-                    _kcoh = None
+                    _dllp.kcoh = None
                     _log_rl("kcoh-err",
                             "KCOH: failed (%s) -- rows served without it" % e)
-                _est_last["kcoh"] = _kcoh
-                if _kcoh:
+                _est_last["kcoh"] = _dllp.kcoh
+                if _dllp.kcoh:
                     _kv = ["PRN %d %.1f dB-Hz (sig %.0f, eta %s, f %+.2f%+.2f)"
                            % (p, v["cn0_db"], v["sig"],
                               "%.0f" % v["eta"] if v["eta"] is not None else "--",
                               v["rate_hz"], v.get("rate_resid_hz", 0.0))
-                           for p, v in sorted(_kcoh.items())
+                           for p, v in sorted(_dllp.kcoh.items())
                            if v["cn0_db"] is not None and not v["probe"] and v["sig"] > 3.0]
                     _log_rl("kcoh",
                             "KCOH %s: %s | %d PRNs folded, floor from %d probe folds"
                             "%s"
                             % (telem_chain,
                                "; ".join(_kv) if _kv else "no fold above the probe floor",
-                               len(_kcoh),
-                               next(iter(_kcoh.values()))["n_probe"],
+                               len(_dllp.kcoh),
+                               next(iter(_dllp.kcoh.values()))["n_probe"],
                                (", %d row-injected" % _row_inj) if _row_inj else ""),
                             every_s=30.0)
             # NOW the rates for the NEXT cycle, from THIS cycle's record-stream fit.
-            for _p, _fc2 in (fcoh or {}).items():
+            for _p, _fc2 in (_dllp.fcoh or {}).items():
                 _r2 = _fc2.get("rate_hz")
                 if _r2 is not None:
                     _kcoh_rates[_p] = float(_r2)
@@ -7352,8 +7378,8 @@ def main(argv=None, rx=None, publisher=None):
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
                 # input that produced a given correction.
-                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, fcoh,
-                                 pcn0=_pcn0, kcoh=_kcoh, innov=_innov_pub,
+                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, _dllp.fcoh,
+                                 pcn0=_pcn0, kcoh=_dllp.kcoh, innov=_innov_pub,
                                  cpp_trim={_p: (_r.get("trim_chips") or 0.0)
                                            for _p, _r in _ft_readback.items()})
             dll_report = []
@@ -8200,7 +8226,7 @@ def main(argv=None, rx=None, publisher=None):
                 # the fold) counts as NOT detected: no evidence, no command.
                 _cmd_sig_ok = True
                 if args.rrate_cmd_min_sig > 0.0:
-                    _cmd_sig_ok = (((_kcoh or {}).get(prn) or {}).get("sig") or 0.0) \
+                    _cmd_sig_ok = (((_dllp.kcoh or {}).get(prn) or {}).get("sig") or 0.0) \
                                   >= args.rrate_cmd_min_sig
                 if _cmd_sig_ok and _jrc.rrate_sigma(_k) <= args.rrate_cmd_max_sigma:
                     _cmd = _jrc.carrier_correction_hz(_k, args.carrier_hz)
