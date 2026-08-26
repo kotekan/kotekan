@@ -90,6 +90,7 @@ from gnss_broker.fleet import (               # noqa: E402
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker.seed import Seed                          # noqa: E402  (task #83)
 from gnss_broker.admission import AdmissionGate            # noqa: E402  (task #90)
+from gnss_broker.handover import TrimHandover              # noqa: E402  (task #92)
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
@@ -3517,10 +3518,10 @@ def main(argv=None, rx=None, publisher=None):
     # logged beside it -- the 08-25 F1 said the row is ~97% carrier-only; v2 measures
     # whether the RAW ADR observable does better against the trim ramp.
     _adr_span_now = {}
-    # #92 posted handover deltas, CUMULATIVE per sat: the gather applies them to the
-    # standing trim, so the shadow's ramp series must subtract them or small (<0.3 chip)
-    # adjustments contaminate slopes silently (the #93 step-0 trap).
-    _g3_adjcum = {}
+    # #92 THE HANDOVER. Owns the bound, the transport and the cumulative posted deltas --
+    # which are an INSTRUMENT CORRECTION, not bookkeeping: the shadow's ramp series subtracts
+    # them, or a ledger transfer masquerades as the drift #93 is trying to measure.
+    _handover = TrimHandover(enabled=bool(args.fleet_trim_rebase_adjust))
     # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
     # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
     # cycle is about to compute. The Python integrator stands down per-PRN against this, so
@@ -7844,52 +7845,15 @@ def main(argv=None, rx=None, publisher=None):
                                 # standing trim carries the SAME chips: post the
                                 # compensating -_bstep to the gather in the SAME cycle
                                 # so the tap (seed + trim) never leaves the sky (E3's
-                                # ~25-min sawtooth). Bounded well under the 3.0 clamp:
-                                # a step the trim could not have been carrying (the
-                                # shared-clock births are hundreds of chips) is not a
-                                # handover -- skipped loudly, wiped-and-rebuilt as
-                                # before. The gather echoes adjusted/refused per PRN
-                                # (refused = PRN not armed there, e.g. trim released).
-                                # Gated on _ft_armed_last: a PRN the fleet loop is
-                                # not actuating has no standing trim to hand over --
-                                # posting for the seeding-churn re-births (measured
-                                # live 18:53: PRNs 6/30 re-basing every ~10 s,
-                                # refused every time) is spam on both logs, and it
-                                # buries the one refusal that would MEAN something
-                                # (F2: an armed sat whose adjustment missed).
-                                if (args.fleet_trim_rebase_adjust
-                                        and args.fleet_trim_url
-                                        and prn in _ft_armed_last):
-                                    if abs(_bstep) <= 2.5:
-                                        try:
-                                            # _post returns the HTTP status; the
-                                            # per-PRN adjusted/refused echo is in
-                                            # the GATHER's log and get_stats.
-                                            _rep92 = _post(
-                                                "%s/adjust_trim"
-                                                % args.fleet_trim_url.rstrip("/"),
-                                                {"chains": {telem_chain:
-                                                            {str(prn): -_bstep}}},
-                                                timeout=2.0)
-                                            _log("REBASE-ADJUST PRN %d: trim %+.3f "
-                                                 "posted to the gather (HTTP %s)"
-                                                 % (prn, -_bstep, _rep92))
-                                            # #93: the shadow's ramp series subtracts
-                                            # the cumulative posted deltas, so the
-                                            # handover never masquerades as drift.
-                                            _g3_adjcum[prn] = (_g3_adjcum.get(prn, 0.0)
-                                                               - _bstep)
-                                        except Exception as _e92:
-                                            # NEVER take seeding down for the
-                                            # handover; a missed adjustment is one
-                                            # sawtooth -- the old steady state.
-                                            _log("REBASE-ADJUST PRN %d FAILED (%s)"
-                                                 " -- trim rebuilds the old way"
-                                                 % (prn, _e92))
-                                    else:
-                                        _log("REBASE-ADJUST PRN %d skipped: step "
-                                             "%+.3f beyond the 2.5-chip handover "
-                                             "bound" % (prn, _bstep))
+                                # ~25-min sawtooth). The bound, the transport and the
+                                # cumulative-delta bookkeeping are in
+                                # gnss_broker/handover.py. Gated on _ft_armed_last: a
+                                # PRN the fleet loop is not actuating has no standing
+                                # trim to hand over, and posting for seeding churn
+                                # buries the one refusal that would MEAN something.
+                                _handover.offer(prn, _bstep, prn in _ft_armed_last,
+                                                telem_chain, args.fleet_trim_url,
+                                                _post, _log)
                                 _log_rl("birthstep-%d" % prn,
                                         "BIRTH-STEP PRN %d: old_phys %+.3f -> new_phys %+.3f"
                                         "  step %+.3f chips | off %+.3f = leg %+.3f"
@@ -10580,7 +10544,7 @@ def main(argv=None, rx=None, publisher=None):
                         # gather applied them to the trim, so removing them makes the
                         # series continuous across re-bases (longer windows) and keeps
                         # sub-0.3-chip adjustments out of the slope.
-                        _tc = float(_r["trim_chips"]) - _g3_adjcum.get(_p, 0.0)
+                        _tc = _handover.corrected(_p, float(_r["trim_chips"]))
                         if _h and abs(_tc - _h[-1][1]) > 0.3:
                             del _h[:]
                         _h.append((_t_rb, _tc))
