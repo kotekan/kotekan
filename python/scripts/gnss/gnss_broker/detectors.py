@@ -230,16 +230,26 @@ class LatchDetector(object):
     ⚠️ RECENT-LOCK IS WHAT SEPARATES A LATCH FROM A SET. A satellite below the horizon is
     absent for entirely good reasons. Requiring it to have been HEALTHY shortly before the
     absence began is what makes this a fault report rather than an ephemeris report.
+
+    ⚠️ AND THE STARTUP SOLVE IS NOT A LATCH -- this is flight 3a's lesson, and the detector
+    needs it as much as the gate did. Presence FLAPS while the clock converges (PRN 9,
+    2026-08-25: present at q 2.32 at t+28 s, absent by t+2 min), so a satellite can be
+    genuinely healthy-then-absent within the first few minutes without anything being wrong.
+    Counting those would inflate the base rate this exists to measure, which is the one number
+    it must not get wrong. Reports are held until the process is `startup_hold_s` old.
     """
 
-    def __init__(self, min_absence_s=300.0, lookback_s=900.0, healthy_q=2.0, cooldown_s=1800.0):
+    def __init__(self, min_absence_s=300.0, lookback_s=900.0, healthy_q=2.0, cooldown_s=1800.0,
+                 startup_hold_s=900.0):
         self.min_absence_s = float(min_absence_s)
         self.lookback_s = float(lookback_s)
         self.healthy_q = float(healthy_q)
         self.cooldown_s = float(cooldown_s)
+        self.startup_hold_s = float(startup_hold_s)
         self.reported = {}       # prn -> t of last report (one per episode, not per cycle)
+        self.suppressed_startup = 0   # how many reports the hold-off swallowed, for honesty
 
-    def scan(self, t, qseries, browned_out):
+    def scan(self, t, qseries, browned_out, uptime_s=None):
         """[(prn, absent_s, q_before)] for satellites that look latched right now.
 
         `browned_out` suppresses everything: during a chain-wide collapse a missing satellite
@@ -248,6 +258,7 @@ class LatchDetector(object):
         """
         if browned_out:
             return []
+        startup = uptime_s is not None and uptime_s < self.startup_hold_s
         out = []
         for prn, h in qseries.hist.items():
             if not h or h[-1][2] != ABSENT:
@@ -264,6 +275,12 @@ class LatchDetector(object):
             if not qs or max(qs) < self.healthy_q:
                 continue
             if t - self.reported.get(prn, -1e9) < self.cooldown_s:
+                continue
+            if startup:
+                # Do NOT stamp `reported` here: the satellite may still be genuinely latched
+                # once the solve settles, and swallowing the report must not also swallow the
+                # later, real one.
+                self.suppressed_startup += 1
                 continue
             self.reported[prn] = t
             out.append((prn, t - start, max(qs)))

@@ -193,6 +193,16 @@ def test_latch():
     check(not LatchDetector().scan(t4, s4, browned_out=True),
           "during a chain-wide BROWNOUT nothing is reported -- the chain is the patient")
 
+    # THE STARTUP SOLVE IS NOT A LATCH (flight 3a). Presence flaps while the clock converges.
+    s6, t6 = build(30, 60)
+    d6 = LatchDetector(startup_hold_s=900.0)
+    check(not d6.scan(t6, s6, browned_out=False, uptime_s=200.0),
+          "inside the startup hold-off nothing is reported")
+    check(d6.suppressed_startup == 1, "and the suppression is COUNTED, not silent")
+    check(len(d6.scan(t6, s6, browned_out=False, uptime_s=1800.0)) == 1,
+          "the same satellite IS reported once the process is old enough -- suppressing a "
+          "startup report must not swallow the later real one")
+
     # Startup: absent from the first cycle, never seen healthy.
     s5 = QSeries(window_s=100000.0)
     for i in range(60):

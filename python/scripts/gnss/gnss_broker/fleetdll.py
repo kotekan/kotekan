@@ -370,7 +370,8 @@ def stage_fleet_dll(ctx):
         # ── D2: the deep latch, UNARMED ───────────────────────────────────────────────
         # #90's four armed flights produced zero genuine targets, so the base rate is the
         # missing number. This measures it at no risk; it actuates nothing.
-        for _lp, _labs, _lq in ctx.latch.scan(ctx.t0, ctx.qpop, ctx.brown.active()):
+        for _lp, _labs, _lq in ctx.latch.scan(ctx.t0, ctx.qpop, ctx.brown.active(),
+                                              uptime_s=ctx.t0 - ctx.broker_t0):
             _log("%s: LATCH PRN %d absent %.0f s after q %.2f -- #90 v3 would have fired "
                  "here (detector only, nothing armed)" % (_tag, _lp, _labs, _lq))
 
