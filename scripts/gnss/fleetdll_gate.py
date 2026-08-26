@@ -358,6 +358,8 @@ def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, 
         cmd += ["--arm", ",".join(str(p) for p in sorted(arm))]
         for k in ("gain", "leak", "clamp", "spacing"):
             cmd += ["--" + k, repr((pol or {}).get(k, DEFAULT_POLICY[k]))]
+        if (pol or {}).get("p_floor_abs") is not None:
+            cmd += ["--p-floor-abs", repr(pol["p_floor_abs"])]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise SystemExit("fleetdll failed (%d): %s" % (r.returncode, r.stderr.strip()))
@@ -736,6 +738,58 @@ def main():
 
     print("  leak ceiling gain*0.25/leak = %.3f chips; max |trim| here %.3f"
           % (ceiling, max(abs(v) for v in finals.values())))
+
+    # ---- THE ABSOLUTE WINDOW GATE (the E3 fix, 2026-08-26) -----------------------------
+    # integrate()'s per-window gate was 3x the window's own population median -- a PEER
+    # COMPETITION on CHORD, where the armed rows are mostly real satellites (the premise
+    # "the median is the no-signal level" held only on airspy, where --noise-probes seeded
+    # genuine noise rows). Measured: gal_e5b PRN 33 leak-only on 75% of its windows, E3's
+    # trim erased at ~20x the actual probe floor. TrimPolicy::p_floor_abs replaces the peer
+    # median with the broker's probe-anchored floor. Three properties, all load-bearing:
+    #   (a) UNSET = byte-identical -- every case above already ran unset against Python;
+    #   (b) a floor BETWEEN two armed satellites' powers flips the weaker one to leak-only
+    #       and leaves the stronger one's trim series BYTE-IDENTICAL -- it changes exactly
+    #       what it claims and nothing else;
+    #   (c) a floor below everything reproduces the unset census exactly.
+    rows_a = {int(k): v for k, v in
+              cpp2.get("chains", {}).get("gps_l5", {}).get("prns", {}).items()}
+    p_of = {p: rows_a[p]["p_pow"] for p in ARM if p in rows_a}
+    if len(p_of) < 2:
+        print("FAIL -- the abs-floor case needs two armed PRNs with rows; got %s" % p_of)
+        return 1
+    lo_prn = min(p_of, key=p_of.get)
+    hi_prn = max(p_of, key=p_of.get)
+    floor_mid = (p_of[lo_prn] + p_of[hi_prn]) / 2.0
+    pol_mid = dict(DEFAULT_POLICY, p_floor_abs=floor_mid)
+    c_mid = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_mid)
+    cen_a = cpp2.get("census", {}).get("gps_l5", {})
+    cen_m = c_mid.get("census", {}).get("gps_l5", {})
+    lo_a, lo_m = cen_a.get(str(lo_prn), {}), cen_m.get(str(lo_prn), {})
+    hi_m = cen_m.get(str(hi_prn), {})
+    if not (lo_m.get("skipped", 0) > lo_a.get("skipped", 0) and lo_m.get("steps", 1) == 0):
+        print("FAIL -- abs floor %.3g should turn PRN %d (p %.3g) fully leak-only; census "
+              "went %s -> %s" % (floor_mid, lo_prn, p_of[lo_prn], lo_a, lo_m))
+        return 1
+    if hi_m.get("skipped", 0) != cen_a.get(str(hi_prn), {}).get("skipped", 0):
+        print("FAIL -- abs floor %.3g touched PRN %d (p %.3g), which sits ABOVE it."
+              % (floor_mid, hi_prn, p_of[hi_prn]))
+        return 1
+    if c_mid.get("series", {}).get("gps_l5", {}).get(str(hi_prn)) \
+            != cpp2.get("series", {}).get("gps_l5", {}).get(str(hi_prn)):
+        print("FAIL -- the above-floor PRN %d's trim SERIES moved under the abs floor. The "
+              "flag must change only who is gated, never the arithmetic." % hi_prn)
+        return 1
+    pol_lo = dict(DEFAULT_POLICY, p_floor_abs=1e-30)
+    c_lo = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_lo)
+    if c_lo.get("census") != cpp2.get("census") \
+            or c_lo.get("series") != cpp2.get("series"):
+        print("FAIL -- a floor below every satellite changed the answer; with nothing to "
+              "gate it must reproduce the peer-median run exactly (this fixture's peer "
+              "median gates nobody).")
+        return 1
+    print("ABS-FLOOR PASS -- floor %.3g: PRN %d (below) fully leak-only, PRN %d (above) "
+          "byte-identical; floor 1e-30 reproduces the unset run."
+          % (floor_mid, lo_prn, hi_prn))
 
     if args.self_test:
         # THE GATE MUST BE ABLE TO FAIL. Nudge one channel of one record by 1% and require the

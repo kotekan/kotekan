@@ -151,7 +151,8 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
 
 
 def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
-              deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None):
+              deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None,
+              admit_displaced=None):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -296,11 +297,65 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
     # the powers and becomes a measurement of which copy drifted.
     return apply_presence(out, k_sigma, q_fallback, probe_prns=probe_prns,
                           deep_gate_prns=deep_gate_prns,
-                          deep_gate_margin=deep_gate_margin)
+                          deep_gate_margin=deep_gate_margin,
+                          admit_displaced=admit_displaced)
+
+
+def epl_decompose(q, disc, spacing=0.5):
+    """(offset_chips, pedestal) from the two numbers on every DLL row -- the E3 algebra.
+
+    q and disc DETERMINE the tap powers: E/P = (1+disc)/q, L/P = (1-disc)/q. A FADE scales all
+    three taps together (ratios hold, the noise PEDESTAL rises); a CODE OFFSET moves power
+    BETWEEN taps (E/P falls, L/P climbs past 1, pedestal flat). The two live in different
+    corners of the (E/P, L/P) plane, so this closed-form solve separates what a single scalar
+    q hides: q ~ 1 means "off-peak" OR "weak", and every gate that reads it as weak throws
+    away exactly the displaced-but-strong satellite the DLL exists to rescue. Measured
+    2026-08-26: E3's collapse decodes to +0.34 chips LATE with the pedestal FALLING -- not a
+    fade -- and 100% of displaced rows on every chain sat below the q >= 2.2 trim gate, which
+    an offset suppresses BY CONSTRUCTION (it shuts at 0.171 chips at the measured pedestal).
+
+    Only the OFFSET is scanned; the pedestal follows from the E-L difference exactly:
+        n = (R(d-s) - R(d+s)) / (l - e) - R(d)
+    and the E+L equation supplies the residual that picks d. offset > 0 = the peak is LATE of
+    the prompt (same sign as the trim that corrects it).
+
+    ⚠️ THE FIT DOES NOT CERTIFY THE ROW. Two observables, two parameters: the solve is
+    near-exact for ANY input including pure noise (a probe at the floor returns a confident
+    large offset). Only SIGNAL admits a row -- gate on p_pow, never on this fit. E == P == L
+    returns (0.0, inf), the honest no-information answer.
+    """
+    if q <= 0.0:
+        return 0.0, float("inf")
+    e, l = (1.0 + disc) / q, (1.0 - disc) / q
+
+    def acf(x):
+        a = max(0.0, 1.0 - abs(x))
+        return a * a
+
+    dl = l - e
+    if abs(dl) < 1e-6:
+        if e >= 1.0 - 1e-9:
+            return 0.0, float("inf")
+        return 0.0, max(0.0, (e - acf(spacing)) / (1.0 - e))
+    best = None
+    for i in range(-900, 901):
+        d = i / 1000.0
+        n = (acf(d - spacing) - acf(d + spacing)) / dl - acf(d)
+        if n < 0.0:
+            continue
+        P = acf(d) + n
+        if P <= 0.0:
+            continue
+        err = ((acf(d + spacing) + n) / P - e) ** 2 + ((acf(d - spacing) + n) / P - l) ** 2
+        if best is None or err < best[0]:
+            best = (err, d, n)
+    if best is None:
+        return 0.0, float("inf")
+    return best[1], best[2]
 
 
 def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=None,
-                   deep_gate_margin=3.0):
+                   deep_gate_margin=3.0, admit_displaced=None):
     """Floors, the presence verdict and the deep gate, in place, on a fleet_dll-shaped dict.
 
     Split out of fleet_dll (2026-08-15, task #63) UNCHANGED, so the comb-derived DLL shares one
@@ -418,6 +473,27 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             v["present"] = (v["q"] >= v["q_floor"]
                             and (p_floor is None or v["p_pow"] >= p_floor))
             v["present_gate"] = "q+p:probes"
+            # ── THE E3 ADMISSION (--presence-admit-displaced): break q's degeneracy ──────
+            # q ~ 1 means "off-peak" OR "weak", and the q bar reads both as weak -- so the
+            # displaced-but-strong satellite, the one the DLL exists to rescue, is exactly
+            # the one this gate throws away. Worse, the throw is a LATCH: an offset
+            # suppresses q by construction (at the measured pedestal the bar shuts at ~0.17
+            # chips), so the fault disables its own cure -- E3's 12-minute outage, and #79's
+            # presence latch in a new coat. The (E/P, L/P) decomposition separates the two
+            # exactly: a displaced row has a LOW pedestal (the power went to a neighbouring
+            # tap, not to noise) where a weak row's pedestal is large. So a row that FAILED
+            # the q bar is re-admitted iff it is bright (the same probe-anchored p bar),
+            # its pedestal says signal, and the offset is inside the DLL's pull-in range.
+            # ⚠️ ONLY under the probe-anchored gate: without probes the p bar is a peer
+            # competition, and this admission on top of one would admit peers' noise.
+            if (admit_displaced is not None and not v["present"]
+                    and p_floor is not None and v["p_pow"] >= p_floor):
+                _off, _ped = epl_decompose(v["q"], v["disc"])
+                v["off_chips"], v["pedestal"] = _off, _ped
+                if (_ped <= admit_displaced["pedestal_max"]
+                        and abs(_off) <= admit_displaced["off_max_chips"]):
+                    v["present"] = True
+                    v["present_gate"] = "q+p:probes+disp"
         else:
             v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
                             else v["p_pow"] >= p_floor)

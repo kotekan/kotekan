@@ -358,6 +358,10 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
             p.gain = v.value("gain", p.gain);
             p.clamp = v.value("clamp", p.clamp);
             p.spacing = v.value("spacing", p.spacing);
+            // Absent or 0 = the original peer-median window gate, byte-identical.
+            p.p_floor_abs = v.value("p_floor_abs", 0.0);
+            if (p.p_floor_abs < 0.0)
+                throw std::runtime_error("p_floor_abs must be >= 0");
             // EXACTLY ONE of the two leak forms, and it must be stated. Defaulting the
             // conversion silently is how a loop ends up running at 8x the intended bandwidth
             // and being blamed on the combine.
@@ -537,6 +541,7 @@ void GnssFleetTrim::rearm() {
         tp.gain = pv.second.gain;
         tp.clamp = pv.second.clamp;
         tp.spacing = pv.second.spacing;
+        tp.p_floor_abs = pv.second.p_floor_abs;
         const double hz = _close_hz > 0.1 ? _close_hz : 23.84;
         if (pv.second.gain_per_s >= 0.0)
             tp.gain = pv.second.gain_per_s / hz;
@@ -797,6 +802,9 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
             row["trim_win"] = tv.second.last_win;
             row["armed"] = cv.second.armed.count(tv.first) != 0;
         }
+        // Which window gate is in force -- the answer to "why is trim_skipped climbing" must
+        // be readable here, not inferred from broker flags (a chain-level fact, stated once).
+        prns["_p_floor_abs"] = cv.second.policy.p_floor_abs;
         reply[cv.first] = prns;
     }
     conn.send_json_reply(reply);

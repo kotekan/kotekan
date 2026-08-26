@@ -116,6 +116,7 @@ private:
         double leak_per_s = -1.0; ///< <0 means "leak was given per-update instead"
         double leak = 0.05;
         double gain_per_s = -1.0; ///< the BANDWIDTH; <0 means per-update `gain` was given
+        double p_floor_abs = 0.0; ///< absolute window gate; 0 = peer median (TrimPolicy note)
     };
 
     void dll_callback(kotekan::connectionInstance& conn);

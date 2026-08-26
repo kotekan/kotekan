@@ -76,6 +76,23 @@ struct TrimPolicy {
     double leak = 0.05;    ///< PER UPDATE -- see the warning on dll_integrate
     double clamp = 3.0;    ///< |trim| bound, chips
     double spacing = 0.5;  ///< tracker Early/Late spacing, chips
+    /// ABSOLUTE prompt-power floor for the per-window information gate (same currency as the
+    /// rows' p_pow). 0 = the original behaviour: 3x the window's own population median.
+    ///
+    /// ⚠️ WHY THIS EXISTS (2026-08-26, the E3 chase). The peer-median gate's premise -- "most
+    /// PRNs are signal-free at any moment, so the median IS the no-signal level" -- was true
+    /// on the airspy prototype, where --noise-probes seeded genuine noise rows into the
+    /// population. On CHORD the armed rows are mostly REAL satellites, so the median is a
+    /// SIGNAL level and 3x it is a PEER COMPETITION: the bottom of the pack goes leak-only
+    /// no matter how far above the actual noise floor it sits. Measured: gal_e5b PRN 33 spent
+    /// 75.1% of its windows skipped; E3 was at ~20x the PROBE floor when the gate stood the
+    /// loop down, its trim erased through the leak, and a 60 s fade became a 12 min outage.
+    /// This is the same trap the broker's presence gate found and fixed with probe anchoring
+    /// on 2026-08-14 -- the fix just never reached this loop.
+    ///
+    /// The value arrives from the BROKER's probe-anchored floor via /set_policy, margin
+    /// already applied. Policy stays in Python; this is a number, not a decision.
+    double p_floor_abs = 0.0;
 };
 
 /// The code discriminator -> delay estimate, in chips.
@@ -745,8 +762,12 @@ private:
         // This is a LOCAL INFORMATION TEST, not the presence verdict. Presence is policy and
         // stays in Python (it decides whether a satellite is worth tracking, over cycles);
         // this decides whether THIS WINDOW's number means anything.
-        double p_floor = 0.0;
-        {
+        // ⚠️ ABSOLUTE FLOOR WHEN THE POLICY CARRIES ONE (see TrimPolicy::p_floor_abs: the
+        // peer median below is a competition on CHORD, and it is what erased E3's trim while
+        // the satellite sat 13 dB above the real noise). The broker's probe-anchored floor
+        // already includes its margin, so it is compared directly, not re-multiplied.
+        double p_floor = c.policy.p_floor_abs;
+        if (p_floor <= 0.0) {
             std::vector<double> pp;
             pp.reserve(c.row.size());
             for (const auto& rv : c.row)

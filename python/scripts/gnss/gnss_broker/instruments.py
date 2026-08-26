@@ -181,7 +181,8 @@ def instr_tap_walk(ctx):
                 deep_gate_margin=ctx.args.dll_deep_gate_margin,
                 # deep_snr / deep_floor / coherence_s AND the quadrature fallback,
                 # from the arm that has them
-                coh_from=ctx.dllp.fleet)
+                coh_from=ctx.dllp.fleet,
+                admit_displaced=ctx.dllp.admit_disp)
         except Exception as e:
             _cf = None
             _log_rl("comb-dll-err",
@@ -201,7 +202,8 @@ def instr_tap_walk(ctx):
                     k_sigma=ctx.args.dll_quality_sigma, q_fallback=ctx.args.dll_quality_min,
                     prns=set(ctx.seeds) or None, probe_prns=ctx.probe_set,
                     deep_gate_prns=ctx.dllp.deep_gate_eff,
-                    deep_gate_margin=ctx.args.dll_deep_gate_margin, coh_from=ctx.dllp.fleet)
+                    deep_gate_margin=ctx.args.dll_deep_gate_margin, coh_from=ctx.dllp.fleet,
+                    admit_displaced=ctx.dllp.admit_disp)
                 _sh = sorted(set(_cf) & set(_cx))
                 if _sh:
                     _dd = sorted(abs(_cf[p]["disc"] - _cx[p]["disc"]) for p in _sh)

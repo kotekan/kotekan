@@ -814,7 +814,7 @@ def main(argv=None, rx=None, publisher=None):
         """Per-cycle diagnostic products of the DLL stage. None means NOT MEASURED."""
         __slots__ = ("fcoh", "kcoh", "fcoh_n2", "spec_fit", "innov_pub", "report",
                      "deep_gate_eff", "run_est", "run_pcn0", "fleet", "pcn0",
-                     "inst_hops")
+                     "inst_hops", "admit_disp")
 
         def __init__(self):
             self.fcoh = None
@@ -830,6 +830,9 @@ def main(argv=None, rx=None, publisher=None):
             # instance -> newest telemetry hop seen this cycle; the instance-stall and
             # axis-freshness watches read it after the polls have filled it.
             self.inst_hops = None
+            # --presence-admit-displaced thresholds, bundled once per cycle so every
+            # presence arm judges with the same numbers; None = the flag is off.
+            self.admit_disp = None
             # ⚠️ `fleet` IS THE CYCLE'S CENTRAL STATE: prn -> the fleet DLL's per-satellite
             # row (present, q, disc, hop, ...). Nearly every stage reads it, which is exactly
             # why it spent so long as a bare local and why the carrier loop was able to assign

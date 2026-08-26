@@ -65,6 +65,22 @@ def stage_fleet_trim_arming(ctx):
         # and the trims expire at the trackers if it never recovers.
         ctx.dls.armed_last.clear()
         ctx.dls.armed_last.update(_armed)
+        # ── THE E3 FIX: ANCHOR THE FAST LOOP'S WINDOW GATE TO THE PROBES ────────────
+        # The C++ integrate() gate was 3x the window's own population median -- a peer
+        # competition, because on CHORD the armed rows are mostly REAL satellites (the
+        # airspy premise "the median is the no-signal level" needed --noise-probes rows this
+        # fleet never seeds into the loop's own window). Measured 2026-08-26: gal_e5b PRN 33
+        # leak-only on 75.1% of its windows; E3's trim erased at ~20x the actual probe
+        # floor, and a 60 s fade became a 12 min outage. This ships the same probe-anchored
+        # absolute floor the PRESENCE gate has used since 08-14, margin already applied, so
+        # the two gates finally reference the same noise.
+        #
+        # ⚠️ ONLY A PROBE-ANCHORED FLOOR IS SHIPPED. When presence itself fell back to the
+        # peer bar (p_floor_src != probes:*), shipping that number would rebuild the exact
+        # competition this removes, one level up -- so we ship 0 and the C++ side keeps its
+        # local median, unchanged. And the floor rides EVERY policy POST rather than being
+        # latched: probes come and go with the sky, and a stale floor held across a
+        # brightness change is a gate nobody chose.
         _pol = {"chains": {ctx.telem_chain: {
             "armed": _armed,
             # BANDWIDTH, not per-update gain -- the controller converts with its measured
@@ -77,6 +93,20 @@ def stage_fleet_trim_arming(ctx):
             "clamp": 3.0,
             "spacing": ctx.args.dll_spacing,
             "targets": ["%s/set_trim" % t for t in ctx.trackers]}}}
+        # ⚠️ THE KEY IS ABSENT UNLESS ARMED, not present-and-zero. The equivalence gate hashes
+        # the POST STREAM, so an always-present key -- even carrying the no-op value -- moves
+        # every digest and turns "this flag is off" into "this flag changed production".
+        # Absent parses as 0.0 on the C++ side, which IS the unchanged peer-median gate.
+        if ctx.args.fleet_trim_floor_from_probes:
+            _floor_abs = 0.0
+            for _v in (ctx.dllp.fleet or {}).values():
+                # Chain-level fact, identical on every row: read one, deliberately. And ONLY
+                # a probe-anchored floor ships -- passing the peer bar through as absolute
+                # would rebuild the exact competition this removes, one level up.
+                if str(_v.get("p_floor_src", "")).startswith("probes:") and _v.get("p_floor"):
+                    _floor_abs = float(_v["p_floor"])
+                break
+            _pol["chains"][ctx.telem_chain]["p_floor_abs"] = _floor_abs
         try:
             _post("%s/set_policy" % ctx.args.fleet_trim_url.rstrip("/"), _pol, timeout=2.0)
             ctx.dls.stat["posts"] += 1

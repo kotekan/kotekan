@@ -1212,6 +1212,37 @@ def build_parser(description):
     #   (c) the (l-a) clock, re-fitted from the COLLAPSING population, swings (+-96 chips
     #       measured) and its garbage rate is adopted into every seed -- positive feedback
     #       that sustains the outage.
+    ap.add_argument("--presence-admit-displaced", action="store_true",
+                    help="THE E3 FIX, presence half: a row that FAILS the q bar is re-admitted "
+                         "when the (E/P, L/P) decomposition says its q deficit is a CODE OFFSET "
+                         "rather than weakness -- bright (same probe-anchored p bar), pedestal "
+                         "<= --presence-disp-pedestal-max, |offset| <= --presence-disp-off-max. "
+                         "q ~ 1 is degenerate (off-peak OR weak) and the bar reads it as weak, "
+                         "so the displaced-but-strong satellite -- the one the DLL exists to "
+                         "rescue, and whose offset SUPPRESSES q so the fault latches (E3's 12 "
+                         "min outage; the bar shuts at ~0.17 chips) -- is exactly the one it "
+                         "throws away. ⚠️ Only ever active under the probe-anchored q+p gate: "
+                         "without probes the p bar is a peer competition and this would admit "
+                         "peers' noise. Rows it admits carry present_gate = 'q+p:probes+disp'.")
+    ap.add_argument("--presence-disp-pedestal-max", type=float, default=0.3,
+                    help="admit-displaced: max fitted noise pedestal (relative to the peak). "
+                         "Measured 2026-08-26: displaced-but-strong rows sit at 0.03-0.08; "
+                         "genuinely weak rows and probes read >= ~1 (E=P=L fits pedestal inf).")
+    ap.add_argument("--presence-disp-off-max", type=float, default=0.6,
+                    help="admit-displaced: max |fitted offset| in chips. Inside the DLL's "
+                         "pull-in range (the early tap leaves the correlation triangle at "
+                         "1 - spacing/2 = 0.75 chips); past it the discriminator carries only "
+                         "its sign and admission would arm a loop with no gradient to follow.")
+    ap.add_argument("--fleet-trim-floor-from-probes", action="store_true",
+                    help="THE E3 FIX: ship the presence gate's probe-anchored prompt floor to "
+                         "the C++ fast loop as its per-window information gate "
+                         "(TrimPolicy::p_floor_abs), replacing the loop's own 3x-window-median "
+                         "-- which on CHORD is a PEER COMPETITION (the armed rows are mostly "
+                         "real satellites), measured standing the loop down on the bottom of "
+                         "the pack for minutes (gal_e5b PRN 33: 75% of windows leak-only) and "
+                         "erasing E3's trim at ~20x the actual noise floor. OFF = today's "
+                         "behaviour. Ships 0 (= C++ keeps its median) whenever presence itself "
+                         "lacks probe anchoring, so a peer bar is never smuggled in as absolute.")
     ap.add_argument("--fleet-trim-brownout-hold-s", type=float, default=0.0,
                     help="#91(b): during a D1 brownout, keep PRNs armed this long after last "
                          "presence AND freeze the C++ loop (gain=leak=0) for the duration. "

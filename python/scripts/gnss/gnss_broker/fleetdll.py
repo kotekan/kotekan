@@ -58,6 +58,12 @@ def stage_fleet_dll(ctx):
                             % ",".join(str(p) for p in sorted(ctx.deep_gate))))
                     ctx.dg_auto_last[0] = set(_fresh_dg)
         ctx.dllp.inst_hops = {}
+        # THE E3 ADMISSION (--presence-admit-displaced): thresholds bundled once so the
+        # polled arm, the comb arm and its shadow all judge with the SAME numbers -- two
+        # copies of an admission policy is how an A/B stops measuring the powers.
+        ctx.dllp.admit_disp = ({"pedestal_max": ctx.args.presence_disp_pedestal_max,
+                                "off_max_chips": ctx.args.presence_disp_off_max}
+                               if ctx.args.presence_admit_displaced else None)
         ctx.dllp.fleet = fleet_dll(ctx.dll_combiners, ctx.dll_hop_window, ctx.args.dll_min_instances,
                           ctx.args.dll_quality_sigma, ctx.args.dll_quality_min,
                           deep_gate_prns=ctx.dllp.deep_gate_eff,
@@ -69,7 +75,8 @@ def stage_fleet_dll(ctx):
                           # #70: collect the per-instance newest hop from the poll we are
                           # already making. No extra HTTP -- fleet_dll parses pow_hop for
                           # the currency check and then aggregates the axis away.
-                          src_hops=ctx.dllp.inst_hops)
+                          src_hops=ctx.dllp.inst_hops,
+                          admit_displaced=ctx.dllp.admit_disp)
         # TASK #63: THE SAME DISCRIMINATOR, FORMED HERE FROM THE UN-SUMMED COMB. The powers
         # above were built by each tracker summing across its own channels -- "the one
         # combine the broker can never undo" -- and everything derived from them inherits

@@ -80,6 +80,12 @@ int main(int argc, char** argv) {
             pol.clamp = std::atof(argv[++i]);
         else if (a == "--spacing" && i + 1 < argc)
             pol.spacing = std::atof(argv[++i]);
+        else if (a == "--p-floor-abs" && i + 1 < argc)
+            // The broker-anchored absolute window gate (TrimPolicy::p_floor_abs). 0 (the
+            // default) = the original peer-median gate, byte-identical -- which is exactly
+            // what the equivalence gate asserts; a run WITH it is the arm that proves the
+            // flag changes only what it claims to.
+            pol.p_floor_abs = std::atof(argv[++i]);
         else {
             std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
             return 2;
@@ -272,10 +278,26 @@ int main(int argc, char** argv) {
             sj[cv.first] = pj;
         }
         out["series"] = sj;
+        // The integrator's step/skip census, per PRN. The skip counter is the window gate's
+        // entire observable effect (a skipped window is leak-only), so an arm that changes the
+        // gate MUST move exactly this and nothing else -- which is what the equivalence gate's
+        // --p-floor-abs case asserts.
+        nlohmann::json kj = nlohmann::json::object();
+        for (const auto& cv : dll.chains()) {
+            nlohmann::json pj = nlohmann::json::object();
+            for (const auto& tv : cv.second.trim)
+                pj[std::to_string(tv.first)] = {{"steps", tv.second.n_steps},
+                                                {"skipped", tv.second.n_skipped},
+                                                {"railed", tv.second.n_railed},
+                                                {"trim", tv.second.trim}};
+            kj[cv.first] = pj;
+        }
+        out["census"] = kj;
         out["policy"] = {{"gain", pol.gain},
                          {"leak", pol.leak},
                          {"clamp", pol.clamp},
-                         {"spacing", pol.spacing}};
+                         {"spacing", pol.spacing},
+                         {"p_floor_abs", pol.p_floor_abs}};
     }
     std::cout << out.dump(2) << std::endl;
     return 0;
