@@ -254,7 +254,48 @@ its state had an owner.
   or that uses a module-level name the TARGET module lacks (`C_LIGHT` was a bare NameError).
 * `broker_iface.py` treats an augmented assignment as a read.
 
-### Step 4 — what is actually left
+### Step 4 — DONE 2026-08-26: the detectors and the flag sweep
+
+**D0–D3 are live, read-only, and already producing signal.** None writes a seed, a trim or a
+command: a detector that can change the instrument is no longer measuring it. 50 unit checks.
+
+| | signal | status on first flight |
+|---|---|---|
+| **D0** population-honest q | every SEEDED satellite each cycle with state present/absent/dropped | `QPOP` lines on all five chains |
+| **D1** brownout | present-count against the chain's own 600 s peak, as an episode | quiet — no brownout in the window |
+| **D2** deep latch | healthy → absent ≥300 s, chain not browned out. **UNARMED** | 4 reports in 18 min → **needed a startup hold-off** |
+| **D3** handover sawtooth | a trim that RAMPED past 0.5 chips then collapsed in one cycle | **14 reports in 18 min, mostly gps_l5** |
+
+⚠️ **D3's FIRST FLIGHT IS ALREADY A RESULT worth judging properly.** #92's handover is armed on
+`gal_e5a` only, and the sawtooth reports concentrate on `gps_l5` — e.g. PRN 27, trim
+−0.56 → −0.19 in one cycle off a +0.58 peak built over 969 s; PRN 20, −0.78 → −0.17 off a 1.68
+peak over 759 s. That is the population #92's P2 has been waiting for, arriving in minutes
+rather than by eye. **It is NOT a verdict**: the 0.5-chip ramp bar is unvalidated, and an
+armed-vs-unarmed comparison is the falsifier, not a raw count.
+
+⚠️ **D2 NEEDED FLIGHT 3a's LESSON TOO.** Four reports on an 18-minute-old process: presence
+flaps while the clock converges, so a satellite can be healthy-then-absent early with nothing
+wrong. Counting those inflates the base rate the detector exists to measure. A 900 s startup
+hold-off is in, and a suppressed report deliberately does NOT stamp the cooldown — swallowing
+the startup one must not swallow the later real one.
+
+#### The flag sweep (#89, second pass): 220 → 172 live, `_FROZEN` 72 → 118
+
+⚠️ **THE "IS THIS FLAG USED" SEARCH WAS WRONG TWICE AND BOTH WOULD HAVE SHIPPED.**
+1. `grep -rl --exclude-dir=.git --adc-stage .` parses `--adc-stage` as an OPTION, not a
+   pattern. Every search silently returned nothing, and the sweep would have "safely" frozen
+   all 131 candidates. Caught by checking the search could produce a POSITIVE on a flag known
+   to be used — a search that cannot find anything is the same defect class as a gate that
+   cannot fail.
+2. Scanning only shell/yaml missed Python tooling: `broker_equiv.py` passes
+   `--transcript-read`, and freezing it broke every fixture at once. The scan now covers every
+   file, and for `.py` counts a flag only inside a STRING LITERAL — a comment mentioning a
+   flag documents it, it does not pass it.
+
+Kept deliberately: flags the airspy prototype scripts pass, and the twelve commented-out
+disarmed arms in `gnss_chains_chord.yaml` — those are arms we may re-arm, not dead surface.
+
+### Step 5 — what is actually left
 
 Not decomposition. `main()` is 2,438 lines of which the cycle loop is 1,044 — the loop is now
 mostly the ~20 short blocks between stage calls, plus the joint-consume and command wiring.
