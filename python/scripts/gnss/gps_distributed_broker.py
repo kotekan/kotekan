@@ -815,11 +815,26 @@ def main(argv=None, rx=None, publisher=None):
     # could only live in the frame that owned the name.
     class _DllProducts(object):
         """Per-cycle diagnostic products of the DLL stage. None means NOT MEASURED."""
-        __slots__ = ("fcoh", "kcoh")
+        __slots__ = ("fcoh", "kcoh", "fcoh_n2", "spec_fit", "innov_pub", "report",
+                     "deep_gate_eff", "run_est", "run_pcn0", "fleet")
 
         def __init__(self):
             self.fcoh = None
             self.kcoh = None
+            self.fcoh_n2 = None
+            self.spec_fit = None
+            self.innov_pub = None
+            self.report = None
+            self.deep_gate_eff = None
+            self.run_est = False
+            self.run_pcn0 = False
+            # ⚠️ `fleet` IS THE CYCLE'S CENTRAL STATE: prn -> the fleet DLL's per-satellite
+            # row (present, q, disc, hop, ...). Nearly every stage reads it, which is exactly
+            # why it spent so long as a bare local and why the carrier loop was able to assign
+            # a sorted LIST over it for the rest of a cycle without anything noticing (see the
+            # buglist's A-FIXED entry). As an attribute of its producer, that collision stops
+            # being a bug you have to catch and becomes one you cannot write.
+            self.fleet = None
 
     _dllp = _DllProducts()
 
@@ -3451,7 +3466,7 @@ def main(argv=None, rx=None, publisher=None):
         and never by neither. Recording after a POST would mean a failed POST leaves both sides
         believing the other is driving."""
         if args.fleet_trim_url:
-            _now_present = [_p for _p in (fleet or {}) if fleet[_p].get("present")]
+            _now_present = [_p for _p in (_dllp.fleet or {}) if _dllp.fleet[_p].get("present")]
             for _p in _now_present:
                 _ft_hold[_p] = time.time()
             # PRESENCE WITH A HOLD, not presence sampled at an instant -- see the flag.
@@ -3808,8 +3823,7 @@ def main(argv=None, rx=None, publisher=None):
         aggregate, the per-channel merge, the presence policy -- is unchanged and stays here, which is
         what makes the two arms comparable at all.
         
-        ⚠️ IT REBINDS `fleet`, the per-PRN state dict the whole cycle reads -- hence the nonlocal."""
-        nonlocal fleet
+        ⚠️ IT PRODUCES `_dllp.fleet`, the per-PRN state dict the whole cycle reads."""
         if args.telem_dll and telem_client is not None:
             # THE C++ TAPS ARM (--comb-taps-cpp). `taps_src` replaces the Python walk over
             # the gathered frames; everything after it -- the aggregate, the per-channel
@@ -3830,11 +3844,11 @@ def main(argv=None, rx=None, publisher=None):
                     # arm that ships on gps_l5 (COMB-DLL replaces `fleet` below), so
                     # gating it on the hand-listed set alone would compute the
                     # auto-admission and then throw it away.
-                    deep_gate_prns=_deep_gate_eff,
+                    deep_gate_prns=_dllp.deep_gate_eff,
                     deep_gate_margin=args.dll_deep_gate_margin,
                     # deep_snr / deep_floor / coherence_s AND the quadrature fallback,
                     # from the arm that has them
-                    coh_from=fleet)
+                    coh_from=_dllp.fleet)
             except Exception as e:
                 _cf = None
                 _log_rl("comb-dll-err",
@@ -3853,8 +3867,8 @@ def main(argv=None, rx=None, publisher=None):
                         min_instances=args.dll_min_instances,
                         k_sigma=args.dll_quality_sigma, q_fallback=args.dll_quality_min,
                         prns=set(seeds) or None, probe_prns=probe_set,
-                        deep_gate_prns=_deep_gate_eff,
-                        deep_gate_margin=args.dll_deep_gate_margin, coh_from=fleet)
+                        deep_gate_prns=_dllp.deep_gate_eff,
+                        deep_gate_margin=args.dll_deep_gate_margin, coh_from=_dllp.fleet)
                     _sh = sorted(set(_cf) & set(_cx))
                     if _sh:
                         _dd = sorted(abs(_cf[p]["disc"] - _cx[p]["disc"]) for p in _sh)
@@ -3874,8 +3888,8 @@ def main(argv=None, rx=None, publisher=None):
                             "COMB-TAPS shadow failed (%s) -- nothing changed" % e,
                             every_s=60.0)
             if _cf:
-                _shared = sorted(set(_cf) & set(fleet or {}))
-                _dd = sorted(_cf[p]["disc"] - fleet[p]["disc"] for p in _shared)
+                _shared = sorted(set(_cf) & set(_dllp.fleet or {}))
+                _dd = sorted(_cf[p]["disc"] - _dllp.fleet[p]["disc"] for p in _shared)
                 _log_rl("comb-dll",
                         "COMB-DLL %s: %d PRNs from %d instances / %d channels; vs polled on "
                         "%d shared: median ddisc %+.4f, max %.4f%s"
@@ -3886,7 +3900,7 @@ def main(argv=None, rx=None, publisher=None):
                            max((abs(x) for x in _dd), default=0.0),
                            "" if _shared else "  (NO OVERLAP -- check the chain key)"),
                         every_s=30.0)
-                fleet = _cf
+                _dllp.fleet = _cf
             else:
                 _log_rl("comb-dll-empty",
                         "COMB-DLL %s: no windows yet -- closing the loop on the polled "
@@ -3898,13 +3912,13 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ per_inst IS PRINTED BESIDE THE FLEET NUMBER ON PURPOSE. The fleet total alone cannot
         distinguish "the combine worked" from "one instance was already strong" -- and those two have
         opposite implications for every conclusion drawn from a coherent gain."""
-        if _dllp.fcoh or fcoh_n2:
+        if _dllp.fcoh or _dllp.fcoh_n2:
             # One line, both paths, only PRNs one of them actually detected. per_inst is
             # printed alongside the fleet number because the fleet total alone cannot
             # distinguish "the combine worked" from "one instance was already strong".
             rows = []
-            for prn in sorted(set(_dllp.fcoh) | set(fcoh_n2)):
-                a, b = _dllp.fcoh.get(prn), fcoh_n2.get(prn)
+            for prn in sorted(set(_dllp.fcoh) | set(_dllp.fcoh_n2)):
+                a, b = _dllp.fcoh.get(prn), _dllp.fcoh_n2.get(prn)
                 if not ((a and a.get("present")) or (b and b.get("present"))):
                     continue
 
@@ -4049,16 +4063,16 @@ def main(argv=None, rx=None, publisher=None):
                 for prn, pts in _spec.items():
                     r = fit_spectrum_delay(pts, args.chip_rate_hz, args.hops_per_sec)
                     if r is not None:
-                        spec_fit[prn] = {"tau_chips": r[0], "peak": r[1],
+                        _dllp.spec_fit[prn] = {"tau_chips": r[0], "peak": r[1],
                                          "floor": r[2], "n_pts": r[3], "n_inst": r[4]}
             except Exception as e:
                 _log_rl("fleet-spec", "fleet spectrum: skipped this cycle (%s)" % e)
-            if spec_fit:
+            if _dllp.spec_fit:
                 _log_rl("specfit", "SPEC-FIT: " + "; ".join(
                     "PRN %d tau %+.3f chips (p/f %.1fx, %d ch/%d inst)"
                     % (prn, v["tau_chips"], v["peak"] / max(v["floor"], 1e-12),
                        v["n_pts"], v["n_inst"])
-                    for prn, v in sorted(spec_fit.items())), every_s=30.0)
+                    for prn, v in sorted(_dllp.spec_fit.items())), every_s=30.0)
                 # FEED b_sat (task #33). Presence-gated by the same lock metric the
                 # reseed logic trusts (deep-certified sig), because P1 measured weak-sat
                 # tau to be self-reference-biased toward zero -- a weak "tau ~ 0" is not
@@ -4068,7 +4082,7 @@ def main(argv=None, rx=None, publisher=None):
                 # decision, and P1 measured weak-sat tau biased toward zero by
                 # self-reference. "The prompt is on the signal" does not establish that
                 # this poll's tau is trustworthy. Separate question, separate evidence.
-                for prn, v in spec_fit.items():
+                for prn, v in _dllp.spec_fit.items():
                     if sig_of(status.get(prn, {})) >= args.lock_snr:
                         bsat.update(prn, v["tau_chips"], v["n_inst"], t0)
                 _log_rl("bsat", "BSAT: " + bsat.summary(t0), every_s=60.0)
@@ -4077,17 +4091,17 @@ def main(argv=None, rx=None, publisher=None):
                 # replace. EXISTING rows only -- publisher.update() indexes fleet rows'
                 # p_pow/disc/q directly, so a bare fit-only row would crash it; a PRN
                 # the DLL poll missed this cycle is still in the SPEC-FIT log line.
-                for prn, v in spec_fit.items():
-                    if prn in fleet:
-                        fleet[prn]["spec_tau"] = v["tau_chips"]
-                        fleet[prn]["spec_ratio"] = v["peak"] / max(v["floor"], 1e-12)
-                        fleet[prn]["bsat"] = bsat.get(prn, t0)
+                for prn, v in _dllp.spec_fit.items():
+                    if prn in _dllp.fleet:
+                        _dllp.fleet[prn]["spec_tau"] = v["tau_chips"]
+                        _dllp.fleet[prn]["spec_ratio"] = v["peak"] / max(v["floor"], 1e-12)
+                        _dllp.fleet[prn]["bsat"] = bsat.get(prn, t0)
                 # #85: stash (tau, ratio, t) for the model-primary joint feed, which
                 # runs EARLIER in cycle order and so reads last cycle's fit -- one poll
                 # stale, same causality as the trim readback it sits beside.
                 if dr_state is not None and t_now_abs is not None:
                     _sy = dr_state.setdefault("spec_y", {})
-                    for prn, v in spec_fit.items():
+                    for prn, v in _dllp.spec_fit.items():
                         _sy[prn] = (v["tau_chips"],
                                     v["peak"] / max(v["floor"], 1e-12), t_now_abs)
 
@@ -4101,7 +4115,7 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ SERVED C/N0 IS BLIND TO CODE ERROR (#47) -- it is computed from the prompt correlator, so a
         satellite sitting off the peak can read healthy. Never judge lock on it; judge on q."""
         nonlocal _pcn0
-        if _run_pcn0:
+        if _dllp.run_pcn0:
             try:
                 _pcn0 = combdll.prompt_cn0(
                     telem_client, telem_chain,
@@ -4156,8 +4170,8 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ ARM 17 (row-injected rates) WAS RETIRED FOR CAUSE on 2026-08-25: it was a carrier mirror,
         convicted by an attribution toggle (q SD 2x on both bands). The fallback path -- fit-fed rates,
         and probes always -- is the one that stands."""
-        nonlocal _inst_hops_now, fleet
-        if _run_est:
+        nonlocal _inst_hops_now
+        if _dllp.run_est:
             # ARM 17: overlay converged rows' predictions onto the fit-fed rates.
             # See --kcoh-rate-from-row. Fallback for any sat without a converged
             # row (and every probe) is exactly the old path.
@@ -4275,7 +4289,7 @@ def main(argv=None, rx=None, publisher=None):
                 if (_etab and args.element_archive_dir
                         and _now() - _elem_arch_t[0] >= args.element_archive_every_s):
                     _elem_arch_t[0] = _now()
-                    _keep = {p for p, v in (fleet or {}).items()
+                    _keep = {p for p, v in (_dllp.fleet or {}).items()
                              if v.get("present")} | set(probe_set)
                     _fn = os.path.join(
                         args.element_archive_dir, "elem_%s_%s.jsonl"
@@ -4307,7 +4321,7 @@ def main(argv=None, rx=None, publisher=None):
         model-primary or merely DETECTION-STARVED, which look identical in any single-cycle view."""
         if args.model_primacy_max > 0:
             _mp_p95 = {int(_p): (v["minnov_p95_10m"], v["minnov_n_10m"])
-                       for _p, v in _innov_pub.items() if "minnov_chips" in v}
+                       for _p, v in _dllp.innov_pub.items() if "minnov_chips" in v}
             for _p in sorted(mp_flipped):
                 _pv = _mp_p95.get(_p)
                 _starved = (_now() - mp_last_det.get(_p, _now())
@@ -4384,7 +4398,7 @@ def main(argv=None, rx=None, publisher=None):
         2026-08-25; judge on a source that keeps the sick ones."""
         for prn in list(seeds):
             rec = status.get(prn, {})
-            fl = fleet.get(prn)
+            fl = _dllp.fleet.get(prn)
             # #90 (2026-08-25): the re-seed is evaluated BEFORE the presence/rate/hop
             # gates below -- those `continue`s exist to stop the TRIM integrating on a
             # bad basis, and they used to skip the re-seed with it, which re-created
@@ -4446,7 +4460,7 @@ def main(argv=None, rx=None, publisher=None):
                     # gnss_broker/admission.py; the strike clock is the REAL wall clock
                     # (not the frozen cycle clock) because decorrelation is a statement
                     # about fold windows, not about cycles.
-                    _npn = sum(1 for _f0 in fleet.values()
+                    _npn = sum(1 for _f0 in _dllp.fleet.values()
                                if isinstance(_f0, dict) and _f0.get("present"))
                     _adm = _adm_gate.decide(prn, float(fl["spec_tau"]), prn in seeds,
                                             time.time(), t0, _npn,
@@ -4596,7 +4610,7 @@ def main(argv=None, rx=None, publisher=None):
                 dll_trim[prn] = combdll.dll_integrate(
                     dll_trim.get(prn, 0.0), disc, args.dll_gain, leak, 3.0,
                     args.dll_spacing)
-            dll_report.append(
+            _dllp.report.append(
                 "PRN %d disc %+.3f trim %+.2f%s"
                 # .get: when the C++ fleet loop owns this chain the integrator above is
                 # skipped and dll_trim may have no entry -- indexing it killed the gps_l5
@@ -4818,7 +4832,7 @@ def main(argv=None, rx=None, publisher=None):
                               <= args.joint_feed_spec_max_age_s
                               and _sp[1] >= args.joint_feed_min_ratio)
                     if args.joint_feed_max_trim > 0.0 and not _sp_ok:
-                        _fl_i = (fleet or {}).get(_prn) or {}
+                        _fl_i = (_dllp.fleet or {}).get(_prn) or {}
                         _q_i = _fl_i.get("q")
                         _tr_i = abs(float((_ft_readback.get(_prn) or {})
                                           .get("trim_chips") or 0.0))
@@ -4944,7 +4958,7 @@ def main(argv=None, rx=None, publisher=None):
                         # causality the readback already has, and guarded because it
                         # does not exist on the first pass.
                         try:
-                            _dfl = fleet
+                            _dfl = _dllp.fleet
                         except NameError:
                             _dfl = {}
                         for _dk, _dyy, _dsg, _dbd in _mm[:4]:
@@ -7704,7 +7718,7 @@ def main(argv=None, rx=None, publisher=None):
         # Per-cycle, so a dll_gain of 0 (the loop disabled) leaves a defined empty fleet for
         # everything downstream that reports on it -- including #51's fast-trim publication,
         # which must arm NOBODY rather than raise when the code loop is off.
-        fleet = {}
+        _dllp.fleet = {}
         if args.dll_gain > 0.0:
             # FLEET COMBINE (docs/CHORD_GNSS_SHARED_DLL.md). Sum the RAW powers across every
             # instance that reports the same window, then form ONE discriminator. Ratios do not
@@ -7712,12 +7726,12 @@ def main(argv=None, rx=None, publisher=None):
             # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
             # #79: the effective deep-gate set = hand-listed PRNs UNION the ones the search
             # is currently detecting. `True` (--dll-deep-gate all) stays absorbing.
-            _deep_gate_eff = _deep_gate
+            _dllp.deep_gate_eff = _deep_gate
             if args.dll_deep_gate_from_search > 0.0 and _deep_gate is not True:
                 _fresh_dg = {p for p, _ts in _dg_seen.items()
                              if t0 - _ts <= args.dll_deep_gate_search_hold_s}
                 if _fresh_dg:
-                    _deep_gate_eff = set(_deep_gate or ()) | _fresh_dg
+                    _dllp.deep_gate_eff = set(_deep_gate or ()) | _fresh_dg
                     if _fresh_dg != _dg_auto_last[0]:
                         _log("DEEP GATE (auto, #79): search-admitted PRN %s at snr >= %.0f "
                              "(hold %.0f s)%s"
@@ -7729,9 +7743,9 @@ def main(argv=None, rx=None, publisher=None):
                                 % ",".join(str(p) for p in sorted(_deep_gate))))
                         _dg_auto_last[0] = set(_fresh_dg)
             _inst_hops_now = {}
-            fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
+            _dllp.fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
                               args.dll_quality_sigma, args.dll_quality_min,
-                              deep_gate_prns=_deep_gate_eff,
+                              deep_gate_prns=_dllp.deep_gate_eff,
                               deep_gate_margin=args.dll_deep_gate_margin,
                               # the noise ANCHOR for the presence floor (#49): without it
                               # the bar is built from the tracked population and becomes a
@@ -7758,7 +7772,7 @@ def main(argv=None, rx=None, publisher=None):
             # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
             hold_prev.clear()
             hold_q.clear()
-            for _p, _fl in (fleet or {}).items():
+            for _p, _fl in (_dllp.fleet or {}).items():
                 _pm = _fl.get("p_med")
                 if _pm:
                     hold_prev[_p] = _fl["p_pow"] / _pm
@@ -7848,10 +7862,10 @@ def main(argv=None, rx=None, publisher=None):
             # support impossible, and their per-record noise is NOT independent (both despread
             # the same antenna voltages), so a merged sum would not buy the sqrt(2) it appears
             # to. Publishes nothing and touches no loop.
-            fcoh_n2 = {}
+            _dllp.fcoh_n2 = {}
             if args.fleet_coherent and n2_combiners:
                 try:
-                    fcoh_n2 = fleet_coherent(n2_combiners, args.coh_min_instances,
+                    _dllp.fcoh_n2 = fleet_coherent(n2_combiners, args.coh_min_instances,
                                              args.coh_min_records, prns=set(seeds) or None,
                                              log=None, floor_margin=args.coh_floor_margin,
                                              seed=int(_now()))
@@ -7866,7 +7880,7 @@ def main(argv=None, rx=None, publisher=None):
             # transcript replaying byte-identically: replay is strict-ordered, an
             # unrecorded GET is a TRANSCRIPT DIVERGENCE, and old transcripts' argv does not
             # carry --spectrum-endpoints, so replays never issue the new polls.
-            spec_fit = {}
+            _dllp.spec_fit = {}
             _instr_spectrum_fit()
             # THE SERVED C/N0 (task #57): per-record prompt power off the gather feed,
             # q-gated, debiased against the noise probes. Fits NOTHING -- the deep fold's
@@ -7879,9 +7893,9 @@ def main(argv=None, rx=None, publisher=None):
             # Throttle (--estimator-every-s): both telemetry-walk estimators run together,
             # at most this often; the last values keep being served in between. Defined
             # HERE because this is the FIRST of the two blocks in cycle order.
-            _run_est = (telem_client is not None and probe_set
+            _dllp.run_est = (telem_client is not None and probe_set
                         and _now() >= _est_next[0])
-            if _run_est:
+            if _dllp.run_est:
                 _est_next[0] = _now() + args.estimator_every_s
             # ⚠️ THE THROTTLE EXISTS FOR THE *WALK*, NOT FOR THE ESTIMATOR. Its whole
             # justification (see --estimator-every-s) is that these are "pure-Python walks over
@@ -7894,7 +7908,7 @@ def main(argv=None, rx=None, publisher=None):
             #
             # KCOH still walks and stays throttled. They were gated together because they had
             # the same cost; they no longer do, so they no longer share a gate.
-            _run_pcn0 = _run_est or (args.comb_taps_cpp >= 2 and args.fleet_trim_url
+            _dllp.run_pcn0 = _dllp.run_est or (args.comb_taps_cpp >= 2 and args.fleet_trim_url
                                      and telem_client is not None and probe_set)
             _pcn0 = _est_last["pcn0"]
             _instr_prompt_cn0()
@@ -7952,7 +7966,7 @@ def main(argv=None, rx=None, publisher=None):
             # The statistic is cut by TIME here at read, not by count at write: a PRN
             # detected once in ten minutes reports that one sample, and a PRN that set
             # 20 minutes ago stops being served instead of fossilizing its last window.
-            _innov_pub = {}
+            _dllp.innov_pub = {}
             for _p, _ih in list(innov_hist.items()):
                 if _now() - _ih[-1][0] > 1200.0:
                     del innov_hist[_p]
@@ -7961,7 +7975,7 @@ def main(argv=None, rx=None, publisher=None):
                 if not _win:
                     continue
                 _av = sorted(abs(vv) for _, vv in _win)
-                _innov_pub[_p] = {
+                _dllp.innov_pub[_p] = {
                     "innov_chips": _win[-1][1],
                     "innov_age_s": _now() - _win[-1][0],
                     "innov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
@@ -7978,7 +7992,7 @@ def main(argv=None, rx=None, publisher=None):
                 if not _win:
                     continue
                 _av = sorted(abs(vv) for _, vv in _win)
-                _innov_pub.setdefault(_p, {}).update({
+                _dllp.innov_pub.setdefault(_p, {}).update({
                     "minnov_chips": _win[-1][1],
                     "minnov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
                     "minnov_n_10m": len(_win)})
@@ -7990,19 +8004,19 @@ def main(argv=None, rx=None, publisher=None):
             # --model-primacy-starve-s). Every transition is one loud line -- a flip
             # whose firing cannot be seen is how gates fail here.
             _instr_model_primacy()
-            if _innov_pub:
+            if _dllp.innov_pub:
                 _log_rl("innov",
                         "INNOV %s: %s"
                         % (log_tag() or args.signal,
                            " ".join("%d:%+.2f(p95 %.2f, n%d)"
                                     % (_p, v["innov_chips"], v["innov_p95_10m"],
                                        v["innov_n_10m"])
-                                    for _p, v in sorted(_innov_pub.items())
+                                    for _p, v in sorted(_dllp.innov_pub.items())
                                     if "innov_chips" in v)),
                         every_s=60.0)
                 _mv = ["%d:%+.2f(p95 %.2f, n%d)"
                        % (_p, v["minnov_chips"], v["minnov_p95_10m"], v["minnov_n_10m"])
-                       for _p, v in sorted(_innov_pub.items()) if "minnov_chips" in v]
+                       for _p, v in sorted(_dllp.innov_pub.items()) if "minnov_chips" in v]
                 if _mv:
                     _log_rl("minnov",
                             "MINNOV %s (model vs sky, flip-gate statistic): %s"
@@ -8012,14 +8026,14 @@ def main(argv=None, rx=None, publisher=None):
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
                 # input that produced a given correction.
-                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets, _dllp.fcoh,
-                                 pcn0=_pcn0, kcoh=_dllp.kcoh, innov=_innov_pub,
+                publisher.update(_dllp.fleet, seeds, dll_trim, len(dll_combiners), last_dets, _dllp.fcoh,
+                                 pcn0=_pcn0, kcoh=_dllp.kcoh, innov=_dllp.innov_pub,
                                  cpp_trim={_p: (_r.get("trim_chips") or 0.0)
                                            for _p, _r in _ft_readback.items()})
-            dll_report = []
+            _dllp.report = []
             _stage_dll_control()
-            if dll_report:
-                _log("DLL: " + "; ".join(dll_report))
+            if _dllp.report:
+                _log("DLL: " + "; ".join(_dllp.report))
             # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.
             #
             # Carrier and code are locked in ratio: a Doppler error dF drifts the code at
@@ -8069,8 +8083,8 @@ def main(argv=None, rx=None, publisher=None):
             # The BAR, every cycle it is measured. A threshold on a noisy statistic that is
             # never printed is a threshold nobody can audit -- and this one legitimately moves
             # with the fleet size, so a reader has to be able to see where it went.
-            if fleet:
-                any_fl = next(iter(fleet.values()))
+            if _dllp.fleet:
+                any_fl = next(iter(_dllp.fleet.values()))
                 _log_rl("dll-floor",
                         # WHICH ARM produced these numbers. Since #63 this line can describe
                         # either the polled powers or the ones formed here from the comb, and
@@ -8078,8 +8092,8 @@ def main(argv=None, rx=None, publisher=None):
                         # compared across a switch without anyone noticing it changed source.
                         "fleet DLL [%s]: %d PRN(s) over %d combiner(s), %d present, "
                         "q floor %.2f%s"
-                        % (any_fl.get("src") or "polled", len(fleet), len(dll_combiners),
-                           sum(1 for v in fleet.values() if v["present"]), any_fl["q_floor"],
+                        % (any_fl.get("src") or "polled", len(_dllp.fleet), len(dll_combiners),
+                           sum(1 for v in _dllp.fleet.values() if v["present"]), any_fl["q_floor"],
                            "" if any_fl["q_med"] is None
                            else " (noise median %.2f, sigma %.3f)"
                                 % (any_fl["q_med"], any_fl["q_sigma"])))
@@ -8174,8 +8188,8 @@ def main(argv=None, rx=None, publisher=None):
             # guard that acts on a statistic this noisy would be a new failure mode, and
             # the honest recovery (a NODE restart, which clears the C++ trim state a
             # broker restart cannot) is not the broker's to perform.
-            if args.q_stall_window > 0 and fleet:
-                _qs = [v["q"] for v in fleet.values() if v.get("q") is not None]
+            if args.q_stall_window > 0 and _dllp.fleet:
+                _qs = [v["q"] for v in _dllp.fleet.values() if v.get("q") is not None]
                 if _qs:
                     _duty = sum(1 for q in _qs if q >= args.q_stall_bar) / float(len(_qs))
                     _qh = dr_state.setdefault("q_hist", [])
@@ -8776,8 +8790,8 @@ def main(argv=None, rx=None, publisher=None):
                 fast_prns.clear()
                 # Only PRNs this cycle judged present AND trimmable. Presence, floors and the
                 # deep gate all stay here; the fast thread never re-decides who to touch.
-                fast_prns.update(_p for _p in (fleet or {})
-                                 if (fleet[_p].get("present") and _p in fast_tmpl))
+                fast_prns.update(_p for _p in (_dllp.fleet or {})
+                                 if (_dllp.fleet[_p].get("present") and _p in fast_tmpl))
             _log_rl("fast-trim",
                     "FAST-TRIM %s: %d PRNs armed, %d updates / %d posts since start "
                     "(%d skipped, %d railed)%s"
