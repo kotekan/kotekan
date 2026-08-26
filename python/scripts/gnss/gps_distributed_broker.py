@@ -247,8 +247,8 @@ def main(argv=None, rx=None, publisher=None):
     # Six owner objects, constructed FIRST because everything else in this function may
     # touch them. Each is one loop's per-satellite state; see gnss_broker/loopstate.py for
     # which table belongs to which loop and why that grouping is the one that matters.
-    _car = CarrierState()   # the shared carrier loop's memory; see gnss_broker/loopstate.py
-    _wd = WatchdogState()   # the track watchdog's clocks
+    _carrier = CarrierState()   # the shared carrier loop's memory; see gnss_broker/loopstate.py
+    _watchdog = WatchdogState()   # the track watchdog's clocks
     _nho = NhOverlay()      # NH overlay alignment (#41: judge on the VERTEX)
     _dls = DllLoopState()   # the code loop + the C++ arming handshake
     _hold = HoldState()     # why a sat is held rather than dropped
@@ -1312,7 +1312,7 @@ def main(argv=None, rx=None, publisher=None):
         # the -50 Hz alias (the estimator reads the error mod 1/(2*T_rec)).
         if ":" in _spec:
             _p, _v = _spec.split(":")
-            _car.trim_force[int(_p)] = float(_v)
+            _carrier.trim_force[int(_p)] = float(_v)
             _log("TRIM FORCE (bench): PRN %s armed, car_trim %+.1f Hz at first seed"
                  % (_p, float(_v)))
     dop_rate_fitted = {} # prn -> the fitted rate actually seeded (for the log)
@@ -1844,10 +1844,10 @@ def main(argv=None, rx=None, publisher=None):
         below. A latent state-clobbering bug lived here undisturbed until 2026-08-26 for exactly that
         reason. Treat changes to this routine as unverified until the loop is armed on sky."""
         if args.carrier_gain > 0.0:
-            for _p in [p for p in _car.trim_force if p in seeds]:
-                _car.trim[_p] = _car.trim_force.pop(_p)
+            for _p in [p for p in _carrier.trim_force if p in seeds]:
+                _carrier.trim[_p] = _carrier.trim_force.pop(_p)
                 _log("TRIM FORCE (bench): PRN %d car_trim POISONED to %+.1f Hz"
-                     % (_p, _car.trim[_p]))
+                     % (_p, _carrier.trim[_p]))
             # (computed once above -- see the shared-call note; {} when carrier_source
             #  is not "rate", which preserves the old carrier_hz_resid fallback below)
             rate_resid, rate_consensus = _rr_resid, _rr_cons
@@ -1905,9 +1905,9 @@ def main(argv=None, rx=None, publisher=None):
                 # ~5 Hz; integrating a stale value 5-7x over-applies the gain and oscillates
                 # (observed +-20 Hz swings), and the --carrier-refade counter below must
                 # count EMITS, not polls. A changed value marks a fresh emit.
-                if resid == _car.last.get(prn):
+                if resid == _carrier.last.get(prn):
                     continue
-                _car.last[prn] = resid
+                _carrier.last[prn] = resid
                 coh_ok = (rec.get("coherence_s") or 0.0) > 0.0
                 # ---- VERIFYING: an applied step hypothesis is judged by OUTCOME ----
                 # (explain-apply-verify, 2026-07-22): a trim correction is a falsifiable
@@ -1916,21 +1916,21 @@ def main(argv=None, rx=None, publisher=None):
                 # full re-acquire. This bounded closed loop is exactly what the two
                 # retracted open-loop escapes (v2 EMA unwrap, loose step-accept) were
                 # missing: a wrong correction costs one reverted step, never compounds.
-                if prn in _car.verify:
-                    v = _car.verify[prn]
+                if prn in _carrier.verify:
+                    v = _carrier.verify[prn]
                     v["emits"] += 1
                     if coh_ok or abs(resid) < CARRIER_EXPLAIN_HZ:
-                        del _car.verify[prn]
-                        _car.fade.pop(prn, None)
+                        del _carrier.verify[prn]
+                        _carrier.fade.pop(prn, None)
                         _log("CARRIER STEP VERIFIED PRN %d: healed in %d emit(s) "
                              "(coh=%s, resid %+.2f Hz)" % (prn, v["emits"], coh_ok, resid))
                         # fall through: this emit integrates normally below
                     elif v["emits"] >= CARRIER_VERIFY_EMITS:
-                        _car.trim[prn] = v["prev_trim"]  # revert the refuted hypothesis
-                        del _car.verify[prn]
-                        _car.locked.discard(prn)         # escalate: BOOTSTRAP re-acquire
-                        _car.step_t[prn] = t0 + 50.0     # ~60 s hypothesis lockout
-                        _car.fade.pop(prn, None)
+                        _carrier.trim[prn] = v["prev_trim"]  # revert the refuted hypothesis
+                        del _carrier.verify[prn]
+                        _carrier.locked.discard(prn)         # escalate: BOOTSTRAP re-acquire
+                        _carrier.step_t[prn] = t0 + 50.0     # ~60 s hypothesis lockout
+                        _carrier.fade.pop(prn, None)
                         _log("CARRIER STEP REFUTED PRN %d: no heal after %d emits (resid "
                              "%+.2f Hz) -> trim reverted to %+.2f, BOOTSTRAP re-pull"
                              % (prn, CARRIER_VERIFY_EMITS, resid, v["prev_trim"]))
@@ -1943,11 +1943,11 @@ def main(argv=None, rx=None, publisher=None):
                 # phase-continuous and car_trim correctly re-grows from 0 via the normal loop), so
                 # this only OBSERVES the outcome and lets the lockout prevent churn. It falls
                 # through to integrate normally either way (trim re-grows to the small remnant).
-                if prn in _car.bleed_verify:
-                    bv = _car.bleed_verify[prn]
+                if prn in _carrier.bleed_verify:
+                    bv = _carrier.bleed_verify[prn]
                     bv["emits"] += 1
                     if bv["emits"] >= args.carrier_bleed_verify_emits:
-                        del _car.bleed_verify[prn]
+                        del _carrier.bleed_verify[prn]
                         # Judge by the SETTLED residual, not coh_ok (which blips for ~1 emit on the
                         # deep-window reset a re-pin causes, good bleed or not). A residual at/under
                         # the bar means the fold left the carrier aligned; a large one is a real
@@ -1957,7 +1957,7 @@ def main(argv=None, rx=None, publisher=None):
                             _log("CARRIER BLEED VERIFIED PRN %d: resid settled %+.2f Hz "
                                  "(<= %.2f) over %d emits, trim now %+.2f"
                                  % (prn, resid, args.carrier_bleed_ok_hz, bv["emits"],
-                                    _car.trim.get(prn, 0.0)))
+                                    _carrier.trim.get(prn, 0.0)))
                         else:
                             _log("CARRIER BLEED REFUTED PRN %d: resid %+.2f Hz (> %.2f) after "
                                  "%d emits -- loop re-grows trim, %.0f s lockout"
@@ -1965,9 +1965,9 @@ def main(argv=None, rx=None, publisher=None):
                                     args.carrier_bleed_lockout_s))
                 sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
                        if coh_ok else 0.0)
-                tracking = prn in _car.locked
+                tracking = prn in _carrier.locked
                 if coh_ok and sig >= args.carrier_min_sig > 0.0:
-                    _car.locked.add(prn)
+                    _carrier.locked.add(prn)
                 gated = (tracking and args.carrier_min_sig > 0.0
                          and (not coh_ok or sig < args.carrier_min_sig))
                 fade_gated = gated  # incoherent/weak: the resid estimator is NOT trusted
@@ -1996,29 +1996,29 @@ def main(argv=None, rx=None, publisher=None):
                     # v1 escape lacked it and churned the fleet; a wrong hypothesis now
                     # costs one reverted step + a 60 s lockout).
                     if args.carrier_step_accept > 0 and present:
-                        hist = _car.step_hist.setdefault(prn, [])
+                        hist = _carrier.step_hist.setdefault(prn, [])
                         hist.append((t0, resid))
                         del hist[:-args.carrier_step_accept]
                         band = max(2.0, args.carrier_innov_hz)
                         if (len(hist) >= args.carrier_step_accept
                                 and t0 - hist[0][0] < 30.0
-                                and t0 - _car.step_t.get(prn, 0.0) >= 10.0):
+                                and t0 - _carrier.step_t.get(prn, 0.0) >= 10.0):
                             vals = sorted(r for _, r in hist)
                             med = vals[len(vals) // 2]
                             if (vals[-1] - vals[0] < band
                                     and abs(med) >= CARRIER_EXPLAIN_HZ):
-                                prev_trim = _car.trim.get(prn, 0.0)
-                                _car.trim[prn] = max(-args.carrier_max_hz,
+                                prev_trim = _carrier.trim.get(prn, 0.0)
+                                _carrier.trim[prn] = max(-args.carrier_max_hz,
                                                     min(args.carrier_max_hz,
                                                         prev_trim + med))
-                                _car.step_t[prn] = t0
-                                _car.step_hist[prn] = []
-                                _car.verify[prn] = {"prev_trim": prev_trim, "emits": 0}
+                                _carrier.step_t[prn] = t0
+                                _carrier.step_hist[prn] = []
+                                _carrier.verify[prn] = {"prev_trim": prev_trim, "emits": 0}
                                 _log("CARRIER STEP HYPOTHESIS PRN %d: %d agreeing gated "
                                      "resids (med %+.2f Hz, spread %.2f) -> trim %+.2f, "
                                      "VERIFYING (heal in %d emits or revert)"
                                      % (prn, args.carrier_step_accept, med,
-                                        vals[-1] - vals[0], _car.trim[prn],
+                                        vals[-1] - vals[0], _carrier.trim[prn],
                                         CARRIER_VERIFY_EMITS))
                                 continue
                     # --carrier-refade: the two gates otherwise form an ABSORBING state for a
@@ -2038,7 +2038,7 @@ def main(argv=None, rx=None, publisher=None):
                     # sats fine; det presence is the same test the watchdog trusts.
                     # (`present` computed at the top of the gated branch, shared with the
                     # hypothesis stage.)
-                    _car.fade[prn] = _car.fade.get(prn, 0) + 1 if present else 0
+                    _carrier.fade[prn] = _carrier.fade.get(prn, 0) + 1 if present else 0
                     # FLICKER GUARD (2026-07-20): a SUB-innovation residual on a sat that
                     # cohered seconds ago is certification-bar sig flicker, not a stepped
                     # NCO -- the re-pull has nothing to pull (settled-era E1/B1C: ~700
@@ -2049,17 +2049,17 @@ def main(argv=None, rx=None, publisher=None):
                     # (wd_coh_t empty -> old behavior).
                     _flicker = (args.refade_flicker_s > 0.0
                                 and abs(resid) < args.carrier_innov_hz
-                                and t0 - _wd.coh_t.get(prn, 0.0) < args.refade_flicker_s)
+                                and t0 - _watchdog.coh_t.get(prn, 0.0) < args.refade_flicker_s)
                     if (args.carrier_refade > 0 and not _flicker
-                            and _car.fade.get(prn, 0) >= args.carrier_refade):
-                        _car.locked.discard(prn)
-                        _car.fade.pop(prn, None)
+                            and _carrier.fade.get(prn, 0) >= args.carrier_refade):
+                        _carrier.locked.discard(prn)
+                        _carrier.fade.pop(prn, None)
                         _log("CARRIER REACQ PRN %d: %d consecutive gated emits at full amp "
                              "(last resid %+.2f Hz) -> BOOTSTRAP re-pull"
                              % (prn, args.carrier_refade, resid))
                     continue  # this emit stays held: coast on the feed-forward
-                _car.fade.pop(prn, None)
-                _car.step_hist.pop(prn, None)  # ungated emit: gated-run agreement is stale
+                _carrier.fade.pop(prn, None)
+                _carrier.step_hist.pop(prn, None)  # ungated emit: gated-run agreement is stale
                 if not tracking and args.carrier_det_gate_s > 0.0:
                     # BOOTSTRAP WALK GATE: no fresh detection = no evidence the estimator
                     # has a signal to measure; its residual is noise and integrating it
@@ -2067,7 +2067,7 @@ def main(argv=None, rx=None, publisher=None):
                     _fr = det_fresh.get(prn)
                     if _fr is None or t0 - _fr[1] > args.carrier_det_gate_s:
                         continue
-                if prn not in _car.trim and args.carrier_fleet_seed:
+                if prn not in _carrier.trim and args.carrier_fleet_seed:
                     # start on the fleet's clock, not at 0: the converged trim is the chain's
                     # deterministic frac-N LO offset, common-mode across sats
                     #
@@ -2081,16 +2081,16 @@ def main(argv=None, rx=None, publisher=None):
                     # block is dead; arming the carrier loop (which is exactly what #52 wants)
                     # would have taken the C++ trim loop down with it, and the traceback would
                     # have pointed at the trim code rather than here.
-                    _car_seed_vals = sorted(_car.trim.values())
+                    _car_seed_vals = sorted(_carrier.trim.values())
                     if len(_car_seed_vals) >= 3:
-                        _car.trim[prn] = _car_seed_vals[len(_car_seed_vals) // 2]
-                prev_trim = _car.trim.get(prn, 0.0)
+                        _carrier.trim[prn] = _car_seed_vals[len(_car_seed_vals) // 2]
+                prev_trim = _carrier.trim.get(prn, 0.0)
                 trim = (1.0 - args.carrier_leak) * prev_trim + args.carrier_gain * resid
                 if tracking and args.carrier_max_step > 0.0:
                     trim = prev_trim + max(-args.carrier_max_step,
                                            min(args.carrier_max_step, trim - prev_trim))
-                _car.trim[prn] = max(-args.carrier_max_hz, min(args.carrier_max_hz, trim))
-                car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, _car.trim[prn]))
+                _carrier.trim[prn] = max(-args.carrier_max_hz, min(args.carrier_max_hz, trim))
+                car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, _carrier.trim[prn]))
                 # ---- f_ref TRIM-BLEED SHADOW (log-only, no action) ----
                 # This emit is COHERENT and TRACKING (it reached the integrator ungated). If the
                 # trim has held a STANDING value across the stability window, f_ref is pinned
@@ -2099,8 +2099,8 @@ def main(argv=None, rx=None, publisher=None):
                 # Recency-windowed like car_step_hist (a decoherence gap ages the window out ->
                 # not "converged"), so no per-gate-branch cleanup is needed.
                 if (args.carrier_bleed_shadow or args.carrier_bleed) and tracking and coh_ok:
-                    bh = _car.bleed_hist.setdefault(prn, [])
-                    bh.append((t0, _car.trim[prn]))
+                    bh = _carrier.bleed_hist.setdefault(prn, [])
+                    bh.append((t0, _carrier.trim[prn]))
                     del bh[:-args.carrier_bleed_stable_emits]
                     vals = [v for _, v in bh]
                     # FLAT-TRIM gate (2026-08-03): a truly converged trim is FLAT; a still-settling
@@ -2118,45 +2118,45 @@ def main(argv=None, rx=None, publisher=None):
                             slope = sum((t - tb) * (v - vb) for t, v in bh) / den
                     converged = (len(bh) >= args.carrier_bleed_stable_emits
                                  and t0 - bh[0][0] < 90.0
-                                 and abs(_car.trim[prn]) >= args.carrier_bleed_hz
+                                 and abs(_carrier.trim[prn]) >= args.carrier_bleed_hz
                                  and max(vals) - min(vals) <= args.carrier_bleed_stable_hz
                                  and abs(slope) <= args.carrier_bleed_max_slope)
                     # ARMED: re-pin f_ref and zero the trim (one bleed per lockout, never while a
                     # step- or bleed-hypothesis is already under verify for this PRN).
-                    if (converged and args.carrier_bleed and prn not in _car.verify
-                            and prn not in _car.bleed_verify
-                            and t0 >= _car.bleed_lock_t.get(prn, 0.0)):
-                        prev_trim = _car.trim[prn]
-                        _car.trim[prn] = 0.0             # f_ref re-pin absorbs the offset
-                        _car.repin_pending[prn] = prev_trim  # tracker does f_ref += prev_trim
-                        _car.bleed_verify[prn] = {"emits": 0, "prev_trim": prev_trim, "t": t0}
-                        _car.bleed_lock_t[prn] = t0 + args.carrier_bleed_lockout_s
-                        _car.bleed_hist[prn] = []
-                        _car.bleed_log_t[prn] = t0
+                    if (converged and args.carrier_bleed and prn not in _carrier.verify
+                            and prn not in _carrier.bleed_verify
+                            and t0 >= _carrier.bleed_lock_t.get(prn, 0.0)):
+                        prev_trim = _carrier.trim[prn]
+                        _carrier.trim[prn] = 0.0             # f_ref re-pin absorbs the offset
+                        _carrier.repin_pending[prn] = prev_trim  # tracker does f_ref += prev_trim
+                        _carrier.bleed_verify[prn] = {"emits": 0, "prev_trim": prev_trim, "t": t0}
+                        _carrier.bleed_lock_t[prn] = t0 + args.carrier_bleed_lockout_s
+                        _carrier.bleed_hist[prn] = []
+                        _carrier.bleed_log_t[prn] = t0
                         _log("CARRIER BLEED PRN %d: re-pinning f_ref (%+.2f Hz absorbed, slope "
                              "%+.3f Hz/s), trim->0, VERIFYING (heal in %d emits)"
                              % (prn, prev_trim, slope, args.carrier_bleed_verify_emits))
-                    elif converged and t0 - _car.bleed_log_t.get(prn, 0.0) >= 60.0:
-                        _car.bleed_log_t[prn] = t0
+                    elif converged and t0 - _carrier.bleed_log_t.get(prn, 0.0) >= 60.0:
+                        _carrier.bleed_log_t[prn] = t0
                         _log("CAR-BLEED CANDIDATE PRN %d: trim %+.2f Hz stable %d emits "
                              "(spread %.2f, slope %+.3f Hz/s), coherent -> %s"
-                             % (prn, _car.trim[prn], len(bh), max(vals) - min(vals), slope,
+                             % (prn, _carrier.trim[prn], len(bh), max(vals) - min(vals), slope,
                                 "locked out" if args.carrier_bleed
                                 else "would re-pin f_ref, predict trim->~0 (shadow, no action)"))
             if car_report:
                 _log("CAR: " + "; ".join(car_report))
-            for k in list(_car.trim):
+            for k in list(_carrier.trim):
                 if k not in seeds:
-                    del _car.trim[k]
-                    _car.locked.discard(k)  # a re-seeded sat re-enters via BOOTSTRAP
-                    _car.verify.pop(k, None)  # a dropped sat's hypothesis dies with it
-                    _car.step_hist.pop(k, None)
-                    _car.fade.pop(k, None)
-                    _car.bleed_hist.pop(k, None)  # its convergence history dies with it
-                    _car.bleed_log_t.pop(k, None)
-                    _car.bleed_verify.pop(k, None)
-                    _car.bleed_lock_t.pop(k, None)
-                    _car.repin_pending.pop(k, None)
+                    del _carrier.trim[k]
+                    _carrier.locked.discard(k)  # a re-seeded sat re-enters via BOOTSTRAP
+                    _carrier.verify.pop(k, None)  # a dropped sat's hypothesis dies with it
+                    _carrier.step_hist.pop(k, None)
+                    _carrier.fade.pop(k, None)
+                    _carrier.bleed_hist.pop(k, None)  # its convergence history dies with it
+                    _carrier.bleed_log_t.pop(k, None)
+                    _carrier.bleed_verify.pop(k, None)
+                    _carrier.bleed_lock_t.pop(k, None)
+                    _carrier.repin_pending.pop(k, None)
 
     def _stage_narrow_search():
         """2b: ALMANAC-NARROW THE SEARCH -- push per-PRN predicted Doppler to the detectors.
@@ -2435,7 +2435,7 @@ def main(argv=None, rx=None, publisher=None):
                 _log("PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
                      % (prn, seed_dop, _dop_src, dop,
                         ("%.1f" % (_ctx.pred[prn][0])) if (args.almanac and prn in _ctx.pred) else "n/a",
-                        _cb.value, _car.trim.get(prn, 0.0)))
+                        _cb.value, _carrier.trim.get(prn, 0.0)))
             elif abs(seed_dop - _prev_sd) > 10.0 and prn in cp_held:
                 # HELD sat: the candidate walks while the emitted tuple stays frozen /
                 # translated -- this "step" is never applied as-is, and logging it every
@@ -2924,9 +2924,9 @@ def main(argv=None, rx=None, publisher=None):
                 # the TRACK-mode trim was not built for (same latch as the hold release,
                 # and it bypasses that branch because cp_held is discarded HERE): demote
                 # to BOOTSTRAP so the carrier re-pulls instead of parking off-frequency.
-                if prn in _car.locked:
-                    _car.locked.discard(prn)
-                    _car.fade.pop(prn, None)
+                if prn in _carrier.locked:
+                    _carrier.locked.discard(prn)
+                    _carrier.fade.pop(prn, None)
                     _log("CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn)
             # TRACK-vs-MODEL MONITOR (2026-07-20, log-only; audit follow-up census): the
             # referee's reference is the search FIT; the model-referenced track residual
@@ -3089,9 +3089,9 @@ def main(argv=None, rx=None, publisher=None):
                     # rescuer below stands: the broker KNOWS the NCO stepped -- demote to
                     # BOOTSTRAP and re-pull the trim at full gain (seconds, no arithmetic).
                     # Under --dop-continuous ddop_rel is ~0 and this never fires.
-                    if abs(ddop_rel) > 1.0 and prn in _car.locked:
-                        _car.locked.discard(prn)
-                        _car.fade.pop(prn, None)
+                    if abs(ddop_rel) > 1.0 and prn in _carrier.locked:
+                        _carrier.locked.discard(prn)
+                        _carrier.fade.pop(prn, None)
                         _log("CARRIER REACQ PRN %d: hold released with dop step %+.1f Hz "
                              "-> BOOTSTRAP re-pull" % (prn, ddop_rel))
                 cp_held.discard(prn)
@@ -3566,7 +3566,7 @@ def main(argv=None, rx=None, publisher=None):
                     # ⚠️ ONLY on the command-AWARE plant (--rrate-feed-applied). On the
                     # folded assembler the observable never lost the command, and adding
                     # it back is the arm-12 integrator runaway. See the flag's help.
-                    _y = _rv + (rr_cmd_applied.get(_p, _car.trim.get(_p, 0.0))
+                    _y = _rv + (rr_cmd_applied.get(_p, _carrier.trim.get(_p, 0.0))
                                 if args.rrate_feed_applied else 0.0)
                     _k = (args.dr_constellation, int(_p))
                     # FLL->PLL HANDOFF: a phase-governed satellite takes its coarse
@@ -3614,7 +3614,7 @@ def main(argv=None, rx=None, publisher=None):
                     _fcr = (_dllp.fcoh or {}).get(_p) or {}
                     _rrec, _srec = _fcr.get("rate_hz"), _fcr.get("rate_sigma_hz")
                     if _use_rec and _rrec is not None and _srec is not None:
-                        _y = _rrec + (rr_cmd_applied.get(_p, _car.trim.get(_p, 0.0))
+                        _y = _rrec + (rr_cmd_applied.get(_p, _carrier.trim.get(_p, 0.0))
                                       if args.rrate_feed_applied else 0.0)
                         # never claim better than the fold's grid can resolve, and never
                         # worse than the old blanket 0.2 -- a split-half of exactly 0 is
@@ -4967,8 +4967,8 @@ def main(argv=None, rx=None, publisher=None):
                     _tmod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
                     d["code_phase_at_ref_chips"] = (
                         d["code_phase_at_ref_chips"] + _dls.trim[prn]) % _tmod
-            if _car.trim.get(prn):
-                d["carrier_trim_hz"] = _car.trim[prn]
+            if _carrier.trim.get(prn):
+                d["carrier_trim_hz"] = _carrier.trim[prn]
             if _jrc is not None and prn not in probe_set:
                 # Probes excepted for the trim loop's own reason: no carrier, and a moving
                 # trim moves the REPORTED Doppler, which the beam map's churn gate reads
@@ -5021,12 +5021,12 @@ def main(argv=None, rx=None, publisher=None):
                     _rr_released += 1
                 # else: within one step of zero (or slew disabled) -- final sub-slew
                 # step back to car_trim/0, and the sat leaves rr_cmd_applied.
-            if prn in _car.repin_pending:
+            if prn in _carrier.repin_pending:
                 # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
                 # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
                 # carrier_trim_hz accompanies it -- the trim moves wholly into f_ref, leaving the
                 # combined carrier invariant).
-                d["carrier_repin"] = _car.repin_pending.pop(prn)
+                d["carrier_repin"] = _carrier.repin_pending.pop(prn)
             # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
             # its secondary overlay is DETERMINISTIC, so the chips are projected from the
             # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.
@@ -6332,7 +6332,7 @@ def main(argv=None, rx=None, publisher=None):
         receiver_state=receiver_state, alm_now=_alm_now, cb=_cb,
         almanac_sats=almanac_sats, brdc_alm=brdc_alm, det_fresh=det_fresh,
         state_w=state_w, clk_persist_t=_clk_persist_t,
-        car=_car, wd=_wd, nho=_nho, dls=_dls, hold=_hold, cpt=_cpt,
+        car=_carrier, wd=_watchdog, nho=_nho, dls=_dls, hold=_hold, cpt=_cpt,
         trackers=trackers, joint_consume=joint_consume, broker_t0=broker_t0,
         dr_eph_mod=dr_eph_mod, dr_min_prn=dr_min_prn,
         hist_len=HIST_LEN, max_gap_hops=MAX_GAP_HOPS, q_alias_hz=Q_ALIAS_HZ,
@@ -6912,7 +6912,7 @@ def main(argv=None, rx=None, publisher=None):
                     # unambiguous to ~+-23 Hz; beyond 20 the estimate is suspect.
                     if abs(_rem) >= 20.0:
                         continue
-                    _yk = _rem + (rr_cmd_applied.get(_p, _car.trim.get(_p, 0.0))
+                    _yk = _rem + (rr_cmd_applied.get(_p, _carrier.trim.get(_p, 0.0))
                                   if args.rrate_feed_applied else 0.0)
                     _sigk = min(0.3, max(0.03, 2.0 / math.sqrt(_kv["sig"])))
                     _k2 = (args.dr_constellation, int(_p))
@@ -6974,7 +6974,7 @@ def main(argv=None, rx=None, publisher=None):
         # gate so a chain with the loop disabled reports null rather than vanishing.
         if state_w is not None:
             try:
-                _ct = sorted(_car.trim.values())
+                _ct = sorted(_carrier.trim.values())
                 _ctm = statistics.median(_ct) if _ct else None
                 state_w.observe(
                     "carrier_trim",
@@ -7112,7 +7112,7 @@ def main(argv=None, rx=None, publisher=None):
                 if publisher is not None else args.carrier_trim_const)
         if _ctc is not None:
             for prn in seeds:
-                _car.trim[prn] = _ctc
+                _carrier.trim[prn] = _ctc
 
         # -- P3 CONSUMER (task #33, --rrate-command): ONE carrier command per (sat, band) --
         # carrier_correction_hz() = receiver-wide f_carrier + this sat's orbital rrate,

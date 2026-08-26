@@ -11,6 +11,14 @@ Each class below is ONE loop's memory. The test for membership is not "is it abo
 satellites" -- everything here is -- but "would these be reset together if the loop were
 restarted". A table that would survive its neighbours' reset belongs somewhere else.
 
+⚠️ GIVE THE OWNER A NAME NOTHING ELSE USES. The first version of this called them `_car` and
+`_wd` -- and `_car` is already a tuple element in the dead-reckon seeding loop, `_wd` already a
+field of the seed-audit unpack. The second one is the worse case: it sits at `main()`'s own
+level, so it REBOUND the owner every cycle, which is precisely the `fleet`-clobber class this
+refactor exists to eliminate. Nothing broke only because no later line used it. The names are
+`_carrier` and `_watchdog` now, and an owner name should be checked against the file before it
+is chosen.
+
 ⚠️ THESE ARE PER-PRN DICTS, MUTATED IN PLACE. Nothing here should ever be REBOUND
 (`self.trim = {}`); clear it instead. A rebind breaks every reference the context is holding,
 silently, and the symptom appears in whichever stage reads it next rather than where it
