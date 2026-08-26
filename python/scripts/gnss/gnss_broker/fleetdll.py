@@ -384,9 +384,15 @@ def stage_fleet_dll(ctx):
             if not _sr.get("armed"):
                 ctx.saw.drop(_sp)     # a released trim decays by the LEAK, not a wipe
                 continue
+            _sq = ctx.qpop.summary(_sp)
+            _sbt = ctx.birth_steps.get(_sp)
             _smsg = ctx.saw.note(ctx.t0, _sp,
                                  ctx.handover.corrected(_sp, float(_sr["trim_chips"])),
-                                 browned_out=ctx.brown.active())
+                                 browned_out=ctx.brown.active(),
+                                 uptime_s=ctx.t0 - ctx.broker_t0,
+                                 rebase_age_s=(ctx.t0 - _sbt) if _sbt is not None else None,
+                                 present_frac=_sq[4] if _sq else None,
+                                 q_mean=_sq[2] if _sq else None)
             if _smsg:
                 _log("%s: %s" % (_tag, _smsg))
         # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.

@@ -1180,6 +1180,12 @@ def dr_seed(ctx):
                     ctx.handover.offer(prn, _bstep, prn in ctx.dls.armed_last,
                                     ctx.telem_chain, ctx.args.fleet_trim_url,
                                     _post, _log)
+                    # D3 reads this to tell a REBASE-coincident wipe from a bare
+                    # one -- the #92 P2 metric is the rebase-coincident rate on an
+                    # armed chain vs its unarmed band sibling, and without the
+                    # stamp the two wipe classes (birth-step vs slew-transfer,
+                    # 2026-08-26) superpose exactly as E3 did.
+                    ctx.birth_steps[prn] = ctx.t0
                     _log_rl("birthstep-%d" % prn,
                             "BIRTH-STEP PRN %d: old_phys %+.3f -> new_phys %+.3f"
                             "  step %+.3f chips | off %+.3f = leg %+.3f"

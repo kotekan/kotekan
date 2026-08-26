@@ -250,10 +250,58 @@ def test_sawtooth():
     check(not any(slow), "a slow decay is the leak, and does not fire")
 
 
+def test_sawtooth_v2():
+    print("D3 v2: startup hold-off, the weak-sat qualifier, and the two wipe classes")
+
+    def ramped(**kw):
+        d = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5, **kw)
+        for i in range(30):
+            d.note(i * 10.0, 7, i * 0.05)
+        return d
+
+    # THE FIRST FLIGHT'S POLLUTION (2026-08-26 14:54): 6 of 12 reports in the broker's
+    # first two minutes. Inside the hold-off nothing is reported, the suppression is
+    # counted, and -- D2's hard-won rule -- the cooldown is NOT stamped, so the same
+    # satellite still reports once the process is old enough.
+    d = ramped()
+    check(d.note(300.0, 7, 0.02, uptime_s=120.0) is None, "inside the startup hold-off: silent")
+    check(d.suppressed_startup == 1, "and counted, not silently dropped")
+    for i in range(30):
+        d.note(400.0 + i * 10.0, 7, i * 0.05)
+    check(d.note(700.0, 7, 0.02, uptime_s=1800.0) is not None,
+          "the SAME satellite fires later -- suppression must not stamp the cooldown")
+
+    # THE PRN 34 CASE (gal_e5a 14:54:16): a trim ramping on a satellite that was absent
+    # with q ~1.3 the whole time is churn-chasing, not sky work.
+    d2 = ramped()
+    check(d2.note(300.0, 7, 0.02, present_frac=0.4) is None, "mostly-absent sat: suppressed")
+    d3 = ramped()
+    check(d3.note(300.0, 7, 0.02, present_frac=0.9, q_mean=1.3) is None,
+          "present but at the q floor: suppressed")
+    check(d2.suppressed_weak == 1 and d3.suppressed_weak == 1, "both counted as weak")
+    d4 = ramped()
+    check(d4.note(300.0, 7, 0.02, present_frac=0.9, q_mean=3.0) is not None,
+          "a healthy locked satellite's wipe IS reported")
+
+    # THE TWO CLASSES. A wipe just after a BIRTH-STEP is the population #92's handover
+    # addresses; one with no rebase in the window is the slew-transfer class (gps_l5's
+    # ~600 s cadence) and judging the handover on it would judge the wrong mechanism.
+    d5 = ramped()
+    m = d5.note(300.0, 7, 0.02, rebase_age_s=5.0)
+    check(m is not None and "REBASE-WIPE" in m, "rebase 5 s before: REBASE-WIPE")
+    check(d5.episodes[-1][4] == "REBASE-WIPE", "and the episode carries the class")
+    d6 = ramped()
+    m = d6.note(300.0, 7, 0.02)
+    check(m is not None and "BARE-WIPE" in m, "no rebase stamp: BARE-WIPE")
+    d7 = ramped()
+    m = d7.note(300.0, 7, 0.02, rebase_age_s=400.0)
+    check(m is not None and "BARE-WIPE" in m, "a stale birth-step (400 s ago) does not qualify")
+
+
 if __name__ == "__main__":
     print("D0-D3 -- population, brownout, latch, sawtooth\n")
     for fn in (test_the_e4_case, test_states, test_window_and_line, test_no_side_effects,
-               test_brownout, test_latch, test_sawtooth):
+               test_brownout, test_latch, test_sawtooth, test_sawtooth_v2):
         fn()
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     sys.exit(1 if _fails else 0)

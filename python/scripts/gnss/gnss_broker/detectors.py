@@ -313,21 +313,42 @@ class SawtoothDetector(object):
     heterogeneous in the first place.
     """
 
-    def __init__(self, ramp_chips=0.5, window_s=1800.0, wipe_frac=0.5, cooldown_s=600.0):
+    def __init__(self, ramp_chips=0.5, window_s=1800.0, wipe_frac=0.5, cooldown_s=600.0,
+                 startup_hold_s=900.0, rebase_window_s=30.0):
         self.ramp_chips = float(ramp_chips)
         self.window_s = float(window_s)
         self.wipe_frac = float(wipe_frac)
         self.cooldown_s = float(cooldown_s)
+        # FIRST FLIGHT (2026-08-26 14:54): 6 of 12 reports landed inside the broker's first
+        # two minutes -- seed churn while the clock converges, the same population that gave
+        # D2 four false reports. Same cure: a hold-off, with the suppression COUNTED.
+        self.startup_hold_s = float(startup_hold_s)
+        # A wipe within this many seconds of a BIRTH-STEP for the same PRN is the class the
+        # #92 handover addresses; a wipe with no rebase in the window is the SLEW-TRANSFER
+        # class (gps_l5, ~600 s churn cadence: the seed slews onto a stepped target and the
+        # trim's content transfers into it -- the tap barely moves and the cost is chopped
+        # ramp windows, not lost lock). Superposing them is E3's heterogeneity mistake.
+        self.rebase_window_s = float(rebase_window_s)
         self.hist = {}          # prn -> [(t, trim)]
         self.reported = {}      # prn -> t of last report
-        self.episodes = []      # (prn, t, peak_trim, after_trim)
+        self.episodes = []      # (prn, t, peak_trim, after_trim, kind)
+        self.suppressed_startup = 0
+        self.suppressed_weak = 0
 
-    def note(self, t, prn, trim, browned_out=False):
+    def note(self, t, prn, trim, browned_out=False, uptime_s=None, rebase_age_s=None,
+             present_frac=None, q_mean=None):
         """Feed one satellite's standing trim. Returns a message on a wipe, else None.
 
         `trim` should already have #92's own handover deltas removed (see
         `TrimHandover.corrected`) -- otherwise a successful handover, which is the CURE, reads
         as the disease it was applied to.
+
+        `uptime_s` gates the startup hold-off; `rebase_age_s` (seconds since this PRN's last
+        BIRTH-STEP, None if never) classifies the wipe; `present_frac`/`q_mean` come from D0's
+        window and disqualify a trim that was never doing sky work -- a ramp on a satellite
+        that is absent or at the q floor is churn-chasing, and counting it (PRN 34 on e5a,
+        14:54:16) pollutes both sides of the P2 comparison. Suppressions are counted and never
+        stamp the cooldown, so a suppressed report cannot swallow a later real one.
         """
         h = self.hist.setdefault(prn, [])
         h.append((t, trim))
@@ -342,13 +363,25 @@ class SawtoothDetector(object):
             return None
         # A WIPE: the magnitude collapses in a single step, from a value that had ramped.
         if abs(prev) >= self.ramp_chips and abs(trim) <= self.wipe_frac * abs(prev):
+            if uptime_s is not None and uptime_s < self.startup_hold_s:
+                self.suppressed_startup += 1
+                return None
+            if ((present_frac is not None and present_frac < 0.5)
+                    or (q_mean is not None and q_mean < 2.0)):
+                self.suppressed_weak += 1
+                return None
             if t - self.reported.get(prn, -1e9) < self.cooldown_s:
                 return None
             self.reported[prn] = t
-            self.episodes.append((prn, t, prev, trim))
+            kind = ("REBASE-WIPE" if (rebase_age_s is not None
+                                      and 0.0 <= rebase_age_s <= self.rebase_window_s)
+                    else "BARE-WIPE")
+            self.episodes.append((prn, t, prev, trim, kind))
             return ("SAWTOOTH PRN %d: standing trim %+.2f -> %+.2f chips in one cycle "
-                    "(peak %+.2f over %.0f s) -- ramp discarded, not handed over"
-                    % (prn, prev, trim, peak, t - h[0][0]))
+                    "(peak %+.2f over %.0f s) -- ramp discarded, not handed over | %s%s"
+                    % (prn, prev, trim, peak, t - h[0][0], kind,
+                       (" (birth-step %.0f s before)" % rebase_age_s)
+                       if kind == "REBASE-WIPE" else " (no birth-step in window: slew/other)"))
         return None
 
     def drop(self, prn):
