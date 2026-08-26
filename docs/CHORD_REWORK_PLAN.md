@@ -71,7 +71,69 @@ A refactor gated on a stale fixture proves the old paths still work.
   the pre-axis regime).
 * Outstanding since the p9 handoff — this is its third mention and it now blocks work.
 
-### Step 1 — extract, in this order, each with unit tests
+### Step 1 — DONE 2026-08-26 (all three, plus more than was planned)
+
+| | before | after |
+|---|---|---|
+| `gps_distributed_broker.py` | 11,084 | **8,598** |
+| the cycle loop body | 6,940 | **4,834** |
+| max nesting depth | 15 | **10** |
+| named stages in the cycle | 0 | **10** |
+| unit-tested decision modules | 0 | **4** (66 checks) |
+
+⚠️ **THE HEADLINE NUMBER IN THE ORIGINAL PLAN WAS WRONG.** "7,135 lines in `_decoded_entries`
+(64%)" was a grep artifact — it measured def-to-next-def. `_decoded_entries` is **30 lines**.
+The monolith was always `main()` itself (10,287 lines, 93% of the file), of which the cycle
+loop was 6,940 and argparse 1,938. Re-measure with `scripts/gnss/broker_iface.py map`.
+
+Extracted, each a pure move gated at 7/7 EQUIVALENT:
+* **`gnss_broker/admission.py`** — the #90 gate as an `AdmissionGate` with its six rules named
+  and ordered, plus the #50 `reseed_step` policy. `test_admission.py` replays all eight of
+  2026-08-25's fires offline, including PRN 34's sidelobe-stable tau growing THROUGH two fires.
+  The F3 threshold-flicker gap is asserted as **still open** rather than papered over.
+* **`gnss_broker/handover.py`** — #92's `TrimHandover`, which owned the deepest-nested line in
+  the file. Tests pin the bound (a 400-chip shared-clock birth is not a handover) and the rule
+  that a FAILED post must not be credited into `adjcum`.
+* **`gnss_broker/rampfit.py`** — #93's shadow `RampTracker`. The test that matters asserts a
+  1.0-chip re-anchor inside a 400 s window reads as FLAT, not as a rate.
+* **`gnss_broker/cli.py`** — 2,505 lines of CLI surface and #89 frozen tuning. `--help` verified
+  byte-identical at 2,551 lines.
+* **Ten named cycle stages** promoted to nested routines: detections→seeds (765 lines),
+  dead-reckon is NOT among them (see below), DLL is not either.
+
+**THE GATE IS NOW ONE COMMAND AND 18 SECONDS**: `scripts/gnss/gate.sh` runs all seven fixtures
+in parallel plus the unit tests, and both halves were **proven able to go red** before being
+trusted. The unit half exists because the digest half is blind by construction to the #90 gate
+(it strikes on the wall clock) and to #92 (it posts to a gather that never answers in a replay).
+
+**A LATENT BUG FELL OUT, and it is the best argument for the whole programme.** The carrier
+loop assigned `fleet = sorted(car_trim.values())` — a LIST — over the DLL's per-PRN state
+DICT for the rest of the cycle. Every later consumer, including the FLEET-TRIM arming block
+that decides which PRNs the C++ trim loop actuates, then indexed a list of floats by PRN. It
+has never fired because `--carrier-gain` is 0.0 in production; arming the carrier loop (exactly
+what #52 wants) would have taken the **C++ trim loop** down, with a traceback pointing at the
+trim code. Found by interface analysis, not by reading. See the buglist's A-FIXED entry.
+
+### Step 1b — WHERE IT STOPPED, and what the next cut needs
+
+`broker_iface.py map` now reports **zero** lines promotable without `nonlocal`. What remains:
+
+* **dead-reckon (1,846 lines)** — carries `clk_now` across cycles with **no binding in `main()`
+  at all**, so `nonlocal clk_now` is a SyntaxError. Promoting it was tried, the gate caught it
+  immediately, and it was reverted. This is the epoch-critical stage — every walkoff this
+  project has chased lives in it — so its state must be made explicit FIRST, in its own commit
+  with its own reasoning. Not a move.
+* **the DLL (1,209 lines)** — same shape: `fcoh` and `_kcoh` are assigned only inside it and
+  read outside via `(fcoh or {})`, which guards None but not `NameError`. Give them an explicit
+  home, then promote.
+* **nav-bits (323)** — twelve carry-over names, one of which is an `except ... as e` binding
+  that Python deletes at handler exit. Off in production, so the gate is blind to it. Leave it.
+
+The pattern for all three is the same and it is a DESIGN change, not a move: give the block's
+cross-cycle state an explicit owner (an object, as `AdmissionGate` and `TrimHandover` now are),
+and the promotion becomes mechanical.
+
+### Step 1 — the original plan, kept for the reasoning
 
 Ordered by (decision density × how often it changed this week), highest first. All three are
 pure functions of state plus inputs, which is why they are extractable at all.
