@@ -170,11 +170,11 @@ def test_latch():
             s.note_cycle(i * 10.0, {5}, fleet({5: None}))
         return s, (healthy_cycles + absent_cycles - 1) * 10.0
 
-    s, t = build(30, 60)                      # healthy 300 s, then absent 600 s
+    s, t = build(30, 130)                     # healthy 300 s, then absent 1300 s
     d = LatchDetector()
     hits = d.scan(t, s, browned_out=False)
     check(len(hits) == 1 and hits[0][0] == 5, "a healthy-then-absent satellite is reported")
-    check(hits[0][1] >= 300.0, "with how long it has been gone")
+    check(hits[0][1] >= 1200.0, "with how long it has been gone")
     check(abs(hits[0][2] - 3.0) < 1e-9, "and the q it had BEFORE it went")
 
     check(not d.scan(t + 10.0, s, browned_out=False),
@@ -185,11 +185,19 @@ def test_latch():
     check(not LatchDetector().scan(t2, s2, browned_out=False),
           "absent only 100 s: too short, this is flicker")
 
-    s3, t3 = build(30, 60, q=1.2)
+    # ⚡ THE MEASURED SELF-HEAL POPULATION (2026-08-26). At the 300 s bar #90 v3 specified,
+    # 12 of 16 scoreable live reports SELF-HEALED, median total absence 620 s. An absence of
+    # that length is a dropout with a working re-admission path, which is the opposite of the
+    # disease -- #90 is defined by having NO path back.
+    s2b, t2b = build(30, 62)                  # absent 620 s, the measured median self-healer
+    check(not LatchDetector().scan(t2b, s2b, browned_out=False),
+          "a 620 s absence -- the median SELF-HEALING dropout -- is NOT reported")
+
+    s3, t3 = build(30, 130, q=1.2)
     check(not LatchDetector().scan(t3, s3, browned_out=False),
           "never healthy before it went: a set, not a latch")
 
-    s4, t4 = build(30, 60)
+    s4, t4 = build(30, 130)
     check(not LatchDetector().scan(t4, s4, browned_out=True),
           "during a chain-wide BROWNOUT nothing is reported -- the chain is the patient")
 
@@ -199,7 +207,7 @@ def test_latch():
     # reported PRN 3 and PRN 15 as latched. Both had locked at q 3.5 for THIRTY SECONDS in
     # the recovery scramble and then dropped (QPOP: present in 3% of cycles). That is #90
     # flight 3's startup-convergence population arriving through a door uptime does not lock.
-    s7, t7 = build(30, 60)
+    s7, t7 = build(30, 130)
     b7 = BrownoutDetector(min_base=4)
     for i in range(10):
         b7.note_cycle(i * 10.0, 0)            # the dark band
@@ -224,7 +232,7 @@ def test_latch():
     # PRN 26 firing on BOTH -- one satellite, two bands, one instant -- while E13 sat 3.0 deg
     # and C58 4.1 deg off boresight. Cross-chain simultaneity is the discriminator: #90's real
     # disease is per-satellite and per-band (E32's was band-ALTERNATING).
-    s8, t8 = build(30, 60)
+    s8, t8 = build(30, 130)
     d8 = LatchDetector()
     check(not d8.scan(t8, s8, browned_out=False, in_transit=True),
           "nothing is reported while a satellite is railing the quantiser")
@@ -234,7 +242,7 @@ def test_latch():
           "swallow the later real one")
 
     # THE STARTUP SOLVE IS NOT A LATCH (flight 3a). Presence flaps while the clock converges.
-    s6, t6 = build(30, 60)
+    s6, t6 = build(30, 130)
     d6 = LatchDetector(startup_hold_s=900.0)
     check(not d6.scan(t6, s6, browned_out=False, uptime_s=200.0),
           "inside the startup hold-off nothing is reported")
@@ -245,9 +253,9 @@ def test_latch():
 
     # Startup: absent from the first cycle, never seen healthy.
     s5 = QSeries(window_s=100000.0)
-    for i in range(60):
+    for i in range(130):
         s5.note_cycle(i * 10.0, {5}, fleet({5: None}))
-    check(not LatchDetector().scan(590.0, s5, browned_out=False),
+    check(not LatchDetector().scan(1290.0, s5, browned_out=False),
           "a satellite that was never present cannot latch (the PRN 34 case)")
 
 

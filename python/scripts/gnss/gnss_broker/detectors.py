@@ -281,7 +281,19 @@ class LatchDetector(object):
     it must not get wrong. Reports are held until the process is `startup_hold_s` old.
     """
 
-    def __init__(self, min_absence_s=300.0, lookback_s=900.0, healthy_q=2.0, cooldown_s=1800.0,
+    # ⚠️ 1200 s, NOT the 300 s #90 v3 specified -- MEASURED, 2026-08-26. Of 26 live reports at
+    # the 300 s bar, 16 with >= 900 s of follow-up could be scored (the rest right-censored by
+    # the end of their log, which is itself a trap: "never returned" in a log that ends two
+    # minutes later means nothing). Of those 16, TWELVE SELF-HEALED -- a 75% false-positive
+    # rate -- at a median total absence of 620 s (range 312-1115). PRN 34 on bds_b2a came back
+    # 115 s after the report; an armed v3 would have stepped its seed just before it recovered
+    # on its own. The threshold sweep is unusually clean: 1200 s suppresses all twelve
+    # self-healers and keeps all four that never returned. 1800 s buys nothing more.
+    #
+    # #90's disease is defined by having NO RE-ADMISSION PATH -- a satellite that returns in
+    # seven minutes had one. An absence is evidence of a latch only once it outlasts the
+    # dropout population, and this is where that population ends.
+    def __init__(self, min_absence_s=1200.0, lookback_s=900.0, healthy_q=2.0, cooldown_s=1800.0,
                  startup_hold_s=900.0):
         self.min_absence_s = float(min_absence_s)
         self.lookback_s = float(lookback_s)
