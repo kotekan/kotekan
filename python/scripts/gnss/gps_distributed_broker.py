@@ -93,6 +93,8 @@ from gnss_broker.admission import AdmissionGate, reseed_step  # noqa: E402  (#90
 from gnss_broker.handover import TrimHandover              # noqa: E402  (task #92)
 from gnss_broker.rampfit import RampTracker                # noqa: E402  (task #93 shadow)
 from gnss_broker.cli import build_parser, _FROZEN           # noqa: E402  (task #89 flag surface)
+from gnss_broker.context import ChainContext                # noqa: E402  (the stage interface)
+from gnss_broker import instruments                         # noqa: E402  (the DLL's measurements)
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
@@ -901,6 +903,7 @@ def main(argv=None, rx=None, publisher=None):
             self.t_eph_age = None
 
     _drp = _DrProducts()
+
 
     def cp_predicted(v, t_abs):
         """Physical code phase (chips) of the predicted signal at capture age
@@ -3885,172 +3888,7 @@ def main(argv=None, rx=None, publisher=None):
             except Exception as e:
                 _log_rl("jrr-err", "rrate feed skipped: %s" % e, every_s=300.0)
 
-    def _instr_tap_walk():
-        """INSTRUMENT: the fleet tap walk (--telem-dll), and the C++ taps arm.
-        
-        Walks the gathered telemetry frames into the per-PRN aggregate the DLL then acts on.
-        `--comb-taps-cpp` replaces the Python walk with the C++ one; everything after it -- the
-        aggregate, the per-channel merge, the presence policy -- is unchanged and stays here, which is
-        what makes the two arms comparable at all.
-        
-        ⚠️ IT PRODUCES `_dllp.fleet`, the per-PRN state dict the whole cycle reads."""
-        if args.telem_dll and telem_client is not None:
-            # THE C++ TAPS ARM (--comb-taps-cpp). `taps_src` replaces the Python walk over
-            # the gathered frames; everything after it -- the aggregate, the per-channel
-            # merge, the presence policy -- is unchanged and stays here.
-            _tsrc_cpp = None
-            if args.comb_taps_cpp and args.fleet_trim_url:
-                _tsrc_cpp = (lambda _ch, _pr: combdll.taps_from_rest(
-                    _get, args.fleet_trim_url, _ch, prns=_pr))
-            try:
-                _cf = combdll.fleet_dll_comb(
-                    telem_client, telem_chain,
-                    taps_src=_tsrc_cpp if args.comb_taps_cpp >= 2 else None,
-                    n_win=(args.telem_dll_windows or args.telem_windows),
-                    min_instances=args.dll_min_instances,
-                    k_sigma=args.dll_quality_sigma, q_fallback=args.dll_quality_min,
-                    prns=set(seeds) or None, probe_prns=probe_set,
-                    # #79: the SAME effective set as the polled arm above. This is the
-                    # arm that ships on gps_l5 (COMB-DLL replaces `fleet` below), so
-                    # gating it on the hand-listed set alone would compute the
-                    # auto-admission and then throw it away.
-                    deep_gate_prns=_dllp.deep_gate_eff,
-                    deep_gate_margin=args.dll_deep_gate_margin,
-                    # deep_snr / deep_floor / coherence_s AND the quadrature fallback,
-                    # from the arm that has them
-                    coh_from=_dllp.fleet)
-            except Exception as e:
-                _cf = None
-                _log_rl("comb-dll-err",
-                        "COMB-DLL: failed (%s) -- the polled discriminator is unchanged" % e)
-            # SHADOW: fetch the C++ taps, build the SAME product from them, and report the
-            # paired difference on the loop's own cycles. Costs one GET and one rebuild and
-            # changes nothing -- which is the point: the offline gate proves the arithmetic
-            # on identical bytes, and this proves the two arms are looking at the same sky
-            # through the same window depth with the same instance tags, which no offline
-            # fixture can.
-            if args.comb_taps_cpp == 1 and _tsrc_cpp is not None and _cf:
-                try:
-                    _cx = combdll.fleet_dll_comb(
-                        telem_client, telem_chain, taps_src=_tsrc_cpp,
-                        n_win=(args.telem_dll_windows or args.telem_windows),
-                        min_instances=args.dll_min_instances,
-                        k_sigma=args.dll_quality_sigma, q_fallback=args.dll_quality_min,
-                        prns=set(seeds) or None, probe_prns=probe_set,
-                        deep_gate_prns=_dllp.deep_gate_eff,
-                        deep_gate_margin=args.dll_deep_gate_margin, coh_from=_dllp.fleet)
-                    _sh = sorted(set(_cf) & set(_cx))
-                    if _sh:
-                        _dd = sorted(abs(_cf[p]["disc"] - _cx[p]["disc"]) for p in _sh)
-                        _dq = sorted(abs(_cf[p]["q"] - _cx[p]["q"]) for p in _sh)
-                        _log("COMB-TAPS shadow %s: %d shared PRN(s) (py %d, cpp %d); "
-                             "|ddisc| med %.2e max %.2e; |dq| med %.2e max %.2e"
-                             % (telem_chain, len(_sh), len(_cf), len(_cx),
-                                _dd[len(_dd) // 2], _dd[-1], _dq[len(_dq) // 2], _dq[-1]))
-                    else:
-                        _log_rl("comb-taps-empty",
-                                "COMB-TAPS shadow %s: NO SHARED PRNs (py %d, cpp %d) -- "
-                                "that is a chain-name, window-depth or instance-tag "
-                                "mismatch, not a rounding difference"
-                                % (telem_chain, len(_cf), len(_cx)), every_s=60.0)
-                except Exception as e:
-                    _log_rl("comb-taps-sh",
-                            "COMB-TAPS shadow failed (%s) -- nothing changed" % e,
-                            every_s=60.0)
-            if _cf:
-                _shared = sorted(set(_cf) & set(_dllp.fleet or {}))
-                _dd = sorted(_cf[p]["disc"] - _dllp.fleet[p]["disc"] for p in _shared)
-                _log_rl("comb-dll",
-                        "COMB-DLL %s: %d PRNs from %d instances / %d channels; vs polled on "
-                        "%d shared: median ddisc %+.4f, max %.4f%s"
-                        % (telem_chain, len(_cf),
-                           max(v["n_src"] for v in _cf.values()),
-                           int(max(v["n_chan"] for v in _cf.values())), len(_shared),
-                           _dd[len(_dd) // 2] if _dd else 0.0,
-                           max((abs(x) for x in _dd), default=0.0),
-                           "" if _shared else "  (NO OVERLAP -- check the chain key)"),
-                        every_s=30.0)
-                _dllp.fleet = _cf
-            else:
-                _log_rl("comb-dll-empty",
-                        "COMB-DLL %s: no windows yet -- closing the loop on the polled "
-                        "discriminator this cycle" % telem_chain, every_s=60.0)
 
-    def _instr_coherent_rows():
-        """INSTRUMENT: one log line for both coherent-combine paths (fleet and N2).
-        
-        ⚠️ per_inst IS PRINTED BESIDE THE FLEET NUMBER ON PURPOSE. The fleet total alone cannot
-        distinguish "the combine worked" from "one instance was already strong" -- and those two have
-        opposite implications for every conclusion drawn from a coherent gain."""
-        if _dllp.fcoh or _dllp.fcoh_n2:
-            # One line, both paths, only PRNs one of them actually detected. per_inst is
-            # printed alongside the fleet number because the fleet total alone cannot
-            # distinguish "the combine worked" from "one instance was already strong".
-            rows = []
-            for prn in sorted(set(_dllp.fcoh) | set(_dllp.fcoh_n2)):
-                a, b = _dllp.fcoh.get(prn), _dllp.fcoh_n2.get(prn)
-                if not ((a and a.get("present")) or (b and b.get("present"))):
-                    continue
-
-                def _f(v):
-                    # per_inst is url -> deep_snr (a FLOAT, not a row); best_inst_snr is
-                    # already reduced for us. '*' marks a value that did NOT clear the
-                    # shuffled-null floor -- printed anyway, because a number just under
-                    # the bar is the useful one when judging whether a fleet is big enough.
-                    if not v:
-                        return "--"
-                    return "%.0f/%d%s (best inst %.0f, floor %.1f)" % (
-                        v.get("deep_snr", 0.0), v.get("n_src", 0),
-                        "" if v.get("present") else "*", v.get("best_inst_snr", 0.0),
-                        v.get("floor", 0.0))
-
-                rows.append("PRN %d A %s | B %s" % (prn, _f(a), _f(b)))
-            if rows:
-                _log("FLEET-COH: " + "; ".join(rows))
-            # FLEET-INST (task #40). The FLEET-COH line reduces 12 instances to a max,
-            # and a max cannot separate a COMMON fluctuation (sky, or the shared broker
-            # seed -- the two surviving suspects for the level-proportional scatter)
-            # from independent per-instance noise. Log every instance's own deep snr
-            # plus the alignment, so the common/independent split is computable per
-            # emit offline. Path A only -- path B's per_inst rides the same dict if
-            # ever needed. Instance order is SORTED BY URL, stable across polls, so a
-            # column in the log is a node/GPU throughout.
-            for prn in sorted(_dllp.fcoh):
-                v = _dllp.fcoh[prn]
-                pi = v.get("per_inst") or {}
-                if len(pi) < 2:
-                    continue
-
-                def _tag(u):
-                    # http://cx19:12048/gnss1_n2combine -> cx19/1. Values are TAGGED
-                    # rather than positional so a missing instance cannot shift the
-                    # columns of every instance after it.
-                    m = re.search(r"//(\w+):\d+/\w*?(\d)[^/]*$", u)
-                    return "%s/%s" % (m.group(1), m.group(2)) if m else u[-12:]
-
-                _log("FLEET-INST: PRN %d align %.3f n_rec %d %s"
-                     % (prn, v.get("align", 0.0), v.get("n_rec", 0),
-                        " ".join("%s=%.1f" % (_tag(u), pi[u]) for u in sorted(pi))))
-            # WHO WAS LEFT OUT, AND WHY (2026-08-12). fleet_coherent now anchors on the
-            # freshest window instead of demanding unanimity, so a stalled instance
-            # degrades the combine instead of killing it -- but a fleet quietly running
-            # on 7 of 8 is exactly the state that hid a frozen GPU for an hour. Name the
-            # dropped instances and how many hops they had in the window, so "we are
-            # combining fewer nodes than we own" is visible without polling by hand.
-            _dropped = {}
-            for prn, v in sorted(_dllp.fcoh.items()):
-                for u, n_h in (v.get("dropped") or []):
-                    _dropped.setdefault(u, []).append(n_h)
-            if _dropped:
-                _log_rl("fleet-drop",
-                        "FLEET-DROP: %d instance(s) outside the fleet's current window "
-                        "-- %s (a frozen or lagging tracker; the combine continued on "
-                        "the rest)"
-                        % (len(_dropped),
-                           ", ".join("%s (%d hops shared, %d PRN)"
-                                     % (_tag(u), max(v), len(v))
-                                     for u, v in sorted(_dropped.items()))),
-                        every_s=120.0)
 
     def _instr_spectrum_fit():
         """INSTRUMENT: the spectrum delay fit (#32/#53), which feeds the #50 re-seed.
@@ -4175,275 +4013,10 @@ def main(argv=None, rx=None, publisher=None):
                         _sy[prn] = (v["tau_chips"],
                                     v["peak"] / max(v["floor"], 1e-12), t_now_abs)
 
-    def _instr_prompt_cn0():
-        """INSTRUMENT: served prompt C/N0 (#57 step 1) from the gathered frames.
-        
-        The same C++ arm as the comb taps and under the same flag; this walks the gathered frames a
-        SECOND time for the same channel tuples, which is the cost being traded for an independent
-        estimate.
-        
-        ⚠️ SERVED C/N0 IS BLIND TO CODE ERROR (#47) -- it is computed from the prompt correlator, so a
-        satellite sitting off the peak can read healthy. Never judge lock on it; judge on q."""
-        if _dllp.run_pcn0:
-            try:
-                _dllp.pcn0 = combdll.prompt_cn0(
-                    telem_client, telem_chain,
-                    # The same C++ arm as the comb taps, under the same flag: this walks
-                    # the gathered frames a SECOND time for the same channel-tuples.
-                    recs_src=((lambda _ch, _pr: combdll.recs_from_rest(
-                        _get, args.fleet_trim_url, _ch, prns=_pr))
-                        if (args.comb_taps_cpp >= 2 and args.fleet_trim_url) else None),
-                    n_win=(args.telem_dll_windows or args.telem_windows),
-                    min_instances=args.dll_min_instances,
-                    k_sigma=args.dll_quality_sigma,
-                    prns=set(seeds) or None, probe_prns=probe_set,
-                    hop_s=1.0 / args.hops_per_sec)
-            except Exception as e:
-                _dllp.pcn0 = None
-                _log_rl("pcn0-err",
-                        "PROMPT-CN0: failed (%s) -- rows served without it" % e)
-            _est_last["pcn0"] = _dllp.pcn0
-            if _dllp.pcn0:
-                _lv = ["PRN %d %.1f dB-Hz (duty %.2f%s)"
-                       % (p, v["cn0_db"], v["duty"],
-                          "" if v["split_db"] is None
-                          else ", split %+.1f" % v["split_db"])
-                       for p, v in sorted(_dllp.pcn0.items())
-                       if v["cn0_db"] is not None and not v["probe"]]
-                _any = next(iter(_dllp.pcn0.values()))
-                # sigma2 is IN the line on purpose: it is a live, probe-anchored noise
-                # power at cycle cadence -- the first greppable series for #56's
-                # fleet-wide level swings (measured moving 3 dB in 2 min on 2026-08-15,
-                # carrying every satellite's served C/N0 with it, common-mode).
-                _log_rl("pcn0",
-                        "PROMPT-CN0 %s: %s | q_gate %.2f, sigma2 %.3e from %d probe "
-                        "records"
-                        % (telem_chain,
-                           "; ".join(_lv) if _lv else "no PRN above the noise",
-                           _any["q_gate"], _any["sigma2"], _any["n_probe_rec"]),
-                        every_s=30.0)
-            elif telem_client is not None:
-                _log_rl("pcn0-empty",
-                        "PROMPT-CN0 %s: no estimate this cycle (no windows, or fewer "
-                        "than 16 probe records for the noise anchor)" % telem_chain,
-                        every_s=120.0)
 
-    def _instr_kcoh():
-        """INSTRUMENT: the known-rate coherent estimator (#57 step 3, cn0_kcoh).
-        
-        ⚠️ THE RATE IT DEROTATES WITH MUST BE CAUSAL. `_kcoh_rates` is updated AFTER each cycle's fold
-        from that cycle's record-stream fit, so the fold only ever uses a rate estimated from EARLIER
-        records. That is the entire difference between this estimator and the deep fold it replaces --
-        a fold derotated by a rate fitted to its own records measures the fit, not the sky.
-        
-        ⚠️ ARM 17 (row-injected rates) WAS RETIRED FOR CAUSE on 2026-08-25: it was a carrier mirror,
-        convicted by an attribution toggle (q SD 2x on both bands). The fallback path -- fit-fed rates,
-        and probes always -- is the one that stands."""
-        if _dllp.run_est:
-            # ARM 17: overlay converged rows' predictions onto the fit-fed rates.
-            # See --kcoh-rate-from-row. Fallback for any sat without a converged
-            # row (and every probe) is exactly the old path.
-            _rates_in = dict(_kcoh_rates)
-            _row_inj = 0
-            if args.kcoh_rate_from_row and args.rrate_state:
-                try:
-                    _jri = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
-                    for _pi in (set(seeds) - probe_set):
-                        _ki = (args.dr_constellation, int(_pi))
-                        _sy = ((args.carrier_hz / _jri.C_LIGHT)
-                               * _jri.rrate_sigma(_ki) + _jri.f_carrier_sigma())
-                        if _sy <= args.kcoh_row_max_sigma:
-                            _rates_in[_pi] = _jri.carrier_correction_hz(
-                                _ki, args.carrier_hz)
-                            _row_inj += 1
-                except Exception as e:
-                    _log_rl("kcoh-row-err",
-                            "KCOH row-injection skipped: %s" % e, every_s=300.0)
-            try:
-                _dllp.kcoh = combdll.coh_cn0(
-                    telem_client, telem_chain, rates=_rates_in,
-                    n_win=(args.telem_dll_windows or args.telem_windows),
-                    min_instances=args.dll_min_instances,
-                    prns=set(seeds) or None, probe_prns=probe_set,
-                    hop_s=1.0 / args.hops_per_sec)
-            except Exception as e:
-                _dllp.kcoh = None
-                _log_rl("kcoh-err",
-                        "KCOH: failed (%s) -- rows served without it" % e)
-            _est_last["kcoh"] = _dllp.kcoh
-            if _dllp.kcoh:
-                _kv = ["PRN %d %.1f dB-Hz (sig %.0f, eta %s, f %+.2f%+.2f)"
-                       % (p, v["cn0_db"], v["sig"],
-                          "%.0f" % v["eta"] if v["eta"] is not None else "--",
-                          v["rate_hz"], v.get("rate_resid_hz", 0.0))
-                       for p, v in sorted(_dllp.kcoh.items())
-                       if v["cn0_db"] is not None and not v["probe"] and v["sig"] > 3.0]
-                _log_rl("kcoh",
-                        "KCOH %s: %s | %d PRNs folded, floor from %d probe folds"
-                        "%s"
-                        % (telem_chain,
-                           "; ".join(_kv) if _kv else "no fold above the probe floor",
-                           len(_dllp.kcoh),
-                           next(iter(_dllp.kcoh.values()))["n_probe"],
-                           (", %d row-injected" % _row_inj) if _row_inj else ""),
-                        every_s=30.0)
 
-    def _instr_rf_stats():
-        """INSTRUMENT: RF/SK statistics poll, published for the band-power and RFI watch.
-        
-        Throttled on its own clock (--rf-stats-poll-s) rather than the cycle, because it is a
-        diagnostic and must never pace the control loop."""
-        if args.rf_stats_endpoints and publisher is not None:
-            _rf_ep = parse_endpoints(args.rf_stats_endpoints, base)
-            if _rf_ep and t0 - _rf_last[0] >= args.rf_stats_poll_s:
-                _rf_last[0] = t0
-                _rf = poll_rf_stats(_rf_ep, rf_lobes,
-                                    fetch_sk=args.rfi_stats,
-                                    fetch_drops=args.drop_stats)
-                publisher.set_rf(_rf, t0)
-                _on = [v for v in _rf.values() if v.get("state") == "on"]
-                if _on:
-                    _clip = max((max((l["clip_lo"] + l["clip_hi"]) for l in v["lobes"])
-                                 for v in _on if v.get("lobes")), default=0.0)
-                    _log_rl("rfstats",
-                            "RF PATH: %d/%d instance(s) armed, worst clip %.4f of "
-                            "nibbles, %d lobe(s)/instance, pass cost %.2f ms"
-                            % (len(_on), len(_rf_ep), _clip,
-                               max((len(v.get("lobes") or []) for v in _on), default=0),
-                               max((v.get("cost_ms") or 0.0) for v in _on)),
-                            every_s=300.0)
-                    # A rail is not a level, it is DAMAGE: past a few percent the
-                    # quantiser is discarding the signal it is meant to carry, and
-                    # everything downstream reads it as a coherence loss.
-                    if _clip > 0.01:
-                        _log_rl("rfclip",
-                                "⚠️ RF CLIPPING: %.2f%% of nibbles at a rail. Above ~1%% "
-                                "the 4+4b quantiser is losing signal, not just headroom, "
-                                "and every C/N0 and coherence below this point is "
-                                "understated for a reason that is NOT the sky. Check "
-                                "which lobe (get_rf) before blaming a chain."
-                                % (100.0 * _clip), every_s=120.0)
 
-    def _instr_element_poll():
-        """INSTRUMENT: per-element complex gain poll (#57 step 2, elemgain).
-        
-        ⚠️ ELEMCAL MUST ACTUALLY WARM. The weak-lock hunt of 2026-08-20 ended here: trackers re-anchor
-        roughly every record, and BOTH reset() and the warmth-growing update() were tied to that, so
-        the calibrator never accumulated. The array was already phase-coherent (equal-weight coherence
-        1.00) -- the estimator was the patient."""
-        if (args.element_poll and dll_combiners
-                and (_TR.mode == "read"
-                     or _now() - _elem_poll_t[0] >= args.element_poll_every_s)):
-            _elem_poll_t[0] = _now()
-            try:
-                _pe, _srv = elemgain.poll_elements(dll_combiners)
-                # WEDGED INSTANCES ARE EXCLUDED AND NAMED (see elemgain.drop_stale):
-                # a frozen combiner keeps serving byte-identical gains from a sky ten
-                # minutes gone, and a median over instances would blend them in.
-                _pe, _stale = elemgain.drop_stale(_pe) if _pe else ({}, [])
-                _etab = elemgain.gain_table(_pe, probe_set) if _pe else {}
-                if _etab and publisher is not None:
-                    publisher.set_elements(_etab)
-                _log_rl("elemgain",
-                        "ELEM-GAIN: %d/%d instance(s) served, %d used, %d PRN(s)%s"
-                        % (_srv, len(dll_combiners), len(_pe), len(_etab),
-                           ("  ⚠️ STALE (excluded): "
-                            + ", ".join("%s %s" % (t, "%.0f s behind" % l if l else "no hop")
-                                        for t, l in _stale)) if _stale else ""),
-                        every_s=120.0)
-                # RAW archive, present sats + probes, throttled. Reopened per tick --
-                # at one append a minute a persistent handle buys nothing and a
-                # reopened one survives log rotation and NFS hiccups.
-                if (_etab and args.element_archive_dir
-                        and _now() - _elem_arch_t[0] >= args.element_archive_every_s):
-                    _elem_arch_t[0] = _now()
-                    _keep = {p for p, v in (_dllp.fleet or {}).items()
-                             if v.get("present")} | set(probe_set)
-                    _fn = os.path.join(
-                        args.element_archive_dir, "elem_%s_%s.jsonl"
-                        % (chain_id, time.strftime("%Y%m%d", time.gmtime())))
-                    with open(_fn, "a") as _fh:
-                        for _tag2, _d2 in _pe.items():
-                            for _p2, _v2 in _d2.items():
-                                if _p2 not in _keep:
-                                    continue
-                                _fh.write(json.dumps(
-                                    {"t": round(_now(), 2), "chain": chain_id,
-                                     "prn": _p2, "inst": _tag2,
-                                     "probe": _p2 in probe_set,
-                                     "keff": round(_v2["keff"], 1),
-                                     "hop": _v2["hop"],
-                                     "u": [[float("%.5g" % r), float("%.5g" % i)]
-                                           for r, i in _v2["u"]],
-                                     "p2": [float("%.5g" % x) for x in _v2["p2"]],
-                                     "q": [float("%.5g" % x) for x in _v2["q"]]},
-                                    separators=(",", ":")) + "\n")
-            except Exception as e:
-                _log_rl("elemgain-err",
-                        "ELEM-GAIN: cycle failed (%s) -- table unchanged" % e)
 
-    def _instr_model_primacy():
-        """INSTRUMENT: model-primacy census -- which satellites the model, not the search, is driving.
-        
-        Reads the innovation p95 population to decide whether a flipped satellite is genuinely
-        model-primary or merely DETECTION-STARVED, which look identical in any single-cycle view."""
-        if args.model_primacy_max > 0:
-            _mp_p95 = {int(_p): (v["minnov_p95_10m"], v["minnov_n_10m"])
-                       for _p, v in _dllp.innov_pub.items() if "minnov_chips" in v}
-            for _p in sorted(mp_flipped):
-                _pv = _mp_p95.get(_p)
-                _starved = (_now() - mp_last_det.get(_p, _now())
-                            > args.model_primacy_starve_s)
-                if _p in dr_untrusted:
-                    # The legacy a0 integrity (EMA clock, no b_sat, ~1-chip bar)
-                    # judges a model the flip does not run: the flipped seed is the
-                    # JOINT model's (clk+b_sat via the slew). MINNOV referees flipped
-                    # sats -- the p95/starve exits below. The dr loop's seeding guard
-                    # exempts flipped sats for the same reason (BOTH sites, or the
-                    # sat is orphaned seedless). Keep the disagreement visible:
-                    _log_rl("mp-legacy-%d" % _p,
-                            "MODEL-PRIMACY NOTE PRN %d: legacy integrity flags the "
-                            "EMA model (%s) -- overridden while flipped; MINNOV "
-                            "referees this sat" % (_p, dr_untrusted[_p]),
-                            every_s=300.0)
-                if _pv is not None and _pv[0] > args.model_primacy_exit_p95:
-                    mp_flipped.discard(_p)
-                    mp_cooldown[_p] = _now()
-                    dr_state["seeded"].discard(_p)
-                    dr_state["pin"].pop(_p, None)
-                    _log("MODEL-PRIMACY EXIT PRN %d: minnov p95 %.2f > %.2f -- the "
-                         "search re-anchors on its next detection" %
-                         (_p, _pv[0], args.model_primacy_exit_p95))
-                elif _pv is None or _starved:
-                    mp_flipped.discard(_p)
-                    mp_cooldown[_p] = _now()
-                    dr_state["seeded"].discard(_p)
-                    dr_state["pin"].pop(_p, None)
-                    _log("MODEL-PRIMACY EXIT PRN %d: referee starved (no fresh "
-                         "MINNOV/detection in %.0f s) -- nothing holds a seed "
-                         "unrefereed" % (_p, args.model_primacy_starve_s))
-            _elig = sorted(
-                (_pv[0], _p) for _p, _pv in _mp_p95.items()
-                if _p not in mp_flipped and _p not in probe_set
-                and _p not in dr_untrusted
-                and _now() - mp_cooldown.get(_p, -1e9) > 300.0
-                and _pv[1] >= args.model_primacy_min_n
-                and _pv[0] < args.model_primacy_p95)
-            for _v95, _p in _elig:
-                if len(mp_flipped) >= args.model_primacy_max:
-                    break
-                mp_flipped.add(_p)
-                dr_state["seeded"].add(_p)
-                # A standing hold is a SEARCH-currency freeze; the model owns the
-                # seed now, so the freeze is released (the dr guard relies on this).
-                cp_held.discard(_p)
-                mp_last_det[_p] = _now()
-                _log("MODEL-PRIMACY ENTER PRN %d: minnov p95 %.2f (n>=%d) -- seed is "
-                     "now the MODEL's (dr slew, clk+b_sat); detections feed the "
-                     "filter and the referee only. Controls (eligible, unflipped): %s"
-                     % (_p, _v95, args.model_primacy_min_n,
-                        ",".join(str(q) for _, q in _elig
-                                 if q not in mp_flipped) or "none"))
 
     def _stage_dll_control():
         """3c: THE DLL CONTROL LOOP -- per satellite, decide and integrate the code trim.
@@ -7427,7 +7000,7 @@ def main(argv=None, rx=None, publisher=None):
             # the log line below is the same paired comparison the offline A/B makes, on the
             # loop's own cycles. Any cycle where the gather has nothing for this chain simply
             # keeps the polled fleet.
-            _instr_tap_walk()
+            instruments.instr_tap_walk(_ctx)
             # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
             # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
             hold_prev.clear()
@@ -7531,7 +7104,7 @@ def main(argv=None, rx=None, publisher=None):
                                              seed=int(_now()))
                 except Exception as e:
                     _log_rl("fleet-coh-n2", "fleet coherent (path B): skipped (%s)" % e)
-            _instr_coherent_rows()
+            instruments.instr_coherent_rows(_ctx)
             # FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md P1).
             # MEASUREMENT ONLY: touches no seed and no loop -- it is logged and published so
             # it can be judged against the disc, the E/L asymmetry and GPS's search-measured
@@ -7571,7 +7144,7 @@ def main(argv=None, rx=None, publisher=None):
             _dllp.run_pcn0 = _dllp.run_est or (args.comb_taps_cpp >= 2 and args.fleet_trim_url
                                      and telem_client is not None and probe_set)
             _dllp.pcn0 = _est_last["pcn0"]
-            _instr_prompt_cn0()
+            instruments.instr_prompt_cn0(_ctx)
             # THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold with the rate
             # INJECTED from the PREVIOUS cycle's record-stream fit (_kcoh_rates, updated
             # below AFTER the fold so this integration never consumes a rate estimated
@@ -7582,7 +7155,7 @@ def main(argv=None, rx=None, publisher=None):
             # Same throttle gate as PROMPT-CN0 above (_run_est, set there -- the first of
             # the two telemetry-walk blocks in cycle order).
             _dllp.kcoh = _est_last["kcoh"]
-            _instr_kcoh()
+            instruments.instr_kcoh(_ctx)
             # NOW the rates for the NEXT cycle, from THIS cycle's record-stream fit.
             for _p, _fc2 in (_dllp.fcoh or {}).items():
                 _r2 = _fc2.get("rate_hz")
@@ -7608,7 +7181,7 @@ def main(argv=None, rx=None, publisher=None):
             # list is the union of every chain's covering set and therefore arrives as one
             # run per band. A band-selective source is only diagnosable against a band that
             # was quiet in the SAME sample.
-            _instr_rf_stats()
+            instruments.instr_rf_stats(_ctx)
 
             # ⚠️ NEVER THROTTLE IN REPLAY. A transcript is an ordered recording of every GET,
             # checked by URL as it is consumed, so making FEWER calls than the recording
@@ -7621,7 +7194,7 @@ def main(argv=None, rx=None, publisher=None):
             #
             # The general rule: broker_equiv can gate what a call COMPUTES, never how OFTEN it
             # is made. Any cadence change is live-only and needs a live measurement.
-            _instr_element_poll()
+            instruments.instr_element_poll(_ctx)
             # #83 2(d): the served innovation -- freshest value + 10-minute p95 per PRN.
             # The statistic is cut by TIME here at read, not by count at write: a PRN
             # detected once in ten minutes reports that one sample, and a PRN that set
@@ -7663,7 +7236,7 @@ def main(argv=None, rx=None, publisher=None):
             # hysteresis bound, or the referee starved (no detection while flipped for
             # --model-primacy-starve-s). Every transition is one loud line -- a flip
             # whose firing cannot be seen is how gates fail here.
-            _instr_model_primacy()
+            instruments.instr_model_primacy(_ctx)
             if _dllp.innov_pub:
                 _log_rl("innov",
                         "INNOV %s: %s"
@@ -7879,12 +7452,33 @@ def main(argv=None, rx=None, publisher=None):
                     del dll_trim[k]
                     dll_last_hop.pop(k, None)
 
+    # ── THE STAGE INTERFACE ───────────────────────────────────────────────────────────────
+    # What a stage needs that is not its own local state, named at last. The 29 stages read
+    # 210 distinct free names out of this function between them and not one declared which;
+    # a stage cannot move into its own module until its set is written down. See
+    # gnss_broker/context.py for the stable/per-cycle split -- it is load-bearing, not
+    # organisational.
+    _ctx = ChainContext(
+        args=args, band_id=band_id, chain_id=chain_id, code_len=CODE_LEN,
+        telem_chain=telem_chain, base=base, alm_sys=alm_sys, alm_min_prn=alm_min_prn,
+        rx=rx, publisher=publisher, telem_client=telem_client, detectors=detectors,
+        dll_combiners=dll_combiners, spectrum_endpoints=spectrum_endpoints,
+        spec_writer=_spec_writer, state_dir=_state_dir, xb_read_dir=_xb_read_dir,
+        dllp=_dllp, drp=_drp, handover=_handover, adm_gate=_adm_gate, g3_ramp=_g3_ramp,
+        seeds=seeds, dr_state=dr_state, bsat=bsat, cp_held=cp_held,
+        dr_untrusted=dr_untrusted,
+        est_last=_est_last, kcoh_rates=_kcoh_rates, rf_last=_rf_last,
+        elem_arch_t=_elem_arch_t, elem_poll_t=_elem_poll_t,
+        mp_cooldown=mp_cooldown, mp_flipped=mp_flipped, mp_last_det=mp_last_det,
+    )
+
     while True:
         # Start of cycle: sample the frozen cycle clock ONCE (see the _Transcript note).
         # Every `_now()` below this returns exactly t0, so the whole pass -- every gate,
         # every age, every EMA -- evaluates at one instant instead of smearing over the
         # cycle's own processing time.
         t0 = _TR.tick()
+        _ctx.begin_cycle(t0=t0)
         t_wall = time.time()   # REAL clock, kept solely for the sleep below
         # 1. collect best-SNR detection per PRN across all detection sources
         best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long, cp_at_ref)
@@ -8233,6 +7827,7 @@ def main(argv=None, rx=None, publisher=None):
         # fails every gate naturally); dop/cp are arbitrary for noise -- predicted values
         # keep the despread configuration representative.
         probe_set = set()
+        _ctx.begin_cycle(probe_set=probe_set)
         if args.noise_probes > 0 and args.almanac and pred:
             deep_low = sorted((p for p, v in pred.items() if v[2] < -15.0),
                               key=lambda p: pred[p][2])[:args.noise_probes]
