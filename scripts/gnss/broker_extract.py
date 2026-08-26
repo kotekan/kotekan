@@ -58,7 +58,7 @@ NAME_MAP = {
     "almanac_sats": "almanac_sats", "brdc_alm": "brdc_alm", "det_fresh": "det_fresh",
     "state_w": "state_w", "_clk_persist_t": "clk_persist_t",
     "_carrier": "car", "_watchdog": "wd", "_nho": "nho",
-    "_dls": "dls", "_hold": "hold", "_cpt": "cpt",
+    "_dls": "dls", "_hold": "hold", "_cpt": "cpt", "_rf": "rf",
     "HIST_LEN": "hist_len", "MAX_GAP_HOPS": "max_gap_hops", "Q_ALIAS_HZ": "q_alias_hz",
     "CARRIER_EXPLAIN_HZ": "carrier_explain_hz", "CARRIER_VERIFY_EMITS": "carrier_verify_emits",
     "trackers": "trackers", "joint_consume": "joint_consume", "broker_t0": "broker_t0",

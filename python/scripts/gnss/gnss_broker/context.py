@@ -55,7 +55,7 @@ class ChainContext(object):
         "fuse_cached", "cp_to_seed_currency", "sig_of_last",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb", "car", "wd", "nho",
-        "dls", "hold", "cpt",
+        "dls", "hold", "cpt", "rf",
         # ---- long-lived tables, mutated in place --------------------------------------
         "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted",
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",

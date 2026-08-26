@@ -182,3 +182,45 @@ class CpTracking(object):
         self.dop_hist = {}      # prn -> recent Doppler observations
         self.ph_hist = {}       # prn -> recent carrier-phase observations
         self.dop_clamped = set()  # prns whose Doppler hit a clamp this pass
+
+
+class RateFeedState(object):
+    """The carrier-rate observables fed to the joint receiver, and their commanded half.
+
+    ⚠️ THE REFERENCE IS THE WHOLE POINT. `deep_rate` is measured on records the tracker has
+    ALREADY derotated by the commanded trim, so what the search reports is only what REMAINS.
+    The standing command (`cmd_applied`) is added back so the observable describes the SKY.
+    Feed the residual raw and the estimator measures its own actuator -- that is #33 GAP 2's
+    mirror, and it is invisible in the numbers because a mirror looks like a good fit.
+
+    ⚠️ `full_ok` IS HOW THE COMMAND REFUSES A DEGRADED FEED. Past its cap, `deep_rate_hz`
+    reports the best in-cap bin -- which is NOISE, and is what walked arm 1. The full-band
+    field distinguishes them; without it the loop must not close.
+
+    ⚠️ ONE RESIDUAL COMPUTATION, SHARED. `rate_residuals` consumes a window: asked twice in a
+    cycle it reads "the same window again" and returns {} the second time. Consumers share one
+    result; they must never each ask.
+
+    The per-cycle fields (`resid`, `cons`, `resid2`, `full_ok`) are unconditionally reassigned
+    at the top of every pass. They live here rather than as loop locals so that a stage which
+    computes them can be a module-level function -- an attribute needs no `nonlocal`.
+    """
+
+    __slots__ = ("cmd_applied", "fine_t", "kcoh_t", "adr_span_now", "span_fed_t",
+                 "adr_prev", "adr_ring", "resid", "cons", "resid2", "full_ok")
+
+    def __init__(self):
+        self.cmd_applied = {}   # prn -> the standing carrier command, Hz (the reference)
+        self.fine_t = {}        # prn -> last fine-feed time
+        self.kcoh_t = {}        # prn -> last known-rate-fold feed time
+        # #93 shadow v2: prn -> (ADR span rate, t, n_rec), the DIRECT carrier observable the
+        # rrate ROW is being judged against. The row measured ~97% carrier-only (GAP 3 F1).
+        self.adr_span_now = {}
+        self.span_fed_t = {}    # prn -> last span feed time (the non-overlap throttle)
+        self.adr_prev = {}      # prn -> previous ADR sample
+        self.adr_ring = {}      # prn -> recent ADR ring buffer
+        # ---- per-cycle, reassigned every pass ----
+        self.resid = {}         # prn -> carrier-rate residual (the shared computation)
+        self.cons = None        # the consensus that came with it
+        self.resid2 = {}        # the rrate-state variant of the same residual
+        self.full_ok = False    # is the full-band rate field present this cycle?
