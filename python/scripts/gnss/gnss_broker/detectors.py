@@ -162,11 +162,15 @@ class BrownoutDetector(object):
     judge's job.
     """
 
-    def __init__(self, window_s=600.0, frac=0.6, min_base=4, min_len_s=60.0):
+    def __init__(self, window_s=600.0, frac=0.6, min_base=4, min_len_s=60.0, dark_at=1):
         self.window_s = float(window_s)
         self.frac = float(frac)
         self.min_base = int(min_base)
         self.min_len_s = float(min_len_s)
+        # A chain holding <= dark_at satellites is not tracking at all -- band-wide loss,
+        # not the ordinary dip a brownout describes.
+        self.dark_at = int(dark_at)
+        self.last_dark_t = None
         self.pop = []            # [(t, n_present)] over the window
         self.open_ep = None      # [t_start, baseline, deepest] while in a brownout
         self.announced = False   # has the open episode been logged yet?
@@ -174,6 +178,15 @@ class BrownoutDetector(object):
 
     def note_cycle(self, t, n_present):
         """Record the count. Returns a message when an episode opens or closes, else None."""
+        # ⚠️ DARKNESS IS NOT A BROWNOUT, AND THAT IS WHY IT NEEDS ITS OWN CLOCK. A brownout is
+        # measured against the chain's OWN 600 s peak, so a chain that has been dark long
+        # enough for that peak to decay CANNOT register one -- `base >= min_base` fails when
+        # every sample in the window is zero. The suppression that D2/D3 rely on therefore
+        # switches itself off exactly when the disturbance is largest, which is the shape of
+        # a gate that cannot fail. Recording the last dark cycle separately gives the
+        # recovery its own, decay-proof clock.
+        if n_present <= self.dark_at:
+            self.last_dark_t = t
         if not self.pop or self.pop[-1][0] != t:
             self.pop.append((t, n_present))
             while self.pop and t - self.pop[0][0] > self.window_s:
@@ -205,6 +218,21 @@ class BrownoutDetector(object):
             if was:
                 return "BROWNOUT closed: %.0f s (under the reporting length)" % (t - t0)
         return None
+
+    def recovering(self, t, hold_s):
+        """Has the chain seen signal again only recently, after going dark?
+
+        THE SAME CONVERGENCE, ON A DIFFERENT CLOCK. `LatchDetector`'s startup hold-off exists
+        because presence flaps while the clock and seeds converge -- and that is a property of
+        the PLANT restarting, not of the process restarting. When the analog front-ends came
+        back at 17:16 on 2026-08-26 the broker had been up 88 minutes, so every uptime-based
+        guard was long expired, and D2 immediately reported PRN 3 and PRN 15 as latched: both
+        had locked at q 3.5 for THIRTY SECONDS during the scramble and then dropped. That is
+        #90 flight 3's startup-convergence population arriving through a door the startup
+        hold-off does not cover.
+        """
+        return (hold_s > 0.0 and self.last_dark_t is not None
+                and t - self.last_dark_t < hold_s)
 
     def established(self):
         """Open AND past `min_len_s` -- the trigger for POLICY, as opposed to suppression.
@@ -263,16 +291,22 @@ class LatchDetector(object):
         self.reported = {}       # prn -> t of last report (one per episode, not per cycle)
         self.suppressed_startup = 0   # how many reports the hold-off swallowed, for honesty
 
-    def scan(self, t, qseries, browned_out, uptime_s=None):
+    def scan(self, t, qseries, browned_out, uptime_s=None, recovering=False):
         """[(prn, absent_s, q_before)] for satellites that look latched right now.
 
         `browned_out` suppresses everything: during a chain-wide collapse a missing satellite
         is a symptom of the chain, and reporting each one would bury the signal that matters
         under a constellation of noise.
+
+        `recovering` is the same suppression on the PLANT's clock rather than the process's --
+        see BrownoutDetector.recovering(). Counted in `suppressed_startup` alongside the
+        process case: they are one population and separating the counters would only invite
+        reading either as a rate.
         """
         if browned_out:
             return []
-        startup = uptime_s is not None and uptime_s < self.startup_hold_s
+        startup = ((uptime_s is not None and uptime_s < self.startup_hold_s)
+                   or bool(recovering))
         out = []
         for prn, h in qseries.hist.items():
             if not h or h[-1][2] != ABSENT:

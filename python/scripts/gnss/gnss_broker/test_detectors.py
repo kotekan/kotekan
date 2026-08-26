@@ -193,6 +193,32 @@ def test_latch():
     check(not LatchDetector().scan(t4, s4, browned_out=True),
           "during a chain-wide BROWNOUT nothing is reported -- the chain is the patient")
 
+    # ⚡ THE PLANT COMING BACK IS NOT A LATCH EITHER, AND UPTIME CANNOT SEE IT.
+    # 2026-08-26 17:16: the analog front-ends were repowered after ~2 h dark. The broker had
+    # been up 88 minutes, so every uptime-based guard was long expired -- and D2 immediately
+    # reported PRN 3 and PRN 15 as latched. Both had locked at q 3.5 for THIRTY SECONDS in
+    # the recovery scramble and then dropped (QPOP: present in 3% of cycles). That is #90
+    # flight 3's startup-convergence population arriving through a door uptime does not lock.
+    s7, t7 = build(30, 60)
+    b7 = BrownoutDetector(min_base=4)
+    for i in range(10):
+        b7.note_cycle(i * 10.0, 0)            # the dark band
+    check(b7.last_dark_t == 90.0, "D1 records when the chain was last DARK")
+    check(not b7.active(),
+          "and a chain dark that long is NOT 'browned out' -- its own 600 s peak decayed to "
+          "zero, so the brownout suppression D2/D3 lean on has switched itself off")
+    for i in range(10, 40):                   # signal returns
+        b7.note_cycle(i * 10.0, 7)
+    d7 = LatchDetector(startup_hold_s=900.0)
+    check(b7.recovering(400.0, 900.0), "the chain reads as RECOVERING 310 s after going dark")
+    check(not d7.scan(t7, s7, browned_out=False, uptime_s=1e6, recovering=True),
+          "so nothing is reported, even with the process up for a million seconds")
+    check(d7.suppressed_startup == 1, "and it is counted, not silently dropped")
+    check(not b7.recovering(1100.0, 900.0), "the window closes once the plant has settled")
+    check(len(d7.scan(t7, s7, browned_out=False, uptime_s=1e6, recovering=False)) == 1,
+          "and the same satellite IS reported once it has -- a suppressed report must never "
+          "swallow the later real one")
+
     # THE STARTUP SOLVE IS NOT A LATCH (flight 3a). Presence flaps while the clock converges.
     s6, t6 = build(30, 60)
     d6 = LatchDetector(startup_hold_s=900.0)
