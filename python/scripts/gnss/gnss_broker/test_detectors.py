@@ -10,7 +10,10 @@ verdict on 2026-08-25 and asserts the series reports it honestly where the DLL l
 
 import sys
 
-from gnss_broker.detectors import QSeries, PRESENT, ABSENT, DROPPED
+from gnss_broker.detectors import (
+    QSeries, BrownoutDetector, LatchDetector, SawtoothDetector,
+    PRESENT, ABSENT, DROPPED,
+)
 
 
 _fails = []
@@ -114,9 +117,133 @@ def test_no_side_effects():
           "the detector mutates neither the seed set nor the fleet rows it observes")
 
 
+# ---- D1: THE BROWNOUT ---------------------------------------------------------------------
+def test_brownout():
+    print("D1: the brownout episode (the 2026-08-25 23:00 shape)")
+
+    d = BrownoutDetector(window_s=600.0, frac=0.6, min_base=4, min_len_s=60.0)
+    msgs = []
+    for i in range(20):                       # a steady chain at 7 present
+        msgs.append(d.note_cycle(i * 10.0, 7))
+    check(not any(msgs), "a steady chain says nothing at all")
+    check(not d.active(), "and is not browned out")
+
+    # e5b's collapse: 7 -> 3 satellites, held for six minutes.
+    opened = [d.note_cycle(200.0 + i * 10.0, 3) for i in range(36)]
+    fired = [m for m in opened if m]
+    check(d.active(), "the collapse opens an episode")
+    check(len(fired) == 1 and "BROWNOUT open" in fired[0],
+          "announced ONCE, not once per cycle")
+    check("3 present vs 7 baseline" in fired[0], "carrying depth against its own peak")
+
+    closed = d.note_cycle(600.0, 7)
+    check(closed and "BROWNOUT closed" in closed, "recovery closes it")
+    check(len(d.episodes) == 1, "and it is retained as one labelled episode")
+    t0, t1, base, deep = d.episodes[0]
+    check(base == 7 and deep == 3, "with the baseline and the worst count")
+
+    # A brief dip is not an episode -- a chain that flickers must not fill the log.
+    d2 = BrownoutDetector(min_len_s=60.0)
+    for i in range(10):
+        d2.note_cycle(i * 10.0, 8)
+    check(d2.note_cycle(100.0, 2) is None, "a one-cycle dip announces nothing")
+    check(d2.note_cycle(110.0, 8) is None, "and closes silently")
+    check(not d2.episodes, "leaving no episode behind")
+
+    # The threshold is relative: a small constellation must not flap it.
+    d3 = BrownoutDetector(min_base=4)
+    for i in range(6):
+        d3.note_cycle(i * 10.0, 3)
+    check(d3.note_cycle(70.0, 1) is None and not d3.active(),
+          "a baseline under min_base cannot brown out (1 of 3 is not an episode)")
+
+
+# ---- D2: THE LATCH, MEASURED RATHER THAN ACTED ON -----------------------------------------
+def test_latch():
+    print("D2: the deep latch, unarmed")
+
+    def build(healthy_cycles, absent_cycles, q=3.0):
+        s = QSeries(window_s=100000.0)
+        for i in range(healthy_cycles):
+            s.note_cycle(i * 10.0, {5}, fleet({5: q}))
+        for i in range(healthy_cycles, healthy_cycles + absent_cycles):
+            s.note_cycle(i * 10.0, {5}, fleet({5: None}))
+        return s, (healthy_cycles + absent_cycles - 1) * 10.0
+
+    s, t = build(30, 60)                      # healthy 300 s, then absent 600 s
+    d = LatchDetector()
+    hits = d.scan(t, s, browned_out=False)
+    check(len(hits) == 1 and hits[0][0] == 5, "a healthy-then-absent satellite is reported")
+    check(hits[0][1] >= 300.0, "with how long it has been gone")
+    check(abs(hits[0][2] - 3.0) < 1e-9, "and the q it had BEFORE it went")
+
+    check(not d.scan(t + 10.0, s, browned_out=False),
+          "reported ONCE per episode, not once per cycle (the cooldown)")
+
+    # The three populations #90's flights actually hit, none of which is a latch:
+    s2, t2 = build(30, 10)
+    check(not LatchDetector().scan(t2, s2, browned_out=False),
+          "absent only 100 s: too short, this is flicker")
+
+    s3, t3 = build(30, 60, q=1.2)
+    check(not LatchDetector().scan(t3, s3, browned_out=False),
+          "never healthy before it went: a set, not a latch")
+
+    s4, t4 = build(30, 60)
+    check(not LatchDetector().scan(t4, s4, browned_out=True),
+          "during a chain-wide BROWNOUT nothing is reported -- the chain is the patient")
+
+    # Startup: absent from the first cycle, never seen healthy.
+    s5 = QSeries(window_s=100000.0)
+    for i in range(60):
+        s5.note_cycle(i * 10.0, {5}, fleet({5: None}))
+    check(not LatchDetector().scan(590.0, s5, browned_out=False),
+          "a satellite that was never present cannot latch (the PRN 34 case)")
+
+
+# ---- D3: THE HANDOVER SAWTOOTH ------------------------------------------------------------
+def test_sawtooth():
+    print("D3: the handover sawtooth (#92's P2 population)")
+
+    d = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5)
+    msgs = []
+    for i in range(30):                        # a trim ramping 0 -> 1.45 chips
+        msgs.append(d.note(i * 10.0, 7, i * 0.05))
+    check(not any(msgs), "a RAMP alone says nothing -- that is the loop tracking real drift")
+
+    hit = d.note(300.0, 7, 0.02)               # ... then discarded in one cycle
+    check(hit and "SAWTOOTH PRN 7" in hit, "the WIPE is what fires")
+    check("ramp discarded" in hit, "and it names the mechanism, not just the numbers")
+    check(len(d.episodes) == 1, "retained as an episode for #92's P2 population")
+
+    check(d.note(310.0, 7, 0.01) is None, "reported once, not once per cycle")
+
+    # A small trim that wobbles is not a sawtooth: the ramp threshold is what excludes it.
+    d2 = SawtoothDetector(ramp_chips=0.5)
+    for i in range(20):
+        d2.note(i * 10.0, 3, 0.05)
+    check(d2.note(200.0, 3, 0.0) is None, "a trim that never ramped past the bar cannot wipe")
+
+    # A brownout takes trims away chain-wide; that is D1's event, not this one.
+    d3 = SawtoothDetector(ramp_chips=0.5)
+    for i in range(30):
+        d3.note(i * 10.0, 9, i * 0.05)
+    check(d3.note(300.0, 9, 0.0, browned_out=True) is None,
+          "during a brownout nothing is reported -- superposing the two is what made E3 "
+          "look heterogeneous")
+
+    # A gradual decay is the LEAK, not a discontinuity.
+    d4 = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5)
+    for i in range(30):
+        d4.note(i * 10.0, 4, i * 0.05)
+    slow = [d4.note(300.0 + i * 10.0, 4, 1.45 * (0.9 ** (i + 1))) for i in range(10)]
+    check(not any(slow), "a slow decay is the leak, and does not fire")
+
+
 if __name__ == "__main__":
-    print("D0 -- the population-honest q series\n")
-    for fn in (test_the_e4_case, test_states, test_window_and_line, test_no_side_effects):
+    print("D0-D3 -- population, brownout, latch, sawtooth\n")
+    for fn in (test_the_e4_case, test_states, test_window_and_line, test_no_side_effects,
+               test_brownout, test_latch, test_sawtooth):
         fn()
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     sys.exit(1 if _fails else 0)

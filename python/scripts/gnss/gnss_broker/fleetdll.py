@@ -353,9 +353,41 @@ def stage_fleet_dll(ctx):
         # the ones that passed the presence gate, so a satellite whose q craters leaves it.
         # A statistic over that line measures survivors, and survivors always look healthy.
         ctx.qpop.note_cycle(ctx.t0, set(ctx.seeds), ctx.dllp.fleet)
-        _qline = ctx.qpop.line(log_tag() or ctx.args.signal)
+        _tag = log_tag() or ctx.args.signal
+        _qline = ctx.qpop.line(_tag)
         if _qline:
             _log_rl("qpop", _qline, every_s=120.0)
+
+        # ── D1: the chain-wide brownout, as a labelled episode ────────────────────────
+        # Promoted out of #90's admission gate, where it silently suppressed fires and
+        # nothing downstream could tell a window had contained one.
+        _npres = sum(1 for _f in (ctx.dllp.fleet or {}).values()
+                     if isinstance(_f, dict) and _f.get("present"))
+        _bmsg = ctx.brown.note_cycle(ctx.t0, _npres)
+        if _bmsg:
+            _log("%s: %s" % (_tag, _bmsg))
+
+        # ── D2: the deep latch, UNARMED ───────────────────────────────────────────────
+        # #90's four armed flights produced zero genuine targets, so the base rate is the
+        # missing number. This measures it at no risk; it actuates nothing.
+        for _lp, _labs, _lq in ctx.latch.scan(ctx.t0, ctx.qpop, ctx.brown.active()):
+            _log("%s: LATCH PRN %d absent %.0f s after q %.2f -- #90 v3 would have fired "
+                 "here (detector only, nothing armed)" % (_tag, _lp, _labs, _lq))
+
+        # ── D3: the handover sawtooth ─────────────────────────────────────────────────
+        # Fed the HANDOVER-CORRECTED trim: without that subtraction a successful #92
+        # handover -- the cure -- reads as the disease it was applied to.
+        for _sp, _sr in (ctx.dls.readback or {}).items():
+            if not isinstance(_sr, dict) or _sr.get("trim_chips") is None:
+                continue
+            if not _sr.get("armed"):
+                ctx.saw.drop(_sp)     # a released trim decays by the LEAK, not a wipe
+                continue
+            _smsg = ctx.saw.note(ctx.t0, _sp,
+                                 ctx.handover.corrected(_sp, float(_sr["trim_chips"])),
+                                 browned_out=ctx.brown.active())
+            if _smsg:
+                _log("%s: %s" % (_tag, _smsg))
         # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.
         #
         # Carrier and code are locked in ratio: a Doppler error dF drifts the code at
