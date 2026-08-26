@@ -594,3 +594,56 @@ def q_stall_verdict(hist, now, window_s, frac, min_best, best, min_samples=10):
     if best >= min_best and cur < best * frac:
         return best, (cur, best, (cur / best) if best else 0.0)
     return best, None
+
+
+def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len):
+    """Split clock-solve offsets into (keep, drop) on per-satellite CONTINUITY of raw d_i.
+
+    `offs` is [(prn, d_i)], d_i = clk + b_i: both stable, so a real satellite's d_i moves
+    a few chips between cycles at most.
+
+    ⚠️ HISTORY, because this function has now been wrong in BOTH directions and the second
+    time was worse (2026-08-11):
+
+    * The 2026-08-11 afternoon "Doppler lever" version subtracted
+      lever = t_i*chip_rate*sign*dop/carrier from d_i before differencing, on the theory
+      that d_i carried the detection Doppler times the 2.24-day sample-0 age (1696
+      chips/Hz). The arithmetic of the lever is real -- but it CANCELS EXACTLY inside
+      cp_loc, because the search's published cp0 embeds -t*chip_rate*sign*dop/carrier
+      with the SAME dop and the SAME ref_hop (gnssSeedTransport.cpp detection_phase);
+      cp_loc adds it back. Raw d_i never carried the lever at all. Subtracting it
+      RE-INTRODUCED the term, so (d - lev) stepped 1696*ddop for any Doppler re-estimate
+      > 0.059 Hz -- i.e. every satellite, every cycle (detection Doppler jitters +-60 Hz
+      pass to pass). The guard then flagged all sats, hit the min-sats floor, and kept
+      everything: a no-op that also invalidated the A/B that "measured" the lever fix.
+      MEASURED live 2026-08-11 21:1x: "6 PRN(s) jumped ... keeping all" every cycle;
+      and 1423 consecutive live detections show cp_loc continuous to median 0.27 chips
+      (p99 2.37, none > 5), so raw d_i is the right quantity to test.
+
+    * The still-open question this guard exists for: the 2026-08-10 PRN 2 incident
+      (a non-L5 PRN reading noise, +-3000-chip swings dragging the median) and the
+      2026-08-11 19:24-19:38 burst of genuine raw-d_i jumps (era-dependent, absent from
+      the live stream at 21:xx). When it fires again, the WHAT MOVED log at the call
+      site now decomposes d(cp_loc) -- the cancelled, physical quantity -- so the next
+      reading of it does not have to guess (raw dcp is uniform mod L by construction
+      and means nothing without the embed removed).
+
+    `hist` is {prn: (t, d_i)} from the previous cycle and IS MUTATED here (every
+    satellite's current value is recorded, including dropped ones -- a track that
+    settles down must be able to rejoin).
+
+    A satellite with no fresh history is always kept: the test needs two cycles, and
+    refusing first sightings would stall the bootstrap.
+    """
+    keep, drop = [], []
+    for prn, d in offs:
+        prev = hist.get(prn)
+        hist[prn] = (now_w, d)
+        if prev is not None and now_w - prev[0] <= max_age_s:
+            delta = d - prev[1]
+            jump = abs(((delta + code_len / 2.0) % code_len) - code_len / 2.0)
+            if jump > bound_chips:
+                drop.append((prn, jump))
+                continue
+        keep.append((prn, d))
+    return keep, drop

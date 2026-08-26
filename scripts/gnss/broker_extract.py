@@ -155,15 +155,21 @@ def main_():
     by_line = {}
     for n in hits:
         by_line.setdefault(n.lineno, []).append(n)
+    # ⚠️ col_offset IS A BYTE OFFSET, NOT A CHARACTER OFFSET. This file is full of `⚠️` in
+    # comments, and every one of those is 3-6 bytes for a single character -- so slicing the
+    # str by col_offset silently lands in the wrong place on any line preceded by one. Work in
+    # BYTES and decode once at the end. The assert below caught this rather than a corrupted
+    # rewrite, which is the only reason it cost minutes instead of a debugging session.
     for ln, nodes in by_line.items():
         i = ln - fn.lineno
-        line = body[i]
+        raw = body[i].encode("utf-8")
         for n in sorted(nodes, key=lambda x: -x.col_offset):
             c = n.col_offset
-            assert line[c:c + len(n.id)] == n.id, "mismatch at %d:%d" % (ln, c)
-            repl = "ctx" if n.id == SELF_NAME else "ctx." + NAME_MAP[n.id]
-            line = line[:c] + repl + line[c + len(n.id):]
-        body[i] = line
+            tok = n.id.encode("utf-8")
+            assert raw[c:c + len(tok)] == tok, "mismatch at %d:%d" % (ln, c)
+            repl = b"ctx" if n.id == SELF_NAME else b"ctx." + NAME_MAP[n.id].encode("utf-8")
+            raw = raw[:c] + repl + raw[c + len(tok):]
+        body[i] = raw.decode("utf-8")
 
     body = [(l[ind:] if l.strip() else l) for l in body]
     newname = routine.lstrip("_")
