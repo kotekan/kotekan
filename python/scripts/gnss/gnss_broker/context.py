@@ -50,7 +50,7 @@ class ChainContext(object):
         "spectrum_endpoints", "spec_writer", "state_dir", "xb_read_dir", "sig_of",
         "combiner", "gating", "capable", "receiver_state", "alm_now",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
-        "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb",
+        "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb", "car", "wd", "nho",
         # ---- long-lived tables, mutated in place --------------------------------------
         "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted",
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",

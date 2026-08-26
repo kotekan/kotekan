@@ -57,6 +57,7 @@ NAME_MAP = {
     "receiver_state": "receiver_state", "_alm_now": "alm_now", "_cb": "cb",
     "almanac_sats": "almanac_sats", "brdc_alm": "brdc_alm", "det_fresh": "det_fresh",
     "state_w": "state_w", "_clk_persist_t": "clk_persist_t",
+    "_car": "car", "_wd": "wd", "_nho": "nho",
 }
 
 # `_ctx` is the context itself, not a slot on it: a stage that already writes through the
