@@ -36,7 +36,28 @@ there is no way to run that logic offline. That is the argument for going sooner
 instability is partly *caused* by how hard the loop logic is to test, so "wait for stable
 locks first" is backwards.
 
-### Step 0 (PREREQUISITE, do not skip) — refresh the digest fixtures
+### Step 0 — refresh the digest fixtures  ✅ FIRST CAPTURE DONE 2026-08-26
+
+`broker_onsky_e5a_20260826` is blessed and **GATE GOOD** (`3cba60e49`): 113 cycles, 1474
+posts, determinism holds, digest moves under a 1e-12 perturbation of `carrier_hz` and
+`dll_gain`. It is the model-primary chain with span + command + handover live, i.e. every
+path added in the last week. Fixtures now carry their own ephemeris in a
+`<transcript>.brdc/` sidecar (`broker_equiv._pin_for`) so a new capture cannot move the
+fingerprint of the existing four.
+
+⚠️ IT COVERS A CHAIN, NOT THE CODEBASE. `selftest` reports this fixture does NOT reach
+`carrier_gain`, `code_bias_alpha`, `bias_alpha` — a refactor touching those is UNGATED
+until the remaining two captures land: **a search-fed `gps_l5`** (the only chain whose `y`
+comes from detections) and **a BeiDou chain** (never captured at all). Recipe in
+`scripts/gnss/fixtures/README.md`; one chain per run.
+
+⚡ THE FIRST REPLAY ALREADY PAID FOR THE PROGRAMME: it crashed on an
+`UnboundLocalError` (`t_now_abs` read by six consumers before the first ephemeris refresh
+assigns it; five swallow it in a `try`, the sixth killed the chain thread). Fixed in
+`44b976023` with all four existing digests unmoved. A startup-ordering race production
+hides — exactly the class the gate exists to find, found before any refactoring began.
+
+### Step 0 (original note, kept for the reasoning)
 
 `scripts/gnss/broker_equiv.py` over four fixtures is the safety net that makes mechanical
 extraction safe, and **it is currently partly blind**: the fixtures are blessed at older
