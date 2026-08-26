@@ -822,6 +822,31 @@ def main(argv=None, rx=None, publisher=None):
             self.kcoh = None
 
     _dllp = _DllProducts()
+
+    # ── THE DEAD-RECKON STAGE'S PER-CYCLE PRODUCTS ────────────────────────────────────────
+    # `clk_now` is the receiver clock propagated to this instant. The SEEDING sub-stage
+    # computes it; the JOINT-SHADOW diagnostic, which runs EARLIER in the same pass, also
+    # reads it.
+    #
+    # ⚠️⚠️ SO THAT DIAGNOSTIC READS THE PREVIOUS CYCLE'S CLOCK, and always has. It prints
+    # `legacy clk` (this value, one cycle stale) beside `joint clk` (this cycle's `_js.clk`),
+    # which means anyone comparing those two numbers to judge the joint filter has been
+    # comparing them ACROSS A CYCLE BOUNDARY -- a ~2 s lag times the clock rate. Log-only: it
+    # feeds no control path. Naming it here rather than quietly fixing it, because changing
+    # the value would move a number people have already reasoned from, and that deserves its
+    # own commit and its own falsifier.
+    #
+    # It lives on an owner object for the same reason `_dllp` does: an attribute needs no
+    # `nonlocal`, so the sub-stages that read and write it can be routines. As a bare local it
+    # had NO BINDING IN main() AT ALL, which is what blocked extracting this stage at all.
+    class _DrProducts(object):
+        """Per-cycle derived values of the dead-reckon stage. None means NOT YET SOLVED."""
+        __slots__ = ("clk_now",)
+
+        def __init__(self):
+            self.clk_now = None
+
+    _drp = _DrProducts()
     fe_axis = [None]  # (newest telemetry pow_hop, wall at its fetch) -- #83 the axis fix
     # ── THE FILTERED AXIS OFFSET (2026-08-23, the birth-epoch jitter fix) ──────────────
     # fe_axis re-samples the newest hop every poll, so t_now_abs inherits the PIPELINE
@@ -6435,8 +6460,8 @@ def main(argv=None, rx=None, publisher=None):
                                             ("%.2f" % _dq) if _dq is not None else "-",
                                             _dcp,
                                             ((_dheld + _dtrim - _dcp) % _DR_MOD),
-                                            clk_now, bsat.get(_dk[1], now_w),
-                                            clk_now + bsat.get(_dk[1], now_w), _js.clk))
+                                            _drp.clk_now, bsat.get(_dk[1], now_w),
+                                            _drp.clk_now + bsat.get(_dk[1], now_w), _js.clk))
                             _nok = _js.cycle(_mm, t_now_abs)
                             if _diag:
                                 _ys = [_js.wrap(d[1] - _js.clk) for d in _diag]
@@ -6852,7 +6877,7 @@ def main(argv=None, rx=None, publisher=None):
                             t_code * 1e3, dr_state.get("drift") or 0.0, "; ".join(resid)))
                 # -- seed / re-pin every visible, undetected, unlocked sat from the model --
                 if dr_state["clk"] is not None:
-                    clk_now = (dr_state["clk"]
+                    _drp.clk_now = (dr_state["clk"]
                                + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
                     # -- P2b CONSUMER "clk" (2026-08-11, the decay root's fix) -------------
                     # clk_now above is the circular MEDIAN of per-sat offsets whose per-sat
@@ -6889,14 +6914,14 @@ def main(argv=None, rx=None, publisher=None):
                             _jsigC = _jrC.sigma()
                             if _jsigC is None or _jsigC <= 0.0:
                                 _jsigC = float("inf")
-                            _jdC = ((_jrC.clk - clk_now + CODE_LEN / 2.0) % CODE_LEN
+                            _jdC = ((_jrC.clk - _drp.clk_now + CODE_LEN / 2.0) % CODE_LEN
                                     ) - CODE_LEN / 2.0
                             _jokC = (_jsigC <= args.joint_clk_max_sigma
                                      and abs(_jdC) <= args.joint_clk_max_chips)
                             _log_rl("jclk",
                                     "JOINT-CLK: legacy %.3f joint %.3f chips (delta %+.3f,"
                                     " sigma %.3f, n %d) -> %s"
-                                    % (clk_now, _jrC.clk % CODE_LEN, _jdC, _jsigC,
+                                    % (_drp.clk_now, _jrC.clk % CODE_LEN, _jdC, _jsigC,
                                        len(_jrC._idx),
                                        "ADOPTED" if _jokC else
                                        "REFUSED (bounds %.1f chips / %.2f sigma)"
@@ -6904,7 +6929,7 @@ def main(argv=None, rx=None, publisher=None):
                                           args.joint_clk_max_sigma)),
                                     every_s=30.0)
                             if _jokC:
-                                clk_now = (clk_now + _jdC) % CODE_LEN
+                                _drp.clk_now = (_drp.clk_now + _jdC) % CODE_LEN
                     # DRCLK (2026-08-11): the "dead-reckon clock ..." line above is gated on
                     # `offs`, i.e. on this chain having its OWN detections -- so the four
                     # model-primary chains, the ones whose seeds ride clk_now raw, never log
@@ -6916,7 +6941,7 @@ def main(argv=None, rx=None, publisher=None):
                     # median visible.
                     _log_rl("drclk",
                             "DRCLK clk_now %.3f chips drift %+.4f chips/s (la %+.4f ppm)"
-                            % (clk_now, dr_state.get("drift") or 0.0, la * 1e6),
+                            % (_drp.clk_now, dr_state.get("drift") or 0.0, la * 1e6),
                             every_s=30.0)
                     # -- P2b CONSUMER 3, THE SHADOW ARM -------------------------------------
                     # Compare the two offset ESTIMATORS directly, over every satellite the
@@ -6936,7 +6961,7 @@ def main(argv=None, rx=None, publisher=None):
                         for (_ct, _p) in list(_jr3._idx):
                             if _ct != tag:
                                 continue
-                            _lo = clk_now + bsat.get(_p, now_w)
+                            _lo = _drp.clk_now + bsat.get(_p, now_w)
                             _jo = _jr3.predicted((_ct, _p))
                             _dd = ((_jo - _lo + _DR_MOD / 2.0) % _DR_MOD) - _DR_MOD / 2.0
                             _cmp.append((_p, _dd, _jr3.sigma((_ct, _p)) or 0.0))
@@ -7090,7 +7115,7 @@ def main(argv=None, rx=None, publisher=None):
                         # cp0 as well is what gives it a live arm today, on GPS births.
                         if _dr_hold:
                             continue      # clock is still a prime; see the withhold note
-                        _leg_off = clk_now + bsat.get(prn, now_w)
+                        _leg_off = _drp.clk_now + bsat.get(prn, now_w)
                         _off = _leg_off
                         _off_sigma = None      # set only when a JOINT offset is adopted
                         _jr3 = _joint_state(rx, band_id, args)
@@ -7322,7 +7347,7 @@ def main(argv=None, rx=None, publisher=None):
                                         " hold_prev %.2f vs %.1f -> held %s;"
                                         " in_seeds %s in_seeded %s | prev [%s]"
                                         % (prn, _oldphys, _newphys, _bstep, _off, _leg_off,
-                                           clk_now, bsat.get(prn, now_w),
+                                           _drp.clk_now, bsat.get(prn, now_w),
                                            ("+ d3 %+.3f [joint %s]"
                                             % (_d3, "ADOPTED" if _ok3 else "REFUSED"))
                                            if _joff is not None else "[joint absent]",
