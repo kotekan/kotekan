@@ -50,10 +50,28 @@ for f in "${FIXTURES[@]}"; do
     fi
 done
 
+# ---- THE UNIT TESTS ---------------------------------------------------------------------
+# The digest gate is blind by construction to anything the transcript cannot drive: the #90
+# admission gate strikes on the WALL clock, and #92's handover posts to a gather that never
+# answers in a replay. Those live in gnss_broker/test_*.py, and they belong to the same
+# verdict -- a refactor is safe only if BOTH halves are green.
+units=0
+for t in "$K"/python/scripts/gnss/gnss_broker/test_*.py; do
+    [ -e "$t" ] || continue
+    m="gnss_broker.$(basename "$t" .py)"
+    if ! ( cd "$K/python/scripts/gnss" && "$PY" -m "$m" > "$OUT/$m.log" 2>&1 ); then
+        units=$((units+1))
+        printf "  RED   %-38s (unit)\n" "$m"
+        grep -E "FAIL|Error|Traceback" "$OUT/$m.log" | head -8 | sed 's/^/          /'
+    elif [ "${1:-}" = "-v" ]; then
+        printf "  ok    %-38s %s\n" "$m" "$(grep -c PASS "$OUT/$m.log") checks"
+    fi
+done
+
 n=${#FIXTURES[@]}
-if [ $bad = 0 ]; then
-    echo "GATE GREEN  $n/$n EQUIVALENT"
+if [ $bad = 0 ] && [ $units = 0 ]; then
+    echo "GATE GREEN  $n/$n EQUIVALENT + unit tests"
 else
-    echo "GATE RED    $((n-bad))/$n equivalent, $bad failed"
+    echo "GATE RED    $((n-bad))/$n equivalent, $bad fixtures / $units unit modules failed"
 fi
-exit $bad
+exit $((bad + units))
