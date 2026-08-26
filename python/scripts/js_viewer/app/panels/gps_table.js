@@ -48,7 +48,7 @@ const METRICS = {
     // the deep-sidelobe instrument -- and available wherever the carrier stayed coherent.
     // On a strong satellite they must AGREE; a low coherent value beside a healthy
     // incoherent one means COHERENCE was lost, not signal, and `eta` says so directly.
-    cn0:  {label: "C/N0 inc", field: "cn0", unit: "dB-Hz",
+    cn0:  {label: "C/N0 prompt", field: "cn0", unit: "dB-Hz",
            fmt: m => {
                if (!m || m.cn0 == null) return null;
                const v = m.cn0.toFixed(0);
@@ -146,7 +146,7 @@ const COLS = [
      tip: "elevation (deg)"},
     {key: "snr",  label: "SNR",  align: "right", dir: -1,
      tip: "search detection significance (sigma above the acquire grid noise)"},
-    {key: "cn0",  label: "C/N0 inc", align: "right", dir: -1,
+    {key: "cn0",  label: "C/N0 prompt", align: "right", dir: -1,
      tip: "INCOHERENT C/N0 (dB-Hz): per-record prompt power, q-gated on the noise probes' "
           + "own q population, probe-debiased (task #57). No coherence assumed, so it is "
           + "defined whenever tracking held. Greyed under 70% lock duty: the value is then "

@@ -42,8 +42,20 @@ const LN10_10 = 10 / Math.LN10;   // 10/ln10 = 4.3429; d(dB)/dx = LN10_10 / x
 // the deep fold's ~20 dB of paired self-scatter). The beam modes are #57 step 2: the
 // per-element complex-gain summary (median live-element amplitude; circular RMS of the
 // element phases about the array mean -- the peel coefficient's dispersion).
+// A cn0_prompt point below this lock duty is dropped from the trace rather than drawn: the
+// estimator still publishes at very low duty (measured 0.08-0.14 across four rows with the
+// band completely dead on 2026-08-26 -- two of them NOISE PROBES), and one unqualified point
+// in a history trace is indistinguishable from a real one. Mirrors the eta qualifier the
+// coherent trace already applies below, and the 0.7 dimming the table already applies.
+const CN0_MIN_DUTY = 0.25;
+
 const MODES = {
-    cn0:      {label: "C/N₀ inc", axis: "C/N₀ incoherent (dB-Hz)", unit: " dB-Hz", fmt: ".1f"},
+    // ⚠️ NOT "inc" any more: this is cn0_prompt_db (per-record prompt power, q-gated,
+    // probe-debiased), which RETIRED the incoherent/coherent pair. The old label outlived
+    // the old estimator and had people reading a rectification-biased number that is no
+    // longer computed.
+    cn0:      {label: "C/N₀ prompt", axis: "C/N₀ prompt, per-record (dB-Hz)",
+               unit: " dB-Hz", fmt: ".1f"},
     cn0_kcoh: {label: "C/N₀ coh", axis: "C/N₀ coherent, known-rate fold (dB-Hz)",
                unit: " dB-Hz", fmt: ".1f"},
     beam_amp: {label: "beam A",  axis: "median element gain (×, 1 = uniform)", unit: "×",
@@ -190,7 +202,13 @@ export class GpsAmpHistoryPanel {
         if (n && h.cn0[n - 1] === src.cn0 && h.cn0_kcoh[n - 1] === src.cn0_kcoh
             && src.cn0 != null) return;
         h.t.push(now);
-        h.cn0.push(src.cn0); h.sig.push(src.sig);
+        // ⚠️ QUALIFIED, for the same reason the coherent trace below is. A null cn0_duty is
+        // a pre-#57 broker and passes (there is no duty to judge it by); anything else must
+        // earn its point.
+        h.cn0.push((src.cn0 != null && !src.noise_probe
+                    && (src.cn0_duty == null || src.cn0_duty >= CN0_MIN_DUTY))
+                   ? src.cn0 : null);
+        h.sig.push(src.sig);
         // ⚠️ ONLY PLOT A COHERENT POINT THE FOLD ACTUALLY EARNED. eta well below n_rec
         // means the records did not add coherently, so the value is the noise floor
         // (~0 dB-Hz), not a C/N0 -- E19 through boresight drew a whole trace of those on

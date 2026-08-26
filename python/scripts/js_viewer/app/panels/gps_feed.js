@@ -9,7 +9,16 @@
 
 const POLL_MS = 1500;
 const AMP_LOCK = 0.30;      // |A| fallback lock (only where no significance is reported)
-const SNR_LOCK = 3.0;       // significance (sigma above noise) for a lock
+const SNR_LOCK = 3.0;       // significance (sigma above noise) -- LEGACY lock, see Q_LOCK
+// THE LOCK BAR IS q. Same numbers gps_table.js colours on, so the two panels cannot
+// disagree: >= Q_LOCK is a lock (its green), and <= q_floor * Q_FLOOR_MARGIN is AT the
+// measured noise (its red). The floor is published per cycle, so the bar is never
+// hardcoded when the broker knows better.
+const Q_LOCK = 2.2;
+const Q_FLOOR_MARGIN = 1.15;
+// The pre-#57 incoherent C/N0 has a pole at u -> a; refuse the last decade before it.
+// 0.95 caps the expression at ~40 dB-Hz, which is the top of the physical GNSS range.
+const CN0_INC_MAX_RATIO = 0.95;
 const PREFS_KEY = "gps_viewer_prefs_v1";
 
 // Constellation identity: display name (sky legend), record period (for C/N0 = x / t_rec) and
@@ -164,13 +173,44 @@ export function signal_metrics(s, t_rec) {
     // gate-passing records and should be read with that beside it, so it travels WITH the
     // value everywhere (the #47 rule: the flag moves with the number it qualifies).
     m.cn0_duty = s.cn0_prompt_duty != null ? s.cn0_prompt_duty : null;
-    if (s.cn0_prompt_db != null)
+    // ⚠️ THE NOISE PROBES RIDE THE SAME ROWS. They are seeded PRNs followed where nothing is
+    // transmitting, which is what makes them a floor -- publish.py flags them precisely "so
+    // no consumer plots a below-horizon noise reference as a satellite", and until 2026-08-26
+    // no consumer read the flag. gps_sky.js dropped them only when el < 0, so a probe seeded
+    // above the horizon rendered as a locked satellite with a C/N0 beside it.
+    m.noise_probe = !!s.noise_probe;
+    if (s.cn0_prompt_db != null) {
         m.cn0 = s.cn0_prompt_db;
-    else {
-        // Pre-#57 broker: the old incoherent pipeline-zero-point expression, so an old
-        // chain renders SOMETHING rather than a blank column. Marked by cn0_duty == null.
+    } else if (s.cn0_prompt_duty !== undefined) {
+        // ⚠️ A #57 BROKER THAT DECLINED, AND A GAP IS THE HONEST RENDER. cn0_prompt_db is
+        // null exactly when the q-gate passed too few records for the value to mean
+        // anything -- publish.py says it outright: "a duty near 0 means the number rests on
+        // a handful of upward fluctuations (decline it)". Falling through to the old
+        // estimator here overrode that refusal with a fabricated number: on 2026-08-26,
+        // with the analog front-ends powered down, this path drew 80-100 dB-Hz across the
+        // history panel for satellites whose q was sitting at 1.0. A hole in the trace says
+        // "the estimator refused"; a number says "41 dB-Hz" and destroys that.
+        m.cn0 = null;
+    } else {
+        // PRE-#57 BROKER ONLY (neither key present). Kept so an old chain renders
+        // something, but bounded, because the expression is not safe near no-signal:
+        //
+        //   C/N0 = (S/N)/T  with  S = u^2  and  N = a^2 - u^2
+        //
+        // ⚠️ THERE IS A POLE AT u -> a. The debias stops subtracting anything when there is
+        // no signal, so the denominator collapses and the value diverges. Measured with the
+        // front-ends down: gps_l5 PRN 28 served u/a = 1.0000 and this returned 89 dB-Hz
+        // while fleet_q read 1.15. So: refuse near the pole, and refuse outright when q
+        // says the loop is not on the peak.
+        // ⚠️ ITS ABSOLUTE SCALE IS ALSO SUSPECT ON CHORD: t_rec is the CODE PERIOD (1 ms),
+        // but a CHORD record is 2048 hops x 5.12 us = 10.486 ms, so dividing by t_rec
+        // overstates the density by 10*log10(10.4857) = 10.2 dB. Correct on airspy, where
+        // a record IS one code period. Read this column as a relative number only.
         const a = s.amplitude || 0, u = s.unbiased_amplitude || 0;
-        if (a > u && u > 0) m.cn0 = 10 * Math.log10(((u * u) / (a * a - u * u)) / t_rec);
+        const ratio = a > 0 ? u / a : 1.0;
+        const q_says_locked = (m.q == null) || (m.q >= Q_LOCK);
+        if (a > u && u > 0 && ratio <= CN0_INC_MAX_RATIO && q_says_locked)
+            m.cn0 = 10 * Math.log10(((u * u) / (a * a - u * u)) / t_rec);
     }
     // THE COHERENT C/N0 (task #57 step 3): the ~1 s KNOWN-RATE fold -- rate injected from
     // the previous cycle's record-stream fit, never searched. This is the deep-sidelobe
@@ -589,11 +629,38 @@ export class GpsFeed {
             }
         }
         const list = [...sats.values()];
-        // "Locked" = significant, not raw |A| (noise-biased). |A| fallback only
-        // where nothing reports a significance at all.
+        // ⚡ "LOCKED" IS q -- THE CODE LOOP ON THE PEAK -- NOT "something was significant".
+        //
+        // sig rides the deep / known-rate fold, and that fold RE-SEARCHES rate and phase:
+        // it certifies whatever it lands on, including noise (#47, and the deep_snr-fires-
+        // on-noise result). The failure is not subtle. On 2026-08-26 the analog front-ends
+        // were powered down for site work, and with NOTHING on the wire every satellite on
+        // every chain still served sig 900..10,000 -- three orders of magnitude past the
+        // 3-sigma bar below -- while fleet_q sat at 0.79..1.15, exactly its noise floor.
+        // The sky panel drew a full constellation of locked satellites against a dead band.
+        //
+        // q is the fleet discriminator's prompt-vs-shoulder ratio, so it answers "is the
+        // loop ON the correlation peak", which no power metric can. signal_metrics() has
+        // carried it since 2026-08-18 with the rule written above it in capitals; only this
+        // line was still asking sig.
+        //
+        // Marginal satellites (above the noise floor but under Q_LOCK -- amber in the
+        // table) render IDLE here. That is deliberate and it is the conservative
+        // direction: this panel answers "is it locked", and half-locked is not locked.
         const have_sig = list.some(r => r.sig > 0);
-        for (const r of list)
-            r.active = have_sig ? (r.sig >= SNR_LOCK) : (r.detected || r.amp >= AMP_LOCK);
+        for (const r of list) {
+            if (r.noise_probe)
+                // A noise reference cannot be locked, whatever it is reporting -- that is
+                // the entire point of it.
+                r.active = false;
+            else if (r.q != null)
+                r.active = (r.q >= Q_LOCK)
+                           && !(r.q_floor != null && r.q <= r.q_floor * Q_FLOOR_MARGIN);
+            else
+                // No q on this chain (a broker predating the fleet DLL): old rule, intact.
+                r.active = have_sig ? (r.sig >= SNR_LOCK)
+                                    : (r.detected || r.amp >= AMP_LOCK);
+        }
         return list;
     }
 
