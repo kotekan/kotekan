@@ -1221,6 +1221,17 @@ def build_parser(description):
                          "erases the trim in ~5.6 s. Only zeroing BOTH gain and leak retains "
                          "the value. This flag doubles as the CAP -- past it the hold expires "
                          "and a genuinely set satellite is released normally.")
+    ap.add_argument("--detector-transit-veto-deg", type=float, default=5.0,
+                    help="suppress D2/D3 while ANY visible satellite (all constellations) is "
+                         "within this many degrees of boresight. 0 = off. A near-boresight "
+                         "satellite rails the 4+4b quantiser for every chain at once -- "
+                         "measured 2026-08-26: inside 3 deg the tracked population drops from "
+                         "7 per epoch to 4 and the survivors read 2-3 dB HIGH -- so satellites "
+                         "vanish across all five chains together and a per-satellite detector "
+                         "reads that as a constellation of individual faults. ON by default "
+                         "because it is a SUPPRESSION (the conservative direction) and both "
+                         "detectors are read-only; it costs recall on real events during a "
+                         "transit and buys a base rate that is not mostly geometry.")
     ap.add_argument("--code-bias-brownout-hold", action="store_true",
                     help="#91(c): during a D1 brownout, HOLD the last (l-a) EMA instead of "
                          "re-fitting it from the collapsed population. --code-bias-min-sats "

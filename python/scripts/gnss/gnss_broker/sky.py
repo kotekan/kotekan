@@ -319,3 +319,45 @@ def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
         if sat_elevation(sat, lat, lon, alt_m, look_ahead_s) >= mask_deg:
             up.add(prn)
     return up
+
+
+# ---- BORESIGHT GEOMETRY (the quantiser-railing veto) ---------------------------------------
+# CHORD's dishes sit 8.59 deg SOUTH of zenith (dec +40.73): boresight is az 180.0, el 81.41.
+# ⚠️ `telescope.dish_coelev_deg` in the generated configs reads -27.3 and does NOT give this.
+BORESIGHT_AZ_DEG = 180.0
+BORESIGHT_EL_DEG = 81.41
+
+
+def _unit(el_deg, az_deg):
+    e, a = math.radians(el_deg), math.radians(az_deg)
+    return (math.cos(e) * math.sin(a), math.cos(e) * math.cos(a), math.sin(e))
+
+
+def boresight_sep_deg(el_deg, az_deg, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
+    """Angular separation from boresight, degrees."""
+    u, b = _unit(el_deg, az_deg), _unit(el0, az0)
+    return math.degrees(math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(u, b))))))
+
+
+def nearest_boresight(pd, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
+    """(separation_deg, (sys, prn)) for the visible satellite closest to boresight, or None.
+
+    ⚠️ POOLED OVER EVERY CONSTELLATION ON PURPOSE, and `pd` carries all three. One satellite
+    near boresight rails the 4+4b quantiser for EVERY chain -- they share the nibbles -- so a
+    per-constellation answer would clear the chain carrying the bright satellite and leave the
+    others contaminated while looking like clean controls. Measured 2026-08-26: with a sat
+    inside 3 deg the tracked population drops from 7 satellites per epoch to 4, and the
+    survivors read 2-3 dB HIGH.
+    """
+    best = None
+    for key, v in (pd or {}).items():
+        try:
+            el, az = v["el"], v["az"]
+        except (TypeError, KeyError):
+            continue
+        if el is None or az is None or el <= 0.0:
+            continue
+        d = boresight_sep_deg(el, az, el0, az0)
+        if best is None or d < best[0]:
+            best = (d, key)
+    return best

@@ -16,6 +16,7 @@ will read as lock loss when the tracking is fine.
 
 import math
 
+from gnss_broker.sky import nearest_boresight
 from gnss_broker.transport import _now, _log, _log_rl, log_tag
 from gnss_broker.fleet import fleet_dll, fleet_coherent
 from gnss_broker.fits import q_stall_verdict, instance_stall_verdict
@@ -367,6 +368,20 @@ def stage_fleet_dll(ctx):
         if _bmsg:
             _log("%s: %s" % (_tag, _bmsg))
 
+        # ── THE BORESIGHT-TRANSIT VETO (shared by D2 and D3) ──────────────────────────
+        # Pooled over EVERY constellation -- ctx.dr_pd carries all three, and the quantiser is
+        # shared, so a per-chain answer would be worse than none (it would clean the chain
+        # carrying the bright satellite and leave the rest looking like clean controls).
+        # Transits recur on the SIDEREAL day, so this is predictable rather than bad luck.
+        _near = nearest_boresight(ctx.dr_pd) if ctx.args.detector_transit_veto_deg > 0.0 else None
+        _in_transit = bool(_near and _near[0] < ctx.args.detector_transit_veto_deg)
+        if _in_transit:
+            _log_rl("transit-veto",
+                    "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight; D2/D3 suppressed "
+                    "(the quantiser rails and satellites drop across every chain at once)"
+                    % (_tag, _near[1][0], _near[1][1], _near[0]),
+                    every_s=120.0)
+
         # ── D2: the deep latch, UNARMED ───────────────────────────────────────────────
         # #90's four armed flights produced zero genuine targets, so the base rate is the
         # missing number. This measures it at no risk; it actuates nothing.
@@ -375,7 +390,8 @@ def stage_fleet_dll(ctx):
                 uptime_s=ctx.t0 - ctx.broker_t0,
                 # The plant's own convergence window, not the process's -- a broker that has
                 # been up for hours is still looking at a sky that just came back.
-                recovering=ctx.brown.recovering(ctx.t0, ctx.latch.startup_hold_s)):
+                recovering=ctx.brown.recovering(ctx.t0, ctx.latch.startup_hold_s),
+                in_transit=_in_transit):
             _log("%s: LATCH PRN %d absent %.0f s after q %.2f -- #90 v3 would have fired "
                  "here (detector only, nothing armed)" % (_tag, _lp, _labs, _lq))
 
@@ -396,7 +412,8 @@ def stage_fleet_dll(ctx):
                                  uptime_s=ctx.t0 - ctx.broker_t0,
                                  rebase_age_s=(ctx.t0 - _sbt) if _sbt is not None else None,
                                  present_frac=_sq[4] if _sq else None,
-                                 q_mean=_sq[2] if _sq else None)
+                                 q_mean=_sq[2] if _sq else None,
+                                 in_transit=_in_transit)
             if _smsg:
                 _log("%s: %s" % (_tag, _smsg))
         # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.

@@ -289,9 +289,11 @@ class LatchDetector(object):
         self.cooldown_s = float(cooldown_s)
         self.startup_hold_s = float(startup_hold_s)
         self.reported = {}       # prn -> t of last report (one per episode, not per cycle)
-        self.suppressed_startup = 0   # how many reports the hold-off swallowed, for honesty
+        self.suppressed_startup = 0
+        self.suppressed_transit = 0   # how many reports the hold-off swallowed, for honesty
 
-    def scan(self, t, qseries, browned_out, uptime_s=None, recovering=False):
+    def scan(self, t, qseries, browned_out, uptime_s=None, recovering=False,
+             in_transit=False):
         """[(prn, absent_s, q_before)] for satellites that look latched right now.
 
         `browned_out` suppresses everything: during a chain-wide collapse a missing satellite
@@ -304,6 +306,17 @@ class LatchDetector(object):
         reading either as a rate.
         """
         if browned_out:
+            return []
+        if in_transit:
+            # ⚠️ A DIFFERENT POPULATION FROM startup/recovering, SO IT GETS ITS OWN COUNTER.
+            # A satellite within a few degrees of boresight rails the 4+4b quantiser for every
+            # chain at once, and satellites drop out across ALL of them together. Measured live
+            # 2026-08-26 17:40: four LATCH reports in three seconds spanning gal_e5a AND
+            # gal_e5b, with PRN 26 firing on both -- the same satellite, two bands, one instant.
+            # That cross-chain simultaneity is the tell: #90's actual disease is per-satellite
+            # and per-band (E32's was band-ALTERNATING). Attributing an array-wide event to
+            # individual satellites is exactly what gave flight 3 eight fires and zero targets.
+            self.suppressed_transit += len(qseries.hist)
             return []
         startup = ((uptime_s is not None and uptime_s < self.startup_hold_s)
                    or bool(recovering))
@@ -382,9 +395,10 @@ class SawtoothDetector(object):
         self.episodes = []      # (prn, t, peak_trim, after_trim, kind)
         self.suppressed_startup = 0
         self.suppressed_weak = 0
+        self.suppressed_transit = 0
 
     def note(self, t, prn, trim, browned_out=False, uptime_s=None, rebase_age_s=None,
-             present_frac=None, q_mean=None):
+             present_frac=None, q_mean=None, in_transit=False):
         """Feed one satellite's standing trim. Returns a message on a wipe, else None.
 
         `trim` should already have #92's own handover deltas removed (see
@@ -403,6 +417,13 @@ class SawtoothDetector(object):
         while h and t - h[0][0] > self.window_s:
             h.pop(0)
         if len(h) < 3 or browned_out:
+            return None
+        if in_transit:
+            # The same array-wide event, costing #92's P2 count rather than #90's base rate:
+            # a satellite knocked off its peak by railing releases its trim, and that wipe is
+            # the transit's, not the handover's. Three BARE-WIPEs fired inside one on
+            # 2026-08-26 17:42-17:43 (gps_l5 PRN 28/27/10).
+            self.suppressed_transit += 1
             return None
 
         prev_t, prev = h[-2]

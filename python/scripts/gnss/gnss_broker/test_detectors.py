@@ -219,6 +219,20 @@ def test_latch():
           "and the same satellite IS reported once it has -- a suppressed report must never "
           "swallow the later real one")
 
+    # ⚡ AN ARRAY-WIDE RAILING TRANSIT IS NOT N LATCHES.
+    # 2026-08-26 17:40: four LATCH reports in three seconds across gal_e5a AND gal_e5b, with
+    # PRN 26 firing on BOTH -- one satellite, two bands, one instant -- while E13 sat 3.0 deg
+    # and C58 4.1 deg off boresight. Cross-chain simultaneity is the discriminator: #90's real
+    # disease is per-satellite and per-band (E32's was band-ALTERNATING).
+    s8, t8 = build(30, 60)
+    d8 = LatchDetector()
+    check(not d8.scan(t8, s8, browned_out=False, in_transit=True),
+          "nothing is reported while a satellite is railing the quantiser")
+    check(d8.suppressed_transit > 0, "and the suppression is counted separately from startup")
+    check(len(d8.scan(t8, s8, browned_out=False, in_transit=False)) == 1,
+          "the same satellite IS reported once the transit clears -- suppression must never "
+          "swallow the later real one")
+
     # THE STARTUP SOLVE IS NOT A LATCH (flight 3a). Presence flaps while the clock converges.
     s6, t6 = build(30, 60)
     d6 = LatchDetector(startup_hold_s=900.0)
@@ -267,6 +281,23 @@ def test_sawtooth():
     check(d3.note(300.0, 9, 0.0, browned_out=True) is None,
           "during a brownout nothing is reported -- superposing the two is what made E3 "
           "look heterogeneous")
+
+    # A wipe during a railing transit belongs to the transit (three fired inside one on
+    # 2026-08-26 17:42-17:43). Counting them would put geometry into #92's P2 population.
+    d5 = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5)
+    for i in range(30):
+        d5.note(i * 10.0, 5, i * 0.05)
+    check(d5.note(300.0, 5, 0.02, in_transit=True) is None, "a wipe inside a transit is silent")
+    check(d5.suppressed_transit == 1, "and counted")
+    # ⚠️ NOT "the same wipe fires later": once suppressed, the trim is already gone, so there
+    # is nothing left to report -- which is precisely what makes it the transit's event and
+    # not the handover's. What must survive is the DETECTOR: a new ramp that wipes on a clear
+    # array is still caught.
+    for i in range(31, 61):
+        d5.note(i * 10.0, 5, (i - 31) * 0.05)
+    check(d5.note(610.0, 5, 0.02, in_transit=False) is not None,
+          "a NEW ramp wiping after the transit clears IS reported -- suppression must not "
+          "leave the detector deaf")
 
     # A gradual decay is the LEAK, not a discontinuity.
     d4 = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5)
