@@ -59,8 +59,12 @@ class Ctx(object):
         self.t0 = t0
         self.pred = {p: (0.0, 0.0, el, 0.0, 0.0) for p, el in pred.items()}
         self.prnmap = prnmap.PrnMapState()
+        # What the fake nodes HOLD. The stage clears its cache after every POST and will not
+        # decide again until a full sweep has read the map back, so the test has to model the
+        # nodes actually applying it -- which is the loop being tested, not scaffolding.
+        self.node_state = list(slots)
         self.prnmap.maps = {ep: list(slots) for ep in self.trackers}
-        self.prnmap.poll_t = t0  # pre-polled: no HTTP in this test
+        self.prnmap.poll_t = t0  # pre-swept: no HTTP in this test
 
 
 POSTS = []
@@ -70,14 +74,22 @@ def _no_get(url, timeout=5.0):
     raise AssertionError("the test pre-polls; no GET should happen: " + url)
 
 
+CTX = [None]
+
+
 def _rec_post(url, payload, timeout=5.0):
     POSTS.append((url, payload))
+    if CTX[0] is not None:
+        CTX[0].node_state = list(payload["prns"])  # the nodes apply it
     return {}
 
 
 def run_cycle(ctx, t):
+    """One broker cycle, with the read-back sweep already complete."""
+    CTX[0] = ctx
     ctx.t0 = t
-    ctx.prnmap.poll_t = t  # keep the poll suppressed
+    ctx.prnmap.poll_t = t  # the sweep is stood in for below, so no HTTP happens
+    ctx.prnmap.maps = {ep: list(ctx.node_state) for ep in ctx.trackers}
     prnmap.stage_prn_membership(ctx)
 
 
@@ -152,9 +164,16 @@ def main():
     # ---- 7. disagreeing nodes stop the stage ------------------------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0})
-    ctx.prnmap.maps["http://node2"] = [1, 2, 9]
-    run_cycle(ctx, 1000.0)
-    run_cycle(ctx, 1000.0 + 100000.0)
+
+    def split_cycle(t):
+        CTX[0] = ctx
+        ctx.t0 = t
+        ctx.prnmap.poll_t = t
+        ctx.prnmap.maps = {"http://node1": [1, 2, 3], "http://node2": [1, 2, 9]}
+        prnmap.stage_prn_membership(ctx)
+
+    split_cycle(1000.0)
+    split_cycle(1000.0 + 100000.0)
     check(not POSTS,
           "nodes that disagree stop the stage -- nothing here is per-node, so a split map "
           "is a fault to fix and not a state to drive out of")
@@ -181,6 +200,21 @@ def main():
     check(len(POSTS) == n_first, "a second swap inside the interval is refused")
     run_cycle(ctx, 1000.0 + 7202.0 + 901.0)
     check(len(POSTS) == n_first + 3, "... and allowed once the interval has passed")
+
+    # ---- 10. the loop CONVERGES: once the nodes hold the map, nothing more is posted ----
+    # The stage decides from the READ-BACK map, so a POST that took must stop being re-issued.
+    # If it did not, this would swap one slot every interval forever.
+    POSTS[:] = []
+    ctx = Ctx([1, 2, 3], {3: 30.0, 36: 83.0})   # PRN 1 and 2 gone, one candidate
+    run_cycle(ctx, 1000.0)
+    run_cycle(ctx, 1000.0 + 7201.0)
+    n_after = len(POSTS)
+    for k in range(1, 8):
+        run_cycle(ctx, 1000.0 + 7201.0 + k * 1000.0)
+    check(len(POSTS) == n_after,
+          "once the nodes hold the new map, no further swap is posted (the read-back loop "
+          "converges instead of re-issuing)")
+    check(36 in ctx.node_state, "... and the nodes ended up holding the new satellite")
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

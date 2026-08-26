@@ -123,7 +123,17 @@ So `gnss_broker/prnmap.py`:
   (the 2026-08-19 stale-EOP lesson).
 
 The map is **read back from the nodes**, never remembered, so what the broker diffs against is
-what the nodes actually hold — including after a restart reverted them to the config list.
+what the nodes actually hold — including after a restart reverted them to the config list. The
+cache is cleared after every POST, so a swap is not re-issued until a full sweep has confirmed
+it: the loop converges instead of swapping a slot every interval forever.
+
+⚠️ **The sweep is ONE endpoint per cycle, not a burst.** The stage runs inside the cycle loop,
+so a sweep of all twelve costs `n_dead × timeout` on a *single* cycle — a full minute of broker
+stall the first time site work takes the fleet down. That is #81 exactly ("a dead feed cost a
+full timeout per frame"). One per cycle bounds the damage to a single 2 s timeout and still
+sweeps twelve endpoints in ~24 s, inside the 60 s poll period. A decision is only taken once
+every configured endpoint has answered — a partial sweep looks like unanimity among however
+few have replied.
 **This mechanism is deliberately not persistent**: the config remains the boot state and a
 restart is a clean slate rather than a silently-inherited history.
 
@@ -141,8 +151,9 @@ risk. The unit test pins "report NEVER posts", which is what makes it safe to ar
   to one built that way; a refused PRN changes nothing; and, decisively, the **device** follows:
   slot 0 correlates PRN A at 1.000 and PRN C at 0.009, and after the swap exactly the reverse.
   Proven able to fail.
-* `gnss_broker/test_prnmap.py` (17 checks) — the hysteresis, the rate limit, the modes, the
-  split-map refusal, and that the search is driven with the same payload.
+* `gnss_broker/test_prnmap.py` (19 checks) — the hysteresis, the rate limit, the modes, the
+  split-map refusal, that the search is driven with the same payload, and that the read-back
+  loop **converges** (the fake nodes apply the map, and nothing further is posted).
 * `scripts/gnss/gate.sh` — 7/7 EQUIVALENT with the flag off, i.e. the broker change is inert
   until armed.
 

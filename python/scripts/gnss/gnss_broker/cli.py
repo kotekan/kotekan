@@ -1248,9 +1248,13 @@ def build_parser(description):
                          "element cal COLD -- correctly, since none of it describes the new "
                          "satellite), so every threshold below exists to make swaps RARE.")
     ap.add_argument("--prn-reconfig-poll-s", type=float, default=60.0,
-                    help="how often to GET each node's live map. Read back rather than "
-                         "remembered, so what this diffs against is what the nodes ACTUALLY "
-                         "hold -- including after a restart reverted them to the config list.")
+                    help="how often to complete a full sweep of the nodes' live maps. Read "
+                         "back rather than remembered, so what this diffs against is what the "
+                         "nodes ACTUALLY hold -- including after a restart reverted them to "
+                         "the config list. ⚠️ THE SWEEP IS ONE ENDPOINT PER CYCLE, not a burst: "
+                         "a sweep of all 12 costs (n_dead x timeout) on a SINGLE cycle, which "
+                         "is a full minute of broker stall the first time site work takes the "
+                         "fleet down -- #81's failure exactly.")
     ap.add_argument("--prn-reconfig-interval-s", type=float, default=900.0,
                     help="minimum seconds between swaps, fleet-wide. ONE slot moves per "
                          "interval: re-acquisitions are the cost, and a mechanism that can "
@@ -1271,8 +1275,10 @@ def build_parser(description):
                          "before its slot may be reclaimed (default 2 h). Shorter than the "
                          "down hold because a dead slot costs capacity and gains nothing -- "
                          "but not zero, because an ephemeris gap is not a decommissioning.")
-    ap.add_argument("--prn-reconfig-timeout-s", type=float, default=5.0,
-                    help="per-endpoint HTTP timeout for the map GET/POST.")
+    ap.add_argument("--prn-reconfig-timeout-s", type=float, default=2.0,
+                    help="per-endpoint HTTP timeout for the map GET/POST. With the one-per-"
+                         "cycle sweep above this is the WHOLE cost a dead node can impose on "
+                         "any one cycle.")
     ap.add_argument("--code-bias-brownout-hold", action="store_true",
                     help="#91(c): during a D1 brownout, HOLD the last (l-a) EMA instead of "
                          "re-fitting it from the collapsed population. --code-bias-min-sats "

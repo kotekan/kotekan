@@ -41,12 +41,13 @@ from gnss_broker.transport import _get, _post, _log, _log_rl, log_tag
 class PrnMapState(object):
     """One chain's view of node membership, and the hysteresis that governs changes."""
 
-    __slots__ = ("maps", "poll_t", "last_swap_t", "down_since", "gone_since", "err",
+    __slots__ = ("maps", "poll_t", "cursor", "last_swap_t", "down_since", "gone_since", "err",
                  "swaps", "refused")
 
     def __init__(self):
         self.maps = {}          # endpoint -> [prn per slot]
-        self.poll_t = 0.0       # last GET sweep
+        self.poll_t = 0.0       # last GET of the endpoint at `cursor`
+        self.cursor = 0         # round-robin: ONE endpoint per cycle (see _poll)
         self.last_swap_t = 0.0  # rate limit
         self.down_since = {}    # prn -> t it was first seen below evict_deg (and never above)
         self.gone_since = {}    # prn -> t it first went missing from BRDC entirely
@@ -76,20 +77,39 @@ def _followers(ctx):
     return list(ctx.detectors or [])
 
 
-def _poll(ctx, st):
-    """GET every node's live map. Endpoints that fail are simply absent this cycle."""
-    fresh = {}
-    for ep in _endpoints(ctx):
-        try:
-            r = _get("%s/get_prns" % ep, timeout=ctx.args.prn_reconfig_timeout_s)
-            m = r.get("prns")
-            if isinstance(m, list) and m:
-                fresh[ep] = [int(x) for x in m]
-        except Exception as e:
-            st.err = "%s: %s" % (ep, e)
-    if fresh:
-        st.maps = fresh
-    return fresh
+def _poll(ctx, st, eps):
+    """GET **one** endpoint's live map per call, round-robin.
+
+    ⚠️ ONE, NOT ALL, AND THAT IS THE WHOLE DESIGN OF THIS FUNCTION. The stage runs inside the
+    cycle loop, so a sweep of every endpoint costs (n_dead x timeout) on ONE cycle -- 12 nodes
+    against a 5 s timeout is a full minute of broker stall the first time site work takes the
+    fleet down. That is #81 exactly ("a dead feed cost a full timeout per frame", the failure
+    that put the search 48.9 s behind sky). Polling one per cycle bounds the damage to a single
+    timeout and still sweeps 12 endpoints in ~24 s at the live 2 s interval, comfortably inside
+    the 60 s poll period.
+
+    A failing endpoint is DROPPED from the map rather than left stale: a node that stopped
+    answering has not agreed to anything, and letting its last answer stand would hide a split
+    map behind a corpse.
+    """
+    if not eps:
+        return
+    st.cursor %= len(eps)
+    ep = eps[st.cursor]
+    st.cursor = (st.cursor + 1) % len(eps)
+    try:
+        r = _get("%s/get_prns" % ep, timeout=ctx.args.prn_reconfig_timeout_s)
+        m = r.get("prns")
+        if isinstance(m, list) and m:
+            st.maps[ep] = [int(x) for x in m]
+        else:
+            st.maps.pop(ep, None)
+    except Exception as e:
+        st.err = "%s: %s" % (ep, e)
+        st.maps.pop(ep, None)
+    # Endpoints that have left the configured list must not linger in the consensus.
+    for gone in [k for k in st.maps if k not in eps]:
+        st.maps.pop(gone, None)
 
 
 def _consensus(maps):
@@ -123,11 +143,18 @@ def stage_prn_membership(ctx):
         return
     st = ctx.prnmap
     now = ctx.t0
+    eps = _endpoints(ctx)
 
     # ---- 1. What the nodes hold ---------------------------------------------------------
-    if now - st.poll_t >= a.prn_reconfig_poll_s:
+    # The sweep is spread one endpoint per cycle, so `poll_s` divided by the number of
+    # endpoints is the per-endpoint cadence -- not a burst every poll_s.
+    if eps and now - st.poll_t >= a.prn_reconfig_poll_s / float(len(eps)):
         st.poll_t = now
-        _poll(ctx, st)
+        _poll(ctx, st, eps)
+    # A full sweep must have completed before the map means anything: a partial one looks like
+    # unanimity among however few nodes have answered so far.
+    if len(st.maps) < len(eps):
+        return
     cur = _consensus(st.maps)
     if cur is None:
         if st.maps:
@@ -245,6 +272,7 @@ def stage_prn_membership(ctx):
     # what this stage diffs against is always what the nodes actually hold -- a POST that
     # 200s but does not take (a slot the node refuses because the PRN has no code for that
     # signal) would otherwise be invisible for as long as the broker ran.
+    st.maps.clear()   # force a FULL re-sweep before the next decision
     st.poll_t = 0.0
     _log("PRN MAP %s: slot %d PRN %d -> %d posted to %d/%d node(s)%s%s. Incumbent %s; new "
          "satellite up at %.0f deg. That slot re-acquires COLD -- expect it dark for a "
