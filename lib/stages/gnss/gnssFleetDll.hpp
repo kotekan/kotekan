@@ -128,10 +128,15 @@ public:
     /// (`telem-windows: 32`, matched to the REST feed's `record_export: 128`). 0 = follow
     /// n_win, which is what the offline harness wants so both arms window identically.
     FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, double sig_k = 3.0,
-             int taps_win = 0) :
+             int taps_win = 0, int epoch_margin = 64, int epoch_strikes = 8) :
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
         _max_open_win(std::max(2, max_open_win)), _sig_k(sig_k),
-        _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)) {}
+        _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)),
+        // 64 windows is ~2.7 s at the 23.84 Hz close rate -- far beyond any laggard
+        // (max_open_win is 8) and far below a frame0 move, which lands thousands back.
+        // 8 strikes is under half a second of stream: fast enough that the fold recovers
+        // inside one policy cycle, long enough that no single frame can re-anchor it.
+        _epoch_margin(std::max(2, epoch_margin)), _epoch_strikes(std::max(1, epoch_strikes)) {}
 
     /// One comb COLUMN's three powers for one (instance, PRN), over the records of one window.
     /// `fid` is the F-engine freq_id off the frame header -- never assumed, never configured
@@ -217,6 +222,10 @@ public:
         uint64_t n_late = 0;   ///< frames for a window already closed: dropped, never folded
         uint64_t n_forced = 0; ///< force-closed by max_open_win, i.e. a sender went away
         uint64_t n_frames = 0;
+        /// A1/THE EPOCH RESET. Consecutive frames landing FAR behind `newest` -- the
+        /// signature of an F-engine frame0 move, never of a late sender.
+        uint64_t n_backwards = 0;
+        uint64_t n_epoch_reset = 0; ///< re-anchors performed; >0 means the axis moved
     };
 
     /// Fold one wire frame. `chain_out`/`inst_out` are filled whenever the header parsed.
@@ -242,9 +251,39 @@ public:
         Chain& c = _chain[chain];
         c.n_frames++;
         c.hops_per_record = h->hops_per_record;
+        // ── A1: THE EPOCH RESET (2026-08-26) ────────────────────────────────────────
+        // `win` is ABSOLUTE from the F-engine's frame0, so an F-engine restart moves
+        // frame0 and every sender's window index restarts SMALL. Before this, the LATE
+        // rule below dropped every subsequent frame FOREVER: the fold froze, `row` kept
+        // serving its last aggregate with an IDENTICAL `hop` on every row at 200 OK, the
+        // 60 TCP connections stayed ESTABLISHED, and nothing looked down. It voided at
+        // least three experiments.
+        //
+        // A LAGGARD IS NOT AN EPOCH CHANGE, and the discriminator is SIZE plus
+        // PERSISTENCE. A late sender is a few windows behind and its peers are not; a
+        // frame0 move lands the WHOLE stream hundreds of windows back and keeps doing it.
+        // So a large backwards jump is COUNTED, not acted on, and only a run of
+        // `_epoch_strikes` consecutive such frames re-anchors -- one corrupt header
+        // cannot, and any in-order frame clears the run.
+        //
+        // THE TRIMS SURVIVE. Only `open`/`newest` are epoch-scoped. The integrator,
+        // arming and policy belong to the broker's 12 s cycle, not to the stream, and
+        // wiping them here would turn an F-engine restart into a fleet-wide pull-in --
+        // the very cost d01c0c1be's trim store exists to avoid.
         if (c.have_newest && h->win < c.newest && !c.open.count(h->win)) {
-            c.n_late++;
-            return FoldStatus::LATE;
+            if (c.newest - h->win <= (uint64_t)_epoch_margin
+                || ++c.n_backwards < (uint64_t)_epoch_strikes) {
+                c.n_late++;
+                return FoldStatus::LATE;
+            }
+            // Re-anchor ON this frame and fold it: the new epoch starts here.
+            c.open.clear();
+            c.newest = h->win;
+            c.have_newest = true;
+            c.n_backwards = 0;
+            c.n_epoch_reset++;
+        } else {
+            c.n_backwards = 0;
         }
 
         const float* rows = telem_rows(frame);
@@ -763,6 +802,8 @@ private:
     /// initialise in DECLARATION order, so the two disagreeing is a -Wreorder warning today
     /// and a real read-before-init the moment one initialiser references another member.
     int _taps_win = 1; ///< window depth served by taps() -- the POLICY cycle's, not the loop's
+    /// A1's epoch-reset knobs -- LAST, for the declaration-order reason directly above.
+    int _epoch_margin = 64, _epoch_strikes = 8;
     std::map<std::string, Chain> _chain;
 };
 

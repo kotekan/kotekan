@@ -497,6 +497,28 @@ void GnssFleetTrim::rearm() {
     // the whole-broker-death case, which is exactly when a POST-driven sweep never fires.
     // Erasing the policy is sufficient to disarm: post_trims skips any target whose chain has
     // no entry, so the (chain-tagged) targets left behind send nothing.
+    // A1 THE ALARM. The fix above re-anchors on a frame0 move, but the CONDITION must still
+    // be visible: a chain whose late_frames climb at frame rate is either wedged (an old
+    // binary, or a mode this reset does not cover) or being fed by a sender on a different
+    // axis. Counted and never acted on is how this defect stayed invisible for a week --
+    // the diagnostic existed at :252 and nothing consumed it.
+    for (const auto& cv : _dll.chains()) {
+        const uint64_t late = cv.second.n_late;
+        uint64_t& prev = _late_seen[cv.first];
+        const double dtl = now - _late_seen_t;
+        if (_late_seen_t > 0.0 && dtl > 1.0) {
+            const double rate = (double)(late - prev) / dtl;
+            if (rate > 0.5 * std::max(1.0, _close_hz))
+                WARN("GnssFleetTrim[{:s}]: chain '{:s}' is DROPPING {:.1f} frames/s as LATE "
+                     "(close rate {:.1f}/s) -- the fold is not following this stream. Check "
+                     "the F-engine axis and /get_dll's hop; epoch resets so far: {:d}.",
+                     unique_name, cv.first, rate, _close_hz, cv.second.n_epoch_reset);
+        }
+        prev = late;
+    }
+    if (_late_seen_t == 0.0 || now - _late_seen_t > 1.0)
+        _late_seen_t = now;
+
     for (auto it = _policy_seen.begin(); it != _policy_seen.end();) {
         if (now - it->second > _policy_ttl_s) {
             WARN("GnssFleetTrim[{:s}]: chain '{:s}' has POSTed no policy for {:.0f}s -- "
@@ -857,6 +879,10 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
                             {"windows_closed", c.n_closed},
                             {"late_frames", c.n_late},
                             {"forced_closes", c.n_forced},
+                            // A1: >0 means the F-engine's frame0 moved and the fold
+                            // re-anchored. Rising steadily = something is wrong with the
+                            // axis, not with the fold.
+                            {"epoch_resets", c.n_epoch_reset},
                             {"open_windows", c.open.size()},
                             {"ring", c.closed.size()},
                             {"newest_win", c.newest},

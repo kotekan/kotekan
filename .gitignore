@@ -43,3 +43,7 @@ gp.php*
 /fake_data/
 /time_dump.txt
 scripts/gnss/sumtrack_test
+
+# Built diagnostic tools: host-suffixed binaries + the per-host symlink. A TRACKED
+# symlink is what kept the fleetdll gate green-while-red for 8 days (2026-08-24).
+scripts/gnss/epochreset
