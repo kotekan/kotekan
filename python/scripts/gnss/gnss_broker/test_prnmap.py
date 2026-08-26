@@ -45,6 +45,7 @@ class Args(object):
         self.prn_reconfig_down_hold_s = 10800.0
         self.prn_reconfig_gone_hold_s = 7200.0
         self.prn_reconfig_timeout_s = 5.0
+        self.prn_reconfig_heartbeat_s = 1e18   # off by default in tests; check 11 arms it
         self.signal = "GAL_E5A_Q_CS"
         self.__dict__.update(kw)
 
@@ -75,6 +76,15 @@ def _no_get(url, timeout=5.0):
 
 
 CTX = [None]
+LOGS = []
+
+
+def _rec_log(msg, *a):
+    LOGS.append(msg % a if a else msg)
+
+
+def _rec_log_rl(key, msg, every_s=0.0):
+    LOGS.append(msg)
 
 
 def _rec_post(url, payload, timeout=5.0):
@@ -96,6 +106,8 @@ def run_cycle(ctx, t):
 def main():
     prnmap._get = _no_get
     prnmap._post = _rec_post
+    prnmap._log = _rec_log
+    prnmap._log_rl = _rec_log_rl
 
     # ---- 1. a DOWN incumbent is held until the hysteresis expires ----------------------
     # Slot 0 holds PRN 1, which is below the horizon; PRN 36 is up at 83 deg with no slot --
@@ -215,6 +227,26 @@ def main():
           "once the nodes hold the new map, no further swap is posted (the read-back loop "
           "converges instead of re-issuing)")
     check(36 in ctx.node_state, "... and the nodes ended up holding the new satellite")
+
+    # ---- 11. the heartbeat: armed-and-idle must be VISIBLE -----------------------------
+    # Having nothing to propose is the normal state, so a stage that only speaks when it acts
+    # is indistinguishable from one that is not running. Nothing here is posted, so the
+    # heartbeat is asserted on the LOG rather than on POSTS.
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0}, prn_reconfig="report")
+    ctx.args.prn_reconfig_heartbeat_s = 900.0
+    run_cycle(ctx, 1000.0)
+    check(any("PRN MAP" in m and "REPORT" in m for m in LOGS),
+          "an armed chain with NOTHING to propose still says so (the heartbeat)")
+    check(not POSTS, "... and still posts nothing")
+    n_beats = len([m for m in LOGS if "REPORT" in m])
+    run_cycle(ctx, 1000.0 + 100.0)
+    check(len([m for m in LOGS if "REPORT" in m]) == n_beats,
+          "... rate-limited: not once per cycle")
+    run_cycle(ctx, 1000.0 + 901.0)
+    check(len([m for m in LOGS if "REPORT" in m]) == n_beats + 1,
+          "... and it does beat again after the interval")
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

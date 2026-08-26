@@ -1275,6 +1275,13 @@ def build_parser(description):
                          "before its slot may be reclaimed (default 2 h). Shorter than the "
                          "down hold because a dead slot costs capacity and gains nothing -- "
                          "but not zero, because an ephemeris gap is not a decommissioning.")
+    ap.add_argument("--prn-reconfig-heartbeat-s", type=float, default=900.0,
+                    help="say ARMED AND HEALTHY this often, even with nothing to propose. "
+                         "⚠️ NOT COSMETIC: every other branch of the stage speaks only when it "
+                         "has a swap in mind, and having nothing to do is the NORMAL state -- "
+                         "E36, the satellite this whole mechanism exists for, is below the "
+                         "admit mask ~13 h a day. Without this, armed-and-idle is "
+                         "indistinguishable from not-running.")
     ap.add_argument("--prn-reconfig-timeout-s", type=float, default=2.0,
                     help="per-endpoint HTTP timeout for the map GET/POST. With the one-per-"
                          "cycle sweep above this is the WHOLE cost a dead node can impose on "

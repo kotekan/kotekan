@@ -42,7 +42,7 @@ class PrnMapState(object):
     """One chain's view of node membership, and the hysteresis that governs changes."""
 
     __slots__ = ("maps", "poll_t", "cursor", "last_swap_t", "down_since", "gone_since", "err",
-                 "swaps", "refused")
+                 "swaps", "refused", "beat_t")
 
     def __init__(self):
         self.maps = {}          # endpoint -> [prn per slot]
@@ -54,6 +54,7 @@ class PrnMapState(object):
         self.err = ""
         self.swaps = 0
         self.refused = 0
+        self.beat_t = 0.0    # last heartbeat (see the note in stage_prn_membership)
 
 
 def _endpoints(ctx):
@@ -194,6 +195,23 @@ def stage_prn_membership(ctx):
     # can start using immediately -- and one that is up now will be up again tomorrow.
     want = sorted((p for p in el if p not in held and el[p] >= a.prn_reconfig_admit_deg),
                   key=lambda p: -el[p])
+
+    # ⚠️ A HEARTBEAT, BECAUSE SILENCE HERE IS AMBIGUOUS. Every other branch of this stage only
+    # speaks when it has something to propose, so an armed chain with nothing to do looks
+    # EXACTLY like a stage that is not running -- and the normal state is nothing to do:
+    # measured 2026-08-26, E36 is the one satellite this mechanism exists for and it sits below
+    # the admit mask for ~13 h of every day. "Armed and healthy" has to be visible, or the
+    # first question after every restart is unanswerable without a code read.
+    tag = log_tag() or a.signal
+    if now - st.beat_t >= a.prn_reconfig_heartbeat_s:
+        st.beat_t = now
+        n_dead = sum(1 for p in held if p in st.gone_since)
+        n_down = sum(1 for p in held if p in st.down_since)
+        _log("PRN MAP %s: %s, %d slots, %d nodes agree | %d dead, %d below %.0f deg, "
+             "%d satellite(s) waiting for a slot | %d swap(s) so far%s"
+             % (tag, a.prn_reconfig.upper(), len(cur), len(st.maps), n_dead, n_down,
+                a.prn_reconfig_evict_deg, len(want), st.swaps,
+                (" | last error: %s" % st.err) if st.err else ""))
     if not want:
         return
 
@@ -207,7 +225,6 @@ def stage_prn_membership(ctx):
                   key=lambda p: (el.get(p, -90.0), st.down_since[p]))
     evictable = gone + [p for p in down if p not in gone]
 
-    tag = log_tag() or a.signal
     if not evictable:
         _log_rl("prnmap-full",
                 "PRN MAP %s: %d satellite(s) up with no slot (%s, peak el %.0f) and NO slot is "

@@ -1035,6 +1035,20 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # -- do that in daylight, confirm fine fires every poll, and only THEN re-try the
     # handoff. Overnight state = flat weights + fine feed live (stable 20:49-23:43).
     rrate-coarse-deweight: 1.0
+    # ── LIVE PRN MEMBERSHIP, REPORT ONLY (armed 2026-08-26 21:2x, docs/CHORD_LIVE_PRN_
+    # RECONFIG.md). `report` GETs each node's live map, logs the swap it WOULD make, and
+    # POSTS NOTHING -- the unit test pins that property, which is what makes it safe to arm
+    # before `apply`. So this changes no commanded state on this chain; it only makes the
+    # broker say, against its OWN read-back rather than against the manifest, what
+    # gen_fleet.py --check-prns says offline: E36 is active, capable and transits at 83 deg
+    # with no slot, while 5 slots (1, 14, 18, 22, 24) hold satellites that no longer exist.
+    #
+    # ⚠️ ARMED ON BOTH GAL CHAINS TOGETHER, DELIBERATELY. e5a and e5b are separate chains
+    # with separate maps and nothing couples them; a divergent pair destroys tau_band, which
+    # is observable ONLY as the SAME satellite on TWO carriers. Never arm one alone.
+    #
+    # Revert: delete these two lines + broker restart.
+    prn-reconfig: report
     trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,\
 http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
 http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
@@ -1946,6 +1960,20 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     rrate-cmd-min-sig: 100
     carrier-max-hz: 10.0
     rrate-feed-applied: 0
+    # ── LIVE PRN MEMBERSHIP, REPORT ONLY (armed 2026-08-26 21:2x, docs/CHORD_LIVE_PRN_
+    # RECONFIG.md). `report` GETs each node's live map, logs the swap it WOULD make, and
+    # POSTS NOTHING -- the unit test pins that property, which is what makes it safe to arm
+    # before `apply`. So this changes no commanded state on this chain; it only makes the
+    # broker say, against its OWN read-back rather than against the manifest, what
+    # gen_fleet.py --check-prns says offline: E36 is active, capable and transits at 83 deg
+    # with no slot, while 5 slots (1, 14, 18, 22, 24) hold satellites that no longer exist.
+    #
+    # ⚠️ ARMED ON BOTH GAL CHAINS TOGETHER, DELIBERATELY. e5a and e5b are separate chains
+    # with separate maps and nothing couples them; a divergent pair destroys tau_band, which
+    # is observable ONLY as the SAME satellite on TWO carriers. Never arm one alone.
+    #
+    # Revert: delete these two lines + broker restart.
+    prn-reconfig: report
     trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,\
 http://cx27:12048/gnss{0..1}_e5b_inject,\
 http://cx42:12048/gnss{0..1}_e5b_inject,\
