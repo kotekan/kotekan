@@ -166,3 +166,27 @@ class AdmissionGate:
             return Decision(reason="strike1")
 
         return Decision(reason="hold")
+
+
+def reseed_step(tau_chips, span_chips, gain, max_chips):
+    """How far to move the seed for a spectrum-tau fit of `tau_chips`, or None to refuse.
+
+    Returns (step_chips, None) or (None, reason).
+
+    ⚠️ THE SPAN EDGE IS A SATURATION, NOT A MEASUREMENT. `fit_spectrum_delay` scans
+    +-span_chips; a fit sitting at the edge means the true offset is UNREPRESENTABLE, so the
+    value carries no information about how far to go -- only that it is at least this far.
+    Stepping by it means stepping by a rail. Refuse instead.
+
+    ⚠️ THE DIRECTION IS VALIDATED; THE MAGNITUDE IS NOT. The sign was predicted a priori from
+    the physics and confirmed on the shoulder (r -0.47..-0.62, 222 samples); the size was never
+    established. So this steps by a FRACTION and re-measures -- a strong fit arrives every
+    ~5 min against 25-45 min excursions, so there is time to converge -- rather than betting
+    the whole correction on one unproven number.
+
+    +tau means the sky arrives LATER than the replica, so the code phase must INCREASE.
+    """
+    edge = span_chips * 0.95
+    if abs(tau_chips) >= edge:
+        return None, "at span edge %+.2f -- refused" % tau_chips
+    return max(-max_chips, min(max_chips, gain * tau_chips)), None

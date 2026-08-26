@@ -188,10 +188,36 @@ def test_population_window():
           "entries older than the 600 s window are dropped")
 
 
+def test_reseed_step():
+    print("the #50 step policy")
+
+    from gnss_broker.admission import reseed_step
+
+    # THE SPAN EDGE. fit_spectrum_delay scans +-2.0; a fit AT the rail means the true offset is
+    # unrepresentable, so its value says only "at least this far" -- stepping by it steps by a
+    # saturation. This is the guard that keeps a rail out of the seed.
+    step, why = reseed_step(+1.95, 2.0, 0.5, 0.35)
+    check(step is None and "span edge" in why, "a fit at 0.95*span is REFUSED, not stepped")
+    step, why = reseed_step(-1.95, 2.0, 0.5, 0.35)
+    check(step is None, "and the refusal is symmetric in sign")
+    step, why = reseed_step(+1.85, 2.0, 0.5, 0.35)
+    check(step is not None, "just inside the edge is a measurement")
+
+    # The direction is validated, the magnitude is not: step by a FRACTION.
+    step, why = reseed_step(+0.40, 2.0, 0.5, 0.35)
+    check(abs(step - 0.20) < 1e-12 and why is None, "gain 0.5 on tau +0.40 steps +0.20")
+    check(reseed_step(-0.40, 2.0, 0.5, 0.35)[0] < 0, "+tau raises the phase, -tau lowers it")
+
+    # The cap binds before the gain does, both ways.
+    check(abs(reseed_step(+1.60, 2.0, 0.5, 0.35)[0] - 0.35) < 1e-12, "the cap binds (+)")
+    check(abs(reseed_step(-1.60, 2.0, 0.5, 0.35)[0] + 0.35) < 1e-12, "the cap binds (-)")
+
+
 if __name__ == "__main__":
     print("#90 admission gate -- the 2026-08-25 flight, offline\n")
     for fn in (test_startup, test_brownout, test_threshold_flicker_is_not_yet_fenced,
-               test_two_strike_rule, test_cooldown_and_presence, test_population_window):
+               test_two_strike_rule, test_cooldown_and_presence, test_population_window,
+               test_reseed_step):
         fn()
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     sys.exit(1 if _fails else 0)

@@ -89,7 +89,7 @@ from gnss_broker.fleet import (               # noqa: E402
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker.seed import Seed                          # noqa: E402  (task #83)
-from gnss_broker.admission import AdmissionGate            # noqa: E402  (task #90)
+from gnss_broker.admission import AdmissionGate, reseed_step  # noqa: E402  (#90/#50)
 from gnss_broker.handover import TrimHandover              # noqa: E402  (task #92)
 from gnss_broker.rampfit import RampTracker                # noqa: E402  (task #93 shadow)
 from gnss_broker.cli import build_parser, _FROZEN           # noqa: E402  (task #89 flag surface)
@@ -6321,21 +6321,13 @@ def main(argv=None, rx=None, publisher=None):
                         _adm_gate.note_present(prn)
                     if _rs_qual and (fl.get("present") or _rs_admit):
                         _t = float(fl["spec_tau"])
-                        # SPAN EDGE IS A SATURATION, NOT A MEASUREMENT. fit_spectrum_delay scans
-                        # +-span_chips (default 2.0); a fit sitting at the edge means the true
-                        # offset is unrepresentable, so the value carries no information about how
-                        # far to go. Refuse it rather than stepping by a rail.
-                        _edge = args.spec_span_chips * 0.95
-                        if abs(_t) >= _edge:
-                            _rs = "at span edge %+.2f -- refused" % _t
-                        else:
-                            # +tau = the sky arrives LATER than the replica, so the code phase must
-                            # INCREASE to meet it. Fractional step: the direction is validated, the
-                            # magnitude is not, so converge over a few opportunities (a strong fit
-                            # arrives ~every 5 min against 25-45 min excursions) instead of betting
-                            # the whole correction on one unproven number.
-                            _step = max(-args.reseed_max_chips,
-                                        min(args.reseed_max_chips, args.reseed_gain * _t))
+                        # The span-edge refusal and the fractional step are in
+                        # gnss_broker/admission.py: the direction is validated, the MAGNITUDE
+                        # is not, so this converges over several opportunities rather than
+                        # betting the correction on one unproven number.
+                        _step, _rs = reseed_step(_t, args.spec_span_chips,
+                                                 args.reseed_gain, args.reseed_max_chips)
+                        if _step is not None:
                             seeds[prn].put(
                                 "reseed", epoch=seeds[prn].get("ref_hop"),
                                 code_phase_chips=(seeds[prn].get("code_phase_chips", 0.0)
