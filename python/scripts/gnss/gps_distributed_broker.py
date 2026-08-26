@@ -91,6 +91,7 @@ from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker.seed import Seed                          # noqa: E402  (task #83)
 from gnss_broker.admission import AdmissionGate            # noqa: E402  (task #90)
 from gnss_broker.handover import TrimHandover              # noqa: E402  (task #92)
+from gnss_broker.rampfit import RampTracker                # noqa: E402  (task #93 shadow)
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
@@ -3510,9 +3511,10 @@ def main(argv=None, rx=None, publisher=None):
     # actually sits. Consumers: the log instrument below today; the innovation (#83 2(d))
     # next; #77's pop-vs-accumulator mismatch is measurable against it at last.
     _ft_readback = {}
-    # GAP 3 SHADOW (#33): per-sat standing-trim history for the measured RAMP RATE,
-    # prn -> [(t, trim_chips), ...], window-reset on steps/release (see the shadow block).
-    _g3_hist = {}
+    # GAP 3 SHADOW (#33): per-sat standing-trim RAMP RATE. The windowing, the
+    # discontinuity reset and the fit live in gnss_broker/rampfit.py -- this is measurement
+    # code, whose bugs produce WRONG VERDICTS rather than crashes, so it is tested.
+    _g3_ramp = RampTracker()
     # #93 SHADOW v2: the direct per-sat ADR span rate (carrier frame, Hz), captured on
     # the span-shadow path each poll: prn -> (y_phi_hz, t, n_rec). The rrate ROW stays
     # logged beside it -- the 08-25 F1 said the row is ~97% carrier-only; v2 measures
@@ -10537,29 +10539,20 @@ def main(argv=None, rx=None, publisher=None):
                     for _p in sorted(_ft_readback):
                         _r = _ft_readback[_p]
                         if not _r.get("armed"):
-                            _g3_hist.pop(_p, None)
+                            # A RELEASED trim's slope is the LEAK, not the sky: drop the
+                            # series rather than pausing it.
+                            _g3_ramp.drop(_p)
                             continue
-                        _h = _g3_hist.setdefault(_p, [])
                         # #93: subtract the cumulative #92 handover deltas -- the
                         # gather applied them to the trim, so removing them makes the
                         # series continuous across re-bases (longer windows) and keeps
                         # sub-0.3-chip adjustments out of the slope.
-                        _tc = _handover.corrected(_p, float(_r["trim_chips"]))
-                        if _h and abs(_tc - _h[-1][1]) > 0.3:
-                            del _h[:]
-                        _h.append((_t_rb, _tc))
-                        while _h and _t_rb - _h[0][0] > 600.0:
-                            _h.pop(0)
-                        _spn = _h[-1][0] - _h[0][0]
-                        if len(_h) < 4 or _spn < 120.0:
+                        _g3_ramp.update(_p, _t_rb,
+                                        _handover.corrected(_p, float(_r["trim_chips"])))
+                        _fit3 = _g3_ramp.fit(_p)
+                        if _fit3 is None:
                             continue
-                        _n = len(_h)
-                        _tm = sum(x[0] for x in _h) / _n
-                        _ym = sum(x[1] for x in _h) / _n
-                        _sxx = sum((x[0] - _tm) ** 2 for x in _h)
-                        if _sxx <= 0.0:
-                            continue
-                        _msl = sum((x[0] - _tm) * (x[1] - _ym) for x in _h) / _sxx
+                        _msl, _ym, _spn, _n = _fit3
                         _prd = None
                         if _jg is not None:
                             _k3 = (args.dr_constellation, int(_p))
@@ -10573,8 +10566,7 @@ def main(argv=None, rx=None, publisher=None):
                                 if (_av is not None and _t_rb - _av[1] <= 60.0)
                                 else None)
                         _g3_rows.append((_p, _prd, _adr, _msl, _ym, _spn))
-                    for _p in [p for p in _g3_hist if p not in _ft_readback]:
-                        _g3_hist.pop(_p, None)
+                    _g3_ramp.retain(_ft_readback)
                     if _g3_rows:
                         _log_rl("gap3-shadow",
                                 "GAP3-SHADOW %s (chips/s; p=row a=ADR-span "
