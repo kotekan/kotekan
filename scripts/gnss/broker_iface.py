@@ -69,9 +69,18 @@ def _scoped_names(main):
                 for t in ast.walk(g.target):
                     if isinstance(t, ast.Name):
                         out.add(t.id)
-        elif isinstance(n, ast.Lambda):
-            for a in n.args.args:
-                out.add(a.arg)
+        elif isinstance(n, (ast.Lambda, ast.FunctionDef, ast.AsyncFunctionDef)):
+            # PARAMETERS ARE THEIR OWN SCOPE TOO, and forgetting that reads exactly like
+            # shared state: `_dh_obs(sig, prn, h, eph_obj, xc)` loads `xc` with no preceding
+            # assignment, so a first-use test called it a read of the enclosing `xc` and
+            # demanded a nonlocal for a name that is merely an argument.
+            a = n.args
+            for g in (a.args, a.posonlyargs, a.kwonlyargs):
+                for x in g:
+                    out.add(x.arg)
+            for x in (a.vararg, a.kwarg):
+                if x is not None:
+                    out.add(x.arg)
         elif isinstance(n, ast.ExceptHandler) and n.name:
             out.add(n.name)
     return out

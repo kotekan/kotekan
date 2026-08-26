@@ -6087,6 +6087,519 @@ def main(argv=None, rx=None, publisher=None):
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
+    def _stage_nav_bits():
+        """NAV BITS: decode the broadcast navigation message and cross-check it against BRDC.
+        
+        Holds ELEVEN lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3, the
+        BRDC source and the agreement monitor). They are created on the first row that needs them and
+        must persist across cycles -- hence the nonlocal list, which is the whole reason this block
+        resisted extraction until its state was named.
+        
+        ⚠️ OFF IN PRODUCTION (`--nav-bits` is not set in the CHORD yaml), so the fixture gate is BLIND
+        to every line below it. Changes here are unverified until the flag is armed."""
+        nonlocal bcnav1, bcnav2, bcnav3, cnav, cnav2, fnav, inav, navbits, navbits_log_t, navbrdc, navhealth
+        if args.nav_bits:
+            for _p, _r in status.items():
+                if "nav_obs" not in _r:
+                    continue
+                if navhealth is None:
+                    from navbit_health import BitAgreement
+                    navhealth = BitAgreement(log=_log)
+                # Route nav_obs to the decoder this band actually speaks. L1CA carries LNAV
+                # (periodic subframes -> future bits); L2C-CM / L5-I carry CNAV (FEC+CRC, no
+                # fixed schedule -> decode + shadow-serve decoded spans). Sending CNAV symbols
+                # to the LNAV frame-sync just spins forever finding no preamble.
+                if args.nav_decoder == "cnav":
+                    if cnav is None:
+                        from cnav_predictor import CnavPredictor
+                        cnav = CnavPredictor(log=_log)
+                        _log("CNAV decoder armed (combiner exports nav_obs)")
+                    cnav.ingest(_p, _r["nav_obs"])
+                elif args.nav_decoder == "bcnav3":
+                    # BeiDou B2b B-CNAV3: the PRIMARY chain's own nav decoder (NB-LDPC block, not a
+                    # bit-prediction scheme -> no peel role, pure decode + BRDC xcheck).
+                    if bcnav3 is None:
+                        from bcnav3_predictor import Bcnav3Predictor
+                        bcnav3 = Bcnav3Predictor(log=_log)
+                        _log("B-CNAV3 decoder armed (combiner exports nav_obs)")
+                    bcnav3.ingest(_p, _r["nav_obs"])
+                else:
+                    if navbits is None:
+                        from navbit_predictor import LnavPredictor
+                        navbits = LnavPredictor(log=_log)
+                        _log("nav-bit predictor armed (combiner exports nav_obs)")
+                    navbits.ingest(_p, _r["nav_obs"])
+                # ...and ask the question no single gate was asking continuously (decoder-
+                # agnostic): did the bits we PUBLISHED last cycle actually match the ones coming
+                # out of the sky? Scored only where the satellite is strong enough that a
+                # disagreement means OUR bits are wrong rather than the air reading being wrong.
+                navhealth.score(_p, _r["nav_obs"], _r.get("deep_snr"))
+            # AUXILIARY CNAV CHAIN (--cnav-combiner, S4): a second combiner polled only for its
+            # CNAV symbols. At L5 this broker's own combiner is the Q PILOT -- its nav_obs are
+            # deterministic overlay predictions handled above -- while CNAV arrives on the
+            # derived L5-I data sibling, which no broker otherwise reads. Failure here is
+            # deliberately NON-FATAL and quiet-ish: this is an observability path, and a chain
+            # that has not acquired yet simply returns nothing. It must never disturb the
+            # tracking loop that shares this cycle.
+            if cnav_combiner:
+                try:
+                    _aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav_combiner)
+                            if r.get("prn")}
+                except Exception as e:
+                    _aux = {}
+                    _log_rl("cnavaux", "cnav aux combiner %s unreadable: %s"
+                            % (cnav_combiner, e))
+                for _p, _r in _aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if cnav is None:
+                        from cnav_predictor import CnavPredictor
+                        cnav = CnavPredictor(log=_log)
+                        _log("CNAV decoder armed on aux chain %s" % cnav_combiner)
+                    cnav.ingest(_p, _r["nav_obs"])
+            # S5 D-component #1: Galileo E1B I/NAV, the exact CNAV-aux analogue.
+            if inav_combiner:
+                try:
+                    _iaux = {int(r["prn"]): r for r in _get("%s/get_status" % inav_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _iaux = {}
+                    _log_rl("inavaux", "inav aux combiner %s unreadable: %s"
+                            % (inav_combiner, e))
+                for _p, _r in _iaux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if inav is None:
+                        from inav_predictor import InavPredictor
+                        inav = InavPredictor(log=_log)
+                        _log("I/NAV decoder armed on aux chain %s" % inav_combiner)
+                    inav.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
+                # I/NAV rides E1B on L1 and E5b-I on the mid band -- SAME message + decoder; label
+                # the decode-health obs by the actual carrier (from the aux combiner name).
+                if inav is not None and _now() - _inav_log_t[0] > 60.0:
+                    _inav_log_t[0] = _now()
+                    _inav_sig = "GAL_E5BI_INAV" if "e5b" in inav_combiner else "GAL_E1B_INAV"
+                    for _p in sorted(inav._p):
+                        h = inav.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = inav.ephemeris(_p)
+                        xc = (_inav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+                        _dh_obs(_inav_sig, _p, h, eph, xc)
+            # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
+            if fnav_combiner:
+                try:
+                    _faux = {int(r["prn"]): r for r in _get("%s/get_status" % fnav_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _faux = {}
+                    _log_rl("fnavaux", "fnav aux combiner %s unreadable: %s"
+                            % (fnav_combiner, e))
+                for _p, _r in _faux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if fnav is None:
+                        from fnav_predictor import FnavPredictor
+                        fnav = FnavPredictor(log=_log)
+                        _log("F/NAV decoder armed on aux chain %s" % fnav_combiner)
+                    fnav.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+                if fnav is not None and _now() - _fnav_log_t[0] > 60.0:
+                    _fnav_log_t[0] = _now()
+                    for _p in sorted(fnav._p):
+                        h = fnav.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = fnav.ephemeris(_p)
+                        xc = (_fnav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+                        _dh_obs("GAL_E5AI_FNAV", _p, h, eph, xc)
+            # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
+            if bcnav2_combiner:
+                try:
+                    _baux = {int(r["prn"]): r for r in _get("%s/get_status" % bcnav2_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _baux = {}
+                    _log_rl("bcnav2aux", "bcnav2 aux combiner %s unreadable: %s"
+                            % (bcnav2_combiner, e))
+                for _p, _r in _baux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if bcnav2 is None:
+                        from bcnav2_predictor import Bcnav2Predictor
+                        bcnav2 = Bcnav2Predictor(log=_log)
+                        _log("B-CNAV2 decoder armed on aux chain %s" % bcnav2_combiner)
+                    bcnav2.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (alm_sys is 'C' for the BDS broker)
+                if bcnav2 is not None and _now() - _bcnav2_log_t[0] > 60.0:
+                    _bcnav2_log_t[0] = _now()
+                    for _p in sorted(bcnav2._p):
+                        h = bcnav2.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = bcnav2.ephemeris(_p)
+                        xc = (_bcnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+                        _dh_obs("BDS_B2A_BCNAV2", _p, h, eph, xc)
+            # S5 D-component #4 (LAST): BeiDou B1C B-CNAV1, the B-CNAV2-aux analogue on L1 BDS.
+            if bcnav1_combiner:
+                try:
+                    _c1aux = {int(r["prn"]): r for r in _get("%s/get_status" % bcnav1_combiner)
+                              if r.get("prn")}
+                except Exception as e:
+                    _c1aux = {}
+                    _log_rl("bcnav1aux", "bcnav1 aux combiner %s unreadable: %s"
+                            % (bcnav1_combiner, e))
+                for _p, _r in _c1aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if bcnav1 is None:
+                        from bcnav1_predictor import Bcnav1Predictor
+                        bcnav1 = Bcnav1Predictor(log=_log)
+                        _log("B-CNAV1 decoder armed on aux chain %s" % bcnav1_combiner)
+                    bcnav1.ingest(_p, _r["nav_obs"])
+                if bcnav1 is not None and _now() - _bcnav1_log_t[0] > 60.0:
+                    _bcnav1_log_t[0] = _now()
+                    for _p in sorted(bcnav1._p):
+                        h = bcnav1.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = bcnav1.ephemeris(_p)
+                        xc = (_bcnav1_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("bcnav1 PRN %d: %d frames, %d crc, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+                        _dh_obs("BDS_B1C_BCNAV1", _p, h, eph, xc)
+            # GPS L1C-D CNAV-2: the bcnav1-aux analogue on the L1C broker (alm_sys 'G'). The broker's
+            # own --combiner is the L1C-P pilot; the CNAV-2 data symbols come off the derived L1C-D.
+            if cnav2_combiner:
+                try:
+                    _c2aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav2_combiner)
+                              if r.get("prn")}
+                except Exception as e:
+                    _c2aux = {}
+                    _log_rl("cnav2aux", "cnav2 aux combiner %s unreadable: %s"
+                            % (cnav2_combiner, e))
+                for _p, _r in _c2aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if cnav2 is None:
+                        from cnav2_predictor import Cnav2Predictor
+                        cnav2 = Cnav2Predictor(log=_log)
+                        _log("CNAV-2 decoder armed on aux chain %s" % cnav2_combiner)
+                    cnav2.ingest(_p, _r["nav_obs"])
+                if cnav2 is not None and _now() - _cnav2_log_t[0] > 60.0:
+                    _cnav2_log_t[0] = _now()
+                    for _p in sorted(cnav2._p):
+                        h = cnav2.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = cnav2.ephemeris(_p)
+                        xc = (_cnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
+                             % (_p, h["words"], h["toi"], "YES" if eph is not None else "no", xc))
+                        _dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
+            # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
+            # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
+            # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
+            # source when their encoders exist.
+            if (args.nav_bits_brdc and navbits is not None and alm_sys == "G"
+                    and brdc_alm is not None and pred):
+                if navbrdc is None:
+                    from navbit_brdc import BrdcLnavSource
+                    navbrdc = BrdcLnavSource(log=_log)
+                    _log("constructed-bit source armed (BRDC LNAV, un-synced PRNs)")
+                try:
+                    navbrdc.update(brdc_alm["eph"], pred, navbits)
+                except Exception as e:
+                    _log("navbrdc update failed: %s" % e)
+            if navbits is not None and _now() - navbits_log_t > 60.0:
+                navbits_log_t = _now()
+                for _p in sorted(navbits._p):
+                    h = navbits.health(_p)
+                    if not h:
+                        continue
+                    # Now that LNAV extracts the orbit set (subframes 1-3), surface the live
+                    # ephemeris + a BRDC position cross-check exactly as CNAV/I-NAV do -- this is
+                    # the live validator of the LNAV_EPH_FIELDS bit offsets (near-zero dpos, since
+                    # BRDC IS the LNAV message) and the on-node BRDC-fallback source for L1.
+                    eph_s = ""
+                    e = None
+                    if h["synced"]:
+                        e = navbits.ephemeris(_p)
+                        if e is not None:
+                            eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
+                            if brdc_alm is not None:
+                                eph_s += _lnav_brdc_xcheck(brdc_alm, alm_sys, _p, e, _log)
+                        _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s%s"
+                             % (_p, h["decoded_sf"], h["pages"],
+                                ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a",
+                                eph_s))
+                    else:
+                        # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
+                        # the reason: contiguous run vs total history vs what sync needs.
+                        _log("navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)%s"
+                             % (_p, h["run"], h["need"], h["hist"],
+                                " -> CONSTRUCTED from BRDC"
+                                if (navbrdc is not None and navbrdc.ready())
+                                else " -> not peeled"))
+                    _dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
+                if navbrdc is not None:
+                    # The calibration IS the trust boundary: a bad offset makes every
+                    # constructed bit confidently wrong, so state it every cycle. `verify`
+                    # scores constructed bits against a SYNCED satellite's own received bits
+                    # -- the live form of the offline 113820/113820 test.
+                    if navbrdc.ready():
+                        chk = []
+                        for _p in sorted(navbits._p):
+                            r = navbrdc.verify(_p, navbits)
+                            if r and r[0] >= 200:
+                                chk.append("%d:%.1f%%" % (_p, 100.0 * r[1] / r[0]))
+                        _log("navbrdc: offset %.6f s, spread %.2f ms, %d cal sats "
+                             "(%d outliers dropped); verify %s"
+                             % (navbrdc.offset, (navbrdc.spread or 0.0) * 1e3,
+                                navbrdc.n_cal, navbrdc.n_rej, " ".join(chk) or "n/a"))
+                    else:
+                        _log("navbrdc: NOT ready (%s)" % navbrdc.why_not())
+            # CNAV decode health + the live ephemeris (types 10+11). eph toe/e prove a decoded
+            # ephemeris set. S4 EPHEMERIS CROSS-CHECK: propagate the live-decoded CNAV ephemeris
+            # and the independently-downloaded BRDC (LNAV) ephemeris to the SAME absolute instant
+            # (the CNAV toe) and report the ECEF position residual. Two independent nav messages,
+            # two encodings (CNAV FEC+CRC vs LNAV parity), one truth -- a small residual VALIDATES
+            # the whole decode chain against an outside reference, and is the foundation for
+            # eventually trusting live CNAV ephemeris over the 2 h-latency download. Cheap (Kepler
+            # propagation, no Viterbi), so it rides the existing 60 s health cadence.
+            if cnav is not None and _now() - navbits_log_t > 60.0:
+                navbits_log_t = _now()
+                for _p in sorted(cnav._p):
+                    h = cnav.health(_p)
+                    if not h:
+                        continue
+                    eph_s = ""
+                    e = None
+                    if h["eph"]:
+                        e = cnav.ephemeris(_p)
+                        if e is not None:
+                            eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
+                            if brdc_alm is not None:
+                                eph_s += _cnav_brdc_xcheck(brdc_alm, alm_sys, _p, e, _log)
+                    if h["synced"]:
+                        _log("cnav PRN %d: %d msgs decoded, %d stored, %d emits, g2=%s%s"
+                             % (_p, h["decoded"], h["messages"], h["emits"],
+                                h["g2"], eph_s))
+                    else:
+                        _log("cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
+                             % (_p, h["emits"], h["g2"]))
+                    _dh_obs(_cnav_sig, _p, h, e, eph_s)
+            # B-CNAV3 decode health (BeiDou B2b PRIMARY chain). Frame decode is convention-complete
+            # (LDPC + CRC); the message-type histogram + SOW logged here is exactly what maps the
+            # ephemeris field table (Phase 2), after which eph + a BRDC dpos xcheck join (like cnav).
+            if bcnav3 is not None and _now() - _bcnav3_log_t[0] > 60.0:
+                _bcnav3_log_t[0] = _now()
+                for _p in sorted(bcnav3._p):
+                    h = bcnav3.health(_p)
+                    if not h or not h["words"]:
+                        continue
+                    eph = bcnav3.ephemeris(_p)
+                    xc = (_bcnav3_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                          if (eph is not None and brdc_alm is not None) else "")
+                    _log("bcnav3 PRN %d: %d frames CRC-OK, have %s, sow=%s, eph %s%s"
+                         % (_p, h["words"], h["have"], h["sow"],
+                            "YES" if eph is not None else "no", xc))
+                    _dh_obs("BDS_B2B_BCNAV3", _p, h, eph, xc)
+
+    def _stage_push_seeds():
+        """4: PUSH the consensus seeds to every tracker.
+        
+        The cycle's actuation point: whatever the stages above decided, this is what the trackers
+        receive. The DLL trim is applied at POST time only, so the stored seed stays the model's view
+        and the trim stays the loop's -- keeping the two ledgers separable is what makes #92's handover
+        expressible at all.
+        
+        ⚠️ PUBLISHED DOPPLER IS THE COMMAND, NOT AN ESTIMATE. Continuity of what the tracker is told
+        beats freshness of what we last measured; a seed that jumps to the newest estimate every cycle
+        makes the tracker chase the estimator's noise."""
+        for prn, v in sorted(seeds.items()):
+            d = dict(prn=prn, **v)
+            if dll_trim.get(prn):
+                d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
+                # ⚠️ AUDIT §4.6 (#83 2(b) precondition): THE TRIM MUST MOVE THE PHASE TOO.
+                # propagate_seed PREFERS code_phase_at_ref_chips whenever the payload
+                # carries it -- which the search-fed path always does -- so a trim written
+                # only into cp0 was written into the field the tracker ignores: the Python
+                # slow trim has been a NO-OP on every phase-carrying seed, and enabling
+                # --seed-phase-transport on the DR chains would have silently disabled
+                # their only code loop. One trim, both currencies, same instant.
+                if d.get("code_phase_at_ref_chips", -1.0) is not None \
+                        and d.get("code_phase_at_ref_chips", -1.0) >= 0.0:
+                    _tmod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
+                    d["code_phase_at_ref_chips"] = (
+                        d["code_phase_at_ref_chips"] + dll_trim[prn]) % _tmod
+            if car_trim.get(prn):
+                d["carrier_trim_hz"] = car_trim[prn]
+            if _jrc is not None and prn not in probe_set:
+                # Probes excepted for the trim loop's own reason: no carrier, and a moving
+                # trim moves the REPORTED Doppler, which the beam map's churn gate reads
+                # as sky. A sat whose row has not converged keeps the trim-loop value
+                # (usually 0 on CHORD): commanding from a wide row would inject the
+                # filter's own transient into the NCO.
+                _k = (args.dr_constellation, int(prn))
+                # ARM-12 GUARD: the row's own satellite must be DETECTED this cycle
+                # (kcoh sig >= --rrate-cmd-min-sig) before it may command. The sigma
+                # gate alone admitted E4's confident-noise row (see the flag's help).
+                # No kcoh row (throttled estimator at startup, or the sat absent from
+                # the fold) counts as NOT detected: no evidence, no command.
+                _cmd_sig_ok = True
+                if args.rrate_cmd_min_sig > 0.0:
+                    _cmd_sig_ok = (((_dllp.kcoh or {}).get(prn) or {}).get("sig") or 0.0) \
+                                  >= args.rrate_cmd_min_sig
+                if _cmd_sig_ok and _jrc.rrate_sigma(_k) <= args.rrate_cmd_max_sigma:
+                    _cmd = _jrc.carrier_correction_hz(_k, args.carrier_hz)
+                    if args.carrier_max_hz > 0.0:
+                        _cmd = max(-args.carrier_max_hz, min(args.carrier_max_hz, _cmd))
+                    # SLEW toward the target from the command actually POSTED last poll
+                    # (--rrate-cmd-slew-hz): the feed's reference is only exact for a
+                    # command that holds still over the emit lag, so the step is bounded
+                    # and the bound is what makes the closed loop stable. Railed steps
+                    # are counted into the JRR-CMD line -- a rail that never clears is
+                    # a target out of reach, not convergence in progress.
+                    _prev = rr_cmd_applied.get(prn, 0.0)
+                    if args.rrate_cmd_slew_hz > 0.0:
+                        _stp = max(-args.rrate_cmd_slew_hz,
+                                   min(args.rrate_cmd_slew_hz, _cmd - _prev))
+                        if abs(_cmd - _prev) > args.rrate_cmd_slew_hz:
+                            _rr_railed += 1
+                        _cmd = _prev + _stp
+                    d["carrier_trim_hz"] = _cmd
+                    _rr_cmd_new[prn] = _cmd
+            # RELEASE-SLEW (arm 12). A sat that exits the command set -- sig bar lost,
+            # sigma widened, receiver row gone -- used to fall back to car_trim/0 in ONE
+            # poll: an instant step of its whole standing command, the exact reference
+            # discontinuity the slew bound exists to prevent, taken at release instead
+            # of at pull-in. Walk it back at the same bounded rate; drop out only once
+            # within one step of zero.
+            if (args.rrate_command and prn not in _rr_cmd_new and prn not in probe_set
+                    and rr_cmd_applied.get(prn)):
+                _prev = rr_cmd_applied[prn]
+                _stp = args.rrate_cmd_slew_hz if args.rrate_cmd_slew_hz > 0.0 else 0.0
+                if _stp > 0.0 and abs(_prev) > _stp:
+                    _cmd = _prev - math.copysign(_stp, _prev)
+                    d["carrier_trim_hz"] = _cmd
+                    _rr_cmd_new[prn] = _cmd
+                    _rr_released += 1
+                # else: within one step of zero (or slew disabled) -- final sub-slew
+                # step back to car_trim/0, and the sat leaves rr_cmd_applied.
+            if prn in car_repin_pending:
+                # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
+                # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
+                # carrier_trim_hz accompanies it -- the trim moves wholly into f_ref, leaving the
+                # combined carrier invariant).
+                d["carrier_repin"] = car_repin_pending.pop(prn)
+            # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
+            # its secondary overlay is DETERMINISTIC, so the chips are projected from the
+            # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.
+            # DATA signals (P7a): the LNAV predictor's output. bit_pred wins where both
+            # exist (a known overlay beats a decoded guess).
+            _row = status.get(prn) or {}
+            _bsrc = "none"
+            # A source the health monitor has condemned for THIS satellite is skipped at
+            # SELECTION time, so the chain genuinely falls back (pred -> lnav -> brdc)
+            # instead of re-picking the vetoed source and going dark every cycle.
+            _src_ok = (lambda _s: navhealth is None
+                       or navhealth.verdict(prn, _s) != "bad")
+            # Wire schema is COMPONENT-KEYED: nav_bits = {"P": table, "D": table, ...},
+            # "P" = the component this chain's replica correlates (relational, not a signal
+            # name -- see docs/navbit_supply_architecture.md C1). The tracker also accepts a
+            # bare table as "P"; we publish the keyed form so the first data-channel producer
+            # is an ADDITION ("D": ...) rather than a schema change.
+            if _row.get("bit_pred", {}).get("bits") and _src_ok("pred"):
+                # Attach only when the table CHANGED (utc0 moves once per combiner emit);
+                # on other cycles the tracker keeps its stored copy -- see bp_pushed above.
+                if bp_pushed.get(prn) != _row["bit_pred"].get("utc0"):
+                    d["nav_bits"] = {"P": _row["bit_pred"]}
+                    bp_pushed[prn] = _row["bit_pred"].get("utc0")
+                _bsrc = "pred"
+            elif navbits is not None:
+                # Predict from the freshest capture-clock UTC this PRN has reported: the
+                # tracker consumes by ITS record UTC (same capture clock), so wall-clock
+                # never enters. 4 s horizon >> the ~1 s status staleness + push cadence.
+                _utc = _row.get("utc")
+                if _utc:
+                    nb_lnav = navbits.predict(prn, float(_utc), horizon_s=4.0)
+                    nb_brdc = (navbrdc.predict(prn, float(_utc), horizon_s=30.0)
+                               if navbrdc is not None else None)
+                    if navhealth is not None:      # shadow-remember BOTH candidates
+                        navhealth.remember(prn, nb_lnav, "lnav")
+                        navhealth.remember(prn, nb_brdc, "brdc")
+                    nb = nb_lnav if (nb_lnav is not None and _src_ok("lnav")) else None
+                    if nb is None and _src_ok("brdc"):
+                        # CONSTRUCTED fallback: this PRN never synced, so the decoder has
+                        # nothing. Bits come from BRDC instead; alignment comes from the
+                        # tracking geometry (range + sat clock) plus the common clock offset
+                        # calibrated off a satellite that DID sync -- never from decoding,
+                        # which is precisely what this satellite cannot do.
+                        # 30 s, not the decoder's 4 s: only sf1-3 are constructible, so a 4 s
+                        # window that lands inside sf4/5 is entirely unknown, predict() returns
+                        # None, and the PRN reads `nobits` forever. A full frame (30 s) always
+                        # spans the 18 s of sf1-3, so every push carries usable bits. Costs
+                        # 1500 int8 per PRN.
+                        nb = nb_brdc
+                        _bsrc = "brdc" if nb is not None else "none"
+                    elif nb is not None:
+                        _bsrc = "lnav"
+                    if nb is not None:
+                        d["nav_bits"] = {"P": nb}
+                        _bsrc = _bsrc if _bsrc != "none" else "lnav"
+            elif cnav is not None:
+                # CNAV serve: the L2C-CM chain's replica correlates the DATA component, so a
+                # decoded CNAV table is its "P" (the direct L1CA/LNAV analog). But this SERVES
+                # already-decoded spans, it does not PREDICT the future (the CNAV type schedule
+                # is not fixed -- see cnav_predictor), so at a forward horizon predict() usually
+                # returns None and nothing is attached. That is correct: CL, not CNAV, is L2C's
+                # peel win; CNAV's prizes are the live ephemeris + the S4 L5 cross-band feed.
+                # Shadow-remembered and vetoed like every other source before it feeds a wipe.
+                _utc = _row.get("utc")
+                if _utc:
+                    nb = cnav.predict(prn, float(_utc), horizon_s=4.0)
+                    if navhealth is not None:
+                        navhealth.remember(prn, nb, "cnav")
+                    if nb is not None and _src_ok("cnav"):
+                        d["nav_bits"] = {"P": nb}
+                        _bsrc = "cnav"
+            # VETO: a source that does not match the air for this satellite must not feed the
+            # subtracter. Wrong bits are worse than no bits -- no bits means no subtraction,
+            # wrong bits mean subtracting at the wrong sign on ~40% of records (measured
+            # 2026-07-26: HURTING 0-1 -> 7-8). Then remember what we are about to publish, so
+            # next cycle's observations score THIS table rather than a re-derived one.
+            if "nav_bits" in d and navhealth is not None and navhealth.veto(prn, _bsrc):
+                # FALL BACK, do not go dark: a bad decoded table must not darken a PRN whose
+                # constructed table is fine. The chain re-runs with the vetoed source skipped
+                # next cycle via the per-(prn,source) verdict; this cycle just drops the bits
+                # (one cycle of nobits is the safe direction).
+                d.pop("nav_bits")
+                _bsrc = "vetoed:" + _bsrc
+            elif "nav_bits" in d and navhealth is not None:
+                navhealth.remember(prn, d["nav_bits"].get("P"), _bsrc)
+            bit_src[_bsrc] = bit_src.get(_bsrc, 0) + 1
+            if _bsrc != "none" and "nav_bits" in d:
+                bit_known[_bsrc] = bit_known.get(_bsrc, 0) + sum(
+                    1 for t in d["nav_bits"].values() for b in t["bits"] if b)
+            payload.append(d)
+
     while True:
         # Start of cycle: sample the frozen cycle clock ONCE (see the _Transcript note).
         # Every `_now()` below this returns exactly t0, so the whole pass -- every gate,
@@ -6417,329 +6930,7 @@ def main(argv=None, rx=None, publisher=None):
             _log("get_status failed: %s" % e)
         # P7a nav-bit predictor: fold in this cycle's bit observations (rows carry nav_obs
         # only when the combiner runs bit_export, so non-GPS chains skip this for free).
-        if args.nav_bits:
-            for _p, _r in status.items():
-                if "nav_obs" not in _r:
-                    continue
-                if navhealth is None:
-                    from navbit_health import BitAgreement
-                    navhealth = BitAgreement(log=_log)
-                # Route nav_obs to the decoder this band actually speaks. L1CA carries LNAV
-                # (periodic subframes -> future bits); L2C-CM / L5-I carry CNAV (FEC+CRC, no
-                # fixed schedule -> decode + shadow-serve decoded spans). Sending CNAV symbols
-                # to the LNAV frame-sync just spins forever finding no preamble.
-                if args.nav_decoder == "cnav":
-                    if cnav is None:
-                        from cnav_predictor import CnavPredictor
-                        cnav = CnavPredictor(log=_log)
-                        _log("CNAV decoder armed (combiner exports nav_obs)")
-                    cnav.ingest(_p, _r["nav_obs"])
-                elif args.nav_decoder == "bcnav3":
-                    # BeiDou B2b B-CNAV3: the PRIMARY chain's own nav decoder (NB-LDPC block, not a
-                    # bit-prediction scheme -> no peel role, pure decode + BRDC xcheck).
-                    if bcnav3 is None:
-                        from bcnav3_predictor import Bcnav3Predictor
-                        bcnav3 = Bcnav3Predictor(log=_log)
-                        _log("B-CNAV3 decoder armed (combiner exports nav_obs)")
-                    bcnav3.ingest(_p, _r["nav_obs"])
-                else:
-                    if navbits is None:
-                        from navbit_predictor import LnavPredictor
-                        navbits = LnavPredictor(log=_log)
-                        _log("nav-bit predictor armed (combiner exports nav_obs)")
-                    navbits.ingest(_p, _r["nav_obs"])
-                # ...and ask the question no single gate was asking continuously (decoder-
-                # agnostic): did the bits we PUBLISHED last cycle actually match the ones coming
-                # out of the sky? Scored only where the satellite is strong enough that a
-                # disagreement means OUR bits are wrong rather than the air reading being wrong.
-                navhealth.score(_p, _r["nav_obs"], _r.get("deep_snr"))
-            # AUXILIARY CNAV CHAIN (--cnav-combiner, S4): a second combiner polled only for its
-            # CNAV symbols. At L5 this broker's own combiner is the Q PILOT -- its nav_obs are
-            # deterministic overlay predictions handled above -- while CNAV arrives on the
-            # derived L5-I data sibling, which no broker otherwise reads. Failure here is
-            # deliberately NON-FATAL and quiet-ish: this is an observability path, and a chain
-            # that has not acquired yet simply returns nothing. It must never disturb the
-            # tracking loop that shares this cycle.
-            if cnav_combiner:
-                try:
-                    _aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav_combiner)
-                            if r.get("prn")}
-                except Exception as e:
-                    _aux = {}
-                    _log_rl("cnavaux", "cnav aux combiner %s unreadable: %s"
-                            % (cnav_combiner, e))
-                for _p, _r in _aux.items():
-                    if "nav_obs" not in _r:
-                        continue
-                    if cnav is None:
-                        from cnav_predictor import CnavPredictor
-                        cnav = CnavPredictor(log=_log)
-                        _log("CNAV decoder armed on aux chain %s" % cnav_combiner)
-                    cnav.ingest(_p, _r["nav_obs"])
-            # S5 D-component #1: Galileo E1B I/NAV, the exact CNAV-aux analogue.
-            if inav_combiner:
-                try:
-                    _iaux = {int(r["prn"]): r for r in _get("%s/get_status" % inav_combiner)
-                             if r.get("prn")}
-                except Exception as e:
-                    _iaux = {}
-                    _log_rl("inavaux", "inav aux combiner %s unreadable: %s"
-                            % (inav_combiner, e))
-                for _p, _r in _iaux.items():
-                    if "nav_obs" not in _r:
-                        continue
-                    if inav is None:
-                        from inav_predictor import InavPredictor
-                        inav = InavPredictor(log=_log)
-                        _log("I/NAV decoder armed on aux chain %s" % inav_combiner)
-                    inav.ingest(_p, _r["nav_obs"])
-                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
-                # I/NAV rides E1B on L1 and E5b-I on the mid band -- SAME message + decoder; label
-                # the decode-health obs by the actual carrier (from the aux combiner name).
-                if inav is not None and _now() - _inav_log_t[0] > 60.0:
-                    _inav_log_t[0] = _now()
-                    _inav_sig = "GAL_E5BI_INAV" if "e5b" in inav_combiner else "GAL_E1B_INAV"
-                    for _p in sorted(inav._p):
-                        h = inav.health(_p)
-                        if not h or not h["words"]:
-                            continue
-                        eph = inav.ephemeris(_p)
-                        xc = (_inav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
-                              if (eph is not None and brdc_alm is not None) else "")
-                        _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
-                             % (_p, h["pages"], h["words"], h["have"],
-                                "YES" if eph is not None else "no", xc))
-                        _dh_obs(_inav_sig, _p, h, eph, xc)
-            # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
-            if fnav_combiner:
-                try:
-                    _faux = {int(r["prn"]): r for r in _get("%s/get_status" % fnav_combiner)
-                             if r.get("prn")}
-                except Exception as e:
-                    _faux = {}
-                    _log_rl("fnavaux", "fnav aux combiner %s unreadable: %s"
-                            % (fnav_combiner, e))
-                for _p, _r in _faux.items():
-                    if "nav_obs" not in _r:
-                        continue
-                    if fnav is None:
-                        from fnav_predictor import FnavPredictor
-                        fnav = FnavPredictor(log=_log)
-                        _log("F/NAV decoder armed on aux chain %s" % fnav_combiner)
-                    fnav.ingest(_p, _r["nav_obs"])
-                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
-                if fnav is not None and _now() - _fnav_log_t[0] > 60.0:
-                    _fnav_log_t[0] = _now()
-                    for _p in sorted(fnav._p):
-                        h = fnav.health(_p)
-                        if not h or not h["words"]:
-                            continue
-                        eph = fnav.ephemeris(_p)
-                        xc = (_fnav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
-                              if (eph is not None and brdc_alm is not None) else "")
-                        _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
-                             % (_p, h["pages"], h["words"], h["have"],
-                                "YES" if eph is not None else "no", xc))
-                        _dh_obs("GAL_E5AI_FNAV", _p, h, eph, xc)
-            # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
-            if bcnav2_combiner:
-                try:
-                    _baux = {int(r["prn"]): r for r in _get("%s/get_status" % bcnav2_combiner)
-                             if r.get("prn")}
-                except Exception as e:
-                    _baux = {}
-                    _log_rl("bcnav2aux", "bcnav2 aux combiner %s unreadable: %s"
-                            % (bcnav2_combiner, e))
-                for _p, _r in _baux.items():
-                    if "nav_obs" not in _r:
-                        continue
-                    if bcnav2 is None:
-                        from bcnav2_predictor import Bcnav2Predictor
-                        bcnav2 = Bcnav2Predictor(log=_log)
-                        _log("B-CNAV2 decoder armed on aux chain %s" % bcnav2_combiner)
-                    bcnav2.ingest(_p, _r["nav_obs"])
-                # 60 s health + BRDC cross-check (alm_sys is 'C' for the BDS broker)
-                if bcnav2 is not None and _now() - _bcnav2_log_t[0] > 60.0:
-                    _bcnav2_log_t[0] = _now()
-                    for _p in sorted(bcnav2._p):
-                        h = bcnav2.health(_p)
-                        if not h or not h["words"]:
-                            continue
-                        eph = bcnav2.ephemeris(_p)
-                        xc = (_bcnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
-                              if (eph is not None and brdc_alm is not None) else "")
-                        _log("bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
-                             % (_p, h["pages"], h["words"], h["have"],
-                                "YES" if eph is not None else "no", xc))
-                        _dh_obs("BDS_B2A_BCNAV2", _p, h, eph, xc)
-            # S5 D-component #4 (LAST): BeiDou B1C B-CNAV1, the B-CNAV2-aux analogue on L1 BDS.
-            if bcnav1_combiner:
-                try:
-                    _c1aux = {int(r["prn"]): r for r in _get("%s/get_status" % bcnav1_combiner)
-                              if r.get("prn")}
-                except Exception as e:
-                    _c1aux = {}
-                    _log_rl("bcnav1aux", "bcnav1 aux combiner %s unreadable: %s"
-                            % (bcnav1_combiner, e))
-                for _p, _r in _c1aux.items():
-                    if "nav_obs" not in _r:
-                        continue
-                    if bcnav1 is None:
-                        from bcnav1_predictor import Bcnav1Predictor
-                        bcnav1 = Bcnav1Predictor(log=_log)
-                        _log("B-CNAV1 decoder armed on aux chain %s" % bcnav1_combiner)
-                    bcnav1.ingest(_p, _r["nav_obs"])
-                if bcnav1 is not None and _now() - _bcnav1_log_t[0] > 60.0:
-                    _bcnav1_log_t[0] = _now()
-                    for _p in sorted(bcnav1._p):
-                        h = bcnav1.health(_p)
-                        if not h or not h["words"]:
-                            continue
-                        eph = bcnav1.ephemeris(_p)
-                        xc = (_bcnav1_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
-                              if (eph is not None and brdc_alm is not None) else "")
-                        _log("bcnav1 PRN %d: %d frames, %d crc, have %s, eph %s%s"
-                             % (_p, h["pages"], h["words"], h["have"],
-                                "YES" if eph is not None else "no", xc))
-                        _dh_obs("BDS_B1C_BCNAV1", _p, h, eph, xc)
-            # GPS L1C-D CNAV-2: the bcnav1-aux analogue on the L1C broker (alm_sys 'G'). The broker's
-            # own --combiner is the L1C-P pilot; the CNAV-2 data symbols come off the derived L1C-D.
-            if cnav2_combiner:
-                try:
-                    _c2aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav2_combiner)
-                              if r.get("prn")}
-                except Exception as e:
-                    _c2aux = {}
-                    _log_rl("cnav2aux", "cnav2 aux combiner %s unreadable: %s"
-                            % (cnav2_combiner, e))
-                for _p, _r in _c2aux.items():
-                    if "nav_obs" not in _r:
-                        continue
-                    if cnav2 is None:
-                        from cnav2_predictor import Cnav2Predictor
-                        cnav2 = Cnav2Predictor(log=_log)
-                        _log("CNAV-2 decoder armed on aux chain %s" % cnav2_combiner)
-                    cnav2.ingest(_p, _r["nav_obs"])
-                if cnav2 is not None and _now() - _cnav2_log_t[0] > 60.0:
-                    _cnav2_log_t[0] = _now()
-                    for _p in sorted(cnav2._p):
-                        h = cnav2.health(_p)
-                        if not h or not h["words"]:
-                            continue
-                        eph = cnav2.ephemeris(_p)
-                        xc = (_cnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
-                              if (eph is not None and brdc_alm is not None) else "")
-                        _log("cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
-                             % (_p, h["words"], h["toi"], "YES" if eph is not None else "no", xc))
-                        _dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
-            # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
-            # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
-            # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
-            # source when their encoders exist.
-            if (args.nav_bits_brdc and navbits is not None and alm_sys == "G"
-                    and brdc_alm is not None and pred):
-                if navbrdc is None:
-                    from navbit_brdc import BrdcLnavSource
-                    navbrdc = BrdcLnavSource(log=_log)
-                    _log("constructed-bit source armed (BRDC LNAV, un-synced PRNs)")
-                try:
-                    navbrdc.update(brdc_alm["eph"], pred, navbits)
-                except Exception as e:
-                    _log("navbrdc update failed: %s" % e)
-            if navbits is not None and _now() - navbits_log_t > 60.0:
-                navbits_log_t = _now()
-                for _p in sorted(navbits._p):
-                    h = navbits.health(_p)
-                    if not h:
-                        continue
-                    # Now that LNAV extracts the orbit set (subframes 1-3), surface the live
-                    # ephemeris + a BRDC position cross-check exactly as CNAV/I-NAV do -- this is
-                    # the live validator of the LNAV_EPH_FIELDS bit offsets (near-zero dpos, since
-                    # BRDC IS the LNAV message) and the on-node BRDC-fallback source for L1.
-                    eph_s = ""
-                    e = None
-                    if h["synced"]:
-                        e = navbits.ephemeris(_p)
-                        if e is not None:
-                            eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
-                            if brdc_alm is not None:
-                                eph_s += _lnav_brdc_xcheck(brdc_alm, alm_sys, _p, e, _log)
-                        _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s%s"
-                             % (_p, h["decoded_sf"], h["pages"],
-                                ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a",
-                                eph_s))
-                    else:
-                        # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
-                        # the reason: contiguous run vs total history vs what sync needs.
-                        _log("navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)%s"
-                             % (_p, h["run"], h["need"], h["hist"],
-                                " -> CONSTRUCTED from BRDC"
-                                if (navbrdc is not None and navbrdc.ready())
-                                else " -> not peeled"))
-                    _dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
-                if navbrdc is not None:
-                    # The calibration IS the trust boundary: a bad offset makes every
-                    # constructed bit confidently wrong, so state it every cycle. `verify`
-                    # scores constructed bits against a SYNCED satellite's own received bits
-                    # -- the live form of the offline 113820/113820 test.
-                    if navbrdc.ready():
-                        chk = []
-                        for _p in sorted(navbits._p):
-                            r = navbrdc.verify(_p, navbits)
-                            if r and r[0] >= 200:
-                                chk.append("%d:%.1f%%" % (_p, 100.0 * r[1] / r[0]))
-                        _log("navbrdc: offset %.6f s, spread %.2f ms, %d cal sats "
-                             "(%d outliers dropped); verify %s"
-                             % (navbrdc.offset, (navbrdc.spread or 0.0) * 1e3,
-                                navbrdc.n_cal, navbrdc.n_rej, " ".join(chk) or "n/a"))
-                    else:
-                        _log("navbrdc: NOT ready (%s)" % navbrdc.why_not())
-            # CNAV decode health + the live ephemeris (types 10+11). eph toe/e prove a decoded
-            # ephemeris set. S4 EPHEMERIS CROSS-CHECK: propagate the live-decoded CNAV ephemeris
-            # and the independently-downloaded BRDC (LNAV) ephemeris to the SAME absolute instant
-            # (the CNAV toe) and report the ECEF position residual. Two independent nav messages,
-            # two encodings (CNAV FEC+CRC vs LNAV parity), one truth -- a small residual VALIDATES
-            # the whole decode chain against an outside reference, and is the foundation for
-            # eventually trusting live CNAV ephemeris over the 2 h-latency download. Cheap (Kepler
-            # propagation, no Viterbi), so it rides the existing 60 s health cadence.
-            if cnav is not None and _now() - navbits_log_t > 60.0:
-                navbits_log_t = _now()
-                for _p in sorted(cnav._p):
-                    h = cnav.health(_p)
-                    if not h:
-                        continue
-                    eph_s = ""
-                    e = None
-                    if h["eph"]:
-                        e = cnav.ephemeris(_p)
-                        if e is not None:
-                            eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
-                            if brdc_alm is not None:
-                                eph_s += _cnav_brdc_xcheck(brdc_alm, alm_sys, _p, e, _log)
-                    if h["synced"]:
-                        _log("cnav PRN %d: %d msgs decoded, %d stored, %d emits, g2=%s%s"
-                             % (_p, h["decoded"], h["messages"], h["emits"],
-                                h["g2"], eph_s))
-                    else:
-                        _log("cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
-                             % (_p, h["emits"], h["g2"]))
-                    _dh_obs(_cnav_sig, _p, h, e, eph_s)
-            # B-CNAV3 decode health (BeiDou B2b PRIMARY chain). Frame decode is convention-complete
-            # (LDPC + CRC); the message-type histogram + SOW logged here is exactly what maps the
-            # ephemeris field table (Phase 2), after which eph + a BRDC dpos xcheck join (like cnav).
-            if bcnav3 is not None and _now() - _bcnav3_log_t[0] > 60.0:
-                _bcnav3_log_t[0] = _now()
-                for _p in sorted(bcnav3._p):
-                    h = bcnav3.health(_p)
-                    if not h or not h["words"]:
-                        continue
-                    eph = bcnav3.ephemeris(_p)
-                    xc = (_bcnav3_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
-                          if (eph is not None and brdc_alm is not None) else "")
-                    _log("bcnav3 PRN %d: %d frames CRC-OK, have %s, sow=%s, eph %s%s"
-                         % (_p, h["words"], h["have"], h["sow"],
-                            "YES" if eph is not None else "no", xc))
-                    _dh_obs("BDS_B2B_BCNAV3", _p, h, eph, xc)
+        _stage_nav_bits()
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
@@ -8407,172 +8598,7 @@ def main(argv=None, rx=None, publisher=None):
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
         bit_src, bit_known = {}, {}
-        for prn, v in sorted(seeds.items()):
-            d = dict(prn=prn, **v)
-            if dll_trim.get(prn):
-                d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
-                # ⚠️ AUDIT §4.6 (#83 2(b) precondition): THE TRIM MUST MOVE THE PHASE TOO.
-                # propagate_seed PREFERS code_phase_at_ref_chips whenever the payload
-                # carries it -- which the search-fed path always does -- so a trim written
-                # only into cp0 was written into the field the tracker ignores: the Python
-                # slow trim has been a NO-OP on every phase-carrying seed, and enabling
-                # --seed-phase-transport on the DR chains would have silently disabled
-                # their only code loop. One trim, both currencies, same instant.
-                if d.get("code_phase_at_ref_chips", -1.0) is not None \
-                        and d.get("code_phase_at_ref_chips", -1.0) >= 0.0:
-                    _tmod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
-                    d["code_phase_at_ref_chips"] = (
-                        d["code_phase_at_ref_chips"] + dll_trim[prn]) % _tmod
-            if car_trim.get(prn):
-                d["carrier_trim_hz"] = car_trim[prn]
-            if _jrc is not None and prn not in probe_set:
-                # Probes excepted for the trim loop's own reason: no carrier, and a moving
-                # trim moves the REPORTED Doppler, which the beam map's churn gate reads
-                # as sky. A sat whose row has not converged keeps the trim-loop value
-                # (usually 0 on CHORD): commanding from a wide row would inject the
-                # filter's own transient into the NCO.
-                _k = (args.dr_constellation, int(prn))
-                # ARM-12 GUARD: the row's own satellite must be DETECTED this cycle
-                # (kcoh sig >= --rrate-cmd-min-sig) before it may command. The sigma
-                # gate alone admitted E4's confident-noise row (see the flag's help).
-                # No kcoh row (throttled estimator at startup, or the sat absent from
-                # the fold) counts as NOT detected: no evidence, no command.
-                _cmd_sig_ok = True
-                if args.rrate_cmd_min_sig > 0.0:
-                    _cmd_sig_ok = (((_dllp.kcoh or {}).get(prn) or {}).get("sig") or 0.0) \
-                                  >= args.rrate_cmd_min_sig
-                if _cmd_sig_ok and _jrc.rrate_sigma(_k) <= args.rrate_cmd_max_sigma:
-                    _cmd = _jrc.carrier_correction_hz(_k, args.carrier_hz)
-                    if args.carrier_max_hz > 0.0:
-                        _cmd = max(-args.carrier_max_hz, min(args.carrier_max_hz, _cmd))
-                    # SLEW toward the target from the command actually POSTED last poll
-                    # (--rrate-cmd-slew-hz): the feed's reference is only exact for a
-                    # command that holds still over the emit lag, so the step is bounded
-                    # and the bound is what makes the closed loop stable. Railed steps
-                    # are counted into the JRR-CMD line -- a rail that never clears is
-                    # a target out of reach, not convergence in progress.
-                    _prev = rr_cmd_applied.get(prn, 0.0)
-                    if args.rrate_cmd_slew_hz > 0.0:
-                        _stp = max(-args.rrate_cmd_slew_hz,
-                                   min(args.rrate_cmd_slew_hz, _cmd - _prev))
-                        if abs(_cmd - _prev) > args.rrate_cmd_slew_hz:
-                            _rr_railed += 1
-                        _cmd = _prev + _stp
-                    d["carrier_trim_hz"] = _cmd
-                    _rr_cmd_new[prn] = _cmd
-            # RELEASE-SLEW (arm 12). A sat that exits the command set -- sig bar lost,
-            # sigma widened, receiver row gone -- used to fall back to car_trim/0 in ONE
-            # poll: an instant step of its whole standing command, the exact reference
-            # discontinuity the slew bound exists to prevent, taken at release instead
-            # of at pull-in. Walk it back at the same bounded rate; drop out only once
-            # within one step of zero.
-            if (args.rrate_command and prn not in _rr_cmd_new and prn not in probe_set
-                    and rr_cmd_applied.get(prn)):
-                _prev = rr_cmd_applied[prn]
-                _stp = args.rrate_cmd_slew_hz if args.rrate_cmd_slew_hz > 0.0 else 0.0
-                if _stp > 0.0 and abs(_prev) > _stp:
-                    _cmd = _prev - math.copysign(_stp, _prev)
-                    d["carrier_trim_hz"] = _cmd
-                    _rr_cmd_new[prn] = _cmd
-                    _rr_released += 1
-                # else: within one step of zero (or slew disabled) -- final sub-slew
-                # step back to car_trim/0, and the sat leaves rr_cmd_applied.
-            if prn in car_repin_pending:
-                # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
-                # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
-                # carrier_trim_hz accompanies it -- the trim moves wholly into f_ref, leaving the
-                # combined carrier invariant).
-                d["carrier_repin"] = car_repin_pending.pop(prn)
-            # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
-            # its secondary overlay is DETERMINISTIC, so the chips are projected from the
-            # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.
-            # DATA signals (P7a): the LNAV predictor's output. bit_pred wins where both
-            # exist (a known overlay beats a decoded guess).
-            _row = status.get(prn) or {}
-            _bsrc = "none"
-            # A source the health monitor has condemned for THIS satellite is skipped at
-            # SELECTION time, so the chain genuinely falls back (pred -> lnav -> brdc)
-            # instead of re-picking the vetoed source and going dark every cycle.
-            _src_ok = (lambda _s: navhealth is None
-                       or navhealth.verdict(prn, _s) != "bad")
-            # Wire schema is COMPONENT-KEYED: nav_bits = {"P": table, "D": table, ...},
-            # "P" = the component this chain's replica correlates (relational, not a signal
-            # name -- see docs/navbit_supply_architecture.md C1). The tracker also accepts a
-            # bare table as "P"; we publish the keyed form so the first data-channel producer
-            # is an ADDITION ("D": ...) rather than a schema change.
-            if _row.get("bit_pred", {}).get("bits") and _src_ok("pred"):
-                # Attach only when the table CHANGED (utc0 moves once per combiner emit);
-                # on other cycles the tracker keeps its stored copy -- see bp_pushed above.
-                if bp_pushed.get(prn) != _row["bit_pred"].get("utc0"):
-                    d["nav_bits"] = {"P": _row["bit_pred"]}
-                    bp_pushed[prn] = _row["bit_pred"].get("utc0")
-                _bsrc = "pred"
-            elif navbits is not None:
-                # Predict from the freshest capture-clock UTC this PRN has reported: the
-                # tracker consumes by ITS record UTC (same capture clock), so wall-clock
-                # never enters. 4 s horizon >> the ~1 s status staleness + push cadence.
-                _utc = _row.get("utc")
-                if _utc:
-                    nb_lnav = navbits.predict(prn, float(_utc), horizon_s=4.0)
-                    nb_brdc = (navbrdc.predict(prn, float(_utc), horizon_s=30.0)
-                               if navbrdc is not None else None)
-                    if navhealth is not None:      # shadow-remember BOTH candidates
-                        navhealth.remember(prn, nb_lnav, "lnav")
-                        navhealth.remember(prn, nb_brdc, "brdc")
-                    nb = nb_lnav if (nb_lnav is not None and _src_ok("lnav")) else None
-                    if nb is None and _src_ok("brdc"):
-                        # CONSTRUCTED fallback: this PRN never synced, so the decoder has
-                        # nothing. Bits come from BRDC instead; alignment comes from the
-                        # tracking geometry (range + sat clock) plus the common clock offset
-                        # calibrated off a satellite that DID sync -- never from decoding,
-                        # which is precisely what this satellite cannot do.
-                        # 30 s, not the decoder's 4 s: only sf1-3 are constructible, so a 4 s
-                        # window that lands inside sf4/5 is entirely unknown, predict() returns
-                        # None, and the PRN reads `nobits` forever. A full frame (30 s) always
-                        # spans the 18 s of sf1-3, so every push carries usable bits. Costs
-                        # 1500 int8 per PRN.
-                        nb = nb_brdc
-                        _bsrc = "brdc" if nb is not None else "none"
-                    elif nb is not None:
-                        _bsrc = "lnav"
-                    if nb is not None:
-                        d["nav_bits"] = {"P": nb}
-                        _bsrc = _bsrc if _bsrc != "none" else "lnav"
-            elif cnav is not None:
-                # CNAV serve: the L2C-CM chain's replica correlates the DATA component, so a
-                # decoded CNAV table is its "P" (the direct L1CA/LNAV analog). But this SERVES
-                # already-decoded spans, it does not PREDICT the future (the CNAV type schedule
-                # is not fixed -- see cnav_predictor), so at a forward horizon predict() usually
-                # returns None and nothing is attached. That is correct: CL, not CNAV, is L2C's
-                # peel win; CNAV's prizes are the live ephemeris + the S4 L5 cross-band feed.
-                # Shadow-remembered and vetoed like every other source before it feeds a wipe.
-                _utc = _row.get("utc")
-                if _utc:
-                    nb = cnav.predict(prn, float(_utc), horizon_s=4.0)
-                    if navhealth is not None:
-                        navhealth.remember(prn, nb, "cnav")
-                    if nb is not None and _src_ok("cnav"):
-                        d["nav_bits"] = {"P": nb}
-                        _bsrc = "cnav"
-            # VETO: a source that does not match the air for this satellite must not feed the
-            # subtracter. Wrong bits are worse than no bits -- no bits means no subtraction,
-            # wrong bits mean subtracting at the wrong sign on ~40% of records (measured
-            # 2026-07-26: HURTING 0-1 -> 7-8). Then remember what we are about to publish, so
-            # next cycle's observations score THIS table rather than a re-derived one.
-            if "nav_bits" in d and navhealth is not None and navhealth.veto(prn, _bsrc):
-                # FALL BACK, do not go dark: a bad decoded table must not darken a PRN whose
-                # constructed table is fine. The chain re-runs with the vetoed source skipped
-                # next cycle via the per-(prn,source) verdict; this cycle just drops the bits
-                # (one cycle of nobits is the safe direction).
-                d.pop("nav_bits")
-                _bsrc = "vetoed:" + _bsrc
-            elif "nav_bits" in d and navhealth is not None:
-                navhealth.remember(prn, d["nav_bits"].get("P"), _bsrc)
-            bit_src[_bsrc] = bit_src.get(_bsrc, 0) + 1
-            if _bsrc != "none" and "nav_bits" in d:
-                bit_known[_bsrc] = bit_known.get(_bsrc, 0) + sum(
-                    1 for t in d["nav_bits"].values() for b in t["bits"] if b)
-            payload.append(d)
+        _stage_push_seeds()
         # The commands actually shipped this poll become the rrate feed's reference next
         # poll. REBUILT, not updated: a sat that stopped being commanded (row widened, seed
         # dropped) must fall back to referencing car_trim/0, or a stale command would
