@@ -97,3 +97,80 @@ class NhOverlay(object):
         # several places, and the cell is what makes those the same object.
         self.offset = [None]
         self.seen = {}          # prn -> (nh, ref_hop) last REPORTED by the search
+
+
+class DllLoopState(object):
+    """The code delay-lock loop's memory, and the arming handshake with the C++ gather.
+
+    ⚠️ AUTHORITY IS HELD BY EXACTLY ONE ARM AT A TIME. `armed_last` is what was last POSTED to
+    the gather -- what the C++ loop is actuating RIGHT NOW -- not what this cycle is about to
+    compute. The Python integrator stands down per-PRN against that set, so the trim is never
+    driven by both and never by neither. It is recorded BEFORE the POST rather than after,
+    because a failed POST must leave both sides believing the C++ side is still driving.
+
+    ⚠️ `hold` IS PRESENCE WITH A MEMORY, not presence at an instant. A satellite flickering
+    across the deep gate would otherwise be armed and released every cycle, and an arming
+    change costs the standing trim.
+    """
+
+    __slots__ = ("trim", "last", "last_hop", "readback", "hold", "armed_last", "stat",
+                 "deep_gate_seen", "reseed_prns")
+
+    def __init__(self):
+        self.trim = {}          # prn -> the Python integrator's standing trim, chips
+        self.last = {}          # prn -> last discriminator seen (dedup: one integration/emit)
+        self.last_hop = {}      # prn -> last window index integrated (an exact integer test)
+        # prn -> the gather's reported standing trim. seed + THIS is where the tracker's tap
+        # actually sits, which is the number every downstream judge of the seed was missing.
+        self.readback = {}
+        self.hold = {}          # prn -> last time PRESENT (the arming hold)
+        self.armed_last = set() # what the C++ loop is actuating right now
+        # ⚠️ THE KEY SET IS PART OF THE CONTRACT. `rb`/`rb_fail` count the READBACK poll
+        # separately from the arming POST, and a consumer that finds them missing gets a
+        # KeyError rather than a zero. Keep this dict exactly as its readers expect.
+        self.stat = {"posts": 0, "fail": 0, "armed": 0, "last_err": "",
+                     "rb": 0, "rb_fail": 0}
+        self.deep_gate_seen = {}  # prn -> last time the SEARCH saw it above the deep bar (#79)
+        self.reseed_prns = None   # the #50 armed set: None, True (all), or a set of PRNs
+
+
+class HoldState(object):
+    """Why a satellite is being held rather than dropped, and for how long.
+
+    ⚠️ A HOLD IS NOT A LOCK. These tables decide whether to keep feeding a seed through a
+    dropout; they say nothing about whether the tracker is actually on the peak. Judge that on
+    q, never on hold state -- and never on sig/deep/cn0_coh, which duty-cycle with the fold.
+    """
+
+    __slots__ = ("miss", "prev", "q", "low_hits", "polls")
+
+    def __init__(self):
+        self.miss = {}          # prn -> consecutive polls with no usable record
+        self.prev = {}          # prn -> the tracker's own last propagation (the slew anchor)
+        self.q = {}             # prn -> last fleet q seen while held
+        self.low_hits = {}      # prn -> consecutive below-threshold polls
+        self.polls = {}         # prn -> coast poll count
+
+
+class CpTracking(object):
+    """Per-satellite code-phase history: fits, escapes, and the translated set.
+
+    ⚠️ code_phase_chips IS AN ARGUMENT, NOT A TRANSPORTABLE QUANTITY. It is meaningful only
+    against the epoch it was measured at (~5095 chips per Hz of Doppler), so it must never be
+    transported or DIFFERENCED across epochs -- only `cp_at_ref` is comparable. Half the
+    histories here exist to make that distinction checkable after the fact.
+    """
+
+    __slots__ = ("err_hist", "escape", "escape_sign", "fit_slope", "hist", "translated",
+                 "dop_hist", "ph_hist", "dop_clamped")
+
+    def __init__(self):
+        self.err_hist = {}      # prn -> recent (predicted - observed) code phase
+        self.escape = {}        # prn -> escape-detector state
+        self.escape_sign = {}   # prn -> the sign it escaped in
+        self.fit_slope = {}     # prn -> fitted cp rate, chips/s
+        self.hist = {}          # prn -> recent (t, cp) for the rate fit
+        self.translated = set() # prns whose cp has been translated this pass
+        self.dop_hist = {}      # prn -> recent Doppler observations
+        self.ph_hist = {}       # prn -> recent carrier-phase observations
+        self.dop_clamped = set()  # prns whose Doppler hit a clamp this pass

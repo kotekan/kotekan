@@ -49,8 +49,13 @@ class ChainContext(object):
         "rx", "publisher", "telem_client", "detectors", "dll_combiners",
         "spectrum_endpoints", "spec_writer", "state_dir", "xb_read_dir", "sig_of",
         "combiner", "gating", "capable", "receiver_state", "alm_now",
+        "trackers", "joint_consume", "broker_t0", "dr_eph_mod", "dr_min_prn",
+        "hist_len", "max_gap_hops", "q_alias_hz",
+        "carrier_explain_hz", "carrier_verify_emits",
+        "fuse_cached", "cp_to_seed_currency", "sig_of_last",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb", "car", "wd", "nho",
+        "dls", "hold", "cpt",
         # ---- long-lived tables, mutated in place --------------------------------------
         "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted",
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",
