@@ -1250,3 +1250,684 @@ def dr_seed(ctx):
                 _log("dead-reckon drop PRN %d (set below BRDC horizon)" % prn)
                 ctx.seeds.pop(prn, None)
                 ctx.hold.low_hits.pop(prn, None)
+
+
+def stage_dead_reckon(ctx):
+    """3e: DEAD-RECKONED SEEDING -- the model-primary spine, and the shell of its pipeline.
+        
+    Refreshes the ephemeris, builds the per-satellite predictions and code offsets, then runs the
+    five sub-stages in order: joint shadow -> clock solve -> clock quality -> clock adopt -> seed.
+    Its working set lives on `_drp`, so each arrow of that pipeline is a named field rather than
+    an implicit shared local.
+        
+    On the searchless chains (Galileo, BeiDou) this IS the acquisition path: it can seed a
+    satellite that has never been detected, from the broadcast ephemeris and the receiver clock
+    alone.
+        
+    ⚠️ `t_now_abs` IS None, NEVER 0.0, until the first ephemeris refresh. A missing axis time is
+    UNKNOWN, and a confident wrong timestamp is worse than a skipped measurement -- as 0.0 it
+    killed chain threads through the #85 stash."""
+    if (ctx.dr_state is not None and ctx.args.almanac and ctx.pred and ctx.utc0_sample0
+            and _now() >= ctx.dr_state["next"]):
+        ctx.drp.now_w = _now()
+        ctx.dr_state["next"] = ctx.drp.now_w + ctx.args.dr_refresh_s
+        # ── DO NOT SEED ON A GUESSED CLOCK (2026-08-22) ──────────────────────────────
+        # Measured with the BIRTH-STEP diagnostic: every satellite born before the clock
+        # bootstraps carries NO clock, and the first re-birth after BOOTSTRAP adds it --
+        # so the whole fleet steps by one clock at once. 40 events, all within 57 s of
+        # broker start and none after 60 s, with step/off = 0.9958: the step IS `_off`,
+        # to 0.4%. Five satellites agreeing to 0.08% with unrelated Doppler is what gave
+        # it away -- nothing per-satellite can do that.
+        # The fix is to wait, because the wait is SHORT and the clock is imminent: the
+        # solve snaps on its first median (gps_l5 bootstraps ~1 s after start) and the
+        # model-primary chains adopt it cross-band within a few seconds of that.
+        # ⚠️ BUT IT MUST NOT BE AN INDEFINITE WAIT, and that is the whole design of the
+        # prime. --dr-clock-chips exists precisely so a DETECTOR-LESS chain can seed at
+        # all: `offs` is always empty there, so the solve never runs and no bootstrap is
+        # ever coming. Refusing to seed until a measurement arrives would leave exactly
+        # those chains dark forever -- trading a 150-chip startup step for a dead chain.
+        # So: withhold while the clock is admittedly a guess, but only for
+        # --dr-clock-wait-s, then seed on the prime and SAY SO. A guard that can deadlock
+        # the instrument is worse than the artefact it removes.
+        ctx.drp.hold = False
+        if ctx.dr_state.get("clk_primed") and ctx.args.dr_clock_wait_s > 0.0:
+            _waited = ctx.drp.now_w - ctx.dr_state.get("clk_t", ctx.drp.now_w)
+            if _waited < ctx.args.dr_clock_wait_s:
+                _log_rl("clkwait", "dead-reckon: WITHHOLDING seeds -- the clock is still "
+                                   "the %.2f-chip PRIME, not a measurement (%.0f of %.0f s"
+                                   " waited). Seeding now would anchor every cp0 without "
+                                   "a clock and step the whole fleet by ~%.0f chips at the"
+                                   " first re-birth after BOOTSTRAP."
+                        % (ctx.dr_state.get("clk") or 0.0, _waited, ctx.args.dr_clock_wait_s,
+                           abs(ctx.dr_state.get("clk") or 0.0) or 150.0),
+                        every_s=10.0)
+                ctx.dr_state["next"] = ctx.drp.now_w + min(2.0, ctx.args.dr_refresh_s)
+                ctx.drp.hold = True
+            # ⚠️ elif, NOT a second if. Written as a bare `if` this fired in the SAME
+            # MILLISECOND as the withhold above -- "seeding on the PRIME after waiting
+            # 30 s" logged 0 s in, because reaching the warning never depended on the
+            # wait having expired. An alarm that cannot distinguish "waiting" from
+            # "gave up waiting" is worse than none: it would have taught us to ignore it.
+            elif not ctx.dr_state.get("clk_wait_warned"):
+                ctx.dr_state["clk_wait_warned"] = True
+                _log("dead-reckon: ⚠️ seeding on the %.2f-chip PRIME after waiting %.0f s "
+                     "-- no clock measurement arrived. Expected on a DETECTOR-LESS chain "
+                     "with no sibling to adopt from; on a chain that HAS detectors it "
+                     "means the solve is not running, and every seed below is anchored on "
+                     "a guess." % (ctx.dr_state.get("clk") or 0.0,
+                                   ctx.drp.now_w - ctx.dr_state.get("clk_t", ctx.drp.now_w)))
+        # THE DEAD-RECKON MODEL MUST WORK AT THE CODE THE TRACKER ACTUALLY DESPREADS.
+        # This was CODE_LEN / chip_rate -- ONE PRIMARY PERIOD -- so t0m and every predicted
+        # phase were reduced mod 1 ms and the secondary segment was discarded before a seed
+        # was ever built. A dead-reckoned PRN therefore always landed in segment 0: right
+        # 1 time in LC_SEG.
+        #
+        # GPS survives that because the BLIND SEARCH re-seeds it with a measured `nh`, so
+        # the model's missing segment is overwritten before it matters. E5a/B2a have no
+        # blind search at all (per-PRN secondaries, CHORD_MULTIBAND.md section 5) -- the
+        # dead-reckon seed IS the answer -- so for them this modulo is the whole bug:
+        # measured 2026-08-08, every E5a seed had code_phase_chips < 10230 against a
+        # 1,023,000-chip code, i.e. 1-in-100 of the right CS period, i.e. noise.
+        #
+        # Reducing mod the LONG period instead keeps the numbers small enough for double
+        # precision (the reason the reduction exists) while carrying the segment. Placing
+        # it needs absolute time to half a primary period, 0.5 ms; the F-engine anchor is
+        # GPS-disciplined to microseconds and BRDC range/clock are nanosecond-class, so
+        # there are three orders of margin.
+        ctx.drp.t_code = (ctx.lc_seg * ctx.code_len) / ctx.args.chip_rate_hz if ctx.args.dr_long_code \
+                 else ctx.code_len / ctx.args.chip_rate_hz
+        # The seed is reduced at the SAME length the prediction was: one constant, used
+        # twice, so they cannot drift apart.
+        ctx.drp.mod = (ctx.lc_seg * ctx.code_len) if ctx.args.dr_long_code else ctx.code_len
+        # Layer-2 slew constants (task #30). CAP: 0.05 chips per 2 s cycle = 0.025
+        # chips/s of correction authority -- above the 0.003-0.02 chips/s drift band
+        # measured on sky, an order below the 0.25-chip DLL trims a fold tolerates, and
+        # 20x below the ~1-chip clock-EMA jitter the reverted 10 s repin injected whole.
+        # K: first-order low-pass; with the cap it bounds, it is deliberately unfussy.
+        # The per-event slew rate limit. 0.05 chips was hardcoded here and is the
+        # single most consequential constant in the seeding path (see the call site):
+        # at 0.05 a go, every 10-30 s, a satellite 5-8 chips from its model takes of
+        # order an HOUR to arrive. A flag because the decisive experiment is
+        # --dr-slew-cap 0 -- slewing OFF, the seed left where the loop put it -- which
+        # is the one arm nobody has run and the one that separates "the seed is wrong"
+        # from "the model is wrong and the slew drags good seeds onto it".
+        ctx.drp.slew_cap = ctx.args.dr_slew_cap
+        ctx.drp.slew_k = 0.25
+        if ctx.dr_state["eph"] is None or ctx.drp.now_w - ctx.dr_state["eph_t"] > 7200:
+            try:
+                ctx.dr_state["eph"] = ctx.dr_eph_mod.parse_rinex_nav(ctx.dr_eph_mod.fetch_brdc())
+                ctx.dr_state["eph_t"] = ctx.drp.now_w
+                ctx.dr_state["t0m"] = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0) % ctx.drp.t_code
+                _log("dead-reckon: BRDC loaded (%d sats)" % len(ctx.dr_state["eph"]))
+                # MEASURED CODE BIASES, refreshed on the ephemeris cadence (A0b, part 2).
+                # Daily product, ~5 days of latency, biases stable over weeks -- so the
+                # refresh rate is irrelevant and the fetch is cached. Optional by design:
+                # no token or no network -> dcb stays None and group_delay_s falls back to
+                # the broadcast term, which is what every run before 2026-08-23 did.
+                if ctx.args.dcb_bias:
+                    try:
+                        import gnss_dcb as _dcbm
+                        _p = _dcbm.fetch_dcb()
+                        _t = _dcbm.parse_dcb(_p)
+                        ctx.dr_state["dcb"] = _t or None
+                        if _t:
+                            _n = sum(1 for k in _t if k[0] == ctx.args.dr_constellation)
+                            _log("dead-reckon: DCB loaded (%s; %d sats this "
+                                 "constellation) -- measured code biases override the "
+                                 "broadcast TGD/BGD per satellite"
+                                 % (os.path.basename(_p or "?"), _n))
+                        else:
+                            _log("dead-reckon: no DCB product (no token/network) -- "
+                                 "falling back to the broadcast group delay")
+                    except Exception as _de:
+                        ctx.dr_state["dcb"] = None
+                        _log("dead-reckon: DCB load failed (%s); broadcast term only"
+                             % _de)
+            except Exception as e:
+                _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % e)
+                ctx.dr_state["eph_t"] = ctx.drp.now_w - 7200 + 600
+        # DECODED-EPH FALLBACK: keep predicting off our own decode when the network BRDC is
+        # gone (or always, under --decoded-eph-fallback-force, the live A/B harness).
+        _use_decoded = ctx.decfb is not None and (
+            ctx.args.decoded_eph_fallback_force
+            or (ctx.args.decoded_eph_fallback and not ctx.dr_state["eph"]))
+        if ctx.dr_state["eph"] or _use_decoded:
+            ctx.drp.tag = ctx.args.dr_constellation
+            ctx.drp.t_now_abs = ctx.drp.now_w - ctx.utc0_sample0
+            # ── #83 THE AXIS FIX (see --dr-fengine-axis) ── "now" from the F-engine
+            # hop counter: newest telemetry hop at its fetch instant, plus the wall
+            # ELAPSED since -- so NTP's absolute offset never enters and its slew
+            # contributes only (drift x sub-cycle seconds) = nanoseconds. Every label
+            # this block stamps (h1, _rh_birth) and every phase it evaluates then
+            # lives on the axis the tracker actually runs. The static difference
+            # between this axis and the old wall one lands in the solved receiver
+            # clock exactly as the old anchor error did (common-mode), so nothing
+            # steps at the flip of the flag except the labels' MEANING.
+            if ctx.args.dr_fengine_axis and ctx.fe_axis[0] is not None:
+                # FILTERED offset, not the freshest sample (2026-08-23): the raw form
+                # _feh/hps + (now_w - _few) re-samples the pipeline lag every poll and
+                # the jitter lands in every rebirth as lag x range_rate -- see fe_off.
+                if ctx.fe_off[0] is not None:
+                    ctx.drp.t_now_abs = ctx.fe_off[0] + ctx.drp.now_w
+                else:
+                    _feh, _few = ctx.fe_axis[0]
+                    ctx.drp.t_now_abs = _feh / ctx.args.hops_per_sec + (ctx.drp.now_w - _few)
+            # ── THE FORECAST EPOCH (see --dr-forecast-lead-s) ──
+            # A seed is a FORECAST WITH A LABEL: (ref_hop, phase, doppler, rate). Its
+            # correctness is defined entirely on the hop axis, so producing one needs no
+            # notion of "now" at all -- and asking for one is what dragged the wall clock,
+            # the NTP offset and the telemetry lag into the seed path in the first place.
+            # Instead choose the hop we are forecasting TO: H = newest telemetry hop +
+            # lead. Then the pipeline lag never enters the arithmetic; it only sets how
+            # large the lead must be (it must exceed transport + install, or the seed
+            # lands after the epoch it describes), and the lag's jitter merely eats
+            # margin. H is an exact integer hop, so int(round(t_fc_abs*hps)) == H and the
+            # label carries no rounding of its own.
+            # ⚠️ ONE EPOCH, USED CONSISTENTLY. The phase and the label must be built from
+            # the SAME t or the tracker's back-reference no longer cancels (see the note
+            # at h1 below). Filter/bookkeeping sites deliberately keep t_now_abs: ages,
+            # update_rrate and the joint cycle are measurements at NOW, and shifting them
+            # into the future would inflate every age by the lead.
+            ctx.drp.t_fc_abs = ctx.drp.t_now_abs
+            if ctx.args.dr_forecast_lead_s > 0.0 and ctx.fe_axis[0] is not None:
+                # forecast from the FILTERED now (t_now_abs above), not the raw newest
+                # hop -- same jitter, same fix. H stays an exact integer hop so the
+                # label still carries no rounding of its own.
+                _fch = int(round((ctx.drp.t_now_abs + ctx.args.dr_forecast_lead_s)
+                                 * ctx.args.hops_per_sec))
+                ctx.drp.t_fc_abs = _fch / ctx.args.hops_per_sec
+            # ── THE EPHEMERIS EPOCH STAYS ON WALL TIME, AND HERE IS THE MEASUREMENT ──
+            # Orbit evaluation (predict_all / predict_from_decoders below) is the ONE
+            # consumer in this file that needs absolute UTC to be TRUE rather than
+            # merely self-consistent: everything else either differences two wall reads
+            # (immune to a slewing offset) or uses wall on both sides of a round trip
+            # (it cancels). A wrong epoch here is a wrong satellite POSITION and no
+            # round trip removes it, so moving it onto the F-engine axis looked
+            # obviously right -- utc0_sample0 is GPS-disciplined, cf06's wall carries
+            # ~1.45 ms of NTP error (chrony root dispersion 1.489 ms, measured).
+            #
+            # ⚠️ TRIED 2026-08-17, MEASURED WORSE BY ~65x, REVERTED. The F-engine "now"
+            # we can OBSERVE is not the F-engine's now: it is the newest telemetry
+            # pow_hop, which is behind the sky by the gather/merge/serve latency.
+            # Measured over the 520 cycles of broker_onsky_e5a: (utc0 + hop/hps) - wall
+            # = -99.6 ms MEDIAN with a 59 ms interquartile spread. Feeding that to the
+            # ephemeris trades 1.45 ms of NTP error for ~100 ms of pipeline lag -- 80 m,
+            # 2.7 chips at L5 -- and the armed replay showed exactly that: seed cp0
+            # moved 0.6-2.4 chips per PRN, scaling with each satellite's range rate.
+            # The axis is drift-free, which is why it is right for LABELS (a label and
+            # its phase are stamped at the same t and the tracker propagates from the
+            # label -- staleness cancels); it is wrong for an EPOCH, where staleness is
+            # the whole error. Fixing this properly needs lag compensation, i.e. an
+            # estimate of the pipeline delay -- not a substitution.
+            #
+            # What survives is the reason the question was asked: a wall STEP is bounded
+            # by nothing, and would move every model seed on all five chains at once,
+            # fleet-common and unattributable. The two axes are compared below as a
+            # TRIPWIRE (log only, never a control input) -- it cannot see a step smaller
+            # than the lag jitter, and does not pretend to.
+            if ctx.fe_axis[0] is not None and ctx.utc0_sample0:
+                # unpacked HERE, not borrowed from the axis-fix block above: that block
+                # runs only under --dr-fengine-axis and this tripwire must work either way
+                _axh, _axw = ctx.fe_axis[0]
+                _dax = (ctx.utc0_sample0 + _axh / ctx.args.hops_per_sec) - _axw
+                _dprev = ctx.dr_state.get("ax_off")
+                if _dprev is not None and abs(_dax - _dprev) > ctx.args.clock_step_guard_s:
+                    _log("*** WALL-vs-F-ENGINE OFFSET JUMPED %+.3f s (%.3f -> %.3f, "
+                         "bar %.3f s). TWO CAUSES, and this line cannot tell them "
+                         "apart: (a) cf06's wall clock stepped -- the F-engine axis is "
+                         "GPS-disciplined, so every model-evaluated seed on every chain "
+                         "just moved with it, ~%.0f chips at 800 m/s of range rate, "
+                         "fleet-common; (b) the telemetry lag jumped -- the observable "
+                         "F-engine 'now' is the newest pow_hop and trails the sky by "
+                         "the gather/serve latency (-99.6 ms median, 59 ms IQR "
+                         "measured), so anything near that scale is lag, not the clock. "
+                         "Discriminate with chronyc tracking. Nothing here corrects "
+                         "either -- this exists so the next hour is attributable."
+                         % (_dax - _dprev, _dprev, _dax, ctx.args.clock_step_guard_s,
+                            abs(_dax - _dprev) * 800.0 / 29.3))
+                ctx.dr_state["ax_off"] = _dax
+            ctx.drp.la = (ctx.args.code_bias_force * 1e-6 if ctx.args.code_bias_force is not None
+                  else (ctx.cb.code_ema if ctx.cb.code_ema is not None else None))
+            # TASK #30, LAYER 1: A DETECTOR-LESS CHAIN CANNOT MEASURE (l-a) -- BORROW THE
+            # BAND SIBLING'S. code_bias_ema fills only from this chain's own cp-fit pool,
+            # which needs detections, so on E5a/B2a it stayed None and every dead-reckon
+            # seed shipped code_phase_rate = 0.0 (visible in SEEDDBG). The receiver code
+            # clock is PER BAND, not per chain -- gps_l5 measures it continuously on the
+            # same 1176.45 MHz and has contributed it to the Receiver since M3, but
+            # rx.code_bias() had NO consumer until now. The unmodeled rate this leaves is
+            # ~0.003-0.01 chips/s, which walks the prompt through the +-1 chip correlation
+            # window in 3-11 minutes: measured on sky as E5a's rise-peak-fall deep_snr
+            # envelope with the fleet disc railed at +0.7 and E >> L. Rates are SMOOTH --
+            # this is the correction that cannot inject a step, unlike the reverted repin.
+            if ctx.drp.la is None:
+                _sh_cb = ctx.rx.code_bias(ctx.band_id, exclude=ctx.chain_id, t_now=ctx.drp.now_w)
+                _sh_band = ctx.band_id
+                # LAYER 2 (task #34): FALL BACK ACROSS THE BAND. The same-band lookup above
+                # is a bootstrap trap for a band with no chain that can solve its own clock,
+                # and 1207.14 MHz was exactly that: gal_e5b and bds_b2b adopted (l-a) ZERO
+                # times while their 1176.45 siblings adopted it 102 and 107 times, so all 19
+                # of their PRNs shipped code_phase_rate = 0.0 and walked open-loop.
+                #
+                # This is SOUND, not a compromise, and the reason is that (l-a) is a
+                # FRACTIONAL FREQUENCY: tau_band -- the per-carrier group delay that makes
+                # the code PHASE band-specific -- is a CONSTANT, and a constant contributes
+                # nothing to a rate. See Receiver.code_bias_any_band. The code PHASE keeps
+                # its per-band scoping (dr_clock is untouched); adopting a phase across
+                # carriers would inject the very tau_band offset the second band exists to
+                # measure.
+                #
+                # Logged distinctly from the same-band case: "cross-band" in the message is
+                # how you tell, from the log alone, that a chain is running on a borrowed
+                # rate rather than one measured in its own band.
+                if _sh_cb is None:
+                    _sh_cb = ctx.rx.code_bias_any_band(exclude=ctx.chain_id, t_now=ctx.drp.now_w)
+                    _sh_band = "cross-band"
+                if _sh_cb is not None:
+                    ctx.drp.la = float(_sh_cb.value)
+                    _log_rl("la-adopt",
+                            "dead-reckon: (l-a) %+.4f ppm ADOPTED from in-process chain "
+                            "'%s' (%s %s) -> seeds carry the code-clock rate"
+                            % (ctx.drp.la * 1e6, _sh_cb.src,
+                               "same band" if _sh_band == ctx.band_id else "CROSS-BAND, rate only;",
+                               _sh_band if _sh_band == ctx.band_id else "phase stays per-band"),
+                            every_s=300.0)
+                else:
+                    ctx.drp.la = 0.0
+            # clock drift (chips/s): EMPIRICAL from consecutive raw solves (EMA'd
+            # below), falling back to the f_chip*(l-a) model until measured -- the
+            # modeled value left a persistent EMA lag (~0.6 chips at first deploy),
+            # outside the BOC DLL capture range.
+            ctx.drp.drift = ctx.dr_state.get("drift")
+            if ctx.drp.drift is None:
+                ctx.drp.drift = ctx.args.chip_rate_hz * ctx.drp.la
+            try:
+                # two epochs, 4 s apart: range_rate difference -> doppler RATE (the
+                # TLE almanac's rate is unused here -- BRDC governs model-owned sats)
+                if _use_decoded:
+                    _ents = ctx.decoded_entries(ctx.drp.now_w)
+                    ctx.drp.pd = ctx.decfb.predict_from_decoders(
+                        _ents, ctx.args.lat, ctx.args.lon, ctx.args.alt,
+                        datetime.fromtimestamp(ctx.drp.now_w, tz=timezone.utc), mask_deg=-90.0)
+                    # CENTRED PAIR (task #52): +/-2 s about now_w, not [now, now+4].
+                    ctx.drp.pd2 = ctx.decfb.predict_from_decoders(
+                        _ents, ctx.args.lat, ctx.args.lon, ctx.args.alt,
+                        datetime.fromtimestamp(ctx.drp.now_w + 2.0, tz=timezone.utc),
+                        mask_deg=-90.0)
+                    pd0 = ctx.decfb.predict_from_decoders(
+                        _ents, ctx.args.lat, ctx.args.lon, ctx.args.alt,
+                        datetime.fromtimestamp(ctx.drp.now_w - 2.0, tz=timezone.utc),
+                        mask_deg=-90.0)
+                    if _now() - ctx.decfb_log_t[0] > 60.0:
+                        ctx.decfb_log_t[0] = _now()
+                        ab = ""
+                        if ctx.args.decoded_eph_fallback_force and ctx.dr_state["eph"]:
+                            # A/B: compare decoded vs BRDC predict, worst common sat.
+                            pb = ctx.dr_eph_mod.predict_all(
+                                ctx.dr_state["eph"], ctx.args.lat, ctx.args.lon, ctx.args.alt,
+                                datetime.fromtimestamp(ctx.drp.now_w, tz=timezone.utc),
+                                mask_deg=-90.0)
+                            cm = set(ctx.drp.pd) & set(pb)
+                            if cm:
+                                dr_m = max(abs(ctx.drp.pd[k]["range_m"] - pb[k]["range_m"])
+                                           for k in cm)
+                                dd = max(abs(ctx.drp.pd[k]["range_rate_mps"]
+                                             - pb[k]["range_rate_mps"]) for k in cm)
+                                ab = (" | A/B vs BRDC over %d sats: worst range %.1f m, "
+                                      "range-rate %.3f m/s (%.2f Hz@fc)"
+                                      % (len(cm), dr_m, dd,
+                                         dd / 299792458.0 * ctx.args.carrier_hz))
+                        _log("dead-reckon: predicting from DECODED eph (%s; %d entries -> "
+                             "%d sats)%s"
+                             % ("FORCE A/B" if ctx.args.decoded_eph_fallback_force
+                                else "BRDC network DOWN -> fallback",
+                                len(_ents), len(ctx.drp.pd), ab))
+                else:
+                    # A0b (2026-08-23): `signal=` makes the returned sat_clk_s refer to
+                    # THIS chain's code rather than the constellation's own broadcast
+                    # reference (GPS L1/L2, GAL E1/E5a or E1/E5b, BDS B3I). It is the
+                    # clock cp_predicted consumes, so it moves the seed directly.
+                    # Measured before arming: ~+0.15 chips common at L5, +-0.3 per-sat --
+                    # a b_sat-scale correction, NOT a constellation-offset one.
+                    ctx.drp.pd = ctx.dr_eph_mod.predict_all(
+                        ctx.dr_state["eph"], ctx.args.lat, ctx.args.lon, ctx.args.alt,
+                        datetime.fromtimestamp(ctx.drp.now_w, tz=timezone.utc), mask_deg=-90.0,
+                        signal=ctx.args.signal, dcb=ctx.dr_state.get("dcb"))
+                    # CENTRED PAIR (task #52): +/-2 s about now_w, not [now, now+4]. The
+                    # old form was a FORWARD difference, so it estimated the rate at
+                    # now+2 and handed it to the seed as if it were the rate at now -- the
+                    # same first-order time-tag mistake as the velocity in
+                    # gnss_ephemeris.sat_pos_clk (ced7f8b51), one level up. Bias ~1.6e-3
+                    # Hz/s against a 29 mHz/s single-window budget: below budget, which is
+                    # why it survived, but it is free to remove and the centred form also
+                    # cuts the truncation error 3x at the same 4 s baseline.
+                    ctx.drp.pd2 = ctx.dr_eph_mod.predict_all(
+                        ctx.dr_state["eph"], ctx.args.lat, ctx.args.lon, ctx.args.alt,
+                        datetime.fromtimestamp(ctx.drp.now_w + 2.0, tz=timezone.utc),
+                        mask_deg=-90.0, signal=ctx.args.signal, dcb=ctx.dr_state.get("dcb"))
+                    pd0 = ctx.dr_eph_mod.predict_all(
+                        ctx.dr_state["eph"], ctx.args.lat, ctx.args.lon, ctx.args.alt,
+                        datetime.fromtimestamp(ctx.drp.now_w - 2.0, tz=timezone.utc),
+                        mask_deg=-90.0, signal=ctx.args.signal, dcb=ctx.dr_state.get("dcb"))
+            except Exception as e:
+                ctx.drp.pd, ctx.drp.pd2, pd0 = {}, {}, {}
+                _log("dead-reckon: predict failed: %s" % e)
+            if ctx.drp.pd:
+                # cache for the SEED loop (next cycle): BRDC doppler/rate for
+                # search-anchored sats, so both masters share one currency
+                ctx.dr_state["pd"], ctx.dr_state["pd2"] = ctx.drp.pd, ctx.drp.pd2
+                ctx.dr_state["pd0"] = pd0
+
+            # THE EPHEMERIS'S OWN EPOCH, in capture age. predict_all above ran at
+            # now_w (WALL), so in capture-age units its rows are valid at
+            # now_w - utc0_sample0 -- which is t_now_abs on the WALL axis and is NOT
+            # t_now_abs under --dr-fengine-axis, where t_now_abs lags wall by the
+            # telemetry lag (~0.15 s live). cp_predicted used to extrapolate from
+            # t_now_abs unconditionally; under the axis fix that misplaces every
+            # satellite by rdot*lag metres = K*dop*lag chips, PER SAT, dop-signed --
+            # measured 2026-08-24 as the standing trim law trim ~ -1.0e-3 chips/Hz
+            # x dop (tau 115 ms = the live axis lag), the walkoff limit cycle's root.
+            # The clock median hides the common part, which is why 08-23's eps read
+            # +420 ms against an 8-18 s lag. Born WITH the axis fix (08-17): on the
+            # wall axis the two epochs coincide and the old form was exact.
+            ctx.drp.t_eph_age = ctx.drp.now_w - ctx.utc0_sample0
+
+            # -- receiver-clock solve (the bootstrap) + per-sat integrity residuals:
+            # physical cp at each detection hop (undo the sample-0 back-reference),
+            # minus the prediction, epoch-normalized to now (the offset drifts at
+            # f_chip*(l-a)); the circular median over sats is the receiver clock.
+            ctx.drp.offs = []
+            # DETECTION AGE per sat (task #33, docs 11.22 follow-up). The epoch
+            # normalization below ages each latched detection by drift*(t_now - t_i)
+            # with drift = f_chip*(l-a): the l-a EMA's measured noise is +-0.05-0.07
+            # chips/s, and detections latch for up to the 1276 s per-PRN revisit --
+            # so the normalization term can carry CHIPS of error that scale with THIS
+            # SAT'S staleness. Logged next to each residual so "integrity" can be
+            # judged against age: residuals that grow with age are measuring the
+            # normalization, not the sky.
+            det_age = {}
+            off_inputs = {}
+            for prn, (snr, dop, cp, ref_hop, _nh, _cpl, _car) in sorted(ctx.best.items()):
+                v = ctx.drp.pd.get((ctx.drp.tag, prn))
+                if v is None:
+                    continue
+                t_i = ref_hop / ctx.args.hops_per_sec
+                det_age[prn] = ctx.drp.t_now_abs - t_i
+                # The search's sample-0 back-reference subtracts BOTH the nominal code
+                # advance (t*f_chip mod L -- the 'off' term) and the code-Doppler drift;
+                # add BOTH back. Omitting the nominal term hid inside the solved clock
+                # whenever all detections shared a snapshot hop (every offline check),
+                # but across live scans it scatters by f_chip/hops_per_sec * (ref_hop
+                # mod code-period) -- the wandering "13 chips/s clock" of the first
+                # live deploy (2026-07-13).
+                # #45 STEP 5 (2026-08-12): this reconstruction STAYS the clock-solve
+                # measurement. The payload's cp_at_ref is better conditioned in
+                # principle, but it is referenced at the hop's last sample AND carries
+                # the replica anchor's Doppler term (+52.3711 + 1.39e-4*dop chips vs
+                # this quantity, measured on 26,815 banked detections), so consuming it
+                # means importing the search's fft_len and anchor geometry here -- the
+                # coupling this pass removes -- to fix a conditioning problem the sky
+                # says does not exist: the detection's (cp0, dop) pair is published
+                # together and its embed cancels exactly, giving 0.27-chip measured
+                # continuity. Better conditioned on paper is not better when the price
+                # is a second component's geometry.
+                cp_loc = (cp + t_i * ctx.args.chip_rate_hz
+                          * (1.0 + ctx.args.code_doppler_sign * dop / ctx.args.carrier_hz)
+                          ) % ctx.code_len
+                d_i = (cp_loc - ctx.cp_predicted(v, t_i)
+                       + ctx.drp.drift * (ctx.drp.t_now_abs - t_i)) % ctx.code_len
+                ctx.drp.offs.append((prn, d_i))
+                # WHICH INPUT MOVED. Record cp_loc (NOT raw cp): raw cp swings
+                # ~uniform mod L between passes by construction -- the search embeds
+                # -t_abs*chip_rate*sign*dop/carrier in cp0 and the detection Doppler
+                # jitters +-60 Hz pass to pass, 1696 chips/Hz at t_abs ~2.2 days.
+                # That embed cancels exactly in cp_loc (verified live 2026-08-11:
+                # d(cp_loc) median 0.27 chips over 1423 consecutive detections), so
+                # cp_loc is the ONLY interpretable form of "what the search said".
+                # The 2026-08-11 WHAT-MOVED that printed raw dcp cost half a day:
+                # its thousands-of-chips swings were read as a search fault.
+                off_inputs[prn] = (cp_loc, t_i, dop)
+            # ERRATIC-TRACK GUARD (#39). A satellite whose solve offset JUMPS between
+            # consecutive cycles is not measuring anything: d_i = clk + b_i and both
+            # terms are stable, so a real satellite moves far less than 10 chips per
+            # cycle. MEASURED 2026-08-10: PRN 2 -- which is not L5-capable, so this was
+            # a noise or cross-correlation track -- entered at -3226 chips and then read
+            # +2430 +2997 -4988 +3024 -4193 +2897 +1297 +3231 on successive cycles while
+            # every real satellite sat at 1-6. It dragged the median, the clock latched
+            # at 19:47, fleet-coherent alignment collapsed 0.86 -> 0.15 and engagement
+            # went to zero. Catching it HERE means one satellite is dropped instead of
+            # the whole solve being refused, which is what makes the refusal guard a
+            # last resort rather than the first line.
+            if ctx.args.dr_max_off_jump_chips > 0.0 and ctx.drp.offs:
+                _keep, _drop = split_erratic_offsets(
+                    ctx.drp.offs, ctx.dr_state.setdefault("off_hist", {}), ctx.drp.now_w,
+                    ctx.args.dr_max_off_jump_chips, ctx.args.dr_off_jump_max_age_s, ctx.code_len)
+                if _drop:
+                    _prevI = ctx.dr_state.setdefault("off_inputs_prev", {})
+                    _det = []
+                    for _p, _j in _drop:
+                        # NOT `_now`: that name is a FUNCTION in this scope, and
+                        # assigning it here made every reference to _now() in main()
+                        # a local-before-assignment -- the broker died on startup at
+                        # a line 2000 lines away from this one.
+                        _cur = off_inputs.get(_p)
+                        _was = _prevI.get(_p)
+                        if _cur and _was:
+                            _dcl = ((_cur[0] - _was[0] + ctx.code_len / 2.0) % ctx.code_len
+                                    - ctx.code_len / 2.0)
+                            _det.append("PRN %d: dcp_loc %+.1f  dt_i %+.3fs  "
+                                        "ddop %+.3fHz"
+                                        % (_p, _dcl, _cur[1] - _was[1],
+                                           _cur[2] - _was[2]))
+                    if _det:
+                        _log_rl("offjumpwhy", "clock solve: WHAT MOVED -- " +
+                                " | ".join(_det), every_s=60.0)
+                ctx.dr_state["off_inputs_prev"] = dict(off_inputs)
+                if _drop and len(_keep) >= ctx.args.dr_min_sats:
+                    ctx.drp.offs = _keep
+                    _log_rl("offjump",
+                            "clock solve: EXCLUDED %s -- offset jumped %s chips since "
+                            "the last cycle (bound %.0f). d_i = clk + b_i, both "
+                            "stable; the detection-Doppler embed cancels exactly in "
+                            "cp_loc (2026-08-11), so a jump is a real discontinuity "
+                            "in what the search reported, the model, or the drift "
+                            "normalization -- see WHAT MOVED"
+                            % (", ".join("PRN %d" % p for p, _ in _drop),
+                               ", ".join("%.0f" % j for _, j in _drop),
+                               ctx.args.dr_max_off_jump_chips), every_s=60.0)
+                elif _drop:
+                    # DROPPING THEM WOULD STARVE THE SOLVE. Say so rather than silently
+                    # keeping them: if EVERY satellite jumped, the clock itself moved
+                    # (or the model did), and that is a different fault from one bad
+                    # track -- the MAD guard below is the right net for it.
+                    _log_rl("offjumpkeep",
+                            "clock solve: %d PRN(s) jumped but excluding them leaves "
+                            "%d < --dr-min-sats %d -- keeping all; if this persists the "
+                            "CLOCK moved, not one track"
+                            % (len(_drop), len(_keep), ctx.args.dr_min_sats), every_s=60.0)
+            ctx.dr_state["offs_t"] = ctx.drp.now_w  # freshness stamp for the referee's integrity veto
+            # -- P2a SHADOW: the joint receiver-state solve (task #33, section 3a) ----
+            # `offs` IS the measurement, and always was. d_i = clk + b_i: the physical
+            # code phase the search measured, minus the pure model, with no clock
+            # removed. Today the next 40 lines take its circular median as the clock
+            # and treat the per-sat spread (+-3-7 chips, docs 11.22) as an error to be
+            # gated on; the joint solve reads the SAME numbers as clock PLUS per-sat
+            # bias and estimates both, separated by process noise rather than by a
+            # threshold. Shadow: logged beside the median it will replace, consumed by
+            # NOTHING, so every transcript digest is untouched.
+
+
+            # ⚠️ NOTES MUST ESCAPE EVEN WITH NO DETECTIONS (2026-08-21). The shadow
+            # block below is gated on `offs` -- this chain's OWN detections -- so on a
+            # model-primary chain the filter's notes were never drained and never
+            # logged. Measured: the state rejected 494 measurements in a row with
+            # updates frozen at 3, the DEAF latch fired exactly as designed, and not
+            # one line reached the operator. Identical in shape to the DRCLK defect
+            # recorded a few hundred lines below (the four model-primary chains never
+            # log the clock they consume). Drain first, unconditionally.
+            if ctx.args.rrate_state or ctx.args.joint_shadow:
+                try:
+                    _jsn = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len,
+                                             rereference=ctx.args.joint_rereference)
+                    for _n in _jsn.drain_notes():
+                        _log_rl("joint-note", "JOINT %s: %s" % (ctx.band_id, _n),
+                                every_s=10.0)
+                except Exception:
+                    pass
+            dr_joint_shadow(ctx)
+            dr_clock_solve(ctx)
+            dr_clock_quality(ctx)
+            # ---- ADOPT A BAND SIBLING'S CLOCK (--dr-clock-adopt) -------------------------
+            # Runs AFTER the EMA above on purpose: a chain that solved its own clock this
+            # cycle keeps it, and only a chain that cannot solve one (no detectors -> `offs`
+            # empty -> the block above never ran) takes the sibling's. So enabling the flag
+            # on a detector-bearing chain is a no-op rather than a silent override.
+            #
+            # IN-PROCESS SIBLING FIRST (task #27 M3). A chain co-hosted in this process
+            # has already CONTRIBUTED its clock to the Receiver, so there is nothing to
+            # serialise, flush, age or slew-test: the number is the same object the
+            # sibling is using this cycle. The file route below stays for genuinely
+            # cross-process siblings (the airspy benches, and a transitional split
+            # deployment) and is unchanged. With one chain the lookup returns None and
+            # this branch does not exist.
+            ctx.drp.rx_sib = (ctx.rx.dr_clock(ctx.band_id, exclude=ctx.chain_id, t_now=ctx.t0)
+                       if (ctx.args.dr_clock_adopt and not ctx.drp.offs) else None)
+            # CROSS-BAND BOOTSTRAP (task #34). Without this a band whose chains all lack
+            # detectors NEVER gets a clock: measured on sky, gal_e5b and bds_b2b sat at the
+            # startup prime of 0.00 chips while gps_l5 had bootstrapped 150.74 and both
+            # 1176.45 siblings had adopted it. 150 chips of error against a +-1 chip peak,
+            # so dll_disc read -0.0008 (despreading noise) where E5a railed at -0.59.
+            #
+            # Layer 2 (the cross-band RATE) was necessary and NOT sufficient, and the
+            # distinction is the whole point: a rate keeps you on the peak, a phase puts
+            # you there. With the clock 150 chips out there is no peak to hold.
+            #
+            # ⚠️ THE ADOPTED PHASE CARRIES tau_band -- that is accepted, not overlooked. It
+            # replaces a 150-chip error with a tau_band-sized one, which is inside the
+            # DLL's pull-in, and the loop's steady-state residual then IS tau_band. The
+            # per-band scoping exists to protect that measurement, and by blocking the
+            # bootstrap it was the reason the measurement could never be made. Logged as
+            # BOOTSTRAP, never as "ADOPTED ... same band", so the log distinguishes a
+            # borrowed phase from a measured one.
+            #
+            # MODULUS: a clock may be reduced to a SHORTER code (150.74 mod 10230 is
+            # well-defined) but never lengthened -- a value known mod 10230 says nothing
+            # about which of the 100 periods of a 1023000-chip code it sits in. So a donor
+            # whose code is shorter than ours is refused, which is the same-length guard
+            # generalised rather than dropped.
+            _rx_xband = False
+            if ctx.drp.rx_sib is None and ctx.args.dr_clock_adopt and not ctx.drp.offs:
+                _cand = ctx.rx.dr_clock_any_band(exclude=ctx.chain_id, t_now=ctx.t0)
+                if _cand is not None and (_cand.extra.get("code_length") or 0) >= ctx.code_len:
+                    ctx.drp.rx_sib, _rx_xband = _cand, True
+            if ctx.drp.rx_sib is not None and _rx_xband:
+                _v = float(ctx.drp.rx_sib.value) % ctx.code_len
+                if ctx.dr_state.get("clk") is None or abs(
+                        ((_v - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len)
+                        - ctx.code_len / 2) > 0.5:
+                    _log("dead-reckon: clock BOOTSTRAP %.2f chips from in-process chain "
+                         "'%s' (CROSS-BAND -- carries tau_band; the DLL residual IS that "
+                         "measurement)" % (_v, ctx.drp.rx_sib.src))
+                ctx.dr_state["clk"] = _v
+                ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
+                ctx.dr_state.pop("clk_primed", None)
+            elif ctx.drp.rx_sib is not None and ctx.drp.rx_sib.extra.get("code_length") == ctx.code_len:
+                if ctx.dr_state.get("clk") is None or abs(
+                        ((float(ctx.drp.rx_sib.value) - ctx.dr_state["clk"] + ctx.code_len / 2)
+                         % ctx.code_len) - ctx.code_len / 2) > 0.5:
+                    _log("dead-reckon: clock ADOPTED %.2f chips from in-process chain "
+                         "'%s' (same band %s, no file transport)"
+                         % (float(ctx.drp.rx_sib.value), ctx.drp.rx_sib.src, ctx.band_id))
+                ctx.dr_state["clk"] = float(ctx.drp.rx_sib.value) % ctx.code_len
+                ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
+                # An adopted clock IS a measurement -- the sibling measured it -- so the
+                # prime is spent. If this chain ever gains detectors it should refine by
+                # EMA from here, not snap away from a good number.
+                ctx.dr_state.pop("clk_primed", None)
+                if ctx.drp.rx_sib.extra.get("drift") is not None:
+                    ctx.dr_state["drift"] = float(ctx.drp.rx_sib.extra["drift"])
+            elif ctx.drp.rx_sib is not None:
+                # Same band, different code length: the chips are modular in a different
+                # period, so the number is numerically fine and physically meaningless.
+                # Refuse loudly rather than adopt a plausible wrong value.
+                _log_rl("clkadopt-len",
+                        "dead-reckon: chain '%s' publishes a clock mod %.0f chips but "
+                        "this chain's code is %.0f -- NOT adoptable across code lengths"
+                        % (ctx.drp.rx_sib.src, ctx.drp.rx_sib.extra.get("code_length") or -1, ctx.code_len),
+                        every_s=60.0)
+            dr_clock_adopt(ctx)
+            # ---- MODEL-HEALTH GATES (design (b)): the resilience the fence never gave.
+            # A fence on Doppler MOTION cannot detect a model that is simply WRONG -- a
+            # stale ephemeris, a manoeuvre, a bad orbit. These can, and they use signals we
+            # already compute every cycle:
+            #   (1) EPHEMERIS FRESHNESS -- toe age.
+            #   (2) INTEGRITY RESIDUAL -- measured-vs-predicted code phase, normally
+            #       +-0.2 chips. If it blows up, the model is lying about this satellite.
+            # A demoted satellite falls back to the SEARCH-measured Doppler, and because a
+            # Doppler-source change is just another currency translation, the fallback
+            # costs nothing: no re-anchor, no lock loss.
+            # A single bad sample must never demote a satellite, and a gate that flaps is
+            # worse than no gate: at startup the clock EMA is still converging, so the
+            # residuals legitimately sit near the threshold and the first version of this
+            # flapped UNTRUSTED/TRUSTED every few seconds (observed). Same discipline the
+            # escape referee already uses: PERSISTENCE (N consecutive) + HYSTERESIS
+            # (demote high, restore low) + do not judge at all until the clock has settled.
+            if ctx.dr_state["clk"] is not None and ctx.dr_state.get("drift") is not None:
+                ctx.dr_state.setdefault("integ", {})
+                for prn_i, d_i in ctx.drp.offs:
+                    r_i = (((d_i - ctx.dr_state["clk"] + ctx.code_len / 2.0) % ctx.code_len)
+                           - ctx.code_len / 2.0)
+                    # exported for the escape referee's integrity veto (chips, this
+                    # chain's code; search-vs-model with the solved clock removed)
+                    ctx.dr_state["integ"][prn_i] = (r_i, ctx.drp.now_w)
+                    v_i = ctx.drp.pd.get((ctx.drp.tag, prn_i))
+                    age_i = abs(v_i["toe_age_s"]) if v_i else 1e9
+                    why = None
+                    if age_i > ctx.args.dr_max_eph_age_s:
+                        why = "ephemeris %.1f h old" % (age_i / 3600.0)
+                    elif abs(r_i) > ctx.args.dr_max_integrity_chips:
+                        why = "integrity residual %+.2f chips" % r_i
+                    if why:
+                        ctx.dr_bad[prn_i] = ctx.dr_bad.get(prn_i, 0) + 1
+                    elif abs(r_i) < 0.5 * ctx.args.dr_max_integrity_chips:
+                        ctx.dr_bad[prn_i] = 0          # hysteresis: restore well INSIDE
+                    if (ctx.dr_bad.get(prn_i, 0) >= 3) and prn_i not in ctx.dr_untrusted:
+                        ctx.dr_untrusted[prn_i] = why
+                        # ⚠️ THIS MESSAGE USED TO SAY "falling back to the SEARCH-measured
+                        # Doppler", which is not what happens under the default
+                        # --seed-doppler auto: the seed loop skips the v_dr branch for an
+                        # untrusted sat and lands on `pred` (the almanac predictor, which
+                        # is BRDC too when --almanac-source brdc), NOT on the search's
+                        # `dop`. The search Doppler reaches the seed only with
+                        # --seed-doppler det. Corrected 2026-08-10 while tracing where
+                        # GPS's carrier seed picks up its jitter -- a log line that names
+                        # the wrong source sends the next reader to the wrong code.
+                        _log("MODEL-UNTRUSTED PRN %d (%s, 3 consecutive) -> Doppler source "
+                             "falls back dr -> %s for this sat"
+                             % (prn_i, why,
+                                "pred (almanac)" if ctx.args.seed_doppler != "det" else "det"))
+                    elif ctx.dr_bad.get(prn_i, 0) == 0 and prn_i in ctx.dr_untrusted:
+                        del ctx.dr_untrusted[prn_i]
+                        _log("MODEL-TRUSTED again PRN %d (integrity %+.2f chips)"
+                             % (prn_i, r_i))
+            if ctx.dr_state["clk"] is not None and ctx.drp.offs and ctx.drp.now_w >= ctx.dr_state["log_next"]:
+                ctx.dr_state["log_next"] = ctx.drp.now_w + 30.0
+                resid = ["PRN %d %+.2f a%.0f%s" % (p, r, det_age.get(p, -1),
+                                                   " BAD" if abs(r) > 1.0 else "")
+                         for p, d in ctx.drp.offs
+                         for r in [((d - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len)
+                                   - ctx.code_len / 2]]
+                _log("dead-reckon clock %.2f chips (%.3f us mod %.0f ms, drift "
+                     "%+.3f chips/s); integrity: %s"
+                     % (ctx.dr_state["clk"], ctx.dr_state["clk"] / ctx.args.chip_rate_hz * 1e6,
+                        ctx.drp.t_code * 1e3, ctx.dr_state.get("drift") or 0.0, "; ".join(resid)))
+            # -- seed / re-pin every visible, undetected, unlocked sat from the model --
+            dr_seed(ctx)
+        # a fresh detection re-anchors via the seed loop (search = fallback); a
+        # dropped seed (set below horizon) clears the model-owned state with it.
+        # #83 P3-3b: EXCEPT a model-primary PRN -- its detections feed the filter and
+        # the referee, never the seed, so they must not evict its dr ownership (they
+        # would every single cycle, orphaning the flip the moment it started).
+        for prn in list(ctx.dr_state["seeded"]):
+            if (prn in ctx.best and prn not in ctx.mp_flipped) or prn not in ctx.seeds:
+                ctx.dr_state["seeded"].discard(prn)
+                ctx.dr_state["pin"].pop(prn, None)

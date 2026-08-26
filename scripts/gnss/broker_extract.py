@@ -67,6 +67,9 @@ NAME_MAP = {
     "state_w": "state_w", "_clk_persist_t": "clk_persist_t",
     "_carrier": "car", "_watchdog": "wd", "_nho": "nho",
     "_dls": "dls", "_hold": "hold", "_cpt": "cpt", "_rf": "rf", "_nav": "nav", "_cls": "cls", "payload": "payload",
+    "n2_combiners": "n2_combiners", "last_dets": "last_dets",
+    "_decfb": "decfb", "_decfb_log_t": "decfb_log_t", "dr_bad": "dr_bad",
+    "fe_axis": "fe_axis", "fe_off": "fe_off",
     "HIST_LEN": "hist_len", "MAX_GAP_HOPS": "max_gap_hops", "Q_ALIAS_HZ": "q_alias_hz",
     "CARRIER_EXPLAIN_HZ": "carrier_explain_hz", "CARRIER_VERIFY_EMITS": "carrier_verify_emits",
     "trackers": "trackers", "joint_consume": "joint_consume", "broker_t0": "broker_t0",
@@ -137,6 +140,11 @@ def main_():
     mod_used = {n.id for n in ast.walk(fn)
                 if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
                 and n.id in _module_level(tree)}
+    # A reference to the TARGET MODULE ITSELF becomes a plain local call once the routine
+    # lives inside it: `deadreckon.dr_seed(ctx)` is just `dr_seed(ctx)` from within
+    # deadreckon.py. Strip the prefix rather than importing the module into itself.
+    self_ref = module in mod_used
+    mod_used.discard(module)
     absent = sorted(mod_used - have)
     assert not absent, ("REFUSING: %s uses module-level %s, which `%s` does not import. Add "
                         "the import (or give the constant a shared home) first."
@@ -172,6 +180,8 @@ def main_():
         body[i] = raw.decode("utf-8")
 
     body = [(l[ind:] if l.strip() else l) for l in body]
+    if self_ref:
+        body = [l.replace("%s." % module, "") for l in body]
     newname = routine.lstrip("_")
     body[0] = body[0].replace("def %s():" % routine, "def %s(ctx):" % newname, 1)
     assert body[0].startswith("def %s(ctx):" % newname), body[0][:60]

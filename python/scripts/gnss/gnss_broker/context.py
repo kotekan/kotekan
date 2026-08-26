@@ -48,6 +48,7 @@ class ChainContext(object):
         # ---- services and endpoints ---------------------------------------------------
         "rx", "publisher", "telem_client", "detectors", "dll_combiners",
         "spectrum_endpoints", "spec_writer", "state_dir", "xb_read_dir", "sig_of",
+        "n2_combiners", "last_dets", "decfb", "decfb_log_t", "dr_bad", "fe_axis", "fe_off",
         "combiner", "gating", "capable", "receiver_state", "alm_now",
         "trackers", "joint_consume", "broker_t0", "dr_eph_mod", "dr_min_prn",
         "hist_len", "max_gap_hops", "q_alias_hz",
