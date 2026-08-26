@@ -476,3 +476,127 @@ def instr_kcoh(ctx):
                        next(iter(ctx.dllp.kcoh.values()))["n_probe"],
                        (", %d row-injected" % _row_inj) if _row_inj else ""),
                     every_s=30.0)
+
+
+def instr_spectrum_fit(ctx):
+    """INSTRUMENT: the spectrum delay fit (#32/#53), which feeds the #50 re-seed.
+        
+    ⚠️ ALIGNED GATHER, NOT THE LEGACY POLL. The legacy fleet_spectrum takes whatever each instance
+    accumulated since ITS OWN last poll, so the instances are not summing the same records and
+    each carries a free phase. That is the defect of #52 -- a transport artifact, not a modelling
+    one -- and it is why the aligned path exists.
+        
+    ⚠️ THE PEAK RATIO IS A SHUFFLED-NULL SIGNIFICANCE, built from the same points with values
+    reassigned within each instance. Passing the bar means the fold beat its own null; it is not a
+    tuned constant. It is ALSO not significance at poll cadence in the latched regime -- ratios up
+    to 3.2 attached to contradictory taus seconds apart is what tripped #90's flight 2."""
+    if ctx.spectrum_endpoints:
+        try:
+            # ALIGNED GATHER (task #53). The legacy fleet_spectrum takes
+            # whatever each instance accumulated since ITS OWN last poll, so the
+            # instances are not summing the same records and each one carries a
+            # free phase -- which is the defect of #52, not a modelling
+            # convenience. The addressable path names ONE window index, asks every
+            # instance for exactly that window, rotates each reply onto a single
+            # phase reference (phi0), drops PRNs whose accumulator was re-anchored
+            # mid-window, and ASSERTS that the same index meant the same samples
+            # everywhere. Instances that cannot address windows (a node still on a
+            # pre-#53 config) are EXCLUDED rather than mixed in -- one unaligned
+            # member puts the free phase straight back.
+            #
+            # Behind a flag because replay is strict-ordered: the aligned path
+            # issues TWO GETs per instance (availability, then the window) where
+            # the legacy path issues one, so an old transcript replayed with it on
+            # would diverge. Same pattern as --spectrum-endpoints itself.
+            if ctx.args.spectrum_aligned:
+                _spec, _smeta = fleet_spectrum_aligned(
+                    ctx.spectrum_endpoints, prns=set(ctx.seeds) or None, log=_log,
+                    stale_margin=ctx.args.spectrum_stale_margin)
+                _log_rl("specwin",
+                        "SPEC-WINDOW %s: %d/%d instance(s) served%s%s"
+                        % (_smeta.get("window"), len(_smeta.get("served") or {}),
+                           len(ctx.spectrum_endpoints),
+                           (", %d dropped" % len(_smeta["dropped"]))
+                           if _smeta.get("dropped") else "",
+                           (", %d re-anchored" % len(_smeta["reanchored"]))
+                           if _smeta.get("reanchored") else ""),
+                        every_s=120.0)
+            else:
+                _spec = fleet_spectrum(ctx.spectrum_endpoints,
+                                       prns=set(ctx.seeds) or None)
+            # PER-SUBBAND ARCHIVE (task #25, 2026-08-11). fleet_spectrum ALREADY
+            # returns (freq_id, amplitude, energy, instance) per PRN -- the
+            # per-frequency x per-element product the science side wants -- and
+            # until now every one of those points was collapsed to a single tau by
+            # fit_spectrum_delay and then discarded. This writes the RAW points,
+            # before any collapse. Nothing is recomputed: the cost is one line per
+            # (prn, channel, instance) per poll, a few kB, and no node-side change.
+            #
+            # Deliberately RAW, matching the observables record's contract: no
+            # clock removed, no combine, no normalisation. A per-subband beam map,
+            # a per-element gain solve and the band-health summary are all
+            # functions of these rows, computed offline where they can be redone
+            # when the model improves -- and a COMBINED number can always be
+            # rebuilt from the parts, while parts can never be recovered from a
+            # combined number. That asymmetry is the whole argument for storing
+            # this axis rather than a central estimator over it.
+            if ctx.spec_writer is not None and ctx.drp.t_now_abs is not None:
+                try:
+                    # WALL CLOCK for the archive, not t_now_abs -- the latter is
+                    # seconds since the F-engine's sample-0 anchor (now_w -
+                    # utc0_sample0), so using it named the first file
+                    # gps_l5_19700102.jsonl and would have made every row
+                    # unjoinable with the observables record. The receiver-relative
+                    # time is kept alongside, since it is the one the code phases
+                    # are referenced to.
+                    _n = ctx.spec_writer(ctx.drp.now_w, ctx.band_id, _spec, t_rx=ctx.drp.t_now_abs)
+                    _log_rl("specarch",
+                            "SPEC-ARCHIVE: %d point(s) this poll -> %s"
+                            % (_n, ctx.args.spectrum_archive), every_s=300.0)
+                except Exception as e:
+                    _log_rl("specarch-err",
+                            "spectrum archive write failed: %s" % e, every_s=120.0)
+            for prn, pts in _spec.items():
+                r = fit_spectrum_delay(pts, ctx.args.chip_rate_hz, ctx.args.hops_per_sec)
+                if r is not None:
+                    ctx.dllp.spec_fit[prn] = {"tau_chips": r[0], "peak": r[1],
+                                     "floor": r[2], "n_pts": r[3], "n_inst": r[4]}
+        except Exception as e:
+            _log_rl("fleet-spec", "fleet spectrum: skipped this cycle (%s)" % e)
+        if ctx.dllp.spec_fit:
+            _log_rl("specfit", "SPEC-FIT: " + "; ".join(
+                "PRN %d tau %+.3f chips (p/f %.1fx, %d ch/%d inst)"
+                % (prn, v["tau_chips"], v["peak"] / max(v["floor"], 1e-12),
+                   v["n_pts"], v["n_inst"])
+                for prn, v in sorted(ctx.dllp.spec_fit.items())), every_s=30.0)
+            # FEED b_sat (task #33). Presence-gated by the same lock metric the
+            # reseed logic trusts (deep-certified sig), because P1 measured weak-sat
+            # tau to be self-reference-biased toward zero -- a weak "tau ~ 0" is not
+            # a measurement. The filter adds its own thin-fleet and lobe gates.
+            # ⚠️ DELIBERATELY NOT given the fold-independent prompt path that the
+            # re-pin gate got (#58): this one admits a MEASUREMENT, not a retention
+            # decision, and P1 measured weak-sat tau biased toward zero by
+            # self-reference. "The prompt is on the signal" does not establish that
+            # this poll's tau is trustworthy. Separate question, separate evidence.
+            for prn, v in ctx.dllp.spec_fit.items():
+                if ctx.sig_of(ctx.status.get(prn, {})) >= ctx.args.lock_snr:
+                    ctx.bsat.update(prn, v["tau_chips"], v["n_inst"], ctx.t0)
+            _log_rl("bsat", "BSAT: " + ctx.bsat.summary(ctx.t0), every_s=60.0)
+            # Ride the fleet dict into the publisher: the viewer/status row grows
+            # spec_tau_chips + spec_peak_ratio next to the disc it will one day
+            # replace. EXISTING rows only -- publisher.update() indexes fleet rows'
+            # p_pow/disc/q directly, so a bare fit-only row would crash it; a PRN
+            # the DLL poll missed this cycle is still in the SPEC-FIT log line.
+            for prn, v in ctx.dllp.spec_fit.items():
+                if prn in ctx.dllp.fleet:
+                    ctx.dllp.fleet[prn]["spec_tau"] = v["tau_chips"]
+                    ctx.dllp.fleet[prn]["spec_ratio"] = v["peak"] / max(v["floor"], 1e-12)
+                    ctx.dllp.fleet[prn]["bsat"] = ctx.bsat.get(prn, ctx.t0)
+            # #85: stash (tau, ratio, t) for the model-primary joint feed, which
+            # runs EARLIER in cycle order and so reads last cycle's fit -- one poll
+            # stale, same causality as the trim readback it sits beside.
+            if ctx.dr_state is not None and ctx.drp.t_now_abs is not None:
+                _sy = ctx.dr_state.setdefault("spec_y", {})
+                for prn, v in ctx.dllp.spec_fit.items():
+                    _sy[prn] = (v["tau_chips"],
+                                v["peak"] / max(v["floor"], 1e-12), ctx.drp.t_now_abs)

@@ -35,6 +35,9 @@ second place where behaviour lives, and then nobody can tell which one a bug is 
 """
 
 
+_UNSET = object()
+
+
 class ChainContext(object):
     """Reference holder for one chain's cycle. See the module docstring for the two halves."""
 
@@ -48,7 +51,7 @@ class ChainContext(object):
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp", "drp", "handover", "adm_gate", "g3_ramp",
         # ---- long-lived tables, mutated in place --------------------------------------
-        "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted", "t_now",
+        "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted",
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",
         "mp_cooldown", "mp_flipped", "mp_last_det",
         # ---- per-cycle, refreshed by begin_cycle() ------------------------------------
@@ -59,20 +62,28 @@ class ChainContext(object):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
 
-    def begin_cycle(self, t0=None, best=None, status=None, pred=None, up=None,
-                    probe_set=None):
-        """Refresh the per-cycle half. Called once at the top of each pass, as each value
-        becomes available -- they are not all known at the same point in the cycle, so this
-        takes whatever is being set and leaves the rest alone."""
-        if t0 is not None:
+    def begin_cycle(self, t0=_UNSET, best=_UNSET, status=_UNSET, pred=_UNSET, up=_UNSET,
+                    probe_set=_UNSET):
+        """Refresh the per-cycle half, at each point one of these is rebound.
+
+        Not a single call at the top of the pass: these do not all become available at the
+        same moment (`pred` and `up` are produced by the almanac stage partway through), so
+        each is refreshed where it is actually assigned.
+
+        ⚠️ THE SENTINEL IS NOT PEDANTRY. `up` is legitimately None on a cycle with no
+        visibility solution, and a "skip if None" default would silently leave the PREVIOUS
+        cycle's satellite set in place -- stale, plausible, and pointing at the wrong sky.
+        None must be settable.
+        """
+        if t0 is not _UNSET:
             self.t0 = t0
-        if best is not None:
+        if best is not _UNSET:
             self.best = best
-        if status is not None:
+        if status is not _UNSET:
             self.status = status
-        if pred is not None:
+        if pred is not _UNSET:
             self.pred = pred
-        if up is not None:
+        if up is not _UNSET:
             self.up = up
-        if probe_set is not None:
+        if probe_set is not _UNSET:
             self.probe_set = probe_set

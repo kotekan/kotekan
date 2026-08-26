@@ -47,7 +47,7 @@ NAME_MAP = {
     "_dllp": "dllp", "_drp": "drp", "_handover": "handover", "_adm_gate": "adm_gate",
     "_g3_ramp": "g3_ramp",
     "seeds": "seeds", "dr_state": "dr_state", "bsat": "bsat", "cp_held": "cp_held",
-    "dr_untrusted": "dr_untrusted", "t_now": "t_now",
+    "dr_untrusted": "dr_untrusted",
     "_est_last": "est_last", "_kcoh_rates": "kcoh_rates", "_rf_last": "rf_last",
     "_elem_arch_t": "elem_arch_t", "_elem_poll_t": "elem_poll_t",
     "mp_cooldown": "mp_cooldown", "mp_flipped": "mp_flipped", "mp_last_det": "mp_last_det",
