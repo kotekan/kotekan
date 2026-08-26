@@ -866,6 +866,18 @@ KEPT. The mechanism validated twice (PRN 28 startup arc; PRN 9 half-corrected ta
 TARGETING failed -- "absent" is too weak a proxy for "latched". v3 design in
 fixtures/expectations_20260825_90_v2_flight3.txt: minimum 300 s continuous absence +
 recent-lock gate (q >= 2.0 within 15 min before absence began). NOT armed.*
+*⚠️⚠️ 2026-08-26 — THE 300 s BAR IS MEASURED WRONG, AND D2 (UNARMED) IS WHAT FOUND IT.
+Of 26 live reports at the 300 s bar, 16 had >= 900 s of follow-up and could be scored; the
+other 10 were RIGHT-CENSORED by the end of their log ("never returned" in a log that ends two
+minutes later means nothing, and scoring them would have confirmed the very threshold that
+produced them). **TWELVE OF THE SIXTEEN SELF-HEALED — a 75% false-positive rate** — at a
+median total absence of 620 s (range 312-1115 s). bds_b2a PRN 34 returned 115 s AFTER its
+report: an armed v3 would have stepped a healthy satellite's seed moments before it recovered
+on its own. The sweep is clean: **1200 s suppresses all twelve self-healers and keeps all four
+that never returned**; 1800 s buys nothing further. `LatchDetector.min_absence_s` is now
+1200 s (6808c7b33). #90's disease is defined by having NO re-admission path, and a satellite
+back in seven minutes had one — an absence is evidence of a latch only once it OUTLASTS THE
+DROPOUT POPULATION. **v3 must be re-specified at 1200 s before it is ever armed.***
 The anatomy, fully instrumented in /tmp-era logs + fixtures/expectations_20260824_gap1_gonogo.txt notes:
 * E32 (gal_e5a + gal_e5b, dead-reckoned, dop +1600 falling, C/N0 33-38 dB-Hz) held a REAL
   ~0.5-0.9 chip model-vs-sky offset in its standing C++ trim (readback 32:-0.63..-0.91).
