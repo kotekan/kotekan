@@ -114,7 +114,55 @@ has never fired because `--carrier-gain` is 0.0 in production; arming the carrie
 what #52 wants) would have taken the **C++ trim loop** down, with a traceback pointing at the
 trim code. Found by interface analysis, not by reading. See the buglist's A-FIXED entry.
 
-### Step 1b — WHERE IT STOPPED, and what the next cut needs
+### Step 1b — DONE 2026-08-26: the topology, and the two elephants
+
+| | start of day | after step 1 | now |
+|---|---|---|---|
+| the cycle loop body | 6,940 | 4,834 | **1,045** |
+| largest block inline in the loop | 1,883 | 1,846 | **67** |
+| named routines | 0 | 10 | **29** |
+| max nesting | 15 | 10 | **9** |
+
+**THE KEY MOVE WAS NOT EXTRACTION, IT WAS OWNERSHIP.** Both elephants resisted for the same
+reason: a name assigned only inside a block has no binding in `main()`, so `nonlocal` is a
+SyntaxError and the block cannot become a routine at any price. The fix is an OWNER OBJECT --
+`_DllProducts` and `_DrProducts` -- because **attribute assignment needs no `nonlocal`
+declaration**. Once `fcoh` became `_dllp.fcoh` and `clk_now` became `_drp.clk_now`, everything
+downstream was mechanical.
+
+* **The DLL was two things bolted together**: ~490 lines of independent endpoint polls with a
+  231-line control loop in the middle. Now eight `_instr_*` routines and `_stage_dll_control`,
+  the only part that actuates.
+* **Dead-reckon was a pipeline all along**: predict → collect offsets → solve clock → adopt →
+  seed. Now five `_dr_*` routines, and its working set (`pd`, `offs`, `la`, `tag`, the
+  propagation constants) is named on `_drp`, so each arrow of that pipeline is a field rather
+  than an implicit shared local.
+* **`fleet` is now `_dllp.fleet`.** That dict is the cycle's central state and spent its life
+  as a bare local, which is exactly what let the carrier loop assign a sorted LIST over it (the
+  A-FIXED buglist entry). As an attribute of its producer, that collision is no longer a bug
+  you must catch — it is one you cannot write.
+
+**`broker_iface.py` WAS WRONG THREE TIMES, AND THE GATE CAUGHT IT EACH TIME.** Worth recording,
+because the tool is the thing future work will lean on:
+1. it judged live outputs by LINE ORDER, which stops meaning execution order the moment a stage
+   is promoted (a routine's body sits before the loop but runs later). `up` was called dead,
+   became a local, and three fixtures moved.
+2. it counted a Store inside an already-promoted routine as a main-level binding. It is not.
+3. it treated function PARAMETERS and import aliases as reads of enclosing state.
+The rule it now uses is order-independent: a name is shared only if some other scope READS it
+without first assigning it. All 29 routines were re-audited under the corrected rule; the two
+flags that survive are both provable false positives (a nested closure reading its parent's own
+local, and an `import ... as _rs`).
+
+### Step 1c — what is left, and it is no longer structural
+
+The loop has one block over 60 lines. What remains is not decomposition but **promotion out of
+`main()` entirely**: the 29 routines are still nested, so they close over ~200 shared names
+instead of declaring an interface. Turning them into module-level functions or methods needs
+that interface named — which is what the owner objects have started. Do `_dllp`/`_drp` first
+(they are already coherent), then the seed table and the per-chain config.
+
+### Step 1b (superseded) — where step 1 had stopped
 
 `broker_iface.py map` now reports **zero** lines promotable without `nonlocal`. What remains:
 
