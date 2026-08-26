@@ -89,6 +89,7 @@ from gnss_broker.fleet import (               # noqa: E402
 )
 from gnss_broker.publish import FleetPublisher            # noqa: E402
 from gnss_broker.seed import Seed                          # noqa: E402  (task #83)
+from gnss_broker.admission import AdmissionGate            # noqa: E402  (task #90)
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
@@ -2917,20 +2918,11 @@ def main(argv=None, rx=None, publisher=None):
         _reseed_prns = {int(x) for x in _rs.replace(",", " ").split()}
     else:
         _reseed_prns = None
-    # #90: PRN -> (tau, wall time) of the pending admission strike (a qualifying spec fit
-    # seen while the presence gate said absent). The clause fires on a CONSISTENT
-    # (|dtau| <= 0.5 chips) qualifying fit 60-600 s later; see the flight-2 guards at the
-    # gate. _reseed_admit_cool is the per-PRN post-fire cooldown stamp.
-    _reseed_admit_pend = {}
-    _reseed_admit_cool = {}
-    # PRNs that have been PRESENT at least once this process -- the flight-3 guard's
-    # memory: admission is for present->absent latches, never for never-yet-up sats.
-    _reseed_was_present = set()
-    # (t, n_present) history for the BROWNOUT guard (flight 3b): one entry per cycle,
-    # 600 s window. Admission is for a sat that fell out ALONE; when the CHAIN's present
-    # population collapses (measured 22:55-23:01: e5b 7 -> 3 sats while e5a held), the
-    # fold/band is the patient (#91) and stepping seeds treats the wrong organ.
-    _adm_pop = []
+    # #90 ABSENT-PRN ADMISSION. The strike/cooldown/was-present/population state and all four
+    # flights' guards live in gnss_broker/admission.py, where they are unit-testable offline --
+    # every one of those guards used to need a broker restart against the live fleet to
+    # exercise, which is what made #90 cost four flights in one evening.
+    _adm_gate = AdmissionGate(armed=bool(args.reseed_admit_absent))
     if _reseed_prns:
         _log("SPEC-TAU RE-SEED (#50) active on %s: q<%.2f, spec_peak_ratio>=%.2f, gain %.2f, "
              "cap %.2f chips, span +-%.1f. Fires only where the discriminator has NO GRADIENT "
@@ -8837,80 +8829,33 @@ def main(argv=None, rx=None, publisher=None):
                     # ABSENT fit; presence or a sign change resets the count.
                     _rs_admit = False
                     if _rs_qual and not fl.get("present"):
-                        # FLIGHT-2 GUARDS (F2 tripped 2026-08-25 00:16: fires alternated
-                        # sign chasing a swinging fit; ratios up to 3.2 attached to
-                        # contradictory taus seconds apart, so ratio-at-poll-cadence is not
-                        # significance in the latched regime). A fire now needs two strikes
-                        # that are DECORRELATED (>=60 s apart -- different fold windows) and
-                        # CONSISTENT (|dtau| <= 0.5 chips -- a real offset repeats its
-                        # value; noise and span-edge sidelobes do not), outside a 180 s
-                        # post-fire cooldown. Strike memory survives non-qualifying cycles
-                        # (the flight-2 harness bug cleared it on every ratio dip); it is
-                        # cleared only by an INCONSISTENT qualifying fit (which replaces
-                        # it), expiry, presence, or a fire.
-                        # FLIGHT-3 GUARD (22:1x 08-25): a TRUE latch is present->absent.
-                        # At process start EVERY sat is absent, so the whole constellation
-                        # accrued strikes and 6 fires landed inside the startup solve --
-                        # including PRN 34, never present, whose sidelobe-stable tau GREW
-                        # through two fires (+0.62 -> +0.82 despite the step: a sidelobe
-                        # repeats its value, so it passes the consistency guard). Admission
-                        # therefore requires the sat to have BEEN PRESENT this process:
-                        # weak never-up sats are excluded, the E4-class latch is not.
-                        # ...and a 600 s STARTUP HOLD-OFF (flight 3a, 22:2x): presence
-                        # FLAPS during the startup solve (PRN 9: present q 2.32 at t+28 s,
-                        # absent by t+2 min, fired), so was-present alone does not fence
-                        # the startup regime. A natural latch takes tens of minutes to
-                        # develop; startup convergence self-heals and must not be steered.
-                        _adm_ok93 = (args.reseed_admit_absent and prn in seeds
-                                     and prn in _reseed_was_present
-                                     and time.time() - broker_t0 >= 600.0)
-                        if _adm_ok93:
-                            # FLIGHT-3b BROWNOUT GUARD (23:0x 08-25): 4 fires rode a
-                            # band-wide e5b presence dip (7 -> 3 sats, 6 min; e5a
-                            # steady) -- a #91-class fold event, where seeds are not
-                            # the fault and per-sat steps just add churn. Suppress
-                            # admission while the chain's present count is under 60%
-                            # of its own 600 s peak (baseline >= 4 so tiny
-                            # constellations do not flap the ratio).
-                            _npn = sum(1 for _f0 in fleet.values()
-                                       if isinstance(_f0, dict) and _f0.get("present"))
-                            if not _adm_pop or _adm_pop[-1][0] != t0:
-                                _adm_pop.append((t0, _npn))
-                                while _adm_pop and t0 - _adm_pop[0][0] > 600.0:
-                                    _adm_pop.pop(0)
-                            _base93 = max(n for _, n in _adm_pop)
-                            if _base93 >= 4 and _npn < 0.6 * _base93:
-                                _adm_ok93 = False
-                                _log_rl("rs-admit-bw",
-                                        "RESEED-ADMIT suppressed: band-wide presence "
-                                        "dip (%d present vs %d baseline) -- #91-class, "
-                                        "holding, not re-seeding" % (_npn, _base93),
-                                        every_s=60.0)
-                        if _adm_ok93:
-                            _now_w = time.time()
-                            _tau_now = float(fl["spec_tau"])
-                            if _now_w - _reseed_admit_cool.get(prn, 0.0) >= 180.0:
-                                _pv = _reseed_admit_pend.get(prn)
-                                if (_pv and abs(_tau_now - _pv[0]) <= 0.5
-                                        and _now_w - _pv[1] < 600.0):
-                                    if _now_w - _pv[1] >= 60.0:
-                                        _rs_admit = True
-                                        _reseed_admit_pend.pop(prn, None)
-                                        _reseed_admit_cool[prn] = _now_w
-                                    # consistent but too fresh: HOLD the pending strike
-                                    # unchanged -- the 60 s clock keeps running.
-                                elif _pv is None or abs(_tau_now - (_pv[0] if _pv else 0.0)) > 0.5 \
-                                        or _now_w - _pv[1] >= 600.0:
-                                    _reseed_admit_pend[prn] = (_tau_now, _now_w)
-                                    _log_rl("rs-admit-%d" % prn,
-                                            "RESEED-ADMIT PRN %d: strike 1 (tau %+.3f, "
-                                            "pk/fl %.2f, absent) -- fires on a consistent "
-                                            "(|dtau|<=0.5) qualifying fit 60-600 s from now"
-                                            % (prn, _tau_now, fl.get("spec_ratio") or 0.0),
-                                            every_s=60.0)
+                        # #90 ADMISSION CLAUSE: `present` is the #49 deep gate, and on the
+                        # searchless chains it is a one-way door -- off-peak kills presence,
+                        # and with no search to re-admit (#79 is gps_l5-only) the PRN can
+                        # never earn its correction back. A SEEDED absent PRN may fire the
+                        # re-seed anyway, on evidence that replaces what presence guarded.
+                        # The four flights' guards and their history are in
+                        # gnss_broker/admission.py; the strike clock is the REAL wall clock
+                        # (not the frozen cycle clock) because decorrelation is a statement
+                        # about fold windows, not about cycles.
+                        _npn = sum(1 for _f0 in fleet.values()
+                                   if isinstance(_f0, dict) and _f0.get("present"))
+                        _adm = _adm_gate.decide(prn, float(fl["spec_tau"]), prn in seeds,
+                                                time.time(), t0, _npn,
+                                                time.time() - broker_t0)
+                        _rs_admit = _adm.fire
+                        for _ak, _am, _ae in _adm.logs:
+                            _log_rl(_ak, _am, every_s=_ae)
+                        if _adm.reason == "strike1":
+                            _log_rl("rs-admit-%d" % prn,
+                                    "RESEED-ADMIT PRN %d: strike 1 (tau %+.3f, "
+                                    "pk/fl %.2f, absent) -- fires on a consistent "
+                                    "(|dtau|<=0.5) qualifying fit 60-600 s from now"
+                                    % (prn, float(fl["spec_tau"]),
+                                       fl.get("spec_ratio") or 0.0),
+                                    every_s=60.0)
                     elif fl.get("present"):
-                        _reseed_admit_pend.pop(prn, None)
-                        _reseed_was_present.add(prn)
+                        _adm_gate.note_present(prn)
                     if _rs_qual and (fl.get("present") or _rs_admit):
                         _t = float(fl["spec_tau"])
                         # SPAN EDGE IS A SATURATION, NOT A MEASUREMENT. fit_spectrum_delay scans
