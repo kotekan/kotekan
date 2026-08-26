@@ -2227,7 +2227,23 @@ def main(argv=None, rx=None, publisher=None):
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
         # The code-side twin of the carrier clock_bias: strong detections calibrate the clock so weak
         # ones never drift off-peak. Ephemeris-free (v/c cancels). Bounded +-50 ppm against a rogue fit.
-        if len(_ctx.la_samples) >= args.code_bias_min_sats:
+        # ── #91(c): DO NOT RE-FIT THE CLOCK FROM A COLLAPSING POPULATION ─────────────
+        # --code-bias-min-sats is an ABSOLUTE floor (2). A chain that fell from 7 present
+        # to 2 still passes it -- and that is precisely the population whose fit swung the
+        # (l-a) clock +-96 chips on 2026-08-25 and had its garbage rate (+0.041 ppm, 40x
+        # normal) adopted into every seed, a positive feedback that SUSTAINED the outage.
+        # The relative collapse is what D1 measures, so hold the last good EMA through it.
+        # Holding is the conservative direction: the oscillator does not care that our
+        # satellites went away, and the EMA is slow by design.
+        _cb_frozen = bool(args.code_bias_brownout_hold and _brown.established())
+        if _cb_frozen:
+            _log_rl("la-freeze",
+                    "code-rate clock (l-a) HELD at %s ppm through the brownout (#91c): "
+                    "%d fit sample(s) this cycle are a collapsed population, not a clock"
+                    % ("%+.3f" % (_cb.code_ema * 1e6) if _cb.code_ema is not None else "unset",
+                       len(_ctx.la_samples)),
+                    every_s=60.0)
+        if not _cb_frozen and len(_ctx.la_samples) >= args.code_bias_min_sats:
             raw_cb = statistics.median(_ctx.la_samples)
             if abs(raw_cb) < args.code_bias_max * 1e-6:
                 _cb.code_ema = (raw_cb if _cb.code_ema is None

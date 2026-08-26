@@ -206,6 +206,20 @@ class BrownoutDetector(object):
                 return "BROWNOUT closed: %.0f s (under the reporting length)" % (t - t0)
         return None
 
+    def established(self):
+        """Open AND past `min_len_s` -- the trigger for POLICY, as opposed to suppression.
+
+        ⚠️ NOT THE SAME AS `active()`, AND THE DIFFERENCE IS DELIBERATE. `active()` is eager:
+        D2/D3 should stop reporting the moment presence starts collapsing, because a report
+        made mid-collapse is wrong even if the collapse turns out to be one cycle long. A
+        policy that ACTS on the chain -- #91's trim freeze -- must NOT fire on a flicker:
+        presence flickers constantly (that is the entire reason `--fleet-trim-hold-s`
+        exists), and freezing on every flicker would gut the loop's duty cycle, which is
+        the opposite of what #91 is for. So this waits out the same `min_len_s` the
+        announcement waits out, and a policy consumer should ask for THIS one.
+        """
+        return self.open_ep is not None and self.announced
+
     def active(self):
         """Is a brownout in progress? D2 asks, because a satellite missing during a chain-wide
         collapse is not a per-satellite fault."""

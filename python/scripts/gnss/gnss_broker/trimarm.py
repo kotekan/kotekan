@@ -37,9 +37,27 @@ def stage_fleet_trim_arming(ctx):
         _now_present = [_p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")]
         for _p in _now_present:
             ctx.dls.hold[_p] = time.time()
+        # ── #91(b): THE BROWNOUT FREEZE ──────────────────────────────────────────────
+        # A chain-wide presence collapse is not N satellites setting; it is the FOLD
+        # failing (E3: every sat at once, ~9 min, while the sibling band held). Releasing
+        # the trims turns that fade into a full per-sat re-pull, because an unarmed trim
+        # leaks to erasure in ~5.6 s.
+        #
+        # ⚠️ THE HOLD IS A FREEZE, NOT AN ARM, AND THE DIFFERENCE IS THE WHOLE POINT.
+        # Leaving the PRNs armed would have the C++ loop integrate a NOISE discriminator:
+        # `gnssFleetDll.hpp` says outright that the probe/deep/quality gates are POLICY and
+        # live in this broker, so the fast loop drives whatever it is handed. Disarming
+        # erases the trim. Only zeroing BOTH gain and leak retains the value -- and the
+        # policy already carries them per chain, so the freeze needs no C++ change:
+        # dll_integrate((1-0)*trim + 0*tau) == trim, exactly.
+        #
+        # Per-chain is the right granularity precisely BECAUSE a brownout is chain-wide.
+        _brown_hold = (ctx.args.fleet_trim_brownout_hold_s > 0.0 and ctx.brown.established())
+        _hold_s = (max(ctx.args.fleet_trim_hold_s, ctx.args.fleet_trim_brownout_hold_s)
+                   if _brown_hold else ctx.args.fleet_trim_hold_s)
         # PRESENCE WITH A HOLD, not presence sampled at an instant -- see the flag.
         _armed = sorted(_p for _p, _t in ctx.dls.hold.items()
-                        if time.time() - _t < ctx.args.fleet_trim_hold_s)
+                        if time.time() - _t < _hold_s)
         # THE HANDOVER'S HALF-STEP: record what we are about to hand the fast loop, so
         # NEXT cycle's slow integrator stands down for exactly the PRNs the C++ side is
         # actuating. Recorded before the POST rather than after, because a failed POST
@@ -53,8 +71,9 @@ def stage_fleet_trim_arming(ctx):
             # rate. The slow DLL's dll_gain/dll_leak_present are NOT reused here: those
             # constants are per-update at THIS process's cadence, and reusing them at
             # 23.84 Hz is exactly the limit cycle of 2026-08-15. See the two flags.
-            "gain_per_s": ctx.args.fleet_trim_bandwidth,
-            "leak_per_s": ctx.args.fleet_trim_leak_per_s,
+            # #91(b): frozen during a brownout -- retained, driven by nothing.
+            "gain_per_s": 0.0 if _brown_hold else ctx.args.fleet_trim_bandwidth,
+            "leak_per_s": 0.0 if _brown_hold else ctx.args.fleet_trim_leak_per_s,
             "clamp": 3.0,
             "spacing": ctx.args.dll_spacing,
             "targets": ["%s/set_trim" % t for t in ctx.trackers]}}}
@@ -68,6 +87,14 @@ def stage_fleet_trim_arming(ctx):
             # (trim_ttl_s) rather than standing forever.
             ctx.dls.stat["fail"] += 1
             ctx.dls.stat["last_err"] = str(_e)
+        if _brown_hold:
+            # Loud and rate-limited: a frozen loop is a state someone must be able to see
+            # in the log, or "the trims stopped moving" reads as a dead controller.
+            _log_rl("fleet-trim-freeze",
+                    "%s: #91 BROWNOUT FREEZE -- %d PRN(s) HELD (gain=leak=0, hold %.0f s): "
+                    "standing trims retained, loop driving nothing until presence returns"
+                    % (log_tag() or ctx.args.signal, len(_armed), _hold_s),
+                    every_s=30.0)
         _log_rl("fleet-trim",
                 "FLEET-TRIM %s: %d PRN(s) armed to %s, %d posts / %d failed%s"
                 % (log_tag() or ctx.args.signal, len(_armed), ctx.args.fleet_trim_url,

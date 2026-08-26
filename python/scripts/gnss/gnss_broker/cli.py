@@ -1204,6 +1204,29 @@ def build_parser(description):
                     help="EMA weight for the receiver code-rate clock offset (l-a); slow -> tracks TCXO/OCXO drift")
     ap.add_argument("--code-bias-min-sats", type=int, default=2,
                     help="fitted sats needed before the pooled code-rate clock offset is trusted + seeded to weak sats")
+    # ---- #91: THE BROWNOUT POLICY (default OFF; D1 supplies the trigger) -----------------
+    # A band-wide carrier-coherence collapse takes PRESENCE down chain-wide (E3, 2026-08-25:
+    # gal_e5a's KCOH sig_sum 43,255 -> 97 -> 14, every sat at once, ~9 min, while gal_e5b
+    # held ~100k). Two things then make a 9-minute fade into a full per-sat re-pull:
+    #   (b) every standing trim is RELEASED, and an unarmed trim leaks to erasure in ~5.6 s;
+    #   (c) the (l-a) clock, re-fitted from the COLLAPSING population, swings (+-96 chips
+    #       measured) and its garbage rate is adopted into every seed -- positive feedback
+    #       that sustains the outage.
+    ap.add_argument("--fleet-trim-brownout-hold-s", type=float, default=0.0,
+                    help="#91(b): during a D1 brownout, keep PRNs armed this long after last "
+                         "presence AND freeze the C++ loop (gain=leak=0) for the duration. "
+                         "0 = OFF (release as before). ⚠️ THE HOLD IS A FREEZE, NOT AN ARM: "
+                         "armed alone would integrate a NOISE discriminator (the quality "
+                         "gates are policy and live here, not in the C++ loop), and disarmed "
+                         "erases the trim in ~5.6 s. Only zeroing BOTH gain and leak retains "
+                         "the value. This flag doubles as the CAP -- past it the hold expires "
+                         "and a genuinely set satellite is released normally.")
+    ap.add_argument("--code-bias-brownout-hold", action="store_true",
+                    help="#91(c): during a D1 brownout, HOLD the last (l-a) EMA instead of "
+                         "re-fitting it from the collapsed population. --code-bias-min-sats "
+                         "is an ABSOLUTE floor (2), which a chain that fell from 7 sats to 2 "
+                         "still passes -- and that is exactly the population whose fit swung "
+                         "the clock. The relative collapse is what D1 measures.")
     ap.add_argument("--code-bias-init", type=float, default=None,
                     help="warm-start the receiver code-rate clock offset (l-a) in PPM, e.g. from a prior "
                          "strong-signal (L1 C/A) run -- so a weak band (L1C) seeds on-peak from cycle 1 "

@@ -840,6 +840,23 @@ superpose on the same plot -- which is why per-PRN structure looks so heterogene
 ([[chord-plant-oscillation]]'s ~600 s cycle should be re-examined against #92, not only
 the epoch fix).
 
+*STATUS 08-26: FIX (b) BUILT, DISARMED — `--fleet-trim-brownout-hold-s` (0 = off) and
+`--code-bias-brownout-hold`. D1 supplies the trigger (`BrownoutDetector.established()`, which
+waits out min_len_s — `active()` is deliberately eager for D2/D3 suppression and would freeze
+on a flicker). ⚡ THE KEY POINT: A HOLD IS A FREEZE, NOT AN ARM. `gnssFleetDll.hpp` states the
+probe/deep/quality gates are POLICY and live in the broker, so an ARMED PRN in a brownout has
+the C++ loop integrating a NOISE discriminator (measured in test: −0.78 → −1.47 in 5 s), while
+a DISARMED one "leaks to erasure in ~5.6 s". Only zeroing BOTH `gain_per_s` and `leak_per_s`
+retains the value — and the policy already carries them per chain, so the freeze needs NO C++
+change: `(1−0)*trim + 0*tau == trim`, exactly, for any discriminator. Per-chain granularity is
+right precisely because a brownout is chain-wide. The flag doubles as the CAP (past it the
+hold expires and a genuinely set satellite is released normally). Fix (c) holds the last (l−a)
+EMA through the episode: `--code-bias-min-sats` is an ABSOLUTE floor of 2, which a chain that
+fell from 7 present to 2 still passes — and that is exactly the population whose fit swung the
+clock ±96 chips. Tests in `gnss_broker/test_brownout_policy.py` (the digest gate cannot reach
+this: a replay has no live gather, so the policy dict is never built). ARM ON ONE CHAIN with a
+paired-in-time control; judge on re-pull count after a fold fade.*
+
 **#90 — OFF-PEAK DISARM LATCH on chains with no search admission path (live case: E32, 2026-08-24 22:17-23:0x UTC).**
 *STATUS 08-25 23:3x: flight 3 (v2 guards, "all" PRNs on e5b) DISARMED on F3 -- 8 fires in
 3 populations (startup convergence, band brownout, threshold flicker), ZERO deep-latch
