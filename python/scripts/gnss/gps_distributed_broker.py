@@ -3457,6 +3457,16 @@ def main(argv=None, rx=None, publisher=None):
     navhealth = None  # continuous predicted-vs-air agreement monitor (navbit_health)
     cp_held = set()  # PRNs whose cp anchor is FROZEN this cycle (locked -> DLL owns the residual)
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
+    # ⚠️ NOT ASSIGNED UNTIL THE FIRST DEAD-RECKON REFRESH THAT HAS AN EPHEMERIS (:6213), and
+    # SIX consumers outside that block read it -- the spec-fit archive/stash and the four
+    # joint feeds. Before the first refresh they raised UnboundLocalError; five sit inside a
+    # try that logs and continues, and the sixth (#85's spec_y stash) does not, so it KILLED
+    # THE CHAIN THREAD. Found 2026-08-26 by the first replay of a fresh on-sky transcript --
+    # the equivalence gate earning its keep on a startup-ordering race that production hides
+    # because the ephemeris normally loads before the first spec fit lands.
+    # None, never 0.0: a missing axis time is UNKNOWN, and feeding 0.0 to the joint filter
+    # would be a confident wrong timestamp instead of a skipped measurement.
+    t_now_abs = None
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
     # -- TASK #51: THE CONTROL LOOP'S OWN CLOCK, decoupled from the policy cycle ------------
@@ -8340,7 +8350,7 @@ def main(argv=None, rx=None, publisher=None):
                     # rebuilt from the parts, while parts can never be recovered from a
                     # combined number. That asymmetry is the whole argument for storing
                     # this axis rather than a central estimator over it.
-                    if _spec_writer is not None:
+                    if _spec_writer is not None and t_now_abs is not None:
                         try:
                             # WALL CLOCK for the archive, not t_now_abs -- the latter is
                             # seconds since the F-engine's sample-0 anchor (now_w -
@@ -8395,7 +8405,7 @@ def main(argv=None, rx=None, publisher=None):
                     # #85: stash (tau, ratio, t) for the model-primary joint feed, which
                     # runs EARLIER in cycle order and so reads last cycle's fit -- one poll
                     # stale, same causality as the trim readback it sits beside.
-                    if dr_state is not None:
+                    if dr_state is not None and t_now_abs is not None:
                         _sy = dr_state.setdefault("spec_y", {})
                         for prn, v in spec_fit.items():
                             _sy[prn] = (v["tau_chips"],
@@ -9317,7 +9327,8 @@ def main(argv=None, rx=None, publisher=None):
                 # one, so feeding both is the same data twice per poll (correlated
                 # measurements the filter would treat as independent -> overconfident).
                 # Under the rrate gauge the common mode lands on f_carrier anyway.
-                if _fr_cons is not None and len(_fr_resid) >= 3 and not args.rrate_state:
+                if (_fr_cons is not None and len(_fr_resid) >= 3 and not args.rrate_state
+                        and t_now_abs is not None):
                     _vals = sorted(_fr_resid.values())
                     _sprd = _vals[-1] - _vals[0]
                     _jfc = _joint_state(rx, band_id, args)
@@ -9386,7 +9397,7 @@ def main(argv=None, rx=None, publisher=None):
         _kco = _est_last.get("kcoh")
         if _kco is rr_kcoh_fed.get("last"):
             _kco = None   # same estimate object as last cycle: already fed once
-        if args.rrate_state and args.rrate_kcoh_feed and _kco:
+        if args.rrate_state and args.rrate_kcoh_feed and _kco and t_now_abs is not None:
             rr_kcoh_fed["last"] = _kco
             try:
                 _jrk = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
@@ -9424,7 +9435,7 @@ def main(argv=None, rx=None, publisher=None):
                             every_s=60.0)
             except Exception as e:
                 _log_rl("jrr-kcoh-err", "JRR-KCOH: failed (%s) -- cycle continues" % e)
-        if args.rrate_state and _rr2_resid:
+        if args.rrate_state and _rr2_resid and t_now_abs is not None:
             try:
                 _jrr = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
                 _n_ok = 0
@@ -9532,7 +9543,7 @@ def main(argv=None, rx=None, publisher=None):
         # counter advanced (adr_fine_rate's structural gates), the coarse loop converged,
         # and the command HELD over the span -- the fine value's reference is only exact
         # under a constant command, and gating beats averaging a moving one.
-        if args.rrate_state:
+        if args.rrate_state and t_now_abs is not None:
             try:
                 _rec_dt = 2048.0 / args.hops_per_sec
                 _jpp = []
