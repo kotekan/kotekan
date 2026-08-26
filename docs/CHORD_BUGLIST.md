@@ -294,6 +294,31 @@ not abort. None of that cost code; all of it cost verdicts. So the ranking below
 arm produce a verdict that survives** — which puts the instrument's own silent-failure modes and
 the honesty of its declared uncertainties AHEAD of new features.
 
+### ✅ A-FIXED. THE CARRIER LOOP CLOBBERED THE DLL's `fleet` STATE  [found + fixed 2026-08-26]
+Found by the broker refactor's interface analysis, **never observed on sky, and that is the
+point**: it could not be, because `--carrier-gain` is 0.0 in production so the block is dead.
+
+Inside the carrier integrator, the fleet-seed clause did
+
+    fleet = sorted(car_trim.values())        # a LIST of carrier trims, in Hz
+
+over `fleet`, which is the DLL's per-PRN state **dict** for the entire cycle. Every later
+consumer then indexed a list of floats by PRN -- including the FLEET-TRIM arming block
+(`fleet[_p].get("present")`, the thing that decides which PRNs the C++ trim loop actuates) and
+the fast-trim PRN set. Arming the carrier loop -- which is exactly what #52 and the
+carrier-is-the-gate work want to do -- would have taken the **C++ trim loop** down with it, and
+the traceback would have pointed at the trim code, hundreds of lines from the cause.
+
+Fixed by renaming the local to `_car_seed_vals` (`c09892d78`+1). The name-collision class was
+then swept for systematically: an AST scan for names assigned at cycle-loop top level AND at
+nesting depth >= 3 finds exactly two candidates, and the other (`r`) is comprehension-scoped
+and therefore harmless. **This one is the whole class.**
+
+LESSON, and it generalises past this bug: a 7,000-line loop body sharing one flat namespace has
+no mechanism that makes shadowing visible. The refactor's value here was not the tidier code --
+it was that asking "what does this block actually read and write?" is a question the old shape
+could not be asked.
+
 ### A0. THE SAME PHYSICAL QUANTITY IS ESTIMATED TWICE, PER BAND  [new 2026-08-22, KV]
 E5a and E5b are the SAME SATELLITE on the SAME CLOCK. Geometric range, satellite clock and
 receiver clock are identical; the only physical difference is ionospheric, and iono scales

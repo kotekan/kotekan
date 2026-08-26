@@ -7570,9 +7570,20 @@ def main(argv=None, rx=None, publisher=None):
                 if prn not in car_trim and args.carrier_fleet_seed:
                     # start on the fleet's clock, not at 0: the converged trim is the chain's
                     # deterministic frac-N LO offset, common-mode across sats
-                    fleet = sorted(car_trim.values())
-                    if len(fleet) >= 3:
-                        car_trim[prn] = fleet[len(fleet) // 2]
+                    #
+                    # ⚠️ THIS LOCAL WAS CALLED `fleet` UNTIL 2026-08-26, AND THAT WAS A LATENT
+                    # BUG (found by the refactor's interface analysis, never seen on sky).
+                    # `fleet` is the DLL's per-PRN state dict for the whole cycle; assigning a
+                    # sorted LIST of carrier trims over it left every later consumer --
+                    # including the FLEET-TRIM arming block's `fleet[_p].get("present")` and
+                    # the fast-trim PRN set -- indexing a list of floats by PRN. It has never
+                    # fired only because --carrier-gain is 0.0 in production, so this whole
+                    # block is dead; arming the carrier loop (which is exactly what #52 wants)
+                    # would have taken the C++ trim loop down with it, and the traceback would
+                    # have pointed at the trim code rather than here.
+                    _car_seed_vals = sorted(car_trim.values())
+                    if len(_car_seed_vals) >= 3:
+                        car_trim[prn] = _car_seed_vals[len(_car_seed_vals) // 2]
                 prev_trim = car_trim.get(prn, 0.0)
                 trim = (1.0 - args.carrier_leak) * prev_trim + args.carrier_gain * resid
                 if tracking and args.carrier_max_step > 0.0:
