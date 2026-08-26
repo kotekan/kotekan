@@ -20,6 +20,7 @@ half the number.
 import time
 
 from gnss_broker.transport import _get, _post, _log_rl, log_tag
+from gnss_broker.sky import C_LIGHT
 
 
 def stage_fleet_trim_arming(ctx):

@@ -68,10 +68,27 @@ for t in "$K"/python/scripts/gnss/gnss_broker/test_*.py; do
     fi
 done
 
+# ---- THE STATIC PASS --------------------------------------------------------------------
+# 2026-08-26: trimarm.py used C_LIGHT with no import for ~25 min of production. The digest
+# gate CANNOT see it (the shadow needs a live gather, so the line never runs in replay) and
+# the except clause turned the NameError into a "shadow only" log line. Undefined names in
+# unexecuted paths are exactly what a static checker exists for. Proven able to fail: the
+# pre-fix trimarm.py yields "undefined name 'C_LIGHT'" here.
+static=0
+if ! "$PY" -m pyflakes "$K"/python/scripts/gnss/gnss_broker/*.py \
+        "$K"/python/scripts/gnss/gps_distributed_broker.py 2>&1 \
+        | grep -E "undefined name|referenced before assignment" > "$OUT/static.log"; then
+    :  # no undefined names -- green
+else
+    static=1
+    printf "  RED   %-38s (static)\n" "pyflakes undefined-name pass"
+    head -8 "$OUT/static.log" | sed 's/^/          /'
+fi
+
 n=${#FIXTURES[@]}
-if [ $bad = 0 ] && [ $units = 0 ]; then
+if [ $bad = 0 ] && [ $units = 0 ] && [ $static = 0 ]; then
     echo "GATE GREEN  $n/$n EQUIVALENT + unit tests"
 else
-    echo "GATE RED    $((n-bad))/$n equivalent, $bad fixtures / $units unit modules failed"
+    echo "GATE RED    $((n-bad))/$n equivalent, $bad fixtures / $units unit modules / $static static failed"
 fi
-exit $((bad + units))
+exit $((bad + units + static))
