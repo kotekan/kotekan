@@ -90,6 +90,12 @@ num_elements: num_polarizations * {{ num_dishes }}
 num_local_freq: {{ num_local_freq }}
 num_ev_to_calculate: 2
 
+# The element order of the received visibility matrices, used by hdf5N2Write to look up feed
+# positions and dish grid indices. The correlated element axis comes from the voltage buffer's
+# [..., P, D], so element index = polarization * num_dishes + dish, which is what
+# CHORDTelescope encodes as a station id and what CHORDBeamformer indexes by.
+input_order: CHORDBeamformer
+
 
 telescope:
     name: CHORDTelescope

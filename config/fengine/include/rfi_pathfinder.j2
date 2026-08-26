@@ -153,17 +153,11 @@ run_rfi_S012tilde:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         out_buffers:
             host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
         commands:
-        - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFIS012tilde
           bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012
@@ -188,18 +182,12 @@ run_rfi_SKtilde:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         out_buffers:
             host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
-        - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKtilde
           bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012
@@ -211,18 +199,12 @@ run_rfi_SKbar:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
         out_buffers:
             host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
             host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
         commands:
-        - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKbar
           bf_mask_name: bf_mask
           rfi_S012bar_name: rfi_S012bar
