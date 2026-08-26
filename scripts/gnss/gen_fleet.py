@@ -77,6 +77,98 @@ def flags_from(mapping):
     return out
 
 
+# ---- THE CONTENT GATE (--check-prns) -------------------------------------------------------
+# ⚠️ `--check` compares the GENERATED FILES byte-for-byte and is deliberately offline and
+# deterministic. This is a different question and deliberately a different flag: are the PRN
+# lists in the manifest still TRUE OF THE SKY? They are hand-written strings, and the comments
+# beside them are human snapshots of which slots carry an active satellite. The broker, by
+# contrast, reads live BRDC every cycle -- so the two drift apart the moment the constellation
+# changes, silently, with no error anywhere.
+#
+# THAT DRIFT HAS ALREADY COST US (2026-08-26). The Galileo list says "the range 1-36 minus the
+# slots with no active satellite. Exactly 32 -- full." Measured: FIVE dead slots (1, 14, 18,
+# 22, 24) and E36 ACTIVE BUT EXCLUDED. Nothing was scarce -- we carried five empty slots while
+# locking out a live satellite. And because the broker's noise-probe selector picks the DEEPEST
+# below-horizon PRN, it kept choosing E36, which the node cannot represent; the probe was
+# seeded, never reported, and both Galileo chains silently fell back from the q+p presence gate
+# to BRIGHTNESS-ONLY for want of a third probe.
+#
+# EXIT CODE DISCRIMINATES, because the two findings are not equally bad:
+#   EXCLUDED (active, rises here, no slot)  -> a satellite we cannot see. FAILS.
+#   DEAD     (slot, no active satellite)    -> wasted capacity. WARNS.
+# A dead slot is only a problem when paired with an exclusion, which is exactly today's case.
+SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C"}
+LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
+# ⚠️ CAPABILITY, NOT JUST ACTIVITY -- and without this the gate cries wolf, which is worse
+# than no gate. BeiDou B2a/B2b are BDS-3 signals: C1-C14 are BDS-2 (B1I/B2I era) and do not
+# broadcast them, so their exclusion from the list is CORRECT and must never be reported as a
+# fault. The manifest states the rule beside the list it governs; this encodes it so the check
+# can apply it. A signal absent from this table is assumed to have no PRN restriction.
+MIN_PRN = {"BDS_B2A_P_CS": 19, "BDS_B2B_I": 19}
+# A satellite that only grazes the horizon has no claim on a slot: use the tracking mask, not
+# el > 0. C56 peaks at 6.1 deg over a whole day -- visible to geometry, useless to the loop.
+RISE_DEG = 10.0
+
+
+def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
+    """Compare every manifest PRN list against live BRDC + a 24 h visibility sweep."""
+    import time
+    from datetime import datetime, timezone
+    sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
+    from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all
+
+    lists = {}
+    for ent in (man.get("common", {}).get("extra-signal") or []):
+        name, _, prn_s = str(ent).partition(":")
+        lists[name] = sorted(int(x) for x in prn_s.split(",") if x.strip())
+    if not lists:
+        print("no extra-signal PRN lists in the manifest -- nothing to check")
+        return 0
+
+    eph = parse_rinex_nav(fetch_brdc(datetime.now(timezone.utc)))
+    # Max elevation over a whole day: a satellite that never rises here has no claim on a
+    # slot however active it is (the BeiDou list is already built this way, and says so).
+    now = time.time()
+    peak = {}
+    for k in range(int(hours * 60 / step_min)):
+        pd = predict_all(eph, LAT, LON, ALT, now + k * step_min * 60.0,
+                         mask_deg=-90.0, max_age=86400.0)
+        for key, v in pd.items():
+            if v["el"] > peak.get(key, -90.0):
+                peak[key] = v["el"]
+
+    bad = 0
+    for name in sorted(lists):
+        sysid = SYS_OF.get(name.split("_")[0])
+        if sysid is None:
+            print("%-16s UNKNOWN constellation prefix -- skipped" % name)
+            continue
+        cfg = set(lists[name])
+        lo = MIN_PRN.get(name, 0)
+        active = {p for (s, p) in peak if s == sysid and p >= lo}
+        rises = {p for (s, p) in peak if s == sysid and p >= lo and peak[(s, p)] > rise_deg}
+        dead = sorted(cfg - active)
+        excluded = sorted((active & rises) - cfg)
+        print("%-16s slots %2d | capable+active %2d | rises >%.0f deg %2d%s" %
+              (name, len(cfg), len(active), rise_deg, len(rises),
+               ("  [capability: PRN >= %d]" % lo) if lo else ""))
+        if dead:
+            print("      WARN  %d dead slot(s) (configured, no active satellite): %s"
+                  % (len(dead), dead))
+        if excluded:
+            bad += 1
+            print("      FAIL  %d ACTIVE, CAPABLE and VISIBLE but EXCLUDED: %s  (peak el %s)"
+                  % (len(excluded), excluded,
+                     ", ".join("%.0f" % peak[(sysid, p)] for p in excluded)))
+            if dead:
+                print("            -> %d dead slot(s) available; swap rather than resize."
+                      % len(dead))
+        if not dead and not excluded:
+            print("      ok")
+    print("\nPRN CONTENT GATE %s" % ("RED (a visible satellite has no slot)" if bad else "GREEN"))
+    return 1 if bad else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -92,11 +184,20 @@ def main():
                     help="print the config path this manifest owns for each node and exit. "
                          "Lets a caller ask 'is THIS file one you own?' exactly, rather than "
                          "guessing from the node name -- the suffix lives in the manifest.")
+    ap.add_argument("--check-prns", action="store_true",
+                    help="check the manifest's PRN lists against LIVE BRDC and a 24 h "
+                         "visibility sweep: reports dead slots (warn) and active, visible, "
+                         "unslotted satellites (fail). NOT part of --check, which is offline "
+                         "and byte-deterministic by design; this one needs the network and "
+                         "its answer legitimately changes as the constellation does.")
     a = ap.parse_args()
 
     man_path = a.manifest if os.path.isabs(a.manifest) else os.path.join(K, a.manifest)
     with open(man_path) as f:
         man = yaml.safe_load(f)
+
+    if a.check_prns:
+        return check_prns(man)
 
     if a.print_path:
         sfx = man.get("suffix", "")
