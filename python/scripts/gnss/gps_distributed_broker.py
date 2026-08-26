@@ -113,6 +113,7 @@ from gnss_broker import seeding                             # noqa: E402  (detec
 from gnss_broker import navbits                             # noqa: E402  (off in production)
 from gnss_broker import clsibling                           # noqa: E402  (the CM/CL sibling)
 from gnss_broker import fleetdll                            # noqa: E402  (the fleet DLL shell)
+from gnss_broker.detectors import QSeries                   # noqa: E402  (D0: population-honest q)
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
@@ -215,6 +216,9 @@ def main(argv=None, rx=None, publisher=None):
     _rf = RateFeedState()   # carrier-rate observables + the commanded reference
     _nav = NavDecoders()    # broadcast nav-message decoders (off in production)
     _cls = ClSibling()      # the CM/CL long-code sibling's segment search
+    # D0: the q series that KEEPS the satellites that stopped reporting. Every arm judges on
+    # this, never on the DLL line -- see gnss_broker/detectors.py for what that cost.
+    _qpop = QSeries()
 
     _raw_argv = list(argv if argv is not None else sys.argv[1:])
     if args.signal:
@@ -1557,7 +1561,7 @@ def main(argv=None, rx=None, publisher=None):
         receiver_state=receiver_state, alm_now=_alm_now, cb=_cb,
         almanac_sats=almanac_sats, brdc_alm=brdc_alm, det_fresh=det_fresh,
         state_w=state_w, clk_persist_t=_clk_persist_t,
-        car=_carrier, wd=_watchdog, nho=_nho, dls=_dls, hold=_hold, cpt=_cpt, rf=_rf, nav=_nav, cls=_cls,
+        car=_carrier, wd=_watchdog, nho=_nho, dls=_dls, hold=_hold, cpt=_cpt, rf=_rf, nav=_nav, cls=_cls, qpop=_qpop,
         trackers=trackers, joint_consume=joint_consume, broker_t0=broker_t0,
         dr_eph_mod=dr_eph_mod, dr_min_prn=dr_min_prn,
         hist_len=HIST_LEN, max_gap_hops=MAX_GAP_HOPS, q_alias_hz=Q_ALIAS_HZ,

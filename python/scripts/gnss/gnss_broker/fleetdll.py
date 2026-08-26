@@ -348,6 +348,14 @@ def stage_fleet_dll(ctx):
         codeloop.stage_dll_control(ctx)
         if ctx.dllp.report:
             _log("DLL: " + "; ".join(ctx.dllp.report))
+        # ── D0: THE POPULATION-HONEST q SERIES ────────────────────────────────────────
+        # Recorded for EVERY seeded satellite, present or not -- the line above lists only
+        # the ones that passed the presence gate, so a satellite whose q craters leaves it.
+        # A statistic over that line measures survivors, and survivors always look healthy.
+        ctx.qpop.note_cycle(ctx.t0, set(ctx.seeds), ctx.dllp.fleet)
+        _qline = ctx.qpop.line(log_tag() or ctx.args.signal)
+        if _qline:
+            _log_rl("qpop", _qline, every_s=120.0)
         # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.
         #
         # Carrier and code are locked in ratio: a Doppler error dF drifts the code at

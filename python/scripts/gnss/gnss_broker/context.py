@@ -62,7 +62,7 @@ class ChainContext(object):
         "decoded_entries",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb", "car", "wd", "nho",
-        "dls", "hold", "cpt", "rf", "nav", "cls",
+        "dls", "hold", "cpt", "rf", "nav", "cls", "qpop",
         # ---- long-lived tables, mutated in place --------------------------------------
         "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted",
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",
