@@ -155,3 +155,28 @@ Look for all four, not just "it ran":
 
 ⚠️ The fake fleet's detections are not physically consistent, so the adopted clock wanders
 between cycles. That is the fixture, not the mechanism — do not read convergence into it.
+
+## broker_onsky_e5a_20260826 — the current-regime capture (2026-08-26 00:33 UTC)
+
+The first fixture recorded against the post-08-25 configuration, and the reason the
+refactor's gate is no longer blind: the other three on-sky fixtures were blessed at
+`f2524ab04`/`26211b9a8` and predate the axis fix, the GAP-1 span observable, the carrier
+command, and #92's handover.
+
+* chain `gal_e5a` — model-primary, the maximally-exposed case (every seed comes from the
+  model), with `rrate-phase-span-s 16`, `rrate-command true`, `joint-consume clk,rate`
+  and `fleet-trim-rebase-adjust 1` all live.
+* 113 cycles, 1474 posts, 4628 gets. `selftest`: **GATE GOOD** — determinism holds and the
+  digest moves under a 1e-12 perturbation of `carrier_hz` and `dll_gain`.
+  ⚠️ It does NOT reach `carrier_gain`, `code_bias_alpha`, `bias_alpha`; a refactor touching
+  those is not covered here. That is what the next captures (a search-fed gps_l5 and a
+  BeiDou chain) are for.
+* **Carries its own ephemeris** in `broker_onsky_e5a_20260826.jsonl.gz.brdc/` (DOY 237+238
+  + hourly). `broker_equiv._pin_for` prefers a `<transcript>.brdc/` sidecar over the shared
+  pin, because the shared pin covers only DOY 219-228 and adding to it would move the
+  fingerprint of all four existing fixtures at once.
+
+CAPTURE RECIPE (one chain per run — `_TR` is a module singleton, so a second `open_write`
+clobbers the first): archive the broker log, add `transcript-write: <path>` to ONE chain in
+the yaml, restart, wait ~3 min, remove the flag, restart, gzip, then `bless` FROM A CLEAN
+TREE and `selftest` before trusting it.
