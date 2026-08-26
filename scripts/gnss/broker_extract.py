@@ -22,6 +22,7 @@ rule -- the one that cost gal_e5a a chain death on 2026-08-26.
 """
 
 import ast
+import builtins as builtins_mod
 import importlib.util
 import os
 import sys
@@ -118,6 +119,25 @@ def main_():
     assert not shared, ("REFUSING: `%s` writes shared state %s. `nonlocal` cannot cross a "
                         "module boundary -- give that state an owner object first."
                         % (routine, ", ".join(shared)))
+
+    # ⚠️ A MODULE-LEVEL NAME IS FREE ONLY IF THE TARGET MODULE HAS IT TOO. `analyze_free`
+    # discounts everything bound at the broker's module level -- imports and constants -- on
+    # the grounds that a module-level function can see them. That is true of the BROKER's
+    # module level, not the destination's. `C_LIGHT` is the standing example: a bare NameError
+    # deep inside the moved stage, on whichever path happens to read it first.
+    target_src = ""
+    tpath = os.path.join(PKG, module + ".py")
+    if os.path.exists(tpath):
+        target_src = open(tpath).read()
+    ttree = ast.parse(target_src) if target_src else ast.Module(body=[], type_ignores=[])
+    have = _module_level(ttree) | set(dir(builtins_mod))
+    mod_used = {n.id for n in ast.walk(fn)
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+                and n.id in _module_level(tree)}
+    absent = sorted(mod_used - have)
+    assert not absent, ("REFUSING: %s uses module-level %s, which `%s` does not import. Add "
+                        "the import (or give the constant a shared home) first."
+                        % (routine, ", ".join(absent), module))
 
     free = analyze_free(tree, main, fn)
     unmapped = [f for f in free if f not in NAME_MAP and f != SELF_NAME]
