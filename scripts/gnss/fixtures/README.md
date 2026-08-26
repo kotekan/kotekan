@@ -180,3 +180,20 @@ CAPTURE RECIPE (one chain per run — `_TR` is a module singleton, so a second `
 clobbers the first): archive the broker log, add `transcript-write: <path>` to ONE chain in
 the yaml, restart, wait ~3 min, remove the flag, restart, gzip, then `bless` FROM A CLEAN
 TREE and `selftest` before trusting it.
+
+## broker_onsky_l5_20260826 + broker_onsky_b2a_20260826 (2026-08-26 01:1x-01:2x UTC)
+
+The remaining two current-regime captures, closing the coverage plan in
+docs/CHORD_REWORK_PLAN.md step 0. Both blessed at `4176af3de` from a clean tree, both
+carry their own `.brdc/` sidecar (DOY 237+238 daily + hourly, snapshotted at capture time).
+
+* **`broker_onsky_l5_20260826`** -- the search-fed chain: 164 cycles, 2444 posts.
+  `selftest` GATE GOOD; moved by `carrier_hz`, `hops_per_sec`, `dll_gain`, `bias_alpha`.
+* **`broker_onsky_b2a_20260826`** -- the first BeiDou capture ever: 172 cycles, 2210
+  posts. `selftest` GATE GOOD; moved by `carrier_hz`, `dll_gain`.
+
+⚠️ COVERAGE LEDGER after all seven fixtures: `carrier_gain` is unreachable by design
+(production runs 0.0 -- see the 2026-08-08 note). **`code_bias_alpha` is reached ONLY by
+the old `broker_onsky_l5` (2026-08-08, pre-axis regime)** -- the new l5 capture moves
+`bias_alpha` but not `code_bias_alpha`, so keep the old fixture in the gate; it is the
+sole cover for that knob.
