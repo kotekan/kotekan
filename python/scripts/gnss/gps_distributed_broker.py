@@ -856,7 +856,8 @@ def main(argv=None, rx=None, publisher=None):
     # had NO BINDING IN main() AT ALL, which is what blocked extracting this stage at all.
     class _DrProducts(object):
         """Per-cycle derived values of the dead-reckon stage. None means NOT YET SOLVED."""
-        __slots__ = ("clk_now", "raw_clk")
+        __slots__ = ("clk_now", "raw_clk", "pd", "pd2", "offs", "la", "tag", "drift",
+                     "t_code", "t_fc_abs", "rx_sib", "hold", "mod", "slew_cap", "slew_k")
 
         def __init__(self):
             self.clk_now = None
@@ -867,6 +868,24 @@ def main(argv=None, rx=None, publisher=None):
             # extracting either block silently removed the other's binding. It did exactly
             # that on 2026-08-26, and the gate caught it as a SyntaxError.
             self.raw_clk = None
+            # The stage's working set, shared between its shell and its five sub-stages.
+            # These were bare locals, which is what made the sub-stages inseparable from the
+            # shell: `pd` (the per-satellite model predictions), `offs` (the per-satellite
+            # code offsets the clock is solved from), `la` (the (l-a) receiver code-rate
+            # bias), and the propagation constants the seeding stage needs.
+            self.pd = None
+            self.pd2 = None
+            self.offs = None
+            self.la = None
+            self.tag = None
+            self.drift = None
+            self.t_code = None
+            self.t_fc_abs = None
+            self.rx_sib = None
+            self.hold = None
+            self.mod = None
+            self.slew_cap = None
+            self.slew_k = None
 
     _drp = _DrProducts()
     fe_axis = [None]  # (newest telemetry pow_hop, wall at its fetch) -- #83 the axis fix
@@ -4640,7 +4659,7 @@ def main(argv=None, rx=None, publisher=None):
         
         ⚠️ ITS `legacy clk` COLUMN IS ONE CYCLE STALE -- see the `_DrProducts` note. Do not compare it
         against the joint clock printed beside it without accounting for the lag."""
-        if args.joint_shadow and offs:
+        if args.joint_shadow and _drp.offs:
             try:
                 # P3: ONE state for the whole receiver, band carried as a
                 # measurement LABEL rather than as a separate filter. Two per-band
@@ -4696,8 +4715,8 @@ def main(argv=None, rx=None, publisher=None):
                     # number (INNOV judges the commanded seed; MINNOV judges the
                     # MODEL). Established-rows-only: a birth row's prediction is
                     # its own first measurement. SERVED ONLY (publisher + log).
-                    for _p3, _d3 in offs:
-                        _k3 = (tag, _p3)
+                    for _p3, _d3 in _drp.offs:
+                        _k3 = (_drp.tag, _p3)
                         if (_snr.get(_p3, 0.0) >= args.joint_min_snr
                                 and _k3 in _js._idx
                                 and _js._n.get(_k3, 0) >= args.joint_mask_after):
@@ -4706,11 +4725,11 @@ def main(argv=None, rx=None, publisher=None):
                             _mh = minnov_hist.setdefault(_p3, [])
                             _mh.append((t0, _mi))
                             del _mh[:-120]
-                    _js.cycle([((tag, p), d, args.joint_sigma, band_id)
-                               for p, d in offs
+                    _js.cycle([((_drp.tag, p), d, args.joint_sigma, band_id)
+                               for p, d in _drp.offs
                                if _snr.get(p, 0.0) >= args.joint_min_snr
                                and _track_ok(p)
-                               and not _p2c_hold(_js, (tag, p))],
+                               and not _p2c_hold(_js, (_drp.tag, p))],
                               t_now_abs)
                 # The filter has no logger; drain what it wants an operator to see.
                 # An escape or an incoherent run is a tracking event worth a line --
@@ -4721,17 +4740,17 @@ def main(argv=None, rx=None, publisher=None):
                             every_s=10.0)
                 _drained = True
                 _p2c_tick(_js, t_now_abs)
-                for _p, _d in offs:
-                    if _p2c_hold(_js, (tag, _p)):
-                        _r = _js.wrap(_d - _js.predicted((tag, _p)) - _js.tau(band_id))
-                        if p2c["key"] == (tag, _p):
+                for _p, _d in _drp.offs:
+                    if _p2c_hold(_js, (_drp.tag, _p)):
+                        _r = _js.wrap(_d - _js.predicted((_drp.tag, _p)) - _js.tau(band_id))
+                        if p2c["key"] == (_drp.tag, _p):
                             p2c["samples"].append((t_now_abs - p2c["t0"], _r))
                         _log_rl("p2c-%d" % _p,
                                 "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f chips "
                                 "(b %+.3f, sigma %.3f, tau %+.4f) -- flat = the state "
                                 "carries it"
-                                % (band_id, _p, _js.age((tag, _p), t_now_abs) or 0.0,
-                                   _r, _js.bias((tag, _p)), _js.sigma((tag, _p)),
+                                % (band_id, _p, _js.age((_drp.tag, _p), t_now_abs) or 0.0,
+                                   _r, _js.bias((_drp.tag, _p)), _js.sigma((_drp.tag, _p)),
                                    _js.tau(band_id)),
                                 every_s=30.0)
                 if now_w >= dr_state.get("joint_log_next", 0.0):
@@ -4776,7 +4795,7 @@ def main(argv=None, rx=None, publisher=None):
         # No SNR gate to mirror -- a model-primary chain has no detection SNR. The
         # protection is the filter's own innovation gate plus birth_max, which is why
         # those were built with an escape hatch.
-        elif args.joint_model_primary and args.joint_shadow and seeds and not offs:
+        elif args.joint_model_primary and args.joint_shadow and seeds and not _drp.offs:
             try:
                 _js = rx.joint_receiver(band_id, CODE_LEN,   # warm start, see above
                                         clk0=float(dr_state.get("clk") or 0.0))
@@ -4786,7 +4805,7 @@ def main(argv=None, rx=None, publisher=None):
                 _mm = []
                 _fd_skip = 0
                 for _prn, _sd in seeds.items():
-                    _v = pd.get((tag, _prn))
+                    _v = _drp.pd.get((_drp.tag, _prn))
                     if _v is None or "ref_hop" not in _sd:
                         continue
                     # THE GATE THIS FEED NEVER HAD. A dead-reckoned seed carries no
@@ -4842,7 +4861,7 @@ def main(argv=None, rx=None, publisher=None):
                             continue
                     _held = dr_seed_phys(_sd, _h1, args.hops_per_sec,
                                          args.chip_rate_hz, args.carrier_hz,
-                                         args.code_doppler_sign, _DR_MOD)
+                                         args.code_doppler_sign, _drp.mod)
                     # ⚠️ THE TRIM THE TRACKER ACTUALLY APPLIED, not the one this
                     # process happens to hold (2026-08-21). Authority over the code
                     # trim is per-PRN: Python integrates only for PRNs the C++ fleet
@@ -4865,20 +4884,20 @@ def main(argv=None, rx=None, publisher=None):
                         else dll_trim.get(_prn, 0.0))
                     _y = ((_held + _trim_applied
                            + (_sp[0] if _sp_ok else 0.0)
-                           - cp_predicted(_v, _th)) % _DR_MOD)
-                    if _p2c_hold(_js, (tag, _prn)):
+                           - cp_predicted(_v, _th)) % _drp.mod)
+                    if _p2c_hold(_js, (_drp.tag, _prn)):
                         if True:
-                            _r = _js.wrap(_y - _js.predicted((tag, _prn)) - _js.tau(band_id))
-                            if p2c["key"] == (tag, _prn):
+                            _r = _js.wrap(_y - _js.predicted((_drp.tag, _prn)) - _js.tau(band_id))
+                            if p2c["key"] == (_drp.tag, _prn):
                                 p2c["samples"].append((t_now_abs - p2c["t0"], _r))
                             _log_rl("p2c-%d" % _prn,
                                     "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f "
                                     "chips (b %+.3f, tau %+.4f)"
                                     % (band_id, _prn,
-                                       _js.age((tag, _prn), t_now_abs) or 0.0,
-                                       _r, _js.bias((tag, _prn)), _js.tau(band_id)), every_s=30.0)
+                                       _js.age((_drp.tag, _prn), t_now_abs) or 0.0,
+                                       _r, _js.bias((_drp.tag, _prn)), _js.tau(band_id)), every_s=30.0)
                         continue
-                    _mm.append(((tag, _prn), _y, args.joint_sigma, band_id))
+                    _mm.append(((_drp.tag, _prn), _y, args.joint_sigma, band_id))
                 # ── #85: THE SET GATE. Eligibility is a property of the SET --
                 # 1-2 measurements have spread ~ 0 by construction and a single
                 # bad y IS the poll (the 01:xx degenerate feed). Withhold rather
@@ -4963,12 +4982,12 @@ def main(argv=None, rx=None, publisher=None):
                             _dfl = {}
                         for _dk, _dyy, _dsg, _dbd in _mm[:4]:
                             _dsd = seeds.get(_dk[1]) or {}
-                            _dv = pd.get(_dk)
+                            _dv = _drp.pd.get(_dk)
                             if _dv is None or "ref_hop" not in _dsd:
                                 continue
                             _dheld = dr_seed_phys(_dsd, _h1, args.hops_per_sec,
                                                   args.chip_rate_hz, args.carrier_hz,
-                                                  args.code_doppler_sign, _DR_MOD)
+                                                  args.code_doppler_sign, _drp.mod)
                             _dcp = cp_predicted(_dv, _th)
                             _darm = _dk[1] in _ft_armed_last
                             _dtrim = (float((_ft_readback.get(_dk[1]) or {})
@@ -4987,7 +5006,7 @@ def main(argv=None, rx=None, publisher=None):
                                     ("%+.4f" % _ddisc) if _ddisc is not None else "-",
                                     ("%.2f" % _dq) if _dq is not None else "-",
                                     _dcp,
-                                    ((_dheld + _dtrim - _dcp) % _DR_MOD),
+                                    ((_dheld + _dtrim - _dcp) % _drp.mod),
                                     _drp.clk_now, bsat.get(_dk[1], now_w),
                                     _drp.clk_now + bsat.get(_dk[1], now_w), _js.clk))
                     _nok = _js.cycle(_mm, t_now_abs)
@@ -5001,7 +5020,7 @@ def main(argv=None, rx=None, publisher=None):
                                 "DEGENERATE (no per-sat info)" if _sp < 0.05
                                 else "per-sat info PRESENT",
                                 " ".join("%s%d y%+.3f r%+.3f b%+.3f"
-                                         % (tag, p, y, r, b)
+                                         % (_drp.tag, p, y, r, b)
                                          for p, y, r, b in sorted(_diag))))
                 if now_w >= dr_state.get("joint_log_next", 0.0):
                     dr_state["joint_log_next"] = now_w + 30.0
@@ -5024,10 +5043,10 @@ def main(argv=None, rx=None, publisher=None):
         steps the median by 1-2 chips when membership churns, on a ~600 s timescale, and that churn
         was THE DECAY ROOT (chord-clock-median-churn): a clock that moves because the population moved
         looks exactly like a clock that moved because the receiver did."""
-        if len(offs) >= args.dr_min_sats:
-            ref = offs[0][1]
+        if len(_drp.offs) >= args.dr_min_sats:
+            ref = _drp.offs[0][1]
             cen = sorted(((d - ref + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
-                         for _, d in offs)
+                         for _, d in _drp.offs)
             _drp.raw_clk = (cen[len(cen) // 2] + ref) % CODE_LEN
             # DO THE SATELLITES AGREE? A median over >= dr_min_sats is only a
             # measurement if its inputs cluster. Detections from a starved fleet are
@@ -5072,7 +5091,7 @@ def main(argv=None, rx=None, publisher=None):
                          "a measurement: holding a clock the sky disagrees with is "
                          "self-sustaining, so a fresh draw is strictly better than a "
                          "latch. Was %s"
-                         % (_held_s, _mad, args.dr_max_solve_mad_chips, len(offs),
+                         % (_held_s, _mad, args.dr_max_solve_mad_chips, len(_drp.offs),
                             ("%.2f chips" % dr_state["clk"])
                             if dr_state.get("clk") is not None else "UNSET"))
                     dr_state["clk"] = None
@@ -5085,7 +5104,7 @@ def main(argv=None, rx=None, publisher=None):
                             "(bound %.0f) -- this is a median over NOISE, not a "
                             "measurement; holding clk %s (%.0f s, re-bootstrap at "
                             "%.0f s)"
-                            % (len(offs), _mad, args.dr_max_solve_mad_chips,
+                            % (len(_drp.offs), _mad, args.dr_max_solve_mad_chips,
                                ("%.2f" % dr_state["clk"]) if dr_state.get("clk")
                                is not None else "UNSET", _held_s,
                                args.dr_solve_refused_rebootstrap_s),
@@ -5100,7 +5119,7 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ A PRIME IS NOT A MEASUREMENT. Seeding the clock with a fixed value silences the alarm that
         the solve is failing rather than making it succeed -- `--dr-clock-chips 0.0` did exactly that
         once, and the snap it hid was real."""
-        if len(offs) >= args.dr_min_sats and _drp.raw_clk is not None:
+        if len(_drp.offs) >= args.dr_min_sats and _drp.raw_clk is not None:
             prev_raw = dr_state.get("raw_prev")
             # A primed drift is authoritative (the GPSDO rate is a band constant):
             # never EMA it toward pair-differences of solutions built from UNCHANGED
@@ -5145,13 +5164,13 @@ def main(argv=None, rx=None, publisher=None):
                 dr_state["clk"] = _drp.raw_clk
                 _log("dead-reckon: receiver clock BOOTSTRAP %.2f chips = %.3f us "
                      "(mod %.0f ms; %d sats%s)"
-                     % (_drp.raw_clk, _drp.raw_clk / args.chip_rate_hz * 1e6, t_code * 1e3, len(offs),
+                     % (_drp.raw_clk, _drp.raw_clk / args.chip_rate_hz * 1e6, _drp.t_code * 1e3, len(_drp.offs),
                         "" if was is None else
                         "; REPLACES the %.2f-chip prime -- a prime is a seed, not a "
                         "measurement" % was))
             else:
                 clk = (dr_state["clk"]
-                       + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
+                       + _drp.drift * (now_w - dr_state["clk_t"])) % CODE_LEN
                 step = ((_drp.raw_clk - clk + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
                 dr_state["clk"] = (clk + args.dr_clock_alpha * step) % CODE_LEN
             dr_state["clk_t"] = now_w
@@ -5178,7 +5197,7 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ THE FAILURE MODE IS SILENT AND PER-BAND. gal_e5b and bds_b2b adopted (l-a) ZERO times while
         their 1176.45 MHz siblings adopted it 102 and 107 times -- 150 chips of error against a +-1
         chip peak, with nothing in the logs saying so."""
-        if (_rx_sib is None and args.dr_clock_adopt and not offs and _xb_read_dir
+        if (_drp.rx_sib is None and args.dr_clock_adopt and not _drp.offs and _xb_read_dir
                 and args.state_dongle):
             try:
                 import receiver_state as _rs  # optional module, imported where used
@@ -5306,7 +5325,7 @@ def main(argv=None, rx=None, publisher=None):
         sawtooth. The bound on it is a safety argument, not a tuning knob."""
         if dr_state["clk"] is not None:
             _drp.clk_now = (dr_state["clk"]
-                       + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
+                       + _drp.drift * (now_w - dr_state["clk_t"])) % CODE_LEN
             # -- P2b CONSUMER "clk" (2026-08-11, the decay root's fix) -------------
             # clk_now above is the circular MEDIAN of per-sat offsets whose per-sat
             # biases span ~11 chips; with 4-7 sats in the solve, every membership
@@ -5387,11 +5406,11 @@ def main(argv=None, rx=None, publisher=None):
                 dr_state["jslew_log_next"] = now_w + 30.0
                 _cmp = []
                 for (_ct, _p) in list(_jr3._idx):
-                    if _ct != tag:
+                    if _ct != _drp.tag:
                         continue
                     _lo = _drp.clk_now + bsat.get(_p, now_w)
                     _jo = _jr3.predicted((_ct, _p))
-                    _dd = ((_jo - _lo + _DR_MOD / 2.0) % _DR_MOD) - _DR_MOD / 2.0
+                    _dd = ((_jo - _lo + _drp.mod / 2.0) % _drp.mod) - _drp.mod / 2.0
                     _cmp.append((_p, _dd, _jr3.sigma((_ct, _p)) or 0.0))
                 if _cmp:
                     _cmp.sort(key=lambda x: -abs(x[1]))
@@ -5401,7 +5420,7 @@ def main(argv=None, rx=None, publisher=None):
                             sorted(abs(c[1]) for c in _cmp)[len(_cmp) // 2],
                             " ".join("PRN%d %+.2f(s%.2f)" % c for c in _cmp[:6])))
             planned = []
-            for (ctag, prn), v in sorted(pd.items()):
+            for (ctag, prn), v in sorted(_drp.pd.items()):
                 # SIGNAL CAPABILITY first (see --dr-min-prn / --signal-capability): a
                 # satellite that does not broadcast this signal must never be seeded,
                 # however visible and however well-predicted it is. The model will
@@ -5419,7 +5438,7 @@ def main(argv=None, rx=None, publisher=None):
                 # ~1-chip bar); a flipped sat's seed is the JOINT model's and its
                 # referee is MINNOV -- gating the slew on the legacy flag would
                 # orphan the sat seedless (its detections bypass re-anchor).
-                if (ctag != tag or v["el"] < args.mask_deg + 0.5
+                if (ctag != _drp.tag or v["el"] < args.mask_deg + 0.5
                         or (prn in best and prn not in mp_flipped)
                         or prn in probe_set or prn in cp_held
                         or (prn in dr_untrusted
@@ -5490,7 +5509,7 @@ def main(argv=None, rx=None, publisher=None):
                 # TLE<->PRN mapping mismaps some birds, and BRDC is the precision
                 # source anyway); clock_bias still comes from the TLE-vs-measured
                 # solve -- it's a receiver constant, common to both models.
-                v2 = pd2.get((ctag, prn))
+                v2 = _drp.pd2.get((ctag, prn))
                 dop_geo = -v["range_rate_mps"] / dr_eph_mod.C_LIGHT * args.carrier_hz
                 dop_seed = args.doppler_sign * dop_geo + clock_bias
                 # ⚠️ THE HALVED DRATE (found 2026-08-22, the per-sat ramp's root).
@@ -5541,14 +5560,14 @@ def main(argv=None, rx=None, publisher=None):
                 # FIRE: the chains that slew have no satellites in the state, and
                 # the chain with satellites in the state does not slew. Covering
                 # cp0 as well is what gives it a live arm today, on GPS births.
-                if _dr_hold:
+                if _drp.hold:
                     continue      # clock is still a prime; see the withhold note
                 _leg_off = _drp.clk_now + bsat.get(prn, now_w)
                 _off = _leg_off
                 _off_sigma = None      # set only when a JOINT offset is adopted
                 _jr3 = _joint_state(rx, band_id, args)
-                _joff = (_jr3.predicted((tag, prn))
-                         if (_jr3 is not None and (tag, prn) in _jr3._idx)
+                _joff = (_jr3.predicted((_drp.tag, prn))
+                         if (_jr3 is not None and (_drp.tag, prn) in _jr3._idx)
                          else None)
                 if _joff is not None:
                     # ⚠️ WRAP AT THE MODULUS THE TWO ACTUALLY SHARE, AND APPLY THE
@@ -5576,18 +5595,18 @@ def main(argv=None, rx=None, publisher=None):
                             "SEED-OFFSET PRN %d (%s): joint %+.3f vs legacy %+.3f "
                             "chips (diff %+.3f mod %.0f, sigma %.3f)%s"
                             % (prn, "slew" if _slew else "cp0", _joff, _leg_off,
-                               _d3, CODE_LEN, _jr3.sigma((tag, prn)) or 0.0,
+                               _d3, CODE_LEN, _jr3.sigma((_drp.tag, prn)) or 0.0,
                                "" if _ok3 else "  REFUSED (> %.1f chips)"
                                % args.joint_slew_max_chips),
                             every_s=60.0)
                     if "slew" in joint_consume and _ok3:
                         _off = _leg_off + _d3
                         # ...and how well we know it, for the rate limit below.
-                        _off_sigma = _jr3.sigma((tag, prn))
-                cp0 = ((cp_predicted(v, t_fc_abs) + _off)
-                       - t_fc_abs * args.chip_rate_hz
+                        _off_sigma = _jr3.sigma((_drp.tag, prn))
+                cp0 = ((cp_predicted(v, _drp.t_fc_abs) + _off)
+                       - _drp.t_fc_abs * args.chip_rate_hz
                          * (1.0 + args.code_doppler_sign
-                            * dop_seed / args.carrier_hz)) % _DR_MOD
+                            * dop_seed / args.carrier_hz)) % _drp.mod
                 if args.dr_dry_run:
                     planned.append("PRN %d el %.0f cp0 %.1f dop %+.0f rate %+.2f"
                                    % (prn, v["el"], cp0, dop_seed, drate))
@@ -5613,19 +5632,19 @@ def main(argv=None, rx=None, publisher=None):
                     # subtraction, so the skew cancels against the tracker's
                     # back-reference to first order. A cross-epoch DIFFERENCE has no
                     # such cancellation.)
-                    h1 = int(round(t_fc_abs * args.hops_per_sec))
+                    h1 = int(round(_drp.t_fc_abs * args.hops_per_sec))
                     t_h = h1 / args.hops_per_sec
                     _held = dr_seed_phys(
                         seeds[prn], h1, args.hops_per_sec, args.chip_rate_hz,
-                        args.carrier_hz, args.code_doppler_sign, _DR_MOD)
+                        args.carrier_hz, args.code_doppler_sign, _drp.mod)
                     # The clock+bias offset is _off, computed once above so the birth
                     # phase and the slew target cannot disagree. b_sat is "how wrong
                     # the pure model is for THIS satellite", which is why this is the
                     # consumer aimed at the ~600 s plant oscillation (slew-to-model
                     # fighting trim-to-sky, with the model per-sat +-1-6 chips out).
-                    _model = (cp_predicted(v, t_h) + _off) % _DR_MOD
-                    _dcp = ((_model - _held + _DR_MOD / 2.0) % _DR_MOD
-                            ) - _DR_MOD / 2.0
+                    _model = (cp_predicted(v, t_h) + _off) % _drp.mod
+                    _dcp = ((_model - _held + _drp.mod / 2.0) % _drp.mod
+                            ) - _drp.mod / 2.0
                     # ── THE RATE LIMIT, AND WHY IT IS THE WHOLE STORY ──
                     # _DR_SLEW_CAP is 0.05 chips per event and 47% of steps sat
                     # exactly on it: satellites 5-8 chips from their model were
@@ -5669,14 +5688,14 @@ def main(argv=None, rx=None, publisher=None):
                     # move fast toward it at all; past dr_slew_trust_sigma we keep
                     # the crawl. An offset with no sigma (no joint state, or
                     # refused) is untrusted by construction.
-                    _cap = _DR_SLEW_CAP
-                    if (args.dr_slew_cap_acq > _DR_SLEW_CAP
+                    _cap = _drp.slew_cap
+                    if (args.dr_slew_cap_acq > _drp.slew_cap
                             and _off_sigma is not None
                             and math.isfinite(_off_sigma)
                             and _off_sigma <= args.dr_slew_trust_sigma
                             and abs(_dcp) > args.dr_slew_near_chips):
                         _cap = args.dr_slew_cap_acq
-                    _step = max(-_cap, min(_cap, _DR_SLEW_K * _dcp))
+                    _step = max(-_cap, min(_cap, _drp.slew_k * _dcp))
                     # Re-anchor at h1 with the FRESH model doppler/rate (kills the
                     # dt^2 linearization error a held seed accumulates) but at the
                     # HELD phase plus the bounded step -- never at the model's own
@@ -5689,7 +5708,7 @@ def main(argv=None, rx=None, publisher=None):
                         code_phase_chips=dr_cp0(
                             _held + _step, t_h, dop_seed,
                             args.chip_rate_hz, args.carrier_hz,
-                            args.code_doppler_sign, _DR_MOD),
+                            args.code_doppler_sign, _drp.mod),
                         code_phase_rate=cp_rate_from_code_bias(
                             dop_seed, la, args.hops_per_sec,
                             args.chip_rate_hz, args.carrier_hz),
@@ -5704,7 +5723,7 @@ def main(argv=None, rx=None, publisher=None):
                             code_phase_at_ref_chips=seed_phase_at_ref(
                                 _held + _step, dop_seed, args.chip_rate_hz,
                                 args.hops_per_sec, args.carrier_hz,
-                                args.code_doppler_sign, _DR_MOD,
+                                args.code_doppler_sign, _drp.mod,
                                 args.search_fft_len or None))
                     dr_state["pin"][prn] = now_w
                     _log_rl("drslew-%d" % prn,
@@ -5718,7 +5737,7 @@ def main(argv=None, rx=None, publisher=None):
                          " rate %+.2f)" % (prn, v["el"], cp0, dop_seed, drate))
                 dll_trim.pop(prn, None)  # any old trim served the OLD anchor
                 dll_last.pop(prn, None)
-                _rh_birth = int(round(t_fc_abs * args.hops_per_sec))
+                _rh_birth = int(round(_drp.t_fc_abs * args.hops_per_sec))
                 # ── BIRTH-STEP DECOMPOSITION (2026-08-22) ────────────────────────
                 # Measured overnight: when several satellites are re-born in the SAME
                 # cycle they all step by the SAME amount -- E5 +142.84, E13 +142.76,
@@ -5748,10 +5767,10 @@ def main(argv=None, rx=None, publisher=None):
                     try:
                         _oldphys = dr_seed_phys(_pv, _rh_birth, args.hops_per_sec,
                                                 args.chip_rate_hz, args.carrier_hz,
-                                                args.code_doppler_sign, _DR_MOD)
-                        _newphys = (cp_predicted(v, t_fc_abs) + _off) % _DR_MOD
-                        _bstep = ((_newphys - _oldphys + _DR_MOD / 2.0) % _DR_MOD
-                                  ) - _DR_MOD / 2.0
+                                                args.code_doppler_sign, _drp.mod)
+                        _newphys = (cp_predicted(v, _drp.t_fc_abs) + _off) % _drp.mod
+                        _bstep = ((_newphys - _oldphys + _drp.mod / 2.0) % _drp.mod
+                                  ) - _drp.mod / 2.0
                         # ── #92 THE HANDOVER (--fleet-trim-rebase-adjust) ──
                         # The seed is about to move by _bstep while the C++
                         # standing trim carries the SAME chips: post the
@@ -5816,9 +5835,9 @@ def main(argv=None, rx=None, publisher=None):
                     seeds[prn].put(
                         "phase_xport", epoch=_rh_birth,
                         code_phase_at_ref_chips=seed_phase_at_ref(
-                            (cp_predicted(v, t_fc_abs) + _off) % _DR_MOD,
+                            (cp_predicted(v, _drp.t_fc_abs) + _off) % _drp.mod,
                             dop_seed, args.chip_rate_hz, args.hops_per_sec,
-                            args.carrier_hz, args.code_doppler_sign, _DR_MOD,
+                            args.carrier_hz, args.code_doppler_sign, _drp.mod,
                             args.search_fft_len or None))
                 dr_state["seeded"].add(prn)
                 dr_state["pin"][prn] = now_w
@@ -5827,7 +5846,7 @@ def main(argv=None, rx=None, publisher=None):
             # model-owned sats drop on the BRDC elevation (they're exempt from
             # the TLE horizon drop -- see the coast loop), or on capability
             for prn in list(dr_state["seeded"]):
-                v = pd.get((tag, prn))
+                v = _drp.pd.get((_drp.tag, prn))
                 if prn < dr_min_prn or (_capable is not None and prn not in _capable):
                     _log("dead-reckon drop PRN %d (does not broadcast this signal)" % prn)
                     seeds.pop(prn, None)
@@ -7029,7 +7048,7 @@ def main(argv=None, rx=None, publisher=None):
             # So: withhold while the clock is admittedly a guess, but only for
             # --dr-clock-wait-s, then seed on the prime and SAY SO. A guard that can deadlock
             # the instrument is worse than the artefact it removes.
-            _dr_hold = False
+            _drp.hold = False
             if dr_state.get("clk_primed") and args.dr_clock_wait_s > 0.0:
                 _waited = now_w - dr_state.get("clk_t", now_w)
                 if _waited < args.dr_clock_wait_s:
@@ -7042,7 +7061,7 @@ def main(argv=None, rx=None, publisher=None):
                                abs(dr_state.get("clk") or 0.0) or 150.0),
                             every_s=10.0)
                     dr_state["next"] = now_w + min(2.0, args.dr_refresh_s)
-                    _dr_hold = True
+                    _drp.hold = True
                 # ⚠️ elif, NOT a second if. Written as a bare `if` this fired in the SAME
                 # MILLISECOND as the withhold above -- "seeding on the PRIME after waiting
                 # 30 s" logged 0 s in, because reaching the warning never depended on the
@@ -7074,11 +7093,11 @@ def main(argv=None, rx=None, publisher=None):
             # it needs absolute time to half a primary period, 0.5 ms; the F-engine anchor is
             # GPS-disciplined to microseconds and BRDC range/clock are nanosecond-class, so
             # there are three orders of margin.
-            t_code = (LC_SEG * CODE_LEN) / args.chip_rate_hz if args.dr_long_code \
+            _drp.t_code = (LC_SEG * CODE_LEN) / args.chip_rate_hz if args.dr_long_code \
                      else CODE_LEN / args.chip_rate_hz
             # The seed is reduced at the SAME length the prediction was: one constant, used
             # twice, so they cannot drift apart.
-            _DR_MOD = (LC_SEG * CODE_LEN) if args.dr_long_code else CODE_LEN
+            _drp.mod = (LC_SEG * CODE_LEN) if args.dr_long_code else CODE_LEN
             # Layer-2 slew constants (task #30). CAP: 0.05 chips per 2 s cycle = 0.025
             # chips/s of correction authority -- above the 0.003-0.02 chips/s drift band
             # measured on sky, an order below the 0.25-chip DLL trims a fold tolerates, and
@@ -7091,13 +7110,13 @@ def main(argv=None, rx=None, publisher=None):
             # --dr-slew-cap 0 -- slewing OFF, the seed left where the loop put it -- which
             # is the one arm nobody has run and the one that separates "the seed is wrong"
             # from "the model is wrong and the slew drags good seeds onto it".
-            _DR_SLEW_CAP = args.dr_slew_cap
-            _DR_SLEW_K = 0.25
+            _drp.slew_cap = args.dr_slew_cap
+            _drp.slew_k = 0.25
             if dr_state["eph"] is None or now_w - dr_state["eph_t"] > 7200:
                 try:
                     dr_state["eph"] = dr_eph_mod.parse_rinex_nav(dr_eph_mod.fetch_brdc())
                     dr_state["eph_t"] = now_w
-                    dr_state["t0m"] = dr_eph_mod.gpst_of_utc(utc0_sample0) % t_code
+                    dr_state["t0m"] = dr_eph_mod.gpst_of_utc(utc0_sample0) % _drp.t_code
                     _log("dead-reckon: BRDC loaded (%d sats)" % len(dr_state["eph"]))
                     # MEASURED CODE BIASES, refreshed on the ephemeris cadence (A0b, part 2).
                     # Daily product, ~5 days of latency, biases stable over weeks -- so the
@@ -7132,7 +7151,7 @@ def main(argv=None, rx=None, publisher=None):
                 args.decoded_eph_fallback_force
                 or (args.decoded_eph_fallback and not dr_state["eph"]))
             if dr_state["eph"] or _use_decoded:
-                tag = args.dr_constellation
+                _drp.tag = args.dr_constellation
                 t_now_abs = now_w - utc0_sample0
                 # ── #83 THE AXIS FIX (see --dr-fengine-axis) ── "now" from the F-engine
                 # hop counter: newest telemetry hop at its fetch instant, plus the wall
@@ -7168,14 +7187,14 @@ def main(argv=None, rx=None, publisher=None):
                 # at h1 below). Filter/bookkeeping sites deliberately keep t_now_abs: ages,
                 # update_rrate and the joint cycle are measurements at NOW, and shifting them
                 # into the future would inflate every age by the lead.
-                t_fc_abs = t_now_abs
+                _drp.t_fc_abs = t_now_abs
                 if args.dr_forecast_lead_s > 0.0 and fe_axis[0] is not None:
                     # forecast from the FILTERED now (t_now_abs above), not the raw newest
                     # hop -- same jitter, same fix. H stays an exact integer hop so the
                     # label still carries no rounding of its own.
                     _fch = int(round((t_now_abs + args.dr_forecast_lead_s)
                                      * args.hops_per_sec))
-                    t_fc_abs = _fch / args.hops_per_sec
+                    _drp.t_fc_abs = _fch / args.hops_per_sec
                 # ── THE EPHEMERIS EPOCH STAYS ON WALL TIME, AND HERE IS THE MEASUREMENT ──
                 # Orbit evaluation (predict_all / predict_from_decoders below) is the ONE
                 # consumer in this file that needs absolute UTC to be TRUE rather than
@@ -7277,19 +7296,19 @@ def main(argv=None, rx=None, publisher=None):
                 # below), falling back to the f_chip*(l-a) model until measured -- the
                 # modeled value left a persistent EMA lag (~0.6 chips at first deploy),
                 # outside the BOC DLL capture range.
-                drift = dr_state.get("drift")
-                if drift is None:
-                    drift = args.chip_rate_hz * la
+                _drp.drift = dr_state.get("drift")
+                if _drp.drift is None:
+                    _drp.drift = args.chip_rate_hz * la
                 try:
                     # two epochs, 4 s apart: range_rate difference -> doppler RATE (the
                     # TLE almanac's rate is unused here -- BRDC governs model-owned sats)
                     if _use_decoded:
                         _ents = _decoded_entries(now_w)
-                        pd = _decfb.predict_from_decoders(
+                        _drp.pd = _decfb.predict_from_decoders(
                             _ents, args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
                         # CENTRED PAIR (task #52): +/-2 s about now_w, not [now, now+4].
-                        pd2 = _decfb.predict_from_decoders(
+                        _drp.pd2 = _decfb.predict_from_decoders(
                             _ents, args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w + 2.0, tz=timezone.utc),
                             mask_deg=-90.0)
@@ -7306,11 +7325,11 @@ def main(argv=None, rx=None, publisher=None):
                                     dr_state["eph"], args.lat, args.lon, args.alt,
                                     datetime.fromtimestamp(now_w, tz=timezone.utc),
                                     mask_deg=-90.0)
-                                cm = set(pd) & set(pb)
+                                cm = set(_drp.pd) & set(pb)
                                 if cm:
-                                    dr_m = max(abs(pd[k]["range_m"] - pb[k]["range_m"])
+                                    dr_m = max(abs(_drp.pd[k]["range_m"] - pb[k]["range_m"])
                                                for k in cm)
-                                    dd = max(abs(pd[k]["range_rate_mps"]
+                                    dd = max(abs(_drp.pd[k]["range_rate_mps"]
                                                  - pb[k]["range_rate_mps"]) for k in cm)
                                     ab = (" | A/B vs BRDC over %d sats: worst range %.1f m, "
                                           "range-rate %.3f m/s (%.2f Hz@fc)"
@@ -7320,7 +7339,7 @@ def main(argv=None, rx=None, publisher=None):
                                  "%d sats)%s"
                                  % ("FORCE A/B" if args.decoded_eph_fallback_force
                                     else "BRDC network DOWN -> fallback",
-                                    len(_ents), len(pd), ab))
+                                    len(_ents), len(_drp.pd), ab))
                     else:
                         # A0b (2026-08-23): `signal=` makes the returned sat_clk_s refer to
                         # THIS chain's code rather than the constellation's own broadcast
@@ -7328,7 +7347,7 @@ def main(argv=None, rx=None, publisher=None):
                         # clock cp_predicted consumes, so it moves the seed directly.
                         # Measured before arming: ~+0.15 chips common at L5, +-0.3 per-sat --
                         # a b_sat-scale correction, NOT a constellation-offset one.
-                        pd = dr_eph_mod.predict_all(
+                        _drp.pd = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0,
                             signal=args.signal, dcb=dr_state.get("dcb"))
@@ -7340,7 +7359,7 @@ def main(argv=None, rx=None, publisher=None):
                         # Hz/s against a 29 mHz/s single-window budget: below budget, which is
                         # why it survived, but it is free to remove and the centred form also
                         # cuts the truncation error 3x at the same 4 s baseline.
-                        pd2 = dr_eph_mod.predict_all(
+                        _drp.pd2 = dr_eph_mod.predict_all(
                             dr_state["eph"], args.lat, args.lon, args.alt,
                             datetime.fromtimestamp(now_w + 2.0, tz=timezone.utc),
                             mask_deg=-90.0, signal=args.signal, dcb=dr_state.get("dcb"))
@@ -7349,12 +7368,12 @@ def main(argv=None, rx=None, publisher=None):
                             datetime.fromtimestamp(now_w - 2.0, tz=timezone.utc),
                             mask_deg=-90.0, signal=args.signal, dcb=dr_state.get("dcb"))
                 except Exception as e:
-                    pd, pd2, pd0 = {}, {}, {}
+                    _drp.pd, _drp.pd2, pd0 = {}, {}, {}
                     _log("dead-reckon: predict failed: %s" % e)
-                if pd:
+                if _drp.pd:
                     # cache for the SEED loop (next cycle): BRDC doppler/rate for
                     # search-anchored sats, so both masters share one currency
-                    dr_state["pd"], dr_state["pd2"] = pd, pd2
+                    dr_state["pd"], dr_state["pd2"] = _drp.pd, _drp.pd2
                     dr_state["pd0"] = pd0
 
                 # THE EPHEMERIS'S OWN EPOCH, in capture age. predict_all above ran at
@@ -7383,13 +7402,13 @@ def main(argv=None, rx=None, publisher=None):
                             - (v["range_m"] + v["range_rate_mps"] * (t_abs - _t_eph_age))
                               / dr_eph_mod.C_LIGHT
                             + v["sat_clk_s"])
-                    return (t_tx % t_code) * args.chip_rate_hz
+                    return (t_tx % _drp.t_code) * args.chip_rate_hz
 
                 # -- receiver-clock solve (the bootstrap) + per-sat integrity residuals:
                 # physical cp at each detection hop (undo the sample-0 back-reference),
                 # minus the prediction, epoch-normalized to now (the offset drifts at
                 # f_chip*(l-a)); the circular median over sats is the receiver clock.
-                offs = []
+                _drp.offs = []
                 # DETECTION AGE per sat (task #33, docs 11.22 follow-up). The epoch
                 # normalization below ages each latched detection by drift*(t_now - t_i)
                 # with drift = f_chip*(l-a): the l-a EMA's measured noise is +-0.05-0.07
@@ -7401,7 +7420,7 @@ def main(argv=None, rx=None, publisher=None):
                 det_age = {}
                 off_inputs = {}
                 for prn, (snr, dop, cp, ref_hop, _nh, _cpl, _car) in sorted(best.items()):
-                    v = pd.get((tag, prn))
+                    v = _drp.pd.get((_drp.tag, prn))
                     if v is None:
                         continue
                     t_i = ref_hop / args.hops_per_sec
@@ -7428,8 +7447,8 @@ def main(argv=None, rx=None, publisher=None):
                               * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
                               ) % CODE_LEN
                     d_i = (cp_loc - cp_predicted(v, t_i)
-                           + drift * (t_now_abs - t_i)) % CODE_LEN
-                    offs.append((prn, d_i))
+                           + _drp.drift * (t_now_abs - t_i)) % CODE_LEN
+                    _drp.offs.append((prn, d_i))
                     # WHICH INPUT MOVED. Record cp_loc (NOT raw cp): raw cp swings
                     # ~uniform mod L between passes by construction -- the search embeds
                     # -t_abs*chip_rate*sign*dop/carrier in cp0 and the detection Doppler
@@ -7451,9 +7470,9 @@ def main(argv=None, rx=None, publisher=None):
                 # went to zero. Catching it HERE means one satellite is dropped instead of
                 # the whole solve being refused, which is what makes the refusal guard a
                 # last resort rather than the first line.
-                if args.dr_max_off_jump_chips > 0.0 and offs:
+                if args.dr_max_off_jump_chips > 0.0 and _drp.offs:
                     _keep, _drop = split_erratic_offsets(
-                        offs, dr_state.setdefault("off_hist", {}), now_w,
+                        _drp.offs, dr_state.setdefault("off_hist", {}), now_w,
                         args.dr_max_off_jump_chips, args.dr_off_jump_max_age_s, CODE_LEN)
                     if _drop:
                         _prevI = dr_state.setdefault("off_inputs_prev", {})
@@ -7477,7 +7496,7 @@ def main(argv=None, rx=None, publisher=None):
                                     " | ".join(_det), every_s=60.0)
                     dr_state["off_inputs_prev"] = dict(off_inputs)
                     if _drop and len(_keep) >= args.dr_min_sats:
-                        offs = _keep
+                        _drp.offs = _keep
                         _log_rl("offjump",
                                 "clock solve: EXCLUDED %s -- offset jumped %s chips since "
                                 "the last cycle (bound %.0f). d_i = clk + b_i, both "
@@ -7564,8 +7583,8 @@ def main(argv=None, rx=None, publisher=None):
                 # cross-process siblings (the airspy benches, and a transitional split
                 # deployment) and is unchanged. With one chain the lookup returns None and
                 # this branch does not exist.
-                _rx_sib = (rx.dr_clock(band_id, exclude=chain_id, t_now=t0)
-                           if (args.dr_clock_adopt and not offs) else None)
+                _drp.rx_sib = (rx.dr_clock(band_id, exclude=chain_id, t_now=t0)
+                           if (args.dr_clock_adopt and not _drp.offs) else None)
                 # CROSS-BAND BOOTSTRAP (task #34). Without this a band whose chains all lack
                 # detectors NEVER gets a clock: measured on sky, gal_e5b and bds_b2b sat at the
                 # startup prime of 0.00 chips while gps_l5 had bootstrapped 150.74 and both
@@ -7590,44 +7609,44 @@ def main(argv=None, rx=None, publisher=None):
                 # whose code is shorter than ours is refused, which is the same-length guard
                 # generalised rather than dropped.
                 _rx_xband = False
-                if _rx_sib is None and args.dr_clock_adopt and not offs:
+                if _drp.rx_sib is None and args.dr_clock_adopt and not _drp.offs:
                     _cand = rx.dr_clock_any_band(exclude=chain_id, t_now=t0)
                     if _cand is not None and (_cand.extra.get("code_length") or 0) >= CODE_LEN:
-                        _rx_sib, _rx_xband = _cand, True
-                if _rx_sib is not None and _rx_xband:
-                    _v = float(_rx_sib.value) % CODE_LEN
+                        _drp.rx_sib, _rx_xband = _cand, True
+                if _drp.rx_sib is not None and _rx_xband:
+                    _v = float(_drp.rx_sib.value) % CODE_LEN
                     if dr_state.get("clk") is None or abs(
                             ((_v - dr_state["clk"] + CODE_LEN / 2) % CODE_LEN)
                             - CODE_LEN / 2) > 0.5:
                         _log("dead-reckon: clock BOOTSTRAP %.2f chips from in-process chain "
                              "'%s' (CROSS-BAND -- carries tau_band; the DLL residual IS that "
-                             "measurement)" % (_v, _rx_sib.src))
+                             "measurement)" % (_v, _drp.rx_sib.src))
                     dr_state["clk"] = _v
-                    dr_state["clk_t"] = _rx_sib.t
+                    dr_state["clk_t"] = _drp.rx_sib.t
                     dr_state.pop("clk_primed", None)
-                elif _rx_sib is not None and _rx_sib.extra.get("code_length") == CODE_LEN:
+                elif _drp.rx_sib is not None and _drp.rx_sib.extra.get("code_length") == CODE_LEN:
                     if dr_state.get("clk") is None or abs(
-                            ((float(_rx_sib.value) - dr_state["clk"] + CODE_LEN / 2)
+                            ((float(_drp.rx_sib.value) - dr_state["clk"] + CODE_LEN / 2)
                              % CODE_LEN) - CODE_LEN / 2) > 0.5:
                         _log("dead-reckon: clock ADOPTED %.2f chips from in-process chain "
                              "'%s' (same band %s, no file transport)"
-                             % (float(_rx_sib.value), _rx_sib.src, band_id))
-                    dr_state["clk"] = float(_rx_sib.value) % CODE_LEN
-                    dr_state["clk_t"] = _rx_sib.t
+                             % (float(_drp.rx_sib.value), _drp.rx_sib.src, band_id))
+                    dr_state["clk"] = float(_drp.rx_sib.value) % CODE_LEN
+                    dr_state["clk_t"] = _drp.rx_sib.t
                     # An adopted clock IS a measurement -- the sibling measured it -- so the
                     # prime is spent. If this chain ever gains detectors it should refine by
                     # EMA from here, not snap away from a good number.
                     dr_state.pop("clk_primed", None)
-                    if _rx_sib.extra.get("drift") is not None:
-                        dr_state["drift"] = float(_rx_sib.extra["drift"])
-                elif _rx_sib is not None:
+                    if _drp.rx_sib.extra.get("drift") is not None:
+                        dr_state["drift"] = float(_drp.rx_sib.extra["drift"])
+                elif _drp.rx_sib is not None:
                     # Same band, different code length: the chips are modular in a different
                     # period, so the number is numerically fine and physically meaningless.
                     # Refuse loudly rather than adopt a plausible wrong value.
                     _log_rl("clkadopt-len",
                             "dead-reckon: chain '%s' publishes a clock mod %.0f chips but "
                             "this chain's code is %.0f -- NOT adoptable across code lengths"
-                            % (_rx_sib.src, _rx_sib.extra.get("code_length") or -1, CODE_LEN),
+                            % (_drp.rx_sib.src, _drp.rx_sib.extra.get("code_length") or -1, CODE_LEN),
                             every_s=60.0)
                 _dr_clock_adopt()
                 # ---- MODEL-HEALTH GATES (design (b)): the resilience the fence never gave.
@@ -7648,13 +7667,13 @@ def main(argv=None, rx=None, publisher=None):
                 # (demote high, restore low) + do not judge at all until the clock has settled.
                 if dr_state["clk"] is not None and dr_state.get("drift") is not None:
                     dr_state.setdefault("integ", {})
-                    for prn_i, d_i in offs:
+                    for prn_i, d_i in _drp.offs:
                         r_i = (((d_i - dr_state["clk"] + CODE_LEN / 2.0) % CODE_LEN)
                                - CODE_LEN / 2.0)
                         # exported for the escape referee's integrity veto (chips, this
                         # chain's code; search-vs-model with the solved clock removed)
                         dr_state["integ"][prn_i] = (r_i, now_w)
-                        v_i = pd.get((tag, prn_i))
+                        v_i = _drp.pd.get((_drp.tag, prn_i))
                         age_i = abs(v_i["toe_age_s"]) if v_i else 1e9
                         why = None
                         if age_i > args.dr_max_eph_age_s:
@@ -7684,17 +7703,17 @@ def main(argv=None, rx=None, publisher=None):
                             del dr_untrusted[prn_i]
                             _log("MODEL-TRUSTED again PRN %d (integrity %+.2f chips)"
                                  % (prn_i, r_i))
-                if dr_state["clk"] is not None and offs and now_w >= dr_state["log_next"]:
+                if dr_state["clk"] is not None and _drp.offs and now_w >= dr_state["log_next"]:
                     dr_state["log_next"] = now_w + 30.0
                     resid = ["PRN %d %+.2f a%.0f%s" % (p, r, det_age.get(p, -1),
                                                        " BAD" if abs(r) > 1.0 else "")
-                             for p, d in offs
+                             for p, d in _drp.offs
                              for r in [((d - dr_state["clk"] + CODE_LEN / 2) % CODE_LEN)
                                        - CODE_LEN / 2]]
                     _log("dead-reckon clock %.2f chips (%.3f us mod %.0f ms, drift "
                          "%+.3f chips/s); integrity: %s"
                          % (dr_state["clk"], dr_state["clk"] / args.chip_rate_hz * 1e6,
-                            t_code * 1e3, dr_state.get("drift") or 0.0, "; ".join(resid)))
+                            _drp.t_code * 1e3, dr_state.get("drift") or 0.0, "; ".join(resid)))
                 # -- seed / re-pin every visible, undetected, unlocked sat from the model --
                 _dr_seed()
             # a fresh detection re-anchors via the seed loop (search = fallback); a
