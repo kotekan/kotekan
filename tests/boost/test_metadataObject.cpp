@@ -37,7 +37,6 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     };
     meta0.set_coarse_freq(coarse_freq);
 
-    meta0.set_rfi_num_bad_inputs(17029);
     meta0.set_rfi_flagged_samples(10090);
     meta0.set_lost_timesamples(18427);
 

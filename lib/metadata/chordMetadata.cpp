@@ -226,7 +226,6 @@ struct chordMetadataFormat {
     int32_t num_rfi_frame_excision_thresholds;
     float rfi_frame_excision_thresholds[MAX_NUM_RFI_THRESHOLDS][2];
 
-    uint32_t rfi_num_bad_inputs;
     int32_t rfi_flagged_samples;
     int32_t lost_timesamples;
 
@@ -344,8 +343,6 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
         this->set_rfi_frame_excision_thresholds(thresholds);
     }
 
-    if (fmt_data->rfi_num_bad_inputs != uint32_t(-1))
-        this->set_rfi_num_bad_inputs(fmt_data->rfi_num_bad_inputs);
     if (fmt_data->rfi_flagged_samples != -1)
         this->set_rfi_flagged_samples(fmt_data->rfi_flagged_samples);
     if (fmt_data->lost_timesamples != -1)
@@ -477,10 +474,6 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt_data->num_rfi_frame_excision_thresholds = -1;
     }
 
-    if (this->has_rfi_num_bad_inputs())
-        fmt_data->rfi_num_bad_inputs = this->get_rfi_num_bad_inputs();
-    else
-        fmt_data->rfi_num_bad_inputs = uint32_t(-1);
     if (this->has_rfi_flagged_samples())
         fmt_data->rfi_flagged_samples = this->get_rfi_flagged_samples();
     else
@@ -637,4 +630,57 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
     }
     m.offset = j.at(KEY_OFFSET);
     // TODO: this misses dish_positions etc
+}
+
+
+bool metadata_is_chord(Buffer* buf, int) {
+    return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
+}
+
+bool metadata_is_chord(const std::shared_ptr<metadataObject>& mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "chordMetadata");
+}
+
+bool metadata_is_chord(const std::shared_ptr<const metadataObject>& mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "chordMetadata");
+}
+
+std::shared_ptr<chordMetadata> get_chord_metadata(const std::shared_ptr<metadataObject>& mc) {
+    if (!mc)
+        return std::shared_ptr<chordMetadata>();
+    if (!metadata_is_chord(mc)) {
+        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
+                    pool->type_name);
+        return std::shared_ptr<chordMetadata>();
+    }
+    return std::static_pointer_cast<chordMetadata>(mc);
+}
+
+std::shared_ptr<const chordMetadata>
+get_chord_metadata(const std::shared_ptr<const metadataObject>& mc) {
+    if (!mc)
+        return std::shared_ptr<const chordMetadata>();
+    if (!metadata_is_chord(mc)) {
+        std::shared_ptr<const metadataPool> pool = mc->parent_pool.lock();
+        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
+                    pool->type_name);
+        return std::shared_ptr<const chordMetadata>();
+    }
+    return std::static_pointer_cast<const chordMetadata>(mc);
+}
+
+std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
+    if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
+        return std::shared_ptr<chordMetadata>();
+    std::shared_ptr<metadataObject> meta = buf->metadata.at(frame_id);
+    return get_chord_metadata(meta);
 }

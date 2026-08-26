@@ -92,6 +92,16 @@ public:
     void build(const std::string& kernel_filename, const std::vector<std::string>& kernel_names,
                const std::vector<std::string>& opts);
 
+    /**
+     * @brief Builds a list of kernels from the PTX file with name: @c kernel_file_name
+     *
+     * Any @c --gpu-name option in @c opts is replaced with the compute capability of
+     * the local GPU, so PTX generated for one GPU model runs on others as well.
+     *
+     * @param kernel_names       Vector list of kernel names in the kernel file
+     * @param opts               List of options to pass to the PTX compiler
+     * @param kernel_name_prefix Prefix to add to the kernel names in @c runtime_kernels
+     **/
     void build_ptx(const std::string& kernel_filename, const std::vector<std::string>& kernel_names,
                    const std::vector<std::string>& opts,
                    const std::string& kernel_name_prefix = "");

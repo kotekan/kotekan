@@ -185,6 +185,13 @@ struct stream_t {
  *                                  - xp_as             double  Polar Motion x', arcseconds.
  *                                  - yp_as             double  Polar Motion y', arcseconds.
  *
+ * Config
+ *
+ * @conf    fatal_eop_out_of_range  Optional. Bool, default false. If true, requesting an EOP for a
+ *                                  time outside the range covered by the EOP table is a fatal
+ *                                  error. If false, the first or last table entry is used and a
+ *                                  warning is logged.
+ *
  * Updatable Config
  *
  * @conf    eop_updatable_config    Optional. If not present, EOP table will be a dummy and only
@@ -499,7 +506,7 @@ public:
     /**
      * @brief   Return the EOP at the desired instrument time. Will interpolate
      *          over table, use first or last entry if target time is out of
-     *          table range.
+     *          table range, or fail fatally if `fatal_eop_out_of_range` is set.
      *
      * @param   ts  Target instrument time, as a timespec.
      **/
@@ -508,7 +515,7 @@ public:
     /**
      * @brief   Return the EOP at the desired instrument time. Will interpolate
      *          over table, use first or last entry if target time is out of
-     *          table range.
+     *          table range, or fail fatally if `fatal_eop_out_of_range` is set.
      *
      * @param   t_ns  Target instrument time in nanoseconds.
      **/
@@ -517,7 +524,8 @@ public:
     /**
      * @brief   Return the EOP at the desired UT1 time. Will interpolate
      *          over table, using the first or last entry if target time is
-     *          out of table range.
+     *          out of table range, or fail fatally if `fatal_eop_out_of_range`
+     *          is set.
      *
      * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
@@ -688,6 +696,8 @@ protected:
      * @param   tel_path    Path to the telescope in the Config (e.g. /telescope)
      * @param   log_level   The level to set logging at.
      * @param   require_eop Whether to require a valid EOP table.
+     * @param   fatal_eop_out_of_range  Whether requesting an EOP outside the range
+     *          covered by the EOP table is a fatal error.
      * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
      *          the telescope Config, pointing to the updatable field which
      *          contains "earth_orientation_parameter_table"
@@ -695,7 +705,15 @@ protected:
      *                      and the orientation of the feed grid axes.
      **/
     Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-              const std::string& eop_updatable_config_path, const GeoFrame& frame);
+              bool fatal_eop_out_of_range, const std::string& eop_updatable_config_path,
+              const GeoFrame& frame);
+
+    /**
+     * @brief   Report an EOP request the table cannot cover, fatally if configured to.
+     *
+     * @param   msg     Description of the request and the table range.
+     */
+    void report_eop_out_of_range(const std::string& msg) const;
 
     /**
      * @brief Callback to update EOP data
@@ -734,6 +752,12 @@ protected:
      * is provided, the telescope will return a 0 EOP when queried.
      */
     const bool _require_eop;
+
+    /**
+     * Whether to treat a request for an EOP outside the range of the EOP table
+     * as a fatal error, rather than clamping to the first or last table entry.
+     */
+    const bool _fatal_eop_out_of_range;
 
     /**
      * This is the Earth Orientation Parameter (EOP) table used to determine

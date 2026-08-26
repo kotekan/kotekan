@@ -346,23 +346,6 @@ public:
         return tel.to_time(this->get_fpga_seq_num());
     }
 
-    /// The number of bad inputs in the RFI systems bad input list.
-    /// This value is mostly needed for renormalization of the SK values.
-    void set_rfi_num_bad_inputs(const uint32_t rfi_num_bad_inputs) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        metadata[jsonMetadata::RFI_NUM_BAD_INPUTS] = rfi_num_bad_inputs;
-    }
-
-    bool has_rfi_num_bad_inputs() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata.contains(jsonMetadata::RFI_NUM_BAD_INPUTS);
-    }
-
-    uint32_t get_rfi_num_bad_inputs() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata.at(jsonMetadata::RFI_NUM_BAD_INPUTS).template get<uint32_t>();
-    }
-
     /// The number of FPGA frames flagged as containing RFI.
     /// NOTE: This value might contain overlap with lost samples, so it can count
     /// missing samples as samples with RFI.  For renormalization this value
@@ -569,57 +552,13 @@ private:
 void to_json(nlohmann::json& j, const chordMetadata& m);
 void from_json(const nlohmann::json& j, chordMetadata& m);
 
-inline bool metadata_is_chord(Buffer* buf, int) {
-    return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
-}
+bool metadata_is_chord(Buffer* buf, int);
+bool metadata_is_chord(const std::shared_ptr<metadataObject>& mc);
+bool metadata_is_chord(const std::shared_ptr<const metadataObject>& mc);
 
-inline bool metadata_is_chord(const std::shared_ptr<metadataObject>& mc) {
-    if (!mc)
-        return false;
-    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
-    assert(pool);
-    return (pool->type_name == "chordMetadata");
-}
-
-inline bool metadata_is_chord(const std::shared_ptr<const metadataObject>& mc) {
-    if (!mc)
-        return false;
-    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
-    assert(pool);
-    return (pool->type_name == "chordMetadata");
-}
-
-inline std::shared_ptr<chordMetadata>
-get_chord_metadata(const std::shared_ptr<metadataObject>& mc) {
-    if (!mc)
-        return std::shared_ptr<chordMetadata>();
-    if (!metadata_is_chord(mc)) {
-        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
-        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
-                    pool->type_name);
-        return std::shared_ptr<chordMetadata>();
-    }
-    return std::static_pointer_cast<chordMetadata>(mc);
-}
-
-inline std::shared_ptr<const chordMetadata>
-get_chord_metadata(const std::shared_ptr<const metadataObject>& mc) {
-    if (!mc)
-        return std::shared_ptr<const chordMetadata>();
-    if (!metadata_is_chord(mc)) {
-        std::shared_ptr<const metadataPool> pool = mc->parent_pool.lock();
-        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
-                    pool->type_name);
-        return std::shared_ptr<const chordMetadata>();
-    }
-    return std::static_pointer_cast<const chordMetadata>(mc);
-}
-
-inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
-    if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
-        return std::shared_ptr<chordMetadata>();
-    std::shared_ptr<metadataObject> meta = buf->metadata.at(frame_id);
-    return get_chord_metadata(meta);
-}
+std::shared_ptr<chordMetadata> get_chord_metadata(const std::shared_ptr<metadataObject>& mc);
+std::shared_ptr<const chordMetadata>
+get_chord_metadata(const std::shared_ptr<const metadataObject>& mc);
+std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id);
 
 #endif

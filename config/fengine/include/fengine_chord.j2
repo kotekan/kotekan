@@ -93,18 +93,24 @@ frequency_channels: [
 
 num_times: 8192                 # frame length is 8192 * 5.12 us = 41.94304 ms
 
+bf_mask_lifetime_in_samples: 25 * num_times # 1 second
+
 ################################################################################
 
 # Buffers
 
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: int8
-    extents: [num_polarizations, num_dishes]
+    extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
-    dimnames: ["P", "D"]
-    dimscalings: [1, 1]
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: main_pool
+host_bf_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * 1
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
@@ -161,19 +167,21 @@ run_invent_pl_mask:
     kotekan_stage: inventPLMask
     pl_mask: host_pl_mask_buffer
 
-# run_send_bf_mask:
-#     gpu_0:
-#         kotekan_stage: cudaProcess
-#         gpu_id: 0
-#         in_buffers:
-#             host_bf_mask_buffer: host_bf_mask_buffer
-#         out_buffers:
-#         commands:
-#         - name: cudaInputData
-#           do_once: true
-#           in_buf: host_bf_mask_buffer
-#           gpu_mem: bf_mask_buffer
-#         - name: cudaSyncInput
+run_send_bf_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_bf_mask_buffer
+          signal_buf: host_bf_mask_ringbuffer
+          gpu_mem_output: bf_mask_buffer
 
 run_send_pl_mask:
     gpu_0:
