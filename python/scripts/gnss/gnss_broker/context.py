@@ -53,9 +53,14 @@ class ChainContext(object):
         "hist_len", "max_gap_hops", "q_alias_hz",
         "carrier_explain_hz", "carrier_verify_emits",
         "fuse_cached", "cp_to_seed_currency", "sig_of_last",
+        # Helper callables the stages share. They are passed rather than imported because each
+        # closes over this chain's configuration; a module-level copy would need the whole
+        # config threaded through it again.
+        "dh_obs", "cp_predicted", "joint_state", "track_ok", "p2c_tick", "p2c_hold",
+        "decoded_entries",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb", "car", "wd", "nho",
-        "dls", "hold", "cpt", "rf",
+        "dls", "hold", "cpt", "rf", "nav",
         # ---- long-lived tables, mutated in place --------------------------------------
         "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted",
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",

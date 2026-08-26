@@ -66,11 +66,14 @@ NAME_MAP = {
     "almanac_sats": "almanac_sats", "brdc_alm": "brdc_alm", "det_fresh": "det_fresh",
     "state_w": "state_w", "_clk_persist_t": "clk_persist_t",
     "_carrier": "car", "_watchdog": "wd", "_nho": "nho",
-    "_dls": "dls", "_hold": "hold", "_cpt": "cpt", "_rf": "rf",
+    "_dls": "dls", "_hold": "hold", "_cpt": "cpt", "_rf": "rf", "_nav": "nav",
     "HIST_LEN": "hist_len", "MAX_GAP_HOPS": "max_gap_hops", "Q_ALIAS_HZ": "q_alias_hz",
     "CARRIER_EXPLAIN_HZ": "carrier_explain_hz", "CARRIER_VERIFY_EMITS": "carrier_verify_emits",
     "trackers": "trackers", "joint_consume": "joint_consume", "broker_t0": "broker_t0",
     "_fuse_cached": "fuse_cached", "cp_to_seed_currency": "cp_to_seed_currency",
+    "_dh_obs": "dh_obs", "cp_predicted": "cp_predicted", "_joint_state": "joint_state",
+    "_track_ok": "track_ok", "_p2c_tick": "p2c_tick", "_p2c_hold": "p2c_hold",
+    "_decoded_entries": "decoded_entries",
     "sig_of_last": "sig_of_last", "dr_eph_mod": "dr_eph_mod", "dr_min_prn": "dr_min_prn",
 }
 

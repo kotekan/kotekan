@@ -27,7 +27,8 @@ recomputed by whoever happens to need it.
 class ClockBias(object):
     """The receiver clock-frequency bias and its freshness."""
 
-    __slots__ = ("value", "ema", "cal", "meas_t", "stale", "available")
+    __slots__ = ("value", "ema", "cal", "meas_t", "stale", "available",
+                 "code_ema", "code_cal")
 
     def __init__(self, value=0.0, ema=None, cal=None, meas_t=0.0):
         # The bias currently used for seeding and hint centring, in Hz.
@@ -44,6 +45,17 @@ class ClockBias(object):
         self.stale = False
         # Whether a bias is available at all this cycle (solved or held).
         self.available = False
+        # ---- THE CODE-RATE CLOCK, (l-a) -------------------------------------------------
+        # The same oscillator seen on the CODE side: a dimensionless rate offset (~2.6 ppm on
+        # the airspy prototype, 0.02-0.10 on the CHORD GPSDO). Kept here because it is the
+        # same physical clock as `value`, measured a different way.
+        #
+        # ⚠️ IT IS PER BAND, NOT PER CHAIN. A detector-less chain cannot measure it and must
+        # borrow the band sibling's -- without that, every dead-reckon seed ships
+        # code_phase_rate = 0.0 and the prompt walks out of the correlation window in 3-11
+        # minutes. That was E5a's rise-peak-fall envelope with the disc railed and E >> L.
+        self.code_ema = None
+        self.code_cal = None
 
     def check_stale(self, t0, max_age_s):
         """Update and return `stale`: is the last real measurement older than max_age_s?

@@ -207,7 +207,8 @@ class RateFeedState(object):
     """
 
     __slots__ = ("cmd_applied", "fine_t", "kcoh_t", "adr_span_now", "span_fed_t",
-                 "adr_prev", "adr_ring", "resid", "cons", "resid2", "full_ok")
+                 "adr_prev", "adr_ring", "resid", "cons", "resid2", "full_ok",
+                 "railed", "released")
 
     def __init__(self):
         self.cmd_applied = {}   # prn -> the standing carrier command, Hz (the reference)
@@ -224,3 +225,63 @@ class RateFeedState(object):
         self.cons = None        # the consensus that came with it
         self.resid2 = {}        # the rrate-state variant of the same residual
         self.full_ok = False    # is the full-band rate field present this cycle?
+        # How many commands hit the slew rail this pass, and how many were released. These
+        # are `+=` counters, and an augmented assignment READS before it writes -- which is
+        # what made them impossible to leave as loop locals once the stage that increments
+        # them became a function. That cost gal_e5a a chain death on 2026-08-26.
+        self.railed = 0
+        self.released = 0
+
+
+class NavDecoders(object):
+    """The broadcast navigation-message decoders, created lazily and kept across cycles.
+
+    Eleven objects, one per message format, plus the BRDC cross-check source and the
+    agreement monitor. Each is built on the first row that needs it and must then PERSIST --
+    a decoder that is rebuilt has forgotten the subframes it had collected, so it can never
+    complete an ephemeris. Holding them as attributes is what let the nav-bit stage leave
+    `main()`: eleven `nonlocal` declarations cannot cross a module boundary.
+
+    ⚠️ OFF IN PRODUCTION. `--nav-bits` is not set in the CHORD yaml, so none of this runs on
+    the live instrument and no fixture reaches it. Changes here are unverified until the flag
+    is armed -- the same blind spot the carrier loop has.
+    """
+
+    __slots__ = ("navbits", "cnav", "cnav2", "fnav", "inav",
+                 "bcnav1", "bcnav2", "bcnav3", "brdc", "health", "log_t",
+                 "inav_log_t", "fnav_log_t", "bcnav1_log_t", "bcnav2_log_t",
+                 "bcnav3_log_t", "cnav2_log_t", "cnav_sig",
+                 "cnav_combiner", "cnav2_combiner", "fnav_combiner", "inav_combiner",
+                 "bcnav1_combiner", "bcnav2_combiner")
+
+    def __init__(self):
+        self.navbits = None   # GPS LNAV
+        self.cnav = None      # GPS CNAV (L2C-CM / L5-I)
+        self.cnav2 = None     # GPS CNAV-2
+        self.fnav = None      # Galileo F/NAV
+        self.inav = None      # Galileo I/NAV
+        self.bcnav1 = None    # BeiDou B-CNAV1
+        self.bcnav2 = None    # BeiDou B-CNAV2
+        self.bcnav3 = None    # BeiDou B-CNAV3
+        self.brdc = None      # the BRDC source the decodes are cross-checked against
+        self.health = None    # continuous predicted-vs-air agreement monitor
+        self.log_t = 0.0      # last summary-line time (rate limit)
+        # ⚠️ ONE-CELL LISTS, not floats. Each is a rate-limit stamp mutated in place by the
+        # decoder that owns it; the cell is what makes the reader and the writer the same
+        # object. Flattening them to scalars would silently give every writer its own copy.
+        self.inav_log_t = [0.0]
+        self.fnav_log_t = [0.0]
+        self.bcnav1_log_t = [0.0]
+        self.bcnav2_log_t = [0.0]
+        self.bcnav3_log_t = [0.0]
+        self.cnav2_log_t = [0.0]
+        # Which CNAV variant this chain's carrier implies (L2C vs L5), resolved once.
+        self.cnav_sig = None
+        # Per-decoder combiner endpoints: a nav decode reads a DIFFERENT stream from the
+        # tracking chain, so these are separate endpoints and may each be absent.
+        self.cnav_combiner = None
+        self.cnav2_combiner = None
+        self.fnav_combiner = None
+        self.inav_combiner = None
+        self.bcnav1_combiner = None
+        self.bcnav2_combiner = None
