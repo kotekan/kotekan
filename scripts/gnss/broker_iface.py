@@ -99,10 +99,31 @@ def _import_aliases(node):
     return out
 
 
+def _augmented(node):
+    """Names targeted by an augmented assignment (`x += 1`).
+
+    ⚠️ AN AUGMENTED ASSIGNMENT READS BEFORE IT WRITES, but its target carries ctx=Store and
+    NOTHING ELSE -- there is no Load node to find. A first-use scan therefore records the
+    write and misses the read, so a counter incremented in a block but INITIALISED outside it
+    reads as purely local. That is not theoretical: `_rr_railed += 1` cleared this analysis,
+    the seed-push stage was promoted without a nonlocal, and gal_e5a died with an
+    UnboundLocalError 20 seconds into the live swap on 2026-08-26.
+    """
+    return {n.target.id for n in ast.walk(node)
+            if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name)}
+
+
 def analyze(main, lo, hi):
     skip = _scoped_names(main) | _import_aliases(main)
     uses = sorted((n.lineno, n.id, isinstance(n.ctx, ast.Load))
                   for n in ast.walk(main) if isinstance(n, ast.Name))
+    # An augmented target reads at the SAME line it writes, and at the same line a Store sorts
+    # first -- so injecting a synthetic Load into `uses` does not work. Handle it directly
+    # below via `aug_lines` instead.
+    aug_lines = {}
+    for n in ast.walk(main):
+        if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+            aug_lines.setdefault(n.target.id, []).append(n.lineno)
     inside = [u for u in uses if lo <= u[0] <= hi]
     first = {}
     for ln, nm, ld in inside:
@@ -110,7 +131,19 @@ def analyze(main, lo, hi):
             first[nm] = ld
     writes = {nm for _, nm, ld in inside if not ld}
     inputs = sorted(nm for nm, ld in first.items() if ld and nm not in skip)
-    carry = sorted(nm for nm in writes if first.get(nm) is True and nm not in skip)
+    # A name is carry-over if its first use in the block is a read, OR if the block AUGMENTS it
+    # without a plain assignment first -- the augment's read half needs a value from outside.
+    plain_store = {}
+    for n in ast.walk(main):
+        if (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+                and lo <= n.lineno <= hi and n.lineno not in aug_lines.get(n.id, ())):
+            plain_store.setdefault(n.id, n.lineno)
+    aug_first = {nm for nm, lns in aug_lines.items()
+                 if any(lo <= l <= hi for l in lns)
+                 and (nm not in plain_store
+                      or plain_store[nm] > min(l for l in lns if lo <= l <= hi))}
+    carry = sorted(nm for nm in writes
+                   if (first.get(nm) is True or nm in aug_first) and nm not in skip)
     # ⚠️ LINE ORDER IS NOT EXECUTION ORDER, AND ASSUMING IT WAS COST A RED GATE.
     # Once a stage is promoted, its body sits BEFORE the cycle loop in the file while running
     # LATER in the cycle. So "read at a line after this block" stops meaning "read after this
