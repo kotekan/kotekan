@@ -94,6 +94,7 @@ from gnss_broker.handover import TrimHandover              # noqa: E402  (task #
 from gnss_broker.rampfit import RampTracker                # noqa: E402  (task #93 shadow)
 from gnss_broker.cli import build_parser, _FROZEN           # noqa: E402  (task #89 flag surface)
 from gnss_broker.context import ChainContext                # noqa: E402  (the stage interface)
+from gnss_broker.clockbias import ClockBias                 # noqa: E402  (the receiver LO bias)
 from gnss_broker import instruments                         # noqa: E402  (the DLL's measurements)
 from gnss_broker import deadreckon                          # noqa: E402  (the clock pipeline)
 from gnss_broker import signals                            # noqa: E402
@@ -1451,7 +1452,11 @@ def main(argv=None, rx=None, publisher=None):
         if float(rec.get("coherence_s", 0) or 0) > 0.0:
             return max(amp, float(rec.get("deep_snr", 0) or 0))
         return amp
-    clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
+    # THE RECEIVER CLOCK-FREQUENCY BIAS, as one object rather than five names travelling
+    # together through this namespace. Its invariant -- a solved bias nobody has measured for
+    # minutes must WIDEN the search rather than narrow it -- lives with it now; see
+    # gnss_broker/clockbias.py for why that is counter-intuitive and what it cost.
+    _cb = ClockBias()
     n_sib = 0              # sibling sat count folded into the last bias fusion (log only)
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
     if args.code_bias_init is not None:
@@ -1472,24 +1477,24 @@ def main(argv=None, rx=None, publisher=None):
     # (most of the remaining Tier-2 burn-in). The EMAs keep running purely as MONITORS: a
     # drift beyond the alarm bar means real hardware news (GPSDO unlock, thermal event),
     # not something to silently absorb.
-    clock_bias_cal = None  # startup calibration value, Hz (drift-alarm reference)
+    _cb.cal = None  # startup calibration value, Hz (drift-alarm reference)
     if args.clock_bias_file:
         try:
             with open(args.clock_bias_file) as f:
                 # format: "<bias_hz> [n_sats] [unix_ts]" -- extended for --clock-bias-siblings;
                 # the extra fields are ignored here (warm-start wants only the value).
-                clock_bias_ema = float(f.read().split()[0])
-            clock_bias_cal = clock_bias_ema
+                _cb.ema = float(f.read().split()[0])
+            _cb.cal = _cb.ema
             _log("clock-freq bias warm-started %+.1f Hz from %s (margins narrow, seeding "
-                 "enabled from cycle 1)" % (clock_bias_ema, args.clock_bias_file))
+                 "enabled from cycle 1)" % (_cb.ema, args.clock_bias_file))
         except Exception:
             pass
     code_bias_cal = code_bias_ema  # l-a calibration reference (None if cold)
     _clk_persist_t = [0.0]         # last clock-bias-file write (10 s rate limit)
-    _bias_meas_t = _now()     # last multi-sat bias measurement (stale-rescue clock;
+    _cb.meas_t = _now()     # last multi-sat bias measurement (stale-rescue clock;
                                    # birth-stamped so warm-start gets a full grace window)
-    bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
-    bias_available = False         # is ANY usable bias in hand (own or fused)? S2d gate
+    _cb.stale = False             # solved-but-unmeasured for > --bias-stale-s
+    _cb.available = False         # is ANY usable bias in hand (own or fused)? S2d gate
     # Fuse at most once a second and cache: the state files themselves only republish at
     # 1 Hz, so fusing at the broker's 5 Hz cycle would re-read the same bytes four times
     # for the same answer.
@@ -2233,9 +2238,9 @@ def main(argv=None, rx=None, publisher=None):
         than no hint at all, because the search then cannot find what it was told to look near."""
         if (args.narrow_search and args.almanac and pred) or (_xb_pred and args.xband_seed):
             margin = (args.search_margin_hz
-                      if clock_bias_ema is not None and not bias_stale
+                      if _cb.ema is not None and not _cb.stale
                       else args.search_margin_wide_hz)
-            hints = [dict(prn=p, doppler_hz=pred[p][0] + clock_bias, margin_hz=margin)
+            hints = [dict(prn=p, doppler_hz=pred[p][0] + _cb.value, margin_hz=margin)
                      for p in sorted(pred) if (up is None or p in up)
                      and (_capable is None or p in _capable)] if (args.almanac and pred) else []
             # RESCUE: for a sat the sibling band tracks but BRDC did NOT just hint (no pred /
@@ -2379,8 +2384,8 @@ def main(argv=None, rx=None, publisher=None):
             _log_rl("narrow",
                     "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
                     % (len(hints), int(margin),
-                       ("bias solved" if clock_bias_ema is not None and not bias_stale
-                        else "bias STALE, wide re-solve" if clock_bias_ema is not None
+                       ("bias solved" if _cb.ema is not None and not _cb.stale
+                        else "bias STALE, wide re-solve" if _cb.ema is not None
                         else "pre-solve wide"),
                        pushed, len(detectors)))
 
@@ -2413,8 +2418,8 @@ def main(argv=None, rx=None, publisher=None):
             # never modify. The census still maps which chains/sats ride alias bins (the
             # B1C zombie-birth investigation continues on that data).
             if (args.det_alias_fold and args.almanac and prn in pred
-                    and clock_bias_ema is not None and not bias_stale):
-                _aref = pred[prn][0] + clock_bias
+                    and _cb.ema is not None and not _cb.stale):
+                _aref = pred[prn][0] + _cb.value
                 _k = round((dop - _aref) / Q_ALIAS_HZ)
                 if _k != 0 and abs(dop - _aref) < 3.5 * Q_ALIAS_HZ:
                     _log_rl("afold-%d" % prn,
@@ -2436,7 +2441,7 @@ def main(argv=None, rx=None, publisher=None):
             if args.dll_deep_gate_from_search > 0.0 and snr >= args.dll_deep_gate_from_search:
                 _dg_seen[prn] = t0
             _dop_src = "pred" if (args.almanac and prn in pred) else "DET(grid)"
-            seed_dop = (pred[prn][0] + clock_bias) if (args.almanac and prn in pred) else dop
+            seed_dop = (pred[prn][0] + _cb.value) if (args.almanac and prn in pred) else dop
             # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
             # that owns the undetected sats. Mixing sources stepped the seed doppler by
             # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
@@ -2456,7 +2461,7 @@ def main(argv=None, rx=None, publisher=None):
             if v_dr is not None and _dop_trusted:
                 _dop_src = "dr" if _unt is None else "dr(code-untrusted)"
                 seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / C_LIGHT
-                                                 * args.carrier_hz) + clock_bias)
+                                                 * args.carrier_hz) + _cb.value)
                 if _unt is not None:
                     _log_rl("dopkeep-%d" % prn,
                             "PRN %d: code model untrusted (%s) but KEEPING the BRDC Doppler "
@@ -2475,7 +2480,7 @@ def main(argv=None, rx=None, publisher=None):
             # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
             # slip upstream (the hint-anchored search grid was one such; fixed same day).
             _prev_sd = seeds.get(prn, {}).get("doppler_hz")
-            if _prev_sd is None and args.almanac and not bias_available:
+            if _prev_sd is None and args.almanac and not _cb.available:
                 # S2d: the condition is now "no bias FROM ANY SOURCE", not "this chain has
                 # not solved its own". Same guard, wider supply. It is the exact deadlock
                 # that cost 2h45m on 2026-07-27: L5 GPS could measure one satellite, never
@@ -2499,7 +2504,7 @@ def main(argv=None, rx=None, publisher=None):
                 _log("PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
                      % (prn, seed_dop, _dop_src, dop,
                         ("%.1f" % (pred[prn][0])) if (args.almanac and prn in pred) else "n/a",
-                        clock_bias, car_trim.get(prn, 0.0)))
+                        _cb.value, car_trim.get(prn, 0.0)))
             elif abs(seed_dop - _prev_sd) > 10.0 and prn in cp_held:
                 # HELD sat: the candidate walks while the emitted tuple stays frozen /
                 # translated -- this "step" is never applied as-is, and logging it every
@@ -3312,7 +3317,7 @@ def main(argv=None, rx=None, publisher=None):
                 if utc0_sample0:
                     _age = max(0.0, (_drp.now_w - utc0_sample0)
                                - seeds[prn].get("ref_hop", 0) / args.hops_per_sec)
-                new_dop = pred[prn][0] + clock_bias           # the forecast AT NOW
+                new_dop = pred[prn][0] + _cb.value           # the forecast AT NOW
                 _old_rate = seeds[prn].get("doppler_rate_hz_s", 0.0)
                 # what the tracker is APPLYING at this instant, i.e. the currency cp is in
                 old_dop = seeds[prn].get("doppler_hz", new_dop) + _old_rate * _age
@@ -3755,7 +3760,7 @@ def main(argv=None, rx=None, publisher=None):
                         # actually using. The delta is the whole S2d decision, logged every
                         # minute so a soak can be read straight out of the broker log.
                         _fhz = _fus["lo_ppm"] * 1e-6 * args.carrier_hz
-                        _own = clock_bias_ema
+                        _own = _cb.ema
                         _log_rl("shadowfuse",
                                 "SHADOW fused LO %+.5f ppm +-%.5f (%d src: %dc/%dd over %s"
                                 "%s%s) -> %+.2f Hz here; chain uses %s; delta %s [%s]"
@@ -3775,7 +3780,7 @@ def main(argv=None, rx=None, publisher=None):
                                    # pure shadow. "CONSUMED" when the chain is solved would
                                    # be a lie under rescue-only semantics.
                                    ("RESCUING (own unsolved)"
-                                    if args.state_consume and clock_bias_ema is None
+                                    if args.state_consume and _cb.ema is None
                                     else "RESCUE-ARMED, idle"
                                     if args.state_consume else "SHADOW")),
                                 every_s=60.0)
@@ -4751,7 +4756,7 @@ def main(argv=None, rx=None, publisher=None):
                 # solve -- it's a receiver constant, common to both models.
                 v2 = _drp.pd2.get((ctag, prn))
                 dop_geo = -v["range_rate_mps"] / dr_eph_mod.C_LIGHT * args.carrier_hz
-                dop_seed = args.doppler_sign * dop_geo + clock_bias
+                dop_seed = args.doppler_sign * dop_geo + _cb.value
                 # ⚠️ THE HALVED DRATE (found 2026-08-22, the per-sat ramp's root).
                 # This line predates the task #52 pair centring: when pd2 sat at
                 # now_w+4 the /4.0 was a correct forward difference, but pd2 moved
@@ -5108,7 +5113,7 @@ def main(argv=None, rx=None, publisher=None):
         
         ⚠️ BOTH THE BIAS AND ITS STALENESS ARE OUTPUTS. Downstream, `bias_stale` decides whether the
         search hint may narrow -- a confidently wrong narrow window is worse than no hint at all."""
-        nonlocal _bias_meas_t, bias_stale, clock_bias, clock_bias_cal, clock_bias_ema, pred, up
+        nonlocal pred, up
         if args.almanac:
             try:
                 t_pred = _alm_now()
@@ -5247,34 +5252,34 @@ def main(argv=None, rx=None, publisher=None):
                     # Local count below the bar: the band's answer stands ALONE. The local
                     # residual is deliberately discarded, not down-weighted.
                     raw_bias = _sib_bw / _sib_w
-                if clock_bias_ema is None or bias_stale:
+                if _cb.ema is None or _cb.stale:
                     # First solve, or stale-rescue re-solve: SNAP to the fresh median. An
                     # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
                     # minutes converging through exactly the hint region it just vacated.
-                    if bias_stale:
+                    if _cb.stale:
                         _log("CLOCK BIAS RE-SOLVED %+.1f Hz after %.0f s stale (held %+.1f)"
-                             % (raw_bias, t0 - _bias_meas_t, clock_bias_ema))
-                        if (clock_bias_cal is not None
-                                and abs(raw_bias - clock_bias_cal) > args.clock_bias_alarm_hz):
+                             % (raw_bias, t0 - _cb.meas_t, _cb.ema))
+                        if (_cb.cal is not None
+                                and abs(raw_bias - _cb.cal) > args.clock_bias_alarm_hz):
                             _log("CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz -- hardware "
                                  "news (GPSDO re-settled?); new warm-start reference"
-                                 % (clock_bias_cal, raw_bias))
-                        clock_bias_cal = raw_bias
-                        bias_stale = False
-                    clock_bias_ema = raw_bias
+                                 % (_cb.cal, raw_bias))
+                        _cb.cal = raw_bias
+                        _cb.stale = False
+                    _cb.ema = raw_bias
                 else:
-                    clock_bias_ema += args.bias_alpha * (raw_bias - clock_bias_ema)
-                _bias_meas_t = t0
-                clock_bias = clock_bias_ema
+                    _cb.ema += args.bias_alpha * (raw_bias - _cb.ema)
+                _cb.meas_t = t0
+                _cb.value = _cb.ema
                 # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
                 # error -- so every co-hosted chain can have this without solving it. A
                 # chain that HAS its own estimate never reads back, which is why publishing
                 # here cannot change single-chain behaviour.
-                rx.contribute_carrier_bias(chain_id, clock_bias_ema, len(resid), t0)
+                rx.contribute_carrier_bias(chain_id, _cb.ema, len(resid), t0)
                 # `alarming` (TIGHT bar) gates the PERSIST only -- conservative: never write a
                 # walking bias to the cal file (the 2026-07-20 GPSDO-walk-poisoning guard).
-                alarming = (clock_bias_cal is not None
-                            and abs(clock_bias_ema - clock_bias_cal) > args.clock_bias_alarm_hz)
+                alarming = (_cb.cal is not None
+                            and abs(_cb.ema - _cb.cal) > args.clock_bias_alarm_hz)
                 # rec D persist (10 s rate limit). The file is a CALIBRATION, not an EMA
                 # mirror -- NEVER overwrite it while the live bias is in alarm (2026-07-20:
                 # the GPSDO free-run walk was faithfully persisted all the way to -2 ppm
@@ -5287,16 +5292,16 @@ def main(argv=None, rx=None, publisher=None):
                     # wolf forever (2026-07-21: L5 cold-solved +75 with 2 sats, settled to -5
                     # -> a phantom 80 Hz "drift" alarmed all morning). No stamp yet = no alarm
                     # yet, which is correct: a chain with <3 sats has no trustworthy reference.
-                    if clock_bias_cal is None and len(resid) >= max(args.bias_min_sats + 1, 3):
-                        clock_bias_cal = clock_bias_ema
+                    if _cb.cal is None and len(resid) >= max(args.bias_min_sats + 1, 3):
+                        _cb.cal = _cb.ema
                         _log("clock-freq bias calibrated %+.1f Hz (%d sats, cold start) -> %s"
-                             % (clock_bias_ema, len(resid), args.clock_bias_file))
-                    if clock_bias_cal is not None:
+                             % (_cb.ema, len(resid), args.clock_bias_file))
+                    if _cb.cal is not None:
                         try:
                             with open(args.clock_bias_file, "w") as f:
                                 # value + sat count + timestamp: siblings weight by count
                                 # and ignore stale entries (--clock-bias-siblings).
-                                f.write("%.2f %d %.2f\n" % (clock_bias_ema, len(resid), t0))
+                                f.write("%.2f %d %.2f\n" % (_cb.ema, len(resid), t0))
                         except Exception:
                             pass
                 # ALARM LOG on a SAT-SCALED bar: the median-of-residuals noise is ~1/sqrt(n),
@@ -5305,13 +5310,13 @@ def main(argv=None, rx=None, publisher=None):
                 # silent -- and a fleet-wide GPSDO event hits ALL chains, so a weak chain's
                 # solo alarm is almost always noise). Widen it below 5 sats; a real event is
                 # large + sustained so it still trips. Persist above keeps the TIGHT bar.
-                if clock_bias_cal is not None:
+                if _cb.cal is not None:
                     _abar = args.clock_bias_alarm_hz * max(1.0, (5.0 / max(len(resid), 1)) ** 0.5)
-                    if abs(clock_bias_ema - clock_bias_cal) > _abar:
+                    if abs(_cb.ema - _cb.cal) > _abar:
                         _log_rl("clkalarm",
                                 "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
                                 "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
-                                % (clock_bias_ema, clock_bias_cal, _abar, len(resid)),
+                                % (_cb.ema, _cb.cal, _abar, len(resid)),
                                 every_s=60.0)
             # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
             # purpose -- an unsolved chain is exactly the case the fused state exists to
@@ -5324,15 +5329,15 @@ def main(argv=None, rx=None, publisher=None):
                     _raw_local = statistics.median(resid) if resid else None
                     state_w.observe(
                         "carrier",
-                        hz=clock_bias_ema,
+                        hz=_cb.ema,
                         raw_hz=_raw_local,
                         mad_hz=receiver_state.mad(resid, _raw_local),
                         n=len(resid),
                         sib_hz=(_sib_bw / _sib_w) if _sib_w else None,
                         sib_n=n_sib,
-                        cal_hz=clock_bias_cal,
-                        stale=bool(bias_stale),
-                        meas_age_s=round(t0 - _bias_meas_t, 2))
+                        cal_hz=_cb.cal,
+                        stale=bool(_cb.stale),
+                        meas_age_s=round(t0 - _cb.meas_t, 2))
                 except Exception:
                     pass
             for p in sorted(best):
@@ -5344,7 +5349,7 @@ def main(argv=None, rx=None, publisher=None):
                 _log_rl("clkbias",
                         "clock-freq bias %+.0f Hz (raw %+.0f, %d sats%s + %d sib, EMA a=%.2f) "
                         "-> seeding predicted Doppler"
-                        % (clock_bias, raw_bias, len(resid),
+                        % (_cb.value, raw_bias, len(resid),
                            "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
                            n_sib, args.bias_alpha))
             else:
@@ -5354,7 +5359,7 @@ def main(argv=None, rx=None, publisher=None):
                 _log_rl("clkbias",
                         "clock-freq bias %s (%d local + %d sibling sats < --bias-min-sats "
                         "%d: residual not trusted)"
-                        % ("held %+.0f Hz" % clock_bias if clock_bias_ema is not None
+                        % ("held %+.0f Hz" % _cb.value if _cb.ema is not None
                            else "UNSOLVED (wide margins)", len(resid), n_sib,
                            args.bias_min_sats))
         elif gating:
@@ -7182,9 +7187,9 @@ def main(argv=None, rx=None, publisher=None):
             _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
         if _fus_now is not None:
             _fus_seen[0] = True
-        if args.state_consume and clock_bias_ema is None and _fused_hz is not None:
-            clock_bias = _fused_hz
-            bias_available = True
+        if args.state_consume and _cb.ema is None and _fused_hz is not None:
+            _cb.value = _fused_hz
+            _cb.available = True
             _log_rl("fusrescue",
                     "FUSED-STATE RESCUE: this chain is UNSOLVED; consuming the dongle's "
                     "fused LO %+.1f Hz (%d src: %dc/%dd over %s) until it solves itself"
@@ -7192,9 +7197,9 @@ def main(argv=None, rx=None, publisher=None):
                        _fus_now["n_code"], ",".join(_fus_now["chains"])),
                     every_s=10.0)
         else:
-            clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
-            bias_available = clock_bias_ema is not None
-            if args.state_consume and clock_bias_ema is None and _fus_now is None:
+            _cb.value = _cb.ema if _cb.ema is not None else 0.0
+            _cb.available = _cb.ema is not None
+            if args.state_consume and _cb.ema is None and _fus_now is None:
                 # STARTUP is not a fault. On the first cycles after launch no broker has
                 # published a fresh record yet and the previous run's files are correctly
                 # refused as stale, so "unavailable" is the expected state for a few
@@ -7208,7 +7213,7 @@ def main(argv=None, rx=None, publisher=None):
                          "FUSED STATE LOST -- falling back to this chain's own bias %s. "
                          "We had one and it went away: infrastructure fault (state dir "
                          "unreadable, or every sibling gone stale), not a normal mode.")
-                        % (("%+.1f Hz" % clock_bias_ema) if clock_bias_ema is not None
+                        % (("%+.1f Hz" % _cb.ema) if _cb.ema is not None
                            else "UNSOLVED"), every_s=30.0)
 
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
@@ -7217,13 +7222,13 @@ def main(argv=None, rx=None, publisher=None):
         # is a LIABILITY, not a constant -- if it latched away from truth (mid-walk during
         # the 2026-07-20 GPSDO unlock) the narrow hints it centers are what PREVENT the
         # measurements that would fix it. Widen and re-solve; hold the value for seeding.
-        bias_stale = (args.bias_stale_s > 0.0 and clock_bias_ema is not None
-                      and t0 - _bias_meas_t > args.bias_stale_s)
-        if bias_stale:
+        _cb.stale = (args.bias_stale_s > 0.0 and _cb.ema is not None
+                      and t0 - _cb.meas_t > args.bias_stale_s)
+        if _cb.stale:
             _log_rl("clkstale",
                     "CLOCK BIAS STALE: no multi-sat measurement for %.0f s (holding %+.0f Hz "
                     "for seeding) -- margins WIDE until re-solved"
-                    % (t0 - _bias_meas_t, clock_bias), every_s=60.0)
+                    % (t0 - _cb.meas_t, _cb.value), every_s=60.0)
         up = None
         _stage_almanac_predict()
         _ctx.begin_cycle(pred=pred, up=up)
@@ -7459,7 +7464,7 @@ def main(argv=None, rx=None, publisher=None):
                     _log("noise probe PRN %d seeded (elev %.0f)" % (p, pred[p][2]))
                 seeds[p] = Seed.born(
                     "probe", epoch=0,
-                    doppler_hz=pred[p][0] + clock_bias,
+                    doppler_hz=pred[p][0] + _cb.value,
                     code_phase_chips=0.0,
                     code_phase_rate=cp_rate_from_code_bias(
                         pred[p][0], code_bias_ema or 0.0, args.hops_per_sec,
