@@ -20,12 +20,25 @@
 #      phase, every PRN despreading noise while it reads as a clock bug.
 set -u
 NODES=${*:-"cx19 cx27 cx42 cx43 cx44 cx51"}
-PORT=12049
+# ⚠️⚠️ 12048, NOT 12049 -- AND THE DIFFERENCE PRINTED "The F-engine is not delivering" WHILE
+# 780,000 PACKETS/S WERE ARRIVING (2026-08-26). The nodes bind 0.0.0.0:12048 (see the generated
+# configs and node_up.sh); polling 12049 got nothing, `awk ... s+0` turned "nothing" into a
+# confident 0, and the verdict inverted. That is the fleetdll class of failure exactly: a check
+# that CANNOT return a positive is a gate that cannot fail, and this one was consulted in the
+# middle of an outage and believed.
+PORT=${GNSS_PORT:-12048}
 GAP=${GAP:-20}
 CHIVE=${CHIVE:-10.222.0.54:54321}
 
-pkts() { timeout 12 curl -sS -m 8 "http://$1:$PORT/metrics" 2>/dev/null \
-         | awk '/^kotekan_dpdk_distributor_packets_total/ {s += $2} END {printf "%.0f", s+0}'; }
+# ⚠️ AN UNREACHABLE NODE MUST NOT READ AS ZERO PACKETS. Returns the count, or the literal "?"
+# when the endpoint could not be polled at all -- the caller then says so instead of folding
+# "I could not ask" into "the answer is none".
+pkts() { local out
+         out=$(timeout 12 curl -sS -m 8 "http://$1:$PORT/metrics" 2>/dev/null) || { echo "?"; return; }
+         [ -z "$out" ] && { echo "?"; return; }
+         printf "%s" "$out" \
+         | awk '/^kotekan_dpdk_distributor_packets_total/ {s += $2; n++}
+                END {if (n) printf "%.0f", s; else printf "?"}'; }
 t0()   { timeout 12 curl -sS -m 8 "http://$1:$PORT/telescope/time0_ns" 2>/dev/null \
          | sed -n 's/.*"time0_ns"[: ]*\([0-9]\+\).*/\1/p' | head -1; }
 
@@ -45,21 +58,28 @@ sleep "$GAP"
 
 echo
 printf "%-6s %18s %18s  %-9s %s\n" node "CRS pkts t0" "t0+${GAP}s" flowing "frame0_ns (cached at ITS startup)"
-flowing=0; total=0
+flowing=0; total=0; unpolled=0
 for n in $NODES; do
     a=${P1[$n]:-}; b=$(pkts "$n"); z=$(t0 "$n")
     [ -z "$a$b" ] && { printf "%-6s %18s %18s  %-9s %s\n" "$n" - - "NO REST" -; continue; }
     total=$((total+1))
-    if [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ]; then s=YES; flowing=$((flowing+1)); else s=no; fi
+    # THREE OUTCOMES, NOT TWO: flowing, stalled, or NOT POLLED. Collapsing the third into
+    # "no" is what inverted this script's verdict during the 2026-08-26 outage.
+    if [ "$a" = "?" ] || [ "$b" = "?" ]; then s="?"; unpolled=$((unpolled+1))
+    elif [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ]; then s=YES; flowing=$((flowing+1))
+    else s=no; fi
     printf "%-6s %18s %18s  %-9s %s\n" "$n" "${a:-?}" "${b:-?}" "$s" "${z:-?}"
 done
 
 echo
-if [ "$flowing" -eq 0 ]; then
-    echo "VERDICT: NO DATA anywhere ($total node(s) polled). The F-engine is not delivering."
+if [ "$unpolled" -eq "$total" ] && [ "$total" -gt 0 ]; then
+    echo "VERDICT: COULD NOT POLL ANY NODE on :$PORT -- this says NOTHING about the F-engine."
+    echo "  Check the port (nodes bind :12048; GNSS_PORT overrides) before reading anything into it."
+elif [ "$flowing" -eq 0 ]; then
+    echo "VERDICT: NO DATA anywhere ($total polled, $unpolled unreachable). The F-engine is not delivering."
     echo "  Frozen status endpoints will still serve plausible deep_snr/lock values -- ignore them."
 else
-    echo "VERDICT: data flowing on $flowing/$total node(s)."
+    echo "VERDICT: data flowing on $flowing/$total node(s)$([ "$unpolled" -gt 0 ] && echo \", $unpolled UNREACHABLE\")."
     echo "  NOW CHECK FRAME 0 before trusting any science number: the frame0_ns column above is"
     echo "  what each node cached AT ITS OWN STARTUP. If the F-engine restarted during the"
     echo "  outage, a node started BEFORE it is carrying a stale epoch. Prefer chive; else read"
