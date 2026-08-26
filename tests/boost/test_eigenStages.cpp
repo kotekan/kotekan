@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <blaze/Blaze.h> // for setSeed
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
 #include <cmath>
@@ -53,6 +54,27 @@ static void ensure_n2metadata_registered() {
         return true;
     }();
     (void)registered;
+}
+
+// The iterative solvers (EigenVisIter / EigenN2Iter) seed their starting subspace
+// with `blaze::rand` -- see `eigen_masked_subspace` in LinearAlgebra.hpp -- and Blaze
+// seeds its global generator from `std::time(0)` unless told otherwise. That left
+// these tests starting from a different subspace on every run, so the `erms` values
+// checked below drifted run to run: an unmodified build of this test failed 2 runs
+// out of 30 (~7%), always in `eigenVisIter_vis_buffers` or `eigenN2Iter_iterative`,
+// the two cases that use the randomized solver. Pin the seed before each pipeline so
+// the tests are reproducible and a failure means something.
+//
+// Seeding per pipeline rather than once globally keeps each test independent of how
+// many random numbers the tests before it happened to draw.
+//
+// NOTE: this does not make `eigenN2Iter_concurrent_pipelines` deterministic. Blaze's
+// generator is a single shared static with no locking, so two stage threads drawing
+// from it at once race regardless of the seed.
+static constexpr uint32_t eigen_test_seed = 0x9e3779b9;
+
+static void seed_blaze() {
+    blaze::setSeed(eigen_test_seed);
 }
 
 // Reuse the small fixtures used elsewhere to bootstrap REST/config for tests.
@@ -110,6 +132,7 @@ struct EigenResults {
 static EigenResults run_pipeline(const EigenStageTestParams& p, const string& stage_name) {
     ensure_fakevis_patterns_registered();
     ensure_n2metadata_registered();
+    seed_blaze();
 
     static std::atomic<int> run_counter{0};
     int rc = run_counter++;
@@ -291,6 +314,14 @@ static void verify_results(const EigenResults& res, const EigenStageTestParams& 
             BOOST_CHECK_SMALL(static_cast<double>(res.eval1[idx]) / (double)p.num_elements,
                               eval_tol);
         check_phase_vector(res.evec0[idx], p.exclude_inputs, p.num_elements, phase_tol, amp_tol);
+        // `erms` is the residual RMS when the solver converged, and minus the final
+        // eigenvalue-convergence metric (`eps_eval`) when it hit max_iterations first;
+        // see EigenVisIter::main_thread. For the iterative stages in these tests it is
+        // always the latter -- measured across max_iterations from 5 to 200, the
+        // subspace iteration never reaches tol_eval, because `eps_eval` is dominated by
+        // the noise on the near-zero second eigenvalue it divides through. So `abs` is
+        // required here, and `rms_limit` bounds that convergence metric rather than a
+        // residual. Do not read a value near the limit as "almost converged".
         BOOST_CHECK_LT(static_cast<double>(std::abs(res.erms[idx])), (double)rms_limit);
     }
 }
@@ -355,6 +386,7 @@ static std::pair<EigenResults, EigenResults>
 run_n2_pipeline_pair(const EigenStageTestParams& params_a, const EigenStageTestParams& params_b) {
     ensure_fakevis_patterns_registered();
     ensure_n2metadata_registered();
+    seed_blaze();
     BOOST_REQUIRE_EQUAL(params_a.num_elements, params_b.num_elements);
     BOOST_REQUIRE_EQUAL(params_a.num_ev, params_b.num_ev);
 
