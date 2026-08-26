@@ -204,7 +204,66 @@ is that an interface should be impossible to leave unnamed.
    purpose is shared identity. Initialising them as dicts would have been a silent behaviour
    change the digest might well have missed, since those tables are dead in production.
 
-### Step 3 — what is left
+### Step 3 — DONE 2026-08-26: ALL 30 STAGES ARE OUT OF `main()`
+
+| | start of day | after step 1 | after step 2 | now |
+|---|---|---|---|---|
+| `gps_distributed_broker.py` | 11,084 | 8,598 | 7,411 | **2,641** |
+| `main()` | 10,287 | — | — | **2,438** |
+| the cycle loop body | 6,940 | 4,834 | 1,042 | **1,044** |
+| stages inside `main()` | 30 | 30 | 14 | **0** |
+| `nonlocal` declarations | — | 5 | 3 | **0** |
+| max nesting | 15 | 10 | 9 | **7** |
+| modules in `gnss_broker/` | 15 | 19 | 30 | **39** |
+
+The broker is now a driver: parse arguments, build the owner objects and the `ChainContext`,
+then call named stages in named modules — `seeding`, `almanac`, `deadreckon`, `fleetdll`,
+`codeloop`, `instruments`, `ratefeed`, `trimarm`, `carrierloop`, `clsibling`, `navbits`,
+`searchhint`, `statepub`.
+
+**ELEVEN OWNER OBJECTS** hold what used to be ~90 bare tables in one flat namespace:
+`ClockBias`, `CarrierState`, `WatchdogState`, `NhOverlay`, `DllLoopState`, `HoldState`,
+`CpTracking`, `RateFeedState`, `NavDecoders`, `ClSibling`, plus `_DllProducts`/`_DrProducts`.
+Membership test: *would these reset together if the loop restarted*.
+
+**THE GENERAL ESCAPE FROM THE `nonlocal` WALL** is that an attribute can be assigned from a
+module-level function while a local cannot. Every stage that writes shared state — the almanac
+stage, nav-bits with its eleven decoders, seed-push with its `+=` counters — moved only once
+its state had an owner.
+
+#### What the gate caught that review would not have
+
+* **`probe_set` went stale** — it starts empty and is REPLACED when noise probes are selected,
+  and my `begin_cycle` refresh sat after the first assignment. `begin_cycle` now takes only
+  values assigned exactly once per pass; everything else is written straight onto the context.
+* **Mutable class-level defaults** would have been shared by all five chains in the process.
+  `DEFAULTS` holds factories.
+* **`ast.col_offset` is a BYTE offset**, and this codebase is full of `⚠️`. Both rewriters
+  sliced by character. The per-rewrite assert caught it instead of corrupting a file.
+* **Owner names collided with existing locals** — `_car` and `_wd`. The `_wd` one sat at
+  `main()`'s own level and rebound the owner every cycle: the `fleet`-clobber class,
+  introduced by the refactor. Renamed to `_carrier`/`_watchdog`.
+* **The `+=` counters lost their per-pass reset** when they became attributes — nothing zeroes
+  an attribute the way a fresh loop local is zeroed.
+
+#### Guards that now make these unrepeatable
+
+* `test_context.py` — every ChainContext slot is passed, defaulted, or declared per-cycle;
+  `DEFAULTS` holds factories. It caught `lc_seg`, `code_bias_ema` and `payload`.
+* `broker_extract.py` refuses a move whose free names have no slot, that writes shared state,
+  or that uses a module-level name the TARGET module lacks (`C_LIGHT` was a bare NameError).
+* `broker_iface.py` treats an augmented assignment as a read.
+
+### Step 4 — what is actually left
+
+Not decomposition. `main()` is 2,438 lines of which the cycle loop is 1,044 — the loop is now
+mostly the ~20 short blocks between stage calls, plus the joint-consume and command wiring.
+The remaining work is **the detectors (D0–D3)**, which the modules make straightforward, and
+the `_FROZEN` sweep (220 flags against 135 used). The 18 helper closures still in `main()`
+(`cp_predicted`, `_joint_state`, `_p2c_*`, `_decoded_entries`) are passed through the context
+as callables; giving them a module is cosmetic until something needs to test them.
+
+### Step 3 (superseded) — what was left after step 2
 
 14 stages still nested, and the blockers are now small and named: `utc0_sample0`, `_xb_pred`,
 `coast_polls`, `have_sig`, `_rr_cons`/`_rr_resid`/`_rr2_resid` (the rate-feed cluster — it
