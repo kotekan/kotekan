@@ -805,6 +805,28 @@ should HOLD standing trims, not release them (the release turns a 9-min fold fad
 full re-pull per sat); (c) never adopt an (l-a) rate fitted on a population below a floor.
 
 **#92 — SEED RE-ANCHOR AND STANDING TRIM ARE UNCOORDINATED (E3's ~25-min sawtooth).**
+*STATUS 08-26 15:2x — D3's first flight decomposed the population into TWO MECHANISMS,
+and P2 now has a clean paired metric.*
+* *The BIRTH-STEP class* (gal/bds searchless chains): the rebase the handover was built
+  for. On e5a (armed) the posts fire in the same cycle as the step (PRN 34, 14:54:14:
+  post +0.612 vs step −0.612) and the raw trim moves by the posted delta.
+* *The SLEW-TRANSFER class* (gps_l5, ~600 s cadence = the clock-median churn): the seed
+  SLEWS onto a stepped target and the trim's content transfers into it in ~1 cycle
+  (PRN 10, 15:04:00: disc jump +0.904 ≈ −trim −0.92, q recovered in 4 s, NO BIRTH-STEP).
+  The tap barely leaves the sky, so this is NOT the E3 disease — its cost is chopping
+  #93's trim-ramp windows at ~600 s, and the handover as built cannot and need not
+  catch it. [[chord-plant-oscillation]]'s inner loop, seen at cycle resolution.
+* *D3 v2* (startup hold-off, weak-sat qualifier, REBASE-WIPE vs BARE-WIPE tags) makes
+  the P2 verdict a paired-in-time count: REBASE-WIPE rate on gal_e5a (armed) vs
+  gal_e5b (unarmed, same sats, same process). 6 of the first flight's 12 reports were
+  startup churn; the one armed-chain report (e5a PRN 34) was a q~1.3 mostly-absent sat.
+* *On staleness*: the posted delta preserves TAP INVARIANCE (tap = seed + trim; the
+  post is −step), which is correct regardless of what the loop did to the trim in the
+  meantime — no freshness guard is needed. What the PRN 34 anatomy actually shows is
+  that on a churn-class sat (q~1.3, mostly absent) the whole trim/handover dance is
+  noise riding noise; D3 v2's weak-sat qualifier exists to keep that population out
+  of the P2 count, not to indict the handover.
+
 E3-e5a drifts model-vs-sky at ~0.06 chips/min (per-sat residual-rate class -- the GAP 3
 hole). The C++ standing trim absorbs it, ramping 0.16 -> 1.01 chips over 15 min with SPEC
 tau ~= 0 (tap ON the sky the whole time, q ~3). Then the joint b_sat row -- tracking the
