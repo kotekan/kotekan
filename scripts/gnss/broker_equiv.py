@@ -48,6 +48,25 @@ PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
 BRDC_PIN = os.environ.get("GNSS_BRDC_PIN", "/home/kvand/gnss/fixtures/brdc_pin")
 
 
+def _pin_for(transcript):
+    """THE PIN THIS TRANSCRIPT WAS RECORDED AGAINST, not whatever the shared one holds now.
+
+    ⚠️ WHY PER-FIXTURE (2026-08-26). The shared pin covers the days its fixtures were
+    captured on, and nothing else -- it held DOY 219-228 while a fresh capture landed on
+    DOY 238, so a replay of the new transcript would have had NO ephemeris for its own
+    satellites. The obvious repair, dropping today's nav files into the shared pin, is the
+    trap: the pin is hashed WHOLE into every digest, so adding a file moves the fingerprint
+    of all four existing fixtures at once and their gates go red for a reason that has
+    nothing to do with code.
+
+    So a fixture may carry its own snapshot as `<transcript>.brdc/`, which is used in
+    preference to the shared pin. Self-contained, and adding tomorrow's capture cannot
+    disturb yesterday's gate. Fixtures with no sidecar keep the shared pin exactly as before.
+    """
+    side = transcript + ".brdc"
+    return side if os.path.isdir(side) else BRDC_PIN
+
+
 FIXTURES = os.path.join(K, "scripts", "gnss", "fixtures")
 
 
@@ -95,7 +114,7 @@ def _tree_state():
     return sha, dirty
 
 
-def _brdc_fingerprint():
+def _brdc_fingerprint(cache=None):
     """Short hash of the BRDC nav files the replay will parse.
 
     ⚠️ THE GATE HAS A THIRD INPUT AND IT IS NOT THE TRANSCRIPT. A transcript freezes the
@@ -117,7 +136,7 @@ def _brdc_fingerprint():
     task #29) -- but it makes a moved digest self-explaining instead of a mystery that costs
     an afternoon.
     """
-    cache = BRDC_PIN  # what replays READ -- never the live cache, which refreshes daily
+    cache = cache or BRDC_PIN  # what replays READ -- never the live cache, which refreshes daily
     h = hashlib.sha256()
     try:
         for name in sorted(os.listdir(cache)):
@@ -171,6 +190,7 @@ def _census(path):
 
 def replay(path, extra=(), env=None):
     """Run the broker against a transcript; return (digest, stderr)."""
+    pin = _pin_for(path)
     argv = _header_argv(path)
     # --publish-port 0 disables the REST publisher: replays must not fight over a port, and
     # two of them running concurrently is the normal case when bisecting.
@@ -184,7 +204,7 @@ def replay(path, extra=(), env=None):
     # byte-identical code -- the second time because midnight UTC rolled the day-of-year
     # mid-review. Replays read exactly the nav files in the pinned snapshot, so the digest is
     # a function of (code, transcript) and nothing else.
-    e["GNSS_BRDC_DIR"] = BRDC_PIN
+    e["GNSS_BRDC_DIR"] = pin or BRDC_PIN
     e.update(env or {})
     p = subprocess.run(cmd, capture_output=True, text=True, env=e, cwd=K)
     out = p.stdout.strip().splitlines()
@@ -251,7 +271,7 @@ def main():
         d, _ = replay(a.transcript)
         sha, dirty = _tree_state()
         prov = "blessed-at %s%s brdc %s" % (sha, " DIRTY" if dirty else "",
-                                            _brdc_fingerprint())
+                                            _brdc_fingerprint(_pin_for(a.transcript)))
         with open(gold, "w") as f:
             f.write("%s  %s\n" % (d, prov))
         print("blessed %s = %s (%s)" % (os.path.basename(gold), d, prov))
@@ -271,7 +291,7 @@ def main():
             print("EQUIVALENT  %s%s" % (got, "  [%s]" % prov if prov else ""))
             return
         sys.stderr.write(err[-4000:] + "\n")
-        now_brdc = _brdc_fingerprint()
+        now_brdc = _brdc_fingerprint(_pin_for(a.transcript))
         brdc_note = ""
         if prov and "brdc " in prov and ("brdc %s" % now_brdc) not in prov:
             brdc_note = (
