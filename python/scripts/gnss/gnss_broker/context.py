@@ -61,13 +61,25 @@ class ChainContext(object):
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",
         "mp_cooldown", "mp_flipped", "mp_last_det",
         "almanac_sats", "brdc_alm", "det_fresh", "state_w", "clk_persist_t",
-        # ---- per-cycle, refreshed by begin_cycle() ------------------------------------
+        "innov_hist", "minnov_hist", "p2c", "dop_rate_fitted", "dop_rate_rejected",
+        "dll_hop_window", "deep_gate", "dg_auto_last", "est_next",
+        # ---- per-cycle: written directly by the stage that computes them ---------------
+        # Attributes rather than loop locals for one reason: a module-level stage can assign
+        # `ctx.have_sig`, where it could never declare `nonlocal have_sig`. That is the whole
+        # escape from the nonlocal wall.
         "t0", "best", "status", "pred", "up", "probe_set",
+        "utc0_sample0", "xb_pred", "coast_polls", "have_sig",
+        "la_samples", "fitted", "cl_report", "dr_pd", "dr_pd0", "dr_pd2",
     )
+
+    # Slots whose "not yet known" value is not None. `utc0_sample0` is 0.0 because it is
+    # compared numerically before the first fetch succeeds, and None would raise there rather
+    # than read as "no anchor yet".
+    DEFAULTS = {"utc0_sample0": 0.0}
 
     def __init__(self, **kw):
         for k in self.__slots__:
-            setattr(self, k, kw.get(k))
+            setattr(self, k, kw.get(k, self.DEFAULTS.get(k)))
 
     def begin_cycle(self, t0=_UNSET, best=_UNSET, status=_UNSET, probe_set=_UNSET):
         """Refresh the per-cycle half, at each point one of these is rebound.

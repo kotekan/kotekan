@@ -1128,7 +1128,6 @@ def main(argv=None, rx=None, publisher=None):
     navbrdc = None
     navhealth = None  # continuous predicted-vs-air agreement monitor (navbit_health)
     cp_held = set()  # PRNs whose cp anchor is FROZEN this cycle (locked -> DLL owns the residual)
-    utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     # ⚠️ NOT ASSIGNED UNTIL THE FIRST DEAD-RECKON REFRESH THAT HAS AN EPHEMERIS (:6213), and
     # SIX consumers outside that block read it -- the spec-fit archive/stash and the four
     # joint feeds. Before the first refresh they raised UnboundLocalError; five sit inside a
@@ -1606,7 +1605,7 @@ def main(argv=None, rx=None, publisher=None):
         utc0 is no cure for orbit curvature (tens of ms over hours), so this runs a SECOND model
         evaluation at the fixed anchor epoch, cached per ephemeris refresh -- the anchor never moves,
         only the ephemeris does."""
-        if cl_tracker and utc0_sample0 and args.almanac and _ctx.pred:
+        if cl_tracker and _ctx.utc0_sample0 and args.almanac and _ctx.pred:
             # tau AND the SV clock must be evaluated AT THE ANCHOR EPOCH (utc0_sample0),
             # because that is where cp is referenced. The first deploy evaluated them at
             # "now": invisible at launch, but the per-sat error grows at range_rate/c (up to
@@ -1615,12 +1614,12 @@ def main(argv=None, rx=None, publisher=None):
             # So: a second model evaluation at the FIXED anchor epoch, cached per ephemeris
             # refresh (the anchor never moves; only the ephemeris does).
             if brdc_alm is not None:
-                _k0 = (round(utc0_sample0, 3), brdc_alm.get("eph_t"))
+                _k0 = (round(_ctx.utc0_sample0, 3), brdc_alm.get("eph_t"))
                 if cl_pred0.get("key") != _k0:
                     try:
                         cl_pred0["val"] = brdc_predict(
                             brdc_alm, args.lat, args.lon, args.alt, alm_sys, alm_min_prn,
-                            datetime.fromtimestamp(utc0_sample0, tz=timezone.utc),
+                            datetime.fromtimestamp(_ctx.utc0_sample0, tz=timezone.utc),
                             args.carrier_hz)
                         cl_pred0["key"] = _k0
                         _log("CL: anchor-epoch geometry rebuilt (%d sats)"
@@ -1646,7 +1645,7 @@ def main(argv=None, rx=None, publisher=None):
                 # Their segment-search correction (cl_segsearch) on OUR parameterised epoch:
                 # LC_EPOCH/LC_SEG replaced the hardcoded 1.5 s / 75 segments so the CL assist
                 # is not L2C-CL-only. Defaults are 1.5/75, so this is a no-op on the prototype.
-                t_sv = (utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
+                t_sv = (_ctx.utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
                         + cl_segsearch["corr"] * CL_SEG_S)
                 cl_chips = (t_sv % LC_EPOCH) * args.chip_rate_hz
                 cp_cm = d["code_phase_chips"] % CODE_LEN
@@ -1691,7 +1690,7 @@ def main(argv=None, rx=None, publisher=None):
                     else:
                         _log("CL K-JUMP (not +-1 -- clock/anchor fault?): " + msg)
                 cl_k[d["prn"]] = k
-                cl_report.append("PRN %d k=%d fine %+.1f ms" % (d["prn"], k, fine_ms))
+                _ctx.cl_report.append("PRN %d k=%d fine %+.1f ms" % (d["prn"], k, fine_ms))
             # AUTO-CENTER: the across-sat MEDIAN fine is the common receiver-clock/anchor
             # offset (class-1 continuous state -- measured +4.5 ms on first light, i.e. half
             # the +-10 ms pin budget spent on a knowable constant). A slow EMA of the median
@@ -1821,7 +1820,7 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ THE HINT IS ONLY AS GOOD AS THE CLOCK IT CARRIES. When the receiver clock bias is stale the
         margin must widen rather than the hint narrow -- a confidently wrong narrow window is worse
         than no hint at all, because the search then cannot find what it was told to look near."""
-        if (args.narrow_search and args.almanac and _ctx.pred) or (_xb_pred and args.xband_seed):
+        if (args.narrow_search and args.almanac and _ctx.pred) or (_ctx.xb_pred and args.xband_seed):
             margin = (args.search_margin_hz
                       if _cb.ema is not None and not _cb.stale
                       else args.search_margin_wide_hz)
@@ -1833,10 +1832,10 @@ def main(argv=None, rx=None, publisher=None):
             # Wider margin than a BRDC hint -- the cross-band seed accuracy is the inter-band
             # MAD (~10 Hz) plus this band's own unsolved-LO width -- but far better than the
             # blind grid. Provably rescue-only: a sat BRDC covered is already in `hints`.
-            if args.xband_seed and _xb_pred:
+            if args.xband_seed and _ctx.xb_pred:
                 _hinted = {h["prn"] for h in hints}
                 _xb_margin = max(margin, args.xband_hint_margin_hz)
-                for _p, _xd in sorted(_xb_pred.items()):
+                for _p, _xd in sorted(_ctx.xb_pred.items()):
                     if _p in _hinted or (_capable is not None and _p not in _capable):
                         continue
                     if _ctx.up is not None and _p not in _ctx.up:
@@ -1882,7 +1881,7 @@ def main(argv=None, rx=None, publisher=None):
             # broke propagation (suspect the 16-period acquire window against a 20-chip
             # overlay, 16 !== 0 mod 20). The span absorbs it; it does not explain it.
             nh_hints = []
-            if args.nh_hint and _ctx.pred and utc0_sample0:
+            if args.nh_hint and _ctx.pred and _ctx.utc0_sample0:
                 try:
                     import gnss_ephemeris as _nh2
                     _per = args.code_length / args.chip_rate_hz
@@ -1916,7 +1915,7 @@ def main(argv=None, rx=None, publisher=None):
                         if _p not in _ctx.pred or _nho.last_rh.get(_p) == _rh:
                             continue
                         _nho.last_rh[_p] = _rh
-                        _t = utc0_sample0 + _rh / args.hops_per_sec
+                        _t = _ctx.utc0_sample0 + _rh / args.hops_per_sec
                         _nho.off_hist.append((t0, (_pred_nh(_p, _t) - _nh) % args.nh_overlay_len))
                     del _nho.off_hist[:-64]
                     _fresh = [o for (_ts, o) in _nho.off_hist
@@ -1938,7 +1937,7 @@ def main(argv=None, rx=None, publisher=None):
                     # (c) hint EVERY visible sat, detected or not, at a hop the stage can
                     # propagate over a few seconds rather than a minute
                     if _nho.offset[0] is not None:
-                        _rh_now = int(round((t0 - utc0_sample0) * args.hops_per_sec))
+                        _rh_now = int(round((t0 - _ctx.utc0_sample0) * args.hops_per_sec))
                         nh_hints = [dict(prn=int(_p),
                                          nh=(_pred_nh(_p, t0) - _nho.offset[0]) % args.nh_overlay_len,
                                          ref_hop=_rh_now)
@@ -2012,7 +2011,7 @@ def main(argv=None, rx=None, publisher=None):
                             "%.0f Hz (census only; cp round-trip is exact)"
                             % (prn, dop, _aref, _k, Q_ALIAS_HZ),
                             every_s=30.0)
-            v_dr = dr_pd.get((args.dr_constellation, prn)) if dr_pd else None
+            v_dr = _ctx.dr_pd.get((args.dr_constellation, prn)) if _ctx.dr_pd else None
             if _ctx.up is not None and prn not in _ctx.up:
                 # accept the detection anyway if BRDC says it's up: the TLE up-set
                 # mismaps some BDS birds (PRN 39: TLE el<5 vs BRDC el 10)
@@ -2163,8 +2162,8 @@ def main(argv=None, rx=None, publisher=None):
             # applied like doppler_hz); the tracker integrates it in its NCO (never a replica
             # retune -- that walks the absolutely-anchored code/carrier off-peak) so the deep-
             # integration residual stays flat even at zenith (max Doppler acceleration).
-            v2_dr = dr_pd2.get((args.dr_constellation, prn)) if dr_pd2 else None
-            v0_dr = dr_pd0.get((args.dr_constellation, prn)) if dr_pd0 else None
+            v2_dr = _ctx.dr_pd2.get((args.dr_constellation, prn)) if _ctx.dr_pd2 else None
+            v0_dr = _ctx.dr_pd0.get((args.dr_constellation, prn)) if _ctx.dr_pd0 else None
             if v2_dr is not None and v0_dr is not None:
                 # BRDC doppler rate, CENTRAL difference over the +/-2 s pair straddling now_w
                 # (task #52). Centred, so the rate is tagged at now_w rather than 2 s late.
@@ -2223,7 +2222,7 @@ def main(argv=None, rx=None, publisher=None):
                 rate, h0, cp_ref = fit
                 seed.put("cp_fit", epoch=h0,
                          code_phase_rate=rate, ref_hop=h0, code_phase_chips=cp_ref)
-                fitted.add(prn)
+                _ctx.fitted.add(prn)
                 _cpt.fit_slope[prn] = rate * args.hops_per_sec   # chips/s, for CARRIER-FROM-CODE
                 # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
                 # Only strong, geometry-clean detections (SNR gate) -- weak/noisy slopes would bias it.
@@ -2234,7 +2233,7 @@ def main(argv=None, rx=None, publisher=None):
                 # seeded code rate (+-1 ppm = +-1 chip/s), walking the deep integration off-peak
                 # within its ~1 s window (the 2026-07-07 L1 deep decay). Bound to --code-bias-max.
                 if snr >= args.acquire_snr and abs(la) < args.code_bias_max * 1e-6:
-                    la_samples.append(la)
+                    _ctx.la_samples.append(la)
                 _log_rl("cpfit-%d" % prn,
                         "PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s "
                         "(%d pts, l-a %+.3f ppm)"
@@ -2264,7 +2263,7 @@ def main(argv=None, rx=None, publisher=None):
                 seed.put("nh_lift", epoch=ref_hop,
                          code_phase_chips=((cp_long + args.nh_period_offset * CODE_LEN)
                                            % (LC_SEG * CODE_LEN)))
-                cl_report.append("PRN %d long-cp (search)" % prn)
+                _ctx.cl_report.append("PRN %d long-cp (search)" % prn)
                 # And carry the PHASE at the search's own epoch. cp0 back-references to sample
                 # 0 through a Doppler-scaled rate, which multiplies the reported Doppler's
                 # error by ~5900 chips/Hz = 0.58 overlay PERIODS per Hz -- so the period that
@@ -2341,10 +2340,10 @@ def main(argv=None, rx=None, publisher=None):
                          code_phase_chips=((seed["code_phase_chips"] % CODE_LEN)
                                            + (det_nh % LC_SEG) * CODE_LEN)
                                           % (LC_SEG * CODE_LEN))
-                cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
-            elif args.cl_assist and utc0_sample0 and args.almanac and prn in _ctx.pred:
+                _ctx.cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
+            elif args.cl_assist and _ctx.utc0_sample0 and args.almanac and prn in _ctx.pred:
                 tau = _ctx.pred[prn][3] / C_LIGHT
-                cl_chips = (((utc0_sample0 - tau + args.cl_time_adjust) % LC_EPOCH)
+                cl_chips = (((_ctx.utc0_sample0 - tau + args.cl_time_adjust) % LC_EPOCH)
                             * args.chip_rate_hz)
                 cp_cm = seed["code_phase_chips"]
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
@@ -2352,7 +2351,7 @@ def main(argv=None, rx=None, publisher=None):
                 seed.put("cl_assist", epoch=ref_hop,
                          code_phase_chips=(cp_cm + (k % LC_SEG) * CODE_LEN)
                                           % (LC_SEG * CODE_LEN))
-                cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % LC_SEG, fine_ms))
+                _ctx.cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % LC_SEG, fine_ms))
             # HOLD-ON-LOCK: once a PRN shows a real lock, FREEZE its cp anchor + rate and let the
             # DLL trim own the sub-chip residual. The search's per-fix cp is only good to ~1-2
             # chips (hop-resolution coarse + refine), so re-anchoring from the fit at every cycle
@@ -2812,8 +2811,8 @@ def main(argv=None, rx=None, publisher=None):
                 # then there is no double-count to undo.
                 _rate_eff = _rate_new if "doppler_rate_hz_s" in seeds[prn] else 0.0
                 _age = 0.0
-                if utc0_sample0:
-                    _age = max(0.0, (_drp.now_w - utc0_sample0)
+                if _ctx.utc0_sample0:
+                    _age = max(0.0, (_drp.now_w - _ctx.utc0_sample0)
                                - seeds[prn].get("ref_hop", 0) / args.hops_per_sec)
                 new_dop = _ctx.pred[prn][0] + _cb.value           # the forecast AT NOW
                 _old_rate = seeds[prn].get("doppler_rate_hz_s", 0.0)
@@ -2836,7 +2835,7 @@ def main(argv=None, rx=None, publisher=None):
                     # dr_seed_phys, with its own regression test. When the sample-0 anchor
                     # is not known (no utc0_sample0), keep the old anchor-epoch behaviour:
                     # a partial correction still beats the raw-dop overwrite it replaced.
-                    _t_retag = ((_drp.now_w - utc0_sample0) if utc0_sample0
+                    _t_retag = ((_drp.now_w - _ctx.utc0_sample0) if _ctx.utc0_sample0
                                 else seeds[prn].get("ref_hop", 0) / args.hops_per_sec)
                     seeds[prn].put(
                         "coast_retag", epoch=seeds[prn].get("ref_hop"),
@@ -2850,7 +2849,7 @@ def main(argv=None, rx=None, publisher=None):
                     seeds[prn].put("coast_retag", epoch=seeds[prn].get("ref_hop"),
                                    doppler_rate_hz_s=_rate_new)
             rec = status.get(prn, {})
-            if have_sig:
+            if _ctx.have_sig:
                 metric, thresh = sig_of(rec), args.lock_snr
             else:
                 metric, thresh = float(rec.get("amplitude", 0.0)), args.drop_amplitude
@@ -2863,10 +2862,10 @@ def main(argv=None, rx=None, publisher=None):
                 _hold.low_hits[prn] = _hold.low_hits.get(prn, 0) + 1
                 # dead-reckoned seeds are MODEL-owned: visible + predicted = keep despreading
                 # (their whole point is sats with no signal above the search threshold)
-                if (_hold.low_hits[prn] >= coast_polls and not args.coast_to_horizon
+                if (_hold.low_hits[prn] >= _ctx.coast_polls and not args.coast_to_horizon
                         and not (dr_state is not None and prn in dr_state["seeded"])):
                     _log("drop PRN %d (coast %.0fs expired, %s=%.2f)"
-                         % (prn, args.coast_budget, "sig" if have_sig else "|A|", metric))
+                         % (prn, args.coast_budget, "sig" if _ctx.have_sig else "|A|", metric))
                     del seeds[prn]
                     _hold.low_hits.pop(prn, None)
 
@@ -4357,7 +4356,7 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ `t_now_abs` IS None, NEVER 0.0, until the first ephemeris refresh. A missing axis time is
         UNKNOWN, and a confident wrong timestamp is worse than a skipped measurement -- as 0.0 it
         killed chain threads through the #85 stash."""
-        if (dr_state is not None and args.almanac and _ctx.pred and utc0_sample0
+        if (dr_state is not None and args.almanac and _ctx.pred and _ctx.utc0_sample0
                 and _now() >= dr_state["next"]):
             _drp.now_w = _now()
             dr_state["next"] = _drp.now_w + args.dr_refresh_s
@@ -4447,7 +4446,7 @@ def main(argv=None, rx=None, publisher=None):
                 try:
                     dr_state["eph"] = dr_eph_mod.parse_rinex_nav(dr_eph_mod.fetch_brdc())
                     dr_state["eph_t"] = _drp.now_w
-                    dr_state["t0m"] = dr_eph_mod.gpst_of_utc(utc0_sample0) % _drp.t_code
+                    dr_state["t0m"] = dr_eph_mod.gpst_of_utc(_ctx.utc0_sample0) % _drp.t_code
                     _log("dead-reckon: BRDC loaded (%d sats)" % len(dr_state["eph"]))
                     # MEASURED CODE BIASES, refreshed on the ephemeris cadence (A0b, part 2).
                     # Daily product, ~5 days of latency, biases stable over weeks -- so the
@@ -4483,7 +4482,7 @@ def main(argv=None, rx=None, publisher=None):
                 or (args.decoded_eph_fallback and not dr_state["eph"]))
             if dr_state["eph"] or _use_decoded:
                 _drp.tag = args.dr_constellation
-                _drp.t_now_abs = _drp.now_w - utc0_sample0
+                _drp.t_now_abs = _drp.now_w - _ctx.utc0_sample0
                 # ── #83 THE AXIS FIX (see --dr-fengine-axis) ── "now" from the F-engine
                 # hop counter: newest telemetry hop at its fetch instant, plus the wall
                 # ELAPSED since -- so NTP's absolute offset never enters and its slew
@@ -4555,11 +4554,11 @@ def main(argv=None, rx=None, publisher=None):
                 # fleet-common and unattributable. The two axes are compared below as a
                 # TRIPWIRE (log only, never a control input) -- it cannot see a step smaller
                 # than the lag jitter, and does not pretend to.
-                if fe_axis[0] is not None and utc0_sample0:
+                if fe_axis[0] is not None and _ctx.utc0_sample0:
                     # unpacked HERE, not borrowed from the axis-fix block above: that block
                     # runs only under --dr-fengine-axis and this tripwire must work either way
                     _axh, _axw = fe_axis[0]
-                    _dax = (utc0_sample0 + _axh / args.hops_per_sec) - _axw
+                    _dax = (_ctx.utc0_sample0 + _axh / args.hops_per_sec) - _axw
                     _dprev = dr_state.get("ax_off")
                     if _dprev is not None and abs(_dax - _dprev) > args.clock_step_guard_s:
                         _log("*** WALL-vs-F-ENGINE OFFSET JUMPED %+.3f s (%.3f -> %.3f, "
@@ -4719,7 +4718,7 @@ def main(argv=None, rx=None, publisher=None):
                 # The clock median hides the common part, which is why 08-23's eps read
                 # +420 ms against an 8-18 s lag. Born WITH the axis fix (08-17): on the
                 # wall axis the two epochs coincide and the old form was exact.
-                _drp.t_eph_age = _drp.now_w - utc0_sample0
+                _drp.t_eph_age = _drp.now_w - _ctx.utc0_sample0
 
                 # -- receiver-clock solve (the bootstrap) + per-sat integrity residuals:
                 # physical cp at each detection hop (undo the sample-0 back-reference),
@@ -5448,9 +5447,9 @@ def main(argv=None, rx=None, publisher=None):
             # Sign convention matches _dax below: NEGATIVE = that instance lags the wall.
             # POSITIVE = a hop the F-engine has not reached, i.e. link 2's FUTURE HOP, which
             # is impossible for a processed record and names the instance serving it.
-            if utc0_sample0 and _dllp.inst_hops:
+            if _ctx.utc0_sample0 and _dllp.inst_hops:
                 _w = _now()
-                _ia = sorted(((utc0_sample0 + float(h) / args.hops_per_sec) - _w, str(k))
+                _ia = sorted(((_ctx.utc0_sample0 + float(h) / args.hops_per_sec) - _w, str(k))
                              for k, h in _dllp.inst_hops.items() if h)
                 if _ia:
                     _fut = [k for d, k in _ia if d > 0.5]
@@ -5552,6 +5551,10 @@ def main(argv=None, rx=None, publisher=None):
         rx=rx, publisher=publisher, telem_client=telem_client, detectors=detectors,
         dll_combiners=dll_combiners, spectrum_endpoints=spectrum_endpoints,
         spec_writer=_spec_writer, state_dir=_state_dir, xb_read_dir=_xb_read_dir,
+        innov_hist=innov_hist, minnov_hist=minnov_hist, p2c=p2c,
+        dop_rate_fitted=dop_rate_fitted, dop_rate_rejected=dop_rate_rejected,
+        dll_hop_window=dll_hop_window, deep_gate=_deep_gate, dg_auto_last=_dg_auto_last,
+        est_next=_est_next,
         sig_of=sig_of, combiner=combiner, gating=gating, capable=_capable,
         receiver_state=receiver_state, alm_now=_alm_now, cb=_cb,
         almanac_sats=almanac_sats, brdc_alm=brdc_alm, det_fresh=det_fresh,
@@ -5627,8 +5630,8 @@ def main(argv=None, rx=None, publisher=None):
             # anchor is unavailable (utc0_sample0 == 0, pre-fetch), fall back to wall clock
             # -- the old behaviour, right for airspy where re-detection is seconds-fast.
             if det_fresh.get(_p, (None,))[0] != _b[3]:
-                t_det = (utc0_sample0 + _b[3] / args.hops_per_sec
-                         if utc0_sample0 else t0)
+                t_det = (_ctx.utc0_sample0 + _b[3] / args.hops_per_sec
+                         if _ctx.utc0_sample0 else t0)
                 det_fresh[_p] = (_b[3], t_det)
 
         # ---- S2d, REVISED SCOPE (2026-07-29): RESCUE-ONLY consumption ---------------
@@ -5706,7 +5709,7 @@ def main(argv=None, rx=None, publisher=None):
         # fused state -- the dongle LOs are INDEPENDENT, measured, so neither is borrowed).
         # Feeds two things below: the SHADOW residual (validate + measure the inter-band bias)
         # and, when --xband-seed, RESCUE search-Doppler hints for sats BRDC does not predict.
-        _xb_pred = {}   # prn -> cross-band predicted Doppler for THIS band (bias-removed)
+        _ctx.xb_pred = {}   # prn -> cross-band predicted Doppler for THIS band (bias-removed)
         if xband and args.xband_carrier_hz and args.xband_lo_dongle:
             try:
                 _sib = {int(r["prn"]): r for r in _get("%s/get_status" % xband)}
@@ -5724,7 +5727,7 @@ def main(argv=None, rx=None, publisher=None):
                         _ds = _sr.get("doppler_hz")
                         if _ds is None or (_sr.get("amp_snr") or 0) < 30:
                             continue      # only ride a sat the sibling holds STRONGLY
-                        _xb_pred[_p] = (_ds - _LOsib) * _ratio + _LOown - _bias
+                        _ctx.xb_pred[_p] = (_ds - _LOsib) * _ratio + _LOown - _bias
                         # SHADOW: accumulate the residual for every dual-tracked sat
                         _own = status.get(_p) or {}
                         _do = _own.get("doppler_hz")
@@ -5738,7 +5741,7 @@ def main(argv=None, rx=None, publisher=None):
                         _log_rl("xband",
                                 "XBAND from %s: %d sibling-tracked; rolling n=%d bias %+.1f "
                                 "mad %s Hz%s"
-                                % (xband, len(_xb_pred), len(_xb_resid), _med,
+                                % (xband, len(_ctx.xb_pred), len(_xb_resid), _med,
                                    ("%.1f" % _mad) if _mad is not None else "-",
                                    " [seeding rescue hints]" if args.xband_seed else " [shadow]"),
                                 every_s=30.0)
@@ -5755,9 +5758,9 @@ def main(argv=None, rx=None, publisher=None):
         # refresh / add consensus seeds: code phase from the search, Doppler from the
         # orbit prediction when available (precise enough for coherent integration),
         # else the coarse search grid.
-        la_samples = []   # per-sat (l-a) estimates this cycle, from sats with a good code-rate fit
-        fitted = set()    # PRNs that got their own >=3-snapshot slope fit this cycle
-        cl_report = []    # CL time-assist per-PRN (k, fine-time residual) log lines this cycle
+        _ctx.la_samples = []   # per-sat (l-a) estimates this cycle, from sats with a good code-rate fit
+        _ctx.fitted = set()    # PRNs that got their own >=3-snapshot slope fit this cycle
+        _ctx.cl_report = []    # CL time-assist per-PRN (k, fine-time residual) log lines this cycle
         # Capture time anchor: wall-clock UTC of capture sample 0 (airspy stamps it at its
         # first USB callback; /adcstat serves it). 0.0 until the stream starts -- retry
         # lazily. Used by the CL time-assist and the dead-reckoned cp seeding.
@@ -5777,21 +5780,21 @@ def main(argv=None, rx=None, publisher=None):
         # it here is a NameError on the first pass. With the cycle clock frozen they are now
         # the same number anyway -- which is what this always meant.
         _now_anchor = _now()
-        if args.time0_endpoint and utc0_sample0 and _now_anchor - _anchor_chk[0] > 60.0:
+        if args.time0_endpoint and _ctx.utc0_sample0 and _now_anchor - _anchor_chk[0] > 60.0:
             _anchor_chk[0] = _now_anchor
             try:
                 _fresh = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
                                .get("time0_ns", 0.0)) / 1e9
-                if _fresh and abs(_fresh - utc0_sample0) > 1e-3:
+                if _fresh and abs(_fresh - _ctx.utc0_sample0) > 1e-3:
                     _log("*** TIME ANCHOR CHANGED: frame0 was %.9f, endpoint now reports %.9f "
                          "(%+.3f days). The F-engine has been restarted. EVERY SEED THIS BROKER "
                          "SENDS IS WRONG BY THAT AMOUNT, and every node still running cached the "
                          "old epoch too. Restart the nodes AND this broker."
-                         % (utc0_sample0, _fresh, (_fresh - utc0_sample0) / 86400.0))
+                         % (_ctx.utc0_sample0, _fresh, (_fresh - _ctx.utc0_sample0) / 86400.0))
             except Exception:
                 pass   # endpoint down is the normal outage case, already logged elsewhere
 
-        if (args.cl_assist or args.cl_tracker or dr_state is not None) and not utc0_sample0:
+        if (args.cl_assist or args.cl_tracker or dr_state is not None) and not _ctx.utc0_sample0:
             try:
                 if args.time0_endpoint:
                     # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
@@ -5804,26 +5807,26 @@ def main(argv=None, rx=None, publisher=None):
                     # INSTRUMENT, not of a signal, so it is fetched at most once per process
                     # however many chains want it. Two brokers latching it independently can
                     # straddle an F-engine restart and disagree forever, each certain.
-                    utc0_sample0 = rx.time_anchor(
+                    _ctx.utc0_sample0 = rx.time_anchor(
                         lambda: float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
                                       .get("time0_ns", 0.0)) / 1e9,
                         chain_id) or 0.0
-                    if utc0_sample0:
+                    if _ctx.utc0_sample0:
                         _log("time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
-                             % utc0_sample0)
-                        _anchor_seen[0] = utc0_sample0
+                             % _ctx.utc0_sample0)
+                        _anchor_seen[0] = _ctx.utc0_sample0
                 else:
-                    utc0_sample0 = rx.time_anchor(
+                    _ctx.utc0_sample0 = rx.time_anchor(
                         lambda: float(_get("%s/%s/adcstat" % (base, args.adc_stage))
                                       .get("utc0_sample0", 0.0)),
                         chain_id) or 0.0
-                    if utc0_sample0:
-                        _log("CL time-assist: capture sample-0 UTC anchor %.3f" % utc0_sample0)
+                    if _ctx.utc0_sample0:
+                        _log("CL time-assist: capture sample-0 UTC anchor %.3f" % _ctx.utc0_sample0)
             except Exception as e:
                 _log("time anchor unavailable (%s); retrying" % e)
-        dr_pd = (dr_state or {}).get("pd") or {}
-        dr_pd2 = (dr_state or {}).get("pd2") or {}
-        dr_pd0 = (dr_state or {}).get("pd0") or {}
+        _ctx.dr_pd = (dr_state or {}).get("pd") or {}
+        _ctx.dr_pd2 = (dr_state or {}).get("pd2") or {}
+        _ctx.dr_pd0 = (dr_state or {}).get("pd0") or {}
         _stage_detections_to_seeds()
 
         # 3. COAST / drop (the trajectory-predictor promotion). A visible sat is coasted through a
@@ -5833,7 +5836,7 @@ def main(argv=None, rx=None, publisher=None):
         # instead of being pruned and re-acquired. The code prediction holds for ~the coast budget;
         # drop ONLY when the sat SETS (the unambiguous "gone") or |A| stays down for the whole
         # budget (genuine loss / prediction breakdown). |A| recovering resets the coast.
-        coast_polls = max(1, int(round(args.coast_budget / max(args.interval, 1e-3))))
+        _ctx.coast_polls = max(1, int(round(args.coast_budget / max(args.interval, 1e-3))))
         try:
             status = {int(r["prn"]): r for r in _get("%s/get_status" % combiner)}
             if args.almanac_epoch:
@@ -5910,7 +5913,7 @@ def main(argv=None, rx=None, publisher=None):
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
         # drop_amplitude let phantoms coast forever (|A| never falls below the floor). sig ~1 = noise,
         # >>1 = a real lock. Falls back to |A| only if the combiner reports no significance at all.
-        have_sig = any(sig_of(r) > 0 for r in status.values())
+        _ctx.have_sig = any(sig_of(r) > 0 for r in status.values())
         # NOISE PROBES (--noise-probes N): keep the N deepest-below-horizon PRNs seeded so
         # the combiner emits GENUINE noise records for them -- the beam map's pedestal
         # calibration (clip bias of the moment debias + the coherent estimator's selection
@@ -6215,32 +6218,32 @@ def main(argv=None, rx=None, publisher=None):
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
         # The code-side twin of the carrier clock_bias: strong detections calibrate the clock so weak
         # ones never drift off-peak. Ephemeris-free (v/c cancels). Bounded +-50 ppm against a rogue fit.
-        if len(la_samples) >= args.code_bias_min_sats:
-            raw_cb = statistics.median(la_samples)
+        if len(_ctx.la_samples) >= args.code_bias_min_sats:
+            raw_cb = statistics.median(_ctx.la_samples)
             if abs(raw_cb) < args.code_bias_max * 1e-6:
                 code_bias_ema = (raw_cb if code_bias_ema is None
                                  else code_bias_ema + args.code_bias_alpha * (raw_cb - code_bias_ema))
                 # SAT-SCALED bar, same rationale as the carrier-bias alarm above (few-fit
                 # chains' l-a median is ~1/sqrt(n) noisy; the fixed bar cried wolf on the
                 # weak chains 2026-07-20). A real dongle-clock event is large + sustained.
-                _labar = args.code_bias_alarm_ppm * max(1.0, (5.0 / max(len(la_samples), 1)) ** 0.5)
+                _labar = args.code_bias_alarm_ppm * max(1.0, (5.0 / max(len(_ctx.la_samples), 1)) ** 0.5)
                 if (code_bias_cal is not None
                         and abs(code_bias_ema - code_bias_cal) > _labar * 1e-6):
                     _log_rl("laalarm",
                             "CLOCK DRIFT ALARM: l-a %+.3f ppm vs calibration %+.3f "
                             "(|d| > %.2f ppm, %d fits) -- dongle clock news, INVESTIGATE"
                             % (code_bias_ema * 1e6, code_bias_cal * 1e6,
-                               _labar, len(la_samples)), every_s=60.0)
+                               _labar, len(_ctx.la_samples)), every_s=60.0)
                 _log_rl("la-pool",
                         "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "
                         "sats, EMA a=%.2f)"
-                        % (code_bias_ema * 1e6, raw_cb * 1e6, len(la_samples),
+                        % (code_bias_ema * 1e6, raw_cb * 1e6, len(_ctx.la_samples),
                            args.code_bias_alpha))
                 # CONTRIBUTE (task #27 M3). PER BAND, not receiver-wide: cable and PFB group
                 # delay are per carrier, so this number does not survive a retune. That is
                 # exactly what --state-dongle asserts by hand today.
                 rx.contribute_code_bias(chain_id, band_id, code_bias_ema,
-                                        len(la_samples), t0)
+                                        len(_ctx.la_samples), t0)
                 if args.code_bias_file:
                     try:
                         with open(args.code_bias_file, "w") as f:
@@ -6253,14 +6256,14 @@ def main(argv=None, rx=None, publisher=None):
         # of estimator scatter, where the carrier's is partly manufactured by the fusion.
         if state_w is not None:
             try:
-                _raw_la = statistics.median(la_samples) if la_samples else None
+                _raw_la = statistics.median(_ctx.la_samples) if _ctx.la_samples else None
                 state_w.observe(
                     "code",
                     ppm=(code_bias_ema * 1e6) if code_bias_ema is not None else None,
                     raw_ppm=(_raw_la * 1e6) if _raw_la is not None else None,
                     mad_ppm=(lambda m: m * 1e6 if m is not None else None)(
-                        receiver_state.mad(la_samples, _raw_la)),
-                    n=len(la_samples),
+                        receiver_state.mad(_ctx.la_samples, _raw_la)),
+                    n=len(_ctx.la_samples),
                     cal_ppm=(code_bias_cal * 1e6) if code_bias_cal is not None else None,
                     forced=args.code_bias_force is not None)
             except Exception:
@@ -6592,8 +6595,8 @@ def main(argv=None, rx=None, publisher=None):
         # above -- it must run before the search-hint POST it feeds.)
 
         _log_rl("active", "active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
-        if cl_report:
-            _log_rl("clreport", "CL: " + "; ".join(cl_report))
+        if _ctx.cl_report:
+            _log_rl("clreport", "CL: " + "; ".join(_ctx.cl_report))
 
         # S2 OBSERVER: receiver clock, then publish the whole record. dr_state persists
         # across cycles so it is read here rather than at its solve site -- and it is the
