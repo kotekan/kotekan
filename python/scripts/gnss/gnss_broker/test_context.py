@@ -27,7 +27,7 @@ BROKER = os.path.join(os.path.dirname(HERE), "gps_distributed_broker.py")
 PER_CYCLE = {
     "t0", "best", "status", "pred", "up", "probe_set", "utc0_sample0",
     "xb_pred", "coast_polls", "have_sig", "la_samples", "fitted", "cl_report",
-    "dr_pd", "dr_pd0", "dr_pd2",
+    "dr_pd", "dr_pd0", "dr_pd2", "payload",
 }
 
 _fails = []

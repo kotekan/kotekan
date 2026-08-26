@@ -285,3 +285,39 @@ class NavDecoders(object):
         self.inav_combiner = None
         self.bcnav1_combiner = None
         self.bcnav2_combiner = None
+
+
+class ClSibling(object):
+    """State for seeding the CM/CL sibling chain (GPS L2 long code).
+
+    The sibling despreads the same satellite on a much longer code, so the question is not
+    "where is the satellite" -- this chain already knows -- but WHICH SEGMENT of the long code
+    the sky is currently in. Everything here serves that search.
+
+    ⚠️ THE SEGMENT SEARCH SPIRALS OUTWARD from the predicted segment rather than scanning up
+    from zero. The prediction is good to a segment or two, so a linear scan spends most of its
+    time in segments the model has already ruled out -- and the pass ends before it arrives.
+
+    ⚠️ THE LONG-CODE CONSTANTS ARE PER SIGNAL AND GETTING THEM WRONG DOES NOT ERROR. The
+    period is computed modulo the wrong length and the seed lands in an effectively random one
+    of the segments. `LC_SEG`/`LC_EPOCH` were once L2C CL's (75, 1.5 s) for every signal,
+    which silently pinned everything else to segment 0.
+    """
+
+    __slots__ = ("tracker", "combiner", "k", "pred0", "toff", "segsearch", "seg_s",
+                 "spiral", "kfmt", "kscan", "kscan_deep", "kscan_frac", "kscan_seq")
+
+    def __init__(self):
+        self.tracker = None     # the sibling tracker endpoint
+        self.combiner = None    # its combiner endpoint
+        self.k = {}             # prn -> adopted segment index
+        self.pred0 = {}         # prn -> model prediction at the fixed anchor epoch
+        self.toff = [0.0]       # a one-cell list: the shared time offset, mutated in place
+        self.segsearch = {"corr": 0, "idx": 0, "latched": False, "t_step": 0.0}
+        self.seg_s = None       # seconds per long-code segment, for THIS signal
+        self.spiral = None      # the outward-spiral visit order over segments
+        self.kfmt = None        # how to format a segment index in the log (k+n vs c+frac)
+        self.kscan = [0]        # a one-cell list: the current scan position
+        self.kscan_deep = {}    # prn -> deepest correlation seen while scanning
+        self.kscan_frac = None  # is the scan fractional rather than integer?
+        self.kscan_seq = None   # the scan sequence itself
