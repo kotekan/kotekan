@@ -97,6 +97,7 @@ from gnss_broker.context import ChainContext                # noqa: E402  (the s
 from gnss_broker.clockbias import ClockBias                 # noqa: E402  (the receiver LO bias)
 from gnss_broker import instruments                         # noqa: E402  (the DLL's measurements)
 from gnss_broker import deadreckon                          # noqa: E402  (the clock pipeline)
+from gnss_broker import almanac as almanac_stage            # noqa: E402  (orbit + visibility)
 from gnss_broker import signals                            # noqa: E402
 from gnss_broker import receiver                           # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter         # noqa: E402
@@ -1522,6 +1523,12 @@ def main(argv=None, rx=None, publisher=None):
     # loop must fail to nothing, not fail loudly.
     state_w = None
     _state_dir = None
+    # ⚠️ BOUND UNCONDITIONALLY, because the import below is conditional. Without this the
+    # name simply does not exist when --state-file is unset, and anything that so much as
+    # MENTIONS it -- the context construction does -- raises UnboundLocalError on a perfectly
+    # ordinary configuration. The consumers are all guarded on `state_w`, so None is the
+    # correct "this receiver publishes no state" value.
+    receiver_state = None
     if args.state_file:
         try:
             import receiver_state
@@ -1694,7 +1701,7 @@ def main(argv=None, rx=None, publisher=None):
         utc0 is no cure for orbit curvature (tens of ms over hours), so this runs a SECOND model
         evaluation at the fixed anchor epoch, cached per ephemeris refresh -- the anchor never moves,
         only the ephemeris does."""
-        if cl_tracker and utc0_sample0 and args.almanac and pred:
+        if cl_tracker and utc0_sample0 and args.almanac and _ctx.pred:
             # tau AND the SV clock must be evaluated AT THE ANCHOR EPOCH (utc0_sample0),
             # because that is where cp is referenced. The first deploy evaluated them at
             # "now": invisible at launch, but the per-sat error grows at range_rate/c (up to
@@ -1720,7 +1727,7 @@ def main(argv=None, rx=None, publisher=None):
             cl_payload = []
             _fines = []
             for d in payload:
-                pv = pred.get(d["prn"])
+                pv = _ctx.pred.get(d["prn"])
                 # No geometry -> no k -> no CL row (fail closed; CM unaffected). Below the
                 # elevation mask -> ALSO no row: those seeds are the below-horizon NOISE
                 # PROBES, whose cp is deliberately noise -- deriving CL from them wastes a
@@ -2236,13 +2243,13 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ THE HINT IS ONLY AS GOOD AS THE CLOCK IT CARRIES. When the receiver clock bias is stale the
         margin must widen rather than the hint narrow -- a confidently wrong narrow window is worse
         than no hint at all, because the search then cannot find what it was told to look near."""
-        if (args.narrow_search and args.almanac and pred) or (_xb_pred and args.xband_seed):
+        if (args.narrow_search and args.almanac and _ctx.pred) or (_xb_pred and args.xband_seed):
             margin = (args.search_margin_hz
                       if _cb.ema is not None and not _cb.stale
                       else args.search_margin_wide_hz)
-            hints = [dict(prn=p, doppler_hz=pred[p][0] + _cb.value, margin_hz=margin)
-                     for p in sorted(pred) if (up is None or p in up)
-                     and (_capable is None or p in _capable)] if (args.almanac and pred) else []
+            hints = [dict(prn=p, doppler_hz=_ctx.pred[p][0] + _cb.value, margin_hz=margin)
+                     for p in sorted(_ctx.pred) if (_ctx.up is None or p in _ctx.up)
+                     and (_capable is None or p in _capable)] if (args.almanac and _ctx.pred) else []
             # RESCUE: for a sat the sibling band tracks but BRDC did NOT just hint (no pred /
             # no almanac), add a cross-band hint so the search narrows instead of going blind.
             # Wider margin than a BRDC hint -- the cross-band seed accuracy is the inter-band
@@ -2254,7 +2261,7 @@ def main(argv=None, rx=None, publisher=None):
                 for _p, _xd in sorted(_xb_pred.items()):
                     if _p in _hinted or (_capable is not None and _p not in _capable):
                         continue
-                    if up is not None and _p not in up:
+                    if _ctx.up is not None and _p not in _ctx.up:
                         continue
                     hints.append(dict(prn=_p, doppler_hz=_xd, margin_hz=_xb_margin))
                     _log_rl("xbandseed-%d" % _p,
@@ -2297,12 +2304,12 @@ def main(argv=None, rx=None, publisher=None):
             # broke propagation (suspect the 16-period acquire window against a 20-chip
             # overlay, 16 !== 0 mod 20). The span absorbs it; it does not explain it.
             nh_hints = []
-            if args.nh_hint and pred and utc0_sample0:
+            if args.nh_hint and _ctx.pred and utc0_sample0:
                 try:
                     import gnss_ephemeris as _nh2
                     _per = args.code_length / args.chip_rate_hz
                     def _pred_nh(_p, _t):
-                        _v = pred[_p]
+                        _v = _ctx.pred[_p]
                         return int(round((_nh2.gpst_of_utc(_t) - _v[3] / _nh2.C_LIGHT
                                           + (_v[4] if len(_v) > 4 else 0.0)) / _per)) % args.nh_overlay_len
                     # (a) re-measure the constant from every fresh detection we have
@@ -2328,7 +2335,7 @@ def main(argv=None, rx=None, publisher=None):
                     # to 150.8 and locked, ~15 min of a self-reinforcing outage that read as a
                     # frontend sensitivity loss (docs 11.33).
                     for _p, (_nh, _rh) in nh_seen.items():
-                        if _p not in pred or nh_last_rh.get(_p) == _rh:
+                        if _p not in _ctx.pred or nh_last_rh.get(_p) == _rh:
                             continue
                         nh_last_rh[_p] = _rh
                         _t = utc0_sample0 + _rh / args.hops_per_sec
@@ -2357,7 +2364,7 @@ def main(argv=None, rx=None, publisher=None):
                         nh_hints = [dict(prn=int(_p),
                                          nh=(_pred_nh(_p, t0) - nh_offset[0]) % args.nh_overlay_len,
                                          ref_hop=_rh_now)
-                                    for _p in pred if pred[_p][2] >= args.mask_deg]
+                                    for _p in _ctx.pred if _ctx.pred[_p][2] >= args.mask_deg]
                         _log_rl("nhhint", "nh hint: offset %d (%d samples) -> %d sat(s), span %d"
                                 % (nh_offset[0], len(_fresh), len(nh_hints),
                                    args.nh_hint_span), every_s=60.0)
@@ -2417,9 +2424,9 @@ def main(argv=None, rx=None, publisher=None):
             # referee (sign-flipping cp_err never sustains 5 consecutive). So: measure,
             # never modify. The census still maps which chains/sats ride alias bins (the
             # B1C zombie-birth investigation continues on that data).
-            if (args.det_alias_fold and args.almanac and prn in pred
+            if (args.det_alias_fold and args.almanac and prn in _ctx.pred
                     and _cb.ema is not None and not _cb.stale):
-                _aref = pred[prn][0] + _cb.value
+                _aref = _ctx.pred[prn][0] + _cb.value
                 _k = round((dop - _aref) / Q_ALIAS_HZ)
                 if _k != 0 and abs(dop - _aref) < 3.5 * Q_ALIAS_HZ:
                     _log_rl("afold-%d" % prn,
@@ -2428,7 +2435,7 @@ def main(argv=None, rx=None, publisher=None):
                             % (prn, dop, _aref, _k, Q_ALIAS_HZ),
                             every_s=30.0)
             v_dr = dr_pd.get((args.dr_constellation, prn)) if dr_pd else None
-            if up is not None and prn not in up:
+            if _ctx.up is not None and prn not in _ctx.up:
                 # accept the detection anyway if BRDC says it's up: the TLE up-set
                 # mismaps some BDS birds (PRN 39: TLE el<5 vs BRDC el 10)
                 if v_dr is None or v_dr["el"] < args.mask_deg:
@@ -2440,8 +2447,8 @@ def main(argv=None, rx=None, publisher=None):
             # like the detection well enough to re-seed from it".
             if args.dll_deep_gate_from_search > 0.0 and snr >= args.dll_deep_gate_from_search:
                 _dg_seen[prn] = t0
-            _dop_src = "pred" if (args.almanac and prn in pred) else "DET(grid)"
-            seed_dop = (pred[prn][0] + _cb.value) if (args.almanac and prn in pred) else dop
+            _dop_src = "pred" if (args.almanac and prn in _ctx.pred) else "DET(grid)"
+            seed_dop = (_ctx.pred[prn][0] + _cb.value) if (args.almanac and prn in _ctx.pred) else dop
             # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
             # that owns the undetected sats. Mixing sources stepped the seed doppler by
             # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
@@ -2503,7 +2510,7 @@ def main(argv=None, rx=None, publisher=None):
                 # and a first seed has no previous value for the step tripwire to fire on).
                 _log("PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
                      % (prn, seed_dop, _dop_src, dop,
-                        ("%.1f" % (pred[prn][0])) if (args.almanac and prn in pred) else "n/a",
+                        ("%.1f" % (_ctx.pred[prn][0])) if (args.almanac and prn in _ctx.pred) else "n/a",
                         _cb.value, car_trim.get(prn, 0.0)))
             elif abs(seed_dop - _prev_sd) > 10.0 and prn in cp_held:
                 # HELD sat: the candidate walks while the emitted tuple stays frozen /
@@ -2597,8 +2604,8 @@ def main(argv=None, rx=None, publisher=None):
                                             * (-(v2_dr["range_rate_mps"]
                                                  - v_dr["range_rate_mps"]) / 2.0)
                                             / C_LIGHT * args.carrier_hz))
-            elif args.almanac and prn in pred:
-                seed.put("dop_model", epoch=ref_hop, doppler_rate_hz_s=pred[prn][1])
+            elif args.almanac and prn in _ctx.pred:
+                seed.put("dop_model", epoch=ref_hop, doppler_rate_hz_s=_ctx.pred[prn][1])
             # MEASURED rate beats the model's, and it is the LAST word here for the same reason
             # --seed-doppler det is: the model exists to own sats we have not measured. Gated on
             # enough points over enough baseline that the slope is real rather than fitted to
@@ -2757,8 +2764,8 @@ def main(argv=None, rx=None, publisher=None):
                                            + (det_nh % LC_SEG) * CODE_LEN)
                                           % (LC_SEG * CODE_LEN))
                 cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
-            elif args.cl_assist and utc0_sample0 and args.almanac and prn in pred:
-                tau = pred[prn][3] / C_LIGHT
+            elif args.cl_assist and utc0_sample0 and args.almanac and prn in _ctx.pred:
+                tau = _ctx.pred[prn][3] / C_LIGHT
                 cl_chips = (((utc0_sample0 - tau + args.cl_time_adjust) % LC_EPOCH)
                             * args.chip_rate_hz)
                 cp_cm = seed["code_phase_chips"]
@@ -3266,7 +3273,7 @@ def main(argv=None, rx=None, publisher=None):
         for prn in list(seeds):
             if prn in probe_set:
                 continue
-            if (up is not None and prn not in up
+            if (_ctx.up is not None and prn not in _ctx.up
                     and not (dr_state is not None and prn in dr_state["seeded"])):
                 # (model-owned sats are exempt: the TLE up-set mismaps some BDS birds;
                 # their BRDC elevation governs the drop, in the dead-reckon block)
@@ -3285,7 +3292,7 @@ def main(argv=None, rx=None, publisher=None):
                 # pred must not touch it -- the BDS TLE<->PRN mapping mismaps some birds
                 # (PRN 39: TLE el <5 vs BRDC el 10), so BRDC governs these sats entirely.
                 pass
-            elif args.almanac and prn in pred:
+            elif args.almanac and prn in _ctx.pred:
                 # ⚠️ THE SEED'S DOPPLER IS VALID AT ref_hop, NOT AT NOW (2026-08-16).
                 # gnss::propagate_seed computes
                 #     dop_applied(t) = sd.doppler_hz + sd.dop_rate * (t - ref_hop)
@@ -3309,7 +3316,7 @@ def main(argv=None, rx=None, publisher=None):
                 #      the code phase as well.
                 # age = 0 whenever the sample-0 anchor is unknown, which reduces this to the
                 # previous behaviour rather than guessing.
-                _rate_new = pred[prn][1]
+                _rate_new = _ctx.pred[prn][1]
                 # the rate the TRACKER will actually propagate with: absent key => 0, and
                 # then there is no double-count to undo.
                 _rate_eff = _rate_new if "doppler_rate_hz_s" in seeds[prn] else 0.0
@@ -3317,7 +3324,7 @@ def main(argv=None, rx=None, publisher=None):
                 if utc0_sample0:
                     _age = max(0.0, (_drp.now_w - utc0_sample0)
                                - seeds[prn].get("ref_hop", 0) / args.hops_per_sec)
-                new_dop = pred[prn][0] + _cb.value           # the forecast AT NOW
+                new_dop = _ctx.pred[prn][0] + _cb.value           # the forecast AT NOW
                 _old_rate = seeds[prn].get("doppler_rate_hz_s", 0.0)
                 # what the tracker is APPLYING at this instant, i.e. the currency cp is in
                 old_dop = seeds[prn].get("doppler_hz", new_dop) + _old_rate * _age
@@ -5101,269 +5108,6 @@ def main(argv=None, rx=None, publisher=None):
                     seeds.pop(prn, None)
                     low_hits.pop(prn, None)
 
-    def _stage_almanac_predict():
-        """2: ORBIT-PREDICTED DOPPLER AND VISIBILITY, and the receiver clock bias EMA.
-        
-        Evaluates the almanac/BRDC at this instant to produce `pred` (the per-satellite Doppler and
-        elevation the whole cycle plans against) and maintains the clock-bias EMA the seeds ride on.
-        
-        ⚠️ THE EOP TABLE IS IN THE CONFIG AND IT ROLLS. A stale table is not a degraded prediction, it
-        is a rejected one: 18 days of staleness put dUT1 5.007 ms out and every frame's time metadata
-        was refused (2026-08-19, it killed a receiver outright).
-        
-        ⚠️ BOTH THE BIAS AND ITS STALENESS ARE OUTPUTS. Downstream, `bias_stale` decides whether the
-        search hint may narrow -- a confidently wrong narrow window is worse than no hint at all."""
-        nonlocal pred, up
-        if args.almanac:
-            try:
-                t_pred = _alm_now()
-                if brdc_alm is not None:
-                    raw = brdc_predict(brdc_alm, args.lat, args.lon, args.alt,
-                                       alm_sys, alm_min_prn, t_pred, args.carrier_hz)
-                else:
-                    from gps_beamtrack import predict_dopplers
-                    raw = predict_dopplers(args.lat, args.lon, args.alt, t_utc=t_pred,
-                                           _sats=almanac_sats,
-                                           f_carrier_hz=args.carrier_hz)
-                # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
-                # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
-                # is geometry, no sign; it feeds the CL time-assist propagation delay. The 5th
-                # element -- broadcast sat clock -- is BRDC-only; the TLE path has none.)
-                pred = {p: (args.doppler_sign * v[0], args.doppler_sign * v[1], v[2], v[3],
-                            (v[4] if len(v) > 4 else 0.0))
-                        for p, v in raw.items()}
-            except Exception as e:
-                _log("almanac predict failed: %s" % e)
-            up = {p for p, v in pred.items() if v[2] >= args.mask_deg}
-            # nh TIME-ASSIST: POST each visible sat's predicted absolute overlay-chip index to the
-            # combiner. period = one primary code period (= one overlay chip); the overlay counter
-            # runs on the SATELLITE's clock, so the predicted chip at transmit is
-            # round((gpst(now) - range/c + clk_sv)/period) mod overlay_len -- the convention
-            # proven to 0.01 chip offline (c31_convention.py). clk_sv is the 5th pred element
-            # (BRDC only; 0.0 on the TLE fallback, a <=~0.1-chip omission the consensus absorbs).
-            # NO absolute-convention care (the combiner self-calibrates the constant from its
-            # confidently-locked sats). Differential + slowly-varying, so the exact reference
-            # instant is immaterial to <<1 chip.
-            if args.nh_assist and pred:
-                try:
-                    import gnss_ephemeris as _nh_eph
-                    period = args.code_length / args.chip_rate_hz
-                    t_ref = args.almanac_epoch or _now()
-                    hints = [{"prn": int(p),
-                              "nh": int(round((_nh_eph.gpst_of_utc(t_ref)
-                                               - v[3] / _nh_eph.C_LIGHT
-                                               + (v[4] if len(v) > 4 else 0.0)) / period))
-                                    % args.nh_overlay_len}
-                             for p, v in pred.items() if v[2] >= args.mask_deg
-                             and (_capable is None or p in _capable)]
-                    if hints:
-                        _post("%s/set_nh_hint" % combiner, hints)
-                except Exception as e:
-                    _log("nh-assist POST failed: %s" % e)
-            # Common clock-frequency bias = median(measured - predicted) over detected
-            # sats. A tight residual spread confirms the sign convention; a wild spread
-            # (resid ~ -2x predicted) means flip --doppler-sign.
-            # FRESH detections only. The search stage's REST table keeps serving a detection
-            # long after it was made, and best[] holds it; the prediction meanwhile ADVANCES
-            # at the satellite's dop_rate, so a stale detection's (meas - pred) grows linearly
-            # with its age -- stale-age x dop_rate wearing a clock-bias costume. Measured on
-            # the L5 replay bench 2026-07-27: one ~90 s-stale PRN20 detection walked the
-            # "solved" bias +4 -> +68 Hz at exactly dop_rate, the seeds chased it, and the
-            # tracker was dragged off a 55-sigma satellite. Live mostly hides this because
-            # strong sats re-detect every few seconds -- but any sparse-detection stretch
-            # (fades, one-sat horizons) exposes the same feedback. det_fresh already tracks
-            # exactly this (its comment even computes the hazard: "at 0.4 Hz/s slew, 100 s of
-            # staleness fakes a 40 Hz mismatch") -- the bias solve just never consulted it.
-            # SNR gate as well as freshness (2026-08-02). This median is a COMMON-MODE
-            # estimate: its uncertainty is (per-sat Doppler error)/sqrt(N), so one satellite
-            # whose Doppler is noise does real damage when N is 2. The acquire's own
-            # interpolation error is ~1.2 Hz rms (measured sawtooth), which at N=2 predicts
-            # ~0.8 Hz -- but the raw estimate scatters 10.5 Hz, because every detection above
-            # acquire_snr enters, and ~half of CHORD's sit between the threshold (30) and the
-            # noise ceiling (19), where the reported Doppler is near-random inside the hint
-            # window. Gated, this is what decides whether predicted Doppler (BRDC 0.1 Hz +
-            # this) beats the detection's own (~2 Hz): at N=8 it should reach ~0.4 Hz.
-            # Default 0 keeps every point -- the prototype's behaviour, right for detections
-            # that sit far above threshold.
-            resid = [best[p][1] - pred[p][0] for p in best
-                     if p in pred and t0 - det_fresh.get(p, (None, 0.0))[1] < args.bias_det_fresh_s
-                     and best[p][0] >= args.bias_min_snr]
-            # BAND-SHARED bias fusion (--clock-bias-siblings) is read BEFORE the min-sats
-            # gate, and the gate counts LOCAL + SIBLING sats.
-            #
-            # ⚠️ IT USED TO LIVE INSIDE THE GATE, which made the rescue unreachable by
-            # exactly the chains it was written for. The LO is a property of the BAND (one
-            # airspy, one LO): every chain on it is measuring ONE physical number, so the
-            # falsifiability the gate wants is satisfied by the band's detections in
-            # AGGREGATE, not by each constellation independently.
-            # Measured 2026-07-27 (power-outage cold start): L5 GPS could measure exactly
-            # one satellite, fell short of --bias-min-sats 2, and therefore never entered
-            # the block that would have read its siblings -- while L5 GAL and L5 BDS sat in
-            # those very files with 13-16 sats each and the correct answer (+32.1 / +32.9 Hz;
-            # GPS itself settled at +24..+34 once it finally solved). 603 cycles UNSOLVED,
-            # search_snr == 0.0, 2h45m of nothing, ended only when a second GPS satellite
-            # physically rose high enough. The band knew the answer the whole time.
-            n_sib = 0
-            _sib_bw = 0.0   # sum(bias * n) over fresh siblings
-            _sib_w = 0.0    # sum(n)
-            if args.clock_bias_siblings:
-                for _sp in args.clock_bias_siblings:
-                    try:
-                        _parts = open(_sp).read().split()
-                        _b = float(_parts[0])
-                        _n = int(_parts[1]) if len(_parts) > 1 else 1
-                        _ts = float(_parts[2]) if len(_parts) > 2 else 0.0
-                    except Exception:
-                        continue
-                    # Freshness still required: a stale sibling is a different epoch's LO.
-                    if t0 - _ts < 60.0 and _n >= 1:
-                        _sib_bw += _b * _n
-                        _sib_w += _n
-                        n_sib += _n
-            # Two INDEPENDENT ways to clear the bar, never a pooled sum:
-            #   * this chain has >= bias_min_sats of its own -> trust local, blend siblings in
-            #   * the BAND (siblings) has >= bias_min_sats    -> use the band consensus ALONE
-            # Summing the two would let a single untrusted local residual into the average --
-            # a bad -450 Hz detection dragged the fused answer 32.5 -> 15.3 Hz in the unit
-            # test, which is exactly the garden path --bias-min-sats exists to prevent. A lone
-            # local residual stays untrusted; it just no longer BLOCKS the band's answer.
-            _local_ok = len(resid) >= args.bias_min_sats
-            _sib_ok = n_sib >= args.bias_min_sats
-            if _local_ok or _sib_ok:
-                # The per-cycle median is quantized to the 500 Hz search grid and jumps
-                # hundreds of Hz as the detected-sat set flickers; the TRUE bias is a slow
-                # TCXO drift. EMA-smooth it (sub-grid dither across sats/cycles averages
-                # out the quantization) so every sat's seed Doppler is stable -- a jittery
-                # common bias was wrecking coherent integration (residual carrier +-260 Hz).
-                # GATED on --bias-min-sats: one sat's residual is unfalsifiable and a bad
-                # one narrows the search into a self-locking deadlock (see the arg help);
-                # below the gate the EMA holds its last multi-sat value (or stays unsolved
-                # -> margins stay WIDE, which is exactly what lets more sats in).
-                # One LO, one number: fuse this chain's median with the siblings' persisted
-                # estimates, sat-count weighted. With ZERO local sats the band consensus
-                # stands alone -- that is not a guess, it is the same physical LO measured
-                # by ~27 satellites on the neighbouring chains.
-                if _local_ok:
-                    raw_bias = statistics.median(resid)
-                    if n_sib:
-                        _w = float(len(resid))
-                        raw_bias = (raw_bias * _w + _sib_bw) / (_w + _sib_w)
-                else:
-                    # Local count below the bar: the band's answer stands ALONE. The local
-                    # residual is deliberately discarded, not down-weighted.
-                    raw_bias = _sib_bw / _sib_w
-                if _cb.ema is None or _cb.stale:
-                    # First solve, or stale-rescue re-solve: SNAP to the fresh median. An
-                    # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
-                    # minutes converging through exactly the hint region it just vacated.
-                    if _cb.stale:
-                        _log("CLOCK BIAS RE-SOLVED %+.1f Hz after %.0f s stale (held %+.1f)"
-                             % (raw_bias, t0 - _cb.meas_t, _cb.ema))
-                        if (_cb.cal is not None
-                                and abs(raw_bias - _cb.cal) > args.clock_bias_alarm_hz):
-                            _log("CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz -- hardware "
-                                 "news (GPSDO re-settled?); new warm-start reference"
-                                 % (_cb.cal, raw_bias))
-                        _cb.cal = raw_bias
-                        _cb.stale = False
-                    _cb.ema = raw_bias
-                else:
-                    _cb.ema += args.bias_alpha * (raw_bias - _cb.ema)
-                _cb.meas_t = t0
-                _cb.value = _cb.ema
-                # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
-                # error -- so every co-hosted chain can have this without solving it. A
-                # chain that HAS its own estimate never reads back, which is why publishing
-                # here cannot change single-chain behaviour.
-                rx.contribute_carrier_bias(chain_id, _cb.ema, len(resid), t0)
-                # `alarming` (TIGHT bar) gates the PERSIST only -- conservative: never write a
-                # walking bias to the cal file (the 2026-07-20 GPSDO-walk-poisoning guard).
-                alarming = (_cb.cal is not None
-                            and abs(_cb.ema - _cb.cal) > args.clock_bias_alarm_hz)
-                # rec D persist (10 s rate limit). The file is a CALIBRATION, not an EMA
-                # mirror -- NEVER overwrite it while the live bias is in alarm (2026-07-20:
-                # the GPSDO free-run walk was faithfully persisted all the way to -2 ppm
-                # and poisoned the next warm-start kHz off truth).
-                if (args.clock_bias_file and not alarming
-                        and t0 - _clk_persist_t[0] > 10.0):
-                    _clk_persist_t[0] = t0
-                    # COLD CAL STAMP -- wait for a TRUSTWORTHY sat count. A cal stamped from a
-                    # noisy 1-2 sat first solve lands far from the settled bias and then cries
-                    # wolf forever (2026-07-21: L5 cold-solved +75 with 2 sats, settled to -5
-                    # -> a phantom 80 Hz "drift" alarmed all morning). No stamp yet = no alarm
-                    # yet, which is correct: a chain with <3 sats has no trustworthy reference.
-                    if _cb.cal is None and len(resid) >= max(args.bias_min_sats + 1, 3):
-                        _cb.cal = _cb.ema
-                        _log("clock-freq bias calibrated %+.1f Hz (%d sats, cold start) -> %s"
-                             % (_cb.ema, len(resid), args.clock_bias_file))
-                    if _cb.cal is not None:
-                        try:
-                            with open(args.clock_bias_file, "w") as f:
-                                # value + sat count + timestamp: siblings weight by count
-                                # and ignore stale entries (--clock-bias-siblings).
-                                f.write("%.2f %d %.2f\n" % (_cb.ema, len(resid), t0))
-                        except Exception:
-                            pass
-                # ALARM LOG on a SAT-SCALED bar: the median-of-residuals noise is ~1/sqrt(n),
-                # so the fixed bar (tuned for strong chains) cried wolf on the weak-sat chains
-                # (L5/E5a/B2a ~730 false alarms/night 2026-07-20 while the strong chains were
-                # silent -- and a fleet-wide GPSDO event hits ALL chains, so a weak chain's
-                # solo alarm is almost always noise). Widen it below 5 sats; a real event is
-                # large + sustained so it still trips. Persist above keeps the TIGHT bar.
-                if _cb.cal is not None:
-                    _abar = args.clock_bias_alarm_hz * max(1.0, (5.0 / max(len(resid), 1)) ** 0.5)
-                    if abs(_cb.ema - _cb.cal) > _abar:
-                        _log_rl("clkalarm",
-                                "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
-                                "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
-                                % (_cb.ema, _cb.cal, _abar, len(resid)),
-                                every_s=60.0)
-            # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
-            # purpose -- an unsolved chain is exactly the case the fused state exists to
-            # rescue, so it has to be visible, and `null` is how that is said (never 0).
-            # `raw_hz` is this chain's OWN median, computed here rather than reusing
-            # `raw_bias` above, which is already sibling-FUSED. Scoring cross-chain
-            # agreement on a fused number measures the fusion, not the estimator.
-            if state_w is not None:
-                try:
-                    _raw_local = statistics.median(resid) if resid else None
-                    state_w.observe(
-                        "carrier",
-                        hz=_cb.ema,
-                        raw_hz=_raw_local,
-                        mad_hz=receiver_state.mad(resid, _raw_local),
-                        n=len(resid),
-                        sib_hz=(_sib_bw / _sib_w) if _sib_w else None,
-                        sib_n=n_sib,
-                        cal_hz=_cb.cal,
-                        stale=bool(_cb.stale),
-                        meas_age_s=round(t0 - _cb.meas_t, 2))
-                except Exception:
-                    pass
-            for p in sorted(best):
-                if p in pred:
-                    _log_rl("meas-%d" % p,
-                            "PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
-                            % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
-            if _local_ok or _sib_ok:
-                _log_rl("clkbias",
-                        "clock-freq bias %+.0f Hz (raw %+.0f, %d sats%s + %d sib, EMA a=%.2f) "
-                        "-> seeding predicted Doppler"
-                        % (_cb.value, raw_bias, len(resid),
-                           "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
-                           n_sib, args.bias_alpha))
-            else:
-                # Say WHY, with both counts -- "1 sat" alone sent this investigation looking
-                # at the clock, the sky and the front end before anyone asked whether the
-                # BAND had already solved it (2026-07-27).
-                _log_rl("clkbias",
-                        "clock-freq bias %s (%d local + %d sibling sats < --bias-min-sats "
-                        "%d: residual not trusted)"
-                        % ("held %+.0f Hz" % _cb.value if _cb.ema is not None
-                           else "UNSOLVED (wide margins)", len(resid), n_sib,
-                           args.bias_min_sats))
-        elif gating:
-            up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
     def _stage_nav_bits():
         """NAV BITS: decode the broadcast navigation message and cross-check it against BRDC.
@@ -5596,13 +5340,13 @@ def main(argv=None, rx=None, publisher=None):
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
             # source when their encoders exist.
             if (args.nav_bits_brdc and navbits is not None and alm_sys == "G"
-                    and brdc_alm is not None and pred):
+                    and brdc_alm is not None and _ctx.pred):
                 if navbrdc is None:
                     from navbit_brdc import BrdcLnavSource
                     navbrdc = BrdcLnavSource(log=_log)
                     _log("constructed-bit source armed (BRDC LNAV, un-synced PRNs)")
                 try:
-                    navbrdc.update(brdc_alm["eph"], pred, navbits)
+                    navbrdc.update(brdc_alm["eph"], _ctx.pred, navbits)
                 except Exception as e:
                     _log("navbrdc update failed: %s" % e)
             if navbits is not None and _now() - navbits_log_t > 60.0:
@@ -5899,7 +5643,7 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ `t_now_abs` IS None, NEVER 0.0, until the first ephemeris refresh. A missing axis time is
         UNKNOWN, and a confident wrong timestamp is worse than a skipped measurement -- as 0.0 it
         killed chain threads through the #85 stash."""
-        if (dr_state is not None and args.almanac and pred and utc0_sample0
+        if (dr_state is not None and args.almanac and _ctx.pred and utc0_sample0
                 and _now() >= dr_state["next"]):
             _drp.now_w = _now()
             dr_state["next"] = _drp.now_w + args.dr_refresh_s
@@ -7094,7 +6838,10 @@ def main(argv=None, rx=None, publisher=None):
         rx=rx, publisher=publisher, telem_client=telem_client, detectors=detectors,
         dll_combiners=dll_combiners, spectrum_endpoints=spectrum_endpoints,
         spec_writer=_spec_writer, state_dir=_state_dir, xb_read_dir=_xb_read_dir,
-        sig_of=sig_of,
+        sig_of=sig_of, combiner=combiner, gating=gating, capable=_capable,
+        receiver_state=receiver_state, alm_now=_alm_now, cb=_cb,
+        almanac_sats=almanac_sats, brdc_alm=brdc_alm, det_fresh=det_fresh,
+        state_w=state_w, clk_persist_t=_clk_persist_t,
         dllp=_dllp, drp=_drp, handover=_handover, adm_gate=_adm_gate, g3_ramp=_g3_ramp,
         seeds=seeds, dr_state=dr_state, bsat=bsat, cp_held=cp_held,
         dr_untrusted=dr_untrusted,
@@ -7217,7 +6964,7 @@ def main(argv=None, rx=None, publisher=None):
                            else "UNSOLVED"), every_s=30.0)
 
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
-        pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
+        _ctx.pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
         # STALE-BIAS RESCUE (--bias-stale-s): a solved bias nobody has measured for minutes
         # is a LIABILITY, not a constant -- if it latched away from truth (mid-walk during
         # the 2026-07-20 GPSDO unlock) the narrow hints it centers are what PREVENT the
@@ -7229,9 +6976,8 @@ def main(argv=None, rx=None, publisher=None):
                     "CLOCK BIAS STALE: no multi-sat measurement for %.0f s (holding %+.0f Hz "
                     "for seeding) -- margins WIDE until re-solved"
                     % (t0 - _cb.meas_t, _cb.value), every_s=60.0)
-        up = None
-        _stage_almanac_predict()
-        _ctx.begin_cycle(pred=pred, up=up)
+        _ctx.up = None
+        almanac_stage.stage_almanac_predict(_ctx)
 
         # 2a-xband. S5 CROSS-BAND: read the sibling band's per-sat tracked Doppler ONCE and
         # predict THIS band's by the exact carrier ratio (satellite motion is geometry, common
@@ -7455,22 +7201,22 @@ def main(argv=None, rx=None, publisher=None):
         # keep the despread configuration representative.
         probe_set = set()
         _ctx.begin_cycle(probe_set=probe_set)
-        if args.noise_probes > 0 and args.almanac and pred:
-            deep_low = sorted((p for p, v in pred.items() if v[2] < -15.0),
-                              key=lambda p: pred[p][2])[:args.noise_probes]
+        if args.noise_probes > 0 and args.almanac and _ctx.pred:
+            deep_low = sorted((p for p, v in _ctx.pred.items() if v[2] < -15.0),
+                              key=lambda p: _ctx.pred[p][2])[:args.noise_probes]
             probe_set = set(deep_low)
             for p in deep_low:
                 if p not in seeds:
-                    _log("noise probe PRN %d seeded (elev %.0f)" % (p, pred[p][2]))
+                    _log("noise probe PRN %d seeded (elev %.0f)" % (p, _ctx.pred[p][2]))
                 seeds[p] = Seed.born(
                     "probe", epoch=0,
-                    doppler_hz=pred[p][0] + _cb.value,
+                    doppler_hz=_ctx.pred[p][0] + _cb.value,
                     code_phase_chips=0.0,
                     code_phase_rate=cp_rate_from_code_bias(
-                        pred[p][0], code_bias_ema or 0.0, args.hops_per_sec,
+                        _ctx.pred[p][0], code_bias_ema or 0.0, args.hops_per_sec,
                         args.chip_rate_hz, args.carrier_hz),
                     ref_hop=0,
-                    doppler_rate_hz_s=pred[p][1])
+                    doppler_rate_hz_s=_ctx.pred[p][1])
         # TRACK WATCHDOG (--watchdog-s, default off): a sat the SEARCH sees STRONGLY that
         # has not produced a single coherent emit for this long is broken, whatever the
         # cause -- aliased NCO (the resid estimator cannot see past +-1/(4*T_rec)), a

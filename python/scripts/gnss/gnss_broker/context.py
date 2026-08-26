@@ -48,12 +48,14 @@ class ChainContext(object):
         # ---- services and endpoints ---------------------------------------------------
         "rx", "publisher", "telem_client", "detectors", "dll_combiners",
         "spectrum_endpoints", "spec_writer", "state_dir", "xb_read_dir", "sig_of",
+        "combiner", "gating", "capable", "receiver_state", "alm_now",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
-        "dllp", "drp", "handover", "adm_gate", "g3_ramp",
+        "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb",
         # ---- long-lived tables, mutated in place --------------------------------------
         "seeds", "dr_state", "bsat", "cp_held", "dr_untrusted",
         "est_last", "kcoh_rates", "rf_last", "elem_arch_t", "elem_poll_t",
         "mp_cooldown", "mp_flipped", "mp_last_det",
+        "almanac_sats", "brdc_alm", "det_fresh", "state_w", "clk_persist_t",
         # ---- per-cycle, refreshed by begin_cycle() ------------------------------------
         "t0", "best", "status", "pred", "up", "probe_set",
     )
@@ -62,18 +64,19 @@ class ChainContext(object):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
 
-    def begin_cycle(self, t0=_UNSET, best=_UNSET, status=_UNSET, pred=_UNSET, up=_UNSET,
-                    probe_set=_UNSET):
+    def begin_cycle(self, t0=_UNSET, best=_UNSET, status=_UNSET, probe_set=_UNSET):
         """Refresh the per-cycle half, at each point one of these is rebound.
 
         Not a single call at the top of the pass: these do not all become available at the
         same moment (`pred` and `up` are produced by the almanac stage partway through), so
         each is refreshed where it is actually assigned.
 
-        ⚠️ THE SENTINEL IS NOT PEDANTRY. `up` is legitimately None on a cycle with no
-        visibility solution, and a "skip if None" default would silently leave the PREVIOUS
-        cycle's satellite set in place -- stale, plausible, and pointing at the wrong sky.
-        None must be settable.
+        ⚠️ THE SENTINEL IS NOT PEDANTRY. A value here can legitimately be None on a given
+        cycle, and a "skip if None" default would silently leave the PREVIOUS cycle's value
+        in place -- stale, plausible, and wrong. None must be settable.
+
+        `pred` and `up` are NOT here: the almanac stage writes them straight onto the context
+        as attributes, which is what lets that stage live in a module at all.
         """
         if t0 is not _UNSET:
             self.t0 = t0
@@ -81,9 +84,5 @@ class ChainContext(object):
             self.best = best
         if status is not _UNSET:
             self.status = status
-        if pred is not _UNSET:
-            self.pred = pred
-        if up is not _UNSET:
-            self.up = up
         if probe_set is not _UNSET:
             self.probe_set = probe_set

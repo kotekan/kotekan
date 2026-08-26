@@ -53,7 +53,15 @@ NAME_MAP = {
     "mp_cooldown": "mp_cooldown", "mp_flipped": "mp_flipped", "mp_last_det": "mp_last_det",
     "t0": "t0", "best": "best", "status": "status", "pred": "pred", "up": "up",
     "probe_set": "probe_set",
+    "combiner": "combiner", "gating": "gating", "_capable": "capable",
+    "receiver_state": "receiver_state", "_alm_now": "alm_now", "_cb": "cb",
+    "almanac_sats": "almanac_sats", "brdc_alm": "brdc_alm", "det_fresh": "det_fresh",
+    "state_w": "state_w", "_clk_persist_t": "clk_persist_t",
 }
+
+# `_ctx` is the context itself, not a slot on it: a stage that already writes through the
+# context (`_ctx.pred = ...`) must address it as its own parameter once it moves out.
+SELF_NAME = "_ctx"
 
 
 def _module_level(tree):
@@ -98,7 +106,7 @@ def main_():
                         % (routine, ", ".join(shared)))
 
     free = analyze_free(tree, main, fn)
-    unmapped = [f for f in free if f not in NAME_MAP]
+    unmapped = [f for f in free if f not in NAME_MAP and f != SELF_NAME]
     assert not unmapped, ("REFUSING: no ChainContext slot for %s. Give that state a home "
                           "before moving `%s` out." % (", ".join(unmapped), routine))
 
@@ -116,7 +124,8 @@ def main_():
         for n in sorted(nodes, key=lambda x: -x.col_offset):
             c = n.col_offset
             assert line[c:c + len(n.id)] == n.id, "mismatch at %d:%d" % (ln, c)
-            line = line[:c] + "ctx." + NAME_MAP[n.id] + line[c + len(n.id):]
+            repl = "ctx" if n.id == SELF_NAME else "ctx." + NAME_MAP[n.id]
+            line = line[:c] + repl + line[c + len(n.id):]
         body[i] = line
 
     body = [(l[ind:] if l.strip() else l) for l in body]
