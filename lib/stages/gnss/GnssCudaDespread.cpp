@@ -10,6 +10,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <algorithm>
 
 namespace {
 void ck(cudaError_t e, const char* what) {
@@ -63,6 +64,8 @@ struct GnssCudaDespread::Impl {
     float2* d_data = nullptr;                  // [n_chan][n_hops]
     int8_t* d_code = nullptr;                  // all PRNs' combined-stream codes, concatenated
     std::vector<int> code_offset;              // per PRN slot
+    std::vector<int8_t> code_stage;            // live-swap H2D staging (see set_prn)
+    std::vector<int> slot_prn;                 // PRN per slot AS THIS ENGINE HAS IT ON DEVICE
     long code_len = 0;                         // combined-stream length (same for all PRNs)
     gnss_cuda::DespreadJob* d_jobs = nullptr;  // [n_prn]      (one quad job per PRN slot)
     double2* d_corr = nullptr;                 // [4*n_prn][n_chan]  (E, P, L, P_HEAD per slot)
@@ -145,6 +148,8 @@ struct GnssCudaDespread::Impl {
             const auto& fc = bank.full_code(p);
             codes.insert(codes.end(), fc.begin(), fc.end());
         }
+        slot_prn = bank.prns();
+        slot_prn.resize((size_t)np, -1);
         ck(cudaMalloc(&d_code, codes.size()), "alloc code");
         ck(cudaMemcpy(d_code, codes.data(), codes.size(), cudaMemcpyHostToDevice), "upload code");
 
@@ -342,6 +347,57 @@ GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn
 }
 
 GnssCudaDespread::~GnssCudaDespread() = default;
+
+int GnssCudaDespread::prn_at(int p) const {
+    // THIS ENGINE's device view, not the shared bank's -- see set_prn.
+    return (p >= 0 && (size_t)p < _impl->slot_prn.size()) ? _impl->slot_prn[(size_t)p] : -1;
+}
+
+bool GnssCudaDespread::set_prn(int p, int prn, void* stream) {
+    Impl& im = *_impl;
+    if (p < 0 || p >= im.n_prn)
+        return false;
+    // ⚠️ COMPARE AGAINST THIS ENGINE'S OWN VIEW, NOT THE BANK'S. Several engines can share
+    // one bank (the search builds one GnssCudaDespread per <=64-channel refine group over a
+    // single ChannelizedReplicaBank), and each keeps its OWN device copy of the code table.
+    // Short-circuiting on the bank would let the first engine update the shared bank and every
+    // other engine then conclude it had nothing to do -- leaving them correlating the new
+    // satellite's model against the old satellite's code, on the GPU, with no symptom but a
+    // refine that never finds a peak.
+    if (im.slot_prn[(size_t)p] == prn)
+        return true; // this engine is already there
+    if (im.bank.prn_at(p) != prn && !im.bank.set_prn(p, prn))
+        return false;
+    // Re-upload just this slot's row of the concatenated code table. The staging buffer is a
+    // MEMBER, not a local: the copy is stream-ordered and therefore outlives this call, and a
+    // local vector would be freed while the DMA still had its pages.
+    if (im.code_stage.size() != (size_t)im.n_prn * (size_t)im.code_len)
+        im.code_stage.assign((size_t)im.n_prn * (size_t)im.code_len, 0);
+    const auto& fc = im.bank.full_code(p);
+    std::copy(fc.begin(), fc.end(), im.code_stage.begin() + (size_t)im.code_offset[(size_t)p]);
+    // nullptr = this engine's OWN stream, which is what despread_batch enqueues on. Callers
+    // that drive the engine from an external stream (the tracker) pass theirs; callers that
+    // only ever use the batch API (the search) can pass nothing and still be ordered.
+    const cudaStream_t st = stream ? (cudaStream_t)stream : im.stream;
+    ck(cudaMemcpyAsync(im.d_code + im.code_offset[(size_t)p],
+                       im.code_stage.data() + im.code_offset[(size_t)p], (size_t)im.code_len,
+                       cudaMemcpyHostToDevice, st),
+       "code slot re-upload");
+    // Per-slot state HELD HERE. The Phi cache is carrier-only (so for CDMA it would survive
+    // correctly), but it is invalidated anyway: it is rebuilt on the next record for a few
+    // hundred microseconds, and a cache keyed to a satellite that has left is precisely the
+    // kind of thing that stays right until the day it doesn't.
+    im.phi[(size_t)p].valid = false;
+    // The accumulated carrier NCO (#71 arm 2) MUST reset -- its whole content is the phase
+    // history of a satellite this slot no longer holds. Clearing it makes the next record a
+    // fresh anchor, which is the honest description of what just happened.
+    if ((size_t)p < im.pacc.size())
+        im.pacc[(size_t)p] = gnss::CarrierNco{};
+    im.last_ang0[(size_t)p] = std::numeric_limits<double>::quiet_NaN();
+    im.last_phi_ddop[(size_t)p] = std::numeric_limits<double>::quiet_NaN();
+    im.slot_prn[(size_t)p] = prn;
+    return true;
+}
 
 double GnssCudaDespread::last_ang0(int p) const {
     return (p >= 0 && (size_t)p < _impl->last_ang0.size())

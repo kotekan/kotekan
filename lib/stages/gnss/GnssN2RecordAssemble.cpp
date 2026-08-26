@@ -114,6 +114,12 @@ void GnssN2RecordAssemble::main_thread() {
             for (int p = 0; p < _n_prn; ++p) {
             const gnss_gpu::PrnCtl& in0 = ictl[(size_t)r * _n_prn + p];
             gnss_gpu::PrnCtl& oc = octl[(size_t)r * _n_prn + p];
+            // IDENTITY BEFORE THE RUN CHECK (live PRN membership). `oc = in0` below carries
+            // the PRN for a running slot, but a DARK slot returns early and would ship 0 --
+            // "no claim" -- so the downstream assembler could not learn that a slot changed
+            // satellite while it was dark. That is exactly when it must learn: it is when the
+            // old satellite's element cal has to be dropped instead of warmed into the new one.
+            oc.prn = in0.prn;
             if (!in0.run)
                 continue;
             oc = in0;

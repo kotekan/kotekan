@@ -45,7 +45,78 @@ public:
     /// broker/scripts to watch the in-tracker DLL without touching the record stream.
     void get_trim_callback(kotekan::connectionInstance& conn);
 
-    // Geometry (immutable after construction).
+    // ================= LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md) =============
+    //
+    // WHY. The node's PRN list was a hand-written string in config/gnss_fleet_chord.yaml and
+    // the broker's view of the constellation comes from live BRDC every cycle. Nothing
+    // reconciled them, so they drifted apart silently: measured 2026-08-26, Galileo carried 5
+    // slots whose satellites no longer exist while E36 -- which transits at 83 deg elevation,
+    // essentially through the main beam -- had no slot at all, and had been picked as a noise
+    // probe the node could not represent, quietly dropping both gal chains from the q+p
+    // presence gate to brightness-only. A startup-only list cannot track a constellation that
+    // changes under it, and campaigns now run longer than the list stays true.
+    //
+    // ⚠️ THE SLOT COUNT NEVER CHANGES; ONLY MEMBERSHIP DOES. n_prn propagates into every
+    // buffer, every GPU allocation and the frame sizes negotiated on the wire, so changing it
+    // live is a fleet-wide re-plumb including bufferRecv. Changing WHICH satellite occupies a
+    // slot at constant count leaves every size byte-identical. That is sufficient: Galileo
+    // needs 28 of 32 slots, so the budget was never the binding constraint -- we simply had
+    // the wrong 32.
+    //
+    // ⚠️ LOCK ORDER: prn_mtx IS THE OUTERMOST LOCK. Every REST callback that resolves a PRN to
+    // a slot takes it FIRST and holds it across its seed_mtx/trim_mtx section; the GPU thread
+    // takes it while applying a swap. Follow that and @ref prns can be read without further
+    // ceremony inside; break it and this deadlocks against expire_trims_locked, which reads
+    // @c prns with trim_mtx already held.
+
+    /// POST endpoint: the WHOLE slot->PRN map, in slot order, as {"prns": [...]} or a bare
+    /// array. DECLARATIVE AND IDEMPOTENT -- the broker sends what it wants the node to hold and
+    /// the node diffs; a re-send of the current map is a no-op that costs nothing, so a lost
+    /// message costs latency and not correctness (the same reasoning as /set_trim being
+    /// absolute rather than a delta).
+    ///
+    /// ⚠️ THE LENGTH MUST EQUAL n_prn EXACTLY. A shorter or longer list is refused, not
+    /// padded: a resize is the fleet-wide re-plumb above, and quietly accepting one here would
+    /// present it as an ordinary swap.
+    ///
+    /// Staged, not applied: the swap lands at the next FRAME BOUNDARY in @ref apply_prn_swaps
+    /// so no record is ever assembled from half a map.
+    void set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+
+    /// GET endpoint: the live map plus what has happened to it -- {prns, n_prn, swaps,
+    /// pending, last_error, slot_gen}. The broker reads this to see what it is diffing
+    /// against, and an operator reads it to answer "which satellite is slot 7?" without
+    /// consulting a config file that may no longer be true.
+    void get_prns_callback(kotekan::connectionInstance& conn);
+
+    /// Apply any staged map AT A FRAME BOUNDARY. ⚠️ GPU THREAD ONLY -- it re-uploads device
+    /// code tables on @c stream. Returns the slots that changed, so the CALLING COMMAND can
+    /// clear its own per-slot history (each command instance keeps its own, and the state
+    /// cannot reach it).
+    ///
+    /// Everything this state keys by slot is reset in here, in ONE place: seed, trim, trim
+    /// diagnostics, power EMAs, and -- through GnssCudaDespread::set_prn -- the device code
+    /// table, the Phi cache and the carrier-NCO accumulator. A survivor of any of these is the
+    /// old satellite's state attributed to the new one, which is the accumulator-identity trap
+    /// and is silent in every case.
+    std::vector<int> apply_prn_swaps(void* stream /*cudaStream_t*/);
+
+    /// A consistent copy of the slot->PRN map for a thread that does not hold @c prn_mtx.
+    std::vector<int> prn_map();
+
+    std::mutex prn_mtx;                ///< OUTERMOST. Guards @c prns and the staging below.
+    std::vector<int> pending_prns;     ///< staged map; empty = nothing staged
+    bool prn_pending = false;
+    /// Per-slot swap counter, monotone. A command instance compares its own remembered copy
+    /// against this to learn which slots moved WHILE IT WAS NOT THE INSTANCE THAT APPLIED --
+    /// cudaCommand runs several instances against one shared state, each with its own
+    /// per-slot Doppler history, and only one of them gets the return value of
+    /// @ref apply_prn_swaps.
+    std::vector<uint64_t> slot_gen;
+    uint64_t prn_swaps = 0;            ///< slots swapped since start (diagnostics)
+    std::string prn_last_err;          ///< why the last POST was refused, "" if none
+
+    // Geometry. n_prn is immutable; @c prns is NOT -- see the block above.
     std::vector<int> prns;
     int n_prn = 0, n_chan = 0, n_elem = 0;
     int elem_stride = 0, frame_chan_stride = 0;
@@ -286,6 +357,10 @@ private:
     /// histories when both run against the same state on one node.
     std::vector<double> _dop_prev;
     std::vector<uint8_t> _dop_prev_ok;
+    /// PER-SLOT SWAP GENERATION LAST SEEN BY THIS INSTANCE (live PRN membership). Compared
+    /// against cudaGnssChordTrackState::slot_gen every frame; a mismatch means this slot now
+    /// holds a different satellite and this instance's Doppler history for it is void.
+    std::vector<uint64_t> _slot_gen_seen;
 };
 
 #endif // CUDA_GNSS_CHORD_TRACK_HPP

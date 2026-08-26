@@ -218,25 +218,10 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     _comb_mult = _sig.time_multiplexed ? 2 : (_sig.mod == Modulation::BOC ? 2 * _sig.boc_m : 1);
     _eff_chip_rate = _sig.chip_rate_hz * _comb_mult;
     _eff_code_length = _sig.code_length * _comb_mult;
+    _prns = prns;
     _full_code.resize(prns.size());
-    for (size_t p = 0; p < prns.size(); ++p) {
-        auto comp = signal_code(_sig.name, prns[p]); // bare component code (+-1), code_length
-        if (_comb_mult == 1) {
-            _full_code[p] = std::move(comp);
-        } else if (_sig.time_multiplexed) {
-            std::vector<int8_t> comb((size_t)_eff_code_length, 0); // zero-stuffed sibling slots
-            for (long k = 0; k < _sig.code_length; ++k)
-                comb[(size_t)(_comb_mult * k + _sig.tdm_phase)] = comp[(size_t)k];
-            _full_code[p] = std::move(comb);
-        } else { // BOC(m,m): alternating-sign half-cycles, sine convention (+ first)
-            std::vector<int8_t> comb((size_t)_eff_code_length);
-            for (long k = 0; k < _sig.code_length; ++k)
-                for (int j = 0; j < _comb_mult; ++j)
-                    comb[(size_t)(_comb_mult * k + j)] =
-                        (int8_t)((j % 2) ? -comp[(size_t)k] : comp[(size_t)k]);
-            _full_code[p] = std::move(comb);
-        }
-    }
+    for (size_t p = 0; p < prns.size(); ++p)
+        _full_code[p] = build_full_code(prns[p]);
 
     // Secondary (Neuman-Hofman) overlay: one +-1 chip per primary period (NH10 on L5 I5,
     // NH20 on L5 Q5). Applied per period in channels()/hoprate_stream so a multi-period
@@ -272,6 +257,56 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     _fold = (float*)fftwf_malloc(sizeof(float) * _fft_len);
     _spec = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * (_N + 1));
     _p_fwd = fftwf_plan_dft_r2c_1d(_fft_len, _fold, _spec, FFTW_ESTIMATE);
+}
+
+std::vector<int8_t> ChannelizedReplicaBank::build_full_code(int prn) const {
+    auto comp = signal_code(_sig.name, prn); // bare component code (+-1), code_length
+    if (_comb_mult == 1)
+        return comp;
+    if (_sig.time_multiplexed) {
+        std::vector<int8_t> comb((size_t)_eff_code_length, 0); // zero-stuffed sibling slots
+        for (long k = 0; k < _sig.code_length; ++k)
+            comb[(size_t)(_comb_mult * k + _sig.tdm_phase)] = comp[(size_t)k];
+        return comb;
+    }
+    // BOC(m,m): alternating-sign half-cycles, sine convention (+ first)
+    std::vector<int8_t> comb((size_t)_eff_code_length);
+    for (long k = 0; k < _sig.code_length; ++k)
+        for (int j = 0; j < _comb_mult; ++j)
+            comb[(size_t)(_comb_mult * k + j)] =
+                (int8_t)((j % 2) ? -comp[(size_t)k] : comp[(size_t)k]);
+    return comb;
+}
+
+bool ChannelizedReplicaBank::set_prn(int p, int prn) {
+    if (p < 0 || p >= (int)_prns.size())
+        return false;
+    if (_prns[(size_t)p] == prn)
+        return true; // already there; a no-op swap must not cost the caller a state reset
+    // ⚠️ FDMA (GLONASS L1OF/L2OF) IS REFUSED, NOT GUESSED. There the satellite identity lives
+    // in the CARRIER, not the code: _prn_df[p] is satellite k's offset from band centre and
+    // this function has no way to know the new satellite's. Carrying the old offset despreads
+    // the new satellite at the wrong frequency; zeroing it parks the replica on band centre,
+    // which the config already warns "looks exactly like a broken code". Both are silent, so
+    // refuse and let the caller (who does know the frequency plan) grow an FDMA-aware path.
+    if (!_prn_df.empty()
+        && std::any_of(_prn_df.begin(), _prn_df.end(), [](double d) { return d != 0.0; }))
+        return false;
+    std::vector<int8_t> code;
+    try {
+        code = build_full_code(prn);
+    } catch (const std::exception&) {
+        return false; // no code for this PRN on this signal -- refuse rather than despread zeros
+    }
+    // A code table of the wrong LENGTH would run the gather off the end of the slot. The
+    // expansion above is deterministic in _eff_code_length, so this can only fire if
+    // signal_code returned a short component -- but the failure would be a silent read past
+    // the slot, so check rather than trust.
+    if ((long)code.size() != _eff_code_length)
+        return false;
+    _full_code[(size_t)p] = std::move(code);
+    _prns[(size_t)p] = prn;
+    return true;
 }
 
 ChannelizedReplicaBank::~ChannelizedReplicaBank() {

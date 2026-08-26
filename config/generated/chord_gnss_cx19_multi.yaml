@@ -192,30 +192,30 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0081834
-    t_inst_ns: 1786924800000000000
-    xp_as: 0.223145
-    yp_as: 0.353067
-  - delta_UT1_inst: 0.0077745
-    t_inst_ns: 1787011200000000000
-    xp_as: 0.222927
-    yp_as: 0.352188
-  - delta_UT1_inst: 0.0075792
-    t_inst_ns: 1787097600000000000
-    xp_as: 0.222663
-    yp_as: 0.351279
-  - delta_UT1_inst: 0.0075773
-    t_inst_ns: 1787184000000000000
-    xp_as: 0.2224
-    yp_as: 0.350375
-  - delta_UT1_inst: 0.0077383
-    t_inst_ns: 1787270400000000000
-    xp_as: 0.222121
-    yp_as: 0.349471
-  - delta_UT1_inst: 0.008006
-    t_inst_ns: 1787356800000000000
-    xp_as: 0.221813
-    yp_as: 0.348559
+  - delta_UT1_inst: 0.0072311
+    t_inst_ns: 1787529600000000000
+    xp_as: 0.216463
+    yp_as: 0.346032
+  - delta_UT1_inst: 0.0073194
+    t_inst_ns: 1787616000000000000
+    xp_as: 0.215922
+    yp_as: 0.345107
+  - delta_UT1_inst: 0.0072535
+    t_inst_ns: 1787702400000000000
+    xp_as: 0.215404
+    yp_as: 0.344177
+  - delta_UT1_inst: 0.0069866
+    t_inst_ns: 1787788800000000000
+    xp_as: 0.214867
+    yp_as: 0.343263
+  - delta_UT1_inst: 0.006492
+    t_inst_ns: 1787875200000000000
+    xp_as: 0.214266
+    yp_as: 0.342361
+  - delta_UT1_inst: 0.0057765
+    t_inst_ns: 1787961600000000000
+    xp_as: 0.213608
+    yp_as: 0.341464
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -352,6 +352,7 @@ gnss0_b2a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss0_b2a_inject/get_prns
     gnss_ctl_name: gnss0_b2a_n2ctl
     gnss_local_channels: &id003
     - 277
@@ -370,6 +371,7 @@ gnss0_b2a_n2dual:
     prns: *id002
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_b2a_inject/set_seeds
+    set_prns_endpoint: /gnss0_b2a_inject/set_prns
     set_trim_endpoint: /gnss0_b2a_inject/set_trim
     signal: BDS_B2A_P_CS
     trim_endpoint: /gnss0_b2a_inject/get_trim
@@ -566,6 +568,7 @@ gnss0_b2b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss0_b2b_inject/get_prns
     gnss_ctl_name: gnss0_b2b_n2ctl
     gnss_local_channels: &id006
     - 287
@@ -584,6 +587,7 @@ gnss0_b2b_n2dual:
     prns: *id005
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_b2b_inject/set_seeds
+    set_prns_endpoint: /gnss0_b2b_inject/set_prns
     set_trim_endpoint: /gnss0_b2b_inject/set_trim
     signal: BDS_B2B_I
     trim_endpoint: /gnss0_b2b_inject/get_trim
@@ -793,6 +797,7 @@ gnss0_e5a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss0_e5a_inject/get_prns
     gnss_ctl_name: gnss0_e5a_n2ctl
     gnss_local_channels: &id009
     - 277
@@ -811,6 +816,7 @@ gnss0_e5a_n2dual:
     prns: *id008
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_e5a_inject/set_seeds
+    set_prns_endpoint: /gnss0_e5a_inject/set_prns
     set_trim_endpoint: /gnss0_e5a_inject/set_trim
     signal: GAL_E5A_Q_CS
     trim_endpoint: /gnss0_e5a_inject/get_trim
@@ -1015,6 +1021,7 @@ gnss0_e5b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss0_e5b_inject/get_prns
     gnss_ctl_name: gnss0_e5b_n2ctl
     gnss_local_channels: &id012
     - 287
@@ -1033,6 +1040,7 @@ gnss0_e5b_n2dual:
     prns: *id011
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_e5b_inject/set_seeds
+    set_prns_endpoint: /gnss0_e5b_inject/set_prns
     set_trim_endpoint: /gnss0_e5b_inject/set_trim
     signal: GAL_E5B_Q_CS
     trim_endpoint: /gnss0_e5b_inject/get_trim
@@ -1237,6 +1245,7 @@ gnss0_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss0_inject/get_prns
     gnss_ctl_name: gnss0_n2ctl
     gnss_local_channels: &id015
     - 277
@@ -1255,6 +1264,7 @@ gnss0_n2dual:
     prns: *id014
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_inject/set_seeds
+    set_prns_endpoint: /gnss0_inject/set_prns
     set_trim_endpoint: /gnss0_inject/set_trim
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss0_inject/get_trim
@@ -1479,6 +1489,7 @@ gnss1_b2a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss1_b2a_inject/get_prns
     gnss_ctl_name: gnss1_b2a_n2ctl
     gnss_local_channels: &id017
     - 277
@@ -1497,6 +1508,7 @@ gnss1_b2a_n2dual:
     prns: *id002
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_b2a_inject/set_seeds
+    set_prns_endpoint: /gnss1_b2a_inject/set_prns
     set_trim_endpoint: /gnss1_b2a_inject/set_trim
     signal: BDS_B2A_P_CS
     trim_endpoint: /gnss1_b2a_inject/get_trim
@@ -1668,6 +1680,7 @@ gnss1_b2b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss1_b2b_inject/get_prns
     gnss_ctl_name: gnss1_b2b_n2ctl
     gnss_local_channels: &id019
     - 287
@@ -1685,6 +1698,7 @@ gnss1_b2b_n2dual:
     prns: *id005
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_b2b_inject/set_seeds
+    set_prns_endpoint: /gnss1_b2b_inject/set_prns
     set_trim_endpoint: /gnss1_b2b_inject/set_trim
     signal: BDS_B2B_I
     trim_endpoint: /gnss1_b2b_inject/get_trim
@@ -1861,6 +1875,7 @@ gnss1_e5a_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss1_e5a_inject/get_prns
     gnss_ctl_name: gnss1_e5a_n2ctl
     gnss_local_channels: &id021
     - 277
@@ -1879,6 +1894,7 @@ gnss1_e5a_n2dual:
     prns: *id008
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_e5a_inject/set_seeds
+    set_prns_endpoint: /gnss1_e5a_inject/set_prns
     set_trim_endpoint: /gnss1_e5a_inject/set_trim
     signal: GAL_E5A_Q_CS
     trim_endpoint: /gnss1_e5a_inject/get_trim
@@ -2050,6 +2066,7 @@ gnss1_e5b_n2dual:
     conjugate: true
     f_offset_hz: 1207140000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss1_e5b_inject/get_prns
     gnss_ctl_name: gnss1_e5b_n2ctl
     gnss_local_channels: &id023
     - 287
@@ -2067,6 +2084,7 @@ gnss1_e5b_n2dual:
     prns: *id011
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_e5b_inject/set_seeds
+    set_prns_endpoint: /gnss1_e5b_inject/set_prns
     set_trim_endpoint: /gnss1_e5b_inject/set_trim
     signal: GAL_E5B_Q_CS
     trim_endpoint: /gnss1_e5b_inject/get_trim
@@ -2238,6 +2256,7 @@ gnss1_n2dual:
     conjugate: true
     f_offset_hz: 1176450000.0
     fft_length: 16384
+    get_prns_endpoint: /gnss1_inject/get_prns
     gnss_ctl_name: gnss1_n2ctl
     gnss_local_channels: &id025
     - 277
@@ -2256,6 +2275,7 @@ gnss1_n2dual:
     prns: *id014
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_inject/set_seeds
+    set_prns_endpoint: /gnss1_inject/set_prns
     set_trim_endpoint: /gnss1_inject/set_trim
     signal: GPS_L5_Q_NH
     trim_endpoint: /gnss1_inject/get_trim

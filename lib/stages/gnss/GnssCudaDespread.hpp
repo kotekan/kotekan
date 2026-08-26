@@ -44,6 +44,32 @@ public:
                      double f_offset, double refresh_hz = 100.0);
     ~GnssCudaDespread();
 
+    // ---- LIVE MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md) ---------------------------
+
+    /// Repoint slot @c p at a different satellite: rebuilds the bank's code table for that
+    /// slot, re-uploads it to the device, and drops every piece of per-slot state HELD HERE
+    /// (Phi cache, carrier-NCO accumulator, the recorded last_ang0/last_phi_ddop).
+    ///
+    /// ⚠️ THE CODE UPLOAD IS STREAM-ORDERED ON @c stream, deliberately. The previous frame's
+    /// waveform kernel may still be reading @c d_code; a plain cudaMemcpy would not be ordered
+    /// against it, and the tail of that kernel would synthesize a chimera of two satellites'
+    /// codes -- which reads as one bad record on a slot that was ALREADY being reset, i.e. the
+    /// most invisible failure available. Pass the same stream the despread is enqueued
+    /// on -- or nullptr for this engine's own internal stream, which is what
+    /// @ref despread_batch uses.
+    ///
+    /// ⚠️ THIS IS THE GPU HALF OF THE SWAP ONLY. Seeds, trims, power averages, element cal and
+    /// anything else the CALLER keys by slot still describe the old satellite. See
+    /// cudaGnssChordTrackState::apply_prn_swaps for the whole act.
+    ///
+    /// Returns false, having changed nothing, if the slot is out of range, the PRN has no code
+    /// for this signal, or the bank is FDMA (see ChannelizedReplicaBank::set_prn).
+    bool set_prn(int p, int prn, void* stream /*cudaStream_t*/);
+
+    /// PRN currently in slot @c p (-1 out of range) -- the bank's view, which after a
+    /// @ref set_prn is the only correct one.
+    int prn_at(int p) const;
+
     /// Upload one record window ([hop][chan] interleaved complex float, as the tracker holds it).
     void upload_window(const std::complex<float>* window, long long window_start_sample);
 

@@ -115,6 +115,10 @@ private:
     std::vector<double> _dop_prev;  ///< previous record's propagated Doppler, Hz
     std::vector<double> _t_prev;    ///< and the absolute time it was pinned at, s
     std::vector<uint8_t> _dop_prev_ok; ///< 0 => no history: emit reanchored = 1 (break the arc)
+    /// PER-SLOT SWAP GENERATION LAST SEEN BY THIS INSTANCE (live PRN membership). Compared
+    /// against cudaGnssChordTrackState::slot_gen every frame; a mismatch means this slot now
+    /// holds a different satellite and this instance's Doppler history for it is void.
+    std::vector<uint64_t> _slot_gen_seen;
 
     /// M5: the epl-format CONTROL BLOCK this command publishes for the path-B consumer --
     /// [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn][energy x jobs x n_chan],

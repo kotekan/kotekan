@@ -1232,6 +1232,47 @@ def build_parser(description):
                          "because it is a SUPPRESSION (the conservative direction) and both "
                          "detectors are read-only; it costs recall on real events during a "
                          "transit and buys a base rate that is not mostly geometry.")
+    # ---- LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md, gnss_broker/prnmap.py) ----
+    # The node's slot->PRN list was hand-written in the manifest and this broker reads live
+    # BRDC; nothing reconciled them. Measured 2026-08-26: 5 dead Galileo slots while E36, which
+    # transits at 83 deg, had no slot at all -- and, because the noise-probe selector picks the
+    # deepest below-horizon PRN, it kept picking the one satellite the node could not represent,
+    # dropping both gal chains to brightness-only presence.
+    ap.add_argument("--prn-reconfig", choices=["off", "report", "apply"], default="off",
+                    help="keep the nodes' slot->PRN map in step with live BRDC. off (default) "
+                         "= this stage does nothing. report = GET each node's map, log the "
+                         "swap it WOULD make, post nothing -- a live version of `gen_fleet.py "
+                         "--check-prns`, with no risk. apply = actually POST /set_prns. "
+                         "⚠️ A SWAP COSTS A FULL RE-ACQUISITION on that slot (the node resets "
+                         "code table, Phi cache, carrier NCO, seed, trim, power averages and "
+                         "element cal COLD -- correctly, since none of it describes the new "
+                         "satellite), so every threshold below exists to make swaps RARE.")
+    ap.add_argument("--prn-reconfig-poll-s", type=float, default=60.0,
+                    help="how often to GET each node's live map. Read back rather than "
+                         "remembered, so what this diffs against is what the nodes ACTUALLY "
+                         "hold -- including after a restart reverted them to the config list.")
+    ap.add_argument("--prn-reconfig-interval-s", type=float, default=900.0,
+                    help="minimum seconds between swaps, fleet-wide. ONE slot moves per "
+                         "interval: re-acquisitions are the cost, and a mechanism that can "
+                         "churn several at once is the #92 disease one level up.")
+    ap.add_argument("--prn-reconfig-admit-deg", type=float, default=10.0,
+                    help="a satellite with no slot must be ABOVE this to claim one. Not "
+                         "'rises eventually': the swap is only worth paying for a satellite we "
+                         "can use immediately, and one that is up now is up again tomorrow.")
+    ap.add_argument("--prn-reconfig-evict-deg", type=float, default=0.0,
+                    help="a slot's incumbent counts as DOWN below this elevation.")
+    ap.add_argument("--prn-reconfig-down-hold-s", type=float, default=10800.0,
+                    help="how long an incumbent must have been continuously down before its "
+                         "slot may be reclaimed (default 3 h). Hysteresis, not caution for its "
+                         "own sake: BRDC visibility flickers, and a slot that flickers is a "
+                         "satellite that never locks.")
+    ap.add_argument("--prn-reconfig-gone-hold-s", type=float, default=7200.0,
+                    help="how long an incumbent must have been ABSENT FROM BRDC ENTIRELY "
+                         "before its slot may be reclaimed (default 2 h). Shorter than the "
+                         "down hold because a dead slot costs capacity and gains nothing -- "
+                         "but not zero, because an ephemeris gap is not a decommissioning.")
+    ap.add_argument("--prn-reconfig-timeout-s", type=float, default=5.0,
+                    help="per-endpoint HTTP timeout for the map GET/POST.")
     ap.add_argument("--code-bias-brownout-hold", action="store_true",
                     help="#91(c): during a D1 brownout, HOLD the last (l-a) EMA instead of "
                          "re-fitting it from the collapsed population. --code-bias-min-sats "

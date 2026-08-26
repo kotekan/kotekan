@@ -442,6 +442,10 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  "fft_length": cfg["fengine"]["fft_length"],
                  "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
                  "seed_endpoint": f"/{pre}track/set_seeds",
+                 # LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md). GET is a diagnostic
+                 # ("which satellite is slot 7?"); POST is the broker's actuator.
+                 "get_prns_endpoint": f"/{pre}track/get_prns",
+                 "set_prns_endpoint": f"/{pre}track/set_prns",
                  "set_trim_endpoint": f"/{pre}track/set_trim",  # see the inject block (#51 F3)
                  "trim_ttl_s": args.trim_ttl_s,
                  # In-tracker DLL code trim (ported 2026-07-31): per-frame closure is the only
@@ -1039,6 +1043,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  "gnss_synth_name": f"{pre}synth",
                  "gnss_ctl_name": f"{pre}n2ctl",
                  "seed_endpoint": f"/{pre}inject/set_seeds",
+                 # LIVE PRN MEMBERSHIP -- see the path-A block above.
+                 "get_prns_endpoint": f"/{pre}inject/get_prns",
+                 "set_prns_endpoint": f"/{pre}inject/set_prns",
                  "trim_endpoint": f"/{pre}inject/get_trim",
                  # TASK #51 F3: the fleet controller's actuator. ⚠️ PER INSTANCE, and that is
                  # not cosmetic -- the stage's built-in default is a single fixed path, so

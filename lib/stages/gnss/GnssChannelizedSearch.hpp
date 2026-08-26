@@ -85,6 +85,28 @@ private:
     void search_worker();
     void search_snapshot();
     void get_detections_callback(kotekan::connectionInstance& conn);
+    // ---- LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md) ------------------------
+    // The search hunts the satellites its list names, and that list came from a hand-written
+    // config. A satellite with no slot is one the search can never find, which is how E36 --
+    // 83 deg at transit -- stayed invisible for as long as the manifest said so.
+
+    /// POST: the whole slot->PRN map, in slot order. Same declarative contract, same length
+    /// rule and same staging as cudaGnssChordTrackState::set_prns_callback, so the broker
+    /// drives the producer and the search with ONE payload.
+    void set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    /// GET: the live map, plus the swap count.
+    void get_prns_callback(kotekan::connectionInstance& conn);
+    /// Apply any staged map. ⚠️ WORKER THREAD ONLY, between passes: the refine engines, the
+    /// replica cache and the hint tables all belong to the pass, and a swap landing inside one
+    /// would change the code under a surface that is half built.
+    void apply_prn_swaps();
+
+    std::mutex _prn_mtx;             ///< guards @c _prns and the staging below
+    std::vector<int> _pending_prns;
+    bool _prn_pending = false;
+    uint64_t _prn_swaps = 0;
+    std::string _prn_last_err;
+
     void set_doppler_hints_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
     void set_nh_hint_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
@@ -141,6 +163,8 @@ private:
     double _doppler_margin_hz;
     double _acquire_snr;
     double _doppler_step; ///< grid step, Hz (used to build a PRN's narrow almanac grid)
+    /// Slot -> PRN. Seeded from config; LIVE thereafter (see set_prns_callback). Guarded by
+    /// @c _prn_mtx for readers off the worker thread.
     std::vector<int> _prns;
     std::vector<double> _doppler_grid; ///< blind fallback grid (doppler_min..max)
 

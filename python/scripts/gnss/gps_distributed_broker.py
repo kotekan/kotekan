@@ -107,6 +107,7 @@ from gnss_broker import codeloop                            # noqa: E402  (the D
 from gnss_broker import statepub                            # noqa: E402  (the state record)
 from gnss_broker import ratefeed                            # noqa: E402  (#33 rate feeds)
 from gnss_broker import trimarm                             # noqa: E402  (C++ trim arming)
+from gnss_broker import prnmap                              # noqa: E402  (live PRN membership)
 from gnss_broker import carrierloop                         # noqa: E402  (off in production)
 from gnss_broker import searchhint                          # noqa: E402  (narrow the search)
 from gnss_broker import seeding                             # noqa: E402  (detections -> seeds)
@@ -225,6 +226,8 @@ def main(argv=None, rx=None, publisher=None):
     _latch = LatchDetector()      # D2: healthy -> absent -> stays absent. UNARMED,
                                   #     measuring the base rate #90 never established
     _saw = SawtoothDetector()     # D3: a standing trim that ramps then gets WIPED
+    # Live slot->PRN membership vs the sky. OFF unless --prn-reconfig; see prnmap.py.
+    _prnmap = prnmap.PrnMapState()
 
     _raw_argv = list(argv if argv is not None else sys.argv[1:])
     if args.signal:
@@ -1568,6 +1571,7 @@ def main(argv=None, rx=None, publisher=None):
         almanac_sats=almanac_sats, brdc_alm=brdc_alm, det_fresh=det_fresh,
         state_w=state_w, clk_persist_t=_clk_persist_t,
         car=_carrier, wd=_watchdog, nho=_nho, dls=_dls, hold=_hold, cpt=_cpt, rf=_rf, nav=_nav, cls=_cls, qpop=_qpop, brown=_brown, latch=_latch, saw=_saw,
+        prnmap=_prnmap,
         trackers=trackers, joint_consume=joint_consume, broker_t0=broker_t0,
         dr_eph_mod=dr_eph_mod, dr_min_prn=dr_min_prn,
         hist_len=HIST_LEN, max_gap_hops=MAX_GAP_HOPS, q_alias_hz=Q_ALIAS_HZ,
@@ -2558,6 +2562,12 @@ def main(argv=None, rx=None, publisher=None):
         # brace-expanded), so a node added to the fleet reaches the loop without regenerating
         # the gather's config.
         trimarm.stage_fleet_trim_arming(_ctx)
+
+        # LIVE PRN MEMBERSHIP. Placed AFTER everything that seeds or arms this cycle, so a
+        # swap lands on a settled chain rather than in the middle of one being driven -- and
+        # so the elevation it decides on is this cycle's, not last cycle's. Off unless
+        # --prn-reconfig; `report` posts nothing.
+        prnmap.stage_prn_membership(_ctx)
 
         if args.fast_trim_hz > 0.0:
             with fast_lock:

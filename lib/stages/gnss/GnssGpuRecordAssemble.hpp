@@ -40,6 +40,8 @@ public:
 private:
     Buffer* in_buf;
     Buffer* out_buf;
+    /// Slot -> PRN. SEEDED from config, then FOLLOWED FROM THE FRAME (@ref follow_frame_prns):
+    /// after a live swap the config value is stale and the frame's is authoritative.
     std::vector<int> _prns;
     double _sample_rate;
 
@@ -181,6 +183,18 @@ private:
     void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_reference_element_callback(kotekan::connectionInstance& conn,
                                         nlohmann::json& request);
+
+    /// LIVE SLOT MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md). Reconcile @c _prns against the
+    /// PRN the PRODUCER stamped into this frame's @ref gnss_gpu::PrnCtl, and cold-reset every
+    /// per-slot accumulator belonging to a slot whose satellite changed.
+    ///
+    /// ⚠️ THIS STAGE FOLLOWS THE FRAME; IT IS NOT RECONFIGURED. It could have grown its own
+    /// /set_prns endpoint to be pushed in step with the producer's, and that would have been
+    /// two copies of slot->PRN with no interlock -- the same shape as the config-vs-sky
+    /// divergence this whole mechanism exists to end. The producer owns membership, the
+    /// identity rides the data, and a frame that straddles a swap labels itself correctly with
+    /// no coordination at all. Returns the number of slots that changed (0 in steady state).
+    int follow_frame_prns(const void* pctl, int n_prn);
 };
 
 #endif

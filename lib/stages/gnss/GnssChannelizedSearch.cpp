@@ -986,6 +986,10 @@ void GnssChannelizedSearch::search_worker() {
                 return;
             _snap_ready = false;
         }
+        // LIVE PRN MEMBERSHIP, applied BETWEEN passes. Everything a swap invalidates -- the
+        // replica cache, the refine engines' device code tables, the detections and hints --
+        // belongs to a pass, and this is the only instant at which none is half built.
+        apply_prn_swaps();
         search_snapshot(); // snapshot stable: _worker_busy keeps the drain off it
         {
             std::lock_guard<std::mutex> lk(_m);
@@ -1018,6 +1022,14 @@ void GnssChannelizedSearch::main_thread() {
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_nh_hint",
         std::bind(&GnssChannelizedSearch::set_nh_hint_callback, this, _1, _2));
+    // LIVE PRN MEMBERSHIP. The broker pushes the SAME map here as to the producer, so the
+    // search hunts the satellites the tracker can actually hold.
+    kotekan::restServer::instance().register_get_callback(
+        unique_name + "/get_prns",
+        std::bind(&GnssChannelizedSearch::get_prns_callback, this, _1));
+    kotekan::restServer::instance().register_post_callback(
+        unique_name + "/set_prns",
+        std::bind(&GnssChannelizedSearch::set_prns_callback, this, _1, _2));
 
     _worker = std::thread(&GnssChannelizedSearch::search_worker, this);
 
@@ -1124,8 +1136,140 @@ void GnssChannelizedSearch::main_thread() {
         _worker.join();
 }
 
+void GnssChannelizedSearch::get_prns_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json out = nlohmann::json::array();
+    bool pend = false;
+    std::string err;
+    uint64_t swaps = 0;
+    {
+        std::lock_guard<std::mutex> lk(_prn_mtx);
+        for (int p : _prns)
+            out.push_back(p);
+        pend = _prn_pending;
+        err = _prn_last_err;
+        swaps = _prn_swaps;
+    }
+    conn.send_json_reply(nlohmann::json{{"prns", out},
+                                        {"n_prn", (int)out.size()},
+                                        {"swaps", swaps},
+                                        {"pending", pend},
+                                        {"last_error", err}});
+}
+
+void GnssChannelizedSearch::set_prns_callback(kotekan::connectionInstance& conn,
+                                              nlohmann::json& request) {
+    std::vector<int> want;
+    std::string err;
+    try {
+        const nlohmann::json& arr = request.is_object() ? request.at("prns") : request;
+        if (!arr.is_array())
+            throw std::runtime_error("expected an array of PRNs, or {\"prns\": [...]}");
+        for (const auto& v : arr)
+            want.push_back(v.get<int>());
+    } catch (const std::exception& e) {
+        err = std::string("bad prns payload: ") + e.what();
+    }
+    // Same length rule as the producer, and for the same reason: every per-slot table here is
+    // sized once, and a resize is a restart.
+    if (err.empty() && want.size() != _prns.size())
+        err = "prns has " + std::to_string(want.size()) + " entries but this search has "
+              + std::to_string(_prns.size()) + " slots; the count is not live";
+    if (err.empty())
+        for (size_t i = 0; i < want.size() && err.empty(); ++i)
+            for (size_t j = 0; j < i; ++j)
+                if (want[j] == want[i]) {
+                    err = "PRN " + std::to_string(want[i]) + " appears twice";
+                    break;
+                }
+    if (!err.empty()) {
+        {
+            std::lock_guard<std::mutex> lk(_prn_mtx);
+            _prn_last_err = err;
+        }
+        conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(_prn_mtx);
+        _prn_last_err.clear();
+        if (want != _prns) {
+            _pending_prns = want;
+            _prn_pending = true;
+        }
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+void GnssChannelizedSearch::apply_prn_swaps() {
+    std::vector<std::pair<int, int>> changed; // (slot, old prn)
+    {
+        std::lock_guard<std::mutex> lk(_prn_mtx);
+        if (!_prn_pending)
+            return;
+        _prn_pending = false;
+        for (size_t p = 0; p < _prns.size(); ++p) {
+            const int np = _pending_prns[p];
+            if (np == _prns[p])
+                continue;
+            // The bank first: a PRN with no code for this signal must leave the slot exactly
+            // as it was rather than half-swapped.
+            if (!_replica->set_prn((int)p, np)) {
+                _prn_last_err = "slot " + std::to_string(p) + ": no code for PRN "
+                                + std::to_string(np) + " on this signal";
+                continue;
+            }
+            changed.emplace_back((int)p, _prns[p]);
+            _prns[p] = np;
+            ++_prn_swaps;
+        }
+        _pending_prns.clear();
+    }
+    if (changed.empty())
+        return;
+    for (const auto& c : changed) {
+        const size_t p = (size_t)c.first;
+#ifdef GNSS_CUDA
+        // EVERY refine engine, not just one: each holds its OWN device copy of the code
+        // table over the same shared bank (see GnssCudaDespread::set_prn).
+        for (auto& e : _cuda_ref)
+            if (e)
+                e->set_prn((int)p, _prns[p], nullptr);
+#endif
+        // The cached channelized replicas are the OLD satellite's code, per overlay
+        // alignment. Left in place they would be correlated against the new satellite for as
+        // long as the cover set stayed the same -- a search that can never detect.
+        for (auto& per_nh : _repl0)
+            if (p < per_nh.size())
+                per_nh[p].clear();
+        {
+            std::lock_guard<std::mutex> lk(_det_mtx);
+            if (p < _detections.size())
+                _detections[p] = Detection{};
+        }
+        {
+            // Hints are per SATELLITE (a predicted Doppler, an overlay alignment). Carried
+            // across a swap each becomes a confident, wrong window on the new satellite --
+            // and with require_hint that is worse than none, because it narrows the scan to
+            // exactly where the signal is not.
+            std::lock_guard<std::mutex> lk(_hint_mtx);
+            if (p < _dop_hints.size())
+                _dop_hints[p] = DopHint{};
+            if (p < _nh_hints.size())
+                _nh_hints[p] = NhHint{};
+            if (p < _snap_hints.size())
+                _snap_hints[p] = DopHint{};
+            if (p < _nh_snap_hints.size())
+                _nh_snap_hints[p] = NhHint{};
+        }
+        WARN("GnssChannelizedSearch[{:s}]: slot {:d} PRN {:d} -> {:d}; replica cache, refine "
+             "code tables, detection and hints all cleared for that slot.",
+             unique_name, c.first, c.second, _prns[p]);
+    }
+}
+
 void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance& conn) {
     nlohmann::json reply = nlohmann::json::array();
+    std::lock_guard<std::mutex> pk(_prn_mtx); // OUTERMOST -- see set_doppler_hints_callback
     std::lock_guard<std::mutex> lk(_det_mtx);
     for (size_t p = 0; p < _prns.size(); ++p) {
         const Detection& d = _detections[p];
@@ -1150,6 +1294,9 @@ void GnssChannelizedSearch::set_nh_hint_callback(kotekan::connectionInstance& co
     // PRNs not listed keep their hint. Unknown PRNs ignored. Deliberately self-referential:
     // the broker echoes back our own measurement, so there is no clock to bootstrap.
     try {
+        // _prn_mtx OUTERMOST: the worker can be rewriting _prns between passes, and
+        // resolving a PRN against a half-written map would hint the wrong slot.
+        std::lock_guard<std::mutex> pk(_prn_mtx);
         std::lock_guard<std::mutex> lk(_hint_mtx);
         for (const auto& h : json_request) {
             const int prn = h.at("prn").get<int>();
@@ -1178,6 +1325,9 @@ void GnssChannelizedSearch::set_doppler_hints_callback(kotekan::connectionInstan
     // CLEARS the hint (revert that PRN to the blind grid). PRNs not listed keep their current
     // hint (the broker resends visible sats every cycle). Unknown PRNs are ignored.
     try {
+        // _prn_mtx OUTERMOST: the worker can be rewriting _prns between passes, and
+        // resolving a PRN against a half-written map would hint the wrong slot.
+        std::lock_guard<std::mutex> pk(_prn_mtx);
         std::lock_guard<std::mutex> lk(_hint_mtx);
         for (const auto& h : json_request) {
             const int prn = h.at("prn").get<int>();

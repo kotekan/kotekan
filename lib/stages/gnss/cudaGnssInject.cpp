@@ -165,6 +165,29 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     auto* d_synth = (unsigned char*)device.get_gpu_memory_array(
         _gnss_synth_name, pipestate.gpu_frame_id, _gpu_buffer_depth, synth_len);
 
+    // LIVE PRN MEMBERSHIP, applied HERE -- at the frame boundary, before a single job is
+    // built (docs/CHORD_LIVE_PRN_RECONFIG.md). Everything the SHARED STATE keys by slot is
+    // reset inside; the per-slot Doppler history below belongs to THIS COMMAND INSTANCE and
+    // the state cannot reach it, so it is cleared here.
+    //
+    // ⚠️ VIA slot_gen, NOT VIA THE RETURN VALUE. cudaCommand runs several instances against
+    // one shared state and only the instance that happens to win the apply gets the changed
+    // list back; the others would carry a departed satellite's Doppler history into the new
+    // one and emit a continuous arc across a discontinuity that is total. The per-slot
+    // generation counter is what every instance can check for itself.
+    S.apply_prn_swaps((void*)stream);
+    {
+        if (_slot_gen_seen.size() != (size_t)S.n_prn)
+            _slot_gen_seen.assign((size_t)S.n_prn, 0);
+        std::lock_guard<std::mutex> lk(S.prn_mtx);
+        for (int p = 0; p < S.n_prn; ++p)
+            if (_slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
+                _slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
+                _dop_prev[(size_t)p] = 0.0;
+                _t_prev[(size_t)p] = 0.0;
+                _dop_prev_ok[(size_t)p] = 0;
+            }
+    }
     // Control block for this frame (M5). Zeroed each frame: a PRN that just set must read as
     // run=0, never as last frame's contents.
     std::memset(_ctl_stage.data(), 0, _ctl_stage.size());
@@ -206,6 +229,11 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         int* slot2spec = _h_slot2spec.data() + (size_t)r * S.n_prn;
         for (int p = 0; p < S.n_prn; ++p) {
             slot2spec[p] = -1;
+            // IDENTITY FIRST, before any `continue`. A slot with no seed still has a
+            // satellite in it, and the assembler needs to know that a slot's PRN CHANGED even
+            // -- especially -- while it was dark, because that is when it must drop the old
+            // satellite's element cal instead of warming it into the new one.
+            pctl[(size_t)r * S.n_prn + p].prn = (uint16_t)S.prns[(size_t)p];
             const auto& sd = seeds[(size_t)p];
             if (!sd.have) {
                 // Seed gone (set, expired, never acquired): the replica phase history is

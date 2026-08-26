@@ -85,7 +85,22 @@ struct PrnCtl {
                         ///< meaning to 2, but the producer did the subtraction (see dcyc for
                         ///< why the assembler cannot do it accurately). Prefer 3 in new
                         ///< producers; 2 stays for the airspy chain, byte-identical.
-    uint16_t _pad0;
+    /// THE SATELLITE IN THIS SLOT FOR THIS RECORD. 0 = the producer did not stamp it (every
+    /// writer before 2026-08-26), and a consumer must then fall back to its own config list.
+    ///
+    /// ⚠️ THIS IS WHAT MAKES A LIVE SLOT SWAP SAFE. Slot->PRN used to exist twice -- once in
+    /// the producer's config and once in the assembler's -- and nothing checked them against
+    /// each other, which is fine only while neither can change. The moment membership becomes
+    /// live (docs/CHORD_LIVE_PRN_RECONFIG.md), a second copy is a mislabelling waiting to
+    /// happen: the assembler would stamp record slot 0 with the OLD satellite's number and
+    /// every downstream consumer would believe it. Carrying the identity in the frame removes
+    /// the second copy instead of adding a second endpoint to keep it in step, and it makes a
+    /// frame that STRADDLES a swap unambiguous rather than merely unlikely.
+    ///
+    /// uint16 because it fits the padding exactly: PRNs run 1..63 across every constellation
+    /// we carry, and keeping sizeof(PrnCtl) == 80 means no buffer in any generated config
+    /// changes size for this.
+    uint16_t prn;
     int32_t job0;       ///< first of this PRN's 4 job rows (E,P,L,P_HEAD); -1 if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)
     float n_owned;      ///< record slot 6 (covering channels owned by this subband)

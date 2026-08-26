@@ -216,6 +216,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     ema_l2.assign((size_t)n_prn, 0.0);
     ema_n.assign((size_t)n_prn, 0);
 
+    slot_gen.assign((size_t)n_prn, 0);
+
     const std::string ep =
         config.get_default<std::string>(unique_name, "seed_endpoint", "/chord_track/set_seeds");
     kotekan::restServer::instance().register_post_callback(
@@ -232,9 +234,173 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         config.get_default<std::string>(unique_name, "set_trim_endpoint", "/chord_track/set_trim");
     kotekan::restServer::instance().register_post_callback(
         sep, std::bind(&cudaGnssChordTrackState::set_trim_callback, this, _1, _2));
+    // LIVE PRN MEMBERSHIP. Registered ALWAYS and carrying its own authority, exactly as
+    // /set_trim does: there is no "enable live reconfiguration" flag on the node, because a
+    // node that will not answer "which satellite is slot 7?" is strictly worse than one that
+    // will, and the arming decision belongs to the BROKER (which is the only side that knows
+    // whether it is in report-only or apply mode). GET is a diagnostic; POST is the actuator.
+    const std::string gpe =
+        config.get_default<std::string>(unique_name, "get_prns_endpoint", "/chord_track/get_prns");
+    kotekan::restServer::instance().register_get_callback(
+        gpe, std::bind(&cudaGnssChordTrackState::get_prns_callback, this, _1));
+    const std::string spe =
+        config.get_default<std::string>(unique_name, "set_prns_endpoint", "/chord_track/set_prns");
+    kotekan::restServer::instance().register_post_callback(
+        spe, std::bind(&cudaGnssChordTrackState::set_prns_callback, this, _1, _2));
     INFO_NON_OO("cudaGnssChordTrack: {:d} PRN x {:d} chan x {:d} elem, {:d} hops/record "
                 "({:d} rec/frame), seeds on {:s}",
                 n_prn, n_chan, n_elem, hops_per_record, n_rec, ep);
+}
+
+std::vector<int> cudaGnssChordTrackState::prn_map() {
+    std::lock_guard<std::mutex> lk(prn_mtx);
+    return prns;
+}
+
+void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json out = nlohmann::json::array();
+    nlohmann::json gen = nlohmann::json::array();
+    bool pend = false;
+    std::string err;
+    uint64_t swaps = 0;
+    {
+        std::lock_guard<std::mutex> lk(prn_mtx);
+        for (int p = 0; p < n_prn; ++p) {
+            out.push_back(prns[(size_t)p]);
+            gen.push_back(slot_gen[(size_t)p]);
+        }
+        pend = prn_pending;
+        err = prn_last_err;
+        swaps = prn_swaps;
+    }
+    nlohmann::json reply = {{"prns", out},        {"n_prn", n_prn}, {"slot_gen", gen},
+                            {"swaps", swaps},     {"pending", pend}, {"last_error", err}};
+    conn.send_json_reply(reply);
+}
+
+void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& conn,
+                                                nlohmann::json& request) {
+    // Parse and validate OUTSIDE every lock. The GPU thread takes prn_mtx once per frame, so
+    // a parse under it would stall the tracker for the duration of an HTTP body -- the same
+    // lesson set_seeds_callback records above.
+    std::vector<int> want;
+    std::string err;
+    try {
+        const nlohmann::json& arr = request.is_object() ? request.at("prns") : request;
+        if (!arr.is_array())
+            throw std::runtime_error("expected an array of PRNs, or {\"prns\": [...]}");
+        want.reserve(arr.size());
+        for (const auto& v : arr)
+            want.push_back(v.get<int>());
+    } catch (const std::exception& e) {
+        err = std::string("bad prns payload: ") + e.what();
+    }
+    if (err.empty() && (int)want.size() != n_prn)
+        err = "prns has " + std::to_string(want.size()) + " entries but this chain has "
+              + std::to_string(n_prn)
+              + " slots. THE SLOT COUNT IS NOT LIVE: it sizes every buffer, GPU allocation and "
+                "wire frame in the pipeline, so a resize is a fleet-wide re-plumb and a node "
+                "restart, not a swap. Send exactly one PRN per slot.";
+    if (err.empty())
+        for (size_t i = 0; i < want.size() && err.empty(); ++i) {
+            if (want[i] < 1 || want[i] > 63)
+                err = "PRN " + std::to_string(want[i]) + " at slot " + std::to_string(i)
+                      + " is outside 1..63";
+            for (size_t j = 0; j < i && err.empty(); ++j)
+                if (want[j] == want[i])
+                    // A duplicate would put one satellite in two slots: both would be seeded,
+                    // both would report, and the broker would fold two copies of one ray into
+                    // its per-satellite state as though they were independent measurements.
+                    err = "PRN " + std::to_string(want[i]) + " appears in slots "
+                          + std::to_string(j) + " and " + std::to_string(i);
+        }
+    if (!err.empty()) {
+        {
+            std::lock_guard<std::mutex> lk(prn_mtx);
+            prn_last_err = err;
+        }
+        conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    int n_diff = 0;
+    {
+        std::lock_guard<std::mutex> lk(prn_mtx);
+        for (int p = 0; p < n_prn; ++p)
+            if (want[(size_t)p] != prns[(size_t)p])
+                ++n_diff;
+        prn_last_err.clear();
+        if (n_diff > 0) {
+            pending_prns = want;
+            prn_pending = true;
+        }
+    }
+    if (n_diff > 0)
+        INFO_NON_OO("set_prns: {:d} slot(s) staged for the next frame boundary", n_diff);
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
+    std::vector<int> changed;
+    std::vector<std::pair<int, int>> log; // (slot, old prn) for logging outside the lock
+    {
+        std::lock_guard<std::mutex> lk(prn_mtx);
+        if (!prn_pending)
+            return changed;
+        prn_pending = false;
+        for (int p = 0; p < n_prn; ++p) {
+            const int newp = pending_prns[(size_t)p];
+            if (newp == prns[(size_t)p])
+                continue;
+            // THE BANK AND THE DEVICE FIRST. If the code table cannot be built (a PRN with no
+            // code for this signal) nothing else must move: a slot whose seed was cleared but
+            // whose code is unchanged would despread the OLD satellite against the NEW one's
+            // model, which is a lock loss dressed as a swap.
+            if (!despread || !despread->set_prn(p, newp, stream)) {
+                prn_last_err = "slot " + std::to_string(p) + ": no code for PRN "
+                               + std::to_string(newp) + " on this signal (or an FDMA bank)";
+                continue;
+            }
+            log.emplace_back(p, prns[(size_t)p]);
+            prns[(size_t)p] = newp;
+            ++slot_gen[(size_t)p];
+            ++prn_swaps;
+            changed.push_back(p);
+        }
+        pending_prns.clear();
+    }
+    if (changed.empty())
+        return changed;
+    // ⚠️ SEQUENTIAL, NEVER NESTED. prn_mtx is released above before either of these is taken:
+    // expire_trims_locked reads `prns` with trim_mtx already held, so a prn_mtx -> trim_mtx
+    // nesting here would close a deadlock cycle against every /set_trim POST.
+    {
+        std::lock_guard<std::mutex> lk(seed_mtx);
+        for (int p : changed)
+            seeds[(size_t)p] = Seed{}; // have=false: the slot goes dark until the broker seeds it
+    }
+    {
+        std::lock_guard<std::mutex> lk(trim_mtx);
+        for (int p : changed) {
+            // A standing trim is a correction to the OLD satellite's code phase, in chips of
+            // its geometry. Carried across it is a fixed offset applied to a satellite that
+            // never asked for it -- the disease of chord-gather-restart-wipes-trims, inverted.
+            trim[(size_t)p] = 0.0;
+            trim_disc[(size_t)p] = 0.0;
+            trim_q[(size_t)p] = 0.0;
+            trim_n[(size_t)p] = 0;
+            trim_t_recv[(size_t)p] = 0.0;
+            ema_e2[(size_t)p] = 0.0;
+            ema_p2[(size_t)p] = 0.0;
+            ema_l2[(size_t)p] = 0.0;
+            ema_n[(size_t)p] = 0;
+        }
+    }
+    for (const auto& l : log)
+        WARN_NON_OO("PRN SWAP: slot {:d} PRN {:d} -> {:d}. Code table, Phi cache, carrier NCO, "
+                    "seed, trim and power averages all reset COLD for this slot; it stays dark "
+                    "until the broker seeds the new satellite.",
+                    l.first, l.second, prns[(size_t)l.first]);
+    return changed;
 }
 
 void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
@@ -242,6 +408,10 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
     // Parse first, lock last -- the execute path takes seed_mtx every GPU frame, so holding it
     // across a parse would stall the tracker directly (the same lesson cudaGnssTrack learned).
     std::vector<std::pair<int, Seed>> upd;
+    // prn_mtx is the OUTERMOST lock (see the header): the GPU thread can be rewriting `prns`
+    // in apply_prn_swaps while this runs, and resolving a PRN against a half-written map would
+    // seed the wrong slot.
+    std::lock_guard<std::mutex> pk(prn_mtx);
     try {
         upd.reserve(request.size());
         for (const auto& s : request) {
@@ -350,6 +520,7 @@ void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& con
     // Parse first, lock last -- the same discipline as set_seeds: the execute path takes
     // trim_mtx every GPU frame, so holding it across a parse would stall the tracker directly.
     std::vector<std::pair<int, double>> upd;
+    std::lock_guard<std::mutex> pk(prn_mtx); // OUTERMOST -- see set_seeds_callback
     try {
         upd.reserve(request.size());
         for (const auto& s : request) {
@@ -398,6 +569,7 @@ void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& con
 void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& conn) {
     nlohmann::json out = nlohmann::json::array();
     {
+        std::lock_guard<std::mutex> pk(prn_mtx); // OUTERMOST -- see set_seeds_callback
         std::lock_guard<std::mutex> lk(trim_mtx);
         for (int p = 0; p < n_prn; ++p)
             out.push_back({{"prn", prns[(size_t)p]},
@@ -546,6 +718,28 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
         device.get_gpu_memory_array_metadata(_gpu_mem_input, pipestate.gpu_frame_id));
     const long long seq0 = (meta && meta->sample_seq >= 0) ? meta->sample_seq : -1;
 
+    // LIVE PRN MEMBERSHIP, applied HERE -- at the frame boundary, before a single job is
+    // built (docs/CHORD_LIVE_PRN_RECONFIG.md). Everything the SHARED STATE keys by slot is
+    // reset inside; the per-slot Doppler history below belongs to THIS COMMAND INSTANCE and
+    // the state cannot reach it, so it is cleared here.
+    //
+    // ⚠️ VIA slot_gen, NOT VIA THE RETURN VALUE. cudaCommand runs several instances against
+    // one shared state and only the instance that happens to win the apply gets the changed
+    // list back; the others would carry a departed satellite's Doppler history into the new
+    // one and emit a continuous arc across a discontinuity that is total. The per-slot
+    // generation counter is what every instance can check for itself.
+    S.apply_prn_swaps((void*)stream);
+    {
+        if (_slot_gen_seen.size() != (size_t)S.n_prn)
+            _slot_gen_seen.assign((size_t)S.n_prn, 0);
+        std::lock_guard<std::mutex> lk(S.prn_mtx);
+        for (int p = 0; p < S.n_prn; ++p)
+            if (_slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
+                _slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
+                _dop_prev[(size_t)p] = 0.0;
+                _dop_prev_ok[(size_t)p] = 0;
+            }
+    }
     std::memset(_ctl_stage.data(), 0, _ctl_stage.size());
     auto* hdr = (gnss_gpu::FrameHdr*)_ctl_stage.data();
     auto* winstart = (int64_t*)(_ctl_stage.data() + gnss_gpu::off_winstart());
@@ -715,6 +909,8 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
             const auto& sd = seeds[(size_t)p];
             c.job0 = -1;
+            // See cudaGnssInject: identity travels for dark slots too.
+            c.prn = (uint16_t)S.prns[(size_t)p];
             if (!sd.have || seq0 < 0) {
                 // No seed (or no absolute time yet): the replica phase history cannot bridge
                 // the gap, so drop it -- the next record emits reanchored = 1. See #52.

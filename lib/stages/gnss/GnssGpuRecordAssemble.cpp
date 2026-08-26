@@ -198,6 +198,75 @@ GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
         std::fclose(_chan_dump);
 }
 
+int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
+    using namespace gnss_gpu;
+    const PrnCtl* pctl = (const PrnCtl*)pctl_v;
+    int n_changed = 0;
+    for (int p = 0; p < n_prn && p < (int)_prns.size(); ++p) {
+        // Record 0 speaks for the frame: the producer applies swaps at a FRAME boundary, so
+        // every record in this frame carries the same slot->PRN map. A producer that predates
+        // the field leaves prn = 0, and 0 is not a PRN -- read it as "no claim" and keep the
+        // config's value, which is exactly the old behaviour.
+        const int claimed = (int)pctl[(size_t)p].prn;
+        if (claimed <= 0 || claimed == _prns[(size_t)p])
+            continue;
+        const int was = _prns[(size_t)p];
+        _prns[(size_t)p] = claimed;
+        ++n_changed;
+
+        // COLD RESET, everything keyed to this slot, in ONE place. Each of these describes the
+        // satellite that just left; carried across, each becomes the old satellite's state
+        // attributed to the new one -- the accumulator-identity trap, and every one of them
+        // would be silent (a warm cal is a plausible cal, a phase history is a plausible
+        // history). The reference-element swap above resets the same set for the same reason.
+        if (_elem_sum && (size_t)p < _cal.size()) {
+            _cal[(size_t)p] = gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
+                                            _elem_sum_min_w);
+            if ((size_t)p < _anchor_warned.size())
+                _anchor_warned[(size_t)p] = 0;
+        }
+        _phi[(size_t)p] = 0.0;
+        _phi_cyc[(size_t)p] = 0.0;
+        _phi_cmd_prev[(size_t)p] = 0.0;
+        _phi_cmd_ok[(size_t)p] = 0;
+        _fcar_prev[(size_t)p] = 0.0;
+        _fnco_prev[(size_t)p] = 0.0;
+        _fcar_prev_ok[(size_t)p] = 0;
+        _a_prev[(size_t)p] = {0.0, 0.0};
+        _a_prev_ok[(size_t)p] = 0;
+        _elem_prev_ok[(size_t)p] = 0;
+        _wstart_prev[(size_t)p] = 0;
+        // The spectrum ring accumulates PER SLOT across a window. A window straddling the swap
+        // would otherwise sum two satellites into one row and report the total as one PRN's
+        // spectrum -- so drop this slot's partial accumulation in every open window. nrec = 0
+        // makes the row read as absent rather than as a quiet satellite.
+        {
+            std::lock_guard<std::mutex> lk(_spec_mtx);
+            for (auto& W : _spec_ring) {
+                if (W.idx < 0 || (size_t)p >= W.nrec.size())
+                    continue;
+                const size_t nc = W.re.size() / std::max<size_t>(1, _prns.size());
+                for (size_t c = 0; c < nc; ++c) {
+                    W.re[(size_t)p * nc + c] = 0.0;
+                    W.im[(size_t)p * nc + c] = 0.0;
+                    W.energy[(size_t)p * nc + c] = 0.0;
+                }
+                W.nrec[(size_t)p] = 0;
+                if ((size_t)p < W.phi0.size())
+                    W.phi0[(size_t)p] = 0.0;
+                if ((size_t)p < W.nreanchor.size())
+                    W.nreanchor[(size_t)p] = 0;
+            }
+        }
+        WARN("GnssGpuRecordAssemble: slot {:d} PRN {:d} -> {:d} (the producer swapped it). "
+             "Every per-slot accumulator for this slot reset COLD -- element cal, NCO phase, "
+             "arc continuity and any open spectrum window. Downstream sees a fresh "
+             "acquisition on this slot, which is what it is.",
+             p, was, claimed);
+    }
+    return n_changed;
+}
+
 void GnssGpuRecordAssemble::main_thread() {
     using namespace gnss_gpu;
     frameID frame_in(in_buf), frame_out(out_buf);
@@ -278,6 +347,10 @@ void GnssGpuRecordAssemble::main_thread() {
         const int n_rows_spec = (hdr.n_rows_spec > 0) ? hdr.n_rows_spec : ROWS_PLAIN;
         const int64_t* winstart = (const int64_t*)(in + off_winstart());
         const PrnCtl* pctl = (const PrnCtl*)(in + off_prnctl());
+        // LIVE SLOT MEMBERSHIP: adopt the producer's map before anything in this frame is
+        // labelled or accumulated. Costs one integer compare per slot per frame in steady
+        // state.
+        follow_frame_prns(pctl, n_prn);
         const double* corr = (const double*)(in + off_corr(n_prn));      // double2 rows
         // The energy block sits AFTER the corr block, whose size scales with the ELEMENT axis
         // -- the writer passes its n_elem (cudaGnssChordTrack: 32), so the reader must too, or
@@ -346,9 +419,13 @@ void GnssGpuRecordAssemble::main_thread() {
                 // window must not leave a previous window's per-antenna correlations behind.
                 for (int f = 0; f < rec_stride; ++f)
                     rec[f] = 0.0f;
-                rec[0] = (float)_prns[p];
-                *reinterpret_cast<double*>(rec + gnss::RECORD_UTC_SLOT) = utc;
                 const PrnCtl& c = pctl[(size_t)r * n_prn + p];
+                // THE FRAME'S PRN WINS. _prns was reconciled to it at the top of this frame,
+                // so the two agree -- but reading it from the record's own control word means
+                // record slot 0 cannot be wrong even if a future producer moves a slot
+                // mid-frame. 0 = a producer that does not stamp it; fall back to the list.
+                rec[0] = (float)((c.prn > 0) ? (int)c.prn : _prns[p]);
+                *reinterpret_cast<double*>(rec + gnss::RECORD_UTC_SLOT) = utc;
                 if (!c.run) {
                     _a_prev_ok[p] = 0;
                     _elem_prev_ok[p] = 0;

@@ -165,6 +165,37 @@ public:
     /// Bipolar code chip for PRN index @c p at fractional chip phase (wraps period).
     int8_t code_chip(int p, double chip_phase) const;
 
+    // ---- LIVE MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md) ---------------------------
+    // The bank is built with a PRN list and, until 2026-08-26, promptly forgot it: only the
+    // expanded code tables survived, indexed by slot. So no consumer could ask "which
+    // satellite is slot 7?" and every stage kept its own copy of the answer -- which is
+    // exactly how a hand-written config list drifts away from the sky with nothing to notice.
+
+    /// The PRN in each slot, in construction order (@c code_chip / @c channels index into it).
+    const std::vector<int>& prns() const { return _prns; }
+    /// PRN in slot @c p; -1 if @c p is out of range.
+    int prn_at(int p) const {
+        return (p >= 0 && p < (int)_prns.size()) ? _prns[(size_t)p] : -1;
+    }
+
+    /// Repoint slot @c p at a different satellite, IN PLACE: rebuilds that slot's expanded
+    /// code table and nothing else.
+    ///
+    /// ⚠️ IN PLACE IS THE WHOLE POINT. @ref GnssCudaDespread takes the bank BY REFERENCE and
+    /// the stages hold it in a unique_ptr they cannot swap under a live GPU command, so
+    /// "rebuild the bank" is not available at runtime -- only "edit one slot of it" is. The
+    /// geometry (signal, sample rate, PFB, comb_mult, code length) is identical across PRNs
+    /// of one signal, so nothing else in the bank depends on WHICH satellite a slot holds.
+    ///
+    /// ⚠️ THIS FUNCTION IS NOT THE SWAP. Everything keyed to slot @c p elsewhere -- the GPU
+    /// code table, Phi caches, seeds, trims, power averages, element cal, detections -- still
+    /// describes the OLD satellite and must be dropped by the caller in the same act. Callers
+    /// go through their own reset_slot(); see cudaGnssChordTrackState::apply_prn_swaps.
+    ///
+    /// Returns false (and changes nothing) if @c p is out of range or @c prn has no code for
+    /// this signal. Cheap: one code expansion, ~microseconds.
+    bool set_prn(int p, int prn);
+
     /// Secondary (Neuman-Hofman) overlay length in primary periods (NH10=10 on L5 I5,
     /// NH20=20 on L5 Q5); 0 if the signal has no overlay. Also the number of @c nh_phase
     /// alignments to search.
@@ -236,6 +267,13 @@ public:
     const std::vector<int8_t>& full_code(int p) const { return _full_code[(size_t)p]; }
 
 private:
+    /// Expand one PRN's component code into the combined stream this bank works in (TDM
+    /// zero-stuffing / BOC half-cycles / plain). The constructor and @ref set_prn share it so
+    /// a slot swapped at runtime cannot get a differently-built table from a slot built at
+    /// startup -- the divergence would be invisible and would look like that satellite alone
+    /// being untrackable.
+    std::vector<int8_t> build_full_code(int prn) const;
+
     int _max_chips = 0; ///< 0 = the filter's true span (see set_max_chips)
     SignalDescriptor _sig;
     double _sample_rate;
@@ -254,6 +292,7 @@ private:
     double _eff_chip_rate;   ///< _sig.chip_rate_hz * _comb_mult (combined chipping rate)
     long _eff_code_length;   ///< _sig.code_length * _comb_mult (combined-stream length)
     std::vector<float> _proto;
+    std::vector<int> _prns;   ///< PRN per slot; mutable via @ref set_prn
     std::vector<std::vector<int8_t>> _full_code;
     std::vector<int8_t> _secondary;   ///< +-1 Neuman-Hofman overlay (NH10/NH20); empty if none
     int _secondary_length = 0;        ///< overlay period in primary periods; 0 = no overlay
