@@ -154,7 +154,65 @@ without first assigning it. All 29 routines were re-audited under the corrected 
 flags that survive are both provable false positives (a nested closure reading its parent's own
 local, and an `import ... as _rs`).
 
-### Step 1c — what is left, and it is no longer structural
+### Step 2 — DONE 2026-08-26 PM: out of `main()` entirely, interface named
+
+| | start of day | after step 1 | now |
+|---|---|---|---|
+| `gps_distributed_broker.py` | 11,084 | 8,598 | **7,411** |
+| the cycle loop body | 6,940 | 4,834 | **1,042** |
+| stages living OUTSIDE `main()` | 0 | 0 | **16 of 30** |
+| modules in `gnss_broker/` | 15 | 19 | **30** |
+
+**THE MOVE THAT MADE IT POSSIBLE, again, was ownership.** A nested routine costs nothing to
+create because a closure supplies every free name — which is exactly why the interface stays
+invisible. Measured: the 29 stages read **210 distinct free names** out of `main()` between
+them. A stage cannot leave until its set is written down, and a bare local has no home to
+reference from another module.
+
+* **`ChainContext`** (`context.py`) names that interface. Its split is load-bearing: STABLE
+  (bound once at startup, never rebound in the loop — 39 of the 45 shared names, measured) vs
+  PER-CYCLE (`t0`, `best`, `status`, `probe_set`, refreshed where each is actually rebound).
+* **Owner objects for each loop's memory** (`loopstate.py`, `clockbias.py`): CarrierState,
+  WatchdogState, NhOverlay, DllLoopState, HoldState, CpTracking, ClockBias — 43 bare per-PRN
+  tables, ~290 renames. The membership test is *"would these reset together if the loop
+  restarted"*, not "are they about satellites".
+* **The nonlocal wall fell** when `pred`/`up` became context attributes: a module-level
+  function can assign `ctx.pred`, where it could never declare `nonlocal pred`. That is the
+  general escape, and it is what let the almanac stage — the first that WRITES shared state —
+  move out.
+* Modules now: `instruments` (8 measurements), `deadreckon` (the clock pipeline),
+  `almanac`, `codeloop` (the DLL control loop + watchdog), `statepub`, plus `context`,
+  `clockbias`, `loopstate`.
+
+**`broker_extract.py` REFUSES what it cannot map** — a free name with no ChainContext slot, or
+a stage that writes shared state. Refusing is the point: the argument for the whole programme
+is that an interface should be impossible to leave unnamed.
+
+**FOUR DEFECTS THIS STEP SURFACED**, none of which reading would have found:
+1. `_rr_railed += 1` — an augmented assignment READS before it writes, and `broker_iface`
+   recorded only the Store. Killed gal_e5a 20 s into the live swap. **The fixture gate was
+   green before and after**: the counter only increments when a carrier command RAILS, and no
+   command railed in 113 recorded cycles. A digest gate covers executed paths, not reachable
+   ones.
+2. `receiver_state` and `dr_eph_mod` are imported CONDITIONALLY, so on configurations without
+   those flags the names do not exist and anything mentioning them raises. The **synthetic**
+   fixture caught the second — every on-sky fixture runs dead-reckon, so the fake fleet covers
+   a configuration none of the real captures do.
+3. The `_fleet_trim_stat` key set is a contract (`rb`/`rb_fail`); dropping keys gives readers
+   a KeyError, not a zero.
+4. `car_locked` is a SET, `nh_off_hist` a pooled LIST, `nh_offset` a one-cell list whose
+   purpose is shared identity. Initialising them as dicts would have been a silent behaviour
+   change the digest might well have missed, since those tables are dead in production.
+
+### Step 3 — what is left
+
+14 stages still nested, and the blockers are now small and named: `utc0_sample0`, `_xb_pred`,
+`coast_polls`, `have_sig`, `_rr_cons`/`_rr_resid`/`_rr2_resid` (the rate-feed cluster — it
+wants a `RateFeedState` owner), the nav-decoder set (11 objects — a `NavDecoders` owner), and
+the helper functions the big stages call (`cp_predicted`, `_joint_state`, `_p2c_*`,
+`_decoded_entries`). The pattern is established; what remains is applying it.
+
+### Step 1c (superseded) — what was left after step 1
 
 The loop has one block over 60 lines. What remains is not decomposition but **promotion out of
 `main()` entirely**: the 29 routines are still nested, so they close over ~200 shared names
