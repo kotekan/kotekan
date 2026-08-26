@@ -69,6 +69,8 @@ NAME_MAP = {
     "_dls": "dls", "_hold": "hold", "_cpt": "cpt", "_rf": "rf", "_nav": "nav", "_cls": "cls", "payload": "payload",
     "n2_combiners": "n2_combiners", "last_dets": "last_dets",
     "_decfb": "decfb", "_decfb_log_t": "decfb_log_t", "dr_bad": "dr_bad",
+    "_jrc": "jrc", "_rr_cmd_new": "rr_cmd_new", "bit_known": "bit_known",
+    "bit_src": "bit_src", "bp_pushed": "bp_pushed",
     "fe_axis": "fe_axis", "fe_off": "fe_off",
     "HIST_LEN": "hist_len", "MAX_GAP_HOPS": "max_gap_hops", "Q_ALIAS_HZ": "q_alias_hz",
     "CARRIER_EXPLAIN_HZ": "carrier_explain_hz", "CARRIER_VERIFY_EMITS": "carrier_verify_emits",

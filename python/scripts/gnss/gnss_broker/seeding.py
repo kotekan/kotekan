@@ -929,3 +929,187 @@ def stage_detections_to_seeds(ctx):
             ctx.hold.miss.pop(prn, None)
         ctx.seeds[prn] = seed
         ctx.hold.low_hits[prn] = 0
+
+
+def stage_push_seeds(ctx):
+    """4: PUSH the consensus seeds to every tracker.
+        
+    The cycle's actuation point: whatever the stages above decided, this is what the trackers
+    receive. The DLL trim is applied at POST time only, so the stored seed stays the model's view
+    and the trim stays the loop's -- keeping the two ledgers separable is what makes #92's handover
+    expressible at all.
+        
+    ⚠️ PUBLISHED DOPPLER IS THE COMMAND, NOT AN ESTIMATE. Continuity of what the tracker is told
+    beats freshness of what we last measured; a seed that jumps to the newest estimate every cycle
+    makes the tracker chase the estimator's noise.
+
+    ⚠️ THE RAILED/RELEASED COUNTERS ARE `+=` ON A COUNTER INITIALISED BY THE CYCLE, so they
+    must be nonlocal. An augmented assignment READS before it writes -- which is exactly what
+    broker_iface missed when it cleared this stage for promotion, because it recorded only
+    the Store. It cost gal_e5a a chain death at 12:49 on 2026-08-26."""
+    for prn, v in sorted(ctx.seeds.items()):
+        d = dict(prn=prn, **v)
+        if ctx.dls.trim.get(prn):
+            d["code_phase_chips"] = d["code_phase_chips"] + ctx.dls.trim[prn]
+            # ⚠️ AUDIT §4.6 (#83 2(b) precondition): THE TRIM MUST MOVE THE PHASE TOO.
+            # propagate_seed PREFERS code_phase_at_ref_chips whenever the payload
+            # carries it -- which the search-fed path always does -- so a trim written
+            # only into cp0 was written into the field the tracker ignores: the Python
+            # slow trim has been a NO-OP on every phase-carrying seed, and enabling
+            # --seed-phase-transport on the DR chains would have silently disabled
+            # their only code loop. One trim, both currencies, same instant.
+            if d.get("code_phase_at_ref_chips", -1.0) is not None \
+                    and d.get("code_phase_at_ref_chips", -1.0) >= 0.0:
+                _tmod = (ctx.lc_seg * ctx.code_len) if ctx.lc_seg > 1 else ctx.code_len
+                d["code_phase_at_ref_chips"] = (
+                    d["code_phase_at_ref_chips"] + ctx.dls.trim[prn]) % _tmod
+        if ctx.car.trim.get(prn):
+            d["carrier_trim_hz"] = ctx.car.trim[prn]
+        if ctx.jrc is not None and prn not in ctx.probe_set:
+            # Probes excepted for the trim loop's own reason: no carrier, and a moving
+            # trim moves the REPORTED Doppler, which the beam map's churn gate reads
+            # as sky. A sat whose row has not converged keeps the trim-loop value
+            # (usually 0 on CHORD): commanding from a wide row would inject the
+            # filter's own transient into the NCO.
+            _k = (ctx.args.dr_constellation, int(prn))
+            # ARM-12 GUARD: the row's own satellite must be DETECTED this cycle
+            # (kcoh sig >= --rrate-cmd-min-sig) before it may command. The sigma
+            # gate alone admitted E4's confident-noise row (see the flag's help).
+            # No kcoh row (throttled estimator at startup, or the sat absent from
+            # the fold) counts as NOT detected: no evidence, no command.
+            _cmd_sig_ok = True
+            if ctx.args.rrate_cmd_min_sig > 0.0:
+                _cmd_sig_ok = (((ctx.dllp.kcoh or {}).get(prn) or {}).get("sig") or 0.0) \
+                              >= ctx.args.rrate_cmd_min_sig
+            if _cmd_sig_ok and ctx.jrc.rrate_sigma(_k) <= ctx.args.rrate_cmd_max_sigma:
+                _cmd = ctx.jrc.carrier_correction_hz(_k, ctx.args.carrier_hz)
+                if ctx.args.carrier_max_hz > 0.0:
+                    _cmd = max(-ctx.args.carrier_max_hz, min(ctx.args.carrier_max_hz, _cmd))
+                # SLEW toward the target from the command actually POSTED last poll
+                # (--rrate-cmd-slew-hz): the feed's reference is only exact for a
+                # command that holds still over the emit lag, so the step is bounded
+                # and the bound is what makes the closed loop stable. Railed steps
+                # are counted into the JRR-CMD line -- a rail that never clears is
+                # a target out of reach, not convergence in progress.
+                _prev = ctx.rf.cmd_applied.get(prn, 0.0)
+                if ctx.args.rrate_cmd_slew_hz > 0.0:
+                    _stp = max(-ctx.args.rrate_cmd_slew_hz,
+                               min(ctx.args.rrate_cmd_slew_hz, _cmd - _prev))
+                    if abs(_cmd - _prev) > ctx.args.rrate_cmd_slew_hz:
+                        ctx.rf.railed += 1
+                    _cmd = _prev + _stp
+                d["carrier_trim_hz"] = _cmd
+                ctx.rr_cmd_new[prn] = _cmd
+        # RELEASE-SLEW (arm 12). A sat that exits the command set -- sig bar lost,
+        # sigma widened, receiver row gone -- used to fall back to car_trim/0 in ONE
+        # poll: an instant step of its whole standing command, the exact reference
+        # discontinuity the slew bound exists to prevent, taken at release instead
+        # of at pull-in. Walk it back at the same bounded rate; drop out only once
+        # within one step of zero.
+        if (ctx.args.rrate_command and prn not in ctx.rr_cmd_new and prn not in ctx.probe_set
+                and ctx.rf.cmd_applied.get(prn)):
+            _prev = ctx.rf.cmd_applied[prn]
+            _stp = ctx.args.rrate_cmd_slew_hz if ctx.args.rrate_cmd_slew_hz > 0.0 else 0.0
+            if _stp > 0.0 and abs(_prev) > _stp:
+                _cmd = _prev - math.copysign(_stp, _prev)
+                d["carrier_trim_hz"] = _cmd
+                ctx.rr_cmd_new[prn] = _cmd
+                ctx.rf.released += 1
+            # else: within one step of zero (or slew disabled) -- final sub-slew
+            # step back to car_trim/0, and the sat leaves rr_cmd_applied.
+        if prn in ctx.car.repin_pending:
+            # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
+            # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
+            # carrier_trim_hz accompanies it -- the trim moves wholly into f_ref, leaving the
+            # combined carrier invariant).
+            d["carrier_repin"] = ctx.car.repin_pending.pop(prn)
+        # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
+        # its secondary overlay is DETERMINISTIC, so the chips are projected from the
+        # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.
+        # DATA signals (P7a): the LNAV predictor's output. bit_pred wins where both
+        # exist (a known overlay beats a decoded guess).
+        _row = ctx.status.get(prn) or {}
+        _bsrc = "none"
+        # A source the health monitor has condemned for THIS satellite is skipped at
+        # SELECTION time, so the chain genuinely falls back (pred -> lnav -> brdc)
+        # instead of re-picking the vetoed source and going dark every cycle.
+        _src_ok = (lambda _s: ctx.nav.health is None
+                   or ctx.nav.health.verdict(prn, _s) != "bad")
+        # Wire schema is COMPONENT-KEYED: nav_bits = {"P": table, "D": table, ...},
+        # "P" = the component this chain's replica correlates (relational, not a signal
+        # name -- see docs/navbit_supply_architecture.md C1). The tracker also accepts a
+        # bare table as "P"; we publish the keyed form so the first data-channel producer
+        # is an ADDITION ("D": ...) rather than a schema change.
+        if _row.get("bit_pred", {}).get("bits") and _src_ok("pred"):
+            # Attach only when the table CHANGED (utc0 moves once per combiner emit);
+            # on other cycles the tracker keeps its stored copy -- see bp_pushed above.
+            if ctx.bp_pushed.get(prn) != _row["bit_pred"].get("utc0"):
+                d["nav_bits"] = {"P": _row["bit_pred"]}
+                ctx.bp_pushed[prn] = _row["bit_pred"].get("utc0")
+            _bsrc = "pred"
+        elif ctx.nav.navbits is not None:
+            # Predict from the freshest capture-clock UTC this PRN has reported: the
+            # tracker consumes by ITS record UTC (same capture clock), so wall-clock
+            # never enters. 4 s horizon >> the ~1 s status staleness + push cadence.
+            _utc = _row.get("utc")
+            if _utc:
+                nb_lnav = ctx.nav.navbits.predict(prn, float(_utc), horizon_s=4.0)
+                nb_brdc = (ctx.nav.brdc.predict(prn, float(_utc), horizon_s=30.0)
+                           if ctx.nav.brdc is not None else None)
+                if ctx.nav.health is not None:      # shadow-remember BOTH candidates
+                    ctx.nav.health.remember(prn, nb_lnav, "lnav")
+                    ctx.nav.health.remember(prn, nb_brdc, "brdc")
+                nb = nb_lnav if (nb_lnav is not None and _src_ok("lnav")) else None
+                if nb is None and _src_ok("brdc"):
+                    # CONSTRUCTED fallback: this PRN never synced, so the decoder has
+                    # nothing. Bits come from BRDC instead; alignment comes from the
+                    # tracking geometry (range + sat clock) plus the common clock offset
+                    # calibrated off a satellite that DID sync -- never from decoding,
+                    # which is precisely what this satellite cannot do.
+                    # 30 s, not the decoder's 4 s: only sf1-3 are constructible, so a 4 s
+                    # window that lands inside sf4/5 is entirely unknown, predict() returns
+                    # None, and the PRN reads `nobits` forever. A full frame (30 s) always
+                    # spans the 18 s of sf1-3, so every push carries usable bits. Costs
+                    # 1500 int8 per PRN.
+                    nb = nb_brdc
+                    _bsrc = "brdc" if nb is not None else "none"
+                elif nb is not None:
+                    _bsrc = "lnav"
+                if nb is not None:
+                    d["nav_bits"] = {"P": nb}
+                    _bsrc = _bsrc if _bsrc != "none" else "lnav"
+        elif ctx.nav.cnav is not None:
+            # CNAV serve: the L2C-CM chain's replica correlates the DATA component, so a
+            # decoded CNAV table is its "P" (the direct L1CA/LNAV analog). But this SERVES
+            # already-decoded spans, it does not PREDICT the future (the CNAV type schedule
+            # is not fixed -- see cnav_predictor), so at a forward horizon predict() usually
+            # returns None and nothing is attached. That is correct: CL, not CNAV, is L2C's
+            # peel win; CNAV's prizes are the live ephemeris + the S4 L5 cross-band feed.
+            # Shadow-remembered and vetoed like every other source before it feeds a wipe.
+            _utc = _row.get("utc")
+            if _utc:
+                nb = ctx.nav.cnav.predict(prn, float(_utc), horizon_s=4.0)
+                if ctx.nav.health is not None:
+                    ctx.nav.health.remember(prn, nb, "cnav")
+                if nb is not None and _src_ok("cnav"):
+                    d["nav_bits"] = {"P": nb}
+                    _bsrc = "cnav"
+        # VETO: a source that does not match the air for this satellite must not feed the
+        # subtracter. Wrong bits are worse than no bits -- no bits means no subtraction,
+        # wrong bits mean subtracting at the wrong sign on ~40% of records (measured
+        # 2026-07-26: HURTING 0-1 -> 7-8). Then remember what we are about to publish, so
+        # next cycle's observations score THIS table rather than a re-derived one.
+        if "nav_bits" in d and ctx.nav.health is not None and ctx.nav.health.veto(prn, _bsrc):
+            # FALL BACK, do not go dark: a bad decoded table must not darken a PRN whose
+            # constructed table is fine. The chain re-runs with the vetoed source skipped
+            # next cycle via the per-(prn,source) verdict; this cycle just drops the bits
+            # (one cycle of nobits is the safe direction).
+            d.pop("nav_bits")
+            _bsrc = "vetoed:" + _bsrc
+        elif "nav_bits" in d and ctx.nav.health is not None:
+            ctx.nav.health.remember(prn, d["nav_bits"].get("P"), _bsrc)
+        ctx.bit_src[_bsrc] = ctx.bit_src.get(_bsrc, 0) + 1
+        if _bsrc != "none" and "nav_bits" in d:
+            ctx.bit_known[_bsrc] = ctx.bit_known.get(_bsrc, 0) + sum(
+                1 for t in d["nav_bits"].values() for b in t["bits"] if b)
+        ctx.payload.append(d)

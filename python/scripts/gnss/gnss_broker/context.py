@@ -49,6 +49,7 @@ class ChainContext(object):
         "rx", "publisher", "telem_client", "detectors", "dll_combiners",
         "spectrum_endpoints", "spec_writer", "state_dir", "xb_read_dir", "sig_of",
         "n2_combiners", "last_dets", "decfb", "decfb_log_t", "dr_bad", "fe_axis", "fe_off",
+        "bp_pushed",
         "combiner", "gating", "capable", "receiver_state", "alm_now",
         "trackers", "joint_consume", "broker_t0", "dr_eph_mod", "dr_min_prn",
         "hist_len", "max_gap_hops", "q_alias_hz",
@@ -75,6 +76,7 @@ class ChainContext(object):
         # escape from the nonlocal wall.
         "t0", "best", "status", "pred", "up", "probe_set",
         "utc0_sample0", "xb_pred", "coast_polls", "have_sig", "payload",
+        "jrc", "rr_cmd_new", "bit_known", "bit_src",
         "la_samples", "fitted", "cl_report", "dr_pd", "dr_pd0", "dr_pd2",
     )
 

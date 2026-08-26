@@ -28,6 +28,7 @@ PER_CYCLE = {
     "t0", "best", "status", "pred", "up", "probe_set", "utc0_sample0",
     "xb_pred", "coast_polls", "have_sig", "la_samples", "fitted", "cl_report",
     "dr_pd", "dr_pd0", "dr_pd2", "payload",
+    "jrc", "rr_cmd_new", "bit_known", "bit_src",
 }
 
 _fails = []
