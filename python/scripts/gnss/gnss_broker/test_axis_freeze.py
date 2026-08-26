@@ -152,6 +152,21 @@ def main():
     check([u for u, _h, _d in stalled] == [urls[0]],
           "... and it DOES catch one-of-twelve, which the global guard cannot see")
 
+    # ---- 7. EVERY help string must survive format_help() -------------------------------
+    # ⚠️ CONSTRUCTING THE PARSER IS NOT THE SAME STATEMENT AS FORMATTING IT. argparse
+    # interpolates help strings, so a literal "75% of windows" is a format specifier: it
+    # raised ValueError('badly formed help string') and killed all five chains on restart
+    # (2026-08-26). build_parser() succeeded throughout -- the check I had actually run.
+    # The digest gate cannot see this either: replay never formats help.
+    from gnss_broker.cli import build_parser
+    try:
+        build_parser("selftest").format_help()
+        ok = True
+    except Exception as e:
+        ok = False
+        print("      format_help raised: %r" % (e,))
+    check(ok, "every --flag's help survives format_help() (a bare %% is a format specifier)")
+
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 
