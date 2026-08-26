@@ -72,16 +72,27 @@ class ChainContext(object):
         "la_samples", "fitted", "cl_report", "dr_pd", "dr_pd0", "dr_pd2",
     )
 
-    # Slots whose "not yet known" value is not None. `utc0_sample0` is 0.0 because it is
-    # compared numerically before the first fetch succeeds, and None would raise there rather
-    # than read as "no anchor yet".
-    DEFAULTS = {"utc0_sample0": 0.0}
+    # Slots whose "not yet known" value is not None, as FACTORIES.
+    #
+    # ⚠️ FACTORIES, NOT VALUES, AND THIS IS NOT STYLE. `broker_multi` runs FIVE CHAINS IN ONE
+    # PROCESS. A mutable default written as a literal here would be one dict on the class,
+    # shared by every chain's context -- gal_e5a and bds_b2b would be reading and writing the
+    # same status table. That is the cross-chain contamination this project has a standing
+    # rule about, arriving through a back door.
+    #
+    # `utc0_sample0` is 0.0 rather than None because it is compared numerically before the
+    # first fetch succeeds; None would raise there instead of reading as "no anchor yet".
+    DEFAULTS = {"utc0_sample0": float, "status": dict}
 
     def __init__(self, **kw):
         for k in self.__slots__:
-            setattr(self, k, kw.get(k, self.DEFAULTS.get(k)))
+            if k in kw:
+                setattr(self, k, kw[k])
+            else:
+                make = self.DEFAULTS.get(k)
+                setattr(self, k, make() if make is not None else None)
 
-    def begin_cycle(self, t0=_UNSET, best=_UNSET, status=_UNSET, probe_set=_UNSET):
+    def begin_cycle(self, t0=_UNSET, best=_UNSET):
         """Refresh the per-cycle half, at each point one of these is rebound.
 
         Not a single call at the top of the pass: these do not all become available at the
@@ -92,14 +103,15 @@ class ChainContext(object):
         cycle, and a "skip if None" default would silently leave the PREVIOUS cycle's value
         in place -- stale, plausible, and wrong. None must be settable.
 
-        `pred` and `up` are NOT here: the almanac stage writes them straight onto the context
-        as attributes, which is what lets that stage live in a module at all.
+        ⚠️ ONLY VALUES ASSIGNED EXACTLY ONCE PER PASS BELONG HERE. `pred`, `up`, `status` and
+        `probe_set` are written straight onto the context instead, because each is rebound
+        MORE than once in a cycle -- `probe_set` starts empty and is replaced when noise
+        probes are selected. A refresh call placed after the first assignment left the context
+        holding the empty set while the loop went on using the full one; the digest gate
+        caught it. A value with two assignment sites has two chances to be forgotten, so it
+        should not have a second home at all.
         """
         if t0 is not _UNSET:
             self.t0 = t0
         if best is not _UNSET:
             self.best = best
-        if status is not _UNSET:
-            self.status = status
-        if probe_set is not _UNSET:
-            self.probe_set = probe_set
