@@ -1875,6 +1875,24 @@ def main(argv=None, rx=None, publisher=None):
                 # clock solve declared "the CLOCK moved" and latched, and all four chains that
                 # ADOPT that clock lost their seeds together (#75). Not one line said the time
                 # base had stopped. This is that line.
+                # ⚠️⚠️ THE STAMP IS THE TIME THE HOP LAST ADVANCED, NOT THE TIME OF THIS
+                # POLL -- and getting that wrong made this guard STRUCTURALLY UNABLE TO FIRE
+                # for as long as it existed. `fe_axis[0]` used to be rewritten every cycle
+                # including its timestamp, so `_fh_prev[1]` was always the PREVIOUS CYCLE
+                # (~2 s ago) and `now - _fh_prev[1] > 30` was false forever. Measured
+                # 2026-08-26: the F-engine re-based at 21:43, every instance froze together,
+                # the broker logged `AXIS INST: lag median -6975 s ... spread 0.00` 807 times
+                # -- and this line, the one guard whose whole job is "has the whole time base
+                # frozen?", never printed once.
+                #
+                # It matters more than one missing warning, because the two guards PARTITION
+                # the space on purpose: instance_stall_verdict refuses to accuse anyone when
+                # most of the fleet is also stalled (its min_frac_advancing control clause)
+                # precisely because THIS one is supposed to cover the global case. One half of
+                # a deliberate partition being inert leaves the global freeze -- the most
+                # damaging case, and the one that needs a fleet restart -- with no detector at
+                # all. instance_stall_verdict already keeps the right stamp (fits.py: refresh
+                # `now` only when the hop CHANGED); this now does the same thing.
                 _fh_prev = fe_axis[0]
                 if (_fh_prev is not None and _fh <= _fh_prev[0]
                         and args.fe_axis_stale_s > 0.0
@@ -1888,7 +1906,9 @@ def main(argv=None, rx=None, publisher=None):
                             "combiner's pow_hop and its node's capture window."
                             % (_now() - _fh_prev[1], _fh, combiner),
                             every_s=60.0)
-                fe_axis[0] = (_fh, _now())
+                # ADVANCED -> restamp; FROZEN -> keep the stamp so the staleness accrues.
+                fe_axis[0] = ((_fh, _now()) if (_fh_prev is None or _fh > _fh_prev[0])
+                              else (_fh, _fh_prev[1]))
                 # the filtered offset (see fe_off at its definition)
                 _ow = _now()
                 _oi = _fh / args.hops_per_sec - _ow

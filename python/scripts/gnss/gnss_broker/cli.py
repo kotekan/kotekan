@@ -1239,7 +1239,7 @@ def build_parser(description):
                          "(TrimPolicy::p_floor_abs), replacing the loop's own 3x-window-median "
                          "-- which on CHORD is a PEER COMPETITION (the armed rows are mostly "
                          "real satellites), measured standing the loop down on the bottom of "
-                         "the pack for minutes (gal_e5b PRN 33: 75% of windows leak-only) and "
+                         "the pack for minutes (gal_e5b PRN 33: 75%% of windows leak-only) and "
                          "erasing E3's trim at ~20x the actual noise floor. OFF = today's "
                          "behaviour. Ships 0 (= C++ keeps its median) whenever presence itself "
                          "lacks probe anchoring, so a peer bar is never smuggled in as absolute.")
