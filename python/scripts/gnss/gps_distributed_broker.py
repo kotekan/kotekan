@@ -5823,131 +5823,19 @@ def main(argv=None, rx=None, publisher=None):
                     seeds.pop(prn, None)
                     low_hits.pop(prn, None)
 
-    while True:
-        # Start of cycle: sample the frozen cycle clock ONCE (see the _Transcript note).
-        # Every `_now()` below this returns exactly t0, so the whole pass -- every gate,
-        # every age, every EMA -- evaluates at one instant instead of smearing over the
-        # cycle's own processing time.
-        t0 = _TR.tick()
-        t_wall = time.time()   # REAL clock, kept solely for the sleep below
-        # 1. collect best-SNR detection per PRN across all detection sources
-        best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long, cp_at_ref)
-        for d_ep in detectors:
-            try:
-                dets = _get("%s/get_detections" % d_ep)
-                if dets:
-                    last_dets[:] = dets   # published verbatim (see FleetPublisher)
-            except Exception as e:
-                _log("get_detections %s failed: %s" % (d_ep, e))
-                continue
-            for d in dets:
-                prn, snr = int(d["prn"]), float(d["snr"])
-                if snr < args.acquire_snr:
-                    continue
-                if prn not in best or snr > best[prn][0]:
-                    best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]),
-                                 int(d.get("ref_hop", 0)), int(d.get("nh", -1)),
-                                 float(d.get("code_phase_long_chips", -1.0)),
-                                 float(d.get("code_phase_at_ref_chips", -1.0)))
-        # Remember each PRN's REPORTED alignment + the hop it was measured at, to echo back as
-        # that PRN's own nh hint. Gated on the same acquire_snr as the detection itself: a
-        # marginal detection's nh is a coin flip, and a wrong hint narrows the scan AWAY from
-        # the truth (recoverable -- the hint expires and the full scan returns -- but it costs a
-        # revisit, so do not feed it noise).
-        for _p, _b in best.items():
-            if _b[4] >= 0 and _b[3] > 0:
-                nh_seen[_p] = (_b[4], _b[3])
-        for _p in list(nh_seen):
-            if _p not in seeds and _p not in best:
-                del nh_seen[_p]          # sat set: stop hinting a PRN we no longer track
-
-        for _p, _b in best.items():
-            # A detection is FRESH when its ref_hop advanced (the stage re-detected it,
-            # not a stale REST snapshot) -- the alias escape below must never act on a
-            # stale Doppler: at 0.4 Hz/s slew, 100 s of staleness fakes a 40 Hz mismatch.
-            #
-            # Stamp with the DETECTION'S OWN EPOCH (ref_hop converted through the capture
-            # anchor), NOT the wall clock of first sight. Wall-clock stamping defines
-            # freshness relative to THIS BROKER's history: a freshly (re)started broker sees
-            # every entry in the search's REST table as "new" and certifies minutes-stale
-            # detections as fresh -- measured 2026-07-31 00:47 on CHORD: six 20-40-min-old
-            # detections walked the bias EMA to +518 Hz and the dead-reckon clock off its
-            # primed value within ten cycles. With the epoch stamp, every downstream
-            # consumer's (t0 - stamp) measures TRUE data age, restart or not. When the
-            # anchor is unavailable (utc0_sample0 == 0, pre-fetch), fall back to wall clock
-            # -- the old behaviour, right for airspy where re-detection is seconds-fast.
-            if det_fresh.get(_p, (None,))[0] != _b[3]:
-                t_det = (utc0_sample0 + _b[3] / args.hops_per_sec
-                         if utc0_sample0 else t0)
-                det_fresh[_p] = (_b[3], t_det)
-
-        # ---- S2d, REVISED SCOPE (2026-07-29): RESCUE-ONLY consumption ---------------
-        # Always-on consumption was tried and REVERTED the same day: car_trim rose +30-36%
-        # at matched node age, and rescored against the EMA the chains actually seed with,
-        # fusion lost 7 of 8 -- the LO is flat within noise (a CONSTANT), and minutes of
-        # time-averaging beat one cycle of cross-chain averaging. The original premise
-        # ("consume always so the rescue path is never untested") was the wrong cure: the
-        # durable one is publish + SCORE always (the SHADOW line below runs regardless) and
-        # EXERCISE deliberately (diag/receiver_state_rescue_test.py offline; the
-        # isolated-broker method live).
-        #
-        # So: the fused state is consumed EXACTLY when this chain has no estimate of its
-        # own -- cold start, below min-sats, warm-start file lost. There it has no EMA to
-        # lose to, and its unique value over --clock-bias-siblings is real: cross-FAMILY
-        # rescue (code -> carrier), which the sibling files structurally cannot provide
-        # (measured: all-carriers-dark recovers to 0.6-1.8 Hz on every dongle from code
-        # fits alone, including the lone-chain L2C dongle where a sibling rescue cannot
-        # exist). When the chain HAS its own estimate, this block is byte-identical to
-        # pre-S2d -- proven exhaustively over the input combinations, not argued.
-        _fus_now = _fuse_cached(t0)
-        _fused_hz = None
-        if _fus_now and _fus_now.get("lo_ppm") is not None and not _fus_now["all_outliers"]:
-            _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
-        if _fus_now is not None:
-            _fus_seen[0] = True
-        if args.state_consume and clock_bias_ema is None and _fused_hz is not None:
-            clock_bias = _fused_hz
-            bias_available = True
-            _log_rl("fusrescue",
-                    "FUSED-STATE RESCUE: this chain is UNSOLVED; consuming the dongle's "
-                    "fused LO %+.1f Hz (%d src: %dc/%dd over %s) until it solves itself"
-                    % (_fused_hz, _fus_now["n_src"], _fus_now["n_carrier"],
-                       _fus_now["n_code"], ",".join(_fus_now["chains"])),
-                    every_s=10.0)
-        else:
-            clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
-            bias_available = clock_bias_ema is not None
-            if args.state_consume and clock_bias_ema is None and _fus_now is None:
-                # STARTUP is not a fault. On the first cycles after launch no broker has
-                # published a fresh record yet and the previous run's files are correctly
-                # refused as stale, so "unavailable" is the expected state for a few
-                # seconds. Saying "infrastructure fault" there is a false alarm, and false
-                # alarms are how real ones get ignored -- so only call it a fault once we
-                # have actually HAD a fused state and then lost it.
-                _log_rl("fusegone",
-                        ("FUSED STATE not yet available (starting up) -- using this "
-                         "chain's own bias %s meanwhile"
-                         if not _fus_seen[0] else
-                         "FUSED STATE LOST -- falling back to this chain's own bias %s. "
-                         "We had one and it went away: infrastructure fault (state dir "
-                         "unreadable, or every sibling gone stale), not a normal mode.")
-                        % (("%+.1f Hz" % clock_bias_ema) if clock_bias_ema is not None
-                           else "UNSOLVED"), every_s=30.0)
-
-        # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
-        pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
-        # STALE-BIAS RESCUE (--bias-stale-s): a solved bias nobody has measured for minutes
-        # is a LIABILITY, not a constant -- if it latched away from truth (mid-walk during
-        # the 2026-07-20 GPSDO unlock) the narrow hints it centers are what PREVENT the
-        # measurements that would fix it. Widen and re-solve; hold the value for seeding.
-        bias_stale = (args.bias_stale_s > 0.0 and clock_bias_ema is not None
-                      and t0 - _bias_meas_t > args.bias_stale_s)
-        if bias_stale:
-            _log_rl("clkstale",
-                    "CLOCK BIAS STALE: no multi-sat measurement for %.0f s (holding %+.0f Hz "
-                    "for seeding) -- margins WIDE until re-solved"
-                    % (t0 - _bias_meas_t, clock_bias), every_s=60.0)
-        up = None
+    def _stage_almanac_predict():
+        """2: ORBIT-PREDICTED DOPPLER AND VISIBILITY, and the receiver clock bias EMA.
+        
+        Evaluates the almanac/BRDC at this instant to produce `pred` (the per-satellite Doppler and
+        elevation the whole cycle plans against) and maintains the clock-bias EMA the seeds ride on.
+        
+        ⚠️ THE EOP TABLE IS IN THE CONFIG AND IT ROLLS. A stale table is not a degraded prediction, it
+        is a rejected one: 18 days of staleness put dUT1 5.007 ms out and every frame's time metadata
+        was refused (2026-08-19, it killed a receiver outright).
+        
+        ⚠️ BOTH THE BIAS AND ITS STALENESS ARE OUTPUTS. Downstream, `bias_stale` decides whether the
+        search hint may narrow -- a confidently wrong narrow window is worse than no hint at all."""
+        nonlocal _bias_meas_t, bias_stale, clock_bias, clock_bias_cal, clock_bias_ema, pred, up
         if args.almanac:
             try:
                 t_pred = _alm_now()
@@ -6198,6 +6086,133 @@ def main(argv=None, rx=None, publisher=None):
                            args.bias_min_sats))
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
+
+    while True:
+        # Start of cycle: sample the frozen cycle clock ONCE (see the _Transcript note).
+        # Every `_now()` below this returns exactly t0, so the whole pass -- every gate,
+        # every age, every EMA -- evaluates at one instant instead of smearing over the
+        # cycle's own processing time.
+        t0 = _TR.tick()
+        t_wall = time.time()   # REAL clock, kept solely for the sleep below
+        # 1. collect best-SNR detection per PRN across all detection sources
+        best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long, cp_at_ref)
+        for d_ep in detectors:
+            try:
+                dets = _get("%s/get_detections" % d_ep)
+                if dets:
+                    last_dets[:] = dets   # published verbatim (see FleetPublisher)
+            except Exception as e:
+                _log("get_detections %s failed: %s" % (d_ep, e))
+                continue
+            for d in dets:
+                prn, snr = int(d["prn"]), float(d["snr"])
+                if snr < args.acquire_snr:
+                    continue
+                if prn not in best or snr > best[prn][0]:
+                    best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]),
+                                 int(d.get("ref_hop", 0)), int(d.get("nh", -1)),
+                                 float(d.get("code_phase_long_chips", -1.0)),
+                                 float(d.get("code_phase_at_ref_chips", -1.0)))
+        # Remember each PRN's REPORTED alignment + the hop it was measured at, to echo back as
+        # that PRN's own nh hint. Gated on the same acquire_snr as the detection itself: a
+        # marginal detection's nh is a coin flip, and a wrong hint narrows the scan AWAY from
+        # the truth (recoverable -- the hint expires and the full scan returns -- but it costs a
+        # revisit, so do not feed it noise).
+        for _p, _b in best.items():
+            if _b[4] >= 0 and _b[3] > 0:
+                nh_seen[_p] = (_b[4], _b[3])
+        for _p in list(nh_seen):
+            if _p not in seeds and _p not in best:
+                del nh_seen[_p]          # sat set: stop hinting a PRN we no longer track
+
+        for _p, _b in best.items():
+            # A detection is FRESH when its ref_hop advanced (the stage re-detected it,
+            # not a stale REST snapshot) -- the alias escape below must never act on a
+            # stale Doppler: at 0.4 Hz/s slew, 100 s of staleness fakes a 40 Hz mismatch.
+            #
+            # Stamp with the DETECTION'S OWN EPOCH (ref_hop converted through the capture
+            # anchor), NOT the wall clock of first sight. Wall-clock stamping defines
+            # freshness relative to THIS BROKER's history: a freshly (re)started broker sees
+            # every entry in the search's REST table as "new" and certifies minutes-stale
+            # detections as fresh -- measured 2026-07-31 00:47 on CHORD: six 20-40-min-old
+            # detections walked the bias EMA to +518 Hz and the dead-reckon clock off its
+            # primed value within ten cycles. With the epoch stamp, every downstream
+            # consumer's (t0 - stamp) measures TRUE data age, restart or not. When the
+            # anchor is unavailable (utc0_sample0 == 0, pre-fetch), fall back to wall clock
+            # -- the old behaviour, right for airspy where re-detection is seconds-fast.
+            if det_fresh.get(_p, (None,))[0] != _b[3]:
+                t_det = (utc0_sample0 + _b[3] / args.hops_per_sec
+                         if utc0_sample0 else t0)
+                det_fresh[_p] = (_b[3], t_det)
+
+        # ---- S2d, REVISED SCOPE (2026-07-29): RESCUE-ONLY consumption ---------------
+        # Always-on consumption was tried and REVERTED the same day: car_trim rose +30-36%
+        # at matched node age, and rescored against the EMA the chains actually seed with,
+        # fusion lost 7 of 8 -- the LO is flat within noise (a CONSTANT), and minutes of
+        # time-averaging beat one cycle of cross-chain averaging. The original premise
+        # ("consume always so the rescue path is never untested") was the wrong cure: the
+        # durable one is publish + SCORE always (the SHADOW line below runs regardless) and
+        # EXERCISE deliberately (diag/receiver_state_rescue_test.py offline; the
+        # isolated-broker method live).
+        #
+        # So: the fused state is consumed EXACTLY when this chain has no estimate of its
+        # own -- cold start, below min-sats, warm-start file lost. There it has no EMA to
+        # lose to, and its unique value over --clock-bias-siblings is real: cross-FAMILY
+        # rescue (code -> carrier), which the sibling files structurally cannot provide
+        # (measured: all-carriers-dark recovers to 0.6-1.8 Hz on every dongle from code
+        # fits alone, including the lone-chain L2C dongle where a sibling rescue cannot
+        # exist). When the chain HAS its own estimate, this block is byte-identical to
+        # pre-S2d -- proven exhaustively over the input combinations, not argued.
+        _fus_now = _fuse_cached(t0)
+        _fused_hz = None
+        if _fus_now and _fus_now.get("lo_ppm") is not None and not _fus_now["all_outliers"]:
+            _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
+        if _fus_now is not None:
+            _fus_seen[0] = True
+        if args.state_consume and clock_bias_ema is None and _fused_hz is not None:
+            clock_bias = _fused_hz
+            bias_available = True
+            _log_rl("fusrescue",
+                    "FUSED-STATE RESCUE: this chain is UNSOLVED; consuming the dongle's "
+                    "fused LO %+.1f Hz (%d src: %dc/%dd over %s) until it solves itself"
+                    % (_fused_hz, _fus_now["n_src"], _fus_now["n_carrier"],
+                       _fus_now["n_code"], ",".join(_fus_now["chains"])),
+                    every_s=10.0)
+        else:
+            clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
+            bias_available = clock_bias_ema is not None
+            if args.state_consume and clock_bias_ema is None and _fus_now is None:
+                # STARTUP is not a fault. On the first cycles after launch no broker has
+                # published a fresh record yet and the previous run's files are correctly
+                # refused as stale, so "unavailable" is the expected state for a few
+                # seconds. Saying "infrastructure fault" there is a false alarm, and false
+                # alarms are how real ones get ignored -- so only call it a fault once we
+                # have actually HAD a fused state and then lost it.
+                _log_rl("fusegone",
+                        ("FUSED STATE not yet available (starting up) -- using this "
+                         "chain's own bias %s meanwhile"
+                         if not _fus_seen[0] else
+                         "FUSED STATE LOST -- falling back to this chain's own bias %s. "
+                         "We had one and it went away: infrastructure fault (state dir "
+                         "unreadable, or every sibling gone stale), not a normal mode.")
+                        % (("%+.1f Hz" % clock_bias_ema) if clock_bias_ema is not None
+                           else "UNSOLVED"), every_s=30.0)
+
+        # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
+        pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
+        # STALE-BIAS RESCUE (--bias-stale-s): a solved bias nobody has measured for minutes
+        # is a LIABILITY, not a constant -- if it latched away from truth (mid-walk during
+        # the 2026-07-20 GPSDO unlock) the narrow hints it centers are what PREVENT the
+        # measurements that would fix it. Widen and re-solve; hold the value for seeding.
+        bias_stale = (args.bias_stale_s > 0.0 and clock_bias_ema is not None
+                      and t0 - _bias_meas_t > args.bias_stale_s)
+        if bias_stale:
+            _log_rl("clkstale",
+                    "CLOCK BIAS STALE: no multi-sat measurement for %.0f s (holding %+.0f Hz "
+                    "for seeding) -- margins WIDE until re-solved"
+                    % (t0 - _bias_meas_t, clock_bias), every_s=60.0)
+        up = None
+        _stage_almanac_predict()
 
         # 2a-xband. S5 CROSS-BAND: read the sibling band's per-sat tracked Doppler ONCE and
         # predict THIS band's by the exact carrier ratio (satellite motion is geometry, common

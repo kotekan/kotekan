@@ -113,10 +113,47 @@ def analyze(main, lo, hi):
     # writes that is used ANYWHERE ELSE in main() must stay shared. Declaring `nonlocal` on a
     # name that turns out to be dead is harmless -- it preserves exactly today's behaviour,
     # including today's accidental sharing. Making a shared name local is what is not.
-    elsewhere = {nm for ln, nm, ld in uses if not (lo <= ln <= hi)}
+    # A name is genuinely SHARED only if some OTHER scope READS it without first assigning it
+    # -- that scope was relying on somebody else's value. A scope that assigns before reading
+    # is an independent temporary that merely reuses the name, and there are many of those:
+    # `hints` and `period` are each written-then-read inside three different scopes and shared
+    # by none of them. Requiring nonlocal for those is not merely noisy, it is IMPOSSIBLE --
+    # there is no main-level binding to attach it to.
     outs = sorted(nm for nm in writes
-                  if nm in elsewhere and nm not in skip and nm not in carry)
+                  if nm not in skip and nm not in carry and _read_before_write_elsewhere(main, nm, lo, hi))
     return inputs, carry, outs
+
+
+def _other_scopes(main, lo, hi):
+    """Every scope that could read a name the block writes: each nested routine outside the
+    block, plus main's own body with all nested routines removed."""
+    fns = [n for n in ast.walk(main)
+           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not main]
+    out = [f for f in fns if not (lo <= f.lineno and f.end_lineno <= hi)]
+    return out, fns
+
+
+def _read_before_write_elsewhere(main, name, lo, hi):
+    others, allfns = _other_scopes(main, lo, hi)
+    for f in others:
+        sk = _scoped_names(f) | _import_aliases(f)
+        if name in sk:
+            continue
+        inner = [g for g in allfns if g is not f and f.lineno <= g.lineno and g.end_lineno <= f.end_lineno]
+        us = sorted((n.lineno, n.col_offset, isinstance(n.ctx, ast.Load))
+                    for n in ast.walk(f) if isinstance(n, ast.Name) and n.id == name
+                    and not any(g.lineno <= n.lineno <= g.end_lineno for g in inner))
+        if us and us[0][2]:
+            return True
+    # main's own body, outside every routine and outside the block
+    sk = _scoped_names(main) | _import_aliases(main)
+    if name in sk:
+        return False
+    us = sorted((n.lineno, n.col_offset, isinstance(n.ctx, ast.Load))
+                for n in ast.walk(main) if isinstance(n, ast.Name) and n.id == name
+                and not (lo <= n.lineno <= hi)
+                and not any(g.lineno <= n.lineno <= g.end_lineno for g in allfns))
+    return bool(us) and us[0][2]
 
 
 def cmd_map(argv):
@@ -186,11 +223,27 @@ def cmd_promote(argv):
     assert not missing, ("REFUSING: undeclared carry-over/output state: %s\n"
                          "  Declaring these nonlocal is mandatory -- without it the state "
                          "silently resets or goes stale, and nothing raises." % ", ".join(missing))
+    # ⚠️ THE BINDING MUST BE AT main()'s OWN LEVEL. A Store inside an already-promoted stage
+    # binds THAT function's local, not main's, so counting it makes `nonlocal` a SyntaxError
+    # at import time. (`hints` is written by the almanac stage and read by narrow-search --
+    # both now routines -- so once almanac moved, nothing bound it in main at all.)
+    nested = [n for n in ast.walk(main)
+              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+              and n is not main]
+    def _binds_at_main_level(d):
+        for n in ast.walk(main):
+            if not (isinstance(n, ast.Name) and n.id == d and isinstance(n.ctx, ast.Store)):
+                continue
+            if lo <= n.lineno <= hi:
+                continue
+            if any(f.lineno <= n.lineno <= f.end_lineno for f in nested):
+                continue
+            return True
+        return False
     for d in declared:
-        assert any(isinstance(n, ast.Name) and n.id == d and isinstance(n.ctx, ast.Store)
-                   and not (lo <= n.lineno <= hi) for n in ast.walk(main)), \
-            ("REFUSING: `%s` has no binding in main() outside the block, so `nonlocal %s` is a "
-             "SyntaxError. Give the state an explicit home before promoting." % (d, d))
+        assert _binds_at_main_level(d), \
+            ("REFUSING: `%s` has no binding at main()'s own level outside the block, so "
+             "`nonlocal %s` is a SyntaxError. Give the state an explicit home first." % (d, d))
 
     block = src[lo - 1:hi]
     ind = min(len(l) - len(l.lstrip()) for l in block if l.strip())
