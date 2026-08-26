@@ -36,7 +36,7 @@ there is no way to run that logic offline. That is the argument for going sooner
 instability is partly *caused* by how hard the loop logic is to test, so "wait for stable
 locks first" is backwards.
 
-### Step 0 — refresh the digest fixtures  ✅ FIRST CAPTURE DONE 2026-08-26
+### Step 0 — refresh the digest fixtures  ✅✅ COMPLETE 2026-08-26 01:2x (all three captures)
 
 `broker_onsky_e5a_20260826` is blessed and **GATE GOOD** (`3cba60e49`): 113 cycles, 1474
 posts, determinism holds, digest moves under a 1e-12 perturbation of `carrier_hz` and
@@ -45,11 +45,11 @@ path added in the last week. Fixtures now carry their own ephemeris in a
 `<transcript>.brdc/` sidecar (`broker_equiv._pin_for`) so a new capture cannot move the
 fingerprint of the existing four.
 
-⚠️ IT COVERS A CHAIN, NOT THE CODEBASE. `selftest` reports this fixture does NOT reach
-`carrier_gain`, `code_bias_alpha`, `bias_alpha` — a refactor touching those is UNGATED
-until the remaining two captures land: **a search-fed `gps_l5`** (the only chain whose `y`
-comes from detections) and **a BeiDou chain** (never captured at all). Recipe in
-`scripts/gnss/fixtures/README.md`; one chain per run.
+✅ The remaining two landed 2026-08-26 01:1x–01:2x (`ea6a69170`): `broker_onsky_l5_20260826`
+(search-fed, 164 cycles, moves `bias_alpha` too) and `broker_onsky_b2a_20260826` (the first
+BeiDou capture, 172 cycles). Full sweep **7/7 EQUIVALENT** at `ea6a69170`. Coverage ledger:
+`carrier_gain` unreachable by design (production gain 0.0); **`code_bias_alpha` is covered
+ONLY by the 2026-08-08 l5 fixture** — keep it in the gate.
 
 ⚡ THE FIRST REPLAY ALREADY PAID FOR THE PROGRAMME: it crashed on an
 `UnboundLocalError` (`t_now_abs` read by six consumers before the first ephemeris refresh
@@ -169,7 +169,7 @@ had.
 
 ---
 
-## (1) A1 — DONE IN CODE, AWAITING DEPLOY
+## (1) A1 — ✅ DEPLOYED 2026-08-26 01:11 (checklist steps 1–4 green; live proof = next F-engine restart)
 
 `95ce4b712`. `FleetDll` now re-anchors on an F-engine frame0 move (size + persistence
 discriminator; trims/arming survive), `epoch_resets` is served in `get_stats`, and a WARN fires
