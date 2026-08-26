@@ -8,7 +8,6 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
-#include "div.hpp"             // for div_noremainder
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 #include "metadata.hpp"        // for metadataObject
 
@@ -22,7 +21,6 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::div_noremainder;
 using kotekan::Stage;
 using N2::frameID;
 
@@ -52,7 +50,13 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
     }
-    assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
+    // This stage consumes one bad feed mask per input frame and applies it to every time sample of
+    // that frame, so a mask must be valid for exactly one frame's worth of FPGA samples.
+    if (_bf_mask_lifetime_in_samples != _samples_per_data_set) {
+        FATAL_ERROR("bf_mask_lifetime_in_samples ({:d}) must equal samples_per_data_set ({:d}): "
+                    "this stage applies one bad feed mask to each whole input frame",
+                    _bf_mask_lifetime_in_samples, _samples_per_data_set);
+    }
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;
@@ -82,10 +86,10 @@ void gpuSimulateRFIS012tilde::main_thread() {
             (uint64_t*)in_rfi_s012_buf->wait_for_full_frame(unique_name, in_rfi_s012_frame_id);
         if (rfi_s012 == nullptr)
             break;
-        uint8_t* bf_mask =
-            (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
+        std::int8_t* bf_mask =
+            (std::int8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
         if (bf_mask == nullptr)
-            return;
+            break;
         uint64_t* rfi_s012tilde = (uint64_t*)out_rfi_s012tilde_buf->wait_for_empty_frame(
             unique_name, out_rfi_s012tilde_frame_id);
         if (rfi_s012tilde == nullptr)
@@ -104,6 +108,67 @@ void gpuSimulateRFIS012tilde::main_thread() {
         uint64_t nf = _num_local_freq;
         uint64_t ne = _num_elements;
 
+        // Fetch input metadata
+        const std::shared_ptr<const metadataObject> mc_in =
+            in_rfi_s012_buf->get_metadata(in_rfi_s012_frame_id);
+        if (!mc_in) {
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id);
+        }
+        if (!metadata_is_chord(mc_in)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
+        }
+
+        const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
+
+        const std::shared_ptr<const chordMetadata> meta_bf_mask =
+            get_chord_metadata(in_bf_mask_buf, in_bf_mask_frame_id);
+        if (!meta_bf_mask) {
+            FATAL_ERROR("Buffer {:s} frame {:d} has no CHORD metadata", in_bf_mask_buf->buffer_name,
+                        in_bf_mask_frame_id);
+        }
+
+        // The mask frame must describe the array this stage requires. This is what catches a
+        // producer whose `dim_scaling[0]` disagrees with `bf_mask_lifetime_in_samples`.
+        meta_bf_mask->check_frame_desc(in_bf_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
+
+        // The getters below throw when the metadata item is absent, so look for it first.
+        if (!meta_in->has_fpga_seq_num() || !meta_in->has_time_downsampling_fpga()) {
+            FATAL_ERROR("Buffer {:s} frame {:d} is missing the FPGA timing metadata "
+                        "(fpga_seq_num and/or time_downsampling_fpga)",
+                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
+        }
+        if (!meta_bf_mask->has_fpga_seq_num() || !meta_bf_mask->has_time_downsampling_fpga()) {
+            FATAL_ERROR("Buffer {:s} frame {:d} is missing the FPGA timing metadata "
+                        "(fpga_seq_num and/or time_downsampling_fpga)",
+                        in_bf_mask_buf->buffer_name, in_bf_mask_frame_id);
+        }
+
+        // This stage applies a single bad feed mask to the whole S012 frame, so the mask must be
+        // valid for exactly that frame's span in FPGA samples.
+        const std::int64_t s012_span_fpga =
+            std::int64_t(nt) * meta_in->get_time_downsampling_fpga();
+        if (meta_bf_mask->get_time_downsampling_fpga() != s012_span_fpga) {
+            FATAL_ERROR("Bad feed mask {:s}[{:d}] is valid for {:d} FPGA samples, but S012 frame "
+                        "{:s}[{:d}] spans {:d} FPGA samples ({:d} RFI times x {:d} FPGA samples). "
+                        "This stage applies one mask to a whole S012 frame, so the two must be "
+                        "equal; check `bf_mask_lifetime_in_samples`.",
+                        in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
+                        meta_bf_mask->get_time_downsampling_fpga(), in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id, s012_span_fpga, nt,
+                        meta_in->get_time_downsampling_fpga());
+        }
+        // ... and it must cover the same instant in time as that frame.
+        if (meta_bf_mask->get_fpga_seq_num() != meta_in->get_fpga_seq_num()) {
+            FATAL_ERROR("Bad feed mask {:s}[{:d}] begins at FPGA sample {:d}, but S012 frame "
+                        "{:s}[{:d}] begins at FPGA sample {:d}. The two inputs are out of step; "
+                        "this stage pairs one mask with each S012 frame.",
+                        in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
+                        meta_bf_mask->get_fpga_seq_num(), in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id, meta_in->get_fpga_seq_num());
+        }
+
         // Looping over time, freq, and S012 index. (spectator indices)
         for (uint64_t tfs = 0; tfs < 3 * nf * nt; tfs++) {
 
@@ -116,22 +181,6 @@ void gpuSimulateRFIS012tilde::main_thread() {
             } // e
         } // tfs
 
-        // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in =
-            in_rfi_s012_buf->get_metadata(in_rfi_s012_frame_id);
-        if (!mc_in) {
-            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_rfi_s012_buf->buffer_name,
-                        in_rfi_s012_frame_id);
-        }
-        assert(mc_in);
-        if (!metadata_is_chord(mc_in)) {
-            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
-        }
-        assert(metadata_is_chord(mc_in));
-
-        const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
-
         // Create output metadata
         out_rfi_s012tilde_buf->allocate_new_metadata_object(out_rfi_s012tilde_frame_id);
         const std::shared_ptr<metadataObject> mc =
@@ -140,12 +189,10 @@ void gpuSimulateRFIS012tilde::main_thread() {
             FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
                         out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
         }
-        assert(mc);
         if (!metadata_is_chord(mc)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
                         out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
         }
-        assert(metadata_is_chord(mc));
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
@@ -170,7 +217,4 @@ void gpuSimulateRFIS012tilde::main_thread() {
         in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         out_rfi_s012tilde_buf->mark_frame_full(unique_name, out_rfi_s012tilde_frame_id++);
     }
-
-    // Only release the bf_mask when we're done.
-    in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id);
 }
