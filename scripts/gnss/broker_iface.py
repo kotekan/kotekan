@@ -77,8 +77,21 @@ def _scoped_names(main):
     return out
 
 
+def _import_aliases(node):
+    """Names bound by `import x as y` / `from m import x`. These are Stores that never appear
+    as an ast.Name, so a first-use test sees only the later Loads and calls a locally-imported
+    module a read-before-write. `import receiver_state as _rs` inside the clock-adopt stage is
+    the standing example."""
+    out = set()
+    for n in ast.walk(node):
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            for a in n.names:
+                out.add(a.asname or a.name.split(".")[0])
+    return out
+
+
 def analyze(main, lo, hi):
-    skip = _scoped_names(main)
+    skip = _scoped_names(main) | _import_aliases(main)
     uses = sorted((n.lineno, n.id, isinstance(n.ctx, ast.Load))
                   for n in ast.walk(main) if isinstance(n, ast.Name))
     inside = [u for u in uses if lo <= u[0] <= hi]
@@ -89,12 +102,20 @@ def analyze(main, lo, hi):
     writes = {nm for _, nm, ld in inside if not ld}
     inputs = sorted(nm for nm, ld in first.items() if ld and nm not in skip)
     carry = sorted(nm for nm in writes if first.get(nm) is True and nm not in skip)
-    after = {}
-    for ln, nm, ld in [u for u in uses if u[0] > hi]:
-        if nm not in after:
-            after[nm] = ld
+    # ⚠️ LINE ORDER IS NOT EXECUTION ORDER, AND ASSUMING IT WAS COST A RED GATE.
+    # Once a stage is promoted, its body sits BEFORE the cycle loop in the file while running
+    # LATER in the cycle. So "read at a line after this block" stops meaning "read after this
+    # block runs": `up` is written by the almanac stage at line 5859 and read by the coast/drop
+    # stage at line 3166 -- earlier in the file, later in the pass. Judging by line number
+    # declared it dead, promotion made it a local, and three fixtures moved.
+    #
+    # The rule that is actually safe does not depend on order at all: ANY name this block
+    # writes that is used ANYWHERE ELSE in main() must stay shared. Declaring `nonlocal` on a
+    # name that turns out to be dead is harmless -- it preserves exactly today's behaviour,
+    # including today's accidental sharing. Making a shared name local is what is not.
+    elsewhere = {nm for ln, nm, ld in uses if not (lo <= ln <= hi)}
     outs = sorted(nm for nm in writes
-                  if after.get(nm) is True and nm not in skip and nm not in carry)
+                  if nm in elsewhere and nm not in skip and nm not in carry)
     return inputs, carry, outs
 
 

@@ -841,10 +841,17 @@ def main(argv=None, rx=None, publisher=None):
     # had NO BINDING IN main() AT ALL, which is what blocked extracting this stage at all.
     class _DrProducts(object):
         """Per-cycle derived values of the dead-reckon stage. None means NOT YET SOLVED."""
-        __slots__ = ("clk_now",)
+        __slots__ = ("clk_now", "raw_clk")
 
         def __init__(self):
             self.clk_now = None
+            # The RAW clock solve, before the quality gate accepts or rejects it. It used to
+            # be a bare local called `raw` -- a name the ALMANAC stage also uses, for an
+            # entirely unrelated quantity, in the same flat namespace. The two never collided
+            # because each writes before it reads, but nothing made that safety visible, and
+            # extracting either block silently removed the other's binding. It did exactly
+            # that on 2026-08-26, and the gate caught it as a SyntaxError.
+            self.raw_clk = None
 
     _drp = _DrProducts()
     fe_axis = [None]  # (newest telemetry pow_hop, wall at its fetch) -- #83 the axis fix
@@ -5003,12 +5010,11 @@ def main(argv=None, rx=None, publisher=None):
         steps the median by 1-2 chips when membership churns, on a ~600 s timescale, and that churn
         was THE DECAY ROOT (chord-clock-median-churn): a clock that moves because the population moved
         looks exactly like a clock that moved because the receiver did."""
-        nonlocal raw
         if len(offs) >= args.dr_min_sats:
             ref = offs[0][1]
             cen = sorted(((d - ref + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
                          for _, d in offs)
-            raw = (cen[len(cen) // 2] + ref) % CODE_LEN
+            _drp.raw_clk = (cen[len(cen) // 2] + ref) % CODE_LEN
             # DO THE SATELLITES AGREE? A median over >= dr_min_sats is only a
             # measurement if its inputs cluster. Detections from a starved fleet are
             # noise, their offsets scatter ~uniformly over CODE_LEN, and the circular
@@ -5070,7 +5076,7 @@ def main(argv=None, rx=None, publisher=None):
                                is not None else "UNSET", _held_s,
                                args.dr_solve_refused_rebootstrap_s),
                             every_s=30.0)
-                    raw = None
+                    _drp.raw_clk = None
             else:
                 dr_state["mad_refused_since"] = None
 
@@ -5080,14 +5086,14 @@ def main(argv=None, rx=None, publisher=None):
         ⚠️ A PRIME IS NOT A MEASUREMENT. Seeding the clock with a fixed value silences the alarm that
         the solve is failing rather than making it succeed -- `--dr-clock-chips 0.0` did exactly that
         once, and the snap it hid was real."""
-        if len(offs) >= args.dr_min_sats and raw is not None:
+        if len(offs) >= args.dr_min_sats and _drp.raw_clk is not None:
             prev_raw = dr_state.get("raw_prev")
             # A primed drift is authoritative (the GPSDO rate is a band constant):
             # never EMA it toward pair-differences of solutions built from UNCHANGED
             # detections, which difference to ~zero and drag a correct prime away
             # (measured 2026-07-31: primed +0.0439 walked to -61 within a minute).
             if prev_raw is not None and 0.5 < now_w - prev_raw[1] < 30.0                             and args.dr_clock_drift is None:
-                d_est = (((raw - prev_raw[0] + CODE_LEN / 2) % CODE_LEN)
+                d_est = (((_drp.raw_clk - prev_raw[0] + CODE_LEN / 2) % CODE_LEN)
                          - CODE_LEN / 2) / (now_w - prev_raw[1])
                 # PLAUSIBILITY BOUND. d_est is a DIFFERENCE OF TWO CLOCK SOLVES, so
                 # anything that displaces the solve -- a node restart, an F-engine
@@ -5114,7 +5120,7 @@ def main(argv=None, rx=None, publisher=None):
                     dr_state["drift"] = (d_est if dr_state.get("drift") is None
                                          else dr_state["drift"]
                                          + 0.05 * (d_est - dr_state["drift"]))
-            dr_state["raw_prev"] = (raw, now_w)
+            dr_state["raw_prev"] = (_drp.raw_clk, now_w)
             # SNAP ON THE FIRST MEASUREMENT, whether or not a prime is standing.
             # `raw` is a circular median over >= --dr-min-sats satellites, so it is a
             # measurement of the same quantity the prime guessed; EMA-ing from the
@@ -5122,17 +5128,17 @@ def main(argv=None, rx=None, publisher=None):
             # own scatter (a few chips at 6 sats) on cycle one instead of ~20 cycles.
             if dr_state["clk"] is None or dr_state.pop("clk_primed", False):
                 was = dr_state["clk"]
-                dr_state["clk"] = raw
+                dr_state["clk"] = _drp.raw_clk
                 _log("dead-reckon: receiver clock BOOTSTRAP %.2f chips = %.3f us "
                      "(mod %.0f ms; %d sats%s)"
-                     % (raw, raw / args.chip_rate_hz * 1e6, t_code * 1e3, len(offs),
+                     % (_drp.raw_clk, _drp.raw_clk / args.chip_rate_hz * 1e6, t_code * 1e3, len(offs),
                         "" if was is None else
                         "; REPLACES the %.2f-chip prime -- a prime is a seed, not a "
                         "measurement" % was))
             else:
                 clk = (dr_state["clk"]
                        + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
-                step = ((raw - clk + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
+                step = ((_drp.raw_clk - clk + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
                 dr_state["clk"] = (clk + args.dr_clock_alpha * step) % CODE_LEN
             dr_state["clk_t"] = now_w
             # CONTRIBUTE (task #27 M3). THIS IS THE SEAM --dr-clock-adopt PAPERS
