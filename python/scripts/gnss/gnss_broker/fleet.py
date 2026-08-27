@@ -496,6 +496,8 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             v["present_gate"] = "UNANCHORED"
             v["n_probe_q"] = len(_probe_q)
         return out
+    # Who the displaced admission let in this pass -- see the note at its call site.
+    _admitted = []
     for v in out.values():
         v["q_med"], v["q_sigma"] = q_med, q_sigma
         v["q_floor"] = q_fallback if q_med is None else q_floor
@@ -560,6 +562,12 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             # below. A centred noise realisation has a LARGE pedestal and is refused; a
             # satellite beyond the DLL's pull-in range has a large |offset| and is refused
             # (correctly -- that one needs the search, not the loop).
+            # ⚠️ AN ARM WITH NO OBSERVABLE CANNOT BE JUDGED, and this one had none: no log
+            # line, and present_gate is not published, so "did the displaced admission do
+            # anything?" was unanswerable from a running fleet (2026-08-27, arming it on
+            # BeiDou -- the counts rose and the probe floor and the sky had BOTH moved across
+            # the same restart, so nothing could be attributed). Say who was admitted and on
+            # what evidence.
             if (admit_displaced is not None and not v["present"]
                     and p_floor is not None):
                 _c = v.get("coh_row") or {}
@@ -578,6 +586,8 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
                         v["present_gate"] = ("q+p:probes+disp" if _bright
                                              else "q+deep:probes+disp")
                         v["disp_deep_snr"], v["disp_deep_floor"] = _ds, _dfl
+                        _admitted.append((v.get("prn"), _off, _ped,
+                                          v["p_pow"] / p_floor, _bright))
         else:
             # ⚠️ UNREACHABLE, AND KEPT AS AN ASSERTION RATHER THAN DELETED SILENTLY. The
             # refusal above returns whenever probes < 3 or p_floor is None, which is exactly
@@ -633,6 +643,16 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
                 v["present"] = ds >= deep_gate_margin * fl
                 v["present_gate"] = "deep"
                 v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
+    if _admitted:
+        _log_rl("presence-disp",
+                "PRESENCE +displaced: %s -- admitted by the displaced gate, which the q/prompt "
+                "gate had refused. (off = tap offset in chips, ped = noise pedestal; 'p' means "
+                "prompt power carried it, 'deep' means the offset-blind fold did.)"
+                % "; ".join("PRN %s off %+.3f ped %.3f p/floor %.1f via %s"
+                            % (p2, o, pe, r, "p" if b else "deep")
+                            for p2, o, pe, r, b in sorted(_admitted,
+                                                          key=lambda x: -(x[3] or 0))[:8]),
+                every_s=120.0)
     return out
 
 
