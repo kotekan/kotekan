@@ -63,6 +63,19 @@ common:
   # when it needs trimming. 3 probes (deepest below-horizon PRNs, exempt from the
   # below-horizon drop, invisible to every other gate because their sig ~ 0).
   noise-probes: 3
+  # ── ARMED 2026-08-27 15:1x: THE PRIOR GAUGE (#94/S2, KV) ──────────────────────────────
+  # The joint filter's common mode was pinned by median(b)=0 over the ACTIVE sats -- a
+  # POPULATION statement, so bare clk stepped when the middle element changed and b_i was
+  # fleet-relative by construction. Now each b_i carries its own absolute prior
+  # b ~ N(0, 2 chips) -- the physical envelope of a per-sat code bias -- Huber R-inflated so
+  # a wild bias's weight falls as 1/y^2. Bench: at-event clk step on a satellite drop
+  # 0.009 chips vs 1.05 under the median pin; rate masquerade 0.0007 chips/s.
+  # COMMON, not per-chain, because the filter is RECEIVER-scoped (one object, five feeders):
+  # a chain A/B does not exist for it. The standing in-poll control is the legacy
+  # circular-median clock (SEED-OFFSET joint-vs-legacy line), plus every consumer's own
+  # 5-chip refusal bound. Pre-registered: fixtures/expectations_20260827_prior_gauge.txt.
+  # Revert: delete this line + broker restart.
+  joint-gauge: prior
   # TASK #57 step 2: poll the combiners' /get_elements and serve the per-element complex
   # gain (amplitude AND phase per antenna, per instance -- the beam/peel coefficients) on
   # the publisher's /get_elements, with the raw parts archived to NFS for the offline beam
