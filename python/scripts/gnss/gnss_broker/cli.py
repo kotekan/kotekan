@@ -1352,19 +1352,35 @@ def build_parser(description):
                          "E36, the satellite this whole mechanism exists for, is below the "
                          "admit mask ~13 h a day. Without this, armed-and-idle is "
                          "indistinguishable from not-running.")
-    ap.add_argument("--prn-reconfig-lead-s", type=float, default=2.0,
-                    help="schedule a PRN swap this far ahead, as an ABSOLUTE F-engine sample "
-                         "(set_prns {\"at_seq\": N}), so every node crosses the discontinuity "
+    ap.add_argument("--prn-reconfig-lead-s", type=float, default=5.0,
+                    help="schedule a PRN swap this far ahead, as an ABSOLUTE F-engine HOP "
+                         "(set_prns {\"at_hop\": N}), so every node crosses the discontinuity "
                          "on the SAME FRAME. Without it each node swaps on whatever frame it "
                          "happens to be building, and the combiner folds one window whose "
                          "instances disagree about which satellite slot p is -- an "
                          "accumulator-identity error that is invisible downstream because "
-                         "every row is individually well-formed. 2 s is many frames (41.94 ms "
+                         "every row is individually well-formed. 5 s is many frames (41.94 ms "
                          "each) of margin against POST scatter and well inside the "
-                         "--prn-reconfig-interval-s cadence. The lead is capped by the node: "
-                         "a deadline it can never reach (an F-engine re-base moves seq "
+                         "--prn-reconfig-interval-s cadence. 5 s, not the original 2: the map "
+                         "goes to 12 endpoints in sequence and one unresponsive node costs a "
+                         "whole --prn-reconfig-timeout-s, so the lead must cover the SCATTER "
+                         "of the posts, not just their mean. The in-cycle delay between the "
+                         "status poll and this post is handled separately, by advancing the "
+                         "axis sample to post time -- do not spend the lead on it. "
+                         "The lead is capped by the node: "
+                         "a deadline it can never reach (an F-engine re-base moves the hop "
                          "BACKWARDS) is applied immediately with a warning rather than "
-                         "wedging the slot forever.")
+                         "wedging the slot forever. ⚠️ HOPS, NOT SAMPLES -- the first version "
+                         "posted hops under a key the node read as samples (hop x 16384), so "
+                         "every deadline was already past and every swap silently took the "
+                         "apply-immediately degrade.")
+    ap.add_argument("--prn-reconfig-axis-max-age-s", type=float, default=30.0,
+                    help="refuse to schedule a swap when this cycle's F-engine axis sample is "
+                         "older than this. The deadline is built by advancing the polled hop "
+                         "to the instant of the POST, and an extrapolation over a long gap is "
+                         "a guess dressed as a coordination point: past this age the swap "
+                         "posts UNSCHEDULED and says so, rather than naming a frame the fleet "
+                         "may already have passed.")
     ap.add_argument("--prn-reconfig-timeout-s", type=float, default=2.0,
                     help="per-endpoint HTTP timeout for the map GET/POST. With the one-per-"
                          "cycle sweep above this is the WHOLE cost a dead node can impose on "

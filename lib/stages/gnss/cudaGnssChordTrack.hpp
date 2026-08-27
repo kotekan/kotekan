@@ -121,22 +121,35 @@ public:
     // nodes cross the discontinuity at twelve different instants. The combiner then folds one
     // window whose instances disagree about which satellite slot p IS -- an accumulator
     // identity error that no downstream check can see, because every row is individually
-    // well-formed. `at_seq` fixes the swap to an ABSOLUTE F-engine sample: the broker picks
-    // one a couple of seconds ahead, every node stages the same number, and each applies it
-    // at the first frame boundary at or after it. Same frame, fleet-wide, and never mid-record
+    // well-formed. `at_hop` fixes the swap to an ABSOLUTE F-engine HOP: the broker picks one a
+    // couple of seconds ahead, every node stages the same number, and each applies it at the
+    // first frame boundary at or after it. Same frame, fleet-wide, and never mid-record
     // because the test runs where the swap already ran -- before a single job is built.
     //
     // ⚠️ THE CLOCK IS THE F-ENGINE'S OWN COUNTER, NOT WALL TIME. It is the axis the records
     // are indexed by and it is identical on every node by construction; wall time is not
     // (measured lag spread across instances runs to seconds), and a wall deadline would put
     // the nodes back on twelve different frames.
-    int64_t prn_at_seq = -1;           ///< apply at the first frame with seq0 >= this; <0 = ASAP
-    int64_t prn_stage_seq = -1;        ///< seq0 last seen when the map was staged (re-base guard)
-    int64_t last_seq = -1;             ///< newest frame seq0 seen; the deadline is tested on it
+    //
+    // ⚠️⚠️ HOPS, NOT SAMPLES, AND THE UNIT IS IN THE NAME FOR A REASON. The first version of
+    // this called the field `at_seq` and tested it against GnssChanMetadata::sample_seq, which
+    // is hop*fft_len -- while the broker, whose only view of the axis is the combiner's
+    // `pow_hop`, filled it in HOPS. A deadline 16384x too small is always already past, so
+    // every swap took the apply-immediately degrade and the whole mechanism read as working.
+    // The hop is the fleet's alignment key everywhere else in this pipeline
+    // (GnssCoherentCombiner: "equal hop IS the same sky"); it is the currency here too.
+    int64_t prn_at_hop = -1;           ///< apply at the first frame with hop0 >= this; <0 = ASAP
+    int64_t prn_stage_hop = -1;        ///< hop0 last seen when the map was staged (re-base guard)
+    int64_t last_hop = -1;             ///< newest frame hop0 seen; the deadline is tested on it
 
-    /// Record this frame's absolute first-hop sample. Called by the tracker at the frame
-    /// boundary; @ref apply_prn_swaps tests the scheduled deadline against it.
-    void note_frame_seq(long long seq);
+    /// Record this frame's absolute first HOP. Called by whichever stage owns the frame loop,
+    /// at the frame boundary; @ref apply_prn_swaps tests the scheduled deadline against it.
+    ///
+    /// ⚠️ EVERY PRODUCER MUST CALL THIS. cudaGnssChordTrack (path A) and cudaGnssInject
+    /// (path B) share this state object but have SEPARATE frame loops; the deployed fleet
+    /// runs only path B, so wiring the clock into path A alone left the deadline permanently
+    /// untestable -- last_hop stayed -1 on all twelve nodes and no error was ever raised.
+    void note_frame_hop(long long hop);
 
     // Geometry. n_prn is immutable; @c prns is NOT -- see the block above.
     std::vector<int> prns;

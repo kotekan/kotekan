@@ -30,7 +30,7 @@ PER_CYCLE = {
     "dr_pd", "dr_pd0", "dr_pd2", "payload",
     "jrc", "rr_cmd_new", "bit_known", "bit_src",
     # Re-stamped from the status poll every cycle, None whenever the axis is unknown.
-    "fe_hop_now",
+    "fe_hop_now", "fe_hop_t",
 }
 
 _fails = []

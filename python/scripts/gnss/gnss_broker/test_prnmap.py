@@ -46,6 +46,7 @@ class Args(object):
         self.prn_reconfig_gone_hold_s = 7200.0
         self.prn_reconfig_timeout_s = 5.0
         self.prn_reconfig_lead_s = 2.0
+        self.prn_reconfig_axis_max_age_s = 30.0
         self.hops_per_sec = 125000.0
         self.prn_reconfig_heartbeat_s = 1e18   # off by default in tests; check 11 arms it
         self.probe_require_slot = False
@@ -70,10 +71,13 @@ class Ctx(object):
         self.node_state = list(slots)
         self.prnmap.maps = {ep: list(slots) for ep in self.trackers}
         self.prnmap.poll_t = t0  # pre-swept: no HTTP in this test
-        # The F-engine sample the scheduler writes its deadline against. None models "the
-        # axis is unknown", which must degrade to an UNSCHEDULED post, not to no post.
+        # The F-engine hop the scheduler writes its deadline against, and the wall instant it
+        # was sampled. None models "the axis is unknown", which must degrade to an UNSCHEDULED
+        # post, not to no post. fe_hop_t defaults to t0 -- i.e. the poll happened at the top of
+        # this cycle, which is where the real one happens.
         self.fe_hop_now = kw.pop("fe_hop_now", 1_000_000_000.0) \
             if "fe_hop_now" in kw else 1_000_000_000.0
+        self.fe_hop_t = kw.pop("fe_hop_t", t0) if "fe_hop_t" in kw else t0
 
 
 POSTS = []
@@ -257,7 +261,7 @@ def main():
     check(len(_node_posts) == 2, "one swap, posted to both nodes")
     check(_node_posts and all(30 in pl["prns"] and 36 in pl["prns"] for _u, pl in _node_posts),
           "BOTH waiting satellites land in the SAME post -- not one per interval")
-    check(_node_posts and len({pl.get("at_seq") for _u, pl in _node_posts}) == 1,
+    check(_node_posts and len({pl.get("at_hop") for _u, pl in _node_posts}) == 1,
           "... on ONE deadline, so both slots move on the same frame fleet-wide")
     n_first = len(POSTS)
     run_cycle(ctx, 1000.0 + 1.0)
@@ -342,20 +346,46 @@ def main():
     _c = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
              prn_reconfig_down_hold_s=0.0)
+    # The axis was polled 3 s ago -- at the TOP of the cycle that is now posting. The
+    # deadline must be advanced across that gap, not written against the stale hop.
     _c.fe_hop_now = 1_000_000_000.0
+    _c.fe_hop_t = 2000.0 - 3.0
     run_cycle(_c, 2000.0)
     _tracker_posts = [(u, b) for u, b in POSTS if "search" not in u]
     _follow_posts = [(u, b) for u, b in POSTS if "search" in u]
     check(bool(_tracker_posts), "a swap is posted at all")
-    check(all("at_seq" in b for _, b in _tracker_posts),
-          "every TRACKER post carries an at_seq deadline")
-    _seqs = {b["at_seq"] for _, b in _tracker_posts}
+    check(all("at_hop" in b for _, b in _tracker_posts),
+          "every TRACKER post carries an at_hop deadline")
+    _seqs = {b["at_hop"] for _, b in _tracker_posts}
     check(len(_seqs) == 1,
-          "and it is the SAME sample on every node -- that is the whole point (%s)" % _seqs)
-    _want = 1_000_000_000 + int(round(_c.args.prn_reconfig_lead_s * _c.args.hops_per_sec))
+          "and it is the SAME hop on every node -- that is the whole point (%s)" % _seqs)
+    _want = 1_000_000_000 + int(round((3.0 + _c.args.prn_reconfig_lead_s)
+                                      * _c.args.hops_per_sec))
     check(_seqs == {_want},
-          "the deadline is now + lead x hops_per_sec (%d, got %s)" % (_want, _seqs))
-    check(_follow_posts and all("at_seq" not in b for _, b in _follow_posts),
+          "the deadline is HOPS: axis + (age + lead) x hops_per_sec, NOT samples "
+          "(%d, got %s)" % (_want, _seqs))
+    # ⚠️ THE REGRESSION: without the age term the deadline is 3 s of hops in the PAST, which
+    # every node meets on its very next frame -- an unscheduled swap wearing a schedule.
+    check(min(_seqs) > 1_000_000_000 + int(round(3.0 * _c.args.hops_per_sec)),
+          "... and it is strictly AHEAD of the fleet's position at post time")
+
+    # A STALE AXIS IS NOT EXTRAPOLATED. Past the age cap the swap still posts -- fail-open,
+    # a slot stuck on a set satellite is worse -- but without a fabricated coordination point.
+    POSTS[:] = []
+    LOGS[:] = []
+    _c4 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
+              prn_reconfig_down_hold_s=0.0)
+    _c4.fe_hop_now = 1_000_000_000.0
+    _c4.fe_hop_t = 2000.0 - 120.0          # two minutes stale, cap is 30 s
+    run_cycle(_c4, 2000.0)
+    _sp = [(u, b) for u, b in POSTS if "search" not in u]
+    check(bool(_sp), "a 120 s-stale axis still POSTS the map (fail-open)")
+    check(all("at_hop" not in b for _, b in _sp),
+          "... but names no deadline it cannot stand behind")
+    check(any("FABRICATED deadline" in m for m in LOGS),
+          "... and says so out loud")
+    check(_follow_posts and all("at_hop" not in b for _, b in _follow_posts),
           "the SEARCH gets the map but NOT the deadline -- it has no frame boundary to test "
           "one against, and a deadline it cannot honour would wedge its map")
 
@@ -370,9 +400,41 @@ def main():
     run_cycle(_c2, 2000.0)
     _tp = [(u, b) for u, b in POSTS if "search" not in u]
     check(bool(_tp), "with NO axis the swap is still posted (fail-open)")
-    check(all("at_seq" not in b for _, b in _tp),
+    check(all("at_hop" not in b for _, b in _tp),
           "... and carries no deadline rather than a fabricated one")
     check(all(b.get("prns") for _, b in _tp), "... and still carries the map")
+
+    # ---- 5. THE DEADLINE CLOCK IS ALIVE ----------------------------------------------
+    # ⚠️ THE REGRESSION THIS EXISTS FOR: a node that answers get_prns is a node whose frame
+    # loop is turning, so last_hop < 0 means nothing is feeding note_frame_hop() and every
+    # scheduled swap degrades to apply-immediately. That state ran unnoticed on twelve nodes
+    # because nothing asked. Assert that it is now impossible to run silently.
+    print("\nthe deadline clock: last_hop < 0 on a live node is an ALARM")
+    _c3 = Ctx([1, 2, 3], {1: +40.0}, prn_reconfig="apply")
+    _ep = _c3.trackers[0]
+
+    def _get_dead(url, timeout=5.0):
+        return {"prns": [1, 2, 3], "last_hop": -1, "pending_at_hop": -1}
+
+    def _get_live(url, timeout=5.0):
+        return {"prns": [1, 2, 3], "last_hop": 1_000_000_000, "pending_at_hop": -1}
+
+    def _get_absent(url, timeout=5.0):
+        return {"prns": [1, 2, 3]}          # an OLD node binary: no field at all
+
+    for _fn, _want_alarm, _what in ((_get_dead, True, "last_hop = -1"),
+                                    (_get_absent, True, "no last_hop field (old binary)"),
+                                    (_get_live, False, "last_hop advancing")):
+        prnmap._get = _fn
+        LOGS[:] = []
+        _c3.prnmap.maps = {}
+        prnmap._poll(_c3, _c3.prnmap, [_ep])
+        _hit = any("deadline clock is DEAD" in m for m in LOGS)
+        check(_hit is _want_alarm,
+              "%s -> %s" % (_what, "ALARM" if _want_alarm else "quiet"))
+        check(_c3.prnmap.maps.get(_ep) == [1, 2, 3],
+              "... and the map is still read back either way (%s)" % _what)
+    prnmap._get = _no_get
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

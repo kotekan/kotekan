@@ -175,6 +175,15 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     // list back; the others would carry a departed satellite's Doppler history into the new
     // one and emit a continuous arc across a discontinuity that is total. The per-slot
     // generation counter is what every instance can check for itself.
+    //
+    // ⚠️⚠️ THE DEADLINE CLOCK IS PUBLISHED HERE, AND MISSING IT IS WHY THE SCHEDULING SHIPPED
+    // INERT. cudaGnssChordTrack (path A) and this stage share cudaGnssChordTrackState but own
+    // SEPARATE frame loops, and the deployed fleet runs ONLY path B -- so a note_frame_hop()
+    // call wired into path A alone left last_hop at -1 on all twelve nodes. apply_prn_swaps
+    // then fails its `last_hop >= 0` guard, takes the apply-immediately path, and every swap
+    // looks like a healthy scheduled swap in the broker's log. Whatever owns the frame loop
+    // must feed the clock.
+    S.note_frame_hop(hop0_frame);
     S.apply_prn_swaps((void*)stream);
     {
         if (_slot_gen_seen.size() != (size_t)S.n_prn)

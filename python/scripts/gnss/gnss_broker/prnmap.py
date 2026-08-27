@@ -108,6 +108,21 @@ def _poll(ctx, st, eps):
             st.maps[ep] = [int(x) for x in m]
         else:
             st.maps.pop(ep, None)
+        # ⚠️ IS THE DEADLINE EVEN TESTABLE? A node that answers this GET is running, so its
+        # frame loop is turning; last_hop < 0 then means NO producer is feeding the deadline
+        # clock, and every scheduled swap silently degrades to apply-immediately. That is
+        # precisely how this mechanism shipped inert (2026-08-27: note_frame_hop() was wired
+        # into cudaGnssChordTrack, the fleet runs cudaGnssInject), and nothing anywhere said
+        # so -- the swaps posted, the nodes took them, the logs read healthy. Ask the question
+        # the swap depends on, out loud, every time.
+        _lh = r.get("last_hop")
+        if _lh is None or int(_lh) < 0:
+            _log_rl("prnmap-noclock",
+                    "PRN MAP %s: %s reports last_hop=%s -- its deadline clock is DEAD, so "
+                    "scheduled swaps there apply IMMEDIATELY and the fleet does not cross "
+                    "together. Armed-but-inert: check that the stage owning the frame loop "
+                    "calls note_frame_hop()."
+                    % (log_tag() or ctx.args.signal, ep, _lh), every_s=600.0)
     except Exception as e:
         st.err = "%s: %s" % (ep, e)
         st.maps.pop(ep, None)
@@ -330,8 +345,8 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
     return want_map, unplaced
 
 
-def _at_seq(ctx, a):
-    """The absolute F-engine sample every node should swap on, or None if we cannot pick one.
+def _at_hop(ctx, a, now):
+    """The absolute F-engine HOP every node should swap on, or None if we cannot pick one.
 
     ⚠️⚠️ THE POINT IS THAT TWELVE NODES CROSS THE DISCONTINUITY ON THE SAME FRAME. A map
     posted "now" lands on whatever frame each node happens to be building, so the combiner
@@ -343,12 +358,20 @@ def _at_seq(ctx, a):
     is identical on every node; wall time is not (the AXIS INST spread runs to seconds), so a
     wall deadline would put the nodes back on twelve different frames.
 
+    ⚠️⚠️ HOPS. `fe_hop_now` is the combiner's `pow_hop`, which is sample_seq/fft_len, and that
+    is the only view of the axis the broker has. The first version of this posted the number
+    under the key `at_seq` into a node that compared it against sample_seq -- 16384x larger --
+    so the deadline was always already past and every swap took the apply-immediately degrade
+    while logging as scheduled. The unit is in the wire key now (`at_hop`) so the two sides
+    cannot drift apart again silently.
+
     Returns None when the axis is unknown -- and the caller then posts WITHOUT a deadline,
     i.e. the old ASAP behaviour. Fail-open is right here (a slot stuck on a set satellite
     produces nothing at all) but it is never SILENT: both degrade paths log.
     """
     fh = getattr(ctx, "fe_hop_now", None)
-    if fh is None:
+    ft = getattr(ctx, "fe_hop_t", None)
+    if fh is None or ft is None:
         _log_rl("prnmap-noaxis",
                 "PRN MAP %s: no F-engine axis this cycle -- a swap will post UNSCHEDULED, so "
                 "the nodes will cross on different frames. Degraded, deliberately: an "
@@ -356,8 +379,24 @@ def _at_seq(ctx, a):
                 % (log_tag() or a.signal), every_s=300.0)
         return None
     try:
+        hps = float(a.hops_per_sec)
+        # ⚠️ ADVANCE THE HOP TO NOW. `fh` was read during this cycle's status poll, which runs
+        # near the top of the cycle; this stage runs near the bottom. On the live fleet that
+        # gap is seconds and the lead is 2 s, so a deadline built on the raw `fh` lands in the
+        # PAST and every node applies at its own next frame boundary -- the unsynchronised
+        # swap this whole mechanism exists to avoid, arrived at silently because an
+        # already-past deadline is indistinguishable from a met one.
+        age = float(now) - float(ft)
+        if not (0.0 <= age <= float(a.prn_reconfig_axis_max_age_s)):
+            _log_rl("prnmap-axisage",
+                    "PRN MAP %s: the F-engine axis sample is %.1f s old (limit %.0f) -- "
+                    "extrapolating it that far would be a FABRICATED deadline, so this swap "
+                    "posts UNSCHEDULED. Check the status poll and pow_hop."
+                    % (log_tag() or a.signal, age, a.prn_reconfig_axis_max_age_s),
+                    every_s=300.0)
+            return None
         lead = float(a.prn_reconfig_lead_s)
-        return int(fh) + int(round(lead * float(a.hops_per_sec)))
+        return int(round(float(fh) + (age + lead) * hps))
     except Exception as e:
         # ⚠️ SAY SO. A bare `return None` degrades every swap to unscheduled and looks exactly
         # like a healthy fleet with a quiet sky -- the silent-fallback shape purged on
@@ -380,10 +419,10 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
     a = ctx.args
     tag = log_tag() or a.signal
     st.last_swap_t = now
-    at_seq = _at_seq(ctx, a)
+    at_hop = _at_hop(ctx, a, now)
     body = {"prns": want_map}
-    if at_seq is not None:
-        body["at_seq"] = at_seq
+    if at_hop is not None:
+        body["at_hop"] = at_hop
     ok, bad = 0, ""
     for ep in _endpoints(ctx):
         try:
@@ -423,6 +462,6 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
          % (tag, why, ok, len(_endpoints(ctx)),
             (" (%d failed: %s)" % (len(_endpoints(ctx)) - ok, bad)) if bad else "",
             (" + %d searcher(s)" % n_follow) if n_follow else "",
-            ("all crossing together at seq %d" % at_seq) if at_seq is not None
+            ("all crossing together at hop %d" % at_hop) if at_hop is not None
             else "UNSCHEDULED (no axis) -- the nodes will cross on different frames",
             ", ".join("%+.0f" % el.get(want_map[i], -99.0) for i in moved[:6])))

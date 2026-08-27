@@ -60,10 +60,15 @@ class ChainContext(object):
         # config threaded through it again.
         "dh_obs", "cp_predicted", "joint_state", "track_ok", "p2c_tick", "p2c_hold",
         "decoded_entries",
-        # The newest F-engine sample this chain has seen, for scheduling a fleet-simultaneous
-        # PRN swap (prnmap._at_seq). None whenever the axis is unknown -- NEVER 0.0, which
-        # would read as a valid sample near the epoch and schedule every swap into the past.
-        "fe_hop_now",
+        # The newest F-engine HOP this chain has seen, for scheduling a fleet-simultaneous
+        # PRN swap (prnmap._at_hop). None whenever the axis is unknown -- NEVER 0.0, which
+        # would read as a valid hop near the epoch and schedule every swap into the past.
+        # `fe_hop_t` is the WALL INSTANT the hop was fetched, and it is not optional: the
+        # status poll happens early in the cycle and the swap posts later in the same one, so
+        # a deadline built on the raw hop is already seconds into the past by the time it is
+        # sent -- which silently degrades the swap to apply-immediately, the exact failure
+        # this scheduling exists to prevent.
+        "fe_hop_now", "fe_hop_t",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb", "car", "wd", "nho",
         "dls", "hold", "cpt", "rf", "nav", "cls", "qpop", "brown", "latch", "saw",

@@ -1870,6 +1870,10 @@ def main(argv=None, rx=None, publisher=None):
             # no axis: a zero would look like a valid sample at the epoch and would schedule
             # every swap into the deep past, i.e. straight through the deadline test.
             _ctx.fe_hop_now = _fh if _fh > 0.0 else None
+            # ⚠️ AND WHEN. The scheduler must advance this hop to the instant it POSTS, which
+            # is later in this same cycle; without the stamp the deadline is built on a hop
+            # that is already stale by the cycle's own elapsed time.
+            _ctx.fe_hop_t = _now() if _fh > 0.0 else None
             if _fh > 0.0:
                 # ⚠️ THE TIME BASE MUST NEVER FREEZE SILENTLY (2026-08-18, the cx19 collapse).
                 # t_now_abs is built from this hop, and this hop comes from ONE combiner. When
