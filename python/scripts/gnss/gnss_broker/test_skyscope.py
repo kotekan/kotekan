@@ -169,12 +169,21 @@ _HDR = ("     3.05           NAVIGATION DATA     M                   RINEX VERSI
         "                                                            END OF HEADER\n")
 
 
-def _rinex(prns):
-    """A minimal RINEX-3 nav body carrying one record per (sys, prn)."""
+def _rinex(prns, age_s=0.0):
+    """A minimal RINEX-3 nav body carrying one record per (sys, prn).
+
+    ⚠️ THE EPOCH IS STAMPED LIVE, NOT FROZEN. It used to be a literal `2026 08 27 10 00 00`,
+    which was fine while the merge only counted PRNs -- and went red the moment coverage
+    started counting only records fresh enough to predict from, because every fixture record
+    was hours stale. A time-frozen fixture silently stops exercising anything time-dependent;
+    pass `age_s` when a test wants staleness, rather than inheriting it from the calendar.
+    """
+    from datetime import datetime, timezone, timedelta
+    toc = (datetime.now(timezone.utc) - timedelta(seconds=age_s)).strftime("%Y %m %d %H %M %S")
     out = []
     for sysc, ps in prns.items():
         for p in ps:
-            out.append("%s%02d 2026 08 27 10 00 00 0.0e+00 0.0e+00 0.0e+00\n" % (sysc, p))
+            out.append("%s%02d %s 0.0e+00 0.0e+00 0.0e+00\n" % (sysc, p, toc))
             out.append("     0.0e+00 0.0e+00 0.0e+00 0.0e+00\n")
     return "".join(out)
 
@@ -444,6 +453,35 @@ def test_hourly_coverage_beats_recency():
               "gate that cannot is the bug restated")
 
 
+def test_coverage_counts_only_usable_records():
+    """⚠️ THE MERGE MET ITS TARGET WITH RECORDS TOO OLD TO PREDICT FROM.
+
+    Measured 2026-08-27 20:18: a merge reporting `target met` with C21 yielded SEVEN
+    predictable BeiDou satellites and 2 probe-band candidates against the 3 the presence gate
+    needs -- so both BeiDou chains sat UNANCHORED behind a merge that called itself full.
+    Counting distinct PRNs counts what is PRESENT; the exit test wants what is USABLE.
+    """
+    from datetime import datetime, timezone, timedelta
+    from gnss_ephemeris import _rec_is_fresh, _HOURLY_FRESH_S
+    import gnss_ephemeris as _ge
+    print("\ncoverage counts USABLE records, not merely present ones")
+    now = datetime(2026, 8, 27, 20, 0, 0, tzinfo=timezone.utc)
+    mk = lambda dt: "C19 %s  0.0 0.0 0.0" % (now - dt).strftime("%Y %m %d %H %M %S")
+    check(_rec_is_fresh(mk(timedelta(minutes=30)), now), "a 30 min old record counts")
+    check(not _rec_is_fresh(mk(timedelta(hours=5)), now),
+          "a 5 h old record does NOT -- it is already past predict_all's 4 h window")
+    check(not _rec_is_fresh(mk(timedelta(seconds=_HOURLY_FRESH_S + 600)), now),
+          "and the cut is %.0f s, tighter than the 4 h validity so the sky survives a whole "
+          "refresh interval rather than expiring inside it" % _HOURLY_FRESH_S)
+    check(_HOURLY_FRESH_S < 14400.0,
+          "the freshness cut is strictly tighter than the validity window")
+    # ⚠️ UNPARSEABLE COUNTS AS FRESH. This test rejects records provably stale; refusing on
+    # doubt would make the merge walk every station and every hour for nothing.
+    check(_rec_is_fresh("C19 garbage", now) and _rec_is_fresh("", now),
+          "an unparseable epoch counts as FRESH -- this rejects the provably stale, it does "
+          "not shrink coverage whenever a format surprises us")
+
+
 def test_refresh_cadence_matches_the_product():
     """⚠️ THE SKY WAS REFRESHED EVERY 2 h FROM A PRODUCT THAT UPDATES EVERY HOUR.
 
@@ -489,6 +527,7 @@ def main():
     test_404_is_not_a_dead_host()
     test_hourly_mirrors()
     test_hourly_coverage_beats_recency()
+    test_coverage_counts_only_usable_records()
     test_refresh_cadence_matches_the_product()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

@@ -213,6 +213,32 @@ def _hourly_cov_read(cache_dir):
         return True, "no coverage record"
 
 
+# How old a broadcast record may be and still COUNT toward the merge's coverage. Deliberately
+# tighter than predict_all's 4 h validity: a record at 3h59m satisfies the predictor for one
+# more minute and then stops, so counting it as coverage buys a merge that is starved before
+# the next refresh. Half the window leaves the sky usable across a full refresh interval.
+_HOURLY_FRESH_S = 7200.0
+
+
+def _rec_is_fresh(line, when):
+    """Is this RINEX 3 nav record's epoch recent enough to be worth counting?
+
+    The record's first line carries sys+PRN then the toc as `YYYY MM DD HH MM SS`. Anything
+    unparseable counts as FRESH: this test exists to reject records we can prove are stale,
+    not to silently shrink coverage whenever a format surprises us -- refusing on doubt here
+    would make the merge walk every station and every hour for nothing.
+    """
+    try:
+        f = line[4:23].split()
+        if len(f) < 6:
+            return True
+        toc = datetime(int(f[0]), int(f[1]), int(f[2]), int(f[3]), int(f[4]),
+                       int(float(f[5])), tzinfo=timezone.utc)
+        return abs((when - toc).total_seconds()) <= _HOURLY_FRESH_S
+    except Exception:
+        return True
+
+
 def _hourly_target_met(seen, fetched):
     return (fetched >= _HOURLY_MIN_STATIONS
             and all(len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items()))
@@ -381,7 +407,17 @@ def _fetch_station_hourly(when, cache_dir, token):
             for ln in txt[eoh:].splitlines():
                 if len(ln) > 3 and ln[0] in seen and ln[1:3].isdigit():
                     prn = int(ln[1:3])
-                    if prn >= _HOURLY_TARGET[ln[0]][0]:
+                    # ⚠️⚠️ COUNT WHAT IS USABLE, NOT WHAT IS PRESENT. The exit test asks
+                    # "have I got enough satellites"; a record whose toe is already past the
+                    # predictor's validity window answers yes and predicts nothing. Measured
+                    # 2026-08-27 20:18, on a merge that reported `target met` with C21:
+                    # only SEVEN of those 21 BeiDou records were predictable, and the probe
+                    # band had 2 candidates against the 3 the presence gate needs -- so both
+                    # BeiDou chains sat UNANCHORED behind a merge that called itself full.
+                    # This is the same defect as counting SOURCES instead of coverage, and
+                    # as stopping on recency instead of coverage: an exit test on a PROXY
+                    # for the thing wanted rather than on the thing itself.
+                    if prn >= _HOURLY_TARGET[ln[0]][0] and _rec_is_fresh(ln, when):
                         seen[ln[0]].add(prn)
     # ---- one file, from however many (station, hour) pairs it took ------------------------
     if not (header and bodies):
