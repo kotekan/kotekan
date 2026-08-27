@@ -96,6 +96,33 @@ the change carry two epochs, so the honest move is to treat it exactly like the 
 `CHORD_LIVE_PRN_RECONFIG.md`: apply at a frame boundary and reset the per-slot accumulators
 whose history is now meaningless.
 
+### ⚠️ How to check an epoch in one line, and why "the recording looks normal" proves nothing
+
+    arriving_seq / 195312.5 + frame0_ctime   ==   wall clock
+
+Measured 2026-08-27 00:35: it gave **2026-08-24 19:57** — 52.6 hours out.
+
+The stream itself is healthy: its seq advances at **195,314/s**, exactly the hop rate, and its
+implied epoch is **stable to 0.0 s across samples 45 s apart** — the F-engine is fine, it is
+simply running on an epoch that began **2026-08-26 22:37:09 UTC** (and it re-based at least
+twice, ~22:21 and ~22:37, before settling).
+
+That the OLD value was right for the OLD epoch is provable: the frozen capture window at seq
+36,373,889,024 maps under it to **21:43:14** — exactly when the fleet went dark. The mapping
+was working; the epoch moved out from under it.
+
+⚠️⚠️ **A WRONG frame0 IS INVISIBLE INSIDE THE DATA.** It shifts every sample's absolute time
+UNIFORMLY, so no internal consistency check can see it — only a comparison against an outside
+clock can. A pipeline whose recording "looks normal" may be recording perfectly good samples
+under a 52-hour-wrong timestamp, and for anything that never consumes frame0 (raw voltage
+dumps, correlator products judged on their own axis) that costs nothing at all. It costs US
+because GNSS seeds are evaluated against BRDC at absolute UTC.
+
+⚠️ **And the capture window is PER PROCESS.** A pipeline that started or restarted after the
+re-base latched the new epoch and receives data normally; one that started before it drops
+100%. Two pipelines on the same node, in the same second, can therefore disagree completely
+about whether the instrument is working — which is exactly what happened here.
+
 ⚠️ **And chive must be fixed first regardless.** After today's restart it still served the
 *old* `frame0_ctime`, so even a node restart re-caches a stale epoch. Sanity check before
 trusting any absolute time: `arriving_seq / 195312.5 + frame0_ctime` must land on the wall
