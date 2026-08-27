@@ -1756,6 +1756,27 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
   # but the node's lane budget is spent at generation time, so the trim lives in
   # config/gnss_fleet_chord.yaml.
   bds_b2a:
+    # ── ARMED 2026-08-27 23:0x: THE DISPLACED ADMISSION ON BeiDou (KV) ───────────────────
+    # Built this afternoon for E3 and armed on both Galileo chains; BeiDou never got it, and
+    # it is BeiDou that was paying. Measured at 23:00 on the live fleet, 8 BDS-3 above the
+    # horizon and only 4 locking:
+    #     C39  el +14  q 1.90  p/floor 66.7  off -0.249 chips  pedestal 0.001   <- REFUSED
+    #     C42  el +61  (b2b)   q 1.56  p/floor 17.6  off +0.288  pedestal 0.001 <- REFUSED
+    #     C27  el +0.8         q 1.16  p/floor  0.2  pedestal 1.515             <- correctly refused
+    #     C41  el +9.6         q 1.06  p/floor  1.0  pedestal 2.453             <- correctly refused
+    # C39 is the SECOND STRONGEST signal on the chain and is refused because q 1.90 sits under
+    # the arming gate -- and q is suppressed by exactly the offset the DLL exists to remove.
+    # The same latch as E3 ([[chord-arming-gate-is-the-taps]]), on a different constellation.
+    #
+    # ⚠️ CHECKED THAT IT CAN FIRE BEFORE ARMING, which is the lesson from putting
+    # --dll-deep-gate-from-search on a chain that has no search. Against the real thresholds
+    # (presence-disp-pedestal-max 0.3, presence-disp-off-max 0.6 chips) this admits C39 and
+    # C42-on-b2b and CONTINUES TO REFUSE C27, C41 and C42-on-b2a. It rescues strong displaced
+    # satellites without loosening anything for the genuinely quiet ones.
+    #
+    # ⚠️ NO CONTROL PAIR HERE, deliberately: the gal_e5a/gal_e5b pair was the controlled test
+    # this afternoon and the effect is established. Revert = delete this line + broker restart.
+    presence-admit-displaced: true
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
@@ -2323,6 +2344,27 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
   # that lands. It is here for the BAND, not yet for the sensitivity -- judge it on
   # tau/lock, not on deep_snr, and do not "fix" a low deep that is simply this.
   bds_b2b:
+    # ── ARMED 2026-08-27 23:0x: THE DISPLACED ADMISSION ON BeiDou (KV) ───────────────────
+    # Built this afternoon for E3 and armed on both Galileo chains; BeiDou never got it, and
+    # it is BeiDou that was paying. Measured at 23:00 on the live fleet, 8 BDS-3 above the
+    # horizon and only 4 locking:
+    #     C39  el +14  q 1.90  p/floor 66.7  off -0.249 chips  pedestal 0.001   <- REFUSED
+    #     C42  el +61  (b2b)   q 1.56  p/floor 17.6  off +0.288  pedestal 0.001 <- REFUSED
+    #     C27  el +0.8         q 1.16  p/floor  0.2  pedestal 1.515             <- correctly refused
+    #     C41  el +9.6         q 1.06  p/floor  1.0  pedestal 2.453             <- correctly refused
+    # C39 is the SECOND STRONGEST signal on the chain and is refused because q 1.90 sits under
+    # the arming gate -- and q is suppressed by exactly the offset the DLL exists to remove.
+    # The same latch as E3 ([[chord-arming-gate-is-the-taps]]), on a different constellation.
+    #
+    # ⚠️ CHECKED THAT IT CAN FIRE BEFORE ARMING, which is the lesson from putting
+    # --dll-deep-gate-from-search on a chain that has no search. Against the real thresholds
+    # (presence-disp-pedestal-max 0.3, presence-disp-off-max 0.6 chips) this admits C39 and
+    # C42-on-b2b and CONTINUES TO REFUSE C27, C41 and C42-on-b2a. It rescues strong displaced
+    # satellites without loosening anything for the genuinely quiet ones.
+    #
+    # ⚠️ NO CONTROL PAIR HERE, deliberately: the gal_e5a/gal_e5b pair was the controlled test
+    # this afternoon and the effect is established. Revert = delete this line + broker restart.
+    presence-admit-displaced: true
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
