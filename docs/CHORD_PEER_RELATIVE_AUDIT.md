@@ -61,7 +61,30 @@ not a state to leave this in.
    correct on the airspy prototype, where `--noise-probes` put real noise rows into the
    population, and became wrong on CHORD without anyone editing the line.
 
-⚠️ **Both bugs were fallbacks, and that is the lesson to generalise.** The primary paths were
+## ⚠️ THE BIGGER PATTERN: FALLBACKS DROP SAFEGUARDS (four in one night)
+
+The audit above was scoped to peer-relative *thresholds*. By the end of the same night the
+count had grown past that scope, and the common factor was not the median at all — it was the
+**fallback**:
+
+| fallback | taken when | safeguard it silently dropped |
+|---|---|---|
+| `gnssFleetDll::integrate` window gate | always | probe anchoring → peer median |
+| `apply_presence` floor | probes < 3 | probe anchoring → peer median |
+| ephemeris "bridging on the last good" | `PREDICTION COLLAPSE` | the `min_prn` filter — BDS-2 PRNs 7/11 reached a B2a chain (`fixtures/open_20260827_bds_prn7_path.txt`) |
+| clock-bias **stale rescue** | no multi-sat solve for 842 s | **averaging** — ONE sample (sd 12.7 Hz) became the permanent warm-start reference, logged as "hardware news (GPSDO re-settled?)" |
+
+Every one reproduces the primary path's **output** while dropping one of its **safeguards**, and
+every one runs precisely when conditions are already degraded — so the moment the safeguard
+matters most is the moment it is not there. Four independent instances in one night is past
+coincidence; treat "what does the fallback drop?" as a standing review question, not a
+per-bug discovery.
+
+⚠️ The clock-bias one was harmless only by luck: `--clock-bias-file` is unset, so the poisoned
+calibration died with the process. With it set, one starved re-solve would have persisted a
+wrong warm-start across runs.
+
+⚠️ **Both threshold bugs were fallbacks, and that is the lesson to generalise.** The primary paths were
 right and probe-anchored; the fallbacks preserved 2019-era behaviour for a fleet that no
 longer resembles it. A fallback is code that runs exactly when the assumptions are already
 violated, so it deserves *more* scrutiny than the primary path, not less — and, per KV, should
