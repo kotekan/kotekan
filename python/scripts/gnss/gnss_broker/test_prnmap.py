@@ -117,18 +117,20 @@ def main():
     prnmap._log = _rec_log
     prnmap._log_rl = _rec_log_rl
 
-    # ---- 1. a DOWN incumbent is held until the hysteresis expires ----------------------
-    # Slot 0 holds PRN 1, which is below the horizon; PRN 36 is up at 83 deg with no slot --
-    # the measured 2026-08-26 case, minus the dead slots.
+    # ---- 1. THE WHOLE MAP, EVERY CYCLE, WITH ELEVATION HYSTERESIS ---------------------
+    # ⚠️ SUPERSEDES THE HOLD-TIMER TESTS (2026-08-27). The old policy held a down incumbent
+    # for 3 h and a dead slot for 2 h before reusing either, with the clocks in this in-memory
+    # state -- so every broker restart reset them and, measured after a day of restarts, the
+    # eviction path had NEVER FIRED IN PRODUCTION: "7 dead, 15 below 0 deg" and "NO slot is
+    # evictable" in one heartbeat, with E36 unslotted at 82 deg. KV: "3 below horizon + all
+    # above", pushed regularly. The hysteresis those timers were standing in for is now
+    # ELEVATION hysteresis, which no restart can lose.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {1: -20.0, 2: 40.0, 3: 30.0, 36: 83.0})
     run_cycle(ctx, 1000.0)
-    check(not POSTS, "a down incumbent is NOT evicted on first sight")
-    run_cycle(ctx, 1000.0 + 3600.0)
-    check(not POSTS, "... nor an hour later, with down_hold at 3 h")
-    run_cycle(ctx, 1000.0 + 10801.0)
     check(len([u for u, _ in POSTS if "node" in u]) == 2,
-          "... but IS after down_hold, posted to both nodes")
+          "a satellite up at 83 deg takes a below-horizon incumbent's slot IMMEDIATELY, on "
+          "both nodes -- no hold timer, because a slot below the horizon is idle NOW")
     check(len([u for u, _ in POSTS if "search" in u]) == 1,
           "the SEARCH is driven with the same map (it holds its own copy and has no frame to "
           "learn it from, unlike the assembler)")
@@ -136,42 +138,40 @@ def main():
         check(POSTS[0][1]["prns"] == [36, 2, 3],
               "the swap replaces the down incumbent in ITS slot, leaving the rest alone")
 
-    # ---- 2. a satellite that comes back up RESETS the clock ----------------------------
-    # This is the whole reason for the hysteresis: BRDC visibility flickers, and a slot that
-    # flickers is a satellite that never locks.
+    # ---- 2. HYSTERESIS: a held satellite is not dropped the instant it dips -------------
+    # The lesson the down-clock encoded, and it still holds: BRDC visibility flickers, and a
+    # slot that flickers is a satellite that never locks. It is now expressed in elevation --
+    # admitted above admit_deg, KEPT until it falls below evict_deg -- so it survives a
+    # restart, which the timer never did.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {1: -20.0, 2: 40.0, 3: 30.0, 36: 83.0})
+    ctx = Ctx([1, 2, 3], {1: 2.0, 2: 40.0, 3: 30.0, 9: 2.0})
     run_cycle(ctx, 1000.0)
-    run_cycle(ctx, 1000.0 + 10000.0)
-    ctx.pred[1] = (0.0, 0.0, 15.0, 0.0, 0.0)      # PRN 1 rises again
-    run_cycle(ctx, 1000.0 + 10100.0)
-    ctx.pred[1] = (0.0, 0.0, -20.0, 0.0, 0.0)     # and sets again
-    run_cycle(ctx, 1000.0 + 10200.0)
-    check(not POSTS, "a brief return above the mask restarts the down clock")
-    run_cycle(ctx, 1000.0 + 10200.0 + 10801.0)
-    check(len(POSTS) == 3, "... and the full hold must elapse again from the new start")
+    _held_kept = not POSTS or all(1 in pl["prns"] for _u, pl in POSTS)
+    check(_held_kept, "a HELD satellite at +2 deg (below the 10 deg admit mask) is KEPT -- "
+                      "that is the hysteresis band, and dropping it would be the flap")
+    check(not any(9 in pl["prns"] for _u, pl in POSTS),
+          "... while a NEW satellite at the same +2 deg is not admitted: the band has two "
+          "edges or it is not hysteresis")
 
-    # ---- 3. GONE from BRDC evicts sooner, but still not instantly ----------------------
+    # ---- 3. A DEAD SLOT IS REUSED AT ONCE ----------------------------------------------
+    # A PRN with no ephemeris produces literally nothing. Waiting 2 h to reclaim its slot was
+    # never justified by a re-acquisition cost, because there was nothing to re-acquire.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0})   # PRN 1 absent entirely
+    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0})   # PRN 1 absent from BRDC entirely
     run_cycle(ctx, 1000.0)
-    check(not POSTS, "a dead slot is not reclaimed on first sight either")
-    run_cycle(ctx, 1000.0 + 7201.0)
-    check(len(POSTS) == 3, "... but at gone_hold (2 h), sooner than a down slot's 3 h")
+    check(any(36 in pl["prns"] for _u, pl in POSTS),
+          "a slot holding a PRN with NO ephemeris is reclaimed on sight")
 
-    # ---- 4. the admit mask governs EVICTIONS, not free slots ---------------------------
-    # ⚠️ THIS TEST ASSERTED THE BUG until 2026-08-27. The up-now bar exists because an
-    # eviction costs a re-acquisition -- only pay it for a satellite we can use immediately.
-    # A FREE slot costs nothing, so applying the same bar to one left five Galileo slots
-    # empty while E36 (active, and the satellite the whole mechanism exists for) was refused
-    # for being below the horizon at that moment. A below-horizon satellite in a free slot is
-    # not idle capacity: it is exactly what the noise PROBES need.
+    # ---- 4. A FREE SLOT GOES TO ANYONE, INCLUDING A LOW SATELLITE ----------------------
+    # ⚠️ THIS TEST ASSERTED THE BUG until 2026-08-27 and then CAUGHT ITS REGRESSION the same
+    # day. The admit mask exists to justify an EVICTION; a free slot is not an eviction. The
+    # first version of the whole-map policy re-broke it: a satellite at +4 deg is neither "up"
+    # (below the 10 deg admit mask) nor a probe (above -15 deg), so it fell in the gap and was
+    # refused a slot that was standing empty.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 4.0})   # PRN 1 GONE -> slot 0 is FREE
     run_cycle(ctx, 1000.0)
-    check(not POSTS, "a free slot is not filled before the gone-hold has elapsed")
-    run_cycle(ctx, 1000.0 + 7201.0)
-    check(any("36" in str(pl) for _u, pl in POSTS),
+    check(any(36 in pl["prns"] for _u, pl in POSTS),
           "a FREE slot IS filled by a 4 deg satellite -- nothing to re-acquire, and it is a "
           "probe today and a tracked satellite tomorrow")
 
@@ -244,20 +244,26 @@ def main():
     check(not POSTS, "an empty prediction evicts nobody (a BRDC outage is not a constellation "
                      "outage -- the 2026-08-19 stale-EOP lesson)")
 
-    # ---- 9. one slot per interval ------------------------------------------------------
+    # ---- 9. MANY SLOTS, ONE POST, ONE DEADLINE -----------------------------------------
+    # ⚠️ SUPERSEDES "one slot per interval" (2026-08-27). The old policy dribbled one slot out
+    # per 15 min, so a sky that had moved took hours to follow and the fleet crossed a
+    # discontinuity once per slot. Moving the whole map in ONE scheduled post is strictly
+    # better: the nodes cross once, and the map is never in a half-applied state no node
+    # agreed to. PRNs 1 and 2 are both gone from BRDC, two satellites are waiting.
     POSTS[:] = []
-    # PRNs 1 AND 2 both gone from BRDC, TWO satellites waiting: everything is in place for
-    # two swaps, and exactly one may happen.
     ctx = Ctx([1, 2, 3], {3: 30.0, 30: 70.0, 36: 83.0})
-    run_cycle(ctx, 1000.0)                      # start both gone-clocks
-    run_cycle(ctx, 1000.0 + 7201.0)             # both now evictable
-    check(len([u for u, _ in POSTS if "node" in u]) == 2,
-          "with two evictable slots and two candidates, ONE swap posts")
+    run_cycle(ctx, 1000.0)
+    _node_posts = [(u, pl) for u, pl in POSTS if "node" in u]
+    check(len(_node_posts) == 2, "one swap, posted to both nodes")
+    check(_node_posts and all(30 in pl["prns"] and 36 in pl["prns"] for _u, pl in _node_posts),
+          "BOTH waiting satellites land in the SAME post -- not one per interval")
+    check(_node_posts and len({pl.get("at_seq") for _u, pl in _node_posts}) == 1,
+          "... on ONE deadline, so both slots move on the same frame fleet-wide")
     n_first = len(POSTS)
-    run_cycle(ctx, 1000.0 + 7202.0)
-    check(len(POSTS) == n_first, "a second swap inside the interval is refused")
-    run_cycle(ctx, 1000.0 + 7202.0 + 901.0)
-    check(len(POSTS) == n_first + 3, "... and allowed once the interval has passed")
+    run_cycle(ctx, 1000.0 + 1.0)
+    check(len(POSTS) == n_first,
+          "nothing further is posted: the map now matches the sky, and the read-back loop "
+          "has to complete before another decision anyway")
 
     # ---- 10. the loop CONVERGES: once the nodes hold the map, nothing more is posted ----
     # The stage decides from the READ-BACK map, so a POST that took must stop being re-issued.

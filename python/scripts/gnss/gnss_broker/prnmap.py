@@ -212,10 +212,8 @@ def stage_prn_membership(ctx):
     # A below-horizon satellite in a FREE slot is not idle capacity, it is immediately useful:
     # it is exactly what the noise PROBES need. So free slots take any active satellite,
     # deepest-first (the best probes), and only evictions demand up-now.
-    want_evict = sorted((p for p in el if p not in held
-                         and el[p] >= a.prn_reconfig_admit_deg), key=lambda p: -el[p])
-    want_free = sorted((p for p in el if p not in held), key=lambda p: el[p])
-    want = want_evict
+    # The decision itself is desired_map() below; this is only for the heartbeat's count.
+    want = [p for p in el if p not in held and el[p] >= a.prn_reconfig_admit_deg]
 
     # ⚠️ A HEARTBEAT, BECAUSE SILENCE HERE IS AMBIGUOUS. Every other branch of this stage only
     # speaks when it has something to propose, so an armed chain with nothing to do looks
@@ -233,88 +231,103 @@ def stage_prn_membership(ctx):
              % (tag, a.prn_reconfig.upper(), len(cur), len(st.maps), n_dead, n_down,
                 a.prn_reconfig_evict_deg, len(want), st.swaps,
                 (" | last error: %s" % st.err) if st.err else ""))
-    # ---- 3a. FREE SLOTS FIRST, and they cost nothing --------------------------------------
-    # A slot whose satellite is gone from BRDC produces nothing at all; handing it to any
-    # active satellite is pure gain, and there is no re-acquisition to pay for because there
-    # was nothing being tracked. Deepest-first, so the chain's probe supply is the first thing
-    # repaired -- which is the whole reason KV expected the broker to be managing this.
-    free = [p for p in held if p in st.gone_since
-            and now - st.gone_since[p] >= a.prn_reconfig_gone_hold_s]
-    if free and want_free:
-        old_prn, new_prn = free[0], want_free[0]
-        slot = cur.index(old_prn)
-        why = ("its slot was EMPTY (PRN %d gone from BRDC for %.1f h) -- no re-acquisition to "
-               "pay for" % (old_prn, (now - st.gone_since[old_prn]) / 3600.0))
-        if a.prn_reconfig == "report":
-            _log_rl("prnmap-free",
-                    "PRN MAP %s (REPORT ONLY): would fill slot %d with PRN %d (el %+.0f); %s. "
-                    "%d free slot(s), %d satellite(s) unslotted."
-                    % (tag, slot, new_prn, el[new_prn], why, len(free), len(want_free)),
-                    every_s=300.0)
-        elif now - st.last_swap_t >= a.prn_reconfig_interval_s:
-            _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now)
-        return
-
-    if not want:
-        return
-
-    # Evictable, best first: a slot whose satellite is GONE from BRDC costs nothing at all,
-    # then the ones that have been furthest below the horizon for longest.
-    gone = sorted((p for p in held if p in st.gone_since
-                   and now - st.gone_since[p] >= a.prn_reconfig_gone_hold_s),
-                  key=lambda p: st.gone_since[p])
-    down = sorted((p for p in held if p in st.down_since
-                   and now - st.down_since[p] >= a.prn_reconfig_down_hold_s),
-                  key=lambda p: (el.get(p, -90.0), st.down_since[p]))
-
-    # ⚠️⚠️ NEVER EVICT THE PROBE SUPPLY. The `down` list is satellites that have been deep
-    # below the horizon for hours -- which is the DEFINITION of a good noise probe. Evicting
-    # one to admit a satellite that is up trades the chain's noise anchor for one more tracked
-    # satellite, and without >= 3 anchored probes the presence gate has no floor it can trust:
-    # it either falls back to a bar built from the satellites (which passes about half by
-    # construction) or refuses outright. Either way the chain loses far more than the one
-    # satellite the swap bought. So hold back `probe_floor` of the deepest ones.
+    # ---- 3a. THE WHOLE MAP, EVERY CYCLE ---------------------------------------------------
+    # KV, 2026-08-27: "the broker should push regular updates of available PRNs to all
+    # trackers. 3 below horizon + all above." One statement of intent, re-evaluated each
+    # cycle, replacing the old one-slot-per-15-minutes eviction with its multi-hour hold
+    # timers -- a design that in production NEVER FIRED ONCE. Two reasons, and the second is
+    # the one that mattered: `prn-reconfig` never left `report`, and `down_since`/`gone_since`
+    # live in this in-memory state, so every broker restart reset them to now. Measured
+    # 2026-08-27, after a day of restarts: the heartbeat reported "7 dead, 15 below 0 deg"
+    # and "NO slot is evictable" in the same breath, while E36 sat unslotted at 82 deg -- the
+    # best satellite in the sky, structurally invisible, in a chain with nine free slots.
+    #
+    # ⚠️ NO HOLD TIMERS IN THE DECISION AT ALL, DELIBERATELY. A PRN with no ephemeris is dead
+    # NOW, not in two hours; a satellite below the horizon is below it NOW. The timers were
+    # standing in for hysteresis, and hysteresis is what desired_map does properly (admit
+    # above admit_deg, keep until below evict_deg) without any state that a restart can lose.
     n_probe = max(0, int(getattr(a, "noise_probes", 0) or 0))
-    keep = set()
-    if n_probe:
-        # The deepest in-slot satellites are the ones the probe selector will actually pick.
-        keep = set(sorted((p for p in held if el.get(p, 0.0) < -15.0),
-                          key=lambda p: el.get(p, 0.0))[:n_probe])
-    gone = [p for p in gone if p not in keep]      # a GONE satellite is not a probe either:
-    down = [p for p in down if p not in keep]      # it produces no record at all
-    evictable = gone + [p for p in down if p not in gone]
-
-    if not evictable:
+    want_map, unplaced = desired_map(cur, el, n_probe,
+                                     a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg)
+    moved = [i for i in range(len(cur)) if want_map[i] != cur[i]]
+    if unplaced:
+        # A REAL CAPACITY DECISION, and it must be said rather than silently absorbed.
         _log_rl("prnmap-full",
-                "PRN MAP %s: %d satellite(s) up with no slot (%s, peak el %.0f) and NO slot is "
-                "evictable -- every one is either up or has not been down long enough. This is "
-                "a real capacity decision, not a mistake: raise the count (node restart) or "
+                "PRN MAP %s: %d satellite(s) want a slot and cannot have one (%s) -- every "
+                "slot holds something we also want. Raise the slot count (node restart) or "
                 "accept the loss."
-                % (tag, len(want), ", ".join(str(p) for p in want[:6]), el[want[0]]),
+                % (tag, len(unplaced), ", ".join("PRN %d el %+.0f" % (p, el.get(p, -99.0))
+                                                 for p in unplaced[:6])),
                 every_s=600.0)
+    if not moved:
         return
-
-    new_prn, old_prn = want[0], evictable[0]
-    slot = cur.index(old_prn)
-    why = ("GONE from BRDC for %.1f h" % ((now - st.gone_since[old_prn]) / 3600.0)
-           if old_prn in st.gone_since else
-           "below %.0f deg for %.1f h (now %.0f)"
-           % (a.prn_reconfig_evict_deg, (now - st.down_since[old_prn]) / 3600.0,
-              el.get(old_prn, -90.0)))
-
+    _why = "%d slot(s): %s" % (
+        len(moved), ", ".join("s%d %d->%d" % (i, cur[i], want_map[i]) for i in moved[:6]))
     if a.prn_reconfig == "report":
         _log_rl("prnmap-report",
-                "PRN MAP %s (REPORT ONLY, nothing posted): would swap slot %d, PRN %d -> %d. "
-                "Incumbent %s; candidate is up at %.0f deg. %d slot(s) evictable, %d satellite(s) "
-                "waiting. Arm with --prn-reconfig apply."
-                % (tag, slot, old_prn, new_prn, why, el[new_prn], len(evictable), len(want)),
-                every_s=300.0)
+                "PRN MAP %s (REPORT ONLY, nothing posted): would move %s. Arm with "
+                "--prn-reconfig apply." % (tag, _why), every_s=300.0)
         return
-
-    # ---- 4. Apply, one slot per interval ------------------------------------------------
+    # ONE POST, WHOLE MAP, ONE DEADLINE. Moving several slots in a single scheduled swap is
+    # strictly better than dribbling them out one per interval: the nodes cross once instead
+    # of N times, and the map is never in a half-applied state that no node agreed to.
     if now - st.last_swap_t < a.prn_reconfig_interval_s:
         return
-    _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now)
+    _apply_map(ctx, st, cur, want_map, moved, _why, el, now)
+    return
+
+
+def desired_map(cur, el, n_probe, admit_deg, evict_deg):
+    """The map the chain SHOULD hold: every satellite worth tracking, plus the probes.
+
+    KV's policy, 2026-08-27: "3 below horizon + all above." One statement of intent, evaluated
+    every cycle, rather than the old one-slot-at-a-time eviction with hours-long hold timers --
+    which never once fired in production, because the timers live in memory and every broker
+    restart reset them.
+
+    Returns (want_map, unplaced). `want_map` is `cur` with as much of the wanted set placed as
+    there are slots; `unplaced` is whoever did not fit, best-first, which is a REAL capacity
+    decision the caller must report rather than hide.
+
+    ⚠️ STABILITY IS THE POINT, NOT MINIMALITY. Every slot that changes costs a re-acquisition,
+    so a satellite already held KEEPS ITS SLOT and only genuinely unwanted slots are reused.
+    Recomputing an "optimal" assignment each cycle would churn the whole map for no gain --
+    the same reason the probe selector's deepest-N is sticky.
+
+    ⚠️ HYSTERESIS, or a satellite at the horizon flaps in and out every cycle and each flap is
+    a re-acquisition: admitted above `admit_deg`, kept until it falls below `evict_deg`. The
+    two must differ; with admit == evict this degenerates to a flapper.
+    """
+    held = set(cur)
+    # WANTED: everything up (with hysteresis), then the deepest below-horizon as probes.
+    up = sorted((p for p, e in el.items() if e >= admit_deg or (p in held and e >= evict_deg)),
+                key=lambda p: -el[p])
+    probes = sorted((p for p, e in el.items() if e < -15.0), key=lambda p: el[p])[:n_probe]
+    want = list(dict.fromkeys(up + probes))          # ordered, de-duplicated: up wins ties
+    place = [p for p in want if p not in held]
+    # Reusable slots, worst-first: PRNs the sky has nothing to say about at all (gone from
+    # BRDC -- no ephemeris, so they produce literally nothing), then the ones furthest below
+    # the horizon. Never a slot we still want.
+    free = sorted((i for i, p in enumerate(cur) if p not in want),
+                  key=lambda i: (cur[i] in el, el.get(cur[i], -91.0)))
+    want_map = list(cur)
+    for i, prn in zip(free, place):
+        want_map[i] = prn
+    unplaced = place[len(free):]
+    # ⚠️ AND A SLOT LEFT OVER GOES TO WHOEVER IS LEFT. A slot the wanted set did not claim is
+    # holding a PRN we do not want -- usually one with no ephemeris at all, producing nothing.
+    # Handing it to ANY real satellite is pure gain, and there is no re-acquisition to pay for
+    # because nothing was being tracked. This is the 2026-08-27 lesson restated: the admit
+    # mask exists to justify an EVICTION, and a free slot is not an eviction. Without this a
+    # satellite at +4 deg -- too low to admit, too high to be a probe -- falls in the gap and
+    # is refused a slot that is standing empty.
+    if len(place) < len(free):
+        spare = [i for i in free[len(place):]]
+        rest = sorted((p for p in el if p not in want and p not in want_map),
+                      key=lambda p: -el[p])
+        for i, prn in zip(spare, rest):
+            want_map[i] = prn
+    return want_map, unplaced
 
 
 def _at_seq(ctx, a):
@@ -330,9 +343,9 @@ def _at_seq(ctx, a):
     is identical on every node; wall time is not (the AXIS INST spread runs to seconds), so a
     wall deadline would put the nodes back on twelve different frames.
 
-    Returns None when the axis is unknown or stale -- and the caller then posts WITHOUT a
-    deadline, i.e. the old ASAP behaviour. An unsynchronised swap is worse than a synchronised
-    one and better than none: a slot stuck on a set satellite produces nothing at all.
+    Returns None when the axis is unknown -- and the caller then posts WITHOUT a deadline,
+    i.e. the old ASAP behaviour. Fail-open is right here (a slot stuck on a set satellite
+    produces nothing at all) but it is never SILENT: both degrade paths log.
     """
     fh = getattr(ctx, "fe_hop_now", None)
     if fh is None:
@@ -346,10 +359,10 @@ def _at_seq(ctx, a):
         lead = float(a.prn_reconfig_lead_s)
         return int(fh) + int(round(lead * float(a.hops_per_sec)))
     except Exception as e:
-        # ⚠️ SAY SO. A bare `return None` here degrades every swap to unscheduled and looks
-        # exactly like a healthy fleet with a quiet sky -- the silent-fallback shape this
-        # codebase spent 2026-08-27 removing. A missing or unparseable knob is a CONFIG
-        # fault; it must be loud even though the swap still goes out.
+        # ⚠️ SAY SO. A bare `return None` degrades every swap to unscheduled and looks exactly
+        # like a healthy fleet with a quiet sky -- the silent-fallback shape purged on
+        # 2026-08-27. A missing or unparseable knob is a CONFIG fault; it must be loud even
+        # though the swap still goes out.
         _log_rl("prnmap-sched",
                 "PRN MAP %s: cannot compute a swap deadline (%s) -- posting UNSCHEDULED. "
                 "This is a configuration fault, not a sky condition."
@@ -357,15 +370,16 @@ def _at_seq(ctx, a):
         return None
 
 
-def _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now):
-    """POST one slot change to every producer, then to the followers. ⚠️ ONE IMPLEMENTATION,
-    shared by the free-slot fill and the eviction swap -- two copies of a posting policy is
-    two places to fix and one to forget (the ephemeris mirror loop taught that tonight)."""
+def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
+    """POST the WHOLE map to every producer, then to the followers, on one deadline.
+
+    ⚠️ ONE IMPLEMENTATION AND ONE POST. The previous version moved a single slot per call and
+    had two callers (free-slot fill, eviction); the whole map on one deadline is strictly
+    better -- the nodes cross once instead of N times, and the map is never in a half-applied
+    state that no node ever agreed to."""
     a = ctx.args
     tag = log_tag() or a.signal
     st.last_swap_t = now
-    want_map = list(cur)
-    want_map[slot] = new_prn
     at_seq = _at_seq(ctx, a)
     body = {"prns": want_map}
     if at_seq is not None:
@@ -395,8 +409,7 @@ def _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now):
     if ok == 0:
         st.refused += 1
         st.err = bad
-        _log("PRN MAP %s: slot %d PRN %d -> %d REFUSED by every node (%s)"
-             % (tag, slot, old_prn, new_prn, bad))
+        _log("PRN MAP %s: %s REFUSED by every node (%s)" % (tag, why, bad))
         return
     st.swaps += 1
     # ⚠️ THE LOCAL MAP IS NOT UPDATED HERE. The next poll reads it back from the nodes, so
@@ -405,9 +418,11 @@ def _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now):
     # signal) would otherwise be invisible for as long as the broker ran.
     st.maps.clear()   # force a FULL re-sweep before the next decision
     st.poll_t = 0.0
-    _log("PRN MAP %s: slot %d PRN %d -> %d posted to %d/%d node(s)%s%s. %s; new satellite at "
-         "el %+.0f. That slot acquires COLD -- expect it dark for a minute or two."
-         % (tag, slot, old_prn, new_prn, ok, len(_endpoints(ctx)),
+    _log("PRN MAP %s: %s -- posted to %d/%d node(s)%s%s, %s. Every moved slot acquires COLD: "
+         "expect them dark for a minute or two. New satellites at el %s."
+         % (tag, why, ok, len(_endpoints(ctx)),
             (" (%d failed: %s)" % (len(_endpoints(ctx)) - ok, bad)) if bad else "",
             (" + %d searcher(s)" % n_follow) if n_follow else "",
-            why, el.get(new_prn, -99.0)))
+            ("all crossing together at seq %d" % at_seq) if at_seq is not None
+            else "UNSCHEDULED (no axis) -- the nodes will cross on different frames",
+            ", ".join("%+.0f" % el.get(want_map[i], -99.0) for i in moved[:6])))
