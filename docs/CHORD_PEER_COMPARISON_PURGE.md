@@ -57,6 +57,10 @@ gps_l5 PRN 27  q 3.28   24.4%
 
 ## Category 2 — SHARED-PARAMETER ESTIMATES (keep the measurement, kill the churn)
 
+**Parked as buglist #94, 2026-08-27, on KV's call** ("this seems like it could be a huge
+change in behaviour"). The recommendation -- S2 first, alone, replacing the `mean(b)=0`
+gauge with an absolute prior, with a one-cycle falsifier -- lives there.
+
 | # | site | what it estimates | the churn pathology |
 |---|---|---|---|
 | S1 | `gnss_broker/deadreckon.py:42` | receiver clock, circular median over per-sat code offsets | **THE DECAY ROOT** — steps 1-2 chips on membership change, ~600 s timescale |
@@ -97,7 +101,11 @@ the kcoh floor, and `fleet.py:405,442` — **probe-anchored**.
 
 ## The plan, in order
 
-**1. P1 → default, then delete the branch.** Make the probe-anchored absolute floor
+**DONE 2026-08-27 (`c4512de93`): P1, P2 and P3 are deleted, both flags burned from
+cli.py and the yaml, and `test_epl_admit` now asserts the expressions are absent from
+the source. The trackers were swept and carry zero cross-PRN coupling.**
+
+~~**1. P1 → default, then delete the branch.**~~ Make the probe-anchored absolute floor
 unconditional; when the broker has no probe anchor it must ship *refusal*, not 0 (0 currently
 means "fall back to the peer median"). Then `_sig_k` and the `nth_element` block are dead code
 and go. ⚠️ Needs a gather ≥ `97f6f258f`, and it fails **silently** on an older one.

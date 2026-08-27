@@ -1153,3 +1153,67 @@ is no longer motivated by evidence.
 
 **Still open from this measurement:** the fleet-wide common improvement is unexplained. If the
 BeiDou chains drift back up while the Galileo pair stays low, that separates the two cleanly.
+
+---
+
+## #94 — CATEGORY 2: the shared-parameter estimators, and their membership churn
+
+**Status: OPEN, deliberately not started. Raised and parked 2026-08-27 by KV** — *"this seems
+like it could be a huge change in behaviour."* Category 1 of
+`docs/CHORD_PEER_COMPARISON_PURGE.md` is done and burned; this is the rest of that document.
+
+**What these are, and why they are NOT the thing we just purged.** A Category 2 estimator
+combines satellites to measure a quantity that is *genuinely common to all of them* — the
+receiver clock, the NH overlay offset, the band group delay. That is averaging repeated
+measurements of one physical thing, not judging one satellite against another, and deleting it
+would delete the measurement. KV, agreeing: *"gathering data across the array is correct for
+producing cross-array parameters, we definitely want to keep those."*
+
+Their shared pathology is **membership churn**: the estimate steps when the population changes,
+and that step is a gauge artefact indistinguishable, downstream, from real motion.
+
+| # | site | estimates | churn symptom |
+|---|---|---|---|
+| S1 | `gnss_broker/deadreckon.py:42` | receiver clock, circular median over per-sat offsets | **THE DECAY ROOT** — 1-2 chips on membership change, ~600 s |
+| S2 | `gnss_broker/state_filter.py:149` | joint-filter gauge, `mean(b) = 0` over ACTIVE sats | steps `clk` ~1 chip at 6 sats; treated twice already |
+| S3 | `GnssCoherentCombiner.cpp:2067` | NH overlay offset, median of sats agreeing ±3 of a pivot | robust, membership still moves |
+| S4 | `gps_distributed_broker.py:1867` | F-engine axis, `max(pow_hop)` over `status.values()` | max over a churning set; max-filtered + snap-guarded |
+| S5 | `gnss_broker/receiver.py` | carrier / code bias | fleet aggregates, sat-count weighted |
+| S6 | clock-bias solve, `median(det_dop - pred_dop)` | clock-frequency bias | ⚠️ also corruptible by **LAG**: `pred` at NOW, so `lag × dop_rate` is a fabricated bias — +44 Hz at 48.9 s of starvation, +68 Hz at 90 s |
+
+### ⚠️ RECOMMENDATION, EXPLICITLY
+
+**Do S2 first, do it alone, and do not touch S1 until S2 has been judged.**
+
+*Why S2 first:* it is the only one where the peer-relativity is in the **state definition**
+rather than in a threshold. `mean(b) = 0` makes `clk` "the fleet-mean offset" and `b_i` "this
+satellite's deviation from it" — so `b_i` is a fleet-relative quantity **by construction**, and
+every consumer of `b_i` inherits that. The others are estimators with a churn bug; S2 is a
+definition with a churn bug, which is worse and cheaper to fix.
+
+*The fix:* the common mode (add `c` to `clk`, subtract `c` from every `b_i`) is structurally
+unobservable, so **something** must fix the gauge — but fixing it *with the population* is
+precisely why membership moves `clk`. Replace it with an **absolute prior**, `b_i ~ N(0, σ_b)`,
+σ_b taken from physics (per-sat ephemeris + group-delay error is bounded and small). A prior
+pins the common mode without reference to who is currently up.
+
+*Why it is safe to try:* it is a change to one pseudo-measurement in one filter, behind
+`--joint-shadow`, and it has a **falsifier that costs one cycle**: add or remove a satellite and
+`clk` must move by **zero**, where today it moves ~1 chip at 6 sats. That is a gross effect —
+per KV, *"these are gross effects, not subtle statistical shifts"* — so it does not need a soak.
+No re-blessing should be required: the joint filter is shadow-side.
+
+*Why NOT to start with S1:* the circular-median clock is load-bearing for every seed on every
+chain, and it is the thing S2's filter is supposed to **replace**. Fixing the median's churn
+first is work that S2 landing would throw away. Once S2's `clk` is churn-immune, S1 becomes a
+cross-check rather than the source, and the right move there is probably deletion, not repair.
+
+*S3/S4/S5/S6 are a documentation-and-test job, not a rewrite:* each already carries partial
+treatment. The work is to state the membership-invariance property each one is supposed to have
+and add a test that adding/removing a contributor does not move the estimate.
+
+⚠️ **Do not "fix" any of these by swapping one population statistic for another.** That mistake
+has now been made three times in this codebase — q → prompt power → prompt power again — and the
+comment in `fleet.py` that says *"do not fix this a third time with another tap ratio"* was
+written after the second. The replacement must be an **absolute reference**: a probe, a prior, a
+physical bound, or a clock.
