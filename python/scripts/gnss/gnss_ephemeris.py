@@ -90,17 +90,46 @@ def _earthdata_token():
         return None
 
 
-def _brdc_sources(year, doy, name):
-    """Ordered (url, headers) mirrors for one daily BRDC file:
-      1. BKG (igs.bkg.bund.de) -- the historical no-auth source.
-      2. CDDIS (cddis.nasa.gov) with an Earthdata bearer token -- a fallback for when BKG is
-         unreachable (2026-07-21: igs.bkg.bund.de went down and the node lost all ephemeris).
+# CDDIS's merged daily mixed-nav products, by the `kind` slot the caller is filling. These are
+# NOT the BKG filename -- see _brdc_sources.
+_CDDIS_DAILY = {"R": "BRDC00IGS_R_%04d%03d0000_01D_MN.rnx.gz",    # IGS merged broadcast
+                "S": "BRDM00DLR_S_%04d%03d0000_01D_MN.rnx.gz"}    # DLR multi-GNSS
+
+
+def _brdc_sources(kind, year, doy):
+    """Ordered (url, headers) mirrors for one daily mixed-nav file of variant `kind` (R or S):
+      1. BKG (igs.bkg.bund.de) -- the historical no-auth source, product BRDC00WRD.
+      2. CDDIS (cddis.nasa.gov) with an Earthdata bearer token -- for when BKG is unreachable
+         (2026-07-21: igs.bkg.bund.de went down and the node lost all ephemeris).
     CDDIS accepts `Authorization: Bearer <token>` directly on the archive URL (a valid token
-    returns the file, an invalid one 401s), so no cookie/redirect handling is needed."""
+    returns the file, an invalid one 401s), so no cookie/redirect handling is needed.
+
+    ⚠️⚠️ THE CDDIS FALLBACK ASKED FOR A FILE CDDIS HAS NEVER HELD, AND SO COULD ONLY 404
+    (found 2026-08-27, while BKG was unreachable for the second time). It reused BKG's product
+    name -- BRDC00WRD_{R,S}_..._01D_MN.rnx.gz -- against /gnss/data/daily/YYYY/brdc/, a
+    directory that holds ONLY the legacy short-name GPS/GLONASS files (brdcDDD0.YYn/.YYg). No
+    mixed-nav file has ever lived there under any name. So the mirror added specifically to
+    survive a BKG outage returned 404 on its first, second and every subsequent call, in
+    complete silence: `_fetch_brdc_merged` treats a failed source as "try the next one", and
+    when the next one is the end of the list the whole day is skipped. That is a fallback that
+    CANNOT SUCCEED -- the same defect class as a search that cannot return a positive
+    ([[chord-broker-refactor]]).
+    CDDIS does carry merged dailies, under /gnss/data/daily/YYYY/DDD/YYp/, as BRDC00IGS_R
+    (IGS) and BRDM00DLR_S (DLR). Measured on DOY 238: G32/E30/C39 and G32/E30/C36 -- as wide
+    as BKG's, or wider.
+
+    ⚠️ BUT CDDIS PUBLISHES ONLY CLOSED DAYS. The YYp directory for the CURRENT day does not
+    exist (404), so this mirror can rescue `back=1` and any replay, and CANNOT rescue today.
+    When BKG is down, the CURRENT day has exactly one source: the station-hourly merge
+    (_fetch_station_hourly). That is why its coverage test is load-bearing, not cosmetic.
+    """
+    name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, year, doy)
     srcs = [("https://igs.bkg.bund.de/root_ftp/IGS/BRDC/%04d/%03d/%s" % (year, doy, name), {})]
     tok = _earthdata_token()
-    if tok:
-        srcs.append(("https://cddis.nasa.gov/archive/gnss/data/daily/%04d/brdc/%s" % (year, name),
+    cd = _CDDIS_DAILY.get(kind)
+    if tok and cd:
+        srcs.append(("https://cddis.nasa.gov/archive/gnss/data/daily/%04d/%03d/%02dp/%s"
+                     % (year, doy, year % 100, cd % (year, doy)),
                      {"Authorization": "Bearer " + tok}))
     return srcs
 
@@ -110,7 +139,61 @@ def _brdc_sources(year, doy, name):
 # freeze hours back while individual stations keep decoding the live broadcast. Broadcast
 # ephemeris is receiver-independent, so any station that tracked a sat carries that sat's current
 # ephemeris; a handful of geographically-spread stations covers the visible set.
-_HOURLY_STATIONS = ["ALGO00CAN", "AL2H00CAN", "NRC100CAN", "STJO00CAN", "USN700USA", "BRUX00BEL"]
+#
+# ⚠️⚠️ GEOGRAPHIC DIVERSITY IS THE WHOLE POINT, AND THE LIST DID NOT HAVE ANY (2026-08-27).
+# The first four entries were all Canadian, the merge stopped at the first four stations that
+# ANSWERED, and two of those carry no BeiDou at all -- so BRUX, sixth and worth 15 in-slot BDS
+# on its own, was never reached. A satellite that is below the horizon at every station in the
+# list has no ephemeris ANYWHERE in the merge, and BDS-3's MEO plane spends its thin time over
+# eastern North America. Measured at 10 UTC that day, with BKG down and the hourly carrying the
+# whole sky:
+#     the 4 stations that answered : 15 BDS,  11 in slots 19-42
+#     with these stations added    : 37 BDS,  23 in slots 19-42
+# The BeiDou chains were left with 2 probe-eligible satellites against the 3 the presence gate
+# needs, so bds_b2a ran UNANCHORED -- nothing admitted, nothing trimmed.
+#
+# Ordered best-coverage-first (BRUX/KIRU are strong on all three constellations) so the
+# coverage test below can stop early on a good hour instead of walking the whole list.
+_HOURLY_STATIONS = ["BRUX00BEL", "KIRU00SWE", "ALGO00CAN", "AL2H00CAN", "DARW00AUS",
+                    "IISC00IND", "MGUE00ARG", "STJO00CAN", "USN700USA", "JFNG00CHN",
+                    "CUT000AUS", "NRC100CAN"]
+
+# What "enough coverage" means, per constellation: (min_prn, distinct PRNs >= min_prn) across
+# the merged bodies.
+# ⚠️ THIS IS THE FIX FOR COUNTING STATIONS. `len(bodies) >= 4` counted sources, and a source
+# that carries zero BeiDou is not a source of BeiDou -- NRC1 and STJO both answered with 0 BDS
+# and both consumed a slot in the quota. Count the THING WE WANT.
+# ⚠️ AND THE THING WE WANT FOR C IS BDS-3, NOT BDS. C01-C18 are BDS-2: they broadcast B1I, not
+# B2a/B2b, and every BeiDou chain here runs alm_min_prn = 19 for exactly that reason. A bare
+# "21 BeiDou satellites" looks healthy while only 16 of them are satellites this observatory
+# can track -- a count that includes what you cannot use is the same mistake as a probe with no
+# slot. Measured 2026-08-27 12:21: BRUX alone carries C21/16-BDS-3 and would have satisfied a
+# target of 18-counting-BDS-2 on its own, stopping the merge one station in.
+# The targets sit below a full constellation (G ~32, E ~28, BDS-3 ~24 reachable) because one
+# hour never sees all of it: they mean "this merge is not obviously starved", not "complete".
+_HOURLY_TARGET = {"G": (1, 20), "E": (1, 18), "C": (19, 20)}
+_HOURLY_MIN_STATIONS = 2  # never trust ONE file, however wide: a truncated or mid-write hourly
+                          # is indistinguishable from a thin sky, and a second source is ~5 s
+_HOURLY_MAX_FETCH = 8     # bound the cost: 8 station files is ~1 MB and ~a few seconds
+
+# This module is a LIBRARY -- imported by the broker, the gates and half a dozen one-shot
+# scripts -- so it owns no logger. LOG_HOOK lets a host install its own tagged one (the broker
+# sets it to the per-chain `_log` on the first predict); until then, stderr, which
+# broker_restart.sh already folds into the broker log (`> "$LOG" 2>&1`). Silent is not an
+# option here: a thin merge is invisible downstream and only shows up as a collapsed
+# prediction, minutes later, on a different chain.
+LOG_HOOK = None
+
+
+def _log_hourly(msg):
+    try:
+        if LOG_HOOK is not None:
+            LOG_HOOK(msg)
+            return
+    except Exception:
+        pass
+    sys.stderr.write("%s\n" % msg)
+    sys.stderr.flush()
 
 
 def _rinex_newest_epoch(path):
@@ -153,8 +236,11 @@ def _fetch_station_hourly(when, cache_dir, token):
     for dh in (0, 1, 2, 3):
         h = when - timedelta(hours=dh)
         doy = h.timetuple().tm_yday
-        header, bodies = None, []
+        header, bodies, fetched = None, [], 0
+        seen = {"G": set(), "E": set(), "C": set()}
         for st in _HOURLY_STATIONS:
+            if fetched >= _HOURLY_MAX_FETCH:
+                break
             name = "%s_R_%04d%03d%02d00_01H_MN.rnx.gz" % (st, h.year, doy, h.hour)
             url = ("https://cddis.nasa.gov/archive/gnss/data/hourly/%04d/%03d/%02d/%s"
                    % (h.year, doy, h.hour, name))
@@ -174,9 +260,30 @@ def _fetch_station_hourly(when, cache_dir, token):
             if header is None:
                 header = txt[:eoh]
             bodies.append(txt[eoh:])
-            if len(bodies) >= 4:  # enough stations for full-constellation coverage
+            fetched += 1
+            for ln in txt[eoh:].splitlines():
+                if len(ln) > 3 and ln[0] in seen and ln[1:3].isdigit():
+                    prn = int(ln[1:3])
+                    if prn >= _HOURLY_TARGET[ln[0]][0]:
+                        seen[ln[0]].add(prn)
+            # STOP ON COVERAGE, NOT ON A STATION COUNT -- see _HOURLY_TARGET.
+            if fetched >= _HOURLY_MIN_STATIONS and \
+                    all(len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items()):
                 break
         if header and bodies:
+            thin = [k2 for k2, v in _HOURLY_TARGET.items() if len(seen[k2]) < v[1]]
+            if thin:
+                # ⚠️ SAY SO. A merge that never reached its target still returns a file, and a
+                # thin file is indistinguishable from a healthy one downstream -- it just makes
+                # a constellation's prediction collapse an hour later, somewhere else.
+                _log_hourly("BRDC hourly merge: %d station(s) at %02d UTC -> %s; BELOW TARGET "
+                            "for %s (want %s). Prediction for %s will be thin -- probes, drop "
+                            "gates and search hints all ride this."
+                            % (fetched, h.hour,
+                               "/".join("%s%d" % (k2, len(seen[k2])) for k2 in "GEC"),
+                               "+".join(thin),
+                               "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in "GEC"),
+                               "+".join(thin)))
             local = os.path.join(cache_dir, "hourly_MN.rnx.gz")
             _atomic_write_bytes(local, gzip.compress(
                 (header + "".join(bodies)).encode("ascii", "replace")))
@@ -195,7 +302,7 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
     if os.path.exists(local) and time.time() - os.path.getmtime(local) < 7200:
         return local
     tried = 0
-    for url, headers in _brdc_sources(year, doy, name):
+    for url, headers in _brdc_sources(kind, year, doy):
         if _src_skip(url):
             continue                      # known dead, still cooling down -- do not pay for it
         tried += 1
@@ -321,13 +428,16 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
     for back in (0, 1):
         d = when - timedelta(days=back)
         doy = d.timetuple().tm_yday
-        locals_ = []
-        for kind in ("S", "R"):
-            name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy)
-            locals_.append(os.path.join(cache_dir, name))
+        # (kind, local path) PAIRS, not bare paths: the mirrors serve DIFFERENT product names
+        # for the same variant (BKG BRDC00WRD vs CDDIS BRDC00IGS/BRDM00DLR), so the download
+        # loop below needs to know which variant slot it is filling. A bare path list left
+        # `kind` leaking out of the loop that built it -- always "R" by the time it was read.
+        locals_ = [(kind, os.path.join(
+            cache_dir, "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy)))
+            for kind in ("S", "R")]
         # 1) a FRESH current-day cache (< 2 h) or ANY cached previous-day file (final/immutable)
         #    is usable as-is, no network needed.
-        for local in locals_:
+        for _kind, local in locals_:
             if os.path.exists(local) and (back == 1
                                           or time.time() - os.path.getmtime(local) < 7200):
                 return local
@@ -339,9 +449,8 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
         # copy of that mirror loop, and patching only the other one left BKG being dialled on
         # every cycle anyway -- five sockets still in SYN-SENT, from HERE (2026-08-27). Two
         # copies of a retry policy is two places to fix and one to forget.
-        for local in locals_:
-            name = os.path.basename(local)
-            for url, headers in _brdc_sources(d.year, doy, name):
+        for kind, local in locals_:
+            for url, headers in _brdc_sources(kind, d.year, doy):
                 if _src_skip(url):
                     continue
                 try:
@@ -359,7 +468,7 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
                     continue
         # 3) download failed but a STALE same-day cache exists -> use it (still predicts) rather
         #    than falling to the previous day's dead-for-today ephemeris.
-        for local in locals_:
+        for _kind, local in locals_:
             if os.path.exists(local):
                 return local
         # nothing for this day at all -> fall back to the previous day (early-UTC-morning case).

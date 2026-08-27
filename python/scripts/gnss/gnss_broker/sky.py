@@ -12,7 +12,7 @@ import math
 import re
 from datetime import timedelta
 
-from .transport import _log, _now
+from .transport import _log, _log_rl, _now
 
 C_LIGHT = 299792458.0  # m/s
 
@@ -30,6 +30,11 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     (the skyfield path it replaces was heavier).
     """
     ge = state["mod"]
+    # Hand the ephemeris library this chain's tagged logger, once. `_log` reads a thread-local
+    # tag, so one global install still labels every chain's line correctly -- and the chain that
+    # pays for a fetch is the one that reports what it got.
+    if getattr(ge, "LOG_HOOK", "unset") is None:
+        ge.LOG_HOOK = _log
     now = _now()
     if state["eph"] is None or now - state["eph_t"] > 7200.0:
         # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
@@ -68,21 +73,64 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # by then; retry at 10 min if not) and BRIDGE with the last good prediction set --
     # a coasted el is drop-gate-grade for hours, and a stale dop hint degrades the search
     # no worse than the no-hint darkness it replaces.
-    peak = state.get("peak_n", 0)
+    # ⚠️⚠️ THE COLLAPSE BOOKKEEPING IS PER-CONSTELLATION AND THE STATE DICT IS NOT.
+    # `state` is the SHARED BRDC store -- receiver.brdc() hands every chain the same object so
+    # one parse serves G/E/C (that part is deliberate and right). But `peak_n` and `last_good`
+    # are statements about ONE constellation's sky, and writing them at `state` scope made both
+    # of them cross-constellation (2026-08-27, KV: "why are there zero probe sats on BeiDou"):
+    #
+    #   peak_n  became a MAX OVER CONSTELLATIONS. BeiDou has ~13 sats in its eph window against
+    #           GPS's ~24, so `len(out) < 0.5 * peak` was true permanently: bds_b2a fired
+    #           PREDICTION COLLAPSE 9 ms after its own almanac init, against a peak it had
+    #           never set, and never came out of it.
+    #   last_good became WHICHEVER CHAIN PREDICTED LAST. So the bridge -- the thing that exists
+    #           to coast one constellation's sky through a thin refresh -- handed BeiDou GPS's
+    #           and Galileo's satellites, complete with their elevations. Measured in the log:
+    #           `bds_b2a: noise probe PRN 1 seeded (elev -88)` and `bds_b2b: noise probe PRN 3
+    #           seeded (elev -32)` on chains whose min_prn is 19, 1.5 s after the Galileo chains
+    #           seeded the same PRN 3. Sub-19 PRNs cannot come out of BeiDou's own filtered
+    #           output. The probe selector then picked those foreign PRNs, the ones that
+    #           happened to land in 19-42 survived --probe-require-slot, and bds_b2a sat at 2
+    #           probes -> UNANCHORED -> nothing admitted, nothing trimmed.
+    #
+    # Same shape as the four fallbacks audited on 2026-08-26 (docs/CHORD_PEER_RELATIVE_AUDIT.md):
+    # a fallback reproduces the primary path's OUTPUT while dropping one of its invariants --
+    # here the constellation identity -- and runs exactly when the primary is already degraded.
+    # Scope is (sysc, min_prn) because min_prn is part of what defines this chain's population.
+    sc = state.setdefault("scope", {}).setdefault((sysc, min_prn), {})
+    peak = sc.get("peak_n", 0)
     if len(out) >= peak:
-        state["peak_n"] = peak = len(out)
+        sc["peak_n"] = peak = len(out)
     if peak >= 4 and len(out) < 0.5 * peak:
+        # THE REFETCH IS A SHARED SIDE EFFECT and keeps a shared cooldown: eph_t governs the one
+        # store, so three constellations must not each force their own re-download. The
+        # ANNOUNCEMENT is per-scope, because "BeiDou collapsed" is not news GPS can deliver.
         if now - state.get("collapse_refetch_t", 0.0) > 600.0:
             state["collapse_refetch_t"] = now
             state["eph_t"] = now - 7201.0  # re-fetch on the next cycle
-            _log("brdc almanac: PREDICTION COLLAPSE (%d of peak %d sats in the eph "
-                 "window) -> early refresh forced; bridging on the last good set"
-                 % (len(out), peak))
-        lg = state.get("last_good")
+        lg = sc.get("last_good")
         if lg:
+            # ⚠️ A BRIDGED SKY IS A STALE SKY AND IT MUST SAY SO EVERY TIME IT IS SERVED.
+            # This used to log only inside the 600 s refetch guard, so the FIRST cycle of a
+            # collapse announced itself and the next several hundred were silent -- while every
+            # one of them returned a frozen elevation set that the drop gate, the probe
+            # selector and the search hints all read as live. bds_b2a bridged for 25 minutes on
+            # one line of log. Rate-limited, but on its own key, and it carries the AGE.
+            sc.setdefault("bridge_since", now)
+            _log_rl("brdc-bridge",
+                    "brdc almanac: PREDICTION COLLAPSE (%d of peak %d %s sats%s in the eph "
+                    "window) -> BRIDGING on a sky frozen %.0f s ago (%d sats); early refresh "
+                    "forced. Elevations are STALE -- probes, drops and hints all ride this."
+                    % (len(out), peak, sysc,
+                       " with PRN >= %d" % min_prn if min_prn > 1 else "",
+                       now - sc["bridge_since"], len(lg)),
+                    every_s=120.0)
             return lg
     else:
-        state["last_good"] = out
+        if sc.pop("bridge_since", None) is not None:
+            _log("brdc almanac: %s prediction RECOVERED (%d sats) -- off the bridge, live sky"
+                 % (sysc, len(out)))
+        sc["last_good"] = out
     return out
 
 
