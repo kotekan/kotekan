@@ -1496,13 +1496,26 @@ class GpsSkyResource(resource.Resource):
     def _brdc_skypos(self, want):
         """Sky positions from the broadcast ephemeris, or None if the BRDC is unavailable.
 
-        The parsed ephemeris is cached ~15 min (fetch_brdc is itself cache-gated), but positions
-        still update every refresh because predict_all is re-evaluated at the current time."""
+        The parsed ephemeris is cached ~15 min, but positions still update every refresh
+        because predict_all is re-evaluated at the current time. The FILES come from
+        cached_brdc() -- read-only; the broker is the only process that writes this cache."""
         try:
             import gnss_ephemeris as ge
             if (self._eph is None or self._eph_t is None
                     or (time.monotonic() - self._eph_t) > 900.0):
-                raw = ge.parse_rinex_nav(ge.fetch_brdc(datetime.now(timezone.utc)))
+                # ⚠️⚠️ READ-ONLY. This used to call fetch_brdc(), which FETCHES AND WRITES the
+                # shared nav cache -- and this process is long-lived, so it held whatever copy
+                # of the merge it imported at startup. Measured 2026-08-27: up since Aug 19, it
+                # was rebuilding hourly_MN.rnx.gz on its own schedule with nine-day-old logic,
+                # leaving 29 records past the keep window and a coverage sidecar 33 minutes
+                # older than the file it described, and silently undoing the broker's rolling
+                # store several times in one evening. The viewer needs GEOMETRY, not a cache:
+                # one writer (the broker), everyone else reads.
+                #
+                # ⚠️ EMPTY IS NOT AN ERROR -- it is the TLE fallback's cue. parse_rinex_nav([])
+                # returns {}, `pred` comes back empty, and _compute merges the TLE source as it
+                # already does when BRDC is unavailable.
+                raw = ge.parse_rinex_nav(ge.cached_brdc())
                 # Drop BeiDou GEO (i<5 deg): predict_all's plain Kepler does NOT apply the ICD
                 # -5 deg GEO rotation, so their positions are untrustworthy (a mis-propagated GEO
                 # could land above the horizon as a phantom). IGSO/MEO propagate correctly.

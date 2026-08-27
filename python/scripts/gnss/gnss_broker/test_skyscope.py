@@ -37,6 +37,7 @@ import gzip
 import os
 import shutil
 import sys
+import time
 import tempfile
 
 
@@ -521,6 +522,42 @@ def test_coverage_counts_only_usable_records():
           "not shrink coverage whenever a format surprises us")
 
 
+def test_cached_brdc_never_writes():
+    """⚠️ ONE WRITER. The nav cache is a shared path and any importer can write it.
+
+    Measured 2026-08-27: the js_viewer, up since Aug 19, called fetch_brdc() purely to draw a
+    sky plot -- so it refetched and REBUILT the merged file on its own schedule with nine-day-old
+    logic, leaving 29 records past the keep window, a coverage sidecar 33 min older than the file
+    it described, and the broker's rolling store silently replaced several times in one evening.
+    Consumers read; the broker writes.
+    """
+    import tempfile
+    import gnss_brdc_supply as sup
+    print("\ncached_brdc: read-only, and a bounded list")
+    with tempfile.TemporaryDirectory() as d:
+        for n, age in (("hourly_MN.rnx.gz", 60.0),
+                       ("BRDC00WRD_R_20262380000_01D_MN.rnx.gz", 3600.0),
+                       ("BRDC00WRD_R_20262100000_01D_MN.rnx.gz", 40 * 86400.0)):
+            f = os.path.join(d, n)
+            open(f, "wb").close()
+            t = time.time() - age
+            os.utime(f, (t, t))
+        before = {n: os.stat(os.path.join(d, n)) for n in os.listdir(d)}
+        got = [os.path.basename(x) for x in sup.cached_brdc(d)]
+        after = {n: os.stat(os.path.join(d, n)) for n in os.listdir(d)}
+        check(set(before) == set(after)
+              and all(before[n].st_mtime == after[n].st_mtime for n in before),
+              "it creates nothing and touches nothing -- the whole point")
+        check("hourly_MN.rnx.gz" in got, "the station-hourly merge is always included")
+        check("BRDC00WRD_R_20262380000_01D_MN.rnx.gz" in got, "a recent daily is included")
+        check("BRDC00WRD_R_20262100000_01D_MN.rnx.gz" not in got,
+              "a 40-day-old daily is NOT -- it cannot carry a record inside the 4 h toe "
+              "window, and parsing the whole directory was 59 files of wasted work")
+        check(got and got[0] == "hourly_MN.rnx.gz", "freshest first")
+    check(sup.cached_brdc("/tmp/definitely-not-a-cache-dir-xyz") == [],
+          "a missing cache returns [] so the caller can fall back, not raise")
+
+
 def test_refresh_cadence_matches_the_product():
     """⚠️ THE SKY WAS REFRESHED EVERY 2 h FROM A PRODUCT THAT UPDATES EVERY HOUR.
 
@@ -567,6 +604,7 @@ def main():
     test_hourly_mirrors()
     test_hourly_coverage_beats_recency()
     test_coverage_counts_only_usable_records()
+    test_cached_brdc_never_writes()
     test_refresh_cadence_matches_the_product()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

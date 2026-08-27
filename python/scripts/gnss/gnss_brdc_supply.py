@@ -710,6 +710,58 @@ def _src_ok(url):
     _src_dead.pop(_src_key(url), None)
 
 
+# A daily older than this cannot carry a record inside predict_all's 4 h toe window, so a
+# read-only consumer gains nothing by parsing it. Generous (dailies are written once and then
+# only re-fetched when stale) but bounded.
+_CACHED_DAILY_MAX_AGE_S = 172800.0        # 2 days
+
+
+def cached_brdc(cache_dir=CACHE):
+    """READ-ONLY: the nav files already on disk, best-first. Never fetches, never writes.
+
+    ⚠️⚠️ FOR EVERY CONSUMER THAT IS NOT THE BROKER. This cache is a shared path, and any process
+    importing this module can write it -- including one that has been up for days holding an old
+    copy of the merge. Measured 2026-08-27: the js_viewer (up since Aug 19) was calling
+    fetch_brdc() purely to draw a sky plot, and so was refetching and REBUILDING the merged file
+    on its own schedule with nine-day-old logic. Its rewrites left 29 records past the keep
+    window and a coverage sidecar 33 minutes older than the file it described, and they silently
+    undid the broker's rolling store several times in one evening.
+
+    ONE WRITER. The broker owns this cache because it is the process whose correctness depends
+    on it; everyone else reads what is there and degrades gracefully when it is missing. A
+    consumer that only wants geometry should ideally not touch the cache at all -- it should ask
+    the broker, which already knows every satellite's az/el -- but read-only closes the write
+    hole immediately and without a protocol change.
+
+    Returns [] when the cache is empty, so callers can fall back rather than raise.
+    """
+    pin = os.environ.get("GNSS_BRDC_DIR")
+    if pin:
+        return sorted(os.path.join(pin, f) for f in os.listdir(pin)
+                      if f.endswith((".rnx", ".rnx.gz")))
+    # ⚠️ THE SAME SHORT LIST fetch_brdc BUILDS, NOT THE WHOLE DIRECTORY. The cache accumulates
+    # every daily ever downloaded -- 59 files here on the first try -- and handing all of them
+    # to parse_rinex_nav would parse tens of megabytes to produce records that best_eph then
+    # discards for being days past their toe. Take the station-hourly plus dailies touched
+    # within _CACHED_DAILY_MAX_AGE_S; anything older cannot contribute to a 4 h window.
+    try:
+        names = [f for f in os.listdir(cache_dir) if f.endswith((".rnx", ".rnx.gz"))]
+    except Exception:
+        return []
+    now = time.time()
+    out = []
+    for f in names:
+        full = os.path.join(cache_dir, f)
+        try:
+            age = now - os.path.getmtime(full)
+        except OSError:
+            continue
+        if f.startswith("hourly_") or age <= _CACHED_DAILY_MAX_AGE_S:
+            out.append((age, full))
+    out.sort()                       # freshest first
+    return [f for _, f in out]
+
+
 def fetch_brdc(when=None, cache_dir=CACHE):
     """Ordered list of currently-available BRDC nav-source files (best-first). parse_rinex_nav
     merges them PER-PRN (freshest toe per PRN wins, union of records), so no single frozen
@@ -729,7 +781,11 @@ def fetch_brdc(when=None, cache_dir=CACHE):
     dropped to the station-hourly, which carries only a thin ~18-PRN BeiDou set and has no C39 at
     all, while the CDDIS daily (fresh C39 to 16:00) sat unused in cache -> C31/C39 showed 'el --'
     despite strong tracking. Now every source contributes and the merge picks each PRN's freshest
-    record. Callers all do parse_rinex_nav(fetch_brdc()), which accepts a list transparently."""
+    record. Callers all do parse_rinex_nav(fetch_brdc()), which accepts a list transparently.
+
+    ⚠️ THIS FUNCTION FETCHES AND WRITES, so it is for the process that OWNS the cache -- the
+    broker. Anything else wanting geometry should use cached_brdc(), or better, ask the broker.
+    See cached_brdc for what a second writer did to this cache on 2026-08-27."""
     pin = os.environ.get("GNSS_BRDC_DIR")
     if pin:
         pinned = sorted(os.path.join(pin, f) for f in os.listdir(pin)
