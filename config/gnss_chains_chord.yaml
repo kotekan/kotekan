@@ -2146,6 +2146,18 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # correlation work (#93) is judged on exactly those pairs.
     # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
     probe-require-slot: true
+    # ── ARMED 2026-08-27 16:0x (KV): the displaced admission, ex-control ──────────────
+    # gal_e5b was the IN-POLL CONTROL for --presence-admit-displaced and it did its job
+    # inside minutes, one-sidedly. Measured at 15:5x, same satellites, same poll:
+    #        E5b (control)                E5a (armed)
+    #   E2   q 0.45  deep 100.3  off -0.57    q 3.51  present
+    #   E11  q 0.84  deep  48.9  off +0.42    q 2.55  present
+    #   E28  q 0.46  deep  48.7  off -0.61    q 3.24  present
+    # Three satellites unmistakably present (deep_snr 49-100), sitting 0.4-0.6 chips off the
+    # peak, refused by the q bar and left there. KV: "an unambiguous win, we should do it."
+    # The control is retired for cause -- keeping it would be leaving three satellites
+    # stranded to preserve a comparison already made. bds_b2b remains untreated.
+    presence-admit-displaced: true
     trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,\
 http://cx27:12048/gnss{0..1}_e5b_inject,\
 http://cx42:12048/gnss{0..1}_e5b_inject,\
