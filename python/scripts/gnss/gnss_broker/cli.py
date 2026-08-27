@@ -1250,16 +1250,6 @@ def build_parser(description):
                          "level -- not a population of peers. Prompt power stays as an "
                          "ALTERNATIVE (either suffices); the pedestal and offset tests, not "
                          "this one, are what still refuse a centred noise realisation.")
-    ap.add_argument("--fleet-trim-floor-from-probes", action="store_true",
-                    help="THE E3 FIX: ship the presence gate's probe-anchored prompt floor to "
-                         "the C++ fast loop as its per-window information gate "
-                         "(TrimPolicy::p_floor_abs), replacing the loop's own 3x-window-median "
-                         "-- which on CHORD is a PEER COMPETITION (the armed rows are mostly "
-                         "real satellites), measured standing the loop down on the bottom of "
-                         "the pack for minutes (gal_e5b PRN 33: 75%% of windows leak-only) and "
-                         "erasing E3's trim at ~20x the actual noise floor. OFF = today's "
-                         "behaviour. Ships 0 (= C++ keeps its median) whenever presence itself "
-                         "lacks probe anchoring, so a peer bar is never smuggled in as absolute.")
     ap.add_argument("--fleet-trim-brownout-hold-s", type=float, default=0.0,
                     help="#91(b): during a D1 brownout, keep PRNs armed this long after last "
                          "presence AND freeze the C++ loop (gain=leak=0) for the duration. "
@@ -1302,22 +1292,6 @@ def build_parser(description):
                          "calibration fired once a minute for hours and buried the log -- an "
                          "alarm repeating faster than it can be investigated is noise, and it "
                          "would have hidden a real one.")
-    ap.add_argument("--presence-require-probes", action="store_true",
-                    help="REFUSE a presence verdict when the noise probes cannot anchor it, "
-                         "instead of falling back to the tracked population. KV, 2026-08-27: "
-                         "falling back to the above-horizon population should NEVER be the "
-                         "decision -- it cannot give a reliable floor, and noisily failing "
-                         "beats accepting a bad number. The fallback builds the bar from the "
-                         "satellites themselves and calls their median the noise level, which "
-                         "is true only if most rows are noise; on CHORD they are signal, so "
-                         "the bar lands INSIDE the signal distribution and passes about HALF "
-                         "BY CONSTRUCTION (measured: 21/48 present, and a q floor of 4.72 "
-                         "against the q ~ 4 ceiling a real satellite can reach -- a bar "
-                         "nothing could ever clear). ⚠️ WITH THIS ON, an unanchored chain "
-                         "admits NOBODY and says UNANCHORED: no presence, so no arming and no "
-                         "trimming. That is deliberate and it is the conservative direction -- "
-                         "a trim not applied is recoverable, a trim applied to the wrong half "
-                         "is the E3 disease.")
     ap.add_argument("--probe-require-slot", action="store_true",
                     help="only pick noise probes the NODES ACTUALLY HOLD A SLOT FOR, by asking "
                          "them (/get_prns). The selector takes the deepest below-horizon PRNs "

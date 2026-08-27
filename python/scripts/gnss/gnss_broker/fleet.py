@@ -152,7 +152,7 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
 
 def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
               deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None,
-              admit_displaced=None, require_probes=False):
+              admit_displaced=None):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -298,7 +298,7 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
     return apply_presence(out, k_sigma, q_fallback, probe_prns=probe_prns,
                           deep_gate_prns=deep_gate_prns,
                           deep_gate_margin=deep_gate_margin,
-                          admit_displaced=admit_displaced, require_probes=require_probes)
+                          admit_displaced=admit_displaced)
 
 
 def epl_decompose(q, disc, spacing=0.5):
@@ -355,7 +355,7 @@ def epl_decompose(q, disc, spacing=0.5):
 
 
 def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=None,
-                   deep_gate_margin=3.0, admit_displaced=None, require_probes=False):
+                   deep_gate_margin=3.0, admit_displaced=None):
     """Floors, the presence verdict and the deep gate, in place, on a fleet_dll-shaped dict.
 
     Split out of fleet_dll (2026-08-15, task #63) UNCHANGED, so the comb-derived DLL shares one
@@ -410,7 +410,13 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             q_sigma = 1.4826 * _mad
             q_floor = max(q_med + k_sigma * q_sigma, q_med + 0.05)
     else:
-        q_med, q_sigma, q_floor = _floor([v["q"] for v in out.values()], k_sigma, 0.05)
+        # ⚠️ NO PEER BRANCH. Deleted 2026-08-27 (KV: "peer comparisons can never tell us about
+        # a given signal, they only ever tell us fleet-relative properties"). This used to be
+        # `_floor([v["q"] for v in out.values()])` -- the q bar built from the TRACKED
+        # SATELLITES, which passes about half of them by construction and, on a good day when
+        # most rows have a peak, locks out everything that is working. Fewer than 3 probes
+        # means the noise value is UNMEASURED, and the honest verdict is "I cannot judge".
+        q_med = q_sigma = q_floor = None
     # Prompt power spans orders of magnitude between satellites, so the bar is multiplicative:
     # median = the noise level, and a PRN must exceed it by k sigma to count as present.
     # ---- THE PRESENCE FLOOR NEEDS A NOISE REFERENCE, NOT A PEER COMPARISON ------------
@@ -443,9 +449,16 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
         for v in out.values():
             v["p_floor_src"] = "probes:%d" % len(_probe_p)
     else:
-        p_med, p_sigma, p_floor = _floor([v["p_pow"] for v in out.values()], k_sigma, 0.0)
+        # ⚠️ NO PEER BRANCH -- same deletion, same reason. `_floor([v["p_pow"] for v in
+        # out.values()])` treated the tracked population's median as the noise level; on
+        # CHORD the tracked rows are mostly real signal, so the bar landed INSIDE the signal
+        # distribution. Measured 2026-08-27 on every chain that took it: 21 of 48 present,
+        # and bds_b2a reporting a q floor of 4.72 against the q ~ 4 CEILING a real satellite
+        # can reach -- a bar nothing could ever clear. Not a degraded answer: a WRONG one
+        # wearing the shape of an answer.
+        p_med, p_sigma, p_floor = None, None, None
         for v in out.values():
-            v["p_floor_src"] = "peers:%d" % len(out)
+            v["p_floor_src"] = "UNANCHORED"
     # ── KV 2026-08-27: FALLING BACK TO THE ABOVE-HORIZON POPULATION MUST NEVER BE
     # ── THE DECISION. "It's not going to give us a reliable floor, surely noisily
     # ── failing is better than accepting a bad number."
@@ -464,7 +477,11 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
     # trimming, which is the conservative direction (a trim not applied is recoverable;
     # a trim applied to the wrong half is the E3 disease). The log line is the point --
     # a chain that cannot measure its noise floor should be LOUD, not quietly half-right.
-    if require_probes and len(_probe_q) < 3:
+    # ⚠️ UNCONDITIONAL. This was gated on --presence-require-probes, default OFF, with the
+    # peer branches above as the alternative. Both branches are gone, so there is nothing
+    # left to fall back TO and nothing to opt into: a chain that cannot measure its own noise
+    # floor refuses, every time, and says so.
+    if len(_probe_q) < 3 or p_floor is None:
         for v in out.values():
             v["q_med"], v["q_sigma"] = q_med, q_sigma
             # ⚠️ SAME SUBSTITUTION AS THE NORMAL PATH BELOW, and omitting it killed bds_b2a
@@ -562,9 +579,15 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
                                              else "q+deep:probes+disp")
                         v["disp_deep_snr"], v["disp_deep_floor"] = _ds, _dfl
         else:
-            v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
-                            else v["p_pow"] >= p_floor)
-            v["present_gate"] = "prompt"
+            # ⚠️ UNREACHABLE, AND KEPT AS AN ASSERTION RATHER THAN DELETED SILENTLY. The
+            # refusal above returns whenever probes < 3 or p_floor is None, which is exactly
+            # when this branch used to run (present_gate "prompt" -- the peer-fallback
+            # verdict). If it ever executes again, a caller has reintroduced a path that
+            # judges a satellite without a measured noise floor, and that must be loud.
+            raise AssertionError(
+                "apply_presence: reached the deleted peer-fallback branch with "
+                "%d probe q rows and p_floor=%r -- a presence verdict was about to be "
+                "formed without a probe anchor" % (len(_probe_q), p_floor))
 
         # ---- DEEP GATE (task #49, opt-in per PRN) --------------------------------------
         # THE PROMPT GATE ABOVE IS ON-PEAK-BIASED, WHICH MAKES IT A LATCH. Prompt power is

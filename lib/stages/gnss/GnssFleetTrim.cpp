@@ -170,7 +170,6 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     _dll(config.get_default<int>(unique_name, "n_win", 4),
          config.get_default<int>(unique_name, "min_instances", 2),
          config.get_default<int>(unique_name, "max_open_win", 8),
-         config.get_default<double>(unique_name, "sig_k", 3.0),
          // THE BROKER'S DEPTH, NOT THE LOOP'S. 0 follows n_win; production wants this at the
          // broker's `telem-windows` (32) so /get_taps serves the same integration length the
          // Python arm computed for itself.

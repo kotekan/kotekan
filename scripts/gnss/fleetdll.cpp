@@ -98,7 +98,10 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    gnss::FleetDll dll(n_win, min_inst, max_open, 3.0, taps_win);
+    // ⚠️ NO sig_k ARGUMENT ANY MORE (2026-08-27): the peer-median gate it scaled is deleted.
+    // The old call passed `3.0` positionally, so leaving it here would have bound 3.0 to
+    // taps_win and taps_win to epoch_margin -- and it COMPILES, because both convert.
+    gnss::FleetDll dll(n_win, min_inst, max_open, taps_win);
     std::map<std::string, std::map<int, double>> restore;
     int n_adopted = 0;
     if (!trim_in.empty()) {

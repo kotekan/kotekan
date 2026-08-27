@@ -204,7 +204,7 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
 def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
                    q_fallback=2.2, prns=None, probe_prns=None, deep_gate_prns=None,
                    deep_gate_margin=3.0, coh_from=None, per_channel=True, taps_src=None,
-                   admit_displaced=None, require_probes=False):
+                   admit_displaced=None):
     """fleet_dll's dict, from the comb. {prn: {disc, q, p_pow, hop, n_src, n_chan, ...}}.
 
     Same keys, same meanings, same presence policy (apply_presence, shared with fleet_dll so
@@ -283,7 +283,7 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
             out[prn][k] = src.get(k)
     return apply_presence(out, k_sigma, q_fallback, probe_prns=probe_prns,
                           deep_gate_prns=deep_gate_prns, deep_gate_margin=deep_gate_margin,
-                          admit_displaced=admit_displaced, require_probes=require_probes)
+                          admit_displaced=admit_displaced)
 
 
 def recs_from_rest(get, url, chain, prns=None, timeout=5.0):

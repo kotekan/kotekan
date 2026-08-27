@@ -144,10 +144,13 @@ public:
     /// nothing), while the broker's policy cycle averages 32 for the SNR its gates need
     /// (`telem-windows: 32`, matched to the REST feed's `record_export: 128`). 0 = follow
     /// n_win, which is what the offline harness wants so both arms window identically.
-    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, double sig_k = 3.0,
+    /// ⚠️ `sig_k` IS GONE, NOT DEFAULTED OFF (2026-08-27). It multiplied a PEER MEDIAN; see
+    /// integrate(). Removing the parameter is deliberate -- a knob that only ever selects
+    /// between two wrong answers is one a future reader will try to tune.
+    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8,
              int taps_win = 0, int epoch_margin = 64, int epoch_strikes = 8) :
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
-        _max_open_win(std::max(2, max_open_win)), _sig_k(sig_k),
+        _max_open_win(std::max(2, max_open_win)),
         _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)),
         // 64 windows is ~2.7 s at the 23.84 Hz close rate -- far beyond any laggard
         // (max_open_win is 8) and far below a frame0 move, which lands thousands back.
@@ -750,40 +753,48 @@ private:
         // better: holding a PRN armed across the off-peak half of the clock breathing is
         // exactly a licence to integrate tens of seconds of noise.
         //
-        // The gate is PROMPT POWER against the same window's population, not q. That is the
-        // distinction the broker learned on 2026-08-03 and wrote down: q is peak SHARPNESS,
-        // high only once the tap is already on the peak, so gating on it says "only correct
-        // the code once it is already correct" and the loop can never pull in from the
-        // shoulder. Prompt power answers "is there signal here at all", which is independent
-        // of WHERE on the correlation function we sit -- and on the shoulder P is still well
-        // above noise. Self-calibrating: most PRNs are signal-free at any moment, so the
-        // MEDIAN of this window's p_pow IS the no-signal level.
+        // The gate is PROMPT POWER, not q. That is the distinction the broker learned on
+        // 2026-08-03 and wrote down: q is peak SHARPNESS, high only once the tap is already
+        // on the peak, so gating on it says "only correct the code once it is already
+        // correct" and the loop can never pull in from the shoulder. Prompt power answers
+        // "is there signal here at all", which is independent of WHERE on the correlation
+        // function we sit -- on the shoulder P is still well above noise.
         //
         // This is a LOCAL INFORMATION TEST, not the presence verdict. Presence is policy and
         // stays in Python (it decides whether a satellite is worth tracking, over cycles);
         // this decides whether THIS WINDOW's number means anything.
-        // ⚠️ ABSOLUTE FLOOR WHEN THE POLICY CARRIES ONE (see TrimPolicy::p_floor_abs: the
-        // peer median below is a competition on CHORD, and it is what erased E3's trim while
-        // the satellite sat 13 dB above the real noise). The broker's probe-anchored floor
-        // already includes its margin, so it is compared directly, not re-multiplied.
-        double p_floor = c.policy.p_floor_abs;
-        if (p_floor <= 0.0) {
-            std::vector<double> pp;
-            pp.reserve(c.row.size());
-            for (const auto& rv : c.row)
-                if (rv.second.win == win)
-                    pp.push_back(rv.second.p_pow);
-            if (pp.size() >= 4) {
-                std::nth_element(pp.begin(), pp.begin() + pp.size() / 2, pp.end());
-                p_floor = _sig_k * pp[pp.size() / 2];
-            }
-        }
+        //
+        // ⚠️⚠️ THE REFERENCE IS THE PROBES, AND THERE IS NO LONGER ANY OTHER OPTION.
+        // This used to fall back to `3 x the MEDIAN of this window's own p_pow` whenever the
+        // policy carried no absolute floor, on the premise that "most PRNs are signal-free at
+        // any moment, so the median IS the no-signal level". That premise was true on the
+        // airspy prototype, where --noise-probes seeded genuine signal-free rows, and is
+        // FALSE on CHORD, where the armed rows are mostly real satellites. So the bar was a
+        // signal level and the gate was a PEER COMPETITION -- a race a satellite loses the
+        // moment it starts drifting, which is exactly when it needs the loop.
+        // Measured 2026-08-27 on chains still running it, satellites unambiguously ON the
+        // peak: gps_l5 PRN 18 (q 2.85) losing 45.7% of its windows, PRN 20 (q 3.25) 34.5%,
+        // PRN 27 (q 3.28) 24.4%. And E3's 12-minute outage, where the trim was erased while
+        // the satellite sat ~20x above the real probe floor.
+        //
+        // KV, 2026-08-27, and it is the reason this branch is DELETED rather than defaulted
+        // off: "peer comparisons can never tell us about a given signal, they only ever tell
+        // us fleet-relative properties, which aren't relevant." A fleet-relative ratio cannot
+        // answer "does this window's discriminator mean anything". See
+        // docs/CHORD_PEER_COMPARISON_PURGE.md.
+        //
+        // NO FLOOR => REFUSE. Not "no gate": ungated, an off-peak discriminator random-walks
+        // the trim to the clamp (measured, PRN 23, 3.4 chips in 32 s with disc sign-flipping
+        // all the way). Leak-only is the conservative direction -- a trim not applied is
+        // recoverable, a trim applied to noise is not -- and it mirrors what presence does
+        // without a probe anchor, which is to say UNANCHORED and admit nobody.
+        const double p_floor = c.policy.p_floor_abs;
         for (int prn : c.armed) {
             auto it = c.row.find(prn);
             if (it == c.row.end() || it->second.win != win)
                 continue; // no discriminator formed for this PRN THIS window
             TrimState& t = c.trim[prn];
-            if (p_floor > 0.0 && it->second.p_pow < p_floor) {
+            if (p_floor <= 0.0 || it->second.p_pow < p_floor) {
                 // No signal under the taps this window: LEAK ONLY. The trim mean-reverts
                 // instead of chasing noise, and the PRN stays armed so a returning peak is
                 // caught on the very next window.
@@ -818,9 +829,8 @@ private:
     }
 
     int _n_win, _min_instances, _max_open_win;
-    double _sig_k = 3.0; ///< prompt power must exceed this x the window median
-    /// ⚠️ DECLARED AFTER _sig_k to match the constructor's initialiser list -- members
-    /// initialise in DECLARATION order, so the two disagreeing is a -Wreorder warning today
+    /// ⚠️ DECLARATION ORDER IS THE INITIALISER ORDER -- members initialise in declaration
+    /// order, so this disagreeing with the constructor's list is a -Wreorder warning today
     /// and a real read-before-init the moment one initialiser references another member.
     int _taps_win = 1; ///< window depth served by taps() -- the POLICY cycle's, not the loop's
     /// A1's epoch-reset knobs -- LAST, for the declaration-order reason directly above.

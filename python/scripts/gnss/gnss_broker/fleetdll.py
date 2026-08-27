@@ -80,8 +80,7 @@ def stage_fleet_dll(ctx):
                           # already making. No extra HTTP -- fleet_dll parses pow_hop for
                           # the currency check and then aggregates the axis away.
                           src_hops=ctx.dllp.inst_hops,
-                          admit_displaced=ctx.dllp.admit_disp,
-                          require_probes=ctx.args.presence_require_probes)
+                          admit_displaced=ctx.dllp.admit_disp)
         # TASK #63: THE SAME DISCRIMINATOR, FORMED HERE FROM THE UN-SUMMED COMB. The powers
         # above were built by each tracker summing across its own channels -- "the one
         # combine the broker can never undo" -- and everything derived from them inherits

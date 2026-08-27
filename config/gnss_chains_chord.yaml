@@ -1063,7 +1063,6 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # correlation work (#93) is judged on exactly those pairs.
     # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
     probe-require-slot: true
-    presence-require-probes: true
     trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,\
 http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
 http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
@@ -1629,7 +1628,6 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # stranded it. Arm A is not an independent knob here, it is the other half.
     # bds_b2a keeps arm A ALONE, so the pair stays separable: bds isolates the C++ floor,
     # gal tests the complete mechanism. Revert: delete this line + broker restart.
-    fleet-trim-floor-from-probes: true
     # ── #50 FAR-REGIME RE-SEED, same satellite, 2026-08-12 ────────────────────────────
     # The deep gate above admits E33 to the loop; this gives the loop something to follow
     # when it gets there. Far off-peak E, P and L are ALL noise, so q -> 1.0 and disc -> 0 --
@@ -1830,7 +1828,6 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # ── control for both. ⚠️ If probes fall short this chain goes UNANCHORED and stops
     # ── trimming entirely -- that is the intended, conservative behaviour, and the log
     # ── says so. Revert: delete this line + broker restart.
-    presence-require-probes: true
     # ── ARMED 2026-08-27 12:5x: E3 ARM A, ALONE, AS PRE-REGISTERED ──────────────────────
     # KV, this morning: "why are we comparing to the population? We should never be
     # comparing between real satellite signals, only to noise estimates, which come from the
@@ -1869,7 +1866,6 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # test was repaired today (it required prompt power, the same on-peak quantity it exists
     # to bypass, and would have rescued 2 of the 7); it is one line here when A is judged.
     # Revert: delete this line + broker restart.
-    fleet-trim-floor-from-probes: true
     trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,\
 http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,\
 http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
@@ -2137,7 +2133,6 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # correlation work (#93) is judged on exactly those pairs.
     # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
     probe-require-slot: true
-    presence-require-probes: true
     trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,\
 http://cx27:12048/gnss{0..1}_e5b_inject,\
 http://cx42:12048/gnss{0..1}_e5b_inject,\

@@ -358,8 +358,13 @@ def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, 
         cmd += ["--arm", ",".join(str(p) for p in sorted(arm))]
         for k in ("gain", "leak", "clamp", "spacing"):
             cmd += ["--" + k, repr((pol or {}).get(k, DEFAULT_POLICY[k]))]
-        if (pol or {}).get("p_floor_abs") is not None:
-            cmd += ["--p-floor-abs", repr(pol["p_floor_abs"])]
+        # ⚠️ ALWAYS PASSED (2026-08-27). The peer-median branch is DELETED, so an omitted
+        # floor no longer means "use the other gate", it means REFUSE -- every armed PRN
+        # leak-only, n_steps 0. Every leg below therefore supplies one explicitly, and the
+        # BASELINE is GATE_NOBODY: a floor below every satellite's power, which on this
+        # fixture is byte-identical to what the peer median used to do (it gated nobody
+        # here, which is why the old `p_floor_abs=1e-30` leg could assert exactly that).
+        cmd += ["--p-floor-abs", repr((pol or {}).get("p_floor_abs", GATE_NOBODY))]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise SystemExit("fleetdll failed (%d): %s" % (r.returncode, r.stderr.strip()))
@@ -370,7 +375,14 @@ def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, 
 #: ⚠️ leak 0.05 puts the integrator's steady state at gain*0.25/leak = 1.25 chips, so the 3.0
 #: clamp is unreachable BY CONSTRUCTION -- see combdll.dll_integrate. The gate uses the shipped
 #: values deliberately: a gate run at constants nobody deploys measures a loop nobody runs.
-DEFAULT_POLICY = {"gain": 0.25, "leak": 0.05, "clamp": 3.0, "spacing": 0.5}
+#: A floor below every power in the fixture: gates nobody, so it is the NEUTRAL baseline the
+#: other legs are compared against. Not zero -- zero now means "refuse everything".
+GATE_NOBODY = 1e-30
+
+#: The LOOP recurrence's constants -- what dll_integrate takes. Kept separate from the gate.
+LOOP_POLICY = {"gain": 0.25, "leak": 0.05, "clamp": 3.0, "spacing": 0.5}
+
+DEFAULT_POLICY = dict(LOOP_POLICY, p_floor_abs=GATE_NOBODY)
 
 
 def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
@@ -659,7 +671,10 @@ def main():
                 bad_i.append("PRN %d win %d disc: py %.12g vs cpp %.12g" % (prn, win, ref, disc))
             n_disc += 1
             # (b) the recurrence, driven by the SAME disc
-            trim = combdll.dll_integrate(trim, disc, **DEFAULT_POLICY)
+            # ⚠️ THE LOOP CONSTANTS ONLY. p_floor_abs is the window GATE, which lives in
+            # the C++ integrator and has no Python counterpart -- splatting the whole policy
+            # in hands dll_integrate a kwarg it has never taken.
+            trim = combdll.dll_integrate(trim, disc, **LOOP_POLICY)
             if abs(trim - cpp_trim) > 1e-12 * max(1.0, abs(trim)):
                 bad_i.append("PRN %d win %d trim: py %.12g vs cpp %.12g" % (prn, win, trim, cpp_trim))
             n_trim += 1
@@ -779,16 +794,26 @@ def main():
         print("FAIL -- the above-floor PRN %d's trim SERIES moved under the abs floor. The "
               "flag must change only who is gated, never the arithmetic." % hi_prn)
         return 1
-    pol_lo = dict(DEFAULT_POLICY, p_floor_abs=1e-30)
-    c_lo = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_lo)
-    if c_lo.get("census") != cpp2.get("census") \
-            or c_lo.get("series") != cpp2.get("series"):
-        print("FAIL -- a floor below every satellite changed the answer; with nothing to "
-              "gate it must reproduce the peer-median run exactly (this fixture's peer "
-              "median gates nobody).")
+    # ⚠️ NO FLOOR => REFUSE, and this leg is what stops that regressing to "no gate".
+    # Deleting the peer median left a fork in the road: p_floor_abs <= 0 could mean "gate on
+    # nothing" (step every window) or "refuse" (leak every window). Ungated, an off-peak
+    # discriminator random-walks the trim to the clamp -- measured on sky, PRN 23, 3.4 chips
+    # in 32 s with disc sign-flipping the whole way -- so refusing is the only safe reading,
+    # and a future simplification that "helpfully" treats 0 as no-gate must go red here.
+    pol_none = dict(DEFAULT_POLICY, p_floor_abs=0.0)
+    c_none = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_none)
+    cen_n = c_none.get("census", {}).get("gps_l5", {})
+    stepped = {p: cen_n.get(str(p), {}).get("steps", 0) for p in ARM}
+    if any(v for v in stepped.values()):
+        print("FAIL -- with NO absolute floor the loop must refuse (leak-only, steps 0) and "
+              "instead it stepped: %s. A missing noise reference is not a licence to gate on "
+              "nothing." % stepped)
+        return 1
+    if not all(cen_n.get(str(p), {}).get("skipped", 0) > 0 for p in ARM):
+        print("FAIL -- refusal must LEAK every armed PRN, not silently drop them: %s" % cen_n)
         return 1
     print("ABS-FLOOR PASS -- floor %.3g: PRN %d (below) fully leak-only, PRN %d (above) "
-          "byte-identical; floor 1e-30 reproduces the unset run."
+          "byte-identical; floor 0 REFUSES every armed PRN (steps 0, all leak-only)."
           % (floor_mid, lo_prn, hi_prn))
 
     if args.self_test:

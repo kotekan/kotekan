@@ -93,20 +93,23 @@ def stage_fleet_trim_arming(ctx):
             "clamp": 3.0,
             "spacing": ctx.args.dll_spacing,
             "targets": ["%s/set_trim" % t for t in ctx.trackers]}}}
-        # ⚠️ THE KEY IS ABSENT UNLESS ARMED, not present-and-zero. The equivalence gate hashes
-        # the POST STREAM, so an always-present key -- even carrying the no-op value -- moves
-        # every digest and turns "this flag is off" into "this flag changed production".
-        # Absent parses as 0.0 on the C++ side, which IS the unchanged peer-median gate.
-        if ctx.args.fleet_trim_floor_from_probes:
-            _floor_abs = 0.0
-            for _v in (ctx.dllp.fleet or {}).values():
-                # Chain-level fact, identical on every row: read one, deliberately. And ONLY
-                # a probe-anchored floor ships -- passing the peer bar through as absolute
-                # would rebuild the exact competition this removes, one level up.
-                if str(_v.get("p_floor_src", "")).startswith("probes:") and _v.get("p_floor"):
-                    _floor_abs = float(_v["p_floor"])
-                break
-            _pol["chains"][ctx.telem_chain]["p_floor_abs"] = _floor_abs
+        # ⚠️ ALWAYS SHIPPED NOW (2026-08-27). This used to be behind
+        # --fleet-trim-floor-from-probes, with the key ABSENT when off so the equivalence
+        # digests would not move -- absent parsed as 0.0 in the C++, which selected the
+        # peer-median gate. That gate is deleted, so 0.0 no longer means "use the other
+        # branch", it means REFUSE: the fast loop leaks every armed PRN and steps none.
+        # That is the correct reading. A chain with no probe anchor has not measured its
+        # noise, so no window of it carries usable information, and standing the loop down
+        # is the conservative direction.
+        _floor_abs = 0.0
+        for _v in (ctx.dllp.fleet or {}).values():
+            # Chain-level fact, identical on every row: read one, deliberately. And ONLY a
+            # probe-anchored floor ships -- passing anything else through as absolute would
+            # rebuild the competition this removes, one level up.
+            if str(_v.get("p_floor_src", "")).startswith("probes:") and _v.get("p_floor"):
+                _floor_abs = float(_v["p_floor"])
+            break
+        _pol["chains"][ctx.telem_chain]["p_floor_abs"] = _floor_abs
         try:
             _post("%s/set_policy" % ctx.args.fleet_trim_url.rstrip("/"), _pol, timeout=2.0)
             ctx.dls.stat["posts"] += 1

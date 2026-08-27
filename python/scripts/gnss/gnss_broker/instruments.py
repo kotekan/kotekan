@@ -183,7 +183,7 @@ def instr_tap_walk(ctx):
                 # from the arm that has them
                 coh_from=ctx.dllp.fleet,
                 admit_displaced=ctx.dllp.admit_disp,
-                require_probes=ctx.args.presence_require_probes)
+)
         except Exception as e:
             _cf = None
             _log_rl("comb-dll-err",
@@ -205,7 +205,7 @@ def instr_tap_walk(ctx):
                     deep_gate_prns=ctx.dllp.deep_gate_eff,
                     deep_gate_margin=ctx.args.dll_deep_gate_margin, coh_from=ctx.dllp.fleet,
                     admit_displaced=ctx.dllp.admit_disp,
-                    require_probes=ctx.args.presence_require_probes)
+    )
                 _sh = sorted(set(_cf) & set(_cx))
                 if _sh:
                     _dd = sorted(abs(_cf[p]["disc"] - _cx[p]["disc"]) for p in _sh)

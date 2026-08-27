@@ -203,19 +203,18 @@ def main():
     same = all(a[k]["present"] == c[k]["present"] for k in a if k != 3)
     check(same, "the flag changes PRN 3's verdict and nobody else's")
 
-    # ---- 8. --presence-require-probes: refuse rather than guess (KV, 2026-08-27) --------
-    # The peer fallback passes about half the population by construction. With too few
-    # probes the honest answer is "I cannot tell", and it must be SAID, not approximated.
+    # ---- 8. NO PROBE ANCHOR -> REFUSE. The peer branch is DELETED, not defaulted off ----
+    # (KV, 2026-08-27: "peer comparisons can never tell us about a given signal".) The
+    # fallback passed about half the population by construction; with too few probes the
+    # honest answer is "I cannot tell", and it must be SAID. There is no longer a flag: the
+    # refusal is the only path, because there is nothing left to fall back to.
     thin = {90: row(0.95, 0.02, 1.0), 91: row(1.00, -0.03, 1.1),      # only TWO probes
             7: row(3.40, -0.05, 50.0), 12: row(3.10, 0.08, 30.0),
             3: row(2.90, 0.02, 25.0), 5: row(1.20, -0.30, 8.0)}
-    a = {k: dict(v) for k, v in thin.items()}
-    apply_presence(a, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91}, require_probes=False)
-    n_peer = sum(1 for k, v in a.items() if v["present"])
     b = {k: dict(v) for k, v in thin.items()}
-    apply_presence(b, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91}, require_probes=True)
+    apply_presence(b, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91})
     check(all(v["present_gate"] == "UNANCHORED" for v in b.values()),
-          "too few probes + require_probes: every row reads UNANCHORED")
+          "too few probes: every row reads UNANCHORED, with no flag to turn it off")
     check(not any(v["present"] for v in b.values()),
           "... and NOBODY is admitted (no presence -> no arming -> no trimming)")
     check(b[7]["n_probe_q"] == 2, "... and the row records how many probes there were")
@@ -227,7 +226,7 @@ def main():
     thin4 = {90: row(0.9, 0.0, 1.0), 91: row(1.0, 0.0, 1.1),
              7: row(3.4, 0.0, 50.0), 12: row(3.1, 0.0, 30.0)}     # 4 rows: _floor gives None
     d = {k: dict(v) for k, v in thin4.items()}
-    apply_presence(d, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91}, require_probes=True)
+    apply_presence(d, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91})
     check(all(isinstance(v["q_floor"], float) for v in d.values()),
           "an UNANCHORED row still carries a NUMERIC q_floor (%r) -- the None that killed a "
           "chain" % d[7]["q_floor"])
@@ -237,14 +236,29 @@ def main():
     except TypeError:
         fmt_ok = False
     check(fmt_ok, "... and formats with %.2f exactly as the shipped log line does")
-    check(n_peer > 0,
-          "... whereas the peer fallback admitted %d of %d -- the bad number this replaces"
-          % (n_peer, len(a)))
     # and it must NOT fire when the probes ARE sufficient
     c = fleet() | {3: row(2.90, 0.02, 25.0)}
-    apply_presence(c, k_sigma=3.0, q_fallback=2.2, probe_prns=PROBES, require_probes=True)
+    apply_presence(c, k_sigma=3.0, q_fallback=2.2, probe_prns=PROBES)
     check(all(v["present_gate"] != "UNANCHORED" for v in c.values()),
           "with 3 probes the refusal does not fire and the normal gate runs")
+
+    # ⚠️ THE PEER BRANCH IS GONE FROM THE SOURCE, NOT JUST FROM THE CALL PATH. A flag can be
+    # re-set and a default can be flipped back; this asserts the code itself no longer builds
+    # a bar out of the tracked population. If someone reintroduces it, this goes red before
+    # anything reaches the sky.
+    # ⚠️ STRIP COMMENTS FIRST. The deletion is explained in a comment that necessarily
+    # QUOTES the deleted expression, so a naive substring search finds the documentation and
+    # reports the bug it is documenting. Ban the executable line, not the prose about it.
+    import inspect
+    from gnss_broker import fleet as _fleet
+    src = "\n".join(ln.split("#")[0] for ln in
+                    inspect.getsource(_fleet.apply_presence).splitlines())
+    for banned in ('_floor([v["q"] for v in out.values()]',
+                   '_floor([v["p_pow"] for v in out.values()]'):
+        check(banned not in src,
+              "apply_presence contains no peer-population floor: %s" % banned[:34])
+    check("peers:" not in src,
+          "... and no row can be labelled p_floor_src='peers:N' any more")
 
     test_blind_evidence()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
