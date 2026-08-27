@@ -1773,7 +1773,7 @@ def stage_dead_reckon(ctx):
             if ctx.args.rrate_state or ctx.args.joint_shadow:
                 try:
                     _jsn = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len,
-                                             rereference=ctx.args.joint_rereference)
+                                             rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
                     for _n in _jsn.drain_notes():
                         _log_rl("joint-note", "JOINT %s: %s" % (ctx.band_id, _n),
                                 every_s=10.0)

@@ -440,7 +440,7 @@ def instr_kcoh(ctx):
         _row_inj = 0
         if ctx.args.kcoh_rate_from_row and ctx.args.rrate_state:
             try:
-                _jri = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference)
+                _jri = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
                 for _pi in (set(ctx.seeds) - ctx.probe_set):
                     _ki = (ctx.args.dr_constellation, int(_pi))
                     _sy = ((ctx.args.carrier_hz / _jri.C_LIGHT)

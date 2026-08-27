@@ -267,9 +267,17 @@ _t = _run(_js, 151.0, _TB, 0.0, 400)              # ~13 min at 2 s
 _err = max(abs(_js.predicted(k) - (151.0 + b)) for k, b in _TB.items())
 check("JointReceiverState recovers clk+b_sat at the chips-wrong model scale",
       _err < 0.25, "worst %.3f chips over %d sats" % (_err, len(_TB)))
-check("JointReceiverState gauge holds mean(b) at zero",
-      abs(sum(_js.bias(k) for k in _TB) / len(_TB)) < 0.05,
-      "mean b %+.4f" % (sum(_js.bias(k) for k in _TB) / len(_TB)))
+# ⚠️ STALE FOR FOUR DAYS AND INVISIBLE: this asserted mean(b) = 0, the convention the gauge
+# ABANDONED on 2026-08-23 when the pin moved to the median -- so it has failed on every run
+# since, and nobody saw, because selftest.py does not match the gate's test_*.py glob. (The
+# gate now runs it explicitly; same defect class as the fleetdll symlink that was red for
+# eight days.) The gauge pins the MEDIAN element, so that is what the check must say.
+_bs = sorted(_js.bias(k) for k in _TB)
+_med_b0 = (_bs[len(_bs) // 2] if len(_bs) % 2 else
+           0.5 * (_bs[len(_bs) // 2 - 1] + _bs[len(_bs) // 2]))
+check("JointReceiverState gauge holds MEDIAN(b) at zero",
+      abs(_med_b0) < 0.05, "median b %+.4f (mean %+.4f is NOT pinned since 2026-08-23)"
+      % (_med_b0, sum(_js.bias(k) for k in _TB) / len(_TB)))
 
 # BIRTH: the clock's ABSOLUTE value must survive the first cycle. The first version put
 # the whole offset into b0 by hand, and the gauge -- seeing no cross-covariance to a
@@ -291,12 +299,16 @@ check("birth near L/2 does not converge to a wrapped alias",
 # must land in that sat's b (slow, private). Getting this backwards is exactly the
 # misspecification that makes the plant oscillate.
 _b_before = {k: _js.bias(k) for k in _TB}
+_c_before = _js.clk
 _t = _run(_js, 156.0, _TB, _t, 120)               # +5 chips common
-check("a COMMON offset moves clk, not the biases",
-      abs(_js.clk - 156.0) < 0.4
+# Same staleness as above: comparing clk to the absolute 156 assumed the MEAN convention
+# (median-gauge clk sits at 156 + median-vs-mean of the biases, ~-0.45 for _TB). What a
+# common step must do is CONVENTION-FREE: clk moves by the step, the biases do not move.
+check("a COMMON offset moves clk (by the step), not the biases",
+      abs((_js.clk - _c_before) - 5.0) < 0.4
       and max(abs(_js.bias(k) - _b_before[k]) for k in _TB) < 0.5,
-      "clk %+.2f (want 156), worst db %.2f"
-      % (_js.clk, max(abs(_js.bias(k) - _b_before[k]) for k in _TB)))
+      "dclk %+.2f (want +5.00), worst db %.2f"
+      % (_js.clk - _c_before, max(abs(_js.bias(k) - _b_before[k]) for k in _TB)))
 _clk_before = _js.clk
 _TB2 = dict(_TB); _TB2[("E", 3)] += 2.0           # ONE sat walks 2 chips
 _t = _run(_js, 156.0, _TB2, _t, 300)
@@ -384,6 +396,131 @@ for _ in range(700):        # let it age out, then keep running
     _rmax = max(_rmax, abs(_jm.clk_rate))
 check("a satellite SETTING does not masquerade as clock rate",
       _rmax < 0.002, "peak |rate| %.5f chips/s during the gauge re-reference" % _rmax)
+
+# ── #94/S2: THE PRIOR GAUGE -- an absolute reference cannot step on membership ─────────
+# (KV, 2026-08-27). The median gauge defines clk against the POPULATION, so removing the
+# satellite that IS the median element steps bare clk by construction. The prior gauge's
+# reference is per-satellite and absolute, so the same event must move clk by ~nothing.
+# _TB's biases sorted: -3.4 -2.7 -1.7 +0.8 +2.9 +4.1 -- the median pair is (-1.7, +0.8).
+# Removing ("C", 39) (b = -1.7) moves the 5-sat median to +0.8: a 1.25-chip step in the
+# median-gauge convention, and the DISCRIMINATION both halves of this test hang on.
+def _churn_step(mode):
+    """(at-event |dclk| within 5 cycles of the drop, settled |dclk| 300 cycles later,
+        worst |d(clk+b_i)| over survivors, peak |rate| post-drop)."""
+    _rnd.seed(812)
+    _j = JointReceiverState(gauge_mode=mode)
+    _tt = 0.0
+    for _ in range(400):
+        _tt += 2.0
+        _j.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _tt)
+    _pre_clk = _j.clk
+    _pre_sum = {k: _j.predicted(k) for k in _TB if k != ("C", 39)}
+    _keep = {k: b for k, b in _TB.items() if k != ("C", 39)}
+    _n0 = len(_j._idx)
+    _ev_clk, _rpk, _dropped_at = None, 0.0, None
+    _pre_ev = _j.clk                         # clk on the cycle BEFORE the drop
+    for _i in range(760):                    # the drop lands at ~450 (max_age_s = 900 s)
+        _tt += 2.0
+        _j.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _keep.items()], _tt)
+        if _dropped_at is None and len(_j._idx) < _n0:
+            _dropped_at = _i
+            _pre_clk = _pre_ev
+        if _dropped_at is None:
+            _pre_ev = _j.clk
+        elif _i == _dropped_at + 5:
+            _ev_clk = abs(_j.clk - _pre_clk)
+        if _dropped_at is not None:
+            _rpk = max(_rpk, abs(_j.clk_rate))
+    _settled = abs(_j.clk - _pre_clk)
+    _wsum = max(abs(_j.predicted(k) - v) for k, v in _pre_sum.items())
+    return _ev_clk, _settled, _wsum, _rpk
+
+# _TB residuals under either gauge centre near zero; removing ("C", 39) (residual ~ -1.25)
+# moves the survivors' MEDIAN by ~1.25 and their MEAN by ~0.25 chips. The median gauge pins
+# the former INSTANTLY (gauge_sigma 0.1 acts within a couple of cycles); the prior gauge
+# has no instantaneous pin at all and only re-equilibrates toward the latter, slowly.
+_pe, _psl, _pw, _pr = _churn_step("prior")
+_me, _msl, _mw, _mr2 = _churn_step("median")
+check("PRIOR gauge: NO at-event clk step when a satellite drops",
+      _pe is not None and _pe < 0.10,
+      "clk moved %.3f chips within 5 cycles of the drop" % (_pe or -1))
+check("... where the MEDIAN gauge steps at the event, by construction",
+      _me is not None and _me > 0.5,
+      "median-mode at-event step only %.3f -- the test cannot discriminate" % (_me or -1))
+check("PRIOR gauge: the settled shift is the small soft-mean change, not the median jump",
+      _psl < 0.5 and _msl > 0.8,
+      "settled dclk: prior %.3f (soft-mean ~0.25) vs median %.3f (~1.25)" % (_psl, _msl))
+check("... and clk+b_i (what every consumer reads) is invariant under BOTH",
+      max(_pw, _mw) < 0.35, "worst survivor drift: prior %.3f, median %.3f chips" % (_pw, _mw))
+check("PRIOR gauge: the post-churn relaxation does not masquerade as clock rate",
+      _pr < 0.002, "peak |rate| %.5f chips/s (bound 0.002, same as the median-mode bench)" % _pr)
+
+# ROBUSTNESS RE-SUPPLIED (the 2026-08-09 lesson, third statement of it). The prior is
+# Huber-clamped, so it must (a) pull a uniformly displaced comb home -- the 2026-08-10
+# failure had the zero-centred inlier screen switch the gauge OFF at exactly that moment --
+# and (b) give ONE wild bias only a bounded pull on clk, not a proportional one.
+# THE TRADE IS DOCUMENTED IN gauge() AND ASSERTED HERE: with Huber R-inflation the comb's
+# +97-chip innovations are all far past cap, so healing is SLOW by design (immunity fast,
+# healing slow). What must hold throughout a displaced-comb episode is (a) the gauge never
+# switches itself off -- the 2026-08-10 zero-centred screen went silently dead here and the
+# comb sat at +97 for 50 min with NOTHING pulling -- and (b) clk + b_i stays correct, so
+# every sum-reading consumer rides through the episode untouched.
+_rnd.seed(813)
+_jh = JointReceiverState(gauge_mode="prior")
+_t5 = 0.0
+for _ in range(400):
+    _t5 += 2.0
+    _jh.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t5)
+for _k5 in _TB:                              # the 2026-08-10 shape: comb at +97, clk at -97
+    _jh.x[_jh._idx[_k5]] += 97.0
+_jh.x[0] -= 97.0
+_sums_ok = {k: _jh.predicted(k) for k in _TB}
+_worst_sum = 0.0
+for _ in range(600):
+    _t5 += 2.0
+    _jh.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t5)
+    _worst_sum = max(_worst_sum, max(abs(_jh.predicted(k) - v) for k, v in _sums_ok.items()))
+_med_b = sorted(float(_jh.x[_jh._idx[_k5]]) for _k5 in _TB)[len(_TB) // 2]
+check("PRIOR gauge: a displaced comb IS healing -- the gauge never goes dead",
+      _med_b < 96.0, "median b %.1f after 20 min: no progress from +97 means the pull "
+      "switched off, the exact 2026-08-10 failure" % _med_b)
+check("... and clk+b_i stays correct THROUGHOUT the episode (sum-reading consumers ride it)",
+      _worst_sum < 0.5, "worst sum error %.3f chips during the heal" % _worst_sum)
+
+# A WILD BIAS MUST ADD NOTHING BEYOND WHAT SILENCE ALONE DOES. The paired control is the
+# whole test: run the same fleet twice from the same seed -- once merely SILENCING a sat,
+# once corrupting its state by +97 AND silencing it -- and require the clk trajectories to
+# agree. Whatever silencing legitimately does to the soft-mean equilibrium (age-out at
+# 900 s, slow re-centre) happens in BOTH arms; the +97 itself must contribute ~nothing,
+# because R-inflation cuts its weight by (97/cap)^2 ~ 260x. The first implementation
+# (hard clamp at gauge_max_b, full gain) failed this by 2.27 chips and DID NOT recover;
+# a freshness screen then moved the churn to the silencing edge instead of removing it.
+def _wild_run(hack):
+    _rnd.seed(814)
+    _j = JointReceiverState(gauge_mode="prior")
+    _tt = 0.0
+    for _ in range(400):
+        _tt += 2.0
+        _j.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _tt)
+    if hack:
+        _j.x[_j._idx[("G", 14)]] += 97.0
+    _trace = []
+    for _ in range(600):                      # through age-out at 900 s and beyond
+        _tt += 2.0
+        _j.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3)
+                  for k, b in _TB.items() if k != ("G", 14)], _tt)
+        _trace.append(_j.clk)
+    return _trace
+
+_tw, _tc = _wild_run(True), _wild_run(False)
+_dmax = max(abs(a - b) for a, b in zip(_tw, _tc))
+# 0.25 is the honest bound, not a target: measured 0.156 -- the residual is 450 cycles of
+# the 1/260-weighted pull before age-out, against 2.27-AND-GROWING for the hard clamp. A
+# +97-chip state corruption has no production pathway (the innovation and birth gates own
+# that, tested above); this asserts the gauge cannot AMPLIFY one into a clock error.
+check("PRIOR gauge: a +97-chip wild bias adds ~nothing beyond silencing alone",
+      _dmax < 0.25, "worst trajectory divergence %.3f chips over 20 min (hard-clamp "
+      "version: 2.27 and growing)" % _dmax)
 
 # The gate must not DEADLOCK. A genuine step (clock event, re-anchor) is rejected by a
 # normalized gate, so without an escape the state never follows it and every later

@@ -711,7 +711,7 @@ def main(argv=None, rx=None, publisher=None):
         because consumer 3's shadow log printed nothing and the reason had to be chased
         (docs 11.31)."""
         try:
-            js = rx_.joint_receiver(band, CODE_LEN, rereference=a.joint_rereference)
+            js = rx_.joint_receiver(band, CODE_LEN, rereference=a.joint_rereference, gauge_mode=a.joint_gauge)
             if len(js._idx) < a.joint_min_sats:
                 return None
             # A DEAF STATE IS NOT FIT TO CONSUME (2026-08-21). It rejects everything, so it
@@ -2196,7 +2196,7 @@ def main(argv=None, rx=None, publisher=None):
         if args.rrate_state and args.rrate_kcoh_feed and _kco and _drp.t_now_abs is not None:
             rr_kcoh_fed["last"] = _kco
             try:
-                _jrk = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
+                _jrk = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference, gauge_mode=args.joint_gauge)
                 _nk = 0
                 _krows = []
                 for _p, _kv in sorted(_kco.items()):
@@ -2246,7 +2246,7 @@ def main(argv=None, rx=None, publisher=None):
         # produced nothing this poll, so a dead feed shows n=0 rather than vanishing).
         if state_w is not None and args.rrate_state:
             try:
-                _jro = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
+                _jro = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference, gauge_mode=args.joint_gauge)
                 _ks = [k for k in _jro._rr_idx if k[0] == args.dr_constellation]
                 _vs = sorted(_jro.rrate(k) for k in _ks)
                 state_w.observe(
@@ -2447,7 +2447,7 @@ def main(argv=None, rx=None, publisher=None):
                         "(old tracker binary?) -- shadow only", every_s=120.0)
             else:
                 try:
-                    _j = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference)
+                    _j = rx.joint_receiver(band_id, CODE_LEN, rereference=args.joint_rereference, gauge_mode=args.joint_gauge)
                     # No receiver-wide term solved yet -> nothing to command. The sigma
                     # gate below then handles per-sat convergence one row at a time.
                     _ctx.jrc = _j if _j.f_carrier_sigma() != float("inf") else None

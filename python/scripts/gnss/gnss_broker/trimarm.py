@@ -183,7 +183,7 @@ def stage_fleet_trim_arming(ctx):
                 _jg = None
                 try:
                     _jg = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len,
-                                            rereference=ctx.args.joint_rereference)
+                                            rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
                 except Exception:
                     _jg = None
                 _g3_rows = []

@@ -2082,6 +2082,22 @@ def build_parser(description):
                          "self-consistent. Seeds/holds settle in ~3 min; 240 is that plus "
                          "margin. The filter object itself is still created (warm-started) "
                          "immediately -- only the feed waits.")
+    ap.add_argument("--joint-gauge", choices=["median", "prior"], default="median",
+                    help="#94/S2: what pins the joint filter's unobservable common mode. "
+                         "'median' (the shipped convention): a median(b)=0 pseudo-measurement "
+                         "over the ACTIVE sats -- a POPULATION statement, so bare clk steps "
+                         "when the middle element changes and b_i is fleet-relative by "
+                         "construction. 'prior': each b_i carries its own absolute prior "
+                         "b ~ N(0, 2 chips) -- the physical envelope of a per-sat code bias "
+                         "(ephemeris residual + DCB + differential iono/tropo at 1176 MHz; "
+                         "one chip is 29.3 m) -- Huber R-inflated past 3 sigma so a wild "
+                         "bias's weight falls as 1/y^2. No satellite's gauge mentions any "
+                         "other, so a rise or set is a NON-EVENT: measured in the selftest, "
+                         "at-event clk step 0.009 chips vs 1.05 for the median pin. The "
+                         "trade, chosen deliberately: a uniformly displaced comb heals "
+                         "SLOWLY (clk+b_i stays correct throughout, so sum-reading "
+                         "consumers ride it; only the bare-clk consumer degrades, and it "
+                         "has its own 5-chip refusal).")
     ap.add_argument("--joint-rereference", action="store_true",
                     help="JOINT FILTER: treat a membership change as a change of "
                          "COORDINATES rather than as an observation. On a join/leave the "

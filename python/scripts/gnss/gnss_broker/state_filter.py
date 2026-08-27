@@ -174,7 +174,8 @@ class JointReceiverState:
 
     def __init__(self, code_len=10230.0, sigma_clk0=200.0, sigma_rate0=0.05,
                  sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013, rereference=False,
-                 gauge_sigma=0.1, max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
+                 gauge_sigma=0.1, gauge_mode="median", gauge_prior_sigma=2.0,
+                 max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
                  reject_escape=5, escape_spread=5.0,
                  birth_max=12.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
                  ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
@@ -226,6 +227,21 @@ class JointReceiverState:
         self.rereference = bool(rereference)
         self.q_b = float(q_b)          # per-sat bias walk: SLOW is the whole point
         self.gauge_sigma = float(gauge_sigma)
+        # ── THE GAUGE'S REFERENCE: "median" (population) or "prior" (absolute) ──────────
+        # #94/S2 (KV, 2026-08-27): the median gauge defines b_i as "this satellite's
+        # deviation from the fleet", so b_i is a fleet-relative quantity BY CONSTRUCTION and
+        # the state steps when the population changes. "prior" replaces the population pin
+        # with a per-satellite absolute prior b_i ~ N(0, gauge_prior_sigma) -- see gauge().
+        self.gauge_mode = str(gauge_mode)
+        if self.gauge_mode not in ("median", "prior"):
+            raise ValueError("gauge_mode must be 'median' or 'prior', not %r" % gauge_mode)
+        # PHYSICALLY MOTIVATED, not tuned: b_sat is the residual per-satellite code bias
+        # after the BRDC model -- ephemeris residual (~1-2 m), satellite group-delay /
+        # DCB mismatch (~1-3 m), and the DIFFERENTIAL part of iono+tropo at 1176 MHz
+        # (up to ~10-20 m at low elevation; the common part belongs to clk). One chip is
+        # 29.3 m, so |b| <~ 1 chip is the physical envelope and 2.0 chips is that envelope
+        # with margin. On sky 2026-08-27 the live b_sat values were +-0.02 chips.
+        self.gauge_prior_sigma = float(gauge_prior_sigma)
         self.max_age_s = float(max_age_s)
         # ROBUSTNESS, ALL THREE FROM ONE INCIDENT (2026-08-09, see the class note below).
         self.innov_max = innov_max     # absolute garbage ceiling (chips), any state
@@ -673,6 +689,14 @@ class JointReceiverState:
         the filter knows exactly as much after the relabelling as before. P is carried
         through the same linear map (P -> A P A^T) so the covariance stays consistent with
         the shifted state rather than silently describing the old parameterisation."""
+        if self.gauge_mode == "prior":
+            # Nothing to relabel: no per-sat prior mentions any other satellite, so the
+            # gauge target did not step -- only the slow EQUILIBRIUM moved (by ~b_gone/N,
+            # paced by gauge_prior_sigma). KEEP THE RATE SHIELD for that relaxation: it is
+            # gauge-convention motion, not clock motion, and must not be differentiable
+            # into clk_rate -- the same argument as the exact-re-reference path below.
+            self.P[0, 1] = self.P[1, 0] = 0.0
+            return
         if not self.rereference:
             self.P[0, 1] = self.P[1, 0] = 0.0
             self.P[0, 0] += 4.0
@@ -1097,6 +1121,71 @@ class JointReceiverState:
         middle element itself changes, not by every newcomer's b/n. clk + b_i (the only
         gauge-invariant observable) is unchanged by construction either way."""
         np = self._np
+        if self.gauge_mode == "prior":
+            # ── #94/S2: THE ABSOLUTE GAUGE (KV, 2026-08-27) ────────────────────────────
+            # "We should never be comparing between real satellite signals." The median pin
+            # below is a POPULATION statement: it defines clk as the fleet's middle offset,
+            # so bare clk steps whenever the middle element changes -- ~1 chip at 6 sats,
+            # the churn that motivated the exact re-reference machinery.
+            #
+            # Here each b_i instead carries its own weak absolute prior, b_i ~ N(0,
+            # gauge_prior_sigma), applied every cycle as a pseudo-measurement. What this
+            # does and does not do:
+            #  * The common mode (add c to clk, subtract c from every b_i) is still
+            #    structurally unobservable from the measurements; the priors are now the
+            #    ONLY thing that pins it, and they pin it WITHOUT REFERENCE TO MEMBERSHIP:
+            #    no satellite's prior mentions any other satellite, so a rise or set is a
+            #    non-event -- nothing is relabelled and nothing steps.
+            #  * In steady state the split settles where the priors are least violated,
+            #    which is a SOFT mean(b) ~ 0. That is unavoidable -- the decomposition is
+            #    unidentifiable and every gauge allocates it somewhere -- but the population
+            #    now enters only through a SLOW equilibrium (paced by the prior strength),
+            #    never through an instantaneous pin. A membership change moves the
+            #    equilibrium by ~b_gone/N and the state relaxes there over many cycles,
+            #    which the rate shield in _membership_changed keeps out of clk_rate.
+            #  * clk + b_i -- the only gauge-invariant observable, and what predicted()
+            #    serves -- is measurement-determined and unaffected by the gauge choice.
+            #
+            # ROBUSTNESS RE-SUPPLIED EXPLICITLY (the 2026-08-09 lesson, again), and the
+            # FORM matters: Huber R-INFLATION, not a hard clamp. A clamp bounds the
+            # innovation but keeps full gain, so a 97-chip outlier still pulls every cycle
+            # at clamp strength -- measured in the selftest, that dragged clk 0.07
+            # chips/cycle through the P correlations while the sub-chip RECOVERY
+            # innovations got no more gain than the outlier did. Inflating R by
+            # (|y|/cap)^2 beyond cap = 3 sigma makes the pull FALL with outlier size
+            # (step ~ 1/|y|): a wild bias is quasi-ignored, while ordinary re-centring
+            # runs at full strength. And -- unlike an inlier SCREEN centred on zero -- the
+            # prior never switches itself off: the 2026-08-10 failure (every bias at +97,
+            # zero-centred inlier set empty, gauge silently dead for 50 minutes) cannot
+            # recur. THE TRADE, stated so nobody re-tunes it into the wrong corner: a
+            # uniformly displaced comb now heals SLOWLY (its innovations are all beyond
+            # cap), where the median gauge healed fast. That is the chosen allocation --
+            # immunity fast, healing slow -- because clk + b_i stays correct throughout a
+            # displaced-comb episode (every consumer reads the sum), while a dragged clk
+            # poisons the rate and the bare-clk consumers immediately. You cannot have
+            # fast comb-healing AND wild-bias immunity without a population statement,
+            # which is the thing this mode exists to remove.
+            # ⚠️ NO FRESHNESS SCREEN, DELIBERATELY -- IT WAS TRIED AND IT WAS WORSE. A rule
+            # that dropped the prior for sats without a recent accepted measurement was the
+            # first fix for the wild-bias drag, and instrumenting the state showed it
+            # created its own churn: the soft-mean equilibrium re-centres the moment a
+            # satellite goes SILENT (-b_i/N within the relax time), which is a second
+            # membership edge 30 s after the first. The R-inflation below already does the
+            # real work, population-free: a bias's WEIGHT in the equilibrium falls as
+            # 1/|y|^2 past the cap, so a wild or stale-and-drifting bias simply stops
+            # counting, gradually, with no edge to step across. Every active sat keeps its
+            # prior until the ordinary age-out -- the same membership semantics as the
+            # median gauge, minus the pin.
+            for key, i in list(self._idx.items()):
+                y = -float(self.x[i])
+                _R = self.gauge_prior_sigma ** 2
+                _cap = 3.0 * self.gauge_prior_sigma
+                if abs(y) > _cap:
+                    _R *= (y / _cap) ** 2
+                H = np.zeros(self.x.size)
+                H[i] = 1.0
+                self._scalar_update(H, y, _R)
+            return
         # A wild bias gets no vote. (Historically the pin was a MEAN over this inlier set;
         # the pin itself is now the median, but the inlier screen below stays -- it is what
         # keeps a wild bias from BECOMING the middle element of a small set.)

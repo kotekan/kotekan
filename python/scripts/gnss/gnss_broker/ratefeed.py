@@ -33,7 +33,7 @@ def stage_rate_feed_coarse(ctx):
     mirror)."""
     if ctx.args.rrate_state and ctx.rf.resid2 and ctx.drp.t_now_abs is not None:
         try:
-            _jrr = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference)
+            _jrr = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
             _n_ok = 0
             _n_gov = 0   # sats in the PHASE-GOVERNED regime this poll
             _n_rec_fed = 0
@@ -145,7 +145,7 @@ def stage_rate_feed_fine(ctx):
             _rec_dt = 2048.0 / ctx.args.hops_per_sec
             _jpp = []
             _n_fine = 0
-            _jrf = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference)
+            _jrf = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
             for _p, _rec in (ctx.status or {}).items():
                 if not isinstance(_rec, dict):
                     continue

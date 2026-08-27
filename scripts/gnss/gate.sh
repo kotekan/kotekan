@@ -68,6 +68,19 @@ for t in "$K"/python/scripts/gnss/gnss_broker/test_*.py; do
     fi
 done
 
+# ⚠️ selftest.py DOES NOT MATCH THE GLOB ABOVE, AND THAT COST FOUR DAYS OF RED (2026-08-27).
+# The mean->median gauge change (08-23) invalidated two of its assertions and NOBODY SAW,
+# because nothing ran it -- the same defect class as the fleetdll symlink that was red for
+# eight days while reporting green. It is the broker's oldest check suite (the filter's
+# whole robustness ledger lives there); it belongs to the same verdict as everything else.
+if ! ( cd "$K/python/scripts/gnss" && "$PY" gnss_broker/selftest.py > "$OUT/selftest.log" 2>&1 ); then
+    units=$((units+1))
+    printf "  RED   %-38s (unit)\n" "gnss_broker.selftest"
+    grep -E "FAIL|Error|Traceback" "$OUT/selftest.log" | head -8 | sed 's/^/          /'
+elif [ "${1:-}" = "-v" ]; then
+    printf "  ok    %-38s %s\n" "gnss_broker.selftest" "$(grep -c ' ok ' "$OUT/selftest.log") checks"
+fi
+
 # ---- THE STATIC PASS --------------------------------------------------------------------
 # 2026-08-26: trimarm.py used C_LIGHT with no import for ~25 min of production. The digest
 # gate CANNOT see it (the shadow needs a live gather, so the line never runs in replay) and
