@@ -458,9 +458,24 @@ class SawtoothDetector(object):
                                       and 0.0 <= rebase_age_s <= self.rebase_window_s)
                     else "BARE-WIPE")
             self.episodes.append((prn, t, prev, trim, kind))
+            # ⚠️⚠️ THE SPAN IS CENSORED BY MY OWN WINDOW, AND IT MUST SAY SO.
+            # `hist` is trimmed to window_s, so a ramp older than that reports a span pinned
+            # just under it and the reports CLUSTER at ~1800 s -- which reads as a 30-minute
+            # PERIOD in the plant and is nothing of the kind. I made exactly that misreading
+            # on 2026-08-27 and had to retract it: "12 of 37 railed at a 1800 s quantum" was
+            # my detector's lookback, not the sky's clock. Same family as reading SPEC-FIT's
+            # tap-relative tau as an absolute during the E3 chase.
+            #
+            # A censored value is a LOWER BOUND, so print it as one. ">=1798 s" cannot be
+            # mistaken for a measurement the way "1798 s" was.
+            span = t - h[0][0]
+            censored = span >= 0.95 * self.window_s
             return ("SAWTOOTH PRN %d: standing trim %+.2f -> %+.2f chips in one cycle "
-                    "(peak %+.2f over %.0f s) -- ramp discarded, not handed over | %s%s"
-                    % (prn, prev, trim, peak, t - h[0][0], kind,
+                    "(peak %+.2f over %s%.0f s%s) -- ramp discarded, not handed over | %s%s"
+                    % (prn, prev, trim, peak, ">=" if censored else "", span,
+                       ", CENSORED at my %.0f s window -- a LOWER BOUND, not a period"
+                       % self.window_s if censored else "",
+                       kind,
                        (" (birth-step %.0f s before)" % rebase_age_s)
                        if kind == "REBASE-WIPE" else " (no birth-step in window: slew/other)"))
         return None

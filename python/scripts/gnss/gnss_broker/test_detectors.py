@@ -368,5 +368,32 @@ if __name__ == "__main__":
     for fn in (test_the_e4_case, test_states, test_window_and_line, test_no_side_effects,
                test_brownout, test_latch, test_sawtooth, test_sawtooth_v2):
         fn()
+    # ---- the span must be reported as CENSORED when it fills the window ----------------
+    # A ramp older than window_s reports a span pinned just under it, so the reports cluster
+    # at ~window_s and read as a PERIOD in the plant. That misreading cost a retraction on
+    # 2026-08-27 ("12 of 37 railed at a 1800 s quantum" -- my own lookback). A censored value
+    # is a LOWER BOUND and must print as one.
+    d = SawtoothDetector(window_s=1800.0, cooldown_s=0.0, startup_hold_s=0.0)
+    t0 = 10000.0
+    msg = None
+    for k in range(0, 200):                       # 200 x 20 s = 4000 s, well past the window
+        t = t0 + k * 20.0
+        trim = 0.02 * k if k < 190 else 0.05      # long ramp, then a wipe
+        msg = d.note(t, 1, trim, uptime_s=1e6, present_frac=1.0, q_mean=3.0) or msg
+    check(msg is not None, "a ramp longer than the window still reports a wipe")
+    check(msg is not None and ">=" in msg and "CENSORED" in msg,
+          "... and its span is marked as a LOWER BOUND, not a measured duration:\n"
+          "           %s" % (msg or "")[:150])
+
+    # a SHORT ramp inside the window reports an exact span, with no censoring marker
+    d2 = SawtoothDetector(window_s=1800.0, cooldown_s=0.0, startup_hold_s=0.0)
+    msg2 = None
+    for k in range(0, 20):                        # 20 x 20 s = 400 s, well inside
+        trim = 0.06 * k if k < 18 else 0.05
+        msg2 = d2.note(t0 + k * 20.0, 2, trim, uptime_s=1e6, present_frac=1.0,
+                       q_mean=3.0) or msg2
+    check(msg2 is not None and ">=" not in msg2 and "CENSORED" not in msg2,
+          "a ramp INSIDE the window reports an exact span, unmarked")
+
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     sys.exit(1 if _fails else 0)
