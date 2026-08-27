@@ -1221,3 +1221,85 @@ has now been made three times in this codebase — q → prompt power → prompt
 comment in `fleet.py` that says *"do not fix this a third time with another tap ratio"* was
 written after the second. The replacement must be an **absolute reference**: a probe, a prior, a
 physical bound, or a clock.
+
+---
+
+## #95 — HOLD-BY-PROMPT: the re-pin gate is tap-measured, so a displacement blocks its own cure
+
+**Status:** open, not urgent. Fleet is healthy; this is a recurring *modality*, not a live fault.
+**Family:** the same one as the arming gate (#79) and the fast-loop window gate (#93/E3) —
+a decision about "are we still on the peak?" made from a statistic the offset suppresses.
+
+### The case study: E8 on gal_e5a, 2026-08-27 20:33:52 → 20:41:00 UTC
+
+E8 at +27° elevation, locked and healthy at q≈3.0, dropped to q<1 for **seven minutes** and
+recovered on its own. It is locked 96% of the time on this chain, so this is the 4%.
+
+**It was an OFFSET, not a fade.** Total tap power fell only ~1 dB across the event, but the
+*distribution* moved: prompt carried 60% of (E+P+L) before and 23% during, with E and L taking
+the rest. `SPEC-FIT` measured the displacement directly and repeatedly through the outage:
+`+0.300, +0.584, +0.320, +0.560, +0.236, +0.600` chips.
+
+```
+   utc        disc     trim  fleet    q   p/floor
+20:33:44    +0.162    +0.02  12/12  2.99      5.8
+20:33:48    +0.164    +0.02  12/12  2.83      3.6
+20:33:52    +0.524    +0.02  12/12  1.17      1.4   <- collapse
+20:38:41    -0.716    +0.04  12/12  0.61      1.7
+20:39:51    -0.797    +0.00  12/12  0.59      2.0   <- trim has LEAKED TO ZERO
+20:40:53    -0.445    +0.00  12/12  1.45      4.4
+20:40:57    -0.547    +0.00  12/12  1.28     18.1
+20:41:00    -0.404    +0.00  12/12  2.55     43.0   <- recovered
+```
+
+**Note the trim: +0.02 → +0.04 → 0.00. The loop never moved, for seven minutes.**
+
+### The causal chain
+
+1. Something displaces the code phase by ~0.6 chips.
+2. The deep fold drops out. That would normally trigger a **re-pin** (re-acquire from the model).
+3. ⚠️ **The re-pin is BLOCKED**, and the log says so at the exact second of the collapse:
+   `[20:33:52.031] HOLD-BY-PROMPT: PRN 8 held through a deep-fold dropout (prompt 2.8x noise,
+   sig 1.4 < 3.0) -- no re-pin`.
+   The gate reads "prompt is 2.8× noise" as "we are still on the signal". **That is exactly what
+   a 0.6-chip offset looks like** — the prompt is sitting on the shoulder of the peak.
+4. ⚠️ **The DLL cannot arm either.** Prompt power sat at 1.4–2.2× the probe floor, below the
+   arming bar, so the fast loop went leak-only and the standing trim **leaked to 0.00** — erasing
+   the one correction that could have pulled it back.
+5. Both fast cures are now disabled *by the displacement itself*. It sits there.
+6. **Recovery is by the slowest path left**: the joint filter's `b_sat` walked from −0.081 to
+   +0.080 chips while the total commanded offset moved +0.29 chips, until the prompt tap
+   recaptured the peak — then p/floor went 2.1 → 18.1 → 43.0 in ~7 s.
+
+**The asymmetry is the finding: the loss is instantaneous, the recovery is rate-limited by the
+slowest estimator in the chain, because the two fast ones latched themselves out.**
+
+### Why the gate exists (do not simply delete it)
+
+`HOLD-BY-PROMPT` is the #58 fold-independent prompt path. The deep fold *flickers* — it fails
+~50% of windows while tracking holds — and re-pinning on every flicker would be worse than the
+disease. The gate is right about the common case and wrong about this one.
+
+### Proposed fix, in preference order
+
+1. **Hold on something OFFSET-BLIND.** The correct discriminator is one a displacement cannot
+   suppress: total tap energy `E+P+L` (which barely moved here — ~1 dB), or the deep fold's own
+   rate/phase re-search. "Is there signal?" and "is the prompt on it?" are different questions
+   and this gate currently answers the second while asking the first.
+2. **Bound the hold in time, regardless.** A hold written for a *flicker* must not outlive one.
+   Seven minutes is not a flicker. Cheap, independent of (1), and worth having as a backstop
+   even after (1) lands.
+3. Consider making the DLL's arming floor and the hold gate consult the same offset-blind
+   evidence, so the two cures cannot be disabled by one symptom.
+
+### Falsifier / how to judge
+
+Arm on one Galileo chain with the sibling as control (e5a vs e5b — both carry every satellite,
+so the pairing is clean). Judge on **q<2 duty cycle per satellite**, paired in time, NOT on a
+snapshot: E8 is locked 96% of the time and any instant misrepresents it. Expect the *depth* of
+the excursions to be unchanged and their *duration* to fall — the fix addresses how long a
+displacement persists, not whether one happens.
+
+⚠️ Read `p/floor`, not `q`, when judging: `q` is degenerate (≈1 for both "off-peak" and "weak").
+⚠️ `deep_snr` is NOT a presence detector — it fires on noise; measured the same evening at
+13.4 / 12.7 on satellites 19° and 31° **below the horizon**.
