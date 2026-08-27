@@ -1158,7 +1158,11 @@ BeiDou chains drift back up while the Galileo pair stays low, that separates the
 
 ## #94 — CATEGORY 2: the shared-parameter estimators, and their membership churn
 
-**Status: OPEN, deliberately not started. Raised and parked 2026-08-27 by KV** — *"this seems
+**Status: S2 BUILT AND ARMED 2026-08-27 15:24 (`f26b70d6b`), awaiting its on-sky verdict;
+S1/S3-S6 still parked.** KV un-parked S2 the same afternoon; the gauge history (mean →
+median → prior, each reason recorded), the two rejected designs (hard clamp; freshness
+screen), and the chosen trade (wild-bias immunity fast, comb-healing slow) are in the
+commit and in `fixtures/expectations_20260827_prior_gauge.txt`. Originally: **parked by KV** — *"this seems
 like it could be a huge change in behaviour."* Category 1 of
 `docs/CHORD_PEER_COMPARISON_PURGE.md` is done and burned; this is the rest of that document.
 
