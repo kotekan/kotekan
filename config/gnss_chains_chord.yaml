@@ -1741,6 +1741,13 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # Revert: delete this line + broker restart.
     # (This also enables the /get_prns sweep, which --prn-reconfig off otherwise skips.)
     probe-require-slot: true
+    # ── PRESENCE REFUSAL, ARMED WITH IT (KV: the peer fallback must never be the
+    # ── decision). Paired deliberately: probe-require-slot fixes the probe SUPPLY, this
+    # ── makes a bad floor impossible if the supply ever fails again. bds_b2b stays the
+    # ── control for both. ⚠️ If probes fall short this chain goes UNANCHORED and stops
+    # ── trimming entirely -- that is the intended, conservative behaviour, and the log
+    # ── says so. Revert: delete this line + broker restart.
+    presence-require-probes: true
     trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,\
 http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,\
 http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
