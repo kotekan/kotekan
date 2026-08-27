@@ -316,8 +316,8 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
             _src_ok(url)
             _atomic_write_bytes(local, data)
             return local
-        except Exception:
-            _src_failed(url)
+        except Exception as e:
+            _src_failed(url, exc=e)
             continue
     # EVERY source skipped means every source is cooling down. Clear the marks and let the next
     # call try again rather than starving forever on our own bookkeeping.
@@ -357,7 +357,25 @@ def _src_skip(url, now=None):
     return (_src_dead.get(_src_key(url), 0.0) > (now or time.time()))
 
 
-def _src_failed(url, now=None):
+# Statuses that are a statement about the PATH, not about the host. Everything else -- a
+# timeout, a refused connection, a 5xx, a 200 that is not gzip -- says the mirror is not
+# serving, and blacklisting it is right.
+_PATH_STATUS = (404, 410)
+
+
+def _src_failed(url, now=None, exc=None):
+    """Blacklist a source host for the cooldown -- unless the failure was about the PATH.
+
+    ⚠️ A 404 IS NOT A DEAD HOST, AND TREATING IT AS ONE POISONS THE MIRROR THAT WORKS
+    (2026-08-27). The key is scheme+host, deliberately, so one dead server is skipped for
+    every path under it. But the daily fetch asks CDDIS for the CURRENT day, and CDDIS only
+    publishes CLOSED days -- so that request 404s every time, by design, and it was marking
+    the whole of cddis.nasa.gov dead for 300 s. The very next call is the one that fetches
+    YESTERDAY's daily from CDDIS, which does exist and is exactly the fallback that has to
+    work while BKG is unreachable. A guaranteed-absent path was disabling a live server.
+    """
+    if exc is not None and getattr(exc, "code", None) in _PATH_STATUS:
+        return
     _src_dead[_src_key(url)] = (now or time.time()) + _SRC_COOLDOWN_S
 
 
@@ -463,8 +481,8 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
                     _src_ok(url)
                     _atomic_write_bytes(local, data)
                     return local
-                except Exception:
-                    _src_failed(url)
+                except Exception as e:
+                    _src_failed(url, exc=e)
                     continue
         # 3) download failed but a STALE same-day cache exists -> use it (still predicts) rather
         #    than falling to the previous day's dead-for-today ephemeris.

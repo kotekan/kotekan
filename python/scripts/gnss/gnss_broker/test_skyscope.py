@@ -311,6 +311,40 @@ def test_brdc_sources():
         ge._earthdata_token = saved
 
 
+def test_404_is_not_a_dead_host():
+    import urllib.error
+    import gnss_ephemeris as ge
+    print("_src_failed: a 404 is a statement about the PATH, not about the host")
+    saved = dict(ge._src_dead)
+    try:
+        ge._src_dead.clear()
+        # The daily fetch asks CDDIS for the CURRENT day, which CDDIS never publishes -- a
+        # guaranteed 404. Under the old rule that disabled cddis.nasa.gov for 300 s, taking
+        # the YESTERDAY fetch (which exists, and is the whole fallback while BKG is down)
+        # down with it.
+        url = "https://cddis.nasa.gov/archive/gnss/data/daily/2026/239/26p/x.rnx.gz"
+        ge._src_failed(url, exc=urllib.error.HTTPError(url, 404, "Not Found", {}, None))
+        check(not ge._src_skip("https://cddis.nasa.gov/archive/gnss/data/daily/2026/238/"
+                               "26p/y.rnx.gz"),
+              "a 404 on one path leaves every OTHER path on that host reachable")
+
+        ge._src_dead.clear()
+        ge._src_failed(url, exc=urllib.error.URLError("timed out"))
+        check(ge._src_skip(url), "a TIMEOUT still blacklists the host -- that is the case the "
+                                "negative cache exists for (BKG, twice now)")
+
+        ge._src_dead.clear()
+        ge._src_failed(url, exc=urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None))
+        check(ge._src_skip(url), "and so does a 5xx -- the server answered, but not with data")
+
+        ge._src_dead.clear()
+        ge._src_failed(url)   # the not-gzip case: a 200 serving a login/error page
+        check(ge._src_skip(url), "a 200 that is not gzip blacklists too (login/error page)")
+    finally:
+        ge._src_dead.clear()
+        ge._src_dead.update(saved)
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -320,6 +354,7 @@ def main():
     test_hourly_coverage()
     test_station_diversity()
     test_brdc_sources()
+    test_404_is_not_a_dead_host()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 
