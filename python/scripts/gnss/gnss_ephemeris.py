@@ -335,18 +335,27 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
         #    cache to pull the newest toe's). Try each mirror (BKG, then CDDIS if a token exists);
         #    a valid BRDC is gzip, so reject anything without the gzip magic (an auth/error page
         #    served as 200 must never be cached as if it were ephemeris).
+        # ⚠️ THE SAME NEGATIVE CACHE AS _fetch_brdc_variant, AND IT MUST BE. This is a second
+        # copy of that mirror loop, and patching only the other one left BKG being dialled on
+        # every cycle anyway -- five sockets still in SYN-SENT, from HERE (2026-08-27). Two
+        # copies of a retry policy is two places to fix and one to forget.
         for local in locals_:
             name = os.path.basename(local)
             for url, headers in _brdc_sources(d.year, doy, name):
+                if _src_skip(url):
+                    continue
                 try:
                     req = urllib.request.Request(url, headers=headers)
                     with urllib.request.urlopen(req, timeout=30) as r:
                         data = r.read()
                     if data[:2] != b"\x1f\x8b":
+                        _src_failed(url)
                         continue  # not gzip (login/error page) -> try the next mirror
+                    _src_ok(url)
                     _atomic_write_bytes(local, data)
                     return local
                 except Exception:
+                    _src_failed(url)
                     continue
         # 3) download failed but a STALE same-day cache exists -> use it (still predicts) rather
         #    than falling to the previous day's dead-for-today ephemeris.
