@@ -1269,6 +1269,22 @@ def build_parser(description):
     # transits at 83 deg, had no slot at all -- and, because the noise-probe selector picks the
     # deepest below-horizon PRN, it kept picking the one satellite the node could not represent,
     # dropping both gal chains to brightness-only presence.
+    ap.add_argument("--probe-require-slot", action="store_true",
+                    help="only pick noise probes the NODES ACTUALLY HOLD A SLOT FOR, by asking "
+                         "them (/get_prns). The selector takes the deepest below-horizon PRNs "
+                         "from the almanac and never checked the trackers could represent "
+                         "them, so it kept choosing satellites that get seeded, logged as "
+                         "seeded, and NEVER report. Measured 2026-08-27: BeiDou probed PRN 2 "
+                         "against a 19-42 slot list, leaving 2 live probes -- below the >= 3 "
+                         "the q+p presence gate needs -- so presence fell back to the PEER "
+                         "COMPETITION and about HALF the population passed by construction "
+                         "(q floor 4.72, above the q ~ 4 ceiling a real satellite can reach). "
+                         "⚠️ Not the rejected discovery filter: this ASKS, so there is no "
+                         "sidereal-day bootstrap. ⚠️ Fails OPEN -- no unanimous map yet, or a "
+                         "split fleet, leaves the selector exactly as it was. ⚠️ Enables the "
+                         "/get_prns sweep even with --prn-reconfig off, which is a NEW GET: "
+                         "recorded transcripts predate it, so it must stay off by default or "
+                         "replay diverges.")
     ap.add_argument("--prn-reconfig", choices=["off", "report", "apply"], default="off",
                     help="keep the nodes' slot->PRN map in step with live BRDC. off (default) "
                          "= this stage does nothing. report = GET each node's map, log the "

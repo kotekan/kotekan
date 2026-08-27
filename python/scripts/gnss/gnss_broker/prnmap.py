@@ -42,7 +42,7 @@ class PrnMapState(object):
     """One chain's view of node membership, and the hysteresis that governs changes."""
 
     __slots__ = ("maps", "poll_t", "cursor", "last_swap_t", "down_since", "gone_since", "err",
-                 "swaps", "refused", "beat_t")
+                 "swaps", "refused", "beat_t", "consensus")
 
     def __init__(self):
         self.maps = {}          # endpoint -> [prn per slot]
@@ -55,6 +55,9 @@ class PrnMapState(object):
         self.swaps = 0
         self.refused = 0
         self.beat_t = 0.0    # last heartbeat (see the note in stage_prn_membership)
+        # The unanimous live slot->PRN list, or None. READ by the probe selector;
+        # None whenever the sweep is incomplete or the nodes disagree.
+        self.consensus = None
 
 
 def _endpoints(ctx):
@@ -140,7 +143,10 @@ def stage_prn_membership(ctx):
     it is this reluctant.
     """
     a = ctx.args
-    if a.prn_reconfig == "off":
+    # ⚠️ THE POLL AND THE SWAP ARE SEPARATE POWERS. --probe-require-slot needs the live map
+    # but proposes no swaps, so "off" must still mean "poll if someone downstream needs the
+    # map" -- while the MODE keeps governing whether anything is proposed or posted.
+    if a.prn_reconfig == "off" and not a.probe_require_slot:
         return
     st = ctx.prnmap
     now = ctx.t0
@@ -154,17 +160,21 @@ def stage_prn_membership(ctx):
         _poll(ctx, st, eps)
     # A full sweep must have completed before the map means anything: a partial one looks like
     # unanimity among however few nodes have answered so far.
-    if len(st.maps) < len(eps):
-        return
-    cur = _consensus(st.maps)
+    cur = _consensus(st.maps) if len(st.maps) >= len(eps) else None
+    # PUBLISHED for consumers that only READ it (the probe selector). None whenever the sweep
+    # is incomplete or the nodes disagree, so every consumer falls back to its previous
+    # behaviour rather than acting on a partial truth.
+    st.consensus = cur
     if cur is None:
-        if st.maps:
+        if st.maps and len(st.maps) >= len(eps):
             _log_rl("prnmap-split",
                     "PRN MAP: nodes DISAGREE about slot membership (%d reporting) -- changing "
                     "nothing. Nothing in this pipeline is per-node, so a split map is a fault "
                     "to fix, not a state to drive out of." % len(st.maps),
                     every_s=300.0)
         return
+    if a.prn_reconfig == "off":
+        return  # poll-only: --probe-require-slot wanted the map and nothing more
 
     # ---- 2. What the sky says -----------------------------------------------------------
     # ctx.pred is THIS chain's constellation already filtered by capability: brdc_predict is

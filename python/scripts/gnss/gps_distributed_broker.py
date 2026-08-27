@@ -1962,8 +1962,43 @@ def main(argv=None, rx=None, publisher=None):
         # keep the despread configuration representative.
         _ctx.probe_set = set()
         if args.noise_probes > 0 and args.almanac and _ctx.pred:
-            deep_low = sorted((p for p, v in _ctx.pred.items() if v[2] < -15.0),
-                              key=lambda p: _ctx.pred[p][2])[:args.noise_probes]
+            _cands = sorted((p for p, v in _ctx.pred.items() if v[2] < -15.0),
+                            key=lambda p: _ctx.pred[p][2])
+            # ⚠️⚠️ A PROBE THE NODE HAS NO SLOT FOR IS NOT A PROBE (--probe-require-slot).
+            # This picked the DEEPEST below-horizon PRNs straight out of the almanac, with no
+            # check that the trackers can represent them -- so it kept choosing satellites the
+            # node cannot despread. They are seeded, logged as seeded, and NEVER produce a
+            # row. Measured 2026-08-27: BeiDou's probes were PRN 2, 26, 33 against a slot list
+            # of 19-42, so PRN 2 could never report; two probes survived, which is below the
+            # >= 3 the q+p gate needs, and presence fell back to the PEER COMPETITION -- q
+            # floor 4.72 on bds_b2a, ABOVE the q ~ 4 ceiling any real satellite can reach, so
+            # nothing could pass on q at all and roughly HALF the population passed on prompt
+            # power by construction. That is the "exactly half of the up satellites lock"
+            # symptom, and it is the same root as E36 ([[chord-prn-lists-diverge]]).
+            #
+            # ⚠️ THIS IS NOT THE DISCOVERY-BASED FILTER THAT WAS REJECTED. That one inferred
+            # untrackability from "never reported", which cannot tell untrackable from
+            # not-yet-chosen until a sidereal day has passed. This ASKS THE NODES what they
+            # hold (prnmap's /get_prns sweep) -- authoritative, available immediately, no
+            # bootstrap. It is the first consumer of the live-membership work.
+            #
+            # ⚠️ AND IT FAILS OPEN. `consensus` is None until a full unanimous sweep lands
+            # (and on any split fleet), and one cycle behind besides -- the prnmap stage runs
+            # later in the cycle than this. Absent map -> the old unfiltered behaviour, which
+            # is a degraded probe set and not a dead chain.
+            if args.probe_require_slot:
+                _held = _prnmap.consensus
+                if _held:
+                    _drop = [p for p in _cands[:args.noise_probes] if p not in set(_held)]
+                    _cands = [p for p in _cands if p in set(_held)]
+                    if _drop:
+                        _log_rl("probe-slot",
+                                "PROBE SLOT FILTER: %s have no slot on this chain and would "
+                                "never report -- skipped; probes now %s"
+                                % (",".join(str(p) for p in _drop),
+                                   ",".join(str(p) for p in _cands[:args.noise_probes])),
+                                every_s=300.0)
+            deep_low = _cands[:args.noise_probes]
             _ctx.probe_set = set(deep_low)
             for p in deep_low:
                 if p not in seeds:

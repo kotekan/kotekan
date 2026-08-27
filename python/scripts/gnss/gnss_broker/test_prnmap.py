@@ -46,6 +46,7 @@ class Args(object):
         self.prn_reconfig_gone_hold_s = 7200.0
         self.prn_reconfig_timeout_s = 5.0
         self.prn_reconfig_heartbeat_s = 1e18   # off by default in tests; check 11 arms it
+        self.probe_require_slot = False
         self.signal = "GAL_E5A_Q_CS"
         self.__dict__.update(kw)
 
@@ -247,6 +248,37 @@ def main():
     run_cycle(ctx, 1000.0 + 901.0)
     check(len([m for m in LOGS if "REPORT" in m]) == n_beats + 1,
           "... and it does beat again after the interval")
+
+    # ---- 12. the map is PUBLISHED for read-only consumers, and fails OPEN ---------------
+    # --probe-require-slot needs the live map but proposes no swaps, so "off" must still
+    # poll -- and a consumer must never act on a partial or split map. This is what stops
+    # the probe filter from silently emptying the probe set on a half-swept fleet.
+    POSTS[:] = []
+    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="off")
+    ctx.args.probe_require_slot = True
+    run_cycle(ctx, 1000.0)
+    check(ctx.prnmap.consensus == [1, 2, 3],
+          "prn_reconfig=off + probe_require_slot: the map is polled and PUBLISHED")
+    check(not POSTS, "... and still nothing is posted (off is off for SWAPS)")
+
+    ctx2 = Ctx([1, 2, 3], {2: 40.0, 3: 30.0}, prn_reconfig="off")
+    ctx2.args.probe_require_slot = True
+    CTX[0] = ctx2
+    ctx2.t0 = 1000.0
+    ctx2.prnmap.poll_t = 1000.0
+    ctx2.prnmap.maps = {"http://node1": [1, 2, 3]}          # HALF a sweep (2 endpoints)
+    prnmap.stage_prn_membership(ctx2)
+    check(ctx2.prnmap.consensus is None,
+          "a HALF-SWEPT fleet publishes None -- consumers fail open, never on a partial map")
+
+    ctx2.prnmap.maps = {"http://node1": [1, 2, 3], "http://node2": [1, 2, 9]}   # split
+    prnmap.stage_prn_membership(ctx2)
+    check(ctx2.prnmap.consensus is None, "... and so does a SPLIT fleet")
+
+    ctx3 = Ctx([1, 2, 3], {2: 40.0}, prn_reconfig="off")   # flag off entirely
+    run_cycle(ctx3, 1000.0)
+    check(ctx3.prnmap.consensus is None,
+          "with BOTH off the stage does nothing at all (no new GET -- replay stays exact)")
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
