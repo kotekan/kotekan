@@ -394,6 +394,9 @@ if __name__ == "__main__":
                        q_mean=3.0) or msg2
     check(msg2 is not None and ">=" not in msg2 and "CENSORED" not in msg2,
           "a ramp INSIDE the window reports an exact span, unmarked")
+    check(msg2 is not None and "HANDOVER-CORRECTED" in msg2,
+          "the peak is labelled HANDOVER-CORRECTED -- it is not the raw clamped trim, and "
+          "reading it as one produced a false 'the trim broke its clamp' on 2026-08-27")
 
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     sys.exit(1 if _fails else 0)
