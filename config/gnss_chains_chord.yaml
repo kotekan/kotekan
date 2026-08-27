@@ -1049,6 +1049,21 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     #
     # Revert: delete these two lines + broker restart.
     prn-reconfig: report
+    # ── PROBE SUPPLY + PRESENCE REFUSAL, ARMED 2026-08-27 02:4x (KV) ─────────────────
+    # KV: "Galileo similarly looked to be only locking half its sats." It does, and the
+    # fault here is INTERMITTENT rather than absent: the probe set is whatever is deepest
+    # at the time, so it breaks whenever a slot this chain does NOT carry (17/20/35/36)
+    # drifts into the deepest three -- sidereal-periodic, which reads as "sometimes half".
+    # Checked before arming: the current top-3 (32/25/3) are all in-slot, and with 32 slots
+    # for 28 active satellites there are always in-slot candidates, so probe-require-slot
+    # repairs the supply BEFORE presence-require-probes could ever refuse.
+    #
+    # ⚠️ BOTH GAL BANDS ARMED TOGETHER, NEVER ONE. A presence-gate difference between e5a
+    # and e5b makes every cross-band comparison asymmetric, and the cross-band anti-
+    # correlation work (#93) is judged on exactly those pairs.
+    # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
+    probe-require-slot: true
+    presence-require-probes: true
     trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,\
 http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
 http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
@@ -2001,6 +2016,21 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     #
     # Revert: delete these two lines + broker restart.
     prn-reconfig: report
+    # ── PROBE SUPPLY + PRESENCE REFUSAL, ARMED 2026-08-27 02:4x (KV) ─────────────────
+    # KV: "Galileo similarly looked to be only locking half its sats." It does, and the
+    # fault here is INTERMITTENT rather than absent: the probe set is whatever is deepest
+    # at the time, so it breaks whenever a slot this chain does NOT carry (17/20/35/36)
+    # drifts into the deepest three -- sidereal-periodic, which reads as "sometimes half".
+    # Checked before arming: the current top-3 (32/25/3) are all in-slot, and with 32 slots
+    # for 28 active satellites there are always in-slot candidates, so probe-require-slot
+    # repairs the supply BEFORE presence-require-probes could ever refuse.
+    #
+    # ⚠️ BOTH GAL BANDS ARMED TOGETHER, NEVER ONE. A presence-gate difference between e5a
+    # and e5b makes every cross-band comparison asymmetric, and the cross-band anti-
+    # correlation work (#93) is judged on exactly those pairs.
+    # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
+    probe-require-slot: true
+    presence-require-probes: true
     trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,\
 http://cx27:12048/gnss{0..1}_e5b_inject,\
 http://cx42:12048/gnss{0..1}_e5b_inject,\
