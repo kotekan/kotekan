@@ -25,6 +25,7 @@ Self-test: python3 gnss_ephemeris.py            (fetch + predict, prints visible
 import gzip
 import math
 import os
+import re
 import threading
 import sys
 import time
@@ -218,14 +219,39 @@ def _rinex_newest_epoch(path):
     return newest
 
 
+def _hourly_sources(station, when, token):
+    """Ordered (url, headers) mirrors for ONE station's hourly mixed-nav file.
+
+    ⚠️⚠️ THE CURRENT DAY HANGS ENTIRELY OFF THIS FUNCTION, SO IT MUST NOT BE SINGLE-HOMED.
+    Measured 2026-08-27: BKG unreachable (second outage), and CDDIS publishes merged dailies
+    only for CLOSED days -- so on any day BKG is down, these per-station hourlies are the ONLY
+    source of a current-day ephemeris for E and C. They were fetched from CDDIS alone, behind
+    an Earthdata bearer token: one expired credential or one CDDIS outage and every chain goes
+    dark on the live sky, with nothing else to fall back to.
+
+    ESA's GSSC carries the same IGS per-station hourly products, anonymously. It is not merely
+    a spare: measured the same afternoon, GSSC had hour 11 populated (230 stations) while
+    CDDIS's hour-11 directory was still empty, so it is sometimes an hour FRESHER.
+    """
+    srcs = []
+    doy = when.timetuple().tm_yday
+    name = "%s_R_%04d%03d%02d00_01H_MN.rnx.gz" % (station, when.year, doy, when.hour)
+    if token:
+        srcs.append(("https://cddis.nasa.gov/archive/gnss/data/hourly/%04d/%03d/%02d/%s"
+                     % (when.year, doy, when.hour, name),
+                     {"Authorization": "Bearer " + token}))
+    srcs.append(("ftp://gssc.esa.int/gnss/data/hourly/%04d/%03d/%02d/%s"
+                 % (when.year, doy, when.hour, name), {}))
+    return srcs
+
+
 def _fetch_station_hourly(when, cache_dir, token):
-    """MERGE several IGS stations' hourly mixed-nav (CDDIS, token) into one fresh nav file --
-    a fallback for a stale merged daily. One station is unreliable (a given hour it may carry
-    Galileo/BeiDou but no fresh GPS), so union a handful for full-constellation coverage: keep
-    one header, concatenate every station's record block. Walks back hours until a set exists.
+    """MERGE several IGS stations' hourly mixed-nav into one fresh nav file -- a fallback for a
+    stale merged daily, and THE only current-day source when the daily mirrors are down. One
+    station is unreliable (a given hour it may carry Galileo/BeiDou but no fresh GPS), so union
+    a handful for full-constellation coverage: keep one header, concatenate every station's
+    record block. Walks back hours until a set exists.
     Returns cache_dir/hourly_MN.rnx.gz or None."""
-    if not token:
-        return None
     import gzip
     # Cache-gate: hourly station files update ~hourly, and fetch_brdc now includes this in EVERY
     # merge (not just during a daily outage), so reuse a recent local rather than re-pulling a
@@ -235,23 +261,34 @@ def _fetch_station_hourly(when, cache_dir, token):
         return local
     for dh in (0, 1, 2, 3):
         h = when - timedelta(hours=dh)
-        doy = h.timetuple().tm_yday
         header, bodies, fetched = None, [], 0
         seen = {"G": set(), "E": set(), "C": set()}
         for st in _HOURLY_STATIONS:
             if fetched >= _HOURLY_MAX_FETCH:
                 break
-            name = "%s_R_%04d%03d%02d00_01H_MN.rnx.gz" % (st, h.year, doy, h.hour)
-            url = ("https://cddis.nasa.gov/archive/gnss/data/hourly/%04d/%03d/%02d/%s"
-                   % (h.year, doy, h.hour, name))
-            try:
-                req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
-                with urllib.request.urlopen(req, timeout=20) as r:
-                    raw = r.read()
-                if raw[:2] != b"\x1f\x8b":
+            # ⚠️ MIRROR ORDER IS PER STATION, NOT PER HOUR. A mirror that has not published
+            # this hour yet 404s while the other already has it, and the point is to get the
+            # FRESHEST hour available anywhere -- not to pick a host and then walk backwards
+            # in time on it alone.
+            txt = None
+            for url, hdrs in _hourly_sources(st, h, token):
+                # A dead host must be paid for ONCE, not once per station: twelve stations x a
+                # 20 s timeout is four minutes of a broker cycle.
+                if _src_skip(url):
                     continue
-                txt = gzip.decompress(raw).decode("ascii", "replace")
-            except Exception:
+                try:
+                    req = urllib.request.Request(url, headers=hdrs)
+                    with urllib.request.urlopen(req, timeout=20) as r:
+                        raw = r.read()
+                    if raw[:2] != b"\x1f\x8b":
+                        continue          # a 200 that is not gzip: this hour, not this host
+                    _src_ok(url)
+                    txt = gzip.decompress(raw).decode("ascii", "replace")
+                    break
+                except Exception as e:
+                    _src_failed(url, exc=e)   # 404 = this hour is not published yet, not a
+                    continue                  # dead host -- _src_failed knows the difference
+            if txt is None:
                 continue
             k = txt.find("END OF HEADER")
             if k < 0:
@@ -361,6 +398,21 @@ def _src_skip(url, now=None):
 # timeout, a refused connection, a 5xx, a 200 that is not gzip -- says the mirror is not
 # serving, and blacklisting it is right.
 _PATH_STATUS = (404, 410)
+# The FTP dialect of the same thing. 550 is "no such file or directory", 450 is "temporarily
+# unavailable" -- both about the path. urllib wraps them in a URLError with no .code, so the
+# status only survives in the message ("ftp error: 550 CWD command failed: ...").
+_FTP_PATH_RE = re.compile(r"ftp error:\s*(\d{3})")
+_FTP_PATH_STATUS = ("550", "450", "553")
+
+
+def _is_path_failure(exc):
+    """Is this exception about the PATH (absent file) rather than the HOST (not serving)?"""
+    if exc is None:
+        return False
+    if getattr(exc, "code", None) in _PATH_STATUS:
+        return True
+    m = _FTP_PATH_RE.search(str(exc))
+    return bool(m and m.group(1) in _FTP_PATH_STATUS)
 
 
 def _src_failed(url, now=None, exc=None):
@@ -373,8 +425,16 @@ def _src_failed(url, now=None, exc=None):
     the whole of cddis.nasa.gov dead for 300 s. The very next call is the one that fetches
     YESTERDAY's daily from CDDIS, which does exist and is exactly the fallback that has to
     work while BKG is unreachable. A guaranteed-absent path was disabling a live server.
+
+    ⚠️ AND IT HAS AN FTP DIALECT, found the same afternoon by actually exercising the new
+    GSSC mirror: the hour-walk starts at the CURRENT hour, whose directory does not exist
+    yet, and GSSC answers `URLError('ftp error: 550 CWD command failed')` -- no `.code` at
+    all, so the HTTP-only test passed it straight through to the blacklist. ONE not-yet-
+    published hour disabled the entire mirror for 300 s, on its first call: the whole
+    12-station x 4-hour walk collapsed to a single attempt. Fixing only the HTTP half would
+    have shipped a second mirror that never fetched anything.
     """
-    if exc is not None and getattr(exc, "code", None) in _PATH_STATUS:
+    if _is_path_failure(exc):
         return
     _src_dead[_src_key(url)] = (now or time.time()) + _SRC_COOLDOWN_S
 

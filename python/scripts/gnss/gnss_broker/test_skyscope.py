@@ -340,9 +340,58 @@ def test_404_is_not_a_dead_host():
         ge._src_dead.clear()
         ge._src_failed(url)   # the not-gzip case: a 200 serving a login/error page
         check(ge._src_skip(url), "a 200 that is not gzip blacklists too (login/error page)")
+
+        # ⚠️ THE FTP DIALECT. urllib reports an FTP 550 as a bare URLError with NO .code, so
+        # the HTTP-only test waved it through to the blacklist. The hour-walk starts at the
+        # CURRENT hour, whose directory does not exist yet -- so GSSC blacklisted itself on
+        # its very first call and the whole 12-station x 4-hour walk collapsed to one attempt.
+        ftp = "ftp://gssc.esa.int/gnss/data/hourly/2026/239/12/BRUX00BEL_R_x_01H_MN.rnx.gz"
+        ge._src_dead.clear()
+        ge._src_failed(ftp, exc=urllib.error.URLError(
+            "ftp error: 550 CWD command failed: directory not found."))
+        check(not ge._src_skip(ftp),
+              "an FTP 550 (no such directory) is a PATH failure -- the hour is not published "
+              "yet, the mirror is fine")
+
+        ge._src_dead.clear()
+        ge._src_failed(ftp, exc=urllib.error.URLError("ftp error: 421 service not available"))
+        check(ge._src_skip(ftp), "but an FTP 421 (service unavailable) does blacklist")
+
+        ge._src_dead.clear()
+        ge._src_failed(ftp, exc=urllib.error.URLError("[Errno 111] Connection refused"))
+        check(ge._src_skip(ftp), "and so does a refused connection")
     finally:
         ge._src_dead.clear()
         ge._src_dead.update(saved)
+
+
+def test_hourly_mirrors():
+    import datetime
+    import gnss_ephemeris as ge
+    print("_hourly_sources: the CURRENT day must not be single-homed")
+    when = datetime.datetime(2026, 8, 27, 11, tzinfo=datetime.timezone.utc)
+
+    with_tok = ge._hourly_sources("BRUX00BEL", when, "TESTTOKEN")
+    hosts = [u.split("/")[2] for u, _ in with_tok]
+    check(len(set(hosts)) >= 2,
+          "two INDEPENDENT hosts serve each station file, not one")
+    check(any("Authorization" in h for _, h in with_tok),
+          "CDDIS is still there, with its bearer token")
+
+    # ⚠️ THE CASE THIS EXISTS FOR: no token at all (expired Earthdata credential), or CDDIS
+    # down. On any day BKG is also down -- as on 2026-08-27 -- these hourlies are the ONLY
+    # source of a current-day ephemeris for E and C, so a token-only path is a single point
+    # of failure for the whole live sky.
+    no_tok = ge._hourly_sources("BRUX00BEL", when, None)
+    check(len(no_tok) >= 1,
+          "with NO token there is still a source -- the sky does not depend on a credential")
+    check(all(not h for _, h in no_tok),
+          "and that source needs no authentication at all")
+    check(all("_01H_MN.rnx.gz" in u for u, _ in with_tok + no_tok),
+          "every mirror asks for the same per-station hourly mixed-nav product")
+    check(all("2026/239/11/" in u for u, _ in with_tok + no_tok),
+          "and for the SAME hour -- mirrors are tried per station, so the freshest hour any "
+          "of them has is the hour we get")
 
 
 def main():
@@ -355,6 +404,7 @@ def main():
     test_station_diversity()
     test_brdc_sources()
     test_404_is_not_a_dead_host()
+    test_hourly_mirrors()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 
