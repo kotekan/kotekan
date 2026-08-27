@@ -22,6 +22,7 @@ Usage:
                                                    #   range_rate_mps, sat_clk_s, ...)}
 Self-test: python3 gnss_ephemeris.py            (fetch + predict, prints visible sats)
 """
+import json
 import gzip
 import math
 import os
@@ -175,7 +176,46 @@ _HOURLY_STATIONS = ["BRUX00BEL", "KIRU00SWE", "ALGO00CAN", "AL2H00CAN", "DARW00A
 _HOURLY_TARGET = {"G": (1, 20), "E": (1, 18), "C": (19, 20)}
 _HOURLY_MIN_STATIONS = 2  # never trust ONE file, however wide: a truncated or mid-write hourly
                           # is indistinguishable from a thin sky, and a second source is ~5 s
-_HOURLY_MAX_FETCH = 8     # bound the cost: 8 station files is ~1 MB and ~a few seconds
+_HOURLY_MAX_FETCH = 12    # bound the cost: ~1.5 MB and a few seconds. It is a budget over the
+                          # WHOLE walk now, not per hour -- the walk unions hours until the
+                          # coverage target is met, so a per-hour cap would let one thin hour
+                          # spend the entire allowance and still come back short.
+_HOURLY_TTL_S = 1800.0      # reuse a merge that MET its target for half an hour
+_HOURLY_THIN_TTL_S = 300.0  # ...but retry a BELOW-TARGET one in five minutes. The usual cause
+                            # is merging early in the hour, before the slow stations have
+                            # uploaded the hour that just closed, and they are typically there
+                            # a few minutes later -- so the retry is cheap and usually wins.
+_HOURLY_COV = "hourly_MN.cov.json"
+
+
+def _hourly_cov_write(cache_dir, thin, got):
+    """Record whether the merge beside it met target. The cache gate cannot re-derive this
+    cheaply (it would have to parse and re-count every call), and a gate that cannot tell a
+    thin file from a full one is exactly the defect this pair of functions exists to close."""
+    try:
+        _atomic_write_bytes(os.path.join(cache_dir, _HOURLY_COV),
+                            json.dumps({"thin": bool(thin), "got": got,
+                                        "t": time.time()}).encode("ascii"))
+    except Exception:
+        pass
+
+
+def _hourly_cov_read(cache_dir):
+    """(thin, got). ⚠️ UNKNOWN COUNTS AS THIN. A merge written before this bookkeeping existed,
+    or a sidecar lost to a partial write, must get the SHORT ttl and be re-merged -- assuming
+    a file is complete because we cannot tell is how the thin merge survived 30 minutes in the
+    first place."""
+    try:
+        with open(os.path.join(cache_dir, _HOURLY_COV)) as f:
+            d = json.load(f)
+        return bool(d.get("thin", True)), str(d.get("got", "?"))
+    except Exception:
+        return True, "no coverage record"
+
+
+def _hourly_target_met(seen, fetched):
+    return (fetched >= _HOURLY_MIN_STATIONS
+            and all(len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items()))
 
 # This module is a LIBRARY -- imported by the broker, the gates and half a dozen one-shot
 # scripts -- so it owns no logger. LOG_HOOK lets a host install its own tagged one (the broker
@@ -250,22 +290,62 @@ def _fetch_station_hourly(when, cache_dir, token):
     stale merged daily, and THE only current-day source when the daily mirrors are down. One
     station is unreliable (a given hour it may carry Galileo/BeiDou but no fresh GPS), so union
     a handful for full-constellation coverage: keep one header, concatenate every station's
-    record block. Walks back hours until a set exists.
-    Returns cache_dir/hourly_MN.rnx.gz or None."""
+    record block. UNIONS ACROSS HOURS until coverage is met.
+    Returns cache_dir/hourly_MN.rnx.gz or None.
+
+    ⚠️⚠️ COVERAGE DECIDES, NOT RECENCY -- AND THE FIRST VERSION LET RECENCY DECIDE SILENTLY.
+    An IGS station publishes the hour that just CLOSED, and the uploads trickle in over the
+    following ~40 min. This used to take the first hour that returned ANY station and stop.
+    Measured 2026-08-27, two runs 22 min apart on the SAME hour (17 UTC):
+        18:17 -- 404 records, C>=19 = 12   (half the stations had not uploaded yet)
+        18:39 -- 823 records, C>=19 = 21
+    The thin one won because it came first, the 30-minute cache gate then pinned it, and a
+    thin merge is indistinguishable downstream from a healthy one -- it just starves a
+    constellation somewhere else. It left BeiDou with 2 probe-eligible satellites against the
+    3 the presence gate needs, so both b2a and b2b ran UNANCHORED: nothing admitted, nothing
+    trimmed, for half an hour, with no line anywhere naming the cause.
+
+    An hour older is ~1 h more toe age against a 4 h validity window -- nothing. Missing half
+    the constellation is not nothing. So the walk now UNIONS hours and stops on COVERAGE:
+    same statistic the merge already computed, now used as the exit test instead of "somebody
+    answered". Same lesson as the four other fallbacks purged today -- a degraded path that
+    reproduces the OUTPUT (a file) while dropping the SAFEGUARD (that the file is complete).
+    """
     import gzip
     # Cache-gate: hourly station files update ~hourly, and fetch_brdc now includes this in EVERY
     # merge (not just during a daily outage), so reuse a recent local rather than re-pulling a
     # handful of station files each call. 30 min keeps it fresh without hammering CDDIS.
+    #
+    # ⚠️ BUT A THIN MERGE IS CACHED FOR MINUTES, NOT THE FULL PERIOD. Pinning a starved file
+    # for 30 min is what turned "we merged early in the hour" into "BeiDou is dark until the
+    # next refresh"; the stations that were missing are usually there a few minutes later, so
+    # the retry is nearly free and almost always succeeds. The coverage is recorded next to
+    # the file because it cannot be recovered from the file cheaply, and a cache gate that
+    # cannot tell a thin file from a full one is the bug restated.
     local = os.path.join(cache_dir, "hourly_MN.rnx.gz")
-    if os.path.exists(local) and time.time() - os.path.getmtime(local) < 1800:
-        return local
+    if os.path.exists(local):
+        age = time.time() - os.path.getmtime(local)
+        thin, cov = _hourly_cov_read(cache_dir)
+        if age < (_HOURLY_THIN_TTL_S if thin else _HOURLY_TTL_S):
+            if thin:
+                _log_hourly("BRDC hourly merge: serving a BELOW-TARGET merge from cache "
+                            "(%s, %.0f s old, retry in %.0f s). Prediction is thin -- probes, "
+                            "drop gates and search hints all ride this."
+                            % (cov, age, _HOURLY_THIN_TTL_S - age))
+            return local
+    header, bodies, fetched = None, [], 0
+    seen = {"G": set(), "E": set(), "C": set()}
+    done = set()                      # (station, hour) already fetched -- never pay twice
     for dh in (0, 1, 2, 3):
         h = when - timedelta(hours=dh)
-        header, bodies, fetched = None, [], 0
-        seen = {"G": set(), "E": set(), "C": set()}
+        if _hourly_target_met(seen, fetched):
+            break
         for st in _HOURLY_STATIONS:
-            if fetched >= _HOURLY_MAX_FETCH:
+            if fetched >= _HOURLY_MAX_FETCH or _hourly_target_met(seen, fetched):
                 break
+            if (st, h.hour) in done:
+                continue
+            done.add((st, h.hour))
             # ⚠️ MIRROR ORDER IS PER STATION, NOT PER HOUR. A mirror that has not published
             # this hour yet 404s while the other already has it, and the point is to get the
             # FRESHEST hour available anywhere -- not to pick a host and then walk backwards
@@ -303,29 +383,29 @@ def _fetch_station_hourly(when, cache_dir, token):
                     prn = int(ln[1:3])
                     if prn >= _HOURLY_TARGET[ln[0]][0]:
                         seen[ln[0]].add(prn)
-            # STOP ON COVERAGE, NOT ON A STATION COUNT -- see _HOURLY_TARGET.
-            if fetched >= _HOURLY_MIN_STATIONS and \
-                    all(len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items()):
-                break
-        if header and bodies:
-            thin = [k2 for k2, v in _HOURLY_TARGET.items() if len(seen[k2]) < v[1]]
-            if thin:
-                # ⚠️ SAY SO. A merge that never reached its target still returns a file, and a
-                # thin file is indistinguishable from a healthy one downstream -- it just makes
-                # a constellation's prediction collapse an hour later, somewhere else.
-                _log_hourly("BRDC hourly merge: %d station(s) at %02d UTC -> %s; BELOW TARGET "
-                            "for %s (want %s). Prediction for %s will be thin -- probes, drop "
-                            "gates and search hints all ride this."
-                            % (fetched, h.hour,
-                               "/".join("%s%d" % (k2, len(seen[k2])) for k2 in "GEC"),
-                               "+".join(thin),
-                               "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in "GEC"),
-                               "+".join(thin)))
-            local = os.path.join(cache_dir, "hourly_MN.rnx.gz")
-            _atomic_write_bytes(local, gzip.compress(
-                (header + "".join(bodies)).encode("ascii", "replace")))
-            return local
-    return None
+    # ---- one file, from however many (station, hour) pairs it took ------------------------
+    if not (header and bodies):
+        return None
+    got = "/".join("%s%d" % (k2, len(seen[k2])) for k2 in "GEC")
+    thin = [k2 for k2, v in _HOURLY_TARGET.items() if len(seen[k2]) < v[1]]
+    hours = sorted({hh for _, hh in done})
+    if thin:
+        # ⚠️ SAY SO. A merge that never reached its target still returns a file, and a thin
+        # file is indistinguishable from a healthy one downstream -- it just makes a
+        # constellation's prediction collapse an hour later, somewhere else.
+        _log_hourly("BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s; BELOW TARGET "
+                    "for %s (want %s). Prediction for %s will be thin -- probes, drop gates "
+                    "and search hints all ride this. Retrying in %.0f s."
+                    % (fetched, ",".join("%02d" % x for x in hours), got, "+".join(thin),
+                       "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in "GEC"),
+                       "+".join(thin), _HOURLY_THIN_TTL_S))
+    else:
+        _log_hourly("BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s, target met."
+                    % (fetched, ",".join("%02d" % x for x in hours), got))
+    _atomic_write_bytes(local, gzip.compress(
+        (header + "".join(bodies)).encode("ascii", "replace")))
+    _hourly_cov_write(cache_dir, bool(thin), got)
+    return local
 
 
 def _try_refresh_daily(kind, year, doy, cache_dir, tok):

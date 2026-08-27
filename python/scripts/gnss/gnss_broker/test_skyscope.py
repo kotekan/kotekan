@@ -394,6 +394,56 @@ def test_hourly_mirrors():
           "of them has is the hour we get")
 
 
+def test_hourly_coverage_beats_recency():
+    """⚠️ THE MERGE TOOK THE FIRST HOUR THAT ANSWERED, NOT THE ONE WITH THE SATELLITES.
+
+    An IGS station publishes the hour that just CLOSED and the uploads trickle in over ~40 min,
+    so a merge run early in the hour sees half the fleet. Measured 2026-08-27 on the SAME hour
+    (17 UTC), 22 minutes apart: 404 records / C>=19 = 12, then 823 records / C>=19 = 21. The
+    thin one won on arrival order, the 30-minute cache gate pinned it, and BeiDou was left with
+    2 probe-eligible satellites against the 3 the presence gate needs -- both b2a and b2b
+    UNANCHORED, nothing trimmed, no line naming the cause.
+    """
+    import tempfile
+    from gnss_ephemeris import (_hourly_target_met, _hourly_cov_read, _hourly_cov_write,
+                                _HOURLY_TARGET, _HOURLY_MIN_STATIONS,
+                                _HOURLY_TTL_S, _HOURLY_THIN_TTL_S)
+    print("\nthe hour walk stops on COVERAGE, not on 'somebody answered'")
+
+    full = {k: set(range(v[0], v[0] + v[1])) for k, v in _HOURLY_TARGET.items()}
+    check(_hourly_target_met(full, _HOURLY_MIN_STATIONS),
+          "a merge meeting every constellation's target is DONE")
+    check(not _hourly_target_met(full, _HOURLY_MIN_STATIONS - 1),
+          "... but never on fewer than %d station file(s), however wide -- one truncated "
+          "hourly is indistinguishable from a thin sky" % _HOURLY_MIN_STATIONS)
+
+    # THE REGRESSION ITSELF: the exact shape of the 18:17 merge -- GPS and Galileo fine,
+    # BeiDou short. The old code stopped here because stations had answered.
+    thin_c = {"G": set(range(1, 26)), "E": set(range(1, 23)), "C": set(range(19, 31))}
+    check(len(thin_c["C"]) == 12 and not _hourly_target_met(thin_c, 8),
+          "the live 18:17 merge (G25/E22/C12) is NOT done -- 8 stations answered and BeiDou "
+          "is still short, which is exactly the state that shipped")
+
+    check(_HOURLY_THIN_TTL_S < _HOURLY_TTL_S,
+          "a BELOW-TARGET merge is cached for less time than a full one (%.0f s vs %.0f s) -- "
+          "the missing stations are usually there minutes later"
+          % (_HOURLY_THIN_TTL_S, _HOURLY_TTL_S))
+
+    with tempfile.TemporaryDirectory() as d:
+        check(_hourly_cov_read(d)[0] is True,
+              "⚠️ NO COVERAGE RECORD COUNTS AS THIN -- a file we cannot judge must be "
+              "re-merged, not assumed complete; assuming complete is how the thin merge "
+              "survived its full 30 minutes")
+        _hourly_cov_write(d, False, "G29/E29/C21")
+        thin, got = _hourly_cov_read(d)
+        check(thin is False and got == "G29/E29/C21",
+              "a merge that met target records that it did, and what it got")
+        _hourly_cov_write(d, True, "G25/E22/C12")
+        check(_hourly_cov_read(d)[0] is True,
+              "and a thin one records that too, so the CACHE GATE can tell them apart -- a "
+              "gate that cannot is the bug restated")
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -405,6 +455,7 @@ def main():
     test_brdc_sources()
     test_404_is_not_a_dead_host()
     test_hourly_mirrors()
+    test_hourly_coverage_beats_recency()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 
