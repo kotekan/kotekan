@@ -146,6 +146,24 @@ def main():
     check(not any(v["present"] for v in b.values()),
           "... and NOBODY is admitted (no presence -> no arming -> no trimming)")
     check(b[7]["n_probe_q"] == 2, "... and the row records how many probes there were")
+    # ⚠️ A REFUSAL MUST STILL EMIT A WELL-FORMED ROW. With too few rows to characterise a
+    # population _floor returns (None, None, None); publishing that raw q_floor took bds_b2a
+    # down with TypeError('must be real number, not NoneType') the moment a downstream log
+    # line formatted it with %.2f. "I cannot judge" is a verdict, not a licence to emit None
+    # into fields every consumer already treats as numbers.
+    thin4 = {90: row(0.9, 0.0, 1.0), 91: row(1.0, 0.0, 1.1),
+             7: row(3.4, 0.0, 50.0), 12: row(3.1, 0.0, 30.0)}     # 4 rows: _floor gives None
+    d = {k: dict(v) for k, v in thin4.items()}
+    apply_presence(d, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91}, require_probes=True)
+    check(all(isinstance(v["q_floor"], float) for v in d.values()),
+          "an UNANCHORED row still carries a NUMERIC q_floor (%r) -- the None that killed a "
+          "chain" % d[7]["q_floor"])
+    try:
+        "%.2f %.2f" % (d[7]["q_floor"], d[7]["p_floor"] or 0.0)
+        fmt_ok = True
+    except TypeError:
+        fmt_ok = False
+    check(fmt_ok, "... and formats with %.2f exactly as the shipped log line does")
     check(n_peer > 0,
           "... whereas the peer fallback admitted %d of %d -- the bad number this replaces"
           % (n_peer, len(a)))

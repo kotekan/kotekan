@@ -466,7 +466,14 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
     # a chain that cannot measure its noise floor should be LOUD, not quietly half-right.
     if require_probes and len(_probe_q) < 3:
         for v in out.values():
-            v["q_med"], v["q_sigma"], v["q_floor"] = q_med, q_sigma, q_floor
+            v["q_med"], v["q_sigma"] = q_med, q_sigma
+            # ⚠️ SAME SUBSTITUTION AS THE NORMAL PATH BELOW, and omitting it killed bds_b2a
+            # (2026-08-27): _floor returns (None, None, None) when there are too few rows to
+            # characterise, downstream formats q_floor with %.2f, and a None there is a
+            # TypeError that takes the whole chain down. A refusal path must still publish a
+            # WELL-FORMED row -- "I cannot judge" is a verdict, not a licence to emit None
+            # into fields every consumer already assumes are numbers.
+            v["q_floor"] = q_fallback if q_med is None else q_floor
             v["p_med"], v["p_floor"] = p_med, p_floor
             v["present"] = False
             v["present_gate"] = "UNANCHORED"
