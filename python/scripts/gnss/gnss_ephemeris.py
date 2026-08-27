@@ -29,6 +29,7 @@ import threading
 import sys
 import time
 import urllib.request
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 C_LIGHT = 299792458.0
@@ -193,18 +194,68 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
     local = os.path.join(cache_dir, name)
     if os.path.exists(local) and time.time() - os.path.getmtime(local) < 7200:
         return local
+    tried = 0
     for url, headers in _brdc_sources(year, doy, name):
+        if _src_skip(url):
+            continue                      # known dead, still cooling down -- do not pay for it
+        tried += 1
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as r:
                 data = r.read()
             if data[:2] != b"\x1f\x8b":
-                continue  # not gzip (login/error/404 page) -> next mirror
+                _src_failed(url)          # login/error/404 page: this mirror is not serving
+                continue
+            _src_ok(url)
             _atomic_write_bytes(local, data)
             return local
         except Exception:
+            _src_failed(url)
             continue
+    # EVERY source skipped means every source is cooling down. Clear the marks and let the next
+    # call try again rather than starving forever on our own bookkeeping.
+    if tried == 0:
+        _src_dead.clear()
     return local if os.path.exists(local) else None
+
+
+
+# ── NEGATIVE CACHE FOR DEAD SOURCES (2026-08-27) ───────────────────────────────────────────
+# ⚠️ A DEAD MIRROR MUST BE PAID FOR ONCE, NOT ONCE PER CHAIN PER REFRESH. Every fetch here is
+# SYNCHRONOUS inside the broker's cycle, and the sources are tried in order, so while
+# igs.bkg.bund.de is unreachable each of the five chain threads independently opens a socket to
+# it and blocks for the full 30 s connect timeout -- before falling through to CDDIS, which
+# works. Observed 2026-08-27: five sockets in SYN-SENT to 141.74.52.58:443 on every cycle, the
+# broker crawling, and startup taking minutes instead of seconds. The data was never at risk
+# (the fallback delivers); the LATENCY was, and it is the kind that reads as "the broker hung".
+#
+# So: remember which source URL prefix just failed and skip it for _SRC_COOLDOWN_S. The cost of
+# being wrong is bounded and self-correcting -- a source that recovers is retried after the
+# cooldown, and the merge is per-PRN freshest-wins, so skipping a live-but-slow mirror for a
+# few minutes costs nothing a later merge cannot repair.
+_SRC_COOLDOWN_S = 300.0
+_src_dead = {}          # url prefix -> time.time() when it may be retried
+
+
+def _src_key(url):
+    """Scheme+host, so one dead host is skipped for every path under it."""
+    try:
+        pr = urllib.parse.urlsplit(url)
+        return pr.scheme + "://" + pr.netloc
+    except Exception:
+        return url
+
+
+def _src_skip(url, now=None):
+    return (_src_dead.get(_src_key(url), 0.0) > (now or time.time()))
+
+
+def _src_failed(url, now=None):
+    _src_dead[_src_key(url)] = (now or time.time()) + _SRC_COOLDOWN_S
+
+
+def _src_ok(url):
+    _src_dead.pop(_src_key(url), None)
 
 
 def fetch_brdc(when=None, cache_dir=CACHE):
