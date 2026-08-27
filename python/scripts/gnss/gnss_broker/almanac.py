@@ -199,12 +199,23 @@ def stage_almanac_predict(ctx):
                     # reference is stale, a noise-derived one is WRONG, and wrong outranks
                     # stale for something every later judgement is measured against.
                     _n_cal = len(resid)
-                    if ctx.cb.cal is not None and _n_cal < ctx.args.clock_bias_cal_min_sats:
-                        _log("CLOCK BIAS: re-solve %+.1f Hz on only %d sat(s) -- HELD the "
-                             "calibration at %+.1f rather than adopting it. A starved "
-                             "re-solve is noise (sd ~13 Hz at this count), and a wrong "
-                             "reference poisons every later comparison."
-                             % (raw_bias, _n_cal, ctx.cb.cal))
+                    # ⚠️ THE FIRST CALIBRATION NEEDS THE EVIDENCE TOO. The guard below was
+                    # written as "cal is not None and too few sats" -- so it protected
+                    # RE-calibration and left the FIRST solve to take whatever was there.
+                    # Measured minutes after shipping it (2026-08-27): a fresh broker set
+                    # cal = -7.8 Hz from 3 sats and the alarm was back. With no calibration
+                    # at all the alarm simply does not fire (it is gated on `cal is not
+                    # None`), the EMA still seeds normally, and we wait for a reference worth
+                    # having -- which is strictly better than adopting one that is noise.
+                    if _n_cal < ctx.args.clock_bias_cal_min_sats:
+                        _log("CLOCK BIAS: re-solve %+.1f Hz on only %d sat(s) (need %d) -- "
+                             "%s. A starved re-solve is noise (sd ~13 Hz at this count), and "
+                             "a wrong reference poisons every later comparison."
+                             % (raw_bias, _n_cal, ctx.args.clock_bias_cal_min_sats,
+                                ("HELD the calibration at %+.1f" % ctx.cb.cal)
+                                if ctx.cb.cal is not None else
+                                "NO calibration set yet -- the drift alarm stays silent "
+                                "until there is a reference worth comparing against"))
                     else:
                         if (ctx.cb.cal is not None
                                 and abs(raw_bias - ctx.cb.cal) > ctx.args.clock_bias_alarm_hz):
