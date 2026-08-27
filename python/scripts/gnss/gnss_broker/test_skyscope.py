@@ -231,16 +231,20 @@ def test_hourly_coverage():
         return _Resp(gzip.compress((_HDR + _rinex(catalogue[st])).encode("ascii")))
 
     tmp = tempfile.mkdtemp(prefix="hourlytest-")
-    saved = (ge._HOURLY_STATIONS, urllib.request.urlopen, ge.LOG_HOOK)
+    # ⚠️ THE MODULE, NOT THE FACADE. gnss_ephemeris forwards reads through a module
+    # __getattr__ and cannot forward writes, so patching ge._HOURLY_STATIONS would bind a name
+    # the merge never reads and this test would silently exercise the REAL station list.
+    import gnss_brdc_supply as ge_sup
+    saved = (ge_sup._HOURLY_STATIONS, urllib.request.urlopen, ge_sup.LOG_HOOK)
     logs = []
     try:
-        ge.LOG_HOOK = logs.append
+        ge_sup.LOG_HOOK = logs.append
         urllib.request.urlopen = fake_urlopen
 
         # (a) The stations that carry no usable BeiDou must NOT satisfy the quota.
         # FOUR BeiDou-blind stations first: that is the live arrangement, and it is exactly
         # what `len(bodies) >= 4` got wrong -- it filled its quota before reaching any BDS-3.
-        ge._HOURLY_STATIONS = ["NOBDS1", "NOBDS2", "NOBDS3", "NOBDS4", "WIDEAA", "WIDEBB"]
+        ge_sup._HOURLY_STATIONS = ["NOBDS1", "NOBDS2", "NOBDS3", "NOBDS4", "WIDEAA", "WIDEBB"]
         asked[:] = []
         p = ge._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
         body = gzip.open(p, "rt").read()
@@ -268,7 +272,7 @@ def test_hourly_coverage():
         # ⚠️ A FRESH STORE PER CASE. The store accumulates across calls by design, so a case
         # that reuses the previous case's directory is testing the union, not its own premise.
         shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp, exist_ok=True)
-        ge._HOURLY_STATIONS = ["NOBDS1", "NOBDS2"]
+        ge_sup._HOURLY_STATIONS = ["NOBDS1", "NOBDS2"]
         asked[:] = []
         logs[:] = []
         ge._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
@@ -280,14 +284,14 @@ def test_hourly_coverage():
 
         # (c) One wide station is still not enough on its own.
         shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp, exist_ok=True)
-        ge._HOURLY_STATIONS = ["WIDEAA", "WIDEBB"]
+        ge_sup._HOURLY_STATIONS = ["WIDEAA", "WIDEBB"]
         asked[:] = []
         ge._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
         check(len(asked) >= 2,
               "even a station that alone meets every target gets a second source "
               "(a truncated hourly reads exactly like a thin sky)")
     finally:
-        ge._HOURLY_STATIONS, urllib.request.urlopen, ge.LOG_HOOK = saved
+        ge_sup._HOURLY_STATIONS, urllib.request.urlopen, ge_sup.LOG_HOOK = saved
         shutil.rmtree(tmp, ignore_errors=True)
 
 

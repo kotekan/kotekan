@@ -33,8 +33,15 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # Hand the ephemeris library this chain's tagged logger, once. `_log` reads a thread-local
     # tag, so one global install still labels every chain's line correctly -- and the chain that
     # pays for a fetch is the one that reports what it got.
-    if getattr(ge, "LOG_HOOK", "unset") is None:
-        ge.LOG_HOOK = _log
+    #
+    # ⚠️ SET IT ON gnss_brdc_supply, NOT ON THE gnss_ephemeris FACADE. The facade forwards
+    # READS through a module __getattr__ but cannot forward WRITES (PEP 562 defines no module
+    # __setattr__), so `ge.LOG_HOOK = _log` would bind an attribute nothing ever reads and
+    # every merge line would go to stderr instead of this chain's log -- silently, which is
+    # the failure mode the split was designed not to introduce.
+    import gnss_brdc_supply as _supply
+    if getattr(_supply, "LOG_HOOK", "unset") is None:
+        _supply.LOG_HOOK = _log
     now = _now()
     # ⚠️⚠️ ASK AS OFTEN AS THE PRODUCT UPDATES, NOT AS OFTEN AS THE DAILY DOES. This gate was
     # 7200 s, inherited from the DAILY file's own 2 h re-fetch rule -- but the sky is served by

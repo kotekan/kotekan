@@ -98,7 +98,8 @@ def _digest(path):
 
 def main():
     import gnss_ephemeris as ge
-    ge.LOG_HOOK = lambda m: None
+    import gnss_brdc_supply as _supply
+    _supply.LOG_HOOK = lambda m: None      # ⚠️ the module, not the facade -- writes do not forward
 
     man = os.path.join(FIXTURE, "manifest.json")
     if not os.path.exists(man):
