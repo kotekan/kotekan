@@ -181,15 +181,17 @@ public:
      *
      * A copy taken under the buffer lock: a stage may unregister while the
      * pipeline runs, so @c consumers cannot be walked from another thread.
+     * The producer names are a separate copy, so a caller reading both sees
+     * the two taken a moment apart rather than as one snapshot.
      *
-     * @return The registered consumer names, in registration-name order.
+     * @return The registered consumer names, sorted by name.
      */
     std::vector<std::string> get_consumer_names();
 
     /**
      * @brief The names of the producers registered to this buffer.
      *
-     * @return The registered producer names, in registration-name order.
+     * @return The registered producer names, sorted by name.
      */
     std::vector<std::string> get_producer_names();
 
