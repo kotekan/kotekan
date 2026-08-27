@@ -179,14 +179,39 @@ def stage_almanac_predict(ctx):
                 # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
                 # minutes converging through exactly the hint region it just vacated.
                 if ctx.cb.stale:
-                    _log("CLOCK BIAS RE-SOLVED %+.1f Hz after %.0f s stale (held %+.1f)"
-                         % (raw_bias, ctx.t0 - ctx.cb.meas_t, ctx.cb.ema))
-                    if (ctx.cb.cal is not None
-                            and abs(raw_bias - ctx.cb.cal) > ctx.args.clock_bias_alarm_hz):
-                        _log("CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz -- hardware "
-                             "news (GPSDO re-settled?); new warm-start reference"
-                             % (ctx.cb.cal, raw_bias))
-                    ctx.cb.cal = raw_bias
+                    _log("CLOCK BIAS RE-SOLVED %+.1f Hz after %.0f s stale (held %+.1f, "
+                         "%d sats)"
+                         % (raw_bias, ctx.t0 - ctx.cb.meas_t, ctx.cb.ema, len(resid)))
+                    # ⚠️⚠️ A STARVED RE-SOLVE MUST NOT BECOME THE REFERENCE.
+                    # This adopted `raw_bias` as the new warm-start calibration
+                    # unconditionally -- ONE median, from however few satellites happened to
+                    # be present, announced as "hardware news". Measured 2026-08-27: gps_l5
+                    # went 842 s with no multi-sat solve (satellites are scarce), re-solved
+                    # once at -17.9 Hz from a distribution whose median over 1222 samples is
+                    # +0.0 with sd 12.7, and snapped `cal` from -2.3 to -17.9. Every later
+                    # comparison was then against a reference that was pure noise, and the
+                    # drift alarm fired once a minute for hours against a bias that was
+                    # sitting correctly near zero.
+                    #
+                    # A reference deserves at least the evidence the ALARM demands before it
+                    # cries wolf -- the alarm already widens its bar below 5 sats for exactly
+                    # this reason. Below that, hold the old calibration and say so: an old
+                    # reference is stale, a noise-derived one is WRONG, and wrong outranks
+                    # stale for something every later judgement is measured against.
+                    _n_cal = len(resid)
+                    if ctx.cb.cal is not None and _n_cal < ctx.args.clock_bias_cal_min_sats:
+                        _log("CLOCK BIAS: re-solve %+.1f Hz on only %d sat(s) -- HELD the "
+                             "calibration at %+.1f rather than adopting it. A starved "
+                             "re-solve is noise (sd ~13 Hz at this count), and a wrong "
+                             "reference poisons every later comparison."
+                             % (raw_bias, _n_cal, ctx.cb.cal))
+                    else:
+                        if (ctx.cb.cal is not None
+                                and abs(raw_bias - ctx.cb.cal) > ctx.args.clock_bias_alarm_hz):
+                            _log("CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz on %d sats -- "
+                                 "hardware news (GPSDO re-settled?); new warm-start reference"
+                                 % (ctx.cb.cal, raw_bias, _n_cal))
+                        ctx.cb.cal = raw_bias
                     ctx.cb.stale = False
                 ctx.cb.ema = raw_bias
             else:
@@ -239,7 +264,12 @@ def stage_almanac_predict(ctx):
                             "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
                             "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
                             % (ctx.cb.ema, ctx.cb.cal, _abar, len(resid)),
-                            every_s=60.0)
+                            # ⚠️ 60 s WAS FAR TOO HOT for an advisory nobody can act on in a
+                            # minute. Against a poisoned calibration it fired once a minute
+                            # for hours (2026-08-27) and buried everything else in the log --
+                            # an alarm that repeats faster than it can be investigated is
+                            # noise, and it would have hidden a real one.
+                            every_s=ctx.args.clock_bias_alarm_every_s)
         # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
         # purpose -- an unsolved chain is exactly the case the fused state exists to
         # rescue, so it has to be visible, and `null` is how that is said (never 0).

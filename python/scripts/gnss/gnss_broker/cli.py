@@ -1269,6 +1269,22 @@ def build_parser(description):
     # transits at 83 deg, had no slot at all -- and, because the noise-probe selector picks the
     # deepest below-horizon PRN, it kept picking the one satellite the node could not represent,
     # dropping both gal chains to brightness-only presence.
+    ap.add_argument("--clock-bias-cal-min-sats", type=int, default=5,
+                    help="satellites a STALE-RESCUE re-solve needs before it may replace the "
+                         "warm-start calibration. Below this the old calibration is HELD and "
+                         "said so. The re-solve used to be adopted unconditionally: one median "
+                         "from however few sats were present became the reference and was "
+                         "announced as hardware news -- measured 2026-08-27, a 2-sat re-solve "
+                         "moved it -2.3 -> -17.9 Hz against a population whose median is +0.0 "
+                         "(sd 12.7 over 1222 samples), and every later comparison was then "
+                         "against noise. An old reference is stale; a noise-derived one is "
+                         "WRONG, and wrong outranks stale for something everything else is "
+                         "measured against. 0 disables the guard (the old behaviour).")
+    ap.add_argument("--clock-bias-alarm-every-s", type=float, default=600.0,
+                    help="rate limit for CLOCK DRIFT ALARM. Was 60 s, which against a poisoned "
+                         "calibration fired once a minute for hours and buried the log -- an "
+                         "alarm repeating faster than it can be investigated is noise, and it "
+                         "would have hidden a real one.")
     ap.add_argument("--presence-require-probes", action="store_true",
                     help="REFUSE a presence verdict when the noise probes cannot anchor it, "
                          "instead of falling back to the tracked population. KV, 2026-08-27: "
