@@ -1866,6 +1866,10 @@ def main(argv=None, rx=None, publisher=None):
             # with wall entering only as the elapsed-since-fetch difference.
             _fh = max((float(r.get("pow_hop") or 0.0) for r in _ctx.status.values()),
                       default=0.0)
+            # PUBLISHED FOR THE PRN SCHEDULER (prnmap._at_seq). None, not 0.0, when there is
+            # no axis: a zero would look like a valid sample at the epoch and would schedule
+            # every swap into the deep past, i.e. straight through the deadline test.
+            _ctx.fe_hop_now = _fh if _fh > 0.0 else None
             if _fh > 0.0:
                 # ⚠️ THE TIME BASE MUST NEVER FREEZE SILENTLY (2026-08-18, the cx19 collapse).
                 # t_now_abs is built from this hop, and this hop comes from ONE combiner. When
