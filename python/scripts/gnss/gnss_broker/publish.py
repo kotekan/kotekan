@@ -410,6 +410,18 @@ class FleetPublisher:
                 # fleet-only extras: not in the combiner schema, ignored by older consumers
                 "fleet_q": v["q"], "fleet_q_floor": v["q_floor"],
                 "fleet_p_over_noise": ratio, "fleet_present": bool(v["present"]),
+                # ⚠️ WHICH GATE SAID SO. present alone is a boolean with five different
+                # provenances -- "q+p:probes", the "prompt" peer fallback, "UNANCHORED",
+                # "deep", and the displaced re-admissions -- and an A/B on any of them is
+                # UNJUDGEABLE from outside without this. Found 2026-08-27 while arming
+                # --presence-admit-displaced: the arm's whole observable is that rows start
+                # carrying 'q+deep:probes+disp', and nothing published it, so the experiment
+                # could not have been read even if it worked perfectly.
+                "fleet_present_gate": v.get("present_gate"),
+                # the displaced admission's own numbers, when it ran: which evidence admitted
+                # the row, and the fit it was admitted on.
+                "fleet_off_chips": v.get("off_chips"),
+                "fleet_pedestal": v.get("pedestal"),
                 "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
                 "fleet_hop": v["hop"], "coh_src": v.get("coh_src"),
                 "code_phase_rate": sd.get("code_phase_rate", 0.0),
