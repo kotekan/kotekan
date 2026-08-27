@@ -444,6 +444,39 @@ def test_hourly_coverage_beats_recency():
               "gate that cannot is the bug restated")
 
 
+def test_refresh_cadence_matches_the_product():
+    """⚠️ THE SKY WAS REFRESHED EVERY 2 h FROM A PRODUCT THAT UPDATES EVERY HOUR.
+
+    A broadcast record is valid for 4 h from its toe, so between refreshes the toe ages
+    monotonically and satellites drop out of the prediction one at a time. Measured
+    2026-08-27, 73 min after a refresh: G28/E25/C21 predictable had become G19/E17/C7, with
+    Galileo's oldest toe at 233 min of the 240 min window. And the survivors are predicted
+    from ever-older records, so their model error grows into the trim until it rails.
+    """
+    import re
+    print("\nthe sky is refreshed as often as its source updates")
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sky.py")).read()
+    m = re.search(r'now - state\["eph_t"\] > state\.get\("eph_refresh_s", ([0-9.]+)\)', src)
+    check(m is not None, "the refresh gate is a named, overridable interval")
+    if m:
+        iv = float(m.group(1))
+        check(iv <= 3600.0,
+              "and it is at most the station-hourly update period (%.0f s <= 3600) -- asking "
+              "less often than the product changes guarantees a stale sky between refreshes"
+              % iv)
+        check(iv >= 300.0,
+              "...but not so often it re-parses for nothing (%.0f s >= 300; fetch_brdc's own "
+              "caches make the call cheap, not free)" % iv)
+    # The 4 h validity window is what makes the cadence matter -- if it ever widens, this
+    # test's premise changes and someone should notice here.
+    from gnss_ephemeris import predict_all
+    import inspect
+    d = inspect.signature(predict_all).parameters["max_age"].default
+    check(abs(d - 14400.0) < 1.0,
+          "predict_all still assumes a 4 h toe window (%.0f s) -- the refresh cadence is "
+          "chosen against it" % d)
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -456,6 +489,7 @@ def main():
     test_404_is_not_a_dead_host()
     test_hourly_mirrors()
     test_hourly_coverage_beats_recency()
+    test_refresh_cadence_matches_the_product()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

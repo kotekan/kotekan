@@ -36,14 +36,39 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     if getattr(ge, "LOG_HOOK", "unset") is None:
         ge.LOG_HOOK = _log
     now = _now()
-    if state["eph"] is None or now - state["eph_t"] > 7200.0:
+    # ⚠️⚠️ ASK AS OFTEN AS THE PRODUCT UPDATES, NOT AS OFTEN AS THE DAILY DOES. This gate was
+    # 7200 s, inherited from the DAILY file's own 2 h re-fetch rule -- but the sky is served by
+    # the STATION-HOURLY merge, which updates every hour, and a broadcast record is only valid
+    # for 4 h from its toe. So between refreshes the toe ages monotonically and satellites drop
+    # out of the prediction ONE AT A TIME as they cross the window, for up to two hours, with
+    # nothing in the log to say the sky is thinning rather than setting.
+    #
+    # MEASURED 2026-08-27, 73 min after a refresh (KV: "far fewer sats available than usual"):
+    #     at the refresh   G28 / E25 / C21 predictable
+    #     73 min later     G19 / E17 / C 7   -- Galileo's oldest toe at 233 min of 240
+    # And it is not only a count. A satellite still inside the window is being predicted from an
+    # ever-older record, so its model error GROWS; the fast loop absorbs that into a deeper and
+    # deeper trim until it hits the +-3 chip clamp and the peak walks off the prompt tap. The
+    # E3/E32 dropouts that afternoon track the staleness, not the sky.
+    #
+    # THIS IS CHEAP. fetch_brdc holds its own caches -- 2 h for the daily, 30 min for the
+    # station-hourly merge -- so a call inside those windows is a dict lookup and a parse, not
+    # a fetch. The gate here only decides how soon we NOTICE that something newer exists.
+    if state["eph"] is None or now - state["eph_t"] > state.get("eph_refresh_s", 900.0):
         # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
         # t_utc so a replay (--almanac-epoch) gets the DAY-MATCHED file -- today's file
         # cannot predict another epoch (best_eph 4 h window).
         try:
             state["eph"] = ge.parse_rinex_nav(ge.fetch_brdc(t_utc))
             state["eph_t"] = now
-            _log("brdc almanac: ephemeris refreshed (%d sats)" % len(state["eph"]))
+            _n = len(state["eph"])
+            # Say so only when the SET changed. At a 15 min cadence an unconditional line is
+            # 96 lines a day of "still 101 sats", which is how a real thinning gets missed.
+            if _n != state.get("eph_n"):
+                _log("brdc almanac: ephemeris refreshed (%d sats%s)"
+                     % (_n, "" if state.get("eph_n") is None
+                        else ", was %d" % state["eph_n"]))
+            state["eph_n"] = _n
         except Exception as e:
             state["eph_t"] = now - 7200.0 + 600.0  # coast on the old set, retry in 10 min
             if state["eph"] is None:
