@@ -2344,6 +2344,26 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
   # that lands. It is here for the BAND, not yet for the sensitivity -- judge it on
   # tau/lock, not on deep_snr, and do not "fix" a low deep that is simply this.
   bds_b2b:
+    # ── PROMOTED 2026-08-27 23:4x (KV): b2b was the untreated CONTROL and never caught up ──
+    # It carried neither of these while gal_e5a, gal_e5b and bds_b2a all did, because it was
+    # this morning's control for the probe/presence work. That control has served its purpose
+    # -- the effects are established on the other three -- so the asymmetry is now just an
+    # untreated chain rather than an experiment.
+    #
+    # probe-require-slot: the probe selector may only pick PRNs that HAVE a slot on the nodes.
+    #   Without it the selector can choose slotless PRNs, the chain drops under 3 reporting
+    #   probes and goes PRESENCE UNANCHORED -- nothing admitted, nothing trimmed. That is the
+    #   failure chased across this whole evening on b2a.
+    # prn-reconfig: apply -- let the broker keep b2b's map on "3 below the horizon + all
+    #   above" like the other three, instead of holding the static config map. Costs one cold
+    #   acquisition per moved slot, bounded by prn-reconfig-interval-s (120 s).
+    #
+    # ⚠️ THESE DO NOT MAKE b2b MATCH b2a, AND SHOULD NOT BE EXPECTED TO. b2b is B2b-**I**, the
+    # DATA component; b2a is B2a-**P**, the pilot. Nav-bit transitions cap coherent
+    # integration, so b2b sits below b2a for a physical reason no flag reaches (KV, same
+    # evening). These stop it being ADDITIONALLY handicapped; they do not buy parity.
+    probe-require-slot: true
+    prn-reconfig: apply
     # ── ARMED 2026-08-27 23:0x: THE DISPLACED ADMISSION ON BeiDou (KV) ───────────────────
     # Built this afternoon for E3 and armed on both Galileo chains; BeiDou never got it, and
     # it is BeiDou that was paying. Measured at 23:00 on the live fleet, 8 BDS-3 above the
