@@ -471,6 +471,19 @@ def test_hourly_coverage_beats_recency():
         check(_hourly_cov_read(d)[0] is True,
               "and a thin one records that too, so the CACHE GATE can tell them apart -- a "
               "gate that cannot is the bug restated")
+        # ⚠️ A FOREIGN WRITE MUST NOT BE INHERITED. The cache is shared by every process that
+        # imports this module, and a long-running one holds whatever version it started with.
+        # Measured 2026-08-27: the js_viewer, up NINE DAYS, was rebuilding the merged file from
+        # a pre-rolling-store copy, leaving a sidecar 33 min older than the file it described.
+        import time as _t
+        _mf = os.path.join(d, "hourly_MN.rnx.gz")
+        open(_mf, "wb").close()
+        _hourly_cov_write(d, False, "G30/E30/C23")          # our record: file is complete
+        check(_hourly_cov_read(d)[0] is False, "sidecar written WITH its file is believed")
+        os.utime(_mf, (_t.time() + 60, _t.time() + 60))     # someone else rewrites the file
+        _thin, _why = _hourly_cov_read(d)
+        check(_thin is True and "FOREIGN WRITE" in _why,
+              "a file NEWER than its coverage record is refused and re-merged, not inherited")
 
 
 def test_coverage_counts_only_usable_records():

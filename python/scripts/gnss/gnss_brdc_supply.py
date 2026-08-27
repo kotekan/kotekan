@@ -199,10 +199,31 @@ def _hourly_cov_read(cache_dir):
     """(thin, got). ⚠️ UNKNOWN COUNTS AS THIN. A merge written before this bookkeeping existed,
     or a sidecar lost to a partial write, must get the SHORT ttl and be re-merged -- assuming
     a file is complete because we cannot tell is how the thin merge survived 30 minutes in the
-    first place."""
+    first place.
+
+    ⚠️⚠️ AND A SIDECAR OLDER THAN ITS FILE MEANS SOMEONE ELSE WROTE THE FILE. This cache is
+    shared: any process importing this module writes the same path, and a long-running one
+    holds whatever version of this code it imported at start. Measured 2026-08-27 21:42 -- the
+    js_viewer had been up for NINE DAYS and was rebuilding hourly_MN.rnx.gz from a pre-rolling-
+    store copy of the merge, leaving 29 records past the 240 min keep window and a sidecar
+    33 minutes older than the file it claimed to describe. Every fix made to the merge that
+    evening was being periodically undone, silently, by a second writer.
+
+    We cannot stop another process writing, and should not try. What we CAN do is refuse to
+    believe a coverage record that does not belong to the file beside it -- which routes a
+    foreign write straight into the thin path, so our own logic re-merges within the short TTL
+    instead of inheriting whatever the other writer produced.
+    """
     try:
-        with open(os.path.join(cache_dir, _HOURLY_COV)) as f:
+        cov = os.path.join(cache_dir, _HOURLY_COV)
+        with open(cov) as f:
             d = json.load(f)
+        merged = os.path.join(cache_dir, "hourly_MN.rnx.gz")
+        if os.path.exists(merged) and os.path.getmtime(merged) > os.path.getmtime(cov) + 1.0:
+            return True, ("FOREIGN WRITE: hourly_MN.rnx.gz is %.0f s newer than its coverage "
+                          "record, so another process (or another version of this code) wrote "
+                          "it -- treating as thin and re-merging"
+                          % (os.path.getmtime(merged) - os.path.getmtime(cov)))
         return bool(d.get("thin", True)), str(d.get("got", "?"))
     except Exception:
         return True, "no coverage record"
