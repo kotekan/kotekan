@@ -219,10 +219,13 @@ def test_hourly_coverage():
         def __exit__(self, *a):
             return False
 
+    _urls = []
+
     def fake_urlopen(req, **kw):
         name = req.full_url.rsplit("/", 1)[-1]
         st = name.split("_")[0]
         asked.append(st)
+        _urls.append(name)
         if st not in catalogue:
             raise IOError("404")
         return _Resp(gzip.compress((_HDR + _rinex(catalogue[st])).encode("ascii")))
@@ -247,11 +250,24 @@ def test_hourly_coverage():
         check(asked[:5] == ["NOBDS1", "NOBDS2", "NOBDS3", "NOBDS4", "WIDEAA"],
               "four BDS-2-only stations do NOT end the merge -- they answered, they did not "
               "cover")
-        check("WIDEBB" not in asked,
-              "and it stops as soon as coverage IS met -- no pointless sixth fetch")
+        # ⚠️ THE EXIT TEST NOW GOVERNS HOW FAR BACK TO WALK, NOT WHETHER TO FETCH AT ALL.
+        # The two newest hours are ALWAYS attempted, because the store accumulates and an
+        # unconditional "coverage met -> stop" would never pull new records into it: the store
+        # would coast to expiry and then collapse. So WIDEBB may well be asked for the newest
+        # hours; what must NOT happen is walking further back once coverage holds.
+        # BRUX00BEL_R_20262392000_01H_MN.rnx.gz -> field 2 is YYYYDDDHHMM; the hour is [7:9].
+        _hours = {u.split("_")[2][7:9] for u in _urls if len(u.split("_")) > 2}
+        check(len(_hours) >= 1 and all(h.isdigit() for h in _hours),
+              "...and the assertion below is reading real hour fields (%s), not a vacuous set"
+              % sorted(_hours))
+        check(len(_hours) <= 2,
+              "coverage being met stops the walk going FURTHER BACK -- at most the two newest "
+              "hours were touched (%s)" % sorted(_hours))
 
         # (b) BDS-2 does not count toward the BeiDou target.
-        os.utime(p, (0, 0))
+        # ⚠️ A FRESH STORE PER CASE. The store accumulates across calls by design, so a case
+        # that reuses the previous case's directory is testing the union, not its own premise.
+        shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp, exist_ok=True)
         ge._HOURLY_STATIONS = ["NOBDS1", "NOBDS2"]
         asked[:] = []
         logs[:] = []
@@ -263,7 +279,7 @@ def test_hourly_coverage():
               "and it names C -- C01-C18 broadcast B1I, not B2a; they are not the population")
 
         # (c) One wide station is still not enough on its own.
-        os.utime(p, (0, 0))
+        shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp, exist_ok=True)
         ge._HOURLY_STATIONS = ["WIDEAA", "WIDEBB"]
         asked[:] = []
         ge._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
@@ -462,19 +478,25 @@ def test_coverage_counts_only_usable_records():
     Counting distinct PRNs counts what is PRESENT; the exit test wants what is USABLE.
     """
     from datetime import datetime, timezone, timedelta
-    from gnss_ephemeris import _rec_is_fresh, _HOURLY_FRESH_S
-    import gnss_ephemeris as _ge
+    from gnss_ephemeris import _rec_is_fresh, _HOURLY_KEEP_S
     print("\ncoverage counts USABLE records, not merely present ones")
     now = datetime(2026, 8, 27, 20, 0, 0, tzinfo=timezone.utc)
     mk = lambda dt: "C19 %s  0.0 0.0 0.0" % (now - dt).strftime("%Y %m %d %H %M %S")
     check(_rec_is_fresh(mk(timedelta(minutes=30)), now), "a 30 min old record counts")
     check(not _rec_is_fresh(mk(timedelta(hours=5)), now),
           "a 5 h old record does NOT -- it is already past predict_all's 4 h window")
-    check(not _rec_is_fresh(mk(timedelta(seconds=_HOURLY_FRESH_S + 600)), now),
-          "and the cut is %.0f s, tighter than the 4 h validity so the sky survives a whole "
-          "refresh interval rather than expiring inside it" % _HOURLY_FRESH_S)
-    check(_HOURLY_FRESH_S < 14400.0,
-          "the freshness cut is strictly tighter than the validity window")
+    # ⚠️ THE CUT IS THE VALIDITY WINDOW, AND A TIGHTER ONE IS A BUG, NOT CAUTION. BDS-3 updates
+    # hourly on the hour and IGS hourlies publish ~15-25 min late, so BeiDou's freshest record
+    # is legitimately up to ~2 h 25 min old. A 2 h cut counted C0 on a store holding 23
+    # predictable BeiDou and declared BELOW TARGET on a complete sky.
+    check(_rec_is_fresh(mk(timedelta(minutes=145)), now),
+          "a 2 h 25 min old record COUNTS -- that is BeiDou at the bottom of its hourly "
+          "publish cycle, not a stale record")
+    check(abs(_HOURLY_KEEP_S - 14400.0) < 1.0,
+          "the count window IS the validity window (%.0f s)" % _HOURLY_KEEP_S)
+    # A record dated AHEAD of now is normal (GPS/Galileo centre toe in the fit interval).
+    check(_rec_is_fresh(mk(timedelta(minutes=-45)), now),
+          "a record stamped 45 min in the FUTURE counts -- toe is centred in the fit interval")
     # ⚠️ UNPARSEABLE COUNTS AS FRESH. This test rejects records provably stale; refusing on
     # doubt would make the merge walk every station and every hour for nothing.
     check(_rec_is_fresh("C19 garbage", now) and _rec_is_fresh("", now),

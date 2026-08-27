@@ -217,11 +217,23 @@ def _hourly_cov_read(cache_dir):
 # tighter than predict_all's 4 h validity: a record at 3h59m satisfies the predictor for one
 # more minute and then stops, so counting it as coverage buys a merge that is starved before
 # the next refresh. Half the window leaves the sky usable across a full refresh interval.
-_HOURLY_FRESH_S = 7200.0
+def _rec_is_fresh(line, when, window_s=None):
+    """Is this RINEX 3 nav record's epoch recent enough to COUNT toward coverage?
 
+    ⚠️ THE WINDOW IS THE VALIDITY WINDOW, NOT A TIGHTER "FRESHNESS". It was 2 h for the few
+    hours between introducing this test and introducing the rolling store, on the reasoning
+    that a nearly-expired record should not satisfy the exit test. With a store that rebuilt
+    itself every call that was right. With one that ACCUMULATES it is wrong, and measurably so:
+    BDS-3 updates hourly on the hour and IGS hourlies publish ~15-25 min late, so BeiDou's
+    freshest record is legitimately up to ~2 h 25 min old -- and a 2 h cut therefore counted
+    **C0** on a store holding **23 predictable BeiDou satellites**, declared BELOW TARGET, and
+    would have walked every station and every hour once every 300 s to fix a sky that was
+    already complete.
 
-def _rec_is_fresh(line, when):
-    """Is this RINEX 3 nav record's epoch recent enough to be worth counting?
+    The reason a tight cut is no longer needed is structural, not a relaxation: the walk now
+    ALWAYS attempts the two newest hours, so new records arrive every call regardless of what
+    the exit test says. The exit test's only remaining job is "do I have enough of the sky
+    across the window", and the honest measure of that is the window itself.
 
     The record's first line carries sys+PRN then the toc as `YYYY MM DD HH MM SS`. Anything
     unparseable counts as FRESH: this test exists to reject records we can prove are stale,
@@ -234,7 +246,7 @@ def _rec_is_fresh(line, when):
             return True
         toc = datetime(int(f[0]), int(f[1]), int(f[2]), int(f[3]), int(f[4]),
                        int(float(f[5])), tzinfo=timezone.utc)
-        return abs((when - toc).total_seconds()) <= _HOURLY_FRESH_S
+        return abs((when - toc).total_seconds()) <= (window_s or _HOURLY_KEEP_S)
     except Exception:
         return True
 
@@ -311,6 +323,72 @@ def _hourly_sources(station, when, token):
     return srcs
 
 
+# How much history the rolling store keeps. predict_all's validity window is 4 h from toe, so a
+# record older than this cannot contribute to any prediction and is pure weight.
+# ⚠️ FILTERED ON toc, NOT toe -- the epoch on the record's first line. They coincide for GPS and
+# Galileo and sit within minutes for BeiDou, and the margin below absorbs that; parsing toe would
+# mean parsing the whole record, which is parse_rinex_nav's job, not the supply layer's.
+_HOURLY_KEEP_S = 14400.0
+
+
+def _split_records(body):
+    """Split a RINEX 3 nav body into (sysc, prn, toc_key, text) records.
+
+    A record is a line starting `Xnn ` followed by its continuation lines, which are indented.
+    Returned in file order; anything before the first record header is dropped.
+    """
+    out, cur, key = [], [], None
+    for ln in body.splitlines(True):
+        if len(ln) > 3 and ln[0] in "GECRJIS" and ln[1:3].isdigit() and ln[3] == " ":
+            if cur and key:
+                out.append(key + ("".join(cur),))
+            f = ln[4:23].split()
+            key = (ln[0], int(ln[1:3]), " ".join(f[:6]) if len(f) >= 6 else ln[4:23])
+            cur = [ln]
+        elif cur:
+            cur.append(ln)
+    if cur and key:
+        out.append(key + ("".join(cur),))
+    return out
+
+
+def _toc_of(key, default=None):
+    """datetime of a record key's toc field, or `default` if it will not parse."""
+    try:
+        f = key[2].split()
+        return datetime(int(f[0]), int(f[1]), int(f[2]), int(f[3]), int(f[4]),
+                        int(float(f[5])), tzinfo=timezone.utc)
+    except Exception:
+        return default
+
+
+def _store_load(cache_dir, when):
+    """The rolling store: {(sys, prn, toc): text}, pruned to _HOURLY_KEEP_S, plus its header.
+
+    ⚠️ UNPARSEABLE toc IS KEPT, not dropped -- the same rule as _rec_is_fresh. This layer
+    discards what it can prove is expired; it never discards on doubt.
+    """
+    import gzip
+    path = os.path.join(cache_dir, "hourly_MN.rnx.gz")
+    if not os.path.exists(path):
+        return {}, None
+    try:
+        txt = gzip.decompress(open(path, "rb").read()).decode("ascii", "replace")
+    except Exception:
+        return {}, None
+    k = txt.find("END OF HEADER")
+    if k < 0:
+        return {}, None
+    eoh = txt.find("\n", k) + 1
+    keep = {}
+    for sysc, prn, toc, text in _split_records(txt[eoh:]):
+        t = _toc_of((sysc, prn, toc))
+        if t is not None and abs((when - t).total_seconds()) > _HOURLY_KEEP_S:
+            continue
+        keep[(sysc, prn, toc)] = text
+    return keep, txt[:eoh]
+
+
 def _fetch_station_hourly(when, cache_dir, token):
     """MERGE several IGS stations' hourly mixed-nav into one fresh nav file -- a fallback for a
     stale merged daily, and THE only current-day source when the daily mirrors are down. One
@@ -359,15 +437,50 @@ def _fetch_station_hourly(when, cache_dir, token):
                             "drop gates and search hints all ride this."
                             % (cov, age, _HOURLY_THIN_TTL_S - age))
             return local
-    header, bodies, fetched = None, [], 0
+    # ---- THE ROLLING STORE ---------------------------------------------------------------
+    # ⚠️⚠️ ACCUMULATE, DO NOT REBUILD. Every earlier version built the file from ONLY the hours
+    # it walked that call, so the file held exactly enough history to satisfy the count at the
+    # instant it was written -- and nothing for the hours after. That is fine for a
+    # constellation whose records arrive continuously and fatal for one that updates on a
+    # schedule. BDS-3 broadcasts hourly ON THE HOUR and IGS hourlies publish ~15-25 min after
+    # the hour closes, so BeiDou's freshest available record ages 25 min -> 2 h 25 min and then
+    # steps back. Measured 2026-08-27 20:57 UTC, identical at all twelve stations (it is a
+    # property of the CONSTELLATION, not of any mirror): G freshest 55 min, E 75, C 115.
+    # The merge then held C 28 records at toc age 115/175/295 min against Galileo's 284 -- the
+    # median BeiDou record was 73% expired the moment the file was written, so an hour later it
+    # fell out of predict_all's 4 h window and predictable C went 23 -> 8. Both BeiDou chains
+    # drifted back toward PRESENCE UNANCHORED, on a healthy sky, with every source working.
+    #
+    # And there is NO daily backstop to cover the gap: today's daily has never been fetched
+    # (BKG down, CDDIS publishes only CLOSED days) and yesterday's is ~25 h old, every record
+    # far past 4 h. The whole sky rests on this file, so this file has to hold the window.
+    #
+    # Keeping a rolling union over _HOURLY_KEEP_S makes coverage a property of the WINDOW rather
+    # than of one fetch. Records are keyed (sys, prn, toc), so re-fetching an hour is idempotent
+    # and two stations carrying the same broadcast record store it once.
+    store, header = _store_load(cache_dir, when)
+    n_start = len(store)
+    fetched = 0
     seen = {"G": set(), "E": set(), "C": set()}
+    for (sysc, prn, toc) in store:
+        if sysc in seen and prn >= _HOURLY_TARGET[sysc][0]:
+            t = _toc_of((sysc, prn, toc))
+            if t is None or abs((when - t).total_seconds()) <= _HOURLY_KEEP_S:
+                seen[sysc].add(prn)
     done = set()                      # (station, hour) already fetched -- never pay twice
     for dh in (0, 1, 2, 3):
         h = when - timedelta(hours=dh)
-        if _hourly_target_met(seen, fetched):
+        # ⚠️ THE EXIT TEST GOVERNS HOW FAR BACK TO WALK, NOT WHETHER TO FETCH AT ALL. With a
+        # store that already satisfies coverage, an unconditional `if met: break` would stop
+        # before pulling the newest hour and the store would never refresh -- it would coast to
+        # expiry and then collapse, which is the bug this block exists to end, wearing a
+        # different hat. So the two newest hours are ALWAYS attempted; older ones are top-up.
+        if dh >= 2 and _hourly_target_met(seen, max(fetched, _HOURLY_MIN_STATIONS)):
             break
         for st in _HOURLY_STATIONS:
-            if fetched >= _HOURLY_MAX_FETCH or _hourly_target_met(seen, fetched):
+            if fetched >= _HOURLY_MAX_FETCH:
+                break
+            if dh >= 2 and _hourly_target_met(seen, max(fetched, _HOURLY_MIN_STATIONS)):
                 break
             if (st, h.hour) in done:
                 continue
@@ -402,8 +515,14 @@ def _fetch_station_hourly(when, cache_dir, token):
             eoh = txt.find("\n", k) + 1
             if header is None:
                 header = txt[:eoh]
-            bodies.append(txt[eoh:])
             fetched += 1
+            # INTO THE STORE, keyed (sys, prn, toc): re-fetching an hour is idempotent, and two
+            # stations carrying the same broadcast record store it once.
+            for sysc, prn, toc, text in _split_records(txt[eoh:]):
+                t = _toc_of((sysc, prn, toc))
+                if t is not None and abs((when - t).total_seconds()) > _HOURLY_KEEP_S:
+                    continue
+                store[(sysc, prn, toc)] = text
             for ln in txt[eoh:].splitlines():
                 if len(ln) > 3 and ln[0] in seen and ln[1:3].isdigit():
                     prn = int(ln[1:3])
@@ -419,12 +538,26 @@ def _fetch_station_hourly(when, cache_dir, token):
                     # for the thing wanted rather than on the thing itself.
                     if prn >= _HOURLY_TARGET[ln[0]][0] and _rec_is_fresh(ln, when):
                         seen[ln[0]].add(prn)
-    # ---- one file, from however many (station, hour) pairs it took ------------------------
-    if not (header and bodies):
+    # ---- one file: the whole rolling window, not just this call's fetches -----------------
+    if not (header and store):
         return None
     got = "/".join("%s%d" % (k2, len(seen[k2])) for k2 in "GEC")
     thin = [k2 for k2, v in _HOURLY_TARGET.items() if len(seen[k2]) < v[1]]
     hours = sorted({hh for _, hh in done})
+    # Oldest first, so best_eph's scan and any human reading the file both see time order.
+    order = sorted(store, key=lambda k: (_toc_of(k, datetime(1980, 1, 6, tzinfo=timezone.utc)), k))
+    bodies = [store[k] for k in order]
+    # ⚠️ A NEGATIVE AGE IS NORMAL, NOT A BUG. GPS/Galileo centre toe in the fit interval, so a
+    # freshly broadcast record is routinely stamped up to ~1 h AHEAD of now. Say "ahead" rather
+    # than printing a minus sign that reads like a clock fault at 3am.
+    span = [t for t in (_toc_of(k) for k in order) if t is not None]
+    if span:
+        _n = (when - max(span)).total_seconds() / 60.0
+        _o = (when - min(span)).total_seconds() / 60.0
+        age = "newest %s, oldest %.0f min old" % (
+            ("%.0f min ahead" % -_n) if _n < 0 else ("%.0f min old" % _n), _o)
+    else:
+        age = "?"
     if thin:
         # ⚠️ SAY SO. A merge that never reached its target still returns a file, and a thin
         # file is indistinguishable from a healthy one downstream -- it just makes a
@@ -436,8 +569,10 @@ def _fetch_station_hourly(when, cache_dir, token):
                        "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in "GEC"),
                        "+".join(thin), _HOURLY_THIN_TTL_S))
     else:
-        _log_hourly("BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s, target met."
-                    % (fetched, ",".join("%02d" % x for x in hours), got))
+        _log_hourly("BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s, target met. "
+                    "Store %d -> %d record(s); %s."
+                    % (fetched, ",".join("%02d" % x for x in hours), got,
+                       n_start, len(store), age))
     _atomic_write_bytes(local, gzip.compress(
         (header + "".join(bodies)).encode("ascii", "replace")))
     _hourly_cov_write(cache_dir, bool(thin), got)
