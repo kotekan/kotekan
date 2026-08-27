@@ -41,14 +41,14 @@ def row(q, disc, p_pow):
 
 
 PROBES = {90, 91, 92}
-ADMIT = {"pedestal_max": 0.3, "off_max_chips": 0.6}
+ADMIT = {"pedestal_max": 0.3, "off_max_chips": 0.6, "deep_margin": 3.0}
 
 
 def fleet(**extra):
     """Probes at the floor + two healthy satellites, then the case under test."""
     out = {90: row(0.95, +0.02, 1.0), 91: row(1.00, -0.03, 1.1), 92: row(1.05, +0.01, 0.9),
            7: row(3.40, -0.05, 50.0), 12: row(3.10, +0.08, 30.0)}
-    out.update(extra)
+    out.update({int(k): v for k, v in extra.items()})
     return out
 
 
@@ -56,6 +56,79 @@ def verdict(out, admit):
     apply_presence(out, k_sigma=3.0, q_fallback=2.2, probe_prns=PROBES,
                    admit_displaced=admit)
     return out
+
+
+def coh(deep_snr, deep_floor):
+    return {"deep_snr": deep_snr, "deep_floor": deep_floor}
+
+
+def test_blind_evidence():
+    """The admission's EVIDENCE must not be an on-peak statistic.
+
+    ⚠️ THE BUG THIS PINS (KV, 2026-08-27). This gate exists to rescue the satellite whose
+    taps are off the peak, and it required prompt power above the probe floor to believe the
+    satellite was there at all -- but PROMPT POWER IS SUPPRESSED BY EXACTLY THAT OFFSET. It
+    is q's disease one step along, and it was the third time the same kind of statistic was
+    swapped for another of its kind (q -> prompt -> prompt), against a comment in this very
+    file saying "do not fix this a third time with another tap ratio".
+
+    Measured on sky the day it was found: 7 satellites seen by an OFFSET-BLIND detector at
+    deep_snr 18-56 and C/N0 up to 26.8 dB-Hz, prompt power 0.5-2.7x noise. The prompt bar
+    admitted TWO. The other five failed on p precisely because they were displaced.
+    """
+    print("admit-displaced: the evidence must be OFFSET-BLIND")
+
+    # bds_b2a PRN 20, from the 2026-08-27 12:4x poll: displaced, prompt DIM (2.65x, under the
+    # 3x probe bar), but the deep fold -- which re-searches code phase -- sees it at 55 sigma
+    # against a floor of 2.67.
+    dim_but_detected = row(0.90, +0.65, 2.4)
+    dim_but_detected["coh_row"] = coh(55.0, 2.67)
+    out = verdict(fleet(**{"20": dim_but_detected}), ADMIT)
+    v = out[20]
+    check(v["present"] is True,
+          "a DIM but strongly-DETECTED displaced row is admitted (prompt 2.65x would refuse "
+          "it; deep_snr 55 vs floor 2.67 does not)")
+    check(v["present_gate"] == "q+deep:probes+disp",
+          "and the admission is ATTRIBUTABLE to the blind detector, not to prompt power")
+
+    # The same row with NO deep evidence at all must still be refused -- otherwise this has
+    # just widened the gate rather than changed what it asks.
+    no_deep = row(0.90, +0.65, 2.4)
+    out2 = verdict(fleet(**{"20": no_deep}), ADMIT)
+    check(out2[20]["present"] is False,
+          "the SAME dim row with no deep row is still refused -- the bar moved to a different "
+          "quantity, it did not go away")
+
+    # A centred NOISE realisation, detected or not, must stay out: the pedestal test is what
+    # guards that, and loosening the evidence must not have loosened it.
+    noise = row(1.02, +0.00, 2.4)      # q ~ 1, disc ~ 0 -> huge pedestal
+    noise["coh_row"] = coh(55.0, 2.67)
+    out3 = verdict(fleet(**{"21": noise}), ADMIT)
+    check(out3[21]["present"] is False,
+          "a CENTRED NOISE row is refused even with a loud deep detection -- the pedestal "
+          "test still does that work (the 2026-08-14 trimming-on-noise case)")
+
+    # Beyond the DLL's pull-in range: refused, correctly -- that one needs the search.
+    far = row(0.40, +0.45, 20.0)
+    far["coh_row"] = coh(55.0, 2.67)
+    out4 = verdict(fleet(**{"22": far}), ADMIT)
+    check(out4[22]["present"] is False and abs(out4[22]["off_chips"]) > 0.6,
+          "a row BEYOND the pull-in range is refused even though it is bright AND loudly "
+          "detected -- a detection is not a reason to arm a loop with no gradient to follow")
+
+    # A bright row keeps the old path and the old label, so the A/B can separate "the deep
+    # path did the work" from "it would have passed on prompt anyway".
+    bright = row(0.90, -0.65, 20.0)
+    out5 = verdict(fleet(**{"23": bright}), ADMIT)
+    check(out5[23]["present"] is True and out5[23]["present_gate"] == "q+p:probes+disp",
+          "a BRIGHT displaced row still admits on prompt, labelled 'q+p:probes+disp'")
+
+    # A weak deep detection is not evidence.
+    weak = row(0.90, +0.65, 2.4)
+    weak["coh_row"] = coh(4.0, 2.67)   # 1.5x floor, under the 3x margin
+    out6 = verdict(fleet(**{"24": weak}), ADMIT)
+    check(out6[24]["present"] is False,
+          "a deep detection UNDER the margin (1.5x floor) is not evidence")
 
 
 def main():
@@ -173,6 +246,7 @@ def main():
     check(all(v["present_gate"] != "UNANCHORED" for v in c.values()),
           "with 3 probes the refusal does not fire and the normal gate runs")
 
+    test_blind_evidence()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

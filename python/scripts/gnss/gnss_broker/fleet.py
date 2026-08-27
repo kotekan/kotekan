@@ -519,14 +519,48 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             # its pedestal says signal, and the offset is inside the DLL's pull-in range.
             # ⚠️ ONLY under the probe-anchored gate: without probes the p bar is a peer
             # competition, and this admission on top of one would admit peers' noise.
+            # ⚠️⚠️ THE EVIDENCE MAY NOT BE AN ON-PEAK STATISTIC -- THAT IS THE WHOLE BUG
+            # (KV, 2026-08-27). This admission exists to rescue the satellite whose taps are
+            # off the peak, and it required p_pow >= p_floor to believe the satellite was
+            # really there. But PROMPT POWER IS SUPPRESSED BY EXACTLY THE OFFSET BEING
+            # RESCUED: it is the same on-peak quantity as q, one step along. Measured on sky
+            # the day it was found -- 7 satellites seen by an OFFSET-BLIND detector at
+            # deep_snr 18-56 and C/N0 up to 26.8 dB-Hz, with prompt power at 0.5-2.7x the
+            # noise -- this bar admitted TWO of them. The other five failed on p precisely
+            # because they were displaced. Third time the same statistic has been swapped
+            # for another of the same kind (q -> prompt -> prompt); the comment 30 lines
+            # below says "do not fix this a third time with another tap ratio", and requiring
+            # p here was doing that.
+            #
+            # So the "is it really there" question is answered by a detector that RE-SEARCHES
+            # code phase and therefore sees the satellite wherever the tap sits -- the same
+            # deep_snr vs deep_floor test #49/#79 use, deep_floor being the combiner's own
+            # rectification level and not a population of peers. Prompt power is KEPT as an
+            # alternative, not a requirement: a bright on-peak-ish row with no deep row (the
+            # combiner may not have folded it) is still good evidence.
+            #
+            # WHAT STILL GUARDS AGAINST TRIMMING ON NOISE: the pedestal and offset tests
+            # below. A centred noise realisation has a LARGE pedestal and is refused; a
+            # satellite beyond the DLL's pull-in range has a large |offset| and is refused
+            # (correctly -- that one needs the search, not the loop).
             if (admit_displaced is not None and not v["present"]
-                    and p_floor is not None and v["p_pow"] >= p_floor):
-                _off, _ped = epl_decompose(v["q"], v["disc"])
-                v["off_chips"], v["pedestal"] = _off, _ped
-                if (_ped <= admit_displaced["pedestal_max"]
-                        and abs(_off) <= admit_displaced["off_max_chips"]):
-                    v["present"] = True
-                    v["present_gate"] = "q+p:probes+disp"
+                    and p_floor is not None):
+                _c = v.get("coh_row") or {}
+                _ds = float(_c.get("deep_snr", 0.0) or 0.0)
+                _dfl = float(_c.get("deep_floor", 0.0) or 0.0)
+                _blind = _dfl > 0.0 and _ds >= admit_displaced.get("deep_margin", 3.0) * _dfl
+                _bright = v["p_pow"] >= p_floor
+                if _blind or _bright:
+                    _off, _ped = epl_decompose(v["q"], v["disc"])
+                    v["off_chips"], v["pedestal"] = _off, _ped
+                    if (_ped <= admit_displaced["pedestal_max"]
+                            and abs(_off) <= admit_displaced["off_max_chips"]):
+                        v["present"] = True
+                        # ATTRIBUTABLE: which evidence admitted it, so the A/B can separate
+                        # "the deep path did the work" from "it would have passed on p anyway".
+                        v["present_gate"] = ("q+p:probes+disp" if _bright
+                                             else "q+deep:probes+disp")
+                        v["disp_deep_snr"], v["disp_deep_floor"] = _ds, _dfl
         else:
             v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
                             else v["p_pow"] >= p_floor)

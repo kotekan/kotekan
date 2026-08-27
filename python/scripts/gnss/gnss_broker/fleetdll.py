@@ -62,7 +62,11 @@ def stage_fleet_dll(ctx):
         # polled arm, the comb arm and its shadow all judge with the SAME numbers -- two
         # copies of an admission policy is how an A/B stops measuring the powers.
         ctx.dllp.admit_disp = ({"pedestal_max": ctx.args.presence_disp_pedestal_max,
-                                "off_max_chips": ctx.args.presence_disp_off_max}
+                                "off_max_chips": ctx.args.presence_disp_off_max,
+                                # the OFFSET-BLIND evidence bar (see apply_presence): a
+                                # detector that re-searches code phase, so it does not
+                                # inherit the displacement it is being asked to judge
+                                "deep_margin": ctx.args.presence_disp_deep_margin}
                                if ctx.args.presence_admit_displaced else None)
         ctx.dllp.fleet = fleet_dll(ctx.dll_combiners, ctx.dll_hop_window, ctx.args.dll_min_instances,
                           ctx.args.dll_quality_sigma, ctx.args.dll_quality_min,

@@ -1223,7 +1223,9 @@ def build_parser(description):
                          "min outage; the bar shuts at ~0.17 chips) -- is exactly the one it "
                          "throws away. ⚠️ Only ever active under the probe-anchored q+p gate: "
                          "without probes the p bar is a peer competition and this would admit "
-                         "peers' noise. Rows it admits carry present_gate = 'q+p:probes+disp'.")
+                         "peers' noise. Rows it admits carry present_gate = "
+                         "'q+p:probes+disp' (bright) or 'q+deep:probes+disp' (seen only by "
+                         "the offset-blind detector).")
     ap.add_argument("--presence-disp-pedestal-max", type=float, default=0.3,
                     help="admit-displaced: max fitted noise pedestal (relative to the peak). "
                          "Measured 2026-08-26: displaced-but-strong rows sit at 0.03-0.08; "
@@ -1233,6 +1235,21 @@ def build_parser(description):
                          "pull-in range (the early tap leaves the correlation triangle at "
                          "1 - spacing/2 = 0.75 chips); past it the discriminator carries only "
                          "its sign and admission would arm a loop with no gradient to follow.")
+    ap.add_argument("--presence-disp-deep-margin", type=float, default=3.0,
+                    help="admit-displaced: the OFFSET-BLIND evidence bar, as a multiple of "
+                         "the combiner's deep_floor. ⚠️ THE POINT OF THIS FLAG IS THAT THE "
+                         "EVIDENCE MUST NOT BE AN ON-PEAK STATISTIC. The admission originally "
+                         "required prompt power above the probe floor -- but prompt power is "
+                         "suppressed by exactly the offset being rescued, so it is q's disease "
+                         "one step along, and it was the THIRD time the same kind of statistic "
+                         "was swapped for another of its kind. Measured on sky 2026-08-27: 7 "
+                         "satellites detected at deep_snr 18-56 (C/N0 up to 26.8 dB-Hz) with "
+                         "prompt at 0.5-2.7x noise; the prompt bar admitted 2 of them. "
+                         "deep_snr RE-SEARCHES code phase, so it sees the satellite wherever "
+                         "the tap sits, and deep_floor is the combiner's own rectification "
+                         "level -- not a population of peers. Prompt power stays as an "
+                         "ALTERNATIVE (either suffices); the pedestal and offset tests, not "
+                         "this one, are what still refuse a centred noise realisation.")
     ap.add_argument("--fleet-trim-floor-from-probes", action="store_true",
                     help="THE E3 FIX: ship the presence gate's probe-anchored prompt floor to "
                          "the C++ fast loop as its per-window information gate "

@@ -1562,6 +1562,35 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # works fine on a healthy loop and the latch was not what was binding. Re-judge the
     # latch, if at all, one variable at a time on the healthy instrument.
     dll-deep-gate: "33"
+    # ── ARMED 2026-08-27 12:5x: THE SEARCH-DERIVED DEEP GATE (#79), KV's call ────────────
+    # ⚠️ THE ARMING SET IS THE PRESENT SET, AND PRESENCE IS COMPUTED FROM THE TAPS.
+    # trimarm arms exactly the rows presence marks present, and the C++ fast loop only ever
+    # steps `for (int prn : c.armed)`. Presence is q >= q_floor AND p_pow >= p_floor -- BOTH
+    # measured on the tracker's own Early/Prompt/Late, and BOTH suppressed by exactly the
+    # code offset the DLL exists to remove. So a displaced satellite cannot earn the
+    # correction that would un-displace it. gnssFleetDll.hpp says this in capitals about its
+    # own gate ("only correct the code once it is already correct") and moved from q to
+    # prompt power -- which is the same on-peak quantity one step along.
+    #
+    # MEASURED ON SKY 2026-08-27 12:4x, all five chains: 7 not-present rows are seen by an
+    # OFFSET-BLIND detector (the deep fold RE-SEARCHES code phase) at deep_snr 18-56 and C/N0
+    # up to 26.8 dB-Hz while their prompt tap reads 0.5-2.7x noise. THREE OF THEM ARE ON THIS
+    # CHAIN: E12 (sig 462, deep_snr 47, kcoh +25.4 dB-Hz, prompt 5.08x, q 0.90), E19 (sig 51,
+    # deep_snr 27, prompt 2.53x, q 0.74), E2 (deep_snr 17.9, prompt 1.17x, q 0.26).
+    # ⚠️ AND ALL SEVEN ARE ON gal/bds, NONE ON gps_l5 -- which is the ONLY chain where this
+    # flag was already armed. The fleet was carrying its own control and we had not read it.
+    #
+    # ACCEPTANCE (vs gal_e5b, which is identical in every other flag -- an IN-POLL control,
+    # same satellites, same instant, never a before/after across a restart):
+    #   E12/E19/E2 appear in `DEEP GATE (auto, #79): search-admitted ...` on THIS chain only
+    #   their |fitted offset| shrinks toward 0 within the pull-in time, and q rises past 2.2
+    #   no rise in railed trims or BARE-WIPE (D3) here relative to e5b
+    # FALSIFIER: if admitted rows do NOT converge, or railed/BARE-WIPE rises above the
+    # control, the gate is trading a latch for an oscillation -- revert, do not re-tune.
+    # Pre-registered: fixtures/expectations_20260827_deepgate_arm.txt
+    # Revert: delete these two lines + broker restart.
+    dll-deep-gate-from-search: 100
+    dll-deep-gate-search-hold-s: 90
     # ── #50 FAR-REGIME RE-SEED, same satellite, 2026-08-12 ────────────────────────────
     # The deep gate above admits E33 to the loop; this gives the loop something to follow
     # when it gets there. Far off-peak E, P and L are ALL noise, so q -> 1.0 and disc -> 0 --
@@ -1763,6 +1792,45 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # ── trimming entirely -- that is the intended, conservative behaviour, and the log
     # ── says so. Revert: delete this line + broker restart.
     presence-require-probes: true
+    # ── ARMED 2026-08-27 12:5x: E3 ARM A, ALONE, AS PRE-REGISTERED ──────────────────────
+    # KV, this morning: "why are we comparing to the population? We should never be
+    # comparing between real satellite signals, only to noise estimates, which come from the
+    # below-horizon probes."
+    #
+    # gnssFleetDll::integrate gates each window on 3x the median of THAT WINDOW'S OWN p_pow.
+    # Its premise -- "most PRNs are signal-free at any moment, so the median IS the no-signal
+    # level" -- was true on the airspy prototype with --noise-probes seeded, and is false on
+    # CHORD, where the armed rows are mostly REAL satellites. So the bar is a SIGNAL level
+    # and the gate is a peer competition that a satellite loses the moment it starts
+    # drifting, which is exactly when it needs the loop. Measured 2026-08-26: gal_e5b PRN 33
+    # leak-only on 75.1% of its windows; strong displaced PRNs 15-64%; healthy sats 0-1.3%.
+    # E3 sat at ~20x the PROBE floor and lost the PEER race; its trim leaked to erasure in
+    # ~30 s, manufacturing 0.58 chips of real offset -- a 60 s fade became a 12 min outage.
+    #
+    # This ships presence's probe-anchored absolute prompt floor to the C++ as
+    # TrimPolicy::p_floor_abs. Probes are noise BY CONSTRUCTION (deepest below-horizon PRNs),
+    # so the bar becomes a multiple of a MEASURED noise level and no satellite is ever
+    # compared against another. Ships 0 (= unchanged peer median) whenever presence itself
+    # lacks probe anchoring, so a peer bar can never be smuggled in as an absolute one.
+    #
+    # ⚠️ REQUIRES A GATHER >= 97f6f258f OR IT IS SILENTLY INERT -- the old parser ignores the
+    # unknown JSON key, returns 200, and logs nothing. VERIFIED before arming: the running
+    # gather (pid 4139359, started 2026-08-27 01:35:08) is build_nodpdk/kotekan built
+    # 2026-08-26 23:30, and `strings` finds p_floor_abs in it.
+    #
+    # ACCEPTANCE (vs bds_b2b, the in-poll control, same band pair, same satellites):
+    #   n_skipped (leak-only windows) collapses on displaced-but-bright PRNs here, not there
+    #   standing trims stop leaking to erasure during fades
+    #   NO rise in railed trims -- if the floor is too low we trim on noise, and that shows
+    #   up as railing, not as improvement
+    # FALSIFIER: railed fraction or BARE-WIPE rate rises above bds_b2b -> revert.
+    # Pre-registered: fixtures/expectations_20260826_e3_fix.txt (arm A).
+    # ⚠️ ARM B (--presence-admit-displaced) IS DELIBERATELY NOT SET: the pre-registration
+    # says A alone first, judged over >= 2 h of paired cycles, THEN A+B. Arm B's evidence
+    # test was repaired today (it required prompt power, the same on-peak quantity it exists
+    # to bypass, and would have rescued 2 of the 7); it is one line here when A is judged.
+    # Revert: delete this line + broker restart.
+    fleet-trim-floor-from-probes: true
     trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,\
 http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,\
 http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
