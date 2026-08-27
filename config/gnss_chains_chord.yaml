@@ -63,6 +63,13 @@ common:
   # when it needs trimming. 3 probes (deepest below-horizon PRNs, exempt from the
   # below-horizon drop, invisible to every other gate because their sig ~ 0).
   noise-probes: 3
+  # ── RESPONSIVENESS (KV: updates "~every time a sat rises or sets") ──────────────────────
+  # 900 s was right when a swap moved ONE slot and cost a re-acquisition each time. The
+  # whole-map policy posts every needed move in a SINGLE scheduled swap, so the rate limit
+  # now bounds how often the fleet crosses a discontinuity, not how fast the map can follow
+  # the sky. 120 s tracks a rise or set closely while leaving every moved slot ample time to
+  # acquire cold before the next post is even considered.
+  prn-reconfig-interval-s: 120
   # ── ARMED 2026-08-27 15:1x: THE PRIOR GAUGE (#94/S2, KV) ──────────────────────────────
   # The joint filter's common mode was pinned by median(b)=0 over the ACTIVE sats -- a
   # POPULATION statement, so bare clk stepped when the middle element changed and b_i was
@@ -1061,7 +1068,20 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # is observable ONLY as the SAME satellite on TWO carriers. Never arm one alone.
     #
     # Revert: delete these two lines + broker restart.
-    prn-reconfig: report
+    # ── ARMED 2026-08-27 17:2x (KV: "no sense waiting even longer") ────────────────────
+    # THE FIRST TIME THIS HAS EVER POSTED A SWAP. It has been built, gated and on `report`
+    # since 08-26; the heartbeat has been saying "0 swap(s) so far" ever since. Two things
+    # had to land first: the whole-map policy (desired_map: 3 below horizon + all above, no
+    # hold timers -- the old ones lived in memory and every broker restart reset them, which
+    # is why the eviction path never once fired), and the SCHEDULED swap (set_prns at_seq),
+    # so twelve nodes cross the discontinuity on one frame instead of twelve.
+    # THE CONCRETE WIN: E36 sits at 82 deg and E34 at 35 deg with NO SLOT AT ALL -- the map
+    # is a contiguous 1..32 and they are outside it, while ~9 slots hold PRNs with no
+    # ephemeris. Nothing is wrong with the sky or the tracking; they are never looked for.
+    # WATCH FOR: "PRN MAP <chain>: N slot(s) ... posted to 12/12 node(s) ... all crossing
+    # together at seq X". Every moved slot acquires COLD -- dark for a minute or two.
+    # Revert: set this back to `report` + broker restart.
+    prn-reconfig: apply
     # ── PROBE SUPPLY + PRESENCE REFUSAL, ARMED 2026-08-27 02:4x (KV) ─────────────────
     # KV: "Galileo similarly looked to be only locking half its sats." It does, and the
     # fault here is INTERMITTENT rather than absent: the probe set is whatever is deepest
@@ -1835,6 +1855,20 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # Revert: delete this line + broker restart.
     # (This also enables the /get_prns sweep, which --prn-reconfig off otherwise skips.)
     probe-require-slot: true
+    # ── ARMED 2026-08-27 17:2x (KV: "no sense waiting even longer") ────────────────────
+    # THE FIRST TIME THIS HAS EVER POSTED A SWAP. It has been built, gated and on `report`
+    # since 08-26; the heartbeat has been saying "0 swap(s) so far" ever since. Two things
+    # had to land first: the whole-map policy (desired_map: 3 below horizon + all above, no
+    # hold timers -- the old ones lived in memory and every broker restart reset them, which
+    # is why the eviction path never once fired), and the SCHEDULED swap (set_prns at_seq),
+    # so twelve nodes cross the discontinuity on one frame instead of twelve.
+    # THE CONCRETE WIN: E36 sits at 82 deg and E34 at 35 deg with NO SLOT AT ALL -- the map
+    # is a contiguous 1..32 and they are outside it, while ~9 slots hold PRNs with no
+    # ephemeris. Nothing is wrong with the sky or the tracking; they are never looked for.
+    # WATCH FOR: "PRN MAP <chain>: N slot(s) ... posted to 12/12 node(s) ... all crossing
+    # together at seq X". Every moved slot acquires COLD -- dark for a minute or two.
+    # Revert: set this back to `report` + broker restart.
+    prn-reconfig: apply
     # ── PRESENCE REFUSAL, ARMED WITH IT (KV: the peer fallback must never be the
     # ── decision). Paired deliberately: probe-require-slot fixes the probe SUPPLY, this
     # ── makes a bad floor impossible if the supply ever fails again. bds_b2b stays the
@@ -2131,7 +2165,20 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # is observable ONLY as the SAME satellite on TWO carriers. Never arm one alone.
     #
     # Revert: delete these two lines + broker restart.
-    prn-reconfig: report
+    # ── ARMED 2026-08-27 17:2x (KV: "no sense waiting even longer") ────────────────────
+    # THE FIRST TIME THIS HAS EVER POSTED A SWAP. It has been built, gated and on `report`
+    # since 08-26; the heartbeat has been saying "0 swap(s) so far" ever since. Two things
+    # had to land first: the whole-map policy (desired_map: 3 below horizon + all above, no
+    # hold timers -- the old ones lived in memory and every broker restart reset them, which
+    # is why the eviction path never once fired), and the SCHEDULED swap (set_prns at_seq),
+    # so twelve nodes cross the discontinuity on one frame instead of twelve.
+    # THE CONCRETE WIN: E36 sits at 82 deg and E34 at 35 deg with NO SLOT AT ALL -- the map
+    # is a contiguous 1..32 and they are outside it, while ~9 slots hold PRNs with no
+    # ephemeris. Nothing is wrong with the sky or the tracking; they are never looked for.
+    # WATCH FOR: "PRN MAP <chain>: N slot(s) ... posted to 12/12 node(s) ... all crossing
+    # together at seq X". Every moved slot acquires COLD -- dark for a minute or two.
+    # Revert: set this back to `report` + broker restart.
+    prn-reconfig: apply
     # ── PROBE SUPPLY + PRESENCE REFUSAL, ARMED 2026-08-27 02:4x (KV) ─────────────────
     # KV: "Galileo similarly looked to be only locking half its sats." It does, and the
     # fault here is INTERMITTENT rather than absent: the probe set is whatever is deepest
