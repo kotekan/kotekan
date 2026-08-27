@@ -70,6 +70,25 @@ common:
   # the sky. 120 s tracks a rise or set closely while leaving every moved slot ample time to
   # acquire cold before the next post is even considered.
   prn-reconfig-interval-s: 120
+  # ── THE HORIZON, 2026-08-27 (KV): "treat all sats at el>0 as up." ──────────────────────
+  # The 10 deg admit mask was never motivated -- it arrived as a default and was never
+  # measured against. It is not a sky property: mask-deg is already 0, so a satellite at
+  # +3 deg is UP everywhere else in the broker (ctx.up, seeding, the drop gate) and only
+  # the slot map refused it. That gap is where the +4 deg case in prnmap.desired_map's
+  # comment lives: too low to admit, too high to be a probe, and holding no slot at all.
+  #
+  # ⚠️ THIS IS A MEASUREMENT, NOT A CONVENIENCE. KV: "if we have horizon sensitivity, I'd
+  # like to know about it." Admitting to 0 puts low sats in slots so the chain can SAY
+  # whether they track; a mask hides the answer and then cites its own silence as the
+  # reason for the mask. Expect some of them not to lock -- that is the datum.
+  #
+  # ⚠️ THE PAIR MUST DIFFER (desired_map: "with admit == evict this degenerates to a
+  # flapper"). Admit at 0, evict at -2: a satellite crossing the horizon is admitted once
+  # and kept through 2 deg of setting, so a sat hovering at the horizon costs ONE cold
+  # acquisition, not one per cycle. Capacity is self-reporting -- `unplaced` is logged as
+  # "N satellite(s) waiting for a slot" and BeiDou b2a is the tight one at 24 slots.
+  prn-reconfig-admit-deg: 0
+  prn-reconfig-evict-deg: -2
   # ── ARMED 2026-08-27 15:1x: THE PRIOR GAUGE (#94/S2, KV) ──────────────────────────────
   # The joint filter's common mode was pinned by median(b)=0 over the ACTIVE sats -- a
   # POPULATION statement, so bare clk stepped when the middle element changed and b_i was

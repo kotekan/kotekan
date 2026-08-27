@@ -404,6 +404,37 @@ def main():
           "... and carries no deadline rather than a fabricated one")
     check(all(b.get("prns") for _, b in _tp), "... and still carries the map")
 
+    # ---- 4b. THE HYSTERESIS BAND MUST BE A BAND ---------------------------------------
+    # ⚠️ admit <= evict is the flap generator: the same satellite is admitted and evicted on
+    # alternate cycles and each flap is a cold acquisition, which reads as "low satellites
+    # cannot be tracked" -- a fault the stage would manufacture and then be believed about.
+    print("\nthe hysteresis band: admit must be ABOVE evict")
+    POSTS[:] = []
+    LOGS[:] = []
+    _c5 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
+              prn_reconfig_down_hold_s=0.0,
+              prn_reconfig_admit_deg=0.0, prn_reconfig_evict_deg=0.0)
+    run_cycle(_c5, 2000.0)
+    check(any("no hysteresis band" in m for m in LOGS),
+          "admit == evict is REFUSED and named")
+    check(not POSTS, "... and nothing is posted on a degenerate band")
+
+    # The armed setting itself: admit AT the horizon, evict below it, is a valid band.
+    POSTS[:] = []
+    LOGS[:] = []
+    _c6 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +3.0},
+              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
+              prn_reconfig_down_hold_s=0.0,
+              prn_reconfig_admit_deg=0.0, prn_reconfig_evict_deg=-2.0)
+    _c6.fe_hop_t = 2000.0 - 1.0
+    run_cycle(_c6, 2000.0)
+    check(not any("no hysteresis band" in m for m in LOGS),
+          "admit 0 / evict -2 is a valid band")
+    _p6 = [b for u, b in POSTS if "search" not in u]
+    check(_p6 and 9 in _p6[0]["prns"],
+          "... and a satellite at +3 deg -- refused by the old 10 deg mask -- gets a slot")
+
     # ---- 5. THE DEADLINE CLOCK IS ALIVE ----------------------------------------------
     # ⚠️ THE REGRESSION THIS EXISTS FOR: a node that answers get_prns is a node whose frame
     # loop is turning, so last_hop < 0 means nothing is feeding note_frame_hop() and every

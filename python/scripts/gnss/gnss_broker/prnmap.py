@@ -262,6 +262,20 @@ def stage_prn_membership(ctx):
     # standing in for hysteresis, and hysteresis is what desired_map does properly (admit
     # above admit_deg, keep until below evict_deg) without any state that a restart can lose.
     n_probe = max(0, int(getattr(a, "noise_probes", 0) or 0))
+    # ⚠️ THE HYSTERESIS BAND MUST BE A BAND. admit <= evict makes admission and eviction the
+    # same test, so a satellite sitting on the threshold is admitted and evicted on alternate
+    # cycles -- and every flap is a COLD acquisition, which looks exactly like a satellite
+    # that cannot be tracked at low elevation. That is a fault this stage would otherwise
+    # manufacture and then be believed about, so it is checked where the numbers are used,
+    # not left to a docstring.
+    if a.prn_reconfig_admit_deg <= a.prn_reconfig_evict_deg:
+        _log_rl("prnmap-hyst",
+                "PRN MAP %s: --prn-reconfig-admit-deg %.1f is not ABOVE "
+                "--prn-reconfig-evict-deg %.1f, so there is no hysteresis band and a "
+                "satellite at the threshold will flap in and out of its slot, paying a cold "
+                "acquisition each time. Fix the pair; the map is left alone this cycle."
+                % (tag, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg), every_s=300.0)
+        return
     want_map, unplaced = desired_map(cur, el, n_probe,
                                      a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg)
     moved = [i for i in range(len(cur)) if want_map[i] != cur[i]]
