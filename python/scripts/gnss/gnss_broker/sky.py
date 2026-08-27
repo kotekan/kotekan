@@ -95,7 +95,14 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
         v2 = pb.get((s, prn))
         rate = (-(v2["range_rate_mps"] - v["range_rate_mps"]) / dt / C * f_carrier_hz
                 if v2 else 0.0)
-        out[prn] = (dop, rate, v["el"], v["range_m"], v["sat_clk_s"])
+        # ⚠️ AZIMUTH IS ELEMENT 5 AND IT IS APPENDED, NEVER INSERTED. Every consumer indexes
+        # this tuple positionally (pred[p][0], [1], [2], [3]) and nothing unpacks it strictly,
+        # so growing it at the end is safe and reordering it would be silent corruption.
+        # az exists so the broker can SERVE the sky: the viewer used to re-derive it by
+        # fetching and merging its own ephemeris, which made it a second writer of the shared
+        # cache (2026-08-27) and let its sky plot disagree with the broker's while claiming to
+        # be "the SAME source the tracker uses".
+        out[prn] = (dop, rate, v["el"], v["range_m"], v["sat_clk_s"], v["az"])
     # PREDICTION-COLLAPSE GUARD (2026-07-19): the daily BRDC's C/E nav records can LAG the
     # GPS ones by hours, so an entire constellation's newest toe crosses best_eph's window
     # at ONE instant -- measured 11:59:57Z: 13 seeded sats dropped 'set below horizon' in

@@ -10,6 +10,7 @@ docs/CHORD_BROKER_REFACTOR.md M7. Moved unchanged here so that change is isolate
 import collections
 import json
 import math
+import time
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -68,6 +69,10 @@ class FleetPublisher:
 
     def __init__(self, port, log):
         self._rf = {"t": None, "instances": {}}   # #8: receiver-wide RF health
+        # RECEIVER-WIDE SKY: {sysc: {prn: (el, az)}} plus a stamp, so the viewer can draw the
+        # sky from what the BROKER believes instead of re-deriving it. Keyed by constellation
+        # because each chain contributes its own and they must not overwrite each other.
+        self._sky = {}                           # sysc -> {"t": float, "sats": {prn: (el, az)}}
         # ONE PORT, MANY CHAINS (task #27 M6). Each registered chain gets its own row/det
         # store; a request selects one chain or gets them all, tagged. Before this, one
         # publisher served one chain on one port, which is why CHORD needed a viewer
@@ -193,6 +198,21 @@ class FleetPublisher:
                         body = json.dumps(_et[ids[0]] if (asked in pub._chains
                                                           and len(ids) == 1)
                                           else _et).encode()
+                    elif p.endswith("get_sky"):
+                        # RECEIVER-WIDE like get_rf: the sky is not a per-chain quantity, so
+                        # this ignores the chain selector rather than pretending it is one.
+                        # Shape: [{"const": "G", "prn": 3, "el": .., "az": .., "age_s": ..}]
+                        # -- flat, because the consumer draws markers, and age_s so a frozen
+                        # chain reads as stale rather than as a satellite standing still.
+                        _now_s = time.time()
+                        _sky = []
+                        for _sc, _d in sorted(pub._sky.items()):
+                            _age = (_now_s - _d["t"]) if _d.get("t") else None
+                            for _p, (_el, _az) in sorted(_d["sats"].items()):
+                                _sky.append({"const": _sc, "prn": _p, "el": _el, "az": _az,
+                                             "age_s": (round(_age, 1)
+                                                       if _age is not None else None)})
+                        body = json.dumps(_sky).encode()
                     elif p.endswith("get_rf"):
                         # RECEIVER-WIDE, so it ignores the chain selector entirely rather
                         # than pretending a per-chain view exists.
@@ -336,6 +356,20 @@ class FleetPublisher:
         """
         with self._lock:
             self._rf = {"t": t, "instances": rf}
+
+    def set_sky(self, sysc, sats, t):
+        """One constellation's az/el, from the chain that predicts it. Receiver-wide output.
+
+        The viewer used to compute this itself, which meant fetching and MERGING its own copy
+        of the broadcast ephemeris -- making it a second writer of the shared nav cache, with
+        whatever version of the merge it imported at startup (2026-08-27: nine days old). It
+        also meant the sky plot could disagree with the broker while its own docstring claimed
+        it used "the SAME source the tracker uses". One source of truth, served.
+        """
+        with self._lock:
+            self._sky[sysc] = {"t": t, "sats": {int(p): (round(float(v[0]), 2),
+                                                         round(float(v[1]), 2))
+                                                for p, v in (sats or {}).items()}}
 
     def carrier_trim_const(self, fallback, chain=None):
         """The REST override if one has been posted, else the command-line value."""
@@ -815,3 +849,10 @@ class _ChainView(object):
         # the other four ran on. That is the worst shape for this bug: the chain that carries
         # the only search, and whose clock the other four adopt, is the one that stops.
         return self._pub.set_rf(rf, t)
+
+    def set_sky(self, sysc, sats, t):
+        # Per-chain call site, receiver-wide effect: the chain names its OWN constellation and
+        # the publisher unions them. Present here for the reason set_rf's comment gives -- the
+        # broker only ever holds a _ChainView, so a method missing from this class is an
+        # AttributeError at the first call, on whichever chain happens to use it.
+        return self._pub.set_sky(sysc, sats, t)

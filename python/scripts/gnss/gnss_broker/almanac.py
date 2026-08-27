@@ -51,9 +51,20 @@ def stage_almanac_predict(ctx):
             # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
             # is geometry, no sign; it feeds the CL time-assist propagation delay. The 5th
             # element -- broadcast sat clock -- is BRDC-only; the TLE path has none.)
-            ctx.pred = {p: (ctx.args.doppler_sign * v[0], ctx.args.doppler_sign * v[1], v[2], v[3],
-                        (v[4] if len(v) > 4 else 0.0))
-                    for p, v in raw.items()}
+            ctx.pred = {p: (ctx.args.doppler_sign * v[0], ctx.args.doppler_sign * v[1], v[2],
+                            v[3], (v[4] if len(v) > 4 else 0.0),
+                            (v[5] if len(v) > 5 else 0.0))
+                        for p, v in raw.items()}
+            # SERVE THE SKY. The broker already knows every satellite's az/el; publishing it
+            # is what lets the viewer stop deriving its own (and stop writing the shared nav
+            # cache to do it -- 2026-08-27). Receiver-wide by construction: each chain
+            # contributes its own constellation and the publisher unions them.
+            # ⚠️ TLE-sourced rows carry no azimuth (element 5 defaults to 0.0), so they are
+            # withheld rather than served as az=0 -- a satellite drawn due north because we
+            # had no azimuth is worse than one absent from the plot.
+            if ctx.publisher is not None and len(next(iter(raw.values()), ())) > 5:
+                ctx.publisher.set_sky(ctx.alm_sys,
+                                      {p: (v[2], v[5]) for p, v in ctx.pred.items()}, _now())
         except Exception as e:
             _log("almanac predict failed: %s" % e)
         ctx.up = {p for p, v in ctx.pred.items() if v[2] >= ctx.args.mask_deg}

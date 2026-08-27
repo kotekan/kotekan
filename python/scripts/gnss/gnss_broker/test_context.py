@@ -42,6 +42,29 @@ def check(ok, what):
         _fails.append(what)
 
 
+def test_chainview_covers_the_publisher():
+    """⚠️ EVERY PUBLIC FleetPublisher METHOD MUST EXIST ON THE PER-CHAIN VIEW.
+
+    The broker only ever holds a _ChainView, so a method added to FleetPublisher and forgotten
+    here is an AttributeError at the first call -- on whichever chain happens to use it, while
+    the others run on. That is exactly what killed gps_l5 on 2026-08-19: set_rf was added to
+    the publisher and not the view, and the one chain with rf-stats-endpoints armed died at its
+    first poll. The chain that carries the only search, and whose clock the other four adopt,
+    is the worst one to lose.
+
+    This is the check that would have caught it, and it is cheap.
+    """
+    from gnss_broker.publish import FleetPublisher, _ChainView
+    print("\n_ChainView covers FleetPublisher's public surface")
+    pub = {n for n in dir(FleetPublisher)
+           if not n.startswith("_") and callable(getattr(FleetPublisher, n, None))}
+    view = {n for n in dir(_ChainView) if not n.startswith("_")}
+    # `register` makes a view and is not itself a view operation.
+    missing = sorted(pub - view - {"register", "start", "stop"})
+    check(not missing,
+          "no FleetPublisher method is missing from _ChainView (missing: %s)" % (missing or "none"))
+
+
 def main():
     print("ChainContext slot coverage\n")
     ctx = ast.parse(open(os.path.join(HERE, "context.py")).read())
@@ -77,6 +100,8 @@ def main():
                    if not isinstance(v, ast.Name)]
             check(not bad, "DEFAULTS holds factories, not values (5 chains share one process)"
                   + ("" if not bad else " -- LITERAL: " + ", ".join(map(str, bad))))
+
+    test_chainview_covers_the_publisher()
 
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     return 1 if _fails else 0

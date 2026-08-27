@@ -1349,9 +1349,11 @@ class GpsSkyResource(resource.Resource):
 
     isLeaf = True
 
-    def __init__(self, lat, lon, alt, mask_deg, consts="G,E,C", glonass_sigids=None):
+    def __init__(self, lat, lon, alt, mask_deg, consts="G,E,C", glonass_sigids=None,
+                 broker=(None, None)):
         resource.Resource.__init__(self)
         self.lat, self.lon, self.alt, self.mask_deg = lat, lon, alt, mask_deg
+        self._broker = broker                    # (host, port) of the broker's publisher
         # Only serve the constellations this band actually tracks: L1 tri-band = G,E,C (all share
         # 1575.42); L2C / L5 are GPS-only, so showing Galileo/BeiDou there is misleading (they are
         # not even in this band). Filter the class table to the requested tags, order preserved.
@@ -1363,8 +1365,8 @@ class GpsSkyResource(resource.Resource):
         self.glonass_sigids = list(glonass_sigids or [])
         self._cache = {"ok": False, "sats": []}  # last good (or empty) result
         self._sats = None                        # cached {prn: EarthSatellite} (TLE fallback)
-        self._eph = None                         # cached parsed BRDC {(sys,prn):[recs]}
-        self._eph_t = None                       # monotonic s of last BRDC parse
+        # (the parsed-BRDC cache that used to live here is gone: the broker serves the sky
+        #  now, so this process neither parses nor fetches ephemeris -- see _brdc_skypos)
         self._l1c_capable = None                 # cached set of L1C-capable PRNs (GPS III)
         self._l1c_capable_t = None               # monotonic s of last capability fetch
         self._glo_capable = None                 # cached set of GLONASS slots any running R
@@ -1493,57 +1495,65 @@ class GpsSkyResource(resource.Resource):
         self._l1c_capable_t = time.monotonic()
         return self._l1c_capable
 
-    def _brdc_skypos(self, want):
-        """Sky positions from the broadcast ephemeris, or None if the BRDC is unavailable.
+    # Rows older than this are refused rather than drawn. A broker whose prediction has
+    # frozen must read as "no sky", not as satellites standing still -- the same lesson as the
+    # broker's own TIME BASE FROZEN guard, applied at the consumer.
+    _SKY_MAX_AGE_S = 300.0
 
-        The parsed ephemeris is cached ~15 min, but positions still update every refresh
-        because predict_all is re-evaluated at the current time. The FILES come from
-        cached_brdc() -- read-only; the broker is the only process that writes this cache."""
+    def _brdc_skypos(self, want):
+        """Sky positions from the BROKER, or None if it cannot supply them.
+
+        ⚠️⚠️ THIS USED TO COMPUTE ITS OWN. It imported gnss_ephemeris and called fetch_brdc(),
+        which FETCHES FROM THE NETWORK AND WRITES the shared nav cache -- so this long-lived
+        process was a second writer of the broker's cache, using whatever copy of the merge it
+        imported at startup (measured 2026-08-27: nine days old, silently reverting the
+        broker's rolling store several times in one evening).
+
+        And it was wrong on its own terms. This method's whole justification was to use "the
+        SAME source the tracker uses, so the sky plot agrees with what we actually lock" --
+        but re-deriving a quantity from the same inputs is not the same as reading it, and two
+        independent derivations can disagree while both claim to be canonical. The broker
+        already knows every satellite's az/el. Ask it.
+
+        Returns None on any failure, which is the TLE fallback's existing cue.
+        """
+        import urllib.request        # module-local, matching this file's existing style
+        host, port = self._broker
+        if not host or not port:
+            return None
         try:
-            import gnss_ephemeris as ge
-            if (self._eph is None or self._eph_t is None
-                    or (time.monotonic() - self._eph_t) > 900.0):
-                # ⚠️⚠️ READ-ONLY. This used to call fetch_brdc(), which FETCHES AND WRITES the
-                # shared nav cache -- and this process is long-lived, so it held whatever copy
-                # of the merge it imported at startup. Measured 2026-08-27: up since Aug 19, it
-                # was rebuilding hourly_MN.rnx.gz on its own schedule with nine-day-old logic,
-                # leaving 29 records past the keep window and a coverage sidecar 33 minutes
-                # older than the file it described, and silently undoing the broker's rolling
-                # store several times in one evening. The viewer needs GEOMETRY, not a cache:
-                # one writer (the broker), everyone else reads.
-                #
-                # ⚠️ EMPTY IS NOT AN ERROR -- it is the TLE fallback's cue. parse_rinex_nav([])
-                # returns {}, `pred` comes back empty, and _compute merges the TLE source as it
-                # already does when BRDC is unavailable.
-                raw = ge.parse_rinex_nav(ge.cached_brdc())
-                # Drop BeiDou GEO (i<5 deg): predict_all's plain Kepler does NOT apply the ICD
-                # -5 deg GEO rotation, so their positions are untrustworthy (a mis-propagated GEO
-                # could land above the horizon as a phantom). IGSO/MEO propagate correctly.
-                self._eph = {k: r for k, r in raw.items()
-                             if not (k[0] == "C" and r
-                                     and math.degrees(r[-1]["i0"]) < 5.0)}
-                self._eph_t = time.monotonic()
-            pred = ge.predict_all(self._eph, self.lat, self.lon, self.alt,
-                                  datetime.now(timezone.utc), mask_deg=SKY_REPORT_FLOOR_DEG)
+            url = "http://%s:%d/get_sky" % (host, port)
+            with urllib.request.urlopen(url, timeout=3.0) as r:
+                rows = json.loads(r.read().decode("utf-8", "replace"))
         except Exception as e:
-            log_.warning("gps_sky: BRDC geometry unavailable (%s); falling back to TLE", e)
+            log_.warning("gps_sky: broker sky unavailable (%s); falling back to TLE", e)
             return None
-        if not pred:
+        if not rows:
             return None
+        fresh = [x for x in rows
+                 if x.get("age_s") is None or x["age_s"] <= self._SKY_MAX_AGE_S]
+        if not fresh:
+            log_.warning("gps_sky: every broker sky row is older than %.0f s -- the broker's "
+                         "prediction has stopped advancing; falling back to TLE",
+                         self._SKY_MAX_AGE_S)
+            return None
+        by_sys = {}
+        for x in fresh:
+            by_sys.setdefault(x.get("const"), []).append(x)
         cap_L = self._l1c_capable_set()
         sats = []
         for tag in want:
             sysc = self._TAG_SYS.get(tag)
             if not sysc:
                 continue
-            for (s, p), v in sorted(pred.items()):
-                if s != sysc:
-                    continue
+            for x in sorted(by_sys.get(sysc, []), key=lambda r: r["prn"]):
+                p = int(x["prn"])
                 if tag == "L" and cap_L is not None and p not in cap_L:
                     continue  # 'L' = L1C: only GPS III birds actually transmit it
                 sats.append({"prn": p, "const": tag,
-                             "az": round(v["az"], 2), "el": round(v["el"], 2)})
-        return sats
+                             "az": round(float(x["az"]), 2),
+                             "el": round(float(x["el"]), 2)})
+        return sats or None
 
     def _tle_skypos(self, want=None):
         """Sky positions from Celestrak TLE + skyfield propagation, for the tags in `want`
@@ -2040,7 +2050,8 @@ def main():
                               if (s.get("sigid") or "").startswith("GLO_")} - {None})
         root.putChild(b"gps_sky",
                       GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg,
-                                     args.gps_constellations, glonass_sigids=_glo_sigids))
+                                     args.gps_constellations, glonass_sigids=_glo_sigids,
+                                     broker=(args.kotekan_host, args.kotekan_rest_port)))
         root.putChild(b"decode_health",
                       DecodeHealthResource(args.decode_health_dir, lat=args.lat, lon=args.lon,
                                            alt=args.alt, obs_globs=args.pvt_obs_globs.split(",")))
