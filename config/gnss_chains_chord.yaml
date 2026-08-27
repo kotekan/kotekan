@@ -1587,10 +1587,35 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     #   no rise in railed trims or BARE-WIPE (D3) here relative to e5b
     # FALSIFIER: if admitted rows do NOT converge, or railed/BARE-WIPE rises above the
     # control, the gate is trading a latch for an oscillation -- revert, do not re-tune.
-    # Pre-registered: fixtures/expectations_20260827_deepgate_arm.txt
-    # Revert: delete these two lines + broker restart.
-    dll-deep-gate-from-search: 100
-    dll-deep-gate-search-hold-s: 90
+    # ⚠️⚠️ RETRACTED 13:35, 22 MINUTES AFTER ARMING IT: --dll-deep-gate-from-search CANNOT
+    # FIRE ON THIS CHAIN. gal/bds are DEAD-RECKON chains -- `detectors=0 trackers=12` in
+    # their own startup line, and the comment fifteen lines above this one says it outright:
+    # "gps_l5 escapes it via dll-deep-gate-from-search (the SEARCH admits, tap-independent);
+    # THE DR CHAINS HAVE NO SEARCH". I read that comment while choosing the arm and armed it
+    # anyway. Measured: 22 min, gps_l5 2 auto-admissions, gal_e5a zero, and zero was the only
+    # value it could ever have had. An arm that cannot fire is the exact defect class this
+    # session spent the day cataloguing (the CDDIS mirror that could only 404), and I shipped
+    # a fresh one into the config.
+    #
+    # ── ARMED INSTEAD: --presence-admit-displaced, WHICH WORKS WITHOUT A SEARCH ──────────
+    # The offset-blind evidence does not have to come from the search. The COMBINER's deep
+    # fold re-searches rate and phase too, and these chains have it: measured 13:33, 14/14
+    # gal_e5a rows and 12/12 bds rows carry a usable (deep_snr, deep_floor) pair. That is
+    # what --presence-disp-deep-margin now reads (fixed today: the admission used to demand
+    # PROMPT POWER, the same on-peak quantity it exists to bypass, and would have rescued 2
+    # of the 7 stranded satellites).
+    # ⚠️ Its q-bar branch needs >= 3 probe rows, which is why the 08-26 pre-registration said
+    # "gal waits for the E36 swap" -- that dependency is DISCHARGED: this chain has carried
+    # 3 real in-slot probes (E13/E15/E23) since the 12:34 ephemeris fix.
+    #
+    # ACCEPTANCE (vs gal_e5b, identical in every other flag -- IN-POLL control):
+    #   rows appear carrying present_gate 'q+deep:probes+disp' on THIS chain only
+    #   their |fitted offset| shrinks toward 0 and q rises past 2.2
+    #   NO rise in railed trims or D3 BARE-WIPE relative to e5b
+    # FALSIFIER: admitted rows do not converge, or railed/BARE-WIPE rises above the control.
+    # Pre-registered: fixtures/expectations_20260827_deepgate_arm.txt (amended).
+    # Revert: delete this line + broker restart.
+    presence-admit-displaced: true
     # ── #50 FAR-REGIME RE-SEED, same satellite, 2026-08-12 ────────────────────────────
     # The deep gate above admits E33 to the loop; this gives the loop something to follow
     # when it gets there. Far off-peak E, P and L are ALL noise, so q -> 1.0 and disc -> 0 --
