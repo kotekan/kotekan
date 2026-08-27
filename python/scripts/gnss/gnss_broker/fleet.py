@@ -152,7 +152,7 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
 
 def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
               deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None,
-              admit_displaced=None):
+              admit_displaced=None, require_probes=False):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -298,7 +298,7 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
     return apply_presence(out, k_sigma, q_fallback, probe_prns=probe_prns,
                           deep_gate_prns=deep_gate_prns,
                           deep_gate_margin=deep_gate_margin,
-                          admit_displaced=admit_displaced)
+                          admit_displaced=admit_displaced, require_probes=require_probes)
 
 
 def epl_decompose(q, disc, spacing=0.5):
@@ -355,7 +355,7 @@ def epl_decompose(q, disc, spacing=0.5):
 
 
 def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=None,
-                   deep_gate_margin=3.0, admit_displaced=None):
+                   deep_gate_margin=3.0, admit_displaced=None, require_probes=False):
     """Floors, the presence verdict and the deep gate, in place, on a fleet_dll-shaped dict.
 
     Split out of fleet_dll (2026-08-15, task #63) UNCHANGED, so the comb-derived DLL shares one
@@ -446,6 +446,32 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
         p_med, p_sigma, p_floor = _floor([v["p_pow"] for v in out.values()], k_sigma, 0.0)
         for v in out.values():
             v["p_floor_src"] = "peers:%d" % len(out)
+    # ── KV 2026-08-27: FALLING BACK TO THE ABOVE-HORIZON POPULATION MUST NEVER BE
+    # ── THE DECISION. "It's not going to give us a reliable floor, surely noisily
+    # ── failing is better than accepting a bad number."
+    #
+    # The peer fallback below (`prompt`) builds the bar from the TRACKED satellites and
+    # then treats their median as the noise level. That premise holds only when most
+    # rows are noise; on CHORD they are mostly real signal, so the bar lands inside the
+    # signal distribution and passes ABOUT HALF BY CONSTRUCTION -- measured 2026-08-27,
+    # every chain on this branch, 21 of 48 present, and bds_b2a reporting a q floor of
+    # 4.72 against the q ~ 4 CEILING a real satellite can reach, i.e. a bar nothing
+    # could ever clear. That is "only half the satellites lock", and it is not a
+    # degraded answer, it is a WRONG one wearing the shape of an answer.
+    #
+    # So with --presence-require-probes the chain says UNANCHORED and admits NOBODY.
+    # ⚠️ THIS STANDS THE LOOP DOWN, deliberately: no presence means no arming and no
+    # trimming, which is the conservative direction (a trim not applied is recoverable;
+    # a trim applied to the wrong half is the E3 disease). The log line is the point --
+    # a chain that cannot measure its noise floor should be LOUD, not quietly half-right.
+    if require_probes and len(_probe_q) < 3:
+        for v in out.values():
+            v["q_med"], v["q_sigma"], v["q_floor"] = q_med, q_sigma, q_floor
+            v["p_med"], v["p_floor"] = p_med, p_floor
+            v["present"] = False
+            v["present_gate"] = "UNANCHORED"
+            v["n_probe_q"] = len(_probe_q)
+        return out
     for v in out.values():
         v["q_med"], v["q_sigma"] = q_med, q_sigma
         v["q_floor"] = q_fallback if q_med is None else q_floor

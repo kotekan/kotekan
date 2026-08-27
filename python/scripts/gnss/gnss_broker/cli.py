@@ -1269,6 +1269,22 @@ def build_parser(description):
     # transits at 83 deg, had no slot at all -- and, because the noise-probe selector picks the
     # deepest below-horizon PRN, it kept picking the one satellite the node could not represent,
     # dropping both gal chains to brightness-only presence.
+    ap.add_argument("--presence-require-probes", action="store_true",
+                    help="REFUSE a presence verdict when the noise probes cannot anchor it, "
+                         "instead of falling back to the tracked population. KV, 2026-08-27: "
+                         "falling back to the above-horizon population should NEVER be the "
+                         "decision -- it cannot give a reliable floor, and noisily failing "
+                         "beats accepting a bad number. The fallback builds the bar from the "
+                         "satellites themselves and calls their median the noise level, which "
+                         "is true only if most rows are noise; on CHORD they are signal, so "
+                         "the bar lands INSIDE the signal distribution and passes about HALF "
+                         "BY CONSTRUCTION (measured: 21/48 present, and a q floor of 4.72 "
+                         "against the q ~ 4 ceiling a real satellite can reach -- a bar "
+                         "nothing could ever clear). ⚠️ WITH THIS ON, an unanchored chain "
+                         "admits NOBODY and says UNANCHORED: no presence, so no arming and no "
+                         "trimming. That is deliberate and it is the conservative direction -- "
+                         "a trim not applied is recoverable, a trim applied to the wrong half "
+                         "is the E3 disease.")
     ap.add_argument("--probe-require-slot", action="store_true",
                     help="only pick noise probes the NODES ACTUALLY HOLD A SLOT FOR, by asking "
                          "them (/get_prns). The selector takes the deepest below-horizon PRNs "

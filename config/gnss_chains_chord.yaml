@@ -1721,6 +1721,26 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     fleet-trim-readback: 1
     # #33: COMMAND-OFF on purpose -- the same-carrier control arm for gal_e5a's closed
     # loop (its feed auto-prefers deep_rate_full_* once the tracker restart serves them).
+    # ── PROBE SLOT FILTER, ARMED 2026-08-27 ~02:3x (KV) ──────────────────────────────
+    # THE FAULT IT FIXES, measured on this chain minutes before arming: the probe selector
+    # chose PRN 39/58/21 against this chain's 19-42 slot list, so PRN 58 could never report;
+    # 2 live probes is one short of the >= 3 the q+p presence gate needs, presence fell back
+    # to the PEER COMPETITION, and `q floor 4.72 (noise median 1.06)` put the bar ABOVE the
+    # q ~ 4 ceiling a real satellite can reach -- nothing could pass on q at all, and 4 of 8
+    # satellites passed on prompt power by construction. That is KV's "exactly half the up
+    # satellites lock".
+    #
+    # ⚠️ bds_b2b IS THE IN-POLL CONTROL and is deliberately NOT armed. Same band pair, same
+    # satellites, same instant -- so the judgement is armed-vs-control in ONE poll, never
+    # before/after across a restart.
+    #
+    # ACCEPTANCE (all three, on this chain, with b2b unchanged):
+    #   present_gate  "prompt" -> "q+p:probes"
+    #   q floor       4.72     -> ~1.0-1.3 (probe-anchored: probes are E=P=L, q ~ 1)
+    #   probes        2 reporting -> 3 (39/21/36 predicted)
+    # Revert: delete this line + broker restart.
+    # (This also enables the /get_prns sweep, which --prn-reconfig off otherwise skips.)
+    probe-require-slot: true
     trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,\
 http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,\
 http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"

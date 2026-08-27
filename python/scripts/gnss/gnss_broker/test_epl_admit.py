@@ -130,6 +130,31 @@ def main():
     same = all(a[k]["present"] == c[k]["present"] for k in a if k != 3)
     check(same, "the flag changes PRN 3's verdict and nobody else's")
 
+    # ---- 8. --presence-require-probes: refuse rather than guess (KV, 2026-08-27) --------
+    # The peer fallback passes about half the population by construction. With too few
+    # probes the honest answer is "I cannot tell", and it must be SAID, not approximated.
+    thin = {90: row(0.95, 0.02, 1.0), 91: row(1.00, -0.03, 1.1),      # only TWO probes
+            7: row(3.40, -0.05, 50.0), 12: row(3.10, 0.08, 30.0),
+            3: row(2.90, 0.02, 25.0), 5: row(1.20, -0.30, 8.0)}
+    a = {k: dict(v) for k, v in thin.items()}
+    apply_presence(a, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91}, require_probes=False)
+    n_peer = sum(1 for k, v in a.items() if v["present"])
+    b = {k: dict(v) for k, v in thin.items()}
+    apply_presence(b, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91}, require_probes=True)
+    check(all(v["present_gate"] == "UNANCHORED" for v in b.values()),
+          "too few probes + require_probes: every row reads UNANCHORED")
+    check(not any(v["present"] for v in b.values()),
+          "... and NOBODY is admitted (no presence -> no arming -> no trimming)")
+    check(b[7]["n_probe_q"] == 2, "... and the row records how many probes there were")
+    check(n_peer > 0,
+          "... whereas the peer fallback admitted %d of %d -- the bad number this replaces"
+          % (n_peer, len(a)))
+    # and it must NOT fire when the probes ARE sufficient
+    c = fleet() | {3: row(2.90, 0.02, 25.0)}
+    apply_presence(c, k_sigma=3.0, q_fallback=2.2, probe_prns=PROBES, require_probes=True)
+    check(all(v["present_gate"] != "UNANCHORED" for v in c.values()),
+          "with 3 probes the refusal does not fire and the normal gate runs")
+
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

@@ -76,7 +76,8 @@ def stage_fleet_dll(ctx):
                           # already making. No extra HTTP -- fleet_dll parses pow_hop for
                           # the currency check and then aggregates the axis away.
                           src_hops=ctx.dllp.inst_hops,
-                          admit_displaced=ctx.dllp.admit_disp)
+                          admit_displaced=ctx.dllp.admit_disp,
+                          require_probes=ctx.args.presence_require_probes)
         # TASK #63: THE SAME DISCRIMINATOR, FORMED HERE FROM THE UN-SUMMED COMB. The powers
         # above were built by each tracker summing across its own channels -- "the one
         # combine the broker can never undo" -- and everything derived from them inherits
@@ -89,6 +90,19 @@ def stage_fleet_dll(ctx):
         # the log line below is the same paired comparison the offline A/B makes, on the
         # loop's own cycles. Any cycle where the gather has nothing for this chain simply
         # keeps the polled fleet.
+        # ⚠️ AN UNANCHORED CHAIN MUST BE LOUD. --presence-require-probes refuses the verdict
+        # rather than guessing it, and a refusal that only shows up as "0 present" is
+        # indistinguishable from a dead sky -- which is exactly the ambiguity this whole
+        # afternoon was spent removing. Say WHY, and say what to do about it.
+        _fl0 = next(iter((ctx.dllp.fleet or {}).values()), None)
+        if _fl0 is not None and _fl0.get("present_gate") == "UNANCHORED":
+            _log_rl("unanchored",
+                    "⚠️ PRESENCE UNANCHORED: only %d probe(s) reporting (need 3). NOBODY is "
+                    "admitted and nothing is trimmed -- deliberately, because the alternative "
+                    "is a floor built from the SATELLITES, which passes about half of them by "
+                    "construction. Fix the PROBE SUPPLY: check that the selected probe PRNs "
+                    "have slots on the nodes (--probe-require-slot), not this gate."
+                    % _fl0.get("n_probe_q", 0), every_s=60.0)
         instruments.instr_tap_walk(ctx)
         # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
         # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
