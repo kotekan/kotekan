@@ -45,6 +45,8 @@ class Args(object):
         self.prn_reconfig_down_hold_s = 10800.0
         self.prn_reconfig_gone_hold_s = 7200.0
         self.prn_reconfig_timeout_s = 5.0
+        self.prn_reconfig_lead_s = 2.0
+        self.hops_per_sec = 125000.0
         self.prn_reconfig_heartbeat_s = 1e18   # off by default in tests; check 11 arms it
         self.probe_require_slot = False
         self.noise_probes = 0
@@ -68,6 +70,10 @@ class Ctx(object):
         self.node_state = list(slots)
         self.prnmap.maps = {ep: list(slots) for ep in self.trackers}
         self.prnmap.poll_t = t0  # pre-swept: no HTTP in this test
+        # The F-engine sample the scheduler writes its deadline against. None models "the
+        # axis is unknown", which must degrade to an UNSCHEDULED post, not to no post.
+        self.fe_hop_now = kw.pop("fe_hop_now", 1_000_000_000.0) \
+            if "fe_hop_now" in kw else 1_000_000_000.0
 
 
 POSTS = []
@@ -318,6 +324,49 @@ def main():
     run_cycle(ctx3, 1000.0)
     check(ctx3.prnmap.consensus is None,
           "with BOTH off the stage does nothing at all (no new GET -- replay stays exact)")
+
+    # ---- 12. SCHEDULED SWAPS: one frame, fleet-wide ------------------------------------
+    # ⚠️ THE DEFECT THIS PREVENTS IS INVISIBLE DOWNSTREAM. A map posted "now" lands on
+    # whatever frame each node happens to be building, so the combiner folds one window whose
+    # instances disagree about which satellite slot p IS. Every row is individually
+    # well-formed, so nothing downstream can catch it -- it is the accumulator-identity trap
+    # with a network delay for a cause.
+    print("scheduled swaps: every node crosses on the SAME frame")
+    POSTS[:] = []
+    _c = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+             prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
+             prn_reconfig_down_hold_s=0.0)
+    _c.fe_hop_now = 1_000_000_000.0
+    run_cycle(_c, 2000.0)
+    _tracker_posts = [(u, b) for u, b in POSTS if "search" not in u]
+    _follow_posts = [(u, b) for u, b in POSTS if "search" in u]
+    check(bool(_tracker_posts), "a swap is posted at all")
+    check(all("at_seq" in b for _, b in _tracker_posts),
+          "every TRACKER post carries an at_seq deadline")
+    _seqs = {b["at_seq"] for _, b in _tracker_posts}
+    check(len(_seqs) == 1,
+          "and it is the SAME sample on every node -- that is the whole point (%s)" % _seqs)
+    _want = 1_000_000_000 + int(round(_c.args.prn_reconfig_lead_s * _c.args.hops_per_sec))
+    check(_seqs == {_want},
+          "the deadline is now + lead x hops_per_sec (%d, got %s)" % (_want, _seqs))
+    check(_follow_posts and all("at_seq" not in b for _, b in _follow_posts),
+          "the SEARCH gets the map but NOT the deadline -- it has no frame boundary to test "
+          "one against, and a deadline it cannot honour would wedge its map")
+
+    # ⚠️ NO AXIS -> POST ANYWAY, UNSCHEDULED. An unsynchronised swap is worse than a
+    # synchronised one and far better than none: a slot stuck on a set satellite produces
+    # nothing at all. This is the fail-open direction, and it is deliberate.
+    POSTS[:] = []
+    _c2 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
+              prn_reconfig_down_hold_s=0.0)
+    _c2.fe_hop_now = None
+    run_cycle(_c2, 2000.0)
+    _tp = [(u, b) for u, b in POSTS if "search" not in u]
+    check(bool(_tp), "with NO axis the swap is still posted (fail-open)")
+    check(all("at_seq" not in b for _, b in _tp),
+          "... and carries no deadline rather than a fabricated one")
+    check(all(b.get("prns") for _, b in _tp), "... and still carries the map")
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

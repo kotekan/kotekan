@@ -60,6 +60,10 @@ class ChainContext(object):
         # config threaded through it again.
         "dh_obs", "cp_predicted", "joint_state", "track_ok", "p2c_tick", "p2c_hold",
         "decoded_entries",
+        # The newest F-engine sample this chain has seen, for scheduling a fleet-simultaneous
+        # PRN swap (prnmap._at_seq). None whenever the axis is unknown -- NEVER 0.0, which
+        # would read as a valid sample near the epoch and schedule every swap into the past.
+        "fe_hop_now",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp", "drp", "handover", "adm_gate", "g3_ramp", "cb", "car", "wd", "nho",
         "dls", "hold", "cpt", "rf", "nav", "cls", "qpop", "brown", "latch", "saw",

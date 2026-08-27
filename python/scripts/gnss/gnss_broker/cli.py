@@ -1352,6 +1352,19 @@ def build_parser(description):
                          "E36, the satellite this whole mechanism exists for, is below the "
                          "admit mask ~13 h a day. Without this, armed-and-idle is "
                          "indistinguishable from not-running.")
+    ap.add_argument("--prn-reconfig-lead-s", type=float, default=2.0,
+                    help="schedule a PRN swap this far ahead, as an ABSOLUTE F-engine sample "
+                         "(set_prns {\"at_seq\": N}), so every node crosses the discontinuity "
+                         "on the SAME FRAME. Without it each node swaps on whatever frame it "
+                         "happens to be building, and the combiner folds one window whose "
+                         "instances disagree about which satellite slot p is -- an "
+                         "accumulator-identity error that is invisible downstream because "
+                         "every row is individually well-formed. 2 s is many frames (41.94 ms "
+                         "each) of margin against POST scatter and well inside the "
+                         "--prn-reconfig-interval-s cadence. The lead is capped by the node: "
+                         "a deadline it can never reach (an F-engine re-base moves seq "
+                         "BACKWARDS) is applied immediately with a warning rather than "
+                         "wedging the slot forever.")
     ap.add_argument("--prn-reconfig-timeout-s", type=float, default=2.0,
                     help="per-endpoint HTTP timeout for the map GET/POST. With the one-per-"
                          "cycle sweep above this is the WHOLE cost a dead node can impose on "

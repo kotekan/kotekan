@@ -29,6 +29,8 @@ PER_CYCLE = {
     "xb_pred", "coast_polls", "have_sig", "la_samples", "fitted", "cl_report",
     "dr_pd", "dr_pd0", "dr_pd2", "payload",
     "jrc", "rr_cmd_new", "bit_known", "bit_src",
+    # Re-stamped from the status poll every cycle, None whenever the axis is unknown.
+    "fe_hop_now",
 }
 
 _fails = []

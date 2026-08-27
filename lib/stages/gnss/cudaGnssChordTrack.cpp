@@ -252,6 +252,13 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                 n_prn, n_chan, n_elem, hops_per_record, n_rec, ep);
 }
 
+void cudaGnssChordTrackState::note_frame_seq(long long seq) {
+    if (seq < 0)
+        return;
+    std::lock_guard<std::mutex> lk(prn_mtx);
+    last_seq = (int64_t)seq;
+}
+
 std::vector<int> cudaGnssChordTrackState::prn_map() {
     std::lock_guard<std::mutex> lk(prn_mtx);
     return prns;
@@ -263,6 +270,7 @@ void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& con
     bool pend = false;
     std::string err;
     uint64_t swaps = 0;
+    int64_t at_s = -1, last_s = -1;
     {
         std::lock_guard<std::mutex> lk(prn_mtx);
         for (int p = 0; p < n_prn; ++p) {
@@ -272,9 +280,15 @@ void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& con
         pend = prn_pending;
         err = prn_last_err;
         swaps = prn_swaps;
+        at_s = prn_at_seq;
+        last_s = last_seq;
     }
-    nlohmann::json reply = {{"prns", out},        {"n_prn", n_prn}, {"slot_gen", gen},
-                            {"swaps", swaps},     {"pending", pend}, {"last_error", err}};
+    nlohmann::json reply = {{"prns", out},    {"n_prn", n_prn},   {"slot_gen", gen},
+                            {"swaps", swaps}, {"pending", pend},  {"last_error", err},
+                            // So the broker can see WHEN a staged swap is due and whether
+                            // this node's clock has reached it -- a swap that is merely
+                            // waiting must not read like a swap that was refused.
+                            {"pending_at_seq", at_s}, {"last_seq", last_s}};
     conn.send_json_reply(reply);
 }
 
@@ -285,7 +299,13 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
     // lesson set_seeds_callback records above.
     std::vector<int> want;
     std::string err;
+    int64_t at_seq = -1;
     try {
+        // OPTIONAL, and absent means "as soon as possible" -- the pre-scheduling behaviour,
+        // kept so a hand-driven curl still works and so an older broker is not broken by a
+        // newer node.
+        if (request.is_object() && request.contains("at_seq") && !request.at("at_seq").is_null())
+            at_seq = request.at("at_seq").get<int64_t>();
         const nlohmann::json& arr = request.is_object() ? request.at("prns") : request;
         if (!arr.is_array())
             throw std::runtime_error("expected an array of PRNs, or {\"prns\": [...]}");
@@ -332,10 +352,20 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
         if (n_diff > 0) {
             pending_prns = want;
             prn_pending = true;
+            prn_at_seq = at_seq;
+            prn_stage_seq = last_seq;   // for the re-base guard in apply_prn_swaps
         }
     }
-    if (n_diff > 0)
-        INFO_NON_OO("set_prns: {:d} slot(s) staged for the next frame boundary", n_diff);
+    if (n_diff > 0) {
+        if (at_seq >= 0)
+            INFO_NON_OO("set_prns: {:d} slot(s) staged for frame seq >= {:d} "
+                        "(now {:d}, {:d} frame(s) ahead)",
+                        n_diff, (long long)at_seq, (long long)last_seq,
+                        (long long)((at_seq - last_seq)
+                                    / (n_hops_frame > 0 ? n_hops_frame : 1)));
+        else
+            INFO_NON_OO("set_prns: {:d} slot(s) staged for the next frame boundary", n_diff);
+    }
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
@@ -346,7 +376,26 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
         std::lock_guard<std::mutex> lk(prn_mtx);
         if (!prn_pending)
             return changed;
+        // NOT YET DUE -- leave it staged and come back next frame.
+        if (prn_at_seq >= 0 && last_seq >= 0 && last_seq < prn_at_seq) {
+            // ⚠️ UNLESS THE COUNTER WENT BACKWARDS, in which case the deadline is unreachable
+            // and waiting for it would wedge the swap FOREVER. An F-engine restart moves seq
+            // back to ~0 ([[chord-gather-wedges-on-frame0-reset]]), so a schedule written
+            // against the old epoch can never mature. Apply immediately and say so: a swap
+            // that arrives early is a re-acquisition, a swap that never arrives is a slot
+            // stuck on a satellite that has set.
+            if (prn_stage_seq >= 0 && last_seq < prn_stage_seq) {
+                WARN_NON_OO("set_prns: frame seq went BACKWARDS ({:d} -> {:d}) -- the F-engine "
+                            "re-based, so the scheduled swap at {:d} can never arrive. "
+                            "Applying NOW; the fleet-wide alignment for this swap is lost.",
+                            (long long)prn_stage_seq, (long long)last_seq, (long long)prn_at_seq);
+            } else {
+                return changed;
+            }
+        }
         prn_pending = false;
+        prn_at_seq = -1;
+        prn_stage_seq = -1;
         for (int p = 0; p < n_prn; ++p) {
             const int newp = pending_prns[(size_t)p];
             if (newp == prns[(size_t)p])
@@ -728,6 +777,8 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     // list back; the others would carry a departed satellite's Doppler history into the new
     // one and emit a continuous arc across a discontinuity that is total. The per-slot
     // generation counter is what every instance can check for itself.
+    // THE DEADLINE CLOCK, published before the apply that tests it.
+    S.note_frame_seq(seq0);
     S.apply_prn_swaps((void*)stream);
     {
         if (_slot_gen_seen.size() != (size_t)S.n_prn)

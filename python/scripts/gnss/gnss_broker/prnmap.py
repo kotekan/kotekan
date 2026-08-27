@@ -317,6 +317,46 @@ def stage_prn_membership(ctx):
     _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now)
 
 
+def _at_seq(ctx, a):
+    """The absolute F-engine sample every node should swap on, or None if we cannot pick one.
+
+    ⚠️⚠️ THE POINT IS THAT TWELVE NODES CROSS THE DISCONTINUITY ON THE SAME FRAME. A map
+    posted "now" lands on whatever frame each node happens to be building, so the combiner
+    folds one window whose instances disagree about which satellite slot p IS -- an
+    accumulator-identity error, and an invisible one, because every row is individually
+    well-formed. Naming an absolute sample makes the swap simultaneous by construction.
+
+    ⚠️ THE F-ENGINE COUNTER, NOT WALL TIME. It is the axis the records are indexed by and it
+    is identical on every node; wall time is not (the AXIS INST spread runs to seconds), so a
+    wall deadline would put the nodes back on twelve different frames.
+
+    Returns None when the axis is unknown or stale -- and the caller then posts WITHOUT a
+    deadline, i.e. the old ASAP behaviour. An unsynchronised swap is worse than a synchronised
+    one and better than none: a slot stuck on a set satellite produces nothing at all.
+    """
+    fh = getattr(ctx, "fe_hop_now", None)
+    if fh is None:
+        _log_rl("prnmap-noaxis",
+                "PRN MAP %s: no F-engine axis this cycle -- a swap will post UNSCHEDULED, so "
+                "the nodes will cross on different frames. Degraded, deliberately: an "
+                "unsynchronised swap beats a slot stuck on a satellite that has set."
+                % (log_tag() or a.signal), every_s=300.0)
+        return None
+    try:
+        lead = float(a.prn_reconfig_lead_s)
+        return int(fh) + int(round(lead * float(a.hops_per_sec)))
+    except Exception as e:
+        # ⚠️ SAY SO. A bare `return None` here degrades every swap to unscheduled and looks
+        # exactly like a healthy fleet with a quiet sky -- the silent-fallback shape this
+        # codebase spent 2026-08-27 removing. A missing or unparseable knob is a CONFIG
+        # fault; it must be loud even though the swap still goes out.
+        _log_rl("prnmap-sched",
+                "PRN MAP %s: cannot compute a swap deadline (%s) -- posting UNSCHEDULED. "
+                "This is a configuration fault, not a sky condition."
+                % (log_tag() or a.signal, e), every_s=300.0)
+        return None
+
+
 def _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now):
     """POST one slot change to every producer, then to the followers. ⚠️ ONE IMPLEMENTATION,
     shared by the free-slot fill and the eviction swap -- two copies of a posting policy is
@@ -326,17 +366,24 @@ def _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now):
     st.last_swap_t = now
     want_map = list(cur)
     want_map[slot] = new_prn
+    at_seq = _at_seq(ctx, a)
+    body = {"prns": want_map}
+    if at_seq is not None:
+        body["at_seq"] = at_seq
     ok, bad = 0, ""
     for ep in _endpoints(ctx):
         try:
-            _post("%s/set_prns" % ep, {"prns": want_map},
-                  timeout=a.prn_reconfig_timeout_s)
+            _post("%s/set_prns" % ep, body, timeout=a.prn_reconfig_timeout_s)
             ok += 1
         except Exception as e:
             bad = "%s: %s" % (ep, e)
     n_follow = 0
     for ep in _followers(ctx):
         try:
+            # ⚠️ THE SEARCH GETS THE MAP BUT NOT THE DEADLINE. It has no frame boundary to
+            # test one against -- it applies between passes -- and a deadline it cannot
+            # honour would just wedge its map. It is also not in the record path, so an
+            # early swap there costs a re-scan, not a corrupted accumulator.
             _post("%s/set_prns" % ep, {"prns": want_map}, timeout=a.prn_reconfig_timeout_s)
             n_follow += 1
         except Exception as e:

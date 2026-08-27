@@ -116,6 +116,28 @@ public:
     uint64_t prn_swaps = 0;            ///< slots swapped since start (diagnostics)
     std::string prn_last_err;          ///< why the last POST was refused, "" if none
 
+    // ── SCHEDULED SWAPS: the same map, on the same FRAME, on every node ──────────────────
+    // A swap posted "now" lands on whatever frame each node happens to be building, so twelve
+    // nodes cross the discontinuity at twelve different instants. The combiner then folds one
+    // window whose instances disagree about which satellite slot p IS -- an accumulator
+    // identity error that no downstream check can see, because every row is individually
+    // well-formed. `at_seq` fixes the swap to an ABSOLUTE F-engine sample: the broker picks
+    // one a couple of seconds ahead, every node stages the same number, and each applies it
+    // at the first frame boundary at or after it. Same frame, fleet-wide, and never mid-record
+    // because the test runs where the swap already ran -- before a single job is built.
+    //
+    // ⚠️ THE CLOCK IS THE F-ENGINE'S OWN COUNTER, NOT WALL TIME. It is the axis the records
+    // are indexed by and it is identical on every node by construction; wall time is not
+    // (measured lag spread across instances runs to seconds), and a wall deadline would put
+    // the nodes back on twelve different frames.
+    int64_t prn_at_seq = -1;           ///< apply at the first frame with seq0 >= this; <0 = ASAP
+    int64_t prn_stage_seq = -1;        ///< seq0 last seen when the map was staged (re-base guard)
+    int64_t last_seq = -1;             ///< newest frame seq0 seen; the deadline is tested on it
+
+    /// Record this frame's absolute first-hop sample. Called by the tracker at the frame
+    /// boundary; @ref apply_prn_swaps tests the scheduled deadline against it.
+    void note_frame_seq(long long seq);
+
     // Geometry. n_prn is immutable; @c prns is NOT -- see the block above.
     std::vector<int> prns;
     int n_prn = 0, n_chan = 0, n_elem = 0;
