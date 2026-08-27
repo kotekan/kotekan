@@ -200,11 +200,22 @@ def stage_prn_membership(ctx):
             st.gone_since.setdefault(p, now)
 
     # ---- 3. Who wants a slot, and who can give one up -----------------------------------
-    # A candidate must be ABOVE the admit mask right now. "Rises eventually" is not enough:
-    # the cost of a swap is a re-acquisition, so it is only worth paying for a satellite we
-    # can start using immediately -- and one that is up now will be up again tomorrow.
-    want = sorted((p for p in el if p not in held and el[p] >= a.prn_reconfig_admit_deg),
-                  key=lambda p: -el[p])
+    # ⚠️ THE UP-NOW BAR IS ABOUT PAYING FOR AN EVICTION, NOT ABOUT DESERVING A SLOT.
+    # A candidate must be above the admit mask before it is worth EVICTING someone for --
+    # a swap costs a re-acquisition, so only buy it for a satellite we can use immediately.
+    # But a DEAD slot costs nothing to fill, and applying the up-now test to a free slot was
+    # simply wrong: it left five Galileo slots empty while E36 -- active, and the satellite
+    # this whole mechanism exists for -- was refused because it happened to be below the
+    # horizon at that moment, and the heartbeat reported "0 satellites waiting for a slot"
+    # beside five empty slots (KV, 2026-08-27).
+    #
+    # A below-horizon satellite in a FREE slot is not idle capacity, it is immediately useful:
+    # it is exactly what the noise PROBES need. So free slots take any active satellite,
+    # deepest-first (the best probes), and only evictions demand up-now.
+    want_evict = sorted((p for p in el if p not in held
+                         and el[p] >= a.prn_reconfig_admit_deg), key=lambda p: -el[p])
+    want_free = sorted((p for p in el if p not in held), key=lambda p: el[p])
+    want = want_evict
 
     # ⚠️ A HEARTBEAT, BECAUSE SILENCE HERE IS AMBIGUOUS. Every other branch of this stage only
     # speaks when it has something to propose, so an armed chain with nothing to do looks
@@ -222,6 +233,28 @@ def stage_prn_membership(ctx):
              % (tag, a.prn_reconfig.upper(), len(cur), len(st.maps), n_dead, n_down,
                 a.prn_reconfig_evict_deg, len(want), st.swaps,
                 (" | last error: %s" % st.err) if st.err else ""))
+    # ---- 3a. FREE SLOTS FIRST, and they cost nothing --------------------------------------
+    # A slot whose satellite is gone from BRDC produces nothing at all; handing it to any
+    # active satellite is pure gain, and there is no re-acquisition to pay for because there
+    # was nothing being tracked. Deepest-first, so the chain's probe supply is the first thing
+    # repaired -- which is the whole reason KV expected the broker to be managing this.
+    free = [p for p in held if p in st.gone_since
+            and now - st.gone_since[p] >= a.prn_reconfig_gone_hold_s]
+    if free and want_free:
+        old_prn, new_prn = free[0], want_free[0]
+        slot = cur.index(old_prn)
+        why = ("its slot was EMPTY (PRN %d gone from BRDC for %.1f h) -- no re-acquisition to "
+               "pay for" % (old_prn, (now - st.gone_since[old_prn]) / 3600.0))
+        if a.prn_reconfig == "report":
+            _log_rl("prnmap-free",
+                    "PRN MAP %s (REPORT ONLY): would fill slot %d with PRN %d (el %+.0f); %s. "
+                    "%d free slot(s), %d satellite(s) unslotted."
+                    % (tag, slot, new_prn, el[new_prn], why, len(free), len(want_free)),
+                    every_s=300.0)
+        elif now - st.last_swap_t >= a.prn_reconfig_interval_s:
+            _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now)
+        return
+
     if not want:
         return
 
@@ -233,6 +266,22 @@ def stage_prn_membership(ctx):
     down = sorted((p for p in held if p in st.down_since
                    and now - st.down_since[p] >= a.prn_reconfig_down_hold_s),
                   key=lambda p: (el.get(p, -90.0), st.down_since[p]))
+
+    # ⚠️⚠️ NEVER EVICT THE PROBE SUPPLY. The `down` list is satellites that have been deep
+    # below the horizon for hours -- which is the DEFINITION of a good noise probe. Evicting
+    # one to admit a satellite that is up trades the chain's noise anchor for one more tracked
+    # satellite, and without >= 3 anchored probes the presence gate has no floor it can trust:
+    # it either falls back to a bar built from the satellites (which passes about half by
+    # construction) or refuses outright. Either way the chain loses far more than the one
+    # satellite the swap bought. So hold back `probe_floor` of the deepest ones.
+    n_probe = max(0, int(getattr(a, "noise_probes", 0) or 0))
+    keep = set()
+    if n_probe:
+        # The deepest in-slot satellites are the ones the probe selector will actually pick.
+        keep = set(sorted((p for p in held if el.get(p, 0.0) < -15.0),
+                          key=lambda p: el.get(p, 0.0))[:n_probe])
+    gone = [p for p in gone if p not in keep]      # a GONE satellite is not a probe either:
+    down = [p for p in down if p not in keep]      # it produces no record at all
     evictable = gone + [p for p in down if p not in gone]
 
     if not evictable:
@@ -265,6 +314,15 @@ def stage_prn_membership(ctx):
     # ---- 4. Apply, one slot per interval ------------------------------------------------
     if now - st.last_swap_t < a.prn_reconfig_interval_s:
         return
+    _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now)
+
+
+def _apply(ctx, st, cur, slot, old_prn, new_prn, why, el, now):
+    """POST one slot change to every producer, then to the followers. ⚠️ ONE IMPLEMENTATION,
+    shared by the free-slot fill and the eviction swap -- two copies of a posting policy is
+    two places to fix and one to forget (the ephemeris mirror loop taught that tonight)."""
+    a = ctx.args
+    tag = log_tag() or a.signal
     st.last_swap_t = now
     want_map = list(cur)
     want_map[slot] = new_prn
@@ -272,15 +330,14 @@ def stage_prn_membership(ctx):
     for ep in _endpoints(ctx):
         try:
             _post("%s/set_prns" % ep, {"prns": want_map},
-                  timeout=ctx.args.prn_reconfig_timeout_s)
+                  timeout=a.prn_reconfig_timeout_s)
             ok += 1
         except Exception as e:
             bad = "%s: %s" % (ep, e)
     n_follow = 0
     for ep in _followers(ctx):
         try:
-            _post("%s/set_prns" % ep, {"prns": want_map},
-                  timeout=ctx.args.prn_reconfig_timeout_s)
+            _post("%s/set_prns" % ep, {"prns": want_map}, timeout=a.prn_reconfig_timeout_s)
             n_follow += 1
         except Exception as e:
             # A search whose list did not move searches for a satellite that has no slot and
@@ -291,7 +348,7 @@ def stage_prn_membership(ctx):
     if ok == 0:
         st.refused += 1
         st.err = bad
-        _log("PRN MAP %s: swap slot %d PRN %d -> %d REFUSED by every node (%s)"
+        _log("PRN MAP %s: slot %d PRN %d -> %d REFUSED by every node (%s)"
              % (tag, slot, old_prn, new_prn, bad))
         return
     st.swaps += 1
@@ -301,10 +358,9 @@ def stage_prn_membership(ctx):
     # signal) would otherwise be invisible for as long as the broker ran.
     st.maps.clear()   # force a FULL re-sweep before the next decision
     st.poll_t = 0.0
-    _log("PRN MAP %s: slot %d PRN %d -> %d posted to %d/%d node(s)%s%s. Incumbent %s; new "
-         "satellite up at %.0f deg. That slot re-acquires COLD -- expect it dark for a "
-         "minute or two."
+    _log("PRN MAP %s: slot %d PRN %d -> %d posted to %d/%d node(s)%s%s. %s; new satellite at "
+         "el %+.0f. That slot acquires COLD -- expect it dark for a minute or two."
          % (tag, slot, old_prn, new_prn, ok, len(_endpoints(ctx)),
             (" (%d failed: %s)" % (len(_endpoints(ctx)) - ok, bad)) if bad else "",
             (" + %d searcher(s)" % n_follow) if n_follow else "",
-            why, el[new_prn]))
+            why, el.get(new_prn, -99.0)))

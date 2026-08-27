@@ -47,6 +47,7 @@ class Args(object):
         self.prn_reconfig_timeout_s = 5.0
         self.prn_reconfig_heartbeat_s = 1e18   # off by default in tests; check 11 arms it
         self.probe_require_slot = False
+        self.noise_probes = 0
         self.signal = "GAL_E5A_Q_CS"
         self.__dict__.update(kw)
 
@@ -152,14 +153,52 @@ def main():
     run_cycle(ctx, 1000.0 + 7201.0)
     check(len(POSTS) == 3, "... but at gone_hold (2 h), sooner than a down slot's 3 h")
 
-    # ---- 4. a candidate below the admit mask claims nothing ----------------------------
+    # ---- 4. the admit mask governs EVICTIONS, not free slots ---------------------------
+    # ⚠️ THIS TEST ASSERTED THE BUG until 2026-08-27. The up-now bar exists because an
+    # eviction costs a re-acquisition -- only pay it for a satellite we can use immediately.
+    # A FREE slot costs nothing, so applying the same bar to one left five Galileo slots
+    # empty while E36 (active, and the satellite the whole mechanism exists for) was refused
+    # for being below the horizon at that moment. A below-horizon satellite in a free slot is
+    # not idle capacity: it is exactly what the noise PROBES need.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 4.0})    # slot free, candidate grazing
+    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 4.0})   # PRN 1 GONE -> slot 0 is FREE
+    run_cycle(ctx, 1000.0)
+    check(not POSTS, "a free slot is not filled before the gone-hold has elapsed")
+    run_cycle(ctx, 1000.0 + 7201.0)
+    check(any("36" in str(pl) for _u, pl in POSTS),
+          "a FREE slot IS filled by a 4 deg satellite -- nothing to re-acquire, and it is a "
+          "probe today and a tracked satellite tomorrow")
+
+    # ... but it must NOT buy an eviction. Every slot occupied by a satellite that is UP:
+    # nothing is free, and a 4 deg candidate is not worth a re-acquisition.
+    POSTS[:] = []
+    ctx = Ctx([1, 2, 3], {1: 20.0, 2: 40.0, 3: 30.0, 36: 4.0})
     run_cycle(ctx, 1000.0)
     run_cycle(ctx, 1000.0 + 100000.0)
     check(not POSTS,
-          "a 4 deg satellite does not claim a slot however long one has been free "
-          "(a swap costs a re-acquisition; buy it for a satellite we can USE)")
+          "a 4 deg satellite does NOT evict anyone (the up-now bar still governs swaps)")
+
+    # ---- 4b. the probe supply is never evicted -----------------------------------------
+    # A satellite deep below the horizon for hours IS the chain's noise anchor. Trading it
+    # for one more tracked satellite costs the presence gate its floor, which is worth far
+    # more than the satellite the swap bought.
+    POSTS[:] = []
+    deep = {1: -70.0, 2: -65.0, 3: -60.0, 36: 83.0}      # all three held sats are deep probes
+    ctx = Ctx([1, 2, 3], deep)
+    ctx.args.noise_probes = 3
+    run_cycle(ctx, 1000.0)
+    run_cycle(ctx, 1000.0 + 100000.0)
+    check(not POSTS,
+          "with noise_probes=3 and exactly 3 deep-below-horizon slots, NONE is evicted even "
+          "for an 83 deg satellite -- the probe supply is not spare capacity")
+    deep4 = dict(deep); deep4[4] = -55.0   # a 4th deep satellite exists, unslotted
+    ctx2 = Ctx([1, 2, 3], deep4)
+    ctx2.args.noise_probes = 2                            # only 2 must be held back
+    POSTS[:] = []
+    run_cycle(ctx2, 1000.0)
+    run_cycle(ctx2, 1000.0 + 100000.0)
+    check(any("36" in str(pl) for _u, pl in POSTS),
+          "... but with only 2 needed, the shallowest deep slot IS free to be traded")
 
     # ---- 5. report mode posts nothing, ever -------------------------------------------
     POSTS[:] = []
