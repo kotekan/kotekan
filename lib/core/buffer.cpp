@@ -765,10 +765,10 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
     if (release_empty)
         empty_cond.notify_all();
 
-    // Signal producer
-    if (set_empty) {
-        // empty_cond.notify_all();
-    }
+    // Signal a producer sleeping on the dropped frame from a previous lap
+    // (reachable with more than one producer and no consumers).
+    if (set_empty)
+        empty_cond.notify_all();
 }
 
 // function passed to pthreads
