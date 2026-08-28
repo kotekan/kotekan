@@ -1089,8 +1089,10 @@ void Buffer::safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_
                     dest_buf->buffer_name);
     }
 
-    buffer_lock lock(mutex);
-
+    // Read under the buffer lock, but not held across the transfer below: both
+    // frames are reserved by this stage (see private_copy_frame), and the
+    // consumer list only shrinks while the pipeline runs, so a count that goes
+    // stale here costs a copy rather than a swap.
     int num_consumers = get_num_consumers();
 
     // Copy or transfer the data part.
@@ -1105,8 +1107,24 @@ void Buffer::safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_
 }
 
 void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id) {
-    buffer_lock lock(mutex);
-    memcpy(frames[dest_frame_id], src->frames[src_frame_id], src->frame_size);
+    uint8_t* dest_frame;
+    uint8_t* src_frame;
+    {
+        buffer_lock lock(mutex);
+        dest_frame = frames[dest_frame_id];
+    }
+    {
+        buffer_lock lock(src->mutex);
+        src_frame = src->frames[src_frame_id];
+    }
+
+    // The copy runs with both buffers unlocked. The stage reaching here holds
+    // the destination frame as its only producer and the source frame as a
+    // consumer, so neither frame can be given to another stage until it marks
+    // them, exactly as for a stage filling a frame of its own. Holding the
+    // locks instead would stall both buffers for a whole frame copy, which on
+    // the voltage buffers is the largest copy in the pipeline.
+    memcpy(dest_frame, src_frame, src->frame_size);
 }
 
 bool is_frame_buffer(GenericBuffer* buf) {
