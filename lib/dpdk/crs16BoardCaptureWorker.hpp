@@ -56,8 +56,8 @@ protected:
     const uint32_t header_size = 64;
     // Each node processes data from 16 source IDs (16 CRS boards) and 8 stream IDs (1/16 of the
     // total streams)
-    const uint32_t num_source_ids = 16;
-    const uint32_t num_stream_ids = 8;
+    static constexpr uint32_t num_source_ids = 16;
+    static constexpr uint32_t num_stream_ids = 8;
     const uint32_t time_samples_per_packet = 16;
 
     std::vector<uint32_t> stream_ids_expected;
@@ -66,7 +66,9 @@ protected:
     /// element_long_map[source_id].  Each board carries the inputs of one polarization, so
     /// mapping boards to blocks is enough to group the polarizations without splitting a
     /// board's 128-byte payload.  Defaults to the identity, i.e. crate order.
-    std::vector<uint32_t> element_long_map;
+    /// Stored inline rather than in a vector: it is read for every packet, and a vector
+    /// would put a second load on the RX path to reach the heap block.
+    uint32_t element_long_map[num_source_ids];
 
     bool first_run = true;
 
@@ -86,9 +88,11 @@ protected:
     uint64_t _last_check_seq = 0;
     uint64_t _seq_check_packet_count = 0;
 
-    inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
-                                     uint64_t relative_seq_num, uint16_t stream_id,
-                                     uint16_t source_id);
+    /// Forced inline: reading the map tipped gcc's inliner into emitting this
+    /// out of line, which put a call in the per-packet RX path.
+    __attribute__((always_inline)) inline void
+    packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr, uint64_t relative_seq_num,
+                         uint16_t stream_id, uint16_t source_id);
 };
 
 inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
@@ -121,22 +125,21 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
     }
 
     // Board-to-element_long map. An empty or absent table leaves the frame in crate order.
-    element_long_map =
+    const std::vector<uint32_t> cfg_map =
         config.get_default<std::vector<uint32_t>>(unique_name, "element_long_map", {});
-    if (element_long_map.empty()) {
-        element_long_map.resize(num_source_ids);
+    if (cfg_map.empty()) {
         for (uint32_t i = 0; i < num_source_ids; i++)
             element_long_map[i] = i;
     } else {
         // A map that is not a permutation would overwrite one board's data with another's
         // and leave a block unwritten, so reject it rather than corrupt the frame.
-        if (element_long_map.size() != num_source_ids) {
+        if (cfg_map.size() != num_source_ids) {
             FATAL_ERROR("element_long_map has {:d} entries, expected num_source_ids ({:d})",
-                        element_long_map.size(), num_source_ids);
+                        cfg_map.size(), num_source_ids);
         }
         std::vector<bool> seen(num_source_ids, false);
         for (uint32_t src = 0; src < num_source_ids; src++) {
-            const uint32_t dst = element_long_map[src];
+            const uint32_t dst = cfg_map[src];
             if (dst >= num_source_ids) {
                 FATAL_ERROR("element_long_map[{:d}] = {:d} is not less than num_source_ids "
                             "({:d})",
@@ -148,6 +151,7 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
                             dst, num_source_ids);
             }
             seen[dst] = true;
+            element_long_map[src] = dst;
         }
         INFO("crs16BoardCaptureWorker {}: element_long_map active", unique_name);
     }
