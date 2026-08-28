@@ -37,6 +37,7 @@ and a restart is a clean slate rather than a silently-inherited history.
 
 import os
 import re
+import time
 
 from gnss_broker.transport import _get, _post, _log, _log_rl, log_tag
 
@@ -156,8 +157,25 @@ def _consensus(maps):
 # ---------------------------------------------------------------------------------------
 # SIGNAL CAPABILITY: which satellites can carry this chain's signal at all
 # ---------------------------------------------------------------------------------------
-_TLE_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps", "tle_gps-ops.txt")
-_TLE_NAME_RE = re.compile(r"GPS\s+B([A-Z]+)-?\d.*\(PRN\s*(\d+)\)")
+_IGS_SNX = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps",
+                        "igs_satellite_metadata.snx")
+
+# Which IGS metadata BLOCK strings carry each civil signal. Block names come from the SINEX
+# SATELLITE/IDENTIFIER column ("GPS-IIA", "GPS-IIR-A", "GPS-IIR-M", "GPS-IIF", "GPS-IIIA").
+# L1 C/A -> every satellite; L2C -> IIR-M and newer; L5 -> IIF and newer; L1C -> III only.
+# (gps_beamtrack._signal_block_filter encodes the same knowledge against SHORT names parsed
+# from TLE titles; this works from the authoritative registry instead -- see below.)
+def _block_carries(signal, block):
+    s, b = (signal or "").upper(), (block or "").upper()
+    if "L1CA" in s:
+        return True
+    if "L5" in s:
+        return b.startswith("GPS-IIF") or b.startswith("GPS-III")
+    if "L2C" in s or "L2_CM" in s:
+        return b.startswith("GPS-IIR-M") or b.startswith("GPS-IIF") or b.startswith("GPS-III")
+    if "L1C" in s:
+        return b.startswith("GPS-III")
+    return True                      # a signal we do not model: exclude nothing
 
 
 def signal_incapable_prns(signal):
@@ -165,44 +183,56 @@ def signal_incapable_prns(signal):
 
     ⚠️⚠️ WE WERE TRACKING SATELLITES THAT HAVE NEVER TRANSMITTED THE SIGNAL. Measured
     2026-08-28: 11 of gps_l5's 32 slots held Block IIR / IIR-M satellites, which predate L5
-    entirely -- G7 sat at 70 deg elevation reporting q 0.96 forever. They cost a tracker slot
-    each, and worse, they fold 11 noise rows into the presence population that the gates then
-    have to be robust against.
+    entirely -- G7 sat at 70 deg elevation reporting q 0.96 forever. Each cost a tracker slot
+    and folded a noise row into the presence population every gate downstream must survive.
 
-    Block is METADATA -- no almanac or TLE element carries it -- but Celestrak encodes it in
-    the satellite NAME ("GPS BIIR-5  (PRN 22)"), which is why this reads names rather than
-    hardcoding a list that goes stale as satellites launch and retire.
+    ⚠️ THE SOURCE IS THE IGS METADATA SINEX, NOT CELESTRAK. The first version of this read the
+    BLOCK out of Celestrak TLE titles ("GPS BIIR-5  (PRN 22)"). KV, immediately: we moved off
+    Celestrak long ago because it carries a multitude of errors, BeiDou worst of all -- and
+    _igs_prn_by_catnum's own docstring says the same thing, that constellations whose TLE
+    titles carry no PRN resolve through the SINEX instead. Reintroducing a TLE-title
+    dependency for satellite identity was a step backwards onto a source already rejected.
+    igs_satellite_metadata.snx is the authoritative multi-GNSS SVN / COSPAR / SatCat / PRN
+    registry: SVN -> block from SATELLITE/IDENTIFIER, SVN -> CURRENT PRN from SATELLITE/PRN
+    with its validity window, so a re-used PRN resolves to the satellite flying it TODAY.
 
-    ⚠️ EXCLUDE ONLY WHAT WE CAN PROVE, AND KEEP EVERYTHING ELSE. A missing cache, an
-    unparseable name, a PRN absent from the file, or a constellation this does not model all
-    yield "not incapable" -- because the cost of wrongly excluding a real satellite (it can
-    never be tracked, and nothing says why) is far worse than the cost of keeping a dead slot.
-    Same polarity as _rec_is_fresh: reject the provable, never refuse on doubt.
+    ⚠️ EXCLUDE ONLY WHAT WE CAN PROVE, KEEP EVERYTHING ELSE. Missing file, unparseable line,
+    PRN absent from the registry, or a constellation/signal we do not model all yield "not
+    incapable" -- because wrongly excluding a real satellite means it can never be tracked and
+    nothing says why, which is far worse than keeping a dead slot. Same polarity as
+    _rec_is_fresh: reject the provable, never refuse on doubt.
 
-    ⚠️ GPS ONLY, and deliberately. Every Galileo satellite carries E5a/E5b, and the BeiDou
-    chains already exclude BDS-2 with alm_min_prn -- so there is nothing to model there, and a
-    filter that pretended otherwise would be a second place for a constellation to go dark.
+    ⚠️ GPS ONLY in effect, and deliberately: every Galileo satellite carries E5a/E5b and the
+    BeiDou chains already exclude BDS-2 via alm_min_prn, so there is nothing to model there.
     """
     try:
-        from gps_beamtrack import _signal_block_filter
-        pred = _signal_block_filter(signal)
-    except Exception:
-        return set()
-    if pred is None:                      # every satellite carries it (e.g. L1 C/A)
-        return set()
-    try:
-        with open(_TLE_CACHE) as f:
-            txt = f.read()
+        svn_block, svn_prn = {}, {}
+        section = None
+        now = time.strftime("%Y:%j:00000", time.gmtime())
+        for line in open(_IGS_SNX, errors="replace"):
+            if line.startswith("+SATELLITE/"):
+                section = line.strip().lstrip("+"); continue
+            if line.startswith("-SATELLITE/"):
+                section = None; continue
+            if line.startswith("*") or not line.strip():
+                continue
+            f = line.split()
+            if section == "SATELLITE/IDENTIFIER" and len(f) >= 4:
+                svn_block[f[0]] = f[3]
+            elif section == "SATELLITE/PRN" and len(f) >= 4:
+                svn, t_to, prn = f[0], f[2], f[3]
+                if ((t_to == "0000:000:00000" or t_to >= now)
+                        and re.fullmatch(r"[A-Z]\d{2}", prn)):
+                    svn_prn[svn] = prn
     except Exception:
         return set()
     out = set()
-    for m in _TLE_NAME_RE.finditer(txt):
-        block, prn = m.group(1), int(m.group(2))
-        try:
-            if not pred(block):
-                out.add(prn)
-        except Exception:
+    for svn, prn in svn_prn.items():
+        if prn[0] != "G":                      # only GPS blocks gate a signal here
             continue
+        b = svn_block.get(svn)
+        if b and not _block_carries(signal, b):
+            out.add(int(prn[1:]))
     return out
 
 

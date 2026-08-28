@@ -471,34 +471,52 @@ def main():
     # ⚠️ 11 of gps_l5's 32 slots held Block IIR / IIR-M satellites, which predate L5 entirely.
     # G7 sat at 70 deg elevation reporting q 0.96 forever: a slot spent, and a noise row
     # folded into the presence population that every gate then has to survive.
-    print("\nsignal capability: only satellites that can carry the signal get slots")
+    print("\nsignal capability: from the IGS metadata SINEX, not Celestrak")
     import tempfile as _tf, os as _os
     from gnss_broker import prnmap as _pm
-    _saved = _pm._TLE_CACHE
+    _saved = _pm._IGS_SNX
     try:
         with _tf.TemporaryDirectory() as _d:
-            _f = _os.path.join(_d, "tle.txt")
+            _f = _os.path.join(_d, "meta.snx")
             open(_f, "w").write(
-                "GPS BIIR-5  (PRN 22)\n1 x\n2 x\n"
-                "GPS BIIRM-3 (PRN 7)\n1 x\n2 x\n"
-                "GPS BIIF-2  (PRN 1)\n1 x\n2 x\n"
-                "GPS BIII-6  (PRN 4)\n1 x\n2 x\n")
-            _pm._TLE_CACHE = _f
-            _l5 = _pm.signal_incapable_prns("GPS_L5_Q_NH")
-            check(_l5 == {22, 7},
-                  "L5: Block IIR and IIR-M are excluded, IIF and III are not (got %s)" % sorted(_l5))
+                "+SATELLITE/IDENTIFIER\n"
+                "*SVN_ COSPAR ID SatCat Block__________ Comment\n"
+                " G044 2000-040A  26407 GPS-IIR-A       x\n"
+                " G058 2005-038A  28874 GPS-IIR-M       x\n"
+                " G062 2010-022A  36585 GPS-IIF         x\n"
+                " G074 2018-074A  43873 GPS-IIIA        x\n"
+                "-SATELLITE/IDENTIFIER\n"
+                "+SATELLITE/PRN\n"
+                " G044 2000:198:00000 0000:000:00000 G22\n"
+                " G058 2005:257:00000 0000:000:00000 G07\n"
+                " G062 2010:146:00000 0000:000:00000 G01\n"
+                " G074 2018:357:00000 0000:000:00000 G04\n"
+                "-SATELLITE/PRN\n")
+            _pm._IGS_SNX = _f
+            check(_pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
+                  "L5: IIR-A and IIR-M excluded, IIF and IIIA kept (got %s)"
+                  % sorted(_pm.signal_incapable_prns("GPS_L5_Q_NH")))
+            check(_pm.signal_incapable_prns("GPS_L1C_P") == {22, 7, 1},
+                  "L1C: Block III ONLY -- IIF is excluded too, so the predicate is really "
+                  "reading the block rather than passing anything modern")
             check(_pm.signal_incapable_prns("GPS_L1CA") == set(),
-                  "L1 C/A: every GPS satellite carries it, so nothing is excluded")
+                  "L1 C/A: every GPS satellite carries it")
             check(_pm.signal_incapable_prns("GAL_E5A_Q_CS") == set(),
-                  "Galileo: not modelled here, so nothing is excluded -- a filter that "
-                  "pretended otherwise would be a second way for a constellation to go dark")
-            # ⚠️ REFUSE ON DOUBT, IN THE SAFE DIRECTION.
-            _pm._TLE_CACHE = _os.path.join(_d, "does-not-exist")
+                  "Galileo: not modelled, so nothing excluded -- a filter that pretended "
+                  "otherwise would be a second way for a constellation to go dark")
+            # ⚠️ AND A RE-USED PRN MUST RESOLVE TO TODAY'S SATELLITE. G22 was IIR-A; if a
+            # retired assignment won, a live satellite could be excluded by a dead one's block.
+            open(_f, "a").write("+SATELLITE/PRN\n"
+                                " G099 1990:001:00000 1995:001:00000 G01\n"
+                                "-SATELLITE/PRN\n")
+            check(_pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
+                  "an EXPIRED PRN assignment is ignored -- current validity only")
+            _pm._IGS_SNX = _os.path.join(_d, "missing")
             check(_pm.signal_incapable_prns("GPS_L5_Q_NH") == set(),
-                  "a MISSING capability source excludes NOTHING -- wrongly dropping a real "
-                  "satellite is far worse than keeping a dead slot, and nothing would say why")
+                  "a MISSING registry excludes NOTHING -- wrongly dropping a real satellite "
+                  "is far worse than keeping a dead slot, and nothing would say why")
     finally:
-        _pm._TLE_CACHE = _saved
+        _pm._IGS_SNX = _saved
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
