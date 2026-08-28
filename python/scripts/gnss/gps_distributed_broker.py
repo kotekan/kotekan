@@ -1219,6 +1219,7 @@ def main(argv=None, rx=None, publisher=None):
                  % (_p, float(_v)))
     dop_rate_fitted = {} # prn -> the fitted rate actually seeded (for the log)
     dop_rate_rejected = {} # prn -> (fitted, model) when the fit disagreed with the model
+    cp_rate_rejected = {}  # prn -> (fitted, pooled-clock) chips/s, #96 cross-check
 
     def cp_to_seed_currency(pts, dop_seed, dop_rate=0.0):
         """Re-express search cp0 points in the CURRENT seed's Doppler currency.
@@ -1567,6 +1568,7 @@ def main(argv=None, rx=None, publisher=None):
         spec_writer=_spec_writer, state_dir=_state_dir, xb_read_dir=_xb_read_dir,
         innov_hist=innov_hist, minnov_hist=minnov_hist, p2c=p2c,
         dop_rate_fitted=dop_rate_fitted, dop_rate_rejected=dop_rate_rejected,
+        cp_rate_rejected=cp_rate_rejected,
         dll_hop_window=dll_hop_window, deep_gate=_deep_gate, dg_auto_last=_dg_auto_last,
         est_next=_est_next,
         sig_of=sig_of, combiner=combiner, gating=gating, capable=_capable,

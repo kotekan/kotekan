@@ -318,7 +318,17 @@ common:
   code-bias-alpha: 0.05
   code-bias-min-sats: 2
   fit-gap-s: 3600
-  fit-min-snr: 0
+  # ARMED 2026-08-28 (#96), 0 -> 30. The cp-rate fit is the ONLY estimator here with no SNR
+  # gate: acquire-snr 30 already decides whether to believe this same fit's l-a contribution,
+  # and bias-min-snr 60 gates the doppler clock pool, but every near-threshold detection was
+  # entering the cp history and one bad point sets a slope rather than degrading it. Measured
+  # that morning on gps_l5 -- the only chain with a `detectors` endpoint, so the only one that
+  # reaches the fit -- 24.1% of fits landed >0.5 chips/s from the pooled clock, p99 177, max
+  # 994; and at matched pre-fit strength (p/noise 5-15) a blown fit took the 40 s dropout rate
+  # from 0.4% to 21.4%. 30 rather than the help's "~60": it is the value the code ALREADY
+  # trusts this fit at, not a new number. gal_e5a/bds_b2a have zero cp-fits and are the
+  # same-poll controls -- if they move, the sky moved and the verdict is void.
+  fit-min-snr: 30
   bias-min-snr: 60
   nh-period-offset: 0
 

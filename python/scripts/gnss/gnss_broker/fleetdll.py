@@ -474,6 +474,15 @@ def stage_fleet_dll(ctx):
                  % (len(ctx.dop_rate_rejected),
                     ", ".join("PRN %d fit %+.3f vs model %+.3f" % (k, v[0], v[1])
                               for k, v in sorted(ctx.dop_rate_rejected.items())[:5])))
+        # The same report for the CODE rate (#96). Separate line, not folded into the one
+        # above: these reject against the POOLED CLOCK rather than an orbit model, and a
+        # reader who cannot tell which reference rejected a fit cannot act on it.
+        if ctx.cp_rate_rejected:
+            _log("cp-rate: %d fit(s) REJECTED against the pooled clock (kept the clock "
+                 "rate, kept the fitted position): %s"
+                 % (len(ctx.cp_rate_rejected),
+                    ", ".join("PRN %d fit %+.3f vs clock %+.3f chips/s" % (k, v[0], v[1])
+                              for k, v in sorted(ctx.cp_rate_rejected.items())[:5])))
         _absent = sorted(p for p in ctx.seeds
                          if ctx.seeds[p].get("doppler_rate_hz_s") is None)
         if _absent:

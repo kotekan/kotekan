@@ -31,6 +31,7 @@ from gnss_broker.transport import _log, _log_rl
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
     retag_seed_doppler, code_clock_bias_sample, fit_cp_rate, fit_dop_rate, tracker_phase_at,
+    cp_rate_from_code_bias,
 )
 
 
@@ -398,8 +399,79 @@ def stage_detections_to_seeds(ctx):
             ctx.code_len)
         if fit is not None:
             rate, h0, cp_ref = fit
+            # ── THE CODE-RATE CROSS-CHECK (#96, --cp-rate-model-tol) ──────────────────
+            # The residual code rate is COMMON-MODE. propagate_seed feeds the geometry
+            # forward itself (gnssSeedTransport: chips_per_hop scales by the sat's own
+            # Doppler), so what is left for this seed to carry is the receiver's l-a
+            # clock -- one number for every satellite on the chain. Satellite clock drift
+            # (af1 ~ 1e-12 s/s) is three orders below it. Measured 2026-08-28: every
+            # present gal/bds sat was commanded ONE value (0.0486 chips/s, SD 0.019 shared)
+            # while gps_l5 was commanded a DIFFERENT value per satellite, SD 0.052-0.064,
+            # 3x the scatter.
+            #
+            # WHY ONLY gps_l5, and it is NOT "the search chain vs the dead-reckon chains":
+            # `dead-reckon` is set in the config's COMMON block, so all five chains run it.
+            # The discriminator is `detectors`, which only gps_l5 has -- this stage is
+            # stage_detections_to_seeds, so a chain with no detector never arrives here at
+            # all (17304 cp-fits on gps_l5 that day against 4 on gal_e5a and 1 on bds_b2a).
+            # The other four also carry `dr-clock-adopt`, so their code rate comes from the
+            # adopted/joint clock as one shared number. gps_l5 has neither: it is the clock
+            # MASTER the others adopt from (#75), so it cannot adopt, and its rate is
+            # whatever this fit last returned.
+            #
+            # fit_cp_rate is unbounded -- it returns whatever least squares gives, and its
+            # cp history is unwrapped mod code_len by nearest-wrap, so one mis-wrap injects
+            # a whole code period into the slope: p90 2.16, p99 177, max 994 chips/s that
+            # day. THE SIBLING FIT ALREADY HAS THIS GUARD (fit_dop_rate + the
+            # --dop-rate-model-tol cross-check below it, added 2026-08-05 for exactly this
+            # failure); the code rate never got one.
+            #
+            # Bound the DEVIATION FROM THE POOLED CLOCK, never the magnitude: the receiver
+            # clock is ~0.047 chips/s calibrated but runs ~3.45 chips/s uncalibrated
+            # (codeloop's feed-forward note), so an absolute ceiling would reject the very
+            # feed-forward the trim cannot live without. The pooled l-a tracks whatever the
+            # clock actually is; only the per-sat departure from it is unphysical.
+            #
+            # REJECT THE RATE, KEEP THE POSITION. cp_ref/h0 are a re-anchor and stay good
+            # even when the slope is noise -- dropping the whole fit would trade a bad rate
+            # for a stale phase.
+            #
+            # Measured on 2026-08-28's log, 15058 fits with an in-sample control and
+            # stratified by pre-fit prompt/noise (the confounder: a fading sat makes a
+            # noisy fit AND drops out on its own). At matched strength p/noise 5-15 the
+            # 40 s dropout rate was 0.4% after a clean fit and 21.4% after a rejected one
+            # -- and rejected-fit sats at 5-15 dropped MORE than CLEAN-fit sats that were
+            # genuinely weaker (8.8% at p/noise 0-5), which is the ordering weakness alone
+            # cannot produce. tol 0.5 sits mid-plateau: 0.3-1.0 all reject 2.3% of fits and
+            # catch 34.3% of every gps_l5 dropout, so the number is not a tuned edge.
+            # 0 disables the cross-check (the pre-2026-08-28 behaviour).
+            _seed_rate = rate
+            _tol = getattr(ctx.args, "cp_rate_model_tol", 0.0)
+            if _tol > 0.0 and ctx.cb.code_ema is not None:
+                _model = cp_rate_from_code_bias(seed_dop, ctx.cb.code_ema,
+                                                ctx.args.hops_per_sec,
+                                                ctx.args.chip_rate_hz, ctx.args.carrier_hz)
+                _dev = (rate - _model) * ctx.args.hops_per_sec      # chips/s
+                if abs(_dev) > _tol:
+                    ctx.cp_rate_rejected[prn] = (rate * ctx.args.hops_per_sec,
+                                                 _model * ctx.args.hops_per_sec)
+                    _log_rl("cprate-rej-%d" % prn,
+                            "PRN %d cp-rate REJECTED: fit %+.3f chips/s vs pooled clock "
+                            "%+.3f (dev %+.3f > --cp-rate-model-tol %.3f) -- position kept, "
+                            "clock rate seeded"
+                            % (prn, rate * ctx.args.hops_per_sec,
+                               _model * ctx.args.hops_per_sec, _dev, _tol),
+                            every_s=60.0)
+                    _seed_rate = _model
+            # ⚠️ SUBSTITUTE THE COMMAND ONLY, NEVER THE MEASUREMENT. `rate` stays the
+            # FITTED slope below this line, because the two consumers underneath are
+            # measurements: ctx.cpt.fit_slope feeds CARRIER-FROM-CODE (a shadow), and
+            # code_clock_bias_sample() contributes this satellite's l-a sample to the very
+            # pool `_model` was computed from. Overwriting `rate` here would feed the clock
+            # a sample derived from the clock -- a self-reference that reinforces whatever
+            # the pool already believes, which is the mirror #33/GAP-2 was.
             seed.put("cp_fit", epoch=h0,
-                     code_phase_rate=rate, ref_hop=h0, code_phase_chips=cp_ref)
+                     code_phase_rate=_seed_rate, ref_hop=h0, code_phase_chips=cp_ref)
             ctx.fitted.add(prn)
             ctx.cpt.fit_slope[prn] = rate * ctx.args.hops_per_sec   # chips/s, for CARRIER-FROM-CODE
             # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
@@ -472,6 +544,7 @@ def stage_detections_to_seeds(ctx):
                 # the search's period -- a nonzero m on a STRONG satellite now means the
                 # source broke, which is worth an alarm rather than a silent repair.
                 # --period-continuity correct restores the old override if ever needed.
+                _nh_deferred = False
                 prev = ctx.cpt.ph_hist.get(prn)
                 if prev is not None and ctx.args.period_continuity != "off":
                     h0, ph0, dop0 = prev
@@ -500,11 +573,60 @@ def stage_detections_to_seeds(ctx):
                                     every_s=60.0)
                         if ctx.args.period_continuity == "correct":
                             ph = (ph + m * ctx.code_len) % LLc
+                        elif m and ctx.args.nh_period_debounce > 0:
+                            # ── THE PERIOD DEBOUNCE (#97, --nh-period-debounce) ──────────
+                            # The search's measured overlay period TOGGLES +-1 on strong
+                            # satellites (snr 284-413 measured 2026-08-28, fine phase right
+                            # to ~0.5 chip, period alone wrong; ~37-49 alarms/h fleet-wide
+                            # and present in the 08-19 archive). Each single-detection flip
+                            # rewrote the seed by a whole code period, all 12 nodes stepped
+                            # together (SEEDAUDIT +-10230-chip step-back pairs 2 s apart),
+                            # q cratered for 1-2 polls, and the per-sat whole-period step
+                            # rate ranked exactly with the observed q churn (G18 39/55min
+                            # worst, G26 8 best).
+                            #
+                            # A CHANGED period must be confirmed by this many CONSECUTIVE
+                            # detections (same m) before it is adopted. Until then the seed
+                            # carries the MEASURED fine phase with the STANDING period --
+                            # we never invent a phase, we only refuse to move the ambiguity
+                            # integer on one detection's word.
+                            #
+                            # This is NOT the 2026-08-02 self-poisoning override that
+                            # period_continuity == "check" retired. That loop stored its
+                            # OWN correction in ph_hist, so one bad fix was permanent.
+                            # Here, ph_hist is NOT updated while a period is pending
+                            # (neither with the correction nor with the unconfirmed
+                            # measurement -- storing the flipped phase is what made the
+                            # NEXT, correct detection alarm and step back), and a real
+                            # period change is adopted after N consecutive detections
+                            # (~2N s at the revisit), so there is no deadlock at a wrong
+                            # value. Mutually exclusive with "correct" by the elif.
+                            _pm, _pc = ctx.cpt.nh_pending.get(prn, (0, 0))
+                            _pc = _pc + 1 if _pm == m else 1
+                            ctx.cpt.nh_pending[prn] = (m, _pc)
+                            if _pc < ctx.args.nh_period_debounce:
+                                ph = (ph + m * ctx.code_len) % LLc
+                                _nh_deferred = True
+                                _log_rl("phdeb-%d" % prn,
+                                        "PRN %d period DEBOUNCED: measured %+d period(s) "
+                                        "off the standing one (%d/%d consecutive) -- "
+                                        "standing period kept, measured fine phase seeded"
+                                        % (prn, m, _pc, ctx.args.nh_period_debounce),
+                                        every_s=60.0)
+                            else:
+                                ctx.cpt.nh_pending.pop(prn, None)
+                                _log("PRN %d period ADOPTED: %+d period(s), confirmed by "
+                                     "%d consecutive detection(s)" % (prn, m, _pc))
+                        elif not m:
+                            ctx.cpt.nh_pending.pop(prn, None)
                 # Feed history only from detections whose phase means something. Below the
                 # bar the phase is noise (measured: snr < 60 gives ~2000-chip within-period
                 # residuals against a few chips above it), and a noise entry poisons every
                 # comparison until that PRN is seen again -- 90-270 s at CHORD's revisit.
-                if snr >= ctx.args.period_check_snr or prn not in ctx.cpt.ph_hist:
+                # A DEBOUNCE-DEFERRED period feeds nothing: the corrected phase is our own
+                # word (the 2026-08-02 poison) and the measured one is unconfirmed.
+                if not _nh_deferred and (snr >= ctx.args.period_check_snr
+                                         or prn not in ctx.cpt.ph_hist):
                     ctx.cpt.ph_hist[prn] = (ref_hop, ph, dop)
                 # --nh-period-offset: applied HERE, after the continuity check has had its
                 # say, and to the phase rather than the argument -- propagate_seed prefers

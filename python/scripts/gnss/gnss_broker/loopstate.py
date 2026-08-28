@@ -170,7 +170,7 @@ class CpTracking(object):
     """
 
     __slots__ = ("err_hist", "escape", "escape_sign", "fit_slope", "hist", "translated",
-                 "dop_hist", "ph_hist", "dop_clamped")
+                 "dop_hist", "ph_hist", "dop_clamped", "nh_pending")
 
     def __init__(self):
         self.err_hist = {}      # prn -> recent (predicted - observed) code phase
@@ -182,6 +182,8 @@ class CpTracking(object):
         self.dop_hist = {}      # prn -> recent Doppler observations
         self.ph_hist = {}       # prn -> recent carrier-phase observations
         self.dop_clamped = set()  # prns whose Doppler hit a clamp this pass
+        self.nh_pending = {}    # prn -> (m, count): a measured overlay period awaiting
+                                # confirmation before it may rewrite the standing one (#97)
 
 
 class RateFeedState(object):

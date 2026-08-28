@@ -1362,3 +1362,82 @@ Galileo's trims sit at −0.3 to −1.9 chips and never rail; gps_l5's cross the
 
 ⚠️ Judge on **duty cycle over a run**, never a snapshot — an instantaneous count of a
 sawtoothing population is a sample of the phase, not of the health.
+
+### #96 RESOLUTION (2026-08-28 morning) — two layers found, one armed
+
+The "~3 ppb integration" framing was wrong: the commanded code rate is an **unbounded
+per-satellite least-squares fit** (`fit_cp_rate`) that only gps_l5 reaches (it is the only
+chain with a `--detectors` endpoint; the other four carry `--dr-clock-adopt` and get one
+shared clock — gps_l5 is the clock master of #75 and cannot adopt). Measured that morning:
+median fit 0.049 chips/s (true clock 0.047), p90 2.16, **p99 177, max 994 chips/s** —
+the cp history is nearest-wrap unwrapped mod 10230, so one mis-wrap injects a whole code
+period into the slope. Its sibling `fit_dop_rate` has min_pts/min_span/max_rate AND a model
+cross-check (added 2026-08-05); the code-rate fit had none of the four.
+
+Stratified on pre-fit prompt/noise (the confound: a fading sat makes a noisy fit AND drops
+out on its own): at matched strength p/noise 5–15 the 40 s dropout rate was 0.4% after a
+clean fit and **21.4%** after a blown one — and blown-fit sats at 5–15 dropped MORE than
+clean-fit sats genuinely weaker (8.8% at p/noise 0–5), an ordering weakness cannot produce.
+
+**Armed 2026-08-28 11:32: `fit-min-snr` 0 → 30** (the SNR the code already trusts this fit
+at — `acquire-snr` gates the same fit's l−a contribution). Judged on the frozen instrument,
+matched windows, gal_e5a/bds_b2a as no-fit controls: blown fits 23.97% → **0.00%** at
+unchanged fit rate; gps dropout 0.72% → 0.16% (expected 18.6 under the old rate, saw 4,
+Poisson p ~1e-4); bds_b2a control flat to three digits. blown% has no control (only gps
+fits) and pre-arm swung 0.1–25%/h — needs the afternoon to confirm across bad hours.
+
+Built, NOT armed: `--cp-rate-model-tol` (reject a fit whose rate departs the pooled l−a
+clock by > tol chips/s; deviation not magnitude, because the clock is ~0.047 calibrated but
+~3.45 chips/s uncalibrated and the feed-forward must survive; substitute the COMMAND only —
+the l−a sample and fit_slope stay measured, or the pool feeds on itself). tol 0.5 is
+mid-plateau (0.3–1.0 identical: 2.3% rejected, 34.3% of dropouts caught). ⚠️ No fixture
+reaches the fit (7 detections in replay, hist=1 < 3, code_ema None) — EQUIVALENT is
+necessary-only here; live precondition verified (gps_l5 logs its l−a EMA with 6 fitted sats).
+
+**q churn was NOT fixed by this arm** (0.512 → 0.602) — that is #97's mechanism.
+
+## #97 — the search's measured NH overlay period toggles ±1 on STRONG sats; one detection rewrites the seed a whole code period
+
+**The q churn on gps_l5** (sats flipping q 0–4 second-to-second at search SNR in the
+hundreds; KV 2026-08-28). Case study G21, el 26°, q ~3.8 between events.
+
+### Causal chain (each link measured)
+
+1. The search's reported overlay period flips ±1 (once +8; a "+19" ≡ −1 mod 20) between
+   consecutive detections 2 s apart, **on strong detections** — snr 284–413, within-period
+   residual ±0.4–1.3 chips. The period-continuity regression detector (2026-08-02,
+   "a nonzero m on a STRONG satellite means the source broke") has been firing behind its
+   60 s/PRN rate-limit: 369 in 9.9 h pre-arm, 44/0.9 h post-arm, present in the 08-19
+   archive — NOT a fresh regression; the "9/9 on sky" verification was a small sample.
+2. The check is log-only, and the seed application has no confirmation gate, so each flip
+   lands via `nh_lift`: SEEDAUDIT shows ±10230.0-chip **step-back pairs 2 s apart**
+   (`cp0=nh_lift`), i.e. one wrong detection steps every node a whole period, the next
+   steps it back. ph_hist stores the flipped measurement (snr ≥ 60), which is why the
+   correct next detection also alarms.
+3. All 12 nodes step together (fleet 12/12 through the glitch), q craters 1–2 polls with
+   |disc| ~0.7–0.9 and NO trim response, then full recovery. Duty ruined, never a dropout.
+4. Per-sat whole-period step rate ranks EXACTLY with observed churn (55 min census):
+   G18 39 (worst, KV: "flipping q~0–5"), G25 44, G23 24, G21 22, G20 16, G11 10,
+   G26 8 (KV: "now looks solid").
+
+Ruled out: cp-fit re-anchors (glitches uniform in time-since-fit, controls identical);
+fades (p 36–88× through the glitch); per-node faults (12/12, common command).
+
+### Fix
+
+Broker mitigation BUILT, default-off: `--nh-period-debounce N` — a changed measured period
+must be confirmed by N consecutive detections (same offset) before adoption; until then the
+seed carries the MEASURED fine phase with the STANDING period, and ph_hist is not updated
+(neither our correction — the 2026-08-02 poison — nor the unconfirmed measurement). A real
+change adopts in ~2N s, so no deadlock at a wrong value. Alternating flips reset the count.
+Unit: test_nhdebounce.py. ⚠️ Same fixture blindness as the #96 guards: replay's 7 detections
+never reach the continuity check, so EQUIVALENT (3/3) is necessary-only; live proof is
+phdeb/ADOPTED lines at the known ~150/h chain-wide flip rate.
+
+### Open: the SOURCE defect
+
+Why does `peak_tau_samples`' period flip on a 300-SNR satellite while the fine phase stays
+right? C++/GPU search dig (GnssChannelizedSearch, the 4371ff4eb period measurement). The
+debounce makes the command robust; it does not explain the search. NH Doppler-sideband
+capture (#41's geometry) does not obviously fit: reported Doppler moves ~1 Hz at the flips,
+not 50. Needs the search's per-detection (nh, cp_long, snr) against injection.
