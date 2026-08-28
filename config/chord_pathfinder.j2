@@ -696,8 +696,7 @@ dpdk:
     burst_size: 32
     # Reordering map index by output location. 
     # So [2, ...], maps CRS board with source_id 2 to output location 0, and so on.
-    crs_board_remap:
-        - [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15]
+    crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15]
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4
     lcore_start_delay: 10
