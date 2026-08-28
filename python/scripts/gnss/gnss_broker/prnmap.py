@@ -35,6 +35,9 @@ and a restart is a clean slate rather than a silently-inherited history.
 @author Keith Vanderlinde
 """
 
+import os
+import re
+
 from gnss_broker.transport import _get, _post, _log, _log_rl, log_tag
 
 
@@ -150,6 +153,59 @@ def _consensus(maps):
     return first
 
 
+# ---------------------------------------------------------------------------------------
+# SIGNAL CAPABILITY: which satellites can carry this chain's signal at all
+# ---------------------------------------------------------------------------------------
+_TLE_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps", "tle_gps-ops.txt")
+_TLE_NAME_RE = re.compile(r"GPS\s+B([A-Z]+)-?\d.*\(PRN\s*(\d+)\)")
+
+
+def signal_incapable_prns(signal):
+    """PRNs that provably CANNOT broadcast `signal`, or an empty set if we cannot tell.
+
+    ⚠️⚠️ WE WERE TRACKING SATELLITES THAT HAVE NEVER TRANSMITTED THE SIGNAL. Measured
+    2026-08-28: 11 of gps_l5's 32 slots held Block IIR / IIR-M satellites, which predate L5
+    entirely -- G7 sat at 70 deg elevation reporting q 0.96 forever. They cost a tracker slot
+    each, and worse, they fold 11 noise rows into the presence population that the gates then
+    have to be robust against.
+
+    Block is METADATA -- no almanac or TLE element carries it -- but Celestrak encodes it in
+    the satellite NAME ("GPS BIIR-5  (PRN 22)"), which is why this reads names rather than
+    hardcoding a list that goes stale as satellites launch and retire.
+
+    ⚠️ EXCLUDE ONLY WHAT WE CAN PROVE, AND KEEP EVERYTHING ELSE. A missing cache, an
+    unparseable name, a PRN absent from the file, or a constellation this does not model all
+    yield "not incapable" -- because the cost of wrongly excluding a real satellite (it can
+    never be tracked, and nothing says why) is far worse than the cost of keeping a dead slot.
+    Same polarity as _rec_is_fresh: reject the provable, never refuse on doubt.
+
+    ⚠️ GPS ONLY, and deliberately. Every Galileo satellite carries E5a/E5b, and the BeiDou
+    chains already exclude BDS-2 with alm_min_prn -- so there is nothing to model there, and a
+    filter that pretended otherwise would be a second place for a constellation to go dark.
+    """
+    try:
+        from gps_beamtrack import _signal_block_filter
+        pred = _signal_block_filter(signal)
+    except Exception:
+        return set()
+    if pred is None:                      # every satellite carries it (e.g. L1 C/A)
+        return set()
+    try:
+        with open(_TLE_CACHE) as f:
+            txt = f.read()
+    except Exception:
+        return set()
+    out = set()
+    for m in _TLE_NAME_RE.finditer(txt):
+        block, prn = m.group(1), int(m.group(2))
+        try:
+            if not pred(block):
+                out.add(prn)
+        except Exception:
+            continue
+    return out
+
+
 def stage_prn_membership(ctx):
     """Reconcile the nodes' slot->PRN map against live BRDC. Off unless --prn-reconfig.
 
@@ -197,6 +253,20 @@ def stage_prn_membership(ctx):
     # broadcast B2a" rule the manifest states beside the list. So absence from pred means
     # "not a satellite this chain could ever track", not merely "not up".
     el = {p: v[2] for p, v in (ctx.pred or {}).items()}
+    # ⚠️ A SATELLITE THAT CANNOT BROADCAST THIS SIGNAL IS NOT A CANDIDATE FOR A SLOT. Dropping
+    # them here (rather than in desired_map) means they read as "not in the sky" throughout:
+    # never wanted, and their slots therefore reusable.
+    _incap = signal_incapable_prns(getattr(a, "signal", ""))
+    if _incap:
+        _drop = sorted(p for p in el if p in _incap)
+        if _drop:
+            el = {p: e for p, e in el.items() if p not in _incap}
+            _log_rl("prnmap-incap",
+                    "PRN MAP %s: %d satellite(s) excluded -- they do not broadcast this "
+                    "signal at all (%s). They were holding tracker slots and folding noise "
+                    "rows into the presence population."
+                    % (log_tag() or a.signal, len(_drop),
+                       ", ".join("PRN %d" % p for p in _drop[:10])), every_s=600.0)
     if not el:
         return  # no prediction this cycle: say nothing rather than evict the whole map
 
