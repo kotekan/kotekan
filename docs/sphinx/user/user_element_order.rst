@@ -80,7 +80,22 @@ Stages that interpret (rather than just relay) element-ordered data take an
 ``input_order`` option, set to one of the enum names above. These currently
 include ``N2Accumulate``, ``N2TimeDownsample``, ``calcBBPhase``,
 ``hdf5N2Write``, ``hdf5FileWrite``, and the CUDA FRB beamformer kernels.
-The CHORD pathfinder pipeline uses ``CHORDEarly`` throughout.
+The CHORD pathfinder pipeline uses ``CHORDBeamformer`` throughout, which is
+also the telescope's fiducial ordering
+(``CHORDTelescope::fiducial_element_order()``).
+
+An ordering is *established* where the voltage data is first laid out, which
+need not match how the inputs arrive. The CHORD F-engine delivers elements in
+crate order --- element :math:`8s + l` for lane :math:`l` of source (CRS
+board) :math:`s`. Only the polarization split has to be fixed in the data,
+because it is a fixed stride of :math:`N_d` that no dish table can express;
+the dish order within a polarization is free, and is simply recorded by
+``dish_inputs``. Since each CRS board carries one polarization, the split is
+a permutation of whole boards, which the DPDK capture worker applies through
+its ``element_long_map`` option (``element_long_map[source_id]`` gives the
+``element_long`` block that board's payload is copied into). That leaves the
+payload contiguous, so it costs one table lookup per packet. The map and
+``dish_inputs`` describe the same axis and have to be changed together.
 
 In data files
 =============

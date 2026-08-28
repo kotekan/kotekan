@@ -57,10 +57,11 @@
 {% set rfi_second_downsampling_factor = 32 %}
 {% set rfi_num_times = samples_per_data_set // rfi_downsampling_factor %}  {# = 32 #}
 {% set rfi_num_times_bar = rfi_num_times //  rfi_second_downsampling_factor %}  {# = 1 #}
-# Number of live/connected feeds: the ArrayDish entries in dish_inputs
-# (A1, A6, A7 x 2 pol = 6 today; Fake/RFI entries are masked by set_bf_mask).
+# Number of feeds with a dish actually connected (A1, A6, A7 x 2 pol = 6 today).
+# In CHORDBeamformer order those are elements 0, 9, 10 and 64, 73, 74; the rest of
+# the declared dishes carry encoded zeros and are masked by set_bf_mask.
 # Used to scale the feed-averaged SK validity threshold so the gate can pass
-# with only these feeds present (see below). Keep in step with dish_inputs.
+# with only these feeds present (see below). Keep in step with the wiring.
 {% set rfi_num_good_feeds = 6 %}
 
 ---
@@ -161,88 +162,87 @@ telescope:
     dish_vert_axis: [0.0, 0.0, 1.0]
 
     dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
-    check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
+    check_duplicate_dish_grid: true  # One dish entry per grid location, both pols
 
     dish_grid_size_x: 8
     dish_grid_size_y: 12
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
-    # Live wiring (July 22 2026): 4 CRS boards (crate slots 1-4) x 8 ADCs = 32 inputs.
-    # Element order eventually needs to be [P][D] (CHORDBeamformer) but for
-    # now is not actually consistent with that.
+    # Live wiring (July 22 2026): 4 CRS boards (crate slots 1-4) x 8 ADCs = 32 inputs,
+    # covering dishes A1-A8 and B1-B8.  All 64 dish positions are declared so the
+    # element_long_map below (which addresses all 16 boards) has a home for every element;
+    # boards that are not yet wired deliver 0x88, the encoded zero.
+    #
+    # Element order is [P][D] (CHORDBeamformer): element = polarization * num_dishes +
+    # dish_idx.  The dpdk capture worker groups the polarizations by placing each board's
+    # payload in the right element_long block; dish_idx within a polarization is left in
+    # crate order, which is what this table records.  dish_idx d is X pol of crate slot
+    # 2*(d/8)+1 lane d mod 8, and Y pol of the slot after it.
     dish_inputs: [
-        # slot 1: X pol of A1-A4, B1-B4 (elements 0-7)
-        {dish_idx: 0,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1X},
-        {dish_idx: 1,  grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A2X},
-        {dish_idx: 2,  grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A3X},
-        {dish_idx: 3,  grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A4X},
-        {dish_idx: 4,  grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B1X},
-        {dish_idx: 5,  grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B2X},
-        {dish_idx: 6,  grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3X},
-        {dish_idx: 7,  grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4X},
-        # slot 2: Y pol of A1-A4, B1-B4 (elements 8-15)
-        {dish_idx: 8,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1Y},
-        {dish_idx: 9,  grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A2Y},
-        {dish_idx: 10, grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A3Y},
-        {dish_idx: 11, grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A4Y},
-        {dish_idx: 12, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B1Y},
-        {dish_idx: 13, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B2Y},
-        {dish_idx: 14, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3Y},
-        {dish_idx: 15, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4Y},
-        # slot 3: X pol of A5-A8, B5-B8 (elements 16-23)
-        {dish_idx: 16, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5X},
-        {dish_idx: 17, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6X},
-        {dish_idx: 18, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7X},
-        {dish_idx: 19, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A8X},
-        {dish_idx: 20, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B5X},
-        {dish_idx: 21, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B6X},
-        {dish_idx: 22, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B7X},
-        {dish_idx: 23, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B8X},
-        # slot 4: Y pol of A5-A8, B5-B8 (elements 24-31)
-        {dish_idx: 24, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5Y},
-        {dish_idx: 25, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6Y},
-        {dish_idx: 26, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7Y},
-        {dish_idx: 27, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A8Y},
-        {dish_idx: 28, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B5Y},
-        {dish_idx: 29, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B6Y},
-        {dish_idx: 30, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B7Y},
-        {dish_idx: 31, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B8Y},
-        # slot 5: X pol of C1-C4, D1-D4 (elements 32-39)
-        {dish_idx: 32,  grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C1X},
-        {dish_idx: 33,  grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C2X},
-        {dish_idx: 34,  grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C3X},
-        {dish_idx: 35,  grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C4X},
-        {dish_idx: 36,  grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D1X},
-        {dish_idx: 37,  grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D2X},
-        {dish_idx: 38,  grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D3X},
-        {dish_idx: 39,  grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D4X},
-        # slot 6: Y pol of C1-C4, D1-D4 (elements 40-47)
-        {dish_idx: 40,  grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C1Y},
-        {dish_idx: 41,  grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C2Y},
-        {dish_idx: 42,  grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C3Y},
-        {dish_idx: 43,  grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C4Y},
-        {dish_idx: 44,  grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D1Y},
-        {dish_idx: 45,  grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D2Y},
-        {dish_idx: 46,  grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D3Y},
-        {dish_idx: 47,  grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D4Y},
-        # slot 7: X pol of C5-C8, D5-D8 (elements 48-55)
-        {dish_idx: 48,  grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C5X},
-        {dish_idx: 49,  grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C6X},
-        {dish_idx: 50,  grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C7X},
-        {dish_idx: 51,  grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C8X},
-        {dish_idx: 52,  grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D5X},
-        {dish_idx: 53,  grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D6X},
-        {dish_idx: 54,  grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D7X},
-        {dish_idx: 55,  grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D8X},
-        # slot 8: Y pol of C5-C8, D5-D8 (elements 56-63)
-        {dish_idx: 56,  grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C5Y},
-        {dish_idx: 57,  grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C6Y},
-        {dish_idx: 58,  grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C7Y},
-        {dish_idx: 59,  grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C8Y},
-        {dish_idx: 60,  grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D5Y},
-        {dish_idx: 61,  grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D6Y},
-        {dish_idx: 62,  grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D7Y},
-        {dish_idx: 63,  grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D8Y}
+        {dish_idx:  0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1},
+        {dish_idx:  1, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A2},
+        {dish_idx:  2, grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A3},
+        {dish_idx:  3, grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A4},
+        {dish_idx:  4, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B1},
+        {dish_idx:  5, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B2},
+        {dish_idx:  6, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3},
+        {dish_idx:  7, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4},
+        {dish_idx:  8, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5},
+        {dish_idx:  9, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6},
+        {dish_idx: 10, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7},
+        {dish_idx: 11, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A8},
+        {dish_idx: 12, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B5},
+        {dish_idx: 13, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B6},
+        {dish_idx: 14, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B7},
+        {dish_idx: 15, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B8},
+        {dish_idx: 16, grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C1},
+        {dish_idx: 17, grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C2},
+        {dish_idx: 18, grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C3},
+        {dish_idx: 19, grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C4},
+        {dish_idx: 20, grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D1},
+        {dish_idx: 21, grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D2},
+        {dish_idx: 22, grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D3},
+        {dish_idx: 23, grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D4},
+        {dish_idx: 24, grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C5},
+        {dish_idx: 25, grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C6},
+        {dish_idx: 26, grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C7},
+        {dish_idx: 27, grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C8},
+        {dish_idx: 28, grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D5},
+        {dish_idx: 29, grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D6},
+        {dish_idx: 30, grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D7},
+        {dish_idx: 31, grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D8},
+        {dish_idx: 32, grid_x_idx: 0,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E1},
+        {dish_idx: 33, grid_x_idx: 1,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E2},
+        {dish_idx: 34, grid_x_idx: 2,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E3},
+        {dish_idx: 35, grid_x_idx: 3,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E4},
+        {dish_idx: 36, grid_x_idx: 0,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F1},
+        {dish_idx: 37, grid_x_idx: 1,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F2},
+        {dish_idx: 38, grid_x_idx: 2,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F3},
+        {dish_idx: 39, grid_x_idx: 3,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F4},
+        {dish_idx: 40, grid_x_idx: 4,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E5},
+        {dish_idx: 41, grid_x_idx: 5,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E6},
+        {dish_idx: 42, grid_x_idx: 6,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E7},
+        {dish_idx: 43, grid_x_idx: 7,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E8},
+        {dish_idx: 44, grid_x_idx: 4,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F5},
+        {dish_idx: 45, grid_x_idx: 5,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F6},
+        {dish_idx: 46, grid_x_idx: 6,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F7},
+        {dish_idx: 47, grid_x_idx: 7,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F8},
+        {dish_idx: 48, grid_x_idx: 0,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G1},
+        {dish_idx: 49, grid_x_idx: 1,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G2},
+        {dish_idx: 50, grid_x_idx: 2,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G3},
+        {dish_idx: 51, grid_x_idx: 3,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G4},
+        {dish_idx: 52, grid_x_idx: 0,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H1},
+        {dish_idx: 53, grid_x_idx: 1,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H2},
+        {dish_idx: 54, grid_x_idx: 2,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H3},
+        {dish_idx: 55, grid_x_idx: 3,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H4},
+        {dish_idx: 56, grid_x_idx: 4,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G5},
+        {dish_idx: 57, grid_x_idx: 5,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G6},
+        {dish_idx: 58, grid_x_idx: 6,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G7},
+        {dish_idx: 59, grid_x_idx: 7,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G8},
+        {dish_idx: 60, grid_x_idx: 4,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H5},
+        {dish_idx: 61, grid_x_idx: 5,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H6},
+        {dish_idx: 62, grid_x_idx: 6,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H7},
+        {dish_idx: 63, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H8}
     ]
 
     require_gps: true
@@ -800,6 +800,20 @@ dpdk:
     payload_size: 6144
     max_rx_pkt_len: 6208
     burst_size: 32
+    # Group the polarizations in the captured frame. Each CRS board carries one
+    # polarization, so sending the X boards (even crate slots) to element_long 0-7 and
+    # the Y boards to 8-15 puts one polarization in elements 0-63 and the other in
+    # 64-127, which is the [P][D] order the GPU kernels index. The board's payload stays
+    # a contiguous 128-byte block either way, so the streaming stores in
+    # packet_copy_to_frame are unchanged and this costs one table lookup per packet.
+    #
+    # Dish order within a polarization is left in crate order and recorded by
+    # dish_inputs; only the polarization split has to be done in the data, because it is
+    # a fixed stride of num_dishes that no dish table can express.
+    #
+    # All 16 boards are mapped though only slots 1-4 are wired; the rest deliver encoded
+    # zeros, so bringing a board online needs no change here.
+    element_long_map: [0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15]
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4
     lcore_start_delay: 10

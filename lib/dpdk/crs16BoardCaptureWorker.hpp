@@ -62,6 +62,12 @@ protected:
 
     std::vector<uint32_t> stream_ids_expected;
 
+    /// Which element_long block each CRS board's inputs are copied into, as
+    /// element_long_map[source_id].  Each board carries the inputs of one polarization, so
+    /// mapping boards to blocks is enough to group the polarizations without splitting a
+    /// board's 128-byte payload.  Defaults to the identity, i.e. crate order.
+    std::vector<uint32_t> element_long_map;
+
     bool first_run = true;
 
     uint64_t time_samples_per_frame;
@@ -102,16 +108,48 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
     receipt_bitmap_buf->register_producer(unique_name);
 
     if ((out_buf->frame_size % (payload_size * num_source_ids * num_stream_ids)) != 0) {
-        throw std::runtime_error("The buffer frame size must be a multiple of the combined payload "
-                                 "size of all source and stream IDs for a given time sample.");
+        FATAL_ERROR("The buffer frame size must be a multiple of the combined payload size of "
+                    "all source and stream IDs for a given time sample.");
     }
 
     if ((payload_size % 32) != 0) {
-        throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
+        FATAL_ERROR("The packet_size must be a multiple of 32 bytes");
     }
 
     if (payload_size + header_size != packet_size) {
-        throw std::runtime_error("The packet_size must be payload_size + header_size bytes");
+        FATAL_ERROR("The packet_size must be payload_size + header_size bytes");
+    }
+
+    // Board-to-element_long map. An empty or absent table leaves the frame in crate order.
+    element_long_map =
+        config.get_default<std::vector<uint32_t>>(unique_name, "element_long_map", {});
+    if (element_long_map.empty()) {
+        element_long_map.resize(num_source_ids);
+        for (uint32_t i = 0; i < num_source_ids; i++)
+            element_long_map[i] = i;
+    } else {
+        // A map that is not a permutation would overwrite one board's data with another's
+        // and leave a block unwritten, so reject it rather than corrupt the frame.
+        if (element_long_map.size() != num_source_ids) {
+            FATAL_ERROR("element_long_map has {:d} entries, expected num_source_ids ({:d})",
+                        element_long_map.size(), num_source_ids);
+        }
+        std::vector<bool> seen(num_source_ids, false);
+        for (uint32_t src = 0; src < num_source_ids; src++) {
+            const uint32_t dst = element_long_map[src];
+            if (dst >= num_source_ids) {
+                FATAL_ERROR("element_long_map[{:d}] = {:d} is not less than num_source_ids "
+                            "({:d})",
+                            src, dst, num_source_ids);
+            }
+            if (seen[dst]) {
+                FATAL_ERROR("element_long_map sends more than one source_id to element_long "
+                            "{:d}; it must be a permutation of [0, {:d})",
+                            dst, num_source_ids);
+            }
+            seen[dst] = true;
+        }
+        INFO("crs16BoardCaptureWorker {}: element_long_map active", unique_name);
     }
 
     packets_per_frame = out_buf->frame_size / payload_size;
@@ -322,7 +360,10 @@ inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf,
                                                           uint64_t relative_seq_num,
                                                           uint16_t stream_id, uint16_t source_id) {
     const uint64_t time_long = relative_seq_num / 16;
-    const uint64_t element_long = source_id;
+    // Placing the board's payload in a different element_long block is all it takes to
+    // group the polarizations: the block is still 128 contiguous bytes, so the streaming
+    // stores below are unchanged.
+    const uint64_t element_long = element_long_map[source_id];
 
     // Base offset calculation
     // stride_time_long = (num_stream_ids * 48) * 2048
