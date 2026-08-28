@@ -556,7 +556,27 @@ def stage_fleet_dll(ctx):
                            "  *** %d FUTURE instance(s) >0.5 s AHEAD: %s"
                            % (len(_fut), ",".join(sorted(_fut)[:4]))),
                         every_s=30.0)
-        if ctx.args.instance_stall_s > 0 and ctx.dllp.inst_hops:
+        # ⚠️⚠️ dr_state CAN BE None, AND DEREFERENCING IT HERE KILLED ALL FIVE CHAINS
+        # (2026-08-28 00:11). It starts None and is only assigned when the dead-reckon block
+        # succeeds -- which is inside a try/except that DISABLES dead reckoning and logs
+        # "dead-reckon unavailable", leaving None behind. This line then raised
+        # AttributeError inside the cycle, which is fatal to a chain rather than to a stage.
+        #
+        # A chain that has lost dead reckoning should run DEGRADED, not die: everything else
+        # in this stage -- the trims, the presence verdicts, the axis checks -- is still
+        # valid. Skipping one stall check is a smaller loss than the whole chain, and the
+        # difference decided a fleet-wide outage.
+        #
+        # ⚠️ SAY SO RATHER THAN SKIPPING QUIETLY. A silent skip here would make a chain with
+        # no dead reckoning indistinguishable from one whose instances are simply healthy.
+        if ctx.args.instance_stall_s > 0 and ctx.dllp.inst_hops and ctx.dr_state is None:
+            _log_rl("inststall-nodr",
+                    "instance-stall check SKIPPED: dr_state is None, so dead reckoning never "
+                    "initialised on this chain (look for 'dead-reckon unavailable' at "
+                    "startup). The chain is running DEGRADED -- seeds are not being "
+                    "dead-reckoned -- which is a bigger problem than the skipped check.",
+                    every_s=120.0)
+        elif ctx.args.instance_stall_s > 0 and ctx.dllp.inst_hops:
             _ih, _stalled = instance_stall_verdict(
                 ctx.dr_state.get("inst_hops", {}), ctx.dllp.inst_hops, ctx.t0,
                 ctx.args.instance_stall_s)
