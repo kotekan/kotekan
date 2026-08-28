@@ -82,7 +82,48 @@ kotekan wrapper simply never plumbs it. T=2 -> blocks AA/AB/BB = 3, so dropping 
 GATE: compute M² BOTH ways for a run and assert bit-equality (or bound the difference)
 BEFORE disabling BB. They should agree exactly; if they do not, that is a finding.
 
-## 2. TWO Doppler-free tables per channel, shared by every PRN  [CPU PATH DONE; GPU NEXT]
+## 2. TWO Doppler-free tables per channel, shared by every PRN
+##    [CORRECT AND GATED -- but SLOWER ON THE NODE GPU. NOT ARMED.]
+
+### THE VERDICT (measured 2026-08-28, scripts/gnss/phisharegpu)
+
+|  n_prn | per-PRN tables | L40S (cf06, 96 MB L2) | **A40 (NODE, 6 MB L2)** |
+|--------|----------------|-----------------------|-------------------------|
+|   8    |  58.7 MB       | 0.62x  SLOWER         | **0.88x SLOWER**        |
+|  16    | 117.4 MB       | 1.22x  faster         | --                      |
+|  24    | 176.2 MB       | 1.04x  (no change)    | **0.92x SLOWER**        |
+|  32    | 234.9 MB       | 1.24x  faster         | **0.89x SLOWER**        |
+
+**The mechanism is real and the hardware does not have it.** On the L40S there is a clean
+crossover: below ~96 MB the per-PRN tables already fit L2, so the shared path only pays the
+reconstruction (a per-chip sincos + 2 loads) and loses; above it, the shared 14.7 MB is
+resident where 176-235 MB is not, and it wins. **The nodes are A40s with 6 MB of L2, where
+14.7 MB does not fit either** -- so there is no residency to buy, only the cost to pay, and it
+is slower at every PRN count.
+
+That is the second projected win this session (after 1b) to be killed by measurement on the
+target, both from architectural arguments that were sound in the abstract -- block counts
+there, cache footprint here. The pattern is worth naming: *an argument about the memory
+hierarchy is a hypothesis about a SPECIFIC part number.* cf06's L40S is not the node.
+
+### WHAT IS NEVERTHELESS TRUE, and why the code stays (default off, gates green)
+
+  * It is CORRECT: phisharegpu ALL PASS on both GPUs, worst 4.3e-6 at -5 kHz (77x under
+    fp16), ddw == 0 exact. e2e 17.612 unchanged; n2dualtest 6/6; phishare ALL PASS.
+  * It frees **1.8-2.4 GB of GPU allocation per node** (176-235 MB x 10 chain-instances),
+    which is not the bottleneck today at 48 GB but is the kind of headroom the dual
+    correlator's 1.61 GB synth ring eats.
+  * It would be a ~1.2x win on L40S-class hardware at the deployed PRN counts. If the node
+    GPUs are ever refreshed, this is already built and gated.
+
+### THE OBVIOUS NEXT LEVER IF ANYONE REVISITS IT
+
+The reconstruction costs a `__sincosf` PER CHIP, chosen for clamp-safety over advancing the
+rotor multiplicatively (see chip_gather3's note). The measured penalty is only 8-12%, so
+removing the transcendental could plausibly close it -- and on the L40S would widen the win.
+That is a measurement, not a certainty, and it needs the clamp cases handled honestly.
+
+### the design and its validation (unchanged, all of it still holds)
 
 STATUS 2026-08-28:
   * [x] reconstruction validated on the real tables (phibits [2c])
