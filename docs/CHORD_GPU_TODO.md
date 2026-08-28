@@ -20,7 +20,36 @@ Tiles/channel 52 -> 16; tiles buffer 2,981,888 -> 917,504 B (7-chan GPU) and
 2,555,904 -> 786,432 B (6-chan), a **69% cut**, times 10 chain-instances per node.
 Gate: n2dualtest 6/6 (incl. [3] AA-prefix bitwise), e2e unchanged at 17.612 chips.
 
-## 1b. Disable the BB block CLASS in the correlator  [READY -- mechanism already proven]
+## 1b. Disable the BB block CLASS in the correlator  [MEASURED: NO WIN -- NOT ARMED]
+
+**The projected ~33-50% correlator saving does not exist at the deployed geometry.**
+Measured on an L40S with n2timing case [5] (added for this), three runs: **1.00-1.01x**,
+0.150 ms -> 0.148 ms.
+
+Why, and it is not subtle once measured: under `gnss_freq_map: true` -- which all 10
+chain-instances set -- the launch already covers only the 7-channel comb, and AA is ALREADY
+masked off (the existing code picks MIXED|BB when the freq map is on; my earlier claim that
+all three classes were computed was wrong). So the comparison is **14 thread blocks vs 7**,
+on a GPU with **142 SMs**. Both launches occupy under 10% of the device and are
+launch-latency-bound, not throughput-bound. Halving an already-empty launch buys nothing.
+
+The correlator is simply not where the time is: its marginal cost is 0.150 ms against
+synthesis at ~536 us for a single 11-job x 7-chan launch (§10.6c). **That reranks the queue:
+item 2 (shared Phi) is the top item, and 1b is closed.**
+
+KEPT from this work, because both are worth having:
+  * n2dualtest [5b] `class-mask AA|MIXED (SHIPPED) vs full, bitwise` and [5c] `BB region
+    left UNCOMPUTED` -- these prove the mask path in the direction we would ship (gate [5]
+    only ever tested the mirror image) and that a masked launch writes survivors at their
+    FULL-TRIANGLE offsets. If BB is ever masked off for a non-performance reason, this is
+    the gate that makes it safe.
+  * n2timing [5], which records the null result so nobody re-derives the projection.
+
+⚠️ ONE THING THIS BENCH CANNOT SEE: it times a launch in ISOLATION. In production 10
+chain-instances share 2 GPUs, so fewer blocks might still help under contention. That is a
+hypothesis, not a measurement, and it is not a reason to arm.
+
+### superseded plan (kept for the argument, not the numbers)
 
 n2dualtest gate **[5] `class-mask MIXED|BB vs full, bitwise` passes with 0 mismatches**,
 and it compares the masked output against the full one AT THE SAME NS STRIDE -- so a masked

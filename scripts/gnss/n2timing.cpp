@@ -135,6 +135,20 @@ int main(int argc, char** argv) {
                                     [&] {
             dcomb.launch(v_comb, dA, dB, drm, 1, NT_INNER, nullptr, false);
         });
+
+        // [5] THE SHIPPED LAUNCH AS OF 2026-08-28 (GPU TODO 1b): MIXED ONLY. The BB
+        // (synth x synth) block has no consumer -- its single reader in
+        // GnssN2RecordAssemble threw the value away and was removed in 1a -- so it is
+        // masked off. Against [4] this is the whole of 1b's win, measured rather than
+        // argued: with AA already off under the freq map, dropping BB takes the launch
+        // from 2 of 3 block classes to 1.
+        n2k_dual::DualCorrelatorParams pmx(NSA, NSB, NF, n2k_dual::BLOCK_MASK_MIXED, comb);
+        n2k_dual::DualCorrelator dmx(pmx);
+        const double t_mx = bench("[5] dual   MIXED ONLY over the comb (SHIPPED, 1b)", [&] {
+            dmx.launch(v_comb, dA, dB, drm, 1, NT_INNER, nullptr, false);
+        });
+        printf("      -> 1b saving vs [4]: %.2fx (%.3f ms -> %.3f ms)\n",
+               t_comb / t_mx, t_comb, t_mx);
         printf("\n    stock + comb-only path B : %.3f ms = %.2fx stock  (+%.3f ms marginal)\n",
                t_stock + t_comb, (t_stock + t_comb) / t_stock, t_comb);
     }

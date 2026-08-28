@@ -166,6 +166,17 @@ static bool tiles_aa(int ihi, int jhi) {
 static bool tiles_mixed_bb(int ihi, int jhi) {
     return !tiles_aa(ihi, jhi);
 }
+/// The block classes the GNSS chain actually SHIPS with (docs/CHORD_GPU_TODO.md 1b): AA is
+/// production's N^2 prefix, MIXED is the despread. BB (synth x synth) has no consumer -- its
+/// only reader threw the value away -- so it is masked off. Gate [5] masks off AA, which is
+/// the MIRROR of this; a mask path can be right in one direction and wrong in the other, so
+/// the shipped combination gets its own case.
+static bool tiles_bb_only(int ihi, int jhi) {
+    return ihi >= NSA / 16 && jhi >= NSA / 16;
+}
+static bool tiles_aa_mixed(int ihi, int jhi) {
+    return !tiles_bb_only(ihi, jhi);
+}
 
 static int report(const char* name, const CmpStats& st) {
     printf("[%s] %-42s : %ld entries, %ld mismatches\n", st.bad ? "FAIL" : " OK ", name,
@@ -215,15 +226,18 @@ int main(int argc, char** argv) {
 
     const size_t nvis_a = (size_t)NT_OUTER * NF * ntiles(NSA) * 512;
     const size_t nvis_d = (size_t)NT_OUTER * NF * ntiles(NS) * 512;
-    int *va, *vd0, *vd, *vm;
+    int *va, *vd0, *vd, *vm, *vam;
     CK(cudaMalloc(&va, nvis_a * 4));
     CK(cudaMalloc(&vd0, nvis_a * 4));
     CK(cudaMalloc(&vd, nvis_d * 4));
     CK(cudaMalloc(&vm, nvis_d * 4));
+    CK(cudaMalloc(&vam, nvis_d * 4));
     CK(cudaMemset(va, 0xa5, nvis_a * 4)); // poison: unwritten entries differ unless written
     CK(cudaMemset(vd0, 0xa5, nvis_a * 4));
     CK(cudaMemset(vd, 0xa5, nvis_d * 4));
     CK(cudaMemset(vm, 0xa5, nvis_d * 4));
+    // 0xa5 fill is LOAD-BEARING for [5c]: an untouched BB region must still read 0xa5a5a5a5.
+    CK(cudaMemset(vam, 0xa5, nvis_d * 4));
 
     // ---- runs ----------------------------------------------------------------------------
     n2k::Correlator ref(NSA, NF);
@@ -240,11 +254,18 @@ int main(int argc, char** argv) {
     n2k_dual::DualCorrelator dmask(pm);
     dmask.launch(vm, da, db, drm, NT_OUTER, NT_INNER, nullptr, true);
 
-    std::vector<int> hva(nvis_a), hvd0(nvis_a), hvd(nvis_d), hvm(nvis_d);
+    // THE SHIPPED MASK: AA | MIXED, i.e. BB off (GPU TODO 1b).
+    n2k_dual::DualCorrelatorParams pam(NSA, NSB, NF,
+                                       n2k_dual::BLOCK_MASK_AA | n2k_dual::BLOCK_MASK_MIXED);
+    n2k_dual::DualCorrelator dam(pam);
+    dam.launch(vam, da, db, drm, NT_OUTER, NT_INNER, nullptr, true);
+
+    std::vector<int> hva(nvis_a), hvd0(nvis_a), hvd(nvis_d), hvm(nvis_d), hvam(nvis_d);
     CK(cudaMemcpy(hva.data(), va, nvis_a * 4, cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(hvd0.data(), vd0, nvis_a * 4, cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(hvd.data(), vd, nvis_d * 4, cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(hvm.data(), vm, nvis_d * 4, cudaMemcpyDeviceToHost));
+    CK(cudaMemcpy(hvam.data(), vam, nvis_d * 4, cudaMemcpyDeviceToHost));
 
     // ---- references ----------------------------------------------------------------------
     std::vector<int> ref_a = cpu_reference(ha, hrm, NSA);
@@ -276,6 +297,35 @@ int main(int argc, char** argv) {
         CmpStats st;
         cmp_tiles(st, "mask", hvm.data(), NS, hvd.data(), NS, tiles_mixed_bb);
         fails += report("[5] class-mask MIXED|BB vs full, bitwise", st);
+    }
+    // [5b] THE SHIPPED MASK. Two independent claims, because 1b relies on BOTH:
+    //   (a) every AA and MIXED tile is bit-identical to the full launch -- masking must not
+    //       perturb what it keeps, and the surviving blocks must land at their FULL-TRIANGLE
+    //       offsets (this is what lets the tile gather stay unchanged);
+    //   (b) the BB region is UNTOUCHED, still holding the 0xa5 fill -- i.e. the mask really
+    //       skipped that work rather than computing it anyway.
+    {
+        CmpStats st;
+        cmp_tiles(st, "shipmask", hvam.data(), NS, hvd.data(), NS, tiles_aa_mixed);
+        fails += report("[5b] class-mask AA|MIXED (SHIPPED) vs full, bitwise", st);
+    }
+    {
+        long untouched = 0, touched = 0;
+        for (int t = 0; t < NT_OUTER; t++)
+            for (int f = 0; f < NF; f++)
+                for (int ihi = 0; ihi < NS / 16; ihi++)
+                    for (int jhi = 0; jhi <= ihi; jhi++) {
+                        if (!tiles_bb_only(ihi, jhi))
+                            continue;
+                        const size_t o = ((size_t)(t * NF + f) * ntiles(NS)
+                                          + (size_t)(ihi * (ihi + 1) / 2 + jhi)) * 512;
+                        for (int c = 0; c < 512; c++)
+                            (hvam[o + c] == (int)0xa5a5a5a5 ? untouched : touched)++;
+                    }
+        CmpStats st;
+        st.checked = untouched + touched;
+        st.bad = touched;
+        fails += report("[5c] BB region left UNCOMPUTED under the shipped mask", st);
     }
 
     // [6] FREQUENCY MAP: a launch over a SUBSET of channels must reproduce the full launch's
