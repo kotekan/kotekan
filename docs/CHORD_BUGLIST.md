@@ -1441,3 +1441,21 @@ right? C++/GPU search dig (GnssChannelizedSearch, the 4371ff4eb period measureme
 debounce makes the command robust; it does not explain the search. NH Doppler-sideband
 capture (#41's geometry) does not obviously fit: reported Doppler moves ~1 Hz at the flips,
 not 50. Needs the search's per-detection (nh, cp_long, snr) against injection.
+
+### #97 UPDATE (2026-08-28 afternoon) — source defect FOUND and largely fixed; residual open
+
+The flips were never in the broker: **the per-surface acquisition argmax was raw**, so an
+NH Doppler sideband landing ON a grid bin beat a scalloped true peak (#41 fixed only the
+cross-alignment comparison). On-sky signature: whole alignment groups argmaxed onto cells
+with dop pinned exactly on-grid (−2562 recurring) and tau shifted by whole periods. Fix:
+the #41 mainlobe pair-sum applied to the within-surface choice, LOCAL MAXIMA ONLY — the
+unrestricted form was armed and reverted within the hour (plane-beside-peak tie → ±1-bin
+Doppler dither, 3.4% → 39% flips; the pre-registered >10% consensus-fire trigger caught it).
+Plus nh_label_consensus: per-pass majority vote over the scanned alignments' labels.
+
+Measured (per-detection ph@ref stream, DEBUG→INFO — per-stage log_level is compiled out):
+±1 flips 3.4% → 0.15–0.26%; total 4.2% → ~1.6%; broker debounce 5/min → 1–2/min.
+OPEN: residual symmetric ±2/±3/±5 classes (~1.3% combined) — next sideband families or
+hint-window edge effects; and the ±4-family fold-wrap (lag16 signed fold) is still only
+mitigated by consensus. Instruments to keep until closed: the INFO ph@ref line,
+/tmp/flipdecomp.py (cf06), NHPROF.
