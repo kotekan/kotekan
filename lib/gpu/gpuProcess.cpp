@@ -39,7 +39,8 @@ using nlohmann::json;
 // TODO Remove the GPU_ID from this constructor
 gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
                        bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container, std::bind(&gpuProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&gpuProcess::main_thread, this)),
+    _profile_endpoint(fmt::format(fmt("/gpu_profile{:s}"), unique_name)) {
     log_profiling = config.get_default<bool>(unique_name, "log_profiling", false);
 
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
@@ -66,7 +67,10 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:s}"), unique_name));
+    // Unregister before deleting the commands that profile_callback reads.
+    // remove_get_callback() waits for an in-flight invocation to finish, so the
+    // callback cannot still be walking `commands` once this returns.
+    restServer::instance().remove_get_callback(_profile_endpoint);
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
@@ -147,11 +151,8 @@ void gpuProcess::main_thread() {
     dev->set_thread_device();
 
     restServer& rest_server = restServer::instance();
-    // unique_name starts with "/", so this path becomes something like
-    // "/gpu_profile/gpuB/gpu_0" for pipeline B running on GPU 0.
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile{:s}"), unique_name),
-        std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
+        _profile_endpoint, std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
     int gpu_frame_counter = 0;

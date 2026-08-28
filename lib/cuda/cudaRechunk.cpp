@@ -27,7 +27,6 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     _set_flag = config.get_default<std::string>(unique_name, "set_flag", "");
     _input_columns_field = config.get_default<std::string>(unique_name, "input_columns_field", "");
     _output_async = config.get_default<bool>(unique_name, "output_async", false);
-    output_id = 0;
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaRechunk");
 
@@ -87,8 +86,9 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate, const std::vector
         DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- producing output!",
               cols_accumulated, _cols_output);
         // emit an output frame!
-        int out_id = (_output_async ? output_id : pipestate.gpu_frame_id);
-        output_id++;
+        uint32_t out_id =
+            (_output_async ? get_state()->output_id : (uint32_t)pipestate.gpu_frame_id);
+        get_state()->output_id++;
         void* output_memory =
             device.get_gpu_memory_array(_gpu_mem_output, out_id, _gpu_buffer_depth, output_len);
         CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, accum_memory, output_len,
