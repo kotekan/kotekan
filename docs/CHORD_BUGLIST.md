@@ -1303,3 +1303,62 @@ displacement persists, not whether one happens.
 ⚠️ Read `p/floor`, not `q`, when judging: `q` is degenerate (≈1 for both "off-peak" and "weak").
 ⚠️ `deep_snr` is NOT a presence detector — it fires on noise; measured the same evening at
 13.4 / 12.7 on satellites 19° and 31° **below the horizon**.
+
+---
+
+## #96 — gps_l5: the trim integrates a ~3 ppb CODE-RATE error and rails the clamp every ~70 s
+
+**Status:** open. Measured 2026-08-28, prompted by KV ("incredible churn in GPS, sats flip
+between green and red second-to-second... G9, near boresight and strong as can be").
+**Family:** #90's ramp. NOT #95's HOLD-BY-PROMPT latch, and NOT a fade — both excluded below.
+
+### The measurement: G9, 89 samples at 2 s
+
+```
+   q     disc     trim    armed    E/P    dsteps
+ 3.62  +0.126   -1.598    True    0.31      0
+ 3.61  +0.094   -1.734    True    0.30     96
+ 3.42  +0.395   -2.041    True    0.41     96
+ 3.25  +0.472   -2.274    True    0.45     96
+ 3.11  +0.528   -2.628    True    0.49     96
+ 2.70  +0.678   -3.000    True    0.62     96     <- HITS THE CLAMP
+ 1.17  +0.947   -3.000    True    1.66     96     <- q collapses
+ 0.10  +0.940   -3.000    True   18.78     96
+```
+
+The loop **steps continuously** (96 steps per 2 s sample, `trim_skipped` flat), so this is not
+an arming latch — nothing is refusing to trim. The trim ramps monotonically at **~0.033
+chips/s**, reaches the **±3 chip clamp**, and q collapses the moment it rails. Over three
+minutes the trim sawtooths across **−0.71 → −3.00 chips**.
+
+### It is a WALK-OFF, not a fade — the taps say so
+
+```
+   q      p_pow      e_pow      l_pow    n_src  n_chan
+ 3.15   8.4e-07    3.6e-07    1.7e-07     12     79
+ 1.29   4.3e-07    6.5e-07    2.3e-08     12     79    E now EXCEEDS P
+ 0.12   2.7e-08    4.3e-07    1.5e-08     12     79    E is the peak
+```
+
+Energy migrates monotonically **from prompt into early** while late collapses. Total E+P+L
+falls only to 0.42 — mostly redistribution, not loss. `n_src` (11.9) and `n_chan` (78) are
+identical in both states, so it is not instances or channels dropping out.
+
+### Why GPS and not the others
+
+Galileo's trims sit at −0.3 to −1.9 chips and never rail; gps_l5's cross the whole ±3 range.
+0.033 chips/s at the 10.23 Mcps L5 rate is ~3 ppb, ~3.7 Hz at 1176.45 MHz.
+
+### Proposed fix, in preference order
+
+1. **Find the rate error.** A trim that ramps at a constant rate is integrating a constant
+   RATE mismatch: the code rate commanded to the tracker is wrong by ~0.033 chips/s. That is
+   the thing to fix; everything below is palliative.
+2. **Do NOT simply widen the ±3 clamp.** It would postpone the rail, not prevent it — the
+   drift does not stop, so the sawtooth just gets longer. Widening is only defensible once the
+   rate is right and the clamp is bounding a genuine transient.
+3. Once (1) lands, re-measure the duty cycle: gps_l5 was 63% against gal_e5a's 85% and
+   bds_b2a's 97%, and this mechanism plausibly accounts for the whole gap.
+
+⚠️ Judge on **duty cycle over a run**, never a snapshot — an instantaneous count of a
+sawtoothing population is a sample of the phase, not of the health.
