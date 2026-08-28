@@ -189,7 +189,7 @@ host_voltage_ringbuffer:
 {%- for id in range(num_freq_gpu_buf // 4) %}
 lost_samples_buffer_{{ id }}:
   kotekan_buffer: ndarray
-  num_frames: 2 * host_buffer_depth
+  num_frames: baseband_buffer_depth
   value_type: uint8
   extents: [samples_per_data_set]
   metadata_pool: main_pool
