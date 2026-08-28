@@ -482,6 +482,31 @@ def stage_detections_to_seeds(ctx):
                                _model * ctx.args.hops_per_sec, _dev, _tol),
                             every_s=60.0)
                     _seed_rate = _model
+                    # ── #100 (--fit-flush-on-reject): a rejected fit is not just a bad
+                    # RATE -- the seed's POSITION is the same fit EVALUATED at ref_hop,
+                    # so a wrap-blown slope moves the command by (slope error x history
+                    # span): SEEDAUDIT measured a +4067-chip step on G9 while the rate
+                    # guard stood (2026-08-28 22:45). And the poison is self-sustaining:
+                    # off-peak command -> weak detections -> re-poisoned history, for as
+                    # long as the history remembers (~8 min at fit-hist-len 256). After
+                    # N consecutive rejections the fit has left physics: flush the
+                    # history and let the sat ride the birth path while a clean fit
+                    # rebuilds (6 pts + 30 s). 0 disables.
+                    _n = ctx.cpt.rej_streak.get(prn, 0) + 1
+                    _flush_n = getattr(ctx.args, "fit_flush_on_reject", 0)
+                    if _flush_n > 0 and _n >= _flush_n:
+                        ctx.cpt.hist.pop(prn, None)
+                        ctx.cpt.rej_streak.pop(prn, None)
+                        _log("PRN %d cp-fit history FLUSHED: %d consecutive rejected "
+                             "rates (last %+.2f chips/s vs clock %+.2f) -- wrap-poisoned "
+                             "history dropped, sat rides the birth path while a clean "
+                             "fit rebuilds"
+                             % (prn, _n, rate * ctx.args.hops_per_sec,
+                                _model * ctx.args.hops_per_sec))
+                    else:
+                        ctx.cpt.rej_streak[prn] = _n
+                else:
+                    ctx.cpt.rej_streak.pop(prn, None)
             # ⚠️ SUBSTITUTE THE COMMAND ONLY, NEVER THE MEASUREMENT. `rate` stays the
             # FITTED slope below this line, because the two consumers underneath are
             # measurements: ctx.cpt.fit_slope feeds CARRIER-FROM-CODE (a shadow), and

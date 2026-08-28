@@ -170,7 +170,8 @@ class CpTracking(object):
     """
 
     __slots__ = ("err_hist", "escape", "escape_sign", "fit_slope", "hist", "translated",
-                 "dop_hist", "ph_hist", "dop_clamped", "nh_pending", "integ_hist")
+                 "dop_hist", "ph_hist", "dop_clamped", "nh_pending", "integ_hist",
+                 "rej_streak")
 
     def __init__(self):
         self.err_hist = {}      # prn -> recent (predicted - observed) code phase
@@ -186,6 +187,8 @@ class CpTracking(object):
                                 # confirmation before it may rewrite the standing one (#97)
         self.integ_hist = {}    # prn -> [(t, integ_chips)]: per-sat integrity baseline for
                                 # the RELATIVE escape veto (--integ-veto-baseline-s, #98/#99)
+        self.rej_streak = {}    # prn -> consecutive cp-rate rejections; at
+                                # --fit-flush-on-reject the wrap-poisoned history is flushed
 
 
 class RateFeedState(object):

@@ -1037,6 +1037,15 @@ def build_parser(description):
                          "sharp-ACF (BOC) power discriminator has stable FALSE equilibria "
                          "~0.75 chips out (prompt -12 dB) that the hold would otherwise "
                          "servo forever while the search sees the true peak.")
+    ap.add_argument("--fit-flush-on-reject", type=int, default=0,
+                    help="#100: after this many CONSECUTIVE cp-rate rejections for a PRN, "
+                         "FLUSH its cp-fit history. A rejected fit also poisons the seed's "
+                         "POSITION (the fit evaluated at ref_hop: slope error x history span "
+                         "= thousands of chips), and the poison self-sustains -- off-peak "
+                         "command, weak detections, re-poisoned history -- for as long as "
+                         "the history remembers (~8 min at fit-hist-len 256; G9 2026-08-28 "
+                         "22:36-23:00). Flushed, the sat rides the birth path while a clean "
+                         "fit rebuilds (~30 s). 0 disables (pre-#100 behaviour).")
     ap.add_argument("--integ-veto-baseline-s", type=float, default=0.0,
                     help="#98/#99: judge the escape referee's INTEGRITY VETO on the EXCURSION "
                          "from the sat's own recent integ median over this window (s), not the "

@@ -483,6 +483,13 @@ def stage_fleet_dll(ctx):
                  % (len(ctx.cp_rate_rejected),
                     ", ".join("PRN %d fit %+.3f vs clock %+.3f chips/s" % (k, v[0], v[1])
                               for k, v in sorted(ctx.cp_rate_rejected.items())[:5])))
+            # Cleared after logging: without this the line replays every PRN ever
+            # rejected, verbatim and forever (measured 2026-08-28 22:46 -- '11 fits
+            # REJECTED' repeating identical stale values for minutes, which misread as
+            # a live clock fault). dop_rate_rejected above has the same latent bug --
+            # left as-is, noted in the buglist, so its log semantics do not change
+            # under this commit.
+            ctx.cp_rate_rejected.clear()
         _absent = sorted(p for p in ctx.seeds
                          if ctx.seeds[p].get("doppler_rate_hz_s") is None)
         if _absent:

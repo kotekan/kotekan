@@ -1543,3 +1543,26 @@ older than today; iono at L5 is ~0.2–0.7 chips, too small. Practical bite: big
 INTEG-VETO legitimate escapes (a mis-anchored hold cannot be evicted) and spam
 TRACK-vs-MODEL. Also under this: birth-window sats log absurd one-shot residuals (+1942,
 −1193 chips) that repeat verbatim — cached first-fit values, worth a freshness stamp.
+
+## #100 — a wrap-poisoned cp-fit history is SELF-SUSTAINING and the rate guard only half-protects the seed — FIXED (--fit-flush-on-reject)
+
+From KV's G9 case study (08-28 22:36): an environmental broadband noise event (sigma2 x4.6
+on ALL FIVE chains, both bands, 22:36-22:43 — solar burst candidate; band-split rules out
+the 08-18-style selective RFI) faded the fleet ~1 q unit and dropped G9 (weakest) out of
+hold. During the churn, wrong-period/weak detections wrap-poisoned G9's 256-point cp-fit
+history: slope +6.6..+7.3 chips/s ("l−a +0.7 ppm" — nonphysical). The #96 guard correctly
+REJECTED the rate — but "position kept" evaluates the position from the SAME blown fit
+(slope error × history span: SEEDAUDIT +4067 chips on G9 while the rate guard stood). The
+command lands off-peak, detections stay weak, the history re-poisons: a 7-minute event
+became a 25+-minute outage, and `fit-hist-len 256` (armed that morning) had stretched the
+poison memory from ~1 s to ~8 min. The E3 family, in the fit domain.
+
+Fix: `--fit-flush-on-reject N` — after N CONSECUTIVE cp-rate rejections the PRN's fit
+history is flushed and the sat rides the birth path while a clean fit rebuilds (~30 s).
+Armed 3 on gps_l5. Falsifier: G9-class poisoned fits flush within ~3 detections and the
+sat re-locks; control: zero flushes on healthy sats outside events. Digest-neutral off.
+
+Also fixed here: the `cp-rate: N fit(s) REJECTED` summary replayed every PRN ever
+rejected, verbatim, forever (the dict was never cleared) — misread live as a poisoned
+pooled clock. Now cleared after logging. ⚠️ `dop_rate_rejected` (older) has the same
+latent cumulative-dict logging bug — left untouched, flagged here.
