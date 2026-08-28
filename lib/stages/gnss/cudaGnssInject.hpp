@@ -33,8 +33,10 @@
  * SYNTHESIS is per record (hops_per_record, 4 records per 8192-hop frame), with
  * propagate_seed at each record's window start -- REPLICAS ARE BIT-IDENTICAL to the ones the
  * tracker builds for the same seeds, which is what the live path-A/path-B comparison needs.
- * No DLL trim is applied (the injector has no trim loop); run the A/B with the tracker's
- * `code_trim: false`.
+ * THE DLL TRIM IS APPLIED, via cudaGnssChordTrackState::snapshot_trims -> propagate_seed
+ * (task #51 F3, 2026-08-15: this stage used to pass a hardcoded 0.0 and silently drop the
+ * fleet controller's trim on PATH B, the path the fleet runs). For a replica-identity A/B
+ * against the tracker, match the trim state on both sides.
  *
  * LANES: lane = 4*prn_slot + trial (E/P/L/P_HEAD), STABLE across satellites rising and
  * setting; inactive slots carry 0x88 (their tiles read exactly 0). Requires

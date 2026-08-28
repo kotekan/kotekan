@@ -253,7 +253,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             }
 
             // Same propagation as the tracker (gnssSeedTransport) -- replicas cannot fork.
-            // No DLL trim here (the injector has no loop); A/B against code_trim: false.
+            // THE DLL TRIM IS APPLIED (trim_now below). This comment used to say the
+            // opposite, and was left stale by the #51 F3 fix above -- which is the one
+            // fact a reader checking path-A/path-B equivalence most needs to be right.
             gnss::SeedState ss;
             ss.cp_chips = sd.cp_chips;
             ss.phase_ref_chips = sd.phase_ref_chips;
