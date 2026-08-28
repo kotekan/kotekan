@@ -20,9 +20,68 @@
 #include "json.hpp"
 
 #include <algorithm>
+#include <array>
 #include <immintrin.h>
 
 
+/**
+ * @brief DPDK packet handler that captures CRS board packets from one port and
+ *        assembles them into output frames with deterministic memory positioning.
+ *
+ * Each packet's location in the output frame is computed from its FPGA sequence
+ * number (time axis), stream ID (frequency axis), and source ID (element/board
+ * axis), so a frame always covers an exact sequence-number range. Frames are
+ * supplied by a @c kotekan::FramePrefetchService running on separate cores, which
+ * keeps this handler's hot path to a header parse and a non-temporal copy.
+ * Several workers (one per port) write into the same frames, each covering its
+ * own subset of stream IDs.
+ *
+ * The 16 CRS boards feeding a node are identified by a raw source ID
+ * (slot_id + 16 * crate_id). By default board data is placed along the output
+ * element axis in raw source-ID order; the optional @c crs_board_remap config
+ * reorders the boards for downstream consumers. A per-packet receipt bitmap is
+ * maintained alongside each data frame with layout
+ * [time_long][board output slot][stream ID], one bit per packet; it uses the
+ * same (possibly remapped) board axis as the data, so packet-loss accounting
+ * (e.g. ProcessPacketMask) follows the output ordering. Log messages always
+ * report the raw stream/source IDs as they appear in the packets.
+ *
+ * @par Buffers
+ * @buffer out_buf  Kotekan buffer the packet payloads are placed in.
+ *       @buffer_format uint8_t array of 4+4-bit complex voltage data
+ *       @buffer_metadata chordMetadata (filled only by the worker with allocate_metadata set)
+ * @buffer receipt_bitmap_buf  Kotekan buffer holding the per-packet receipt bitmap.
+ *       @buffer_format uint8_t array of packet receipt bits
+ *       @buffer_metadata none
+ *
+ * @conf  port                        Int. The DPDK port this worker accepts packets from.
+ * @conf  out_buf                     String. Name of the output data buffer.
+ * @conf  receipt_bitmap_buf          String. Name of the packet receipt bitmap buffer.
+ * @conf  packet_size                 UInt32. Total packet size in bytes; must equal
+ *                                    payload_size plus the 64-byte header.
+ * @conf  payload_size                UInt32. Payload bytes per packet. Must be a multiple
+ *                                    of 32, and the output frame size must be a multiple
+ *                                    of payload_size * num_source_ids * num_stream_ids.
+ * @conf  num_expected_stream_ids     UInt32. Number of distinct stream IDs expected on
+ *                                    this port; capture starts once all have been seen.
+ * @conf  capture_n_frames            UInt64. Default 0. Number of frames to capture
+ *                                    before stopping, 0 = unlimited.
+ * @conf  prefetch_depth              Int. Default 4. Number of frames the prefetch
+ *                                    service keeps ready ahead of the write position.
+ * @conf  frame_service_cpu_affinity  Array of Int. CPU cores the frame prefetch service
+ *                                    thread may run on.
+ * @conf  allocate_metadata           Bool. Default false. Enable on the worker that
+ *                                    should allocate and fill each frame's chordMetadata
+ *                                    (exactly one worker per buffer).
+ * @conf  crs_board_remap             Array of UInt32. Default empty (identity). Desired
+ *                                    board order by output slot: output slot i receives
+ *                                    the board whose raw source_id is crs_board_remap[i].
+ *                                    Must be a permutation of [0, num_source_ids).
+ *                                    Applies to both the data frame element axis and the
+ *                                    receipt bitmap.
+ *
+ * @author Andre Renard
+ */
 class crs16BoardCaptureWorker : public dpdkRXhandler {
 public:
     /// Default constructor
@@ -37,6 +96,7 @@ public:
     virtual void update_stats() override {};
 
 protected:
+    /// Rings the distributor uses to hand packets to the workers (unused here).
     const std::vector<rte_ring*>& worker_rings;
 
     /// The output buffer
@@ -44,31 +104,47 @@ protected:
     /// The packet recepit bitmap buffer
     Buffer* receipt_bitmap_buf;
 
+    /// Index of this worker within the DPDK stage.
     int worker_id;
 
     /// The packet size
     uint32_t packet_size;
 
+    /// The packet payload size (packet_size minus header_size)
     uint32_t payload_size;
 
+    /// Number of distinct stream IDs to see on this port before starting capture.
     uint32_t num_expected_stream_ids;
 
+    /// Size of the CRS packet headers in bytes.
     const uint32_t header_size = 64;
     // Each node processes data from 16 source IDs (16 CRS boards) and 8 stream IDs (1/16 of the
     // total streams)
-    const uint32_t num_source_ids = 16;
+    static constexpr uint32_t num_source_ids = 16;
     const uint32_t num_stream_ids = 8;
     const uint32_t time_samples_per_packet = 16;
 
+    /// Output slot in the frame for each raw CRS source_id. Identity unless the
+    /// optional `crs_board_remap` config is set, in which case this is the inverse
+    /// of that list: output slot i receives the board whose raw source_id is
+    /// crs_board_remap[i].
+    std::array<uint16_t, num_source_ids> dest_slot_for_source_id;
+
+    /// The stream IDs seen on this port during startup; packets with other IDs are dropped.
     std::vector<uint32_t> stream_ids_expected;
 
+    /// True until the expected stream ID list is complete and the prefetch service started.
     bool first_run = true;
 
+    /// Number of FPGA time samples covered by one output frame.
     uint64_t time_samples_per_frame;
+    /// Number of packets (across all boards and streams) that make up one output frame.
     uint64_t packets_per_frame;
 
+    /// Prefetches, zeros, and hands out output frames on separate cores.
     std::unique_ptr<kotekan::FramePrefetchService> prefetch_service;
 
+    /// The frame currently being filled, and the next one (for out-of-order margin).
     const kotekan::FrameInfo* active_f0 = nullptr;
     const kotekan::FrameInfo* active_f1 = nullptr;
 
@@ -80,9 +156,19 @@ protected:
     uint64_t _last_check_seq = 0;
     uint64_t _seq_check_packet_count = 0;
 
+    /**
+     * @brief Copies one packet's payload into the output frame using non-temporal stores.
+     *
+     * @param mbuf              The packet to copy.
+     * @param frame_ptr         The output frame to copy into.
+     * @param relative_seq_num  Sequence number of the packet relative to the frame start.
+     * @param stream_id         Raw stream ID of the packet (frequency axis position).
+     * @param dest_slot         Output slot on the element axis (the board's raw
+     *                          source_id passed through @c dest_slot_for_source_id).
+     */
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
-                                     uint16_t source_id);
+                                     uint16_t dest_slot);
 };
 
 inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
@@ -128,6 +214,41 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
         config.get<std::vector<int>>(unique_name, "frame_service_cpu_affinity");
     bool allocate_metadata = config.get_default<bool>(unique_name, "allocate_metadata", false);
 
+    // Optional reordering of CRS boards in the output frame. The list is the
+    // desired board order by output slot: output slot i receives the board whose
+    // raw source_id is crs_board_remap[i]. Must be a permutation of
+    // [0, num_source_ids). Absent or empty = identity (no reordering).
+    std::vector<uint32_t> crs_board_remap =
+        config.get_default<std::vector<uint32_t>>(unique_name, "crs_board_remap", {});
+
+    for (uint32_t i = 0; i < num_source_ids; ++i)
+        dest_slot_for_source_id[i] = (uint16_t)i;
+
+    if (!crs_board_remap.empty()) {
+        if (crs_board_remap.size() != num_source_ids) {
+            throw std::runtime_error(
+                fmt::format(fmt("crs16BoardCaptureWorker: crs_board_remap must have exactly {:d} "
+                                "entries, got {:d}"),
+                            num_source_ids, crs_board_remap.size()));
+        }
+        std::array<bool, num_source_ids> seen{};
+        for (uint32_t i = 0; i < num_source_ids; ++i) {
+            const uint32_t src = crs_board_remap[i];
+            if (src >= num_source_ids) {
+                throw std::runtime_error(
+                    fmt::format(fmt("crs16BoardCaptureWorker: crs_board_remap entry {:d} is out of "
+                                    "range [0, {:d})"),
+                                src, num_source_ids));
+            }
+            if (seen[src]) {
+                throw std::runtime_error(fmt::format(
+                    fmt("crs16BoardCaptureWorker: crs_board_remap has duplicate entry {:d}"), src));
+            }
+            seen[src] = true;
+            dest_slot_for_source_id[src] = (uint16_t)i; // board `src` lands in output slot i
+        }
+    }
+
     prefetch_service = std::make_unique<kotekan::FramePrefetchService>(
         out_buf, receipt_bitmap_buf, unique_name, port, time_samples_per_frame, prefetch_depth,
         cpu_affinity, capture_n_frames, allocate_metadata);
@@ -141,18 +262,6 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // Check the packet size, checksum, and the packet cookie
     if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
         WARN("Port: {:d}, Worker: {:d}; Got bad packet IP checksum", port, worker_id);
-        return 0;
-    }
-
-    if (unlikely(mbuf->pkt_len != packet_size)) {
-        // WARN("Port: {:d}; Got packet with invalid size {:d}, expected {:d}", port, mbuf->pkt_len,
-        //      packet_size);
-        return 0;
-    }
-
-    if (unlikely(get_crs_packet_cookie(mbuf) != CRS_PACKET_COOKIE)) {
-        WARN("Port: {:d}, Worker: {:d}; Got packet with invalid cookie {:08X}", port, worker_id,
-             get_crs_packet_cookie(mbuf));
         return 0;
     }
 
@@ -214,6 +323,15 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         == stream_ids_expected.end()) {
         WARN("Port: {:d}, Worker: {:d}; Got packet with unexpected Stream ID {:d}", port, worker_id,
              stream_id);
+        return 0;
+    }
+
+    // A raw source_id can exceed num_source_ids if a board's crate_id is
+    // misconfigured (crate_id is a 4-bit field). Drop such packets: they would
+    // index past the remap table, receipt bitmap, and frame board axis.
+    if (unlikely(source_id >= num_source_ids)) {
+        WARN("Port: {:d}, Worker: {:d}; Got packet with out-of-range Source ID {:d}", port,
+             worker_id, source_id);
         return 0;
     }
 
@@ -301,7 +419,10 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         relative_seq_num = seq_num - active_f1->start_seq;
     }
 
-    packet_copy_to_frame(mbuf, frame_ptr, relative_seq_num, stream_id, source_id);
+    // Map the raw board id to its output slot (identity unless crs_board_remap is set).
+    const uint16_t dest_slot = dest_slot_for_source_id[source_id];
+
+    packet_copy_to_frame(mbuf, frame_ptr, relative_seq_num, stream_id, dest_slot);
 
     // Record which packets were received.
     // The layout of the packet receipt bitmap is:
@@ -311,8 +432,9 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // source_id = num_source_ids
     // stream_id = num_stream_ids
     // For the pathfinder this is [512][16][8] = 65536 bits = 8192 bytes
+    // The source_id axis is in output-slot order (after crs_board_remap, if configured).
     active_f0->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids
-                                  + source_id] |= (1 << (stream_id / 16));
+                                  + dest_slot] |= (1 << (stream_id / 16));
 
     return 0;
 }
@@ -320,9 +442,9 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
 inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                                           uint64_t relative_seq_num,
-                                                          uint16_t stream_id, uint16_t source_id) {
+                                                          uint16_t stream_id, uint16_t dest_slot) {
     const uint64_t time_long = relative_seq_num / 16;
-    const uint64_t element_long = source_id;
+    const uint64_t element_long = dest_slot;
 
     // Base offset calculation
     // stride_time_long = (num_stream_ids * 48) * 2048
