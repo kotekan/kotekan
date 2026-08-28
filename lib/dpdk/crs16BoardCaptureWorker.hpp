@@ -265,6 +265,18 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         return 0;
     }
 
+    if (unlikely(mbuf->pkt_len != packet_size)) {
+        // WARN("Port: {:d}; Got packet with invalid size {:d}, expected {:d}", port, mbuf->pkt_len,
+        //      packet_size);
+        return 0;
+    }
+
+    if (unlikely(get_crs_packet_cookie(mbuf) != CRS_PACKET_COOKIE)) {
+        WARN("Port: {:d}, Worker: {:d}; Got packet with invalid cookie {:08X}", port, worker_id,
+             get_crs_packet_cookie(mbuf));
+        return 0;
+    }
+
     // Print the worker ID and stream ID
     uint16_t stream_id = get_crs_packet_stream_id(mbuf);
     uint16_t source_id =
