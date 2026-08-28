@@ -82,7 +82,62 @@ kotekan wrapper simply never plumbs it. T=2 -> blocks AA/AB/BB = 3, so dropping 
 GATE: compute M² BOTH ways for a run and assert bit-equality (or bound the difference)
 BEFORE disabling BB. They should agree exactly; if they do not, that is a finding.
 
-## 2. ONE Doppler-free Phi table per channel, shared by every PRN
+## 2. TWO Doppler-free tables per channel, shared by every PRN  [MEASURED, ready to build]
+
+**Measured 2026-08-28 by phibits [2b]/[2c] against the REAL tables (hoprate_filter at CHORD
+geometry), not from algebra.** Reconstruction error of a chip-window difference, worst case:
+
+| Doppler offset | ships (2c) | vs fp16 (3.3e-4) |
+|---|---|---|
+| +-250 Hz  | 3.2e-09 | 103,753x better |
+| +-1000 Hz | 4.8e-08 |   6,877x better |
+| +-5000 Hz | 1.2e-06 |     275x better |
+| +-10 kHz  | 4.8e-06 |      68x better |
+
+So ONE pair of tables covers the whole sky -- no Doppler buckets at all -- with 275x margin
+at the full GPS Doppler range.
+
+### What the measurement corrected
+
+My first form (rotor about the |w|-weighted centroid) gave 4.7e-3 at 5 kHz -- 14x WORSE than
+fp16 -- and the error scaled LINEARLY with Doppler, which is the signature of a surviving
+first-order term. dPhi is a sum of ROTATING phasors, so the centroid that cancels first order
+is the COMPLEX one, c = sum_j j*w_j / sum_j w_j. With that, error goes quadratic and drops
+four orders (2b). phibits' pre-existing [2] figure of 6.3e-1 is not a table property at all:
+it is |exp(i*0.643)-1|, the pure endpoint tilt -- exactly what the rotor removes.
+
+### The form to build
+
+    dPhi(w0+ddw) ~ exp(-i*ddw*mid) * [ dPhi_0 - i*ddw*( dPsi - mid*dPhi_0 ) ]
+
+with Psi[k] = sum_{j<k} j*proto[j]*e^{-i(off+w0)j} the second shared prefix table and
+mid = (t0+t1)/2 the window midpoint, known from the INDICES. Splitting c into (mid) +
+(c - mid) is what makes this cheap: the large part is a CONSTANT ROTOR advancing ~ks per chip
+(one complex multiply, no transcendental), and the small remainder linearizes. Per chip:
++2 loads (Psi telescopes exactly like Phi), +1 complex FMA, +1 rotor multiply. No divide, no
+exp in the loop. It measures BETTER than 2b's exp-of-complex-centroid ceiling, because the
+linear form does not carry the exp's own O((ddw*c)^2) residual.
+
+### Why it wins even though it doubles the loads
+
+Footprint, which §10.6c proved is the axis: 2 shared tables x 1.05 MB x 7 chan = **14.7 MB
+TOTAL, shared by every PRN**, against 24-32 PRN x 7 chan x 1.05 MB = **176-235 MB** today.
+The L40S has 96 MB of L2 -- so the shared pair is L2-RESIDENT and reused by every job, while
+today's per-PRN tables are streamed from DRAM once per job and evicted. This converts DRAM
+traffic into L2 hits; the extra loads are cheap in exactly the way the DRAM ones were not.
+With fp16 (item 3) on top: 7.3 MB, and the 275x margin is what pays for the fp16 error.
+
+Also deletes ensure_phi's rebuild path entirely (cudaMalloc + 2 MB H2D per PRN whenever a
+Doppler drifts past refresh_hz) -- the tables no longer depend on Doppler.
+
+⚠️ GATE ON prn_df: valid only while every prn_df == 0 (CDMA). CHORD is; FDMA is already
+refused in ChannelizedReplicaBank::swap_prn. Fall back to per-PRN tables otherwise.
+⚠️ VALIDATE AGAINST THE KERNEL, not the algebra (#71 -- "the gate tested the FORMULA not the
+kernel contract"). phibits proves the reconstruction; wavebench + e2e must prove the KERNEL.
+⚠️ MEASURE, do not assume, that L2 residency materialises -- 1b is this session's reminder
+that a projected win can measure at 1.00x. lts__t_sector_hit_rate is the counter.
+
+### superseded first-pass note
 
 Phi[c][k] = sum_{j<k} proto[j]*exp(-i(off_c +- wc)j), Lf+1 = 65537 entries x float2 x 2
 images = **1.05 MB per channel PER PRN** -> 176 MB (24 PRN) to 235 MB (32 PRN) resident per

@@ -122,6 +122,127 @@ int main(int argc, char** argv) {
     printf("    worst relative change in a chip-step dPhi        = %.3e\n", relmax);
     printf("    -> a shared table + low-order correction must beat THIS to be worth it\n");
 
+    // ---- 2b. THE MULTIPLICATIVE FORM: one table for the WHOLE SKY? --------------------------
+    //
+    // [2] and [3] both measure ADDITIVE reconstructions of Phi itself, and [2]'s 0.63 is not a
+    // property of the table at all -- it is |exp(i * 0.643) - 1|, i.e. the pure ENDPOINT PHASE
+    // TILT across the span. The gather never uses Phi; it uses the DIFFERENCE over one chip
+    // window (~ks taps), and over that window the extra Doppler advances only
+    // ddop/fs*ks ~ 3e-3 rad. So write the difference as
+    //
+    //     dPhi(w0 + ddw)  =  exp(-i*ddw*kbar) * dPhi(w0) * [1 + O((ddw*spread)^2)]
+    //
+    // with kbar the PROTOTYPE-WEIGHTED CENTROID of the window (the weighting is what makes the
+    // first-order term vanish; using k_lo or the midpoint instead leaves a first-order residual
+    // and is measured below for comparison). The correction is ONE complex multiply per chip,
+    // and since kbar advances by ~ks per chip it is a CONSTANT ROTOR -- no table, no
+    // transcendental in the loop.
+    //
+    // If the residual here is below the fp16 storage error (3.3e-04 from [1]), then the Doppler
+    // does not need a table at all: ONE Phi per channel serves every PRN and every Doppler, and
+    // the per-PRN 1.05 MB collapses. That is a different claim from [3]'s buckets, and a much
+    // stronger one, so it gets measured rather than argued.
+    printf("\n[2b] MULTIPLICATIVE (rotor) RECONSTRUCTION -- one table for the whole sky\n");
+    printf("      dop offset    COMPLEX centroid    |w|-centroid    midpoint      no rotor\n");
+    for (double dd : {250.0, 1000.0, 5000.0, 10000.0}) {
+        const auto fx = bank.hoprate_filter(want, dop + dd);
+        const auto& X = fx.PhiA[0];
+        double w_cen = 0.0, w_mid = 0.0, w_non = 0.0, w_real = 0.0;
+        const double ddw = 2.0 * M_PI * dd / FS;
+        for (int d = 1; d < f0.n_chips; ++d) {
+            const int t1 = std::min(Lf, d * ks), t0 = std::min(Lf, (d - 1) * ks);
+            if (t1 <= t0)
+                continue;
+            const cd ex = X[(size_t)t1] - X[(size_t)t0];   // the exact Doppler-shifted step
+            const cd base = P[(size_t)t1] - P[(size_t)t0]; // the SHARED (dop) table's step
+            if (std::abs(ex) == 0.0)
+                continue;
+            // prototype-weighted centroid of THIS window, from the shared table's own
+            // increments -- available wherever the table is, no extra state.
+            // THE CENTROID MUST BE COMPLEX. dPhi = sum_j w_j with w_j a ROTATING phasor, so
+            // the first-order term of sum_j w_j exp(-i*ddw*j) is -i*ddw*sum_j j*w_j, and the
+            // multiplier that cancels it is exp(-i*ddw*c) with c = sum_j j*w_j / sum_j w_j --
+            // complex. Weighting by |w_j| instead gives a REAL centroid, leaves the
+            // first-order term alive, and the error then scales LINEARLY in the Doppler
+            // (measured: 2.3e-4 / 9.3e-4 / 4.7e-3 / 9.4e-3 at 250/1k/5k/10k Hz -- exactly
+            // proportional). Both are reported so the difference is visible.
+            cd cnum(0.0, 0.0), cden(0.0, 0.0);
+            double num = 0.0, den = 0.0;
+            for (int j = t0; j < t1; ++j) {
+                const cd w = P[(size_t)(j + 1)] - P[(size_t)j];
+                cnum += w * (double)j;
+                cden += w;
+                const double wgt = std::abs(w);
+                num += wgt * (double)j;
+                den += wgt;
+            }
+            const cd cbar = (std::abs(cden) > 0.0) ? cnum / cden : cd(0.5 * (t0 + t1), 0.0);
+            const double kbar = (den > 0.0) ? num / den : 0.5 * (t0 + t1);
+            const double kmid = 0.5 * (t0 + t1);
+            const cd rc = std::exp(cd(0.0, -ddw) * cbar);
+            const cd rr = std::exp(cd(0.0, -ddw * kbar));
+            const cd rm = std::exp(cd(0.0, -ddw * kmid));
+            w_cen = std::max(w_cen, std::abs(rc * base - ex) / std::abs(ex));
+            w_real = std::max(w_real, std::abs(rr * base - ex) / std::abs(ex));
+            w_mid = std::max(w_mid, std::abs(rm * base - ex) / std::abs(ex));
+            w_non = std::max(w_non, std::abs(base - ex) / std::abs(ex));
+        }
+        printf("      %7.0f Hz     %.3e        %.3e     %.3e   %.3e\n",
+               dd, w_cen, w_real, w_mid, w_non);
+    }
+    printf("      (fp16 storage costs 3.3e-04 -- anything below that is free accuracy)\n");
+
+    // ---- 2c. THE FORM THAT WOULD SHIP -------------------------------------------------------
+    // 2b's complex centroid c = sum_j j*w_j / sum_j w_j is exact to second order but needs a
+    // per-window quantity, i.e. a SECOND prefix table Psi[k] = sum_{j<k} j*proto[j]*e^{-i(off+w0)j}.
+    // Two shared tables still beats one table PER PRN by 12-16x, but the reconstruction must
+    // avoid a complex divide and a transcendental per chip. Split c into the part we know from
+    // the INDICES and the part that needs Psi:
+    //
+    //   exp(-i*ddw*c) = exp(-i*ddw*mid) * exp(-i*ddw*(c - mid)),   mid = (t0+t1)/2
+    //
+    // The first factor is a CONSTANT ROTOR (mid advances by ~ks per chip: one complex multiply,
+    // no transcendental). The second has a SMALL argument -- |c - mid| ~ 470 taps, so
+    // ddw*(c-mid) ~ 5e-3 rad at 5 kHz -- and linearizes:
+    //
+    //   dPhi(w0+ddw) ~ exp(-i*ddw*mid) * [ dPhi_0 - i*ddw*( dPsi - mid*dPhi_0 ) ]
+    //
+    // Per chip that is: the Psi telescope (2 loads, carried like Phi's), one complex FMA, one
+    // rotor multiply. No divide, no exp in the loop. This is the candidate; 2b's complex
+    // centroid is its unreachable ceiling and is kept above as the bound.
+    printf("\n[2c] SHIPPABLE FORM: rotor(midpoint) + linear Psi correction, TWO shared tables\n");
+    printf("      dop offset       shippable        2b ceiling      ratio to fp16\n");
+    {
+        // Psi over the SHARED table's Doppler -- built once, Doppler-free, like Phi.
+        std::vector<cd> Psi((size_t)Lf + 1, cd(0.0, 0.0));
+        for (int j = 0; j < Lf; ++j)
+            Psi[(size_t)(j + 1)] = Psi[(size_t)j] + (double)j * (P[(size_t)(j + 1)] - P[(size_t)j]);
+        for (double dd : {250.0, 1000.0, 5000.0, 10000.0}) {
+            const auto fx = bank.hoprate_filter(want, dop + dd);
+            const auto& X = fx.PhiA[0];
+            const double ddw = 2.0 * M_PI * dd / FS;
+            double worst = 0.0;
+            for (int d = 1; d < f0.n_chips; ++d) {
+                const int t1 = std::min(Lf, d * ks), t0 = std::min(Lf, (d - 1) * ks);
+                if (t1 <= t0)
+                    continue;
+                const cd ex = X[(size_t)t1] - X[(size_t)t0];
+                if (std::abs(ex) == 0.0)
+                    continue;
+                const cd base = P[(size_t)t1] - P[(size_t)t0];
+                const cd dpsi = Psi[(size_t)t1] - Psi[(size_t)t0];
+                const double mid = 0.5 * ((double)t0 + (double)t1);
+                const cd corr = base - cd(0.0, ddw) * (dpsi - mid * base);
+                const cd got = std::exp(cd(0.0, -ddw * mid)) * corr;
+                worst = std::max(worst, std::abs(got - ex) / std::abs(ex));
+            }
+            printf("      %7.0f Hz      %.3e        (see 2b)        %5.0fx better\n",
+                   dd, worst, 3.3e-4 / worst);
+        }
+    }
+
+
+
     // ---- 3. CAN ONE SHARED TABLE SET COVER A DOPPLER BUCKET? ---------------------------------
     // Phi(delta) is analytic in the Doppler offset, so build the expansion NUMERICALLY from a
     // few exact tables at the bucket nodes -- which is how it would be built for real, and it
