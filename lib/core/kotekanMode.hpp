@@ -2,8 +2,9 @@
 #define KOTEKAN_MODE_HPP
 
 #include "Config.hpp"          // for Config
+#include "PipelineGraph.hpp"   // for PipelineGraph
 #include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for GenericBuffer
+#include "buffer.hpp"          // for Buffer, GenericBuffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.hpp"        // for metadataPool
 #include "restServer.hpp"      // for connectionInstance
@@ -16,6 +17,7 @@
 #include <map>    // for map
 #include <memory> // for shared_ptr
 #include <string> // for string
+#include <vector> // for vector
 
 // doxygen wants the namespace to be documented somewhere
 /*!
@@ -55,8 +57,50 @@ public:
      */
     nlohmann::json get_buffer_json();
 
+    /**
+     * @brief Builds the graph of the running pipeline: the buffers, the stages,
+     *        and the producer/consumer relations connecting them.
+     *
+     * Stages contribute their own internal detail through
+     * @c Stage::add_graph_details(); everything common lives here so that the
+     * graph is assembled in one place and can be rendered in any format.
+     *
+     * @param options What to include in the graph.
+     * @return The pipeline graph, as of the moment of the call.
+     */
+    PipelineGraph get_pipeline_graph(const GraphOptions& options = GraphOptions());
+
     /// HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);
+
+    /// HTTP callback that dumps the same graph as JSON, for clients that would
+    /// rather lay it out (or diff it) themselves than parse DOT.
+    void pipeline_json_graph_callback(connectionInstance& conn);
+
+    /**
+     * @brief HTTP callback serving a copy of the newest full frame in a buffer.
+     *
+     * Registered at `GET /buffer_frame`, which names its buffer in the required
+     * `name` query parameter. Replies with a JSON object containing the frame's
+     * metadata, the buffer's frame descriptor (when attached), and the leading
+     * frame bytes base64 encoded under `data`. The optional `len` query
+     * parameter caps the number of data bytes included, up to the frame size;
+     * `len=0` returns metadata only, and no `len` returns @c default_peek_len
+     * bytes.
+     */
+    void buffer_frame_callback(connectionInstance& conn);
+
+    /**
+     * @brief How many bytes of frame data `/buffer_frame` copies when the
+     *        request does not ask for a length.
+     *
+     * The copy is made under the buffer lock, so an unbounded default would let
+     * one request hold up every stage on a buffer for as long as it takes to
+     * memcpy a frame -- hundreds of megabytes, on the pipelines this matters
+     * for. Enough to see what the data looks like; a caller wanting a whole
+     * frame asks for it.
+     */
+    static constexpr size_t default_peek_len = 64 * 1024;
 
 private:
     Config& config;

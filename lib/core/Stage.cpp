@@ -1,6 +1,7 @@
 #include "Stage.hpp"
 
 #include "Config.hpp"          // for Config
+#include "PipelineGraph.hpp"   // for PipelineGraph
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
@@ -151,8 +152,10 @@ Stage::~Stage() {
         this_thread.join();
 }
 
-std::string Stage::dot_string(const std::string& prefix) const {
-    return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
+void Stage::add_graph_details(PipelineGraph& graph) const {
+    // A plain stage is fully described by the node and buffer edges kotekanMode
+    // has already added for it.
+    (void)graph;
 }
 
 void Stage::register_tid(pid_t tid) {
@@ -171,6 +174,15 @@ void Stage::unregister_tid(pid_t tid) {
 std::vector<pid_t> Stage::get_tids() {
     std::lock_guard<std::mutex> lock(thread_list_lock);
     return thread_list;
+}
+
+std::vector<int> Stage::get_cpu_affinity() {
+    std::lock_guard<std::mutex> lock(cpu_affinity_lock);
+    return cpu_affinity;
+}
+
+bool Stage::is_stopping() const {
+    return stop_thread;
 }
 
 } // namespace kotekan

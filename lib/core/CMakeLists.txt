@@ -19,6 +19,7 @@ add_library(
     kotekanTrackers.cpp
     metadata.cpp
     metadataFactory.cpp
+    PipelineGraph.cpp
     prometheusMetrics.cpp
     restServer.cpp
     Stage.cpp
