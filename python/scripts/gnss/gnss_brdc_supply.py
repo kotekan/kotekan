@@ -795,8 +795,29 @@ def fetch_brdc(when=None, cache_dir=CACHE):
                                "pinned replay must not fall through to the live sky" % pin)
         return pinned
     when = when or datetime.now(timezone.utc)
-    primary = _fetch_brdc_merged(when, cache_dir)   # authoritative daily (keeps prev-day safety)
-    srcs = [primary]
+    # ⚠️⚠️ THE DAILY IS PREFERRED, NOT REQUIRED -- AND LETTING IT RAISE TOOK THE FLEET DOWN
+    # (2026-08-28 00:11). _fetch_brdc_merged raises when no daily is reachable and none is
+    # cached, and that propagated out of fetch_brdc, so the almanac reported "unavailable",
+    # fell back to a skyfield path that is not installed, disabled dead reckoning, left
+    # dr_state None, and every chain then died on the first unguarded deref.
+    #
+    # It fired at the UTC DAY ROLL. BKG has been unreachable all day and CDDIS publishes only
+    # CLOSED days, so the daily for the new day does not exist and will not today. A broker
+    # already running sails through midnight on the almanac in memory; every restart after
+    # 00:00 dies at startup. That is a supply outage turned into a total one by an exception.
+    #
+    # And it was NEVER NECESSARY: the station-hourly merge is a complete substitute -- this
+    # module's own comments say it is THE only current-day source when BKG is down -- and at
+    # the moment of the outage it held 1145 records over a 4 h window, G32/E30/C23, enough for
+    # 30 satellites above the horizon. The sky was sitting in the cache the whole time.
+    srcs = []
+    try:
+        srcs.append(_fetch_brdc_merged(when, cache_dir))   # authoritative daily
+    except Exception as _e:
+        _log_hourly("BRDC daily unavailable (%s) -- continuing on the station-hourly merge "
+                    "alone. Expected while BKG is down and CDDIS has not yet closed the day; "
+                    "the hourly IS the current-day source in that regime. The sky is thinner "
+                    "than a daily+hourly union, NOT absent." % _e)
     tok = _earthdata_token()
     doy = when.timetuple().tm_yday
     # Both daily variants (S first = widest), then the station-hourly -- each best-effort and
@@ -809,6 +830,12 @@ def fetch_brdc(when=None, cache_dir=CACHE):
     hourly = _fetch_station_hourly(when, cache_dir, tok)
     if hourly and hourly not in srcs:
         srcs.append(hourly)
+    if not srcs:
+        # BOTH paths gone. NOW it is fatal, and says which two things failed rather than
+        # naming only the last one tried.
+        raise RuntimeError("no BRDC source at all: the daily is unreachable/uncached AND the "
+                           "station-hourly merge returned nothing. Check BKG/CDDIS/GSSC "
+                           "reachability and %s" % cache_dir)
     return srcs
 
 
