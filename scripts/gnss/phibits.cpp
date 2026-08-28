@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
     // rotor multiply. No divide, no exp in the loop. This is the candidate; 2b's complex
     // centroid is its unreachable ceiling and is kept above as the bound.
     printf("\n[2c] SHIPPABLE FORM: rotor(midpoint) + linear Psi correction, TWO shared tables\n");
-    printf("      dop offset       shippable        2b ceiling      ratio to fp16\n");
+    printf("      ANCHOR: midpoint (algebra) vs t_prev (what the kernel can advance)\n");
     {
         // Psi over the SHARED table's Doppler -- built once, Doppler-free, like Phi.
         std::vector<cd> Psi((size_t)Lf + 1, cd(0.0, 0.0));
@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
             const auto fx = bank.hoprate_filter(want, dop + dd);
             const auto& X = fx.PhiA[0];
             const double ddw = 2.0 * M_PI * dd / FS;
-            double worst = 0.0;
+            double worst = 0.0, worst_p = 0.0;
             for (int d = 1; d < f0.n_chips; ++d) {
                 const int t1 = std::min(Lf, d * ks), t0 = std::min(Lf, (d - 1) * ks);
                 if (t1 <= t0)
@@ -235,9 +235,20 @@ int main(int argc, char** argv) {
                 const cd corr = base - cd(0.0, ddw) * (dpsi - mid * base);
                 const cd got = std::exp(cd(0.0, -ddw * mid)) * corr;
                 worst = std::max(worst, std::abs(got - ex) / std::abs(ex));
+                // ANCHOR ON t_prev INSTEAD OF THE MIDPOINT. On-device the rotor must
+                // ADVANCE, and t_prev steps by exactly ks or ks+1 (f accumulates kf in
+                // [0,1)) -- two precomputed rotors and an exact select, no transcendental in
+                // the loop. The midpoint steps by ks, ks+1/2 or ks+1: three cases and a half
+                // step, so it is the wrong anchor for the kernel however natural it is for
+                // the algebra. t_prev sits ~ks/2 further from the centroid, so the linear
+                // term is larger and this is a measured question, not an obvious one.
+                const double tp = (double)t0;
+                const cd corr_p = base - cd(0.0, ddw) * (dpsi - tp * base);
+                const cd got_p = std::exp(cd(0.0, -ddw * tp)) * corr_p;
+                worst_p = std::max(worst_p, std::abs(got_p - ex) / std::abs(ex));
             }
-            printf("      %7.0f Hz      %.3e        (see 2b)        %5.0fx better\n",
-                   dd, worst, 3.3e-4 / worst);
+            printf("      %7.0f Hz   mid %.3e  t_prev %.3e   (fp16/ %.0fx, %.0fx)\n",
+                   dd, worst, worst_p, 3.3e-4 / worst, 3.3e-4 / worst_p);
         }
     }
 

@@ -91,6 +91,28 @@ public:
         int n_chips = 0;
         std::vector<int> chans;
         std::vector<std::vector<std::complex<double>>> PhiA, PhiB; ///< [channel][Lf+1]
+        /// FIRST-MOMENT companions, Psi[k] = sum_{j<k} j * proto[j] * e^{-i(off +- wc)j}.
+        /// Built only when @ref hoprate_filter is asked for them (@c want_psi), because they
+        /// double the build cost and only the SHARED-TABLE path needs them.
+        ///
+        /// WHAT THEY ARE FOR (docs/CHORD_GPU_TODO.md item 2). Phi is per-PRN today only
+        /// because the Doppler sits inside wc, and at 1.05 MB per channel per PRN that is
+        /// 176-235 MB resident per chain-instance -- on a kernel §10.6c measured to be
+        /// DRAM-FOOTPRINT-bound. But the gather never reads Phi; it reads the DIFFERENCE over
+        /// one chip window, and a Doppler offset ddw factors out of that difference as
+        ///
+        ///     dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
+        ///
+        /// (t0 = the window's low index). So ONE Doppler-free (Phi, Psi) pair per channel
+        /// serves every PRN and every Doppler: 14.7 MB total, which fits the L40S's 96 MB L2
+        /// where the per-PRN tables did not. Measured worst-case reconstruction error on the
+        /// real tables (scripts/gnss/phibits [2c]): 1.9e-8 at +-250 Hz, 7.5e-6 at +-5 kHz --
+        /// 44x below fp16's own 3.3e-4 storage error at the full GPS Doppler range.
+        std::vector<std::vector<std::complex<double>>> PsiA, PsiB; ///< [channel][Lf+1], optional
+        /// The carrier this filter was actually built at, radians/sample. A SHARED filter is
+        /// built at the band carrier alone (doppler 0) and every consumer supplies its own
+        /// ddw = 2*pi*doppler/fs; a per-PRN filter has the Doppler baked in and ddw is 0.
+        double wc_built = 0.0;
     };
     /// @c prn_index selects that PRN's carrier offset (FDMA); -1 = the band offset alone.
     /// ⚠️ Under FDMA the filter is PER-PRN (different satellites sit on different carriers), so
@@ -98,7 +120,7 @@ public:
     /// checks. @ref HopRateReplicaStream already owns one filter per PRN, so steady-state cost
     /// is unchanged; only a shared-filter caller has to start passing an index.
     HopRateFilter hoprate_filter(const std::vector<int>& want, double doppler_hz,
-                                 int prn_index = -1) const;
+                                 int prn_index = -1, bool want_psi = false) const;
 
     /// Stream @c n_hops from a prebuilt @ref HopRateFilter. The per-hop carrier phasor +
     /// code phase use the CURRENT @c code_phase_chips / @c doppler_hz (exact); the filter

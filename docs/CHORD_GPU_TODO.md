@@ -82,7 +82,30 @@ kotekan wrapper simply never plumbs it. T=2 -> blocks AA/AB/BB = 3, so dropping 
 GATE: compute M² BOTH ways for a run and assert bit-equality (or bound the difference)
 BEFORE disabling BB. They should agree exactly; if they do not, that is a finding.
 
-## 2. TWO Doppler-free tables per channel, shared by every PRN  [MEASURED, ready to build]
+## 2. TWO Doppler-free tables per channel, shared by every PRN  [CPU PATH DONE; GPU NEXT]
+
+STATUS 2026-08-28:
+  * [x] reconstruction validated on the real tables (phibits [2c])
+  * [x] ANCHOR CHOSEN: t_prev, not the window midpoint. The midpoint is the natural anchor
+        for the algebra but steps by ks, ks+1/2 or ks+1, so the kernel could not ADVANCE its
+        rotor; t_prev steps by exactly ks or ks+1 -- two precomputed rotors and an exact
+        select, no transcendental in the loop. Costs 6x accuracy (7.5e-6 vs 1.2e-6 at
+        +-5 kHz) and still sits 44x below fp16.
+  * [x] Psi built in ChannelizedReplicaBank::hoprate_filter behind `want_psi` (off by
+        default, so every existing caller is untouched)
+  * [x] reconstruction wired into the CPU generator (hoprate_stream_into), keyed on
+        ddw = wc_stream - f.wc_built. ddw == 0 skips every branch, so a per-PRN filter is
+        bit-identical to before BY CONSTRUCTION -- that is the safe fallback.
+  * [x] VALIDATED IN THE SHIPPED GENERATOR, not just the algebra (scripts/gnss/phishare):
+        one shared pair built at doppler 0, streamed against per-PRN truth --
+        0 Hz 0.000e+00 (exact), +-5 kHz 2.8e-6, +-10 kHz 8.8e-6 relative. e2e VERDICT
+        unchanged at 17.612 chips; broker gate EQUIVALENT.
+  * [ ] GPU: DespreadJob gains psiA/psiB + ddw; chip_gather applies the rotor+linear form;
+        GnssCudaDespread::PhiCache becomes ONE shared entry instead of one per PRN.
+  * [ ] wavebench A/B (the #71 gate: the KERNEL contract, not the formula) + ncu
+        lts__t_sector_hit_rate to confirm the L2 residency the whole win rests on.
+
+### the measured case for it
 
 **Measured 2026-08-28 by phibits [2b]/[2c] against the REAL tables (hoprate_filter at CHORD
 geometry), not from algebra.** Reconstruction error of a chip-window difference, worst case:

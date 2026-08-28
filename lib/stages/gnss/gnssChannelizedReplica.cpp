@@ -510,7 +510,7 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
 
 ChannelizedReplicaBank::HopRateFilter
 ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz,
-                                       int prn_index) const {
+                                       int prn_index, bool want_psi) const {
     const double cps =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double wc = 2.0 * M_PI * (carrier_offset(prn_index) + doppler_hz) / _sample_rate;
@@ -541,14 +541,32 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
     // Per channel, the cumulative filter Phi[k] = Σ_{<k} filt[k] for both carrier images
     // (A: +carrier, B: -carrier); filt = prototype modulated to the channel-carrier offset.
     // A chip's hop contribution is Phi[k_hi+1]-Phi[k_lo] over its integer tap range -- exact.
+    f.wc_built = wc;
+    if (want_psi) {
+        f.PsiA.resize(nw);
+        f.PsiB.resize(nw);
+    }
     for (int ci = 0; ci < nw; ++ci) {
         const double off = 2.0 * M_PI * (double)want[ci] / (double)_fft_len;
         f.PhiA[ci].assign(Lf + 1, 0.0);
         f.PhiB[ci].assign(Lf + 1, 0.0);
+        if (want_psi) {
+            f.PsiA[ci].assign(Lf + 1, 0.0);
+            f.PsiB[ci].assign(Lf + 1, 0.0);
+        }
         for (int k = 0; k < Lf; ++k) {
             const double pk = _proto[k];
-            f.PhiA[ci][k + 1] = f.PhiA[ci][k] + pk * std::exp(-I * (off + wc) * (double)k);
-            f.PhiB[ci][k + 1] = f.PhiB[ci][k] + pk * std::exp(-I * (off - wc) * (double)k);
+            const std::complex<double> ea = pk * std::exp(-I * (off + wc) * (double)k);
+            const std::complex<double> eb = pk * std::exp(-I * (off - wc) * (double)k);
+            f.PhiA[ci][k + 1] = f.PhiA[ci][k] + ea;
+            f.PhiB[ci][k + 1] = f.PhiB[ci][k] + eb;
+            if (want_psi) {
+                // FIRST MOMENT, same prefix-sum shape as Phi so the gather can telescope it
+                // with the identical index arithmetic (that is the whole reason it is stored
+                // as a prefix sum rather than as a per-window quantity).
+                f.PsiA[ci][k + 1] = f.PsiA[ci][k] + (double)k * ea;
+                f.PsiB[ci][k + 1] = f.PsiB[ci][k] + (double)k * eb;
+            }
         }
     }
     return f;
@@ -670,14 +688,39 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
             klo = khi + 1;
         }
 
+        // SHARED-TABLE MODE (docs/CHORD_GPU_TODO.md item 2). When the filter was built at a
+        // DIFFERENT carrier than this stream's -- i.e. Doppler-free, shared by every PRN --
+        // reconstruct each chip window's difference instead of reading it directly:
+        //
+        //   dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
+        //
+        // The A and B images carry the Doppler with OPPOSITE SIGN (they are e^{-i(off+wc)k}
+        // and e^{-i(off-wc)k}), so B takes -ddw. ddw == 0 means the filter already has this
+        // stream's Doppler baked in and every branch below is skipped -- the shared path is
+        // then bit-identical to the per-PRN one by construction, which is what makes the
+        // fallback safe.
+        const double wc_stream =
+            2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
+        const double ddw = (f.PsiA.empty()) ? 0.0 : (wc_stream - f.wc_built);
         for (int ci = 0; ci < nw; ++ci) {
             std::complex<double> sA(0.0, 0.0), sB(0.0, 0.0);
             for (int d = 0; d < f.n_chips; ++d) {
                 if (k_hi[(size_t)d] < k_lo[(size_t)d])
                     continue;
                 const double cv = cvs[(size_t)d];
-                sA += cv * (f.PhiA[ci][(size_t)k_hi[(size_t)d] + 1] - f.PhiA[ci][(size_t)k_lo[(size_t)d]]);
-                sB += cv * (f.PhiB[ci][(size_t)k_hi[(size_t)d] + 1] - f.PhiB[ci][(size_t)k_lo[(size_t)d]]);
+                const size_t t1 = (size_t)k_hi[(size_t)d] + 1, t0 = (size_t)k_lo[(size_t)d];
+                std::complex<double> dA = f.PhiA[ci][t1] - f.PhiA[ci][t0];
+                std::complex<double> dB = f.PhiB[ci][t1] - f.PhiB[ci][t0];
+                if (ddw != 0.0) {
+                    const std::complex<double> I2(0.0, 1.0);
+                    const double t0d = (double)t0;
+                    const std::complex<double> pA = f.PsiA[ci][t1] - f.PsiA[ci][t0];
+                    const std::complex<double> pB = f.PsiB[ci][t1] - f.PsiB[ci][t0];
+                    dA = std::exp(-I2 * ddw * t0d) * (dA - I2 * ddw * (pA - t0d * dA));
+                    dB = std::exp(I2 * ddw * t0d) * (dB + I2 * ddw * (pB - t0d * dB));
+                }
+                sA += cv * dA;
+                sB += cv * dB;
             }
             chan[ci][m] = (cf)(0.5 * (pa * sA + pb * sB));
         }
