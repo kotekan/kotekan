@@ -4,6 +4,7 @@
 #include <assert.h>   // for assert
 #include <chrono>     // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>    // for errno
+#include <exception>  // for exception_ptr, current_exception, rethrow_exception
 #include <json.hpp>   // for basic_json, json
 #include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
@@ -266,7 +267,8 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
-    is_full(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
+    is_full(num_frames, false), peek_in_progress(num_frames, 0),
+    peek_deferred_empty(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
     mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
 
@@ -502,36 +504,70 @@ int Buffer::get_num_full_frames() {
 
 int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
                                    std::shared_ptr<metadataObject>& metadata_out) {
-    // Size the destination before taking the lock: frame_size never changes,
-    // and doing the allocation (and its page faults) here keeps them out of
-    // the window where every producer and consumer on this buffer is blocked.
     const size_t copy_len = std::min(max_len, frame_size);
-    data_out.resize(copy_len);
+    int ID = -1;
+    uint8_t* frame = nullptr;
+    {
+        buffer_lock lock(mutex);
 
-    buffer_lock lock(mutex);
+        if (last_frame_filled < 0) {
+            data_out.clear();
+            return -1;
+        }
 
-    if (last_frame_filled < 0) {
-        data_out.clear();
-        return -1;
+        // Frames fill in ring order, so the first full frame found scanning
+        // backwards from the last filled position is the newest one.
+        for (int i = 0; i < num_frames; ++i) {
+            const int candidate = (last_frame_filled - i + num_frames) % num_frames;
+            if (is_full[candidate]) {
+                ID = candidate;
+                break;
+            }
+        }
+        if (ID == -1) {
+            data_out.clear();
+            return -1;
+        }
+
+        // Defer this frame's empty transition until the copy below finishes.
+        // The frame stays full, which is what stops a producer acquiring it in
+        // wait_for_empty_frame(), and keeps its metadata out of the pool.
+        peek_in_progress[ID]++;
+        frame = frames[ID];
+        metadata_out = metadata[ID];
     }
 
-    // Frames fill in ring order, so the first full frame found scanning
-    // backwards from the last filled position is the newest one.
-    int ID = -1;
-    for (int i = 0; i < num_frames; ++i) {
-        const int candidate = (last_frame_filled - i + num_frames) % num_frames;
-        if (is_full[candidate]) {
-            ID = candidate;
-            break;
+    // The pin keeps the frame in place, so the allocation (and its page
+    // faults) as well as the copy run here with the buffer unlocked; a peek
+    // that found nothing paid for neither. assign() sizes and fills in one
+    // pass, and at `len=0` -- the metadata-only request -- copies nothing.
+    // If the allocation throws, the unpin below still has to run -- the REST
+    // server catches the exception and carries on, and a leaked pin would
+    // keep the frame full for good -- so the error is held until after it.
+    std::exception_ptr copy_error;
+    try {
+        data_out.assign(frame, frame + copy_len);
+    } catch (...) {
+        copy_error = std::current_exception();
+    }
+
+    bool broadcast = false;
+    {
+        buffer_lock lock(mutex);
+
+        peek_in_progress[ID]--;
+        if (peek_in_progress[ID] == 0 && peek_deferred_empty[ID]) {
+            peek_deferred_empty[ID] = false;
+            broadcast = private_finish_frame_empty(ID);
         }
     }
-    if (ID == -1) {
-        data_out.clear();
-        return -1;
-    }
 
-    memcpy(data_out.data(), frames[ID], copy_len);
-    metadata_out = metadata[ID];
+    // Signal the producer that was waiting on the frame this copy was holding.
+    if (broadcast)
+        empty_cond.notify_all();
+
+    if (copy_error)
+        std::rethrow_exception(copy_error);
     return ID;
 }
 
@@ -797,10 +833,7 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
                 } else {
                     DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
                           buffer_name, ID);
-                    is_full[ID] = false;
-                    metadata[ID].reset();
-                    set_empty = true;
-                    private_reset_consumers(ID);
+                    set_empty = private_finish_frame_empty(ID);
                 }
             }
         }
@@ -816,10 +849,10 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
     if (release_empty)
         empty_cond.notify_all();
 
-    // Signal producer
-    if (set_empty) {
-        // empty_cond.notify_all();
-    }
+    // Signal a producer sleeping on the dropped frame from a previous lap
+    // (reachable with more than one producer and no consumers).
+    if (set_empty)
+        empty_cond.notify_all();
 }
 
 // function passed to pthreads
@@ -833,7 +866,7 @@ void* private_zero_frames(void* args) {
 
 void Buffer::_impl_zero_frame(const int ID) {
     assert(ID >= 0);
-    assert(ID <= num_frames);
+    assert(ID < num_frames);
 
     // This zeros everything, but for VDIF we just need to header zeroed.
     int div_256 = 256 * (frame_size / 256);
@@ -844,13 +877,13 @@ void Buffer::_impl_zero_frame(const int ID) {
     // for (int i = 0; i < frame_size/1056; ++i) {
     //    *((uint64_t*)&frames[ID][i*1056]) = 0;
     //}
+    bool emptied;
     {
         buffer_lock lock(mutex);
-
-        is_full[ID] = false;
-        private_reset_consumers(ID);
+        emptied = private_finish_frame_empty(ID);
     }
-    empty_cond.notify_all();
+    if (emptied)
+        empty_cond.notify_all();
 
     int ret = 0;
     pthread_exit(&ret);
@@ -895,8 +928,10 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         return false;
     }
 
-    bool broadcast = false;
     if (_zero_frames) {
+        // The zeroing thread finishes the transition when it is done. A peek
+        // reading the frame meanwhile sees the memset in progress, which is
+        // the documented best-effort behaviour.
         pthread_t zero_t;
         struct zero_frames_thread_args* zero_args =
             (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));
@@ -907,15 +942,28 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
         CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &_cpu_set_zero));
         CHECK_ERROR_F(pthread_detach(zero_t));
-    } else {
-        is_full[ID] = 0;
-        private_reset_consumers(ID);
-        broadcast = true;
+        return false;
     }
+
+    return private_finish_frame_empty(ID);
+}
+
+bool Buffer::private_finish_frame_empty(const int ID) {
+    // A peek is copying this frame with the buffer unlocked. Leaving it full
+    // is what keeps a producer out of it, so run the transition when the last
+    // peek on it finishes instead: the unpin calls back in here.
+    if (peek_in_progress[ID] > 0) {
+        peek_deferred_empty[ID] = true;
+        return false;
+    }
+
+    assert(!peek_deferred_empty[ID]);
+    is_full[ID] = false;
+    private_reset_consumers(ID);
     if (metadata[ID]) {
         metadata[ID].reset();
     }
-    return broadcast;
+    return true;
 }
 
 uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const int ID) {
@@ -986,6 +1034,12 @@ uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
 
     // Check that we don't have more than one producer.
     assert(producers.size() == 1);
+
+    // The frame handed back here is freed by whoever takes it, so it must not
+    // be one a peek is reading. Callers reach this with a frame they hold as a
+    // producer, and wait_for_empty_frame() cannot hand one over while a peek
+    // keeps it full, so no peek can be on it.
+    assert(peek_in_progress[frame_id] == 0);
 
     uint8_t* temp_frame = frames[frame_id];
     frames[frame_id] = external_frame;

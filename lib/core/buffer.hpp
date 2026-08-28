@@ -181,15 +181,17 @@ public:
      *
      * A copy taken under the buffer lock: a stage may unregister while the
      * pipeline runs, so @c consumers cannot be walked from another thread.
+     * The producer names are a separate copy, so a caller reading both sees
+     * the two taken a moment apart rather than as one snapshot.
      *
-     * @return The registered consumer names, in registration-name order.
+     * @return The registered consumer names, sorted by name.
      */
     std::vector<std::string> get_consumer_names();
 
     /**
      * @brief The names of the producers registered to this buffer.
      *
-     * @return The registered producer names, in registration-name order.
+     * @return The registered producer names, sorted by name.
      */
     std::vector<std::string> get_producer_names();
 
@@ -530,14 +532,21 @@ public:
      *
      * Intended for inspection/debugging (e.g. the REST `/buffer_frame`
      * endpoint): the caller does not need to be a registered consumer, and
-     * calling this never consumes or delays frames. The buffer lock is held
-     * for the duration of the copy, which prevents the frame from being
-     * recycled mid-copy, but also blocks producer/consumer state changes on
-     * this buffer for the length of the memcpy -- avoid calling this at high
-     * rates on buffers with large frames. On buffers with deferred frame
-     * zeroing (@c zero_frames) the copy may observe a frame that is
-     * concurrently being zeroed, since the zeroing thread writes frame data
-     * without holding the buffer lock.
+     * calling this never consumes frames. The copy runs with the buffer
+     * unlocked, so producers and consumers on other frames are unaffected.
+     * Only the copied frame is held: its empty transition is deferred until
+     * the copy finishes, which is what keeps a producer out of it. The frame
+     * counts as full (and keeps its metadata object) for that long. The frame
+     * copied is the newest full one, which is the last one the producer comes
+     * back to, so the hold is only felt if the copy outlasts a lap of the
+     * ring -- reachable on a shallow buffer asked for a whole frame, not much
+     * else. A producer that gets there waits, except one that sheds load on a
+     * full ring (bufferRecv, Valve), which drops the data instead.
+     *
+     * The copy is best effort, not a consistent snapshot. A frame already
+     * being zeroed by @c zero_frames, or handed to another buffer by
+     * @c swap_frames() while the copy runs, can be observed part way through
+     * the write; peek again for a clean frame.
      *
      * @param[out] data_out Resized to the copy length and filled with the
      *                      leading bytes of the frame; cleared when -1 is
@@ -886,6 +895,21 @@ public:
      */
     int hold_deferred_id = -1;
 
+    /**
+     * @brief The number of peeks copying out of each frame with the buffer
+     * unlocked. While this is non-zero for a frame, that frame's empty
+     * transition is deferred, so it stays full and no producer can acquire
+     * it (see @c peek_newest_full_frame()).
+     */
+    std::vector<int> peek_in_progress;
+
+    /**
+     * @brief Frames whose empty transition was deferred by a peek still
+     * reading them. The deferred transition runs when the last peek on that
+     * frame finishes.
+     */
+    std::vector<bool> peek_deferred_empty;
+
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
 
@@ -917,9 +941,22 @@ private:
      * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
      *        the zeroing thread and delays marking it as empty until the zeroing is done.
      * @param id The id of the frame to mark as empty.
-     * @return True if the frame was marked as empty, false if it is being zeroed.
+     * @return True if the frame was marked as empty, false if the transition was
+     *         handed to the zeroing thread or deferred (peek_hold, in-flight peek).
      */
     bool private_mark_frame_empty(const int ID);
+    /**
+     * @brief Finishes a frame's empty transition: clears is_full, resets the
+     *        consumers and releases the metadata. Every path that empties a
+     *        frame funnels through here, so a frame a peek is copying (with
+     *        the buffer unlocked) is never handed to a producer: the
+     *        transition is deferred until the last peek unpins, which calls
+     *        back in. Callers hold the buffer lock.
+     * @param id The id of the frame to finish emptying.
+     * @return True if the frame emptied and producers need waking, false if
+     *         the transition was deferred to a peek.
+     */
+    bool private_finish_frame_empty(const int ID);
     // Resets the list of consumers for the given ID
     void private_reset_consumers(const int ID);
 

@@ -36,6 +36,11 @@ target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kote
 add_executable(test_ringbuffer test_ringbuffer.cpp)
 target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_ringbuffer_read_without_claiming
+add_executable(test_ringbuffer_read_without_claiming test_ringbuffer_read_without_claiming.cpp)
+target_link_libraries(test_ringbuffer_read_without_claiming
+                      PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_pipeline_graph - the graph model behind /pipeline_dot
 add_executable(test_pipeline_graph test_pipeline_graph.cpp)
 target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
@@ -44,12 +49,20 @@ target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotek
 # test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(test_buffer_peek PRIVATE libexternal kotekan_libs kotekan_utils
-                                                   kotekan_core -Wl,-all_load kotekan_metadata)
+    target_link_libraries(
+        test_buffer_peek
+        PRIVATE pthread
+                libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
 else()
     target_link_libraries(
         test_buffer_peek
-        PRIVATE libexternal
+        PRIVATE pthread
+                libexternal
                 kotekan_libs
                 kotekan_utils
                 kotekan_core
@@ -57,10 +70,6 @@ else()
                 kotekan_metadata
                 -Wl,--no-whole-archive)
 endif()
-# test_ringbuffer_read_without_claiming
-add_executable(test_ringbuffer_read_without_claiming test_ringbuffer_read_without_claiming.cpp)
-target_link_libraries(test_ringbuffer_read_without_claiming
-                      PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
 
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
