@@ -68,7 +68,12 @@ struct RestServerFixture {
 struct EigenStageTestParams {
     size_t num_elements = 64;
     size_t num_ev = 2;
-    size_t num_ev_conv = 2;
+    // The `phase_ij` pattern is the rank-1 matrix `v v^H` with `v_i = exp(i*I)`, so only its
+    // dominant eigenpair is well determined; the others are numerical noise. Convergence is
+    // measured as the fractional change in each tested eigenvalue, which for a near-zero
+    // eigenvalue is noise divided by noise -- so asking the iterative solver to converge more
+    // than one eigenpair here cannot succeed. Only the iterative stages use this.
+    size_t num_ev_conv = 1;
     size_t total_frames = 6;
     size_t check_start_frame = 0;
     uint32_t num_diagonals_filled = 0;
@@ -322,7 +327,12 @@ static void verify_results(const EigenResults& res, const EigenStageTestParams& 
             BOOST_CHECK_SMALL(static_cast<double>(res.eval1[idx]) / (double)p.num_elements,
                               eval_tol);
         check_phase_vector(res.evec0[idx], masked, p.num_elements, phase_tol, amp_tol);
-        BOOST_CHECK_LT(static_cast<double>(std::abs(res.erms[idx])), (double)rms_limit);
+        // The iterative stages write the residual RMS to `erms` when the solver converged,
+        // and minus the eigenvalue-convergence metric when it hit `max_iterations` first
+        // (see EigenVisIter::main_thread / EigenN2Iter::main_thread). A negative value
+        // therefore means "did not converge", which is a failure, not a small residual.
+        BOOST_CHECK_GE(res.erms[idx], 0.0f);
+        BOOST_CHECK_LT(static_cast<double>(res.erms[idx]), (double)rms_limit);
     }
 }
 
@@ -361,7 +371,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_iterative) {
     params.total_frames = 4;
     params.num_elements = 16;
     auto res = run_pipeline(params, "EigenN2Iter");
-    verify_results(res, params, 1e-4, 1e-4, 1e-4, 2e-2f);
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-5f);
 }
 
 // Elements the incoming frames flag as bad are masked out of the
@@ -468,7 +478,7 @@ BOOST_AUTO_TEST_CASE(eigenVisIter_vis_buffers) {
     params.total_frames = 4;
     params.num_elements = 16;
     auto res = run_pipeline(params, "EigenVisIter");
-    verify_results(res, params, 1e-4, 1e-4, 1e-4, 2e-2f);
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-5f);
 }
 
 // Run two independent EigenN2Iter pipelines concurrently within one process,
@@ -665,6 +675,6 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {
     params_b.cpu_affinity = {1};
 
     auto results = run_n2_pipeline_pair(params_a, params_b);
-    verify_results(results.first, params_a, 1e-4, 1e-4, 1e-4, 2e-2f);
-    verify_results(results.second, params_b, 1e-4, 1e-4, 1e-4, 2e-2f);
+    verify_results(results.first, params_a, 1e-4, 1e-4, 1e-4, 1e-5f);
+    verify_results(results.second, params_b, 1e-4, 1e-4, 1e-4, 1e-5f);
 }

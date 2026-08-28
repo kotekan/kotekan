@@ -59,7 +59,9 @@
  * @conf rfi_downsampling_factor  Int.  Downsampling factor of input buffer
  * @conf bf_mask_lifetime_in_samples  Int.  Number of FPGA samples that one bad feed mask is
  *                             valid for. This stage consumes one mask per input frame, so this
- *                             should be `samples_per_data_set`.
+ *                             must equal `samples_per_data_set`. This is checked at construction,
+ *                             and each mask frame's metadata is checked against the S012 frame it
+ *                             is applied to.
  */
 class gpuSimulateRFIS012tilde : public kotekan::Stage {
 public:

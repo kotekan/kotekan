@@ -24,6 +24,7 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
                  config.get_default<double>(path, "feed_sep_NS", 0.3048), path,
                  config.get<std::string>(path, "log_level"),
                  config.get_default<bool>(path, "require_eop", false),
+                 config.get_default<bool>(path, "fatal_eop_out_of_range", false),
                  config.get_default<std::string>(path, "eop_updatable_config", ""),
                  grid_frame_from_config(config, path)) {
     INFO("Building CHIMETelescope");
