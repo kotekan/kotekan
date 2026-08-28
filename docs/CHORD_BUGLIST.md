@@ -1459,3 +1459,35 @@ OPEN: residual symmetric ±2/±3/±5 classes (~1.3% combined) — next sideband 
 hint-window edge effects; and the ±4-family fold-wrap (lag16 signed fold) is still only
 mitigated by consensus. Instruments to keep until closed: the INFO ph@ref line,
 /tmp/flipdecomp.py (cf06), NHPROF.
+
+### #96/#97 CLOSURE (2026-08-28 afternoon) — the vector inversion armed on the search chain
+
+KV's question located the architecture defect: why do detections rewrite model parameters
+on LOCKED satellites at all? Answer: they were never supposed to — **the cp_held seed
+freeze IS the inversion** (frozen (anchor, rate, at-ref phase) tuple, DLL/fast-trim owns
+the residual, CP_ERR at-epoch referee, escape + 3-miss release), fully built and fixture-
+tested — but starved by TWO gates that could not pass:
+
+1. **fit_trusted was structurally unsatisfiable**: it needs 6 points spanning ≥30 s, and
+   HIST_LEN was hardcoded 8 — ~1 s at CHORD's 8 detections/s (the comment beside the floor
+   still said "6 points span ~13 s", the prototype's cadence). Only weak, sparsely-detected
+   sats could mature (why G18 held while strong G20/21 never did), and the ESCAPE referee —
+   gated on the same predicate — was disabled on exactly the strong sats. → `--fit-hist-len`
+   (default 8 = old behaviour), armed 256 on gps_l5 (~32 s span).
+2. **Hold entry rode amp_snr**, which flickers with the deep fold (#58) — the wrong lock
+   statistic (the project judges lock on q). → `--hold-on-present` (entry/sustain on the
+   population-honest fleet presence streak, ctx.qpop — the same gate that admits trims),
+   armed 5. fit_trusted still required (the 2026-07-19 zombie-cohort lesson).
+   Also armed: `cp-rate-model-tol 0.5` (a held sat's rate freezes at entry — must be clean).
+
+Result, 12 min matched-window vs in-poll controls: 6-8/  all present sats held within ~90 s
+(vs 5 HOLD entries the entire previous day), 0 releases, 0 escapes, seed REPLACE churn on
+locked sats zero (SEEDAUDIT steps = probes only), CP_ERR ~1 chip with the cpp fast trim
+tracking it, l−a clock instrument unaffected (held sats still contribute samples).
+**gps_l5 dropout 0.42% = bds_b2a's 0.43%** (baseline 0.72% when controls read 0.15/0.17);
+q_churn 0.512 → 0.421 (controls 0.18/0.21). Reachability was proven pre-arm on the holds
+fixture as a discriminating pair: `--hold-snr 1e9` alone → 0 holds; + `--hold-on-present 2`
+→ 6/6 via PRESENT.
+
+STILL OPEN under #97: residual ±2/±3/±5 search label classes (~1.3%, now absorbed by
+held-sat freezes + debounce); the ±4 fold-wrap family; residual gps q_churn 2× controls.
