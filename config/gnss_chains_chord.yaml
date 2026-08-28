@@ -382,6 +382,14 @@ chains:
     # veto exists to prevent) or gps dropout exceeds 2x the bds_b2a control.
     # Revert: delete this line + broker restart (absolute veto returns).
     integ-veto-baseline-s: 600
+    # ARMED 2026-08-28 late (#100): flush a PRN's cp-fit history after 3 consecutive
+    # cp-rate rejections -- a rejected fit also poisons the seed POSITION (evaluated from
+    # the same blown fit), and the poison self-sustains for ~8 min at fit-hist-len 256
+    # (G9's 22:36 noise event became a 25-min outage). Judge: FLUSHED lines only on
+    # event-churned sats, slope returns ~0.0x within ~1 min, sat re-locks; REVERT if
+    # flushes fire on healthy sats (>1/sat/h outside events).
+    # Revert: delete this line + broker restart.
+    fit-flush-on-reject: 3
     signal: gps_l5
     # ⚠️ TEMPORARY EXPERIMENT (task #52, 2026-08-14) -- ON THIS CHAIN ONLY, deliberately.
     #
