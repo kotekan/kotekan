@@ -35,6 +35,24 @@ from gnss_broker.fits import (
 )
 
 
+def _present_streak(ctx, prn):
+    """Trailing run of PRESENT cycles in the population-honest series (D0's ctx.qpop).
+
+    Reads the same per-cycle presence the fleet controller trims on -- NOT the `DLL:` log
+    line (survivors only) and NOT amp_snr (the coherent arc). Returns 0 when the series
+    has never seen the PRN.
+    """
+    hist = ctx.qpop.hist.get(prn)   # qpop is an unconditional ctx slot: no swallow --
+    if not hist:                    # a missing attribute must CRASH, not run inert (#93)
+        return 0
+    n = 0
+    for _t, _q, state in reversed(hist):
+        if state != "present":
+            break
+        n += 1
+    return n
+
+
 def stage_coast_drop(ctx):
     """COAST / DROP: retire seeds for satellites that have set, and coast the ones merely fading.
         
@@ -915,6 +933,18 @@ def stage_detections_to_seeds(ctx):
         elif (prev is not None
                 and ((ctx.sig_of_last(ctx.status.get(prn)) >= ctx.args.hold_snr
                       and (prn in ctx.cp_held or fit_trusted))
+                     # ── #96/#97 CLOSURE: HOLD ON THE LOCK STATISTIC (--hold-on-present) ──
+                     # The freeze below IS the architecture -- frozen tuple, DLL owns the
+                     # residual, CP_ERR referee -- but amp_snr rides the coherent arc,
+                     # which flickers with the deep fold (#58), so locked satellites sat
+                     # un-held taking per-detection REPLACEs. Presence here is the
+                     # population-honest fleet gate (ctx.qpop, the series that admits
+                     # trims): the sat this branch protects is exactly the sat whose
+                     # trims the fleet controller is already trusting. fit_trusted still
+                     # required: a birth-window anchor must mature before it earns
+                     # protection (the 2026-07-19 zombie-cohort lesson).
+                     or (ctx.args.hold_on_present > 0 and fit_trusted
+                         and _present_streak(ctx, prn) >= ctx.args.hold_on_present)
                      or (prn in ctx.cp_held and ctx.hold.miss.get(prn, 0) < 3))):
             # PERSISTENT-loss release (2026-07-12 evening): a single blank/stale status
             # read (sig 0.0 -- a poll racing the emit, a slow combiner cycle) used to
@@ -925,6 +955,11 @@ def stage_detections_to_seeds(ctx):
             # A held sat now rides through up to 3 consecutive sub-gate reads; doppler
             # STALENESS still releases immediately (real currency decoherence).
             if ctx.sig_of_last(ctx.status.get(prn)) >= ctx.args.hold_snr:
+                ctx.hold.miss[prn] = 0
+            elif ctx.args.hold_on_present > 0 and _present_streak(ctx, prn) >= 1:
+                # Presence sustains a hold the sig path would starve: the sig read races
+                # the emit (562/736 releases fired at sig ~0.0, 2026-07-12), while the
+                # fleet gate is the statistic the trims already ride.
                 ctx.hold.miss[prn] = 0
             else:
                 ctx.hold.miss[prn] = ctx.hold.miss.get(prn, 0) + 1
@@ -1025,9 +1060,12 @@ def stage_detections_to_seeds(ctx):
                             " (continuous: every cycle, no fence)"
                             if ctx.args.dop_continuous else ""))
             if prn not in ctx.cp_held:
-                _log("HOLD PRN %d: seed currency frozen (amp_snr %.1f >= %.1f, dop %+.0f)"
-                     % (prn, ctx.sig_of_last(ctx.status.get(prn)), ctx.args.hold_snr,
-                        prev["doppler_hz"]))
+                _sig = ctx.sig_of_last(ctx.status.get(prn))
+                _via = ("amp_snr %.1f >= %.1f" % (_sig, ctx.args.hold_snr)
+                        if _sig >= ctx.args.hold_snr
+                        else "PRESENT x%d cycles (fleet gate)" % _present_streak(ctx, prn))
+                _log("HOLD PRN %d: seed currency frozen (%s, dop %+.0f)"
+                     % (prn, _via, prev["doppler_hz"]))
             ctx.cp_held.add(prn)
         else:
             if prn in ctx.cp_held:

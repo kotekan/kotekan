@@ -2536,6 +2536,21 @@ def build_parser(description):
                          "degrading it. 0 (default) keeps every point -- right for the "
                          "prototype, whose detections sit well above threshold and whose "
                          "revisit is seconds. CHORD wants ~60 alongside --fit-gap-s 900.")
+    ap.add_argument("--hold-on-present", type=int, default=0,
+                    help="qualify a satellite for the cp_held seed freeze after this many "
+                         "consecutive FLEET-PRESENT cycles (the population-honest presence "
+                         "that admits trims), alongside the amp_snr path. The hold machinery "
+                         "is the #96/#97 closure architecture -- frozen (anchor, rate, at-ref "
+                         "phase) tuple, DLL owns the residual, CP_ERR at-epoch referee, "
+                         "3-miss release -- but its amp_snr>=hold-snr entry rides the "
+                         "coherent arc, which flickers with the deep fold (#58): measured "
+                         "2026-08-28, 5 HOLD entries in a day while locked q-3.8 satellites "
+                         "took per-detection seed REPLACEs (and their +-1-period flips) "
+                         "un-held. fit_trusted is still required (the 2026-07-19 zombie-"
+                         "cohort lesson: a birth anchor must mature before it earns "
+                         "protection). A present-qualified sat also SUSTAINS on presence: "
+                         "the 3-miss counter only advances when the sig path fails AND the "
+                         "fleet gate reads absent. 0 (default) disables.")
     ap.add_argument("--nh-period-debounce", type=int, default=0,
                     help="require a CHANGED measured overlay period to be confirmed by this "
                          "many consecutive detections (same offset) before it may rewrite "
