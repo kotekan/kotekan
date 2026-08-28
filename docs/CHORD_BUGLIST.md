@@ -1491,3 +1491,55 @@ fixture as a discriminating pair: `--hold-snr 1e9` alone → 0 holds; + `--hold-
 
 STILL OPEN under #97: residual ±2/±3/±5 search label classes (~1.3%, now absorbed by
 held-sat freezes + debounce); the ±4 fold-wrap family; residual gps q_churn 2× controls.
+
+## #98 — the "log-only" TRACK-vs-MODEL monitor ATE THE HOLD CHAIN whenever dr integrity was live (2026-07-20 → 2026-08-28) — FIXED
+
+Found chasing KV's report of G28 losing lock every few minutes (q ~4 with drops to ≤1,
+evening of 08-28) hours after the #96/#97 closure had measured holds working.
+
+**Root**: commit b73327397 (07-20) inserted the monitor's `if` BETWEEN the escape `if` and
+the hold `elif` in the seed-disposition chain. An `elif` has no name for what it chains to:
+the insertion silently re-chained freeze/translate/release onto the MONITOR's condition
+(`cp_err is not None and dr_state["integ"]`). Consequence: whenever a HELD sat had a fresh
+detection while dead-reckon integrity was populated, the whole hold branch was skipped and
+the stored seed reverted to the raw detection — a full re-anchor every ~2 s revisit, with
+`cp_held` still set (the release else was skipped too, so the label lived on with no
+behaviour). The DLL railed chasing per-detection re-anchors (disc ±0.9 alternating between
+2 s polls, p often still 20–80x = command excursions, not fades), q cratered for 2–10 s
+every few minutes, SAWTOOTH BARE-WIPEs on the standing trim, CP_ERR sawtooth ±0.5–2.5 chips
+with `hold_age` pinned at 2 s (the tell: the anchor was never older than one revisit).
+
+**Why every judge missed it for 5 weeks**: dr integrity takes ~10 min to populate after a
+restart, and holds were only ever judged in cold-start windows (incl. the #96/#97 12-min
+read, explicitly a 10-min cold-start). Holds genuinely froze in exactly the windows anyone
+looked at, then silently degraded when integ warmed. The 08-28 fit-hist-len/hold-on-present
+arms made holds matter on STRONG sats for the first time, which is what made the breakage
+visible on G28.
+
+**Magnitude of each re-anchor**: per-detection fine-phase noise (0.1–0.7 chips, SEEDAUDIT)
+plus a rate error from the search's REPORTED Doppler, which is ~76% bin-quantized to the
+62.5 Hz grid (parabola vertex ≈ 0 because the coherent fold's Doppler mainlobe is far
+narrower than the grid — neighbours read noise; chronic, verified identical in the 08-27
+archive). ±31 Hz → ±0.27 chips/s → 0.5–2.5 chips accumulated between revisits. Tolerable
+once per hold entry; ruinous re-injected every 2 s.
+
+**Fix**: the monitor moved ABOVE the escape `if`, standalone; chain restored to the
+pre-07-20 `if escape ≥ 5 / elif hold / else release`. Pinned by
+`gnss_broker/test_holdchain.py` (ast-structural: the escape-if owns the hold elif; the
+monitor carries no orelse). Replay gate: holds fixture digest MOVED (its golden was blessed
+with the bug — re-bless), plain L5 fixture EQUIVALENT. On sky 21:22: hold_age grows
+(4 s → 65/85 s within 90 s of entry) with integrity lines live in the same log — the pair
+the bug made impossible.
+
+## #99 — per-sat dead-reckon integrity residuals are chips-large (±5, spread ~8 chips ≈ 240 m) and slowly drifting — OPEN
+
+Expected ±0.2 chips ("solved clock removed"). Measured: stable per-sat values drifting on
+~minutes (08-28: G28 −5..−8, PRN 1 +3..+5; 08-27 archive: PRN 8 +4.4, PRN 24 −5.4 — so
+CHRONIC, predates the 08-28 EOP work). Search, track, and fleet SPEC-FIT all agree with
+each other (disc ~0, tau +0.01); only the MODEL disagrees, per-sat, both signs. BRDC cache
+is fresh (hourly merge running). Signature fits a station-position error (~150–200 m
+projects onto per-sat LOS with both signs, drifts with geometry) or an EOP-class systematic
+older than today; iono at L5 is ~0.2–0.7 chips, too small. Practical bite: big integ values
+INTEG-VETO legitimate escapes (a mis-anchored hold cannot be evicted) and spam
+TRACK-vs-MODEL. Also under this: birth-window sats log absurd one-shot residuals (+1942,
+−1193 chips) that repeat verbatim — cached first-fit values, worth a freshness stamp.

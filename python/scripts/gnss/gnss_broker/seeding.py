@@ -867,9 +867,25 @@ def stage_detections_to_seeds(ctx):
         integ_veto = False
         if ctx.dr_state is not None and ctx.dr_state.get("integ"):
             _iv = ctx.dr_state["integ"].get(prn)
-            if (_iv is not None and ctx.t0 - _iv[1] < 10.0
-                    and abs(_iv[0]) > ctx.args.hold_max_cp_err):
-                integ_veto = True
+            if _iv is not None and ctx.t0 - _iv[1] < 10.0:
+                _iv_dev = _iv[0]
+                # #98/#99 RELATIVE FORM (--integ-veto-baseline-s): a CHRONIC per-sat model
+                # offset (#99, +-5 chips) is that sat's NORMAL, not evidence against this
+                # fit -- the absolute test vetoed G28's escape all evening while its bad
+                # hold walked +28 chips. Judge the EXCURSION from the sat's own recent
+                # median; a real search lobe-jump still moves integ instantly. Falls back
+                # to the absolute test until >=5 baseline samples exist (cold start).
+                _bl_s = ctx.args.integ_veto_baseline_s
+                if _bl_s > 0.0:
+                    _ih = ctx.cpt.integ_hist.setdefault(prn, [])
+                    if not _ih or _ih[-1][0] != _iv[1]:
+                        _ih.append((_iv[1], _iv[0]))
+                        del _ih[:-64]
+                    _base = [v for (_t, v) in _ih if ctx.t0 - _t <= _bl_s]
+                    if len(_base) >= 5:
+                        _iv_dev = _iv[0] - statistics.median(_base)
+                if abs(_iv_dev) > ctx.args.hold_max_cp_err:
+                    integ_veto = True
         cp_err_med_ok = (cp_err is not None and len(ctx.cpt.err_hist.get(prn, [])) >= 5
                          and abs(statistics.median(ctx.cpt.err_hist[prn]))
                          > ctx.args.hold_max_cp_err)
@@ -882,24 +898,13 @@ def stage_detections_to_seeds(ctx):
             ctx.cpt.escape_sign[prn] = cp_err
         else:
             ctx.cpt.escape[prn] = 0
-        if ctx.cpt.escape.get(prn, 0) >= 5:
-            _log("ESCAPE PRN %d: track %+.2f chips off the search fit (5 consecutive,"
-                 " sign-consistent) -> release hold + DLL trim, re-anchor on the fit"
-                 % (prn, cp_err))
-            ctx.cpt.escape[prn] = 0
-            ctx.cpt.err_hist.pop(prn, None)
-            ctx.dls.trim.pop(prn, None)
-            ctx.dls.last.pop(prn, None)
-            ctx.cp_held.discard(prn)
-            ctx.hold.miss.pop(prn, None)
-            # The re-anchor refreshes the seed doppler next cycle = an NCO f_ref step
-            # the TRACK-mode trim was not built for (same latch as the hold release,
-            # and it bypasses that branch because cp_held is discarded HERE): demote
-            # to BOOTSTRAP so the carrier re-pulls instead of parking off-frequency.
-            if prn in ctx.car.locked:
-                ctx.car.locked.discard(prn)
-                ctx.car.fade.pop(prn, None)
-                _log("CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn)
+        # ⚠ CHAIN HAZARD (2026-08-28): this monitor lived BETWEEN the escape `if`
+        # below and the hold `elif` from 2026-07-20 to 2026-08-28, silently re-chaining
+        # the elif to THIS condition: whenever a held sat had a fresh detection and
+        # dr integrity was populated, freeze/translate/release all skipped and the seed
+        # became a per-detection re-anchor (G28's q drops, 08-28 evening). It sits ABOVE
+        # the escape `if` now, as a standalone statement, and must never be moved into
+        # that chain. test_holdchain.py pins the structure.
         # TRACK-vs-MODEL MONITOR (2026-07-20, log-only; audit follow-up census): the
         # referee's reference is the search FIT; the model-referenced track residual
         # is r_i - cp_err (search-vs-model minus search-vs-track, same chip units).
@@ -921,6 +926,24 @@ def stage_detections_to_seeds(ctx):
                                "INTEG-VETOED" if integ_veto else
                                "fit-untrusted" if not fit_trusted else "active"),
                             every_s=120.0)
+        if ctx.cpt.escape.get(prn, 0) >= 5:
+            _log("ESCAPE PRN %d: track %+.2f chips off the search fit (5 consecutive,"
+                 " sign-consistent) -> release hold + DLL trim, re-anchor on the fit"
+                 % (prn, cp_err))
+            ctx.cpt.escape[prn] = 0
+            ctx.cpt.err_hist.pop(prn, None)
+            ctx.dls.trim.pop(prn, None)
+            ctx.dls.last.pop(prn, None)
+            ctx.cp_held.discard(prn)
+            ctx.hold.miss.pop(prn, None)
+            # The re-anchor refreshes the seed doppler next cycle = an NCO f_ref step
+            # the TRACK-mode trim was not built for (same latch as the hold release,
+            # and it bypasses that branch because cp_held is discarded HERE): demote
+            # to BOOTSTRAP so the carrier re-pulls instead of parking off-frequency.
+            if prn in ctx.car.locked:
+                ctx.car.locked.discard(prn)
+                ctx.car.fade.pop(prn, None)
+                _log("CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn)
         # HOLD ADMISSION REQUIRES FIT MATURITY (2026-07-19 eve, the Tier-3 burn-in fix):
         # a birth-window anchor (wide margins, unsolved bias, <6-point fit) can be chips
         # wrong, and granting it hold protection created the zombie cohorts that made
