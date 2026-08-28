@@ -397,6 +397,20 @@ _FROZEN = dict(
     #   the first tri-constellation night's BDS symptom).
     hold_max_dop_hz=None,
 
+    # --integ-veto-baseline-s
+    #   #98/#99 (2026-08-28): judge the escape referee's INTEGRITY VETO on the EXCURSION from
+    #   the sat's own recent integ median (window this many seconds), not the absolute value.
+    #   The veto's premise -- "a FRESH integ excursion past the bar means the SEARCH is the
+    #   suspect" -- rots when a sat carries a CHRONIC model offset (#99: per-sat +-5 chips,
+    #   drifting on minutes; G28 read -8 all evening): the absolute test then vetoes EVERY
+    #   escape for that sat forever, and a hold whose frozen entry rate is bad WALKS unbounded
+    #   (G28 21:24-21:30: CP_ERR +0.5 -> +28 chips, p 60x -> 12x, veto pinned). Relative form:
+    #   a chronic offset cancels in the median; a real search lobe-jump still moves integ
+    #   instantly and vetoes. Needs >=5 baseline samples in the window (~2.5 min at the ~30 s
+    #   integrity cadence); until then the ABSOLUTE test stands (cold-start protection
+    #   unchanged). 0 disables (absolute veto, pre-#98 behaviour).
+    integ_veto_baseline_s=0.0,
+
     # --lock-prompt-hold
     #   HOLD-ON-LOCK, FOLD-INDEPENDENT PATH (2026-08-14, #58). A satellite also counts as
     #   locked when its FLEET PROMPT POWER over the live noise median reaches this, regardless

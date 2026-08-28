@@ -372,6 +372,16 @@ chains:
     # must be clean -- reject fits departing the pooled clock by >0.5 chips/s.
     # Observable: cp-rate REJECTED lines.
     cp-rate-model-tol: 0.5
+    # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
+    # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
+    # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
+    # permanent for exactly the sats that needed escapes: a hold with a bad frozen entry
+    # rate walked +28 chips in 5 min, un-evictable. Judge: a walking hold ESCAPEs within
+    # ~2 min of its CP_ERR 9-median crossing the bar, CP_ERR resets <1 chip on re-anchor,
+    # p recovers; REVERT if any sat logs >4 ESCAPEs in 10 min (escape churn is what the
+    # veto exists to prevent) or gps dropout exceeds 2x the bds_b2a control.
+    # Revert: delete this line + broker restart (absolute veto returns).
+    integ-veto-baseline-s: 600
     signal: gps_l5
     # ⚠️ TEMPORARY EXPERIMENT (task #52, 2026-08-14) -- ON THIS CHAIN ONLY, deliberately.
     #
