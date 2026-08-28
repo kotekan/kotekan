@@ -70,20 +70,6 @@ common:
   # the sky. 120 s tracks a rise or set closely while leaving every moved slot ample time to
   # acquire cold before the next post is even considered.
   prn-reconfig-interval-s: 120
-  # ── FLEET-WIDE, 2026-08-28 (KV: "shouldn't we always want these?") ────────────────────
-  # Yes. Neither is an experiment: probe-require-slot prevents the probe selector picking
-  # PRNs the nodes have no slot for (which drops a chain under 3 reporting probes and into
-  # PRESENCE UNANCHORED -- the failure chased all evening), and prn-reconfig keeps the slot
-  # map on "3 below the horizon + all above" instead of whatever the config froze. They were
-  # per-chain only because they were rolled out chain by chain behind a control.
-  #
-  # ⚠️ THEY WERE MISSING ON gps_l5 AND NOBODY NOTICED, because there they are NO-OPS: GPS has
-  # 32 PRNs and gnss0_inject has 32 slots, so every PRN already holds one and desired_map
-  # computes zero moves. A knob that does nothing on the chain you look at most is a knob
-  # whose absence is invisible -- which is why it belongs in common rather than being
-  # remembered per chain.
-  probe-require-slot: true
-  prn-reconfig: apply
   # ── THE HORIZON, 2026-08-27 (KV): "treat all sats at el>0 as up." ──────────────────────
   # The 10 deg admit mask was never motivated -- it arrived as a default and was never
   # measured against. It is not a sky property: mask-deg is already 0, so a satellite at
@@ -1120,6 +1106,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # WATCH FOR: "PRN MAP <chain>: N slot(s) ... posted to 12/12 node(s) ... all crossing
     # together at seq X". Every moved slot acquires COLD -- dark for a minute or two.
     # Revert: set this back to `report` + broker restart.
+    prn-reconfig: apply
     # ── PROBE SUPPLY + PRESENCE REFUSAL, ARMED 2026-08-27 02:4x (KV) ─────────────────
     # KV: "Galileo similarly looked to be only locking half its sats." It does, and the
     # fault here is INTERMITTENT rather than absent: the probe set is whatever is deepest
@@ -1133,6 +1120,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # and e5b makes every cross-band comparison asymmetric, and the cross-band anti-
     # correlation work (#93) is judged on exactly those pairs.
     # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
+    probe-require-slot: true
     trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,\
 http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
 http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
@@ -1912,6 +1900,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     #   probes        2 reporting -> 3 (39/21/36 predicted)
     # Revert: delete this line + broker restart.
     # (This also enables the /get_prns sweep, which --prn-reconfig off otherwise skips.)
+    probe-require-slot: true
     # ── ARMED 2026-08-27 17:2x (KV: "no sense waiting even longer") ────────────────────
     # THE FIRST TIME THIS HAS EVER POSTED A SWAP. It has been built, gated and on `report`
     # since 08-26; the heartbeat has been saying "0 swap(s) so far" ever since. Two things
@@ -1931,6 +1920,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # WATCH FOR: "PRN MAP <chain>: N slot(s) ... posted to 12/12 node(s) ... all crossing
     # together at seq X". Every moved slot acquires COLD -- dark for a minute or two.
     # Revert: set this back to `report` + broker restart.
+    prn-reconfig: apply
     # ── PRESENCE REFUSAL, ARMED WITH IT (KV: the peer fallback must never be the
     # ── decision). Paired deliberately: probe-require-slot fixes the probe SUPPLY, this
     # ── makes a bad floor impossible if the supply ever fails again. bds_b2b stays the
@@ -2246,6 +2236,7 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # WATCH FOR: "PRN MAP <chain>: N slot(s) ... posted to 12/12 node(s) ... all crossing
     # together at seq X". Every moved slot acquires COLD -- dark for a minute or two.
     # Revert: set this back to `report` + broker restart.
+    prn-reconfig: apply
     # ── PROBE SUPPLY + PRESENCE REFUSAL, ARMED 2026-08-27 02:4x (KV) ─────────────────
     # KV: "Galileo similarly looked to be only locking half its sats." It does, and the
     # fault here is INTERMITTENT rather than absent: the probe set is whatever is deepest
@@ -2259,6 +2250,7 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # and e5b makes every cross-band comparison asymmetric, and the cross-band anti-
     # correlation work (#93) is judged on exactly those pairs.
     # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
+    probe-require-slot: true
     # ── ARMED 2026-08-27 16:0x (KV): the displaced admission, ex-control ──────────────
     # gal_e5b was the IN-POLL CONTROL for --presence-admit-displaced and it did its job
     # inside minutes, one-sidedly. Measured at 15:5x, same satellites, same poll:
@@ -2370,6 +2362,8 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
     # DATA component; b2a is B2a-**P**, the pilot. Nav-bit transitions cap coherent
     # integration, so b2b sits below b2a for a physical reason no flag reaches (KV, same
     # evening). These stop it being ADDITIONALLY handicapped; they do not buy parity.
+    probe-require-slot: true
+    prn-reconfig: apply
     # ── ARMED 2026-08-27 23:0x: THE DISPLACED ADMISSION ON BeiDou (KV) ───────────────────
     # Built this afternoon for E3 and armed on both Galileo chains; BeiDou never got it, and
     # it is BeiDou that was paying. Measured at 23:00 on the live fleet, 8 BDS-3 above the
