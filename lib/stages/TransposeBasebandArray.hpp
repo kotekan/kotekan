@@ -9,6 +9,7 @@
 #include <cstdint>  // for uint8_t, uint32_t
 #include <stddef.h> // for size_t
 #include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class TransposeBasebandArray
@@ -25,6 +26,19 @@
  * where:
  *   - time = time_long * time_short
  *   - element = element_long * element_short
+ *
+ * The stage optionally permutes the element axis on the way through, via the
+ * @c element_reorder table.  The F-engine delivers elements in crate order
+ * (element = source_id * element_short + lane), which is not the order the GPU
+ * kernels index; for CHORD they expect @c ElementOrder::CHORDBeamformer, i.e.
+ * [P][D] with element = polarization * num_dishes + dish.  An arbitrary
+ * permutation is supported: a CRS board's lanes need not stay together, and
+ * elements may cross board boundaries freely.
+ *
+ * Source elements that no board ever writes stay at the input buffer's fill
+ * value (0x88, the encoded zero for @c int4x2_swapped_withoffset) and permute
+ * along with everything else, so boards that are not yet wired need no special
+ * handling here.
  *
  * @par Buffers
  * @buffer in_buf Input buffer containing electric field data
@@ -46,6 +60,13 @@
  *                              Use "even"/"odd" to parallelize two instances on alternate frames.
  * @conf check_for_zero_nibbles Bool. Enable checking for zero nibbles in the input data (default:
  * false).
+ * @conf element_reorder       Array of Int, optional.  Permutation of the element axis, given as
+ *                             element_reorder[input_element] = output_element (the same direction
+ *                             as bufferBadInputs).  Must be a permutation of [0, num_elements).
+ *                             Omitted or empty means no reordering.
+ * @conf disable_avx512        Bool. Force the scalar path even where AVX512 is available
+ *                             (default: false).  Intended for testing and for comparing the
+ *                             two paths against each other.
  *
  * @author Kotekan Team
  */
@@ -81,6 +102,21 @@ private:
 
     /// Flag to enable checking for zero nibbles in the input data.
     bool check_for_zero_nibbles;
+
+    /// True when element_reorder is absent or the identity, i.e. nothing to permute.
+    bool reorder_is_identity;
+
+    /// Offset of each output element's source byte within an input block, at time_short 0.
+    /// src_byte_offset[output_element] = (source_element / element_short) * time_short *
+    /// element_short + source_element % element_short.  Used by the scalar path.
+    std::vector<uint32_t> src_byte_offset;
+
+    /// Byte-permutation indices for _mm512_permutex2var_epi8, which selects from the
+    /// concatenation of the two gathered registers (source elements 0-63 and 64-127).
+    /// Each index is therefore just the source element number.  Held as plain bytes and
+    /// loaded per block, so the class needs no over-aligned member.
+    uint8_t perm_index_lo[64];
+    uint8_t perm_index_hi[64];
 
 #ifdef __AVX512F__
     /// AVX512 optimized transpose for a single (time_long, freq) block

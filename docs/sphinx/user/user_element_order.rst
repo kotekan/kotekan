@@ -80,7 +80,20 @@ Stages that interpret (rather than just relay) element-ordered data take an
 ``input_order`` option, set to one of the enum names above. These currently
 include ``N2Accumulate``, ``N2TimeDownsample``, ``calcBBPhase``,
 ``hdf5N2Write``, ``hdf5FileWrite``, and the CUDA FRB beamformer kernels.
-The CHORD pathfinder pipeline uses ``CHORDEarly`` throughout.
+The CHORD pathfinder pipeline uses ``CHORDBeamformer`` throughout, which is
+also the telescope's fiducial ordering
+(``CHORDTelescope::fiducial_element_order()``).
+
+An ordering is *established* where the voltage data is first laid out, which
+need not match how the inputs arrive. The CHORD F-engine delivers elements in
+crate order --- element :math:`8s + l` for lane :math:`l` of source (CRS
+board) :math:`s` --- which is none of the orderings above.
+``TransposeBasebandArray`` therefore takes an optional ``element_reorder``
+table, given as ``element_reorder[input_element] = output_element``, which
+permutes the element axis as the data is transposed. It must be a permutation
+of :math:`[0, N_e)`; omitting it leaves the arrival order untouched. The table
+and the telescope's ``dish_inputs`` describe the same axis and have to be
+changed together.
 
 In data files
 =============

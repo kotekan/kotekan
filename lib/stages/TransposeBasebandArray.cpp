@@ -13,7 +13,6 @@
 
 #include <cstring>     // for memcpy, memset
 #include <memory>      // for __shared_ptr_access, shared_ptr
-#include <stdexcept>   // for runtime_error
 #include <vector>      // for vector
 #include <visUtil.hpp> // for frameID, modulo
 #if defined(__x86_64__) || defined(__i386__)
@@ -59,24 +58,20 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     check_for_zero_nibbles = config.get_default<bool>(unique_name, "check_for_zero_nibbles", false);
 
     if (cfg_num_local_freq != NUM_LOCAL_FREQ) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: num_local_freq ({:d}) must be {:d}"),
-                        cfg_num_local_freq, NUM_LOCAL_FREQ));
+        FATAL_ERROR("TransposeBasebandArray: num_local_freq ({:d}) must be {:d}",
+                    cfg_num_local_freq, NUM_LOCAL_FREQ);
     }
     if (cfg_num_elements != NUM_ELEMENTS) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: num_elements ({:d}) must be {:d}"),
-                        cfg_num_elements, NUM_ELEMENTS));
+        FATAL_ERROR("TransposeBasebandArray: num_elements ({:d}) must be {:d}", cfg_num_elements,
+                    NUM_ELEMENTS);
     }
     if (cfg_time_short != TIME_SHORT) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: time_short ({:d}) must be {:d}"),
-                        cfg_time_short, TIME_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: time_short ({:d}) must be {:d}", cfg_time_short,
+                    TIME_SHORT);
     }
     if (cfg_element_short != ELEMENT_SHORT) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: element_short ({:d}) must be {:d}"),
-                        cfg_element_short, ELEMENT_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: element_short ({:d}) must be {:d}", cfg_element_short,
+                    ELEMENT_SHORT);
     }
 
     // Get frame_mode configuration
@@ -88,9 +83,8 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     } else if (frame_mode_str == "odd") {
         frame_mode = FrameMode::Odd;
     } else {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: frame_mode '{}' must be 'all', 'even', or 'odd'"),
-            frame_mode_str));
+        FATAL_ERROR("TransposeBasebandArray: frame_mode '{}' must be 'all', 'even', or 'odd'",
+                    frame_mode_str);
     }
     INFO("TransposeBasebandArray: frame_mode = {}", frame_mode_str);
 
@@ -99,10 +93,9 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
 
     // Validate that dimensions divide evenly
     if (timesamples_per_frame % TIME_SHORT != 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: timesamples_per_frame ({:d}) must be divisible by "
-                "time_short ({:d})"),
-            timesamples_per_frame, TIME_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: timesamples_per_frame ({:d}) must be divisible by "
+                    "time_short ({:d})",
+                    timesamples_per_frame, TIME_SHORT);
     }
 
     // Validate input buffer size
@@ -110,23 +103,21 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     size_t expected_input_size =
         (size_t)time_long * NUM_LOCAL_FREQ * ELEMENT_LONG * TIME_SHORT * ELEMENT_SHORT;
     if (in_buf->frame_size != expected_input_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: in_buf frame size ({:d}) does not match expected "
-                "size ({:d}) for shape [time_long={:d}][num_local_freq={:d}][element_long={:d}]"
-                "[time_short={:d}][element_short={:d}]"),
-            in_buf->frame_size, expected_input_size, time_long, NUM_LOCAL_FREQ, ELEMENT_LONG,
-            TIME_SHORT, ELEMENT_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: in_buf frame size ({:d}) does not match expected "
+                    "size ({:d}) for shape [time_long={:d}][num_local_freq={:d}]"
+                    "[element_long={:d}][time_short={:d}][element_short={:d}]",
+                    in_buf->frame_size, expected_input_size, time_long, NUM_LOCAL_FREQ,
+                    ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);
     }
 
     // Validate output buffer size
     // Output format: E[time][frequency_local][element]
     size_t expected_output_size = (size_t)timesamples_per_frame * NUM_LOCAL_FREQ * NUM_ELEMENTS;
     if (out_buf->frame_size != expected_output_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: out_buf frame size ({:d}) does not match expected "
-                "size ({:d}) for shape [time={:d}][num_local_freq={:d}][num_elements={:d}]"),
-            out_buf->frame_size, expected_output_size, timesamples_per_frame, NUM_LOCAL_FREQ,
-            NUM_ELEMENTS));
+        FATAL_ERROR("TransposeBasebandArray: out_buf frame size ({:d}) does not match expected "
+                    "size ({:d}) for shape [time={:d}][num_local_freq={:d}][num_elements={:d}]",
+                    out_buf->frame_size, expected_output_size, timesamples_per_frame,
+                    NUM_LOCAL_FREQ, NUM_ELEMENTS);
     }
 
     // Validate pl_mask buffer size
@@ -135,23 +126,119 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     size_t expected_pl_mask_size =
         (T / 64) * NUM_LOCAL_FREQ * (NUM_ELEMENTS / 8) * sizeof(uint64_t);
     if (pl_mask_buf->frame_size != expected_pl_mask_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: pl_mask_buf frame size ({:d}) does not match expected "
-                "size ({:d}) for shape [T/64={:d}][F={:d}][E/8={:d}] * sizeof(uint64_t)"),
-            pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, NUM_LOCAL_FREQ,
-            NUM_ELEMENTS / 8));
+        FATAL_ERROR("TransposeBasebandArray: pl_mask_buf frame size ({:d}) does not match "
+                    "expected size ({:d}) for shape [T/64={:d}][F={:d}][E/8={:d}] * "
+                    "sizeof(uint64_t)",
+                    pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, NUM_LOCAL_FREQ,
+                    NUM_ELEMENTS / 8);
     }
 
-    // AVX512 fast path is always enabled with these constants
-    use_avx512_fast_path = false;
-#ifdef __AVX512F__
-    // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
-    // All requirements are met
-    use_avx512_fast_path = true;
-    INFO("TransposeBasebandArray: AVX512 fast path enabled");
+    // Element reordering table, element_reorder[input_element] = output_element.  An empty
+    // or absent table means no reordering.
+    std::vector<uint32_t> element_reorder =
+        config.get_default<std::vector<uint32_t>>(unique_name, "element_reorder", {});
+
+    // source_element[output_element], i.e. the inverse of element_reorder, which is the
+    // direction both the gather permute and the scalar path need.
+    std::vector<uint32_t> source_element(NUM_ELEMENTS);
+    reorder_is_identity = element_reorder.empty();
+
+    if (reorder_is_identity) {
+        for (uint32_t e = 0; e < NUM_ELEMENTS; e++)
+            source_element[e] = e;
+    } else {
+        if (element_reorder.size() != NUM_ELEMENTS) {
+            FATAL_ERROR("TransposeBasebandArray: element_reorder has {:d} entries, expected "
+                        "{:d}",
+                        element_reorder.size(), NUM_ELEMENTS);
+        }
+        // A table that is not a permutation would duplicate some feeds and silently drop
+        // others, so reject it rather than produce plausible-looking nonsense.
+        std::vector<bool> seen(NUM_ELEMENTS, false);
+        for (uint32_t in_e = 0; in_e < NUM_ELEMENTS; in_e++) {
+            uint32_t out_e = element_reorder[in_e];
+            if (out_e >= NUM_ELEMENTS) {
+                FATAL_ERROR("TransposeBasebandArray: element_reorder[{:d}] = {:d} is not less "
+                            "than num_elements ({:d})",
+                            in_e, out_e, NUM_ELEMENTS);
+            }
+            if (seen[out_e]) {
+                FATAL_ERROR("TransposeBasebandArray: element_reorder maps more than one input "
+                            "element to output element {:d}; it must be a permutation of "
+                            "[0, {:d})",
+                            out_e, NUM_ELEMENTS);
+            }
+            seen[out_e] = true;
+            source_element[out_e] = in_e;
+        }
+        reorder_is_identity = true;
+        for (uint32_t e = 0; e < NUM_ELEMENTS && reorder_is_identity; e++)
+            reorder_is_identity = (source_element[e] == e);
+    }
+
+    // Byte offset of each output element's source within an input block, at time_short 0.
+    src_byte_offset.resize(NUM_ELEMENTS);
+    for (uint32_t out_e = 0; out_e < NUM_ELEMENTS; out_e++) {
+        const uint32_t src = source_element[out_e];
+        src_byte_offset[out_e] =
+            (src / ELEMENT_SHORT) * TIME_SHORT * ELEMENT_SHORT + (src % ELEMENT_SHORT);
+    }
+
+    // _mm512_permutex2var_epi8 indexes the concatenation of the two gathered registers,
+    // which together hold source elements 0-127 in order, so the index is the source element.
+    for (uint32_t e = 0; e < NUM_ELEMENTS / 2; e++) {
+        perm_index_lo[e] = (uint8_t)source_element[e];
+        perm_index_hi[e] = (uint8_t)source_element[e + NUM_ELEMENTS / 2];
+    }
+
+    // Report the coarsest granularity the permutation preserves. A permutation that moves
+    // whole aligned groups of 4 elements can be applied with _mm512_permutex2var_epi32
+    // (AVX512F) instead of the byte permute (AVX512-VBMI), should that ever be needed on
+    // hardware without VBMI. This is a property of the wiring, not a guarantee: a single
+    // swapped lane or cable costs it.
+    uint32_t granularity = 1;
+    for (uint32_t g : {8u, 4u, 2u}) {
+        bool preserved = true;
+        for (uint32_t out_e = 0; out_e < NUM_ELEMENTS && preserved; out_e += g) {
+            if (source_element[out_e] % g != 0)
+                preserved = false;
+            for (uint32_t k = 1; k < g && preserved; k++)
+                preserved = (source_element[out_e + k] == source_element[out_e] + k);
+        }
+        if (preserved) {
+            granularity = g;
+            break;
+        }
+    }
+    INFO("TransposeBasebandArray: element reorder {}, granularity {:d} elements",
+         reorder_is_identity ? "identity" : "active", granularity);
+
+    // Escape hatch to run the scalar path on a machine that supports AVX512, so that both
+    // paths can be exercised and compared without rebuilding for a different -march.
+    const bool disable_avx512 = config.get_default<bool>(unique_name, "disable_avx512", false);
+
+    if (disable_avx512) {
+        use_avx512_fast_path = false;
+        INFO("TransposeBasebandArray: AVX512 fast path disabled by config, using scalar path");
+    } else {
+#if defined(__AVX512VBMI__)
+        // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
+        // All requirements are met, and the byte permute can apply any element_reorder.
+        use_avx512_fast_path = true;
+        INFO("TransposeBasebandArray: AVX512 fast path enabled");
+#elif defined(__AVX512F__)
+        // The gather path itself is fine here, but the byte permute needs AVX512-VBMI, so a
+        // real reordering has to fall back to the scalar path.
+        use_avx512_fast_path = reorder_is_identity;
+        INFO("TransposeBasebandArray: {}",
+             use_avx512_fast_path
+                 ? "AVX512 fast path enabled"
+                 : "element_reorder is set but AVX512-VBMI is not available, using scalar path");
 #else
-    INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
+        use_avx512_fast_path = false;
+        INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
 #endif
+    }
 
     // Set the output buffer frame ndarray shape
 
@@ -197,6 +284,12 @@ void TransposeBasebandArray::transpose_block_avx512(const uint8_t* in, uint8_t* 
     const __m512i indices_hi = _mm512_set_epi64(15 * 128, 14 * 128, 13 * 128, 12 * 128, 11 * 128,
                                                 10 * 128, 9 * 128, 8 * 128);
 
+#ifdef __AVX512VBMI__
+    // Element permutation indices, loaded once per block and reused for all 16 time samples.
+    const __m512i perm_lo = _mm512_loadu_si512((const __m512i*)perm_index_lo);
+    const __m512i perm_hi = _mm512_loadu_si512((const __m512i*)perm_index_hi);
+#endif
+
     for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
         // Base address for this t_short within the input block
         const uint8_t* base = in + t_short * ELEMENT_SHORT;
@@ -231,6 +324,19 @@ void TransposeBasebandArray::transpose_block_avx512(const uint8_t* in, uint8_t* 
             }
         }
 
+
+#ifdef __AVX512VBMI__
+        // Reorder the element axis. data_lo and data_hi together hold source elements
+        // 0-127 in order, so each output byte picks its source element straight out of
+        // their concatenation. The permutation is arbitrary: elements may move between
+        // the two registers, and a board's lanes need not stay together.
+        {
+            const __m512i out_lo = _mm512_permutex2var_epi8(data_lo, perm_lo, data_hi);
+            const __m512i out_hi = _mm512_permutex2var_epi8(data_lo, perm_hi, data_hi);
+            data_lo = out_lo;
+            data_hi = out_hi;
+        }
+#endif
 
         // Write 128 bytes using non-temporal stores (bypasses cache)
         uint8_t* out_row = out + t_short * out_stride;
@@ -395,29 +501,36 @@ void TransposeBasebandArray::main_thread() {
                     uint64_t mask_val = pl_mask_ptr[pl_mask_idx];
                     bool has_packet_loss = (mask_val & check_mask) != check_mask;
 
-                    for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++) {
-                        for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
-                            // Calculate output time index
-                            uint32_t time = t_long * TIME_SHORT + t_short;
+                    for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
+                        // Calculate output time index
+                        uint32_t time = t_long * TIME_SHORT + t_short;
 
-                            // Calculate output base index
-                            size_t out_base = (size_t)time * out_time_stride
-                                              + freq * out_freq_stride + e_long * ELEMENT_SHORT;
+                        // Calculate output base index
+                        size_t out_base = (size_t)time * out_time_stride + freq * out_freq_stride;
 
-                            if (has_packet_loss) {
-                                // Fill with 0x88 instead of copying
-                                std::memset(&out_frame[out_base], 0x88, ELEMENT_SHORT);
-                            } else {
-                                // Calculate input base index
-                                size_t in_base = (size_t)t_long * in_tlong_stride
-                                                 + freq * in_freq_stride
-                                                 + e_long * (TIME_SHORT * ELEMENT_SHORT)
-                                                 + t_short * ELEMENT_SHORT;
+                        // Input base index for this time sample; each output element picks
+                        // its source out of the block relative to this.
+                        size_t in_base = (size_t)t_long * in_tlong_stride + freq * in_freq_stride
+                                         + t_short * ELEMENT_SHORT;
 
-                                // Copy element_short contiguous bytes
-                                std::memcpy(&out_frame[out_base], &in_frame[in_base],
-                                            ELEMENT_SHORT);
-                            }
+                        if (has_packet_loss) {
+                            // Fill with 0x88 instead of copying
+                            std::memset(&out_frame[out_base], 0x88, NUM_ELEMENTS);
+                        } else if (reorder_is_identity) {
+                            // Without a reordering an element_long's whole group of
+                            // element_short lanes is contiguous at both ends, so move each
+                            // group in one go rather than a byte at a time.
+                            for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++)
+                                std::memcpy(
+                                    &out_frame[out_base + e_long * ELEMENT_SHORT],
+                                    &in_frame[in_base + e_long * TIME_SHORT * ELEMENT_SHORT],
+                                    ELEMENT_SHORT);
+                        } else {
+                            // A reordered element may sit in any element_long at any
+                            // element_short, so there is no group larger than one byte that
+                            // is guaranteed to move together.
+                            for (uint32_t e = 0; e < NUM_ELEMENTS; e++)
+                                out_frame[out_base + e] = in_frame[in_base + src_byte_offset[e]];
                         }
                     }
                 }
