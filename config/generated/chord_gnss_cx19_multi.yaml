@@ -192,30 +192,30 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0118616
-    t_inst_ns: 1785110400000000000
-    xp_as: 0.214667
-    yp_as: 0.365678
-  - delta_UT1_inst: 0.0124019
-    t_inst_ns: 1785196800000000000
-    xp_as: 0.214692
-    yp_as: 0.364682
-  - delta_UT1_inst: 0.012754
-    t_inst_ns: 1785283200000000000
-    xp_as: 0.214694
-    yp_as: 0.363689
-  - delta_UT1_inst: 0.0126936
-    t_inst_ns: 1785369600000000000
-    xp_as: 0.220334
-    yp_as: 0.364204
-  - delta_UT1_inst: 0.0127493
-    t_inst_ns: 1785456000000000000
-    xp_as: 0.220481
-    yp_as: 0.363196
-  - delta_UT1_inst: 0.0125864
-    t_inst_ns: 1785542400000000000
-    xp_as: 0.220596
-    yp_as: 0.362205
+  - delta_UT1_inst: 0.0072535
+    t_inst_ns: 1787702400000000000
+    xp_as: 0.215404
+    yp_as: 0.344177
+  - delta_UT1_inst: 0.0069866
+    t_inst_ns: 1787788800000000000
+    xp_as: 0.214867
+    yp_as: 0.343263
+  - delta_UT1_inst: 0.006492
+    t_inst_ns: 1787875200000000000
+    xp_as: 0.214266
+    yp_as: 0.342361
+  - delta_UT1_inst: 0.0057765
+    t_inst_ns: 1787961600000000000
+    xp_as: 0.213608
+    yp_as: 0.341464
+  - delta_UT1_inst: 0.0048817
+    t_inst_ns: 1788048000000000000
+    xp_as: 0.212906
+    yp_as: 0.340582
+  - delta_UT1_inst: 0.0031673
+    t_inst_ns: 1788134400000000000
+    xp_as: 0.211313
+    yp_as: 0.338658
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:

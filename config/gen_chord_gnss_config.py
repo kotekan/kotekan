@@ -1915,6 +1915,36 @@ def build_search_instance(cfg, node, per_gpu, args, port):
     return out
 
 
+def choco_eop_table(args, timeout=10.0):
+    """The observatory's refreshed EOP table, or None. Same (table, source, last_ns) shape as
+    @ref live_eop_table so the caller cannot tell them apart.
+
+    Read over ssh because /etc/choco is not mounted on the generator hosts. A failure here is
+    NOT fatal -- the caller falls back to the fleet -- but it is reported, because a silent
+    fallback to a frozen base capture is the exact failure this function exists to prevent.
+    """
+    import subprocess
+    path = getattr(args, "eop_file", None) or "choco:/etc/choco/configs/eop-state.json"
+    host, _, remote = path.partition(":")
+    try:
+        if remote:
+            raw = subprocess.run(["ssh", "-o", "BatchMode=yes", host, "cat " + remote],
+                                 capture_output=True, timeout=timeout).stdout.decode()
+        else:
+            raw = open(path).read()
+        tbl = json.loads(raw).get("earth_orientation_parameter_table") or []
+        bare = [{"t_inst_ns": int(e["t_inst_ns"]),
+                 "delta_UT1_inst": float(e["delta_UT1_inst"]),
+                 "xp_as": float(e["xp_as"]), "yp_as": float(e["yp_as"])} for e in tbl]
+        if not bare:
+            return None
+        return bare, path, max(e["t_inst_ns"] for e in bare)
+    except Exception as e:
+        print("  eop       choco source unavailable (%s: %s) -- falling back to the fleet"
+              % (type(e).__name__, e), file=sys.stderr)
+        return None
+
+
 def live_eop_table(cfg, args, timeout=3.0):
     """The FRESHEST Earth-orientation table any reachable kotekan is serving, or None.
 
@@ -2805,7 +2835,20 @@ def main():
     # frame0_utc. There is no event to notice: the config is unchanged, the node is healthy,
     # and the table simply ages out from under it while the log fills at frame rate with a
     # warning everyone has learned to ignore (#68). So this refuses to be quiet about it.
-    _eop = live_eop_table(cfg, args)
+    # ── THE AUTHORITATIVE EOP SOURCE (KV, 2026-08-28) ────────────────────────────────────
+    # choco:/etc/choco/configs/eop-state.json is where the observatory REFRESHES the table.
+    # Asking the running fleet (live_eop_table below) only ever finds what the fleet was last
+    # STARTED with, so it cannot recover from staleness -- and it returns nothing at all when
+    # the fleet is down, which silently falls back to the BASE capture. That is not
+    # hypothetical: regenerating on 2026-08-28 with the fleet stopped for maintenance replaced
+    # an 08-24 table with the 07-30 base, and the nodes came up 28 days stale and logged
+    # 108,054 "Requesting EOP later than in table" warnings in 15 minutes -- the same fault
+    # that killed recv1's hdf5 writer on 08-19. The warning below FIRED and was missed because
+    # the caller piped stderr through `tail`.
+    # So: try choco FIRST, and only fall back to the fleet.
+    _eop = choco_eop_table(args)
+    if _eop is None:
+        _eop = live_eop_table(cfg, args)
     if _eop is not None:
         _tbl, _src, _last = _eop
         out.setdefault("earth_rotation_data", {})["earth_orientation_parameter_table"] = _tbl
