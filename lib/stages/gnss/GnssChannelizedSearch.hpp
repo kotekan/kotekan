@@ -243,6 +243,18 @@ private:
     /// Alignments scanned either side of the predicted one. 1 (three of twenty) keeps ~6.7x of
     /// the saving while tolerating an off-by-one hint; 0 takes the full 20x and trusts it.
     int _nh_hint_span = 1;
+    /// #97: serve the scanned alignments' MAJORITY overlay label instead of the winner's
+    /// own when they disagree. The per-alignment argmax can land on an ADJACENT
+    /// alignment's peak cell (same tau, wrong nh -- seen directly in NHPROF: two entries
+    /// sharing one tau), and (nh + lag) then mislabels the period by +-1 while the fine
+    /// phase stays right. The pass's other alignments are partner hypotheses of the same
+    /// signal and vote on the label at zero extra cost. Per-pass consensus, no history --
+    /// none of the 2026-08-02 temporal-override hazards.
+    bool _nh_label_consensus = false;
+    /// #97 root fix: choose each surface's peak CELL on the #41 mainlobe pair-sum instead
+    /// of the raw sample, so an on-grid NH Doppler sideband cannot outvote a scalloped
+    /// true peak. The served snr stays the chosen cell's raw peak/mean.
+    bool _acq_pairsum_select = false;
     std::mutex _hint_mtx;
     /// require_hint: scan ONLY PRNs with a fresh broker hint (visible sats), SKIP the rest (no blind
     /// grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap) when

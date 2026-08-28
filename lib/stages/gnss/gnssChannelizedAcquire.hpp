@@ -287,7 +287,8 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf,
                                    const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length,
-                                   int fine_lag_sign = FINE_LAG_SIGN_PFB);
+                                   int fine_lag_sign = FINE_LAG_SIGN_PFB,
+                                   bool pairsum_select = false);
 
 /// The second half of @ref channelized_peak: everything after the surface scan.
 ///

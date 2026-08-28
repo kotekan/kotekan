@@ -345,6 +345,17 @@ chains:
     # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
     # q duty. Revert: delete this line on the affected chain + broker restart.
     seed-phase-transport: true
+    # ARMED 2026-08-28 (#97): a CHANGED measured overlay period needs 2 consecutive
+    # detections agreeing before it may rewrite the seed; until then the seed carries the
+    # measured fine phase with the STANDING period, and ph_hist is not fed. The search's
+    # period toggles +-1 on snr-300+ sats (~150 whole-period seed steps/h chain-wide,
+    # SEEDAUDIT step-back pairs); per-sat step rate ranked exactly with q churn. On THIS
+    # chain only -- it is the only one with a detectors endpoint, so the only one that can
+    # reach the code. Judge: SEEDAUDIT whole-period steps -> ~0, G18/G21 q_sd -> G26's,
+    # ADOPTED lines rare; gal/bds are no-detection controls and must not move.
+    # ⚠️ MITIGATION, not the fix -- the source defect (search period at high snr) is #97's
+    # open half. Revert: delete this line + broker restart.
+    nh-period-debounce: 2
     signal: gps_l5
     # ⚠️ TEMPORARY EXPERIMENT (task #52, 2026-08-14) -- ON THIS CHAIN ONLY, deliberately.
     #

@@ -530,7 +530,8 @@ AcquisitionResult ms_split_peak(const std::vector<double>& surf, const Acquisiti
 
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
-                                   double chip_rate, long code_length, int fine_lag_sign) {
+                                   double chip_rate, long code_length, int fine_lag_sign,
+                                   bool pairsum_select) {
     AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0, -1.0};
     double surf_sum = 0.0;
     long surf_n = 0;
@@ -544,6 +545,7 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     // fell in the first period) nor the mean (uniform copies), and the decimation costs only
     // the sub-lobe interpolation the following refine redoes exactly anyway.
     const int sfine = dims.fine();
+    std::vector<int> pd_q(dims.n_dop, 0), pd_i(dims.n_dop, 0); // per-plane argmax cell
     for (int d = 0; d < dims.n_dop; ++d) {
         const double* base = surf.data() + (long)d * dims.Mp * sfine;
         for (int q = 0; q < dims.Mp; ++q) {
@@ -552,8 +554,11 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
                 const double pw = row[s];
                 surf_sum += pw;
                 surf_n++;
-                if (pw > dop_peak[d])
+                if (pw > dop_peak[d]) {
                     dop_peak[d] = pw;
+                    pd_q[d] = q;
+                    pd_i[d] = s;
+                }
                 if (pw > best.peak) {
                     best.peak = pw;
                     best_d = d;
@@ -561,6 +566,42 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
                     best_i = s;
                 }
             }
+        }
+    }
+    // ── #97: CHOOSE THE CELL ON THE SCALLOPING-ROBUST STATISTIC, not the raw sample ──
+    // #41 fixed the cross-ALIGNMENT comparison with the mainlobe pair-sum but left this
+    // within-surface argmax raw -- so an NH Doppler sideband that lands ON a grid bin
+    // still beats a true peak that scallops (single-bin retains as little as 41%% of the
+    // continuum power at mid-bin; the sideband family reaches ~50%%). Measured on sky
+    // 2026-08-28: whole groups of alignments argmaxed onto sideband cells with the
+    // Doppler pinned exactly on-grid, tau shifted by whole code periods -- the +-1 and
+    // +-2-period label flips on snr-300+ satellites. Same statistic, same discipline as
+    // #41: the CHOICE uses dop_peak[d] + max(neighbours); the SERVED peak/snr stay the
+    // chosen cell's raw values, which every downstream gate is calibrated on.
+    // ⚠️ LOCAL MAXIMA ONLY (the first form of this, without the restriction, was armed
+    // and reverted within the hour on 2026-08-28: ps(d)=own+max(neighbour) lets the
+    // plane BESIDE a strong peak tie the peak plane -- small+big vs big+small -- and
+    // the chosen Doppler dithered +-1 bin, 3.4%% -> 39%% flips. A local max keeps its
+    // own mainlobe: the off-grid peak's larger half competes with both halves summed,
+    // the on-grid sideband competes with only itself, and the dither plane is excluded
+    // because its neighbour exceeds it.)
+    if (pairsum_select && dims.n_dop >= 3) {
+        double bestps = -1.0;
+        int sel = -1;
+        for (int d = 1; d < dims.n_dop - 1; ++d) {
+            if (dop_peak[d] < dop_peak[d - 1] || dop_peak[d] < dop_peak[d + 1])
+                continue; // not a local max: this plane is somebody's shoulder
+            const double ps = dop_peak[d] + std::max(dop_peak[d - 1], dop_peak[d + 1]);
+            if (ps > bestps) {
+                bestps = ps;
+                sel = d;
+            }
+        }
+        if (sel >= 0) { // no interior local max -> keep the raw argmax
+            best_d = sel;
+            best.peak = dop_peak[best_d];
+            best_q = pd_q[best_d];
+            best_i = pd_i[best_d];
         }
     }
 

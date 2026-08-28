@@ -85,7 +85,8 @@ public:
     /// handed to @ref set_doppler_grid.
     gnss::AcquisitionResult peak_result(const gnss::AcquisitionSurface& dims,
                                         const std::vector<double>& doppler_grid, double sample_rate,
-                                        double chip_rate, long code_length) const;
+                                        double chip_rate, long code_length,
+                                        bool pairsum_select = false) const;
 
     /// Peak / mean of the accumulated surface, computed on the device.
     struct Peak {

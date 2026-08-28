@@ -299,7 +299,8 @@ GnssCudaAcquire::Peak GnssCudaAcquire::peak() const {
 gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurface& dims,
                                                      const std::vector<double>& doppler_grid,
                                                      double sample_rate, double chip_rate,
-                                                     long code_length) const {
+                                                     long code_length,
+                                                     bool pairsum_select) const {
     const long cells_per_dop = (long)_Mp * _s_cols;
     std::vector<float> dmax((size_t)_nd);
     std::vector<double> dsum((size_t)_nd);
@@ -318,6 +319,31 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
             peak = (double)dmax[(size_t)d];
             best_d = d;
             best_off = didx[(size_t)d];
+        }
+    }
+    // #97: choose the plane on the #41 mainlobe pair-sum, not the raw sample -- see
+    // channelized_peak (the CPU twin of this reduction) for the measured defect. The
+    // served peak/snr stay the chosen plane's raw values.
+    // ⚠️ LOCAL MAXIMA ONLY -- see channelized_peak for the measured failure of the
+    // unrestricted form (armed and reverted 2026-08-28: +-1-bin Doppler dither, 39%% flips).
+    if (pairsum_select && _nd >= 3) {
+        double bestps = -1.0;
+        int sel = -1;
+        for (int d = 1; d < _nd - 1; ++d) {
+            if (dop_peak[(size_t)d] < dop_peak[(size_t)d - 1]
+                || dop_peak[(size_t)d] < dop_peak[(size_t)d + 1])
+                continue;
+            const double ps = dop_peak[(size_t)d]
+                              + std::max(dop_peak[(size_t)d - 1], dop_peak[(size_t)d + 1]);
+            if (ps > bestps) {
+                bestps = ps;
+                sel = d;
+            }
+        }
+        if (sel >= 0) {
+            best_d = sel;
+            best_off = didx[(size_t)sel];
+            peak = dop_peak[(size_t)sel];
         }
     }
     const double mean = sum / (double)((long)_nd * cells_per_dop);

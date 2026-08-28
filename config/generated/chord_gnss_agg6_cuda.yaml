@@ -416,6 +416,31 @@ gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120
 gps_search:
+  # #97 DIAGNOSTIC (2026-08-28): per-detection DEBUG decomposition (hop/coarse/refine/nh/
+  # cp_long/ph@ref) -- the instrument for the between-pass period flips. ~7 lines/s at
+  # CHORD's cadence. Remove when #97's source defect is closed. ⚠️ generated file: a
+  # regeneration drops this line, which is acceptable for a diagnostic.
+  log_level: debug
+  # #97 ARMED 2026-08-28: serve the scanned alignments' MAJORITY period label when the
+  # winner's own disagrees (the winner's argmax can sit on a neighbour alignment's peak
+  # cell -- same tau, wrong nh -- and #41's interp then promotes the mislabelled cell).
+  # Measured before arming, this exact instrument: 3.4% of consecutive strong pairs
+  # flipped +-1 period, snr 300-1400. tau and the fine phase are never touched.
+  nh_label_consensus: true
+  # #97 ROOT FIX ARMED 2026-08-28: pick each surface's peak cell on the #41 mainlobe
+  # pair-sum, not the raw sample. The raw argmax let an on-grid NH Doppler sideband beat
+  # a scalloped true peak (whole alignment groups pinned at on-grid dops, tau shifted by
+  # whole periods -- the +-1/+-2-period label flips at snr 300+). Judge: m=+-1 flip rate
+  # in the ph@ref stream 3.4% -> <0.5%; +-2 back under 0.3%; consensus fires -> rare.
+  # acq_pairsum_select: REVERTED 2026-08-28 same hour -- armed at 14:0x, flip rate
+  # EXPLODED 3.4% -> 39% and consensus fired on 14% of passes (revert trigger 10%).
+  # The transplant was wrong: ps(d)=dop_peak[d]+max(neighbours) lets the plane NEXT to
+  # a strong peak tie the peak plane (small+big vs big+small), dithering the chosen
+  # Doppler +-1 bin. #41's pair-sum compares hypotheses each at their own vertex; a
+  # per-plane argmax criterion needs the local-max restriction. See #97 for the redo.
+  # RE-ARMED same day with the LOCAL-MAX restriction (only planes that are local maxima
+  # of the dop profile compete on the pair-sum). Same judge and trigger as before.
+  acq_pairsum_select: true
   acquire_fine_step: 128
   acquire_snr: 30.0
   acquire_threads: 16

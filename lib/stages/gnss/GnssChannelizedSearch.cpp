@@ -17,6 +17,7 @@
 #include <chrono>     // for steady_clock (hint TTL)
 #include <cmath>      // for fabs, fmod, norm
 #include <cstdio>     // for fopen/fread/fwrite (the replica disk cache)
+#include <map>        // for the #97 label-consensus vote
 #include <cstring>    // for memcpy
 #include <functional> // for bind
 #include "json.hpp"   // for json
@@ -122,6 +123,8 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _hint_dop_sign = config.get_default<double>(unique_name, "hint_doppler_sign", -1.0);
     _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
     _nh_hint_span = std::max(0, config.get_default<int>(unique_name, "nh_hint_span", 1));
+    _nh_label_consensus = config.get_default<bool>(unique_name, "nh_label_consensus", false);
+    _acq_pairsum_select = config.get_default<bool>(unique_name, "acq_pairsum_select", false);
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
     // Bounded cold-start: with require_hint false, EVERY unhinted PRN would otherwise get a full
     // blind grid (~30x a hinted one), so a sky full of below-horizon satellites dominates the
@@ -783,7 +786,7 @@ void GnssChannelizedSearch::search_snapshot() {
                 if (prof) t_acq += steady_s() - _t_a0;
                 const double _t_p0 = prof ? steady_s() : 0.0;
                 ai = _cuda_acq->peak_result(dims, grid, _sample_rate, _replica->chip_rate_hz(),
-                                            _replica->code_length());
+                                            _replica->code_length(), _acq_pairsum_select);
                 if (prof) t_acq += steady_s() - _t_p0;
             } else
 #endif
@@ -802,7 +805,8 @@ void GnssChannelizedSearch::search_snapshot() {
                 if (prof) t_acq += steady_s() - _t_a0;
                 const double _t_p0 = prof ? steady_s() : 0.0;
                 ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
-                                            _replica->chip_rate_hz(), _replica->code_length());
+                                            _replica->chip_rate_hz(), _replica->code_length(),
+                                            gnss::FINE_LAG_SIGN_PFB, _acq_pairsum_select);
                 if (prof) t_acq += steady_s() - _t_p0;
             }
             // #41: ALIGNMENTS ARE COMPARED ON THE SCALLOPING-CORRECTED PEAK, never the raw
@@ -840,6 +844,53 @@ void GnssChannelizedSearch::search_snapshot() {
             INFO("GnssChannelizedSearch[{:s}]: PRN {:d} NHPROF snr {:.0f} best_nh {:d} "
                  "|{:s}",
                  unique_name, _prns[p], a.snr, best_nh, prof_s);
+        }
+        // ── #97: THE LABEL CONSENSUS (nh_label_consensus) ─────────────────────────────
+        // The scanned alignments are partner hypotheses of ONE signal ((nh+1, tau-P) is
+        // the same physical phase), so (nh + lag) agrees across them -- except when an
+        // alignment's argmax lands on its NEIGHBOUR's peak cell (same tau, wrong nh; two
+        // NHPROF entries sharing one tau is this exact event) and #41's scalloping
+        // correction then promotes the mislabelled cell to the pass winner. Measured
+        // 2026-08-28 on sky: 1.8%% of passes served a label one off their own line's
+        // majority, each producing an in-and-out +-1-period step pair 0.13 s apart --
+        // 3.4%% of consecutive strong pairs flipped, on satellites at snr 300-1400,
+        // because the deciding margin is the 15/16-period window overlap (~0.5 dB), not
+        // the SNR. The other alignments already voted; count them. Per-pass, no history.
+        //
+        // The vote moves ONLY the label: tau and the refined fine phase are the winner's,
+        // untouched. Ties keep the winner's label. Skipped below 3 voters (a 1-1 split
+        // plus the winner is not a consensus).
+        if (_nh_label_consensus && detected && _n_nh > 1 && best_nh >= 0
+            && _nh_prof.size() >= 3) {
+            const double per_samp =
+                (_replica->code_length() / _replica->chip_rate_hz()) * _sample_rate;
+            const int span = (int)std::llround((double)Mp * (double)_fft_len / per_samp);
+            auto label_of = [&](int nh, long long tau) {
+                int lag = (int)((double)tau / per_samp) % span;
+                if (lag > span / 2)
+                    lag -= span;
+                return ((nh + lag) % _n_nh + _n_nh) % _n_nh;
+            };
+            std::map<int, int> votes;
+            for (const auto& e : _nh_prof)
+                ++votes[label_of(e.nh, (long long)e.tau)];
+            const int mine = label_of(best_nh, (long long)a.peak_tau_samples);
+            int maj = mine, maj_n = 0;
+            for (const auto& kv : votes)
+                if (kv.second > maj_n || (kv.second == maj_n && kv.first == mine)) {
+                    maj = kv.first;
+                    maj_n = kv.second;
+                }
+            if (maj != mine && maj_n > (int)_nh_prof.size() / 2) {
+                const int shift = ((maj - mine) % _n_nh + _n_nh) % _n_nh;
+                const int nh_corr = (best_nh + shift) % _n_nh;
+                INFO("GnssChannelizedSearch[{:s}]: PRN {:d} LABEL CONSENSUS: winner nh {:d} "
+                     "labels the period {:d} but {:d}/{:d} scanned alignments say {:d} -- "
+                     "relabelled (nh {:d} -> {:d}, tau kept)",
+                     unique_name, _prns[p], best_nh, mine, maj_n, (int)_nh_prof.size(), maj,
+                     best_nh, nh_corr);
+                best_nh = nh_corr;
+            }
         }
         _nh_prof.clear();
         if (a.snr > best_any) {
@@ -902,7 +953,13 @@ void GnssChannelizedSearch::search_snapshot() {
             // DEBUG, not INFO (50c4a0563): unthrottled once per PRN per snapshot, which is spam
             // at the prototype's cadence. CHORD re-enables it per stage (log_level: debug on
             // gps_search) rather than globally -- it is the seeding investigation's instrument.
-            DEBUG("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
+            // #97 DIAGNOSTIC (2026-08-28): promoted DEBUG -> INFO. The per-stage
+            // `log_level: debug` route the comment above describes does not exist in this
+            // build -- DEBUG is compiled out (strings(1) finds no "ph@ref" in the shipped
+            // binary), so the instrument was unreachable exactly when the period flips it
+            // exists to decompose needed it. ~7 lines/s at CHORD cadence. Demote once
+            // #97's source defect is closed.
+            INFO("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
                  "coarse {:.2f} refine {:+.2f} nh {:d} -> cp0 {:.2f} cp_long {:.2f} "
                  "ph@ref {:.2f}",
                  unique_name, _prns[p], a.snr, dop, _snap_start_hop, a.code_phase_chips,
