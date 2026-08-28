@@ -175,16 +175,44 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
 /// ILV: PhiA and PhiB INTERLEAVED into one float4 table (A.re, A.im, B.re, B.im). Each lane
 /// then issues ONE 16-byte load instead of two 8-byte loads into two arrays ~1 MB apart, halving
 /// the transaction count -- which is what this kernel actually pays (docs/gnss_gpu_search 10.6).
-template<class PHI, bool ABL_NOLOAD = false, bool ILV = false>
+/// SHARED: reconstruct each chip window from a DOPPLER-FREE (Phi, Psi) pair instead of reading
+/// a table built for this PRN's own Doppler (docs/CHORD_GPU_TODO.md item 2). Phi is per-PRN
+/// today only because the Doppler sits inside wc, and at 1.05 MB per channel per PRN that is
+/// 176-235 MB resident per chain-instance, on a kernel §10.6c measured to be DRAM-FOOTPRINT
+/// bound. The gather never reads Phi though -- it reads the DIFFERENCE over one chip window --
+/// and an offset ddw factors out of that difference:
+///
+///     dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
+///
+/// so ONE pair per channel serves every PRN and every Doppler: 14.7 MB, which fits the L40S's
+/// 96 MB L2 where the per-PRN tables did not. The B image carries the Doppler with the OPPOSITE
+/// sign (it is e^{-i(off-wc)k}), hence the flipped correction and conjugated rotor below.
+///
+/// ANCHOR t0 = the window's LOW index, not its midpoint. The midpoint is the natural anchor for
+/// the algebra but steps by ks, ks+1/2 or ks+1; t0 is an index this loop already carries.
+/// Measured cost of that choice (scripts/gnss/phibits [2c]): 7.5e-6 vs 1.2e-6 at +-5 kHz --
+/// still 44x below fp16's own 3.3e-4 storage error.
+///
+/// The rotor is computed per chip with __sincosf from the EXACT integer t0 rather than advanced
+/// multiplicatively. Advancing would be cheaper, but t0 steps by ks or ks+1 only AWAY FROM THE
+/// INDEX CLAMPS, and at a clamp an advanced rotor would silently desynchronise from the index it
+/// represents. This kernel is DRAM-bound (457 GB/s, ~66%% of the device), so ALU is the cheap
+/// axis to spend on correctness -- wavebench is what says whether that holds.
+template<class PHI, bool ABL_NOLOAD = false, bool ILV = false, bool SHARED = false>
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int Lf, const int8_t* __restrict__ code,
                                     const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
                                     int ks, float kf, const double C[3], float2 sA[3],
-                                    float2 sB[3]) {
+                                    float2 sB[3], const PHI* __restrict__ psiA = nullptr,
+                                    const PHI* __restrict__ psiB = nullptr, float ddw = 0.0f) {
     int tsink = 0;
     int idx[3], khi_base[3];
     float f[3];
     float2 pA[3], pB[3];
+    // SHARED-only state; the compiler drops it when SHARED is false, so the two paths do not
+    // fork structurally -- only the arithmetic inside the loop differs.
+    int tp[3] = {0, 0, 0};
+    float2 pQA[3], pQB[3];
 #pragma unroll
     for (int u = 0; u < 3; ++u) {
         // Line-for-line chip_gather's prologue. Kept that way on purpose: the two must agree
@@ -203,6 +231,11 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
         khi_base[u] = 0;
         int t_prev = prev_khi + 1;
         t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
+        if (SHARED) {
+            tp[u] = t_prev;
+            pQA[u] = phi_ld(psiA, t_prev);
+            pQB[u] = phi_ld(psiB, t_prev);
+        }
         if (ILV) {
             const float4 v = ((const float4*)phiA)[ABL_NOLOAD ? 0 : t_prev];
             pA[u] = make_float2(v.x, v.y);
@@ -233,10 +266,31 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
             const float cv = (float)code[job_code_offset + idx[u]];
             // fmaf explicitly -- see the note in chip_gather. This is the half of the pair that
             // made it matter.
-            sA[u].x = fmaf(cv, cA.x - pA[u].x, sA[u].x);
-            sA[u].y = fmaf(cv, cA.y - pA[u].y, sA[u].y);
-            sB[u].x = fmaf(cv, cB.x - pB[u].x, sB[u].x);
-            sB[u].y = fmaf(cv, cB.y - pB[u].y, sB[u].y);
+            float2 dA = make_float2(cA.x - pA[u].x, cA.y - pA[u].y);
+            float2 dB = make_float2(cB.x - pB[u].x, cB.y - pB[u].y);
+            if (SHARED) {
+                const float2 qA = phi_ld(psiA, ABL_NOLOAD ? 0 : t);
+                const float2 qB = phi_ld(psiB, ABL_NOLOAD ? 0 : t);
+                const float t0 = (float)tp[u];
+                // g = dPsi - t0*dPhi ; corr_A = dPhi - i*ddw*g ; corr_B = dPhi + i*ddw*g
+                const float2 gA = make_float2(qA.x - pQA[u].x - t0 * dA.x,
+                                              qA.y - pQA[u].y - t0 * dA.y);
+                const float2 gB = make_float2(qB.x - pQB[u].x - t0 * dB.x,
+                                              qB.y - pQB[u].y - t0 * dB.y);
+                const float2 rA = make_float2(dA.x + ddw * gA.y, dA.y - ddw * gA.x);
+                const float2 rB = make_float2(dB.x - ddw * gB.y, dB.y + ddw * gB.x);
+                float sn, cs;
+                __sincosf(-ddw * t0, &sn, &cs); // exp(-i*ddw*t0); B takes its conjugate
+                dA = make_float2(rA.x * cs - rA.y * sn, rA.x * sn + rA.y * cs);
+                dB = make_float2(rB.x * cs + rB.y * sn, rB.y * cs - rB.x * sn);
+                pQA[u] = qA;
+                pQB[u] = qB;
+                tp[u] = t;
+            }
+            sA[u].x = fmaf(cv, dA.x, sA[u].x);
+            sA[u].y = fmaf(cv, dA.y, sA[u].y);
+            sB[u].x = fmaf(cv, dB.x, sB[u].x);
+            sB[u].y = fmaf(cv, dB.y, sB[u].y);
             pA[u] = cA;
             pB[u] = cB;
             if (ABL_NOLOAD && tsink == 0x7fffffff)

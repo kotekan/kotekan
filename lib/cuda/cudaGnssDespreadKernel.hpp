@@ -87,6 +87,19 @@ struct DespreadJob {
                          ///< the record's slice BEFORE the code-period boundary, where the
                          ///< secondary overlay flips sign (gnssRecord.hpp slots 16-18). 0 = emit
                          ///< an all-zero head row (the plain 3-trial contract).
+    /// SHARED-TABLE MODE (docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
+    /// this PRN's Doppler offset from the table's OWN carrier, radians/sample. With
+    /// psiA == nullptr or ddw == 0 the gather takes its original path and the result is
+    /// bit-identical -- that is what makes the fallback safe rather than merely tested.
+    /// ⚠️ THE PEEL JOB CARRIES THE SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel
+    /// and the despread must generate bit-identical replicas or the analytic add-back
+    /// (docs/gnss_voltage_peel_live.md) stops being exact.
+    /// ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
+    /// initializers at three call sites, so a field inserted anywhere else silently retypes
+    /// every field after it (caught as "no match for operator=" -- the good outcome).
+    const float2* psiA = nullptr;
+    const float2* psiB = nullptr;
+    float ddw = 0.0f;
 };
 
 /// One PRN's PEEL: reconstruct the PROMPT waveform and subtract it from the voltage.
@@ -129,6 +142,19 @@ struct PeelJob {
                         ///< 0 = no boundary in this window -> a_tail applies throughout.
     const float2* a_head; ///< [n_chan] gain to subtract, hops [0, m_head)
     const float2* a_tail; ///< [n_chan] gain to subtract, hops [m_head, n_hops)
+    /// SHARED-TABLE MODE (docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
+    /// this PRN's Doppler offset from the table's OWN carrier, radians/sample. With
+    /// psiA == nullptr or ddw == 0 the gather takes its original path and the result is
+    /// bit-identical -- that is what makes the fallback safe rather than merely tested.
+    /// ⚠️ THE PEEL JOB CARRIES THE SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel
+    /// and the despread must generate bit-identical replicas or the analytic add-back
+    /// (docs/gnss_voltage_peel_live.md) stops being exact.
+    /// ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
+    /// initializers at three call sites, so a field inserted anywhere else silently retypes
+    /// every field after it (caught as "no match for operator=" -- the good outcome).
+    const float2* psiA = nullptr;
+    const float2* psiB = nullptr;
+    float ddw = 0.0f;
 };
 
 /// Batch-shared geometry.

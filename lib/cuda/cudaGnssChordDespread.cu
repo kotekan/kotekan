@@ -29,7 +29,7 @@ using gnss_cuda::cmulf;
 /// instead of three times. Bit-identical either way; it trades registers for DRAM traffic, and
 /// registers are what cap MAXT, so the two knobs pull against each other.
 template<int MAXT, bool FUSE3, class PHI = float2, bool ABL_NOLOAD = false, bool ILV = false,
-         bool HOPPERM = false>
+         bool HOPPERM = false, bool SHARED = false>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
@@ -156,9 +156,19 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             // Same three code phases in the same order, one walk of the chip loop.
             const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
             float2 sA[3], sB[3];
-            gnss_cuda::chip_gather3<PHI, ABL_NOLOAD, ILV>(job.inv_cps, job.code_offset, job.code_len,
-                                                    job.n_chips, p.Lf, code, phiA, phiB, ks, kf,
-                                                    Cs, sA, sB);
+            // SHARED is a TEMPLATE parameter, not a runtime branch: the shared path costs a
+            // per-chip sincos and two extra loads, and the per-PRN path must not pay for them
+            // in either instructions or registers. The dispatch is per LAUNCH (a chain either
+            // holds shared tables or it does not), so there is no divergence to pay for.
+            if (SHARED)
+                gnss_cuda::chip_gather3<PHI, ABL_NOLOAD, ILV, true>(
+                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
+                    phiB, ks, kf, Cs, sA, sB, (const PHI*)job.psiA + (size_t)ci * (p.Lf + 1),
+                    (const PHI*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
+            else
+                gnss_cuda::chip_gather3<PHI, ABL_NOLOAD, ILV, false>(
+                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
+                    phiB, ks, kf, Cs, sA, sB);
 #pragma unroll
             for (int tt = 0; tt < 3; ++tt) {
                 const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2;
