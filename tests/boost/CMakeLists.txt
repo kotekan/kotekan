@@ -307,3 +307,30 @@ else()
 endif()
 target_include_directories(test_N2AutoSpectrum PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                        ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_TransposeBasebandArray - tests for TransposeBasebandArray stage
+add_executable(test_TransposeBasebandArray test_TransposeBasebandArray.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_TransposeBasebandArray
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_TransposeBasebandArray
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                               ${KOTEKAN_SOURCE_DIR}/lib/utils)
