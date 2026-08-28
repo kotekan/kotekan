@@ -30,23 +30,31 @@ CpuMonitor::CpuMonitor() {
 
 CpuMonitor::~CpuMonitor() {
     restServer::instance().remove_get_callback("/cpu_ult");
+    stop();
+}
+
+void CpuMonitor::start() {
+    started = true;
+    this_thread = std::thread(&CpuMonitor::track_cpu, this);
+}
+
+void CpuMonitor::stop() {
+    {
+        // Set under the lock the tracking thread waits on, so it cannot miss
+        // the notification by being mid-pass when it is sent.
+        std::lock_guard<std::mutex> lock(ult_lock);
+        stop_thread = true;
+    }
+    stop_tracking.notify_one();
 
     if (this_thread.joinable()) {
-        stop();
         try {
             this_thread.join();
         } catch (std::exception& e) {
             WARN_NON_OO("cpuMonitor: Failure when joining thread: {:s}", e.what());
         }
     }
-}
-
-void CpuMonitor::start() {
-    this_thread = std::thread(&CpuMonitor::track_cpu, this);
-}
-
-void CpuMonitor::stop() {
-    stop_thread = true;
+    started = false;
 }
 
 void CpuMonitor::track_cpu() {
@@ -84,6 +92,7 @@ void CpuMonitor::track_cpu() {
         }
 
         // Read each thread stats based on tid
+        std::unique_lock<std::mutex> lock(ult_lock);
         for (auto stage : tid_list) {
             for (auto tid : stage.second) {
                 char fname[40];
@@ -96,6 +105,7 @@ void CpuMonitor::track_cpu() {
                     int ret = fscanf(thread_fp,
                                      "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u",
                                      &utime, &stime);
+                    fclose(thread_fp);
 
                     auto stage_itr = ult_list.find(stage.first);
                     if (stage_itr != ult_list.end()) {
@@ -142,31 +152,39 @@ void CpuMonitor::track_cpu() {
                         (ult_list[stage.first])[tid].prev_stime = stime;
                     }
                 } else {
-                    // The thread has been terminated early, add 0 to stats
-                    (ult_list[stage.first])[tid].utime_usage->add_sample(0);
-                    (ult_list[stage.first])[tid].stime_usage->add_sample(0);
+                    // The thread exited between listing the tids and reading
+                    // its stats. Add 0 to stats, but only if it was already
+                    // being tracked: a tid first seen here has no trackers.
+                    auto stage_itr = ult_list.find(stage.first);
+                    if (stage_itr != ult_list.end()) {
+                        auto thread_itr = (stage_itr->second).find(tid);
+                        if (thread_itr != (stage_itr->second).end()) {
+                            (thread_itr->second).utime_usage->add_sample(0);
+                            (thread_itr->second).stime_usage->add_sample(0);
+                        }
+                    }
                     WARN_NON_OO("CPU monitor cannot read from {:s}", fname);
                 }
-                fclose(thread_fp);
             }
         }
         // Update cpu time
         prev_cpu_time = cpu_time;
 
-        // Wait for next check
-        std::this_thread::sleep_for(1000ms);
+        // Wait for the next check, or for stop() to wake us up
+        stop_tracking.wait_for(lock, 1000ms, [this]() { return stop_thread.load(); });
     }
 }
 
 void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
     nlohmann::json cpu_ult_json = {};
 
-    if (!this_thread.joinable()) {
+    if (!started) {
         cpu_ult_json["error"] = "CPU monitor has not been started.";
         conn.send_json_reply(cpu_ult_json);
         return;
     }
 
+    std::lock_guard<std::mutex> lock(ult_lock);
     for (auto& stage : ult_list) {
         nlohmann::json stage_cpu_ult = {};
         for (auto& thread : stage.second) {
