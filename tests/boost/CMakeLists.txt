@@ -84,6 +84,11 @@ target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_u
 add_executable(test_bip_buffer test_bip_buffer.cpp)
 target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_buffer_swap - frame transfer between buffers (safe_swap_frame)
+add_executable(test_buffer_swap test_buffer_swap.cpp)
+target_link_libraries(test_buffer_swap PRIVATE pthread libexternal kotekan_libs kotekan_utils
+                                               kotekan_core kotekan_metadata)
+
 # test_prometheus_metrics needs fmt and prometheusMetrics
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
 target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs kotekan_core)
