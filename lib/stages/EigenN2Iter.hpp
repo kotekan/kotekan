@@ -64,7 +64,15 @@
  * @conf  block_fill_size  UInt, default 0. Mask out blocks of this size on the diagonal.
  * @conf  exclude_inputs   List of UInts, optional. Inputs to exclude (rows and
  *                         columns to set to zero) in visibilities prior to
- *                         factorization.
+ *                         factorization. These are indices into the incoming
+ *                         frame's elements, which for a subsetted buffer are the
+ *                         subset's own indices, not the full array's.
+ * @conf  mask_flagged_inputs  Bool, default true. Also mask the inputs the
+ *                         incoming frame flags as bad, i.e. those whose entry in
+ *                         the frame's per-element `flags` is zero (1.0 == good).
+ *                         The mask is rebuilt when the set of zero flags
+ *                         changes. Set false to ignore the frame's flags and
+ *                         mask only what the config names.
  * @conf  tol_eval         Float, default 1e-6. Fractional change in evals must be less
  *                         than this for convergence.
  * @conf  tol_evec         Float, default 1e-5. Total eigenvector overlap must be less
@@ -92,6 +100,16 @@
  *         Eigenvector convergence parameter of the last sample.
  * @metric kotekan_eigenN2iter_num_failed_eigencalc
  *         The number of failed eigenvector decompositions.
+ * @metric kotekan_eigenN2iter_masked_elements
+ *         The number of elements the current mask excludes, from the config and
+ *         from the incoming frames' flags together.
+ * @metric kotekan_eigenN2iter_num_mask_updates
+ *         The number of times the mask has been rebuilt. Rebuilds happen when
+ *         the flags change, so a steadily climbing count means the flagging
+ *         upstream is unstable.
+ * @metric kotekan_eigenN2iter_num_insufficient_elements
+ *         The number of frames not decomposed because no more elements were
+ *         left unmasked than the `num_ev` eigenpairs requested.
  *
  *
  * @author Richard Shaw, Kiyoshi Masui
@@ -109,8 +127,17 @@ private:
     void update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
                         const EigConvergenceStats& stats);
 
-    // Calculate the mask to apply from the object parameters
-    DynamicHermitian<float> calculate_mask(size_t num_elements) const;
+    /**
+     * @brief Calculate the mask to apply from the object parameters and the
+     *        per-element flags in effect.
+     *
+     * @param num_elements  Number of elements in the frames being decomposed.
+     * @param flags         Binarized per-element flags, zero for an element to
+     *                      mask and one otherwise. All ones when
+     *                      @c mask_flagged_inputs is off.
+     */
+    DynamicHermitian<float> calculate_mask(size_t num_elements,
+                                           const std::vector<float>& flags) const;
 
     Buffer* in_buf;
     Buffer* out_buf;
@@ -134,6 +161,9 @@ private:
     const size_t _block_fill_size;
     std::vector<std::pair<size_t, size_t>> _diagonal_bands_filled;
 
+    /// Whether to also mask the inputs the incoming frames flag as bad
+    const bool _mask_flagged_inputs;
+
     /// Keep track of the average write time, per frequency
     std::map<int, N2::movingAverage> calc_time_map;
 
@@ -143,6 +173,9 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_convergence_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvector_convergence_metric;
     kotekan::prometheus::Counter& num_failed_eigencalc;
+    kotekan::prometheus::Gauge& masked_elements_metric;
+    kotekan::prometheus::Counter& num_mask_updates;
+    kotekan::prometheus::Counter& num_insufficient_elements;
 };
 
 #endif
