@@ -744,9 +744,10 @@ void Buffer::safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_
                     dest_buf->buffer_name);
     }
 
-    // Not locked across the transfer below: both frames are already reserved
-    // (see private_copy_frame), and consumers only ever leave a buffer while it
-    // runs, so a count that goes stale here costs a copy rather than a swap.
+    // Read under the buffer lock, but not held across the transfer below: both
+    // frames are reserved by this stage (see private_copy_frame), and the
+    // consumer list only shrinks while the pipeline runs, so a count that goes
+    // stale here costs a copy rather than a swap.
     int num_consumers = get_num_consumers();
 
     // Copy or transfer the data part.

@@ -134,6 +134,11 @@ public:
      * In order to use a buffer a consumer must first register its name so that
      * the buffer object can track which consumers have signed off on each frame.
      *
+     * Stages register as the pipeline is built, and may unregister while it
+     * runs (see @c unregister_consumer()), so once frames are flowing these
+     * lists only ever shrink. Code that reads a count and then acts on it,
+     * rather than holding the lock across both, relies on that.
+     *
      * @param[in] name The name of the consumer.
      */
     virtual void register_consumer(const std::string& name);
