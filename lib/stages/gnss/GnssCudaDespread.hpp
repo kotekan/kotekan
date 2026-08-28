@@ -111,6 +111,13 @@ public:
     /// Phi layout -- is synthesis time proportional to the gather depth, or not?
     void set_max_chips(int n);
 
+    /// SHARED, DOPPLER-FREE Phi/Psi tables for every PRN (docs/CHORD_GPU_TODO.md item 2).
+    /// Off by default. Returns whether it actually took: FDMA signals refuse it (there the
+    /// satellite identity is IN the carrier, so there is nothing to share), and a caller must
+    /// read the return rather than assume -- "armed" and "in effect" are different states, and
+    /// a feature that silently did not arm is how #96/#97 hid for a day.
+    bool set_shared_phi(bool on);
+
     /// BENCH: bracket the CHORD split path's two kernels with CUDA events, so the
     /// synthesis / correlation balance can be measured ON THE NODE at the real geometry.
     /// Measuring it in a synthetic bench does not work: chip_gather's depth (job.n_chips) comes

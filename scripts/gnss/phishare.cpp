@@ -40,7 +40,25 @@ int main(int argc, char** argv) {
            prn, n_hops, want.size(), FS / 1e9, F_OFF / 1e6);
     printf("  the SHARED pair is built ONCE at doppler 0 and reused for every Doppler below\n\n");
     // ONE shared, Doppler-free filter -- built once, exactly as production would hold it.
-    const auto shared = bank.hoprate_filter(want, 0.0, -1, /*want_psi=*/true);
+    auto shared = bank.hoprate_filter(want, 0.0, -1, /*want_psi=*/true);
+    // ⚠️ PRECISION PROBE (2026-08-28). The GPU gate (phisharegpu) fails with an error LINEAR
+    // in Doppler while this CPU test passes at 1e-8. The structural difference is storage:
+    // the device tables are float2, this path is double. |Psi| ~ 1e5 * |Phi| (it carries a
+    // factor j up to Lf), so dPsi - t0*dPhi is a small number formed as the difference of
+    // huge ones -- catastrophic cancellation that fp32 cannot survive. Round the SHARED
+    // tables to float here and see whether the CPU reproduces the GPU's failure; if it does,
+    // the diagnosis is storage precision and not the algebra or the kernel wiring.
+    if (getenv("PHISHARE_F32")) {
+        for (auto& v : shared.PhiA) for (auto& z : v)
+            z = std::complex<double>((float)z.real(), (float)z.imag());
+        for (auto& v : shared.PhiB) for (auto& z : v)
+            z = std::complex<double>((float)z.real(), (float)z.imag());
+        for (auto& v : shared.PsiA) for (auto& z : v)
+            z = std::complex<double>((float)z.real(), (float)z.imag());
+        for (auto& v : shared.PsiB) for (auto& z : v)
+            z = std::complex<double>((float)z.real(), (float)z.imag());
+        printf("  *** PHISHARE_F32: shared tables rounded to fp32 storage ***\n");
+    }
 
     printf("   doppler      max|err|     max|ref|    rel(worst)   rel(rms)\n");
     int bad = 0;

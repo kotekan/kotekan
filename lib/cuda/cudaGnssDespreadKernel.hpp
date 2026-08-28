@@ -199,6 +199,10 @@ struct DespreadParams {
                      ///< per-record staging buffer, or the ring length when a window is read in
                      ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,
                      ///< so a record window is always CONTIGUOUS within a channel row)
+    /// SHARED, DOPPLER-FREE Phi/Psi tables (docs/CHORD_GPU_TODO.md item 2). Selects a separate
+    /// kernel instantiation rather than a runtime branch, so the per-PRN path keeps its
+    /// register budget -- registers cap MAXT, and MAXT is what sets the DRAM traffic.
+    bool shared = false;
 };
 
 /**

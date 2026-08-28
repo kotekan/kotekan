@@ -100,10 +100,27 @@ STATUS 2026-08-28:
         one shared pair built at doppler 0, streamed against per-PRN truth --
         0 Hz 0.000e+00 (exact), +-5 kHz 2.8e-6, +-10 kHz 8.8e-6 relative. e2e VERDICT
         unchanged at 17.612 chips; broker gate EQUIVALENT.
-  * [ ] GPU: DespreadJob gains psiA/psiB + ddw; chip_gather applies the rotor+linear form;
-        GnssCudaDespread::PhiCache becomes ONE shared entry instead of one per PRN.
-  * [ ] wavebench A/B (the #71 gate: the KERNEL contract, not the formula) + ncu
-        lts__t_sector_hit_rate to confirm the L2 residency the whole win rests on.
+  * [x] GPU: DespreadJob/PeelJob carry psiA/psiB/ddw (AT THE END -- both are built with
+        positional aggregate initializers at three sites); chip_gather3 gains a SHARED
+        template parameter; GnssCudaDespread grows a single shared (Phi,Psi) set and
+        set_shared_phi(bool), which RETURNS whether it took (FDMA refuses it).
+  * [x] GPU GATE PASSES (scripts/gnss/phisharegpu): drives the shipped despread through its
+        public API with real tables, per-PRN vs shared. Worst 4.3e-6 at -5 kHz (77x under
+        fp16); ddw == 0 EXACT. e2e 17.612 unchanged, phishare ALL PASS, n2dualtest 6/6.
+        ⚠️ IT FAILED FIRST, at 3e-2..1.0 relative, and that is the entry worth reading:
+        chip_gather3's psi arguments DEFAULT to null, so the despread kernel's call site --
+        which I had not updated -- silently took SHARED=false and read the Doppler-free table
+        RAW. The error was linear in Doppler and matched phibits' "no rotor" case, which is
+        what identified it. Defaulted arguments make a missed call site look like working
+        code. My first hypothesis (fp32 cancellation in dPsi - t0*dPhi) was WRONG and a
+        five-line CPU probe killed it before it cost an afternoon.
+  * [ ] NOT YET ENABLED ANYWHERE: no config sets shared_phi. Needs the stage-level flag,
+        then wavebench timing + ncu lts__t_sector_hit_rate to confirm the L2 residency the
+        whole win rests on (1b is the standing reminder that a projected win can be 1.00x).
+  * [ ] the shared build currently reports 29.4 MB for 7 channels where the design says 14.7 --
+        worth reconciling before arming; it may be that Lf is 2x what I assumed here, which
+        would also mean the per-PRN footprint is 2x the 176-235 MB quoted (i.e. the case is
+        stronger, not weaker) -- but it is UNVERIFIED arithmetic either way.
 
 ### the measured case for it
 

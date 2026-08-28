@@ -182,8 +182,20 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         float2 g3A[3], g3B[3];
         if (ABL != ABL_NO_SYN) {
             const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
-            gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf,
-                                    code, phiA, phiB, ks, kf, Cs, g3A, g3B);
+            // SHARED-TABLE MODE (item 2). ⚠️ THIS CALL SITE WAS MISSED ON THE FIRST PASS and
+            // the GPU gate (scripts/gnss/phisharegpu) caught it: chip_gather3's psi arguments
+            // DEFAULT to null, so the despread silently read the Doppler-free table raw, with
+            // no reconstruction at all -- an error linear in Doppler that matched phibits'
+            // "no rotor" case exactly. Defaulted arguments make a missed call site look like
+            // working code; the gate is what makes it look like a failure instead.
+            if (p.shared)
+                gnss_cuda::chip_gather3<float2, false, false, true>(
+                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
+                    phiB, ks, kf, Cs, g3A, g3B, (const float2*)job.psiA + (size_t)ci * (p.Lf + 1),
+                    (const float2*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
+            else
+                gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
+                                        p.Lf, code, phiA, phiB, ks, kf, Cs, g3A, g3B);
         }
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {

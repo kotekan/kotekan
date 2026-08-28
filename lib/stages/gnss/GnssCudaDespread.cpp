@@ -7,6 +7,7 @@
 #include <cuda_runtime.h>
 #include <cmath>
 #include <limits>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -79,6 +80,21 @@ struct GnssCudaDespread::Impl {
         float2 *d_A = nullptr, *d_B = nullptr; // float32 tables (mixed-precision kernel)
     };
     std::vector<PhiCache> phi;
+
+    /// THE SHARED, DOPPLER-FREE TABLE SET (docs/CHORD_GPU_TODO.md item 2). One (Phi, Psi) pair
+    /// for EVERY PRN, built at the band carrier alone; each job carries its own
+    /// ddw = wc(prn, doppler) - wc_shared and the gather reconstructs. 14.7 MB against the
+    /// 176-235 MB the per-PRN caches hold, which is what moves this kernel: §10.6c measured it
+    /// DRAM-footprint-bound, and the shared pair fits the L40S's 96 MB L2 where per-PRN tables
+    /// could not. Built once and never rebuilt -- it has no Doppler to go stale.
+    struct SharedPhi {
+        bool valid = false;
+        int n_chips = 0;
+        double wc = 0.0; ///< the carrier it was built at, rad/sample
+        float2 *d_A = nullptr, *d_B = nullptr, *d_PA = nullptr, *d_PB = nullptr;
+    };
+    SharedPhi shared;
+    bool use_shared = false;
 
     /// WHAT THE KERNEL ACTUALLY GOT, recorded per PRN slot as build_jobs runs (#72).
     /// ⚠️ RECORDED, NEVER RECOMPUTED. A producer that re-derives ang0 from the same inputs
@@ -293,6 +309,53 @@ struct GnssCudaDespread::Impl {
                                          &pacc_reanchor);
     }
 
+    /// Build the shared, Doppler-free (Phi, Psi) set once. Returns false if this signal is
+    /// FDMA, where the scheme does not apply: there the satellite identity lives in the CARRIER
+    /// (_prn_df), so different PRNs have genuinely different tables and there is nothing to
+    /// share. Detected by asking the bank, never assumed -- ChannelizedReplicaBank::swap_prn
+    /// already refuses FDMA for the same reason.
+    bool ensure_shared() {
+        if (shared.valid)
+            return true;
+        for (int p = 1; p < n_prn; ++p)
+            if (bank.carrier_offset(p) != bank.carrier_offset(0)) {
+                std::fprintf(stderr, "WARNING: GnssCudaDespread: shared Phi REFUSED -- "
+                                     "per-PRN carrier offsets differ (FDMA); falling back to "
+                                     "per-PRN tables.\n");
+                return false;
+            }
+        const auto f = bank.hoprate_filter(all_chans, 0.0, -1, /*want_psi=*/true);
+        const size_t n = (size_t)n_chan * (size_t)(Lf + 1);
+        std::vector<float2> hA(n), hB(n), hPA(n), hPB(n);
+        for (int c = 0; c < n_chan; ++c)
+            for (int k = 0; k <= Lf; ++k) {
+                const size_t o = (size_t)c * (size_t)(Lf + 1) + (size_t)k;
+                hA[o] = make_float2((float)f.PhiA[c][k].real(), (float)f.PhiA[c][k].imag());
+                hB[o] = make_float2((float)f.PhiB[c][k].real(), (float)f.PhiB[c][k].imag());
+                hPA[o] = make_float2((float)f.PsiA[c][k].real(), (float)f.PsiA[c][k].imag());
+                hPB[o] = make_float2((float)f.PsiB[c][k].real(), (float)f.PsiB[c][k].imag());
+            }
+        ck(cudaMalloc(&shared.d_A, n * sizeof(float2)), "alloc shared PhiA");
+        ck(cudaMalloc(&shared.d_B, n * sizeof(float2)), "alloc shared PhiB");
+        ck(cudaMalloc(&shared.d_PA, n * sizeof(float2)), "alloc shared PsiA");
+        ck(cudaMalloc(&shared.d_PB, n * sizeof(float2)), "alloc shared PsiB");
+        ck(cudaMemcpy(shared.d_A, hA.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "sPhiA");
+        ck(cudaMemcpy(shared.d_B, hB.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "sPhiB");
+        ck(cudaMemcpy(shared.d_PA, hPA.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "sPsiA");
+        ck(cudaMemcpy(shared.d_PB, hPB.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "sPsiB");
+        shared.n_chips = f.n_chips;
+        shared.wc = f.wc_built;
+        shared.valid = true;
+        std::fprintf(stderr,
+                     "INFO: GnssCudaDespread: SHARED Phi/Psi built at wc %.6f rad/sample, "
+                     "%d chips, %.1f MB over %d channels -- serving all %d PRNs "
+                     "(per-PRN tables would be %.1f MB)\n",
+                     shared.wc, shared.n_chips, 4.0 * (double)n * (double)sizeof(float2) / 1e6,
+                     n_chan, n_prn,
+                     2.0 * (double)n * (double)sizeof(float2) * (double)n_prn / 1e6);
+        return true;
+    }
+
     // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz.
     PhiCache& ensure_phi(int p, double doppler) {
         PhiCache& pc = phi[(size_t)p];
@@ -469,6 +532,15 @@ bool GnssCudaDespread::split_timing_ms(double& synthesis_ms, double& correlation
     return true;
 }
 
+bool GnssCudaDespread::set_shared_phi(bool on) {
+    if (!on) {
+        _impl->use_shared = false;
+        return false;
+    }
+    _impl->use_shared = _impl->ensure_shared();
+    return _impl->use_shared;
+}
+
 void GnssCudaDespread::set_max_chips(int n) {
     _impl->max_chips = n;
     for (auto& pc : _impl->phi) // force a rebuild so the cap takes effect on cached buckets
@@ -531,10 +603,21 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
                         im.code_offset[(size_t)sp.p],
                         (int)im.code_len,
                         mask,
-                        pc.d_A,
-                        pc.d_B,
-                        pc.n_chips,
-                        0};
+                        im.use_shared ? im.shared.d_A : pc.d_A,
+                        im.use_shared ? im.shared.d_B : pc.d_B,
+                        im.use_shared ? im.shared.n_chips : pc.n_chips,
+                        0,
+                        // SHARED-TABLE MODE: the Doppler this PRN needs, MINUS the carrier the
+                        // shared table was built at. Per-PRN mode leaves these null/0 and the
+                        // gather takes its original, bit-identical path.
+                        im.use_shared ? im.shared.d_PA : nullptr,
+                        im.use_shared ? im.shared.d_PB : nullptr,
+                        im.use_shared
+                            ? (float)(2.0 * M_PI
+                                          * (im.bank.carrier_offset(sp.p) + sp.doppler_hz)
+                                          / im.fs
+                                      - im.shared.wc)
+                            : 0.0f};
         // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
         // A producer-side re-derivation agrees with itself by construction and would keep
         // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
@@ -549,6 +632,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
        "jobs upload");
 
     gnss_cuda::DespreadParams par;
+    par.shared = im.use_shared; // item 2: picks the shared-table kernel
     par.n0 = im.window_start + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -628,10 +712,21 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
                         im.code_offset[(size_t)sp.p],
                         (int)im.code_len,
                         mask,
-                        pc.d_A,
-                        pc.d_B,
-                        pc.n_chips,
-                        m_head};
+                        im.use_shared ? im.shared.d_A : pc.d_A,
+                        im.use_shared ? im.shared.d_B : pc.d_B,
+                        im.use_shared ? im.shared.n_chips : pc.n_chips,
+                        m_head,
+                        // SHARED-TABLE MODE (item 2): psi companions + this PRN's Doppler
+                        // offset from the shared table's own carrier. Per-PRN mode leaves these
+                        // null/0 and the gather takes its original, bit-identical path.
+                        im.use_shared ? im.shared.d_PA : nullptr,
+                        im.use_shared ? im.shared.d_PB : nullptr,
+                        im.use_shared
+                            ? (float)(2.0 * M_PI
+                                          * (im.bank.carrier_offset(sp.p) + sp.doppler_hz)
+                                          / im.fs
+                                      - im.shared.wc)
+                            : 0.0f};
         // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
         // A producer-side re-derivation agrees with itself by construction and would keep
         // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
@@ -660,6 +755,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     build_jobs(specs, d_jobs_slot, window_start_sample, stream);
 
     gnss_cuda::DespreadParams par;
+    par.shared = im.use_shared; // item 2: picks the shared-table kernel
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -702,6 +798,7 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     build_jobs(specs, d_jobs_slot, window_start_sample, stream);
 
     gnss_cuda::DespreadParams par;
+    par.shared = im.use_shared; // item 2: picks the shared-table kernel
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -749,6 +846,7 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
     build_jobs(specs, d_jobs_slot, window_start_sample, stream);
 
     gnss_cuda::DespreadParams par;
+    par.shared = im.use_shared; // item 2: picks the shared-table kernel
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -813,12 +911,23 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
                                  im.code_offset[(size_t)sp.p],
                                  (int)im.code_len,
                                  mask,
-                                 pc.d_A,
-                                 pc.d_B,
-                                 pc.n_chips,
+                                 im.use_shared ? im.shared.d_A : pc.d_A,
+                                 im.use_shared ? im.shared.d_B : pc.d_B,
+                                 im.use_shared ? im.shared.n_chips : pc.n_chips,
                                  im.m_head_for(cp0, cps, window_start_sample), // SHARED with P_HEAD
                                  g_head,
-                                 g_tail};
+                                 g_tail,
+                                 // THE PEEL MUST MATCH THE DESPREAD EXACTLY -- same tables, same
+                                 // ddw -- or the analytic add-back stops being exact.
+                                 im.use_shared ? im.shared.d_PA : nullptr,
+                                 im.use_shared ? im.shared.d_PB : nullptr,
+                                 im.use_shared
+                                     ? (float)(2.0 * M_PI
+                                                   * (im.bank.carrier_offset(sp.p)
+                                                      + sp.doppler_hz)
+                                                   / im.fs
+                                               - im.shared.wc)
+                                     : 0.0f};
     }
     if (n_job > 0) {
         ck(cudaMemcpyAsync(d_gain_slot, im.h_gains.data(), im.h_gains.size() * sizeof(float2),
@@ -831,6 +940,7 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
     }
 
     gnss_cuda::DespreadParams par;
+    par.shared = im.use_shared; // item 2: picks the shared-table kernel
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // same per-hop reference as the despread
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();

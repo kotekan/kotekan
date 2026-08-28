@@ -374,6 +374,19 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
             <<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
         return cudaGetLastError();
     }
+    // SHARED (Doppler-free) TABLES, item 2. A separate instantiation rather than a runtime
+    // branch: the shared gather costs a per-chip sincos and two extra loads, and the per-PRN
+    // path must not carry them in its register budget -- registers are what cap MAXT, which is
+    // what sets the DRAM traffic (see WAVE_THREADS). Fused only; the unfused path is a bench
+    // control and is not worth a fourth instantiation.
+    if (p.shared) {
+        static const int kmaxS = ceiling(
+            (const void*)gnss_waveform_kernel<1024, true, float2, false, false, false, true>);
+        const int th = threads > kmaxS ? kmaxS : threads;
+        gnss_waveform_kernel<1024, true, float2, false, false, false, true>
+            <<<grid, th, 0, stream>>>(code, jobs, p, wave, energy);
+        return cudaGetLastError();
+    }
     if (threads > 512) {
         static const int kmaxF = ceiling((const void*)gnss_waveform_kernel<1024, true>);
         static const int kmaxU = ceiling((const void*)gnss_waveform_kernel<1024, false>);
