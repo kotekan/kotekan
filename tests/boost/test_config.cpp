@@ -183,9 +183,9 @@ BOOST_AUTO_TEST_CASE(_parse_usage_report_level) {
 }
 
 // get_default() must distinguish an absent value, where the default is what the
-// caller asked for, from one that is set but unreadable, which is a config error.
-// ERROR_NON_OO throws when compiled into a boost test, so the second case appears
-// here as a throw rather than a log line.
+// caller asked for, from one that is set but unreadable, which is fatal. In a boost
+// test the ERROR_NON_OO inside FATAL_ERROR_NON_OO throws before exit_kotekan runs,
+// so the fatal case is observed here as a std::runtime_error and raises no SIGTERM.
 BOOST_AUTO_TEST_CASE(_get_default_malformed_value) {
     json json_config = {
         {"good_list", {0, 2, 4, 6}},
@@ -207,7 +207,7 @@ BOOST_AUTO_TEST_CASE(_get_default_malformed_value) {
     BOOST_CHECK_EQUAL(config.get_default<std::vector<uint32_t>>("/", "absent", fallback).size(),
                       1u);
 
-    // A value of the wrong type is reported.
+    // A value of the wrong type is fatal.
     BOOST_CHECK_THROW(config.get_default<std::vector<uint32_t>>("/", "nested_list", fallback),
                       std::runtime_error);
     BOOST_CHECK_THROW(config.get_default<int>("/", "a_string", -1), std::runtime_error);
