@@ -1498,7 +1498,7 @@ def main(argv=None, rx=None, publisher=None):
     # empirical code rate, carrier-aiding quantization * seed staleness walked the prompt chips
     # off-peak. The 2026-07-04 L5 signature: strong search, trackers at the floor, 0 cp-fits).
     MAX_GAP_HOPS = args.fit_gap_s * args.hops_per_sec
-    HIST_LEN = 8           # snapshots kept for the slope fit
+    HIST_LEN = args.fit_hist_len  # snapshots kept for the slope fits (--fit-hist-len)
     _log("detectors=%d trackers=%d combiner=%s interval=%.2fs gating=%s"
          % (len(detectors), len(trackers), combiner, args.interval, gating))
     _log("trackers: %s" % (trackers if len(trackers) <= 6

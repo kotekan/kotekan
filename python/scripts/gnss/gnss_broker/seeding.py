@@ -1,3 +1,4 @@
+import os
 """Detections into seeds, and the coast/drop decision that retires them.
 
 `stage_detections_to_seeds` is the longest stage in the cycle and the one every other depends

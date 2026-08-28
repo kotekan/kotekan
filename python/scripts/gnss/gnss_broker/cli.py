@@ -2536,6 +2536,17 @@ def build_parser(description):
                          "degrading it. 0 (default) keeps every point -- right for the "
                          "prototype, whose detections sit well above threshold and whose "
                          "revisit is seconds. CHORD wants ~60 alongside --fit-gap-s 900.")
+    ap.add_argument("--fit-hist-len", type=int, default=8,
+                    help="detection snapshots kept for the cp/dop slope fits. The default 8 "
+                         "predates CHORD's search cadence: at 8 detections/s, 8 points span "
+                         "~1 s, so fit_maturity_span_s (30 s) is UNSATISFIABLE and "
+                         "fit_trusted -- which gates BOTH hold admission and the escape "
+                         "referee -- is structurally false on every strong satellite "
+                         "(measured 2026-08-28: fit_trusted=False with len_h=8, snr 946; "
+                         "only weak, sparsely-detected sats could ever mature, which is "
+                         "why G18 got held while G20/21 never did). 256 at 8 Hz spans "
+                         "~32 s: the maturity floor passes, and the slope error improves "
+                         "as sigma/(T*sqrt(N)) on both fits.")
     ap.add_argument("--hold-on-present", type=int, default=0,
                     help="qualify a satellite for the cp_held seed freeze after this many "
                          "consecutive FLEET-PRESENT cycles (the population-honest presence "
