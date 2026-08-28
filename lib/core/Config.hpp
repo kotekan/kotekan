@@ -6,7 +6,7 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include "kotekanLogging.hpp" // for ERROR_NON_OO
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, FATAL_ERROR_NON_OO
 
 #include "fmt.hpp"  // for compile_string_to_view, fmt, format, format_string
 #include "json.hpp" // for json
@@ -157,9 +157,9 @@ public:
      * @brief Get a config value or return the default value.
      *
      * A value that is not set anywhere on the path returns @c default_value silently.
-     * A value that is set but cannot be read as @c T also returns @c default_value,
-     * but logs an error, since substituting the default for a malformed entry would
-     * otherwise leave the pipeline running an unintended configuration.
+     * A value that is set but cannot be read as @c T is fatal: substituting the default
+     * for a malformed entry would leave the pipeline running an unintended
+     * configuration, which is worse than refusing to start.
      *
      * @param base_path     Path to the value in the config.
      * @param name          Name of the value.
@@ -446,9 +446,9 @@ T Config::get_default(const std::string& base_path, const std::string& name,
         } catch (std::runtime_error const&) {
             return default_value;
         }
-        ERROR_NON_OO("Config: '{:s}' at {:s} is set but cannot be read as '{:s}', so the default "
-                     "is used instead. The value found was: {:s}",
-                     name, base_path, demangle<T>(), get_value(base_path, name).dump());
+        FATAL_ERROR_NON_OO("Config: '{:s}' at {:s} is set but cannot be read as '{:s}'. The value "
+                           "found was: {:s}",
+                           name, base_path, demangle<T>(), get_value(base_path, name).dump());
         return default_value;
     }
 }
