@@ -192,30 +192,30 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0072311
-    t_inst_ns: 1787529600000000000
-    xp_as: 0.216463
-    yp_as: 0.346032
-  - delta_UT1_inst: 0.0073194
-    t_inst_ns: 1787616000000000000
-    xp_as: 0.215922
-    yp_as: 0.345107
-  - delta_UT1_inst: 0.0072535
-    t_inst_ns: 1787702400000000000
-    xp_as: 0.215404
-    yp_as: 0.344177
-  - delta_UT1_inst: 0.0069866
-    t_inst_ns: 1787788800000000000
-    xp_as: 0.214867
-    yp_as: 0.343263
-  - delta_UT1_inst: 0.006492
-    t_inst_ns: 1787875200000000000
-    xp_as: 0.214266
-    yp_as: 0.342361
-  - delta_UT1_inst: 0.0057765
-    t_inst_ns: 1787961600000000000
-    xp_as: 0.213608
-    yp_as: 0.341464
+  - delta_UT1_inst: 0.0118616
+    t_inst_ns: 1785110400000000000
+    xp_as: 0.214667
+    yp_as: 0.365678
+  - delta_UT1_inst: 0.0124019
+    t_inst_ns: 1785196800000000000
+    xp_as: 0.214692
+    yp_as: 0.364682
+  - delta_UT1_inst: 0.012754
+    t_inst_ns: 1785283200000000000
+    xp_as: 0.214694
+    yp_as: 0.363689
+  - delta_UT1_inst: 0.0126936
+    t_inst_ns: 1785369600000000000
+    xp_as: 0.220334
+    yp_as: 0.364204
+  - delta_UT1_inst: 0.0127493
+    t_inst_ns: 1785456000000000000
+    xp_as: 0.220481
+    yp_as: 0.363196
+  - delta_UT1_inst: 0.0125864
+    t_inst_ns: 1785542400000000000
+    xp_as: 0.220596
+    yp_as: 0.362205
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -424,7 +424,7 @@ gnss0_b2a_n2sink:
   in_buf: gnss0_b2a_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss0_b2a_n2tiles_buf:
-  frame_size: 2555904
+  frame_size: 786432
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -639,7 +639,7 @@ gnss0_b2b_n2sink:
   in_buf: gnss0_b2b_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss0_b2b_n2tiles_buf:
-  frame_size: 2981888
+  frame_size: 917504
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -866,7 +866,7 @@ gnss0_e5a_n2sink:
   in_buf: gnss0_e5a_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss0_e5a_n2tiles_buf:
-  frame_size: 2555904
+  frame_size: 786432
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1089,7 +1089,7 @@ gnss0_e5b_n2sink:
   in_buf: gnss0_e5b_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss0_e5b_n2tiles_buf:
-  frame_size: 2981888
+  frame_size: 917504
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1311,7 +1311,7 @@ gnss0_n2sink:
   in_buf: gnss0_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss0_n2tiles_buf:
-  frame_size: 2555904
+  frame_size: 786432
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1552,7 +1552,7 @@ gnss1_b2a_n2sink:
   in_buf: gnss1_b2a_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss1_b2a_n2tiles_buf:
-  frame_size: 2981888
+  frame_size: 917504
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1742,7 +1742,7 @@ gnss1_b2b_n2sink:
   in_buf: gnss1_b2b_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss1_b2b_n2tiles_buf:
-  frame_size: 2555904
+  frame_size: 786432
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1938,7 +1938,7 @@ gnss1_e5a_n2sink:
   in_buf: gnss1_e5a_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss1_e5a_n2tiles_buf:
-  frame_size: 2981888
+  frame_size: 917504
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2128,7 +2128,7 @@ gnss1_e5b_n2sink:
   in_buf: gnss1_e5b_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss1_e5b_n2tiles_buf:
-  frame_size: 2555904
+  frame_size: 786432
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2319,7 +2319,7 @@ gnss1_n2sink:
   in_buf: gnss1_n2cmb_buf
   kotekan_stage: rawFileWrite
 gnss1_n2tiles_buf:
-  frame_size: 2981888
+  frame_size: 917504
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4

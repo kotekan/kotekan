@@ -728,7 +728,13 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
     na16, nt16 = 128 // 16, (128 + num_synth) // 16
     mixed = (nt16 - na16) * ((n_live + 15) // 16)
-    bb = (nt16 - na16) * (nt16 - na16 + 1) // 2
+    # BB (synth x synth) is NOT gathered as of 2026-08-28: 69% of the copied bytes with no
+    # consumer (its only read, GnssN2RecordAssemble's m2, was immediately (void)-cast -- the
+    # amplitude normalization uses the TRUE pre-quantization energy from the ctl block).
+    # ⚠️ ONE CONTRACT, THREE SITES: this, cudaCorrelatorDual::build_tile_selection, and
+    # GnssN2RecordAssemble::_n_bb. Disagree and the stage's frame-size guard fires at
+    # startup -- which is the good outcome, and is why that guard exists.
+    bb = 0
     tiles_frame_bytes = n_rec_per_frame * n_chan * (mixed + bb) * 512 * 4
     prnctl = prnctl_bytes()          # READ, never restated -- it took the fleet down once
     epl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn
@@ -937,7 +943,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
     na16, nt16 = 128 // 16, (128 + num_synth) // 16
     mixed = (nt16 - na16) * ((n_live + 15) // 16)
-    bb = (nt16 - na16) * (nt16 - na16 + 1) // 2
+    # BB (synth x synth) is NOT gathered as of 2026-08-28: 69% of the copied bytes with no
+    # consumer (its only read, GnssN2RecordAssemble's m2, was immediately (void)-cast -- the
+    # amplitude normalization uses the TRUE pre-quantization energy from the ctl block).
+    # ⚠️ ONE CONTRACT, THREE SITES: this, cudaCorrelatorDual::build_tile_selection, and
+    # GnssN2RecordAssemble::_n_bb. Disagree and the stage's frame-size guard fires at
+    # startup -- which is the good outcome, and is why that guard exists.
+    bb = 0
     # nt_outer = records per frame now that the dual correlator integrates one record
     tiles_frame_bytes = n_rec_per_frame * n_chan * (mixed + bb) * 512 * 4
 

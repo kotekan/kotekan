@@ -12,7 +12,27 @@ scripts/gnss/e2e), bit-compared where it should be bit-exact, before it is armed
 
 ---
 
-## 1. M² from pack44 -> disable the BB block class  [IN PROGRESS]
+## 1a. Stop GATHERING the BB block  [DONE 2026-08-28]
+
+**Simpler than planned: the BB block had NO consumer at all.** Its only read,
+`m2`, was immediately `(void)`-cast -- so no M²-from-pack44 was needed, just deletion.
+Tiles/channel 52 -> 16; tiles buffer 2,981,888 -> 917,504 B (7-chan GPU) and
+2,555,904 -> 786,432 B (6-chan), a **69% cut**, times 10 chain-instances per node.
+Gate: n2dualtest 6/6 (incl. [3] AA-prefix bitwise), e2e unchanged at 17.612 chips.
+
+## 1b. Disable the BB block CLASS in the correlator  [READY -- mechanism already proven]
+
+n2dualtest gate **[5] `class-mask MIXED|BB vs full, bitwise` passes with 0 mismatches**,
+and it compares the masked output against the full one AT THE SAME NS STRIDE -- so a masked
+launch writes surviving blocks at their FULL-TRIANGLE offsets and simply leaves the disabled
+ones untouched. Mixed-tile offsets therefore do not move, and the gather built in 1a needs no
+change. What remains is plumbing `block_class_mask = BLOCK_MASK_AA | BLOCK_MASK_MIXED` from
+kotekan config into DualCorrelatorParams (cudaCorrelatorDual never exposes it).
+T=2 -> 3 blocks, so dropping BB is ~33% of the correlator.
+⚠️ Extend n2dualtest with the AA|MIXED case (gate [5] masks off AA, the symmetric case)
+before arming -- test what ships, not its mirror image.
+
+### original note (kept: it is the argument for why BB is dead)
 
 `GnssN2RecordAssemble` reads exactly **128 numbers per channel** out of the BB block: the
 diagonal element of each diagonal tile (`slice[bb_k*512 + 34*ilo]`), one per synthetic lane.

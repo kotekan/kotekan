@@ -41,7 +41,13 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
     _nt16 = (_num_elements + _num_synth) / 16;
     _nlive16 = (_n_live + 15) / 16;
     _n_mixed = (_nt16 - _na16) * _nlive16;
-    _n_bb = (_nt16 - _na16) * (_nt16 - _na16 + 1) / 2;
+    // BB (synth x synth) IS NOT GATHERED (2026-08-28) -- see cudaCorrelatorDual's
+    // build_tile_selection for the argument. It was 69%% of the copied bytes and its only
+    // read here was `m2`, immediately (void)-cast: the normalization uses the TRUE
+    // pre-quantization energy from the ctl block, never the quantized M^2. Kept as a named
+    // zero rather than deleted so the three sites that state this contract still line up
+    // (here, build_tile_selection, gen_chord_gnss_config.py's tiles_frame_bytes).
+    _n_bb = 0;
     _n_tile = _n_mixed + _n_bb;
 
     if (4 * _n_prn > _num_synth)
@@ -136,11 +142,6 @@ void GnssN2RecordAssemble::main_thread() {
                     const int32_t* slice =
                         tiles + (size_t)r * tile_slice + (size_t)c * _n_tile * 512;
 
-                    // M^2 diagonal: the quantized replica's own (frame-integrated) energy.
-                    const int bb_k = _n_mixed + (ihi - _na16) * (ihi - _na16 + 1) / 2
-                                     + (ihi - _na16);
-                    const double m2 = (double)slice[(size_t)bb_k * 512 + 32 * ilo + 2 * ilo];
-
                     // The pack's scale is FROZEN frame-wide at record 0's energy
                     // (cudaGnssInject), so every sub-integration shares one s -- read it from
                     // record 0's rows, not this record's.
@@ -160,7 +161,6 @@ void GnssN2RecordAssemble::main_thread() {
                     // the energy is THIS record's -- they are different rows on purpose.
                     const double e_rec = ienergy[(size_t)(in0.job0 + t) * n_chan + c];
                     oenergy[orow * n_chan + c] = e_rec;
-                    (void)m2;
 
                     for (int e = 0; e < _n_live; ++e) {
                         const int jhi = e >> 4, jlo = e & 15;

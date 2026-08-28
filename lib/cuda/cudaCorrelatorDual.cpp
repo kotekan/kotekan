@@ -43,12 +43,29 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
     const int nlive16 = (num_live_elements + 15) / 16;
     for (size_t ci = 0; ci < chans.size(); ci++) {
         const std::int32_t f = compacted ? (std::int32_t)ci : chans[ci];
+        // MIXED (synth row x LIVE antenna column) FIRST, and that order is load-bearing:
+        // GnssN2RecordAssemble indexes mix_k = (ihi-na16)*nlive16 + jhi, which does not
+        // depend on how many tiles follow. Anything appended after this block can be
+        // removed without moving a single mixed tile.
         for (int ihi = na16; ihi < nt16; ihi++)
             for (int jhi = 0; jhi < nlive16; jhi++)
                 sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + jhi)});
-        for (int ihi = na16; ihi < nt16; ihi++)
-            for (int jhi = na16; jhi <= ihi; jhi++)
-                sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + jhi)});
+        // ── THE BB (synth x synth) BLOCK IS NOT GATHERED (2026-08-28) ──────────────────
+        // It was 36 of 52 tiles per channel -- 69%% of every byte copied off the GPU and
+        // through the EPL buffer -- and it had NO CONSUMER. The one read of it,
+        // GnssN2RecordAssemble's `m2` (the quantized replica's own frame-integrated
+        // energy, from the diagonal element of each diagonal tile), was immediately
+        // `(void)`-cast: the amplitude normalization uses the TRUE pre-quantization
+        // energy, which arrives independently through the ctl block (d_energy0). So the
+        // gather was shipping 18,432 int32 per channel to read 128 numbers and discard
+        // them.
+        // ⚠️ THIS IS ONE CONTRACT STATED IN THREE PLACES: here, GnssN2RecordAssemble's
+        // _n_bb, and gen_chord_gnss_config.py's `bb` in tiles_frame_bytes. They must move
+        // together or the stage's frame-size guard fires at startup (loudly -- that guard
+        // is the monument to the PrnCtl 64-vs-80 incident).
+        // The correlator still COMPUTES the BB block; skipping it needs
+        // n2k_dual's block_class_mask plumbed through, which is a kernel-path change with
+        // its own gate (docs/CHORD_GPU_TODO.md item 1b).
     }
     return sel;
 }
