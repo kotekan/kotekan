@@ -1037,6 +1037,15 @@ def build_parser(description):
                          "sharp-ACF (BOC) power discriminator has stable FALSE equilibria "
                          "~0.75 chips out (prompt -12 dB) that the hold would otherwise "
                          "servo forever while the search sees the true peak.")
+    ap.add_argument("--integ-veto-baseline-s", type=float, default=0.0,
+                    help="#98/#99: judge the escape referee's INTEGRITY VETO on the EXCURSION "
+                         "from the sat's own recent integ median over this window (s), not the "
+                         "absolute value -- a chronic per-sat model offset (#99) is that sat's "
+                         "normal, not evidence against this fit, and the absolute test vetoes "
+                         "every escape for exactly the sats that need them (G28's bad hold "
+                         "walked +28 chips un-evictable, 2026-08-28). A real search lobe-jump "
+                         "still moves integ instantly and vetoes. Absolute test stands until "
+                         ">=5 baseline samples exist. 0 = absolute veto (pre-#98 behaviour).")
     ap.add_argument("--hold-snr", type=float, default=8.0,
                     help="incoherent amp_snr above which a tracked PRN's cp anchor is FROZEN "
                          "(hold-on-lock: DLL owns the sub-chip residual; fit re-anchors only on "
