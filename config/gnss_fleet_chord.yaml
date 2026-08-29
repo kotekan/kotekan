@@ -311,6 +311,13 @@ common:
   # corrupting the fold. This is the lever on the fleet-engagement collapse (#10): per-
   # instance deep up ~7 dB lifts mid sats over the alignment's SNR threshold.
   sky-deep: true
+  # ── #102 ELEMENT STEERING, first-order positions (KV, 2026-08-29): the e5a assemblers
+  # get elem_positions_enu from config/chord_dish_layout.json (nominal grid, mapping as
+  # stated -- 'better than nothing'; the phase-stage solve refines). e5b stays UNSTEERED
+  # as the band-sibling control AND the live sign calibration: if e5a's per-element
+  # coherence/p2 degrade vs e5b, the sign is wrong -- flip elem-steer-sign, regenerate.
+  elem-steer-bands: e5a
+  elem-steer-sign: 1.0
   # Writes the COMBINER records (~52 KB/window), not the 17 MB/s tiles, so a transit can be
   # analysed after the fact. Its absence is why the 03:58 E30 pass was lost on 2026-08-07.
   n2-dump: true

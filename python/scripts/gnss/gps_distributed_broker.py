@@ -784,6 +784,7 @@ def main(argv=None, rx=None, publisher=None):
     # runs before this cycle's fleet_dll. See the --lock-prompt-hold note for why the gate
     # needs a fold-independent term at all.
     _elem_arch_t = [0.0]   # last per-element archive append (--element-archive-every-s)
+    _geom_post_t = [0.0]   # last sat-geometry post (#102, --post-sat-geometry)
     _elem_poll_t = [0.0]   # last /get_elements poll (--element-poll-every-s)
     # #57 step 3: the residual carrier rates the known-rate coherent fold derotates with.
     # Updated AFTER each cycle's fold from that cycle's record-stream fit, so the fold only
@@ -1590,7 +1591,7 @@ def main(argv=None, rx=None, publisher=None):
         seeds=seeds, dr_state=dr_state, bsat=bsat, cp_held=cp_held,
         dr_untrusted=dr_untrusted,
         est_last=_est_last, kcoh_rates=_kcoh_rates, rf_last=_rf_last,
-        elem_arch_t=_elem_arch_t, elem_poll_t=_elem_poll_t,
+        elem_arch_t=_elem_arch_t, elem_poll_t=_elem_poll_t, geom_post_t=_geom_post_t,
         mp_cooldown=mp_cooldown, mp_flipped=mp_flipped, mp_last_det=mp_last_det,
     )
 

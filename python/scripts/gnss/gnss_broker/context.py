@@ -46,7 +46,7 @@ class ChainContext(object):
         "args", "band_id", "chain_id", "code_len", "telem_chain", "base",
         "alm_sys", "alm_min_prn", "lc_seg", "lc_epoch",
         # ---- services and endpoints ---------------------------------------------------
-        "rx", "publisher", "telem_client", "detectors", "dll_combiners",
+        "rx", "publisher", "telem_client", "detectors", "dll_combiners", "geom_post_t",
         "spectrum_endpoints", "spec_writer", "state_dir", "xb_read_dir", "sig_of",
         "n2_combiners", "last_dets", "decfb", "decfb_log_t", "dr_bad", "fe_axis", "fe_off",
         "bp_pushed",

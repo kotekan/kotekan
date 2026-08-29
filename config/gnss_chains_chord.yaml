@@ -1142,6 +1142,13 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # derivation: if e5a's post-merge kicks GROW vs e5b, flip and re-judge.
     # Pre-reg: fixtures/expectations_20260829_eph_rebase.txt. Revert: delete + restart.
     eph-rebase: 1
+    # ── #102 ARMED 2026-08-29 (KV: first-order positions, generate overnight data): post
+    # each sat's az/el to the record assemblers every 30 s -- the geometry feed for the
+    # per-element steering (elem_positions_enu lives in the NODE configs, e5a only; e5b
+    # is the unsteered control + sign calibration). Judge: e5a per-element |u| coherence
+    # and p2 vs e5b after the node restart; SAT-GEOMETRY posted lines here.
+    # Revert: delete this line (and/or regenerate nodes without --elem-steer-bands).
+    post-sat-geometry: 1
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy

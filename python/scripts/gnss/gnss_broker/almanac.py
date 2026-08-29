@@ -102,6 +102,33 @@ def stage_almanac_predict(ctx):
                             v[3], (v[4] if len(v) > 4 else 0.0),
                             (v[5] if len(v) > 5 else 0.0))
                         for p, v in raw.items()}
+            # ── #102 GEOMETRY FEED (--post-sat-geometry): every ~30 s, post each sat's
+            # az/el to the record assemblers' /set_sat_geometry so the element steering
+            # (elem_positions_enu in the node config) has fresh directions. Endpoint
+            # derived from the combiner list (n2combine -> n2assemble). Harmless where
+            # the assembler has no positions configured (the endpoint then does not
+            # exist and the post fails quietly into the rate-limited log).
+            if (getattr(ctx.args, "post_sat_geometry", 0) and ctx.dll_combiners
+                    and ctx.t0 - ctx.geom_post_t[0] >= 30.0):
+                ctx.geom_post_t[0] = ctx.t0
+                _body = {}
+                for _p2, _v2 in ctx.pred.items():
+                    if len(_v2) > 5 and _v2[2] > 0.0:      # above horizon; az is element 5
+                        _body[str(_p2)] = [float(_v2[5]), float(_v2[2])]
+                if _body:
+                    _okc = 0
+                    for _u2 in ctx.dll_combiners:
+                        try:
+                            _post("%s/set_sat_geometry"
+                                  % _u2.replace("n2combine", "n2assemble"), _body,
+                                  timeout=2.0)
+                            _okc += 1
+                        except Exception as _e2:
+                            _log_rl("geom-post", "sat-geometry post failed (%s): %s"
+                                    % (_u2, _e2), every_s=300.0)
+                    _log_rl("geom-post-ok",
+                            "SAT-GEOMETRY posted: %d sat(s) to %d/%d assembler(s)"
+                            % (len(_body), _okc, len(ctx.dll_combiners)), every_s=300.0)
             # SERVE THE SKY. The broker already knows every satellite's az/el; publishing it
             # is what lets the viewer stop deriving its own (and stop writing the shared nav
             # cache to do it -- 2026-08-27). Receiver-wide by construction: each chain

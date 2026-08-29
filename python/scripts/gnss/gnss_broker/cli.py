@@ -1037,6 +1037,10 @@ def build_parser(description):
                          "sharp-ACF (BOC) power discriminator has stable FALSE equilibria "
                          "~0.75 chips out (prompt -12 dB) that the hold would otherwise "
                          "servo forever while the search sees the true peak.")
+    ap.add_argument("--post-sat-geometry", type=int, default=0,
+                    help="#102: post each satellite's az/el to the record assemblers' "
+                         "/set_sat_geometry every ~30 s (endpoint derived from "
+                         "--dll-combiners), feeding the per-element steering. 0 = off.")
     ap.add_argument("--eph-rebase", type=int, default=0,
                     help="#101: at each ephemeris refresh, hand the KNOWN per-sat model step "
                          "to the gather as a trim adjustment through the #92 handover "

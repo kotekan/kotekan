@@ -890,6 +890,24 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         f.write("\n".join(L) + "\n")
 
 
+def elem_positions_from_layout(path, n_elem):
+    """#102: flat [n_elem][3] ENU metres from config/chord_dish_layout.json (rows=letters
+    south->north at row_spacing_m, columns=numbers west->east at col_spacing_m, U=0)."""
+    import json as _json
+    import re as _re
+    lay = _json.load(open(path))
+    rs, cs = float(lay["row_spacing_m"]), float(lay["col_spacing_m"])
+    out = []
+    for e in range(n_elem):
+        v = lay["elements"].get(str(e))
+        if v is None:
+            raise SystemExit(f"--elem-steer-bands: {path} has no element {e} "
+                             f"(need 0..{n_elem - 1})")
+        m = _re.match(r"([A-Z])(\d+)[XY]", v["name"])
+        out += [(int(m.group(2)) - 1) * cs, (ord(m.group(1)) - 65) * rs, 0.0]
+    return out
+
+
 def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     """GNSS path B (--n2-dual): one GPU's cudaGnssInject + cudaCorrelatorDual process.
 
@@ -1233,6 +1251,14 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # buffer above is sized to match, and the two must move together.
             **({"chan_export": True} if args.telem_host else {}),
             "reference_element": args.reference_element,
+            # ── #102 ELEMENT STEERING (per band, --elem-steer-bands): positions from the
+            # dish-layout reference; presence of elem_positions_enu is what ARMS the
+            # steering in GnssGpuRecordAssemble (geometry then arrives from the broker's
+            # --post-sat-geometry feed). The SIGN is a measured convention.
+            **({"elem_positions_enu": elem_positions_from_layout(args.dish_layout, n_live),
+                "elem_steer_sign": args.elem_steer_sign}
+               if tag.strip("_") in [b for b in args.elem_steer_bands.split(",") if b]
+               else {}),
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
@@ -2242,6 +2268,15 @@ def main():
                          "the per-node record lag spread (measured ~0.15 s = ~4 records, task "
                          "#46) so a laggard can still be asked for the window its peers already "
                          "returned; 8 leaves headroom without meaningful memory cost.")
+    ap.add_argument("--elem-steer-bands", default="",
+                    help="#102: comma list of band tags (e.g. 'e5a') whose n2assemble gets "
+                         "elem_positions_enu from --dish-layout, enabling per-element "
+                         "geometric steering. Empty = no steering anywhere (the default).")
+    ap.add_argument("--dish-layout", default="config/chord_dish_layout.json",
+                    help="dish grid + element mapping reference (#102)")
+    ap.add_argument("--elem-steer-sign", type=float, default=1.0,
+                    help="#102 steering phase sign -- a MEASURED convention (see "
+                         "gnssElemSteer.hpp); calibrated live: e5a vs its band-sibling")
     ap.add_argument("--reference-element", type=int, default=0,
                     help="antenna whose correlation fills the record HEADER -- the broker's DLL "
                          "and carrier loop reference (and, with --elem-sum, the phase anchor of "
