@@ -1566,3 +1566,22 @@ Also fixed here: the `cp-rate: N fit(s) REJECTED` summary replayed every PRN eve
 rejected, verbatim, forever (the dict was never cleared) — misread live as a poisoned
 pooled clock. Now cleared after logging. ⚠️ `dop_rate_rejected` (older) has the same
 latent cumulative-dict logging bug — left untouched, flagged here.
+
+## #99 UPDATE (2026-08-29): ROOT SOLVED — the configured station position is ~155 m off; fix ready, awaiting KV's site-plan confirmation
+
+Least-squares on 6,971 demeaned overnight gps_l5 integrity rows (per-line clock removed,
+LOS from the broker's own ephemeris machinery at the configured coordinates):
+    q(ENU) = (−132.0 ±0.3, −82.0 ±0.4, +5.6 ±0.9) m, |q| = 155.5 m, near-purely HORIZONTAL
+    out-of-sample (fit 1st half of night, validate 2nd): rms 96.4 → 17.0 m (82% reduction)
+Sign resolved from deadreckon.py:1682 (d_i = measured − predicted, cp = delay):
+    Δ = −q → the array's effective phase centre is +132 m EAST, +82 m NORTH of the
+    configured (lat 49.32075144444, lon −119.62081125) — KV: plausibly CHIME coordinates
+    while the dishes sit in a corner of the ~200 m field.
+    CORRECTED CANDIDATE: lat 49.32148869, lon −119.61899427, alt ~539 (alt weakly observed).
+155 m = 5.3 chips = exactly the chronic ±5-chip residual scale. Predicted collapses when
+applied: #99 residuals (→ ~0.6 chip floor), the INTEG-VETO rot, the model-drag component
+of the gal band-shared trim drift (~0.8–2 mchips/s from |q|×LOS angular rate — the
+GAP 3 shadow's persistent shared y), and a per-sat seed-quality improvement on every
+model-primary chain. Application = common-section lat/lon change + broker restart; NOT
+applied yet (a station-position change moves every chain's model — KV confirms direction
+against the site plan first). Solve: fixtures/gap3_position_solve.py (banked-data only).
