@@ -28,12 +28,18 @@ common:
   # dishes' effective phase centre. Solved by LSQ on 6,971 banked overnight integrity
   # residuals: dENU = (+132.0 +-0.3 E, +82.0 +-0.4 N, -5.6 +-0.9 U) m, out-of-sample rms
   # 96.4 -> 17.0 m (82%). 155 m = 5.3 chips = the chronic +-5-chip integrity residuals.
-  # KV: "130 m east sounds exactly right." The NODE configs' origin_itrs_* stay UNCHANGED
-  # on purpose -- that is the array coordinate system the element offsets are defined
-  # against; only the broker's point approximation was wrong. Solve + repeat:
-  # fixtures/gap3_position_solve.py. alt kept (U weakly observed, -5.6 within noise).
-  lat: 49.32148875
-  lon: -119.61899559
+  # SIGN CALIBRATED BY THE APPLIED STEP (14:07): the first application (+132 E, +82 N,
+  # from a code-read sign inference) DOUBLED q to (-268, -164) -- the step itself is the
+  # commanded-step calibration, and the true mapping is truth = configured + q. The
+  # dishes are ~132 m WEST, ~82 m SOUTH of the original reference point (which is
+  # therefore probably not the CHIME marker -- site-plan identification pending).
+  # The NODE configs' origin_itrs_* stay UNCHANGED on purpose -- that is the array
+  # coordinate frame the element offsets are defined against; only the broker's point
+  # approximation was wrong. Solve + verify (expect q ~ 0):
+  #   SOLVE_LAT=<lat> SOLVE_LON=<lon> fixtures/gap3_position_solve.py <broker log>
+  # alt kept (U weakly observed).
+  lat: 49.32001414
+  lon: -119.62262691
   alt: 545
   mask-deg: 0
   interval: 2
