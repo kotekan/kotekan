@@ -23,8 +23,17 @@ common:
   rest-url: http://cx19:12048      # must name a real NODE; cf06 runs no gnss node itself
   time0-endpoint: telescope/time0_ns
   hops-per-sec: 195312.5           # F-engine record geometry -- not a signal property
-  lat: 49.32075144444
-  lon: -119.62081125
+  # #99 ROOT FIX (2026-08-29, KV-approved): the previous coordinates (49.32075144444,
+  # -119.62081125 -- the array ORIGIN, likely the CHIME reference) sit ~155 m from the
+  # dishes' effective phase centre. Solved by LSQ on 6,971 banked overnight integrity
+  # residuals: dENU = (+132.0 +-0.3 E, +82.0 +-0.4 N, -5.6 +-0.9 U) m, out-of-sample rms
+  # 96.4 -> 17.0 m (82%). 155 m = 5.3 chips = the chronic +-5-chip integrity residuals.
+  # KV: "130 m east sounds exactly right." The NODE configs' origin_itrs_* stay UNCHANGED
+  # on purpose -- that is the array coordinate system the element offsets are defined
+  # against; only the broker's point approximation was wrong. Solve + repeat:
+  # fixtures/gap3_position_solve.py. alt kept (U weakly observed, -5.6 within noise).
+  lat: 49.32148875
+  lon: -119.61899559
   alt: 545
   mask-deg: 0
   interval: 2
