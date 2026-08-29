@@ -1610,3 +1610,28 @@ sub-chip (was chronic ±5 with most sats BAD). Cascade to re-judge over the next
 INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-primary
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
+
+## #102 — the array is about to stop being a point: per-element GNSS geometry for the ~200 m build-out (DESIGN, 2026-08-29)
+
+Scale: a 200 m EW/NS spread is up to ~b·cos(el)/c ≈ 0.6 µs ≈ **6 chips of differential
+code delay** across the array (and hundreds of carrier cycles — the carrier side is
+already handled per element by the cal/elemgain machinery). A single fleet-common code
+phase cannot hold all elements on the sharp L5 peak: elements ±15 m (±0.5 chip) along
+the LOS start falling off the correlation. Today's clustered dishes sit at that margin —
+the ~17 m (0.6 chip) per-sat residual floor from the #99 solve is plausibly already
+part element-spread.
+
+THE CLEAN FIX LIVES IN THE CHANNELIZATION: a true time delay τ = −(r_elem·ê_sat)/c is
+exactly a per-channel linear phase e^{−i2πfτ} across the ~80 fine channels (channel BW
+≪ 1/τ). Per (element, sat): a geometric phase SLOPE — the natural extension of the
+per-element complex gain (#57) from one gain to a slope, computed from the grid
+(node configs already carry dish_idx/grid_x/grid_y + origin_itrs) and the sat az/el the
+broker already publishes. In the N²/Path-B shape it is POST-correlation steering
+(applied to per-element visibilities before the cross-channel comb) — no kernel change.
+
+BOOKKEEPING CONSEQUENCE: once per-element steering is in, the broker's station position
+reverts to the ARRAY ORIGIN (element offsets own the rest — one coherent frame). Until
+then the effective phase centre MOVES as dishes populate (next ~month): re-run
+fixtures/gap3_position_solve.py periodically as the effective-phase-centre gauge, and
+expect the #99-solved point to drift with the element census. Validation instrument:
+the elem archive's per-element phases vs geometry (the beam-map machinery).
