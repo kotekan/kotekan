@@ -1585,3 +1585,17 @@ GAP 3 shadow's persistent shared y), and a per-sat seed-quality improvement on e
 model-primary chain. Application = common-section lat/lon change + broker restart; NOT
 applied yet (a station-position change moves every chain's model — KV confirms direction
 against the site plan first). Solve: fixtures/gap3_position_solve.py (banked-data only).
+
+## #99 FINAL (08-29 14:09): sign calibrated by the applied step — truth = configured + q
+
+The first application (+132 E, +82 N, direction inferred by reading the residual sign
+convention out of deadreckon.py) DOUBLED the solved q to (−268.5, −163.8): the applied
+step is itself the commanded-step calibration, and the mapping is truth = configured
++ q. Dishes ≈ 132 m WEST, 82 m SOUTH of the original reference point — which is
+therefore probably not the CHIME marker (site-plan identification of that point still
+wanted). Final coordinates: lat 49.32001414, lon −119.62262691 (applied 14:09).
+Verification registered: the solve re-run on post-14:09 residuals must return |q| ≲
+20 m. The doubled-q hour (13:13–14:09) is archived in
+logs/gnss_broker_20260829_1415_pre_position_fix2.log — exclude it from judges.
+Lesson (the rrate-phase-sign rule again, now in the position domain): never trust a
+passively-derived sign; command a step and read the response.
