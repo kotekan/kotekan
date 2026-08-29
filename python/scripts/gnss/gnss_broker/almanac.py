@@ -62,6 +62,16 @@ def stage_almanac_predict(ctx):
                                 "(armed-but-inert)", every_s=600.0)
                     else:
                         _stepd, _ts = _es
+                        # CENSUS FIRST, unconditionally: without this line, zero posts
+                        # is uninterpretable -- steps-all-tiny, sats-unarmed, and
+                        # steps-never-computed all look identical (the armed-but-inert
+                        # trap). One line per refresh names which.
+                        _mx = max(_stepd.values(), key=abs) * ctx.args.chip_rate_hz
+                        _log("EPH-REBASE census: refresh stepped %d sat model(s), "
+                             "largest %+.3f chips, %d over the 0.02 post floor"
+                             % (len(_stepd), _mx,
+                                sum(1 for v in _stepd.values()
+                                    if abs(v * ctx.args.chip_rate_hz) >= 0.02)))
                         _n_post = 0
                         for _k, _ds in sorted(_stepd.items()):
                             _prn = _k[1] if isinstance(_k, tuple) else _k
