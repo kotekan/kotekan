@@ -1599,3 +1599,14 @@ Verification registered: the solve re-run on post-14:09 residuals must return |q
 logs/gnss_broker_20260829_1415_pre_position_fix2.log — exclude it from judges.
 Lesson (the rrate-phase-sign rule again, now in the position domain): never trust a
 passively-derived sign; command a step and read the response.
+
+## #99 CLOSED — VERIFIED 08-29 14:53
+
+Verification solve on residuals produced under the corrected coordinates:
+q = (−0.1 ±1.4 E, +4.6 ±1.8 N, +4.6 ±2.8 U) m, |q| = 6.5 m — zero at instrument
+resolution; residual rms 16.8 m with no further reduction available (the per-sat
+tropo/iono/multipath/search floor). Live integrity residuals: ±0.1–1.3 chips, mostly
+sub-chip (was chronic ±5 with most sats BAD). Cascade to re-judge over the next hours:
+INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-primary
+seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
+shadow, MODEL-UNTRUSTED churn should collapse.
