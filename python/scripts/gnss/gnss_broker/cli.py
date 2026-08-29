@@ -1037,6 +1037,13 @@ def build_parser(description):
                          "sharp-ACF (BOC) power discriminator has stable FALSE equilibria "
                          "~0.75 chips out (prompt -12 dB) that the hold would otherwise "
                          "servo forever while the search sees the true peak.")
+    ap.add_argument("--eph-rebase", type=int, default=0,
+                    help="#101: at each ephemeris refresh, hand the KNOWN per-sat model step "
+                         "to the gather as a trim adjustment through the #92 handover "
+                         "(--fleet-trim-rebase-adjust must be on), instead of letting the "
+                         "leak-limited loop rebuild through the step for ~15-30 min (the "
+                         "GAP 3 shadow's measured post-merge trim kicks). Steps below 0.02 "
+                         "chips are skipped; the 2.5-chip handover bound applies. 0 = off.")
     ap.add_argument("--fit-flush-on-reject", type=int, default=0,
                     help="#100: after this many CONSECUTIVE cp-rate rejections for a PRN, "
                          "FLUSH its cp-fit history. A rejected fit also poisons the seed's "

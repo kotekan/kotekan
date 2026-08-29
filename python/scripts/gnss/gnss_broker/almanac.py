@@ -40,8 +40,45 @@ def stage_almanac_predict(ctx):
         try:
             t_pred = ctx.alm_now()
             if ctx.brdc_alm is not None:
+                ctx.brdc_alm["eph_rebase"] = bool(getattr(ctx.args, "eph_rebase", 0))
                 raw = brdc_predict(ctx.brdc_alm, ctx.args.lat, ctx.args.lon, ctx.args.alt,
                                    ctx.alm_sys, ctx.alm_min_prn, t_pred, ctx.args.carrier_hz)
+                # ── EPH-REBASE (#101): an ephemeris refresh just STEPPED the model by a
+                # KNOWN per-sat delta; hand the equal-and-opposite trim adjustment to the
+                # gather through the #92 handover (same-cycle ledger transfer) instead of
+                # letting the leak-limited loop rebuild through the step for ~15-30 min.
+                # ⚠️ SIGN IS CALIBRATED BY THE INSTRUMENT, NOT BY THIS COMMENT: the
+                # post-merge trim-kick superposed-epoch (fixtures/gap3_merge_epoch.py)
+                # must COLLAPSE on the armed chain vs its band-sibling control. If it
+                # GROWS, the sign is wrong -- disarm and flip. (08-29's position-fix
+                # lesson, pre-applied.) Requires --fleet-trim-rebase-adjust: offer()
+                # no-ops when the handover is disabled, so warn loudly once.
+                _es = ctx.brdc_alm.pop("eph_step", None)
+                if _es is not None and getattr(ctx.args, "eph_rebase", 0):
+                    if not ctx.handover.enabled:
+                        _log_rl("ephreb-noho",
+                                "eph-rebase ARMED but --fleet-trim-rebase-adjust is OFF: "
+                                "the handover transport is disabled, steps NOT posted "
+                                "(armed-but-inert)", every_s=600.0)
+                    else:
+                        _stepd, _ts = _es
+                        _n_post = 0
+                        for _k, _ds in sorted(_stepd.items()):
+                            _prn = _k[1] if isinstance(_k, tuple) else _k
+                            _dchips = _ds * ctx.args.chip_rate_hz
+                            if abs(_dchips) < 0.02:
+                                continue    # sub-noise; not worth a post
+                            if ctx.handover.offer(_prn, _dchips,
+                                                  _prn in ctx.dls.armed_last,
+                                                  ctx.telem_chain,
+                                                  ctx.args.fleet_trim_url,
+                                                  _post, _log):
+                                _n_post += 1
+                        if _n_post:
+                            _log("EPH-REBASE: %d per-sat model step(s) handed to the "
+                                 "gather at the refresh (largest %+0.3f chips)"
+                                 % (_n_post, max((v * ctx.args.chip_rate_hz
+                                                  for v in _stepd.values()), key=abs)))
             else:
                 from gps_beamtrack import predict_dopplers
                 raw = predict_dopplers(ctx.args.lat, ctx.args.lon, ctx.args.alt, t_utc=t_pred,

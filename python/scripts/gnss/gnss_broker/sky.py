@@ -43,6 +43,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     if getattr(_supply, "LOG_HOOK", "unset") is None:
         _supply.LOG_HOOK = _log
     now = _now()
+    state["_lat"], state["_lon"], state["_alt"] = lat, lon, alt_m
     # ⚠️⚠️ ASK AS OFTEN AS THE PRODUCT UPDATES, NOT AS OFTEN AS THE DAILY DOES. This gate was
     # 7200 s, inherited from the DAILY file's own 2 h re-fetch rule -- but the sky is served by
     # the STATION-HOURLY merge, which updates every hour, and a broadcast record is only valid
@@ -66,8 +67,38 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
         # t_utc so a replay (--almanac-epoch) gets the DAY-MATCHED file -- today's file
         # cannot predict another epoch (best_eph 4 h window).
         try:
+            _old_eph = state["eph"]
             state["eph"] = ge.parse_rinex_nav(ge.fetch_brdc(t_utc))
             state["eph_t"] = now
+            # ── EPH-REBASE (#101, --eph-rebase): a refresh STEPS the per-sat model, and
+            # on a model-primary chain the slewing seed drags the code loop through the
+            # step while the leak-limited trim spends ~15-30 min rebuilding (measured
+            # 08-29, the GAP 3 shadow's merge-epoch decay). The delta is KNOWN -- both
+            # models are in hand right here -- so compute it per sat and let the cycle
+            # hand it to the #92 trim handover (a ledger transfer, not a correction).
+            # Stored in SECONDS of model delay: chip-rate-agnostic; the consumer
+            # converts. Sats present in only one model get no step (birth/death paths
+            # own those). Never let this computation take the refresh down.
+            if _old_eph is not None and state.get("eph_rebase"):
+                try:
+                    _pa_o = ge.predict_all(_old_eph, state["_lat"], state["_lon"],
+                                           state["_alt"], t_utc, mask_deg=-90.0)
+                    _pa_n = ge.predict_all(state["eph"], state["_lat"], state["_lon"],
+                                           state["_alt"], t_utc, mask_deg=-90.0)
+                    _steps = {}
+                    for _k, _vn in _pa_n.items():
+                        _vo = _pa_o.get(_k)
+                        if _vo is None:
+                            continue
+                        _ds = ((_vn["range_m"] - _vo["range_m"]) / C_LIGHT
+                               - (_vn["sat_clk_s"] - _vo["sat_clk_s"]))
+                        if abs(_ds) > 1e-12:
+                            _steps[_k] = _ds
+                    if _steps:
+                        state["eph_step"] = (_steps, now)
+                except Exception as _e2:
+                    _log("eph-rebase: step computation failed (%s) -- refresh stands, "
+                         "no handover this time" % _e2)
             _n = len(state["eph"])
             # Say so only when the SET changed. At a 15 min cadence an unconditional line is
             # 96 lines a day of "still 101 sats", which is how a real thinning gets missed.

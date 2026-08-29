@@ -1134,6 +1134,14 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # Pre-reg: fixtures/expectations_20260825_92_handover.txt (P2 = paired no-crater
     # vs e5b; F2 = refusals dominate -> the same-cycle premise is wrong).
     fleet-trim-rebase-adjust: 1
+    # ── #101 ARMED 2026-08-29 (KV: "proceed with brdc refresh fixes"): at each eph
+    # refresh, hand the KNOWN per-sat model step to the gather through the handover
+    # above, same cycle -- instead of the leak-limited ~15-30 min rebuild the GAP 3
+    # shadow measured after every merge. THIS CHAIN ONLY (needs the handover); e5b is
+    # the band-sibling control. Sign calibrated by the merge-epoch instrument, not by
+    # derivation: if e5a's post-merge kicks GROW vs e5b, flip and re-judge.
+    # Pre-reg: fixtures/expectations_20260829_eph_rebase.txt. Revert: delete + restart.
+    eph-rebase: 1
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
