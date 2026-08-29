@@ -73,7 +73,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 FATAL_ERROR("GnssGpuRecordAssemble: elem_positions_enu has {:d} values, "
                             "want 3*n_elements = {:d}",
                             (int)pos.size(), 3 * _n_elements);
-            if (_spec_freq_ids.empty())
+            // channel_ids is read into _spec_freq_ids LATER in this constructor (the
+            // chan-export block) -- read it locally here; init order bit the fleet once
+            // (crash-loop, 2026-08-29 22:5x).
+            auto _st_fids =
+                config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+            if (_st_fids.empty())
                 FATAL_ERROR("GnssGpuRecordAssemble: elem steering needs channel_ids (the "
                             "per-channel RF frequencies)");
             for (int i = 0; i < 3; ++i) {
@@ -82,13 +87,13 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                     pos[(size_t)e * 3 + i] -= r0;
             }
             std::vector<double> f_mhz;
-            for (int id : _spec_freq_ids)
+            for (int id : _st_fids)
                 f_mhz.push_back(id * 0.1953125);
             _steer = gnss::ElemSteer(std::move(pos), std::move(f_mhz), (int)_prns.size(),
                                      st_sign, st_hold);
             INFO("GnssGpuRecordAssemble[{:s}]: #102 element steering READY ({:d} elements, "
                  "{:d} channels, sign {:+.0f}) -- awaiting /set_sat_geometry posts",
-                 unique_name, _n_elements, (int)_spec_freq_ids.size(), st_sign);
+                 unique_name, _n_elements, (int)_st_fids.size(), st_sign);
         }
     }
     const int n = (int)_prns.size();
