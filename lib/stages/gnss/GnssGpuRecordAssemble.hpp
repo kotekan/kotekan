@@ -6,6 +6,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "gnssElemCal.hpp"
+#include "gnssElemSteer.hpp"
 #include "restServer.hpp"
 #include "json.hpp"    // nlohmann::json for the set_elem_gain POST
 
@@ -74,6 +75,10 @@ private:
     bool _elem_sum = false;
     double _elem_sum_tau_s = 0.5;  ///< cal EMA time constant -- fast enough to follow the
                                    ///< inter-element fringe rotation as a satellite transits
+    // ── #102 ELEMENT STEERING (see gnssElemSteer.hpp) ─────────────────────────────
+    gnss::ElemSteer _steer;      ///< per-(sat, channel, element) geometric phasors
+    std::mutex _steer_mtx;       ///< REST update vs combine-loop read
+    double _steer_t0 = 0.0;      ///< steady-clock epoch for freshness
     double _elem_sum_min_w = 0.02; ///< weight gate vs the strongest element: absent/unpowered
                                    ///< elements (EMA of pure noise) fall below and are excluded
     std::vector<gnss::ElemCal> _cal; ///< per PRN slot
@@ -181,6 +186,8 @@ private:
     SpecWindow& spec_window_for(int64_t wstart);
     void spectrum_callback(kotekan::connectionInstance& conn);
     void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    /// #102: per-satellite geometry for the element steering (POST {"<prn>": [az_deg, el_deg]}).
+    void set_sat_geometry_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_reference_element_callback(kotekan::connectionInstance& conn,
                                         nlohmann::json& request);
 

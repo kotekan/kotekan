@@ -59,6 +59,38 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _elem_hold_on_reanchor =
         config.get_default<bool>(unique_name, "elem_sum_hold_on_reanchor", true);
     _elem_sum_min_w = config.get_default<double>(unique_name, "elem_sum_min_w", 0.02);
+    // ── #102 ELEMENT STEERING: geometric per-(sat, channel, element) phasors ─────────
+    // OFF unless elem_positions_enu is provided (flat [n_elements][3], metres ENU of any
+    // fixed array point -- re-referenced to the reference element below so the header's
+    // slots and the ADR observable are UNTOUCHED by steering: the ref phasor is unity by
+    // construction). The SIGN is a measured config parameter (gnssElemSteer.hpp note).
+    {
+        auto pos = config.get_default<std::vector<double>>(unique_name, "elem_positions_enu", {});
+        const double st_sign = config.get_default<double>(unique_name, "elem_steer_sign", 1.0);
+        const double st_hold = config.get_default<double>(unique_name, "elem_steer_hold_s", 120.0);
+        if (!pos.empty() && _n_elements > 0) {
+            if ((int)pos.size() != 3 * _n_elements)
+                FATAL_ERROR("GnssGpuRecordAssemble: elem_positions_enu has {:d} values, "
+                            "want 3*n_elements = {:d}",
+                            (int)pos.size(), 3 * _n_elements);
+            if (_spec_freq_ids.empty())
+                FATAL_ERROR("GnssGpuRecordAssemble: elem steering needs channel_ids (the "
+                            "per-channel RF frequencies)");
+            for (int i = 0; i < 3; ++i) {
+                const double r0 = pos[(size_t)_reference_element * 3 + i];
+                for (int e = 0; e < _n_elements; ++e)
+                    pos[(size_t)e * 3 + i] -= r0;
+            }
+            std::vector<double> f_mhz;
+            for (int id : _spec_freq_ids)
+                f_mhz.push_back(id * 0.1953125);
+            _steer = gnss::ElemSteer(std::move(pos), std::move(f_mhz), (int)_prns.size(),
+                                     st_sign, st_hold);
+            INFO("GnssGpuRecordAssemble[{:s}]: #102 element steering READY ({:d} elements, "
+                 "{:d} channels, sign {:+.0f}) -- awaiting /set_sat_geometry posts",
+                 unique_name, _n_elements, (int)_spec_freq_ids.size(), st_sign);
+        }
+    }
     const int n = (int)_prns.size();
     // Record width is a C++ constant; the frame is sized in yaml (n_prn * record_floats *
     // sizeof_float) with nothing linking the two. A stale config under-sizes the frame and this
@@ -184,6 +216,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_gain",
             std::bind(&GnssGpuRecordAssemble::set_elem_gain_callback, this, _1, _2));
+    if (_steer.enabled())
+        kotekan::restServer::instance().register_post_callback(
+            unique_name + "/set_sat_geometry",
+            std::bind(&GnssGpuRecordAssemble::set_sat_geometry_callback, this, _1, _2));
     // LIVE REFERENCE SWAP (KV, 2026-08-20). Registered whenever the element axis exists --
     // the header's correlation slots carry the reference even with elem_sum off, so the
     // swap is meaningful either way. See set_reference_element_callback.
@@ -196,6 +232,36 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
 GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
     if (_chan_dump)
         std::fclose(_chan_dump);
+}
+
+void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstance& conn,
+                                                      nlohmann::json& request) {
+    // #102: {"<prn>": [az_deg, el_deg], ...}. Slow-moving (~0.5 deg/min): a 30 s post
+    // cadence keeps the steering within ~1 mm of true. Unknown PRNs are skipped (the
+    // broker posts its whole sky; this stage steers the slots it owns).
+    int n_up = 0;
+    try {
+        const double now_s = std::chrono::duration<double>(
+                                 std::chrono::steady_clock::now().time_since_epoch())
+                                 .count();
+        std::lock_guard<std::mutex> lk(_steer_mtx);
+        for (auto it = request.begin(); it != request.end(); ++it) {
+            const int prn = std::atoi(it.key().c_str());
+            if (prn <= 0 || !it.value().is_array() || it.value().size() < 2)
+                continue;
+            for (size_t p = 0; p < _prns.size(); ++p)
+                if (_prns[p] == prn) {
+                    _steer.update((int)p, it.value()[0].get<double>(),
+                                  it.value()[1].get<double>(), now_s);
+                    ++n_up;
+                    break;
+                }
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(e.what(), kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    conn.send_json_reply(nlohmann::json{{"updated", n_up}});
 }
 
 int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
@@ -457,6 +523,20 @@ void GnssGpuRecordAssemble::main_thread() {
                 std::complex<double> g3[6];  // reference element, for the header + NCO/gain state
                 double e3[6];                // element-independent
                 _g_elem.assign((size_t)n_rows_spec * n_e, std::complex<double>(0.0, 0.0));
+                // #102: steer this satellite's elements if geometry is fresh. The lock is
+                // cheap here (one take per record row-set); the REST writer holds it only
+                // while rebuilding one slot's table.
+                const gnss::ElemSteer::cf* steer_rows[64] = {nullptr};
+                {
+                    std::lock_guard<std::mutex> lk(_steer_mtx);
+                    const double now_s =
+                        std::chrono::duration<double>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+                    if (_steer.warm((int)p, now_s))
+                        for (int ch = 0; ch < n_chan && ch < 64; ++ch)
+                            steer_rows[ch] = _steer.row((int)p, ch);
+                }
                 for (int t = 0; t < n_rows_spec; ++t) {
                     const size_t row = (size_t)(c.job0 + t) * n_chan;
                     double e = 0.0;
@@ -464,9 +544,14 @@ void GnssGpuRecordAssemble::main_thread() {
                         if ((c.chan_mask >> ch) & 1ULL) {
                             e += energy[row + ch];
                             const size_t base = (row + ch) * n_e;
-                            for (int el = 0; el < n_e; ++el)
-                                _g_elem[(size_t)t * n_e + el] += std::complex<double>(
-                                    corr[2 * (base + el)], corr[2 * (base + el) + 1]);
+                            const gnss::ElemSteer::cf* st = steer_rows[ch];
+                            for (int el = 0; el < n_e; ++el) {
+                                std::complex<double> v(corr[2 * (base + el)],
+                                                       corr[2 * (base + el) + 1]);
+                                if (st)
+                                    v *= std::complex<double>(st[el].real(), st[el].imag());
+                                _g_elem[(size_t)t * n_e + el] += v;
+                            }
                         }
                     g3[t] = _g_elem[(size_t)t * n_e + ref_e];
                     e3[t] = e;

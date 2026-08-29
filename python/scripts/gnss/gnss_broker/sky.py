@@ -94,6 +94,14 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
                                - (_vn["sat_clk_s"] - _vo["sat_clk_s"]))
                         if abs(_ds) > 1e-12:
                             _steps[_k] = _ds
+                    # Census at EVERY re-parse, zero included -- 08-29's lesson twice
+                    # over: silence must be self-describing (a re-parse between merges
+                    # sees identical records and steps nothing; only merge-adjacent
+                    # re-parses carry deltas).
+                    _log("eph-rebase census: re-parse stepped %d sat model(s)%s"
+                         % (len(_steps),
+                            (", largest %.4f us" % (max((abs(v) for v in _steps.values()))
+                                                    * 1e6)) if _steps else ""))
                     if _steps:
                         state["eph_step"] = (_steps, now)
                 except Exception as _e2:
