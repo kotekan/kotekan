@@ -189,6 +189,7 @@ struct Opt {
     const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
     bool cuda_refine = false;         ///< also run the GPU refine and compare (A5)
     int max_chips = 0;                ///< truncate the PFB chip gather (0 = full span)
+    bool chips_centered = false;      ///< center the truncation window on the prototype peak
     int ms_split = 0;   ///< >0 = run the ms-split acquire with this many ~1 ms sub-windows
     int sub_hops = 196; ///< N: ceil(code period in hops) at CHORD
     const char* dump_ms = nullptr; ///< dump the ms-split surface along the lag axis
@@ -367,6 +368,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
         else if (arg_eq(a, "--cuda-refine")) o.cuda_refine = true;
         else if (arg_eq(a, "--max-chips")) o.max_chips = next_i();
+        else if (arg_eq(a, "--chips-centered")) o.chips_centered = true;
         else if (arg_eq(a, "--ms-split")) o.ms_split = next_i();
         else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
         else if (arg_eq(a, "--t-stride")) o.t_stride = next_i();
@@ -480,6 +482,11 @@ int main(int argc, char** argv) {
     // and the search analyses with a shorter one, which is exactly the on-sky situation.
     if (o.max_chips > 0) {
         sbank.set_max_chips(o.max_chips);
+        if (o.chips_centered) {
+            sbank.set_chips_centered(true);
+            printf("    [--chips-centered] the %d-chip window is CENTERED on the prototype peak\n",
+                   o.max_chips);
+        }
         printf("    [--max-chips %d] SEARCH replica gather truncated; the injected sky keeps the "
                "full span\n",
                o.max_chips);

@@ -532,8 +532,17 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
     // truncating it changes the replica, not just its cost. Applied HERE rather than on the GPU
     // so the CPU despread, the search refine and scripts/gnss/e2e all see the same replica and
     // the error can be measured at CHORD geometry with the shipped code.
-    if (_max_chips > 0 && f.n_chips > _max_chips)
-        f.n_chips = _max_chips;
+    if (_max_chips > 0 && f.n_chips > _max_chips) {
+        if (_chips_centered) {
+            // keep the CENTRAL max_chips of the span: the prototype peak sits mid-span, and
+            // the one-sided cap's measured cliff (9.5: exact at 120, 13 chips out at 105) is
+            // the cap crossing that peak, not a property of short filters.
+            f.d_first = (f.n_chips - _max_chips) / 2;
+            f.n_chips = f.d_first + _max_chips;
+        } else {
+            f.n_chips = _max_chips;
+        }
+    }
     f.chans = want;
     const int nw = (int)want.size();
     f.PhiA.resize(nw);
@@ -675,7 +684,7 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
             k_lo[(size_t)d] = klo;
             k_hi[(size_t)d] = khi;
             double cv = 0.0;
-            if (khi >= klo) {
+            if (khi >= klo && d >= f.d_first) {
                 cv = (double)code_chip(p, (double)want_chip);
                 if (nav_bit)
                     cv *= nav_bit(want_chip);

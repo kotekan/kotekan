@@ -89,6 +89,13 @@ public:
         double doppler_hz = 0.0;
         int prn_index = -1; ///< PRN this filter's carrier was built for (FDMA); -1 = band-wide
         int n_chips = 0;
+        /// First chip of the gather window (0 = the span starts at the filter's leading tail).
+        /// Set by the CENTERED truncation mode: the prototype is a windowed sinc whose main
+        /// lobe is CENTERED (peak at chip ~105 of 210), so a one-sided cap keeps [0, max) and
+        /// at 105 cuts AT the peak (50.6% energy, -3 dB) -- the measured 9.5 cliff. A centered
+        /// window [d_first, n_chips) at the same cost keeps 99.6%. Chips below d_first
+        /// contribute zero (cv gated), which is arithmetically identical to skipping them.
+        int d_first = 0;
         std::vector<int> chans;
         std::vector<std::vector<std::complex<double>>> PhiA, PhiB; ///< [channel][Lf+1]
         /// FIRST-MOMENT companions, Psi[k] = sum_{j<k} j * proto[j] * e^{-i(off +- wc)j}.
@@ -283,6 +290,11 @@ public:
     /// same replica and the accuracy cost is measurable at the real geometry.
     void set_max_chips(int n) { _max_chips = n; }
     int max_chips() const { return _max_chips; }
+    /// CENTER the max_chips window on the prototype peak instead of anchoring it at chip 0.
+    /// See HopRateFilter::d_first. BENCH/e2e for now: only the CPU hoprate path honours
+    /// d_first -- the GPU despread and refine_peak_cuda would need the walk-start plumbed
+    /// before this can arm in production.
+    void set_chips_centered(bool c) { _chips_centered = c; }
 
     long eff_code_length() const { return _eff_code_length; }
     int comb_mult() const { return _comb_mult; }
@@ -297,6 +309,7 @@ private:
     std::vector<int8_t> build_full_code(int prn) const;
 
     int _max_chips = 0; ///< 0 = the filter's true span (see set_max_chips)
+    bool _chips_centered = false; ///< see set_chips_centered
     SignalDescriptor _sig;
     double _sample_rate;
     std::vector<double> _prn_df; ///< per-PRN FDMA carrier offset, Hz (empty/0 = CDMA)
