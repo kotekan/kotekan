@@ -1611,41 +1611,47 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #103 — GPS's 21x lock churn: the ESCAPE GUARD kills HEALTHY tracks on an alias-captured SEARCH fit — ROOT-CAUSED, first attribution RETRACTED same hour (2026-08-30)
+## #103 — GPS's 21x lock churn: the TRACK walks onto the 3.27-chip comb lobe — ROOT-CAUSED, attribution flipped twice before being CODE-PINNED (2026-08-30)
 
-gps_l5 logs 3,028 lock events / 13 h against 133-145 on every other chain. The cycle: a fade
-tips the GPS-only C++ fast code loop (95 steps/s, #51) across the ~1.6-chip watershed onto the
-instance comb's first grating lobe (7 teeth @ 3.125 MHz -> 3.2736 chips, 90-98% of peak) ->
-the escape guard sees the track 3.3+-0.4 chips off the search fit 5x consecutive -> RELEASE ->
-re-search -> BIRTH-STEP -> repeat ~4 min later. 5,773 births in one night, every WHY-BIRTH =
-hold_below; 1,716 of #100's cp-fit flushes are this same churn, not weak-sat noise.
+gps_l5 logs 3,028 lock events / 13 h against 133-145 on every other chain (21x, all PRNs).
+The cycle: a fade tips the GPS-only C++ fast code loop (95 steps/s, #51); the DLL walks
+across the ~1.64-chip watershed onto the instance comb's first grating lobe (7 teeth @
+3.125 MHz -> 3.2736 chips, 90-98% of peak; every instance shares the lobe positions, so the
+fleet-combined disc cannot veto) -- sometimes onward through MULTIPLE lobes; the escape
+referee sees the track 3.3+-0.4 chips off the search fit 5x sign-consistent -> RELEASE ->
+re-search -> BIRTH-STEP -> repeat ~4 min later. 5,773 births/night, every WHY-BIRTH =
+hold_below; 1,716 of #100's cp-fit flushes are the same churn, not weak-sat noise.
+gal/bds: no fast loop, zero escapes (bds_b2a: one, at 0.5 chips -- not the quantum).
 
-Evidence: escape offsets cluster 2.8-3.8 chips, symmetric (230+/215-) = the comb quantum;
-gal_e5a (no fast loop) has ZERO escapes, bds_b2a one at 0.5 chips. All instances share the
-lobe positions (common 16-channel stride), so the fleet-combined discriminator carries the
-same ambiguity and cannot veto the slip.
+⚠️⚠️ THE ATTRIBUTION FLIPPED TWICE IN ONE HOUR -- kept in the record because the failure
+mode is the lesson. The "integrity: PRN x" broker line was read as track-vs-model, which
+"exonerated" the fast loop and blamed an alias-captured SEARCH for ~20 minutes (nearly
+redirecting the fix at the referee). deadreckon.py:1887 pins the convention: dr integ =
+SEARCH-vs-model (the dr system is fed by DETECTIONS). Re-read with that: at escape,
+search-vs-model median 0.23 chips (91% < 1, n=470) -- search and model are two witnesses in
+AGREEMENT -- and the track is 3.16 off both: THE TRACK IS THE WALKER. Independently
+confirmed by the purpose-built TRACK-vs-MODEL monitor (seeding.py, log-only since 07-20):
+1,027 firings, excursions 1-14+ chips. ⚠️ A logged residual's reference frame is a
+CURRENCY: read the producing code before building a forensic on it (the cp-currency rule,
+applied to log lines).
 
-⚠️ FIRST ATTRIBUTION WRONG, RETRACTED SAME HOUR (the fast loop was innocent). The
-forensic that flipped it: at escape time the track sits at median 0.23 chips from the MODEL
-(91% under 1 chip, 470 escapes) while the SEARCH fit sits at median 3.1 chips off (quartiles
-1.9/3.1/3.7 = the alias quantum). The tracker never walks -- the SEARCH intermittently lands
-on a comb alias and the escape guard trusts it over a healthy track. "5 consecutive,
-sign-consistent" is no protection against a systematically wrong REFERENCE.
+The ESCAPE REFEREE IS CORRECT and its release/re-anchor is the system healing itself,
+445x/night. SECOND FINDING: the 08-28 relative INTEG-VETO can SUPPRESS legitimate escapes
+("fit-referee INTEG-VETOED" with the track 2+ chips off-model): integ is search-referenced,
+so a walking track never moves it, and the veto fires on unrelated integ motion. Revisit
+its interaction with the referee when arming the fix.
 
-THE REAL CHAIN: cx47+cx52 down -> 4 of 16 stride-16 comb offsets missing from the aggregated
-search -> delay aliases at multiples of 3.27 chips at up to ~1/3 amplitude (the 08-30
-occupancy law, live in production) -> GPS's weak-margin L5 fits alias-flip intermittently ->
-the guard executes the track and the rebirth re-seeds from the same wrong fit (birth steps
-0.5-25 chips). gal/bds immune: no blind search (no escape reference) + different margins.
-
-Fix (structural, KV 08-30: no quick fixes): TWO-OF-THREE VOTE in the escape guard. The
-broker holds three witnesses -- track, search fit, model (eph+clock, sub-chip since #99).
-Escape only when the TRACK is the odd one out (disagrees with BOTH search and model). When
-the SEARCH is the odd one out (track ~= model, search off by ~a comb quantum), VETO the
-escape and log SEARCH-ALIAS -- that line is also the free occupancy-alias monitor. Same
-gate on seed ADOPTION at birth. (The retracted quick fix (a), snap-back, would have moved
-healthy tracks ONTO the lobe -- the forensic that killed it is the reason the discipline
-exists.)
+Fix (structural, KV: "no quick fixes -- tackle (b)"): STOP THE WALK, in gnss::FleetDll
+(gnssFleetDll.hpp; offline gate = scripts/gnss/fleetdll fixture), default-off flags:
+  (b1) FADE GATE -- freeze the integrator when the fleet amp_snr is below a floor. During
+       a fade the disc is noise; MEASURE the on-fade disc statistic in the fixture before
+       choosing the floor (measure-the-statistic-before-the-loop).
+  (b2) EXCURSION BOUND -- cap the loop's cumulative trim within ~+-1.2 chips (< the
+       1.64-chip watershed) of a slow anchor; commanded adjustments (handover /adjust_trim,
+       escape re-anchors) move the anchor, loop steps do not. Legit trim drift post-#99 is
+       0.09-0.26 mchips/s (~0.15 chips / 10 min): ~100x headroom.
+Falsifier: gps_l5 escapes+births down >=10x with gal_e5a flat as in-poll control. The
+referee and its release stay untouched -- they are the part that works.
 
 ## #102 — the array is about to stop being a point: per-element GNSS geometry for the ~200 m build-out (DESIGN, 2026-08-29)
 
