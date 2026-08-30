@@ -24,6 +24,7 @@
 #include <functional>         // for function
 #include <memory>             // for allocator, shared_ptr, __shared_ptr_access
 #include <numeric>            // for gcd
+#include <optional>           // for optional
 #include <string>             // for basic_string, string
 #include <sys/types.h>        // for uint, ulong
 #include <vector>             // for vector
@@ -92,12 +93,17 @@ private:
     const std::string rfi_S012_name;
     const std::string rfi_SKtilde_name;
     const std::string rfi_RFImask_name;
+    // Optional (empty = disabled): echo the bad feed mask applied to each batch into
+    // this output ring buffer, one copy of the mask per rfi time sample produced, so
+    // downstream consumers receive exactly the mask each sample was gated with.
+    const std::string bf_mask_applied_name;
 
     // Buffers
     NDArrayRingBuffer<std::int8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<float, 3> rfi_SKtilde;
     NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
+    std::optional<NDArrayRingBuffer<std::int8_t, 3>> bf_mask_applied;
 
     // Kernels
     const n2k::SkKernel skKernel;
@@ -131,6 +137,8 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_SKtilde_name(config.get<std::string>(unique_name, "rfi_SKtilde_name")),
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
+    bf_mask_applied_name(
+        config.get_default<std::string>(unique_name, "bf_mask_applied_name", "")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask",
             std::array<std::ptrdiff_t, 3>{buffer_depth * 1, num_polarizations, num_dishes},
@@ -185,6 +193,16 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_S012.register_consumer();
     rfi_SKtilde.register_producer();
     rfi_RFImask.register_producer();
+
+    if (!bf_mask_applied_name.empty()) {
+        bf_mask_applied.emplace(bf_mask_applied_name, "bf_mask",
+                                std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times,
+                                                              num_polarizations, num_dishes},
+                                std::array<std::string, 3>{"Trfi", "P", "D"},
+                                std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor, 1, 1},
+                                *this);
+        bf_mask_applied->register_producer();
+    }
 
     if (!first_stage_excision_enabled && get_instance_num() == 0)
         INFO("First-stage RFI excision disabled: producing an all-good RFI mask. "
@@ -264,6 +282,14 @@ int cudaRFISKtilde::wait_on_precondition() {
     DEBUG("Done waiting for rfi_SKtilde output ringbuffer space for frame {:d}; "
           "will write {:d} elements",
           gpu_frame_id, rfi_Sktilde_written);
+
+    if (bf_mask_applied) {
+        DEBUG("Waiting for bf_mask_applied output ringbuffer space for frame {:d}...",
+              gpu_frame_id);
+        const int bf_mask_applied_errcode = bf_mask_applied->wait_for_writable(rfi_Sktilde_written);
+        if (bf_mask_applied_errcode < 0)
+            return bf_mask_applied_errcode;
+    }
 
     DEBUG("Waiting for rfi_RFImask output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_RFImask_written =
@@ -350,6 +376,23 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
             CHECK_CUDA_ERROR(cudaMemsetAsync(
                 rfi_RFImask_memory, 0xff, (mask_rows - mask_rows_to_end) * mask_row_bytes, stream));
     }
+    if (bf_mask_applied) {
+        // Echo the mask applied to this batch: one copy of the current mask element per
+        // rfi time sample produced, so the stream advances in step with rfi_SKtilde and
+        // the copy to the host chunks it into one mask frame per correlation frame. The
+        // claimed region may wrap around the end of the ring buffer.
+        bf_mask_applied->set_metadata(rfi_S012.get_metadata());
+        std::int8_t* const echo_memory = bf_mask_applied->get_ndarray().data();
+        const long echo_Tsize = bf_mask_applied->get_ndarray().extent(0);
+        const long echo_stride = bf_mask_applied->get_ndarray().stride(0);
+        const long echo_Tmin = bf_mask_applied->get_write_valid().begin() % echo_Tsize;
+        const long echo_rows = bf_mask_applied->get_write_valid().size();
+        for (long t = 0; t < echo_rows; ++t)
+            CHECK_CUDA_ERROR(
+                cudaMemcpyAsync(echo_memory + ((echo_Tmin + t) % echo_Tsize) * echo_stride,
+                                bf_mask_memory, S, cudaMemcpyDeviceToDevice, stream));
+    }
+
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
@@ -370,6 +413,8 @@ void cudaRFISKtilde::finalize_frame() {
     rfi_S012.finish_read();
     rfi_SKtilde.finish_write();
     rfi_RFImask.finish_write();
+    if (bf_mask_applied)
+        bf_mask_applied->finish_write();
 
     cudaCommand::finalize_frame();
 }

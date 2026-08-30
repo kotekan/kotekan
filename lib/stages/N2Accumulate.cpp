@@ -111,14 +111,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rfiframemask_buf->register_consumer(unique_name);
 
     // Optional bad feed mask (1 == good), folded into the output frames'
-    // per-element flags.
+    // per-element flags. Consumed 1:1 with the correlation frames.
     in_bf_mask_buf =
         config.exists(unique_name, "in_bf_mask_buf") ? get_buffer("in_bf_mask_buf") : nullptr;
-    if (in_bf_mask_buf != nullptr) {
+    if (in_bf_mask_buf != nullptr)
         in_bf_mask_buf->register_consumer(unique_name);
-        _bf_mask_lifetime_in_samples =
-            config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples");
-    }
 
     // Sanity checks on initialization
     {
@@ -214,7 +211,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_rfi_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
     _n_pl_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
     _accum_bf_mask = std::vector<uint8_t>(_num_elements, 1u);
-    _current_bf_mask = std::vector<uint8_t>(_num_elements, 1u);
 
     _vis_samples_in_out_frame = 0;
     _accum_fpga_start_tick = -1;
@@ -248,10 +244,25 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
         {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
 
-    if (in_bf_mask_buf != nullptr)
-        in_bf_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
-            kotekan::int8, "bf_mask", {1, _num_polarizations, _num_dishes}, {"Tbf", "P", "D"},
-            {_bf_mask_lifetime_in_samples, 1, 1}));
+    if (in_bf_mask_buf != nullptr) {
+        // The mask is consumed 1:1 with correlation frames, so each mask frame must cover
+        // exactly one correlation frame. The leading dimension may hold several rows (all
+        // ANDed), e.g. one per RFI time sample from the GPU's applied-mask echo.
+        const std::shared_ptr<const kotekan::GenericNDArray> mask_desc =
+            in_bf_mask_buf->require_frame_desc<kotekan::GenericNDArray>();
+        if (mask_desc->get_value_datatype() != kotekan::int8 || mask_desc->get_rank() != 3
+            || mask_desc->get_extent(1) != _num_polarizations
+            || mask_desc->get_extent(2) != _num_dishes)
+            FATAL_ERROR("in_bf_mask_buf {:s} must be int8 [T, {:d}, {:d}]",
+                        in_bf_mask_buf->buffer_name, _num_polarizations, _num_dishes);
+        if (mask_desc->get_extent(0) * mask_desc->get_dimscaling(0)
+            != _n_fpga_samples_per_n2k_frame)
+            FATAL_ERROR("each bad feed mask frame must cover exactly one correlation frame: "
+                        "{:d} rows x {:d} samples != {:d}",
+                        mask_desc->get_extent(0), mask_desc->get_dimscaling(0),
+                        _n_fpga_samples_per_n2k_frame);
+        _bf_mask_rows = mask_desc->get_extent(0);
+    }
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
@@ -301,6 +312,7 @@ void N2Accumulate::main_thread() {
     int previous_in_rficounts_frame_id = -1;
     int previous_in_plcounts_frame_id = -1;
     int previous_in_rfiframemask_frame_id = -1;
+    int previous_in_bf_mask_frame_id = -1; // only used when the mask input is wired
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -382,40 +394,17 @@ void N2Accumulate::main_thread() {
         if (rfiframemask == nullptr)
             break;
 
-        // Take in whatever bad feed masks have arrived.  One mask covers
-        // bf_mask_lifetime_in_samples, which is independent of the correlation frame length
-        // and may be longer or shorter than it, so this neither waits for a frame -- which
-        // would stall the accumulation whenever masks are the slower of the two -- nor
-        // assumes one per iteration, since they can equally be the faster.  Poll with a
-        // deadline already in the past and drain everything queued.  Every mask seen during
-        // a bin is ANDed into that bin's flags -- a feed flagged at any point in the bin is
-        // flagged for the whole bin -- and the newest is carried forward to cover the bins
-        // that see no new frame.
+        // Fetch the bad feed mask applied to this frame, when wired. Masks arrive 1:1
+        // with the correlation frames, so the recorded flags are exactly the masks the
+        // GPU applied to the accumulated data.
+        const uint8_t* bf_mask = nullptr;
         if (in_bf_mask_buf != nullptr) {
-            // A deadline already in the past turns the wait into a poll.
-            const timespec poll = {0, 0};
-            bool shutting_down = false;
-            for (;;) {
-                const int status = in_bf_mask_buf->wait_for_full_frame_timeout(
-                    unique_name, in_bf_mask_frame_id, poll);
-                if (status != 0) {
-                    shutting_down = status < 0;
-                    break; // 1: no mask frame waiting, -1: shutting down
-                }
-                const uint8_t* bf_mask = in_bf_mask_buf->frames[in_bf_mask_frame_id];
-                for (int64_t el = 0; el < _num_elements; ++el) {
-                    _current_bf_mask[el] = bf_mask[el];
-                    if (!bf_mask[el])
-                        _accum_bf_mask[el] = 0;
-                }
-                in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id);
-                in_bf_mask_frame_id = (in_bf_mask_frame_id + 1) % in_bf_mask_buf->num_frames;
-            }
-            if (shutting_down)
+            DEBUG("Waiting for new bad feed mask frame {:s}[{:d}].", in_bf_mask_buf->buffer_name,
+                  in_bf_mask_frame_id);
+            bf_mask =
+                (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
+            if (bf_mask == nullptr)
                 break;
-            for (int64_t el = 0; el < _num_elements; ++el)
-                if (!_current_bf_mask[el])
-                    _accum_bf_mask[el] = 0;
         }
 
         // Get metadata for all incoming frames.
@@ -458,6 +447,20 @@ void N2Accumulate::main_thread() {
                         in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
                         in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id,
                         rfiframemask_metadata->get_fpga_seq_num());
+        }
+        if (in_bf_mask_buf != nullptr) {
+            const std::shared_ptr<chordMetadata> bf_mask_metadata =
+                get_chord_metadata(in_bf_mask_buf, in_bf_mask_frame_id);
+            if (frame_metadata->get_fpga_seq_num() != bf_mask_metadata->get_fpga_seq_num()) {
+                FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
+                            "bad feed mask buffer {:s}[{:d}] seq={:d}",
+                            in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
+                            in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
+                            bf_mask_metadata->get_fpga_seq_num());
+            }
+            // AND every row of this frame's mask into the current bin's flags: a feed
+            // flagged at any point in the bin is flagged for the whole bin.
+            fold_bf_mask_into_accum(bf_mask);
         }
 
         // Record the current frame time being processed.
@@ -627,6 +630,10 @@ void N2Accumulate::main_thread() {
                         .set(_vis_input_frames_skipped_rfi.at(f));
                 }
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
+                // The rest of this frame's samples accumulate into the fresh bin, so its
+                // flags must include this frame's mask too.
+                if (bf_mask != nullptr)
+                    fold_bf_mask_into_accum(bf_mask);
 
                 _vis_samples_in_out_frame = 0;
                 std::fill(_vis_input_frames_skipped_rfi.begin(),
@@ -668,7 +675,20 @@ void N2Accumulate::main_thread() {
         if (previous_in_rfiframemask_frame_id != -1)
             in_rfiframemask_buf->mark_frame_empty(unique_name, previous_in_rfiframemask_frame_id);
         previous_in_rfiframemask_frame_id = in_rfiframemask_frame_id++;
+        if (in_bf_mask_buf != nullptr) {
+            if (previous_in_bf_mask_frame_id != -1)
+                in_bf_mask_buf->mark_frame_empty(unique_name, previous_in_bf_mask_frame_id);
+            previous_in_bf_mask_frame_id = in_bf_mask_frame_id;
+            in_bf_mask_frame_id = (in_bf_mask_frame_id + 1) % in_bf_mask_buf->num_frames;
+        }
     }
+}
+
+void N2Accumulate::fold_bf_mask_into_accum(const uint8_t* bf_mask) {
+    for (int64_t r = 0; r < _bf_mask_rows; ++r)
+        for (int64_t el = 0; el < _num_elements; ++el)
+            if (!bf_mask[r * _num_elements + el])
+                _accum_bf_mask[el] = 0;
 }
 
 int64_t N2Accumulate::calculate_ERA_bin_idx_from_time(const timespec& t_inst) {

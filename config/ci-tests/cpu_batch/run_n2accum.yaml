@@ -35,10 +35,9 @@ vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_subintegrations_per_bin
 n2_frames_to_write: 2 * buffer_depth
 
-# One bad feed mask covers half a correlation frame here, and two of them in the CHIME
-# config: the lifetime is independent of the correlation frame length and N2Accumulate
-# must not assume which of the two is longer.
-bf_mask_lifetime_in_samples: samples_per_data_set / 2
+# N2Accumulate consumes one bad feed mask per correlation frame, checked against it by
+# FPGA sequence number, so each mask frame must cover exactly one correlation frame.
+bf_mask_lifetime_in_samples: samples_per_data_set
 
 GIGA: 1000000000
 start_time_s: 1760000000

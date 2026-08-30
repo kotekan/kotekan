@@ -438,6 +438,32 @@ host_rfi_sktilde_buffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
+# The bad feed mask cudaRFISKtilde applied to each frame, echoed per rfi time sample
+# (identical rows within a frame) and consumed 1:1 with the correlation frames by
+# N2Accumulate, so the flags recorded in the N2 stream are exactly the masks applied.
+host_bf_mask_applied_buffer:
+    kotekan_buffer: ndarray
+    peek_hold: true
+    num_frames: host_side_buffer_depth
+    value_type: int8
+    quantity_name: "bf_mask"
+    dimnames: ["Trfi", "P", "D"]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_bf_mask_applied_buffer_1:
+    kotekan_buffer: ndarray
+    peek_hold: true
+    num_frames: host_side_buffer_depth
+    value_type: int8
+    quantity_name: "bf_mask"
+    dimnames: ["Trfi", "P", "D"]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+    numa_node: 1
+
 # Per-feed (single-feed) SK statistics from the second-stage RFI kernel.
 # GPU output (cudaCopyFromRingbuffer of cudaRFISKbar rfi_skbar), consumed by RfiSKMetrics:
 # float32 "SKbar" [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
@@ -726,6 +752,17 @@ host_rfi_sktilde_ringbuffer:
 host_rfi_sktilde_ringbuffer_1:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+    numa_node: 1
+
+host_bf_mask_applied_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_elements
+    metadata_pool: main_pool
+
+host_bf_mask_applied_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_elements
     metadata_pool: main_pool
     numa_node: 1
 
@@ -1106,12 +1143,14 @@ run_rfi_sktilde:
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+            host_bf_mask_applied_ringbuffer: host_bf_mask_applied_ringbuffer
         commands:
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
           rfi_RFImask_name: rfi_RFImask
+          bf_mask_applied_name: bf_mask_applied
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -1124,12 +1163,14 @@ run_rfi_sktilde:
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
+            host_bf_mask_applied_ringbuffer: host_bf_mask_applied_ringbuffer_1
         commands:
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
           rfi_RFImask_name: rfi_RFImask
+          bf_mask_applied_name: bf_mask_applied
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -1163,6 +1204,38 @@ run_recv_rfi_sktilde:
           output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_sktilde_buffer_out
+
+# Copy the applied bad feed mask back to the host, one frame per correlation frame,
+# for N2Accumulate to fold into the N2 stream's per-element flags.
+run_recv_bf_mask_applied:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_applied_ringbuffer_in: host_bf_mask_applied_ringbuffer
+        out_buffers:
+            host_bf_mask_applied_buffer_out: host_bf_mask_applied_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_bf_mask_applied_ringbuffer_in
+          gpu_mem_input: bf_mask_applied_buffer
+          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_elements
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_bf_mask_applied_buffer_out
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_bf_mask_applied_ringbuffer_in: host_bf_mask_applied_ringbuffer_1
+        out_buffers:
+            host_bf_mask_applied_buffer_out: host_bf_mask_applied_buffer_1
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_bf_mask_applied_ringbuffer_in
+          gpu_mem_input: bf_mask_applied_buffer
+          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_elements
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_bf_mask_applied_buffer_out
 
 # Second-stage (time-downsampled) per-feed RFI statistics: S012 -> S012bar -> SKbar.
 # rfi_skbar is the single-feed SK per element (computed for every feed regardless
@@ -1490,6 +1563,7 @@ n2_accumulate:
         in_rficounts_buf: host_rfi_RFImask_counts_buffer
         in_plcounts_buf: host_pl_counts_buffer
         in_rfiframemask_buf: host_rfi_RFIframemask_buffer
+        in_bf_mask_buf: host_bf_mask_applied_buffer
         out_buf: n2_buffer
     accum_1:
         kotekan_stage: N2Accumulate
@@ -1499,6 +1573,7 @@ n2_accumulate:
         in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
         in_plcounts_buf: host_pl_counts_buffer_1
         in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
+        in_bf_mask_buf: host_bf_mask_applied_buffer_1
         out_buf: n2_buffer_1
 
 
