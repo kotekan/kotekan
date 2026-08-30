@@ -410,7 +410,7 @@ chains:
     # v3 (armed 2026-08-30 ~14:2x): rate swap at HOLD ENTRY ONLY -- the tuple's last
     # per-cycle rewrite happens there anyway, so zero marginal re-pins; immune by
     # construction to v1's noise coupling AND v2's suspected rewrite cost.
-    hold-rate-source: "dr-entry"
+    hold-rate-source: "none"  # v3a DISARMED 14:4x -- FLEET-WIDE q=1.0 flatline from ~14:27, see #103
     # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
     # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
     # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
