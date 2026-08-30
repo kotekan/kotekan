@@ -395,7 +395,12 @@ chains:
     # residual code rates re-slaved to the pooled clock each cycle, anchor re-expressed at
     # the present (command-continuous; gate: test_track_vs_fit.py TestHoldRetagContinuity).
     # Pre-reg: fixtures/expectations_20260830_cp_rate_model_primary.txt (same falsifier).
-    hold-rate-from-clock: 1
+    # DISARMED 13:58 UTC same day -- the pre-registered revert trigger fired (tvm rate UP,
+    # PRN 23 oscillating at 20-30 s). The refresh SOURCE was wrong, not the idea: the pooled
+    # l-a estimate swings +-0.05 chips/s on minutes (fine as a per-cycle seed for
+    # measurement-anchored sats, too noisy to dead-reckon on for 30-60 s). Redesign: slave
+    # held rates to the DR clock drift (model-grade smooth) or slew-bound the refresh.
+    hold-rate-from-clock: 0
     # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
     # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
     # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
