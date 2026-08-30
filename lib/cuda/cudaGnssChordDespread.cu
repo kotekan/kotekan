@@ -3,6 +3,7 @@
 #include "cudaGnssReplicaDevice.cuh"
 
 #include <cuda_runtime.h>
+#include <limits.h>
 #include <math.h>
 
 // The generation half is line-for-line the fused kernel's replica path with the data load and
@@ -227,6 +228,297 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
     }
 }
 
+
+/// TILED-STREAMING synthesis (BENCH -- the direct attack on §10.6c's verdict).
+///
+/// The shipped kernel GATHERS: each thread's chip walk issues scattered 8 B loads over the
+/// block's whole ~1.06 MB (PRN, channel) slice, so the slice streams through L1 once per hop
+/// pass and DRAM moves re-walks x footprint x a scatter residue (measured 245 MB against 81 MB
+/// of distinct bytes at 11 jobs). This kernel STREAMS: the slice crosses DRAM exactly once, in
+/// coalesced tiles staged through shared memory, and the scattered per-chip loads hit shared
+/// instead of L1/L2/DRAM. Unlike every cache-residency scheme this does not hypothesise about
+/// a part number (the lesson 1b and item 2 taught twice): the traffic bound holds on any GPU.
+///
+/// BIT-IDENTICAL to the fused gather by construction: per (hop, trial) the walk keeps
+/// chip_gather3's exact float accumulation (f += kf), floorf, clamps and fmaf order -- a tile
+/// boundary only PAUSES a walk, it never reorders it. Two deliberate differences, both safe:
+///  * the previous boundary value (pA/pB) is RELOADED from shared rather than carried -- the
+///    same table entry, hence the same bits, and it saves 4 registers per live trial, which is
+///    what lets a 1024-thread block keep 2 hops x 3 trials of walk state resident. The previous
+///    tap sits at most ks+1 entries behind the current one, so each tile is staged with a HALO
+///    of halo >= ks+2 entries on its LOW side (the caller supplies it: max (int)inv_cps + 2
+///    over the launch's jobs).
+///  * khi (= d*ks) doubles as the chip counter: d < n_chips  <=>  khi < n_chips*ks (ks > 0).
+///
+/// The energy epilogue accumulates hops in the same (m, m+W) order and reduces over the same
+/// lane tree as the fused kernel, so at equal width energy is bit-identical too.
+template<int MAXT, class PHI>
+__global__ __launch_bounds__(MAXT) void
+gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
+                           const gnss_cuda::DespreadJob* __restrict__ jobs,
+                           gnss_cuda::DespreadParams p, int tile_n, int halo, int code_words,
+                           float2* __restrict__ wave,     // [3*n_job][nchan][n_hops]
+                           double* __restrict__ energy) { // [4*n_job][nchan]
+    constexpr int MAX_HPT = 2; // launch_waveform_tiled refuses n_hops > 2*blockDim
+    const int b = blockIdx.x;
+    const int ci = blockIdx.y;
+    const int m = threadIdx.x;
+    const int n_chan = gridDim.y;
+    const int W = blockDim.x;
+    const gnss_cuda::DespreadJob job = jobs[b];
+
+    // Uncovered channel: zero rows + zero energy, as the gather kernel does. chan_mask is
+    // block-uniform, so returning before the tile loop cannot desynchronise the __syncthreads.
+    if (!((job.chan_mask >> ci) & 1ULL)) {
+        for (int mh = m; mh < p.n_hops; mh += W)
+#pragma unroll
+            for (int t = 0; t < 3; ++t)
+                wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh] = make_float2(0.f, 0.f);
+        if (m == 0)
+#pragma unroll
+            for (int j = 0; j < 4; ++j)
+                energy[(size_t)(4 * b + j) * n_chan + ci] = 0.0;
+        return;
+    }
+
+    const int ks = (int)job.inv_cps;
+    const float kf = (float)(job.inv_cps - ks);
+    const PHI* gA = (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
+    const PHI* gB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
+    const int khi_end = job.n_chips * ks;
+
+    // Per-(hop, trial) walk state. The prologue is line-for-line chip_gather3's -- kept that
+    // way on purpose; see its note on why sameness of code is the cheap exactness proof.
+    int khi[MAX_HPT][3], idx[MAX_HPT][3], tprev[MAX_HPT][3];
+    float f[MAX_HPT][3];
+    float2 sA[MAX_HPT][3], sB[MAX_HPT][3];
+    // HOP-SORTED LANE MAPPING, runtime-optional (p.hop_perm; §10.6b's idea, viable HERE).
+    // Sorting lanes by fractional code phase puts a warp's 32 taps inside ~5 table entries, so
+    // the per-chip shared loads go from random-address (bank-conflicted, ~4 wavefronts/request)
+    // to near-broadcast, and the code[] indices go from scattered to adjacent. The two measured
+    // reasons it LOST in the gather kernel do not transfer: the dependent perm load amortizes
+    // into this prologue (once per hop, not once per hop PASS), and the loads it reorders hit
+    // shared memory, not DRAM. The wave STORES still scatter -- that cost stays and is small.
+    // `wave` is unaffected (each sample depends only on its own hop); the ENERGY lane grouping
+    // moves, so energy agrees to rounding, not bit-for-bit, when a perm is armed.
+    int mh_p[MAX_HPT];
+#pragma unroll
+    for (int h = 0; h < MAX_HPT; ++h) {
+        const int slot = m + h * W;
+        const int mh = mh_p[h] =
+            (slot < p.n_hops && p.hop_perm) ? p.hop_perm[(size_t)b * p.n_hops + slot] : slot;
+        if (mh >= p.n_hops) {
+#pragma unroll
+            for (int u = 0; u < 3; ++u)
+                khi[h][u] = khi_end; // inert slot: the walk below never runs
+            continue;
+        }
+        const double dn = (double)((long long)mh * (long long)p.fft_len);
+        const double C_P = job.cp_ref + dn * job.cps;
+        const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
+#pragma unroll
+        for (int u = 0; u < 3; ++u) {
+            const long long chip0 = (long long)floor(Cs[u]);
+            const double phi = Cs[u] - (double)chip0;
+            sA[h][u] = make_float2(0.f, 0.f);
+            sB[h][u] = make_float2(0.f, 0.f);
+            const double base = phi * job.inv_cps;
+            long long i0 = chip0 % (long long)job.code_len;
+            if (i0 < 0)
+                i0 += job.code_len;
+            idx[h][u] = (int)i0;
+            const int prev_khi = -ks + (int)floorf((float)base - kf);
+            f[h][u] = (float)base;
+            khi[h][u] = 0;
+            int t_prev = prev_khi + 1;
+            tprev[h][u] = t_prev < 0 ? 0 : (t_prev > p.Lf ? p.Lf : t_prev);
+        }
+    }
+
+    extern __shared__ unsigned char sh_raw[];
+    PHI* shA = (PHI*)sh_raw; // [halo + tile_n]
+    PHI* shB = shA + (size_t)(halo + tile_n);
+    unsigned* sh_code = (unsigned*)(shB + (size_t)(halo + tile_n)); // [code_words] +-1 as bits
+
+    // THE CODE TABLE MOVES TO SHARED, AS BITS -- the walk's one remaining global load was the
+    // per-chip code byte, and the profile said it was the floor under BOTH walk orders: 66M
+    // scattered sectors through an L1 the shared carveout had starved to ~28 KB, with the tile
+    // staging stream thrashing L2 under it. GNSS chips are exactly +-1, so the whole 204,600-chip
+    // combined stream is a 25.6 KB bit table: one coalesced pass + __ballot_sync builds it, and
+    // cv = bit ? +1.0f : -1.0f is bit-identical to (float)(int8 +-1). ⚠️ CONTRACT: every code
+    // value is +-1 (zero-padded tables would break silently) -- the bench's bit-compare against
+    // the byte-reading gather is the enforcement here; a production arming must assert it at
+    // table upload.
+    {
+        const int n_words = (job.code_len + 31) / 32;
+        const int lane = m & 31;
+        const int nwrp = W >> 5;
+        for (int w = m >> 5; w < n_words; w += nwrp) {
+            const int bi = w * 32 + lane;
+            const int8_t c = (bi < job.code_len) ? code[job.code_offset + bi] : (int8_t)1;
+            const unsigned word = __ballot_sync(0xffffffffu, c > 0);
+            if (lane == 0)
+                sh_code[w] = word;
+        }
+        (void)code_words; // buffer sized by the launcher for the launch's largest code_len
+    }
+
+    for (int T0 = 0; T0 <= p.Lf; T0 += tile_n) {
+        const int lo = (T0 - halo) < 0 ? 0 : T0 - halo;
+        const int hi = (T0 + tile_n) < (p.Lf + 1) ? (T0 + tile_n) : (p.Lf + 1); // exclusive
+        __syncthreads(); // the previous tile's readers before this tile's writers
+        for (int i = m; i < hi - lo; i += W) {
+            shA[i] = gA[lo + i];
+            shB[i] = gB[lo + i];
+        }
+        __syncthreads();
+        // TWO-PHASE WALK, and the phases exist for the PIPELINE, not the arithmetic. A per-chip
+        // tile-boundary test makes every load's issue depend on a compare, so nothing overlaps
+        // and the kernel is latency-bound (measured: issue_active 21%, long-scoreboard 24/issue,
+        // 3x slower than the gather it replaces). Phase 1 therefore runs a FIXED-count loop the
+        // compiler can unroll and pipeline exactly like chip_gather3's: n_safe chips per trial,
+        // where n_safe is a conservative integer bound (every tap step is <= ks+1 entries, plus
+        // a 2-entry margin for float rounding of f) -- inside it the [0,Lf] clamp is provably
+        // inactive and the boundary compare is GONE, so the values are bit-identical with none
+        // of the control flow. Phase 2 mops up the 1-3 boundary-straddling chips per trial with
+        // the fully-checked predicated form. Trials telescope pA/pB in registers within a tile
+        // (the reload at tile entry is the same table entry the previous tile carried, hence
+        // the same bits).
+#pragma unroll
+        for (int h = 0; h < MAX_HPT; ++h) {
+            // phase 1: joint fixed-count run for this hop's three trials
+            int n_safe = INT_MAX;
+#pragma unroll
+            for (int u = 0; u < 3; ++u) {
+                const int k = khi[h][u];
+                const int rem = (khi_end - k) / ks; // chips left (k is a multiple of ks)
+                const int tn = k + (int)floorf(f[h][u]) + 1;
+                const int nt = (hi - 2 - tn) / (ks + 1); // in-tile bound, step <= ks+1
+                const int n = rem < nt ? rem : nt;
+                n_safe = n < n_safe ? n : n_safe;
+            }
+            if (n_safe > 0) {
+                float2 pA[3], pB[3];
+#pragma unroll
+                for (int u = 0; u < 3; ++u) {
+                    pA[u] = gnss_cuda::phi_ld(shA, tprev[h][u] - lo);
+                    pB[u] = gnss_cuda::phi_ld(shB, tprev[h][u] - lo);
+                }
+                for (int n = 0; n < n_safe; ++n) {
+#pragma unroll
+                    for (int u = 0; u < 3; ++u) {
+                        const int t = khi[h][u] + (int)floorf(f[h][u]) + 1; // clamp inactive here
+                        f[h][u] += kf;
+                        khi[h][u] += ks;
+                        const float2 cA = gnss_cuda::phi_ld(shA, t - lo);
+                        const float2 cB = gnss_cuda::phi_ld(shB, t - lo);
+                        const int id = idx[h][u];
+                        const float cv =
+                            (sh_code[id >> 5] >> (id & 31)) & 1u ? 1.0f : -1.0f;
+                        sA[h][u].x = fmaf(cv, cA.x - pA[u].x, sA[h][u].x);
+                        sA[h][u].y = fmaf(cv, cA.y - pA[u].y, sA[h][u].y);
+                        sB[h][u].x = fmaf(cv, cB.x - pB[u].x, sB[h][u].x);
+                        sB[h][u].y = fmaf(cv, cB.y - pB[u].y, sB[h][u].y);
+                        pA[u] = cA;
+                        pB[u] = cB;
+                        tprev[h][u] = t;
+                        if (--idx[h][u] < 0)
+                            idx[h][u] += job.code_len;
+                    }
+                }
+            }
+            // phase 2: the checked tail -- boundary-straddling and Lf-clamped chips only
+            bool live = true;
+            while (live) {
+                live = false;
+#pragma unroll
+                for (int u = 0; u < 3; ++u) {
+                    const int k = khi[h][u];
+                    if (k >= khi_end)
+                        continue;
+                    int t = k + (int)floorf(f[h][u]) + 1;
+                    t = t < 0 ? 0 : (t > p.Lf ? p.Lf : t);
+                    if (t >= hi)
+                        continue; // resumes in the next tile
+                    live = true;
+                    f[h][u] += kf;
+                    khi[h][u] = k + ks;
+                    const float2 cA = gnss_cuda::phi_ld(shA, t - lo);
+                    const float2 cB = gnss_cuda::phi_ld(shB, t - lo);
+                    const float2 pAv = gnss_cuda::phi_ld(shA, tprev[h][u] - lo);
+                    const float2 pBv = gnss_cuda::phi_ld(shB, tprev[h][u] - lo);
+                    const int id2 = idx[h][u];
+                    const float cv =
+                        (sh_code[id2 >> 5] >> (id2 & 31)) & 1u ? 1.0f : -1.0f;
+                    sA[h][u].x = fmaf(cv, cA.x - pAv.x, sA[h][u].x);
+                    sA[h][u].y = fmaf(cv, cA.y - pAv.y, sA[h][u].y);
+                    sB[h][u].x = fmaf(cv, cB.x - pBv.x, sB[h][u].x);
+                    sB[h][u].y = fmaf(cv, cB.y - pBv.y, sB[h][u].y);
+                    tprev[h][u] = t;
+                    if (--idx[h][u] < 0)
+                        idx[h][u] += job.code_len;
+                }
+            }
+        }
+    }
+
+    // Epilogue: carrier + write + energy, line-for-line the fused kernel's, hop m then m+W.
+    double e[4] = {0.0, 0.0, 0.0, 0.0};
+#pragma unroll
+    for (int h = 0; h < MAX_HPT; ++h) {
+        const int mh = mh_p[h];
+        if (mh >= p.n_hops)
+            continue;
+        const long long n_m = p.n0 + (long long)mh * p.fft_len;
+        const double dn = (double)((long long)mh * (long long)p.fft_len);
+        double ang;
+        if (p.carrier_phase_from_ref) {
+            ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
+        } else {
+            const double pr = job.wc * (double)n_m;
+            const double er = fma(job.wc, (double)n_m, -pr);
+            ang = fmod(pr, 2.0 * M_PI) + er;
+        }
+        float sn, cn;
+        sincosf((float)ang, &sn, &cn);
+        const float2 pa = make_float2(cn, sn);
+        const float2 pb = make_float2(cn, -sn);
+        const bool in_head = (mh < job.m_head);
+#pragma unroll
+        for (int tt = 0; tt < 3; ++tt) {
+            const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2;
+            const float2 t1 = cmulf(pa, sA[h][tt]);
+            const float2 t2 = cmulf(pb, sB[h][tt]);
+            const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
+            wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh] = r;
+            const double ee = (double)(r.x * r.x + r.y * r.y);
+            e[t] += ee;
+            if (t == 1 && in_head)
+                e[3] += ee;
+        }
+    }
+
+    __shared__ double sh_e[MAXT];
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+        if (j == 3 && job.m_head == 0) {
+            if (m == 0)
+                energy[(size_t)(4 * b + 3) * n_chan + ci] = 0.0;
+            break;
+        }
+        __syncthreads();
+        sh_e[m] = e[j];
+        __syncthreads();
+        for (int off = blockDim.x / 2; off > 0; off >>= 1) {
+            if (m < off)
+                sh_e[m] += sh_e[m + off];
+            __syncthreads();
+        }
+        if (m == 0)
+            energy[(size_t)(4 * b + j) * n_chan + ci] = sh_e[0];
+    }
+}
+
 /// grid.x = job (PRN), grid.y = covering channel.
 /// block.x = element lane (coalesced over the frame's fastest axis),
 /// block.y = hop lane (reduced in shared memory at the end).
@@ -417,6 +709,51 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream) {
     return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, -1, 0, stream);
+}
+
+cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, int n_job,
+                                  int n_chan, const DespreadParams& p, float2* wave,
+                                  double* energy, int tile_entries, int halo_entries,
+                                  int code_len_max, int phi16, cudaStream_t stream) {
+    const int code_words = (code_len_max + 31) / 32;
+    int threads = p.n_hops < 1024 ? p.n_hops : 1024;
+    int pow2 = 1;
+    while (pow2 * 2 <= threads)
+        pow2 *= 2;
+    threads = pow2;
+    if (p.n_hops > 2 * threads)
+        return cudaErrorInvalidValue; // MAX_HPT = 2: 2048 hops x 1024 threads is the contract
+    if (tile_entries < 256)
+        tile_entries = 4096;
+    if (halo_entries < 16)
+        return cudaErrorInvalidValue; // must be >= max over jobs of (int)inv_cps + 2
+    const size_t elem = phi16 ? sizeof(__half2) : sizeof(float2);
+    const size_t shbytes =
+        2 * (size_t)(tile_entries + halo_entries) * elem + (size_t)code_words * 4;
+    const dim3 grid(n_job, n_chan);
+    // Tiles past 48 KB need the opt-in; ask once per instantiation. The A40/L40S per-block
+    // opt-in ceiling minus the 8 KB static sh_e is what actually binds -- a too-big tile fails
+    // the LAUNCH with an error the caller sees, it does not degrade.
+    if (phi16) {
+        static bool armed16 = [] {
+            cudaFuncSetAttribute((const void*)gnss_waveform_tiled_kernel<1024, __half2>,
+                                 cudaFuncAttributeMaxDynamicSharedMemorySize, 90 * 1024);
+            return true;
+        }();
+        (void)armed16;
+        gnss_waveform_tiled_kernel<1024, __half2><<<grid, threads, shbytes, stream>>>(
+            code, jobs, p, tile_entries, halo_entries, code_words, wave, energy);
+        return cudaGetLastError();
+    }
+    static bool armed = [] {
+        cudaFuncSetAttribute((const void*)gnss_waveform_tiled_kernel<1024, float2>,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize, 90 * 1024);
+        return true;
+    }();
+    (void)armed;
+    gnss_waveform_tiled_kernel<1024, float2><<<grid, threads, shbytes, stream>>>(
+        code, jobs, p, tile_entries, halo_entries, code_words, wave, energy);
+    return cudaGetLastError();
 }
 
 cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_scale,

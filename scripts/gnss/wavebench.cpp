@@ -14,6 +14,7 @@
  * (inv_cps, n_chips, Lf, n_hops, cp0's fractional part). So the tables are filled with junk.
  *
  * usage: ./wavebench [--jobs N] [--chan N] [--chips N] [--iters N]
+ *        [--tiled|--tiled16 [--tsort] [--tile N]]  (tiled streaming: bit-compare + timing)
  */
 
 #include "cudaGnssChordDespread.hpp"
@@ -49,6 +50,7 @@ static constexpr double F_OFFSET = 1176450000.0;
 
 int main(int argc, char** argv) {
     int n_job = 11, n_chan = 7, n_chips = 140, iters = 50, share_phi = 0, phi16 = 0, lockstep = 0;
+    int tiled = 0, tile_n = 4096, tsort = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&]() { return atoi(argv[++i]); };
@@ -78,6 +80,14 @@ int main(int argc, char** argv) {
             phi16 = 2; // ABLATION: keep every instruction, collapse the load ADDRESS to 0
         else if (a == "--phi32")
             phi16 = 3; // fp32 through the SAME isolated timing block as --phi16
+        else if (a == "--tiled")
+            tiled = 1; // shared-memory tiled streaming, fp32 tables (bit-compare + timing)
+        else if (a == "--tiled16")
+            tiled = 2; // tiled streaming over __half2 tables (bit-compare vs fp16 gather)
+        else if (a == "--tsort")
+            tsort = 1; // hop-sorted lane mapping INSIDE the tiled kernel (perm amortized)
+        else if (a == "--tile")
+            tile_n = next(); // Phi entries per tile
         else if (a == "--lockstep")
             // CEILING TEST for hop-ordering. Pick cps so a hop advances an INTEGER number of
             // chips: then frac(C_P) is identical for every hop, every lane in a warp gets the
@@ -85,6 +95,12 @@ int main(int argc, char** argv) {
             // the best any locality scheme (e.g. sorting hops by fractional phase) could reach.
             // Physically wrong -- it is not L5's chip rate -- but the ADDRESSES are the point.
             lockstep = 1;
+        else {
+            // 10.6's METHOD lesson, enforced: an unparsed flag falls through to the default
+            // path and reports a "no change" that looks like a clean negative. Refuse it.
+            fprintf(stderr, "unknown flag: %s\n", a.c_str());
+            return 2;
+        }
     }
 
     const int Lf = FFT_LEN * NUM_TAPS;
@@ -126,10 +142,10 @@ int main(int argc, char** argv) {
     std::vector<float4> junk4(phi_n);
     for (size_t k = 0; k < phi_n; ++k)
         junk4[k] = make_float4(junk[k].x, junk[k].y, junk[k].y, junk[k].x);
-    const size_t elem = (phi16 == 1 || phi16 == 6) ? sizeof(__half2)
+    const size_t elem = (phi16 == 1 || phi16 == 6 || tiled == 2) ? sizeof(__half2)
                         : (phi16 == 4) ? sizeof(float4)
                                        : sizeof(float2);
-    const void* src = (phi16 == 1 || phi16 == 6) ? (const void*)junk16.data()
+    const void* src = (phi16 == 1 || phi16 == 6 || tiled == 2) ? (const void*)junk16.data()
                       : (phi16 == 4) ? (const void*)junk4.data()
                                      : (const void*)junk.data();
     for (int b = 0; b < n_job; ++b) {
@@ -183,7 +199,7 @@ int main(int argc, char** argv) {
     // chip loop, and every lane shares the d*kf term, so sorting hops by base puts a warp's 32
     // lanes inside ~n_hops/32 of the window instead of spanning all of it.
     int* d_perm = nullptr;
-    if (phi16 == 5 || phi16 == 6) {
+    if (phi16 == 5 || phi16 == 6 || tsort) {
         std::vector<int> perm((size_t)n_job * N_HOPS);
         for (int b = 0; b < n_job; ++b) {
             const double c0 = h_jobs[b].cp0, cs = h_jobs[b].cps, ics = h_jobs[b].inv_cps;
@@ -227,6 +243,90 @@ int main(int argc, char** argv) {
     cudaEvent_t e0, e1;
     CK(cudaEventCreate(&e0));
     CK(cudaEventCreate(&e1));
+
+    // ---- TILED STREAMING (--tiled / --tiled16) --------------------------------------------
+    // Reference is the SHIPPED path (fused/1024) over the SAME tables, so the compare is
+    // apples-to-apples: fp32 tiled vs fp32 gather, fp16 tiled vs fp16 gather. Both wave and
+    // energy must be BIT-identical -- the tiled kernel replays the identical walk per
+    // (hop, trial) and the identical reduction geometry; a tile boundary only pauses a walk.
+    if (tiled) {
+        int halo = 0;
+        for (auto& j : h_jobs)
+            halo = std::max(halo, (int)j.inv_cps + 2);
+        const size_t esz = (tiled == 2) ? sizeof(__half2) : sizeof(float2);
+        printf("*** MODE: TILED STREAMING %s   tile %d entries + halo %d = %.1f KB shared\n",
+               tiled == 2 ? "fp16" : "fp32", tile_n, halo,
+               2.0 * (tile_n + halo) * esz / 1024.0);
+        const int ph = (tiled == 2) ? 1 : 0;
+        const size_t en_n = (size_t)4 * n_job * n_chan;
+        std::vector<float2> ref(wave_n), got(wave_n);
+        std::vector<double> eref(en_n), egot(en_n);
+        CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
+                                            1024, 1, ph, 0));
+        CK(cudaDeviceSynchronize());
+        CK(cudaMemcpy(ref.data(), d_wave, wave_n * sizeof(float2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(eref.data(), d_energy, en_n * sizeof(double), cudaMemcpyDeviceToHost));
+        // a stale buffer must not fake a match
+        CK(cudaMemset(d_wave, 0, wave_n * sizeof(float2)));
+        CK(cudaMemset(d_energy, 0, en_n * sizeof(double)));
+        const cudaError_t le = gnss_cuda::launch_waveform_tiled(
+            d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, tile_n, halo, CODE_LEN, ph, 0);
+        if (le != cudaSuccess) {
+            fprintf(stderr, "tiled launch failed: %s\n", cudaGetErrorString(le));
+            return 1;
+        }
+        CK(cudaDeviceSynchronize());
+        CK(cudaMemcpy(got.data(), d_wave, wave_n * sizeof(float2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(egot.data(), d_energy, en_n * sizeof(double), cudaMemcpyDeviceToHost));
+        size_t bad = 0;
+        double wrel = 0.0;
+        for (size_t k = 0; k < wave_n; ++k) {
+            if (got[k].x != ref[k].x || got[k].y != ref[k].y)
+                ++bad;
+            const double mg = std::hypot((double)ref[k].x, (double)ref[k].y);
+            if (mg > 0.0)
+                wrel = std::max(wrel, std::hypot((double)got[k].x - ref[k].x,
+                                                 (double)got[k].y - ref[k].y) / mg);
+        }
+        size_t ebad = 0;
+        double erel = 0.0;
+        for (size_t k = 0; k < en_n; ++k) {
+            if (egot[k] != eref[k])
+                ++ebad;
+            if (eref[k] != 0.0)
+                erel = std::max(erel, std::fabs(egot[k] - eref[k]) / std::fabs(eref[k]));
+        }
+        printf("   wave   %s   (%zu diff, worst rel %.2e)\n",
+               bad ? "MISMATCH ***" : "bit-identical", bad, wrel);
+        if (tsort) // the perm regroups the reduction lanes: rounding-level moves are expected
+            printf("   energy %s   (%zu diff, worst rel %.2e -- perm regroups the reduction)\n",
+                   erel < 1e-12 ? "agrees to rounding" : "MISMATCH ***", ebad, erel);
+        else
+            printf("   energy %s   (%zu diff)\n", ebad ? "MISMATCH ***" : "bit-identical", ebad);
+        float ms_ref = 0.f, ms_til = 0.f;
+        CK(cudaEventRecord(e0, 0));
+        for (int it = 0; it < iters; ++it)
+            CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave,
+                                                d_energy, 1024, 1, ph, 0));
+        CK(cudaEventRecord(e1, 0));
+        CK(cudaDeviceSynchronize());
+        CK(cudaEventElapsedTime(&ms_ref, e0, e1));
+        CK(cudaEventRecord(e0, 0));
+        for (int it = 0; it < iters; ++it)
+            CK(gnss_cuda::launch_waveform_tiled(d_code, d_jobs, n_job, n_chan, p, d_wave,
+                                                d_energy, tile_n, halo, CODE_LEN, ph, 0));
+        CK(cudaEventRecord(e1, 0));
+        CK(cudaDeviceSynchronize());
+        CK(cudaEventElapsedTime(&ms_til, e0, e1));
+        ms_ref /= iters;
+        ms_til /= iters;
+        const double slice_mb = 2.0 * (Lf + 1) * esz * n_chan / 1048576.0;
+        printf("\n   gather (shipped %s)  %8.4f ms\n   tiled              %8.4f ms   %5.2fx\n",
+               ph ? "fp16" : "fp32", ms_ref, ms_til, ms_ref / ms_til);
+        printf("   footprint %.0f MB; at 100%% streaming efficiency the tiled floor is footprint"
+               "/BW + compute\n", slice_mb * n_job);
+        return (bad || (!tsort && ebad) || (tsort && erel >= 1e-12)) ? 1 : 0;
+    }
     // --phi16 is TIMING ONLY. The accuracy of fp16 Phi is answered offline by
     // scripts/gnss/phibits.cpp (3.3e-04 worst case on a chip step); here the tables are half the
     // size, so the fp32 reference path would read them OUT OF BOUNDS -- do not try to compare

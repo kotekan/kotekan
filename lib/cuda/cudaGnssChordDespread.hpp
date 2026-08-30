@@ -112,6 +112,27 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
                                   int n_chan, const DespreadParams& p, float2* wave, double* energy,
                                   int threads_hint, int fuse3, int phi16, cudaStream_t stream);
 
+/// TILED-STREAMING variant of @ref launch_waveform (BENCH -- docs/CHORD_GPU_TODO.md). Streams
+/// each block's Phi slice through shared-memory tiles so every table byte crosses DRAM exactly
+/// once, coalesced, instead of scattering ~2 gather re-walks through L1 (§10.6c: the kernel is
+/// DRAM-FOOTPRINT bound, and this removes the re-walk AND the scatter residue without any cache
+/// hypothesis). @c wave AND @c energy are BIT-IDENTICAL to the fused/1024 gather -- the walk order
+/// per (hop, trial) is untouched; a tile boundary only pauses it (scripts/gnss/wavebench.cpp
+/// --tiled is the gate).
+///
+/// @param tile_entries Phi entries staged per tile (<256 = default 4096). Shared cost per block:
+///        2*(tile_entries+halo)*sizeof(element), plus the 8 KB reduction array; a tile too big
+///        for the device fails the LAUNCH with an error, it does not degrade.
+/// @param halo_entries low-side halo, must be >= max over jobs of (int)inv_cps + 2 (the previous
+///        chip's tap can sit ks+1 entries behind the current one; the walk reloads it from the
+///        staged tile instead of carrying it in registers).
+/// @param phi16 as @ref launch_waveform_tuned: tables are __half2 (bench-only).
+/// Requires n_hops <= 2*blockDim (2 hops of walk state per thread is the register budget).
+cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, int n_job,
+                                  int n_chan, const DespreadParams& p, float2* wave,
+                                  double* energy, int tile_entries, int halo_entries,
+                                  int code_len_max, int phi16, cudaStream_t stream);
+
 /**
  * @brief Correlate N antenna voltages against the M generated references.
  *

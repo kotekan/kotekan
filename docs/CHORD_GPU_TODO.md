@@ -250,6 +250,66 @@ replica at CHORD geometry; e2e closure must not move.
 Already measured 1.27-1.37x, and §10.6c explains WHY it is the right lever (halves the
 resident table). Composes with item 2: 7.3 MB -> 3.7 MB.
 
+## 5. Tiled shared-memory streaming -- BUILT, MEASURED NO-WIN ON THE A40, CLOSED (2026-08-30)
+
+The direct attack on 10.6c's verdict: stream each block's Phi slice through shared-memory
+tiles (every table byte crosses DRAM once, coalesced), gather from shared, keep the walk order
+per (hop, trial) untouched so `wave` is BIT-IDENTICAL. Built as `launch_waveform_tiled` +
+`wavebench --tiled/--tiled16/--tsort/--tile N`, benched on cx52 (IDLE node A40 -- both idle
+GPUs, no production contention). Correct at every step: wave bit-identical in all variants,
+energy bit-identical unsorted / 2e-16 sorted.
+
+**It loses at every geometry, both precisions** (vs the shipped fused/1024 gather):
+
+    11 jobs x 140 chips   0.375 ms gather   0.583 ms tiled   0.64x
+    32 jobs               1.053             1.692            0.62x
+    100 jobs              3.069             5.126            0.60x
+    100 jobs x 212 chips  4.455             6.376            0.70x
+    fp16, 11 jobs         0.276             0.740            0.37x  (fp16 WIDENS the gather's lead)
+
+The mechanism chain, each step measured (ncu, cx52), is the record worth keeping:
+
+1. v1 (per-chip tile-boundary `break`): 1.14 ms, issue_active 21%, long-scoreboard 31/issue.
+   A data-dependent break gates every load behind a compare; NOTHING pipelines. The shipped
+   gather's fixed-trip chip loop is what lets the compiler hide its scattered DRAM latency --
+   the "dumb" kernel is dumb like a fox.
+2. v2 (interleave the 6 walks, predicated): 1.13 ms. ILP was not the binding constraint.
+3. v3 (two-phase: fixed-count safe run + checked tail): 1.07 ms, issue 35%. Next: shared-pipe
+   costs -- bank conflicts 23M (4 wavefronts/request on random-address LDS.64), and the
+   per-chip code[] byte-gather (66M global sectors) through an L1 the 69 KB shmem carveout
+   starved to ~28 KB. Tile 3072 vs 4096 is a CLIFF (0.64 vs 1.07 ms): the carveout steps
+   64->100 KB there. Tile size is an L1-carveout knob, not a barrier-count knob.
+4. v4 (+ hop-sorted lane mapping, 10.6b's idea -- viable here because the perm load amortizes
+   into the prologue and the reordered loads hit shared): conflicts -> ZERO, shared wavefronts
+   /3.4 -- and 0.64 -> 1.00 ms SLOWER, because the sorted lanes scatter the code[] gather
+   across the whole table and thrash the starved L1.
+5. v5 (+ code as a 25.6 KB bit table in shared, ballot-packed once per block; the walk then
+   touches NO global memory): 0.583 ms, issue 42% (= the gather's 45%), all stalls low. The
+   kernel is now HEALTHY -- and still 1.5x slower, because it executes 1.44x the instructions
+   (122.6M vs 85.0M: staging, bit extracts, two-phase bookkeeping, barriers). That overhead is
+   the design's floor, not a defect in it.
+
+**And the DRAM prize evaporated as the kernel got faster**: v1 moved 98 MB (near the 81 MB
+footprint), v5 moves 222 MB -- rising issue rate piles outstanding misses onto L2 until the
+staged streams thrash each other. Low-DRAM and high-issue actively traded against each other
+in this design. Meanwhile the gather at 100 jobs runs ~490 GB/s -- 70% of the A40's peak, so
+its "wasted" re-reads fit inside headroom the part actually has at every deployed job count.
+
+**The law this adds to 10.6c**: the gather kernel's scattered streaming at 2/3 of DRAM peak
+with a fixed-trip loop is a local optimum that orchestration (tiles, barriers, carveouts,
+sorted lanes) cannot beat on this part -- it can only spend instructions to move the
+bottleneck somewhere less forgiving. Fewer BYTES RESIDENT (fp16, item 3) remains the one
+lever that pays; fewer bytes MOVED does not, because moved bytes are not what binds.
+
+KEPT: `launch_waveform_tiled` (no production callsites) + the four wavebench modes, as the
+reproducible null result with its bit-exactness gates. If the nodes are ever refreshed to a
+part where DRAM headroom is scarce relative to SM throughput, re-run `--tiled --tsort --tile
+3072` before re-deriving any of this.
+
+ALSO 2026-08-30: item 2's A40 verdict RE-VERIFIED ON AN IDLE NODE (cx52): 0.88x at 8 PRNs,
+identical to the 08-28 cx43 number -- which was taken with production at ~85% GPU and could
+have been contamination. It was not. The shared-Phi A40 verdict stands on a clean measurement.
+
 ## 4. Fuse synthesis + pack
 
 `wave` is [3*n_job][n_chan][n_hops] float2 = **11 MB per record** at 32 jobs x 7 chan x 2048
