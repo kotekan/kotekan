@@ -348,10 +348,31 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "grid_size_y", telescope.get_grid_size_y());
         _check_create_attribute(*file, "feed_separation_x_m", telescope.get_feed_separation_x_m());
         _check_create_attribute(*file, "feed_separation_y_m", telescope.get_feed_separation_y_m());
-        _check_create_attribute(*file, "main_array_grid_indices",
-                                telescope.get_main_array_grid_indices(num_elements, input_order));
-        _check_create_attribute(*file, "feed_positions_m",
-                                telescope.get_feed_positions_m(num_elements, input_order));
+        // Per-element labels. Compact subset layouts (e.g. DishInputs) identify their
+        // elements via the descriptor's input_list; gather those elements' labels from
+        // the full fiducial order, and record the identities themselves so the file
+        // stays self-describing.
+        const std::vector<uint16_t>& input_list = fv._desc->get_input_list();
+        if (input_list.empty()) {
+            _check_create_attribute(
+                *file, "main_array_grid_indices",
+                telescope.get_main_array_grid_indices(num_elements, input_order));
+            _check_create_attribute(*file, "feed_positions_m",
+                                    telescope.get_feed_positions_m(num_elements, input_order));
+        } else {
+            std::vector<grid_idx_2d_t> grid_indices(input_list.size());
+            std::vector<vec3d_t> feed_positions(input_list.size());
+            for (size_t i = 0; i < input_list.size(); ++i) {
+                grid_indices[i] = telescope.element_index_to_main_array_grid_indices(input_list[i],
+                                                                                     input_order);
+                feed_positions[i] = telescope.station_id_to_feed_position_m(
+                    telescope.element_index_to_station_id(input_list[i], input_order));
+            }
+            _check_create_attribute(*file, "main_array_grid_indices", grid_indices);
+            _check_create_attribute(*file, "feed_positions_m", feed_positions);
+            _check_create_attribute(*file, "input_list",
+                                    std::vector<int32_t>(input_list.begin(), input_list.end()));
+        }
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
         _check_create_attribute(*file, "num_file_f",

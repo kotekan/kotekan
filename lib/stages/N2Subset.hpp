@@ -29,7 +29,10 @@
  * via the buffer's YAML configuration.
  *
  * The stage validates that all products in the output buffer exist in the
- * input buffer, and builds an index mapping to efficiently copy data.
+ * input buffer, and builds an index mapping to efficiently copy data. Compact
+ * subset layouts (e.g. DishInputs) index their own element axis: their products
+ * and per-element fields are matched and copied through the elements' identities
+ * in the output descriptor's input_list.
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read.
@@ -70,6 +73,9 @@ private:
 
     /// Index mapping: for each output product index, the corresponding input product index
     std::vector<size_t> prod_index_map;
+    /// Input element index per output element for compact subset layouts; empty when
+    /// the output indexes the input's element axis directly.
+    std::vector<uint16_t> element_index_map;
 
     /// Number of elements in input buffer
     uint32_t _in_num_elements;

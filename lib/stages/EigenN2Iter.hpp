@@ -29,7 +29,7 @@
  *
  * This task performs the factorization of the visibility matrix into
  * ``num_ev`` eigenvectors and eigenvalues and stores them in reserve space
- * in the ``VisBuffer``. They are stored in descending order of the eigenvalue.
+ * in the ``N2Buffer``. They are stored in descending order of the eigenvalue.
  *
  * This is performed by using a subspace iteration method with an augmented
  * Rayleigh-Ritz step and a progressive matrix completion of masked values.
@@ -38,7 +38,10 @@
  * and without the dataset tracking functionality.
  *
  * @par Buffers
- * @buffer in_buf The stream to eigen decompose.
+ * @buffer in_buf The stream to eigen decompose. Must hold the full correlation
+ *         triangle over the frame's own elements in the canonical order, i.e.
+ *         n(n+1)/2 products (FullUpperTri, or a compact subset like DishInputs);
+ *         the solver is otherwise blind to where the elements came from.
  *         @buffer_format N2Buffer structured
  *         @buffer_metadata N2Metadata
  * @buffer out_buf Output stream with the calculated eigen-pairs.
@@ -65,8 +68,8 @@
  * @conf  exclude_inputs   List of UInts, optional. Inputs to exclude (rows and
  *                         columns to set to zero) in visibilities prior to
  *                         factorization. These are indices into the incoming
- *                         frame's elements, which for a subsetted buffer are the
- *                         subset's own indices, not the full array's.
+ *                         frame's elements, which for a compact subset buffer are
+ *                         the subset's own indices, not the full array's.
  * @conf  mask_flagged_inputs  Bool, default true. Also mask the inputs the
  *                         incoming frame flags as bad, i.e. those whose entry in
  *                         the frame's per-element `flags` is zero (1.0 == good).

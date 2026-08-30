@@ -150,7 +150,13 @@ visibility matrix, including autocorrelations, row-major:
 (N_e{-}1,N_e{-}1)`. The pair for product :math:`p` is stored in
 ``/index_map/prod`` as ``(input_a, input_b)`` with ``input_a <= input_b``;
 ``input_a`` is the row and ``input_b`` the column of the matrix entry
-:math:`V_{ab}`. The lower triangle is the complex conjugate.
+:math:`V_{ab}`. The lower triangle is the complex conjugate. Product ids
+always index the file's own element axis; ``/index_map/prod`` is
+authoritative. Compact subset layouts (e.g. ``DishInputs``) carry fewer
+elements than the full array: the ``input_list`` attribute gives, per file
+element, the corresponding element index of the full fiducial order, and
+the per-element attributes (``main_array_grid_indices``,
+``feed_positions_m``) are already gathered through it.
 
 **Element ordering.**
 The mapping from element index to physical input (dish, polarization) is
@@ -244,7 +250,13 @@ File identity and structure
      - string
      - Visibility matrix packing: ``FullUpperTri``,
        ``RedundantBaselineAvg``, ``Autocorrelations``, ``InputANDMasked``,
-       ``InputORMasked``, or ``GeneralSubset``.
+       ``InputORMasked``, ``GeneralSubset``, or ``DishInputs`` (a compact
+       frame holding the dense triangle over the elements whose dish type
+       is ``ArrayDish``; see the ``input_list`` attribute).
+   * - ``input_list``
+     - int32 array
+     - Compact subset layouts only: the element index, in the full
+       fiducial order, of each of the file's elements.
    * - ``input_order``
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see
