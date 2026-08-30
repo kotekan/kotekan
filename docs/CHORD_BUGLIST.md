@@ -1611,7 +1611,7 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #105 — fleet-common q-crash BURSTS: seconds-scale cross-instance decoherence, every few minutes (CHARACTERIZED 2026-08-30 evening, cause OPEN)
+## #105 — fleet-common q-crash BURSTS = the clock-freq bias EMA OSCILLATES and is COMMANDED into every seed (ROOT-CAUSED 2026-08-30 ~21:00 UTC, fix pending)
 
 The "funny q oscillations": per-sat q crashes 4 -> <1 with immediate recovery, bursty
 (spacing 30-480 s), visible fleet-wide as q variance while medians stay healthy. Fenced by
@@ -1630,6 +1630,55 @@ NEXT DISCRIMINATOR (needs a live capture, not banked logs): per-instance HOP STA
 crash instants -- same-count-different-WINDOW mixture (the #46 / fleet-coh-record-overlap
 open class) vs a genuine common-mode phase transient (the eta~0 frame-locked open item).
 A 30-min /get_status poller during a bursty period decides it.
+
+ROOT CAUSE (the 1.5 Hz hop-stamp capture, fixtures/probe_105_2021.jsonl, 20:21-21:06 UTC,
+plus the broker log series; analysis in-session 2026-08-30):
+  * The capture KILLED candidate (a): hop stamps across the 12 instances stay at the
+    baseline 0.06-0.13 s spread straight through every crash, and the cross-instance cp
+    spread is exactly hop-skew x 602 chips/s at every poll. No window mixture.
+  * What actually happens per crash: dll_disc ramps COMMON-MODE across all tracked sats
+    (+ together or - together), RAILS at |0.97|, p_pow fades smoothly -16 dB (the
+    correlation-triangle rolloff as the prompt walks ~1 chip off-peak), q crashes at the
+    bottom, then each sat is SNAPPED back individually (seed re-step; disc overshoots
+    through the null), staggered ~5 s apart. "FLEET ALIGN 0.15" was off-peak noise
+    decorrelating the instances, not the instances disagreeing about time.
+  * THE DRIVER: gps_l5's clock-freq bias EMA (almanac.py) OSCILLATES +-9 Hz with a ~5-6
+    min pseudo-period. The disc common-mode drift tracks it sign-for-sign (verified across
+    a full +to- reversal 20:24->20:27->20:29; corr(cb, d disc/dt) = +0.74 over 1,027
+    windows). Ramp rate matches k*cb: +5 Hz x 0.0087 = 0.044 chips/s ~ measured 0.033.
+  * WHY IT OSCILLATES: raw bias = median over ~5 sats of (search-detection Doppler - BRDC
+    pred). The detections are BIN-QUANTIZED (meas mod 62.5 Hz clustering R = 0.83 -- the
+    chronic "dop 76% bin-quantized" defect, #98). Each sat's residual is therefore a +-31
+    Hz SAWTOOTH wrapping every ~1-3 min (as its true Doppler crosses bins; lag1-ac
+    +0.3-0.45). The EMA's design assumption -- "sub-grid dither across sats/cycles
+    averages out the quantization" -- FAILS at 5-sat counts with minute-scale bin dwells:
+    the median of a few beating sawtooths WANDERS +-10 Hz on exactly the ~5 min timescale
+    the a=0.05/10 s EMA passes.
+  * HOW IT REACHES CODE: dop_seed = geo + cb.value on every model-primary re-seed
+    (deadreckon.py:909, seeding.py:118/226) and the replica derives its code Doppler from
+    the seeded value; plus the la/cp0-slope path (fits.py cp_rate_from_code_bias). A
+    carrier-Hz wobble is a code-rate wobble x k on EVERY sat -- common-mode by
+    construction.
+  * WHY GPS-ONLY: gal/bds never solve the local bias ("clock-freq bias UNSOLVED, 0 local
+    + 0 sibling sats" every cycle) -- cb.value never moves, their seeds never wobble.
+    Cross-chain burst coincidence measured AT CHANCE (35-51% vs 36% chance rate).
+  * Pre-dates 08-30 confirmed quantitatively: 51/h overnight (pre103), 57/h pre-flip,
+    ~35/h post-flip -- the flip slightly reduced it (fewer holds to poison), and the
+    bias estimator is old code.
+
+FIX DIRECTION (structural, per KV's standing preference -- decision pending):
+  1. Split cb's two ROLES. Search-window centering tolerates +-10 Hz wander (margins are
+     hundreds of Hz); SEEDS of tracked sats do not. Seeds should consume a STABLE bias
+     (cb.cal / a heavily-frozen estimate), never the live EMA.
+  2. Re-source the live bias from the TRACKED sats' fine carrier observables
+     (carrier_hz_resid / the adr ledger, mHz-class) with detections only as the
+     acquisition-time fallback -- the measurements-referee pattern; the joint clk-rate
+     state is the natural owner.
+  3. De-quantize the detections at the source (parabola vertex on the Doppler axis --
+     #41's fix pattern) -- also repays the chronic #98 quantization item.
+PREDICTION for any fix: gps q<1 events 35-50/h -> ~0; gps per-sat q SD median 0.87 ->
+~0.3 (the other chains' level); the rrate benefit judge unblocks.
+
 
 ## #33 — THE VECTOR TRACKER: CLOSED AS BUILT (2026-08-30)
 
