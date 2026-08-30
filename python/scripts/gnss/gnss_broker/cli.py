@@ -2618,14 +2618,17 @@ def build_parser(description):
                          "the 2026-08-02 override this check replaced: nothing is stored "
                          "from our own correction, and a real change passes in ~2N s. "
                          "Ignored under --period-continuity correct. 0 (default) disables.")
-    ap.add_argument("--hold-rate-from-clock", type=int, default=0,
-                    help="#103 ROOT FIX: while a seed is HELD, refresh its residual code "
-                         "rate from the pooled clock every cycle (the la_rate writer skips "
-                         "held sats), with the anchor re-expressed at the present epoch so "
-                         "the command is continuous. Frozen wrong rates dead-reckoned "
-                         "gps_l5 off the sky at 0.02-0.04 chips/s inside holds -- the "
-                         "escape/rebirth churn. Model-primary chains: a no-op by "
-                         "construction. 0 = off (holds freeze the rate, pre-#103).")
+    ap.add_argument("--hold-rate-source", type=str, default="none",
+                    choices=["none", "dr"],
+                    help="#103 v2: while a seed is HELD, slew-bound its residual code rate "
+                         "toward this source every cycle, anchor re-expressed at the present "
+                         "(command-continuous; gate TestHoldRetagContinuity). 'dr' = the DR "
+                         "clock drift (sd 6.9, cycle-to-cycle 0.4 mchips/s -- the only "
+                         "measured source under the ~2 mchips/s bar a 10-min hold needs). "
+                         "v1 of this idea sourced the pooled l-a estimate (+-50 mchips/s "
+                         "swings) and was revert-triggered in 30 min: held sats INTEGRATE "
+                         "rate noise that measurement-anchored sats never see. 'none' = "
+                         "holds freeze the rate (pre-#103).")
     ap.add_argument("--cp-rate-model-primary", type=int, default=0,
                     help="#103: seed the pooled-clock MODEL code rate for EVERY cp-rate fit "
                          "(the fit's rate becomes monitor-only; its position is kept). The "

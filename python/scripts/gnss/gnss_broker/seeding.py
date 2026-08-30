@@ -1048,18 +1048,36 @@ def stage_detections_to_seeds(ctx):
             # clock's residual rate. All three transport directions come from fits.py's
             # adjacent trio (dr_seed_phys / dr_cp0 / seed_phase_at_ref) so the
             # conventions cannot drift apart.
-            if (getattr(ctx.args, "hold_rate_from_clock", 0)
-                    and ctx.cb.code_ema is not None
+            # v2 (--hold-rate-source dr): v1 sourced this from the pooled l-a/joint
+            # estimate and was REVERT-TRIGGERED within 30 min (2026-08-30 13:26-13:57):
+            # that estimate swings +-50 mchips/s on minute timescales -- fine as a
+            # per-cycle seed for measurement-anchored sats, but a HELD sat dead-reckons
+            # on the rate for 30-60 s stretches and INTEGRATES the jitter (G18's q went
+            # to noise; PRN 23 oscillated at 20-30 s). THE BAR, derived: a held sat
+            # escapes when the C++ trim ramp hits its 1.25-chip ceiling at
+            # t = 1.25/rate_err, so a 10-min hold needs the held rate good to
+            # ~2 mchips/s. Sources measured that day: pooled l-a +-50 mchips/s; DR clock
+            # drift sd 6.9, cycle-to-cycle median 0.4 mchips/s. So v2 slaves held rates
+            # to the DR CLOCK DRIFT and SLEW-BOUNDS each refresh to 5 mchips/s: real
+            # clock wander (slow) is tracked, transients (dr p90 12 mchips/s) are capped,
+            # steady-state injected jitter is the source's own ~0.4 mchips/s.
+            _hrs = getattr(ctx.args, "hold_rate_source", "none")
+            if (_hrs == "dr" and ctx.dr_state is not None
+                    and ctx.dr_state.get("drift") is not None
+                    and ctx.dr_state.get("clk") is not None
                     and prev.get("ref_hop") is not None and ref_hop > prev["ref_hop"]):
-                _hr_new = cp_rate_from_code_bias(prev["doppler_hz"], ctx.cb.code_ema,
-                                                 ctx.args.hops_per_sec,
-                                                 ctx.args.chip_rate_hz,
-                                                 ctx.args.carrier_hz)
-                _hr_d = (_hr_new - prev.get("code_phase_rate", 0.0)) * ctx.args.hops_per_sec
-                # Plausibility bound (chips/s): the pooled clock moving further than this
-                # within one hold is the estimator misbehaving, not the satellite. Skip,
-                # keep the frozen rate, and the referee still stands behind it.
-                if abs(_hr_d) <= 0.5:
+                # dr drift is the receiver-clock code drift in chips/s; the seed's
+                # code_phase_rate is the same RESIDUAL in chips/hop (the replica applies
+                # the geometric code Doppler itself -- cp_rate_from_code_bias's note).
+                _hr_tgt = ctx.dr_state["drift"] / ctx.args.hops_per_sec
+                _hr_cur = prev.get("code_phase_rate", 0.0)
+                _hr_d = (_hr_tgt - _hr_cur) * ctx.args.hops_per_sec  # chips/s
+                _slew = 0.005 / ctx.args.hops_per_sec               # 5 mchips/s per refresh
+                _hr_new = _hr_cur + max(-_slew, min(_slew, _hr_tgt - _hr_cur))
+                # Plausibility bound (chips/s) on the TARGET: a dr drift further than this
+                # from the held rate is the estimator misbehaving, not the satellite.
+                # Skip, keep the frozen rate, and the referee still stands behind it.
+                if abs(_hr_d) <= 0.5 and _hr_new != _hr_cur:
                     # ⚠️ RE-EXPRESS THE STREAM THE TRACKER READS (#45 step 7 / #43): the
                     # tracker prefers the at-ref phase over the cp0 argument, and the two
                     # come from different broker paths. Starting the re-expression from
@@ -1112,10 +1130,11 @@ def stage_detections_to_seeds(ctx):
                     if abs(_hr_d) > 0.005:
                         _log_rl("holdrate-%d" % prn,
                                 "HOLD-RATE PRN %d: residual rate %+.4f -> %+.4f chips/s "
-                                "(clock-slaved; anchor re-expressed at the present, "
-                                "command continuous)"
-                                % (prn, _hr_new * ctx.args.hops_per_sec - _hr_d,
-                                   _hr_new * ctx.args.hops_per_sec), every_s=300.0)
+                                "(dr-drift target %+.4f, slew-bounded; anchor "
+                                "re-expressed at the present, command continuous)"
+                                % (prn, _hr_cur * ctx.args.hops_per_sec,
+                                   _hr_new * ctx.args.hops_per_sec,
+                                   _hr_tgt * ctx.args.hops_per_sec), every_s=300.0)
             ddop = seed["doppler_hz"] - prev["doppler_hz"]
             # SAFETY NET (design (b)): bound a single cycle's Doppler move. A real MEO
             # Doppler moves <1 Hz per 0.2 s cycle; this only fires on a bad model, and it
