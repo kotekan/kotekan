@@ -1653,6 +1653,17 @@ Fix (structural, KV: "no quick fixes -- tackle (b)"): STOP THE WALK, in gnss::Fl
 Falsifier: gps_l5 escapes+births down >=10x with gal_e5a flat as in-poll control. The
 referee and its release stay untouched -- they are the part that works.
 
+STATUS 2026-08-30 EOD: (1) --cp-rate-model-primary ARMED and beneficial (fit flushes
+132/h -> 0). (2) --hold-rate-from-clock v1 armed 13:26, REVERT-TRIGGERED, disarmed 13:57:
+the mechanism verdict passed instantly (3.3-chip quantum GONE, drifting holds GONE, control
+quiet) but the refresh source -- the pooled l-a estimate -- swings +-50 mchips/s on minutes
+and held dead-reckoning integrates it (PRN 23: 20-30 s oscillation). THE BAR: held-rate
+error < 1.25 chips / hold duration (~2 mchips/s for 10-min holds). v2 design: EMA'd DR
+clock drift (sd 6.9, cycle-to-cycle 0.4 mchips/s) + slew-bounded refresh; the currency
+re-expression and its continuity gate are correct and carry over unchanged. THIRD CLASS
+noted: weak-sat birth cycling (4 sats ~87 births each, in the overnight baseline too),
+untouched by either fix.
+
 ## #102 — the array is about to stop being a point: per-element GNSS geometry for the ~200 m build-out (DESIGN, 2026-08-29)
 
 Scale: a 200 m EW/NS spread is up to ~b·cos(el)/c ≈ 0.6 µs ≈ **6 chips of differential
