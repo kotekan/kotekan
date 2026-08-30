@@ -760,7 +760,13 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # measured MINNOV gate; the remaining eligible PRNs are the in-poll controls. Judge
     # flipped-vs-control on MINNOV/INNOV p95, q, trim behavior; every ENTER/EXIT is one
     # loud log line. Revert: set 0 (or delete) + broker restart.
-    model-primacy-max: 2
+    # #103 FINAL (2026-08-30 ~15:00): 2 -> 32. gal/bds have ZERO holds (freeze needs
+    # fit_trusted; they never fit) -- the hold pathology is gps-exclusive path exposure.
+    # The flip's own measured basis (08-17 MINNOV p95 1.4-1.9 vs 2.2-2.5) says the model
+    # seeds these sats better; the cap was A/B posture. Admission = built-in warmup
+    # (p95 < 2.0 over >=30 innov/10 min), MINNOV referee auto-exits at 3.0. Pre-reg in
+    # fixtures/expectations_20260830_cp_rate_model_primary.txt (final section).
+    model-primacy-max: 32
     # PER-SUBBAND ARCHIVE (task #25). fleet_spectrum already computes per-channel,
     # per-instance amplitudes for the tau fit and then discards them; this persists the
     # raw points before the collapse. The per-freq x per-element axis IS the science
