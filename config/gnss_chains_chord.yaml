@@ -26,7 +26,10 @@ common:
   # #104 (2026-08-30): bound sibling clock adoption -- the unbounded path relayed gps's
   # poisoned clock fleet-wide in ~2 s during the #103 outage while JOINT-CLK's 5-chip
   # bound refused the same values. Fresh-local refusals only; stale local (>300 s) adopts.
-  dr-clock-adopt-max-chips: 0.0  # DISARMED 16:0x -- locked e5a/b2a out post-restart, see log
+  # #104 v2 (16:0x): the guard now exempts PRIMED clocks (a 0.00-chip startup placeholder
+  # is not a measurement to defend -- v1 refused the sibling's real +149.44 against it and
+  # locked both 1176 MHz chains out seedless, 15:51-15:56).
+  dr-clock-adopt-max-chips: 5.0
   # #99 ROOT FIX (2026-08-29, KV-approved): the previous coordinates (49.32075144444,
   # -119.62081125 -- the array ORIGIN, likely the CHIME reference) sit ~155 m from the
   # dishes' effective phase centre. Solved by LSQ on 6,971 banked overnight integrity

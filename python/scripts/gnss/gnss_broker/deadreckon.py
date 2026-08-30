@@ -1856,7 +1856,13 @@ def stage_dead_reckon(ctx):
                 _adopt_bound = getattr(ctx.args, "dr_clock_adopt_max_chips", 0.0)
                 _local_fresh = (ctx.dr_state.get("clk_t") is not None
                                 and ctx.t0 - ctx.dr_state["clk_t"] < 300.0)
+                # ⚠️ A PRIMED CLOCK IS NOT A MEASUREMENT TO DEFEND (learned live 15:51-15:56:
+                # gal/bds start with a 0.00-chip PRIME, and the first form of this guard
+                # refused the sibling's real +149.44 against the placeholder -- both
+                # 1176 MHz chains sat seedless until the disarm). clk_primed marks
+                # exactly this state; the guard only defends a clock that was MEASURED.
                 if (_adopt_bound > 0.0 and _adopt_step is not None and _local_fresh
+                        and not ctx.dr_state.get("clk_primed")
                         and abs(_adopt_step) > _adopt_bound):
                     _log_rl("clkadopt-refuse",
                             "dead-reckon: sibling clock from '%s' is %+.2f chips from the "
