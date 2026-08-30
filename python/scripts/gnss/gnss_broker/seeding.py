@@ -507,6 +507,26 @@ def stage_detections_to_seeds(ctx):
                         ctx.cpt.rej_streak[prn] = _n
                 else:
                     ctx.cpt.rej_streak.pop(prn, None)
+            # ── #103 (--cp-rate-model-primary): the fitted RATE becomes monitor-only and
+            # the COMMAND rides the pooled-clock model rate for every fit, not just the
+            # rejected ones -- gps_l5 joins the rate policy the four model-primary chains
+            # already run. Measured basis (2026-08-30, TRACK-vs-MODEL census): gps_l5
+            # tracks drift off-model at ~0.006-0.03 chips/s per-sat random-sign (the
+            # fitted-rate supply's error), saturate the fleet trim's 1.25-chip ceiling in
+            # minutes, and churn through escape/rebirth ~445x/night -- while the
+            # model-primary chains' trim drift (0.09-0.26 mchips/s) shows the model rate
+            # is ~100x better post-#99. The fit's POSITION is kept (the tol guard's own
+            # rule: reject the rate, keep the position); the tol/flush machinery above
+            # still protects the position against wrap-poisoned histories; and `rate`
+            # still feeds fit_slope and the l-a pool below (measurements, not commands).
+            # Cold start (code_ema None) falls back to the fitted rate, exactly as the
+            # tol guard does.
+            if (getattr(ctx.args, "cp_rate_model_primary", 0)
+                    and ctx.cb.code_ema is not None):
+                _seed_rate = cp_rate_from_code_bias(seed_dop, ctx.cb.code_ema,
+                                                    ctx.args.hops_per_sec,
+                                                    ctx.args.chip_rate_hz,
+                                                    ctx.args.carrier_hz)
             # ⚠️ SUBSTITUTE THE COMMAND ONLY, NEVER THE MEASUREMENT. `rate` stays the
             # FITTED slope below this line, because the two consumers underneath are
             # measurements: ctx.cpt.fit_slope feeds CARRIER-FROM-CODE (a shadow), and

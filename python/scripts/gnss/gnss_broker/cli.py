@@ -2618,6 +2618,14 @@ def build_parser(description):
                          "the 2026-08-02 override this check replaced: nothing is stored "
                          "from our own correction, and a real change passes in ~2N s. "
                          "Ignored under --period-continuity correct. 0 (default) disables.")
+    ap.add_argument("--cp-rate-model-primary", type=int, default=0,
+                    help="#103: seed the pooled-clock MODEL code rate for EVERY cp-rate fit "
+                         "(the fit's rate becomes monitor-only; its position is kept). The "
+                         "measured case: gps_l5's fitted rates carry ~0.006-0.03 chips/s "
+                         "per-sat errors that saturate the fleet trim's 1.25-chip ceiling "
+                         "in minutes and drive the escape/rebirth churn (5,773 births/"
+                         "night), while model rates run ~100x cleaner post-#99. 0 = off "
+                         "(the fitted rate seeds whenever the tol guard accepts it).")
     ap.add_argument("--cp-rate-model-tol", type=float, default=0.0,
                     help="reject a FITTED code rate that departs from the POOLED l-a clock by "
                          "more than this (chips/s) and seed the clock's rate instead, keeping "

@@ -387,6 +387,10 @@ chains:
     # must be clean -- reject fits departing the pooled clock by >0.5 chips/s.
     # Observable: cp-rate REJECTED lines.
     cp-rate-model-tol: 0.5
+    # #103 (2026-08-30): fitted code rates are monitor-only; the command rides the pooled
+    # clock, as the model-primary chains always have. Pre-reg:
+    # fixtures/expectations_20260830_cp_rate_model_primary.txt
+    cp-rate-model-primary: 1
     # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
     # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
     # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
