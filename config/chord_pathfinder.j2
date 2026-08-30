@@ -270,11 +270,12 @@ n2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 16 * buffer_depth
 
-# The bad feed mask is valid for this many input samples. A frame is
-# samples_per_data_set * 5.12 us, so 24 frames is about one second. This must be a multiple of
-# samples_per_data_set: rfi_downsampling_factor has to divide it, and the quotient has to be a
-# multiple of rfi_num_times.
-bf_mask_lifetime_in_samples: 24 * samples_per_data_set
+# The bad feed mask is valid for this many input samples. One frame (~42 ms) lines the
+# mask elements up with the GPU output cadence: each correlation frame is gated by
+# exactly one mask element. This must be a multiple of samples_per_data_set:
+# rfi_downsampling_factor has to divide it, and the quotient has to be a multiple of
+# rfi_num_times.
+bf_mask_lifetime_in_samples: samples_per_data_set
 
 # Bad feed mask - marks which feeds to exclude from RFI calculations.
 # Produced by bufferBadInputs: int8 "bf_mask" [1, P, D] = [1, num_polarizations, num_dishes],
@@ -283,7 +284,10 @@ bf_mask_lifetime_in_samples: 24 * samples_per_data_set
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
     peek_hold: true
-    num_frames: buffer_depth
+    # Both NUMA nodes' GPU copies consume this one buffer, and a frame is only freed
+    # once both have taken it, so the depth bounds how far the halves can run apart
+    # before they couple: host_side_buffer_depth is ~1 s at one mask per frame.
+    num_frames: host_side_buffer_depth
     value_type: int8
     extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
@@ -291,18 +295,6 @@ host_bf_mask_buffer:
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
     numa_node: 0
-
-host_bf_mask_buffer_1:
-    kotekan_buffer: ndarray
-    peek_hold: true
-    num_frames: buffer_depth
-    value_type: int8
-    extents: [1, num_polarizations, num_dishes]
-    quantity_name: "bf_mask"
-    dimnames: ["Tbf", "P", "D"]
-    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
-    metadata_pool: main_pool
-    numa_node: 1
 
 # Buffers
 network_input_buffers:
@@ -977,26 +969,19 @@ PL_mask_compactor_1:
     out_buf: host_pl_mask_buffer_1
 
 # Bad feed mask from the /updatable_config/bad_inputs endpoint (fed by bffs
-# via choco). One instance per NUMA node; both subscribe to the same endpoint.
+# via choco). A single instance feeds both NUMA nodes' GPU copies from one
+# buffer, so both halves apply byte-identical mask frames by construction.
 # CHORD flags arrive and are masked in the same [P][D] order, so no reorder.
 # Elements whose dish_inputs type is not ArrayDish (Fake, RFI antennas) are
 # always masked, independent of the posted list (as inventBFMask mode: auto
 # did before this stage replaced it).
 set_bf_mask:
-    bf_mask_0:
-        kotekan_stage: bufferBadInputs
-        input_order: CHORDBeamformer
-        output_order: CHORDBeamformer
-        updatable_config:
-            bad_inputs: /updatable_config/bad_inputs
-        out_buf: host_bf_mask_buffer
-    bf_mask_1:
-        kotekan_stage: bufferBadInputs
-        input_order: CHORDBeamformer
-        output_order: CHORDBeamformer
-        updatable_config:
-            bad_inputs: /updatable_config/bad_inputs
-        out_buf: host_bf_mask_buffer_1
+    kotekan_stage: bufferBadInputs
+    input_order: CHORDBeamformer
+    output_order: CHORDBeamformer
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
+    out_buf: host_bf_mask_buffer
 
 ## Send data to GPU ringbuffers ##
 
@@ -1053,7 +1038,7 @@ run_send_bf_mask:
         gpu_id: 1
         cpu_affinity: [25, 26, 27]
         in_buffers:
-            host_bf_mask_buffer_in: host_bf_mask_buffer_1
+            host_bf_mask_buffer_in: host_bf_mask_buffer
         out_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
         commands:
