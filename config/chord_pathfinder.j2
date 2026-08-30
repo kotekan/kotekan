@@ -660,39 +660,39 @@ n2_buffer_1:
     num_frames: host_side_buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
+# DishInputs: compact frames over the elements whose dish type is ArrayDish, derived
+# from the telescope's dish table (num_elements here is the full count they are
+# selected from). Each element's full-order identity travels in the descriptor's
+# input_list; masking stays a per-element flags concern, subsetting lives here.
 n2_subset_buffer:
     kotekan_buffer: N2
     peek_hold: true
-    num_elements: 32
     num_ev: 0
-    n2_layout: "FullUpperTri"
+    n2_layout: "DishInputs"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_subset_buffer_1:
     kotekan_buffer: N2
     peek_hold: true
-    num_elements: 32
     num_ev: 0
-    n2_layout: "FullUpperTri"
+    n2_layout: "DishInputs"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_eigen_buffer:
     kotekan_buffer: N2
     peek_hold: true
-    num_elements: 32
     num_ev: num_ev_to_calculate
-    n2_layout: "FullUpperTri"
+    n2_layout: "DishInputs"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_eigen_buffer_1:
     kotekan_buffer: N2
     peek_hold: true
-    num_elements: 32
     num_ev: num_ev_to_calculate
-    n2_layout: "FullUpperTri"
+    n2_layout: "DishInputs"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
@@ -1590,7 +1590,8 @@ n2_accumulate:
         out_buf: n2_buffer_1
 
 
-# Subset to first 12 elements (6 dishes x 2 polarizations)
+# Subset to the connected feeds: the DishInputs output buffers are compact frames
+# over the ArrayDish elements, products and per-element fields alike.
 
 n2_subset:
     kotekan_stage: N2Subset

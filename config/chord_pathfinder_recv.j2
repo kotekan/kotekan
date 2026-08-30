@@ -118,7 +118,7 @@ telescope:
                 0.003889630373557614]
 
     dish_elev_axis: [0.99999999838132391,
-                   -0.000056897733584327
+                   -0.000056897733584327,
                    0.0]
     dish_vert_axis: [0.0, 0.0, 1.0]
 
@@ -225,14 +225,15 @@ chord_pool:
 
 
 
-# Receive subset N2 buffer
-
+# Receive subset N2 buffer: compact frames over the ArrayDish elements, derived from
+# this config's telescope dish table, which must match the X-engine's (the wire
+# carries the sender's element identities, so a divergent table fails loudly rather
+# than mislabeling).
 n2_recv_subset_buffer:
     kotekan_buffer: N2
     peek_hold: true
-    num_elements: 32
     num_ev: num_ev_to_calculate
-    n2_layout: "FullUpperTri"
+    n2_layout: "DishInputs"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
@@ -340,7 +341,7 @@ hdf5_N2_write_subset:
     blocksize_f: 16
     late_frame_grace_seconds: 30
     num_ev: num_ev_to_calculate
-    n2_layout: "FullUpperTri"
+    n2_layout: "DishInputs"
     num_file_t: 20
 
 
