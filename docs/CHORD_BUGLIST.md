@@ -1611,6 +1611,43 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #33 — THE VECTOR TRACKER: CLOSED AS BUILT (2026-08-30)
+
+Not the monolithic filter the January design sketched -- the same estimator-owns-the-sky
+architecture, arrived at piecewise, each piece measured in and the losers measured out.
+
+AS BUILT:
+  * STATES: joint receiver clock (chips) + clock rate + per-sat b_sat + the common carrier
+    rate residual (rrate). Every chain FEEDS (detections, fits, disc taps); no feed is
+    self-referential (the GAP-2 mirror lesson: feeding+consuming one quantity is a mirror).
+  * CODE COMMAND: model-primacy seeding, fleet-wide since 2026-08-30 -- seeds are the
+    MODEL's (BRDC + joint clk + b_sat via the slew consumer, gps additionally
+    joint-consume rate,slew). Measurements referee (MINNOV per-sat admission/exit, the
+    escape referee, dr integrity) and correct the filter -- they do not write seeds on
+    model-owned sats. The freeze-hold path is retired from service by the flip.
+  * CARRIER COMMAND: rrate-command -- the joint rrate state commands carrier corrections,
+    regime-gated to cohering sats, slew-bounded. Proven on e5a since 08-23 (per-sat q SD
+    0.23 -> 0.14, degraded to 0.68 on disarm, controls flat); extended to e5b + b2a
+    2026-08-30 16:38 (b2b + gps_l5 in-poll controls, pre-reg
+    fixtures/expectations_20260830_rrate_fleet.txt). Per-sat carrier residuals live in the
+    per-sat trims; the ARRAY-PHASE wander is a CALIBRATION quantity (monitored via the
+    exact carrier ledger), not a navigation state.
+  * GUARDS, all measured in: JOINT-CLK adopt/refuse (5 chips / 0.5 sigma), #104 sibling
+    adoption bound (primed-clock exempt), cp/dop-rate plausibility vs the pooled clock,
+    #101 eph-step handover, #98's hold-chain referee, #100 fit-history flush.
+
+MEASURED OUT (kept in the record so nobody re-derives them):
+  * carrier-aided code (GAP 3): aiding flat at n~900 once #99 removed the position error.
+  * f_carrier as a separate state: the ~2 Hz common carrier residual it was declared for
+    is exactly what rrate-command commands.
+  * the per-sat joint drift estimator (#93): root-caused away by #99.
+  * three hold-rate patches (#103 v1-v3a): the hold path itself was the defect; the fix
+    was extending the healthy architecture, not tuning the sick path.
+
+REMAINING, none blocking closure: rrate-command on b2b + gps after the 08-30 judge; the
+tracker-side continuity fold (only if mid-hold tuple refreshes ever return); the
+sidelobe-pattern calibration (geodesy thread -- a cal map, not a tracker state).
+
 ## #104 — the cross-chain clock ADOPTION path has NO plausibility bound, and it turned a one-chain churn into a FLEET outage (2026-08-30 14:27-14:40)
 
 During #103 v3a's failure (below), gps_l5's mass churn ran its legacy clock solve away
