@@ -1611,6 +1611,27 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #103 — GPS's 21x lock churn is the GPS-only fast loop walking onto the 3.27-chip comb lobe — ROOT-CAUSED (2026-08-30)
+
+gps_l5 logs 3,028 lock events / 13 h against 133-145 on every other chain. The cycle: a fade
+tips the GPS-only C++ fast code loop (95 steps/s, #51) across the ~1.6-chip watershed onto the
+instance comb's first grating lobe (7 teeth @ 3.125 MHz -> 3.2736 chips, 90-98% of peak) ->
+the escape guard sees the track 3.3+-0.4 chips off the search fit 5x consecutive -> RELEASE ->
+re-search -> BIRTH-STEP -> repeat ~4 min later. 5,773 births in one night, every WHY-BIRTH =
+hold_below; 1,716 of #100's cp-fit flushes are this same churn, not weak-sat noise.
+
+Evidence: escape offsets cluster 2.8-3.8 chips, symmetric (230+/215-) = the comb quantum;
+gal_e5a (no fast loop) has ZERO escapes, bds_b2a one at 0.5 chips. All instances share the
+lobe positions (common 16-channel stride), so the fleet-combined discriminator carries the
+same ambiguity and cannot veto the slip.
+
+Fix menu (unbuilt): (a) SNAP-BACK -- the escape offset is a known quantum, command the
+compensating +-3.2736-chip trim instead of releasing (keeps lock continuity, kills the churn);
+(b) bound the fast loop's cumulative excursion below the ~1.6-chip watershed between broker
+confirmations, or gate its gain on amp_snr; (c) keep the escape guard as-is -- it detects
+perfectly; only its RESPONSE is disproportionate. Next: ledger-stream forensics on a few
+slips (disc/trim/amp_snr trajectory) to pick (a)/(b), then a flag-gated arm.
+
 ## #102 — the array is about to stop being a point: per-element GNSS geometry for the ~200 m build-out (DESIGN, 2026-08-29)
 
 Scale: a 200 m EW/NS spread is up to ~b·cos(el)/c ≈ 0.6 µs ≈ **6 chips of differential
