@@ -338,6 +338,32 @@ PFB can only ever tie truncated-true above the cliff, and top-hat SPECTRAL bins 
 WRONG direction entirely (brick-wall response = longer time support; cost is linear in
 time span).
 
+OCCUPANCY MAPPING (2026-08-30, KV's reframe: nodes are arbitrary channel groupings --
+think "X% of band missing", ~1% at full CHORD vs 25% today at 6/8). Truncation error is
+COMMON-MODE across channels (one prototype serves all), so it cannot re-weight the
+cross-channel delay beam; the only thing it can erode is the occupancy pattern's own
+alias contrast. Measured (e2e, centered windows, score code phase):
+
+    occupancy (s-stride)              worst alias      centered-window floor
+    stride 4  = 75% missing periodic  ~unity @ 13.1 ch  cliff 52-60 (flip) -> use 80
+    stride 2  = 50% missing periodic  ~unity @ 26.2 ch  >= 40 exact (no cliff found)
+    stride 1  = full band             band-edge only    NO CLIFF DOWN TO 8 CHIPS --
+                                                        sub-chip at 30/20/12/8; the floor
+                                                        becomes the SNR budget, not aliasing
+
+  Alias amplitude for arbitrary patterns: periodic KEPT comb stride s -> unity aliases at
+  52.4/s chips (stride 16 = 3.27 = the tracker instance comb; 4 = 13.1; 2 = 26.2);
+  m of 8 nodes MISSING -> m/(8-m) at multiples of 6.55 chips (2/8 -> 33%, robust);
+  random p missing -> ~sqrt(N_miss)/N_kept (1% of 105 ch -> -40 dB, negligible).
+
+  So at full CHORD the window is SNR-limited, not alias-limited: -0.27 dB @ 60 chips,
+  -1.1 @ 40, -3.5 @ 20, ~-7 @ 8. Window 40-60 = 2.3-3.5x on synthesis vs the shipped 140,
+  x fp16 -> ~3-5x total (100 codes: ~3.1 -> 0.6-0.9 ms). Degraded ops (whole nodes down)
+  stay robust to >= 33%-amplitude aliases at window 40; only periodic sparse KEPT combs
+  (today's stride-4 search, the per-instance stride-16 tracker comb) need >= 80. The
+  tracker leg is not winner-take-all (locked DLL + fleet_dll combines instances), but
+  needs its own check before arming small windows there.
+
 TO ARM: the CPU hoprate path (search/refine/e2e) honours d_first now; production needs
 (a) DespreadJob.d_first (APPEND -- positional aggregate initializers at three sites) and
 the walk-start in gnss_waveform_kernel / chip_gather3 / refine_peak_cuda, (b) a
