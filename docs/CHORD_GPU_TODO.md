@@ -310,6 +310,42 @@ ALSO 2026-08-30: item 2's A40 verdict RE-VERIFIED ON AN IDLE NODE (cx52): 0.88x 
 identical to the 08-28 cx43 number -- which was taken with production at ~85% GPU and could
 have been contamination. It was not. The shared-Phi A40 verdict stands on a clean measurement.
 
+## 6. CENTERED chip-window truncation -- MEASURED EXACT AT 60-80 CHIPS (2026-08-30). THE NEW TOP ITEM WITH fp16.
+
+Item 9.5's cliff ("exact at 120, 13 chips out at 105") was the WINDOW GEOMETRY, not the
+physics: the prototype is a windowed sinc peaking mid-span (chip ~105 of 210) and
+set_max_chips cuts one-sided from chip 0 -- at 105 it cuts AT the peak (50.6% of filter
+energy, -3.0 dB). The same 105 chips CENTERED keep 99.58% (-0.02 dB). Energy curve
+(sinc*Hamming, centered): 80 chips -0.05 dB, 70 -0.12, 60 -0.27, 52 (the sinc main lobe,
+one tap) -0.50, 40 -1.1 dB. Adjacent-channel leakage: -35 dB at 105, -28 at 80, -18 at 52.
+
+MEASURED through the shipped e2e on cx52 (4f3050d05: ChannelizedReplicaBank::
+set_chips_centered + e2e --chips-centered), scoring CODE PHASE (9.5's own rule -- at the
+flip the error LOOKS smaller):
+    2-node comb (harsh):    centered 105/90/80/70/60 all EXACT (VERDICT 17.588-17.615 vs
+                            17.612 baseline); 52 FLIPS to the opposite grating lobe.
+    8-node comb (deployed): centered 80/60/52/40 all EXACT (+0.371 chips = baseline).
+
+So the degradation law: SNR falls as the kept filter energy (gentle), and failure is a
+CLIFF -- alias capture, winner-take-all -- at ~1 tap in the harsh regime, below 40 chips
+(0.76 taps) at the deployed comb. Recommended: **centered 80** (margin in both regimes)
+= **1.75x on synthesis** vs the shipped one-sided 140; composes with fp16 -> ~2.4x total;
+at 100 codes ~3.1 -> ~1.3 ms.
+
+Also settles the "cheaper channel model" family: for any span the amplitude-optimal model
+filter is the TRUE prototype restricted to the best (centered) window -- a designed 2-tap
+PFB can only ever tie truncated-true above the cliff, and top-hat SPECTRAL bins are the
+WRONG direction entirely (brick-wall response = longer time support; cost is linear in
+time span).
+
+TO ARM: the CPU hoprate path (search/refine/e2e) honours d_first now; production needs
+(a) DespreadJob.d_first (APPEND -- positional aggregate initializers at three sites) and
+the walk-start in gnss_waveform_kernel / chip_gather3 / refine_peak_cuda, (b) a
+multi-PRN / multi-Doppler e2e sweep (tonight's is one PRN, one geometry), (c) the standing
+caveat from 9.5 unchanged: e2e cannot isolate the TRACKER's own truncation error (tbank
+generates the sky), so the tracker rides the same same-generator inference the shipped
+140 cap rode. Flag default-off, broker_equiv EQUIVALENT with it off.
+
 ## 4. Fuse synthesis + pack
 
 `wave` is [3*n_job][n_chan][n_hops] float2 = **11 MB per record** at 32 jobs x 7 chan x 2048
