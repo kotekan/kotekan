@@ -1940,6 +1940,9 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # THE SKY SIDES WITH THE JOINT CLOCK. The JOINT-CLK line stays as the per-cycle
     # counterfactual. gps_l5 stays on its own solve (it is the filter's INPUT).
     joint-consume: clk,rate
+    # rrate-command extension (2026-08-30) -- see gal_e5b note / pre-reg file.
+    rrate-command: true
+    rrate-cmd-min-sig: 100
     # ── THE FIRST NON-GPS CLOCK FEEDER (armed 2026-08-23 ~00:xx) ─────────────────────
     # y = dr_seed_phys(seed) + APPLIED trim - cp_predicted, the P3 model-primary feed.
     # WHY THIS CHAIN, AND WHY ONLY NOW. The feed's two historical failure modes are both
@@ -2334,6 +2337,10 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     joint-consume: clk,rate
     dll-deep-gate: "33"
     rrate-cmd-min-sig: 100
+    # rrate-command extension (2026-08-30, the vector-tracker bow): e5a has commanded
+    # since 08-23 (q SD 0.23->0.14, degraded on disarm, controls flat). e5b next; b2b and
+    # gps_l5 are the in-poll controls. Pre-reg: fixtures/expectations_20260830_rrate_fleet.txt
+    rrate-command: true
     carrier-max-hz: 10.0
     rrate-feed-applied: 0
     # ── LIVE PRN MEMBERSHIP, REPORT ONLY (armed 2026-08-26 21:2x, docs/CHORD_LIVE_PRN_
