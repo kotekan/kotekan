@@ -456,5 +456,64 @@ class TestTrackerPhaseAt(unittest.TestCase):
                         "a stale cp0 leaked into the audit as a %.1f-chip step" % step)
 
 
+class TestHoldRetagContinuity(unittest.TestCase):
+    def test_hold_retag_continuity(self):
+        """#103 hold_retag: re-expressing a held tuple at the present with a new residual rate
+        must be COMMAND-CONTINUOUS -- tracker_phase_at unchanged at the re-expression instant
+        (exact on the at-ref branch; cp0-currency rounding only on the argument branch) -- and
+        diverge onward by exactly the rate swap plus the re-anchored quadratic. The first draft
+        of the fix started the re-expression from dr_seed_phys (the cp0 stream) while the
+        tracker reads the at-ref phase (#43's trap): this gate caught it as a +98,921-chip snap
+        before the fleet did. Mirrors seeding.py's hold_retag block formula-for-formula."""
+        from gnss_broker.fits import dr_seed_phys, dr_cp0, tracker_phase_at
+        HPS, CHIP, CARR, SGN, MOD, FFT = 195312.5, 10.23e6, 1176.45e6, -1.0, 204600.0, None
+
+        def retag(seed, h_now, new_rate):
+            upd = dict(seed)
+            t_now = h_now / HPS
+            ar = seed.get("code_phase_at_ref_chips")
+            if ar is not None and ar >= 0.0:
+                ph_last = tracker_phase_at(seed, h_now, HPS, CHIP, CARR, SGN, MOD, FFT)
+                per_hop = CHIP / HPS * (1.0 + SGN * seed["doppler_hz"] / CARR)
+                hop_off = per_hop * (1.0 - 1.0 / FFT) if FFT else per_hop
+                phys_first = (ph_last - hop_off) % MOD
+                upd.update(code_phase_chips=dr_cp0(phys_first, t_now, seed["doppler_hz"],
+                                                   CHIP, CARR, SGN, MOD),
+                           code_phase_at_ref_chips=ph_last, code_phase_rate=new_rate,
+                           ref_hop=h_now)
+            else:
+                phys_first = dr_seed_phys(seed, h_now, HPS, CHIP, CARR, SGN, MOD)
+                upd.update(code_phase_chips=dr_cp0(phys_first, t_now, seed["doppler_hz"],
+                                                   CHIP, CARR, SGN, MOD),
+                           code_phase_rate=new_rate, ref_hop=h_now)
+            return upd
+
+        def wrap(d):
+            return (d + MOD / 2) % MOD - MOD / 2
+
+        r_old, r_new = 1.5e-7, 0.2e-7
+        for with_ar in (True, False):
+            seed = dict(code_phase_chips=137456.75, code_phase_rate=r_old,
+                        ref_hop=29_135_108_096, doppler_hz=-807.0, doppler_rate_hz_s=-0.31)
+            if with_ar:
+                seed["code_phase_at_ref_chips"] = 98765.4321
+            h_now = seed["ref_hop"] + int(120 * HPS)
+            upd = retag(seed, h_now, r_new)
+            for dt_s in (0, 60, 300):
+                h = h_now + int(dt_s * HPS)
+                a = tracker_phase_at(seed, h, HPS, CHIP, CARR, SGN, MOD, FFT)
+                b = tracker_phase_at(upd, h, HPS, CHIP, CARR, SGN, MOD, FFT)
+                dh = h - h_now
+                dt_old = (h - seed["ref_hop"]) / HPS
+                dt_new = dh / HPS
+                exp = ((r_new - r_old) * dh
+                       + 0.5 * (CHIP / CARR) * seed["doppler_rate_hz_s"]
+                       * (dt_new**2 - (dt_old**2 - 120.0**2)))
+                tol = 1e-6 if with_ar else 5e-3
+                assert abs(wrap(b - a) - exp) < tol, (with_ar, dt_s, wrap(b - a), exp)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+

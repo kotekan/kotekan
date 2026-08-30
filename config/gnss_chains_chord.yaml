@@ -391,6 +391,11 @@ chains:
     # clock, as the model-primary chains always have. Pre-reg:
     # fixtures/expectations_20260830_cp_rate_model_primary.txt
     cp-rate-model-primary: 1
+    # #103 ROOT FIX (2026-08-30): a hold freezes the MEASUREMENT, not the physics -- held
+    # residual code rates re-slaved to the pooled clock each cycle, anchor re-expressed at
+    # the present (command-continuous; gate: test_track_vs_fit.py TestHoldRetagContinuity).
+    # Pre-reg: fixtures/expectations_20260830_cp_rate_model_primary.txt (same falsifier).
+    hold-rate-from-clock: 1
     # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
     # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
     # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto

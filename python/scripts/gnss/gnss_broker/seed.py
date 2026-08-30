@@ -57,6 +57,8 @@ OWNERS = {
     "dr_birth":     "REPLACE  dead-reckon birth / re-pin: whole tuple from BRDC + clk",
     "dr_slew":      "CORRECT  dead-reckon slew: held phase + bounded step toward model",
     "la_rate":      "REPLACE  pooled (l-a) / joint clock code rate, every non-held PRN",
+    "hold_retag":   "CORRECT  #103 held-rate refresh: anchor re-expressed at the present, "
+                    "residual rate re-slaved to the pooled clock (pure arithmetic)",
     "reseed":       "CORRECT  far-regime spec_tau re-seed, bounded fractional step",
     "phase_xport":  "REPLACE  #45 step 6: at-ref phase shipped beside the DR tuple",
 }

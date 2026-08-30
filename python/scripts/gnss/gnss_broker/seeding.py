@@ -32,7 +32,7 @@ from gnss_broker.transport import _log, _log_rl
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
     retag_seed_doppler, code_clock_bias_sample, fit_cp_rate, fit_dop_rate, tracker_phase_at,
-    cp_rate_from_code_bias,
+    cp_rate_from_code_bias, dr_seed_phys, dr_cp0, seed_phase_at_ref,
 )
 
 
@@ -1032,6 +1032,90 @@ def stage_detections_to_seeds(ctx):
                 ctx.hold.miss[prn] = 0
             else:
                 ctx.hold.miss[prn] = ctx.hold.miss.get(prn, 0) + 1
+            # ── #103 ROOT FIX (--hold-rate-from-clock): A HOLD FREEZES THE MEASUREMENT,
+            # NOT THE PHYSICS. The la_rate writer refreshes every non-held sat's residual
+            # code rate from the pooled clock each cycle and SKIPS held sats ("changing
+            # the rate under a stale ref_hop jumps the extrapolated cp" -- true, and that
+            # exemption is what let holds dead-reckon on whatever residual rate they
+            # froze: measured 0.02-0.04 chips/s of LINEAR cp_err growth inside hold
+            # episodes, the C++ trim chasing to its 1.25-chip ceiling, escape at ~3.3
+            # chips, immediate re-hold freezing the next slightly-wrong rate -- gps_l5's
+            # 445-escape/night churn. The four model-primary chains are immune because
+            # the rates their holds freeze ARE the model's.) So refresh WITH the full
+            # currency dance instead of skipping: re-express the anchor at the PRESENT
+            # epoch under the OLD labels -- pure arithmetic, command-continuous, nothing
+            # measured is adopted, so the hold's contract stands -- then swap in the
+            # clock's residual rate. All three transport directions come from fits.py's
+            # adjacent trio (dr_seed_phys / dr_cp0 / seed_phase_at_ref) so the
+            # conventions cannot drift apart.
+            if (getattr(ctx.args, "hold_rate_from_clock", 0)
+                    and ctx.cb.code_ema is not None
+                    and prev.get("ref_hop") is not None and ref_hop > prev["ref_hop"]):
+                _hr_new = cp_rate_from_code_bias(prev["doppler_hz"], ctx.cb.code_ema,
+                                                 ctx.args.hops_per_sec,
+                                                 ctx.args.chip_rate_hz,
+                                                 ctx.args.carrier_hz)
+                _hr_d = (_hr_new - prev.get("code_phase_rate", 0.0)) * ctx.args.hops_per_sec
+                # Plausibility bound (chips/s): the pooled clock moving further than this
+                # within one hold is the estimator misbehaving, not the satellite. Skip,
+                # keep the frozen rate, and the referee still stands behind it.
+                if abs(_hr_d) <= 0.5:
+                    # ⚠️ RE-EXPRESS THE STREAM THE TRACKER READS (#45 step 7 / #43): the
+                    # tracker prefers the at-ref phase over the cp0 argument, and the two
+                    # come from different broker paths. Starting the re-expression from
+                    # the cp0 side while the tracker reads the phase would snap the
+                    # command by their disagreement -- the continuity gate in
+                    # test_track_vs_fit.py::test_hold_retag_continuity caught exactly
+                    # that in this fix's first draft.
+                    _fft = getattr(ctx.args, "search_fft_len", 0) or None
+                    _t_now = ref_hop / ctx.args.hops_per_sec
+                    _ar = prev.get("code_phase_at_ref_chips")
+                    if _ar is not None and _ar >= 0.0:
+                        # last-sample commanded phase at the present, from the preferred
+                        # reference -- becomes the new at-ref field verbatim
+                        _ph_last = tracker_phase_at(prev, ref_hop, ctx.args.hops_per_sec,
+                                                    ctx.args.chip_rate_hz,
+                                                    ctx.args.carrier_hz,
+                                                    ctx.args.code_doppler_sign,
+                                                    ctx.code_len, _fft)
+                        _per_hop = (ctx.args.chip_rate_hz / ctx.args.hops_per_sec
+                                    * (1.0 + ctx.args.code_doppler_sign
+                                       * prev["doppler_hz"] / ctx.args.carrier_hz))
+                        _hop_off = _per_hop * (1.0 - 1.0 / _fft) if _fft else _per_hop
+                        _phys_first = (_ph_last - _hop_off) % ctx.code_len
+                        prev.put("hold_retag", epoch=ref_hop,
+                                 code_phase_chips=dr_cp0(_phys_first, _t_now,
+                                                         prev["doppler_hz"],
+                                                         ctx.args.chip_rate_hz,
+                                                         ctx.args.carrier_hz,
+                                                         ctx.args.code_doppler_sign,
+                                                         ctx.code_len),
+                                 code_phase_at_ref_chips=_ph_last,
+                                 code_phase_rate=_hr_new,
+                                 ref_hop=ref_hop)
+                    else:
+                        # argument-branch tuple: the cp0 stream IS what the tracker reads
+                        _phys_first = dr_seed_phys(prev, ref_hop, ctx.args.hops_per_sec,
+                                                   ctx.args.chip_rate_hz,
+                                                   ctx.args.carrier_hz,
+                                                   ctx.args.code_doppler_sign,
+                                                   ctx.code_len)
+                        prev.put("hold_retag", epoch=ref_hop,
+                                 code_phase_chips=dr_cp0(_phys_first, _t_now,
+                                                         prev["doppler_hz"],
+                                                         ctx.args.chip_rate_hz,
+                                                         ctx.args.carrier_hz,
+                                                         ctx.args.code_doppler_sign,
+                                                         ctx.code_len),
+                                 code_phase_rate=_hr_new,
+                                 ref_hop=ref_hop)
+                    if abs(_hr_d) > 0.005:
+                        _log_rl("holdrate-%d" % prn,
+                                "HOLD-RATE PRN %d: residual rate %+.4f -> %+.4f chips/s "
+                                "(clock-slaved; anchor re-expressed at the present, "
+                                "command continuous)"
+                                % (prn, _hr_new * ctx.args.hops_per_sec - _hr_d,
+                                   _hr_new * ctx.args.hops_per_sec), every_s=300.0)
             ddop = seed["doppler_hz"] - prev["doppler_hz"]
             # SAFETY NET (design (b)): bound a single cycle's Doppler move. A real MEO
             # Doppler moves <1 Hz per 0.2 s cycle; this only fires on a bad model, and it

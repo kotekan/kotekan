@@ -2618,6 +2618,14 @@ def build_parser(description):
                          "the 2026-08-02 override this check replaced: nothing is stored "
                          "from our own correction, and a real change passes in ~2N s. "
                          "Ignored under --period-continuity correct. 0 (default) disables.")
+    ap.add_argument("--hold-rate-from-clock", type=int, default=0,
+                    help="#103 ROOT FIX: while a seed is HELD, refresh its residual code "
+                         "rate from the pooled clock every cycle (the la_rate writer skips "
+                         "held sats), with the anchor re-expressed at the present epoch so "
+                         "the command is continuous. Frozen wrong rates dead-reckoned "
+                         "gps_l5 off the sky at 0.02-0.04 chips/s inside holds -- the "
+                         "escape/rebirth churn. Model-primary chains: a no-op by "
+                         "construction. 0 = off (holds freeze the rate, pre-#103).")
     ap.add_argument("--cp-rate-model-primary", type=int, default=0,
                     help="#103: seed the pooled-clock MODEL code rate for EVERY cp-rate fit "
                          "(the fit's rate becomes monitor-only; its position is kept). The "
