@@ -1667,7 +1667,23 @@ Fix (structural, KV: "no quick fixes -- tackle (b)"): STOP THE WALK, in gnss::Fl
 Falsifier: gps_l5 escapes+births down >=10x with gal_e5a flat as in-poll control. The
 referee and its release stay untouched -- they are the part that works.
 
-STATUS 2026-08-30 FINAL — v3/v3a FAILED LIVE, FLEET OUTAGE, DISARMED FOR GOOD TODAY.
+RESOLVED 2026-08-30 ~15:05 by model-primacy-max 2 -> 32 (one yaml number). THE ACTUAL
+ROOT, found on KV's "look again -- what differs on GPS?": gal/bds have ZERO holds (the
+freeze branch needs fit_trusted; they never fit) -- the entire pathology was gps-exclusive
+CODE-PATH EXPOSURE, and the dr-slew flip architecture the other chains run was already
+measured superior on gps sats (#83 P3-3b) and capped at 2 as forgotten A/B posture.
+VERDICT (25 min, settled window): escapes 34/h -> ZERO; new holds -> ZERO; TRACK-vs-MODEL
+-> ZERO; 6 sats flipped on measured p95 0.81-1.55 with zero referee exits; flipped trims
+at +0.00 (nothing to fight); 12 sats seeded, q 2.4-4.1; gal unchanged. Births residue
+~94/h = the separate weak-sat birth-cycling class (16/5/29/15), now the dominant residual
+-- its own item if it matters. The drift-shape forensics that got here: cp_err growth in
+holds is SUPER-LINEAR (quadratic preferred 32/49, curvature in the 0.5*k*ddot band) --
+stale-frozen-tuple exposure, not any rate VALUE (bias-EMA corr -0.04, la corr -0.009,
+truth ~0.4 mchips/s); the failed v1-v3 patched values in a path that should not run.
+cp-rate-model-primary stays armed (harmless, flush collapse). #104 (adoption bound)
+remains OPEN and important.
+
+SUPERSEDED STATUS (kept for the record) — v3/v3a FAILED LIVE, FLEET OUTAGE, DISARMED FOR GOOD TODAY.
 v3a (entry-only, full-value swap) armed 14:18; at 14:18:38 the swap baked a +29 mchips/s
 DR-DRIFT CONVERGENCE TRANSIENT (the estimate 31 s after MY OWN restart) into PRNs
 10/18/20/23 simultaneously — common-mode drift — mass escapes from 14:19:28 — the gps
