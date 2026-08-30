@@ -1837,20 +1837,49 @@ def stage_dead_reckon(ctx):
                 ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
                 ctx.dr_state.pop("clk_primed", None)
             elif ctx.drp.rx_sib is not None and ctx.drp.rx_sib.extra.get("code_length") == ctx.code_len:
-                if ctx.dr_state.get("clk") is None or abs(
-                        ((float(ctx.drp.rx_sib.value) - ctx.dr_state["clk"] + ctx.code_len / 2)
-                         % ctx.code_len) - ctx.code_len / 2) > 0.5:
-                    _log("dead-reckon: clock ADOPTED %.2f chips from in-process chain "
-                         "'%s' (same band %s, no file transport)"
-                         % (float(ctx.drp.rx_sib.value), ctx.drp.rx_sib.src, ctx.band_id))
-                ctx.dr_state["clk"] = float(ctx.drp.rx_sib.value) % ctx.code_len
-                ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
-                # An adopted clock IS a measurement -- the sibling measured it -- so the
-                # prime is spent. If this chain ever gains detectors it should refine by
-                # EMA from here, not snap away from a good number.
-                ctx.dr_state.pop("clk_primed", None)
-                if ctx.drp.rx_sib.extra.get("drift") is not None:
-                    ctx.dr_state["drift"] = float(ctx.drp.rx_sib.extra["drift"])
+                # ── #104 (--dr-clock-adopt-max-chips): BOUND THE ADOPTION STEP. During
+                # #103's 2026-08-30 outage, gps_l5's churn ran its legacy clock solve away
+                # (150 -> 292 chips) and THIS PATH relayed the poison to gal/bds every ~2 s
+                # -- fleet-wide q floor for 13 min -- while JOINT-CLK, which HAS a bound
+                # (5 chips / 0.5 sigma), REFUSED the identical values throughout. One
+                # guard existed; the parallel path skipped it (the peer-relative-blindness
+                # class). Refuse a sibling step beyond the bound while the LOCAL clock is
+                # fresh; if the local goes stale (> 300 s -- refusals do not refresh
+                # clk_t), adopt anyway: a questionable clock beats a dead one, and 300 s
+                # of containment turns a fleet kill into a slow, loudly-logged leak while
+                # the sibling heals. 0 disables (the pre-#104 behaviour).
+                _sib_v = float(ctx.drp.rx_sib.value) % ctx.code_len
+                _adopt_step = None
+                if ctx.dr_state.get("clk") is not None:
+                    _adopt_step = (((_sib_v - ctx.dr_state["clk"] + ctx.code_len / 2)
+                                    % ctx.code_len) - ctx.code_len / 2)
+                _adopt_bound = getattr(ctx.args, "dr_clock_adopt_max_chips", 0.0)
+                _local_fresh = (ctx.dr_state.get("clk_t") is not None
+                                and ctx.t0 - ctx.dr_state["clk_t"] < 300.0)
+                if (_adopt_bound > 0.0 and _adopt_step is not None and _local_fresh
+                        and abs(_adopt_step) > _adopt_bound):
+                    _log_rl("clkadopt-refuse",
+                            "dead-reckon: sibling clock from '%s' is %+.2f chips from the "
+                            "local solve -- adoption REFUSED (--dr-clock-adopt-max-chips "
+                            "%.1f; #104: a poisoned sibling must not overwrite a healthy "
+                            "chain; adopts again if local goes stale > 300 s)"
+                            % (ctx.drp.rx_sib.src, _adopt_step, _adopt_bound),
+                            every_s=30.0)
+                else:
+                    if ctx.dr_state.get("clk") is None or abs(
+                            ((_sib_v - ctx.dr_state["clk"] + ctx.code_len / 2)
+                             % ctx.code_len) - ctx.code_len / 2) > 0.5:
+                        _log("dead-reckon: clock ADOPTED %.2f chips from in-process chain "
+                             "'%s' (same band %s, no file transport)"
+                             % (_sib_v, ctx.drp.rx_sib.src, ctx.band_id))
+                    ctx.dr_state["clk"] = _sib_v
+                    ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
+                    # An adopted clock IS a measurement -- the sibling measured it -- so the
+                    # prime is spent. If this chain ever gains detectors it should refine by
+                    # EMA from here, not snap away from a good number.
+                    ctx.dr_state.pop("clk_primed", None)
+                    if ctx.drp.rx_sib.extra.get("drift") is not None:
+                        ctx.dr_state["drift"] = float(ctx.drp.rx_sib.extra["drift"])
             elif ctx.drp.rx_sib is not None:
                 # Same band, different code length: the chips are modular in a different
                 # period, so the number is numerically fine and physically meaningless.

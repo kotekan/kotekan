@@ -2772,6 +2772,14 @@ def build_parser(description):
                          "C11/C12/C13 produced 11309 phantom rows (5.5%% of all BeiDou map "
                          "points) at a plausible-looking 25-30 dB-Hz. A model that can invent "
                          "a satellite needs a capability gate the search never needed.")
+    ap.add_argument("--dr-clock-adopt-max-chips", type=float, default=0.0,
+                    help="#104: refuse a SIBLING clock adoption whose step from the local "
+                         "solve exceeds this many chips while the local clock is fresh "
+                         "(< 300 s). The 2026-08-30 outage: gps_l5's churn ran its clock "
+                         "solve to 292 chips and the unbounded adoption path relayed it "
+                         "to every chain in ~2 s -- while JOINT-CLK's 5-chip bound "
+                         "refused the identical values throughout. 5.0 matches that "
+                         "precedent. 0 = unbounded (pre-#104).")
     ap.add_argument("--dr-min-sats", type=int, default=2,
                     help="detections needed for a receiver-clock solve (one sat is "
                          "unfalsifiable -- same reasoning as --bias-min-sats)")
