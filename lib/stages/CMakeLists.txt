@@ -68,6 +68,7 @@ add_library(
     pulsarNetworkProcess.cpp
     bufferMerge.cpp
     bufferCopy.cpp
+    bufferDedup.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
     bufferQuiet.cpp
