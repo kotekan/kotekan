@@ -1611,6 +1611,20 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #104 — the cross-chain clock ADOPTION path has NO plausibility bound, and it turned a one-chain churn into a FLEET outage (2026-08-30 14:27-14:40)
+
+During #103 v3a's failure (below), gps_l5's mass churn ran its legacy clock solve away
+from ~150 to 170-292 chips -- and gal_e5a ADOPTED the runaway value every ~2 s
+("dead-reckon: clock ADOPTED ... from in-process chain 'gps_l5'", 14:38: 215 -> 202 ->
+192 -> 183 -> 176 -> 171 chips), dragging gal/bds/e5b models with it: fleet-wide q
+pinned at the 1.0 floor for ~13 min. THE JOINT-CLK GUARD REFUSED THE SAME NUMBERS THE
+WHOLE TIME (bounds 5.0 chips / 0.5 sigma; deltas -142/-33/-27 logged as REFUSED) -- the
+adoption path simply has no equivalent bound. One guard existed, the parallel path
+skipped it: the peer-relative-blindness class. FIX (unbuilt): bound adoption steps the
+same way (refuse a sibling clock further than ~5 chips from the current value unless the
+local solve is unprimed), so a poisoned sibling cannot overwrite a healthy chain.
+Without this, any gps-side incident becomes a fleet incident.
+
 ## #103 — GPS's 21x lock churn: the TRACK walks onto the 3.27-chip comb lobe — ROOT-CAUSED, attribution flipped twice before being CODE-PINNED (2026-08-30)
 
 gps_l5 logs 3,028 lock events / 13 h against 133-145 on every other chain (21x, all PRNs).
@@ -1653,7 +1667,27 @@ Fix (structural, KV: "no quick fixes -- tackle (b)"): STOP THE WALK, in gnss::Fl
 Falsifier: gps_l5 escapes+births down >=10x with gal_e5a flat as in-poll control. The
 referee and its release stay untouched -- they are the part that works.
 
-STATUS 2026-08-30 EOD: (1) --cp-rate-model-primary ARMED and beneficial (fit flushes
+STATUS 2026-08-30 FINAL — v3/v3a FAILED LIVE, FLEET OUTAGE, DISARMED FOR GOOD TODAY.
+v3a (entry-only, full-value swap) armed 14:18; at 14:18:38 the swap baked a +29 mchips/s
+DR-DRIFT CONVERGENCE TRANSIENT (the estimate 31 s after MY OWN restart) into PRNs
+10/18/20/23 simultaneously — common-mode drift — mass escapes from 14:19:28 — the gps
+clock solve ran away under the churn — cross-chain adoption (#104) spread it — FLEET q
+at the 1.0 floor 14:27-14:40. Emergency disarm + restart 14:40; recovery confirmed
+(clock re-solved 150.3, gal q 3.5+ within 2 min). THE PROTOCOL LESSON, which explains
+all three failed arms in one line: A RESTART RESETS THE DR ESTIMATOR AND RE-ENTERS EVERY
+HOLD — arming this feature restart-adjacent consumes the estimator at its WORST exactly
+when the blast radius is widest. v1's first value (−35 mchips) and v2's (−35) were the
+same transient. The 0.5 chips/s plausibility bound was 17x too loose to catch it.
+
+v4 REQUIREMENTS (do NOT arm before all three): (1) dr-warmup gate — no swap until the
+drift estimate is ≥10 min old / innovation-settled; (2) plausibility bound ~20 mchips/s
+(3x the settled sd), not 500; (3) never arm restart-adjacent — the arm rides a config
+already live through one settled hour. And #104's adoption bound first: it is what
+turns a bad arm into a fleet outage. Honest alternative to weigh: the tracker-side
+continuity fold (cp_rate/ref_hop analog of #52's dcyc) makes mid-hold refresh safe and
+is the structural end-state.
+
+OLD STATUS (superseded): (1) --cp-rate-model-primary ARMED and beneficial (fit flushes
 132/h -> 0). (2) --hold-rate-from-clock v1 armed 13:26, REVERT-TRIGGERED, disarmed 13:57:
 the mechanism verdict passed instantly (3.3-chip quantum GONE, drifting holds GONE, control
 quiet) but the refresh source -- the pooled l-a estimate -- swings +-50 mchips/s on minutes
