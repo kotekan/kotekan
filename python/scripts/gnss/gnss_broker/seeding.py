@@ -1085,8 +1085,14 @@ def stage_detections_to_seeds(ctx):
                 _hr_tgt = ctx.dr_state["drift"] / ctx.args.hops_per_sec
                 _hr_cur = prev.get("code_phase_rate", 0.0)
                 _hr_d = (_hr_tgt - _hr_cur) * ctx.args.hops_per_sec  # chips/s
-                _slew = 0.005 / ctx.args.hops_per_sec               # 5 mchips/s per refresh
-                _hr_new = _hr_cur + max(-_slew, min(_slew, _hr_tgt - _hr_cur))
+                # dr-entry (v3): ONE swap at hold entry -> take the FULL target (the
+                # plausibility bound below still gates it); the 5 mchips/s slew applies
+                # only to the per-cycle 'dr' arm, where each refresh is one of many.
+                if _hrs == "dr-entry":
+                    _hr_new = _hr_tgt
+                else:
+                    _slew = 0.005 / ctx.args.hops_per_sec           # 5 mchips/s per refresh
+                    _hr_new = _hr_cur + max(-_slew, min(_slew, _hr_tgt - _hr_cur))
                 # Plausibility bound (chips/s) on the TARGET: a dr drift further than this
                 # from the held rate is the estimator misbehaving, not the satellite.
                 # Skip, keep the frozen rate, and the referee still stands behind it.
