@@ -619,6 +619,41 @@ Completeness tracking and configuration snapshots
    ``kotekan_build_branch``, and ``kotekan_cmake_options``. Empty if the
    tracker is disabled.
 
+Flag updates group (``/flag_updates``)
+======================================
+
+Only present when the writer's ``in_bf_mask_buf`` input is wired and at least one
+applied bad-feed-mask change record covers the file's time span. Each record is a mask
+the GPU pipeline actually applied (1 = good element, element order as ``/flags``),
+forwarded upstream only when its contents changed. A record applies from its
+``fpga_seq_num`` until the next record *from the same stream* (``freq_id``, the first
+coarse frequency of the pipeline that applied it — the streams cover disjoint parts of
+the band). The first record per stream may precede the file: it is the mask already in
+effect when the file's span starts.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 22 22 30
+
+   * - Dataset
+     - Shape
+     - Type
+     - Description
+   * - ``fpga_seq_num``
+     - (updates)
+     - uint64
+     - Absolute FPGA sequence number of the first sample the mask was
+       applied to.
+   * - ``freq_id``
+     - (updates)
+     - int32
+     - First coarse frequency of the stream that applied the mask,
+       identifying which part of the band the record covers.
+   * - ``bf_mask``
+     - (updates, elements)
+     - int8
+     - The applied mask, 1 = good.
+
 Digital gains group (``/digital_gains``)
 ========================================
 

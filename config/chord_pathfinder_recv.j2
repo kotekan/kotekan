@@ -35,6 +35,10 @@
 # and by 128 for the packet-loss mask layout.
 {% set samples_per_data_set = 8192 %}
 
+# Must match the X-engine config: sets the row count of the applied-mask change
+# frames received from it (samples_per_data_set / rfi_downsampling_factor rows).
+{% set rfi_downsampling_factor = 256 %}
+
 # fpga samples collapsed by the GPU correlator into one n2k sub-integration/visibility sample.
 # Distinct from samples_per_data_set (the total frame length); samples_per_data_set / sub_integration_ntime is the number
 # of sub-integrations produced per frame. Choose any positive divisor of samples_per_data_set (does not need to be 1024).
@@ -256,6 +260,20 @@ auto_spectrum_buffer:
     extents: [num_local_freq, num_elements]
     metadata_pool: chord_pool
 
+# Applied bad-feed-mask change records from the X-engine (bufferDedup there forwards a
+# frame whenever the applied mask changes, plus periodic refreshers). Each frame's
+# fpga_seq_num is the first sample the mask was applied to; a record is valid from its
+# seq until the next record's. Rows within a frame are identical copies of the mask.
+bf_mask_changes_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    quantity_name: "bf_mask"
+    dimnames: ["Trfi", "P", "D"]
+    dimscalings: [{{ rfi_downsampling_factor }}, 1, 1]
+    extents: [{{ samples_per_data_set // rfi_downsampling_factor }}, num_polarizations, num_dishes]
+    metadata_pool: chord_pool
+
 
 
 ## Receive data
@@ -269,6 +287,13 @@ buffer_recv_full_n2:
     kotekan_stage: bufferRecv
     buf: n2_recv_full_buffer
     listen_port: 11027
+
+# The records are folded into the vis files by hdf5N2Write (each file's /flag_updates
+# group holds the records covering its time span), so both writers consume this buffer.
+buffer_recv_bf_mask_changes:
+    kotekan_stage: bufferRecv
+    buf: bf_mask_changes_buffer
+    listen_port: 11029
 
 # Live autocorrelation power vs frequency from the full N2 stream, for the
 # peek endpoint. freq_id_base and num_pending_bins are left at their defaults
@@ -301,6 +326,7 @@ hdf5_N2_write_subset:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_subset_buffer
+    in_bf_mask_buf: bf_mask_changes_buffer
     input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
     baseband_gain_host_info: /fpga_controller
@@ -324,6 +350,7 @@ hdf5_N2_write_full:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_full_buffer
+    in_bf_mask_buf: bf_mask_changes_buffer
     input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/full/
     baseband_gain_host_info: /fpga_controller

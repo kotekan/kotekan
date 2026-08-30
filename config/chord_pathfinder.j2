@@ -456,6 +456,34 @@ host_bf_mask_applied_buffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
+# Applied-mask change record: bufferDedup forwards a frame here whenever the mask
+# differs from the last forwarded one, and it is sent to the recv node for archiving.
+# One stream per NUMA node, recording what that node's GPU actually applied: the mask
+# frames are identical by construction (one bufferBadInputs feeds both), but the two
+# captures can start frames apart, so the applied seq windows may differ. Keeping the
+# streams separate also avoids coupling the two halves' liveness; records identify
+# their half of the band by their coarse_freq metadata.
+host_bf_mask_changes_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    quantity_name: "bf_mask"
+    dimnames: ["Trfi", "P", "D"]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_bf_mask_changes_buffer_1:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    quantity_name: "bf_mask"
+    dimnames: ["Trfi", "P", "D"]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+    numa_node: 1
+
 # Per-feed (single-feed) SK statistics from the second-stage RFI kernel.
 # GPU output (cudaCopyFromRingbuffer of cudaRFISKbar rfi_skbar), consumed by RfiSKMetrics:
 # float32 "SKbar" [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
@@ -1607,6 +1635,39 @@ eigencalc_1:
     num_ev_conv: 2
     krylov: 2
     subspace: 2
+
+# Record applied bad feed mask changes: forward a mask frame only when its contents
+# change (or every resend_after_frames as a refresher, since the send links may drop
+# frames), and ship it to the recv node to be written to file. The frames carry the
+# absolute FPGA seq of the first sample the mask was applied to, so each record is
+# valid from its seq until the next record's. Both NUMA streams send to the same recv
+# port; records identify their GPU's half of the band by their coarse_freq metadata.
+dedup_bf_mask_applied:
+    resend_after_frames: 1024
+    dedup_0:
+        kotekan_stage: bufferDedup
+        in_buf: host_bf_mask_applied_buffer
+        out_buf: host_bf_mask_changes_buffer
+    dedup_1:
+        kotekan_stage: bufferDedup
+        in_buf: host_bf_mask_applied_buffer_1
+        out_buf: host_bf_mask_changes_buffer_1
+
+buffer_send_bf_mask_changes:
+    kotekan_stage: bufferSend
+    buf: host_bf_mask_changes_buffer
+    server_ip: 10.222.0.51
+    server_port: 11029
+    retry_time: 10.0
+    drop_frames: true
+
+buffer_send_bf_mask_changes_1:
+    kotekan_stage: bufferSend
+    buf: host_bf_mask_changes_buffer_1
+    server_ip: 10.222.0.51
+    server_port: 11029
+    retry_time: 10.0
+    drop_frames: true
 
 # Buffer sends
 
