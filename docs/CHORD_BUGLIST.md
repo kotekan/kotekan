@@ -1611,7 +1611,7 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #103 — GPS's 21x lock churn is the GPS-only fast loop walking onto the 3.27-chip comb lobe — ROOT-CAUSED (2026-08-30)
+## #103 — GPS's 21x lock churn: the ESCAPE GUARD kills HEALTHY tracks on an alias-captured SEARCH fit — ROOT-CAUSED, first attribution RETRACTED same hour (2026-08-30)
 
 gps_l5 logs 3,028 lock events / 13 h against 133-145 on every other chain. The cycle: a fade
 tips the GPS-only C++ fast code loop (95 steps/s, #51) across the ~1.6-chip watershed onto the
@@ -1625,12 +1625,27 @@ gal_e5a (no fast loop) has ZERO escapes, bds_b2a one at 0.5 chips. All instances
 lobe positions (common 16-channel stride), so the fleet-combined discriminator carries the
 same ambiguity and cannot veto the slip.
 
-Fix menu (unbuilt): (a) SNAP-BACK -- the escape offset is a known quantum, command the
-compensating +-3.2736-chip trim instead of releasing (keeps lock continuity, kills the churn);
-(b) bound the fast loop's cumulative excursion below the ~1.6-chip watershed between broker
-confirmations, or gate its gain on amp_snr; (c) keep the escape guard as-is -- it detects
-perfectly; only its RESPONSE is disproportionate. Next: ledger-stream forensics on a few
-slips (disc/trim/amp_snr trajectory) to pick (a)/(b), then a flag-gated arm.
+⚠️ FIRST ATTRIBUTION WRONG, RETRACTED SAME HOUR (the fast loop was innocent). The
+forensic that flipped it: at escape time the track sits at median 0.23 chips from the MODEL
+(91% under 1 chip, 470 escapes) while the SEARCH fit sits at median 3.1 chips off (quartiles
+1.9/3.1/3.7 = the alias quantum). The tracker never walks -- the SEARCH intermittently lands
+on a comb alias and the escape guard trusts it over a healthy track. "5 consecutive,
+sign-consistent" is no protection against a systematically wrong REFERENCE.
+
+THE REAL CHAIN: cx47+cx52 down -> 4 of 16 stride-16 comb offsets missing from the aggregated
+search -> delay aliases at multiples of 3.27 chips at up to ~1/3 amplitude (the 08-30
+occupancy law, live in production) -> GPS's weak-margin L5 fits alias-flip intermittently ->
+the guard executes the track and the rebirth re-seeds from the same wrong fit (birth steps
+0.5-25 chips). gal/bds immune: no blind search (no escape reference) + different margins.
+
+Fix (structural, KV 08-30: no quick fixes): TWO-OF-THREE VOTE in the escape guard. The
+broker holds three witnesses -- track, search fit, model (eph+clock, sub-chip since #99).
+Escape only when the TRACK is the odd one out (disagrees with BOTH search and model). When
+the SEARCH is the odd one out (track ~= model, search off by ~a comb quantum), VETO the
+escape and log SEARCH-ALIAS -- that line is also the free occupancy-alias monitor. Same
+gate on seed ADOPTION at birth. (The retracted quick fix (a), snap-back, would have moved
+healthy tracks ONTO the lobe -- the forensic that killed it is the reason the discipline
+exists.)
 
 ## #102 — the array is about to stop being a point: per-element GNSS geometry for the ~200 m build-out (DESIGN, 2026-08-29)
 
