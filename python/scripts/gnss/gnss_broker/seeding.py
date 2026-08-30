@@ -1061,10 +1061,23 @@ def stage_detections_to_seeds(ctx):
             # to the DR CLOCK DRIFT and SLEW-BOUNDS each refresh to 5 mchips/s: real
             # clock wander (slow) is tracked, transients (dr p90 12 mchips/s) are capped,
             # steady-state injected jitter is the source's own ~0.4 mchips/s.
+            # v3 (source "dr-entry", 2026-08-30 ~14:20): v2 refreshed PER CYCLE and was
+            # disarmed within its first 6 minutes -- restart-matched against the clean
+            # disarmed restart, held-sat q degraded again (G18). Mechanism unproven
+            # (candidates: the tuple rewrite itself costs a tracker re-pin -- #52's dcyc
+            # folds DOPPLER changes continuously but nothing folds a cp_rate/ref_hop
+            # change -- or a live retag/translate interplay the offline gate cannot see).
+            # v3 is robust to BOTH by construction: the swap happens at HOLD ENTRY ONLY,
+            # where the tuple's last per-cycle rewrite is being made anyway (la_rate
+            # refreshed it every cycle until now) -- ZERO marginal tuple rewrites. One
+            # shot, full dr-drift value, plausibility-bounded; no slew (nothing to
+            # integrate). Escape horizon at the dr drift's settled ~1-7 mchips/s error:
+            # 3-20 min instead of the frozen-noisy-rate 40-120 s.
             _hrs = getattr(ctx.args, "hold_rate_source", "none")
-            if (_hrs == "dr" and ctx.dr_state is not None
+            if (_hrs in ("dr", "dr-entry") and ctx.dr_state is not None
                     and ctx.dr_state.get("drift") is not None
                     and ctx.dr_state.get("clk") is not None
+                    and (prn not in ctx.cp_held or _hrs == "dr")
                     and prev.get("ref_hop") is not None and ref_hop > prev["ref_hop"]):
                 # dr drift is the receiver-clock code drift in chips/s; the seed's
                 # code_phase_rate is the same RESIDUAL in chips/hop (the replica applies

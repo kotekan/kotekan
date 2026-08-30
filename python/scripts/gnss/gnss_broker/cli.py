@@ -2619,7 +2619,7 @@ def build_parser(description):
                          "from our own correction, and a real change passes in ~2N s. "
                          "Ignored under --period-continuity correct. 0 (default) disables.")
     ap.add_argument("--hold-rate-source", type=str, default="none",
-                    choices=["none", "dr"],
+                    choices=["none", "dr", "dr-entry"],
                     help="#103 v2: while a seed is HELD, slew-bound its residual code rate "
                          "toward this source every cycle, anchor re-expressed at the present "
                          "(command-continuous; gate TestHoldRetagContinuity). 'dr' = the DR "
@@ -2628,7 +2628,7 @@ def build_parser(description):
                          "v1 of this idea sourced the pooled l-a estimate (+-50 mchips/s "
                          "swings) and was revert-triggered in 30 min: held sats INTEGRATE "
                          "rate noise that measurement-anchored sats never see. 'none' = "
-                         "holds freeze the rate (pre-#103).")
+                         "holds freeze the rate (pre-#103). 'dr-entry' (v3) = the swap at HOLD ENTRY only -- zero marginal tuple rewrites; the per-cycle 'dr' form (v2) degraded held q within minutes (suspected re-pin cost per rewrite) and stays only as the A/B arm.")
     ap.add_argument("--cp-rate-model-primary", type=int, default=0,
                     help="#103: seed the pooled-clock MODEL code rate for EVERY cp-rate fit "
                          "(the fit's rate becomes monitor-only; its position is kept). The "

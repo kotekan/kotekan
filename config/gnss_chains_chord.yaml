@@ -407,7 +407,10 @@ chains:
     # held, 2026-08-09). v3 direction: fix the rate at hold ENTRY only (a re-anchor happens
     # there anyway = zero marginal re-pins), sparse refresh only if a hold outlives the
     # dr-drift error budget.
-    hold-rate-source: "none"
+    # v3 (armed 2026-08-30 ~14:2x): rate swap at HOLD ENTRY ONLY -- the tuple's last
+    # per-cycle rewrite happens there anyway, so zero marginal re-pins; immune by
+    # construction to v1's noise coupling AND v2's suspected rewrite cost.
+    hold-rate-source: "dr-entry"
     # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
     # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
     # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
