@@ -1611,6 +1611,26 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #105 — fleet-common q-crash BURSTS: seconds-scale cross-instance decoherence, every few minutes (CHARACTERIZED 2026-08-30 evening, cause OPEN)
+
+The "funny q oscillations": per-sat q crashes 4 -> <1 with immediate recovery, bursty
+(spacing 30-480 s), visible fleet-wide as q variance while medians stay healthy. Fenced by
+elimination on the 18:45-19:30 UTC window (gps_l5, ~1,643 q samples, 113 crashes):
+  * MULTI-SAT: 67 of 125 crash bins hit 2-5 sats in the same 10 s (combos like 1/10/28/32)
+    -- fleet-common, not per-sat sky. (The DEEP fades -- G18 morning, G32 18:10-18:40, 25 dB
+    -- are the separate, understood sidelobe-pattern class.)
+  * NOT RFI: noise floor median 5.2 at crash instants = 5.2 overall (crash p90 LOWER).
+  * NOT re-anchoring: zero births/re-pins/escapes/releases behind the crashes (event-silent).
+  * NOT pairing depth: n_rec 128 at crash and quiet alike, corr(align, n_rec) = -0.01.
+  * THE SIGNATURE: 12/12 instances present, per-instance amps healthy, and FLEET ALIGN
+    collapsing 0.94 -> 0.15 over ~4-10 s, then snapping back -- the instances transiently
+    DISAGREE in phase/position with each other.
+  * Pre-dates today's arms (KV saw the oscillations before rrate-command extended).
+NEXT DISCRIMINATOR (needs a live capture, not banked logs): per-instance HOP STAMPS at
+crash instants -- same-count-different-WINDOW mixture (the #46 / fleet-coh-record-overlap
+open class) vs a genuine common-mode phase transient (the eta~0 frame-locked open item).
+A 30-min /get_status poller during a bursty period decides it.
+
 ## #33 — THE VECTOR TRACKER: CLOSED AS BUILT (2026-08-30)
 
 Not the monolithic filter the January design sketched -- the same estimator-owns-the-sky
