@@ -401,7 +401,13 @@ chains:
     # holds into oscillators (G18 q = noise 13:26-13:57). The bar: held-rate error
     # < 1.25 chips / hold duration = ~2 mchips/s for 10-min holds; dr drift measures
     # 0.4 mchips/s cycle-to-cycle. Same falsifier + revert triggers as v1 (pre-reg file).
-    hold-rate-source: "dr"
+    # v2 DISARMED 14:1x UTC same day: BOTH v1 and v2 degraded held-sat q (G18 viewer);
+    # the common factor is the PER-CYCLE RETAG itself -- analytic command continuity is not
+    # tuple stability, the tracker re-pins on tuple change (deep_snr 16.7 re-pinned vs 221
+    # held, 2026-08-09). v3 direction: fix the rate at hold ENTRY only (a re-anchor happens
+    # there anyway = zero marginal re-pins), sparse refresh only if a hold outlives the
+    # dr-drift error budget.
+    hold-rate-source: "none"
     # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
     # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
     # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
