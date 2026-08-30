@@ -1625,6 +1625,14 @@ same way (refuse a sibling clock further than ~5 chips from the current value un
 local solve is unprimed), so a poisoned sibling cannot overwrite a healthy chain.
 Without this, any gps-side incident becomes a fleet incident.
 
+BUILT + ARMED 2026-08-30 ~16:00, after its own one-defect iteration: v1 (15:51) defended
+the 0.00-chip startup PRIME against the sibling's real +149.44 and locked e5a/b2a out
+seedless for 5 min -- a guard inserted into a state machine with a state (clk_primed,
+the 08-08 walk-in protection) it did not consult, the #98 monitor-chain class again.
+v2 exempts primed clocks (a placeholder is not a measurement to defend) and was verified
+through the exact restart path that failed: adoption at +3 s, gal q 2.99 at 90 s, guard
+armed. Refusals only defend a MEASURED, fresh (<300 s) local clock.
+
 ## #103 — GPS's 21x lock churn: the TRACK walks onto the 3.27-chip comb lobe — ROOT-CAUSED, attribution flipped twice before being CODE-PINNED (2026-08-30)
 
 gps_l5 logs 3,028 lock events / 13 h against 133-145 on every other chain (21x, all PRNs).
