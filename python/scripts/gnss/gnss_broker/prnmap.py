@@ -205,6 +205,26 @@ def signal_incapable_prns(signal):
     ⚠️ GPS ONLY in effect, and deliberately: every Galileo satellite carries E5a/E5b and the
     BeiDou chains already exclude BDS-2 via alm_min_prn, so there is nothing to model there.
     """
+    reg = gps_prn_blocks()
+    return {p for p, b in reg.items() if not _block_carries(signal, b)}
+
+
+def block_carries(signal, block):
+    """Public face of _block_carries, for consumers outside the broker (the viewer's
+    capability marking). One place owns which block first carried each civil signal."""
+    return _block_carries(signal, block)
+
+
+def gps_prn_blocks():
+    """{prn -> block} for every CURRENTLY-assigned GPS PRN, from the IGS metadata SINEX.
+
+    The registry half of signal_incapable_prns, exposed so the viewer can mark
+    not-transmitted cells from the SAME source the broker filters on -- its first version
+    parsed Celestrak TLE titles, which is the identity source KV rejected for the broker
+    (and it gated on cache age, so a month-old TLE file silently disabled the marking
+    fleet-wide, 2026-08-31). SVN -> block from SATELLITE/IDENTIFIER, SVN -> current PRN
+    from SATELLITE/PRN with its validity window, so a re-used PRN resolves to the
+    satellite flying it TODAY even in an old file. {} on any failure (fail open)."""
     try:
         svn_block, svn_prn = {}, {}
         section = None
@@ -225,14 +245,14 @@ def signal_incapable_prns(signal):
                         and re.fullmatch(r"[A-Z]\d{2}", prn)):
                     svn_prn[svn] = prn
     except Exception:
-        return set()
-    out = set()
+        return {}
+    out = {}
     for svn, prn in svn_prn.items():
         if prn[0] != "G":                      # only GPS blocks gate a signal here
             continue
         b = svn_block.get(svn)
-        if b and not _block_carries(signal, b):
-            out.add(int(prn[1:]))
+        if b:
+            out[int(prn[1:])] = b
     return out
 
 
