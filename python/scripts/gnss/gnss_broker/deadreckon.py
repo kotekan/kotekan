@@ -814,6 +814,25 @@ def dr_seed(ctx):
                      % (ctx.band_id, len(_cmp),
                         sorted(abs(c[1]) for c in _cmp)[len(_cmp) // 2],
                         " ".join("PRN%d %+.2f(s%.2f)" % c for c in _cmp[:6])))
+        if getattr(ctx.args, "dr_cs_scan", False):
+            # ── CS-PHASE SCAN (2026-08-31, the gal_e6 bring-up instrument) ────────────────
+            # The chain reads noise with every INPUT verified (codes 50/50 == gnss-sdr,
+            # Doppler ratio exact, clock adopted, RF per-channel clean). The one anchoring
+            # never tested on sky is WHICH of the lc_seg secondary periods the model's cp
+            # lands in, so: step the birth cp by ONE primary period per pass and re-birth
+            # every seed (no slew). A wrong-but-constant anchoring lights up at exactly one
+            # k; a scan with NO winner exonerates the CS phase entirely. Reading: this line
+            # logs the PREVIOUS pass's best tracker amp_snr against the k it was despreading
+            # -- align (k, amp) offline over one full wrap (lc_seg passes = ~3.5 min at the
+            # 2 s interval). Default OFF; delete the yaml line + restart to disarm.
+            _k_prev = getattr(ctx.drp, "cs_scan_k", 0)
+            _amps = sorted(((float((ctx.status.get(_p) or {}).get("amp_snr", 0) or 0), _p)
+                            for _p in (ctx.status or {})), reverse=True)[:3]
+            _log("CS-SCAN %s: k_prev %d -> best amp_snr %s | next k %d of %d"
+                 % (ctx.band_id, _k_prev,
+                    " ".join("PRN%s %.1f" % (_p, _a) for _a, _p in _amps) or "none",
+                    (_k_prev + 1) % max(1, ctx.lc_seg), ctx.lc_seg))
+            ctx.drp.cs_scan_k = (_k_prev + 1) % max(1, ctx.lc_seg)
         planned = []
         for (ctag, prn), v in sorted(ctx.drp.pd.items()):
             # SIGNAL CAPABILITY first (see --dr-min-prn / --signal-capability): a
@@ -894,6 +913,11 @@ def dr_seed(ctx):
                      and (not ctx.detectors or prn in ctx.mp_flipped)
                      and prn in ctx.dr_state["seeded"]
                      and (ctx.sig_of(ctx.status.get(prn, {})) >= ctx.args.lock_snr or _held))
+            if getattr(ctx.args, "dr_cs_scan", False):
+                # CS-PHASE SCAN (E6 bring-up instrument): every pass re-BIRTHS the seed at
+                # the next secondary-period hypothesis -- never slews (the 0.05-chip cap
+                # could not move a 5115-chip step in a lifetime). See the pass-level log.
+                _slew = False
             if (not _slew and prn in ctx.seeds
                     and (ctx.sig_of(ctx.status.get(prn, {})) >= ctx.args.lock_snr or _held)):
                 continue  # sub-threshold LOCK: the DLL owns the residual now
@@ -1002,6 +1026,8 @@ def dr_seed(ctx):
                    - ctx.drp.t_fc_abs * ctx.args.chip_rate_hz
                      * (1.0 + ctx.args.code_doppler_sign
                         * dop_seed / ctx.args.carrier_hz)) % ctx.drp.mod
+            if getattr(ctx.args, "dr_cs_scan", False):
+                cp0 = (cp0 + getattr(ctx.drp, "cs_scan_k", 0) * ctx.code_len) % ctx.drp.mod
             if ctx.args.dr_dry_run:
                 planned.append("PRN %d el %.0f cp0 %.1f dop %+.0f rate %+.2f"
                                % (prn, v["el"], cp0, dop_seed, drate))

@@ -1242,6 +1242,14 @@ def build_parser(description):
                          "--seed-bias-source=slow (per solve, ~10 s cadence: 0.005 => tau "
                          "~30 min -- above the minute-scale quantization wander, below "
                          "hour-scale GPSDO thermal drift).")
+    ap.add_argument("--dr-cs-scan", action="store_true",
+                    help="BRING-UP INSTRUMENT (2026-08-31, gal_e6): step every dead-reckon "
+                         "birth cp by one primary period per pass (re-birthing, never "
+                         "slewing) to scan the secondary-code phase hypothesis; the CS-SCAN "
+                         "log line pairs each pass's k with the previous pass's best tracker "
+                         "amp_snr. One wrap = lc_seg passes. A winner k = a measured "
+                         "anchoring offset; no winner = the CS phase is exonerated. "
+                         "NEVER leave armed: the chain cannot track while scanning.")
     ap.add_argument("--tle-name-filter", type=str, default=None,
                     help="regex on the TLE NAME; almanac keeps only matching sats. Encodes "
                          "signal capability the TLE group can't (e.g. 'BEIDOU-3' for B1C: "

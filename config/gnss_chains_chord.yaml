@@ -2697,6 +2697,12 @@ http://cx44:12048/gnss{0..1}_b3i_n2combine,\
 http://cx51:12048/gnss{0..1}_b3i_n2combine"
 
   gal_e6:
+    # ⚠️ TEMPORARY BRING-UP SCAN (2026-08-31 ~13:1x): the chain reads noise with every input
+    # verified (codes 50/50 == gnss-sdr, Doppler exact, clock adopted, RF clean); this steps
+    # the birth cp one primary period per pass to scan the CS100 phase hypothesis. The chain
+    # CANNOT TRACK while scanning. Read: CS-SCAN log lines, one wrap = 100 passes ~3.5 min.
+    # REMOVE THIS LINE + broker restart the moment the scan has answered.
+    dr-cs-scan: true
     signal: gal_e6
     dr-clock-adopt: true
     seed-phase-transport: true

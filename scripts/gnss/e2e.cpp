@@ -133,6 +133,10 @@ struct Opt {
     // exposed so a sweep can measure the sensitivity instead of arguing about it.
     const char* seed_file = nullptr; ///< read a REAL broker seed (seeds.jsonl) instead of direct
     double seed_dop_err = 0.0;       ///< Hz added to the seed's Doppler only (not the truth)
+    double seed_cp_err = 0.0;        ///< chips added to the seed's code phase only (not the
+                                     ///< truth). +k*primary_len = a SECONDARY-PHASE error on a
+                                     ///< baked _CS/_NH signal: calibrates what a wrong CS/NH
+                                     ///< period looks like downstream (the E6 bring-up tool).
     double seed_cp_rate = 0.0;       ///< chips/hop residual handed to the tracker
     /// Hz/s handed to the tracker. ⚠️ NOT ZERO, AND THAT IS THE POINT (task #52, 2026-08-13).
     ///
@@ -353,6 +357,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--refine-hops")) o.refine_hops = next_i();
         else if (arg_eq(a, "--refine-step")) o.refine_step = next_i();
         else if (arg_eq(a, "--seed-dop-err")) o.seed_dop_err = next_d();
+        else if (arg_eq(a, "--seed-cp-err")) o.seed_cp_err = next_d();
         else if (arg_eq(a, "--seed-cp-rate")) o.seed_cp_rate = next_d();
         else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
         else if (arg_eq(a, "--truth-dop-rate")) o.truth_dop_rate = next_d();
@@ -967,7 +972,7 @@ int main(int argc, char** argv) {
 
     gnss::SeedState sd;
     sd.ref_hop = o.hop0;
-    sd.phase_ref_chips = dp.cp_at_ref;
+    sd.phase_ref_chips = dp.cp_at_ref + o.seed_cp_err;
     sd.doppler_hz = det_dop + o.seed_dop_err;
     sd.cp_rate = o.seed_cp_rate;
     sd.dop_rate = o.seed_dop_rate;

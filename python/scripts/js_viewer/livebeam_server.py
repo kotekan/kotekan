@@ -788,7 +788,7 @@ UNIFIED_SIGNALS = [
     # L2/MID band: the l2c dongle was REPURPOSED from GPS L2C (CM data + CL pilot) to BeiDou B2b
     # (2026-08-03, mid-band-gal-bds-receivers). B2b is DATA-only (no pilot), tag C, 1 ms records;
     # the primary stage keeps its l2c_gps_* name (Shape-A convention), only the signal changes.
-    {"tag": "C", "band": "L2", "col": "B2b", "name": "BeiDou B2b (data, B-CNAV3)", "sigid": "BDS_B2B_I",
+    {"tag": "C", "band": "L5", "col": "B2b", "name": "BeiDou B2b (data, B-CNAV3)", "sigid": "BDS_B2B_I",
      "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 1e-3,  "peel": False},
     {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q", "sigid": "GPS_L5_Q",
      "combiner": "l5_gps_combiner", "search": "l5_gps_search",  "t_rec": 1e-3,  "peel": True},
@@ -886,11 +886,20 @@ def _display_for(sigid):
 
 
 def _band_of(carrier_hz):
-    """RF-band column group (L1/L2/L5) from the sky carrier. The mid band (~1200-1280 MHz:
-    L2C, B2b/E5b, B3I, E6) groups under 'L2'; anything below 1.2 GHz (L5/E5a/B2a) under 'L5'."""
+    """RF-band column group (L1/L2/L5) from the sky carrier.
+
+    ⚠️ THE L5/L2 BOUNDARY IS 1.22 GHz, NOT 1.20 (KV, 2026-08-31): Galileo E5 is ONE
+    AltBOC(15,10) centred at 1191.795 MHz and BeiDou B2 is ACE-BOC on the same centre --
+    E5b/B2b at 1207.14 are the UPPER SIDEBANDS of the same transmission as E5a/B2a at
+    1176.45, one modulator, coherent. Splitting the pair across column groups drew a
+    physical unit as two bands. So: Low ('L5') = the E5/B2 complex + GLONASS L3OC
+    (1202.03, GLONASS's L5-class signal); Mid ('L2') = L2C (1227.60), GLONASS L2
+    (1246-1248), B3I (1268.52), E6 (1278.75); High ('L1') >= 1.40 GHz.
+    A 1.20 GHz threshold put 1207.14 in Mid alongside E6/B3I -- wrong side of the split.
+    """
     if carrier_hz >= 1.40e9:
         return "L1"
-    if carrier_hz >= 1.20e9:
+    if carrier_hz >= 1.22e9:
         return "L2"
     return "L5"
 
