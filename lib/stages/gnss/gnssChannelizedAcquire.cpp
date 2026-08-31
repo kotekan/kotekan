@@ -531,7 +531,7 @@ AcquisitionResult ms_split_peak(const std::vector<double>& surf, const Acquisiti
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length, int fine_lag_sign,
-                                   bool pairsum_select) {
+                                   bool pairsum_select, int data_hops) {
     AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0, -1.0};
     double surf_sum = 0.0;
     long surf_n = 0;
@@ -633,9 +633,12 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     // reported delay is the negative of the surface lag). It is split out so the GPU path, which
     // produces the same reduction on the device, calls THIS rather than growing a second copy.
     const double mean0 = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
+    const double dop_u = (data_hops > 0 && data_hops < dims.Mp)
+                             ? (double)data_hops / (double)dims.Mp
+                             : 1.0;
     return peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, best.peak,
                                mean0, best_d, best_q, best_i, dop_peak, fine_lag_sign, dop_loc_m,
-                               dop_loc_p);
+                               dop_loc_p, dop_u);
 }
 
 AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
@@ -643,7 +646,7 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                                       double chip_rate, long code_length, double peak, double mean,
                                       int best_d, int best_q, int best_i,
                                       const std::vector<double>& dop_peak, int fine_lag_sign,
-                                      double dop_loc_m, double dop_loc_p) {
+                                      double dop_loc_m, double dop_loc_p, double dop_u) {
     AcquisitionResult best{0.0, 0.0, 0, peak, 0.0, peak};
     best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
     // Sub-grid Doppler refine: the correlation-vs-Doppler peak is smooth but sampled on a
@@ -679,25 +682,52 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
         // winning hypothesis's Doppler between bins.
         if (dop_loc_m >= 0.0 && dop_loc_p >= 0.0 && s0 > 0.0
             && std::max(dop_loc_m, dop_loc_p) < s0) {
-            // Parabola on the LOCAL samples. The pure-tone ratio inversion tried first was
-            // wrong for this surface: measured on the noiseless e2e synthetic, the neighbour
-            // planes carry 50-74% of the peak power even for an exactly on-grid tone (NH
-            // demodulation residuals widen the Doppler response well past the sinc model), so
-            // any tone-model inversion misplaces the vertex. A peak that wide and smooth is
-            // exactly where the three-point parabola is well-conditioned -- it failed here
-            // before only because its inputs were the neighbour planes' whole-plane maxima
-            // (noise order statistics), not the signal.
-            const double denom_l = dop_loc_m - 2.0 * s0 + dop_loc_p;
+            // #105 (2026-08-30/31): the refine was structurally inert for two reasons, each
+            // found on a different instrument. (1) sm/sp were the neighbour planes' WHOLE-
+            // PLANE maxima -- for a strong peak the far shoulder loses to the plane's noise
+            // order statistic (~13x mean over ~3e5 cells), so the parabola compared signal
+            // to noise. Fixed by dop_loc_*: the neighbour planes AT the winning tau. (2) A
+            // parabola on this response under-recovers the position severely: the data
+            // window is data_hops of signal against an Mp-hop transform (zero-padded), so
+            // the response to an offset of x bins is g(x) = sin(pi x u)/x with u = M/Mp --
+            // VERIFIED on the production correlate (acqbench, M 2048 / Mp 3125: measured
+            // amplitude ratios match this g to 3 decimals across delta 0.05-0.45).
+            // Invert the measured amplitude ratio r = |g(1-delta)|/|g(delta)| of the larger
+            // neighbour to the peak (monotone on [0, 0.5]; bisection). On-grid, r equals
+            // g(1)/g(0) = sin(pi u)/(pi u), NOT zero -- treating this shoulder as a tone
+            // (the plain r/(1+r) form) misplaces on-grid sats by +-0.3 bins, and treating
+            // the shape as a parabola recovers only ~15-60%% of the true offset.
+            // NOTE the e2e harness is NOT a gate for this estimator: its acquire sums
+            // multiple full-Mp windows (a different response; measured r(0) ~ 0.7-0.99
+            // there) -- acqbench drives the production shape.
+            const bool up = dop_loc_p >= dop_loc_m;
+            const double r_meas = std::sqrt(std::max(dop_loc_m, dop_loc_p) / s0);
+            auto g_abs = [&](double x) {
+                if (std::fabs(x) < 1e-9)
+                    return M_PI * dop_u; // lim sin(pi x u)/x
+                return std::fabs(std::sin(M_PI * x * dop_u) / x);
+            };
+            auto r_model = [&](double d) { return g_abs(1.0 - d) / std::max(g_abs(d), 1e-30); };
             double delta = 0.0;
-            if (denom_l < 0.0)
-                delta = std::max(-0.5, std::min(0.5, 0.5 * (dop_loc_m - dop_loc_p) / denom_l));
+            if (r_meas >= 1.0) {
+                delta = 0.5; // at/beyond mid-bin: the neighbour ties the peak
+            } else if (r_meas > r_model(0.0)) {
+                double lo = 0.0, hi = 0.5;
+                for (int it = 0; it < 40; ++it) {
+                    const double mid = 0.5 * (lo + hi);
+                    (r_model(mid) < r_meas ? lo : hi) = mid;
+                }
+                delta = 0.5 * (lo + hi);
+            } // r_meas <= the on-grid shoulder: indistinguishable from 0 -> keep the bin
             if (std::getenv("GNSS_DOP_DEBUG"))
                 fprintf(stderr,
-                        "GNSS_DOP_DEBUG: d %d/%d  sm %.4g s0 %.4g sp %.4g -> "
-                        "delta %+.4f (%+.2f Hz)\n",
-                        best_d, nd, dop_loc_m, s0, dop_loc_p, delta,
-                        delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]));
-            best.doppler_hz += delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
+                        "GNSS_DOP_DEBUG: d %d/%d  sm %.4g s0 %.4g sp %.4g  r %.4f r0 %.4f "
+                        "u %.3f -> delta %+.4f (%+.2f Hz)\n",
+                        best_d, nd, dop_loc_m, s0, dop_loc_p, r_meas, r_model(0.0), dop_u,
+                        (up ? delta : -delta),
+                        (up ? delta : -delta) * (doppler_grid[best_d + 1] - doppler_grid[best_d]));
+            best.doppler_hz += (up ? delta : -delta)
+                               * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
         } else if (const double denom = sm - 2.0 * s0 + sp; denom < 0.0) {
             double delta = 0.5 * (sm - sp) / denom; // parabola vertex, in grid cells (|delta|<=0.5)
             delta = std::max(-0.5, std::min(0.5, delta));

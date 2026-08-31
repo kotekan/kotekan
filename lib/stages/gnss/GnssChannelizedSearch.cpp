@@ -806,7 +806,7 @@ void GnssChannelizedSearch::search_snapshot() {
                 const double _t_p0 = prof ? steady_s() : 0.0;
                 ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
                                             _replica->chip_rate_hz(), _replica->code_length(),
-                                            gnss::FINE_LAG_SIGN_PFB, _acq_pairsum_select);
+                                            gnss::FINE_LAG_SIGN_PFB, _acq_pairsum_select, hpr);
                 if (prof) t_acq += steady_s() - _t_p0;
             }
             // #41: ALIGNMENTS ARE COMPARED ON THE SCALLOPING-CORRECTED PEAK, never the raw

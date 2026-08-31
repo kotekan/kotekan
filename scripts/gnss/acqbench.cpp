@@ -50,7 +50,7 @@ static std::vector<int> chord_channels(int nc) {
 int main(int argc, char** argv) {
     int nd = 321, Mp = 3125, nc = 79, fine_step = 128, M = 2048, reps = 3;
     int tau_q = 1234;   // planted COARSE lag (hops)
-    int dop_bin = 7;    // planted Doppler, in whole transform bins
+    double dop_bin = 7;  // planted Doppler, transform bins (fractional = off-grid plant)
     bool do_cpu = true;
     const int sph = 16384;
     const double fs = 3.2e9;
@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
         else if (a == "--m") M = next();
         else if (a == "--reps") reps = next();
         else if (a == "--tau") tau_q = next();
-        else if (a == "--dop-bin") dop_bin = next();
+        else if (a == "--dop-bin") dop_bin = atof(argv[++i]);
         else if (a == "--no-cpu") do_cpu = false;
     }
 
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     // Doppler grid, BIN-ALIGNED and centred so the planted bin is inside it.
     std::vector<double> grid((size_t)nd);
     for (int d = 0; d < nd; ++d)
-        grid[(size_t)d] = (d - nd / 2 + dop_bin) * bin_hz;
+        grid[(size_t)d] = (d - nd / 2 + (int)llround(dop_bin)) * bin_hz;
 
     std::vector<int> local(nc);
     std::iota(local.begin(), local.end(), 0);
@@ -142,10 +142,11 @@ int main(int argc, char** argv) {
         dims = gnss::channelized_accumulate(dch, repl0, local, grid, fs, nc, surf_cpu, ws, ids,
                                             sph, 16, fine_step);
         t_cpu = now_s() - t0;
-        const auto pk = gnss::channelized_peak(surf_cpu, dims, grid, fs, 10.23e6, 10230);
+        const auto pk = gnss::channelized_peak(surf_cpu, dims, grid, fs, 10.23e6, 10230,
+                                               gnss::FINE_LAG_SIGN_PFB, false, M);
         printf("\nCPU  : %8.4f s   snr %.3f  peak %.6g  tau %ld  dop %+.2f Hz\n", t_cpu, pk.snr,
                pk.peak, pk.peak_tau_samples, pk.doppler_hz);
-        printf("       planted: coarse lag %d hops (tau %ld), doppler bin %+d (%+.2f Hz)\n", tau_q,
+        printf("       planted: coarse lag %d hops (tau %ld), doppler bin %+.3f (%+.2f Hz)\n", tau_q,
                (long)tau_q * sph, dop_bin, dop_bin * bin_hz);
     }
 
@@ -184,6 +185,9 @@ int main(int argc, char** argv) {
         const double snr = pk.peak / pk.mean;
         printf("GPU  : %8.4f s   snr %.3f  peak %.6g  (d %d, q %d, s %d)\n", t_gpu, snr, pk.peak,
                pk.d, pk.q, pk.s);
+        const auto gr = eng.peak_result(dims, grid, fs, 10.23e6, 10230);
+        printf("GPU  : refined dop %+.4f Hz (planted %+.4f, err %+.3f)\n", gr.doppler_hz,
+               dop_bin * bin_hz, gr.doppler_hz - dop_bin * bin_hz);
         if (do_cpu)
             printf("       speedup %.1fx\n", t_cpu / t_gpu);
 

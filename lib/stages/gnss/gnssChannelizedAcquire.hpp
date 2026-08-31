@@ -288,7 +288,7 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length,
                                    int fine_lag_sign = FINE_LAG_SIGN_PFB,
-                                   bool pairsum_select = false);
+                                   bool pairsum_select = false, int data_hops = 0);
 
 /// The second half of @ref channelized_peak: everything after the surface scan.
 ///
@@ -306,22 +306,24 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf,
 ///                 Pass empty to skip that refine (the Doppler then lands on the grid).
 /// @param dop_loc_m,dop_loc_p  the neighbour Doppler planes (best_d -+ 1) sampled AT the winning
 ///                 tau (max over a few cells around (best_q, best_i)), not their plane-wide max.
-///                 When >= 0, the sub-grid Doppler refine runs its parabola on these instead
-///                 of on dop_peak's plane-wide maxima -- see the #105 note at the
-///                 implementation for why the plane-max inputs made the refine structurally
-///                 inert (detections clustered within +-5 Hz of the 62.5 Hz grid on sky,
-///                 R = 0.83, and the +-31 Hz per-sat sawtooth that left in the broker's
-///                 clock-bias medians drove the #105 q-crash bursts; local inputs measure
-///                 |err| <= 1.75 Hz on the noiseless e2e sweep). Pass -1 (the default) to
-///                 keep the old behaviour. SELECTION statistics (#41 peak_interp, #97
-///                 pair-sum) are untouched either way.
+///                 When >= 0, the sub-grid Doppler refine inverts the zero-padded-sinc
+///                 amplitude ratio on these (with dop_u = data_hops/Mp) instead of running
+///                 the parabola on dop_peak's plane-wide maxima -- see the #105 note at the
+///                 implementation: the plane-max inputs were noise order statistics (refine
+///                 structurally inert; detections clustered on the 62.5 Hz grid, R = 0.83,
+///                 whose +-31 Hz per-sat sawtooth drove the #105 q-crash bursts), and the
+///                 response model is VERIFIED on the production correlate (acqbench sweep:
+///                 measured r matches sin(pi x u)/x to 3 decimals across delta 0.05-0.45).
+///                 Pass -1 (the default) to keep the old behaviour. SELECTION statistics
+///                 (#41 peak_interp, #97 pair-sum) are untouched either way.
 AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                                       const std::vector<double>& doppler_grid, double sample_rate,
                                       double chip_rate, long code_length, double peak, double mean,
                                       int best_d, int best_q, int best_i,
                                       const std::vector<double>& dop_peak,
                                       int fine_lag_sign = FINE_LAG_SIGN_PFB,
-                                      double dop_loc_m = -1.0, double dop_loc_p = -1.0);
+                                      double dop_loc_m = -1.0, double dop_loc_p = -1.0,
+                                      double dop_u = 1.0);
 
 /// Peak-pick an ms-split surface. NOT channelized_peak: that one's tau -> code-phase mapping
 /// silently assumes two things the shipped geometry arranges and the ms-split cannot.
