@@ -108,6 +108,22 @@ common:
   keep-n2: true
   n2-dual: true
 
+  # ── SYNTHESIS ~4x (GPU TODO items 3+6, ARMED FLEET-WIDE 2026-08-31) ─────────────────────
+  # fp16 Phi tables (item 3): halves the RESIDENT table -- the one lever the DRAM-footprint
+  # verdict (gnss_gpu_search.md 10.6c) says pays. 1.55x through the SHIPPED enqueue_waveform
+  # (scripts/gnss/phi16gpu ALL PASS: wave rel 1.1e-3 vs the 3.3e-4 storage floor; the
+  # raw-float2 paths THROW while armed rather than despread garbage).
+  phi-fp16: true
+  # CENTERED 80-chip gather window (item 6): the prototype peaks mid-span, so 80 CENTERED
+  # chips keep -0.05 dB where the one-sided cap cliffed at 105-120. e2e-EXACT (== the
+  # untruncated baseline, GPU tracker leg included) across a 3-PRN x 3-Doppler sweep.
+  # ⚠️ 2.6x, not 1.75x: the "shipped one-sided 140" never actually shipped -- before this,
+  # production walked the full ~210 chips. Centered floor is 60 (harsh-comb flip at 52);
+  # 80 carries margin in both comb regimes. Disarm = delete these three keys, regenerate,
+  # restart -- d_first == 0 is the historical walk BIT-FOR-BIT.
+  despread-max-chips: 80
+  despread-chips-centered: true
+
   # ✅ WIDENED FLEET-WIDE 2026-08-18 14:15, and the sky forced the question. On KV's
   # full-fleet restart at ~14:05, FOUR instances wedged on startup -- cx42/gnss0,
   # cx43/gnss0, cx44/gnss1, cx51/gnss0 -- every one of them on a node where this guard was
