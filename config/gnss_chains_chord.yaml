@@ -2735,3 +2735,59 @@ http://cx42:12048/gnss{0..1}_e6_n2combine,\
 http://cx43:12048/gnss{0..1}_e6_n2combine,\
 http://cx44:12048/gnss{0..1}_e6_n2combine,\
 http://cx51:12048/gnss{0..1}_e6_n2combine"
+
+  gps_l2c:
+    # ── THE FOURTH CARRIER: GPS L2C @ 1227.6 MHz (2026-08-31) ────────────────────────────
+    # ⚠️ UNPARKED BY CORRECTING AN ERROR OF MINE, NOT BY NEW HARDWARE. L2C sat parked on the
+    # verdict "0-1 covering channels per node", which is true and IRRELEVANT: fleet_dll sums
+    # RAW POWERS across every instance reporting a window and forms ONE discriminator, so
+    # sensitivity is fleet-wide. The number that matters is the fraction of the MAINLOBE the
+    # fleet captures, and L2C's is only 6 freq_ids (6283-6288) because the signal is
+    # narrowband. Five land on distinct instances -> ~83% captured, against L5's ~80%.
+    # cx44 owns none and just does not report; a PRN an instance never despreads is skipped
+    # by the combine, not blocked by it.
+    #
+    # ⚠️ FIRST TIME-MULTIPLEXED CHAIN. CM and CL interleave chip by chip, so comb_mult == 2
+    # and the combined stream runs at TWICE the component rate. That found a real bug in
+    # propagate_seed (phase advanced at the COMPONENT rate, then reduced as a COMBINED phase
+    # -- identically zero for every comb_mult 1 signal we had ever flown, -4.167 chips/record
+    # at 1000 Hz here). Fixed a5bb46bc0; e2e at the true carrier closes 0.000 at every record.
+    # NOT the chip rate: E6-C at 5.115 Mcps reads 0.000 on the same invocation, which is the
+    # control that kept this out of the morning's chips-are-a-unit trap.
+    #
+    # CM, not CL: 10230 chips / 20 ms fits the record geometry the fleet already runs; CL's
+    # 767250 / 1.5 s is a different regime and gets its own bring-up. 28 capable PRNs from the
+    # IGS registry (L2C is IIR-M and newer) -- MORE than gps_l5's 21.
+    #
+    # SAME satellites as gps_l5 at a DIFFERENT carrier, so the cross-band clock bootstrap runs
+    # the rate conversion that this morning's gal_e6 root cause installed (511.5 kcps adopting
+    # a 10.23 Mcps donor is exactly the case clock_chips_convert exists for). The settled DLL
+    # residual against that bootstrap is tau_band(1227.6 vs 1176.45) -- a FOURTH equation, and
+    # the first from a same-constellation pair.
+    signal: gps_l2c
+    dr-clock-adopt: true
+    seed-phase-transport: true
+    presence-admit-displaced: true
+    joint-consume: clk,rate
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
+    fleet-trim-readback: 1
+    trackers: "http://cx19:12048/gnss{0..1}_l2c_inject,\
+http://cx27:12048/gnss{0..1}_l2c_inject,\
+http://cx42:12048/gnss{0..1}_l2c_inject,\
+http://cx43:12048/gnss{0..1}_l2c_inject,\
+http://cx44:12048/gnss{0..1}_l2c_inject,\
+http://cx51:12048/gnss{0..1}_l2c_inject"
+    combiner: gnss0_l2c_n2combine
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l2c_n2assemble,\
+http://cx27:12048/gnss{0..1}_l2c_n2assemble,\
+http://cx42:12048/gnss{0..1}_l2c_n2assemble,\
+http://cx43:12048/gnss{0..1}_l2c_n2assemble,\
+http://cx44:12048/gnss{0..1}_l2c_n2assemble,\
+http://cx51:12048/gnss{0..1}_l2c_n2assemble"
+    dll-combiners: "http://cx19:12048/gnss{0..1}_l2c_n2combine,\
+http://cx27:12048/gnss{0..1}_l2c_n2combine,\
+http://cx42:12048/gnss{0..1}_l2c_n2combine,\
+http://cx43:12048/gnss{0..1}_l2c_n2combine,\
+http://cx44:12048/gnss{0..1}_l2c_n2combine,\
+http://cx51:12048/gnss{0..1}_l2c_n2combine"

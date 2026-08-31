@@ -214,9 +214,24 @@ def parse_extra_signals(cfg, args, node, primary_chans):
                                   float(cfg["signals"]["max_doppler_hz"]),
                                   modulation=s["modulation"], boc_m=s["boc_m"], boc_n=s["boc_n"])
         if not chans:
-            raise SystemExit(f"--extra-signal {name}: {node} holds no covering channels "
-                             f"(carrier {s['carrier_hz']/1e6:.2f} MHz -- outside the science "
-                             "band, or this node's comb misses it entirely)")
+            # ⚠️ A NARROWBAND SIGNAL LEGITIMATELY MISSES SOME NODES (2026-08-31, GPS L2C).
+            # This used to be fatal, and for a wideband chain it should be: L5 spans 105
+            # freq_ids, so a node holding none of them is a band-plan bug. But L2C's mainlobe
+            # is SIX freq_ids (6283-6288) -- narrower than the 8-id comb stride -- so by
+            # construction only 5 of the 12 instances own one, and cx44 owns none of the six.
+            # That is not an error: sensitivity is fleet-wide (fleet_dll sums raw powers
+            # across reporting instances) and a PRN an instance never despreads is skipped by
+            # the combine, not blocked by it.
+            #
+            # ⚠️ SKIPPED, NOT SILENT. A wideband chain that quietly loses a node is exactly
+            # the failure this SystemExit was written to catch, so the skip is announced per
+            # node AND the fleet-wide coverage is reported by gen_fleet, where a chain that
+            # covers surprisingly few nodes is visible at a glance.
+            sys.stderr.write(
+                f"  note: {name} has no covering channel on {node} "
+                f"(carrier {s['carrier_hz']/1e6:.2f} MHz, mainlobe "
+                f"{2 * s['chip_rate_hz'] / 1e6:.3f} MHz) -- chain SKIPPED on this node\n")
+            continue
         chains.append({
             "signal": name, "tracker": name, "prns": prns, "tag": tag,
             "ord": len(chains) + 1,  # 0 is the primary chain; drives the core rotation

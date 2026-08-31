@@ -21,6 +21,8 @@
 #       BDS_B3I_NH:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 #       --extra-signal
 #       GAL_E6_C_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+#       --extra-signal
+#       GPS_L2C_CM:1,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,20,21,23,24,25,26,27,28,29,30,31,32
 #       --search-port-base 11042
 # Prefer `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml`, which holds the
 # whole fleet's flags in one versioned file and can --check them against these.
@@ -1646,9 +1648,219 @@ gnss0_e6_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
-gnss0_n2assemble:
+gnss0_l2c_n2assemble:
   chan_export: true
   channel_ids: &id019
+  - 6288
+  cpu_affinity:
+  - 33
+  elem_sum: true
+  elem_sum_tau_s: 2.0
+  in_buf: gnss0_l2c_n2epl_buf
+  kotekan_stage: GnssGpuRecordAssemble
+  n_elements: 32
+  out_buf: gnss0_l2c_n2rec_buf
+  prns: &id020
+  - 1
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 17
+  - 18
+  - 20
+  - 21
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
+  reference_element: 0
+  sample_rate: 3200000000.0
+  spectrum_ring_depth: 8
+  spectrum_window_samples: 3355443200
+gnss0_l2c_n2assemble_tiles:
+  cpu_affinity:
+  - 4
+  ctl_buf: gnss0_l2c_n2ctl_buf
+  hops_per_record: 2048
+  kotekan_stage: GnssN2RecordAssemble
+  n_gnss_channels: 1
+  n_live_elements: 32
+  n_prn: 28
+  num_elements: 128
+  num_synth: 128
+  out_buf: gnss0_l2c_n2epl_buf
+  tiles_buf: gnss0_l2c_n2tiles_buf
+gnss0_l2c_n2cmb_buf:
+  frame_size: 28 * 413 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_l2c_n2combine:
+  cpu_affinity:
+  - 35
+  deep_coherent: true
+  deep_rate_min_q: 10.0
+  deep_rate_search: true
+  fft_len: 16384
+  in_bufs:
+  - gnss0_l2c_n2rec_buf
+  integration_length: 100
+  integration_mode: rolling
+  kotekan_stage: GnssCoherentCombiner
+  n_elements: 32
+  n_prn: 28
+  out_buf: gnss0_l2c_n2cmb_buf
+  phase_dump_path: /tmp/gnss_n2phase_cx27_0.txt
+  phase_dump_prns: []
+  phase_track: false
+  record_export: 128
+  sky_deep: true
+gnss0_l2c_n2ctl_buf:
+  frame_size: 50352
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_l2c_n2dual:
+  commands:
+  - carrier_phase_from_ref: true
+    carrier_phase_mode: 1
+    channel_ids: *id019
+    conjugate: true
+    despread_chips_centered: true
+    despread_max_chips: 80
+    f_offset_hz: 1227600000.0
+    fft_length: 16384
+    get_prns_endpoint: /gnss0_l2c_inject/get_prns
+    gnss_ctl_name: gnss0_l2c_n2ctl
+    gnss_local_channels: &id021
+    - 297
+    gnss_synth_name: gnss0_l2c_synth
+    hops_per_record: 2048
+    n_channels: 1
+    n_elements: 1
+    name: cudaGnssInject
+    num_synth: 128
+    phi_fp16: true
+    prns: *id020
+    sample_rate: 3200000000.0
+    seed_endpoint: /gnss0_l2c_inject/set_seeds
+    set_prns_endpoint: /gnss0_l2c_inject/set_prns
+    set_trim_endpoint: /gnss0_l2c_inject/set_trim
+    signal: GPS_L2C_CM
+    trim_endpoint: /gnss0_l2c_inject/get_trim
+    trim_ttl_s: 4.0
+    voltage_name: voltage
+  - gnss_freq_map: true
+    gnss_local_channels: *id021
+    gnss_synth_name: gnss0_l2c_synth
+    gnss_tiles_name: gnss0_l2c_tiles
+    live_element_tiles:
+    - 0
+    - 4
+    n2k_correlation_name: gnss0_l2c_n2corr
+    name: cudaCorrelatorDual
+    num_live_elements: 32
+    num_synth: 128
+    rfi_RFImask_name: rfi_RFImask
+    rfi_all_pass: true
+    sub_integration_ntime: 2048
+    voltage_name: voltage
+  - name: cudaSyncOutput
+  - gpu_mem: gnss0_l2c_tiles_buffer
+    name: cudaOutputData
+    out_buf: host_gnss_tiles
+  - gpu_mem: gnss0_l2c_n2ctl
+    name: cudaOutputData
+    out_buf: host_gnss_n2ctl
+  cpu_affinity:
+  - 32
+  cuda_stream_base: 24
+  gpu_id: 0
+  in_buffers:
+    host_voltage_ringbuffer: host_voltage_ringbuffer
+  kotekan_stage: cudaProcess
+  num_cuda_streams: 27
+  out_buffers:
+    host_gnss_n2ctl: gnss0_l2c_n2ctl_buf
+    host_gnss_tiles: gnss0_l2c_n2tiles_buf
+gnss0_l2c_n2epl_buf:
+  frame_size: 967856
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_l2c_n2rec_buf:
+  frame_size: 28 * 413 * sizeof_float32 + 28 * 1 * 9 * sizeof_float32
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+  peek_hold: true
+gnss0_l2c_n2sink:
+  allow_ndarray: true
+  base_dir: /tmp/gnss
+  cpu_affinity:
+  - 41
+  file_ext: raw
+  file_name: cx27_gnss0_n2rec
+  in_buf: gnss0_l2c_n2cmb_buf
+  kotekan_stage: rawFileWrite
+gnss0_l2c_n2tiles_buf:
+  frame_size: 131072
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_l2c_telem_buf:
+  frame_size: 25968
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 32
+gnss0_l2c_telem_pack:
+  chain: gps_l2c
+  chan_export: true
+  channel_ids:
+  - 6288
+  cpu_affinity:
+  - 36
+  fft_len: 16384
+  hops_per_record: 2048
+  in_buf: gnss0_l2c_n2rec_buf
+  inst: cx27.0
+  kotekan_stage: GnssTelemPack
+  max_prn: 16
+  n_chan: 1
+  n_elements: 32
+  n_prn: 28
+  out_buf: gnss0_l2c_telem_buf
+  records_per_frame: 4
+gnss0_l2c_telem_send:
+  buf: gnss0_l2c_telem_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11060
+  use_config_tracker: false
+gnss0_n2assemble:
+  chan_export: true
+  channel_ids: &id022
   - 5984
   - 6000
   - 6016
@@ -1663,7 +1875,7 @@ gnss0_n2assemble:
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
   out_buf: gnss0_n2rec_buf
-  prns: &id020
+  prns: &id023
   - 1
   - 2
   - 3
@@ -1747,7 +1959,7 @@ gnss0_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id019
+    channel_ids: *id022
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -1755,7 +1967,7 @@ gnss0_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss0_inject/get_prns
     gnss_ctl_name: gnss0_n2ctl
-    gnss_local_channels: &id021
+    gnss_local_channels: &id024
     - 278
     - 279
     - 280
@@ -1769,7 +1981,7 @@ gnss0_n2dual:
     name: cudaGnssInject
     num_synth: 128
     phi_fp16: true
-    prns: *id020
+    prns: *id023
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_inject/set_seeds
     set_prns_endpoint: /gnss0_inject/set_prns
@@ -1779,7 +1991,7 @@ gnss0_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id021
+    gnss_local_channels: *id024
     gnss_synth_name: gnss0_synth
     gnss_tiles_name: gnss0_tiles
     live_element_tiles:
@@ -1867,6 +2079,7 @@ gnss0_srch_tap:
   - 291
   - 292
   - 293
+  - 297
   - 307
   - 308
   - 309
@@ -1935,7 +2148,7 @@ gnss0_telem_send:
   use_config_tracker: false
 gnss1_b2a_n2assemble:
   chan_export: true
-  channel_ids: &id022
+  channel_ids: &id025
   - 5976
   - 5992
   - 6008
@@ -2003,7 +2216,7 @@ gnss1_b2a_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id022
+    channel_ids: *id025
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -2011,7 +2224,7 @@ gnss1_b2a_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss1_b2a_inject/get_prns
     gnss_ctl_name: gnss1_b2a_n2ctl
-    gnss_local_channels: &id023
+    gnss_local_channels: &id026
     - 277
     - 278
     - 279
@@ -2036,7 +2249,7 @@ gnss1_b2a_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id023
+    gnss_local_channels: *id026
     gnss_synth_name: gnss1_b2a_synth
     gnss_tiles_name: gnss1_b2a_tiles
     live_element_tiles:
@@ -2135,7 +2348,7 @@ gnss1_b2a_telem_send:
   use_config_tracker: false
 gnss1_b2b_n2assemble:
   chan_export: true
-  channel_ids: &id024
+  channel_ids: &id027
   - 6136
   - 6152
   - 6168
@@ -2203,7 +2416,7 @@ gnss1_b2b_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id024
+    channel_ids: *id027
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -2211,7 +2424,7 @@ gnss1_b2b_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss1_b2b_inject/get_prns
     gnss_ctl_name: gnss1_b2b_n2ctl
-    gnss_local_channels: &id025
+    gnss_local_channels: &id028
     - 287
     - 288
     - 289
@@ -2236,7 +2449,7 @@ gnss1_b2b_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id025
+    gnss_local_channels: *id028
     gnss_synth_name: gnss1_b2b_synth
     gnss_tiles_name: gnss1_b2b_tiles
     live_element_tiles:
@@ -2335,7 +2548,7 @@ gnss1_b2b_telem_send:
   use_config_tracker: false
 gnss1_b3i_n2assemble:
   chan_export: true
-  channel_ids: &id026
+  channel_ids: &id029
   - 6456
   - 6472
   - 6488
@@ -2402,7 +2615,7 @@ gnss1_b3i_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id026
+    channel_ids: *id029
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -2410,7 +2623,7 @@ gnss1_b3i_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss1_b3i_inject/get_prns
     gnss_ctl_name: gnss1_b3i_n2ctl
-    gnss_local_channels: &id027
+    gnss_local_channels: &id030
     - 307
     - 308
     - 309
@@ -2434,7 +2647,7 @@ gnss1_b3i_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id027
+    gnss_local_channels: *id030
     gnss_synth_name: gnss1_b3i_synth
     gnss_tiles_name: gnss1_b3i_tiles
     live_element_tiles:
@@ -2537,7 +2750,7 @@ gnss1_cmb_buf:
   num_frames: 4
 gnss1_e5a_n2assemble:
   chan_export: true
-  channel_ids: &id028
+  channel_ids: &id031
   - 5976
   - 5992
   - 6008
@@ -2605,7 +2818,7 @@ gnss1_e5a_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id028
+    channel_ids: *id031
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -2613,7 +2826,7 @@ gnss1_e5a_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss1_e5a_inject/get_prns
     gnss_ctl_name: gnss1_e5a_n2ctl
-    gnss_local_channels: &id029
+    gnss_local_channels: &id032
     - 277
     - 278
     - 279
@@ -2638,7 +2851,7 @@ gnss1_e5a_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id029
+    gnss_local_channels: *id032
     gnss_synth_name: gnss1_e5a_synth
     gnss_tiles_name: gnss1_e5a_tiles
     live_element_tiles:
@@ -2737,7 +2950,7 @@ gnss1_e5a_telem_send:
   use_config_tracker: false
 gnss1_e5b_n2assemble:
   chan_export: true
-  channel_ids: &id030
+  channel_ids: &id033
   - 6136
   - 6152
   - 6168
@@ -2805,7 +3018,7 @@ gnss1_e5b_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id030
+    channel_ids: *id033
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -2813,7 +3026,7 @@ gnss1_e5b_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss1_e5b_inject/get_prns
     gnss_ctl_name: gnss1_e5b_n2ctl
-    gnss_local_channels: &id031
+    gnss_local_channels: &id034
     - 287
     - 288
     - 289
@@ -2838,7 +3051,7 @@ gnss1_e5b_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id031
+    gnss_local_channels: *id034
     gnss_synth_name: gnss1_e5b_synth
     gnss_tiles_name: gnss1_e5b_tiles
     live_element_tiles:
@@ -2937,7 +3150,7 @@ gnss1_e5b_telem_send:
   use_config_tracker: false
 gnss1_e6_n2assemble:
   chan_export: true
-  channel_ids: &id032
+  channel_ids: &id035
   - 6536
   - 6552
   - 6568
@@ -3001,7 +3214,7 @@ gnss1_e6_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id032
+    channel_ids: *id035
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -3009,7 +3222,7 @@ gnss1_e6_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss1_e6_inject/get_prns
     gnss_ctl_name: gnss1_e6_n2ctl
-    gnss_local_channels: &id033
+    gnss_local_channels: &id036
     - 312
     - 313
     - 314
@@ -3030,7 +3243,7 @@ gnss1_e6_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id033
+    gnss_local_channels: *id036
     gnss_synth_name: gnss1_e6_synth
     gnss_tiles_name: gnss1_e6_tiles
     live_element_tiles:
@@ -3125,7 +3338,7 @@ gnss1_e6_telem_send:
   use_config_tracker: false
 gnss1_n2assemble:
   chan_export: true
-  channel_ids: &id034
+  channel_ids: &id037
   - 5976
   - 5992
   - 6008
@@ -3141,7 +3354,7 @@ gnss1_n2assemble:
   kotekan_stage: GnssGpuRecordAssemble
   n_elements: 32
   out_buf: gnss1_n2rec_buf
-  prns: *id020
+  prns: *id023
   reference_element: 0
   sample_rate: 3200000000.0
   spectrum_ring_depth: 8
@@ -3193,7 +3406,7 @@ gnss1_n2dual:
   commands:
   - carrier_phase_from_ref: true
     carrier_phase_mode: 1
-    channel_ids: *id034
+    channel_ids: *id037
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
@@ -3201,7 +3414,7 @@ gnss1_n2dual:
     fft_length: 16384
     get_prns_endpoint: /gnss1_inject/get_prns
     gnss_ctl_name: gnss1_n2ctl
-    gnss_local_channels: &id035
+    gnss_local_channels: &id038
     - 277
     - 278
     - 279
@@ -3216,7 +3429,7 @@ gnss1_n2dual:
     name: cudaGnssInject
     num_synth: 128
     phi_fp16: true
-    prns: *id020
+    prns: *id023
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_inject/set_seeds
     set_prns_endpoint: /gnss1_inject/set_prns
@@ -3226,7 +3439,7 @@ gnss1_n2dual:
     trim_ttl_s: 4.0
     voltage_name: voltage
   - gnss_freq_map: true
-    gnss_local_channels: *id035
+    gnss_local_channels: *id038
     gnss_synth_name: gnss1_synth
     gnss_tiles_name: gnss1_tiles
     live_element_tiles:
