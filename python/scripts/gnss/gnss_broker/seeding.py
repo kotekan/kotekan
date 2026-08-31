@@ -54,6 +54,99 @@ def _present_streak(ctx, prn):
     return n
 
 
+def _nh_joint_pred_chips(ctx, prn, t_utc):
+    """Predicted overlay-epoch phase (chips) of PRN's code at receiver wall time t_utc,
+    transmit-aligned: gpst(t) - tau + sat_clock, mod the overlay epoch. Deliberately NO
+    receiver-clock term -- that missing term is the ONE common unknown the fleet votes on.
+    Same convention as the nh_assist hint (almanac.py) and the CL time-assist, both proven
+    on sky; the broadcast sat clock matters here because segments are 1 ms, not 1.5 s."""
+    import gnss_ephemeris as _eph
+    v = ctx.pred[prn]
+    t_tx = _eph.gpst_of_utc(t_utc) - v[3] / C_LIGHT + v[4]
+    return (t_tx % ctx.lc_epoch) * ctx.args.chip_rate_hz
+
+
+def _nh_joint_vote(ctx, prn, ph_ref, ref_hop, snr, now):
+    """One detection's vote: the receiver-common overlay offset implied by its measured
+    phase-at-its-own-epoch. delta = (measured - predicted) mod LLc is the receiver clock
+    in chips mod the overlay epoch -- the SAME number for every satellite when the model
+    is right, so the per-sat spread in the NH-JOINT log is the model's own referee.
+    Votes only from phases at their own epoch (cp0-route periods are noise: 0.58
+    overlay periods per Hz of Doppler error)."""
+    t_ref = ctx.utc0_sample0 + ref_hop / ctx.args.hops_per_sec
+    LLc = ctx.lc_seg * ctx.code_len
+    delta = (ph_ref - _nh_joint_pred_chips(ctx, prn, t_ref)) % LLc
+    ctx.cpt.nh_votes[prn] = (now, delta, min(float(snr), 200.0))
+    return delta
+
+
+def _nh_joint_consensus(ctx, now):
+    """Resolve (or keep) the common offset from the standing votes: circular weighted
+    median over chips-mod-LLc. CONTINUOUS, not an integer vote -- the sub-ms part of the
+    receiver clock is common too, and an integer vote splits 50/50 when it sits near a
+    segment boundary; in the continuous domain the boundary does not exist.
+    A resolved consensus is a run constant: it is kept when votes thin out and only ever
+    REPLACED by a newer resolution (never silently expired)."""
+    a = ctx.args
+    LLc = ctx.lc_seg * ctx.code_len
+    votes = ctx.cpt.nh_votes
+    for p in [p for p, (t, _, _) in votes.items() if now - t > a.nh_joint_window_s]:
+        votes.pop(p)
+    if len(votes) < a.nh_joint_min_prns:
+        return ctx.cpt.nh_common
+    # circular mean as the pivot, then a weighted median of the wrapped deviations
+    two_pi = 2.0 * math.pi
+    cs = sum(w * math.cos(two_pi * d / LLc) for _, d, w in votes.values())
+    sn = sum(w * math.sin(two_pi * d / LLc) for _, d, w in votes.values())
+    if cs == 0.0 and sn == 0.0:
+        return ctx.cpt.nh_common
+    mu = (math.atan2(sn, cs) / two_pi * LLc) % LLc
+    devs = sorted((((d - mu + LLc / 2) % LLc) - LLc / 2, w, p)
+                  for p, (_, d, w) in votes.items())
+    half = 0.5 * sum(w for _, w, _ in devs)
+    acc = 0.0
+    med = devs[-1][0]
+    for dv, w, _ in devs:
+        acc += w
+        if acc >= half:
+            med = dv
+            break
+    dstar = (mu + med) % LLc
+    inliers = [(p, ((d - dstar + LLc / 2) % LLc) - LLc / 2, w)
+               for p, (_, d, w) in votes.items()]
+    inl = [(p, dv, w) for p, dv, w in inliers if abs(dv) <= a.nh_joint_tol_chips]
+    w_tot = sum(w for _, _, w in inliers)
+    w_in = sum(w for _, _, w in inl)
+    spread = max((abs(dv) for _, dv, _ in inl), default=0.0)
+    _log_rl("nhjoint", "NH-JOINT: delta %+.1f chips (%.3f ms, seg %d) from %d/%d sats "
+            "(weight %.0f/%.0f), max inlier dev %.1f chips"
+            % (dstar, dstar / a.chip_rate_hz * 1e3,
+               int(round(dstar / ctx.code_len)) % ctx.lc_seg,
+               len(inl), len(votes), w_in, w_tot, spread), every_s=60.0)
+    if len(inl) >= a.nh_joint_min_prns and w_in >= 0.6 * w_tot:
+        prev = ctx.cpt.nh_common
+        moved = (prev is None
+                 or abs(((dstar - prev[0] + LLc / 2) % LLc) - LLc / 2) > 0.5 * ctx.code_len)
+        if moved:
+            _log("NH-JOINT: common overlay offset %s %+.1f chips (%.3f ms) from %d sats%s"
+                 % ("RESOLVED" if prev is None else "MOVED to", dstar,
+                    dstar / a.chip_rate_hz * 1e3, len(inl),
+                    "" if prev is None else " -- was %+.1f" % prev[0]))
+        ctx.cpt.nh_common = (dstar, now, len(inl), (w_in / w_tot) if w_tot else 0.0)
+    return ctx.cpt.nh_common
+
+
+def _nh_joint_snap(ctx, prn, ph_ref, ref_hop, dstar):
+    """Snap a measured phase's overlay SEGMENT to the consensus, keeping its fine phase:
+    the derived label is (predicted + common offset), the measurement keeps sub-chip
+    authority. Returns (snapped_ph, k_segments_moved)."""
+    t_ref = ctx.utc0_sample0 + ref_hop / ctx.args.hops_per_sec
+    LLc = ctx.lc_seg * ctx.code_len
+    want = (_nh_joint_pred_chips(ctx, prn, t_ref) + dstar) % LLc
+    k = int(round((((want - ph_ref + LLc / 2) % LLc) - LLc / 2) / ctx.code_len))
+    return (ph_ref + k * ctx.code_len) % LLc, k
+
+
 def stage_coast_drop(ctx):
     """COAST / DROP: retire seeds for satellites that have set, and coast the ones merely fading.
         
@@ -585,6 +678,13 @@ def stage_detections_to_seeds(ctx):
             if cp_at_ref >= 0.0:
                 LLc = ctx.lc_seg * ctx.code_len
                 ph = cp_at_ref % LLc
+                # ── THE JOINT OVERLAY FIT (--nh-joint): vote on the RAW measured phase,
+                # before the debounce or any offset touches it. One common unknown, every
+                # satellite's word counts once; see _nh_joint_vote.
+                _nhj_ok = (ctx.args.nh_joint != "off" and ctx.utc0_sample0
+                           and ctx.args.almanac and prn in ctx.pred)
+                if _nhj_ok and snr >= ctx.args.nh_joint_min_snr:
+                    _nh_joint_vote(ctx, prn, ph, ref_hop, snr, ctx.drp.now_w)
                 # PERIOD CONTINUITY IS A CHECK, NOT AN AUTHORITY (2026-08-02).
                 #
                 # This existed because the search could not report the overlay period: it
@@ -692,6 +792,34 @@ def stage_detections_to_seeds(ctx):
                 if not _nh_deferred and (snr >= ctx.args.period_check_snr
                                          or prn not in ctx.cpt.ph_hist):
                     ctx.cpt.ph_hist[prn] = (ref_hop, ph, dop)
+                # ── THE JOINT OVERLAY FIT, apply side: below --period-check-snr the
+                # measured label is noise (G1's ran uniform over 0..19, stepping the seed
+                # a whole code period every ~4 min, 2026-08-31); with a resolved consensus
+                # the segment is DERIVED (prediction + common offset) and the measurement
+                # keeps only its sub-chip fine phase. Model-primacy: strong measured
+                # labels stay authoritative and the consensus is their REFEREE -- a strong
+                # disagreement is an alarm about the source, not a correction.
+                # Placed BEFORE --nh-period-offset so that manual lever still applies on
+                # top. ph_hist is already fed above (measured, strong-only), so nothing
+                # derived is ever stored as the satellite's own word (the 2026-08-02 trap).
+                if _nhj_ok:
+                    _nhc = _nh_joint_consensus(ctx, ctx.drp.now_w)
+                    if _nhc is not None and ctx.args.nh_joint == "apply":
+                        _ph_j, _k_j = _nh_joint_snap(ctx, prn, ph, ref_hop, _nhc[0])
+                        if snr < ctx.args.period_check_snr:
+                            if _k_j:
+                                _log_rl("nhjapp-%d" % prn,
+                                        "PRN %d overlay segment DERIVED from consensus: "
+                                        "%+d period(s) off the weak measurement (snr %.0f)"
+                                        % (prn, _k_j, snr), every_s=60.0)
+                            ph = _ph_j
+                        elif _k_j:
+                            _log_rl("nhjref-%d" % prn,
+                                    "PRN %d STRONG measured overlay label disagrees with "
+                                    "the joint consensus by %+d period(s) (snr %.0f) -- "
+                                    "measured KEPT; if this persists across sats the "
+                                    "consensus or the prediction is wrong"
+                                    % (prn, _k_j, snr), every_s=60.0)
                 # --nh-period-offset: applied HERE, after the continuity check has had its
                 # say, and to the phase rather than the argument -- propagate_seed prefers
                 # phase_ref_chips whenever it is >= 0, so offsetting only code_phase_chips
@@ -700,11 +828,24 @@ def stage_detections_to_seeds(ctx):
                 ph = (ph + ctx.args.nh_period_offset * ctx.code_len) % LLc
                 seed.put("nh_lift", epoch=ref_hop, code_phase_at_ref_chips=ph)
         elif det_nh >= 0 and ctx.lc_seg > 1:
-            seed.put("nh_lift", epoch=ref_hop,
-                     code_phase_chips=((seed["code_phase_chips"] % ctx.code_len)
-                                       + (det_nh % ctx.lc_seg) * ctx.code_len)
-                                      % (ctx.lc_seg * ctx.code_len))
-            ctx.cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
+            # A bare index with no phase at its own epoch: the weakest form of the
+            # measurement. Under --nh-joint apply with a resolved consensus, a weak
+            # detection's raw det_nh is NOISE and is not applied at all (the standing
+            # seed persists; the strong path above owns the common case). No derived
+            # substitute here: relating a cp0 argument to the prediction rides the
+            # 0.58-periods-per-Hz Doppler lever, which is exactly the route the
+            # comment above retired.
+            if (ctx.args.nh_joint == "apply" and ctx.cpt.nh_common is not None
+                    and snr < ctx.args.period_check_snr):
+                _log_rl("nhjskip-%d" % prn,
+                        "PRN %d weak raw det_nh=%d SKIPPED (snr %.0f, consensus stands)"
+                        % (prn, det_nh, snr), every_s=60.0)
+            else:
+                seed.put("nh_lift", epoch=ref_hop,
+                         code_phase_chips=((seed["code_phase_chips"] % ctx.code_len)
+                                           + (det_nh % ctx.lc_seg) * ctx.code_len)
+                                          % (ctx.lc_seg * ctx.code_len))
+                ctx.cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
         elif ctx.args.cl_assist and ctx.utc0_sample0 and ctx.args.almanac and prn in ctx.pred:
             tau = ctx.pred[prn][3] / C_LIGHT
             cl_chips = (((ctx.utc0_sample0 - tau + ctx.args.cl_time_adjust) % ctx.lc_epoch)

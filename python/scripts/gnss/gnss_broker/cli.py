@@ -2641,6 +2641,41 @@ def build_parser(description):
                          "the 2026-08-02 override this check replaced: nothing is stored "
                          "from our own correction, and a real change passes in ~2N s. "
                          "Ignored under --period-continuity correct. 0 (default) disables.")
+    ap.add_argument("--nh-joint", type=str, default="off",
+                    choices=["off", "vote", "apply"],
+                    help="the JOINT overlay fit: the NH label is not N independent per-sat "
+                         "20-way guesses -- the overlay is synchronous at the transmitters, "
+                         "so at the receiver the labels differ only by the known geometric "
+                         "delay plus ONE common unknown, the receiver clock mod the overlay "
+                         "epoch. Every detection with a phase at its own epoch VOTES for that "
+                         "common offset (continuous, chips mod the epoch -- an integer vote "
+                         "splits at segment boundaries); the consensus is a circular weighted "
+                         "median. 'vote' measures and logs only (NH-JOINT lines), changing "
+                         "nothing. 'apply' additionally DERIVES the overlay segment from the "
+                         "consensus for detections below --period-check-snr (whose measured "
+                         "label is noise: G1's ran uniform over 0..19, stepping the seed a "
+                         "whole code period every ~4 min, 2026-08-31) and gates the raw "
+                         "det_nh fallback; strong detections keep their verified measured "
+                         "label, with a disagreement alarm as the referee. Requires the "
+                         "almanac (tau and the broadcast sat clock feed the prediction). "
+                         "Default off.")
+    ap.add_argument("--nh-joint-min-prns", type=int, default=3,
+                    help="satellites that must agree (within --nh-joint-tol-chips of the "
+                         "circular median) before the common offset resolves. Below this the "
+                         "joint fit stays in observation and 'apply' changes nothing.")
+    ap.add_argument("--nh-joint-min-snr", type=float, default=30.0,
+                    help="detections below this snr do not vote (their phase is noise); they "
+                         "may still be APPLIED to, which is the point of the joint fit.")
+    ap.add_argument("--nh-joint-window-s", type=float, default=600.0,
+                    help="votes older than this are pruned. A resolved consensus is NOT "
+                         "expired by pruning -- the receiver clock mod the epoch is a run "
+                         "constant (the F-engine axis is drift-free); it is only ever "
+                         "REPLACED by a newer resolution.")
+    ap.add_argument("--nh-joint-tol-chips", type=float, default=1500.0,
+                    help="a vote further than this from the circular median is an outlier "
+                         "and does not count toward resolution. True agreement is a few "
+                         "chips; the default is deliberately loose (0.15 code periods) so "
+                         "the tell is the LOGGED spread, not a silent exclusion.")
     ap.add_argument("--hold-rate-source", type=str, default="none",
                     choices=["none", "dr", "dr-entry"],
                     help="#103 v2: while a seed is HELD, slew-bound its residual code rate "

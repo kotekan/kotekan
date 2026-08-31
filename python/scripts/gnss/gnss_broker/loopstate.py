@@ -171,7 +171,7 @@ class CpTracking(object):
 
     __slots__ = ("err_hist", "escape", "escape_sign", "fit_slope", "hist", "translated",
                  "dop_hist", "ph_hist", "dop_clamped", "nh_pending", "integ_hist",
-                 "rej_streak")
+                 "rej_streak", "nh_votes", "nh_common")
 
     def __init__(self):
         self.err_hist = {}      # prn -> recent (predicted - observed) code phase
@@ -185,6 +185,12 @@ class CpTracking(object):
         self.dop_clamped = set()  # prns whose Doppler hit a clamp this pass
         self.nh_pending = {}    # prn -> (m, count): a measured overlay period awaiting
                                 # confirmation before it may rewrite the standing one (#97)
+        self.nh_votes = {}      # prn -> (utc, delta_chips, weight): each detection's measured
+                                # receiver-common overlay offset (chips mod the overlay epoch);
+                                # the NH20 label is ONE receiver clock mod 20 ms that every
+                                # satellite votes on, never N per-sat 20-way guesses (--nh-joint)
+        self.nh_common = None   # (delta_chips, utc_resolved, n_prns, weight_frac) once the
+                                # fleet consensus resolves; a run constant barring clock steps
         self.integ_hist = {}    # prn -> [(t, integ_chips)]: per-sat integrity baseline for
                                 # the RELATIVE escape veto (--integ-veto-baseline-s, #98/#99)
         self.rej_streak = {}    # prn -> consecutive cp-rate rejections; at
