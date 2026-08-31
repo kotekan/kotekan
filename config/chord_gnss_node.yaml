@@ -261,6 +261,25 @@ runtime:
   # Cores verified free on cx19: unclaimed by the production config AND measured idle.
   # DPDK poll cores (5-7, 21-23 and their isolcpus siblings 37-39, 53-55) are at 0% idle
   # and must never be touched. NUMA1 keeps us on the same domain as host_voltage_buffer_1.
+  #
+  # ⚠️ SPLIT PER GPU 2026-08-31, AND THE OLD SINGLE LIST WAS ALL NUMA1. `nvidia-smi topo`:
+  # GPU0 is NUMA node 0 (cpus 0-15, 32-47), GPU1 is NUMA node 1 (16-31, 48-63). Every core
+  # in the list below the split -- 19, 24, 31, 57-63 -- is on node 1, so the gnss1_* stages
+  # were right and EVERY gnss0_* stage drove GPU0 from the wrong domain, crossing the
+  # interconnect on every submission. Worse, both halves' stages shared those ten cores, so
+  # node 1 carried all 14 cudaProcess instances (4 of them colliding outright on the same
+  # LOGICAL cpu, violating the "two cudaProcess stages must not share a core" rule below --
+  # unsatisfiable once the third band took us from 5 chains to 7).
+  #
+  # So: one pool per GPU, each on that GPU's own node. HT sharing with production is
+  # accepted (KV, 2026-08-31) -- what must never be shared is a LOGICAL cpu with another
+  # cudaProcess, and a DPDK physical core with anything. Hence node0 skips 5-7 AND their
+  # siblings 37-39, node1 skips 21-23 AND 53-55.
+  # gpu0 (NUMA0): 4 plus 32-36,40-47 -- siblings of production's 0-3,8-15, which is fine.
+  # gpu1 (NUMA1): the proven ten, unchanged, now carrying HALF the stages it used to.
+  cpu_affinity_gpu0: [4, 32, 33, 34, 35, 36, 40, 41, 42, 43]
+  cpu_affinity_gpu1: [19, 24, 31, 57, 58, 59, 60, 61, 62, 63]
+  # Legacy/node-level pool: the aggregator and gather are not per-GPU and keep using this.
   cpu_affinity: [19, 24, 31, 57, 58, 59, 60, 61, 62, 63]
   # ⚠️ MOVED 12049 -> 12048 ON 2026-08-19, AND THE REASON IS THE CONTROL PLANE, NOT A
   # PREFERENCE. Earth-orientation data is PUSHED to each node over REST

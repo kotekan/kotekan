@@ -301,7 +301,7 @@ gnss0_b2a_n2assemble:
   - 6048
   - 6064
   cpu_affinity:
-  - 31
+  - 33
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b2a_n2epl_buf
@@ -339,7 +339,7 @@ gnss0_b2a_n2assemble:
   spectrum_window_samples: 3355443200
 gnss0_b2a_n2assemble_tiles:
   cpu_affinity:
-  - 59
+  - 36
   ctl_buf: gnss0_b2a_n2ctl_buf
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
@@ -357,7 +357,7 @@ gnss0_b2a_n2cmb_buf:
   num_frames: 4
 gnss0_b2a_n2combine:
   cpu_affinity:
-  - 58
+  - 35
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -438,7 +438,7 @@ gnss0_b2a_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 24
+  - 40
   cuda_stream_base: 9
   gpu_id: 0
   in_buffers:
@@ -463,7 +463,7 @@ gnss0_b2a_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
-  - 61
+  - 41
   file_ext: raw
   file_name: cx27_gnss0_n2rec
   in_buf: gnss0_b2a_n2cmb_buf
@@ -489,7 +489,7 @@ gnss0_b2a_telem_pack:
   - 6048
   - 6064
   cpu_affinity:
-  - 59
+  - 36
   fft_len: 16384
   hops_per_record: 2048
   in_buf: gnss0_b2a_n2rec_buf
@@ -504,7 +504,7 @@ gnss0_b2a_telem_pack:
 gnss0_b2a_telem_send:
   buf: gnss0_b2a_telem_buf
   cpu_affinity:
-  - 60
+  - 40
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
@@ -523,7 +523,7 @@ gnss0_b2b_n2assemble:
   - 6208
   - 6224
   cpu_affinity:
-  - 31
+  - 33
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b2b_n2epl_buf
@@ -561,7 +561,7 @@ gnss0_b2b_n2assemble:
   spectrum_window_samples: 3355443200
 gnss0_b2b_n2assemble_tiles:
   cpu_affinity:
-  - 24
+  - 32
   ctl_buf: gnss0_b2b_n2ctl_buf
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
@@ -579,7 +579,7 @@ gnss0_b2b_n2cmb_buf:
   num_frames: 4
 gnss0_b2b_n2combine:
   cpu_affinity:
-  - 58
+  - 35
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -661,7 +661,7 @@ gnss0_b2b_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 61
+  - 33
   cuda_stream_base: 15
   gpu_id: 0
   in_buffers:
@@ -686,7 +686,7 @@ gnss0_b2b_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
-  - 61
+  - 41
   file_ext: raw
   file_name: cx27_gnss0_n2rec
   in_buf: gnss0_b2b_n2cmb_buf
@@ -713,7 +713,7 @@ gnss0_b2b_telem_pack:
   - 6208
   - 6224
   cpu_affinity:
-  - 59
+  - 36
   fft_len: 16384
   hops_per_record: 2048
   in_buf: gnss0_b2b_n2rec_buf
@@ -728,7 +728,7 @@ gnss0_b2b_telem_pack:
 gnss0_b2b_telem_send:
   buf: gnss0_b2b_telem_buf
   cpu_affinity:
-  - 60
+  - 40
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
@@ -747,7 +747,7 @@ gnss0_b3i_n2assemble:
   - 6528
   - 6544
   cpu_affinity:
-  - 31
+  - 33
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b3i_n2epl_buf
@@ -785,7 +785,7 @@ gnss0_b3i_n2assemble:
   spectrum_window_samples: 3355443200
 gnss0_b3i_n2assemble_tiles:
   cpu_affinity:
-  - 58
+  - 35
   ctl_buf: gnss0_b3i_n2ctl_buf
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
@@ -803,7 +803,7 @@ gnss0_b3i_n2cmb_buf:
   num_frames: 4
 gnss0_b3i_n2combine:
   cpu_affinity:
-  - 58
+  - 35
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -885,7 +885,7 @@ gnss0_b3i_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 19
+  - 36
   cuda_stream_base: 18
   gpu_id: 0
   in_buffers:
@@ -910,7 +910,7 @@ gnss0_b3i_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
-  - 61
+  - 41
   file_ext: raw
   file_name: cx27_gnss0_n2rec
   in_buf: gnss0_b3i_n2cmb_buf
@@ -937,7 +937,7 @@ gnss0_b3i_telem_pack:
   - 6528
   - 6544
   cpu_affinity:
-  - 59
+  - 36
   fft_len: 16384
   hops_per_record: 2048
   in_buf: gnss0_b3i_n2rec_buf
@@ -952,7 +952,7 @@ gnss0_b3i_telem_pack:
 gnss0_b3i_telem_send:
   buf: gnss0_b3i_telem_buf
   cpu_affinity:
-  - 60
+  - 40
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
@@ -975,7 +975,7 @@ gnss0_e5a_n2assemble:
   - 6048
   - 6064
   cpu_affinity:
-  - 31
+  - 33
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e5a_n2epl_buf
@@ -1021,7 +1021,7 @@ gnss0_e5a_n2assemble:
   spectrum_window_samples: 3355443200
 gnss0_e5a_n2assemble_tiles:
   cpu_affinity:
-  - 31
+  - 33
   ctl_buf: gnss0_e5a_n2ctl_buf
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
@@ -1039,7 +1039,7 @@ gnss0_e5a_n2cmb_buf:
   num_frames: 4
 gnss0_e5a_n2combine:
   cpu_affinity:
-  - 58
+  - 35
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1120,7 +1120,7 @@ gnss0_e5a_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 62
+  - 34
   cuda_stream_base: 6
   gpu_id: 0
   in_buffers:
@@ -1145,7 +1145,7 @@ gnss0_e5a_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
-  - 61
+  - 41
   file_ext: raw
   file_name: cx27_gnss0_n2rec
   in_buf: gnss0_e5a_n2cmb_buf
@@ -1171,7 +1171,7 @@ gnss0_e5a_telem_pack:
   - 6048
   - 6064
   cpu_affinity:
-  - 59
+  - 36
   fft_len: 16384
   hops_per_record: 2048
   in_buf: gnss0_e5a_n2rec_buf
@@ -1186,7 +1186,7 @@ gnss0_e5a_telem_pack:
 gnss0_e5a_telem_send:
   buf: gnss0_e5a_telem_buf
   cpu_affinity:
-  - 60
+  - 40
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
@@ -1205,7 +1205,7 @@ gnss0_e5b_n2assemble:
   - 6208
   - 6224
   cpu_affinity:
-  - 31
+  - 33
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e5b_n2epl_buf
@@ -1251,7 +1251,7 @@ gnss0_e5b_n2assemble:
   spectrum_window_samples: 3355443200
 gnss0_e5b_n2assemble_tiles:
   cpu_affinity:
-  - 62
+  - 42
   ctl_buf: gnss0_e5b_n2ctl_buf
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
@@ -1269,7 +1269,7 @@ gnss0_e5b_n2cmb_buf:
   num_frames: 4
 gnss0_e5b_n2combine:
   cpu_affinity:
-  - 58
+  - 35
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1351,7 +1351,7 @@ gnss0_e5b_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 58
+  - 43
   cuda_stream_base: 12
   gpu_id: 0
   in_buffers:
@@ -1376,7 +1376,7 @@ gnss0_e5b_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
-  - 61
+  - 41
   file_ext: raw
   file_name: cx27_gnss0_n2rec
   in_buf: gnss0_e5b_n2cmb_buf
@@ -1403,7 +1403,7 @@ gnss0_e5b_telem_pack:
   - 6208
   - 6224
   cpu_affinity:
-  - 59
+  - 36
   fft_len: 16384
   hops_per_record: 2048
   in_buf: gnss0_e5b_n2rec_buf
@@ -1418,7 +1418,7 @@ gnss0_e5b_telem_pack:
 gnss0_e5b_telem_send:
   buf: gnss0_e5b_telem_buf
   cpu_affinity:
-  - 60
+  - 40
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
@@ -1433,7 +1433,7 @@ gnss0_e6_n2assemble:
   - 6544
   - 6560
   cpu_affinity:
-  - 31
+  - 33
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e6_n2epl_buf
@@ -1479,7 +1479,7 @@ gnss0_e6_n2assemble:
   spectrum_window_samples: 3355443200
 gnss0_e6_n2assemble_tiles:
   cpu_affinity:
-  - 61
+  - 41
   ctl_buf: gnss0_e6_n2ctl_buf
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
@@ -1497,7 +1497,7 @@ gnss0_e6_n2cmb_buf:
   num_frames: 4
 gnss0_e6_n2combine:
   cpu_affinity:
-  - 58
+  - 35
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1575,7 +1575,7 @@ gnss0_e6_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 57
+  - 42
   cuda_stream_base: 21
   gpu_id: 0
   in_buffers:
@@ -1600,7 +1600,7 @@ gnss0_e6_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
-  - 61
+  - 41
   file_ext: raw
   file_name: cx27_gnss0_n2rec
   in_buf: gnss0_e6_n2cmb_buf
@@ -1623,7 +1623,7 @@ gnss0_e6_telem_pack:
   - 6544
   - 6560
   cpu_affinity:
-  - 59
+  - 36
   fft_len: 16384
   hops_per_record: 2048
   in_buf: gnss0_e6_n2rec_buf
@@ -1638,7 +1638,7 @@ gnss0_e6_telem_pack:
 gnss0_e6_telem_send:
   buf: gnss0_e6_telem_buf
   cpu_affinity:
-  - 60
+  - 40
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
@@ -1656,7 +1656,7 @@ gnss0_n2assemble:
   - 6048
   - 6064
   cpu_affinity:
-  - 31
+  - 33
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_n2epl_buf
@@ -1702,7 +1702,7 @@ gnss0_n2assemble:
   spectrum_window_samples: 3355443200
 gnss0_n2assemble_tiles:
   cpu_affinity:
-  - 63
+  - 43
   ctl_buf: gnss0_n2ctl_buf
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
@@ -1720,7 +1720,7 @@ gnss0_n2cmb_buf:
   num_frames: 4
 gnss0_n2combine:
   cpu_affinity:
-  - 58
+  - 35
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1801,7 +1801,7 @@ gnss0_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 59
+  - 4
   cuda_stream_base: 3
   gpu_id: 0
   in_buffers:
@@ -1826,7 +1826,7 @@ gnss0_n2sink:
   allow_ndarray: true
   base_dir: /tmp/gnss
   cpu_affinity:
-  - 61
+  - 41
   file_ext: raw
   file_name: cx27_gnss0_n2rec
   in_buf: gnss0_n2cmb_buf
@@ -1844,7 +1844,7 @@ gnss0_srch_buf:
 gnss0_srch_send:
   buf: gnss0_srch_buf
   cpu_affinity:
-  - 57
+  - 34
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 5
@@ -1885,7 +1885,7 @@ gnss0_srch_tap:
   - 282
   - 283
   cpu_affinity:
-  - 24
+  - 32
   element_offset: 0
   fft_length: 16384
   frame_chan_stride: num_local_freq
@@ -1910,7 +1910,7 @@ gnss0_telem_pack:
   - 6048
   - 6064
   cpu_affinity:
-  - 59
+  - 36
   fft_len: 16384
   hops_per_record: 2048
   in_buf: gnss0_n2rec_buf
@@ -1925,7 +1925,7 @@ gnss0_telem_pack:
 gnss0_telem_send:
   buf: gnss0_telem_buf
   cpu_affinity:
-  - 60
+  - 40
   drop_frames: true
   kotekan_stage: bufferSend
   reconnect_time: 30
@@ -2058,7 +2058,7 @@ gnss1_b2a_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 63
+  - 60
   cuda_stream_base: 9
   gpu_id: 1
   in_buffers:
@@ -2258,7 +2258,7 @@ gnss1_b2b_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 59
+  - 31
   cuda_stream_base: 15
   gpu_id: 1
   in_buffers:
@@ -2456,7 +2456,7 @@ gnss1_b3i_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 62
+  - 59
   cuda_stream_base: 18
   gpu_id: 1
   in_buffers:
@@ -2660,7 +2660,7 @@ gnss1_e5a_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 60
+  - 57
   cuda_stream_base: 6
   gpu_id: 1
   in_buffers:
@@ -2860,7 +2860,7 @@ gnss1_e5b_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 31
+  - 63
   cuda_stream_base: 12
   gpu_id: 1
   in_buffers:
@@ -3052,7 +3052,7 @@ gnss1_e6_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 24
+  - 62
   cuda_stream_base: 21
   gpu_id: 1
   in_buffers:
@@ -3248,7 +3248,7 @@ gnss1_n2dual:
     name: cudaOutputData
     out_buf: host_gnss_n2ctl
   cpu_affinity:
-  - 57
+  - 19
   cuda_stream_base: 3
   gpu_id: 1
   in_buffers:

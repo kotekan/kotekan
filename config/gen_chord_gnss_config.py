@@ -282,7 +282,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
     n_elem = live_element_count(arr)
     elem0 = live_element_ranges(arr)[0][0]
     n_chan = len(chan_idx)
-    cores = rt["cpu_affinity"]
+    cores = gnss_cores(rt, gpu)   # this GPU's own NUMA node (see gnss_cores)
     tag = chain["tag"] if chain else ""
     pre = f"gnss{gpu}{tag}_"
 
@@ -722,7 +722,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     PROPERTY OF THE CHAIN, never a detail of how a block happens to be assembled.
     """
     sig, rt, arr = cfg["signals"], cfg["runtime"], cfg["array"]
-    cores = rt["cpu_affinity"]
+    cores = gnss_cores(rt, gpu)   # this GPU's own NUMA node (see gnss_cores)
     nc = len(cores)
     tag = chain["tag"] if chain else ""
     n_chan = len(chan_idx)
@@ -768,7 +768,9 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
         "prns": list(prns),
         "f_offset_hz": float(chain["carrier_hz"]) if chain else float(sig["carrier_hz"]),
         "cores": {
-            "dual":     cores[(5 - 2 * gpu + 3 * ordv) % nc],
+            # DISTINCT per chain within this GPU's pool -- see dual_core(). The old
+            # expression drew both GPUs from ONE pool and collided once we ran 7 chains.
+            "dual":     dual_core(rt, gpu, ordv),
             "tiles":    cores[(gpu + 9 + 3 * ordv) % nc],
             "assemble": cores[(gpu + 2) % nc],
             "combine":  cores[(gpu + 4) % nc],
@@ -901,6 +903,30 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         f.write("\n".join(L) + "\n")
 
 
+def gnss_cores(rt, gpu):
+    """The core pool for THIS GPU's stages -- its own NUMA node's cores.
+
+    ⚠️ THERE USED TO BE ONE POOL AND IT WAS ALL NUMA1 (fixed 2026-08-31). GPU0 is NUMA node 0
+    and GPU1 is node 1 (`nvidia-smi topo -m`), so a single node-1 list meant every gnss0_*
+    stage drove GPU0 across the interconnect, AND both halves' stages contended for the same
+    ten cores -- 14 cudaProcess instances on 10 cores, four of them sharing a LOGICAL cpu,
+    which the dual-core comment below explicitly forbids. Falls back to the legacy single
+    list so a config that predates the split still renders.
+    """
+    return rt.get("cpu_affinity_gpu%d" % gpu) or rt["cpu_affinity"]
+
+
+def dual_core(rt, gpu, ordv):
+    """The cudaProcess core for chain `ordv` on `gpu` -- DISTINCT per chain, by construction.
+
+    Stride 3 over a pool whose length is coprime with it, so the 7 chains land on 7 different
+    logical cpus and are spread rather than adjacent. The old formula mixed both GPUs into one
+    pool (`cores[(5 - 2*gpu + 3*ordv) % nc]`) and could not be distinct once we ran 7 chains.
+    """
+    pool = gnss_cores(rt, gpu)
+    return pool[(3 * ordv) % len(pool)]
+
+
 def live_element_ranges(arr):
     """[(lo, hi), ...] inclusive element ranges that carry data, from the array config.
 
@@ -989,7 +1015,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     sig = cfg["signals"]
     rt = cfg["runtime"]
     arr = cfg["array"]
-    cores = rt["cpu_affinity"]
+    cores = gnss_cores(rt, gpu)   # this GPU's own NUMA node (see gnss_cores)
     tag = chain["tag"] if chain else ""
     pre = f"gnss{gpu}{tag}_"
     n_chan = len(chan_idx)
