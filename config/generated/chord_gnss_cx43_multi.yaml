@@ -4183,7 +4183,8 @@ run_pl_expand:
 run_recv_bf_mask_applied:
   gpu_0:
     commands:
-    - gpu_mem_input: bf_mask_applied_buffer
+    - expect_quantity_name: bf_mask
+      gpu_mem_input: bf_mask_applied_buffer
       host_signal: host_bf_mask_applied_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_bf_mask_applied_buffer_out
@@ -4197,7 +4198,8 @@ run_recv_bf_mask_applied:
       host_bf_mask_applied_buffer_out: host_bf_mask_applied_buffer
   gpu_1:
     commands:
-    - gpu_mem_input: bf_mask_applied_buffer
+    - expect_quantity_name: bf_mask
+      gpu_mem_input: bf_mask_applied_buffer
       host_signal: host_bf_mask_applied_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_bf_mask_applied_buffer_out
@@ -4212,7 +4214,8 @@ run_recv_bf_mask_applied:
 run_recv_rfi_RFImask:
   gpu_0:
     commands:
-    - gpu_mem_input: rfi_RFImask_buffer
+    - expect_quantity_name: RFImask
+      gpu_mem_input: rfi_RFImask_buffer
       host_signal: host_rfi_RFImask_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_rfi_RFImask_buffer_out
@@ -4226,7 +4229,8 @@ run_recv_rfi_RFImask:
       host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer
   gpu_1:
     commands:
-    - gpu_mem_input: rfi_RFImask_buffer
+    - expect_quantity_name: RFImask
+      gpu_mem_input: rfi_RFImask_buffer
       host_signal: host_rfi_RFImask_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_rfi_RFImask_buffer_out
@@ -4241,7 +4245,8 @@ run_recv_rfi_RFImask:
 run_recv_rfi_skbar:
   gpu_0:
     commands:
-    - gpu_mem_input: rfi_skbar_buffer
+    - expect_quantity_name: SKbar
+      gpu_mem_input: rfi_skbar_buffer
       host_signal: host_rfi_skbar_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_rfi_skbar_buffer_out
@@ -4255,7 +4260,8 @@ run_recv_rfi_skbar:
       host_rfi_skbar_buffer_out: host_rfi_skbar_buffer
   gpu_1:
     commands:
-    - gpu_mem_input: rfi_skbar_buffer
+    - expect_quantity_name: SKbar
+      gpu_mem_input: rfi_skbar_buffer
       host_signal: host_rfi_skbar_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_rfi_skbar_buffer_out
@@ -4270,7 +4276,8 @@ run_recv_rfi_skbar:
 run_recv_rfi_sktilde:
   gpu_0:
     commands:
-    - gpu_mem_input: rfi_sktilde_buffer
+    - expect_quantity_name: SKtilde
+      gpu_mem_input: rfi_sktilde_buffer
       host_signal: host_rfi_sktilde_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_rfi_sktilde_buffer_out
@@ -4285,7 +4292,8 @@ run_recv_rfi_sktilde:
       host_rfi_sktilde_buffer_out: host_rfi_sktilde_buffer
   gpu_1:
     commands:
-    - gpu_mem_input: rfi_sktilde_buffer
+    - expect_quantity_name: SKtilde
+      gpu_mem_input: rfi_sktilde_buffer
       host_signal: host_rfi_sktilde_ringbuffer_in
       name: cudaCopyFromRingbuffer
       out_buf: host_rfi_sktilde_buffer_out

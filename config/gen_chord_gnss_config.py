@@ -2754,6 +2754,40 @@ def main():
     if isinstance(out.get("telescope"), dict) and "dish_coelev_deg" in out["telescope"]:
         out["telescope"]["dish_coelev_deg"] = args.dish_coelev_deg
 
+    # ⚠️ NAME THE QUANTITY EVERY RING COPY EXPECTS (2026-08-31). cudaCopyFromRingbuffer
+    # publishes its output buffer's ndarray descriptor from the ring's slot-0 METADATA, and
+    # on a freshly started pipeline that object can be a metadata_pool item recycled from
+    # another quantity -- still carrying its dim names. Publishing it makes the buffer's
+    # descriptor conflict forever, ensure_frame_desc() FATALs, and the controlled shutdown
+    # takes the DPDK workers and the node with it. That killed cx19 ("dimname mismatch:
+    # SK != S") and cx44 ("frame description size (0)") on the 16:24 restart.
+    # The size check cannot catch it -- dim[0] is forced from frame_size -- so the copy needs
+    # to be TOLD what it produces. With this set it defers instead of publishing garbage.
+    # Names come from the producing kernels' array declarations (cudaRFISKtilde/SKbar).
+    _RING_QUANTITY = {
+        "rfi_skbar_buffer": "SKbar",
+        "rfi_sktilde_buffer": "SKtilde",
+        "rfi_RFImask_buffer": "RFImask",
+        "bf_mask_applied_buffer": "bf_mask",
+    }
+    _stamped = 0
+    for _st in out.values():
+        if not isinstance(_st, dict):
+            continue
+        for _leg in _st.values():
+            if not isinstance(_leg, dict):
+                continue
+            for _cmd in _leg.get("commands") or []:
+                if (isinstance(_cmd, dict) and _cmd.get("name") == "cudaCopyFromRingbuffer"
+                        and _cmd.get("gpu_mem_input") in _RING_QUANTITY
+                        and "expect_quantity_name" not in _cmd):
+                    _cmd["expect_quantity_name"] = _RING_QUANTITY[_cmd["gpu_mem_input"]]
+                    _stamped += 1
+    # ⚠️ NEVER print() here -- this generator's STDOUT IS THE CONFIG FILE (gen_fleet captures
+    # it), so a stray line makes the yaml unparseable at the first stage boundary. stderr.
+    if _stamped:
+        sys.stderr.write(f"  hardened {_stamped} ring copies with expect_quantity_name\n")
+
     # --frame0-nano: START WITHOUT chive's timing service.
     #
     # kotekan requires a GPS time at STARTUP (CHORDTelescope), which makes chive:54321 a hard

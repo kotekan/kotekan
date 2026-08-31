@@ -34,6 +34,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     _output_size = config.get<size_t>(unique_name, "output_size");
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
+    _expect_quantity = config.get_default<std::string>(unique_name, "expect_quantity_name", "");
     _gpu_mem_output = config.get_default<std::string>(unique_name, "gpu_mem_output", "");
     if (_gpu_mem_output.size() == 0) {
         // We're reading from GPU ringbuffer to host memory
@@ -166,10 +167,63 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                             strnlen(out_meta->dim_name[d], sizeof(out_meta->dim_name[d]))));
         std::vector<std::ptrdiff_t> dimscalings(out_meta->dim_scaling,
                                                 out_meta->dim_scaling + out_meta->dims);
-        out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
-            out_meta->type, out_meta->get_name(), extents, dimnames, dimscalings));
-        /* test that things are consistent */
-        out_meta->check_frame_desc(out_buffer->get_frame_desc<kotekan::GenericNDArray>());
+        // ⚠️ THE RING'S SLOT-0 METADATA IS NOT VALID UNTIL ITS PRODUCER HAS STAMPED IT
+        // (2026-08-31). We publish the output buffer's ndarray descriptor from
+        // signal_buffer->get_metadata(0), and on a freshly started pipeline that object can
+        // still be (a) untouched -- dims 0, so byte size 0 -- or (b) a metadata_pool object
+        // recycled from ANOTHER quantity, still carrying its dim names. Both reach
+        // ensure_frame_desc(), which FATALs, and the controlled shutdown that follows takes
+        // the DPDK workers and the whole node with it. One restart on 2026-08-31 cost cx19
+        // ("dimname mismatch: SK != S", case b) and cx44 ("frame description size (0)",
+        // case a). The `assert(out_meta->dims > 0)` above is compiled out in Release, so
+        // nothing caught either one.
+        //
+        // ⚠️ A SIZE CHECK ALONE CANNOT CATCH (b): dim[0] is forced from frame_size a few
+        // lines up, so a foreign descriptor always has the RIGHT byte size and differs only
+        // in its labels. Hence the quantity-name gate.
+        //
+        // So publish only what we can show is ours. Deferring costs nothing -- the
+        // descriptor is pure metadata and the frame DATA is copied either way -- and a later
+        // frame publishes it once the producer has stamped slot 0. It stays loud: a
+        // descriptor that NEVER becomes publishable is a real bug and must not hide.
+        bool desc_ok = out_meta->dims > 0;
+        std::string why;
+        if (!desc_ok)
+            why = "metadata has no dimensions yet";
+        const std::string qname = out_meta->get_name();
+        if (desc_ok && qname.empty()) {
+            desc_ok = false;
+            why = "metadata carries no quantity name yet";
+        }
+        for (size_t d = 0; desc_ok && d < dimnames.size(); ++d)
+            if (!dimnames[d].valid()) {
+                desc_ok = false;
+                why = fmt::format("dimension {:d} has no name yet", d);
+            }
+        if (desc_ok && !_expect_quantity.empty() && qname != _expect_quantity) {
+            desc_ok = false;
+            why = fmt::format("ring metadata is '{:s}', not the '{:s}' this copy produces "
+                              "-- a recycled pool object, not our producer's",
+                              qname, _expect_quantity);
+        }
+
+        if (desc_ok) {
+            out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                out_meta->type, qname, extents, dimnames, dimscalings));
+            /* test that things are consistent */
+            out_meta->check_frame_desc(out_buffer->get_frame_desc<kotekan::GenericNDArray>());
+            if (_desc_deferred) {
+                INFO("cudaCopyFromRingbuffer[{:s}]: published the '{:s}' descriptor for {:s} "
+                     "after deferring {:d} frame(s)",
+                     unique_name, qname, out_buffer->buffer_name, _desc_deferred);
+                _desc_deferred = 0;
+            }
+        } else if (++_desc_deferred, (_desc_deferred & (_desc_deferred - 1)) == 0) {
+            // Powers of two only: loud at first, then quiet, but never silent.
+            WARN("cudaCopyFromRingbuffer[{:s}]: NOT publishing an ndarray descriptor for "
+                 "{:s} ({:s}); deferred {:d} frame(s) so far. The data still copies.",
+                 unique_name, out_buffer->buffer_name, why, _desc_deferred);
+        }
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;
