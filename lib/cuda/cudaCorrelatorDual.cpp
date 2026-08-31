@@ -32,24 +32,47 @@ REGISTER_CUDA_COMMAND(cudaCorrelatorDual);
 
 // The gathered-tile count per channel: mixed (every synthetic row x live-antenna cols) then
 // the synthetic triangle. Must match the consumer's recomputation -- documented in the hpp.
+// The live-antenna TILE COLUMNS to gather, from config. `live_element_tiles` names them
+// directly; absent, the legacy contiguous-prefix behaviour (columns 0..ceil(n_live/16)-1).
+//
+// ⚠️ THE LIVE ELEMENTS ARE NOT A PREFIX ANY MORE (2026-08-31, the origin/chord merge). The
+// production dpdk config gained `crs_board_remap` (pol grouping) and its missing_source_ids
+// moved, which put the four live CRS boards at OUTPUT LOCATIONS 0,1,8,9: live elements are
+// {0..15, 64..79}, i.e. tile columns {0, 4}. A count cannot express that, and the old
+// `jhi < nlive16` loop silently gathered columns {0,1} -- half live feeds, half dead
+// panels, at full frame size, which is a -3 dB array and 16 slots of noise with NOTHING
+// anywhere reporting a problem. The column LIST is the fix, and it is the one that fails
+// loudly when it is wrong (the gather asks for a tile the triangle does not contain).
+static std::vector<int> live_tile_columns(Config& config, const std::string& unique_name,
+                                          int num_live_elements) {
+    std::vector<int> cols =
+        config.get_default<std::vector<int>>(unique_name, "live_element_tiles", {});
+    if (cols.empty())
+        for (int j = 0; j < (num_live_elements + 15) / 16; j++)
+            cols.push_back(j);
+    return cols;
+}
+
 static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& chans,
                                               int num_elements, int num_synth,
-                                              int num_live_elements, bool compacted = false) {
+                                              const std::vector<int>& live_cols,
+                                              bool compacted = false) {
     // compacted: with a freq map the kernel writes slice k for chans[k], so the gather must
     // index by k, not by the real channel number.
     std::vector<int2> sel;
     const int na16 = num_elements / 16;
     const int nt16 = (num_elements + num_synth) / 16;
-    const int nlive16 = (num_live_elements + 15) / 16;
     for (size_t ci = 0; ci < chans.size(); ci++) {
         const std::int32_t f = compacted ? (std::int32_t)ci : chans[ci];
         // MIXED (synth row x LIVE antenna column) FIRST, and that order is load-bearing:
-        // GnssN2RecordAssemble indexes mix_k = (ihi-na16)*nlive16 + jhi, which does not
-        // depend on how many tiles follow. Anything appended after this block can be
-        // removed without moving a single mixed tile.
+        // GnssN2RecordAssemble indexes mix_k = (ihi-na16)*n_live_cols + SLOT, where SLOT is
+        // the POSITION in this list, not the real column -- so gather order defines the
+        // record's element axis and the consumer needs no knowledge of which columns are
+        // live. Anything appended after this block can be removed without moving a single
+        // mixed tile.
         for (int ihi = na16; ihi < nt16; ihi++)
-            for (int jhi = 0; jhi < nlive16; jhi++)
-                sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + jhi)});
+            for (size_t k = 0; k < live_cols.size(); k++)
+                sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + live_cols[k])});
         // ── THE BB (synth x synth) BLOCK IS NOT GATHERED (2026-08-28) ──────────────────
         // It was 36 of 52 tiles per channel -- 69%% of every byte copied off the GPU and
         // through the EPL buffer -- and it had NO CONSUMER. The one read of it,
@@ -102,8 +125,9 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         config.get_default<std::string>(unique_name, "gnss_synth_name", "gnss_synth")),
     _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name,
                                                                "gnss_local_channels")),
+    _live_tile_cols(live_tile_columns(config, unique_name, _num_live_elements)),
     _tile_sel(build_tile_selection(_gnss_local_channels, _num_elements, _num_synth,
-                                   _num_live_elements,
+                                   _live_tile_cols,
                                    config.get_default<bool>(unique_name, "gnss_freq_map", false))),
     _rfi_all_pass(config.get_default<bool>(unique_name, "rfi_all_pass", false)),
     voltage(_voltage_name, "E",

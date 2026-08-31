@@ -38,8 +38,8 @@
  *    which never leaves the GPU.
  *
  * Tile list (fixed at construction, consumer recomputes it from the same config): for each
- * local channel in @c gnss_local_channels, mixed tiles (ihi in [NA/16, NT/16), jhi in
- * [0, ceil(num_live_elements/16))) in row-major (ihi, jhi) order, THEN the synthetic
+ * local channel in @c gnss_local_channels, mixed tiles (ihi in [NA/16, NT/16), jhi over
+ * @c live_element_tiles in listed order) in row-major (ihi, jhi) order, THEN the synthetic
  * triangle (ihi in [NA/16, NT/16), jhi in [NA/16, ihi]) in the same order. Each tile is
  * [16][16][2] int32, memory offset within a (t,f) slice = 512*(ihi*(ihi+1)/2 + jhi), i.e.
  * exactly n2k's documented layout. V_ij = E_i * conj(E_j) with i the row: mixed tiles carry
@@ -53,8 +53,16 @@
  * @conf As cudaCorrelator (buffer_depth, num_times, num_elements, num_local_freq,
  *       sub_integration_ntime, voltage_name, rfi_RFImask_name, n2k_correlation_name), plus:
  * @conf  num_synth            Int. Synthetic stations (multiple of 128). Default 128.
- * @conf  num_live_elements    Int. Live antennas (bounds the mixed-tile gather). Default
+ * @conf  num_live_elements    Int. Live antennas (sizes the mixed-tile gather). Default
  *                             num_elements.
+ * @conf  live_element_tiles   List of Int. The live-antenna TILE COLUMNS (16 elements each)
+ *                             to gather, in the order they should occupy the record's
+ *                             element axis. Default: 0..ceil(num_live_elements/16)-1, the
+ *                             contiguous-prefix behaviour. ⚠️ Set this whenever the live
+ *                             elements are not a prefix -- since crs_board_remap they are
+ *                             {0..15, 64..79}, i.e. [0, 4]. Its length must equal
+ *                             ceil(num_live_elements/16) or the consumer's mix_k indexing
+ *                             and this gather disagree.
  * @conf  gnss_local_channels  List of Int. LOCAL frame channel indices (0..num_local_freq)
  *                             of the GNSS comb. GLOBAL freq_ids do NOT go here -- the config
  *                             generator derives local from global (the DC-replica lesson).
@@ -96,6 +104,11 @@ private:
     const std::string _gnss_synth_name;
 
     std::vector<std::int32_t> _gnss_local_channels;
+
+    /// The live-antenna tile columns gathered, in output order. NOT necessarily a prefix:
+    /// since the 2026-08-31 crs_board_remap the live elements are {0..15, 64..79} = columns
+    /// {0, 4}. Its POSITIONS define the record's element axis (see build_tile_selection).
+    const std::vector<int> _live_tile_cols;
 
     /// (freq, int32-offset-within-slice) of each gathered tile, in output order.
     std::vector<int2> _tile_sel;

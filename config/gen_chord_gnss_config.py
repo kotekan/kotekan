@@ -279,8 +279,8 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
     sig = cfg["signals"]
     rt = cfg["runtime"]
     arr = cfg["array"]
-    n_elem = arr["live_elements"][1] - arr["live_elements"][0] + 1
-    elem0 = arr["live_elements"][0]
+    n_elem = live_element_count(arr)
+    elem0 = live_element_ranges(arr)[0][0]
     n_chan = len(chan_idx)
     cores = rt["cpu_affinity"]
     tag = chain["tag"] if chain else ""
@@ -729,7 +729,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     prns = chain["prns"] if chain else args.prns
     n_prn = len(prns)
     ordv = chain["ord"] if chain else 0
-    n_live = arr["live_elements"][1] - arr["live_elements"][0] + 1
+    n_live = live_element_count(arr)
     num_synth = 128
 
     # --- frame sizes (see build_n2dual_branch for the scars behind each) -----------------
@@ -901,6 +901,45 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         f.write("\n".join(L) + "\n")
 
 
+def live_element_ranges(arr):
+    """[(lo, hi), ...] inclusive element ranges that carry data, from the array config.
+
+    ⚠️ THE LIVE SET IS NOT CONTIGUOUS SINCE 2026-08-31. `live_elements: [0, 31]` was a single
+    inclusive range and that is now unrepresentable: the production dpdk config's
+    crs_board_remap groups polarizations, so the four live CRS boards land at output
+    locations 0,1,8,9 and the live elements are {0..15, 64..79}. Prefer
+    `live_element_ranges: [[0, 15], [64, 79]]`; the old single-range key still parses, so a
+    config that has not been migrated behaves exactly as before.
+    """
+    rr = arr.get("live_element_ranges")
+    if rr is None:
+        lo, hi = arr["live_elements"]
+        rr = [[lo, hi]]
+    return [(int(a), int(b)) for a, b in rr]
+
+
+def live_element_count(arr):
+    return sum(hi - lo + 1 for lo, hi in live_element_ranges(arr))
+
+
+def live_tile_columns(arr, tile=16):
+    """The 16-element TILE COLUMNS the live ranges cover, in element order.
+
+    Each range must be tile-aligned in both ends -- a half-covered column would put dead
+    panels inside a gathered tile with nothing to mark them, which is exactly the silent
+    -3 dB failure this representation exists to prevent. So it is an error, not a rounding.
+    """
+    cols = []
+    for lo, hi in live_element_ranges(arr):
+        if lo % tile or (hi + 1) % tile:
+            raise SystemExit(f"live_element_ranges: [{lo}, {hi}] is not {tile}-aligned; "
+                             "the mixed-tile gather cannot express a partial column")
+        cols += list(range(lo // tile, (hi + 1) // tile))
+    if len(cols) != len(set(cols)):
+        raise SystemExit(f"live_element_ranges: overlapping tile columns {cols}")
+    return cols
+
+
 def elem_positions_from_layout(path, n_elem):
     """#102: flat [n_elem][3] ENU metres from config/chord_dish_layout.json (rows=letters
     south->north at row_spacing_m, columns=numbers west->east at col_spacing_m, U=0)."""
@@ -961,7 +1000,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     carrier_hz = float(chain["carrier_hz"]) if chain else float(sig["carrier_hz"])
     track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
     ordv = chain["ord"] if chain else 0
-    n_live = arr["live_elements"][1] - arr["live_elements"][0] + 1
+    n_live = live_element_count(arr)
 
     # Tile count per channel: mixed (synth rows x live-antenna col tiles) + the synthetic
     # triangle. MUST match cudaCorrelatorDual's build_tile_selection (and the consumer's
@@ -1173,6 +1212,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  "gnss_tiles_name": f"{pre}tiles",
                  "num_synth": num_synth,
                  "num_live_elements": n_live,
+                 # WHICH columns, not just how many -- the live set is {0..15, 64..79}.
+                 "live_element_tiles": live_tile_columns(arr),
                  "gnss_local_channels": chan_idx},
                 {"name": "cudaSyncOutput"},
                 {"name": "cudaOutputData",

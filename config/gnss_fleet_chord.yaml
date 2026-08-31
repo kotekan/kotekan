@@ -26,7 +26,22 @@
 # /home/kvand/gnss/session_artifacts_20260730/data/live_config.json, which survived only by
 # luck. Re-capture deliberately (`curl -s http://cx19:12048/config`), commit the new base
 # under config/base/ with its date, and point this key at it -- never in place.
-base: base/live_config_20260730.json
+#
+# ⚠️ RE-CAPTURED 2026-08-31 (sha256 8630ca13702a83ec...), from cx47 -- FORCED, not chosen.
+# The origin/chord merge brought a bf-mask sync rework whose config contract the July-30
+# base predates: the merged binary REFUSES to start on it ("bf_mask_lifetime_in_samples is
+# required", then "host_bf_mask_ringbuffer doesn't exist"). Captured from an IDLE BENCH NODE
+# (cx47 == cx52 byte-for-byte, so there is nothing node-specific in it) because the six
+# tracker nodes were down at the time -- a capture is a capture, but note the bench nodes
+# ran production, not a GNSS config.
+#
+# ⚠️ AND IT MOVED THE LIVE ELEMENTS. dpdk gained crs_board_remap (identity -> pol-grouping)
+# and missing_source_ids went [4..15] -> [2,3,4,5,6,7,10,11,12,13,14,15]: the four live CRS
+# boards now land at OUTPUT LOCATIONS 0,1,8,9 instead of 0,1,2,3, so the live element set is
+# {0..15, 64..79} rather than the contiguous {0..31}. Element 0 is the same physical feed
+# either way (remap[0] == 0), which is why the GPS search reference survives untouched.
+# See array.live_element_ranges in config/chord_gnss_node.yaml.
+base: base/live_config_20260831.json
 
 # Where the generated files land: config/generated/chord_gnss_<node><suffix>.yaml
 #
@@ -332,7 +347,18 @@ common:
   # stated -- 'better than nothing'; the phase-stage solve refines). e5b stays UNSTEERED
   # as the band-sibling control AND the live sign calibration: if e5a's per-element
   # coherence/p2 degrade vs e5b, the sign is wrong -- flip elem-steer-sign, regenerate.
-  elem-steer-bands: e5a
+  # ⚠️ DISARMED 2026-08-31 FOR THE POST-MERGE RESTART, deliberately and temporarily.
+  # chord_dish_layout.json is indexed by the OLD element numbering (its element 0 is
+  # "A01X"), and the re-captured base renumbers the element axis to [P][D] with the live
+  # feeds at {0..15, 64..79} -- so every position in that file now names a different feed
+  # than it did when the #102 amplitude pattern measured it. A steering vector built from a
+  # stale index map is not a weaker steer, it is a WRONG one: it derotates each element by
+  # another element's geometric delay, which degrades the very coherence the arm is judged
+  # on. Re-derive the map post-restart from the measured pattern (fixtures/
+  # elem_mapping_check.py against the banked pre-restart fingerprint,
+  # fixtures/elem_fingerprint_20260831_premerge_restart.txt), then re-arm with the sign
+  # calibration against the unsteered e5b sibling exactly as before.
+  elem-steer-bands: null
   elem-steer-sign: 1.0
   # Writes the COMBINER records (~52 KB/window), not the 17 MB/s tiles, so a transit can be
   # analysed after the fact. Its absence is why the 03:58 E30 pass was lost on 2026-08-07.
