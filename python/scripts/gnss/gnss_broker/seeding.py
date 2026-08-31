@@ -668,14 +668,37 @@ def stage_detections_to_seeds(ctx):
                             _pm, _pc = ctx.cpt.nh_pending.get(prn, (0, 0))
                             _pc = _pc + 1 if _pm == m else 1
                             ctx.cpt.nh_pending[prn] = (m, _pc)
-                            if _pc < ctx.args.nh_period_debounce:
+                            # ⚠️ NEVER ADOPT A PERIOD WE ARE NOT WILLING TO RECORD (2026-08-31).
+                            # ph_hist is updated only when snr >= --period-check-snr, because
+                            # below that bar the phase IS noise (this module's own words, and
+                            # the `sev` line above already calls such a disagreement a "weak
+                            # det" -- evidence about the detection, not the source). Adopting
+                            # on a weak detection therefore rewrote the seed by m periods and
+                            # then stored nothing, so the NEXT detection measured the SAME m
+                            # against the SAME stale history and adopted again, forever.
+                            # Measured on sky 2026-08-31: gps_l5 PRN 10 and 25 re-adopting
+                            # +14 periods (143,220 chips) and PRN 28 +2 every ~4 s, seeds
+                            # smashed each time, the chain unable to hold a lock while
+                            # gal/bds -- whose detections sat above the bar -- converged to
+                            # 0.06-chip clock residuals on the same fleet. GPS was red across
+                            # the board for exactly this reason.
+                            # A weak detection now keeps the standing period, as the debounce
+                            # already does before it is confirmed. The cost is that a genuine
+                            # period change on a permanently weak satellite waits for one
+                            # strong detection -- which is the right trade: we do not move an
+                            # ambiguity integer on a phase we have declared to be noise.
+                            _weak = snr < ctx.args.period_check_snr
+                            if _pc < ctx.args.nh_period_debounce or _weak:
                                 ph = (ph + m * ctx.code_len) % LLc
                                 _nh_deferred = True
                                 _log_rl("phdeb-%d" % prn,
                                         "PRN %d period DEBOUNCED: measured %+d period(s) "
-                                        "off the standing one (%d/%d consecutive) -- "
-                                        "standing period kept, measured fine phase seeded"
-                                        % (prn, m, _pc, ctx.args.nh_period_debounce),
+                                        "off the standing one (%d/%d consecutive, snr %.0f%s)"
+                                        " -- standing period kept, measured fine phase seeded"
+                                        % (prn, m, _pc, ctx.args.nh_period_debounce, snr,
+                                           ", WEAK: below --period-check-snr %.0f, will not "
+                                           "adopt on a phase we would not record"
+                                           % ctx.args.period_check_snr if _weak else ""),
                                         every_s=60.0)
                             else:
                                 ctx.cpt.nh_pending.pop(prn, None)
