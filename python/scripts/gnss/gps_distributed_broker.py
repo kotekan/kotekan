@@ -1949,7 +1949,26 @@ def main(argv=None, rx=None, publisher=None):
                 # the filtered offset (see fe_off at its definition)
                 _ow = _now()
                 _oi = _fh / args.hops_per_sec - _ow
-                if fe_off[0] is None:
+                # ⚠️ A pow_hop IN THE FUTURE OF THE WALL CLOCK IS NOT THE AXIS (2026-08-31).
+                # The max-filter rejects STALE samples by construction, but nothing bounded
+                # the other side: a birth row echoing a forecast-epoch hop (+1-2 s ahead by
+                # design) or a corrupt row rides in through max(), the ratchet accepts any
+                # upward move < 2.0 s unconditionally, and the decay is 1.8 s/HOUR -- so one
+                # bad poll held the filtered axis +2.1 s in the future for hours (filtered
+                # -1787946260.1 vs truth -262.25; poison/recover cycles visible as SNAP
+                # lines). Downstream: every model evaluated ~2 s off-time, integ residuals
+                # ~5 chips fleet-wide, every hold-release INTEG-VETOED, seeds rotting at
+                # 8-10 chips against a +-1 chip pull-in. Staleness is >= 0 by physics, so
+                # the offset can NEVER exceed -utc0_sample0: reject the sample outright --
+                # from the init, the ratchet AND the snap counter -- and say so.
+                _utc0 = float(getattr(_ctx, "utc0_sample0", 0.0) or 0.0)
+                if _utc0 > 0.0 and _oi > -_utc0 + 0.05:
+                    _log_rl("fe-axis-future",
+                            "fe-axis: REJECTED a pow_hop %.2f s in the FUTURE of the wall "
+                            "clock (offset %+.3f, physical bound %+.3f) -- a corrupt or "
+                            "forecast-epoch row surfaced by max(), never the axis."
+                            % (_oi + _utc0, _oi, -_utc0), every_s=60.0)
+                elif fe_off[0] is None:
                     fe_off[0] = _oi
                 elif abs(_oi - fe_off[0]) > 2.0:
                     # disagreement: believe it only if it REPEATS at the same value
