@@ -991,6 +991,8 @@ def main(argv=None, rx=None, publisher=None):
     # SNAP on a >2 s disagreement (an F-engine restart genuinely moves the axis; a max
     # filter must not ride a dead frame0 for hours).
     fe_off = [None, 0.0, 0, 0.0]
+    _axis_utc0 = [0.0]   # cached frame0: the ingestion bound below must never go inert
+                         # while the anchor re-fetches (utc0_sample0 is a run constant)
     # [filtered offset, wall of last update, consecutive-disagree count, candidate offset]
     # ⚠️ THE SNAP NEEDS PERSISTENCE (2026-08-23, measured the same evening the filter went in).
     # `_fh` is max(pow_hop) over the chain's CURRENT status rows -- a MAX OVER A CHURNING SET,
@@ -1895,6 +1897,31 @@ def main(argv=None, rx=None, publisher=None):
             # with wall entering only as the elapsed-since-fetch difference.
             _fh = max((float(r.get("pow_hop") or 0.0) for r in _ctx.status.values()),
                       default=0.0)
+            # ⚠️ BOUND AT INGESTION (2026-08-31, round two). A pow_hop in the FUTURE of
+            # the wall clock is never the axis (staleness >= 0 by physics) -- birth rows
+            # echo the forecast-epoch seed hop. Bounding only the fe_off FILTER was not
+            # enough: the raw pair fe_axis[0] and fe_hop_now took the same poisoned max,
+            # and the 23:15:57 event rode THAT into the fleet (WALL-vs-F-ENGINE JUMPED
+            # +1.041 s, mass rebirths, presence 37 -> 2) while fe_off correctly rejected
+            # the very same row. One gate HERE protects every consumer at once. On a
+            # violation, fall back to the newest NON-future row -- the poll still serves.
+            if _ctx.utc0_sample0:
+                _axis_utc0[0] = float(_ctx.utc0_sample0)
+            if _axis_utc0[0] > 0.0 and _fh > 0.0:
+                _fh_bound = (_now() - _axis_utc0[0] + 0.05) * args.hops_per_sec
+                if _fh > _fh_bound:
+                    _fh_ok = max((h for h in (float(r.get("pow_hop") or 0.0)
+                                              for r in _ctx.status.values())
+                                  if h <= _fh_bound), default=0.0)
+                    _log_rl("fe-ingest-future",
+                            "fe-axis: newest pow_hop is %.2f s in the FUTURE of the wall "
+                            "clock -- a forecast-epoch or corrupt row; dropped from the "
+                            "axis (falling back to the newest sane row, %.2f s stale)."
+                            % (_fh / args.hops_per_sec - (_now() - _axis_utc0[0]),
+                               (_now() - _axis_utc0[0]) - _fh_ok / args.hops_per_sec
+                               if _fh_ok > 0.0 else float("nan")),
+                            every_s=60.0)
+                    _fh = _fh_ok
             # PUBLISHED FOR THE PRN SCHEDULER (prnmap._at_seq). None, not 0.0, when there is
             # no axis: a zero would look like a valid sample at the epoch and would schedule
             # every swap into the deep past, i.e. straight through the deadline test.
