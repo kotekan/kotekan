@@ -6,6 +6,7 @@
 #include "configUpdater.hpp"
 #include "errors.h" // _global_log_level
 #include "geoUtil.hpp"
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "timeUtil.hpp"
 
@@ -187,6 +188,9 @@ std::array<double, 3> itrs_to_cirs(std::array<double, 3> v, double ERA_deg, doub
  * TESTS
  *
  ******************/
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_DishType_to_json) {
 

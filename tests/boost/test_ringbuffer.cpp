@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_ringbuffer"
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"             // for Config
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "metadataFactory.hpp"
 #include "ringbuffer.hpp"
 #include "test_utils.hpp"
@@ -22,6 +23,9 @@ using namespace std;
 
 
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test1) {
     // Create metadata pool

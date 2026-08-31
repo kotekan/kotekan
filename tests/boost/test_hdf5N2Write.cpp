@@ -14,7 +14,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "configUpdater.hpp"
-#include "hdf5N2Write.hpp" // for hdf5N2Write
+#include "hdf5N2Write.hpp"        // for hdf5N2Write
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "test_utils.hpp"
@@ -25,7 +26,6 @@
 #include <boost/test/included/unit_test.hpp>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -42,29 +42,6 @@
 #include <unistd.h> // for gethostname
 #include <utility>
 #include <vector>
-
-// SIGTERM handler to allow tests to catch FATAL_ERROR_NON_OO exceptions
-// (which call exit_kotekan and raise SIGTERM before throwing FatalError)
-namespace {
-volatile sig_atomic_t g_sigterm_received = 0;
-void sigterm_handler(int /*sig*/) {
-    g_sigterm_received = 1;
-}
-struct SigtermGuard {
-    struct sigaction old_action;
-    SigtermGuard() {
-        struct sigaction new_action;
-        new_action.sa_handler = sigterm_handler;
-        sigemptyset(&new_action.sa_mask);
-        new_action.sa_flags = 0;
-        sigaction(SIGTERM, &new_action, &old_action);
-    }
-    ~SigtermGuard() {
-        sigaction(SIGTERM, &old_action, nullptr);
-    }
-};
-static SigtermGuard g_sigterm_guard;
-} // namespace
 
 using std::string;
 
@@ -272,6 +249,9 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
 /***********************************/
 
 // Test 1: add_frame for a single (f,t) slot, verify data stored correctly in memory
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
+
 BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     N2Metadata force_link_marker;
     const size_t num_input = 3;

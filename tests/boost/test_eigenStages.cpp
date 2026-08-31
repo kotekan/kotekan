@@ -14,6 +14,7 @@
 #include "configUpdater.hpp"
 #include "datasetManager.hpp"
 #include "eigenVis.hpp"
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "test_utils.hpp"
@@ -308,6 +309,9 @@ static void verify_results(const EigenResults& res, const EigenStageTestParams& 
 
 BOOST_TEST_GLOBAL_FIXTURE(RestServerFixture);
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(eigenVis_filled) {
     EigenStageTestParams params;

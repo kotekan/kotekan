@@ -1,15 +1,16 @@
 
 #define BOOST_TEST_MODULE "test_datasetManager_REST"
 
-#include "Config.hpp"         // for Config
-#include "Hash.hpp"           // for operator<<, hash, operator==, Hash
-#include "dataset.hpp"        // for dataset
-#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"   // for freqState, inputState, prodState, state_uptr
-#include "errors.h"           // for __enable_syslog, _global_log_level
-#include "kotekanLogging.hpp" // for DEBUG_NON_OO
-#include "restServer.hpp"     // for restServer, connectionInstance
-#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for operator<<, hash, operator==, Hash
+#include "dataset.hpp"            // for dataset
+#include "datasetManager.hpp"     // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"       // for freqState, inputState, prodState, state_uptr
+#include "errors.h"               // for __enable_syslog, _global_log_level
+#include "kotekanLogging.hpp"     // for DEBUG_NON_OO
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "restServer.hpp"         // for restServer, connectionInstance
+#include "visUtil.hpp"            // for input_ctype, prod_ctype, freq_ctype
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
@@ -157,6 +158,9 @@ struct TestContext {
         DEBUG_NON_OO("test: /register-dataset: replied with\n{:s}", reply.dump(4));
     }
 };
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
     _global_log_level = 4;

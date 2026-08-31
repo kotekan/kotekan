@@ -5,6 +5,13 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
+# kotekanTestLogging.hpp includes kotekanLogging.hpp, which needs lib/core (for errors.h) and
+# external/fmt (for fmt.hpp). Those are exported by kotekan_core and libexternal, and not every test
+# links both -- test_Metadata links only kotekan_metadata -- so make them available to every test in
+# this directory.
+include_directories(${KOTEKAN_SOURCE_DIR}/lib/core)
+include_directories(SYSTEM ${KOTEKAN_SOURCE_DIR}/external/fmt)
+
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 
