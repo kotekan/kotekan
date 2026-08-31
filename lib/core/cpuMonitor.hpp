@@ -6,9 +6,11 @@
 #include "restServer.hpp" // for connectionInstance
 #include "visUtil.hpp"    // for StatTracker
 
+#include <atomic>      // for atomic
 #include <cstdint>     // for uint32_t, uint16_t
 #include <map>         // for map
 #include <memory>      // for shared_ptr
+#include <mutex>       // for mutex, lock_guard
 #include <string>      // for string
 #include <sys/types.h> // for pid_t
 #include <thread>      // for thread
@@ -67,10 +69,26 @@ public:
      **/
     void set_track_len(const uint16_t mins);
 
+    /**
+     * @brief Current CPU usage of every tracked stage.
+     *
+     * The per-thread user and system time of a stage summed into one number, so
+     * a stage that spreads work over several threads reports what it costs the
+     * machine. Empty while the monitor is not running.
+     *
+     * @return stage unique name -> CPU usage in percent (100 is one busy core).
+     **/
+    std::map<std::string, double> get_stage_cpu_usage();
+
 private:
     std::thread this_thread;
-    bool stop_thread;
+    // Atomic, and initialised: stop() sets it from another thread while
+    // track_cpu() polls it, and nothing else ever wrote the initial false.
+    std::atomic<bool> stop_thread{false};
     std::map<std::string, std::map<pid_t, CpuStat>> ult_list; // <stage_name <tid, cpu_stats>>
+    // Lock for ult_list, which the tracking thread inserts into while the REST
+    // callbacks read it.
+    std::mutex ult_list_lock;
     std::map<std::string, Stage*> stages;
     uint32_t prev_cpu_time;
     uint16_t track_len = 2;
