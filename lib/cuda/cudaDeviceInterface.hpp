@@ -109,8 +109,38 @@ public:
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;
 
-    // Mutex for queuing GPU commands
-    std::recursive_mutex gpu_command_mutex;
+    /// The most CUDA streams one device will ever have. Fixed so the mutex array below
+    /// never reallocates: `prepareStreams` can be called from several stage constructors,
+    /// and a reallocating container of live mutexes is not something to be clever about.
+    static constexpr int32_t MAX_CUDA_STREAMS = 64;
+
+    /// ⚠️ ONE MUTEX PER STREAM, NOT ONE PER DEVICE (2026-08-31). This used to be a single
+    /// `gpu_command_mutex` covering the whole device, and that made every cudaProcess on a
+    /// GPU serialize its command queuing against every other one -- across blocking CUDA
+    /// driver calls. With 10 pipelines per GPU (7 GNSS chains + N2 + RFI + the copies) one
+    /// thread stuck in `cuEventRecord` inside that lock stopped the entire GPU half, and the
+    /// back-pressure propagated all the way to the NIC: the voltage ring filled, the
+    /// cudaCopyToRingbuffer producer blocked, `host_voltage_buffer_N` pinned (peek_hold frees
+    /// a frame only when EVERY consumer releases), transpose blocked, and the dpdk
+    /// distributor dropped. Half the aperture went dark with nothing logging an error
+    /// (proven by backtrace on cx19; see chord-gpu-command-mutex-wedge).
+    ///
+    /// Locking per STREAM instead is safe because intra-frame ordering never depended on
+    /// exclusive stream access: each pipeline chains its own commands with explicit
+    /// `cudaStreamWaitEvent` calls on events held in a vector LOCAL to its own
+    /// `queue_commands` (see cudaSyncStream::execute). What the lock actually protects is
+    /// shared `cudaCommandState` (cudaRechunkState is the documented case), which is shared
+    /// only WITHIN one pipeline -- so a pipeline that locks the streams it uses keeps that
+    /// invariant exactly.
+    ///
+    /// Pipelines with DISJOINT stream sets therefore never contend, which is what makes the
+    /// wedge impossible rather than merely unlikely. Pipelines that do share streams (all
+    /// the production processes still default to 0/1/2) still mutually exclude, byte-for-byte
+    /// the old behaviour.
+    ///
+    /// ⚠️ ALWAYS LOCK IN ASCENDING STREAM ORDER -- that global order is the whole reason
+    /// locking several of these cannot deadlock.
+    std::recursive_mutex& stream_mutex(int32_t stream_id);
 
 protected:
     void* alloc_gpu_memory(size_t len) override;
@@ -118,6 +148,9 @@ protected:
 
     // Cuda Streams
     std::vector<cudaStream_t> streams;
+
+    /// Per-stream command-queuing mutexes; see stream_mutex(). Fixed-size on purpose.
+    std::recursive_mutex stream_mutexes[MAX_CUDA_STREAMS];
 
     // Cache of device instances (weak to avoid lifetime extension)
     static std::map<int32_t, std::weak_ptr<cudaDeviceInterface>> inst_map;

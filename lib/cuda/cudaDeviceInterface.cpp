@@ -85,7 +85,19 @@ int32_t cudaDeviceInterface::get_num_streams() {
     return streams.size();
 }
 
+std::recursive_mutex& cudaDeviceInterface::stream_mutex(int32_t stream_id) {
+    if (stream_id < 0 || stream_id >= MAX_CUDA_STREAMS)
+        throw std::runtime_error(fmt::format("stream_mutex: stream {:d} outside [0, {:d})",
+                                            stream_id, MAX_CUDA_STREAMS));
+    return stream_mutexes[stream_id];
+}
+
 void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
+    if (num_streams > (uint32_t)MAX_CUDA_STREAMS)
+        throw std::runtime_error(
+            fmt::format("prepareStreams: asked for {:d} streams, the per-stream mutex array "
+                        "holds {:d} -- raise MAX_CUDA_STREAMS",
+                        num_streams, MAX_CUDA_STREAMS));
     // Create GPU command queues
     for (uint32_t i = streams.size(); i < num_streams; ++i) {
         cudaStream_t stream = nullptr;

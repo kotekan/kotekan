@@ -12,7 +12,8 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <mutex>    // for recursive_mutex, lock_guard
+#include <mutex>    // for recursive_mutex, unique_lock
+#include <set>      // for set (stream-id dedup in collect_stream_ids)
 #include <stdint.h> // for uint32_t, int32_t
 
 using kotekan::bufferContainer;
@@ -38,6 +39,28 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     device->prepareStreams(num_streams);
     CHECK_CUDA_ERROR(cudaProfilerStart());
     init();
+    collect_stream_ids();
+}
+
+// Which streams do our commands actually enqueue onto? Ascending and unique, so every
+// cudaProcess takes these mutexes in the same global order and locking several cannot
+// deadlock. The join stream is the lowest we own (see _join_stream_id).
+void cudaProcess::collect_stream_ids() {
+    std::set<std::int32_t> ids;
+    for (auto& command : commands)
+        for (auto* c : command)
+            if (c != nullptr) {
+                const std::int32_t sid = ((cudaCommand*)c)->get_cuda_stream_id();
+                if (sid >= 0)
+                    ids.insert(sid);
+            }
+    // A pipeline with no commands still needs a join stream; fall back to 0.
+    if (ids.empty())
+        ids.insert(0);
+    _my_stream_ids.assign(ids.begin(), ids.end());
+    _join_stream_id = _my_stream_ids.front();
+    INFO("cudaProcess[{:s}]: queuing streams [{:s}], join on stream {:d}", unique_name,
+         fmt::format("{}", fmt::join(_my_stream_ids, ", ")), _join_stream_id);
 }
 
 cudaProcess::~cudaProcess() {
@@ -85,8 +108,13 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
 
     int icommand = gpu_frame_counter % _gpu_buffer_depth;
     {
-        // Grab the lock for queuing GPU commands
-        std::lock_guard<std::recursive_mutex> lock(device->gpu_command_mutex);
+        // Grab the queuing locks for THE STREAMS WE USE -- not one device-wide lock. See
+        // cudaDeviceInterface::stream_mutex for why that was a whole-GPU outage waiting to
+        // happen. _my_stream_ids is ascending, which is what makes taking several safe.
+        std::vector<std::unique_lock<std::recursive_mutex>> locks;
+        locks.reserve(_my_stream_ids.size());
+        for (const std::int32_t sid : _my_stream_ids)
+            locks.emplace_back(device->stream_mutex(sid));
 
         // Create the state object that will get passed through this pipeline
         cudaPipelineState pipestate(gpu_frame_counter);
@@ -109,7 +137,7 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
     // frames (measured 2026-07-19: gal/bds epl frames with n_prn 0). Join: make
     // stream 0 wait each stream's last event, record one event there, signal that.
     {
-        cudaStream_t s0 = device->getStream(0);
+        cudaStream_t s0 = device->getStream(_join_stream_id);
         bool multi = false;
         for (size_t i = 1; i < events.size(); ++i)
             if (events[i] != nullptr && events[i] != final_event)

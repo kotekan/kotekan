@@ -1063,6 +1063,18 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         f"{pre}n2dual": {
             "kotekan_stage": "cudaProcess",
             "gpu_id": gpu,
+            # ⚠️ PRIVATE CUDA STREAMS PER CHAIN (2026-08-31, the half-node wedge).
+            # Every cudaProcess used to default onto streams 0/1/2, so all 7 GNSS chains and
+            # the production N2/RFI pipelines queued commands against the same per-stream
+            # locks. One thread blocking inside the CUDA driver there stopped the whole GPU
+            # half and back-pressured to the NIC (chord-gpu-command-mutex-wedge). Disjoint
+            # bases mean chains never contend with each other OR with production, which is
+            # what makes it impossible rather than unlikely.
+            # base 0 stays PRODUCTION's (streams 0,1,2); chain `ord` k takes 3+3k.
+            "cuda_stream_base": 3 + 3 * ordv,
+            # prepareStreams only ever GROWS the device pool, so asking for exactly what this
+            # pipeline needs is self-consistent whatever order the stages are constructed in.
+            "num_cuda_streams": 3 + 3 * ordv + 3,
             # NEVER share a core with a TRACKER cudaProcess. The tracker uses
             # cores[(gpu+6)%n] (= 60, 61 on the deployed pool), and the naive
             # cores[(gpu+5)%n] put gnss1_n2dual on 60 -- the same core as gnss0_gpu, i.e. two

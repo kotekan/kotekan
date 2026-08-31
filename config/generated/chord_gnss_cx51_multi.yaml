@@ -441,10 +441,12 @@ gnss0_b2a_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 24
+  cuda_stream_base: 9
   gpu_id: 0
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
+  num_cuda_streams: 12
   out_buffers:
     host_gnss_n2ctl: gnss0_b2a_n2ctl_buf
     host_gnss_tiles: gnss0_b2a_n2tiles_buf
@@ -663,10 +665,12 @@ gnss0_b2b_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 61
+  cuda_stream_base: 15
   gpu_id: 0
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
+  num_cuda_streams: 18
   out_buffers:
     host_gnss_n2ctl: gnss0_b2b_n2ctl_buf
     host_gnss_tiles: gnss0_b2b_n2tiles_buf
@@ -883,10 +887,12 @@ gnss0_b3i_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 19
+  cuda_stream_base: 18
   gpu_id: 0
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
+  num_cuda_streams: 21
   out_buffers:
     host_gnss_n2ctl: gnss0_b3i_n2ctl_buf
     host_gnss_tiles: gnss0_b3i_n2tiles_buf
@@ -1117,10 +1123,12 @@ gnss0_e5a_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 62
+  cuda_stream_base: 6
   gpu_id: 0
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
+  num_cuda_streams: 9
   out_buffers:
     host_gnss_n2ctl: gnss0_e5a_n2ctl_buf
     host_gnss_tiles: gnss0_e5a_n2tiles_buf
@@ -1347,10 +1355,12 @@ gnss0_e5b_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 58
+  cuda_stream_base: 12
   gpu_id: 0
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
+  num_cuda_streams: 15
   out_buffers:
     host_gnss_n2ctl: gnss0_e5b_n2ctl_buf
     host_gnss_tiles: gnss0_e5b_n2tiles_buf
@@ -1569,10 +1579,12 @@ gnss0_e6_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 57
+  cuda_stream_base: 21
   gpu_id: 0
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
+  num_cuda_streams: 24
   out_buffers:
     host_gnss_n2ctl: gnss0_e6_n2ctl_buf
     host_gnss_tiles: gnss0_e6_n2tiles_buf
@@ -1795,10 +1807,12 @@ gnss0_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 59
+  cuda_stream_base: 3
   gpu_id: 0
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer
   kotekan_stage: cudaProcess
+  num_cuda_streams: 6
   out_buffers:
     host_gnss_n2ctl: gnss0_n2ctl_buf
     host_gnss_tiles: gnss0_n2tiles_buf
@@ -2051,10 +2065,12 @@ gnss1_b2a_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 63
+  cuda_stream_base: 9
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
+  num_cuda_streams: 12
   out_buffers:
     host_gnss_n2ctl: gnss1_b2a_n2ctl_buf
     host_gnss_tiles: gnss1_b2a_n2tiles_buf
@@ -2246,10 +2262,12 @@ gnss1_b2b_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 59
+  cuda_stream_base: 15
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
+  num_cuda_streams: 18
   out_buffers:
     host_gnss_n2ctl: gnss1_b2b_n2ctl_buf
     host_gnss_tiles: gnss1_b2b_n2tiles_buf
@@ -2443,10 +2461,12 @@ gnss1_b3i_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 62
+  cuda_stream_base: 18
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
+  num_cuda_streams: 21
   out_buffers:
     host_gnss_n2ctl: gnss1_b3i_n2ctl_buf
     host_gnss_tiles: gnss1_b3i_n2tiles_buf
@@ -2644,10 +2664,12 @@ gnss1_e5a_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 60
+  cuda_stream_base: 6
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
+  num_cuda_streams: 9
   out_buffers:
     host_gnss_n2ctl: gnss1_e5a_n2ctl_buf
     host_gnss_tiles: gnss1_e5a_n2tiles_buf
@@ -2839,10 +2861,12 @@ gnss1_e5b_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 31
+  cuda_stream_base: 12
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
+  num_cuda_streams: 15
   out_buffers:
     host_gnss_n2ctl: gnss1_e5b_n2ctl_buf
     host_gnss_tiles: gnss1_e5b_n2tiles_buf
@@ -3028,10 +3052,12 @@ gnss1_e6_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 24
+  cuda_stream_base: 21
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
+  num_cuda_streams: 24
   out_buffers:
     host_gnss_n2ctl: gnss1_e6_n2ctl_buf
     host_gnss_tiles: gnss1_e6_n2tiles_buf
@@ -3220,10 +3246,12 @@ gnss1_n2dual:
     out_buf: host_gnss_n2ctl
   cpu_affinity:
   - 57
+  cuda_stream_base: 3
   gpu_id: 1
   in_buffers:
     host_voltage_ringbuffer: host_voltage_ringbuffer_1
   kotekan_stage: cudaProcess
+  num_cuda_streams: 6
   out_buffers:
     host_gnss_n2ctl: gnss1_n2ctl_buf
     host_gnss_tiles: gnss1_n2tiles_buf
