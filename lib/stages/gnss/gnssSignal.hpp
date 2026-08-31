@@ -356,6 +356,20 @@ inline constexpr SignalDescriptor GAL_E6_C = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
 };
 
+/// Galileo E6-C with the per-PRN CS100 secondary BAKED INTO the code table: the 5115-chip
+/// primary tiled 100x with THAT PRN's CS100 signs, one 511500-chip / 100 ms "code" -- the
+/// GAL_E5A_Q_CS construction verbatim (see it above for the WHY and the dead-reckon seeding
+/// discipline: the bank's single-sequence overlay slot skips per-PRN secondaries, so blind
+/// nh_search cannot align this; trackers are seeded by dead reckoning from the GPS-measured
+/// instrumental delay + ephemeris, docs/CHORD_MULTIBAND.md section 5). A CHORD record
+/// (10.49 ms) straddles at most ONE 100 ms boundary, so the P_HEAD assumption holds.
+inline constexpr SignalDescriptor GAL_E6_C_CS = {
+    "GAL_E6_C_CS", 1278.75e6, 5.115e6, 511500, 100e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
 /// Galileo E6-B (1278.75 MHz) -- the E6 DATA channel carrying the High Accuracy Service (HAS)
 /// message at 1000 sps, so a symbol is 1 ms = EXACTLY ONE code period -> navwipe_bit_records 1
 /// and NO secondary of its own (the 100-chip secondary is the E6-C PILOT's). HAS has been
@@ -393,6 +407,20 @@ inline constexpr SignalDescriptor BDS_B3I = {
     "BDS_B3I", 1268.52e6, 10.23e6, 10230, 1e-3,
     Modulation::BPSK, 0, 0,
     /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/20,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
+/// BeiDou B3I with the shared NH20 BAKED INTO the code table: the 10230-chip primary tiled
+/// 20x by the D1 NH signs, one 204600-chip / 20 ms "code" -- the GPS_L5_Q_NH construction
+/// verbatim (same primary rate, same overlay length, so the record geometry is the gps_l5
+/// chain's exactly). The search runs on BDS_B3I (raw + nh_search alignment, the L5 pattern);
+/// the tracker runs THIS. The residual is the 50 bps D1 nav sign, constant within a 20 ms
+/// baked period, so a CHORD record (10.49 ms) straddles at most ONE boundary and the P_HEAD
+/// assumption holds -- the same discipline that carries B2b's 1 ms symbols today, 20x slower.
+inline constexpr SignalDescriptor BDS_B3I_NH = {
+    "BDS_B3I_NH", 1268.52e6, 10.23e6, 204600, 20e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/0,
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
@@ -488,7 +516,8 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
           &GAL_E1C, &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_Q_CS, &GAL_E5A_I, &GAL_E5B_Q_CS,
           &BDS_B2A_P, &BDS_B2A_P_CS,
           &BDS_B2A_D, &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B,
-          &BDS_B1I, &BDS_B3I, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D, &GLO_L2OF, &GLO_L2OC_P})
+          &BDS_B1I, &BDS_B3I, &BDS_B3I_NH, &BDS_B2I, &GLO_L3OC_P, &GLO_L3OC_D, &GLO_L2OF, &GLO_L2OC_P,
+          &GAL_E6_C_CS})
         if (name == s->name)
             return s;
     return nullptr;

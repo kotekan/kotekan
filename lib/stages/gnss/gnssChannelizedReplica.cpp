@@ -117,6 +117,17 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b3i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "BDS_B3I_NH") {
+        // B3I primary tiled by the shared D1 NH20 -- the GPS_L5_Q_NH construction verbatim
+        // (see it above); cp in this 204600-chip space = primary cp + 10230 * period mod 20.
+        auto a = beidou::generate_b3i_code(prn);
+        std::vector<int8_t> tiled;
+        tiled.reserve((size_t)beidou::B3I_CODE_LENGTH * beidou::B3I_NH_LENGTH);
+        for (int k = 0; k < beidou::B3I_NH_LENGTH; ++k)
+            for (int i = 0; i < beidou::B3I_CODE_LENGTH; ++i)
+                tiled.push_back((int8_t)(a[(size_t)i] * beidou::B3I_NH20[(size_t)k]));
+        return tiled;
+    }
     if (name == "GLO_L2OF") {
         // ★ No PRN: FDMA gives every satellite the SAME code and separates them by carrier.
         // The per-satellite part is set_prn_freq_offset(), not this table.
@@ -142,6 +153,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = galileo::generate_e6b_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GAL_E6_C_CS") // per-PRN CS100 baked in, exactly as GAL_E5A_Q_CS below
+        return bake_secondary(galileo::generate_e6c_code(prn), galileo::generate_e6c_secondary(prn));
     if (name == "GAL_E5A_Q") {
         auto a = galileo::generate_e5aq_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -250,6 +263,10 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
             const auto o = galileo::e5bi_secondary(); // shared CS4 (4 ms = one I/NAV symbol)
             _secondary.assign(o.begin(), o.end());
         }
+        else if (name == "BDS_B3I") // shared NH20 spreading D1 (20 ms = one NAV symbol)
+            _secondary.assign(beidou::B3I_NH20.begin(), beidou::B3I_NH20.end());
+        else if (name == "BDS_B1I") // same D1 NH20 one band up
+            _secondary.assign(beidou::B1I_NH20.begin(), beidou::B1I_NH20.end());
         _secondary_length = (int)_secondary.size();
     }
 
