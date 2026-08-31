@@ -41,28 +41,19 @@
  * and can be different on a per beam basis.
  *
  * @par Buffers
- * @buffer network_input_buffer_0 Kotekan buffer feeding data from GPU0.
- *     @buffer_format Array of @c floats
- *     @buffer_metadata chimeMetadata
- * @buffer network_input_buffer_1 Kotekan buffer feeding data from GPU1.
- *     @buffer_format Array of @c floats
- *     @buffer_metadata chimeMetadata
- * @buffer network_input_buffer_2 Kotekan buffer feeding data from GPU2.
- *     @buffer_format Array of @c floats
- *     @buffer_metadata chimeMetadata
- * @buffer network_input_buffer_3 Kotekan buffer feeding data from GPU3.
+ * @buffer network_input_buffer Kotekan buffer feeding data from GPU0.
  *     @buffer_format Array of @c floats
  *     @buffer_metadata chimeMetadata
  * @buffer pulsar_out_buf Kotekan buffer that will be populated with packetized data.
  *     @buffer_format Array of @c uint
  *     @buffer_metadata chimeMetadata
  *
- * @conf   num_gpus             Int. No. of GPUs.
+ * @conf   num_freqs            Int. No. of frequencies present on each GPU.
  * @conf   samples_per_data_set Int. No. of baseband samples corresponding to each buffer.
  * @conf   num_pulsar           Int. No. of total pulsar beams (should be 10).
  * @conf   num_pol              Int. No. of polarization (should be 2).
  * @conf   timesamples_per_pulsar_packet    Int. Number of times that will go into each packet.
- * (should be 3125 or 625)
+ * (must be 625)
  *
  * @author Cherry Ng
  *
@@ -81,31 +72,17 @@ public:
 
 private:
     void fill_headers(unsigned char* out_buf, struct PSRHeader* psr_header,
-                      const uint64_t fpga_seq_num, struct timespec* time_now,
-                      chordMetadata::beamCoord* beam_coord, uint16_t* freq_ids);
+                      const uint64_t fpga_seq_num, struct timespec* const time_now,
+                      const chordMetadata::beamCoord& beam_coord, uint16_t const* const freq_ids);
 
-    /**
-     * @brief Requests a full frame for each of the input buffers until all start with the same @c
-     * fpga_seq_num.
-     *
-     * On exit, `in_buf`s will be synced up, `in_frame`s will point to the correct current frame,
-     * and `in_buffer_ID`s have the current `frame_id`.
-     *
-     * @returns No value if the stage should exit, otherwise the wrapped @c fpga_seq_num that starts
-     * the synced frames.
-     */
-    std::optional<uint64_t> sync_input_buffers();
-
-    /// Pointer to the input buffer for each of the GPUs
-    Buffer** in_buf;
-    /// Current @c frame_id for each of the `in_buf`s
-    uint* in_buffer_ID;
-    /// Pointer to the current frame for each of the `in_buf`s
-    uint8_t** in_frame;
+    /// Pointer to the input buffer
+    Buffer* in_buffer;
+    /// Pointer to the output buffer
     Buffer* pulsar_buf;
 
     /// Config variables
-    uint32_t _num_gpus;
+    /// The number of frequencies per GPU, must be a multiple of 4 for pulsar backend
+    uint32_t _num_freqs_per_gpu;
     uint32_t _samples_per_data_set;
     /// The number of pulsar beams to extract (starting at 0)
     uint32_t _num_pulsar_beams;
@@ -121,10 +98,6 @@ private:
     uint32_t _num_packet_per_stream;
     /// number of stream (40 for 3125; 10 for 625)
     uint32_t _num_stream;
-
-    /// Derived variables
-    struct timespec time_now;
-    uint32_t unix_offset;
 };
 
 #endif
