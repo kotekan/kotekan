@@ -28,7 +28,17 @@ processFRBFeedGains::processFRBFeedGains(Config& config, const std::string& uniq
     num_dishes_N = frb1_swap_MN ? num_dishes_x : num_dishes_y;
 }
 
-processFRBFeedGains::~processFRBFeedGains() {}
+void processFRBFeedGains::copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) {
+    (void)fid; // unused - coarse frequencies are just copied
+    auto scaling_factor = this->scaling_factor;
+    for (size_t u = 0; u < upchan_factor; ++u) {
+        // copy ell elements from the source into each fine channel
+        float16_t* u_ptr = dst_f + u * num_elements * num_components;
+        // apply the constant scaling factor
+        std::transform(src_f, src_f + num_components * num_elements, u_ptr,
+                       [scaling_factor](float v) { return float16_t(v * scaling_factor); });
+    }
+}
 
 void processFRBFeedGains::set_frame_desc(Buffer* buf) {
     buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 5>::describe(

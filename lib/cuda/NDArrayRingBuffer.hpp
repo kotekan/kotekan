@@ -48,6 +48,23 @@ using kotekan::mod;
 // which will have to be seen again during the next iteration. It is
 //
 //     overlap = read - claimed
+//
+// There are thus four cases:
+// - `read == 0`: There are not enough data yet; wait for more.
+// - `claimed == read`: The ordinary case; all data that are read are
+//   also consumed.
+// - `0 < claimed < read`: The last `overlap` elements are read again
+//   during the next iteration.
+// - `claimed == 0 && read > 0`: Nothing is consumed at all; the same
+//   data will be read again during the next iteration. This is useful
+//   for slowly varying inputs (e.g. a bad feed mask) that are read on
+//   every iteration but advance only rarely.
+//
+// CAUTION: Since `wait_and_claim_readable` only waits while `read` is
+// zero, a caller that keeps returning `claimed == 0` will never make
+// progress, and will spin instead of blocking. A caller using this
+// case must ensure progress by other means, e.g. by claiming data
+// from another ringbuffer during the same iteration.
 struct read_descriptor_t {
     std::ptrdiff_t claimed, read;
 
@@ -289,12 +306,44 @@ public:
         assert(write_valid.size() == 0);
     }
 
+    // Where the next read will begin, in elements.
+    //
+    // This is the read head of the underlying ringbuffer, which is
+    // shared by all instances of this command: `register_consumer` only
+    // registers instance 0, and `RingBuffer` keys its cursors on the
+    // consumer name alone. `get_maybe_empty_read_valid().begin()` is
+    // *not* a substitute -- that is this instance's own position, which
+    // lags the shared head by whatever the other instances claimed in
+    // the meantime.
+    //
+    // Only the thread that claims from this ringbuffer (that is, the
+    // stage's `gpuProcess::main_thread`) advances the read head, and it
+    // is the same thread that calls this function, so the value stays
+    // valid until this instance claims.
+    //
+    // Returns -1 if the pipeline is shutting down. (A read head is never negative, and the
+    // other functions here that can observe a shutdown report it the same way.)
+    std::ptrdiff_t peek_read_head() const {
+        const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
+            ringbuffer->peek_readable(cuda_command.get_unique_name(), get_instance_num());
+        if (!peeked.has_value())
+            return -1;
+        return div_noremainder(peeked.value().first, granularity_in_bytes());
+    }
+
     // `wait_and_claim_readable` is the main function to claim data
     // for reading. Input is a callback function that receives the
     // currently available number of elements as input, and then
     // returns how many elements will be read and claimed (see above).
     // `wait_and_claim_readable` waits for data in the ringbuffer
-    // until a strictly positive number of elements will be claimed.
+    // until a strictly positive number of elements will be read.
+    //
+    // Claiming zero elements while reading some is allowed: the same
+    // data will then be read again during the next iteration. This
+    // means that `wait_and_claim_readable` no longer guarantees that
+    // the caller makes progress -- see the comment for
+    // `read_descriptor_t` above.
+    //
     // Returns 0 if all is good, -1 if we should terminate.
     int wait_and_claim_readable(
         const std::function<read_descriptor_t(std::ptrdiff_t)>& calc_read_descriptor) {
@@ -313,6 +362,10 @@ public:
             ringbuffer->peek_readable(cuda_command.get_unique_name(), get_instance_num());
         if (!peeked.has_value())
             return -1;
+        // Where we will begin reading. Only claiming data moves the
+        // read head, and we have not claimed anything yet, so this
+        // stays valid while we wait below.
+        const std::ptrdiff_t read_head_bytes = peeked.value().first;
         std::ptrdiff_t available_bytes = peeked.value().second;
 
     wait_for_data:
@@ -324,7 +377,7 @@ public:
         assert(read_descriptor.read <= available_elements);
 
         // Can we make progress?
-        if (read_descriptor.claimed <= 0) {
+        if (read_descriptor.read <= 0) {
             // We cannot make progress, we need to wait
             const std::optional<std::ptrdiff_t> waited = ringbuffer->wait_without_claiming(
                 cuda_command.get_unique_name(), get_instance_num(), available_bytes + 1);
@@ -335,28 +388,38 @@ public:
         }
 
         // Claim inputs
-        assert(read_descriptor.claimed > 0);
-        const std::optional<std::ptrdiff_t> claimed =
-            ringbuffer->wait_and_claim_readable(cuda_command.get_unique_name(), get_instance_num(),
-                                                read_descriptor.claimed * granularity_in_bytes());
-        if (!claimed.has_value())
-            return -1;
+        std::ptrdiff_t read_begin;
+        if (read_descriptor.claimed > 0) {
+            const std::optional<std::ptrdiff_t> claimed = ringbuffer->wait_and_claim_readable(
+                cuda_command.get_unique_name(), get_instance_num(),
+                read_descriptor.claimed * granularity_in_bytes());
+            if (!claimed.has_value())
+                return -1;
+            read_begin = div_noremainder(claimed.value(), granularity_in_bytes());
+        } else {
+            // We read data without claiming them. The read head does
+            // not move, so we begin reading where we left off. The
+            // data are protected from being overwritten because our
+            // read tail does not move either.
+            read_begin = div_noremainder(read_head_bytes, granularity_in_bytes());
+        }
 
-        const std::ptrdiff_t read_begin = div_noremainder(claimed.value(), granularity_in_bytes());
         read_valid = extent_t(read_begin, read_begin + read_descriptor.read);
         read_claimed = extent_t(read_begin, read_begin + read_descriptor.claimed);
         assert(read_valid.size() > 0);
-        assert(read_claimed.size() > 0);
+        assert(read_claimed.size() >= 0);
 
         return 0;
     }
 
     void finish_read() {
         assert(read_valid.size() > 0);
-        assert(read_claimed.size() > 0);
+        assert(read_claimed.size() >= 0);
         const std::ptrdiff_t claimed_elements = read_claimed.size();
-        ringbuffer->finish_read(cuda_command.get_unique_name(), get_instance_num(),
-                                claimed_elements * granularity_in_bytes());
+        // We might not have claimed anything, and thus have nothing to release
+        if (claimed_elements > 0)
+            ringbuffer->finish_read(cuda_command.get_unique_name(), get_instance_num(),
+                                    claimed_elements * granularity_in_bytes());
 
         read_valid = extent_t(read_claimed.end(), read_claimed.end());
         read_claimed = extent_t(read_claimed.end(), read_claimed.end());
@@ -365,6 +428,16 @@ public:
     }
 
     // State
+
+    extent_t get_maybe_empty_write_valid() const {
+        return write_valid;
+    }
+    extent_t get_maybe_empty_read_valid() const {
+        return read_valid;
+    }
+    extent_t get_maybe_empty_read_claimed() const {
+        return read_claimed;
+    }
 
     extent_t get_write_valid() const {
 #ifdef DEBUGGING

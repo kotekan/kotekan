@@ -13,7 +13,6 @@
 #include <assert.h>  // for assert
 #include <chrono>    // for duration_cast, duration, nanoseconds, system_clock
 #include <cmath>     // for sin, cos, floor, ceil, M_PI, abs
-#include <limits>    // for numeric_limits
 #include <stdexcept> // for runtime_error
 #include <vector>    // for vector
 
@@ -406,6 +405,7 @@ bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint6
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
+              config.get_default<bool>(path, "fatal_eop_out_of_range", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
               grid_frame_from_config(config, path)),
     // Frequency sampling parameters
@@ -643,26 +643,22 @@ station_id_t CHORDTelescope::element_index_to_station_id(uint64_t el_idx, Elemen
 
 uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
     if (st_id >= _num_elements)
-        FATAL_ERROR("Element idx {:d} >= num_elements {:d}", st_id, _num_elements);
+        FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
 
-    uint64_t el_idx = std::numeric_limits<uint64_t>::max();
-
+    // Both branches are in range given the check above, because
+    // `_num_elements == _num_polarizations * _num_dishes`: `decode_station_id` yields
+    // `dish < _num_dishes` and `pol < _num_polarizations`, so
+    // `pol + dish * _num_polarizations <= _num_elements - 1`.
     if (ord == ElementOrder::CHORDEarly) {
-        uint64_t pol;
         uint64_t dish;
+        uint64_t pol;
         decode_station_id(st_id, dish, pol);
-        el_idx = pol + dish * _num_polarizations;
+        return pol + dish * _num_polarizations;
     } else if (ord == ElementOrder::CHORDBeamformer) {
-        el_idx = st_id;
-    } else {
-        FATAL_ERROR("Cannot handle element order {}.", ord);
+        return st_id;
     }
 
-    if (el_idx >= _num_elements)
-        FATAL_ERROR("station_id {:d} order {}: Element idx {:d} >= num_elements {:d}", st_id, ord,
-                    el_idx, _num_elements);
-
-    return el_idx;
+    FATAL_ERROR("Cannot handle element order {}.", ord);
 }
 
 grid_idx_2d_t CHORDTelescope::station_id_to_main_array_grid_indices(station_id_t st_id) const {

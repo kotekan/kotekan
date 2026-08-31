@@ -6,7 +6,7 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include "kotekanLogging.hpp" // for ERROR_NON_OO
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, FATAL_ERROR_NON_OO
 
 #include "fmt.hpp"  // for compile_string_to_view, fmt, format, format_string
 #include "json.hpp" // for json
@@ -156,8 +156,11 @@ public:
     /**
      * @brief Get a config value or return the default value.
      *
-     * Same as get_int, but if it cannot find the value
-     * (or if it has the wrong type), it returns `default_value`.
+     * A value that is not set anywhere on the path returns @c default_value silently.
+     * A value that is set but cannot be read as @c T is fatal: substituting the default
+     * for a malformed entry would leave the pipeline running an unintended
+     * configuration, which is worse than refusing to start.
+     *
      * @param base_path     Path to the value in the config.
      * @param name          Name of the value.
      * @param default_value The default value.
@@ -435,6 +438,17 @@ T Config::get_default(const std::string& base_path, const std::string& name,
         T value = get<T>(base_path, name);
         return value;
     } catch (std::runtime_error const& ex) {
+        // get<T>() fails both for an absent value and for one of the wrong type.
+        // get_value() repeats the lookup without the conversion, and throws only in
+        // the former case.
+        try {
+            get_value(base_path, name);
+        } catch (std::runtime_error const&) {
+            return default_value;
+        }
+        FATAL_ERROR_NON_OO("Config: '{:s}' at {:s} is set but cannot be read as '{:s}'. The value "
+                           "found was: {:s}",
+                           name, base_path, demangle<T>(), get_value(base_path, name).dump());
         return default_value;
     }
 }

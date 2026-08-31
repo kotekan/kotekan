@@ -78,16 +78,29 @@ public:
     void pipeline_json_graph_callback(connectionInstance& conn);
 
     /**
-     * @brief HTTP callback serving a copy of the newest full frame in @c buf.
+     * @brief HTTP callback serving a copy of the newest full frame in a buffer.
      *
-     * Registered at `GET /buffer/<name>/frame` for every frame-holding buffer.
-     * Replies with a JSON object containing the frame's metadata, the buffer's
-     * frame descriptor (when attached), and the leading frame bytes base64
-     * encoded under `data`. The optional `len` query parameter caps the number
-     * of data bytes included; `len=0` returns metadata only, and no `len`
-     * returns the whole frame.
+     * Registered at `GET /buffer_frame`, which names its buffer in the required
+     * `name` query parameter. Replies with a JSON object containing the frame's
+     * metadata, the buffer's frame descriptor (when attached), and the leading
+     * frame bytes base64 encoded under `data`. The optional `len` query
+     * parameter caps the number of data bytes included, up to the frame size;
+     * `len=0` returns metadata only, and no `len` returns @c default_peek_len
+     * bytes.
      */
-    void buffer_frame_callback(Buffer* buf, connectionInstance& conn);
+    void buffer_frame_callback(connectionInstance& conn);
+
+    /**
+     * @brief How many bytes of frame data `/buffer_frame` copies when the
+     *        request does not ask for a length.
+     *
+     * The copy is made under the buffer lock, so an unbounded default would let
+     * one request hold up every stage on a buffer for as long as it takes to
+     * memcpy a frame -- hundreds of megabytes, on the pipelines this matters
+     * for. Enough to see what the data looks like; a caller wanting a whole
+     * frame asks for it.
+     */
+    static constexpr size_t default_peek_len = 64 * 1024;
 
 private:
     Config& config;
@@ -100,10 +113,6 @@ private:
     std::map<std::string, std::shared_ptr<metadataPool>> metadata_pools;
 
     std::map<std::string, GenericBuffer*> buffers;
-
-    /// Frame-peek endpoints registered in initalize_stages(), removed on
-    /// destruction.
-    std::vector<std::string> frame_peek_endpoints;
 };
 
 } // namespace kotekan

@@ -2447,6 +2447,7 @@ function fix_ptx_kernel()
         cxx,
         Dict(
             "kernel_name" => "FRBBeamformer_$(setup)_U$(U)",
+            "cuda_arch" => cuda_arch,
             "upchannelization_factor" => "$U",
             "downsampling_factor" => "$Tds",
             "kernel_design_parameters" => [

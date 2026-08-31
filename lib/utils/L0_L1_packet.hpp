@@ -1,3 +1,6 @@
+// Formatting is disabled so this file stays (almost) exactly like its upstream
+// version in the CHIME/FRB L1 repository.
+// clang-format off
 //
 // The following pseudo header file isn't actually valid C++ code, but is
 // intended to document the L0_L1 UDP packet format in a C++-like syntax.
@@ -124,3 +127,4 @@ struct L0_L1_header {
     uint8_t     data[ abs(data_nbytes) ];
 #endif
 };
+// clang-format on

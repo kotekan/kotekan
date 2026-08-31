@@ -125,20 +125,33 @@ target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kote
 add_executable(test_ringbuffer test_ringbuffer.cpp)
 target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_ringbuffer_read_without_claiming
+add_executable(test_ringbuffer_read_without_claiming test_ringbuffer_read_without_claiming.cpp)
+target_link_libraries(test_ringbuffer_read_without_claiming
+                      PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_pipeline_graph - the graph model behind /pipeline_dot
 add_executable(test_pipeline_graph test_pipeline_graph.cpp)
 target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
                                                   kotekan_core)
 
-# test_buffer_peek - non-consuming newest-full-frame peek used by the /buffer/<name>/frame endpoints
+# test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(test_buffer_peek PRIVATE libexternal kotekan_libs kotekan_utils
-                                                   kotekan_core -Wl,-all_load kotekan_metadata)
+    target_link_libraries(
+        test_buffer_peek
+        PRIVATE pthread
+                libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
 else()
     target_link_libraries(
         test_buffer_peek
-        PRIVATE libexternal
+        PRIVATE pthread
+                libexternal
                 kotekan_libs
                 kotekan_utils
                 kotekan_core
@@ -159,6 +172,11 @@ target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_u
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)
 target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
+# test_buffer_swap - frame transfer between buffers (safe_swap_frame)
+add_executable(test_buffer_swap test_buffer_swap.cpp)
+target_link_libraries(test_buffer_swap PRIVATE pthread libexternal kotekan_libs kotekan_utils
+                                               kotekan_core kotekan_metadata)
 
 # test_prometheus_metrics needs fmt and prometheusMetrics
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
@@ -221,6 +239,10 @@ if(HDF5_FOUND
 endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
+    add_executable(test_linearAlgebra test_linearAlgebra.cpp)
+    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core)
+    target_include_directories(test_linearAlgebra PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+
     add_executable(test_eigenStages test_eigenStages.cpp)
     target_link_libraries(test_eigenStages PRIVATE libexternal kotekan_stages kotekan_libs
                                                    kotekan_utils kotekan_core)
@@ -347,3 +369,84 @@ else()
 endif()
 target_include_directories(test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                  ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_N2AutoSpectrum - tests for N2AutoSpectrum stage
+add_executable(test_N2AutoSpectrum test_N2AutoSpectrum.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_N2AutoSpectrum
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_N2AutoSpectrum
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_N2AutoSpectrum PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                       ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_TransposeBasebandArray - tests for TransposeBasebandArray stage
+add_executable(test_TransposeBasebandArray test_TransposeBasebandArray.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_TransposeBasebandArray
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_TransposeBasebandArray
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                               ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_bufferDedup - tests for the bufferDedup stage
+add_executable(test_bufferDedup test_bufferDedup.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_bufferDedup
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_bufferDedup
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_bufferDedup PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                    ${KOTEKAN_SOURCE_DIR}/lib/utils)

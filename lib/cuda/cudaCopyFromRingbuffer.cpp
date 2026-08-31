@@ -48,15 +48,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
         if (instance_num == 0)
             out_buffer->register_producer(unique_name);
 
-        if (out_buffer->frame_size) {
-            uint flags;
-            // only register the memory if it isn't already...
-            if (cudaErrorInvalidValue
-                == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
-                CHECK_CUDA_ERROR(
-                    cudaHostRegister(out_buffer->frames[instance_num], out_buffer->frame_size, 0));
-            }
-        }
+        register_host_buffer(out_buffer);
     } else {
         out_buffer = nullptr;
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
@@ -77,13 +69,8 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 }
 
 cudaCopyFromRingbuffer::~cudaCopyFromRingbuffer() {
-    if (out_buffer && out_buffer->frame_size) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(out_buffer->frames[instance_num]));
-        }
-    }
+    if (out_buffer)
+        unregister_host_buffer(out_buffer);
 }
 
 int cudaCopyFromRingbuffer::wait_on_precondition() {

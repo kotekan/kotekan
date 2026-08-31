@@ -5,6 +5,8 @@
 #include "CHORDTelescope.hpp"
 #include "Config.hpp" // for Config
 #include "H5Support.hpp"
+#include "NDArray.hpp"       // for GenericNDArray
+#include "chordMetadata.hpp" // for chordMetadata, get_chord_metadata
 #include "N2FrameDesc.hpp" // for N2FrameDesc
 #include "N2FrameView.hpp" // for N2FrameView
 #include "N2Metadata.hpp"  // for N2Metadata, get_N2_metadata
@@ -22,10 +24,10 @@
 #include "json.hpp"
 
 #include <algorithm>
+#include <array>
 #include <boost/test/included/unit_test.hpp>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -43,28 +45,9 @@
 #include <utility>
 #include <vector>
 
-// SIGTERM handler to allow tests to catch FATAL_ERROR_NON_OO exceptions
-// (which call exit_kotekan and raise SIGTERM before throwing FatalError)
-namespace {
-volatile sig_atomic_t g_sigterm_received = 0;
-void sigterm_handler(int /*sig*/) {
-    g_sigterm_received = 1;
-}
-struct SigtermGuard {
-    struct sigaction old_action;
-    SigtermGuard() {
-        struct sigaction new_action;
-        new_action.sa_handler = sigterm_handler;
-        sigemptyset(&new_action.sa_mask);
-        new_action.sa_flags = 0;
-        sigaction(SIGTERM, &new_action, &old_action);
-    }
-    ~SigtermGuard() {
-        sigaction(SIGTERM, &old_action, nullptr);
-    }
-};
-static SigtermGuard g_sigterm_guard;
-} // namespace
+// Lets the tests below catch FATAL_ERROR_NON_OO exceptions, which call
+// exit_kotekan and raise SIGTERM before throwing FatalError.
+static kotekan_test_logging::SigtermGuard g_sigterm_guard;
 
 using std::string;
 
@@ -595,6 +578,140 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     }
 
     // Cleanup
+    rm_tree_if_exists(base_dir);
+}
+
+// Applied bad-feed-mask change records covering the file's tick span land in
+// /flag_updates: the record already in effect at the span start plus the records
+// inside it; records after the span and resent duplicates do not.
+BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
+
+    kotekan_test_logging::configure();
+
+    const std::string unique_name = "/hdf5_vis_writer_flagup";
+    const std::string in_buf_name = "n2buf";
+    const std::string mask_buf_name = "maskbuf";
+    const std::string base_dir = "test_hdf5N2Write_flag_updates";
+    rm_tree_if_exists(base_dir);
+
+    const size_t num_input = 3;
+    const size_t num_ev = 2;
+    const size_t nfreq = 3;
+    const uint64_t dt_ns = 1'000'000'000ULL;
+    const uint64_t frame_len_ticks = 100;
+    const uint64_t num_file_t = 2;
+
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, /*file_name*/ "vis",
+                                   /*prefix_hostname*/ false, num_file_t,
+                                   /*input_order*/ ElementOrder::CHORDBeamformer,
+                                   /*blocksize_f (0=all)*/ 0, /*blocksize_p*/ 0,
+                                   /*blocksize_t*/ num_file_t, /*grace*/ 60,
+                                   /*seq_override*/ dt_ns, TEST_GAINS_FILE);
+    set_file_num_t(conf, unique_name, num_file_t);
+    {
+        auto cfg = conf.get_full_config_json();
+        cfg[unique_name.substr(1)]["in_bf_mask_buf"] = mask_buf_name;
+        conf.update_config(cfg);
+    }
+
+    // Vis buffer
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_flagup", "N2Metadata");
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
+               /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
+    buf.ensure_frame_desc(
+        std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
+    buf.register_producer("test-producer");
+
+    // Mask record buffer: frames of two identical rows of three elements.
+    const size_t mask_rows = 2;
+    const size_t mask_row_len = 3;
+    auto chord_pool =
+        metadataPool::create(8, sizeof(chordMetadata), "pool_flagup_mask", "chordMetadata");
+    Buffer mask_buf(4, mask_rows * mask_row_len, chord_pool, mask_buf_name, "ndarray", /*numa*/ 0,
+                    /*huge*/ false, /*mlock*/ false, /*producers*/ std::vector<int>{},
+                    /*zero_new_frames*/ true);
+    mask_buf.ensure_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int8, "bf_mask", {(std::ptrdiff_t)mask_rows, 1, (std::ptrdiff_t)mask_row_len},
+        {"Trfi", "P", "D"}, {1, 1, 1}));
+    mask_buf.register_producer("test-producer");
+
+    kotekan::bufferContainer bc;
+    bc.add_buffer(in_buf_name, &buf);
+    bc.add_buffer(mask_buf_name, &mask_buf);
+
+    hdf5N2Write stage(conf, unique_name, bc);
+    stage.start();
+
+    // The vis frames below sit at ticks [100, 201). Records: one before the span (in
+    // effect at its start), a resent duplicate of it, one inside, one after the end.
+    const struct {
+        uint64_t seq;
+        std::array<int8_t, 3> mask;
+    } records[] = {
+        {50, {1, 1, 1}},  // in effect at the span start
+        {90, {1, 1, 1}},  // duplicate contents: collapsed on ingest
+        {150, {1, 0, 1}}, // inside the span
+        {300, {0, 0, 1}}, // after the span: excluded
+    };
+    int mask_fid = 0;
+    for (const auto& rec : records) {
+        int8_t* frame = (int8_t*)mask_buf.wait_for_empty_frame("test-producer", mask_fid);
+        BOOST_REQUIRE(frame != nullptr);
+        for (size_t r = 0; r < mask_rows; ++r)
+            std::copy(rec.mask.begin(), rec.mask.end(), frame + r * mask_row_len);
+        mask_buf.allocate_new_metadata_object(mask_fid);
+        auto meta = get_chord_metadata(&mask_buf, mask_fid);
+        meta->set_fpga_seq_num(rec.seq);
+        meta->set_coarse_freq({7});
+        mask_buf.mark_frame_full("test-producer", mask_fid);
+        mask_fid = (mask_fid + 1) % mask_buf.num_frames;
+    }
+
+    const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
+    const uint64_t base_time_ns = 10'000'000'000ULL;
+    N2::frameID fid(&buf);
+    for (size_t t = 0; t < num_file_t; ++t) {
+        for (size_t f = 0; f < nfreq; ++f) {
+            uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
+            BOOST_REQUIRE(frame != nullptr);
+            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, t,
+                                        base_time_ns + t * frame_len_ns, frame_len_ticks, t);
+            buf.mark_frame_full("test-producer", fid);
+            fid++;
+        }
+    }
+
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
+    stage.stop();
+    buf.send_shutdown_signal();
+    mask_buf.send_shutdown_signal();
+    stage.join();
+
+    auto datasets = list_h5_datasets(base_dir);
+    BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
+    {
+        File f(datasets[0], File::ReadOnly);
+        BOOST_REQUIRE(f.exist("/flag_updates"));
+        std::vector<uint64_t> seqs;
+        f.getDataSet("/flag_updates/fpga_seq_num").read(seqs);
+        std::vector<int32_t> freq_ids;
+        f.getDataSet("/flag_updates/freq_id").read(freq_ids);
+        std::vector<std::vector<int8_t>> masks;
+        f.getDataSet("/flag_updates/bf_mask").read(masks);
+
+        BOOST_REQUIRE_EQUAL(seqs.size(), 2u);
+        BOOST_CHECK_EQUAL(seqs[0], 50u);
+        BOOST_CHECK_EQUAL(seqs[1], 150u);
+        BOOST_REQUIRE_EQUAL(freq_ids.size(), 2u);
+        BOOST_CHECK_EQUAL(freq_ids[0], 7);
+        BOOST_CHECK_EQUAL(freq_ids[1], 7);
+        BOOST_REQUIRE_EQUAL(masks.size(), 2u);
+        BOOST_CHECK(masks[0] == (std::vector<int8_t>{1, 1, 1}));
+        BOOST_CHECK(masks[1] == (std::vector<int8_t>{1, 0, 1}));
+    }
+
     rm_tree_if_exists(base_dir);
 }
 

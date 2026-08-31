@@ -1,3 +1,29 @@
+Precompiling packages...
+    OrderedCollections Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/OrderedCollections/LtT3J_gIhQq.ji.pidfile)
+    ExprTools Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/ExprTools/eM8wu_gIhQq.ji.pidfile)
+    Adapt Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/Adapt/rUIgN_gIhQq.ji.pidfile)
+    Crayons Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/Crayons/TXPcU_gIhQq.ji.pidfile)
+    LLVMExtra_jll Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/LLVMExtra_jll/R9OeX_gIhQq.ji.pidfile)
+    StringManipulation Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/StringManipulation/4nJQd_gIhQq.ji.pidfile)
+    CUDA_Driver_jll Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA_Driver_jll/QJyk7_gIhQq.ji.pidfile)
+    CUDA_Runtime_Discovery Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA_Runtime_Discovery/T9PTO_gIhQq.ji.pidfile)
+  10195.0 ms  ✓ LLVMExtra_jll
+  10198.6 ms  ✓ Crayons
+  10201.8 ms  ✓ Adapt
+  10205.2 ms  ✓ ExprTools
+  10258.1 ms  ✓ CUDA_Runtime_Discovery
+  10261.3 ms  ✓ CUDA_Driver_jll
+  10264.4 ms  ✓ StringManipulation
+  10596.6 ms  ✓ OrderedCollections
+    UnsafeAtomics → UnsafeAtomicsLLVM Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/UnsafeAtomicsLLVM/yk2PZ_gIhQq.ji.pidfile)
+    GPUCompiler Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/GPUCompiler/yPwef_gIhQq.ji.pidfile)
+    PrettyTables Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/PrettyTables/kRdcL_gIhQq.ji.pidfile)
+  10191.3 ms  ✓ UnsafeAtomics → UnsafeAtomicsLLVM
+  18378.1 ms  ✓ PrettyTables
+  23308.4 ms  ✓ GPUCompiler
+    CUDA Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA/oWw5k_gIhQq.ji.pidfile)
+  46034.7 ms  ✓ CUDA
+  12 dependencies successfully precompiled in 81 seconds. 80 already precompiled.
 [Creating bb kernel...]
 [Done creating bb kernel]
 CHORD 8-bit baseband beamformer

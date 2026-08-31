@@ -68,11 +68,22 @@ struct RestServerFixture {
 struct EigenStageTestParams {
     size_t num_elements = 64;
     size_t num_ev = 2;
-    size_t num_ev_conv = 2;
+    // The `phase_ij` pattern is the rank-1 matrix `v v^H` with `v_i = exp(i*I)`, so only its
+    // dominant eigenpair is well determined; the others are numerical noise. Convergence is
+    // measured as the fractional change in each tested eigenvalue, which for a near-zero
+    // eigenvalue is noise divided by noise -- so asking the iterative solver to converge more
+    // than one eigenpair here cannot succeed. Only the iterative stages use this.
+    size_t num_ev_conv = 1;
     size_t total_frames = 6;
     size_t check_start_frame = 0;
     uint32_t num_diagonals_filled = 0;
     std::vector<uint32_t> exclude_inputs;
+    // Elements the source reports as bad in the frames' flags, from
+    // flag_start_frame onwards. N2 pipelines only.
+    std::vector<uint32_t> flagged_inputs;
+    int64_t flag_start_frame = 0;
+    // Whether the eigen stage honours those flags.
+    bool mask_flagged_inputs = true;
     string mode = "phase_ij";
     // For the concurrent-pipeline test. The default settings are equivalent
     // to the original single-pipeline behaviour.
@@ -148,6 +159,11 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
         cfg[fake_name]["block_size"] = 1;
     } else {
         cfg[fake_name]["kotekan_stage"] = "FakeN2";
+        cfg[eigen_name]["mask_flagged_inputs"] = p.mask_flagged_inputs;
+        if (!p.flagged_inputs.empty()) {
+            cfg[fake_name]["flagged_inputs"] = p.flagged_inputs;
+            cfg[fake_name]["flag_start_frame"] = p.flag_start_frame;
+        }
     }
 
     // Add telescope config, initialize telescope and dataset manager singletons.
@@ -220,7 +236,9 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     fake_stage->start();
 
     // Wait for output frames
-    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    // Generous enough that a loaded machine does not trip it: the pipelines
+    // here take about a second each, and failing this way aborts the module.
+    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(60);
     bool timed_out = false;
     while (out_buf.get_num_full_frames() < (int)p.total_frames) {
         if (std::chrono::steady_clock::now() > timeout) {
@@ -273,16 +291,34 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     return results;
 }
 
+// The elements expected to be masked out of the decomposition: those the config
+// excludes, plus those the frames flag as bad when the stage is honouring flags.
+// Only valid where the flags do not change over the frames being checked.
+static std::vector<uint32_t> expected_masked_inputs(const EigenStageTestParams& p) {
+    std::vector<uint32_t> masked = p.exclude_inputs;
+    if (p.mask_flagged_inputs && p.flag_start_frame <= (int64_t)p.check_start_frame) {
+        for (uint32_t i : p.flagged_inputs) {
+            if (std::find(masked.begin(), masked.end(), i) == masked.end())
+                masked.push_back(i);
+        }
+    }
+    return masked;
+}
+
 // Verify eigen results against expected values.
 // Tolerances are relative for eval, absolute for others.
-// Expected values are based on the FakeVis/FakeN2 patterns, with excluded inputs removed.
-// eval0 should be close to num_elements - num_excluded, eval1 close to 0.
+// Expected values are based on the FakeVis/FakeN2 patterns, with masked inputs removed.
+// eval0 should be close to num_elements - num_masked, eval1 close to 0.
 // evec0 should have phase increasing by 1 radian per input, and amplitude 1/sqrt(num_good_inputs).
-// erms should be small.
+// erms should be small in magnitude. Note that the stage reports the residual RMS only when the
+// decomposition converged, and -eps_eval when it did not, so this bounds whichever of the two the
+// run produced. Asking for more eigenpairs than the rank of the test pattern leaves the surplus
+// eigenvalues at ~0, whose fractional convergence never settles, so those runs are bounding
+// -eps_eval rather than a residual.
 static void verify_results(const EigenResults& res, const EigenStageTestParams& p, double eval_tol,
                            double phase_tol, double amp_tol, float rms_limit) {
-    const float expected_eval0 =
-        (float)(p.num_elements - static_cast<long>(p.exclude_inputs.size()));
+    const std::vector<uint32_t> masked = expected_masked_inputs(p);
+    const float expected_eval0 = (float)(p.num_elements - static_cast<long>(masked.size()));
     for (size_t idx = p.check_start_frame; idx < res.eval0.size(); ++idx) {
         BOOST_CHECK_SMALL(static_cast<double>(std::abs(res.eval0[idx] - expected_eval0))
                               / (double)p.num_elements,
@@ -290,8 +326,13 @@ static void verify_results(const EigenResults& res, const EigenStageTestParams& 
         if (p.num_ev > 1)
             BOOST_CHECK_SMALL(static_cast<double>(res.eval1[idx]) / (double)p.num_elements,
                               eval_tol);
-        check_phase_vector(res.evec0[idx], p.exclude_inputs, p.num_elements, phase_tol, amp_tol);
-        BOOST_CHECK_LT(static_cast<double>(std::abs(res.erms[idx])), (double)rms_limit);
+        check_phase_vector(res.evec0[idx], masked, p.num_elements, phase_tol, amp_tol);
+        // The iterative stages write the residual RMS to `erms` when the solver converged,
+        // and minus the eigenvalue-convergence metric when it hit `max_iterations` first
+        // (see EigenVisIter::main_thread / EigenN2Iter::main_thread). A negative value
+        // therefore means "did not converge", which is a failure, not a small residual.
+        BOOST_CHECK_GE(res.erms[idx], 0.0f);
+        BOOST_CHECK_LT(static_cast<double>(res.erms[idx]), (double)rms_limit);
     }
 }
 
@@ -330,7 +371,243 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_iterative) {
     params.total_frames = 4;
     params.num_elements = 16;
     auto res = run_pipeline(params, "EigenN2Iter");
-    verify_results(res, params, 1e-4, 1e-4, 1e-4, 2e-2f);
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-5f);
+}
+
+// Elements the incoming frames flag as bad are masked out of the
+// decomposition, exactly as the configured exclude_inputs are.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_flagged_inputs) {
+    EigenStageTestParams params;
+    params.total_frames = 4;
+    params.num_elements = 16;
+    params.flagged_inputs = {5, 10, 6};
+    // The pattern is rank 1, so ask for one eigenpair: a second, ~zero
+    // eigenvalue would never satisfy the fractional convergence test and erms
+    // would report -eps_eval instead of the residual checked here.
+    params.num_ev = 1;
+    params.num_ev_conv = 1;
+    auto res = run_pipeline(params, "EigenN2Iter");
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-4f);
+}
+
+// The config and the frames' flags mask elements together, not one or the other.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_flagged_and_excluded_inputs) {
+    EigenStageTestParams params;
+    params.total_frames = 4;
+    params.num_elements = 16;
+    params.exclude_inputs = {2};
+    params.flagged_inputs = {5, 10};
+    params.num_ev = 1;
+    params.num_ev_conv = 1;
+    auto res = run_pipeline(params, "EigenN2Iter");
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-4f);
+}
+
+// With flag masking turned off the frames' flags are ignored. This is what
+// protects a pipeline whose source does not populate the flags at all: an
+// unpopulated flag array reads as every element being bad.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_flagged_inputs_ignored_when_disabled) {
+    EigenStageTestParams params;
+    params.total_frames = 4;
+    params.num_elements = 16;
+    params.flagged_inputs = {5, 10, 6};
+    params.mask_flagged_inputs = false;
+    params.num_ev = 1;
+    params.num_ev_conv = 1;
+    auto res = run_pipeline(params, "EigenN2Iter");
+    // expected_masked_inputs() drops the flagged elements, so this expects an
+    // unmasked decomposition over all 16 elements.
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-4f);
+}
+
+// A flagging change part way through the stream is picked up: the mask is
+// rebuilt and the eigenvalue steps down by the element that went bad.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_flags_change_midstream) {
+    EigenStageTestParams params;
+    params.total_frames = 6;
+    params.num_elements = 16;
+    params.flagged_inputs = {3};
+    params.flag_start_frame = 3;
+    params.num_ev = 1;
+    params.num_ev_conv = 1;
+    auto res = run_pipeline(params, "EigenN2Iter");
+
+    BOOST_REQUIRE_EQUAL(res.eval0.size(), params.total_frames);
+    for (size_t idx = 0; idx < res.eval0.size(); ++idx) {
+        const float expected = (float)params.num_elements - (idx >= 3 ? 1.0f : 0.0f);
+        BOOST_CHECK_SMALL(static_cast<double>(std::abs(res.eval0[idx] - expected))
+                              / (double)params.num_elements,
+                          1e-4);
+        // The flagged element drops out of the eigenvector only once flagged.
+        const double amp = std::abs(res.evec0[idx][3]);
+        if (idx >= 3) {
+            BOOST_CHECK_SMALL(amp, 1e-4);
+        } else {
+            BOOST_CHECK_GT(amp, 1e-2);
+        }
+        // Rebuilding the mask mid-stream must not cost convergence.
+        BOOST_CHECK_SMALL(static_cast<double>(std::abs(res.erms[idx])), 1e-4);
+    }
+}
+
+// Flagging everything leaves too few elements to ask for num_ev eigenpairs, so
+// the frame is reported as failed rather than decomposed. Without a failed_buf
+// configured it falls through to out_buf with zeroed eigenpairs.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_all_inputs_flagged) {
+    EigenStageTestParams params;
+    params.total_frames = 2;
+    params.num_elements = 16;
+    params.num_ev = 1;
+    params.num_ev_conv = 1;
+    for (uint32_t i = 0; i < params.num_elements; ++i)
+        params.flagged_inputs.push_back(i);
+    auto res = run_pipeline(params, "EigenN2Iter");
+
+    BOOST_REQUIRE_EQUAL(res.eval0.size(), params.total_frames);
+    for (size_t idx = 0; idx < res.eval0.size(); ++idx) {
+        BOOST_CHECK_EQUAL(res.eval0[idx], 0.0f);
+        // Negative RMS marks a failed calculation.
+        BOOST_CHECK_LT(res.erms[idx], 0.0f);
+        for (const auto& v : res.evec0[idx])
+            BOOST_CHECK_EQUAL(std::abs(v), 0.0f);
+    }
+}
+
+// DishInputs layout: the frame descriptor derives a compact frame from the
+// telescope's dish table (two of four dishes Fake -> the 4 elements {0, 1, 4, 5}
+// of the full 8, carried in the input_list), and the eigen stage solves it as an
+// ordinary dense triangle, blind to where the elements came from. A rank-1 phase
+// matrix must converge with all four evec entries populated.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
+    ensure_n2metadata_registered();
+
+    nlohmann::json cfg;
+    cfg["log_level"] = "ERROR";
+    cfg["cpu_affinity"] = std::vector<int>{0};
+    cfg["num_polarizations"] = 2;
+    cfg["num_ev"] = 1;
+
+    cfg["n2buf"]["num_elements"] = 8;
+    cfg["n2buf"]["num_ev"] = 1;
+    cfg["n2buf"]["n2_layout"] = "DishInputs";
+
+    cfg["eigen_di"]["kotekan_stage"] = "EigenN2Iter";
+    cfg["eigen_di"]["in_buf"] = "in_buf";
+    cfg["eigen_di"]["out_buf"] = "out_buf";
+    cfg["eigen_di"]["num_ev_conv"] = 1;
+
+    cfg["dataset_manager"]["enable_state_caching"] = false;
+    cfg["dataset_manager"]["use_dataset_broker"] = false;
+
+    // Four dishes, two of them Fake: DishInputs selects elements {0, 1, 4, 5}.
+    add_test_telescope_config(cfg);
+    cfg["telescope"]["num_dishes"] = 4;
+    cfg["telescope"]["dish_inputs"] = nlohmann::json::array(
+        {{{"dish_idx", 0},
+          {"grid_x_idx", 0},
+          {"grid_y_idx", 0},
+          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+          {"coelev_disp_deg", 0.0},
+          {"type", "ArrayDish"},
+          {"label", "D00"}},
+         {{"dish_idx", 1},
+          {"grid_x_idx", 1},
+          {"grid_y_idx", 0},
+          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+          {"coelev_disp_deg", 0.0},
+          {"type", "ArrayDish"},
+          {"label", "D01"}},
+         {{"dish_idx", 2},
+          {"grid_x_idx", 2},
+          {"grid_y_idx", 0},
+          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+          {"coelev_disp_deg", 0.0},
+          {"type", "Fake"},
+          {"label", "F02"}},
+         {{"dish_idx", 3},
+          {"grid_x_idx", 3},
+          {"grid_y_idx", 0},
+          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+          {"coelev_disp_deg", 0.0},
+          {"type", "Fake"},
+          {"label", "F03"}}});
+
+    kotekan::Config conf;
+    conf.update_config(cfg);
+    kotekan::configUpdater::instance().apply_config(conf);
+    Telescope::instance(conf);
+    datasetManager::instance(conf);
+
+    // The derivation itself: a compact 4-element frame whose identities are the
+    // ArrayDish elements {0, 1, 4, 5} of the full order, with a dense triangle over
+    // its own element axis.
+    auto desc = std::make_shared<kotekan::N2FrameDesc>(conf, "/n2buf");
+    BOOST_REQUIRE_EQUAL(desc->get_num_elements(), 4u);
+    BOOST_REQUIRE_EQUAL(desc->get_product_list().size(), 10u);
+    const std::vector<uint16_t> expected_ids = {0, 1, 4, 5};
+    BOOST_CHECK(desc->get_input_list() == expected_ids);
+    for (const auto& p : desc->get_product_list()) {
+        BOOST_CHECK(p.input_a <= p.input_b);
+        BOOST_CHECK(p.input_b < 4);
+    }
+
+    const size_t frame_size = desc->get_byte_size();
+    auto pool = metadataPool::create(4, sizeof(N2Metadata), "n2_pool_di", "N2Metadata");
+    Buffer in_buf(2, frame_size, pool, "in_buf", "N2", 0, false, false, std::vector<int>{}, true);
+    Buffer out_buf(2, frame_size, pool, "out_buf", "N2", 0, false, false, std::vector<int>{},
+                   true);
+    in_buf.ensure_frame_desc(desc);
+    out_buf.ensure_frame_desc(desc);
+    in_buf.register_producer("test-producer");
+    out_buf.register_consumer("test_sink");
+    kotekan::bufferContainer bc;
+    bc.add_buffer("in_buf", &in_buf);
+    bc.add_buffer("out_buf", &out_buf);
+
+    EigenN2Iter stage(conf, "/eigen_di", bc);
+    stage.start();
+
+    // One frame: rank-1 vis(a, b) = e^{i(a-b)} over the compact element axis, flags
+    // all good -- the Fake elements are simply not in the frame.
+    BOOST_REQUIRE(in_buf.wait_for_empty_frame("test-producer", 0) != nullptr);
+    in_buf.allocate_new_metadata_object(0);
+    auto meta = get_N2_metadata(&in_buf, 0);
+    meta->freq_id = 0;
+    meta->fpga_start_tick = 100;
+    meta->frame_length_fpga_ticks = 100;
+    {
+        N2FrameView fv(&in_buf, 0);
+        fv.zero_frame();
+        const auto& prods = desc->get_product_list();
+        for (size_t p = 0; p < prods.size(); ++p) {
+            fv.vis[p] = std::polar(1.0f, float(prods[p].input_a) - float(prods[p].input_b));
+            fv.weight[p] = 1.0f;
+        }
+        for (size_t i = 0; i < 4; ++i) {
+            fv.flags[i] = 1.0f;
+            fv.gain[i] = 1.0f;
+        }
+    }
+    in_buf.mark_frame_full("test-producer", 0);
+
+    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (out_buf.get_num_full_frames() < 1) {
+        BOOST_REQUIRE(std::chrono::steady_clock::now() < timeout);
+        std::this_thread::sleep_for(10ms);
+    }
+
+    in_buf.send_shutdown_signal();
+    out_buf.send_shutdown_signal();
+    stage.stop();
+    stage.join();
+
+    N2FrameView out(&out_buf, 0);
+    BOOST_CHECK_GT(out.erms, 0.0f); // converged
+    BOOST_CHECK_CLOSE(out.eval[0], 4.0f, 1.0);
+    std::vector<std::complex<float>> evec(4);
+    for (size_t i = 0; i < 4; ++i)
+        evec[i] = out.evec[i];
+    check_phase_vector(evec, {}, 4, 1e-3, 1e-3);
 }
 
 BOOST_AUTO_TEST_CASE(eigenVisIter_vis_buffers) {
@@ -338,7 +615,7 @@ BOOST_AUTO_TEST_CASE(eigenVisIter_vis_buffers) {
     params.total_frames = 4;
     params.num_elements = 16;
     auto res = run_pipeline(params, "EigenVisIter");
-    verify_results(res, params, 1e-4, 1e-4, 1e-4, 2e-2f);
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-5f);
 }
 
 // Run two independent EigenN2Iter pipelines concurrently within one process,
@@ -465,7 +742,7 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a, const EigenStageTestP
     for (auto& s : sides)
         s.fake_stage->start();
 
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
     auto done = [&]() {
         for (const auto& s : sides) {
             if (s.out_buf->get_num_full_frames() < (int)s.params.total_frames)
@@ -535,6 +812,6 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {
     params_b.cpu_affinity = {1};
 
     auto results = run_n2_pipeline_pair(params_a, params_b);
-    verify_results(results.first, params_a, 1e-4, 1e-4, 1e-4, 2e-2f);
-    verify_results(results.second, params_b, 1e-4, 1e-4, 1e-4, 2e-2f);
+    verify_results(results.first, params_a, 1e-4, 1e-4, 1e-4, 1e-5f);
+    verify_results(results.second, params_b, 1e-4, 1e-4, 1e-4, 1e-5f);
 }

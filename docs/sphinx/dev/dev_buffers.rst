@@ -28,6 +28,13 @@ Points a stage writer should know:
   carries a frame descriptor (see below).
 - Frame memory is not zeroed between uses: a producer must overwrite (or
   zero) the whole frame unless zeroing is explicitly enabled.
+- A frame being copied by the ``/buffer_frame`` endpoint stays full until the
+  copy finishes, so a producer can occasionally find a frame occupied that no
+  consumer holds. Only that frame is affected, and it is the newest full one --
+  the last the producer returns to -- so this takes a copy longer than a lap of
+  the ring to happen at all. A producer that waits for empty frames waits it
+  out; one that sheds load on a full ring (``bufferRecv``, ``Valve``) drops the
+  data instead.
 - Buffers are declared in the YAML config as ``kotekan_buffer:`` blocks
   and built by the buffer factory at startup. The buffer's name is the
   path of its config block, and stages receive their buffers through the
@@ -46,10 +53,12 @@ Buffer types
 require ``num_frames``, plus the optional allocation tunables
 ``use_hugepages`` (off), ``mlock_frames`` (on), ``zero_new_frames`` (on),
 ``zero_value`` (0), and ``cpu_affinity`` (unset). ``peek_hold`` (off) keeps
-the newest full frame peekable for the ``/buffer/<name>/frame`` endpoint by
+the newest full frame peekable for the ``/buffer_frame`` endpoint by
 deferring its empty transition until the next frame lands; it requires
-``num_frames >= 2`` and permanently occupies one frame slot and one pooled
-metadata object.
+``num_frames >= 2`` and permanently occupies one frame slot, along with the
+metadata object that frame holds; below four frames it warns, the slot being
+a large share of such a buffer's depth. It has no effect on ``ring`` buffers,
+which are not peekable yet.
 
 Type-specific parameters are required unless marked *optional*:
 

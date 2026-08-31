@@ -13,7 +13,8 @@ frame_arrival_period: 0.001
 
 buffer_depth: 4
 
-# Required by the default telescope setup (no stage reads these directly).
+# Required by the Telescope singleton (ICETelescope by default); the stages in
+# this test do not read them, so the values are placeholders.
 num_polarizations: 2
 num_dishes: 512
 

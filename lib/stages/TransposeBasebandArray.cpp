@@ -13,7 +13,6 @@
 
 #include <cstring>     // for memcpy, memset
 #include <memory>      // for __shared_ptr_access, shared_ptr
-#include <stdexcept>   // for runtime_error
 #include <vector>      // for vector
 #include <visUtil.hpp> // for frameID, modulo
 #if defined(__x86_64__) || defined(__i386__)
@@ -59,24 +58,20 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     check_for_zero_nibbles = config.get_default<bool>(unique_name, "check_for_zero_nibbles", false);
 
     if (cfg_num_local_freq != NUM_LOCAL_FREQ) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: num_local_freq ({:d}) must be {:d}"),
-                        cfg_num_local_freq, NUM_LOCAL_FREQ));
+        FATAL_ERROR("TransposeBasebandArray: num_local_freq ({:d}) must be {:d}",
+                    cfg_num_local_freq, NUM_LOCAL_FREQ);
     }
     if (cfg_num_elements != NUM_ELEMENTS) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: num_elements ({:d}) must be {:d}"),
-                        cfg_num_elements, NUM_ELEMENTS));
+        FATAL_ERROR("TransposeBasebandArray: num_elements ({:d}) must be {:d}", cfg_num_elements,
+                    NUM_ELEMENTS);
     }
     if (cfg_time_short != TIME_SHORT) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: time_short ({:d}) must be {:d}"),
-                        cfg_time_short, TIME_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: time_short ({:d}) must be {:d}", cfg_time_short,
+                    TIME_SHORT);
     }
     if (cfg_element_short != ELEMENT_SHORT) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: element_short ({:d}) must be {:d}"),
-                        cfg_element_short, ELEMENT_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: element_short ({:d}) must be {:d}", cfg_element_short,
+                    ELEMENT_SHORT);
     }
 
     // Get frame_mode configuration
@@ -88,9 +83,8 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     } else if (frame_mode_str == "odd") {
         frame_mode = FrameMode::Odd;
     } else {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: frame_mode '{}' must be 'all', 'even', or 'odd'"),
-            frame_mode_str));
+        FATAL_ERROR("TransposeBasebandArray: frame_mode '{}' must be 'all', 'even', or 'odd'",
+                    frame_mode_str);
     }
     INFO("TransposeBasebandArray: frame_mode = {}", frame_mode_str);
 
@@ -99,10 +93,9 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
 
     // Validate that dimensions divide evenly
     if (timesamples_per_frame % TIME_SHORT != 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: timesamples_per_frame ({:d}) must be divisible by "
-                "time_short ({:d})"),
-            timesamples_per_frame, TIME_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: timesamples_per_frame ({:d}) must be divisible by "
+                    "time_short ({:d})",
+                    timesamples_per_frame, TIME_SHORT);
     }
 
     // Validate input buffer size
@@ -110,23 +103,21 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     size_t expected_input_size =
         (size_t)time_long * NUM_LOCAL_FREQ * ELEMENT_LONG * TIME_SHORT * ELEMENT_SHORT;
     if (in_buf->frame_size != expected_input_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: in_buf frame size ({:d}) does not match expected "
-                "size ({:d}) for shape [time_long={:d}][num_local_freq={:d}][element_long={:d}]"
-                "[time_short={:d}][element_short={:d}]"),
-            in_buf->frame_size, expected_input_size, time_long, NUM_LOCAL_FREQ, ELEMENT_LONG,
-            TIME_SHORT, ELEMENT_SHORT));
+        FATAL_ERROR("TransposeBasebandArray: in_buf frame size ({:d}) does not match expected "
+                    "size ({:d}) for shape [time_long={:d}][num_local_freq={:d}]"
+                    "[element_long={:d}][time_short={:d}][element_short={:d}]",
+                    in_buf->frame_size, expected_input_size, time_long, NUM_LOCAL_FREQ,
+                    ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);
     }
 
     // Validate output buffer size
     // Output format: E[time][frequency_local][element]
     size_t expected_output_size = (size_t)timesamples_per_frame * NUM_LOCAL_FREQ * NUM_ELEMENTS;
     if (out_buf->frame_size != expected_output_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: out_buf frame size ({:d}) does not match expected "
-                "size ({:d}) for shape [time={:d}][num_local_freq={:d}][num_elements={:d}]"),
-            out_buf->frame_size, expected_output_size, timesamples_per_frame, NUM_LOCAL_FREQ,
-            NUM_ELEMENTS));
+        FATAL_ERROR("TransposeBasebandArray: out_buf frame size ({:d}) does not match expected "
+                    "size ({:d}) for shape [time={:d}][num_local_freq={:d}][num_elements={:d}]",
+                    out_buf->frame_size, expected_output_size, timesamples_per_frame,
+                    NUM_LOCAL_FREQ, NUM_ELEMENTS);
     }
 
     // Validate pl_mask buffer size
@@ -135,23 +126,30 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     size_t expected_pl_mask_size =
         (T / 64) * NUM_LOCAL_FREQ * (NUM_ELEMENTS / 8) * sizeof(uint64_t);
     if (pl_mask_buf->frame_size != expected_pl_mask_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("TransposeBasebandArray: pl_mask_buf frame size ({:d}) does not match expected "
-                "size ({:d}) for shape [T/64={:d}][F={:d}][E/8={:d}] * sizeof(uint64_t)"),
-            pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, NUM_LOCAL_FREQ,
-            NUM_ELEMENTS / 8));
+        FATAL_ERROR("TransposeBasebandArray: pl_mask_buf frame size ({:d}) does not match "
+                    "expected size ({:d}) for shape [T/64={:d}][F={:d}][E/8={:d}] * "
+                    "sizeof(uint64_t)",
+                    pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, NUM_LOCAL_FREQ,
+                    NUM_ELEMENTS / 8);
     }
 
-    // AVX512 fast path is always enabled with these constants
+    // Escape hatch to run the scalar path on a machine that supports AVX512, so that both
+    // paths can be exercised and compared without rebuilding for a different -march.
+    const bool disable_avx512 = config.get_default<bool>(unique_name, "disable_avx512", false);
+
     use_avx512_fast_path = false;
+    if (disable_avx512) {
+        INFO("TransposeBasebandArray: AVX512 fast path disabled by config, using scalar path");
+    } else {
 #ifdef __AVX512F__
-    // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
-    // All requirements are met
-    use_avx512_fast_path = true;
-    INFO("TransposeBasebandArray: AVX512 fast path enabled");
+        // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
+        // All requirements are met
+        use_avx512_fast_path = true;
+        INFO("TransposeBasebandArray: AVX512 fast path enabled");
 #else
-    INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
+        INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
 #endif
+    }
 
     // Set the output buffer frame ndarray shape
 
@@ -395,29 +393,30 @@ void TransposeBasebandArray::main_thread() {
                     uint64_t mask_val = pl_mask_ptr[pl_mask_idx];
                     bool has_packet_loss = (mask_val & check_mask) != check_mask;
 
-                    for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++) {
-                        for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
-                            // Calculate output time index
-                            uint32_t time = t_long * TIME_SHORT + t_short;
+                    // Loop over time samples outermost so each one's whole row of elements is
+                    // written in order, rather than writing element_short bytes per
+                    // element_long and stepping by out_time_stride between them.
+                    for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
+                        // Calculate output time index
+                        uint32_t time = t_long * TIME_SHORT + t_short;
 
-                            // Calculate output base index
-                            size_t out_base = (size_t)time * out_time_stride
-                                              + freq * out_freq_stride + e_long * ELEMENT_SHORT;
+                        // Calculate output base index
+                        size_t out_base = (size_t)time * out_time_stride + freq * out_freq_stride;
 
-                            if (has_packet_loss) {
-                                // Fill with 0x88 instead of copying
-                                std::memset(&out_frame[out_base], 0x88, ELEMENT_SHORT);
-                            } else {
-                                // Calculate input base index
-                                size_t in_base = (size_t)t_long * in_tlong_stride
-                                                 + freq * in_freq_stride
-                                                 + e_long * (TIME_SHORT * ELEMENT_SHORT)
-                                                 + t_short * ELEMENT_SHORT;
+                        if (has_packet_loss) {
+                            // Fill with 0x88 instead of copying
+                            std::memset(&out_frame[out_base], 0x88, NUM_ELEMENTS);
+                        } else {
+                            // Calculate input base index for this time sample
+                            size_t in_base = (size_t)t_long * in_tlong_stride
+                                             + freq * in_freq_stride + t_short * ELEMENT_SHORT;
 
-                                // Copy element_short contiguous bytes
-                                std::memcpy(&out_frame[out_base], &in_frame[in_base],
-                                            ELEMENT_SHORT);
-                            }
+                            // Copy element_short contiguous bytes per element_long
+                            for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++)
+                                std::memcpy(
+                                    &out_frame[out_base + e_long * ELEMENT_SHORT],
+                                    &in_frame[in_base + e_long * (TIME_SHORT * ELEMENT_SHORT)],
+                                    ELEMENT_SHORT);
                         }
                     }
                 }

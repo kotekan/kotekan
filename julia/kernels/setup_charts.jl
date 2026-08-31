@@ -1,8 +1,16 @@
 # Configuration name
 const setup = :charts
-const compute_capability = v"8.6" # A40
-# const compute_capability = v"12.0" # RTX 5090
-const ptx_compat = v"8.0"       # ???
+# `compute_capability` and `ptx_compat` select the PTX we *emit* (`.target` and
+# `.version`). LLVM 18.1.7 (Julia 1.12) supports `cap <= 9.0` and `ptx <= 8.3`;
+# `.target sm_120` would need `ptx >= 8.7`, i.e. LLVM 20 / Julia 1.13. Note that
+# CUDA.jl silently clamps an unsupported `cap` instead of complaining.
+# This is not a limitation in practice: `.target sm_86` PTX can be compiled for
+# any `sm_MN` with `MN >= 86`, and ptxas then generates native SASS for it.
+const compute_capability = v"8.6" # A40, the GPU generating the kernels
+const ptx_compat = v"8.0"
+# `cuda_arch` is the GPU we *run* on. It is passed to ptxas (`--gpu-name`) when
+# Kotekan compiles the PTX at startup.
+const cuda_arch = "sm_120" # RTX 5090
 
 # Time between time samples
 const sampling_time_μsec = 16384 / 4915.2 # 3.333 μs

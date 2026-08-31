@@ -36,6 +36,9 @@ BOOST_AUTO_TEST_CASE(test_layout_requires_product_list) {
     BOOST_CHECK_EQUAL(N2FrameDesc::layout_requires_product_list(N2Layout::GeneralSubset), true);
     BOOST_CHECK_EQUAL(N2FrameDesc::layout_requires_product_list(N2Layout::RedundantBaselineAvg),
                       true);
+    // DishInputs frames are compact: the product list is the dense triangle over their
+    // own element axis, derivable from num_elements.
+    BOOST_CHECK_EQUAL(N2FrameDesc::layout_requires_product_list(N2Layout::DishInputs), false);
 
     std::cout << "Success.\n";
 }
@@ -103,6 +106,42 @@ BOOST_AUTO_TEST_CASE(test_get_num_prod_throws_for_subset_layouts) {
     BOOST_CHECK_THROW(N2FrameDesc::get_num_prod(8, N2Layout::InputANDMasked), std::runtime_error);
     BOOST_CHECK_THROW(N2FrameDesc::get_num_prod(8, N2Layout::InputORMasked), std::runtime_error);
     BOOST_CHECK_THROW(N2FrameDesc::get_num_prod(8, N2Layout::RedundantBaselineAvg),
+                      std::runtime_error);
+
+    std::cout << "Success.\n";
+}
+
+BOOST_AUTO_TEST_CASE(test_dish_inputs_compact) {
+    std::cout << "Testing the DishInputs compact layout...\n";
+
+    // DishInputs frames are compact: the dense triangle over their own element axis,
+    // with each element's full-order identity carried in the input_list.
+    BOOST_CHECK_EQUAL(N2FrameDesc::get_num_prod(4, N2Layout::DishInputs), 10);
+
+    auto products = N2FrameDesc::generate_product_list(4, N2Layout::DishInputs);
+    BOOST_REQUIRE_EQUAL(products.size(), 10u);
+    for (const auto& p : products) {
+        BOOST_CHECK(p.input_a <= p.input_b);
+        BOOST_CHECK(p.input_b < 4);
+    }
+
+    // The constructor requires one strictly increasing identity per element...
+    N2FrameDesc desc(4, 0, 10, N2Layout::DishInputs, {}, {0, 1, 4, 5});
+    BOOST_CHECK_EQUAL(desc.get_input_list().size(), 4u);
+    BOOST_CHECK_EQUAL(desc.get_product_list().size(), 10u);
+    // ... and round-trips them through the wire form.
+    auto wire = N2FrameDesc::from_json(desc.to_json());
+    BOOST_CHECK(*wire == desc);
+    N2FrameDesc other(4, 0, 10, N2Layout::DishInputs, {}, {0, 1, 4, 6});
+    BOOST_CHECK(!(other == desc));
+
+    // Wrong identity count, non-increasing identities, and identities on a
+    // non-compact layout are all rejected.
+    BOOST_CHECK_THROW(N2FrameDesc(4, 0, 10, N2Layout::DishInputs, {}, {0, 1, 4}),
+                      std::runtime_error);
+    BOOST_CHECK_THROW(N2FrameDesc(4, 0, 10, N2Layout::DishInputs, {}, {0, 1, 5, 4}),
+                      std::runtime_error);
+    BOOST_CHECK_THROW(N2FrameDesc(4, 0, 10, N2Layout::FullUpperTri, {}, {0, 1, 4, 5}),
                       std::runtime_error);
 
     std::cout << "Success.\n";

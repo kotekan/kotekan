@@ -153,6 +153,74 @@ BOOST_AUTO_TEST_CASE(a_cluster_counts_as_full_if_a_nested_one_holds_a_node) {
         BOOST_CHECK_MESSAGE(contains(dot, id), std::string("dropped ") + id);
 }
 
+BOOST_AUTO_TEST_CASE(a_loop_in_the_cluster_parents_is_broken_not_followed) {
+    PipelineGraph graph;
+    // Cluster parents are set by whatever builds the graph, so a stage can wire
+    // two as each other's parent. Rendering follows parent links, so a loop here
+    // is an infinite recursion rather than a wrong-looking picture.
+    auto& first = graph.add_cluster("first");
+    auto& second = graph.add_cluster("second");
+    first.parent = "second";
+    second.parent = "first";
+    graph.add_node("caught").add_line("caught").cluster = "first";
+    // A cluster that merely hangs off the loop must not take the whole graph
+    // down with it either.
+    graph.add_cluster("below").parent = "second";
+    graph.add_node("below_node").add_line("below_node").cluster = "below";
+    graph.add_node("fine").add_line("fine");
+
+    const std::string dot = graph.to_dot();
+    // Nothing is lost: the loop costs the nesting, not the contents.
+    BOOST_CHECK(contains(dot, "\"caught\" ["));
+    BOOST_CHECK(contains(dot, "\"below_node\" ["));
+    BOOST_CHECK(contains(dot, "\"fine\" ["));
+    BOOST_CHECK(contains(dot, "// drawn at the top level, its parent chain loops: first"));
+    BOOST_CHECK(contains(dot, "// drawn at the top level, its parent chain loops: second"));
+    check_statements_terminated(dot);
+}
+
+BOOST_AUTO_TEST_CASE(common_cluster_survives_a_parent_loop) {
+    PipelineGraph graph;
+    graph.add_cluster("first").parent = "second";
+    graph.add_cluster("second").parent = "first";
+    graph.add_node("a").cluster = "first";
+    graph.add_node("b").cluster = "second";
+    // A cluster hanging below the loop reaches it through its own ancestry.
+    graph.add_cluster("below").parent = "second";
+    graph.add_node("c").cluster = "below";
+    graph.add_node("outside");
+
+    // Before the guard this walked the loop forever. A node inside (or below)
+    // a loop has no meaningful enclosing cluster, so it reads as top level.
+    BOOST_CHECK_EQUAL(graph.common_cluster({"a"}), "");
+    BOOST_CHECK_EQUAL(graph.common_cluster({"a", "b"}), "");
+    BOOST_CHECK_EQUAL(graph.common_cluster({"c"}), "");
+    BOOST_CHECK_EQUAL(graph.common_cluster({"a", "outside"}), "");
+}
+
+BOOST_AUTO_TEST_CASE(json_breaks_cluster_parent_loops_too) {
+    PipelineGraph graph;
+    graph.add_cluster("first").parent = "second";
+    graph.add_cluster("second").parent = "first";
+    graph.add_node("a").add_line("a").cluster = "first";
+    graph.add_cluster("sane").label = "sane";
+    graph.add_node("b").add_line("b").cluster = "sane";
+
+    // Same rule as the DOT output: a consumer recursing on parents the way
+    // cluster_dot() does must not inherit the loop.
+    const nlohmann::json out = graph.to_json();
+    BOOST_REQUIRE(out.contains("cyclic_clusters"));
+    BOOST_CHECK_EQUAL(out["cyclic_clusters"].size(), 2u);
+    for (const auto& cluster : out["clusters"]) {
+        if (cluster["id"] == "first" || cluster["id"] == "second")
+            BOOST_CHECK_EQUAL(cluster["parent"], "");
+    }
+    // A graph with sound wiring does not carry the key at all.
+    PipelineGraph sound;
+    sound.add_node("only").add_line("only");
+    BOOST_CHECK(!sound.to_json().contains("cyclic_clusters"));
+}
+
 BOOST_AUTO_TEST_CASE(dangling_edges_are_dropped_not_drawn) {
     PipelineGraph graph;
     graph.add_node("known").add_line("known");
@@ -259,5 +327,49 @@ BOOST_AUTO_TEST_CASE(graph_wide_attributes) {
     BOOST_CHECK(contains(dot, "graph [rankdir=\"LR\"];"));
     BOOST_CHECK(contains(dot, "node [fontname=\"Helvetica\"];"));
     BOOST_CHECK(contains(dot, "edge [fontsize=\"8\"];"));
+    check_statements_terminated(dot);
+}
+
+BOOST_AUTO_TEST_CASE(options_are_read_from_query_arguments) {
+    using kotekan::GraphOptions;
+
+    // Nothing asked for leaves every default in place.
+    const GraphOptions defaults = GraphOptions::from_query({});
+    BOOST_CHECK(defaults.cluster && defaults.legend && defaults.pools && defaults.runtime);
+    BOOST_CHECK_EQUAL(defaults.rankdir, "LR");
+
+    const GraphOptions chosen = GraphOptions::from_query({{"legend", "0"},
+                                                          {"runtime", "false"},
+                                                          {"urls", "off"},
+                                                          {"kernels", "on"},
+                                                          {"cluster", ""},
+                                                          {"rankdir", "TB"}});
+    BOOST_CHECK(!chosen.legend);
+    BOOST_CHECK(!chosen.runtime);
+    BOOST_CHECK(!chosen.urls); // any value that is not an "on" form turns it off
+    BOOST_CHECK(chosen.kernels);
+    BOOST_CHECK(chosen.cluster); // a bare `?cluster` counts as asking for it
+    BOOST_CHECK(chosen.pools);   // not mentioned, stays at its default
+    BOOST_CHECK_EQUAL(chosen.rankdir, "TB");
+
+    // A direction dot does not know cannot reach the layout.
+    BOOST_CHECK_EQUAL(GraphOptions::from_query({{"rankdir", "sideways"}}).rankdir, "LR");
+}
+
+BOOST_AUTO_TEST_CASE(default_style_and_legend_render) {
+    PipelineGraph graph;
+    graph.options.rankdir = "BT";
+    graph.apply_default_style();
+    graph.add_legend();
+
+    const std::string dot = graph.to_dot();
+    // The style follows the direction the options asked for.
+    BOOST_CHECK(contains(dot, "rankdir=\"BT\""));
+    // Everything graphviz would leave black carries an explicit colour.
+    BOOST_CHECK(contains(dot, "fontcolor"));
+    // The key is a cluster of one node per category, each in its colours.
+    BOOST_CHECK(contains(dot, "subgraph \"cluster___legend\""));
+    BOOST_CHECK(contains(dot, "stage on the CPU"));
+    BOOST_CHECK(contains(dot, "the far end: a socket, a port, a file"));
     check_statements_terminated(dot);
 }

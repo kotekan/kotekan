@@ -30,7 +30,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+using kotekan::round_down, kotekan::round_up, kotekan::div_noremainder, kotekan::div,
+    kotekan::mod;
 
 namespace {
 template<typename T, std::size_t D>
@@ -290,7 +291,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     static std::once_flag build_ptx_flag;
     std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
-            "--gpu-name=sm_86",
+            "--gpu-name={{{cuda_arch}}}",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
@@ -325,7 +326,11 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
         const int errcode = Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
             using std::min;
             Tbar_read = min(Tbar_available, Tbar_read_max);
-            return read_descriptor_t{.claimed = num_consumed_elements(Tbar_read), .read = num_processed_elements(Tbar_read)};
+            // Ensure that we make progress: If we cannot claim any elements then we
+            // must not read any elements either, and instead wait for more data.
+            const std::ptrdiff_t Tbar_claimed = num_consumed_elements(Tbar_read);
+            const std::ptrdiff_t Tbar_processed = Tbar_claimed == 0 ? 0 : num_processed_elements(Tbar_read);
+            return read_descriptor_t{.claimed = Tbar_claimed, .read = Tbar_processed};
         });
         if (errcode < 0)
             return errcode;

@@ -28,7 +28,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+using kotekan::round_down, kotekan::round_up, kotekan::div_noremainder, kotekan::div, kotekan::mod;
 
 namespace {
 template<typename T, std::size_t D>
@@ -355,7 +355,7 @@ cudaUpchannelizer_chime_U4::cudaUpchannelizer_chime_U4(Config& config,
     static std::once_flag build_ptx_flag;
     std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
-            "--gpu-name=sm_86",
+            "--gpu-name=sm_89",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/Upchannelizer_chime_U4.ptx", {kernel_symbol}, opts,
@@ -397,8 +397,11 @@ int cudaUpchannelizer_chime_U4::wait_on_precondition() {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
             using std::min;
             T_read = min(T_available, T_read_max);
-            return read_descriptor_t{.claimed = num_consumed_elements(T_read),
-                                     .read = num_processed_elements(T_read)};
+            // Ensure that we make progress: If we cannot claim any elements then we
+            // must not read any elements either, and instead wait for more data.
+            const std::ptrdiff_t T_claimed = num_consumed_elements(T_read);
+            const std::ptrdiff_t T_processed = T_claimed == 0 ? 0 : num_processed_elements(T_read);
+            return read_descriptor_t{.claimed = T_claimed, .read = T_processed};
         });
         if (errcode < 0)
             return errcode;

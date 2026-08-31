@@ -80,16 +80,31 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
         in_prod_to_index[key] = i;
     }
 
-    // Build the index mapping from output products to input products
+    // Compact subset layouts (e.g. DishInputs) index their own element axis and carry
+    // each element's input-buffer identity in the descriptor's input_list; empty means
+    // the output indexes the input's element axis directly.
+    element_index_map = out_desc->get_input_list();
+    for (const uint16_t el : element_index_map)
+        if (el >= _in_num_elements)
+            FATAL_ERROR("N2Subset: output element identity {:d} outside input's {:d} elements",
+                        el, _in_num_elements);
+
+    // Build the index mapping from output products to input products, translating
+    // compact element indices to the input's before matching.
     prod_index_map.reserve(out_prods.size());
     for (size_t out_idx = 0; out_idx < out_prods.size(); ++out_idx) {
-        uint32_t key = (static_cast<uint32_t>(out_prods[out_idx].input_a) << 16)
-                       | static_cast<uint32_t>(out_prods[out_idx].input_b);
+        const uint16_t in_a = element_index_map.empty()
+                                  ? out_prods[out_idx].input_a
+                                  : element_index_map.at(out_prods[out_idx].input_a);
+        const uint16_t in_b = element_index_map.empty()
+                                  ? out_prods[out_idx].input_b
+                                  : element_index_map.at(out_prods[out_idx].input_b);
+        uint32_t key = (static_cast<uint32_t>(in_a) << 16) | static_cast<uint32_t>(in_b);
         auto it = in_prod_to_index.find(key);
         if (it == in_prod_to_index.end()) {
             FATAL_ERROR("N2Subset: output product ({:d}, {:d}) at index {:d} not found in input "
                         "buffer products",
-                        out_prods[out_idx].input_a, out_prods[out_idx].input_b, out_idx);
+                        in_a, in_b, out_idx);
         }
         prod_index_map.push_back(it->second);
     }
@@ -145,19 +160,22 @@ void N2Subset::main_thread() {
             output_vis.copy_data(input_vis, {N2Field::vis, N2Field::weight, N2Field::flags,
                                              N2Field::gain, N2Field::evec, N2Field::mask});
 
-            // Copy first _out_num_elements of flags and gain
+            // Copy the output elements' flags and gain, by identity when the output is
+            // a compact subset and positionally otherwise.
             for (uint32_t i = 0; i < _out_num_elements; ++i) {
-                output_vis.flags[i] = input_vis.flags[i];
-                output_vis.gain[i] = input_vis.gain[i];
-                output_vis.mask[i] = input_vis.mask[i];
+                const uint32_t in_i = element_index_map.empty() ? i : element_index_map[i];
+                output_vis.flags[i] = input_vis.flags[in_i];
+                output_vis.gain[i] = input_vis.gain[in_i];
+                output_vis.mask[i] = input_vis.mask[in_i];
             }
 
             // Copy evec if present (num_ev > 0): each eigenvector has num_elements entries
             uint32_t num_ev = out_desc->get_num_ev();
             for (uint32_t ev = 0; ev < num_ev; ++ev) {
                 for (uint32_t i = 0; i < _out_num_elements; ++i) {
+                    const uint32_t in_i = element_index_map.empty() ? i : element_index_map[i];
                     output_vis.evec[ev * _out_num_elements + i] =
-                        input_vis.evec[ev * _in_num_elements + i];
+                        input_vis.evec[ev * _in_num_elements + in_i];
                 }
             }
         }

@@ -133,6 +133,15 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * excise.
  *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
+ * @buffer  in_bf_mask_buf  Optional bad feed mask (1 == good), folded over each
+ * accumulation bin into the output frames' per-element flags. Consumed 1:1 with the
+ * correlation frames and checked against them by FPGA sequence number, so the recorded
+ * flags are exactly the masks applied to the accumulated data. Each mask frame must
+ * cover exactly one correlation frame; its leading dimension may hold several (ANDed)
+ * rows, e.g. one per RFI time sample from the GPU's applied-mask echo. Without this
+ * input the flags are all good.
+ *         @buffer_format   NDArray int8 [T, num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
@@ -168,6 +177,13 @@ public:
      * This function is responsible for the main logic of the N2Accumulate class.
      */
     void main_thread() override;
+
+    /**
+     * @brief   AND every row of a bad feed mask frame into @c _accum_bf_mask.
+     *
+     * @param   bf_mask   Mask frame data, @c _bf_mask_rows rows of @c _num_elements bytes.
+     */
+    void fold_bf_mask_into_accum(const uint8_t* bf_mask);
 
     /**
      * @brief   Return a montonic index (counter) for the accumulation bin including seq.
@@ -234,6 +250,7 @@ private:
     Buffer* in_rficounts_buf;    /// Buffer containing input rficounts
     Buffer* in_plcounts_buf;     /// Buffer containing input plcounts
     Buffer* in_rfiframemask_buf; /// Buffer containing input rfiframemask
+    Buffer* in_bf_mask_buf;      /// Optional buffer containing the bad feed mask; may be null
     Buffer* out_buf;             /// Output for the main vis dataset only
 
     // Parameters saved from the config files
@@ -287,6 +304,10 @@ private:
     std::vector<float> _n_valid_sample_diff_sq_sum;
     std::vector<uint64_t> _n_rfi_samples_in_vis;
     std::vector<uint64_t> _n_pl_samples_in_vis;
+    /// Bad feed mask folded (AND) over the current accumulation bin (1 == good)
+    std::vector<uint8_t> _accum_bf_mask;
+    /// Rows per bad feed mask frame (all ANDed); only set when the input is wired
+    int64_t _bf_mask_rows = 0;
     int64_t _vis_samples_in_out_frame;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;

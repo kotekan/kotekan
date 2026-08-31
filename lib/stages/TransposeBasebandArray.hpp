@@ -46,6 +46,9 @@
  *                              Use "even"/"odd" to parallelize two instances on alternate frames.
  * @conf check_for_zero_nibbles Bool. Enable checking for zero nibbles in the input data (default:
  * false).
+ * @conf disable_avx512        Bool. Force the scalar path even where AVX512 is available
+ *                             (default: false).  Intended for testing and for comparing the
+ *                             two paths against each other.
  *
  * @author Kotekan Team
  */

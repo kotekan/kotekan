@@ -77,8 +77,8 @@ using kotekan::Config;
  *         @buffer_metadata chordMetadata time_downsample_fpga[] = rfi_total_downsampling_factor
  * @buffer in_bf_mask_buf       The bad feed mask
  *         @buffer_format uint8
- *         @buffer_shape [num_polarizations, num_dishes]
- *         @buffer_metadata chordMetadata
+ *         @buffer_shape [1, num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata time_downsample_fpga[] = bf_mask_lifetime_in_samples
  * @buffer out_rfi_sk_buf       Buffer of single feed (SK, bias, sigma) values
  *         @buffer_format float32
  *         @buffer_shape [samples_per_data_set/rfi_total_downsampling_factor, num_local_freq, 3,
@@ -101,6 +101,11 @@ using kotekan::Config;
  * @conf  rfi_total_downsampling_factor   Int. Number of fast times `t` in a `t_rfi`. Must divide
  *                              `samples_per_data_set`. Output SK buffers will contain
  *                              `samples_per_data_set` / `downsampling_factor` time samples.
+ * @conf  bf_mask_lifetime_in_samples     Int. Number of FPGA samples that one bad feed mask is
+ *                              valid for. This stage consumes one mask per input frame, so this
+ *                              must equal `samples_per_data_set`. This is checked at construction,
+ *                              and each mask frame's metadata is checked against the S012 frame it
+ *                              is applied to.
  * @conf  bar_mode              Bool. Whether to output an SKbar buffer or SK buffer.
  * @conf  rfi_sk_rfimask_sigmas             Double. SK sigma threshold for RFI mask.
  * @conf  rfi_single_feed_min_good_frac     Double. Threshold of good sample coverage for inclusion
@@ -135,6 +140,7 @@ private:
     const int64_t _num_local_freq;
     const int64_t _samples_per_data_set;
     const int64_t _rfi_downsampling_factor;
+    const int64_t _bf_mask_lifetime_in_samples;
     const bool _bar_mode;
     const double _rfi_sk_rfimask_sigmas;
     const double _rfi_single_feed_min_good_frac;
@@ -178,6 +184,7 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_total_downsampling_factor")),
+    _bf_mask_lifetime_in_samples(config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples")),
     _bar_mode(config.get<bool>(unique_name, "bar_mode")),
     _rfi_sk_rfimask_sigmas(config.get<double>(unique_name, "rfi_sk_rfimask_sigmas")),
     _rfi_single_feed_min_good_frac(
@@ -211,14 +218,23 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
     }
-    assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
+    // This stage consumes one bad feed mask per input frame and applies it to every time sample of
+    // that frame, so a mask must be valid for exactly one frame's worth of FPGA samples.
+    if (_bf_mask_lifetime_in_samples != _samples_per_data_set) {
+        FATAL_ERROR("bf_mask_lifetime_in_samples ({:d}) must equal samples_per_data_set ({:d}): "
+                    "this stage applies one bad feed mask to each whole input frame",
+                    _bf_mask_lifetime_in_samples, _samples_per_data_set);
+    }
 
     in_rfi_s012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         _bar_mode ? "S012bar" : "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
         {_bar_mode ? "Trfibar" : "Trfi", "F", "S", "P", "D"},
         {_rfi_downsampling_factor, 1, 1, 1, 1}));
-    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
-        "bf_mask", {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
+    // The bad feed mask has a leading (length one) time dimension, as it is a time series of
+    // masks. This stage consumes one mask per input frame.
+    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 3>::describe(
+        "bf_mask", {1, _num_polarizations, _num_dishes}, {"Tbf", "P", "D"},
+        {_bf_mask_lifetime_in_samples, 1, 1}));
 
     // Make frame desc for produced buffers
     if (_bar_mode) {
@@ -250,8 +266,6 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
                     sizeof(n2k_globals::bsigma_coeffs), _bias_nx, _bias_ny, _sigma_nx,
                     sizeof(double), (_bias_nx * _bias_ny + _sigma_nx) * sizeof(double));
     }
-    assert(sizeof(n2k_globals::bsigma_coeffs)
-           == (_bias_nx * _bias_ny + _sigma_nx) * sizeof(double));
 
     // Copy the n2k_globals::bsigma_coeffs into local arrays, converting to floats
     // as we go.
@@ -266,7 +280,6 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     bool interpolate_self_test = test_cubic_interpolate();
     if (!interpolate_self_test)
         FATAL_ERROR("test_cubic_interpolate self test failed.");
-    assert(interpolate_self_test);
 }
 
 gpuSimulateRFISK::~gpuSimulateRFISK() {}
@@ -280,8 +293,8 @@ void gpuSimulateRFISK::main_thread() {
     frameID out_rfi_mask_frame_id(out_rfi_mask_buf);
 
     while (!stop_thread) {
-        uint8_t* bf_mask =
-            (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
+        std::int8_t* bf_mask =
+            (std::int8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
         if (bf_mask == nullptr)
             break;
         uint64_t* rfi_s012 =
@@ -315,6 +328,67 @@ void gpuSimulateRFISK::main_thread() {
 
         uint64_t nt_rfi = nt / _rfi_downsampling_factor;
         // uint64_t nsub = _rfi_downsampling_factor;
+
+        // Fetch input metadata
+        const std::shared_ptr<const metadataObject> mc_in =
+            in_rfi_s012_buf->get_metadata(in_rfi_s012_frame_id);
+        if (!mc_in) {
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id);
+        }
+        if (!metadata_is_chord(mc_in)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
+        }
+
+        const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
+
+        const std::shared_ptr<const chordMetadata> meta_bf_mask =
+            get_chord_metadata(in_bf_mask_buf, in_bf_mask_frame_id);
+        if (!meta_bf_mask) {
+            FATAL_ERROR("Buffer {:s} frame {:d} has no CHORD metadata", in_bf_mask_buf->buffer_name,
+                        in_bf_mask_frame_id);
+        }
+
+        // The mask frame must describe the array this stage requires. This is what catches a
+        // producer whose `dim_scaling[0]` disagrees with `bf_mask_lifetime_in_samples`.
+        meta_bf_mask->check_frame_desc(in_bf_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
+
+        // The getters below throw when the metadata item is absent, so look for it first.
+        if (!meta_in->has_fpga_seq_num() || !meta_in->has_time_downsampling_fpga()) {
+            FATAL_ERROR("Buffer {:s} frame {:d} is missing the FPGA timing metadata "
+                        "(fpga_seq_num and/or time_downsampling_fpga)",
+                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
+        }
+        if (!meta_bf_mask->has_fpga_seq_num() || !meta_bf_mask->has_time_downsampling_fpga()) {
+            FATAL_ERROR("Buffer {:s} frame {:d} is missing the FPGA timing metadata "
+                        "(fpga_seq_num and/or time_downsampling_fpga)",
+                        in_bf_mask_buf->buffer_name, in_bf_mask_frame_id);
+        }
+
+        // This stage applies a single bad feed mask to the whole S012 frame, so the mask must be
+        // valid for exactly that frame's span in FPGA samples.
+        const std::int64_t s012_span_fpga =
+            std::int64_t(nt_rfi) * meta_in->get_time_downsampling_fpga();
+        if (meta_bf_mask->get_time_downsampling_fpga() != s012_span_fpga) {
+            FATAL_ERROR("Bad feed mask {:s}[{:d}] is valid for {:d} FPGA samples, but S012 frame "
+                        "{:s}[{:d}] spans {:d} FPGA samples ({:d} RFI times x {:d} FPGA samples). "
+                        "This stage applies one mask to a whole S012 frame, so the two must be "
+                        "equal; check `bf_mask_lifetime_in_samples`.",
+                        in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
+                        meta_bf_mask->get_time_downsampling_fpga(), in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id, s012_span_fpga, nt_rfi,
+                        meta_in->get_time_downsampling_fpga());
+        }
+        // ... and it must cover the same instant in time as that frame.
+        if (meta_bf_mask->get_fpga_seq_num() != meta_in->get_fpga_seq_num()) {
+            FATAL_ERROR("Bad feed mask {:s}[{:d}] begins at FPGA sample {:d}, but S012 frame "
+                        "{:s}[{:d}] begins at FPGA sample {:d}. The two inputs are out of step; "
+                        "this stage pairs one mask with each S012 frame.",
+                        in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
+                        meta_bf_mask->get_fpga_seq_num(), in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id, meta_in->get_fpga_seq_num());
+        }
 
         // array access strides in S012
         uint64_t sstride_s012 = ne;
@@ -475,22 +549,6 @@ void gpuSimulateRFISK::main_thread() {
             } // f
         } // t_rfi
 
-        // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in =
-            in_rfi_s012_buf->get_metadata(in_rfi_s012_frame_id);
-        if (!mc_in) {
-            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_rfi_s012_buf->buffer_name,
-                        in_rfi_s012_frame_id);
-        }
-        assert(mc_in);
-        if (!metadata_is_chord(mc_in)) {
-            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
-        }
-        assert(metadata_is_chord(mc_in));
-
-        const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
-
         // Create output SK metadata
         out_rfi_sk_buf->allocate_new_metadata_object(out_rfi_sk_frame_id);
         const std::shared_ptr<metadataObject> mc_sk =
@@ -499,12 +557,10 @@ void gpuSimulateRFISK::main_thread() {
             FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
                         out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id);
         }
-        assert(mc_sk);
         if (!metadata_is_chord(mc_sk)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
                         out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id);
         }
-        assert(metadata_is_chord(mc_sk));
         const std::shared_ptr<chordMetadata> meta_sk = get_chord_metadata(mc_sk);
         assert(meta_sk);
 
@@ -516,12 +572,10 @@ void gpuSimulateRFISK::main_thread() {
             FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
                         out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id);
         }
-        assert(mc_sktilde);
         if (!metadata_is_chord(mc_sktilde)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
                         out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id);
         }
-        assert(metadata_is_chord(mc_sktilde));
         const std::shared_ptr<chordMetadata> meta_sktilde = get_chord_metadata(mc_sktilde);
         assert(meta_sktilde);
 
@@ -533,12 +587,10 @@ void gpuSimulateRFISK::main_thread() {
             FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
                         out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
         }
-        assert(mc_rfi_mask);
         if (!metadata_is_chord(mc_rfi_mask)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
                         out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
         }
-        assert(metadata_is_chord(mc_rfi_mask));
         const std::shared_ptr<chordMetadata> meta_rfi_mask = get_chord_metadata(mc_rfi_mask);
         assert(meta_rfi_mask);
 
@@ -571,10 +623,8 @@ void gpuSimulateRFISK::main_thread() {
              out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id,
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
-        // Release the bf_mask each frame: the GPU pipeline uploads a bf_mask frame per
-        // S012 frame (cudaInputData without do_once), so consume them in lockstep.
-        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
+        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         out_rfi_sk_buf->mark_frame_full(unique_name, out_rfi_sk_frame_id++);
         out_rfi_sktilde_buf->mark_frame_full(unique_name, out_rfi_sktilde_frame_id++);
         out_rfi_mask_buf->mark_frame_full(unique_name, out_rfi_mask_frame_id++);

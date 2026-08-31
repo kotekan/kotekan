@@ -1,3 +1,27 @@
+Precompiling packages...
+    OrderedCollections Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/OrderedCollections/LtT3J_gIhQq.ji.pidfile)
+    ExprTools Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/ExprTools/eM8wu_gIhQq.ji.pidfile)
+    Adapt Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/Adapt/rUIgN_gIhQq.ji.pidfile)
+    Crayons Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/Crayons/TXPcU_gIhQq.ji.pidfile)
+    LLVMExtra_jll Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/LLVMExtra_jll/R9OeX_gIhQq.ji.pidfile)
+    StringManipulation Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/StringManipulation/4nJQd_gIhQq.ji.pidfile)
+    CUDA_Driver_jll Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA_Driver_jll/QJyk7_gIhQq.ji.pidfile)
+    CUDA_Runtime_Discovery Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA_Runtime_Discovery/T9PTO_gIhQq.ji.pidfile)
+  10110.7 ms  ✓ CUDA_Driver_jll
+  10113.1 ms  ✓ StringManipulation
+  10117.4 ms  ✓ Crayons
+  10120.0 ms  ✓ Adapt
+  10123.6 ms  ✓ ExprTools
+  10122.6 ms  ✓ CUDA_Runtime_Discovery
+  10489.9 ms  ✓ OrderedCollections
+    PrettyTables Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/PrettyTables/kRdcL_gIhQq.ji.pidfile)
+  20282.4 ms  ✓ LLVMExtra_jll
+    GPUCompiler Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/GPUCompiler/yPwef_gIhQq.ji.pidfile)
+  28515.0 ms  ✓ PrettyTables
+  23389.3 ms  ✓ GPUCompiler
+    CUDA Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA/oWw5k_gIhQq.ji.pidfile)
+  46032.6 ms  ✓ CUDA
+  11 dependencies successfully precompiled in 91 seconds. 81 already precompiled.
 [Creating bb kernel...]
 [Done creating bb kernel]
 CHORD 8-bit baseband beamformer

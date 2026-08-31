@@ -9,9 +9,18 @@
 
 #include <memory>   // for shared_ptr
 #include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t
 #include <string>   // for string, basic_string
 #include <vector>   // for vector
 
+/**
+ * @brief State shared between the cudaRechunk instances of a GPU pipeline.
+ *
+ * Not locked: all instances sharing this state have their execute() called
+ * serially from the owning gpuProcess main thread, under
+ * device->gpu_command_mutex (see cudaProcess::queue_commands). Parallelizing
+ * command queuing would break this.
+ */
 class cudaRechunkState : public cudaCommandState {
 public:
     cudaRechunkState(kotekan::Config& config, const std::string& unique_name,
@@ -19,8 +28,10 @@ public:
         cudaCommandState(config, unique_name, host_buffers, device), cols_accumulated(0),
         output_id(0) {}
     int cols_accumulated;
-    /// Count of emitted output frames; indexes gpu_mem_output slots in output_async mode.
-    int output_id;
+    /// Count of emitted output frames; indexes gpu_mem_output slots in
+    /// output_async mode. Unsigned so the wrap at 2^32 stays well-defined
+    /// (get_gpu_memory_array indexes modulo the buffer depth).
+    uint32_t output_id;
 };
 
 /**

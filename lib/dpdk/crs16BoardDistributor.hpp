@@ -31,6 +31,7 @@ public:
     virtual void update_stats() override {
         std::vector<std::string> port_label = {std::to_string(port)};
         packets_total_metric.labels(port_label).set(total_packets);
+        bad_checksum_packets_total_metric.labels(port_label).set(bad_checksum_packets);
         non_crs_packets_total_metric.labels(port_label).set(non_crs_packets);
         invalid_stream_id_packets_total_metric.labels(port_label).set(invalid_stream_id_packets);
         ring_full_dropped_packets_total_metric.labels(port_label).set(ring_full_dropped_packets);
@@ -53,11 +54,14 @@ protected:
     uint32_t packet_size;
 
     uint64_t total_packets = 0;
+    /// Dropped packets with a bad IP checksum (NIC offload flag).
+    uint64_t bad_checksum_packets = 0;
     uint64_t non_crs_packets = 0;
     uint64_t invalid_stream_id_packets = 0;
     uint64_t ring_full_dropped_packets = 0;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& bad_checksum_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& non_crs_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
         invalid_stream_id_packets_total_metric;
@@ -74,6 +78,8 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
     packet_size(config.get<uint32_t>(unique_name, "packet_size")),
     packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_distributor_packets_total", unique_name, {"port"})),
+    bad_checksum_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_bad_checksum_packets_total", unique_name, {"port"})),
     non_crs_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_distributor_non_crs_packets_total", unique_name, {"port"})),
     invalid_stream_id_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -102,6 +108,18 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
 }
 
 inline int crs16BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
+
+    // Check the packet checksum flag from the NIC.
+    if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
+        if (bad_checksum_packets == 0) {
+            WARN("Port {:d}: dropping packet with bad IP checksum; counting further drops in "
+                 "kotekan_dpdk_distributor_bad_checksum_packets_total",
+                 port);
+        }
+        bad_checksum_packets++;
+        rte_pktmbuf_free(mbuf);
+        return 0;
+    }
 
     // The port runs in promiscuous mode, so stray traffic (LLDP, ARP, ...)
     // lands here too, and its bytes at the CRS header offsets are arbitrary.

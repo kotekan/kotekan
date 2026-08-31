@@ -26,9 +26,9 @@
  *  frame which fits the physical feed locations as well as possible, as determined by the telescope
  *  developers.
  *
- *  In the GRID frame, a pointing vector n has components n = (nx, ny, nz). n is normalizaed (|n| =
- *1), and the components nx, ny, nz are dimensionless. An upward-looking beam position will have nz
- *> 0, which can be computed from nz = sqrt(1 - nx^2 - ny^2).
+ *  In the GRID frame, a pointing vector n has components n = (nx, ny, nz). n is normalizaed
+ *  (|n| = 1), and the components nx, ny, nz are dimensionless. An upward-looking beam position
+ *  will have nz > 0, which can be computed from nz = sqrt(1 - nx^2 - ny^2).
  *
  *  The FRBBeam and FixedBBBeam hold exactly `nx` and `ny` in their `x_dir_grid` and `y_dir_grid`
  *  fields.

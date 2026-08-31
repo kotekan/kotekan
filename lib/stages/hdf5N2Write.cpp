@@ -30,6 +30,8 @@
 #include <cmath>             // for fabs
 #include <complex>           // for complex
 #include <configTracker.hpp> // for ConfigTracker
+#include "chordMetadata.hpp" // for chordMetadata, get_chord_metadata
+
 #include <cstdint>           // for uint64_t, int64_t, int32_t, uint16_t
 #include <cstdio>            // for size_t, rename
 #include <cstdlib>           // for llabs
@@ -346,10 +348,31 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "grid_size_y", telescope.get_grid_size_y());
         _check_create_attribute(*file, "feed_separation_x_m", telescope.get_feed_separation_x_m());
         _check_create_attribute(*file, "feed_separation_y_m", telescope.get_feed_separation_y_m());
-        _check_create_attribute(*file, "main_array_grid_indices",
-                                telescope.get_main_array_grid_indices(num_elements, input_order));
-        _check_create_attribute(*file, "feed_positions_m",
-                                telescope.get_feed_positions_m(num_elements, input_order));
+        // Per-element labels. Compact subset layouts (e.g. DishInputs) identify their
+        // elements via the descriptor's input_list; gather those elements' labels from
+        // the full fiducial order, and record the identities themselves so the file
+        // stays self-describing.
+        const std::vector<uint16_t>& input_list = fv._desc->get_input_list();
+        if (input_list.empty()) {
+            _check_create_attribute(
+                *file, "main_array_grid_indices",
+                telescope.get_main_array_grid_indices(num_elements, input_order));
+            _check_create_attribute(*file, "feed_positions_m",
+                                    telescope.get_feed_positions_m(num_elements, input_order));
+        } else {
+            std::vector<grid_idx_2d_t> grid_indices(input_list.size());
+            std::vector<vec3d_t> feed_positions(input_list.size());
+            for (size_t i = 0; i < input_list.size(); ++i) {
+                grid_indices[i] = telescope.element_index_to_main_array_grid_indices(input_list[i],
+                                                                                     input_order);
+                feed_positions[i] = telescope.station_id_to_feed_position_m(
+                    telescope.element_index_to_station_id(input_list[i], input_order));
+            }
+            _check_create_attribute(*file, "main_array_grid_indices", grid_indices);
+            _check_create_attribute(*file, "feed_positions_m", feed_positions);
+            _check_create_attribute(*file, "input_list",
+                                    std::vector<int32_t>(input_list.begin(), input_list.end()));
+        }
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
         _check_create_attribute(*file, "num_file_f",
@@ -951,6 +974,36 @@ std::optional<std::string> N2FileData::_get_final_filename() {
     return final_path.string();
 }
 
+std::pair<std::uint64_t, std::uint64_t> N2FileData::fpga_tick_span() const {
+    std::uint64_t span_start = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t span_end = 0;
+    for (std::size_t t = 0; t < frame_length_fpga_ticks.size(); ++t) {
+        if (frame_length_fpga_ticks[t] == 0)
+            continue; // no frame in this slot
+        span_start = std::min(span_start, fpga_start_tick[t]);
+        span_end = std::max(span_end, fpga_start_tick[t] + frame_length_fpga_ticks[t]);
+    }
+    if (span_end == 0)
+        return {0, 0};
+    return {span_start, span_end};
+}
+
+void N2FileData::write_flag_updates(const std::vector<std::uint64_t>& seqs,
+                                    const std::vector<std::int32_t>& freq_ids,
+                                    const std::vector<std::int8_t>& masks, std::size_t row_len) {
+    HighFive::DataSetCreateProps props_empty{};
+    const std::size_t n = seqs.size();
+    _check_create_dataset(*h5_file, "/flag_updates/fpga_seq_num", {n}, {"update"},
+                          HighFive::create_datatype<std::uint64_t>(), props_empty);
+    h5_file->getDataSet("/flag_updates/fpga_seq_num").write_raw(seqs.data());
+    _check_create_dataset(*h5_file, "/flag_updates/freq_id", {n}, {"update"},
+                          HighFive::create_datatype<std::int32_t>(), props_empty);
+    h5_file->getDataSet("/flag_updates/freq_id").write_raw(freq_ids.data());
+    _check_create_dataset(*h5_file, "/flag_updates/bf_mask", {n, row_len}, {"update", "element"},
+                          HighFive::create_datatype<std::int8_t>(), props_empty);
+    h5_file->getDataSet("/flag_updates/bf_mask").write_raw(masks.data());
+}
+
 bool N2FileData::flush_to_disk() {
     bool has_error = false;
 
@@ -1115,6 +1168,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
     _input_order(config.get<ElementOrder>(unique_name, "input_order")),
     _buffer(get_buffer("in_buf")),
+    _bf_mask_buf(config.exists(unique_name, "in_bf_mask_buf") ? get_buffer("in_bf_mask_buf")
+                                                              : nullptr),
     _write_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_write_time_seconds", unique_name)),
     _n_datasets_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -1137,6 +1192,15 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})) {
 
     _buffer->register_consumer(unique_name);
+
+    if (_bf_mask_buf != nullptr) {
+        _bf_mask_buf->register_consumer(unique_name);
+        const std::shared_ptr<const kotekan::GenericNDArray> mask_desc =
+            _bf_mask_buf->require_frame_desc<kotekan::GenericNDArray>();
+        if (mask_desc->get_value_datatype() != kotekan::int8 || mask_desc->get_rank() != 3)
+            FATAL_ERROR("in_bf_mask_buf {:s} must be int8 [T, P, D]", _bf_mask_buf->buffer_name);
+        _bf_mask_row_len = mask_desc->get_extent(1) * mask_desc->get_extent(2);
+    }
 
     // Resolve baseband_gain_host_info once: it names a config path (e.g.
     // /fpga_controller) to a block exposing host, port, and an optional
@@ -1233,10 +1297,78 @@ size_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     return fv.abs_time_idx / _num_file_t;
 }
 
+void hdf5N2Write::_ingest_bf_mask_records() {
+    if (_bf_mask_buf == nullptr)
+        return;
+    // A deadline already in the past turns the wait into a poll. Records carry their
+    // own fpga_seq_num, so arrival timing only decides which file write catches them.
+    const timespec poll = {0, 0};
+    while (_bf_mask_buf->wait_for_full_frame_timeout(unique_name, _bf_mask_frame_id, poll) == 0) {
+        const std::int8_t* frame = (const std::int8_t*)_bf_mask_buf->frames[_bf_mask_frame_id];
+        const std::shared_ptr<chordMetadata> meta =
+            get_chord_metadata(_bf_mask_buf, _bf_mask_frame_id);
+
+        BfMaskRecord rec;
+        rec.fpga_seq_num = meta->get_fpga_seq_num();
+        rec.freq_id = meta->has_coarse_freq() && !meta->get_coarse_freq().empty()
+                          ? meta->get_coarse_freq().front()
+                          : -1;
+        rec.mask.assign(frame, frame + _bf_mask_row_len);
+
+        std::vector<BfMaskRecord>& records = _bf_mask_history[rec.freq_id];
+        // The dedup upstream resends unchanged masks to heal dropped frames; collapse
+        // those runs, keeping the earliest record of each contents.
+        if (records.empty() || records.back().mask != rec.mask)
+            records.push_back(std::move(rec));
+        // Bound the history, keeping the newer half. Records are content changes
+        // only, so this is generous.
+        if (records.size() > 4096)
+            records.erase(records.begin(), records.begin() + 2048);
+
+        _bf_mask_buf->mark_frame_empty(unique_name, _bf_mask_frame_id);
+        _bf_mask_frame_id = (_bf_mask_frame_id + 1) % _bf_mask_buf->num_frames;
+    }
+}
+
+void hdf5N2Write::_write_bf_mask_records(N2FileData& filedata) {
+    if (_bf_mask_buf == nullptr || _bf_mask_history.empty())
+        return;
+
+    // The file's FPGA tick span, over the frames actually added.
+    const auto [span_start, span_end] = filedata.fpga_tick_span();
+    if (span_end == 0)
+        return; // no frames were added
+
+    // Per stream: the record already in effect at the span start, then every record
+    // that starts inside the span.
+    std::vector<std::uint64_t> seqs;
+    std::vector<std::int32_t> freq_ids;
+    std::vector<std::int8_t> masks; // flattened (update, element)
+    for (const auto& [freq_id, records] : _bf_mask_history) {
+        std::size_t first = 0;
+        while (first + 1 < records.size() && records[first + 1].fpga_seq_num <= span_start)
+            ++first;
+        if (records[first].fpga_seq_num >= span_end)
+            continue; // every record starts after this file's span
+        for (std::size_t i = first; i < records.size(); ++i) {
+            if (records[i].fpga_seq_num >= span_end)
+                break;
+            seqs.push_back(records[i].fpga_seq_num);
+            freq_ids.push_back(records[i].freq_id);
+            masks.insert(masks.end(), records[i].mask.begin(), records[i].mask.end());
+        }
+    }
+    if (seqs.empty())
+        return;
+
+    filedata.write_flag_updates(seqs, freq_ids, masks, _bf_mask_row_len);
+}
+
 bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
     DEBUG_NON_OO("hdf5N2Write: Flushing and closing file {}...", abs_idx);
     try {
+        _write_bf_mask_records(filedata);
         filedata.flush_to_disk();
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
@@ -1431,6 +1563,9 @@ void hdf5N2Write::main_thread() {
         if (!frame)
             break;
 
+        // Take in any applied-mask change records that have arrived.
+        _ingest_bf_mask_records();
+
         // Fetch metadata and create N2 frame view
         N2FrameView fv(_buffer, in_frame_id);
 
@@ -1560,6 +1695,9 @@ void hdf5N2Write::main_thread() {
         _grace_finalize_files(filedata, &abs_file_idx);
 
     } // while !stop_thread
+
+    // Catch records that arrived since the last frame, so they reach the final files.
+    _ingest_bf_mask_records();
 
     // Finalize any partially-filled datasets on exit
     for (auto& file : filedata) {

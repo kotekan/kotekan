@@ -4,6 +4,7 @@
 #include <assert.h>   // for assert
 #include <chrono>     // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>    // for errno
+#include <exception>  // for exception_ptr, current_exception, rethrow_exception
 #include <json.hpp>   // for basic_json, json
 #include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
@@ -88,9 +89,13 @@ void GenericBuffer::unregister_consumer(const std::string& name, bool leave_last
             ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
             return;
         }
+        consumers_epoch++;
     }
     // Signal producers in case removing this consumer causes a buffer to become writable
     empty_cond.notify_all();
+    // Wake any wait_for_full_frame() this consumer is blocked in, so that it
+    // observes its own removal instead of waiting on an erased map entry.
+    full_cond.notify_all();
 }
 
 void GenericBuffer::register_producer(const std::string& name) {
@@ -113,6 +118,24 @@ int GenericBuffer::get_num_consumers() {
 int GenericBuffer::get_num_producers() {
     buffer_lock lock(mutex);
     return producers.size();
+}
+
+std::vector<std::string> GenericBuffer::get_consumer_names() {
+    buffer_lock lock(mutex);
+    std::vector<std::string> names;
+    names.reserve(consumers.size());
+    for (auto& consumer : consumers)
+        names.push_back(consumer.second.name);
+    return names;
+}
+
+std::vector<std::string> GenericBuffer::get_producer_names() {
+    buffer_lock lock(mutex);
+    std::vector<std::string> names;
+    names.reserve(producers.size());
+    for (auto& producer : producers)
+        names.push_back(producer.second.name);
+    return names;
 }
 
 void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
@@ -183,28 +206,42 @@ void GenericBuffer::send_shutdown_signal() {
 }
 
 void GenericBuffer::json_description(nlohmann::json& buf_json) {
-    buffer_lock lock(mutex);
+    // Copy the stage info out under the lock and build the JSON (which
+    // allocates) after releasing it, to keep REST queries off the frame path.
+    struct StageSnapshot {
+        std::string name;
+        int last_frame_acquired;
+        int last_frame_released;
+        std::vector<bool> is_done;
+    };
+    std::vector<StageSnapshot> consumer_snapshots;
+    std::vector<StageSnapshot> producer_snapshots;
+    {
+        buffer_lock lock(mutex);
+        consumer_snapshots.reserve(consumers.size());
+        for (const auto& c : consumers)
+            consumer_snapshots.push_back({c.second.name, c.second.last_frame_acquired,
+                                          c.second.last_frame_released, c.second.is_done});
+        producer_snapshots.reserve(producers.size());
+        for (const auto& p : producers)
+            producer_snapshots.push_back({p.second.name, p.second.last_frame_acquired,
+                                          p.second.last_frame_released, p.second.is_done});
+    }
     buf_json["consumers"];
-    for (auto& cit : consumers) {
-        auto& c = cit.second;
-        std::string consumer_name = c.name;
-        buf_json["consumers"][consumer_name] = {};
-        buf_json["consumers"][consumer_name]["last_frame_acquired"] = c.last_frame_acquired;
-        buf_json["consumers"][consumer_name]["last_frame_released"] = c.last_frame_released;
+    for (const auto& c : consumer_snapshots) {
+        buf_json["consumers"][c.name] = {};
+        buf_json["consumers"][c.name]["last_frame_acquired"] = c.last_frame_acquired;
+        buf_json["consumers"][c.name]["last_frame_released"] = c.last_frame_released;
         for (int f = 0; f < num_frames; ++f)
-            buf_json["consumers"][consumer_name]["marked_frame_empty"].push_back(c.is_done[f] ? 1
-                                                                                              : 0);
+            buf_json["consumers"][c.name]["marked_frame_empty"].push_back(c.is_done[f] ? 1 : 0);
     }
     buf_json["producers"];
-    for (auto& pit : producers) {
-        auto& p = pit.second;
-        std::string producer_name = p.name;
-        buf_json["producers"][producer_name] = {};
-        buf_json["producers"][producer_name]["last_frame_acquired"] = p.last_frame_acquired;
-        buf_json["producers"][producer_name]["last_frame_released"] = p.last_frame_released;
+    for (const auto& p : producer_snapshots) {
+        buf_json["producers"][p.name] = {};
+        buf_json["producers"][p.name]["last_frame_acquired"] = p.last_frame_acquired;
+        buf_json["producers"][p.name]["last_frame_released"] = p.last_frame_released;
         for (int f = 0; f < num_frames; ++f)
-            buf_json["producers"][producer_name]["marked_frame_empty"].push_back(p.is_done[f] ? 1
-                                                                                              : 0);
+            buf_json["producers"][p.name]["marked_frame_empty"].push_back(p.is_done[f] ? 1 : 0);
     }
     buf_json["num_frames"] = num_frames;
     buf_json["type"] = buffer_type;
@@ -217,9 +254,10 @@ kotekan::BufferState GenericBuffer::dot_buffer_state() {
 std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOptions&) {
     // Which kind of buffer this is, and the metadata that travels with its
     // frames -- the two things that decide what a consumer can do with it.
-    return {buffer_name, metadata_pool
-                             ? fmt::format("{:s} · {:s}", buffer_type, metadata_pool->type_name)
-                             : buffer_type};
+    std::string type_line = buffer_type;
+    if (metadata_pool)
+        type_line += fmt::format(fmt(" · {:s}"), metadata_pool->type_name);
+    return {buffer_name, type_line};
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -229,7 +267,8 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
-    is_full(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
+    is_full(num_frames, false), peek_in_progress(num_frames, 0),
+    peek_deferred_empty(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
     mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
 
@@ -361,18 +400,49 @@ bool Buffer::is_frame_empty(const int ID) {
 
 uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int ID) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    auto& con = consumers.at(consumer_name);
+    // The wait below releases the mutex, and unregister_consumer() may erase
+    // this consumer's map entry meanwhile. Hold a pointer to the entry and
+    // re-look it up only when consumers_epoch says an entry was erased, so
+    // the common wake stays two array reads.
+    auto it = consumers.find(consumer_name);
+    if (it == consumers.end()) {
+        // Not necessarily a bug: a stage that unregistered itself (e.g. with
+        // leave_last) may keep consuming until it observes its own removal.
+        INFO("wait_for_full_frame({:s}[{:d}]): consumer is not registered, returning no frame.",
+             consumer_name, ID);
+        return nullptr;
+    }
+    StageInfo* con = &it->second;
+    uint64_t epoch = consumers_epoch;
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting...", consumer_name, ID);
     print_full_status();
     // This wait exits when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as done
-    full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
+    // when this consumer hasn't already marked this buffer as done, or when
+    // this consumer is unregistered while we are waiting.
+    full_cond.wait(lock, [&]() {
+        if (epoch != consumers_epoch) {
+            // Some consumer was unregistered; find out if it was this one.
+            auto find = consumers.find(consumer_name);
+            if (find == consumers.end()) {
+                con = nullptr;
+                return true;
+            }
+            con = &find->second;
+            epoch = consumers_epoch;
+        }
+        return shutdown_signal || (is_full[ID] && !con->is_done[ID]);
+    });
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
-    assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
 
     if (shutdown_signal)
         return nullptr;
-    con.last_frame_acquired = ID;
+    if (con == nullptr) {
+        DEBUG("wait_for_full_frame({:s}[{:d}]): consumer was unregistered while waiting.",
+              consumer_name, ID);
+        return nullptr;
+    }
+    assert(is_full[ID] && !con->is_done[ID]);
+    con->last_frame_acquired = ID;
     return frames[ID];
 }
 
@@ -382,14 +452,30 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
         std::chrono::seconds{timeout_time.tv_sec} + std::chrono::nanoseconds{timeout_time.tv_nsec};
     std::chrono::time_point<std::chrono::system_clock, decltype(dur)> deadline(dur);
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    auto& con = consumers.at(name);
+    // See wait_for_full_frame() for the pointer-plus-epoch scheme.
+    auto it = consumers.find(name);
+    if (it == consumers.end()) {
+        INFO("wait_for_full_frame_timeout({:s}[{:d}]): consumer is not registered, returning.",
+             name, ID);
+        return -1;
+    }
+    StageInfo* con = &it->second;
+    uint64_t epoch = consumers_epoch;
 
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting...", name, ID);
-    bool st = full_cond.wait_until(
-        lock, deadline, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
+    bool st = full_cond.wait_until(lock, deadline, [&]() {
+        if (epoch != consumers_epoch) {
+            auto find = consumers.find(name);
+            if (find == consumers.end()) {
+                con = nullptr;
+                return true;
+            }
+            con = &find->second;
+            epoch = consumers_epoch;
+        }
+        return shutdown_signal || (is_full[ID] && !con->is_done[ID]);
+    });
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting done.", name, ID);
-    if (st)
-        assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
 
     if (shutdown_signal)
         return -1;
@@ -397,7 +483,13 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     if (!st)
         return 1;
 
-    con.last_frame_acquired = ID;
+    if (con == nullptr) {
+        DEBUG("wait_for_full_frame_timeout({:s}[{:d}]): consumer was unregistered while waiting.",
+              name, ID);
+        return -1;
+    }
+    assert(is_full[ID] && !con->is_done[ID]);
+    con->last_frame_acquired = ID;
     return 0;
 }
 
@@ -412,53 +504,117 @@ int Buffer::get_num_full_frames() {
 
 int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
                                    std::shared_ptr<metadataObject>& metadata_out) {
-    buffer_lock lock(mutex);
-
-    if (last_frame_filled < 0)
-        return -1;
-
-    // Frames fill in ring order, so the first full frame found scanning
-    // backwards from the last filled position is the newest one.
+    const size_t copy_len = std::min(max_len, frame_size);
     int ID = -1;
-    for (int i = 0; i < num_frames; ++i) {
-        const int candidate = (last_frame_filled - i + num_frames) % num_frames;
-        if (is_full[candidate]) {
-            ID = candidate;
-            break;
+    uint8_t* frame = nullptr;
+    {
+        buffer_lock lock(mutex);
+
+        if (last_frame_filled < 0) {
+            data_out.clear();
+            return -1;
+        }
+
+        // Frames fill in ring order, so the first full frame found scanning
+        // backwards from the last filled position is the newest one.
+        for (int i = 0; i < num_frames; ++i) {
+            const int candidate = (last_frame_filled - i + num_frames) % num_frames;
+            if (is_full[candidate]) {
+                ID = candidate;
+                break;
+            }
+        }
+        if (ID == -1) {
+            data_out.clear();
+            return -1;
+        }
+
+        // Defer this frame's empty transition until the copy below finishes.
+        // The frame stays full, which is what stops a producer acquiring it in
+        // wait_for_empty_frame(), and keeps its metadata out of the pool.
+        peek_in_progress[ID]++;
+        frame = frames[ID];
+        metadata_out = metadata[ID];
+    }
+
+    // The pin keeps the frame in place, so the allocation (and its page
+    // faults) as well as the copy run here with the buffer unlocked; a peek
+    // that found nothing paid for neither. assign() sizes and fills in one
+    // pass, and at `len=0` -- the metadata-only request -- copies nothing.
+    // If the allocation throws, the unpin below still has to run -- the REST
+    // server catches the exception and carries on, and a leaked pin would
+    // keep the frame full for good -- so the error is held until after it.
+    std::exception_ptr copy_error;
+    try {
+        data_out.assign(frame, frame + copy_len);
+    } catch (...) {
+        copy_error = std::current_exception();
+    }
+
+    bool broadcast = false;
+    {
+        buffer_lock lock(mutex);
+
+        peek_in_progress[ID]--;
+        if (peek_in_progress[ID] == 0 && peek_deferred_empty[ID]) {
+            peek_deferred_empty[ID] = false;
+            broadcast = private_finish_frame_empty(ID);
         }
     }
-    if (ID == -1)
-        return -1;
 
-    const size_t copy_len = std::min(max_len, frame_size);
-    data_out.resize(copy_len);
-    memcpy(data_out.data(), frames[ID], copy_len);
-    metadata_out = metadata[ID];
+    // Signal the producer that was waiting on the frame this copy was holding.
+    if (broadcast)
+        empty_cond.notify_all();
+
+    if (copy_error)
+        std::rethrow_exception(copy_error);
     return ID;
 }
 
 void Buffer::enable_peek_hold() {
     buffer_lock lock(mutex);
+    // A pipeline configured this way cannot run, so take kotekan down the way
+    // every other unusable-config check does, rather than leaving the exit code
+    // to whoever catches the exception.
     if (num_frames < 2)
-        throw std::invalid_argument(
-            fmt::format(fmt("peek_hold on buffer {:s} requires num_frames >= 2: with a single "
-                            "frame the producer would deadlock waiting for the held frame"),
-                        buffer_name));
+        FATAL_ERROR("peek_hold on buffer {:s} requires num_frames >= 2: with a single frame the "
+                    "producer would deadlock waiting for the held frame",
+                    buffer_name);
+    // The hold costs one frame slot for as long as the pipeline runs, which on a
+    // shallow buffer is a large share of the depth it has to absorb jitter with.
+    if (num_frames < peek_hold_shallow_frames)
+        WARN("peek_hold on buffer {:s} leaves {:d} of {:d} frames for the pipeline: on a buffer "
+             "this shallow the held frame is a large part of its depth, so expect the producer "
+             "to block sooner",
+             buffer_name, num_frames - 1, num_frames);
     peek_hold_enabled = true;
 }
 
 void Buffer::json_description(nlohmann::json& buf_json) {
-    buffer_lock lock(mutex);
     GenericBuffer::json_description(buf_json);
+    // As above: snapshot under the lock, serialize after releasing it.
+    std::vector<bool> local_is_full;
+    double arrival_time;
+    bool hold_enabled;
+    {
+        buffer_lock lock(mutex);
+        local_is_full = is_full;
+        arrival_time = last_arrival_time;
+        hold_enabled = peek_hold_enabled;
+    }
     buf_json["frames"];
-    for (int i = 0; i < num_frames; ++i)
-        buf_json["frames"].push_back(is_full[i] ? 1 : 0);
-    buf_json["num_full_frame"] = get_num_full_frames();
+    int num_full = 0;
+    for (int i = 0; i < num_frames; ++i) {
+        buf_json["frames"].push_back(local_is_full[i] ? 1 : 0);
+        if (local_is_full[i])
+            num_full++;
+    }
+    buf_json["num_full_frame"] = num_full;
     buf_json["frame_size"] = frame_size;
-    buf_json["last_frame_arrival_time"] = last_arrival_time;
+    buf_json["last_frame_arrival_time"] = arrival_time;
     // Lets /buffers consumers see which buffers keep their newest frame
     // peekable (and that one "full" frame at idle is the hold, not backlog).
-    buf_json["peek_hold"] = peek_hold_enabled;
+    buf_json["peek_hold"] = hold_enabled;
 }
 
 std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& options) {
@@ -677,10 +833,7 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
                 } else {
                     DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
                           buffer_name, ID);
-                    is_full[ID] = false;
-                    metadata[ID].reset();
-                    set_empty = true;
-                    private_reset_consumers(ID);
+                    set_empty = private_finish_frame_empty(ID);
                 }
             }
         }
@@ -696,10 +849,10 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
     if (release_empty)
         empty_cond.notify_all();
 
-    // Signal producer
-    if (set_empty) {
-        // empty_cond.notify_all();
-    }
+    // Signal a producer sleeping on the dropped frame from a previous lap
+    // (reachable with more than one producer and no consumers).
+    if (set_empty)
+        empty_cond.notify_all();
 }
 
 // function passed to pthreads
@@ -713,7 +866,7 @@ void* private_zero_frames(void* args) {
 
 void Buffer::_impl_zero_frame(const int ID) {
     assert(ID >= 0);
-    assert(ID <= num_frames);
+    assert(ID < num_frames);
 
     // This zeros everything, but for VDIF we just need to header zeroed.
     int div_256 = 256 * (frame_size / 256);
@@ -724,13 +877,13 @@ void Buffer::_impl_zero_frame(const int ID) {
     // for (int i = 0; i < frame_size/1056; ++i) {
     //    *((uint64_t*)&frames[ID][i*1056]) = 0;
     //}
+    bool emptied;
     {
         buffer_lock lock(mutex);
-
-        is_full[ID] = false;
-        private_reset_consumers(ID);
+        emptied = private_finish_frame_empty(ID);
     }
-    empty_cond.notify_all();
+    if (emptied)
+        empty_cond.notify_all();
 
     int ret = 0;
     pthread_exit(&ret);
@@ -775,8 +928,10 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         return false;
     }
 
-    bool broadcast = false;
     if (_zero_frames) {
+        // The zeroing thread finishes the transition when it is done. A peek
+        // reading the frame meanwhile sees the memset in progress, which is
+        // the documented best-effort behaviour.
         pthread_t zero_t;
         struct zero_frames_thread_args* zero_args =
             (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));
@@ -787,15 +942,28 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
         CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &_cpu_set_zero));
         CHECK_ERROR_F(pthread_detach(zero_t));
-    } else {
-        is_full[ID] = 0;
-        private_reset_consumers(ID);
-        broadcast = true;
+        return false;
     }
+
+    return private_finish_frame_empty(ID);
+}
+
+bool Buffer::private_finish_frame_empty(const int ID) {
+    // A peek is copying this frame with the buffer unlocked. Leaving it full
+    // is what keeps a producer out of it, so run the transition when the last
+    // peek on it finishes instead: the unpin calls back in here.
+    if (peek_in_progress[ID] > 0) {
+        peek_deferred_empty[ID] = true;
+        return false;
+    }
+
+    assert(!peek_deferred_empty[ID]);
+    is_full[ID] = false;
+    private_reset_consumers(ID);
     if (metadata[ID]) {
         metadata[ID].reset();
     }
-    return broadcast;
+    return true;
 }
 
 uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const int ID) {
@@ -844,6 +1012,7 @@ void Buffer::unregister_consumer(const std::string& name, bool leave_last) {
             ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
             return;
         }
+        consumers_epoch++;
         // Check if removing this consumer would cause any of the frames
         // which are currently full to become empty.
         for (int id = 0; id < num_frames; ++id)
@@ -854,6 +1023,9 @@ void Buffer::unregister_consumer(const std::string& name, bool leave_last) {
     // removal of this consumer.
     if (broadcast)
         empty_cond.notify_all();
+    // Wake any wait_for_full_frame() this consumer is blocked in, so that it
+    // observes its own removal instead of waiting on an erased map entry.
+    full_cond.notify_all();
 }
 
 uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
@@ -862,6 +1034,12 @@ uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
 
     // Check that we don't have more than one producer.
     assert(producers.size() == 1);
+
+    // The frame handed back here is freed by whoever takes it, so it must not
+    // be one a peek is reading. Callers reach this with a frame they hold as a
+    // producer, and wait_for_empty_frame() cannot hand one over while a peek
+    // keeps it full, so no peek can be on it.
+    assert(peek_in_progress[frame_id] == 0);
 
     uint8_t* temp_frame = frames[frame_id];
     frames[frame_id] = external_frame;
@@ -911,8 +1089,10 @@ void Buffer::safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_
                     dest_buf->buffer_name);
     }
 
-    buffer_lock lock(mutex);
-
+    // Read under the buffer lock, but not held across the transfer below: both
+    // frames are reserved by this stage (see private_copy_frame), and the
+    // consumer list only shrinks while the pipeline runs, so a count that goes
+    // stale here costs a copy rather than a swap.
     int num_consumers = get_num_consumers();
 
     // Copy or transfer the data part.
@@ -927,8 +1107,24 @@ void Buffer::safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_
 }
 
 void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id) {
-    buffer_lock lock(mutex);
-    memcpy(frames[dest_frame_id], src->frames[src_frame_id], src->frame_size);
+    uint8_t* dest_frame;
+    uint8_t* src_frame;
+    {
+        buffer_lock lock(mutex);
+        dest_frame = frames[dest_frame_id];
+    }
+    {
+        buffer_lock lock(src->mutex);
+        src_frame = src->frames[src_frame_id];
+    }
+
+    // The copy runs with both buffers unlocked. The stage reaching here holds
+    // the destination frame as its only producer and the source frame as a
+    // consumer, so neither frame can be given to another stage until it marks
+    // them, exactly as for a stage filling a frame of its own. Holding the
+    // locks instead would stall both buffers for a whole frame copy, which on
+    // the voltage buffers is the largest copy in the pipeline.
+    memcpy(dest_frame, src_frame, src->frame_size);
 }
 
 bool is_frame_buffer(GenericBuffer* buf) {

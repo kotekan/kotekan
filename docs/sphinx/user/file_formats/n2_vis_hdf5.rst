@@ -150,7 +150,13 @@ visibility matrix, including autocorrelations, row-major:
 (N_e{-}1,N_e{-}1)`. The pair for product :math:`p` is stored in
 ``/index_map/prod`` as ``(input_a, input_b)`` with ``input_a <= input_b``;
 ``input_a`` is the row and ``input_b`` the column of the matrix entry
-:math:`V_{ab}`. The lower triangle is the complex conjugate.
+:math:`V_{ab}`. The lower triangle is the complex conjugate. Product ids
+always index the file's own element axis; ``/index_map/prod`` is
+authoritative. Compact subset layouts (e.g. ``DishInputs``) carry fewer
+elements than the full array: the ``input_list`` attribute gives, per file
+element, the corresponding element index of the full fiducial order, and
+the per-element attributes (``main_array_grid_indices``,
+``feed_positions_m``) are already gathered through it.
 
 **Element ordering.**
 The mapping from element index to physical input (dish, polarization) is
@@ -182,9 +188,11 @@ h5py reads them natively as ``complex64``.
 **Sentinels.**
 Quantities that no upstream stage populated hold sentinel values rather than
 physical ones: ``erms`` = -1 or -FLT_MAX, ``gain`` = -1+0j,
-``radiometer_chi2`` = -1, ``flags`` = 0, and ``eval`` / ``evec`` = 0 when no
-eigensolver ran. Which of these are real in a given acquisition depends on
-the deployed pipeline.
+``radiometer_chi2`` = -1, and ``eval`` / ``evec`` = 0 when no eigensolver ran.
+Which of these are real in a given acquisition depends on the deployed
+pipeline. ``flags`` is not among them: 1.0 is a good element and 0.0 a bad
+one, so a pipeline with no flagging stage reports every element as good
+rather than holding a sentinel.
 
 **CHIME file mode.**
 With ``file_mode == CHIME`` (legacy), the flag-like datasets
@@ -242,7 +250,13 @@ File identity and structure
      - string
      - Visibility matrix packing: ``FullUpperTri``,
        ``RedundantBaselineAvg``, ``Autocorrelations``, ``InputANDMasked``,
-       ``InputORMasked``, or ``GeneralSubset``.
+       ``InputORMasked``, ``GeneralSubset``, or ``DishInputs`` (a compact
+       frame holding the dense triangle over the elements whose dish type
+       is ``ArrayDish``; see the ``input_list`` attribute).
+   * - ``input_list``
+     - int32 array
+     - Compact subset layouts only: the element index, in the full
+       fiducial order, of each of the file's elements.
    * - ``input_order``
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see
@@ -472,8 +486,8 @@ uncompressed.
    * - ``flags``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - float32
-     - Per-input flag/weight factors from upstream flagging; 0 when
-       unpopulated.
+     - Per-input flags from upstream flagging: 1.0 for a good element, 0.0
+       for one flagged bad. All 1.0 when no flagging stage ran.
    * - ``radiometer_chi2``
      - (:math:`N_f`, :math:`N_t`, 3)
      - float32
@@ -616,6 +630,41 @@ Completeness tracking and configuration snapshots
    itself), ``json_hash``, ``kotekan_version``, ``kotekan_git_commit_hash``,
    ``kotekan_build_branch``, and ``kotekan_cmake_options``. Empty if the
    tracker is disabled.
+
+Flag updates group (``/flag_updates``)
+======================================
+
+Only present when the writer's ``in_bf_mask_buf`` input is wired and at least one
+applied bad-feed-mask change record covers the file's time span. Each record is a mask
+the GPU pipeline actually applied (1 = good element, element order as ``/flags``),
+forwarded upstream only when its contents changed. A record applies from its
+``fpga_seq_num`` until the next record *from the same stream* (``freq_id``, the first
+coarse frequency of the pipeline that applied it — the streams cover disjoint parts of
+the band). The first record per stream may precede the file: it is the mask already in
+effect when the file's span starts.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 22 22 30
+
+   * - Dataset
+     - Shape
+     - Type
+     - Description
+   * - ``fpga_seq_num``
+     - (updates)
+     - uint64
+     - Absolute FPGA sequence number of the first sample the mask was
+       applied to.
+   * - ``freq_id``
+     - (updates)
+     - int32
+     - First coarse frequency of the stream that applied the mask,
+       identifying which part of the band the record covers.
+   * - ``bf_mask``
+     - (updates, elements)
+     - int8
+     - The applied mask, 1 = good.
 
 Digital gains group (``/digital_gains``)
 ========================================

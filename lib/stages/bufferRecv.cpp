@@ -11,7 +11,7 @@
 #include "configTracker.hpp"     // for ConfigTracker
 #include "metadata.hpp"          // for metadataObject, metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
-#include "restServer.hpp"        // for PORT_REST_SERVER, connectionInstance
+#include "restServer.hpp"        // for restServer, PORT_REST_SERVER, connectionInstance
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time, regex_split
 
@@ -46,6 +46,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::ConfigTracker;
 using kotekan::connectionInstance;
+using kotekan::restServer;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
@@ -71,6 +72,20 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
+
+    // Which REST port to reach a sender on for config-tracker fetches. The
+    // local configTracker does not have this information, so we need to know the
+    // port the instances were launched with (--bind-address). The REST server
+    // reports 0 before it is started, so fall back to the compile-time port
+    // rather than failing.
+    const uint16_t local_rest_port = restServer::instance().port();
+    const int upstream_rest_port_int =
+        config.get_default<int>(unique_name, "upstream_rest_port",
+                                local_rest_port != 0 ? local_rest_port : PORT_REST_SERVER);
+    if (upstream_rest_port_int <= 0 || upstream_rest_port_int > 65535) {
+        FATAL_ERROR("Invalid upstream_rest_port: {:d}", upstream_rest_port_int);
+    }
+    default_upstream_rest_port = static_cast<uint16_t>(upstream_rest_port_int);
 
     // Optional per-connection upstream REST port overrides for a given host (list of "host:port"
     // strings)
@@ -119,11 +134,16 @@ void bufferRecv::read_callback(evutil_socket_t fd, short what, void* arg) {
 void bufferRecv::worker_thread() {
     connInstance* instance;
     DEBUG2("Starting worker thread");
-    while (!stop_thread) {
+    // Two stop flags, and both matter: `stop_thread` is the pipeline shutting
+    // down, `worker_stop_thread` is this pool being torn down on its own (a
+    // failed main_thread setup), which happens while the stage is still
+    // nominally running.
+    while (!stop_thread && !worker_stop_thread) {
         {
             std::unique_lock<mutex> lock(work_queue_lock);
-            work_cv.wait(lock, [&] { return (!work_queue.empty() || stop_thread); });
-            if (stop_thread)
+            work_cv.wait(
+                lock, [&] { return (!work_queue.empty() || stop_thread || worker_stop_thread); });
+            if (stop_thread || worker_stop_thread)
                 return;
             instance = work_queue.front();
             work_queue.pop_front();
@@ -200,7 +220,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
 
     // New connection instance
     // Resolve per-connection upstream REST port (override by client IP if configured)
-    uint16_t conn_upstream_rest_port = PORT_REST_SERVER;
+    uint16_t conn_upstream_rest_port = default_upstream_rest_port;
     auto it_override = upstream_rest_port_overrides.find(std::string(ip_str));
     if (it_override != upstream_rest_port_overrides.end()) {
         conn_upstream_rest_port = it_override->second;
@@ -273,22 +293,6 @@ void bufferRecv::main_thread() {
         return;
     }
 
-    // Create worker threads:
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
-        CPU_SET(i, &cpuset);
-
-    for (uint32_t i = 0; i < num_threads; ++i) {
-        thread_pool.push_back(thread(&bufferRecv::worker_thread, std::ref(*this)));
-        pthread_setaffinity_np(thread_pool.back().native_handle(), sizeof(cpu_set_t), &cpuset);
-#ifndef MAC_OSX
-        std::string short_name =
-            string_tail(fmt::format(fmt("{:s}/worker_thread/{:d}"), unique_name, i), 15);
-        pthread_setname_np(thread_pool.back().native_handle(), short_name.c_str());
-#endif
-    }
-
     server_addr.sin_family = AF_INET;
     // Bind to every address (might want to change this later)
     server_addr.sin_addr.s_addr = 0;
@@ -324,13 +328,17 @@ void bufferRecv::main_thread() {
     }
 
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        FATAL_ERROR("Failed to bind to socket 0.0.0.0:{:d}, error: {:d} ({:s})", listen_port, errno,
-                    strerror(errno));
+        const int bind_errno = errno;
+        close(listener);
+        FATAL_ERROR("Failed to bind to socket 0.0.0.0:{:d}, error: {:d} ({:s})", listen_port,
+                    bind_errno, strerror(bind_errno));
         return;
     }
 
     if (listen(listener, 256) < 0) {
-        FATAL_ERROR("Failed to open listener {:d} ({:s})", errno, strerror(errno));
+        const int listen_errno = errno;
+        close(listener);
+        FATAL_ERROR("Failed to open listener {:d} ({:s})", listen_errno, strerror(listen_errno));
         return;
     }
 
@@ -357,11 +365,34 @@ void bufferRecv::main_thread() {
     interval.tv_usec = 100000;
     event_add(timer_event, &interval);
 
+    // Create the worker threads last, once nothing between here and the loop
+    // can throw, leaving the workers stuck waiting. Nothing reaches the workers
+    // until the loop runs anyway.
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
+        CPU_SET(i, &cpuset);
+
+    for (uint32_t i = 0; i < num_threads; ++i) {
+        thread_pool.push_back(thread(&bufferRecv::worker_thread, std::ref(*this)));
+        pthread_setaffinity_np(thread_pool.back().native_handle(), sizeof(cpu_set_t), &cpuset);
+#ifndef MAC_OSX
+        std::string short_name =
+            string_tail(fmt::format(fmt("{:s}/worker_thread/{:d}"), unique_name, i), 15);
+        pthread_setname_np(thread_pool.back().native_handle(), short_name.c_str());
+#endif
+    }
+
     // The libevent main loop.
     event_base_dispatch(base);
 
-    // Join all the worker threads
-    worker_stop_thread = true;
+    // Join all the worker threads before touching the connection instances they
+    // read from. Setting the flag under the queue lock keeps a worker on its
+    // way into work_cv.wait() from missing the notify.
+    {
+        std::lock_guard<mutex> lock(work_queue_lock);
+        worker_stop_thread = true;
+    }
     work_cv.notify_all();
     for (thread& t : thread_pool) {
         if (t.joinable()) {

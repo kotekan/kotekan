@@ -28,6 +28,7 @@ using kotekan::div_ceil;
 using kotekan::div_noremainder;
 using kotekan::round_down;
 
+// clang-format off
 /**
  * @class cudaPLMaskUpchannelizer
  * @brief cudaCommand for upchannelizing the packet loss (PL) mask.
@@ -75,6 +76,7 @@ using kotekan::round_down;
  * @conf  expanded_pl_mask_name                String.  Base name for the input pl_mask buffers.
  * @conf  upchannelized_expanded_pl_mask_name  String.  Base name for the output pl_mask buffers.
  */
+// clang-format on
 class cudaPLMaskUpchannelizer : public cudaCommand {
 public:
     cudaPLMaskUpchannelizer(kotekan::Config& config, const std::string& unique_name,

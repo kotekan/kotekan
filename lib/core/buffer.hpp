@@ -135,6 +135,11 @@ public:
      * In order to use a buffer a consumer must first register its name so that
      * the buffer object can track which consumers have signed off on each frame.
      *
+     * Stages register as the pipeline is built, and may unregister while it
+     * runs (see @c unregister_consumer()), so once frames are flowing these
+     * lists only ever shrink. Code that reads a count and then acts on it,
+     * rather than holding the lock across both, relies on that.
+     *
      * @param[in] name The name of the consumer.
      */
     virtual void register_consumer(const std::string& name);
@@ -175,6 +180,25 @@ public:
      * @return int The number of producers on this buffer
      */
     int get_num_producers();
+
+    /**
+     * @brief The names of the consumers registered to this buffer.
+     *
+     * A copy taken under the buffer lock: a stage may unregister while the
+     * pipeline runs, so @c consumers cannot be walked from another thread.
+     * The producer names are a separate copy, so a caller reading both sees
+     * the two taken a moment apart rather than as one snapshot.
+     *
+     * @return The registered consumer names, sorted by name.
+     */
+    std::vector<std::string> get_consumer_names();
+
+    /**
+     * @brief The names of the producers registered to this buffer.
+     *
+     * @return The registered producer names, sorted by name.
+     */
+    std::vector<std::string> get_producer_names();
 
     /**
      * @brief Allocates a new metadata object from the associated pool
@@ -281,6 +305,11 @@ public:
 
     /// The list of consumer names registered to this buffer
     std::map<std::string, StageInfo> consumers;
+
+    /// Incremented (under @c mutex) whenever an entry is erased from
+    /// @c consumers, so that waiters can detect their own unregistration
+    /// without re-looking their entry up on every wake.
+    uint64_t consumers_epoch = 0;
 
     /// The list of producer names registered to this buffer
     std::map<std::string, StageInfo> producers;
@@ -450,11 +479,15 @@ public:
      * This blocking function will return only when the frame_id request is marked
      * as full internally, or the function @c send_shutdown_signal() is called, which
      * causes the function to return a @c NULL pointer.
+     * @c NULL is also returned if @p consumer_name is not (or no longer)
+     * registered as a consumer of this buffer, e.g. after the stage called
+     * @c unregister_consumer() on itself.
      * Generally a stage should exit and cleanup if NULL is returned.
      *
-     * @param[in] consumer_name The name of the registered producer requesting the frame_id
+     * @param[in] consumer_name The name of the registered consumer requesting the frame_id
      * @param[in] frame_id The id of the frame to wait for.
-     * @returns A pointer to the frame, or NULL if the buffer is shutting down.
+     * @returns A pointer to the frame, or NULL if the buffer is shutting down
+     *          or the consumer is not registered.
      * @warning After calling this function for a given consumer and frame_id it
      *          should not be called again on that frame_id until after
      *          a call to @c mark_frame_empty() with that consumer and frame_id
@@ -473,7 +506,8 @@ public:
      * @return Return status:
      *   - `0`: Success! We have a new frame.
      *   - `1`: Failure! We timed out waiting.
-     *   - `-1`: Failure! We received the thread exit signal.
+     *   - `-1`: Failure! We received the thread exit signal, or the consumer
+     *     is not (or no longer) registered on this buffer.
      **/
     int wait_for_full_frame_timeout(const std::string& name, const int ID,
                                     const struct timespec timeout);
@@ -501,19 +535,27 @@ public:
      *        that is still full, without taking part in the producer/consumer
      *        protocol.
      *
-     * Intended for inspection/debugging (e.g. the REST `/buffer/<name>/frame`
+     * Intended for inspection/debugging (e.g. the REST `/buffer_frame`
      * endpoint): the caller does not need to be a registered consumer, and
-     * calling this never consumes or delays frames. The buffer lock is held
-     * for the duration of the copy, which prevents the frame from being
-     * recycled mid-copy, but also blocks producer/consumer state changes on
-     * this buffer for the length of the memcpy -- avoid calling this at high
-     * rates on buffers with large frames. On buffers with deferred frame
-     * zeroing (@c zero_frames) the copy may observe a frame that is
-     * concurrently being zeroed, since the zeroing thread writes frame data
-     * without holding the buffer lock.
+     * calling this never consumes frames. The copy runs with the buffer
+     * unlocked, so producers and consumers on other frames are unaffected.
+     * Only the copied frame is held: its empty transition is deferred until
+     * the copy finishes, which is what keeps a producer out of it. The frame
+     * counts as full (and keeps its metadata object) for that long. The frame
+     * copied is the newest full one, which is the last one the producer comes
+     * back to, so the hold is only felt if the copy outlasts a lap of the
+     * ring -- reachable on a shallow buffer asked for a whole frame, not much
+     * else. A producer that gets there waits, except one that sheds load on a
+     * full ring (bufferRecv, Valve), which drops the data instead.
+     *
+     * The copy is best effort, not a consistent snapshot. A frame already
+     * being zeroed by @c zero_frames, or handed to another buffer by
+     * @c swap_frames() while the copy runs, can be observed part way through
+     * the write; peek again for a clean frame.
      *
      * @param[out] data_out Resized to the copy length and filled with the
-     *                      leading bytes of the frame.
+     *                      leading bytes of the frame; cleared when -1 is
+     *                      returned.
      * @param[in] max_len Maximum number of bytes of frame data to copy; the
      *                    copy length is min(max_len, frame_size).
      * @param[out] metadata_out Set to the frame's metadata object, or nullptr
@@ -546,11 +588,24 @@ public:
      * production has stopped; consult the metadata's timestamps rather
      * than presenting it as live.
      *
-     * @throws std::invalid_argument for a single-frame buffer: with
-     *         ``num_frames == 1`` the producer would deadlock waiting for
-     *         the held frame whose release requires the producer.
+     * Shuts kotekan down (@c FATAL_ERROR, which throws @c FatalError) for a
+     * single-frame buffer: with ``num_frames == 1`` the producer would
+     * deadlock waiting for the held frame whose release requires the
+     * producer. Warns, but continues, below @c peek_hold_shallow_frames,
+     * where the held slot is a large share of the buffer's depth.
      */
     void enable_peek_hold();
+
+    /**
+     * @brief Buffer depth below which @c enable_peek_hold() warns.
+     *
+     * The hold occupies one frame for the lifetime of the pipeline. On a deep
+     * buffer that is a rounding error; at three frames or fewer it is a third
+     * or more of the depth the buffer has to absorb jitter with, which is
+     * worth saying out loud at startup rather than leaving to be found in a
+     * throughput plot.
+     */
+    static constexpr int peek_hold_shallow_frames = 4;
 
     /**
      * @brief Swaps the provided frame of memory with the internal frame
@@ -845,6 +900,21 @@ public:
      */
     int hold_deferred_id = -1;
 
+    /**
+     * @brief The number of peeks copying out of each frame with the buffer
+     * unlocked. While this is non-zero for a frame, that frame's empty
+     * transition is deferred, so it stays full and no producer can acquire
+     * it (see @c peek_newest_full_frame()).
+     */
+    std::vector<int> peek_in_progress;
+
+    /**
+     * @brief Frames whose empty transition was deferred by a peek still
+     * reading them. The deferred transition runs when the last peek on that
+     * frame finishes.
+     */
+    std::vector<bool> peek_deferred_empty;
+
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
 
@@ -876,9 +946,22 @@ private:
      * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
      *        the zeroing thread and delays marking it as empty until the zeroing is done.
      * @param id The id of the frame to mark as empty.
-     * @return True if the frame was marked as empty, false if it is being zeroed.
+     * @return True if the frame was marked as empty, false if the transition was
+     *         handed to the zeroing thread or deferred (peek_hold, in-flight peek).
      */
     bool private_mark_frame_empty(const int ID);
+    /**
+     * @brief Finishes a frame's empty transition: clears is_full, resets the
+     *        consumers and releases the metadata. Every path that empties a
+     *        frame funnels through here, so a frame a peek is copying (with
+     *        the buffer unlocked) is never handed to a producer: the
+     *        transition is deferred until the last peek unpins, which calls
+     *        back in. Callers hold the buffer lock.
+     * @param id The id of the frame to finish emptying.
+     * @return True if the frame emptied and producers need waking, false if
+     *         the transition was deferred to a peek.
+     */
+    bool private_finish_frame_empty(const int ID);
     // Resets the list of consumers for the given ID
     void private_reset_consumers(const int ID);
 
