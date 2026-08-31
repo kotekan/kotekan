@@ -17,6 +17,54 @@
 #include "json.hpp"
 
 
+/**
+ * @brief Distributes CRS board packets from one NIC port to the capture worker rings.
+ *
+ * One distributor runs per NIC port and is the only thing that reads that port. It
+ * validates each packet and enqueues it into one of the DPDK worker rings created by
+ * @c dpdkCore, from which a @c crs16BoardCaptureWorker dequeues it. Splitting capture
+ * this way keeps the RX lcore's work down to a header parse and a ring enqueue, so the
+ * expensive frame copy happens on the worker's own core.
+ *
+ * The stream ID space (0-127, hard coded) is divided into contiguous blocks, one per
+ * ring: with @c worker_rings @c [0,1] configured, stream IDs 0-63 go to the first ring
+ * and 64-127 to the second. The rings are created single-producer/single-consumer, so
+ * each one must be fed by exactly one distributor and drained by exactly one worker.
+ *
+ * @par Packet validation
+ * All validation happens here rather than in the workers, because the port runs in
+ * promiscuous mode: stray traffic (LLDP, ARP, switch chatter) arrives alongside the CRS
+ * data with arbitrary bytes at the CRS header offsets. A packet is dropped, and freed,
+ * if the NIC flags a bad IP checksum, if its length or cookie does not match a CRS
+ * packet, or if its stream ID does not map into this handler's ring table. Each of those
+ * three reasons warns on its first occurrence and is counted thereafter, so a persistent
+ * fault does not flood the log. A packet lost because the target ring was full is counted
+ * silently. @c update_stats publishes the counters every second, labelled by port:
+ * - @c kotekan_dpdk_distributor_packets_total (successfully enqueued)
+ * - @c kotekan_dpdk_distributor_bad_checksum_packets_total
+ * - @c kotekan_dpdk_distributor_non_crs_packets_total
+ * - @c kotekan_dpdk_distributor_invalid_stream_id_packets_total
+ * - @c kotekan_dpdk_distributor_ring_full_dropped_packets_total
+ *
+ * This handler is a distributor (@c is_distributor returns true), so it takes ownership
+ * of every mbuf handed to it and the caller must not free them. It uses no kotekan
+ * buffers of its own.
+ *
+ * @par Config
+ * The port this handler serves is its index in the @c dpdkCore @c handlers array, not a
+ * config option. @c packet_size and @c num_crs_boards are normally set once on the
+ * @c dpdkCore stage, or above it, and shared by every handler and worker.
+ * @conf  worker_rings     Array of UInt32. Indices into the rings declared in the
+ *                         @c dpdkCore @c worker_ring_map that this handler feeds. Must be
+ *                         non-empty and even, and should divide 128 evenly so that the
+ *                         stream IDs split cleanly across the rings.
+ * @conf  packet_size      UInt32. Expected total size of a CRS packet in bytes (header
+ *                         plus payload). Anything else is dropped as non-CRS traffic.
+ * @conf  num_crs_boards   UInt32. Number of CRS boards feeding this node. Must be 16;
+ *                         checked at startup and otherwise unused by this handler.
+ *
+ * @author Andre Renard
+ */
 class crs16BoardDistributor : public dpdkRXhandler {
 public:
     /// Default constructor
@@ -24,7 +72,8 @@ public:
                           kotekan::bufferContainer& buffer_container, int port,
                           const std::vector<rte_ring*>& worker_rings);
 
-    /// Processes the incoming packets
+    /// Validates one packet and enqueues it into the worker ring serving its stream ID,
+    /// freeing it if it fails validation or the ring is full.
     int handle_packet(struct rte_mbuf* mbuf) override;
 
     /// Export the distributed/dropped packet counters.
@@ -43,10 +92,14 @@ public:
     }
 
 protected:
+    /// Indices into @c worker_rings of the rings this handler feeds, in stream ID order.
     std::vector<uint32_t> worker_ring_ids;
 
+    /// Every worker ring created by @c dpdkCore; this handler only touches the ones
+    /// named by @c worker_ring_ids.
     const std::vector<rte_ring*>& worker_rings;
 
+    /// Number of CRS boards feeding this node. Checked to be 16 at startup.
     uint32_t num_crs_boards;
 
     /// Expected size of a CRS packet; anything else is dropped before its
@@ -63,6 +116,7 @@ protected:
     /// Dropped CRS packets that arrived when the target worker ring was full.
     uint64_t ring_full_dropped_packets = 0;
 
+    /// Per-port gauges mirroring the counters above, published by @c update_stats.
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
         bad_checksum_packets_total_metric;
