@@ -417,6 +417,23 @@ pre-registered multi-PRN/multi-Doppler sweep (PRN 3/14/27 x dop -4200/+150/+3100
 --despread-chips-centered on the yaml regeneration + node restart; the tracker state warns
 below the centered floor of 60.
 
+## 7. Per-kernel breakdown  [DONE 2026-08-31 -- it already existed; scripts/gnss/gpu_breakdown.sh reads it]
+
+Kotekan's own /gpu_profile/<instance> endpoints carry per-cuda-command times live; the new
+script tabulates a node. PRE-ARM BASELINE (cx43, 08-31 ~03:00 UTC, production tracking):
+**cudaGnssInject 29.86 ms/frame summed over the 10 chain-instances** (2.4-4.9 ms each; BDS
+instances heaviest at 4.3-4.9 -- more PRNs) = ~36% of each A40 on synthesis+pack alone;
+**cudaCorrelatorDual 0.069 ms/instance** (production N2 1.06 ms); per-instance copy_out
+2.5-4.4 ms is dominated by sync_output (a wait, not bandwidth). Frame budget 41.94 ms.
+
+WHAT THIS SAYS ABOUT "PRN PACKING" (the one-replica-block-for-all-constellations idea):
+the dual-correlator launches it would merge cost 0.07 ms each -- there is no GPU time to
+free there (1b's lesson: small launches are launch-latency, not throughput). The tracker
+space L2 needs comes from SYNTHESIS, and items 3+6 (armed together: ~4x) are that lever.
+Packing's remaining case is PRN-SLOT bookkeeping (128 synth lanes = 32 jobs per instance),
+which L2 does not yet pressure. Re-measure with gpu_breakdown.sh AFTER the fp16+centered
+restart; revisit packing only if a measured cost names it.
+
 ## 4. Fuse synthesis + pack
 
 `wave` is [3*n_job][n_chan][n_hops] float2 = **11 MB per record** at 32 jobs x 7 chan x 2048
