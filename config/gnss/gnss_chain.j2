@@ -66,6 +66,7 @@
     conjugate: true
     carrier_phase_from_ref: {{ gnss.carrier_phase_from_ref }}
     carrier_phase_mode: {{ gnss.carrier_phase_mode }}
+    phi_fp16: {{ gnss.phi_fp16 | default(false) }}
     voltage_name: voltage
     gnss_synth_name: {{ pre }}_synth
     gnss_ctl_name: {{ pre }}_n2ctl

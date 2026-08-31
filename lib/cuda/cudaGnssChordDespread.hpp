@@ -91,6 +91,11 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream);
 
+/// Host-side float2 -> __half2 table conversion (item 3, fp16 Phi). `dst` must hold
+/// n * sizeof(float2)/2 bytes. void* because __half2 must not leak into g++-compiled callers;
+/// GnssCudaDespread stages through this before its half-size H2D upload.
+void phi_to_half(const float2* src, void* dst, size_t n);
+
 /// Walk the chip loop ONCE for all three E/P/L trials instead of three times -- the other half of
 /// the re-walk count @ref WAVE_THREADS attacks. Bit-identical, but it costs registers, and
 /// registers are what cap the block width, so the two knobs pull against each other. See

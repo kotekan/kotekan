@@ -205,6 +205,20 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                         max_chips, 210.0 / (double)max_chips);
     }
 
+    // fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table -- the one
+    // lever the DRAM-footprint verdict (§10.6c) says pays; 1.27-1.37x measured on synthesis,
+    // storage error 3.3e-4 (~0.14 dB class against the 4-bit voltage floor). Default OFF.
+    // READ THE RETURN: "armed" and "in effect" are different states (#96/#97) -- the engine
+    // refuses fp16 while shared tables are armed.
+    if (config.get_default<bool>(unique_name, "phi_fp16", false)) {
+        if (despread->set_phi_fp16(true))
+            INFO_NON_OO("cudaGnssChordTrack: fp16 Phi tables ARMED (item 3) -- resident Phi "
+                        "halved; despread_batch/device/peel paths will refuse while set");
+        else
+            WARN_NON_OO("cudaGnssChordTrack: phi_fp16 requested but the despread REFUSED it -- "
+                        "running fp32; check the engine's own warning for why");
+    }
+
     seeds.assign((size_t)n_prn, Seed{});
     trim.assign((size_t)n_prn, 0.0);
     trim_disc.assign((size_t)n_prn, 0.0);

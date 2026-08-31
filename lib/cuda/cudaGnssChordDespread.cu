@@ -625,9 +625,9 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
         return cudaFuncGetAttributes(&at, fn) == cudaSuccess ? at.maxThreadsPerBlock : 256;
     };
     const dim3 grid(n_job, n_chan);
-    // BENCH ONLY: fp16 Phi. job.phiA/phiB then point at __half2 tables (the struct field type is
-    // a lie the caller opts into). Answers whether the kernel is byte-limited or request-limited;
-    // production never takes this path.
+    // fp16 Phi (item 3): job.phiA/phiB point at __half2 tables (the struct field type is a lie
+    // the caller opts into). PRODUCTION-REACHABLE since 2026-08-31 via DespreadParams::phi_half
+    // (launch_waveform forwards it); phi16 values >= 2 remain bench-only diagnostics.
     if (phi16 == 5) { // BENCH: hop-sorted lane->hop mapping (coalesces the Phi gather)
         gnss_waveform_kernel<1024, true, float2, false, false, true>
             <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
@@ -708,7 +708,19 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
 cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream) {
-    return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, -1, 0, stream);
+    // p.phi_half selects the __half2 gather instantiation (item 3); the tables the jobs point
+    // at must already be half storage -- GnssCudaDespread::ensure_phi owns that pairing.
+    return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, -1,
+                                 p.phi_half ? 1 : 0, stream);
+}
+
+void phi_to_half(const float2* src, void* dst, size_t n) {
+    // Host-side float2 -> __half2 conversion for ensure_phi's upload staging. Lives here
+    // because __half2 must not cross into the g++-compiled engine (GnssCudaDespread.cpp);
+    // the pointer goes back and forth as void*/float2* and only the kernels reinterpret it.
+    __half2* d = (__half2*)dst;
+    for (size_t i = 0; i < n; ++i)
+        d[i] = __floats2half2_rn(src[i].x, src[i].y);
 }
 
 cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, int n_job,

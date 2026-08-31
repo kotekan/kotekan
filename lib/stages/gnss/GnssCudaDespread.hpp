@@ -118,6 +118,17 @@ public:
     /// a feature that silently did not arm is how #96/#97 hid for a day.
     bool set_shared_phi(bool on);
 
+    /// fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table, the one
+    /// lever §10.6c's DRAM-footprint verdict says pays (1.27-1.37x measured, wavebench;
+    /// storage error 3.3e-4 relative, ~275x above item 2's reconstruction floor and ~0.14 dB
+    /// class against the 4-bit voltage quantization). Off by default. Returns whether it took:
+    /// refused while shared tables are armed (that gather is fp32-only) -- read the return,
+    /// "armed" and "in effect" are different states (#96/#97). While set, despread_batch,
+    /// enqueue_batch_device and the peel THROW rather than read half tables as float2; only
+    /// the waveform paths (enqueue_waveform / enqueue_batch_nm) are fp16-capable, and the
+    /// shipped inject graph uses nothing else. Gate: scripts/gnss/phi16gpu + e2e.
+    bool set_phi_fp16(bool on);
+
     /// BENCH: bracket the CHORD split path's two kernels with CUDA events, so the
     /// synthesis / correlation balance can be measured ON THE NODE at the real geometry.
     /// Measuring it in a synthetic bench does not work: chip_gather's depth (job.n_chips) comes

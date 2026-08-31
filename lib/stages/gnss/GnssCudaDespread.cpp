@@ -77,9 +77,20 @@ struct GnssCudaDespread::Impl {
         bool valid = false;
         double doppler = 0.0;
         int n_chips = 0;
-        float2 *d_A = nullptr, *d_B = nullptr; // float32 tables (mixed-precision kernel)
+        float2 *d_A = nullptr, *d_B = nullptr; // float32 tables (mixed-precision kernel) --
+                                               // OR __half2 storage when `half` (the pointer
+                                               // type is a lie the kernel template undoes)
+        bool half = false;                     // what the DEVICE buffers currently hold
     };
     std::vector<PhiCache> phi;
+
+    /// fp16 Phi (docs/CHORD_GPU_TODO.md item 3): ensure_phi stores __half2 tables and every
+    /// launch_waveform goes through the __half2 gather. HALVES THE RESIDENT TABLE -- §10.6c
+    /// measured this kernel DRAM-FOOTPRINT-bound and fp16 is the one lever that paid
+    /// (1.27-1.37x, wavebench). ⚠️ launch_despread/launch_peel read Phi as raw float2, so
+    /// despread_batch / enqueue_batch_device / the peel REFUSE while this is armed -- none of
+    /// them is in the shipped inject graph, and a loud throw beats a silent wrong despread.
+    bool use_fp16 = false;
 
     /// THE SHARED, DOPPLER-FREE TABLE SET (docs/CHORD_GPU_TODO.md item 2). One (Phi, Psi) pair
     /// for EVERY PRN, built at the band carrier alone; each job carries its own
@@ -356,10 +367,11 @@ struct GnssCudaDespread::Impl {
         return true;
     }
 
-    // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz.
+    // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz
+    // (or if the storage precision no longer matches use_fp16).
     PhiCache& ensure_phi(int p, double doppler) {
         PhiCache& pc = phi[(size_t)p];
-        if (pc.valid && std::fabs(doppler - pc.doppler) <= refresh_hz)
+        if (pc.valid && pc.half == use_fp16 && std::fabs(doppler - pc.doppler) <= refresh_hz)
             return pc;
         // phi[] is already indexed per PRN; build this PRN's carrier into it too.
         const auto f = bank.hoprate_filter(all_chans, doppler, p);
@@ -372,12 +384,30 @@ struct GnssCudaDespread::Impl {
                 hB[(size_t)c * (Lf + 1) + k] =
                     make_float2((float)f.PhiB[c][k].real(), (float)f.PhiB[c][k].imag());
             }
-        if (!pc.d_A) {
-            ck(cudaMalloc(&pc.d_A, n * sizeof(float2)), "alloc PhiA");
-            ck(cudaMalloc(&pc.d_B, n * sizeof(float2)), "alloc PhiB");
+        // __half2 is 4 bytes; spelled as sizeof(float2)/2 because the half types must not
+        // leak into this g++-compiled file (the conversion lives in the .cu, phi_to_half).
+        const size_t esz = use_fp16 ? sizeof(float2) / 2 : sizeof(float2);
+        if (pc.d_A && pc.half != use_fp16) {
+            ck(cudaFree(pc.d_A), "free PhiA (precision flip)");
+            ck(cudaFree(pc.d_B), "free PhiB (precision flip)");
+            pc.d_A = pc.d_B = nullptr;
         }
-        ck(cudaMemcpy(pc.d_A, hA.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "PhiA up");
-        ck(cudaMemcpy(pc.d_B, hB.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "PhiB up");
+        if (!pc.d_A) {
+            ck(cudaMalloc(&pc.d_A, n * esz), "alloc PhiA");
+            ck(cudaMalloc(&pc.d_B, n * esz), "alloc PhiB");
+        }
+        if (use_fp16) {
+            // Convert on the host and upload half-size: the H2D shrinks along with the table.
+            std::vector<unsigned> sA(n), sB(n); // 4 B per __half2
+            gnss_cuda::phi_to_half(hA.data(), sA.data(), n);
+            gnss_cuda::phi_to_half(hB.data(), sB.data(), n);
+            ck(cudaMemcpy(pc.d_A, sA.data(), n * esz, cudaMemcpyHostToDevice), "PhiA up h");
+            ck(cudaMemcpy(pc.d_B, sB.data(), n * esz, cudaMemcpyHostToDevice), "PhiB up h");
+        } else {
+            ck(cudaMemcpy(pc.d_A, hA.data(), n * esz, cudaMemcpyHostToDevice), "PhiA up");
+            ck(cudaMemcpy(pc.d_B, hB.data(), n * esz, cudaMemcpyHostToDevice), "PhiB up");
+        }
+        pc.half = use_fp16;
         pc.valid = true;
         pc.doppler = doppler;
         pc.n_chips = f.n_chips;
@@ -537,8 +567,35 @@ bool GnssCudaDespread::set_shared_phi(bool on) {
         _impl->use_shared = false;
         return false;
     }
+    if (_impl->use_fp16) {
+        std::fprintf(stderr, "WARNING: GnssCudaDespread: shared Phi REFUSED -- fp16 tables are "
+                             "armed and the shared gather is fp32-only; staying per-PRN fp16.\n");
+        return false;
+    }
     _impl->use_shared = _impl->ensure_shared();
     return _impl->use_shared;
+}
+
+bool GnssCudaDespread::set_phi_fp16(bool on) {
+    Impl& im = *_impl;
+    if (!on) {
+        im.use_fp16 = false; // ensure_phi's precision check rebuilds any half buckets lazily
+        return false;
+    }
+    if (im.use_shared) {
+        std::fprintf(stderr, "WARNING: GnssCudaDespread: fp16 Phi REFUSED -- shared tables are "
+                             "armed and the shared gather is fp32-only; staying fp32.\n");
+        return false;
+    }
+    im.use_fp16 = true;
+    const size_t n = (size_t)im.n_chan * (size_t)(im.Lf + 1);
+    std::fprintf(stderr,
+                 "INFO: GnssCudaDespread: fp16 Phi ARMED -- %.1f MB over %d channels per PRN "
+                 "bucket (fp32 was %.1f), storage error ~3.3e-4 (phibits); despread_batch, the "
+                 "device-window despread and the peel will REFUSE while this is set.\n",
+                 2.0 * (double)n * (sizeof(float2) / 2) / 1e6, im.n_chan,
+                 2.0 * (double)n * sizeof(float2) / 1e6);
+    return true;
 }
 
 void GnssCudaDespread::set_max_chips(int n) {
@@ -561,6 +618,10 @@ int GnssCudaDespread::max_batch_specs() const {
 std::vector<std::array<gnss::DespreadResult, 3>>
 GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     Impl& im = *_impl;
+    if (im.use_fp16)
+        throw std::runtime_error("GnssCudaDespread: despread_batch with fp16 Phi armed -- "
+                                 "launch_despread reads Phi as raw float2 and would despread "
+                                 "garbage; phi_fp16 is only for the waveform (inject) path");
     std::vector<std::array<gnss::DespreadResult, 3>> out(specs.size());
     if (specs.empty())
         return out;
@@ -632,7 +693,8 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
        "jobs upload");
 
     gnss_cuda::DespreadParams par;
-    par.shared = im.use_shared; // item 2: picks the shared-table kernel
+    par.shared = im.use_shared;     // item 2: picks the shared-table kernel
+    par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = im.window_start + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -748,6 +810,10 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
                                            const void* d_chan_scale, void* d_xcorr_out,
                                            int rows_spec) {
     Impl& im = *_impl;
+    if (im.use_fp16)
+        throw std::runtime_error("GnssCudaDespread: enqueue_batch_device with fp16 Phi armed -- "
+                                 "launch_despread(_q) reads Phi as raw float2 and would despread "
+                                 "garbage; phi_fp16 is only for the waveform (inject) path");
     if (specs.empty())
         return 0;
     const int n_spec = (int)specs.size();
@@ -755,7 +821,8 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     build_jobs(specs, d_jobs_slot, window_start_sample, stream);
 
     gnss_cuda::DespreadParams par;
-    par.shared = im.use_shared; // item 2: picks the shared-table kernel
+    par.shared = im.use_shared;     // item 2: picks the shared-table kernel
+    par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -798,7 +865,8 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     build_jobs(specs, d_jobs_slot, window_start_sample, stream);
 
     gnss_cuda::DespreadParams par;
-    par.shared = im.use_shared; // item 2: picks the shared-table kernel
+    par.shared = im.use_shared;     // item 2: picks the shared-table kernel
+    par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -846,7 +914,8 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
     build_jobs(specs, d_jobs_slot, window_start_sample, stream);
 
     gnss_cuda::DespreadParams par;
-    par.shared = im.use_shared; // item 2: picks the shared-table kernel
+    par.shared = im.use_shared;     // item 2: picks the shared-table kernel
+    par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
@@ -867,6 +936,10 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
                                           void* d_gain_slot, void* d_resid_out, void* stream,
                                           const void* d_chan_scale) {
     Impl& im = *_impl;
+    if (im.use_fp16)
+        throw std::runtime_error("GnssCudaDespread: enqueue_peel_device with fp16 Phi armed -- "
+                                 "launch_peel reads Phi as raw float2 and the peel's analytic "
+                                 "add-back must be exact; phi_fp16 is only for the waveform path");
     const cudaStream_t st = (cudaStream_t)stream;
     const int n_job = (int)specs.size();
 
@@ -940,7 +1013,8 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
     }
 
     gnss_cuda::DespreadParams par;
-    par.shared = im.use_shared; // item 2: picks the shared-table kernel
+    par.shared = im.use_shared;     // item 2: picks the shared-table kernel
+    par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // same per-hop reference as the despread
     par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();

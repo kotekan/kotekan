@@ -413,6 +413,9 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  "carrier_phase_mode": (2 if (gpu == 0 if args.carrier_phase_mode == "ab"
                                               else args.carrier_phase_mode == "2")
                                         else (1 if args.carrier_phase_from_ref != "0" else 0)),
+                 # fp16 Phi tables (GPU TODO item 3): halves the resident synthesis table,
+                 # 1.55x measured through the shipped call (phi16gpu). Default OFF.
+                 "phi_fp16": bool(args.phi_fp16),
                  # F-engine conjugation, measured on sky 2026-07-30 (see GnssChordDequantize).
                  "conjugate": True,
                  "gpu_mem_input": f"{pre}voltage",
@@ -833,6 +836,7 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         ("num_synth", inj0["num_synth"]), ("trim_ttl_s", inj0["trim_ttl_s"]),
         ("carrier_phase_from_ref", str(inj0["carrier_phase_from_ref"]).lower()),
         ("carrier_phase_mode", inj0["carrier_phase_mode"]),
+        ("phi_fp16", str(inj0["phi_fp16"]).lower()),
         ("n_live_elements", corr0["num_live_elements"]),
         ("num_elements", out[pre0 + "n2assemble_tiles"]["num_elements"]),
         ("reference_element", asm0["reference_element"]),
@@ -1047,6 +1051,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  "carrier_phase_mode": (2 if (gpu == 0 if args.carrier_phase_mode == "ab"
                                               else args.carrier_phase_mode == "2")
                                         else (1 if args.carrier_phase_from_ref != "0" else 0)),
+                 # fp16 Phi tables (GPU TODO item 3) -- same knob as path A's site above.
+                 "phi_fp16": bool(args.phi_fp16),
                  "voltage_name": "voltage",
                  # MUST match the tracker's `conjugate`. The N^2 kernel has no conj_data flag
                  # and its antenna input is production's, so the F-engine conjugation is
@@ -2345,6 +2351,13 @@ def main():
                          "restarts CANNOT resolve this -- measured 2026-08-13, deep_snr max "
                          "swung 52-197 inside four minutes and the seeded PRN count moved "
                          "12 -> 5 on geometry alone.")
+    ap.add_argument("--phi-fp16", action="store_true",
+                    help="GPU TODO item 3: store the despread's Phi tables as fp16 (__half2). "
+                         "Halves the RESIDENT table -- the one lever the DRAM-footprint verdict "
+                         "(gnss_gpu_search.md 10.6c) says pays; 1.55x measured through the "
+                         "shipped enqueue_waveform (scripts/gnss/phi16gpu, ALL PASS: wave rel "
+                         "~1e-3 vs the 3.3e-4 storage floor). Default OFF; arming is a node "
+                         "restart. Fleet-wide or not at all -- nothing is per-node.")
     ap.add_argument("--carrier-phase-mode", choices=("1", "2", "ab"), default="1",
                     help="TASK #71. ⚠️⚠️ 'ab' IS NOT SAFE AND SHOULD NOT BE USED. An instance is an ARBITRARY GROUP OF FREQUENCY CHANNELS (freq_id mod 8, applied AFTER the signal path -- one PFB, one set of raw samples), so splitting the arm by GPU runs TWO DIFFERENT PHASE CONVENTIONS ON DIFFERENT CHANNELS OF THE SAME SIGNAL and corrupts every across-band phase measurement -- and we DO fit the carrier phase across the band (#32). It reads as a tidy paired A/B only if one believes instances are independent, which they are not: they run in lockstep and any mismatch between them is a BUG. Pick one arm fleet-wide and pair in TIME instead. 2 = the replica carrier phase ACCUMULATES across records "
                          "(a real NCO: phi += 2*pi*fbar*dn/fs) instead of being evaluated as "

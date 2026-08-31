@@ -245,10 +245,39 @@ otherwise, matching the FDMA refusal already in ChannelizedReplicaBank::swap_prn
 ⚠️ VALIDATE AGAINST THE KERNEL, not the algebra (#71). wavebench A/B, bit-compare the
 replica at CHORD geometry; e2e closure must not move.
 
-## 3. fp16 Phi tables (task #22)
+## 3. fp16 Phi tables (task #22)  [BUILT + GATED 2026-08-31; config `phi_fp16`, default OFF -- ARM = one yaml line + node restart]
 
 Already measured 1.27-1.37x, and §10.6c explains WHY it is the right lever (halves the
 resident table). Composes with item 2: 7.3 MB -> 3.7 MB.
+
+### production path (2026-08-31)
+
+`DespreadParams::phi_half` -> launch_waveform takes the __half2 gather instantiation;
+`GnssCudaDespread::set_phi_fp16` stores __half2 tables in the PhiCache (host-converts via
+`gnss_cuda::phi_to_half`, half-size H2D); `cudaGnssChordTrackState` reads config `phi_fp16`
+(default false) and READS THE RETURN (#96/#97: armed != in effect).
+
+SCOPE GUARD: launch_despread/launch_peel read Phi as RAW float2, so despread_batch,
+enqueue_batch_device and the peel THROW while fp16 is armed -- none is in the shipped inject
+graph (gnss_chain.j2 runs cudaGnssInject -> enqueue_waveform only). fp16 and shared tables
+(item 2) refuse each other, both directions.
+
+GATE (scripts/gnss/phi16gpu, cx52 A40 2026-08-31, ALL PASS): drives enqueue_waveform -- THE
+production call -- fp32 vs fp16 at the production record shape (11 jobs x 7 chan x 2048 hops).
+Worst wave rel 1.055e-3 (~3x the 3.3e-4 storage floor = the ~52-term gather accumulation),
+energy 2.3e-4, host-side correlation vs shared random voltage 6.3e-3 worst (noise-noise
+quotient); fp32 flag-off DETERMINISTIC and arm/disarm ROUND-TRIPS byte-exact; both refusal
+guards fire. TIMING through the shipped call: **1.55x** (0.623 -> 0.402 ms) -- measured with
+~45% background GPU load, which biases the ratio TOWARD 1, so >= the wavebench 1.36x.
+n2dualtest 7/7. e2e VERDICT unchanged at the CURRENT baseline (see below).
+
+⚠️ e2e's DEFAULT-RUN BASELINE MOVED 17.612 -> 19.496 chips ON 2026-08-30/31, and it was NOT
+this item: verified by building clean HEAD 51ff44836 (no fp16 edits) -- also 19.496. The
+mover is #105 fix 3 (the local-tau Doppler vertex): e2e's acquire refines dop +1894.99 ->
++1891.19 Hz on the synthetic (err +1.6 -> -2.2 Hz, both fine for a u=1 acquire that is NOT
+this estimator's gate -- acqbench is, at |err| <= 0.09 Hz), and every downstream cp shifts by
+exactly the 5094.9 chips/Hz argument lever. Anyone diffing e2e against banked 17.612: compare
+against 19.496 from 51ff44836 onward.
 
 ## 5. Tiled shared-memory streaming -- BUILT, MEASURED NO-WIN ON THE A40, CLOSED (2026-08-30)
 

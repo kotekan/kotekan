@@ -203,6 +203,15 @@ struct DespreadParams {
     /// kernel instantiation rather than a runtime branch, so the per-PRN path keeps its
     /// register budget -- registers cap MAXT, and MAXT is what sets the DRAM traffic.
     bool shared = false;
+    /// fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3): job.phiA/phiB point at __half2 storage
+    /// and @ref launch_waveform takes the __half2 gather instantiation. HALVES THE RESIDENT
+    /// TABLE, which is the one lever §10.6c's DRAM-footprint verdict says pays (measured
+    /// 1.27-1.37x); storage error 3.3e-4 relative (scripts/gnss/phibits), gated through the
+    /// shipped engine by scripts/gnss/phi16gpu. ⚠️ ONLY the templated waveform kernels honour
+    /// it -- launch_despread/launch_peel read Phi as raw float2, so GnssCudaDespread REFUSES
+    /// those paths outright while fp16 tables are armed rather than despread garbage.
+    /// Mutually exclusive with `shared` (the shared gather is fp32-only, and unarmed anyway).
+    int phi_half = 0;
 };
 
 /**
