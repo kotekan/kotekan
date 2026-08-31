@@ -6,12 +6,15 @@
 #include "restServer.hpp" // for connectionInstance
 #include "visUtil.hpp"    // for StatTracker
 
-#include <cstdint>     // for uint32_t, uint16_t
-#include <map>         // for map
-#include <memory>      // for shared_ptr
-#include <string>      // for string
-#include <sys/types.h> // for pid_t
-#include <thread>      // for thread
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <cstdint>            // for uint32_t, uint16_t
+#include <map>                // for map
+#include <memory>             // for shared_ptr
+#include <mutex>              // for mutex
+#include <string>             // for string
+#include <sys/types.h>        // for pid_t
+#include <thread>             // for thread
 
 namespace kotekan {
 
@@ -39,6 +42,12 @@ public:
      * @brief Create a new thread and start tracking.
      **/
     void start();
+
+    /**
+     * @brief Stop tracking and join the tracking thread.
+     * Blocks until the thread has exited, so that it cannot read stages that
+     * the caller is about to delete. Safe to call more than once.
+     **/
     void stop();
 
     /**
@@ -69,10 +78,20 @@ public:
 
 private:
     std::thread this_thread;
-    bool stop_thread;
+    std::atomic<bool> stop_thread = false;
+    // Set while the tracking thread exists. Read by /cpu_ult to report that
+    // the monitor was never enabled.
+    std::atomic<bool> started = false;
+    // Lock for ult_list, which is filled by the tracking thread and read by
+    // the /cpu_ult endpoint on the REST server thread. Also the lock the
+    // tracking thread waits on between passes.
+    std::mutex ult_lock;
+    // Wakes the tracking thread out of its wait between passes, so that stop()
+    // does not have to wait out the remainder of the cadence.
+    std::condition_variable stop_tracking;
     std::map<std::string, std::map<pid_t, CpuStat>> ult_list; // <stage_name <tid, cpu_stats>>
     std::map<std::string, Stage*> stages;
-    uint32_t prev_cpu_time;
+    uint32_t prev_cpu_time = 0;
     uint16_t track_len = 2;
 };
 
