@@ -190,12 +190,14 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
             // working code; the gate is what makes it look like a failure instead.
             if (p.shared)
                 gnss_cuda::chip_gather3<float2, false, false, true>(
-                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
-                    phiB, ks, kf, Cs, g3A, g3B, (const float2*)job.psiA + (size_t)ci * (p.Lf + 1),
+                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf,
+                    code, phiA, phiB, ks, kf, Cs, g3A, g3B,
+                    (const float2*)job.psiA + (size_t)ci * (p.Lf + 1),
                     (const float2*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
             else
                 gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
-                                        p.Lf, code, phiA, phiB, ks, kf, Cs, g3A, g3B);
+                                        job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, g3A,
+                                        g3B);
         }
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
@@ -485,8 +487,8 @@ __global__ void gnss_peel_kernel(const T* __restrict__ data,           // [nchan
             const float2 pa = make_float2(cn, sn);
             const float2 pb = make_float2(cn, -sn);
             float2 sA, sB;
-            chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
-                        phiB, ks, kf, C_P, sA, sB);
+            chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first,
+                        p.Lf, code, phiA, phiB, ks, kf, C_P, sA, sB);
             const float2 t1 = cmulf(pa, sA);
             const float2 t2 = cmulf(pb, sB);
             const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));

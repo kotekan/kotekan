@@ -339,7 +339,7 @@ ALSO 2026-08-30: item 2's A40 verdict RE-VERIFIED ON AN IDLE NODE (cx52): 0.88x 
 identical to the 08-28 cx43 number -- which was taken with production at ~85% GPU and could
 have been contamination. It was not. The shared-Phi A40 verdict stands on a clean measurement.
 
-## 6. CENTERED chip-window truncation -- MEASURED EXACT AT 60-80 CHIPS (2026-08-30). THE NEW TOP ITEM WITH fp16.
+## 6. CENTERED chip-window truncation  [BUILT + GATED 2026-08-31; arm = --despread-max-chips 80 --despread-chips-centered + node restart]
 
 Item 9.5's cliff ("exact at 120, 13 chips out at 105") was the WINDOW GEOMETRY, not the
 physics: the prototype is a windowed sinc peaking mid-span (chip ~105 of 210) and
@@ -393,13 +393,29 @@ alias contrast. Measured (e2e, centered windows, score code phase):
   tracker leg is not winner-take-all (locked DLL + fleet_dll combines instances), but
   needs its own check before arming small windows there.
 
-TO ARM: the CPU hoprate path (search/refine/e2e) honours d_first now; production needs
-(a) DespreadJob.d_first (APPEND -- positional aggregate initializers at three sites) and
-the walk-start in gnss_waveform_kernel / chip_gather3 / refine_peak_cuda, (b) a
-multi-PRN / multi-Doppler e2e sweep (tonight's is one PRN, one geometry), (c) the standing
-caveat from 9.5 unchanged: e2e cannot isolate the TRACKER's own truncation error (tbank
-generates the sky), so the tracker rides the same same-generator inference the shipped
-140 cap rode. Flag default-off, broker_equiv EQUIVALENT with it off.
+ARMED-READY 2026-08-31 (config `despread_max_chips` + `despread_chips_centered`, default
+off = the full-span walk BIT-FOR-BIT): DespreadJob/PeelJob gained d_first (appended last);
+chip_gather AND chip_gather3 take a walk-start whose seeds all have closed forms in d0 and
+reduce bit-exactly to the historical prologue at d0 == 0 (fmaf(0,kf,base) == base) -- one
+change covers the waveform, fused-despread, peel and refine paths, which all share the two
+gathers (only the tiled bench kernel keeps its own walk and does not honour d_first).
+PhiCache/SharedPhi carry d_first from the bank (e2e/search arming) and the engine's own
+set_chips_centered applies the same centered cap at set_max_chips level (production arming).
+
+⚠️ THE "SHIPPED ONE-SIDED 140" NEVER SHIPPED: no config anywhere sets despread_max_chips
+(verified against the generator, the generated yamls and the running node config, 08-31).
+Production has always walked the full ~210 chips -- so centered 80 is **2.6x** on synthesis
+against what actually runs, not 1.75x, and composes with fp16 (1.55x) to ~4x.
+
+GATES (2026-08-31): e2e default VERDICT unchanged (19.496, the post-fix-3 baseline) with the
+flag off; **e2e --max-chips 80 --chips-centered = 19.496 EXACTLY** -- and that run now
+exercises the GPU TRACKER leg's own truncated walk (despread_batch -> chip_gather3 honours
+d_first), closing part of 9.5's "e2e cannot isolate the tracker's truncation" caveat; the
+pre-registered multi-PRN/multi-Doppler sweep (PRN 3/14/27 x dop -4200/+150/+3100, centered
+80 vs untruncated baseline) agrees pairwise to <= 0.002 chips in all 9 cells; n2dualtest
+7/7; phi16gpu ALL PASS on top of it. Arm = --despread-max-chips 80
+--despread-chips-centered on the yaml regeneration + node restart; the tracker state warns
+below the centered floor of 60.
 
 ## 4. Fuse synthesis + pack
 

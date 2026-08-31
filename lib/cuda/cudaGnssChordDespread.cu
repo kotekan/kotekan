@@ -163,13 +163,14 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             // holds shared tables or it does not), so there is no divergence to pay for.
             if (SHARED)
                 gnss_cuda::chip_gather3<PHI, ABL_NOLOAD, ILV, true>(
-                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
-                    phiB, ks, kf, Cs, sA, sB, (const PHI*)job.psiA + (size_t)ci * (p.Lf + 1),
+                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf,
+                    code, phiA, phiB, ks, kf, Cs, sA, sB,
+                    (const PHI*)job.psiA + (size_t)ci * (p.Lf + 1),
                     (const PHI*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
             else
                 gnss_cuda::chip_gather3<PHI, ABL_NOLOAD, ILV, false>(
-                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
-                    phiB, ks, kf, Cs, sA, sB);
+                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf,
+                    code, phiA, phiB, ks, kf, Cs, sA, sB);
 #pragma unroll
             for (int tt = 0; tt < 3; ++tt) {
                 const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2;
@@ -188,9 +189,9 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             for (int tt = 0; tt < 3; ++tt) {
                 const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> cp0 / cp0-ds / cp0+ds
                 float2 sA, sB;
-                chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code,
-                            (const float2*)phiA, (const float2*)phiB, ks, kf,
-                            C_P + (double)(t - 1) * job.ds, sA, sB);
+                chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
+                            job.d_first, p.Lf, code, (const float2*)phiA, (const float2*)phiB,
+                            ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
                 const float2 t1 = cmulf(pa, sA);
                 const float2 t2 = cmulf(pb, sB);
                 const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));

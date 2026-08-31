@@ -416,6 +416,11 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  # fp16 Phi tables (GPU TODO item 3): halves the resident synthesis table,
                  # 1.55x measured through the shipped call (phi16gpu). Default OFF.
                  "phi_fp16": bool(args.phi_fp16),
+                 # CENTERED chip-window truncation (item 6). 0 = full ~210-chip span (what has
+                 # always shipped -- the one-sided 140 was measured, never armed). Centered 80
+                 # = 2.6x less synthesis, e2e-EXACT multi-PRN/multi-Doppler.
+                 "despread_max_chips": int(args.despread_max_chips),
+                 "despread_chips_centered": bool(args.despread_chips_centered),
                  # F-engine conjugation, measured on sky 2026-07-30 (see GnssChordDequantize).
                  "conjugate": True,
                  "gpu_mem_input": f"{pre}voltage",
@@ -837,6 +842,8 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         ("carrier_phase_from_ref", str(inj0["carrier_phase_from_ref"]).lower()),
         ("carrier_phase_mode", inj0["carrier_phase_mode"]),
         ("phi_fp16", str(inj0["phi_fp16"]).lower()),
+        ("despread_max_chips", inj0["despread_max_chips"]),
+        ("despread_chips_centered", str(inj0["despread_chips_centered"]).lower()),
         ("n_live_elements", corr0["num_live_elements"]),
         ("num_elements", out[pre0 + "n2assemble_tiles"]["num_elements"]),
         ("reference_element", asm0["reference_element"]),
@@ -1053,6 +1060,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                                         else (1 if args.carrier_phase_from_ref != "0" else 0)),
                  # fp16 Phi tables (GPU TODO item 3) -- same knob as path A's site above.
                  "phi_fp16": bool(args.phi_fp16),
+                 # Item 6 -- same knobs as path A's site above.
+                 "despread_max_chips": int(args.despread_max_chips),
+                 "despread_chips_centered": bool(args.despread_chips_centered),
                  "voltage_name": "voltage",
                  # MUST match the tracker's `conjugate`. The N^2 kernel has no conj_data flag
                  # and its antenna input is production's, so the F-engine conjugation is
@@ -2351,6 +2361,18 @@ def main():
                          "restarts CANNOT resolve this -- measured 2026-08-13, deep_snr max "
                          "swung 52-197 inside four minutes and the seeded PRN count moved "
                          "12 -> 5 on geometry alone.")
+    ap.add_argument("--despread-max-chips", type=int, default=0,
+                    help="GPU TODO item 6: truncate the tracker's per-hop PFB chip gather to "
+                         "this many chips (0 = the full ~210-chip span, the historical "
+                         "behaviour). Synthesis is 73-89%% of the tracker kernel and LINEAR in "
+                         "this. Use WITH --despread-chips-centered; the validated centered "
+                         "floor is 60 (harsh-comb flip at 52), recommended 80 = 2.6x. "
+                         "One-sided (without centering) the floor is 120 (9.5's cliff).")
+    ap.add_argument("--despread-chips-centered", action="store_true",
+                    help="Place the --despread-max-chips window on the CENTRE of the PFB span "
+                         "(the prototype peaks mid-span; a one-sided cap crosses the peak -- "
+                         "that was 9.5's cliff). e2e-EXACT at 80 chips across PRNs and "
+                         "Dopplers, both comb regimes, incl. the GPU tracker leg's own walk.")
     ap.add_argument("--phi-fp16", action="store_true",
                     help="GPU TODO item 3: store the despread's Phi tables as fp16 (__half2). "
                          "Halves the RESIDENT table -- the one lever the DRAM-footprint verdict "

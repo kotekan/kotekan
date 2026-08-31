@@ -67,6 +67,8 @@
     carrier_phase_from_ref: {{ gnss.carrier_phase_from_ref }}
     carrier_phase_mode: {{ gnss.carrier_phase_mode }}
     phi_fp16: {{ gnss.phi_fp16 | default(false) }}
+    despread_max_chips: {{ gnss.despread_max_chips | default(0) }}
+    despread_chips_centered: {{ gnss.despread_chips_centered | default(false) }}
     voltage_name: voltage
     gnss_synth_name: {{ pre }}_synth
     gnss_ctl_name: {{ pre }}_n2ctl

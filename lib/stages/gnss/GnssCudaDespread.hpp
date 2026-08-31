@@ -111,6 +111,17 @@ public:
     /// Phi layout -- is synthesis time proportional to the gather depth, or not?
     void set_max_chips(int n);
 
+    /// CENTERED chip-window truncation (docs/CHORD_GPU_TODO.md item 6): place the
+    /// set_max_chips window on the CENTRE of the PFB span instead of its start. The prototype
+    /// (a windowed sinc) peaks mid-span, so a one-sided cap crosses the peak -- that was the
+    /// measured cliff at 105-120 chips (item 9.5), not a property of short filters. Centered,
+    /// the same 105 chips keep 99.58% of the filter energy (-0.02 dB) and e2e scores 80 chips
+    /// EXACT in both comb regimes (the harsh 2-node comb flips at 52 -- keep >= 80). The
+    /// recommended operating point is centered 80 = 1.75x less synthesis than the shipped
+    /// one-sided 140. Off by default; every gather (waveform, fused, peel, refine) honours
+    /// the resulting d_first, and d_first == 0 is the historical walk bit-for-bit.
+    void set_chips_centered(bool c);
+
     /// SHARED, DOPPLER-FREE Phi/Psi tables for every PRN (docs/CHORD_GPU_TODO.md item 2).
     /// Off by default. Returns whether it actually took: FDMA signals refuse it (there the
     /// satellite identity is IN the carrier, so there is nothing to share), and a caller must

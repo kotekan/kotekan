@@ -191,9 +191,24 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // Below 120 the truncated replica stops making the true lobe win and the search settles on a
     // grating lobe, which is the old refine_span: 4096 failure wearing a different hat.
     const int max_chips = config.get_default<int>(unique_name, "despread_max_chips", 0);
+    // Item 6: CENTERED window placement. Changes where the max_chips window sits, so the
+    // validated floors differ: one-sided 120 (9.5), centered 60 (80 recommended -- the harsh
+    // 2-node comb flips at 52 and margin is cheap). Default OFF = the shipped one-sided cap.
+    const bool centered = config.get_default<bool>(unique_name, "despread_chips_centered", false);
+    if (centered)
+        despread->set_chips_centered(true);
     if (max_chips > 0) {
         despread->set_max_chips(max_chips);
-        if (max_chips < 120)
+        if (centered && max_chips < 60)
+            WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED is BELOW THE "
+                        "VALIDATED FLOOR of 60 (the 2-node comb flips to a grating lobe at "
+                        "52). Timing experiments only; detections and locks are INVALID.",
+                        max_chips);
+        else if (centered)
+            INFO_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED (item 6) -- "
+                        "central window of the ~210-chip span; {:.2f}x less synthesis work",
+                        max_chips, 210.0 / (double)max_chips);
+        else if (max_chips < 120)
             WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} is BELOW THE VALIDATED "
                         "FLOOR of 120 -- the replica is truncated past the point where the "
                         "search resolves the true lobe. Timing experiments only; detections "

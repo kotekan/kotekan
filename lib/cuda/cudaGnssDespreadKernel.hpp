@@ -100,6 +100,13 @@ struct DespreadJob {
     const float2* psiA = nullptr;
     const float2* psiB = nullptr;
     float ddw = 0.0f;
+    /// CENTERED chip-window truncation (docs/CHORD_GPU_TODO.md item 6): first chip of the
+    /// gather walk. 0 = the full historical walk, bit-for-bit. With n_chips capped, the pair
+    /// (d_first, n_chips) selects the CENTRAL window of the PFB span -- the prototype peaks
+    /// mid-span, and the one-sided cap's cliff at 105-120 chips was the cap crossing that
+    /// peak, not a property of short filters (item 9.5). Set from PhiCache alongside n_chips;
+    /// appended LAST like psiA/psiB, for the same positional-initializer reason.
+    int d_first = 0;
 };
 
 /// One PRN's PEEL: reconstruct the PROMPT waveform and subtract it from the voltage.
@@ -155,6 +162,9 @@ struct PeelJob {
     const float2* psiA = nullptr;
     const float2* psiB = nullptr;
     float ddw = 0.0f;
+    /// As DespreadJob::d_first (item 6). The peel and the despread MUST truncate identically
+    /// or the analytic add-back stops being exact -- both are set from the same PhiCache.
+    int d_first = 0;
 };
 
 /// Batch-shared geometry.

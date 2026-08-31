@@ -57,8 +57,16 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
 /// invariant across hops AND across the E/P/L trials, which share a Doppler).
 /// Takes the four code-table scalars directly rather than a job struct, so the despread
 /// (DespreadJob) and the peel (PeelJob) can share it without one pretending to be the other.
+/// @c job_d_first (item 6, CENTERED truncation): first chip of the walk. The four state
+/// variables all have closed forms in the start chip, and every seed below reduces
+/// BIT-FOR-BIT to the historical prologue at d_first == 0 (fmaf(0, kf, base) == base; the
+/// (d0-1)*ks term == -ks; (chip0 - 0) mod L == chip0 mod L) -- so the default path is the old
+/// path by construction, not by test. NOT defaulted: a defaulted argument is how a missed
+/// call site looks like working code (the phisharegpu psi lesson), and every caller carries a
+/// job struct with the field anyway.
 __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int job_code_len,
-                                   int job_n_chips, int Lf, const int8_t* __restrict__ code,
+                                   int job_n_chips, int job_d_first, int Lf,
+                                   const int8_t* __restrict__ code,
                                    const float2* __restrict__ phiA,
                                    const float2* __restrict__ phiB, int ks, float kf, double C,
                                    float2& sA, float2& sB) {
@@ -109,19 +117,21 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
     //      Registers move by ~0 (two float2 of carry in, four ints out) -- this kernel's
     //      fusion win is register-sensitive, so that matters.
     const double base = phi * job_inv_cps;
-    long long i0 = chip0 % (long long)job_code_len;
+    const int d0 = job_d_first;
+    long long i0 = (chip0 - (long long)d0) % (long long)job_code_len;
     if (i0 < 0)
         i0 += job_code_len;
-    int idx = (int)i0;                                  // (b) walks with d
-    int prev_khi = -ks + (int)floorf((float)base - kf); // (a) seed: khi(-1)
-    float f = (float)base;                              // (c) base + d*kf
-    int khi_base = 0;                                   // (c) d*ks
-    // (d) seed the carry with t(-1); the table has Lf+1 entries, indices 0..Lf.
+    int idx = (int)i0;                                // (b) walks with d
+    const float fstart = fmaf((float)d0, kf, (float)base); // (c) base + d0*kf, one rounding
+    int prev_khi = (d0 - 1) * ks + (int)floorf(fstart - kf); // (a) seed: khi(d0-1)
+    float f = fstart;                                 // (c) base + d*kf
+    int khi_base = d0 * ks;                           // (c) d*ks
+    // (d) seed the carry with t(d0-1); the table has Lf+1 entries, indices 0..Lf.
     int t_prev = prev_khi + 1;
     t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
     float2 pA = phiA[t_prev];
     float2 pB = phiB[t_prev];
-    for (int d = 0; d < job_n_chips; ++d) {
+    for (int d = d0; d < job_n_chips; ++d) {
         int t = khi_base + (int)floorf(f) + 1;
         t = t < 0 ? 0 : (t > Lf ? Lf : t);
         f += kf;
@@ -199,8 +209,10 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
 /// represents. This kernel is DRAM-bound (457 GB/s, ~66%% of the device), so ALU is the cheap
 /// axis to spend on correctness -- wavebench is what says whether that holds.
 template<class PHI, bool ABL_NOLOAD = false, bool ILV = false, bool SHARED = false>
+/// @c job_d_first as in chip_gather: the walk's first chip, bit-exact old prologue at 0.
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
-                                    int job_n_chips, int Lf, const int8_t* __restrict__ code,
+                                    int job_n_chips, int job_d_first, int Lf,
+                                    const int8_t* __restrict__ code,
                                     const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
                                     int ks, float kf, const double C[3], float2 sA[3],
                                     float2 sB[3], const PHI* __restrict__ psiA = nullptr,
@@ -222,13 +234,15 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
         sA[u] = make_float2(0.f, 0.f);
         sB[u] = make_float2(0.f, 0.f);
         const double base = phi * job_inv_cps;
-        long long i0 = chip0 % (long long)job_code_len;
+        const int d0 = job_d_first;
+        long long i0 = (chip0 - (long long)d0) % (long long)job_code_len;
         if (i0 < 0)
             i0 += job_code_len;
         idx[u] = (int)i0;
-        const int prev_khi = -ks + (int)floorf((float)base - kf);
-        f[u] = (float)base;
-        khi_base[u] = 0;
+        const float fstart = fmaf((float)d0, kf, (float)base);
+        const int prev_khi = (d0 - 1) * ks + (int)floorf(fstart - kf);
+        f[u] = fstart;
+        khi_base[u] = d0 * ks;
         int t_prev = prev_khi + 1;
         t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
         if (SHARED) {
@@ -245,7 +259,7 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
             pB[u] = phi_ld(phiB, ABL_NOLOAD ? 0 : t_prev);
         }
     }
-    for (int d = 0; d < job_n_chips; ++d) {
+    for (int d = job_d_first; d < job_n_chips; ++d) {
 #pragma unroll
         for (int u = 0; u < 3; ++u) {
             int t = khi_base[u] + (int)floorf(f[u]) + 1;

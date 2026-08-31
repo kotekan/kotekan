@@ -77,6 +77,7 @@ struct GnssCudaDespread::Impl {
         bool valid = false;
         double doppler = 0.0;
         int n_chips = 0;
+        int d_first = 0; // first walk chip (item 6, centered truncation); 0 = full/one-sided
         float2 *d_A = nullptr, *d_B = nullptr; // float32 tables (mixed-precision kernel) --
                                                // OR __half2 storage when `half` (the pointer
                                                // type is a lie the kernel template undoes)
@@ -101,6 +102,7 @@ struct GnssCudaDespread::Impl {
     struct SharedPhi {
         bool valid = false;
         int n_chips = 0;
+        int d_first = 0; // as PhiCache::d_first (the bank caps its own filter when armed)
         double wc = 0.0; ///< the carrier it was built at, rad/sample
         float2 *d_A = nullptr, *d_B = nullptr, *d_PA = nullptr, *d_PB = nullptr;
     };
@@ -126,6 +128,7 @@ struct GnssCudaDespread::Impl {
     // at CHORD's 16384, so a per-sample rate measured on one geometry does not transfer to the
     // other. Off by default; the events are only created when enabled.
     int max_chips = 0; ///< BENCH: cap chip_gather depth (0 = the filter's true span)
+    bool chips_centered = false; ///< item 6: place the max_chips window centrally
     bool split_timing = false;
     bool split_recorded = false; ///< at least one enqueue has recorded the events
     cudaEvent_t ev_a = nullptr, ev_b = nullptr, ev_c = nullptr;
@@ -355,6 +358,7 @@ struct GnssCudaDespread::Impl {
         ck(cudaMemcpy(shared.d_PA, hPA.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "sPsiA");
         ck(cudaMemcpy(shared.d_PB, hPB.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "sPsiB");
         shared.n_chips = f.n_chips;
+        shared.d_first = f.d_first;
         shared.wc = f.wc_built;
         shared.valid = true;
         std::fprintf(stderr,
@@ -411,14 +415,26 @@ struct GnssCudaDespread::Impl {
         pc.valid = true;
         pc.doppler = doppler;
         pc.n_chips = f.n_chips;
+        pc.d_first = f.d_first; // bank-level centered truncation, when the bank is armed
         // BENCH: cap the gather depth. n_chips = ceil((Lf-1)*cps)+2 is the chips the PFB filter
         // spans -- 210 at CHORD (65536-sample span, 312.8 samples/chip) against the 13 the
         // kernel's own comment describes for airspy L5. If synthesis time is proportional to
         // this, the gather loop IS the cost and a layout fix is worth the risk; if it is not,
         // the bottleneck is elsewhere and the layout change would be wasted. TRUNCATES THE
         // FILTER, so a capped run is for TIMING ONLY -- the despread output is wrong.
-        if (max_chips > 0 && pc.n_chips > max_chips)
-            pc.n_chips = max_chips;
+        if (max_chips > 0 && pc.n_chips - pc.d_first > max_chips) {
+            if (chips_centered) {
+                // CENTERED window (item 6): keep the central max_chips of the span. The
+                // prototype peaks mid-span; the one-sided cap's cliff (exact at 120, 13
+                // chips out at 105) was the cap crossing that peak. Validated by e2e
+                // --chips-centered at CHORD geometry: 80 chips exact in BOTH comb regimes
+                // (52 flips on the harsh 2-node comb -- keep >= 80 for margin).
+                pc.d_first += (pc.n_chips - pc.d_first - max_chips) / 2;
+                pc.n_chips = pc.d_first + max_chips;
+            } else {
+                pc.n_chips = pc.d_first + max_chips;
+            }
+        }
         return pc;
     }
 };
@@ -604,6 +620,12 @@ void GnssCudaDespread::set_max_chips(int n) {
         pc.valid = false;
 }
 
+void GnssCudaDespread::set_chips_centered(bool c) {
+    _impl->chips_centered = c;
+    for (auto& pc : _impl->phi) // force a rebuild so the window placement takes effect
+        pc.valid = false;
+}
+
 int GnssCudaDespread::max_batch_specs() const {
     // THIS path's arena is `maxs = np` (see the constructor) -- ONE job per PRN slot, on the
     // tracker's assumption of one spec per PRN. It is NOT gnss_gpu::max_specs(n_prn) =
@@ -678,7 +700,8 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
                                           * (im.bank.carrier_offset(sp.p) + sp.doppler_hz)
                                           / im.fs
                                       - im.shared.wc)
-                            : 0.0f};
+                            : 0.0f,
+                        im.use_shared ? im.shared.d_first : pc.d_first};
         // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
         // A producer-side re-derivation agrees with itself by construction and would keep
         // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
@@ -788,7 +811,8 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
                                           * (im.bank.carrier_offset(sp.p) + sp.doppler_hz)
                                           / im.fs
                                       - im.shared.wc)
-                            : 0.0f};
+                            : 0.0f,
+                        im.use_shared ? im.shared.d_first : pc.d_first};
         // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
         // A producer-side re-derivation agrees with itself by construction and would keep
         // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
@@ -1000,7 +1024,9 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
                                                       + sp.doppler_hz)
                                                    / im.fs
                                                - im.shared.wc)
-                                     : 0.0f};
+                                     : 0.0f,
+                                 // THE PEEL MUST TRUNCATE EXACTLY AS THE DESPREAD DOES.
+                                 im.use_shared ? im.shared.d_first : pc.d_first};
     }
     if (n_job > 0) {
         ck(cudaMemcpyAsync(d_gain_slot, im.h_gains.data(), im.h_gains.size() * sizeof(float2),
