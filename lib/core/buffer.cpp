@@ -192,6 +192,15 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
 std::shared_ptr<metadataObject> GenericBuffer::get_metadata(int ID) {
     assert(ID >= 0);
     assert(ID < num_frames);
+    // ⚠️ UNDER THE LOCK (2026-08-31). set_metadata() assigns this shared_ptr while holding the
+    // mutex, and a shared_ptr assignment is not atomic -- an unlocked reader could observe a
+    // half-updated control block, or a pointer whose referent is being replaced. Returning a
+    // COPY taken under the lock also gives the caller a stable object for as long as it holds
+    // the returned shared_ptr, which is what makes NDArrayRingBuffer's build-then-publish
+    // actually safe (see its set_metadata: a reader sees the old complete object or the new
+    // complete one, never a third state). The mutex is recursive, so callers already holding
+    // it are unaffected.
+    buffer_lock lock(mutex);
     return metadata[ID];
 }
 

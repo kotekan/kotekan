@@ -596,13 +596,36 @@ public:
         }
     }
 
+    // ⚠️ BUILD IT FULLY, THEN PUBLISH IT ATOMICALLY -- NEVER FILL IN PLACE (fixed 2026-08-31).
+    //
+    // This used to call `allocate_new_metadata_object(0)` and then mutate that object field by
+    // field, unlocked. But `allocate_new_metadata_object` only allocates when the slot is NULL
+    // (buffer.cpp), so from the second frame onward it hands back THE SAME OBJECT -- which we
+    // then rewrote underneath `cudaCopyFromRingbuffer`, whose execute() reads
+    // `signal_buffer->get_metadata(0)` from another thread and publishes an ndarray descriptor
+    // from whatever it sees. Catch the object mid-fill and that descriptor is part one array
+    // and part another.
+    //
+    // ⚠️ THE ARITHMETIC THAT PROVED IT, worth keeping: cx19 rejected a descriptor of 9216
+    // bytes for RFImask, whose real shape [8, 384, 128] is 393216. And 9216 = 8 x 384 x **3**
+    // -- extent[1] already updated to 384, extent[2] still the SK-triplet 3 of a recycled
+    // SKtilde object. Half-written, not wrong. The same race caught one field earlier reads as
+    // "dimname mismatch: SK != S". Either one FATALs in ensure_frame_desc, and the controlled
+    // shutdown then kills all four DPDK workers and the node with them.
+    //
+    // Now: request a FRESH object from the pool, fill it completely, and install the pointer
+    // via `GenericBuffer::set_metadata`, which takes the buffer lock. A reader either sees the
+    // previous fully-built object (its shared_ptr keeps it alive) or the new fully-built one.
+    // There is no third state. Falls back to the old in-place path only if the pool is gone,
+    // which would mean the source metadata is already being torn down.
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) {
-        // const std::shared_ptr<metadataObject> mc =
-        //     cuda_command.get_device().create_gpu_memory_array_metadata(buffer_name_device, 0,
-        //                                                                other_metadata->parent_pool);
-        // const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-        ringbuffer->allocate_new_metadata_object(0);
-        const std::shared_ptr<chordMetadata> metadata = get_metadata();
+        std::shared_ptr<chordMetadata> metadata;
+        if (const std::shared_ptr<metadataPool> pool = other_metadata->parent_pool.lock()) {
+            metadata = get_chord_metadata(pool->request_metadata_object());
+        } else {
+            ringbuffer->allocate_new_metadata_object(0);
+            metadata = get_metadata();
+        }
         metadata->deepCopy(other_metadata);
         metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
@@ -618,6 +641,8 @@ public:
                                               ndarray.dimscaling(d));
             metadata->stride[d] = ndarray.stride(d);
         }
+        // Publish last: everything above is invisible to readers until this line.
+        ringbuffer->set_metadata(0, metadata);
     }
 
     // Poison
