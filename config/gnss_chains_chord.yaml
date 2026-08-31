@@ -2772,22 +2772,25 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     fleet-trim-bandwidth: 2.5
     fleet-trim-readback: 1
-    trackers: "http://cx19:12048/gnss{0..1}_l2c_inject,\
-http://cx27:12048/gnss{0..1}_l2c_inject,\
-http://cx42:12048/gnss{0..1}_l2c_inject,\
-http://cx43:12048/gnss{0..1}_l2c_inject,\
-http://cx44:12048/gnss{0..1}_l2c_inject,\
-http://cx51:12048/gnss{0..1}_l2c_inject"
-    combiner: gnss0_l2c_n2combine
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l2c_n2assemble,\
-http://cx27:12048/gnss{0..1}_l2c_n2assemble,\
-http://cx42:12048/gnss{0..1}_l2c_n2assemble,\
-http://cx43:12048/gnss{0..1}_l2c_n2assemble,\
-http://cx44:12048/gnss{0..1}_l2c_n2assemble,\
-http://cx51:12048/gnss{0..1}_l2c_n2assemble"
-    dll-combiners: "http://cx19:12048/gnss{0..1}_l2c_n2combine,\
-http://cx27:12048/gnss{0..1}_l2c_n2combine,\
-http://cx42:12048/gnss{0..1}_l2c_n2combine,\
-http://cx43:12048/gnss{0..1}_l2c_n2combine,\
-http://cx44:12048/gnss{0..1}_l2c_n2combine,\
-http://cx51:12048/gnss{0..1}_l2c_n2combine"
+    # ⚠️ ENUMERATED, NOT gnss{0..1} ON EVERY NODE. L2C's mainlobe is SIX freq_ids, so exactly
+    # ONE GPU per node owns a covering channel and cx44 owns none -- the blanket pattern every
+    # other chain uses produced 7 x "set_seeds ... 404 NOT_FOUND" per cycle here. The instance
+    # per node is a BAND-PLAN FACT (freq_id % 16 -> gpu), not a preference: cx19/1 6284,
+    # cx27/0 6288, cx42/1 6285, cx43/1 6286, cx51/1 6287. If the comb offsets ever change,
+    # regenerate and re-read these from the node endpoints rather than guessing.
+    trackers: "http://cx19:12048/gnss1_l2c_inject,\
+http://cx27:12048/gnss0_l2c_inject,\
+http://cx42:12048/gnss1_l2c_inject,\
+http://cx43:12048/gnss1_l2c_inject,\
+http://cx51:12048/gnss1_l2c_inject"
+    combiner: gnss1_l2c_n2combine   # cx19/cx42/cx43/cx51 are gpu1; cx27 is gpu0
+    spectrum-endpoints: "http://cx19:12048/gnss1_l2c_n2assemble,\
+http://cx27:12048/gnss0_l2c_n2assemble,\
+http://cx42:12048/gnss1_l2c_n2assemble,\
+http://cx43:12048/gnss1_l2c_n2assemble,\
+http://cx51:12048/gnss1_l2c_n2assemble"
+    dll-combiners: "http://cx19:12048/gnss1_l2c_n2combine,\
+http://cx27:12048/gnss0_l2c_n2combine,\
+http://cx42:12048/gnss1_l2c_n2combine,\
+http://cx43:12048/gnss1_l2c_n2combine,\
+http://cx51:12048/gnss1_l2c_n2combine"
