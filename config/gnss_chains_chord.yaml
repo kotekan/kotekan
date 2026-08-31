@@ -2638,3 +2638,89 @@ http://cx51:12048/gnss{0..1}_b2b_n2combine"
     # this duplicate. Uncommenting the line restores it; turn --telem-coherent on at the same
     # time or it measures nothing.
     # n2-combiners: *b2b_cmb
+
+  # ── THE THIRD BAND (2026-08-31): BDS B3I @ 1268.52 + GAL E6-C @ 1278.75 ──────────────
+  # The L2 groundwork's band-plan verdict redirected here: GPS L2C is 0-1 covering
+  # channels per node (narrowband; parked as its own cross-node design), while these two
+  # have L5-class combs (B3I 13-14 chan/node -- record geometry IDENTICAL to b2b; E6-C
+  # 6-7). Same rays as the 1176/1207 chains at a THIRD carrier, so tau_band gets a third
+  # equation. Free of bandwidth/retune exactly as the second band was; the cost is GPU,
+  # and after the fp16+centered-80 arm (~2.8x measured) two more chains fit trivially
+  # (pre-arm they would not have -- this rollout is what that headroom was FOR).
+  #
+  # BOTH ARE MODEL-PRIMARY (no detectors): B3I is blind-searchable in principle (shared
+  # NH20, the L5 pattern) but the searcher stays GPS-only for bring-up; E6-C carries a
+  # per-PRN CS100 the single-sequence overlay slot cannot hold (the e5a discipline,
+  # CHORD_MULTIBAND.md 5). Trackers run the BAKED variants (BDS_B3I_NH / GAL_E6_C_CS --
+  # the _CS/_NH suffix is load-bearing, see gal_e5b's #34 lesson). e2e closures at true
+  # carriers: B3I_NH 19.1 chips (gps_l5's default-run class), E6_C_CS 2.4 (vs the shipped
+  # e5a's 5.2 on the same invocation). B3I's residual 50 bps D1 nav sign flips at 20 ms
+  # baked-period boundaries -- the P_HEAD discipline that carries b2b's 1 ms symbols, 20x
+  # slower; expect modest deep until nav wipe (#31), exactly as b2b's note says.
+  #
+  # PRN LISTS MIRROR THE SIBLINGS (the #34 tau_band discipline): a satellite worth
+  # tracking at 1176.45 is worth tracking at its third carrier. B3I is NOT BDS-3-only
+  # (BDS-2 broadcasts it too) -- the 19-42 list is the budget/visibility cut, not a
+  # capability claim; widening to BDS-2 is a later deliberate step.
+  #
+  # DEPLOYMENT ORDER: node restart FIRST (creates the _b3i/_e6 stages), THEN the broker
+  # restart that loads these chains -- a broker polling stages that do not exist yet is
+  # noise at best. First-cut minimal keys; rrate-command deliberately absent (the 08-31
+  # overnight judge found no fleet-scale benefit).
+  bds_b3i:
+    signal: bds_b3i
+    dr-clock-adopt: true
+    seed-phase-transport: true
+    presence-admit-displaced: true
+    joint-consume: clk,rate
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
+    fleet-trim-readback: 1
+    trackers: "http://cx19:12048/gnss{0..1}_b3i_inject,\
+http://cx27:12048/gnss{0..1}_b3i_inject,\
+http://cx42:12048/gnss{0..1}_b3i_inject,\
+http://cx43:12048/gnss{0..1}_b3i_inject,\
+http://cx44:12048/gnss{0..1}_b3i_inject,\
+http://cx51:12048/gnss{0..1}_b3i_inject"
+    combiner: gnss0_b3i_n2combine
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b3i_n2assemble,\
+http://cx27:12048/gnss{0..1}_b3i_n2assemble,\
+http://cx42:12048/gnss{0..1}_b3i_n2assemble,\
+http://cx43:12048/gnss{0..1}_b3i_n2assemble,\
+http://cx44:12048/gnss{0..1}_b3i_n2assemble,\
+http://cx51:12048/gnss{0..1}_b3i_n2assemble"
+    dll-combiners: "http://cx19:12048/gnss{0..1}_b3i_n2combine,\
+http://cx27:12048/gnss{0..1}_b3i_n2combine,\
+http://cx42:12048/gnss{0..1}_b3i_n2combine,\
+http://cx43:12048/gnss{0..1}_b3i_n2combine,\
+http://cx44:12048/gnss{0..1}_b3i_n2combine,\
+http://cx51:12048/gnss{0..1}_b3i_n2combine"
+
+  gal_e6:
+    signal: gal_e6
+    dr-clock-adopt: true
+    seed-phase-transport: true
+    presence-admit-displaced: true
+    joint-consume: clk,rate
+    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    fleet-trim-bandwidth: 2.5
+    fleet-trim-readback: 1
+    trackers: "http://cx19:12048/gnss{0..1}_e6_inject,\
+http://cx27:12048/gnss{0..1}_e6_inject,\
+http://cx42:12048/gnss{0..1}_e6_inject,\
+http://cx43:12048/gnss{0..1}_e6_inject,\
+http://cx44:12048/gnss{0..1}_e6_inject,\
+http://cx51:12048/gnss{0..1}_e6_inject"
+    combiner: gnss0_e6_n2combine
+    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e6_n2assemble,\
+http://cx27:12048/gnss{0..1}_e6_n2assemble,\
+http://cx42:12048/gnss{0..1}_e6_n2assemble,\
+http://cx43:12048/gnss{0..1}_e6_n2assemble,\
+http://cx44:12048/gnss{0..1}_e6_n2assemble,\
+http://cx51:12048/gnss{0..1}_e6_n2assemble"
+    dll-combiners: "http://cx19:12048/gnss{0..1}_e6_n2combine,\
+http://cx27:12048/gnss{0..1}_e6_n2combine,\
+http://cx42:12048/gnss{0..1}_e6_n2combine,\
+http://cx43:12048/gnss{0..1}_e6_n2combine,\
+http://cx44:12048/gnss{0..1}_e6_n2combine,\
+http://cx51:12048/gnss{0..1}_e6_n2combine"

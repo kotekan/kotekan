@@ -82,11 +82,14 @@ _CHAINS = {
     "gal_e1c":   ("GAL_E1C",     None,             None),
     "gal_e5a":   ("GAL_E5A_Q",   "GAL_E5A_Q_CS",   None),
     "gal_e5b":   ("GAL_E5B_Q",   "GAL_E5B_Q_CS",   None),
-    "gal_e6":    ("GAL_E6_C",    None,             None),
+    "gal_e6":    ("GAL_E6_C",    "GAL_E6_C_CS",    None),
     "bds_b1c":   ("BDS_B1C_P",   None,             19),
     "bds_b2a":   ("BDS_B2A_P",   "BDS_B2A_P_CS",   19),
     "bds_b2b":   ("BDS_B2B_I",   None,             19),
-    "bds_b3i":   ("BDS_B3I",     None,             None),
+    # B3I is NOT BDS-3-only (min_prn None): BDS-2 broadcasts it too. The deployed PRN
+    # LIST still mirrors b2a/b2b's 19-42 (the tau_band cross-band discipline wants the
+    # same rays); widening to BDS-2 birds is a later, deliberate step.
+    "bds_b3i":   ("BDS_B3I",     "BDS_B3I_NH",     None),
     "glo_l3oc":  ("GLO_L3OC_P",  None,             None),
 }
 

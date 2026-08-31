@@ -438,6 +438,19 @@ common:
     # until that lands; it is here for the band, not yet for the sensitivity.
     - BDS_B2B_I:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 
+    # -- 1268.52 + 1278.75 MHz: THE THIRD BAND (2026-08-31) -----------------------------
+    # The L2 groundwork's verdict: GPS L2C is 0-1 covering channels/node (narrowband --
+    # parked as a cross-node design), while B3I (13-14 chan/node, record geometry
+    # identical to B2b) and E6-C (6-7) drop into this template verbatim. Same rays,
+    # THIRD carrier: tau_band gets a third equation. No bandwidth, no retune -- both
+    # carriers are inside the science selection every node already receives. GPU cost:
+    # ~+2.5 ms/node-frame at the post-fp16+centered rates (measured 12.2-13.8 total),
+    # which is exactly what the 08-31 arm freed. Lists MIRROR the siblings (#34).
+    # The _NH/_CS suffixes are load-bearing (gal_e5b's lesson above): trackers run the
+    # BAKED variants; blind search does not exist for either (searcher stays GPS-only).
+    - BDS_B3I_NH:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+    - GAL_E6_C_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+
 nodes:
   # search-port-base is NOT arbitrary: the aggregator addresses feeds at base+i in node-major,
   # GPU-minor order, so these must stay 2 apart and in this sequence or the search instance
