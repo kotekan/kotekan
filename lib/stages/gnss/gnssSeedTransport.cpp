@@ -318,7 +318,20 @@ SeedPropagation propagate_seed(const ChannelizedReplicaBank& bank, const SeedSta
     // and the right one -- is that code_phase_rate is a RESIDUAL and the geometry is fed
     // forward here, exactly as the replica generator feeds it forward through cps(dop).
     const double chips_per_hop =
-        bank.chip_rate_hz() * (double)fft_len / sample_rate
+        // ⚠️ eff_chip_rate, NOT chip_rate_hz -- THE COMBINED STREAM'S RATE (2026-08-31).
+        // `phase_now` is handed to arg_from_phase two lines down, and that function works in
+        // COMBINED chips: it subtracts window_advance_chips (built from _eff_chip_rate) and
+        // divides by comb_mult at the end. Advancing the phase at the COMPONENT rate while
+        // reducing it as a combined phase is a unit mismatch -- invisible for every signal
+        // with comb_mult == 1, which is every signal we have ever flown, and exactly wrong
+        // for a time-multiplexed one.
+        // MEASURED: GPS_L2C_CM (time_multiplexed, comb_mult 2) drifted -4.167 chips/record at
+        // 1000 Hz -- precisely the component-rate code Doppler k_CM*dop -- while GAL_E6_C_CS
+        // (5.115 Mcps, comb_mult 1) and GAL_E5A_Q_CS (10.23 Mcps) both read 0.000 on the same
+        // invocation. So it was never the chip rate; it was the multiplex. With this line the
+        // L2C closure is 0.000 at every record and the others do not move by a bit
+        // (eff_chip_rate == chip_rate_hz whenever comb_mult == 1).
+        bank.eff_chip_rate() * (double)fft_len / sample_rate
         * (1.0 + bank.code_doppler_sign * sd.doppler_hz / bank.carrier_hz());
     const double quad = 0.5 * (bank.chip_rate_hz() / f_offset_hz) * sd.dop_rate * dt * dt;
 
