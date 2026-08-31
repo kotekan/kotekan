@@ -1679,6 +1679,27 @@ FIX DIRECTION (structural, per KV's standing preference -- decision pending):
 PREDICTION for any fix: gps q<1 events 35-50/h -> ~0; gps per-sat q SD median 0.87 ->
 ~0.3 (the other chains' level); the rrate benefit judge unblocks.
 
+ALL THREE FIXES BUILT AND DEPLOYED 2026-08-31 00:14-00:24 UTC (KV: "we want all 3"):
+  1. SEED-BIAS SPLIT (ARMED, seed-bias-source: slow at common): ClockBias.seed = a
+     tau~30 min EMA of the raw medians; hints keep the fast EMA. gate.sh 7/7 EQUIVALENT
+     flag-off; gnss_broker/test_seed_bias.py 5/5. Live: raw swinging +-40, hint EMA
+     following, seeds riding +1.1-1.4 Hz flat.
+  2. MONITOR (built, loop NOT closed): the clkbias line prints "seeds ride X Hz" -- the
+     ema-vs-seed gap is the wobble no longer commanded. A fine-carrier follower is a
+     LATER arm, only if the monitor shows the seed EMA lagging real GPSDO drift.
+  3. DETECTION DOPPLER DE-QUANTIZED (agg relaunched 00:24): the sub-grid refine's inputs
+     were the neighbour planes' whole-plane maxima (noise order statistics -- inert);
+     now the neighbour planes AT the winning tau, inverted through the VERIFIED response
+     g(x) = sin(pi x u)/x, u = M/Mp = 2048/3125 (acqbench: measured ratios match g to 3
+     decimals; recovery |err| <= 0.09 Hz over the full fractional-bin sweep; GPU==CPU).
+     ⚠️ THE ESTIMATOR GRAVEYARD, so nobody re-derives them: pure-tone r/(1+r) misplaces
+     on-grid sats 0.3 bins (the on-grid shoulder is sin(pi u)/(pi u), not 0); a parabola
+     recovers only 15-60% (validated only by e2e, whose multi-window u=1 acquire is NOT
+     the production response -- acqbench is the gate for this estimator, e2e is not).
+     Sky, minutes after relaunch: detections mod-62.5 clustering R 0.996 -> 0.294;
+     strongest sat's BRDC residual +1 Hz.
+  Pre-reg + falsifiers: fixtures/expectations_20260831_105_fixes.txt (30-min judge).
+
 
 ## #33 — THE VECTOR TRACKER: CLOSED AS BUILT (2026-08-30)
 
