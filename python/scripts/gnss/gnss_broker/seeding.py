@@ -683,8 +683,12 @@ def stage_detections_to_seeds(ctx):
                 # satellite's word counts once; see _nh_joint_vote.
                 _nhj_ok = (ctx.args.nh_joint != "off" and ctx.utc0_sample0
                            and ctx.args.almanac and prn in ctx.pred)
+                _ph_raw = ph  # the source's own word, before the debounce touches it --
+                # the vote, the referee, and the apply-side snap all read THIS, never the
+                # mutated ph (first deployment read post-debounce ph and faithfully
+                # alarmed on the debounce's own stale standing period, 2026-08-31)
                 if _nhj_ok and snr >= ctx.args.nh_joint_min_snr:
-                    _nh_joint_vote(ctx, prn, ph, ref_hop, snr, ctx.drp.now_w)
+                    _nh_joint_vote(ctx, prn, _ph_raw, ref_hop, snr, ctx.drp.now_w)
                 # PERIOD CONTINUITY IS A CHECK, NOT AN AUTHORITY (2026-08-02).
                 #
                 # This existed because the search could not report the overlay period: it
@@ -805,21 +809,29 @@ def stage_detections_to_seeds(ctx):
                 if _nhj_ok:
                     _nhc = _nh_joint_consensus(ctx, ctx.drp.now_w)
                     if _nhc is not None and ctx.args.nh_joint == "apply":
-                        _ph_j, _k_j = _nh_joint_snap(ctx, prn, ph, ref_hop, _nhc[0])
-                        if snr < ctx.args.period_check_snr:
-                            if _k_j:
-                                _log_rl("nhjapp-%d" % prn,
-                                        "PRN %d overlay segment DERIVED from consensus: "
-                                        "%+d period(s) off the weak measurement (snr %.0f)"
-                                        % (prn, _k_j, snr), every_s=60.0)
-                            ph = _ph_j
-                        elif _k_j:
-                            _log_rl("nhjref-%d" % prn,
-                                    "PRN %d STRONG measured overlay label disagrees with "
-                                    "the joint consensus by %+d period(s) (snr %.0f) -- "
-                                    "measured KEPT; if this persists across sats the "
-                                    "consensus or the prediction is wrong"
-                                    % (prn, _k_j, snr), every_s=60.0)
+                        # The derived segment applies to EVERY satellite, strong included:
+                        # the consensus IS the weighted median of the strong population's
+                        # raw phases, so a healthy majority defines it and no single
+                        # sat's label toggle -- or a poisoned ph_hist standing period,
+                        # which the debounce can defer forever when weak noise keeps
+                        # resetting its confirm counter (PRN 4/6, -4/-6 periods,
+                        # 2026-08-31) -- can move its own seed. The measurement keeps
+                        # sub-chip authority through its fine phase; a nonzero k on a
+                        # STRONG detection is the referee's alarm about the source.
+                        _ph_j, _k_j = _nh_joint_snap(ctx, prn, _ph_raw, ref_hop, _nhc[0])
+                        if _k_j:
+                            _log_rl(("nhjref-%d" if snr >= ctx.args.period_check_snr
+                                     else "nhjapp-%d") % prn,
+                                    "PRN %d overlay segment DERIVED from consensus: %+d "
+                                    "period(s) off the %s measurement (snr %.0f)%s"
+                                    % (prn, _k_j,
+                                       "STRONG" if snr >= ctx.args.period_check_snr
+                                       else "weak", snr,
+                                       " -- if this persists across sats the consensus "
+                                       "or the prediction is wrong"
+                                       if snr >= ctx.args.period_check_snr else ""),
+                                    every_s=60.0)
+                        ph = _ph_j
                 # --nh-period-offset: applied HERE, after the continuity check has had its
                 # say, and to the phase rather than the argument -- propagate_seed prefers
                 # phase_ref_chips whenever it is >= 0, so offsetting only code_phase_chips
