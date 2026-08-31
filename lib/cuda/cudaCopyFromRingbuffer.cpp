@@ -207,9 +207,27 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                               qname, _expect_quantity);
         }
 
+        // ⚠️ AND CHECK THE DESCRIPTOR WE ACTUALLY BUILT, not just the metadata fields it came
+        // from. `dims > 0` is NOT enough: an uninitialised pool object can carry dims == 3
+        // with ZERO extents, whose byte size is 0, and that walks straight into
+        // ensure_frame_desc()'s first FATAL ("frame description size (0) does not match
+        // frame_size"). That is precisely how cx19 died AGAIN on the 17:01 restart, with the
+        // first version of this guard already in the binary. Build it, measure it, then
+        // decide.
+        std::shared_ptr<const kotekan::FrameDesc> cand;
         if (desc_ok) {
-            out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
-                out_meta->type, qname, extents, dimnames, dimscalings));
+            cand = kotekan::GenericNDArray::describe(out_meta->type, qname, extents, dimnames,
+                                                     dimscalings);
+            if (!cand || cand->get_byte_size() != (size_t)out_buffer->frame_size) {
+                desc_ok = false;
+                why = fmt::format("descriptor byte size {:d} != frame_size {:d}",
+                                  cand ? cand->get_byte_size() : 0,
+                                  (size_t)out_buffer->frame_size);
+            }
+        }
+
+        if (desc_ok) {
+            out_buffer->ensure_frame_desc(cand);
             /* test that things are consistent */
             out_meta->check_frame_desc(out_buffer->get_frame_desc<kotekan::GenericNDArray>());
             if (_desc_deferred) {
