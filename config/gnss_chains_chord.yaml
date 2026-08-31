@@ -445,6 +445,12 @@ chains:
     # Revert: delete this line + broker restart.
     fit-flush-on-reject: 3
     signal: gps_l5
+    # 2026-08-31 (KV): 11 IIR/IIR-M satellites never transmit L5 -- the slot manager already
+    # excluded them (prnmap, IGS SINEX registry), but hints + seeds still probed them: 2-3
+    # permanent "--" rows, periodic noise-blip births, and with the search's require_hint a
+    # skipped hint means the PRN is never scanned at all. Source = the IGS registry, NOT
+    # Celestrak (rejected twice now for block identity).
+    signal-capability: gps_l5
     # ⚠️ TEMPORARY EXPERIMENT (task #52, 2026-08-14) -- ON THIS CHAIN ONLY, deliberately.
     #
     # CLOSE THE SHARED CARRIER LOOP. The airspy prototype held carrier coherence for ~4 s and

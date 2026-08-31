@@ -557,8 +557,29 @@ def main(argv=None, rx=None, publisher=None):
 
     # Signal-capability PRN gate (--signal-capability): the general block filter, fetched once.
     # Empty/failed lookup -> None (disabled) so a network hiccup can't dark the chain.
+    #
+    # ⚠️ THE REGISTRY OUTRANKS THE TLE TITLES (2026-08-31, KV -- the second time this source
+    # ranking has had to be stated; prnmap.signal_incapable_prns' docstring records the first).
+    # Capability comes from the IGS satellite-metadata SINEX (SVN -> block -> PRN-with-validity
+    # -window, cached at ~/.cache/kotekan_gps/) when it can prove anything; the Celestrak block
+    # names below are only the fallback for what the registry path does not model (GLONASS K
+    # markers), because Celestrak "carries a multitude of errors, BeiDou worst of all". Both
+    # sources fail OPEN: no proof of incapability keeps the satellite.
     _capable = None
     if args.signal_capability and args.constellation in ("G", "R"):
+        try:
+            from gnss_broker import prnmap as _pm
+            _incap = _pm.signal_incapable_prns(args.signal_capability)
+        except Exception:
+            _incap = set()
+        if _incap:
+            _capable = set(range(1, 64)) - _incap
+            _log("signal-capability %s: %d PRN(s) excluded by the IGS registry (%s) -- "
+                 "seeds + hints restricted to block-capable satellites (and with the "
+                 "search's require_hint, an unhinted PRN is never scanned)"
+                 % (args.signal_capability, len(_incap),
+                    ", ".join(str(p) for p in sorted(_incap))))
+    if _capable is None and args.signal_capability and args.constellation in ("G", "R"):
         try:
             import gps_beamtrack as _bt
             # Pass THIS broker's TLE source: the GLONASS block marker lives in the glo-ops
