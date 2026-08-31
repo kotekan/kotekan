@@ -2697,13 +2697,17 @@ http://cx44:12048/gnss{0..1}_b3i_n2combine,\
 http://cx51:12048/gnss{0..1}_b3i_n2combine"
 
   gal_e6:
-    # CS-PHASE SCAN RAN AND ANSWERED 2026-08-31 13:10-13:14 (--dr-cs-scan, since removed):
-    # a full 100-period wrap found NO winner (max amp_snr 4.8 vs noise median 2.8; a real
-    # lock reads 15-50) -- the secondary-phase anchoring is EXONERATED. With the codes
-    # verified 50/50 against gnss-sdr, Doppler exact, the joint clock adopted and per-channel
-    # RF clean, the remaining suspects are an RF/selection edge above ~1276 MHz (b3i's top
-    # channel 6534 = 1276.2 is the probe: does it carry lock power?) or an E6-specific
-    # signal-model fact. The chain stays configured -- it costs ~0.5 ms/GPU -- pending that.
+    # ── BRING-UP ROOT FOUND AND FIXED 2026-08-31 13:37: CHIPS ARE A UNIT, THE CLOCK IS A
+    # TIME. The cross-band clock bootstrap adopted the donor's chips RAW; every consumer
+    # before this chain shared gps_l5's 10.23 Mcps, so the missing rate conversion was
+    # invisible for the instrument's whole life. This chain (5.115 Mcps, the first
+    # non-10.23 signal) adopted 150.2 "chips" = 2x the true clock TIME = +75 E6 chips of
+    # code error on every seed -- pure noise with codes (50/50 == gnss-sdr), Doppler, RF
+    # and the CS phase (a full --dr-cs-scan wrap: no winner) all individually verified.
+    # Fix: Receiver.clock_chips_convert (rate-ratio scaling, TIME-domain window guard),
+    # selftest-gated with the incident's exact numbers. TEN sats tracking within 8 min of
+    # the fix (amp_snr to 125). The DLL steady-state residual vs the converted bootstrap
+    # is tau_band(1278.75 vs 1176.45) -- the third band's first science number.
     signal: gal_e6
     dr-clock-adopt: true
     seed-phase-transport: true

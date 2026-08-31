@@ -185,7 +185,8 @@ def dr_clock_quality(ctx):
         # Carried WITH its code length, because chips are modular and a value
         # mod 10230 is meaningless to a 1023000-chip code.
         ctx.rx.contribute_dr_clock(ctx.chain_id, ctx.band_id, ctx.dr_state["clk"],
-                               ctx.dr_state.get("drift"), ctx.drp.now_w, ctx.code_len)
+                               ctx.dr_state.get("drift"), ctx.drp.now_w, ctx.code_len,
+                               chip_rate_hz=ctx.args.chip_rate_hz)
 
 
 def dr_clock_adopt(ctx):
@@ -825,14 +826,14 @@ def dr_seed(ctx):
             # logs the PREVIOUS pass's best tracker amp_snr against the k it was despreading
             # -- align (k, amp) offline over one full wrap (lc_seg passes = ~3.5 min at the
             # 2 s interval). Default OFF; delete the yaml line + restart to disarm.
-            _k_prev = getattr(ctx.drp, "cs_scan_k", 0)
+            _k_prev = ctx.dr_state.get("cs_scan_k", 0)  # drp is __slots__; the dict carries it
             _amps = sorted(((float((ctx.status.get(_p) or {}).get("amp_snr", 0) or 0), _p)
                             for _p in (ctx.status or {})), reverse=True)[:3]
             _log("CS-SCAN %s: k_prev %d -> best amp_snr %s | next k %d of %d"
                  % (ctx.band_id, _k_prev,
                     " ".join("PRN%s %.1f" % (_p, _a) for _a, _p in _amps) or "none",
                     (_k_prev + 1) % max(1, ctx.lc_seg), ctx.lc_seg))
-            ctx.drp.cs_scan_k = (_k_prev + 1) % max(1, ctx.lc_seg)
+            ctx.dr_state["cs_scan_k"] = (_k_prev + 1) % max(1, ctx.lc_seg)
         planned = []
         for (ctag, prn), v in sorted(ctx.drp.pd.items()):
             # SIGNAL CAPABILITY first (see --dr-min-prn / --signal-capability): a
@@ -1027,7 +1028,7 @@ def dr_seed(ctx):
                      * (1.0 + ctx.args.code_doppler_sign
                         * dop_seed / ctx.args.carrier_hz)) % ctx.drp.mod
             if getattr(ctx.args, "dr_cs_scan", False):
-                cp0 = (cp0 + getattr(ctx.drp, "cs_scan_k", 0) * ctx.code_len) % ctx.drp.mod
+                cp0 = (cp0 + ctx.dr_state.get("cs_scan_k", 0) * ctx.code_len) % ctx.drp.mod
             if ctx.args.dr_dry_run:
                 planned.append("PRN %d el %.0f cp0 %.1f dop %+.0f rate %+.2f"
                                % (prn, v["el"], cp0, dop_seed, drate))
@@ -1846,19 +1847,35 @@ def stage_dead_reckon(ctx):
             # about which of the 100 periods of a 1023000-chip code it sits in. So a donor
             # whose code is shorter than ours is refused, which is the same-length guard
             # generalised rather than dropped.
+            # ⚠️ CHIPS ARE A UNIT, THE CLOCK IS A TIME (2026-08-31, the gal_e6 root).
+            # The donor publishes chips AT ITS OWN CHIP RATE; a consumer at a different
+            # rate must convert by the rate ratio or it adopts a clock scaled by that
+            # ratio -- gal_e6 (5.115 Mcps, the instrument's first non-10.23 chain) adopted
+            # gps_l5's 150.2 raw = 2x the true time = +75 E6 chips of code error on every
+            # seed, outside every pull-in window. Codes/Doppler/RF all verified before the
+            # units were suspected; the CS-phase scan could not see it (it steps whole
+            # periods). The MODULUS guard below moves to TIME for the same reason: what a
+            # donor must cover is our code PERIOD, not our chip count.
             _rx_xband = False
             if ctx.drp.rx_sib is None and ctx.args.dr_clock_adopt and not ctx.drp.offs:
                 _cand = ctx.rx.dr_clock_any_band(exclude=ctx.chain_id, t_now=ctx.t0)
-                if _cand is not None and (_cand.extra.get("code_length") or 0) >= ctx.code_len:
-                    ctx.drp.rx_sib, _rx_xband = _cand, True
+                if _cand is not None:
+                    _don_rate = _cand.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
+                    _don_window_s = (_cand.extra.get("code_length") or 0) / _don_rate
+                    if _don_window_s >= ctx.code_len / ctx.args.chip_rate_hz:
+                        ctx.drp.rx_sib, _rx_xband = _cand, True
             if ctx.drp.rx_sib is not None and _rx_xband:
-                _v = float(ctx.drp.rx_sib.value) % ctx.code_len
+                _don_rate = ctx.drp.rx_sib.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
+                _v = ctx.rx.clock_chips_convert(ctx.drp.rx_sib.value, _don_rate,
+                                                ctx.args.chip_rate_hz, ctx.code_len)
                 if ctx.dr_state.get("clk") is None or abs(
                         ((_v - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len)
                         - ctx.code_len / 2) > 0.5:
-                    _log("dead-reckon: clock BOOTSTRAP %.2f chips from in-process chain "
-                         "'%s' (CROSS-BAND -- carries tau_band; the DLL residual IS that "
-                         "measurement)" % (_v, ctx.drp.rx_sib.src))
+                    _log("dead-reckon: clock BOOTSTRAP %.2f chips (donor %.2f @ %.3f Mcps, "
+                         "ours %.3f) from in-process chain '%s' (CROSS-BAND -- carries "
+                         "tau_band; the DLL residual IS that measurement)"
+                         % (_v, float(ctx.drp.rx_sib.value), _don_rate / 1e6,
+                            ctx.args.chip_rate_hz / 1e6, ctx.drp.rx_sib.src))
                 ctx.dr_state["clk"] = _v
                 ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
                 ctx.dr_state.pop("clk_primed", None)

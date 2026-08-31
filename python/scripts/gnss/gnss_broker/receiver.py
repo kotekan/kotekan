@@ -260,7 +260,8 @@ class Receiver(object):
         """
         return self._best(self._code, exclude, max_age_s, t_now, key2=None)
 
-    def contribute_dr_clock(self, chain, band, chips, drift, t, code_length):
+    def contribute_dr_clock(self, chain, band, chips, drift, t, code_length,
+                            chip_rate_hz=None):
         """Publish the dead-reckon receiver clock (chips, mod the code period) + drift.
 
         ⚠️ THIS IS THE SEAM `--dr-clock-adopt` PAPERS OVER. `dr_state` straddles the
@@ -273,12 +274,23 @@ class Receiver(object):
         Carried WITH its code length: chips are modular, and a value mod 10230 means nothing
         to a chain whose code is 1023000 long. A consumer that ignores this would adopt a
         number that is numerically fine and physically wrong -- silently.
+
+        ⚠️ AND WITH ITS CHIP RATE (2026-08-31, the gal_e6 bring-up root). The clock is a
+        TIME -- a receiver property -- and "chips" are only a unit: 150.2 chips at
+        10.23 Mcps is 14.7 us, which is 75.1 chips at E6's 5.115 Mcps. Every consumer
+        before gal_e6 ran at the donor's own 10.23 Mcps, so the missing conversion was
+        invisible for the life of the instrument: the cross-band bootstrap handed E6 a
+        clock exactly 2x true (+75 E6 chips of code error on every seed -- outside every
+        pull-in window; dll_disc read noise while codes, Doppler and RF all verified
+        clean). The unit trap wears the SAME costume as the modulus trap the paragraph
+        above documents: numerically fine, physically wrong, silently.
         """
         if chips is None:
             return
         with self._lock:
             self._dr[(band, chain)] = _Shared(float(chips), chain, 1, t,
-                                              {"drift": drift, "code_length": code_length})
+                                              {"drift": drift, "code_length": code_length,
+                                               "chip_rate_hz": chip_rate_hz})
 
     def dr_clock(self, band, exclude=None, max_age_s=120.0, t_now=None):
         return self._best(self._dr, exclude, max_age_s, t_now, key2=band)
@@ -308,6 +320,19 @@ class Receiver(object):
         is a declared state and this stops being a bootstrap problem at all.
         """
         return self._best(self._dr, exclude, max_age_s, t_now, key2=None)
+
+    # -- unit conversion (module-level contract, selftest-gated) -------------------------
+
+    @staticmethod
+    def clock_chips_convert(donor_chips, donor_rate_hz, our_rate_hz, our_code_len):
+        """A donor's clock, re-expressed in OUR chips and reduced mod OUR code.
+
+        The clock is a TIME; chips are a unit. donor_rate None = the legacy same-rate
+        assumption (every pre-2026-08-31 contributor was 10.23 Mcps, so old stores stay
+        valid). Selftest-gated with the exact gal_e6 numbers so the unit trap cannot
+        silently return."""
+        rate = donor_rate_hz or our_rate_hz
+        return (float(donor_chips) * our_rate_hz / rate) % our_code_len
 
     # -- internals ----------------------------------------------------------------------
     def _best(self, store, exclude, max_age_s, t_now, key2):

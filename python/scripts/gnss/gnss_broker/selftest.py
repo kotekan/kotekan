@@ -568,10 +568,26 @@ check("cross-band fallback still honours `exclude`",
 check("cross-band fallback still honours max_age_s",
       _rx.code_bias_any_band(exclude="gal_e5b", t_now=1000.0 + 500.0) is None)
 # The PHASE stays per band -- adopting it across carriers would inject tau_band itself.
-_rx.contribute_dr_clock("gps_l5", "1176.45MHz", 151.0, 0.01, 1000.0, 1023000)
+_rx.contribute_dr_clock("gps_l5", "1176.45MHz", 151.0, 0.01, 1000.0, 1023000,
+                        chip_rate_hz=10.23e6)
 check("dr_clock (the code PHASE) is still band-scoped -- tau_band is not borrowable",
       _rx.dr_clock("1207.14MHz", exclude="gal_e5b", t_now=1000.0) is None
       and _rx.dr_clock("1176.45MHz", exclude="gal_e5a", t_now=1000.0) is not None)
+# ── CHIPS ARE A UNIT, THE CLOCK IS A TIME (2026-08-31, the gal_e6 bring-up root) ────────
+# The cross-band bootstrap adopted donor chips RAW; every consumer before gal_e6 shared the
+# donor's 10.23 Mcps so the missing rate conversion was invisible for the instrument's whole
+# life. gal_e6 (5.115 Mcps) adopted 150.2 "chips" = 2x the true clock TIME = +75 E6 chips of
+# code error on every seed -- pure noise, with codes/Doppler/RF all individually verified.
+# These are the exact numbers of the incident, so the trap cannot silently return.
+check("cross-rate clock adoption halves gps chips for the 5.115 Mcps consumer",
+      abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 5.115e6, 5115) - 75.1) < 1e-9)
+check("same-rate clock adoption is the identity (the pre-2026-08-31 behaviour, preserved)",
+      abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 10.23e6, 10230) - 150.2) < 1e-9)
+check("a legacy store without chip_rate falls back to same-rate (old contributors stay valid)",
+      abs(receiver.Receiver.clock_chips_convert(150.2, None, 10.23e6, 10230) - 150.2) < 1e-9)
+check("the stored dr_clock carries its chip rate for consumers",
+      _rx.dr_clock("1176.45MHz", exclude="gal_e5a", t_now=1000.0).extra.get("chip_rate_hz")
+      == 10.23e6)
 # And the consumer's arithmetic: a fractional-frequency bias -> chips/hop, chip-rate scaled.
 from gnss_broker.fits import cp_rate_from_code_bias      # noqa: E402
 _r_e5a = cp_rate_from_code_bias(0.0, 1.5e-6, 195312.5, 10.23e6, 1176.45e6)
