@@ -2663,9 +2663,12 @@ def build_parser(description):
                     help="satellites that must agree (within --nh-joint-tol-chips of the "
                          "circular median) before the common offset resolves. Below this the "
                          "joint fit stays in observation and 'apply' changes nothing.")
-    ap.add_argument("--nh-joint-min-snr", type=float, default=30.0,
-                    help="detections below this snr do not vote (their phase is noise); they "
-                         "may still be APPLIED to, which is the point of the joint fit.")
+    ap.add_argument("--nh-joint-min-snr", type=float, default=60.0,
+                    help="detections below this snr do not vote (measured: snr < 60 phases "
+                         "carry ~2000-chip within-period residuals -- letting them vote "
+                         "dragged the on-sky consensus inlier set from 7/7 to 3/9 within "
+                         "10 min on 2026-08-31); they may still be APPLIED to, which is "
+                         "the point of the joint fit.")
     ap.add_argument("--nh-joint-window-s", type=float, default=600.0,
                     help="votes older than this are pruned. A resolved consensus is NOT "
                          "expired by pruning -- the receiver clock mod the epoch is a run "
