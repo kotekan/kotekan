@@ -386,6 +386,7 @@ chains:
     # ⚠️ MITIGATION, not the fix -- the source defect (search period at high snr) is #97's
     # open half. Revert: delete this line + broker restart.
     nh-period-debounce: 2
+    nh-joint: apply
     # ARMED 2026-08-28 (#96/#97 closure): locked sats enter the cp_held seed freeze on
     # 5 consecutive fleet-PRESENT cycles (~10 s) -- the inversion: frozen tuple, DLL owns
     # the residual, CP_ERR referee. amp_snr entry alone fired 5x/day while q-3.8 sats
