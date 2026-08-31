@@ -133,6 +133,14 @@ def _nh_joint_consensus(ctx, now):
                     dstar / a.chip_rate_hz * 1e3, len(inl),
                     "" if prev is None else " -- was %+.1f" % prev[0]))
         ctx.cpt.nh_common = (dstar, now, len(inl), (w_in / w_tot) if w_tot else 0.0)
+        # Contribute the resolved clock-mod-epoch to the Receiver AS A TIME: this is the
+        # epoch extension a short-window donor clock needs to bootstrap a chain whose code
+        # period is LONGER than the donor's (gps_l2c's 20 ms vs gps_l5's 1 ms window --
+        # exactly the case the cross-band bootstrap's modulus guard rightly refuses
+        # without it). Chips are a unit; the clock is a time.
+        if getattr(ctx, "rx", None) is not None:
+            ctx.rx.contribute_clock_mod_epoch(ctx.chain_id, dstar / a.chip_rate_hz,
+                                              ctx.lc_epoch, len(inl), now)
     return ctx.cpt.nh_common
 
 

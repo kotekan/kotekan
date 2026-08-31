@@ -585,6 +585,28 @@ check("same-rate clock adoption is the identity (the pre-2026-08-31 behaviour, p
       abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 10.23e6, 10230) - 150.2) < 1e-9)
 check("a legacy store without chip_rate falls back to same-rate (old contributors stay valid)",
       abs(receiver.Receiver.clock_chips_convert(150.2, None, 10.23e6, 10230) - 150.2) < 1e-9)
+# THE EPOCH EXTENSION (gps_l2c's bootstrap): a donor precise mod its SHORT window plus an
+# independent clock-mod measurement covering OUR longer period. Donor gps_l5: 152.22 chips
+# @ 10.23 Mcps = 14.879 us, window 1 ms; NH joint consensus says clock mod 20 ms ~ 40 us
+# (noisy to +-100 us -- it only has to pick among candidates 1 ms apart). Truth 14.879 us.
+_t, _r = receiver.Receiver.clock_extend_mod(152.22 / 10.23e6, 1e-3, 40e-6, 0.02, 0.02)
+check("epoch extension recovers the donor's precision, k from the mod measurement",
+      abs(_t - 152.22 / 10.23e6) < 1e-12 and abs(_r) < 0.25e-3,
+      "t=%.3f us resid=%.1f us" % (_t * 1e6, _r * 1e6))
+_t2, _ = receiver.Receiver.clock_extend_mod(152.22 / 10.23e6, 1e-3, 3.04e-3, 0.02, 0.02)
+check("...and a mod measurement near 3 ms picks k=3, three donor windows up",
+      abs(_t2 - (152.22 / 10.23e6 + 3e-3)) < 1e-12, "t=%.3f us" % (_t2 * 1e6))
+_t3, _r3 = receiver.Receiver.clock_extend_mod(152.22 / 10.23e6, 1e-3, 0.51e-3, 0.02, 0.02)
+check("a mod measurement HALF a donor window away leaves a residual the caller must refuse",
+      abs(_r3) > 0.25e-3, "resid=%.1f us" % (_r3 * 1e6))
+_rx2 = receiver.Receiver()
+_rx2.contribute_clock_mod_epoch("gps_l5", 40e-6, 0.02, 7, 1000.0)
+check("clock_mod_epoch returns a record whose epoch covers the asked period",
+      _rx2.clock_mod_epoch(0.02, exclude="gps_l2c", t_now=1000.0) is not None)
+check("...refuses when the asked period exceeds the stored epoch (never lengthen a modulus)",
+      _rx2.clock_mod_epoch(1.5, exclude="gps_l2c", t_now=1000.0) is None)
+check("...and excludes the asker's own contribution",
+      _rx2.clock_mod_epoch(0.02, exclude="gps_l5", t_now=1000.0) is None)
 check("the stored dr_clock carries its chip rate for consumers",
       _rx.dr_clock("1176.45MHz", exclude="gal_e5a", t_now=1000.0).extra.get("chip_rate_hz")
       == 10.23e6)

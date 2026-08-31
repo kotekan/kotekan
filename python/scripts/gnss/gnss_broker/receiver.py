@@ -61,6 +61,10 @@ class Receiver(object):
         self._carrier = {}             # chain -> _Shared (Hz, receiver scope)
         self._code = {}                # (band, chain) -> _Shared (dimensionless l-a)
         self._dr = {}                  # (band, chain) -> _Shared (chips, + drift in extra)
+        self._clkmod = {}              # chain -> _Shared (the receiver clock in SECONDS,
+                                       # known mod extra["epoch_s"] -- e.g. the NH joint
+                                       # fit's consensus, clock mod 20 ms). The epoch
+                                       # EXTENSION a short-window donor clock needs.
         self._joint = {}               # band -> JointReceiverState (P2a, shadow)
 
     # -- the joint receiver state (task #33 P2a) ------------------------------------------
@@ -320,6 +324,50 @@ class Receiver(object):
         is a declared state and this stops being a bootstrap problem at all.
         """
         return self._best(self._dr, exclude, max_age_s, t_now, key2=None)
+
+    def contribute_clock_mod_epoch(self, chain, seconds, epoch_s, n_sats, t):
+        """The receiver clock as a TIME, known mod epoch_s. Contributed by an estimator
+        that resolves a LONGER modulus than any code period -- today the NH joint fit
+        (clock mod 20 ms from every strong GPS sat voting). Consumers use it to extend a
+        precise short-window donor clock across their own longer code period."""
+        with self._lock:
+            self._clkmod[chain] = _Shared(float(seconds), chain, int(n_sats or 0), t,
+                                          extra={"epoch_s": float(epoch_s)})
+
+    def clock_mod_epoch(self, min_epoch_s, exclude=None, max_age_s=3600.0, t_now=None):
+        """Freshest clock-mod record whose epoch covers min_epoch_s. The long default age
+        bound is deliberate: the quantity is a run constant (the F-engine axis is
+        drift-free), refreshed every cycle while enough strong sats vote."""
+        with self._lock:
+            best = None
+            for chain, rec in self._clkmod.items():
+                if chain == exclude:
+                    continue
+                if rec.extra.get("epoch_s", 0.0) < float(min_epoch_s) - 1e-12:
+                    continue
+                if t_now is not None and max_age_s is not None and t_now - rec.t > max_age_s:
+                    continue
+                if best is None or rec.t > best.t:
+                    best = rec
+            return best
+
+    @staticmethod
+    def clock_extend_mod(donor_seconds, donor_window_s, mod_seconds, mod_epoch_s,
+                         our_window_s):
+        """Extend a donor clock known mod its (short) window across OUR (longer) code
+        period, using an independent measurement of the same clock mod >= our window.
+
+        The donor supplies the PRECISION (e.g. gps_l5's clock, ~20 ns, mod 1 ms); the
+        mod measurement supplies only the AMBIGUITY RESOLUTION (which of the donor's
+        windows -- candidates are a full donor window apart, so it needs to be right
+        only to half of that). Returns (seconds mod our_window_s, resid_s), where
+        resid_s is the disagreement between the extended donor and the mod measurement:
+        the caller must refuse the extension when |resid_s| is a large fraction of the
+        donor window, because then the k choice itself is in doubt."""
+        dm = float(mod_seconds) % float(mod_epoch_s)
+        k = round((dm - float(donor_seconds)) / float(donor_window_s))
+        t_full = float(donor_seconds) + k * float(donor_window_s)
+        return t_full % float(our_window_s), (t_full - dm)
 
     # -- unit conversion (module-level contract, selftest-gated) -------------------------
 

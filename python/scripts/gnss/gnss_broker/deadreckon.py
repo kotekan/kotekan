@@ -1857,25 +1857,81 @@ def stage_dead_reckon(ctx):
             # periods). The MODULUS guard below moves to TIME for the same reason: what a
             # donor must cover is our code PERIOD, not our chip count.
             _rx_xband = False
+            _rx_xext = None
             if ctx.drp.rx_sib is None and ctx.args.dr_clock_adopt and not ctx.drp.offs:
                 _cand = ctx.rx.dr_clock_any_band(exclude=ctx.chain_id, t_now=ctx.t0)
                 if _cand is not None:
                     _don_rate = _cand.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
                     _don_window_s = (_cand.extra.get("code_length") or 0) / _don_rate
-                    if _don_window_s >= ctx.code_len / ctx.args.chip_rate_hz:
+                    _our_window_s = ctx.code_len / ctx.args.chip_rate_hz
+                    if _don_window_s >= _our_window_s:
                         ctx.drp.rx_sib, _rx_xband = _cand, True
+                    else:
+                        # EPOCH EXTENSION (2026-08-31). The modulus guard is right: a
+                        # clock known mod the donor's SHORTER window says nothing about
+                        # which of our periods it sits in. But an independent estimator
+                        # that resolves the clock mod >= OUR period -- the NH joint fit,
+                        # clock mod 20 ms from every strong GPS sat voting -- supplies
+                        # exactly the missing ambiguity resolution, while the donor keeps
+                        # supplying the precision. Candidates are a full donor window
+                        # apart, so the extension needs the mod measurement right only to
+                        # half of that (~16 sigma of margin at today's consensus noise).
+                        # This was gps_l2c's blocker: clock primed 0.0 while the truth
+                        # was ~15 us = ~8 CM chips, against a +-1 chip pull-in.
+                        _ext = ctx.rx.clock_mod_epoch(min_epoch_s=_our_window_s,
+                                                      exclude=ctx.chain_id, t_now=ctx.t0)
+                        if _ext is not None:
+                            ctx.drp.rx_sib, _rx_xband, _rx_xext = _cand, True, _ext
+                        else:
+                            _log_rl("clkxmod-none",
+                                    "dead-reckon: cross-band donor '%s' REFUSED on "
+                                    "modulus (its %.4f s window < our %.4f s period) and "
+                                    "no clock-mod-epoch record covers us -- the clock "
+                                    "stays primed. The NH joint fit (--nh-joint) on a "
+                                    "sibling chain is what contributes that record."
+                                    % (_cand.src, _don_window_s, _our_window_s),
+                                    every_s=300.0)
             if ctx.drp.rx_sib is not None and _rx_xband:
                 _don_rate = ctx.drp.rx_sib.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
-                _v = ctx.rx.clock_chips_convert(ctx.drp.rx_sib.value, _don_rate,
-                                                ctx.args.chip_rate_hz, ctx.code_len)
+                if _rx_xext is None:
+                    _v = ctx.rx.clock_chips_convert(ctx.drp.rx_sib.value, _don_rate,
+                                                    ctx.args.chip_rate_hz, ctx.code_len)
+                else:
+                    _don_window_s = (ctx.drp.rx_sib.extra.get("code_length")
+                                     or ctx.code_len) / _don_rate
+                    _our_window_s = ctx.code_len / ctx.args.chip_rate_hz
+                    _t_sec, _resid_s = ctx.rx.clock_extend_mod(
+                        float(ctx.drp.rx_sib.value) / _don_rate, _don_window_s,
+                        float(_rx_xext.value), _rx_xext.extra["epoch_s"], _our_window_s)
+                    if abs(_resid_s) > 0.25 * _don_window_s:
+                        # The k choice itself is in doubt: the two sources disagree by a
+                        # large fraction of a donor window. Refuse LOUDLY -- a silent
+                        # refusal here is how the last bootstrap gap hid for two hours.
+                        _log_rl("clkxmod-resid",
+                                "dead-reckon: epoch extension REFUSED -- donor '%s' and "
+                                "clock-mod '%s' disagree by %+.1f us (%.0f%% of the donor "
+                                "window). One of them is wrong; the clock stays primed."
+                                % (ctx.drp.rx_sib.src, _rx_xext.src, _resid_s * 1e6,
+                                   100.0 * abs(_resid_s) / _don_window_s),
+                                every_s=300.0)
+                        ctx.drp.rx_sib = None
+                        _rx_xband = False
+                        _v = None
+                    else:
+                        _v = (_t_sec * ctx.args.chip_rate_hz) % ctx.code_len
+            if ctx.drp.rx_sib is not None and _rx_xband:
                 if ctx.dr_state.get("clk") is None or abs(
                         ((_v - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len)
                         - ctx.code_len / 2) > 0.5:
                     _log("dead-reckon: clock BOOTSTRAP %.2f chips (donor %.2f @ %.3f Mcps, "
                          "ours %.3f) from in-process chain '%s' (CROSS-BAND -- carries "
-                         "tau_band; the DLL residual IS that measurement)"
+                         "tau_band; the DLL residual IS that measurement)%s"
                          % (_v, float(ctx.drp.rx_sib.value), _don_rate / 1e6,
-                            ctx.args.chip_rate_hz / 1e6, ctx.drp.rx_sib.src))
+                            ctx.args.chip_rate_hz / 1e6, ctx.drp.rx_sib.src,
+                            "" if _rx_xext is None else
+                            " [EPOCH-EXTENDED by '%s' clock-mod-%.0f-ms, resid %+.1f us]"
+                            % (_rx_xext.src, _rx_xext.extra["epoch_s"] * 1e3,
+                               _resid_s * 1e6)))
                 ctx.dr_state["clk"] = _v
                 ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
                 ctx.dr_state.pop("clk_primed", None)
