@@ -42,7 +42,16 @@ protected:
 
     uint32_t num_crs_boards;
 
+    /// The expected CRS packet size; anything else is dropped as non-CRS traffic.
+    uint32_t packet_size;
+
     uint64_t total_packets = 0;
+    /// Dropped packets with a bad IP checksum (NIC offload flag).
+    uint64_t bad_checksum_packets = 0;
+    /// Dropped packets that failed the size or cookie check (LLDP, ARP, etc.)
+    uint64_t non_crs_packets = 0;
+    /// Dropped CRS packets whose stream_id does not map to a worker ring.
+    uint64_t invalid_stream_id_packets = 0;
 };
 
 inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
@@ -70,14 +79,43 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
         throw std::runtime_error(fmt::format(
             fmt("num_crs_boards' parameter must be 16. Other configurations are not supported.")));
     }
+
+    packet_size = config.get<uint32_t>(unique_name, "packet_size");
 }
 
 inline int crs16BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
+
+    // Check the packet checksum flag from the NIC.
+    if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
+        WARN("Port: {:d}; Got bad packet IP checksum", port);
+        rte_pktmbuf_free(mbuf);
+        bad_checksum_packets++;
+        return 0;
+    }
+
+    // Non-CRS traffic (LLDP, ARP, switch chatter) also lands here; drop it
+    // before interpreting CRS header fields. No WARN: junk frames are routine
+    // on a switch port and would flood the log.
+    if (unlikely(mbuf->pkt_len != packet_size
+                 || get_crs_packet_cookie(mbuf) != CRS_PACKET_COOKIE)) {
+        rte_pktmbuf_free(mbuf);
+        non_crs_packets++;
+        return 0;
+    }
 
     uint16_t stream_id = get_crs_packet_stream_id(mbuf);
 
     // Divide the streams between the worker rings
     uint32_t ring_index = stream_id / (128 / worker_ring_ids.size());
+
+    // A corrupt or misconfigured CRS packet can carry a stream_id >= 128,
+    // which would index past worker_ring_ids.
+    if (unlikely(ring_index >= worker_ring_ids.size())) {
+        rte_pktmbuf_free(mbuf);
+        WARN("Port: {:d}; Got CRS packet with invalid stream_id {:d}, dropping", port, stream_id);
+        invalid_stream_id_packets++;
+        return 0;
+    }
 
     // Put the packet into the worker ring
     int err = rte_ring_enqueue(worker_rings[worker_ring_ids[ring_index]], mbuf);
