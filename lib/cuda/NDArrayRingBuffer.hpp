@@ -427,6 +427,43 @@ public:
         assert(read_claimed.size() == 0);
     }
 
+    // ⚠️ RESTORED 2026-08-31 AFTER THE origin/chord MERGE DELETED IT (upstream f82baaed6).
+    //
+    // It was introduced by f33b02baa, the same commit that made `wait_and_claim_readable`
+    // loop until the caller READS rather than CLAIMS -- which, in that commit's own words,
+    // means "the ringbuffer no longer guarantees that a consumer makes progress". This check
+    // is what made a lost guarantee LOUD: it fails at startup, naming the numbers, instead of
+    // hanging at run time. That commit even warned "Several stages sit exactly on this
+    // boundary today".
+    //
+    // Deleting it did not cause a bug; it removed the thing that would have NAMED one. On
+    // 2026-08-31 one GPU half per node stopped making progress on the voltage ring and the
+    // only symptom was silence: seven pipelines parked in cudaEventSynchronize, the ring
+    // full, every other consumer starved, the node eventually killed by an n2_accumulate
+    // desync several layers downstream. A startup FATAL naming read_max, min_read and the
+    // ring extent would have cost minutes instead of an afternoon.
+    //
+    // Kept here (not in external/n2k or upstream's copy) so our clone carries its own
+    // safeguard, and so re-merging upstream cannot silently drop it again.
+    void check_read_progress(const std::ptrdiff_t read_max, const std::ptrdiff_t min_read) const {
+        if (min_read <= 0)
+            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: min_read={:d} must be "
+                        "positive",
+                        cuda_command.get_unique_name(), buffer_name, min_read);
+        if (read_max < min_read)
+            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: this stage reads at most "
+                        "{:d} elements at a time, but needs at least {:d} elements to claim "
+                        "anything, and would thus never make progress. The ringbuffer (holding "
+                        "{:d} elements) is too small.",
+                        cuda_command.get_unique_name(), buffer_name, read_max, min_read,
+                        ndarray.extent(0));
+        if (min_read > ndarray.extent(0))
+            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: this stage needs at least "
+                        "{:d} elements to claim anything, but the ringbuffer holds only {:d} "
+                        "elements, and it would thus never make progress.",
+                        cuda_command.get_unique_name(), buffer_name, min_read, ndarray.extent(0));
+    }
+
     // State
 
     extent_t get_maybe_empty_write_valid() const {

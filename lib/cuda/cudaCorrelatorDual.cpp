@@ -217,6 +217,26 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         CHECK_CUDA_ERROR(cudaMemset(d_synth, 0x88, synth_len));
     }
 
+    // ⚠️ DO NOT ADD check_read_progress HERE. IT CANNOT FAIL, AND I TRIED IT (2026-08-31).
+    //
+    // cudaCorrelator carried exactly these two calls until the origin/chord merge deleted
+    // check_read_progress (upstream f82baaed6), and restoring them looked like the obvious
+    // answer to one GPU half silently ceasing to make progress on the voltage ring. It is
+    // not: the check compares `voltage.get_ndarray().extent(0)` against the claim size, and
+    // that extent is the DECLARED shape (_buffer_depth * _num_times), not the ring's actual
+    // memory. So the comparison reduces to `buffer_depth * num_times >= num_times` -- true
+    // unless buffer_depth is 0. Falsified on sky-config: shrinking host_voltage_ringbuffer_1
+    // to a quarter frame did NOT make it fire, because the declared extent never moved.
+    //
+    // The invariant that DOES bind is unrelated and unchecked anywhere: a consumer that stops
+    // releasing its claim pins the ring no matter how large it is. That is the actual 08-31
+    // failure -- see chord-gpu-command-mutex-wedge.
+    //
+    // The method itself is kept in NDArrayRingBuffer (it has teeth for stages whose
+    // per-iteration read limit is a real fraction of the ring, e.g. the generated Julia
+    // kernels' extent/4), so a future re-merge cannot silently drop it. It just has nothing
+    // to say about THIS stage.
+
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaCorrelatorDual");
     INFO("cudaCorrelatorDual: {:d}+{:d} stations, {:d} freqs, {:d} gnss channels x {:d} tiles "
