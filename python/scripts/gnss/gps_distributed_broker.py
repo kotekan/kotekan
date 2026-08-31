@@ -566,7 +566,12 @@ def main(argv=None, rx=None, publisher=None):
     # markers), because Celestrak "carries a multitude of errors, BeiDou worst of all". Both
     # sources fail OPEN: no proof of incapability keeps the satellite.
     _capable = None
-    if args.signal_capability and args.constellation in ("G", "R"):
+    # `args.constellation or args.dr_constellation`: a chain configured via `signal:` leaves
+    # --constellation unset (None), which made this guard a SILENT NO-OP for every production
+    # chain -- the same resolution every other consumer in this file already uses (chain_id,
+    # _pub_desc, alm_sys).
+    _cap_sys = args.constellation or args.dr_constellation
+    if args.signal_capability and _cap_sys in ("G", "R"):
         try:
             from gnss_broker import prnmap as _pm
             _incap = _pm.signal_incapable_prns(args.signal_capability)
@@ -579,7 +584,7 @@ def main(argv=None, rx=None, publisher=None):
                  "search's require_hint, an unhinted PRN is never scanned)"
                  % (args.signal_capability, len(_incap),
                     ", ".join(str(p) for p in sorted(_incap))))
-    if _capable is None and args.signal_capability and args.constellation in ("G", "R"):
+    if _capable is None and args.signal_capability and _cap_sys in ("G", "R"):
         try:
             import gps_beamtrack as _bt
             # Pass THIS broker's TLE source: the GLONASS block marker lives in the glo-ops
