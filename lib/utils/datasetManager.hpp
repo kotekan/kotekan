@@ -475,12 +475,13 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
         // Check if we have that state already
         const datasetState* state = nullptr;
-        try {
-            state = _states.at(state_id).get();
-            return (const T*)state;
-        } catch (std::out_of_range& e) {
-            DEBUG_NON_OO("datasetManager: requested state {} not known locally.", state_id);
+        {
+            std::lock_guard<std::mutex> slock(_lock_states);
+            auto find = _states.find(state_id);
+            if (find != _states.end())
+                return (const T*)find->second.get();
         }
+        DEBUG_NON_OO("datasetManager: requested state {} not known locally.", state_id);
 
         if (_use_broker) {
             // Request the state from the broker.
@@ -514,55 +515,90 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
 
     state_id_t hash = hash_state(*state);
 
-    // check if there is a hash collision
-    if (_states.find(hash) != _states.end()) {
-        auto find = _states.find(hash);
-        if (!state->equals(*(find->second))) {
-            // FIXME: hash collision. make the value a vector and store same
-            // hash entries? This would mean the state/dset has to be sent
-            // when registering.
-            FATAL_ERROR_NON_OO("datasetManager: Hash collision!\nThe following states have the "
-                               "same hash {}.\n\n{:s}\n\n{:s}\n\ndatasetManager: Exiting...",
-                               hash, state->to_json().dump(4), find->second->to_json().dump(4));
-        }
-    } else {
-        // insert the new state
+    bool inserted = false;
+    const T* state_ptr = nullptr;
+    {
         std::lock_guard<std::mutex> slock(_lock_states);
-        if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>(hash, std::move(state)))
-                 .second) {
-            DEBUG_NON_OO("datasetManager: a state with hash {} is already registered locally.",
-                         hash);
+
+        // check if there is a hash collision
+        auto find = _states.find(hash);
+        if (find != _states.end()) {
+            if (!state->equals(*(find->second))) {
+                // FIXME: hash collision. make the value a vector and store same
+                // hash entries? This would mean the state/dset has to be sent
+                // when registering.
+                FATAL_ERROR_NON_OO("datasetManager: Hash collision!\nThe following states have the "
+                                   "same hash {}.\n\n{:s}\n\n{:s}\n\ndatasetManager: Exiting...",
+                                   hash, state->to_json().dump(4), find->second->to_json().dump(4));
+            }
+        } else {
+            // insert the new state
+            if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>(hash, std::move(state)))
+                     .second) {
+                DEBUG_NON_OO("datasetManager: a state with hash {} is already registered locally.",
+                             hash);
+            }
+            inserted = true;
         }
 
-        // tell the broker about it
-        if (_use_broker)
-            register_state(hash);
+        // States are never removed from _states, so the pointer stays valid
+        // after the lock is released.
+        state_ptr = (const T*)(_states.at(hash).get());
     }
 
-    return std::pair<state_id_t, const T*>(hash, (const T*)(_states.at(hash).get()));
+    // Tell the broker about a new state. This spawns a request thread, so do
+    // it without holding _lock_states.
+    if (inserted && _use_broker)
+        register_state(hash);
+
+    return std::pair<state_id_t, const T*>(hash, state_ptr);
 }
 
 
 template<typename T>
 inline const T* datasetManager::request_state(state_id_t state_id) {
 
-    // If this state is requested already, wait for it.
-    if (_requested_states.count(state_id)) {
+    // Claim the request for this state. Waiting for any in-flight request and
+    // then claiming the state has to happen under a single hold of
+    // _lock_recv_state: _requested_states is protected by that lock, and if the
+    // check and the insert are separated two threads can both observe "not
+    // requested" and both issue a broker request for the same state.
+    {
         std::unique_lock<std::mutex> lck_rcvd(_lock_recv_state);
+
+        // If this state is requested already, wait for it.
         _cv_received_state.wait(lck_rcvd,
                                 [this, state_id]() { return !_requested_states.count(state_id); });
+
+        // If an ongoing request returned just when this function was
+        // called, we are done.
+        {
+            std::lock_guard<std::mutex> lck_states(_lock_states);
+            auto find = _states.find(state_id);
+            if (find != _states.end())
+                return (const T*)find->second.get();
+        }
+
+        _requested_states.insert(state_id);
     }
 
-    // If an ongoing request returned just when this function was
-    // called, we are done.
-    {
-        std::lock_guard<std::mutex> lck_states(_lock_states);
-        if (_states.count(state_id))
-            return (const T*)_states.at(state_id).get();
-    }
+    // Drop the claim again on every exit path. A request that fails (broker
+    // unreachable, unparseable reply, type mismatch) must not leave the state
+    // marked as requested: every later requester would then block forever on
+    // _cv_received_state waiting for a request that is no longer running.
+    struct claim_guard {
+        datasetManager* dm;
+        state_id_t id;
+        ~claim_guard() {
+            {
+                std::lock_guard<std::mutex> lck_rcvd(dm->_lock_recv_state);
+                dm->_requested_states.erase(id);
+            }
+            dm->_cv_received_state.notify_all();
+        }
+    } release_claim{this, state_id};
 
     // Request state from broker
-    _requested_states.insert(state_id);
     nlohmann::json js_request;
     js_request["id"] = state_id;
     restClient::restReply reply = _rest_client.make_request_blocking(
@@ -595,12 +631,8 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
             std::pair<state_id_t, std::unique_ptr<datasetState>>(s_id, std::move(state)));
         slck.unlock();
 
-        // signal other waiting state requests, that we received this state
-        {
-            std::unique_lock<std::mutex> _lck_rcvd(_lock_recv_state);
-            _requested_states.erase(state_id);
-        }
-        _cv_received_state.notify_all();
+        // Other waiting state requests are signalled by ~claim_guard, which
+        // runs on this path as well as on all the failure paths below.
 
         // hash collisions are checked for by the broker
         if (!new_state.second)

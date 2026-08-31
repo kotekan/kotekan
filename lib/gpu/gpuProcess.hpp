@@ -57,6 +57,11 @@ protected:
     gpuDeviceInterface* dev;
     std::vector<std::vector<gpuCommand*>> commands;
 
+    /// REST path of the profiling endpoint. Built once so that main_thread()
+    /// and the destructor cannot drift apart; unique_name already starts
+    /// with "/", so this reads e.g. "/gpu_profile/gpuB/gpu_0".
+    const std::string _profile_endpoint;
+
     // Config variables
     uint32_t _gpu_buffer_depth;
     uint32_t gpu_id;

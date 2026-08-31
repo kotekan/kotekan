@@ -270,6 +270,11 @@ public:
     /// The list of consumer names registered to this buffer
     std::map<std::string, StageInfo> consumers;
 
+    /// Incremented (under @c mutex) whenever an entry is erased from
+    /// @c consumers, so that waiters can detect their own unregistration
+    /// without re-looking their entry up on every wake.
+    uint64_t consumers_epoch = 0;
+
     /// The list of producer names registered to this buffer
     std::map<std::string, StageInfo> producers;
 
@@ -435,11 +440,15 @@ public:
      * This blocking function will return only when the frame_id request is marked
      * as full internally, or the function @c send_shutdown_signal() is called, which
      * causes the function to return a @c NULL pointer.
+     * @c NULL is also returned if @p consumer_name is not (or no longer)
+     * registered as a consumer of this buffer, e.g. after the stage called
+     * @c unregister_consumer() on itself.
      * Generally a stage should exit and cleanup if NULL is returned.
      *
-     * @param[in] consumer_name The name of the registered producer requesting the frame_id
+     * @param[in] consumer_name The name of the registered consumer requesting the frame_id
      * @param[in] frame_id The id of the frame to wait for.
-     * @returns A pointer to the frame, or NULL if the buffer is shutting down.
+     * @returns A pointer to the frame, or NULL if the buffer is shutting down
+     *          or the consumer is not registered.
      * @warning After calling this function for a given consumer and frame_id it
      *          should not be called again on that frame_id until after
      *          a call to @c mark_frame_empty() with that consumer and frame_id
@@ -458,7 +467,8 @@ public:
      * @return Return status:
      *   - `0`: Success! We have a new frame.
      *   - `1`: Failure! We timed out waiting.
-     *   - `-1`: Failure! We received the thread exit signal.
+     *   - `-1`: Failure! We received the thread exit signal, or the consumer
+     *     is not (or no longer) registered on this buffer.
      **/
     int wait_for_full_frame_timeout(const std::string& name, const int ID,
                                     const struct timespec timeout);
