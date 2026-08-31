@@ -1611,7 +1611,7 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #105 — fleet-common q-crash BURSTS = the clock-freq bias EMA OSCILLATES and is COMMANDED into every seed (ROOT-CAUSED 2026-08-30 ~21:00 UTC, fix pending)
+## #105 — fleet-common q-crash BURSTS = the clock-freq bias EMA OSCILLATES and is COMMANDED into every seed (CLOSED 2026-08-31 00:50 UTC: all 3 fixes verified on sky)
 
 The "funny q oscillations": per-sat q crashes 4 -> <1 with immediate recovery, bursty
 (spacing 30-480 s), visible fleet-wide as q variance while medians stay healthy. Fenced by
@@ -1699,6 +1699,22 @@ ALL THREE FIXES BUILT AND DEPLOYED 2026-08-31 00:14-00:24 UTC (KV: "we want all 
      Sky, minutes after relaunch: detections mod-62.5 clustering R 0.996 -> 0.294;
      strongest sat's BRDC residual +1 Hz.
   Pre-reg + falsifiers: fixtures/expectations_20260831_105_fixes.txt (30-min judge).
+
+VERDICT (26-min settled window, 00:25-00:50 UTC):
+  * THE MECHANISM IS DEAD: common-mode disc over the strong sats mean -0.026, sd 0.039,
+    max |0.27| -- pre-fix it ramped to +-0.97 and railed every ~5 min. Disc-railed q<1
+    samples 5/156 (pre-fix: every crash).
+  * F2 PASS: gps per-sat q SD median 0.87 -> 0.393 (target < 0.45; now at the other
+    chains' level). F3 PASS: R 0.996 -> 0.294, strongest sat BRDC resid +1 Hz. F4 PASS:
+    raw bias swings collapsed (fix 3 shrank the raw at the source), seeds flat -1.1 Hz.
+    F5 PASS: gal/bds q SD 0.34-0.55, unchanged.
+  * F1 RESTATED: the raw q<1 counter still reads ~53/h, but 127/156 samples are TWO weak
+    sats hovering at the presence floor (PRN 4 med q 1.54, PRN 27 med q 2.13) -- the
+    pre-existing PARKED weak-sat birth-cycling class, now the DOMINANT residual q<1
+    source on gps and the natural next target. #105-class events (multi-sat staggered
+    disc-railed sweeps): ~0.
+  * UNBLOCKED: the rrate-command benefit judge (the fleet q-SD metric was #105-dominated)
+    and the b2b + gps_l5 carrier arms.
 
 
 ## #33 — THE VECTOR TRACKER: CLOSED AS BUILT (2026-08-30)
