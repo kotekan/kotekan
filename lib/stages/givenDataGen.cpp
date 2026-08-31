@@ -9,7 +9,6 @@
 #include "fmt.hpp" // for format
 
 #include <assert.h>   // for assert
-#include <cstdio>     // for snprintf
 #include <cstring>    // for memcpy
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
@@ -136,11 +135,11 @@ void givenDataGen::main_thread() {
 
         chordmeta->set_frame_counter(abs_frame_id);
 
-        const int name_written =
-            std::snprintf(chordmeta->name, sizeof chordmeta->name, "%s", _name.get_c_string());
-        if (!(name_written < (int)sizeof chordmeta->name)) {
+        // The name field is not NUL-terminated, so all of it is usable
+        if (_name.get_string().size() > sizeof chordmeta->name) {
             throw std::runtime_error("Name too long");
         }
+        chordmeta->set_name(_name.get_string());
 
         chordmeta->type = _datatype;
 
@@ -148,14 +147,11 @@ void givenDataGen::main_thread() {
         assert(chordmeta->dims <= CHORD_META_MAX_DIM);
 
         for (int d = 0; d < chordmeta->dims; ++d) {
-            const int dim_written =
-                std::snprintf(chordmeta->dim_name[d], sizeof chordmeta->dim_name[d], "%s",
-                              _dim_name.at(d).get_c_string());
-            if (!(dim_written < (int)sizeof chordmeta->dim_name[d])) {
+            if (_dim_name.at(d).get_string().size() > sizeof chordmeta->dim_name[d]) {
                 throw std::runtime_error("Dimension label too long");
             }
-            chordmeta->dim[d] = _array_shape.at(d);
-            chordmeta->dim_scaling[d] = _dim_scalings.at(d);
+            chordmeta->set_array_dimension(d, _array_shape.at(d), _dim_name.at(d).get_string(),
+                                           _dim_scalings.at(d));
         }
         chordmeta->set_strides_simple();
 
