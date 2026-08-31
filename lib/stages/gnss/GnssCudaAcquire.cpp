@@ -349,8 +349,35 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
     const double mean = sum / (double)((long)_nd * cells_per_dop);
     const int best_q = (int)(best_off / _s_cols);
     const int best_i = (int)(best_off % _s_cols);
+    // #105: the neighbour Doppler planes AT the winning tau (3x3 cell window, matching
+    // channelized_peak), for the two-bin ratio refine in peak_from_reduction. Nine floats per
+    // plane over PCIe -- the surface itself stays on the device.
+    double dop_loc_m = -1.0, dop_loc_p = -1.0;
+    if (_nd >= 3 && best_d > 0 && best_d < _nd - 1) {
+        auto local_max = [&](int d) {
+            double m = 0.0;
+            for (int dq = -1; dq <= 1; ++dq) {
+                const int q = ((best_q + dq) % _Mp + _Mp) % _Mp;
+                const int i0 = std::max(0, best_i - 1);
+                const int i1 = std::min(_s_cols - 1, best_i + 1);
+                float row[3] = {0.f, 0.f, 0.f};
+                ck(cudaMemcpyAsync(row,
+                                   _p->dSurf + (long)d * cells_per_dop + (long)q * _s_cols + i0,
+                                   (size_t)(i1 - i0 + 1) * sizeof(float), cudaMemcpyDeviceToHost,
+                                   _p->stream),
+                   "dop_loc row");
+                ck(cudaStreamSynchronize(_p->stream), "dop_loc sync");
+                for (int i = 0; i <= i1 - i0; ++i)
+                    m = std::max(m, (double)row[i]);
+            }
+            return m;
+        };
+        dop_loc_m = local_max(best_d - 1);
+        dop_loc_p = local_max(best_d + 1);
+    }
     return gnss::peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, peak,
-                                     mean, best_d, best_q, best_i, dop_peak);
+                                     mean, best_d, best_q, best_i, dop_peak,
+                                     gnss::FINE_LAG_SIGN_PFB, dop_loc_m, dop_loc_p);
 }
 
 void GnssCudaAcquire::download_surface(std::vector<double>& out) const {

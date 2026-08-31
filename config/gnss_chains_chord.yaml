@@ -30,6 +30,14 @@ common:
   # is not a measurement to defend -- v1 refused the sibling's real +149.44 against it and
   # locked both 1176 MHz chains out seedless, 15:51-15:56).
   dr-clock-adopt-max-chips: 5.0
+  # #105 FIX 1 (2026-08-31): seeds ride a tau~30 min EMA of the raw clock-bias medians;
+  # search hints keep the fast a=0.05 EMA. The shared number was the defect: the fast EMA
+  # tracks the +-10 Hz wander of the median of bin-quantized detection sawtooths, and every
+  # model-primary seed commanded that wobble into its replica code rate (k*cb ~ 0.08 chips/s)
+  # -- the whole gps chain walked ~1 chip off-peak and q-crashed every ~5 min, per-sat
+  # staggered snap-backs (the "funny q oscillations"). gal/bds were immune only because they
+  # never solve a local bias. Set at common: a no-op on unsolved chains by construction.
+  seed-bias-source: slow
   # #99 ROOT FIX (2026-08-29, KV-approved): the previous coordinates (49.32075144444,
   # -119.62081125 -- the array ORIGIN, likely the CHIME reference) sit ~155 m from the
   # dishes' effective phase centre. Solved by LSQ on 6,971 banked overnight integrity

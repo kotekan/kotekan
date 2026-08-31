@@ -115,7 +115,7 @@ def stage_coast_drop(ctx):
             if ctx.utc0_sample0:
                 _age = max(0.0, (ctx.drp.now_w - ctx.utc0_sample0)
                            - ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec)
-            new_dop = ctx.pred[prn][0] + ctx.cb.value           # the forecast AT NOW
+            new_dop = ctx.pred[prn][0] + ctx.cb.seed            # the forecast AT NOW (#105: seed bias)
             _old_rate = ctx.seeds[prn].get("doppler_rate_hz_s", 0.0)
             # what the tracker is APPLYING at this instant, i.e. the currency cp is in
             old_dop = ctx.seeds[prn].get("doppler_hz", new_dop) + _old_rate * _age
@@ -201,7 +201,7 @@ def stage_detections_to_seeds(ctx):
         # B1C zombie-birth investigation continues on that data).
         if (ctx.args.det_alias_fold and ctx.args.almanac and prn in ctx.pred
                 and ctx.cb.ema is not None and not ctx.cb.stale):
-            _aref = ctx.pred[prn][0] + ctx.cb.value
+            _aref = ctx.pred[prn][0] + ctx.cb.seed
             _k = round((dop - _aref) / ctx.q_alias_hz)
             if _k != 0 and abs(dop - _aref) < 3.5 * ctx.q_alias_hz:
                 _log_rl("afold-%d" % prn,
@@ -223,7 +223,7 @@ def stage_detections_to_seeds(ctx):
         if ctx.args.dll_deep_gate_from_search > 0.0 and snr >= ctx.args.dll_deep_gate_from_search:
             ctx.dls.deep_gate_seen[prn] = ctx.t0
         _dop_src = "pred" if (ctx.args.almanac and prn in ctx.pred) else "DET(grid)"
-        seed_dop = (ctx.pred[prn][0] + ctx.cb.value) if (ctx.args.almanac and prn in ctx.pred) else dop
+        seed_dop = (ctx.pred[prn][0] + ctx.cb.seed) if (ctx.args.almanac and prn in ctx.pred) else dop
         # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
         # that owns the undetected sats. Mixing sources stepped the seed doppler by
         # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
@@ -243,7 +243,7 @@ def stage_detections_to_seeds(ctx):
         if v_dr is not None and _dop_trusted:
             _dop_src = "dr" if _unt is None else "dr(code-untrusted)"
             seed_dop = (ctx.args.doppler_sign * (-v_dr["range_rate_mps"] / C_LIGHT
-                                             * ctx.args.carrier_hz) + ctx.cb.value)
+                                             * ctx.args.carrier_hz) + ctx.cb.seed)
             if _unt is not None:
                 _log_rl("dopkeep-%d" % prn,
                         "PRN %d: code model untrusted (%s) but KEEPING the BRDC Doppler "
@@ -286,7 +286,7 @@ def stage_detections_to_seeds(ctx):
             _log("PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
                  % (prn, seed_dop, _dop_src, dop,
                     ("%.1f" % (ctx.pred[prn][0])) if (ctx.args.almanac and prn in ctx.pred) else "n/a",
-                    ctx.cb.value, ctx.car.trim.get(prn, 0.0)))
+                    ctx.cb.seed, ctx.car.trim.get(prn, 0.0)))
         elif abs(seed_dop - _prev_sd) > 10.0 and prn in ctx.cp_held:
             # HELD sat: the candidate walks while the emitted tuple stays frozen /
             # translated -- this "step" is never applied as-is, and logging it every

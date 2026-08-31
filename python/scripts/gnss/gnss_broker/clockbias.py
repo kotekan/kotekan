@@ -28,11 +28,26 @@ class ClockBias(object):
     """The receiver clock-frequency bias and its freshness."""
 
     __slots__ = ("value", "ema", "cal", "meas_t", "stale", "available",
-                 "code_ema", "code_cal")
+                 "seed", "code_ema", "code_cal")
 
     def __init__(self, value=0.0, ema=None, cal=None, meas_t=0.0):
-        # The bias currently used for seeding and hint centring, in Hz.
+        # The bias used for hint centring, in Hz.
         self.value = value
+        # ---- THE SEED'S OWN BIAS (#105, 2026-08-30) --------------------------------------
+        # The two consumers named in the module docstring want opposite things, and #105 is
+        # what happens when they share one number anyway: the a=0.05 EMA tracks the +-10 Hz
+        # WANDER of the median of bin-quantized detection sawtooths (62.5 Hz grid, ~5 sats,
+        # minute-scale bin dwells -- the "dither averages it out" assumption fails there),
+        # and every model-primary seed then commands that wobble into its replica's code
+        # rate (k = f_chip/f_carrier), walking the whole chain ~1 chip off-peak every ~5
+        # minutes. The search window shrugs at +-10 Hz; the seeds cannot.
+        #
+        # `seed` is what the SEED consumers read. Under --seed-bias-source=slow it is a
+        # long-memory EMA (--seed-bias-alpha, tau ~30 min) of the same raw medians: the
+        # quantization wander is suppressed ~sqrt(alpha ratio) while genuine GPSDO thermal
+        # drift (hour-scale) is still followed -- which a static calibration would not do.
+        # Under the default it mirrors `value`, byte-for-byte the old behaviour.
+        self.seed = value
         # Smoothed estimate; None until enough satellites have been solved together.
         self.ema = ema
         # The calibrated variant, when a calibration source is armed.
@@ -56,6 +71,23 @@ class ClockBias(object):
         # minutes. That was E5a's rise-peak-fall envelope with the disc railed and E >> L.
         self.code_ema = None
         self.code_cal = None
+
+    def update_seed(self, raw_bias, source, alpha, snapped):
+        """Advance the SEED-side bias from this cycle's raw multi-sat median (#105).
+
+        `snapped` mirrors the hint EMA's snap condition (first solve or stale re-solve),
+        captured by the caller BEFORE that branch clears `stale`: a genuine measurement
+        gap outranks the slow memory, exactly as it outranks the fast one. Otherwise
+        'slow' crawls at its own alpha and 'ema' keeps the seed glued to the hint EMA --
+        the pre-#105 behaviour, byte-for-byte.
+        """
+        if source != "slow":
+            self.seed = self.ema if self.ema is not None else self.value
+        elif snapped:
+            self.seed = raw_bias
+        else:
+            self.seed += alpha * (raw_bias - self.seed)
+        return self.seed
 
     def check_stale(self, t0, max_age_s):
         """Update and return `stale`: is the last real measurement older than max_age_s?

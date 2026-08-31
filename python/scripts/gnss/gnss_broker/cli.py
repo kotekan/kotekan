@@ -1227,6 +1227,21 @@ def build_parser(description):
                          "hint out of the narrow window -- a self-locking deadlock where no second "
                          "sat can ever acquire to correct it (2026-07-12: BDS-2 C14 froze the whole "
                          "B1C constellation at -1550 Hz).")
+    ap.add_argument("--seed-bias-source", choices=("ema", "slow"), default="ema",
+                    help="which clock-freq bias the SEED consumers ride (#105). 'ema' = the "
+                         "hint EMA, the old shared-number behaviour. 'slow' = a long-memory "
+                         "EMA (--seed-bias-alpha) of the same raw medians: search hints keep "
+                         "the fast EMA (a wandering window centre is harmless against "
+                         "hundreds-of-Hz margins), but seeds stop commanding the +-10 Hz "
+                         "quantization wander into every replica's code rate (measured: the "
+                         "wander integrates ~1 chip off-peak fleet-wide every ~5 min = the "
+                         "#105 q-crash bursts; gal/bds were immune only because they never "
+                         "solve a local bias).")
+    ap.add_argument("--seed-bias-alpha", type=float, default=0.005,
+                    help="EMA weight for the seed-side clock-freq bias under "
+                         "--seed-bias-source=slow (per solve, ~10 s cadence: 0.005 => tau "
+                         "~30 min -- above the minute-scale quantization wander, below "
+                         "hour-scale GPSDO thermal drift).")
     ap.add_argument("--tle-name-filter", type=str, default=None,
                     help="regex on the TLE NAME; almanac keeps only matching sats. Encodes "
                          "signal capability the TLE group can't (e.g. 'BEIDOU-3' for B1C: "

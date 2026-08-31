@@ -906,7 +906,7 @@ def dr_seed(ctx):
             # solve -- it's a receiver constant, common to both models.
             v2 = ctx.drp.pd2.get((ctag, prn))
             dop_geo = -v["range_rate_mps"] / ctx.dr_eph_mod.C_LIGHT * ctx.args.carrier_hz
-            dop_seed = ctx.args.doppler_sign * dop_geo + ctx.cb.value
+            dop_seed = ctx.args.doppler_sign * dop_geo + ctx.cb.seed  # #105: seed bias, not the hint EMA
             # ⚠️ THE HALVED DRATE (found 2026-08-22, the per-sat ramp's root).
             # This line predates the task #52 pair centring: when pd2 sat at
             # now_w+4 the /4.0 was a correct forward difference, but pd2 moved

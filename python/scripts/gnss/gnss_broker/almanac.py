@@ -259,7 +259,8 @@ def stage_almanac_predict(ctx):
                 # Local count below the bar: the band's answer stands ALONE. The local
                 # residual is deliberately discarded, not down-weighted.
                 raw_bias = _sib_bw / _sib_w
-            if ctx.cb.ema is None or ctx.cb.stale:
+            _cb_snap = ctx.cb.ema is None or ctx.cb.stale   # captured before the branch clears it
+            if _cb_snap:
                 # First solve, or stale-rescue re-solve: SNAP to the fresh median. An
                 # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
                 # minutes converging through exactly the hint region it just vacated.
@@ -314,6 +315,9 @@ def stage_almanac_predict(ctx):
                 ctx.cb.ema += ctx.args.bias_alpha * (raw_bias - ctx.cb.ema)
             ctx.cb.meas_t = ctx.t0
             ctx.cb.value = ctx.cb.ema
+            # #105: the seed consumers' bias -- ClockBias.update_seed has the invariant.
+            ctx.cb.update_seed(raw_bias, ctx.args.seed_bias_source,
+                               ctx.args.seed_bias_alpha, _cb_snap)
             # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
             # error -- so every co-hosted chain can have this without solving it. A
             # chain that HAS its own estimate never reads back, which is why publishing
@@ -396,10 +400,12 @@ def stage_almanac_predict(ctx):
         if _local_ok or _sib_ok:
             _log_rl("clkbias",
                     "clock-freq bias %+.0f Hz (raw %+.0f, %d sats%s + %d sib, EMA a=%.2f) "
-                    "-> seeding predicted Doppler"
+                    "-> hints; seeds ride %+.1f Hz (%s)"
                     % (ctx.cb.value, raw_bias, len(resid),
                        "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
-                       n_sib, ctx.args.bias_alpha))
+                       n_sib, ctx.args.bias_alpha, ctx.cb.seed,
+                       "slow a=%.3f" % ctx.args.seed_bias_alpha
+                       if ctx.args.seed_bias_source == "slow" else "= hint EMA"))
         else:
             # Say WHY, with both counts -- "1 sat" alone sent this investigation looking
             # at the clock, the sky and the front end before anyone asked whether the
