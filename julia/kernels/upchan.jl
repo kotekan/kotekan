@@ -1914,6 +1914,7 @@ function fix_ptx_kernel()
         cxx,
         Dict(
             "kernel_name" => "Upchannelizer_$(setup)_U$(U)",
+            "cuda_arch" => cuda_arch,
             "upchannelization_factor" => "$U",
             "kernel_design_parameters" => [
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),

@@ -36,6 +36,11 @@ target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kote
 add_executable(test_ringbuffer test_ringbuffer.cpp)
 target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_ringbuffer_read_without_claiming
+add_executable(test_ringbuffer_read_without_claiming test_ringbuffer_read_without_claiming.cpp)
+target_link_libraries(test_ringbuffer_read_without_claiming
+                      PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
 # target_link_libraries(test_fmt PRIVATE libexternal kotekan_utils)
@@ -110,6 +115,10 @@ if(HDF5_FOUND
 endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
+    add_executable(test_linearAlgebra test_linearAlgebra.cpp)
+    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core)
+    target_include_directories(test_linearAlgebra PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+
     add_executable(test_eigenStages test_eigenStages.cpp)
     target_link_libraries(test_eigenStages PRIVATE libexternal kotekan_stages kotekan_libs
                                                    kotekan_utils kotekan_core)

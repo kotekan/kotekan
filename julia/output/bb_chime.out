@@ -1,3 +1,23 @@
+Precompiling packages...
+    OrderedCollections Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/OrderedCollections/LtT3J_gIhQq.ji.pidfile)
+    ExprTools Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/ExprTools/eM8wu_gIhQq.ji.pidfile)
+    Adapt Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/Adapt/rUIgN_gIhQq.ji.pidfile)
+    Crayons Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/Crayons/TXPcU_gIhQq.ji.pidfile)
+    LLVMExtra_jll Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/LLVMExtra_jll/R9OeX_gIhQq.ji.pidfile)
+    StringManipulation Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/StringManipulation/4nJQd_gIhQq.ji.pidfile)
+    CUDA_Driver_jll Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA_Driver_jll/QJyk7_gIhQq.ji.pidfile)
+    CUDA_Runtime_Discovery Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA_Runtime_Discovery/T9PTO_gIhQq.ji.pidfile)
+  10055.8 ms  ✓ Adapt
+  10058.8 ms  ✓ ExprTools
+  10065.2 ms  ✓ CUDA_Runtime_Discovery
+  20088.1 ms  ✓ Crayons
+  20482.1 ms  ✓ OrderedCollections
+  20085.2 ms  ✓ StringManipulation
+  30397.3 ms  ✓ CUDA_Driver_jll
+  30402.5 ms  ✓ LLVMExtra_jll
+    CUDA Being precompiled by another process (pid: 456792, pidfile: /home/eschnett/.julia/compiled/v1.12/CUDA/oWw5k_gIhQq.ji.pidfile)
+  69035.0 ms  ✓ CUDA
+  9 dependencies successfully precompiled in 101 seconds. 83 already precompiled.
 [Creating bb kernel...]
 [Done creating bb kernel]
 CHORD 8-bit baseband beamformer

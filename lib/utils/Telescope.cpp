@@ -5,7 +5,7 @@
 #include "restServer.hpp"    // for restServer, connectionInstance
 #include "timeUtil.hpp"      // for EOP, BareEOP, get_ERA_from_UT1, EOP_comp_time, eop_null
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view, format
 
 #include <algorithm>    // for copy, lower_bound, sort
 #include <functional>   // for bind, _1, function
@@ -31,8 +31,10 @@ static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits
                                                 .yp_as = 0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-                     const std::string& eop_updatable_config_path, const GeoFrame& frame) :
-    _unique_name(tel_path), _frame(frame), _require_eop(require_eop) {
+                     bool fatal_eop_out_of_range, const std::string& eop_updatable_config_path,
+                     const GeoFrame& frame) :
+    _unique_name(tel_path), _frame(frame), _require_eop(require_eop),
+    _fatal_eop_out_of_range(fatal_eop_out_of_range) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
@@ -189,6 +191,13 @@ void Telescope::send_time0_ns(connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
+void Telescope::report_eop_out_of_range(const std::string& msg) const {
+    if (_fatal_eop_out_of_range)
+        FATAL_ERROR("{:s}", msg);
+
+    WARN("{:s}", msg);
+}
+
 std::vector<EOP> Telescope::get_current_EOP_table() const {
 
     std::vector<EOP> tab_copy;
@@ -216,8 +225,9 @@ EOP Telescope::get_EOP_at_time_ns(int64_t t_target_ns) const {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
-            WARN("EOP table is empty, cannot interpolate EOP at instrument time {:d} s + {:d} ns.",
-                 t_target_ns / GIGA, t_target_ns % GIGA);
+            report_eop_out_of_range(fmt::format(
+                "EOP table is empty, cannot interpolate EOP at instrument time {:d} s + {:d} ns.",
+                t_target_ns / GIGA, t_target_ns % GIGA));
             return eop_null;
         }
 
@@ -234,11 +244,11 @@ EOP Telescope::get_EOP_at_time_ns(int64_t t_target_ns) const {
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
             if (t_target_ns < eop_b->t_inst_ns) {
-                WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. "
-                     "Earliest "
-                     "time = {:d} s + {:d} ns.",
-                     t_target_ns / GIGA, t_target_ns % GIGA, eop_b->t_inst_ns / GIGA,
-                     eop_b->t_inst_ns % GIGA);
+                report_eop_out_of_range(fmt::format(
+                    "Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. "
+                    "Earliest time = {:d} s + {:d} ns.",
+                    t_target_ns / GIGA, t_target_ns % GIGA, eop_b->t_inst_ns / GIGA,
+                    eop_b->t_inst_ns % GIGA));
             }
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
@@ -247,12 +257,11 @@ EOP Telescope::get_EOP_at_time_ns(int64_t t_target_ns) const {
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
             if (t_target_ns > eop_last->t_inst_ns) {
-                WARN(
-                    "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
-                    "time = "
-                    "{:d} s + {:d} ns.",
+                report_eop_out_of_range(fmt::format(
+                    "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. "
+                    "Latest time = {:d} s + {:d} ns.",
                     t_target_ns / GIGA, t_target_ns % GIGA, eop_last->t_inst_ns / GIGA,
-                    eop_last->t_inst_ns % GIGA);
+                    eop_last->t_inst_ns % GIGA));
             }
         } else {
             // Interpolate!
@@ -296,8 +305,9 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
-            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
-                 t_ut1_ns / GIGA, t_ut1_ns % GIGA);
+            report_eop_out_of_range(fmt::format(
+                "EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
+                t_ut1_ns / GIGA, t_ut1_ns % GIGA));
             return eop_null;
         }
 
@@ -315,21 +325,24 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
             eop.delta_UT1_inst = eop_b->delta_UT1_inst;
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
-            WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest "
-                 "UT1 "
-                 "= {:d} s + {:d} ns.",
-                 t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_b->t_ut1_ns / GIGA, eop_b->t_ut1_ns % GIGA);
+            if (t_ut1_ns < eop_b->t_ut1_ns) {
+                report_eop_out_of_range(fmt::format(
+                    "Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. "
+                    "Earliest UT1 = {:d} s + {:d} ns.",
+                    t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_b->t_ut1_ns / GIGA,
+                    eop_b->t_ut1_ns % GIGA));
+            }
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
             auto eop_last = eop_b - 1;
             eop.delta_UT1_inst = eop_last->delta_UT1_inst;
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
-            WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 "
-                 "= "
-                 "{:d} s + {:d} ns.",
-                 t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_last->t_ut1_ns / GIGA,
-                 eop_last->t_ut1_ns % GIGA);
+            report_eop_out_of_range(
+                fmt::format("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. "
+                            "Latest UT1 = {:d} s + {:d} ns.",
+                            t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_last->t_ut1_ns / GIGA,
+                            eop_last->t_ut1_ns % GIGA));
         } else {
             // Interpolate! Target time = t, in table interval [ta, tb]
             auto eop_a = eop_b - 1;

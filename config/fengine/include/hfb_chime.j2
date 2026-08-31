@@ -184,7 +184,7 @@ run_set_hfb2_beams:
     y_max: hfb2_beam_separation_y * (hfb2_num_beams_y - 1) / 2.0
 
 run_calc_hfb2_weights:
-    kotekan_stage: calcFRB2Weights
+    kotekan_stage: cudaCalcFRB2Weights
     upchannelization_schedule_name: /upchan_hfb
     frb2_num_beams_x: hfb2_num_beams_x
     frb2_num_beams_y: hfb2_num_beams_y

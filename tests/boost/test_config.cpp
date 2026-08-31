@@ -181,3 +181,42 @@ BOOST_AUTO_TEST_CASE(_parse_usage_report_level) {
     BOOST_CHECK_THROW(Config::parse_usage_report_level(json("loud")), std::runtime_error);
     BOOST_CHECK_THROW(Config::parse_usage_report_level(json(3)), std::runtime_error);
 }
+
+// get_default() must distinguish an absent value, where the default is what the
+// caller asked for, from one that is set but unreadable, which is a config error.
+// ERROR_NON_OO throws when compiled into a boost test, so the second case appears
+// here as a throw rather than a log line.
+BOOST_AUTO_TEST_CASE(_get_default_malformed_value) {
+    json json_config = {
+        {"good_list", {0, 2, 4, 6}},
+        // A list of lists, as a YAML "- [0, 2, 4, 6]" produces.
+        {"nested_list", {{0, 2, 4, 6}}},
+        {"a_string", "not a number"},
+        {"stage", {{"child", json::object()}}},
+    };
+    Config config;
+    config.update_config(json_config);
+
+    const std::vector<uint32_t> fallback = {99};
+
+    // A readable value is returned unchanged.
+    BOOST_CHECK_EQUAL(config.get_default<std::vector<uint32_t>>("/", "good_list", fallback).size(),
+                      4u);
+
+    // An absent value returns the default and is not reported.
+    BOOST_CHECK_EQUAL(config.get_default<std::vector<uint32_t>>("/", "absent", fallback).size(),
+                      1u);
+
+    // A value of the wrong type is reported.
+    BOOST_CHECK_THROW(config.get_default<std::vector<uint32_t>>("/", "nested_list", fallback),
+                      std::runtime_error);
+    BOOST_CHECK_THROW(config.get_default<int>("/", "a_string", -1), std::runtime_error);
+
+    // Including one reached by walking up the tree from a deeper scope.
+    BOOST_CHECK_THROW(
+        config.get_default<std::vector<uint32_t>>("/stage/child", "nested_list", fallback),
+        std::runtime_error);
+
+    // get() remains strict for callers that want the failure themselves.
+    BOOST_CHECK_THROW(config.get<std::vector<uint32_t>>("/", "nested_list"), std::runtime_error);
+}

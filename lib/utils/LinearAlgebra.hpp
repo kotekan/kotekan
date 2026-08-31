@@ -8,6 +8,10 @@
 #include "visUtil.hpp"
 
 #include <blaze/Blaze.h>
+#include <complex>     // for complex
+#include <cstdint>     // for uint32_t
+#include <random>      // for mt19937, uniform_real_distribution
+#include <type_traits> // for is_same_v
 
 // Type defs for simplicity
 // Map complex types to their real equivalent
@@ -220,6 +224,51 @@ struct EigConvergenceStats {
     double rms = 0.0;
 };
 
+/// Seed given to each thread's copy of `eigen_subspace_rng`.
+constexpr uint32_t eigen_subspace_seed = 0x9e3779b9;
+
+/**
+ * @brief The random number generator used to initialise the subspace iteration.
+ *
+ * Every thread gets its own generator, seeded identically. Blaze's `rand` cannot be
+ * used for this: it draws from a single static generator (`Random<RNG>::rng_` in
+ * blaze/util/Random.h) that is neither `thread_local` nor mutex protected, so two
+ * Eigen stages drawing their starting subspaces at the same time would be a data race
+ * on its state.
+ *
+ * The fixed seed also makes the stages reproducible: a given stage draws the same
+ * sequence of starting subspaces on every run.
+ *
+ * @return  The calling thread's generator.
+ **/
+inline std::mt19937& eigen_subspace_rng() {
+    static thread_local std::mt19937 rng(eigen_subspace_seed);
+    return rng;
+}
+
+/**
+ * @brief Draw one random matrix element uniformly from [0, 1).
+ *
+ * That is the range `blaze::rand` uses, for both parts of a complex value.
+ *
+ * @param  rng  The generator to draw from.
+ *
+ * @return      The random element.
+ **/
+template<typename MT>
+MT rand_subspace_element(std::mt19937& rng) {
+    std::uniform_real_distribution<real_t<MT>> dist(0.0, 1.0);
+    if constexpr (std::is_same_v<MT, real_t<MT>>) {
+        return dist(rng);
+    } else {
+        // Draw in a fixed order. `blaze::rand<complex<T>>` passes two draws as
+        // function arguments, whose evaluation order the compiler chooses.
+        const real_t<MT> re = dist(rng);
+        const real_t<MT> im = dist(rng);
+        return MT(re, im);
+    }
+}
+
 /**
  * @brief Find a low rank decomposition of a masked matrix.
  *
@@ -237,6 +286,8 @@ struct EigConvergenceStats {
  *                   zero, use all eigenpairs.
  * @param  p         Size of the Krylov subspace in the augmented Ritz.
  * @param  q         Number of subspace updates per iteration.
+ * @param  rng       Generator for the random starting subspace. Defaults to the
+ *                   calling thread's generator.
  *
  * @return           The estimated eigenpairs.
  **/
@@ -245,7 +296,7 @@ std::pair<eig_t<MT>, EigConvergenceStats>
 eigen_masked_subspace(const DynamicHermitian<MT>& A,
                       const DynamicHermitian<float>& W, // Should this be symmetric
                       size_t k, float tol_eval, float tol_evec, size_t maxiter, size_t k_conv = 0,
-                      size_t p = 2, size_t q = 3) {
+                      size_t p = 2, size_t q = 3, std::mt19937& rng = eigen_subspace_rng()) {
     blaze::DynamicVector<real_t<MT>> evals, evalsp, etols;
     blaze::DynamicMatrix<MT, blaze::columnMajor> V, Vp;
 
@@ -260,7 +311,7 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
     V.resize(n, k);
     for (unsigned int i = 0; i < n; i++) {
         for (unsigned int j = 0; j < k; j++) {
-            V(i, j) = blaze::rand<MT>();
+            V(i, j) = rand_subspace_element<MT>(rng);
         }
     }
     V = orth(V);

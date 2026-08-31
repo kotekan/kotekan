@@ -1,7 +1,10 @@
 # Configuration name
 const setup = :hirax
+# See `setup_charts.jl` for what `compute_capability`, `ptx_compat`, and
+# `cuda_arch` mean.
 const compute_capability = v"8.6" # A40
 const ptx_compat = v"8.0"
+const cuda_arch = "sm_86" # A40
 
 # Time between time samples
 const sampling_time_μsec = 4096 / 1600

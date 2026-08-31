@@ -179,6 +179,7 @@ void FakeGpu::main_thread() {
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
+              config.get_default<bool>(path, "fatal_eop_out_of_range", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
               GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0, {0, 0, 0},
                        {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {

@@ -4,13 +4,17 @@ Config files in this directory are intended to be run as part of CI. The `run_te
 
 ## Usage
 
+Any mix of directories and individual configs can be given. Directories are searched for `.yaml`, `.yml` and `.j2` configs; an individual config can be given regardless of its extension.
+
 ```bash
-./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir>
+./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir|test_config>...
 ```
 
-**Example:**
+**Examples:**
 ```bash
 ./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests/cpu_batch
+./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests/cpu_batch/run_n2accum.yaml
+./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests/gpu_batch config/ci-tests/cpu_batch/run_n2accum.yaml
 ```
 
 ## Output Exampe

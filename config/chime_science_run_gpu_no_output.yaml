@@ -30,6 +30,14 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 num_elements: 2048
+# The bad feed mask is a rank-3 [1, num_polarizations, num_dishes] array. Element
+# `beamformer_idx` of the flat CHIME beamformer-order mask is `polarization * num_dishes + dish`,
+# so this is a reinterpretation of the mask rather than a reordering of it.
+num_polarizations: 2
+num_dishes: num_elements / num_polarizations
+# The bad feed mask is valid for this many input samples. The consumers here take one mask per
+# frame.
+bf_mask_lifetime_in_samples: samples_per_data_set
 num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
@@ -550,10 +558,14 @@ gpu_rfi_bad_input_buffers:
 # Bad inputs buffer
 bad_input_buffer:
     num_frames: buffer_depth
-    frame_size: num_elements
     metadata_pool: main_pool
     bad_inputs_buffer:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
+        value_type: int8
+        extents: [1, num_polarizations, num_dishes]
+        quantity_name: "bf_mask"
+        dimnames: ["Tbf", "P", "D"]
+        dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
 
 rfi_var_output_buffers:
     num_frames: buffer_depth * 50

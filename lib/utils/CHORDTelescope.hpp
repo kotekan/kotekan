@@ -338,6 +338,8 @@ private:
  *
  * @conf    eop_updatable_config    string. ConfigUpdater path for dynamic EOP updates. For more
  *information see Telescope.hpp
+ * @conf    fatal_eop_out_of_range  bool. Optional, default false. Fail fatally when an EOP is
+ *requested for a time outside the range of the EOP table. For more information see Telescope.hpp
  * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan

@@ -418,6 +418,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
             cxx,
             Dict(
                 "kernel_name" => "TransposeKernel_$setup",
+                "cuda_arch" => cuda_arch,
                 "kernel_design_parameters" => [
                     Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                     Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),

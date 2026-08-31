@@ -1,3 +1,41 @@
+Precompiling packages...
+    448.2 ms  ✓ Adapt
+    584.2 ms  ✓ ExprTools
+    542.6 ms  ✓ Adapt → AdaptSparseArraysExt
+    741.6 ms  ✓ GPUArraysCore
+    808.0 ms  ✓ Adapt → AdaptStaticArraysExt
+   1136.3 ms  ✓ Tracy
+   1676.6 ms  ✓ CUDA_Runtime_Discovery
+   1750.8 ms  ✓ LLVMExtra_jll
+   2328.4 ms  ✓ OrderedCollections
+   2326.2 ms  ✓ StringManipulation
+   2550.7 ms  ✓ Crayons
+   2985.8 ms  ✓ CUDA_Driver_jll
+   1526.4 ms  ✓ Tables
+   4370.8 ms  ✓ KernelAbstractions
+   2754.8 ms  ✓ CUDA_Runtime_jll
+    945.2 ms  ✓ KernelAbstractions → SparseArraysExt
+   1019.4 ms  ✓ KernelAbstractions → LinearAlgebraExt
+   1684.4 ms  ✓ CUDA_Compiler_jll
+   6810.3 ms  ✓ LLVM
+   1199.1 ms  ✓ LLVM → BFloat16sExt
+   1703.7 ms  ✓ GPUToolbox
+   2365.7 ms  ✓ UnsafeAtomics → UnsafeAtomicsLLVM
+   6094.1 ms  ✓ GPUArrays
+  15276.4 ms  ✓ PrettyTables
+  20220.0 ms  ✓ GPUCompiler
+  30826.3 ms  ✓ CUDA
+   4787.3 ms  ✓ Atomix → AtomixCUDAExt
+  27 dependencies successfully precompiled in 66 seconds. 65 already precompiled.
+Precompiling packages...
+   4516.0 ms  ✓ CUDASIMDTypes
+  1 dependency successfully precompiled in 5 seconds. 92 already precompiled.
+Precompiling packages...
+   6116.7 ms  ✓ IndexSpaces
+  1 dependency successfully precompiled in 7 seconds. 93 already precompiled.
+Precompiling packages...
+   1415.8 ms  ✓ Mustache
+  1 dependency successfully precompiled in 1 seconds. 8 already precompiled.
 [Creating bb kernel...]
 [Done creating bb kernel]
 CHORD 8-bit baseband beamformer
