@@ -8,11 +8,6 @@
 #include <mutex>
 #include <sstream> // for basic_ostream, basic_ostringstream, operator<<, basic_ostream::...
 
-std::vector<int> UpchannelizationSchedule::make_frequency_channels() const {
-    const auto frequency_channels = config.get<std::vector<int>>(unique_name, "frequency_channels");
-    return frequency_channels;
-}
-
 std::map<int, int> UpchannelizationSchedule::make_frequency_channels_to_indices() const {
     std::map<int, int> channels_to_indices;
     for (std::size_t index = 0; index < frequency_channels.size(); ++index)
@@ -166,12 +161,13 @@ bool UpchannelizationSchedule::invariant() const {
 }
 
 UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
-                                                   const std::string& unique_name) :
+                                                   const std::string& unique_name,
+                                                   const std::vector<int>& coarse_freq) :
     kotekan::kotekanLogging(),
     //
     unique_name(unique_name), config(config),
     //
-    frequency_channels(make_frequency_channels()),
+    frequency_channels(coarse_freq),
     frequency_channels_to_indices(make_frequency_channels_to_indices()),
     //
     upchan_factors(make_upchan_factors()),
@@ -184,14 +180,22 @@ UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
     assert(invariant());
 }
 
-const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Config& config,
-                                                                   const std::string& unique_name) {
+const UpchannelizationSchedule&
+UpchannelizationSchedule::instance(kotekan::Config& config, const std::string& unique_name,
+                                   const std::vector<int>& coarse_freq) {
     static std::map<std::string, UpchannelizationSchedule> the_instances;
     static std::mutex the_mutex;
 
     std::lock_guard<std::mutex> lock(the_mutex);
     const UpchannelizationSchedule& the_instance =
-        the_instances.try_emplace(unique_name, config, unique_name).first->second;
+        the_instances.try_emplace(unique_name, config, unique_name, coarse_freq).first->second;
+    if (!(the_instance.frequency_channels == coarse_freq)) {
+        const std::string coarse_freq_str = fmt::format("{:s}", fmt::join(coarse_freq, ","));
+        const std::string frequency_channels_str =
+            fmt::format("{:s}", fmt::join(the_instance.frequency_channels, ","));
+        FATAL_ERROR_NON_OO("Frequency channels [{:s}] and [{:s}] do not match", coarse_freq_str,
+                           frequency_channels_str);
+    }
     return the_instance;
 }
 

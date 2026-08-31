@@ -193,7 +193,7 @@ run_calc_hfb2_weights:
     frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
     frb2_beam_positions: host_hfb2_beam_positions_buffer
     frb2_weights: host_hfb2_weights_buffer
-    num_threads: 32
+    metadata: host_rfi_RFImask_buffer # contains all frequencies
 
 run_hfb23:
     gpu_0:
