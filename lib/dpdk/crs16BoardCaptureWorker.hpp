@@ -405,6 +405,31 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         // but for now we just start well into the future.
         uint64_t future_seq = seq_num + 6000000; // About 30 second in the future.
         uint64_t start_seq = future_seq - (future_seq % time_samples_per_frame);
+
+        // AXIS SANITY AT THE ANCHOR (2026-08-31, cx19 port 1). The anchor trusts the wire's
+        // sequence number absolutely, and an F-engine link can come back from the switch-port
+        // bounce with its counter resumed ~25 s stale and zero payloads. Anchored to that,
+        // the capture tracks the stale axis forever while every health instrument stays
+        // green (full packet rate, zero drops, frames advancing in real time -- all zeros,
+        // stamped hundreds of frames old). The wall clock is the one reference the wire
+        // cannot fake: to_time(seq) must be ~now (the healthy axis reads ~0.1 s stale).
+        {
+            const timespec wire_ts = Telescope::instance().to_time(seq_num);
+            const double axis_skew_s = current_time() - ts_to_double(wire_ts);
+            if (std::abs(axis_skew_s) > 5.0) {
+                ERROR("Port: {:d}, Worker: {:d}; THE WIRE'S SEQ AXIS IS {:.2f}s FROM THE WALL "
+                      "CLOCK at the capture anchor (seq {:d}). This is an F-engine link fault "
+                      "(a desynced board counter), not a node fault: capture will faithfully "
+                      "track a stale axis and every packet/GPU counter will look healthy while "
+                      "this GPU's records are too old for the fleet to bank. Check the "
+                      "F-engine link feeding this port (scripts/gnss/port_axis_gate.py).",
+                      port, worker_id, axis_skew_s, seq_num);
+            } else {
+                INFO("Port: {:d}, Worker: {:d}; capture anchor axis skew {:+.3f}s vs wall "
+                     "(healthy is ~-0.1s)",
+                     port, worker_id, axis_skew_s);
+            }
+        }
         prefetch_service->start(start_seq, stream_ids_expected);
         first_run = false;
         INFO("Port: {:d}, Worker: {:d}; Starting prefetch service at sequence number {:d}", port,
