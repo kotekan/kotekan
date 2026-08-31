@@ -100,6 +100,7 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    FPGAMonitor.cpp
     givenDataGen.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp

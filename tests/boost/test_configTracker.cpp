@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_configTracker"
 
 #include "configTracker.hpp" // for ConfigTracker
-#include "restServer.hpp"    // for restServer
+#include "restServer.hpp"    // for restServer, connectionInstance
 
 #include "json.hpp" // for json_ref, basic_json<>::object_t, json
 
@@ -211,6 +211,94 @@ BOOST_AUTO_TEST_CASE(insert_upstream_with_combined_payload) {
     // Different content under same (host, port) -> conflict.
     BOOST_CHECK_THROW(tracker.insertUpstreamConfig("10.6.0.1", 54321, combined_v2, "", "", "", ""),
                       std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(upstream_config_info_lookup) {
+    auto& tracker = ConfigTracker::instance();
+
+    tracker.insertUpstreamConfig("10.6.0.1", 54321, kSampleJson1, "", "", "", "");
+
+    const auto found = tracker.getUpstreamConfigInfo("10.6.0.1", 54321);
+    BOOST_REQUIRE(found.has_value());
+    BOOST_CHECK_EQUAL(found->config, kSampleJson1);
+    BOOST_CHECK_EQUAL(found->json_hash.size(), 32u);
+
+    // Same host, different port is a different entry.
+    BOOST_CHECK(!tracker.getUpstreamConfigInfo("10.6.0.1", 54322).has_value());
+}
+
+BOOST_AUTO_TEST_CASE(fpga_check_without_registration) {
+    // Nothing registered: the check reports that rather than trying to talk to
+    // anything, so a monitor can tell "no controller" from "controller moved".
+    auto& tracker = ConfigTracker::instance();
+    BOOST_CHECK(!tracker.getFpgaEndpoint().has_value());
+
+    const auto result = tracker.checkFpgaTracking();
+    BOOST_CHECK(result.status == ConfigTracker::FpgaCheckStatus::not_tracked);
+    BOOST_CHECK(result.observed_hash.empty());
+}
+
+BOOST_AUTO_TEST_CASE(fpga_check_against_live_controller) {
+    // Stand up a fake controller on a kotekan REST server, register it the way
+    // startup does, then poll it: unchanged reads back as ok, and moving
+    // either half is reported as a change naming that half.
+    auto& tracker = ConfigTracker::instance();
+    auto& server = restServer::instance();
+
+    // Port 0 lets the OS pick; restServer::start() binds before returning, so
+    // port() is final here.
+    server.start("127.0.0.1", 0);
+    const uint16_t port = server.port();
+    BOOST_REQUIRE(port != 0);
+
+    json fpga_config = {{"fpga_serial", "0xdeadbeef"}, {"clock_mhz", 800}};
+    json fpga_timing = {{"frame_zero_unix_ns", 1700000000000000000LL}};
+
+    server.register_get_callback(
+        "/fake_fpga_config", [&](connectionInstance& conn) { conn.send_json_reply(fpga_config); });
+    server.register_get_callback(
+        "/fake_fpga_timing", [&](connectionInstance& conn) { conn.send_json_reply(fpga_timing); });
+
+    tracker.fetchAndRegisterFpgaTracking("127.0.0.1", port, "/fake_fpga_config",
+                                         "/fake_fpga_timing");
+
+    const auto endpoint = tracker.getFpgaEndpoint();
+    BOOST_REQUIRE(endpoint.has_value());
+    BOOST_CHECK_EQUAL(endpoint->host, "127.0.0.1");
+    BOOST_CHECK_EQUAL(endpoint->port, port);
+    BOOST_CHECK_EQUAL(endpoint->config_endpoint, "/fake_fpga_config");
+    BOOST_CHECK(tracker.hasUpstreamConfig("127.0.0.1", port));
+
+    {
+        const auto result = tracker.checkFpgaTracking(0, 5);
+        BOOST_CHECK(result.status == ConfigTracker::FpgaCheckStatus::ok);
+        BOOST_CHECK_EQUAL(result.observed_hash, result.recorded_hash);
+    }
+
+    // A resync moves the timing half only.
+    fpga_timing["frame_zero_unix_ns"] = 1800000000000000000LL;
+    {
+        const auto result = tracker.checkFpgaTracking(0, 5);
+        BOOST_CHECK(result.status == ConfigTracker::FpgaCheckStatus::changed);
+        BOOST_CHECK(result.observed_hash != result.recorded_hash);
+        BOOST_CHECK(result.detail.find("timing") != std::string::npos);
+        BOOST_CHECK(result.detail.find("config") == std::string::npos);
+    }
+
+    // A reprogram moves the config half as well.
+    fpga_config["clock_mhz"] = 1200;
+    {
+        const auto result = tracker.checkFpgaTracking(0, 5);
+        BOOST_CHECK(result.status == ConfigTracker::FpgaCheckStatus::changed);
+        BOOST_CHECK(result.detail.find("config") != std::string::npos);
+        BOOST_CHECK(result.detail.find("timing") != std::string::npos);
+    }
+
+    // Polling never writes back: the record still describes the startup state.
+    BOOST_CHECK_EQUAL(tracker.n_configs(), 1u);
+
+    server.remove_get_callback("/fake_fpga_config");
+    server.remove_get_callback("/fake_fpga_timing");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
