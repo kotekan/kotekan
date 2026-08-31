@@ -5,6 +5,9 @@
 
 #include "json.hpp" // for json
 
+#include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
+
 #include <atomic>        // for atomic
 #include <event2/util.h> // for evutil_socket_t
 #include <evhttp.h>      // for evhttp  // IWYU pragma: keep
@@ -146,6 +149,8 @@ public:
      * @param port The port to bind.  Default: PORT_REST_SERVER
      */
     void start(const std::string& bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
+
+    void stop();
 
     /**
      * @brief Set the server thread CPU affinity
@@ -321,6 +326,12 @@ private:
 
     /// Alias map
     std::map<std::string, std::string> aliases;
+
+    /// Map of callback timers
+    std::map<std::string, StatTracker> callback_timers;
+
+    /// Callback timer metrics
+    prometheus::MetricFamily<kotekan::prometheus::Gauge>* timer_metrics;
 
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;
