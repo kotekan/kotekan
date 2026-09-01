@@ -25,6 +25,8 @@ log_level: info
 {% set using_dpdk = True %}
 {% set fake_upchan_voltage = False %}
 {% set do_once_and_dump = False %}
+{% set send_frb = False %}
+{% set send_n2 = False %}
 {% set send_baseband = False %}
 
 {% set num_polarizations = 2 %}
@@ -1815,7 +1817,7 @@ FRB:
             file_name: host_bf_mask_buffer
 {% endif %}
 
-{% if False %}
+{% if send_frb %}
     frb_send:
         kotekan_stage: frbNetworkSend
         in_buf: host_frb3_beams_buffer
@@ -1826,7 +1828,10 @@ FRB:
         # don't ping
         ping_dead_threshold: 0
         L1_node_ips:
-            - 10.8.204.11
+            # mock receiver IP
+            - 10.13.60.1
+            # L1 reciever node
+            # - 10.8.204.11
 {%- for i in range(255) %}
             - 127.0.0.1
 {% endfor %}
@@ -1834,6 +1839,20 @@ FRB:
 
 ################################################################################
 # Output to receivers
+
+{% if send_n2 %}
+# Transmit all the data to the receiver node
+buffer_send:
+    # server_ip: 10.1.50.12
+    # mock receiver IP
+    server_ip: 10.13.60.1
+    reconnect_time: 20
+    log_level: warn
+    n2:
+        kotekan_stage: bufferSend
+        buf: vis_buffer
+        server_port: 11024
+{% endif %}
 
 # this will move to the baseband receiver eventually
 write_baseband:
@@ -1847,7 +1866,9 @@ write_baseband:
 ## Transmit baseband data to the baseband receiver
 {%- if send_baseband %}
 baseband_send:
-  server_ip: 10.5.60.2
+  #server_ip: 10.5.60.2
+  # mock receiver IP
+  server_ip: 10.13.60.1
   reconnect_time: 60
   send_timeout: 600 # 10 minutes
   log_level: warn
