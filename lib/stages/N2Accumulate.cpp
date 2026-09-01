@@ -419,7 +419,57 @@ void N2Accumulate::main_thread() {
         std::shared_ptr<chordMetadata> rfiframemask_metadata =
             get_chord_metadata(in_rfiframemask_buf, in_rfiframemask_frame_id);
 
-        // Check synchronization
+        // Check synchronization.
+        //
+        // ⚠️ THE AUTOPSY (2026-09-01). Four nodes died on these FATALs in one night, each
+        // killed by ONE frame whose seq was HOURS older than its siblings' -- everything
+        // matched until that frame, so there is no pre-death window to catch live and the
+        // death itself must carry the evidence. The leading suspect is a recycled metadata
+        // pool object shipped without being re-stamped (it then carries whatever seq --
+        // and name/dims -- it held in its previous life, cf. the 9216 = 8x384x3 torn-read
+        // diagnosis). So on mismatch, print EVERYTHING both objects know plus the recent
+        // seq history of every stream: if the stale frame's name/dims belong to a
+        // DIFFERENT quantity, it is a recycled unstamped object and the fields name the
+        // producer; if only the seq is stale, it is a stamp-path bug in this stream's own
+        // producer. The FATAL still fires -- this is diagnosis, not survival.
+        auto _autopsy = [](const char* tag, const std::shared_ptr<chordMetadata>& m) {
+            ERROR_NON_OO("  AUTOPSY {:s}: seq={:d} name='{:s}' dims={:d} [{:s}]", tag,
+                         m->get_fpga_seq_num(),
+                         std::string(m->name, strnlen(m->name, CHORD_META_MAX_DIMNAME)),
+                         m->dims, m->get_dimensions_string());
+        };
+        {
+            static constexpr size_t SEQ_HIST = 16;
+            static thread_local std::array<std::array<int64_t, SEQ_HIST>, 5> _hist{};
+            static thread_local size_t _hist_n = 0;
+            const std::array<std::pair<const char*, const std::shared_ptr<chordMetadata>*>, 5>
+                _streams{{{"correlation", &frame_metadata},
+                          {"counts", &counts_metadata},
+                          {"rficounts", &rficounts_metadata},
+                          {"plcounts", &plcounts_metadata},
+                          {"rfiframemask", &rfiframemask_metadata}}};
+            bool _mismatch = false;
+            for (const auto& st : _streams)
+                if ((*st.second)->get_fpga_seq_num() != frame_metadata->get_fpga_seq_num())
+                    _mismatch = true;
+            if (_mismatch) {
+                ERROR_NON_OO("=== N2Accumulate DESYNC AUTOPSY ({:s}) ===", unique_name);
+                for (const auto& st : _streams)
+                    _autopsy(st.first, *st.second);
+                const size_t n = std::min(_hist_n, SEQ_HIST);
+                for (size_t k = 0; k < _streams.size(); ++k) {
+                    std::string h;
+                    for (size_t j = 0; j < n; ++j) {
+                        const size_t idx = (_hist_n - n + j) % SEQ_HIST;
+                        h += fmt::format("{}{}", j ? " " : "", _hist[k][idx]);
+                    }
+                    ERROR_NON_OO("  history {:s}: [{:s}]", _streams[k].first, h);
+                }
+            }
+            for (size_t k = 0; k < _streams.size(); ++k)
+                _hist[k][_hist_n % SEQ_HIST] = (*_streams[k].second)->get_fpga_seq_num();
+            ++_hist_n;
+        }
         if (frame_metadata->get_fpga_seq_num() != counts_metadata->get_fpga_seq_num()) {
             FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
                         "Counts buffer {:s}[{:d}] seq={:d}",
