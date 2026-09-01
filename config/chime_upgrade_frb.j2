@@ -224,7 +224,7 @@ dpdk:
   lcore_start_delay: 1.0
   # List of PCIe devices we don't want to attach too
   # Required to exclude the ConnectX 6 Lx output NICs.
-  # Excluded devices are listed by their PCIe address. 
+  # Excluded devices are listed by their PCIe address.
   pcie_block_list:
     - 0d:00.0
     - 0d:00.1
@@ -552,7 +552,7 @@ run_send_voltage:
         - name: cudaCopyNToRingbuffer
           input_size: samples_per_data_set * num_elements * num_freq_host_buf
           ring_buffer_size: gpu_buffer_depth * input_size
-          in_bufs: 
+          in_bufs:
 {%- for id in range(num_freq_gpu_buf) %}
             - host_voltage_buffer_{{ id }}
 {%- endfor %}
