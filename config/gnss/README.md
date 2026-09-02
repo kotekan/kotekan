@@ -4,7 +4,9 @@ Jim Mertens' suggestion, 2026-08-18: *"keep the variable gnss data in a separate
 include it from the main j2. Maybe some loops could condense it too."*
 
 **Status: done and wired.** `config/chord_pathfinder.j2` calls the include. It renders
-nothing unless a node is named, and what it does render is field-for-field what we deploy.
+nothing unless a node is named, and what it does render is field-for-field what we
+deploy -- checked, not asserted: `gen_fleet.py --check` regenerates both the node configs
+and these vars and compares them byte for byte.
 
 ```
 kotekan -c config/chord_pathfinder.j2 -j '{"gnss_node": "cx19"}'
@@ -40,15 +42,26 @@ and the per-chain channel / PRN / size data.
   that GPU. Then `gnss_pool`.
 * **`gnss_vars_<node>.j2`** — data. One `set gnss = {...}` with the receiver-wide constants
   and a `gpus[].chains[]` list. One file per node; all six are committed, and all six are
-  **emitted by the generator**:
+  **owned by the fleet driver** — regenerated and checked alongside the node configs:
 
   ```
-  gen_chord_gnss_config.py ... --emit-j2-vars config/gnss/gnss_vars_cx19.j2
+  python3 scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml           # write
+  python3 scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --check   # gate
   ```
 
   `gnss_chain_vars()` computes them and `build_n2dual_branch()` *consumes* them, so the
   CPU-core rotation and the frame-size formulas exist in exactly one place. Emitting is
-  side-effect-free: the YAML that run writes is unchanged (`gen_fleet --check` passes).
+  side-effect-free: the YAML that run writes is unchanged, byte for byte (the generator
+  excludes `--emit-j2-vars` from the recipe it stamps into the config, for the same reason
+  it excludes `--out`).
+
+  > ⚠️ **They were hand-emitted once, in August, and then rotted for two weeks.** Found
+  > 2026-09-02: all six were 107 diff lines behind the generator — the pre-08-31
+  > single-NUMA core pools, no `phi_fp16`, no `despread_max_chips`, no B3I/E6 channels in
+  > `band_power_chans`, `tiles` sized 2981888 instead of 917504 — while this file said they
+  > were "field-for-field what we deploy". Nothing regenerated them and nothing checked
+  > them, so the claim could not fail. `gen_fleet --check` now covers them; that is what
+  > makes the sentence above true rather than merely intended.
 
 **The primary chain is not a special case.** `gnss0_n2combine` is structurally identical to
 `gnss0_e5a_n2combine` — same field set, same command list, differing only in signal and

@@ -21,14 +21,28 @@ import argparse
 import difflib
 import os
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 
 import yaml
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GEN = os.path.join(K, "config", "gen_chord_gnss_config.py")
 OUTDIR = os.path.join(K, "config", "generated")
+# The j2 vars fragments, one per node -- config/gnss/gnss_chain.j2's data half, imported by
+# chord_pathfinder.j2 as `gnss_vars_<node>.j2`. Generated from the SAME run as the config, so
+# the two can never describe different fleets.
+#
+# ⚠️ THEY ROTTED FOR TWO WEEKS BECAUSE NOTHING OWNED THEM (found 2026-09-02). All six were
+# emitted by hand on 08-19 and then left: 107 diff lines behind the generator by the time
+# anyone looked -- the pre-08-31 single-NUMA core pools, no phi_fp16, no despread_max_chips,
+# missing the B3I/E6 band_power channels, tiles sized 2981888 instead of 917504. Meanwhile
+# config/gnss/README.md said they were "field-for-field what we deploy". An artifact whose
+# inputs nobody re-runs is a souvenir, and this driver exists exactly so the fleet's
+# artifacts have owners and a way to fail.
+VARSDIR = os.path.join(K, "config", "gnss")
 
 
 def _drop_eop(text):
@@ -224,12 +238,21 @@ def main():
     bad, written = [], []
     for node in nodes:
         out = os.path.join(OUTDIR, "chord_gnss_%s%s.yaml" % (node, suffix))
+        vars_out = os.path.join(VARSDIR, "gnss_vars_%s.j2" % node)
         cmd = ([sys.executable, GEN, "--base", base, "--node", node]
                + common + flags_from(man["nodes"][node] or {}))
 
         if a.print_cmd:
             print(" ".join(shlex.quote(c) for c in cmd + ["--out", out]))
             continue
+
+        # The vars go to a temp in BOTH modes -- --check must never touch the tree -- and the
+        # generator excludes --emit-j2-vars from the recipe it stamps into the config, so
+        # asking for them does not change the config by one byte. (It used to: see the
+        # _SINK_FLAGS note in gen_chord_gnss_config.py, which is the --out trap again.)
+        vars_tmp = os.path.join(tempfile.mkdtemp(prefix="gen_fleet_vars_"),
+                                "gnss_vars_%s.j2" % node)
+        cmd = cmd + ["--emit-j2-vars", vars_tmp]
 
         # No --out: take the config on stdout so --check never touches the tree. The
         # generator writes its human summary to stderr, so stdout is the file exactly.
@@ -258,7 +281,30 @@ def main():
                 f.write(text)
             os.replace(tmp, out)
             written.append(os.path.relpath(out, K))
+            if os.path.exists(vars_tmp):
+                vtmp = vars_out + ".tmp"
+                shutil.copyfile(vars_tmp, vtmp)
+                os.replace(vtmp, vars_out)
+                written.append(os.path.relpath(vars_out, K))
             continue
+
+        # The j2 vars carry no EOP table and no live data, so they are a plain byte compare.
+        if os.path.exists(vars_tmp):
+            want_v = open(vars_tmp).read()
+            if not os.path.exists(vars_out):
+                print("MISSING  %s" % os.path.relpath(vars_out, K))
+                bad.append(node + ":vars")
+            elif open(vars_out).read() != want_v:
+                bad.append(node + ":vars")
+                print("DIFFERS  %s" % os.path.relpath(vars_out, K))
+                dv = list(difflib.unified_diff(open(vars_out).read().splitlines(),
+                                               want_v.splitlines(),
+                                               "committed", "regenerated", lineterm="", n=1))
+                print("\n".join("    " + l for l in dv[:20]))
+                if len(dv) > 20:
+                    print("    ... %d more diff lines" % (len(dv) - 20))
+            else:
+                print("ok       %s" % os.path.relpath(vars_out, K))
 
         if not os.path.exists(out):
             print("MISSING  %s" % os.path.relpath(out, K))

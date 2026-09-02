@@ -3319,14 +3319,22 @@ def main():
     # "does not match the manifest" on every single node restart (2026-08-09) -- a gate that
     # always fires teaches everyone to ignore it, which is worse than no gate at all. The
     # recipe stays paste-able: add --out yourself, or let gen_fleet do it.
+    #
+    # ⚠️ --emit-j2-vars IS THE SAME CLASS AS --out AND WAS ADDED HERE FOR THE SAME REASON
+    # (2026-09-02). It says where a SECOND artifact goes; it changes nothing about the
+    # config. Leaving it in the stamp meant a config generated alongside its j2 vars
+    # differed from the same config generated alone by exactly one header line -- so
+    # gen_fleet could not emit both in one pass without breaking its own byte-for-byte
+    # --check, which is precisely the failure the --out exclusion above records.
+    _SINK_FLAGS = ("--out", "--emit-j2-vars")
     _argv = list(sys.argv[1:])
     _keep = []
     _i = 0
     while _i < len(_argv):
-        if _argv[_i] == "--out":
+        if _argv[_i] in _SINK_FLAGS:
             _i += 2
             continue
-        if _argv[_i].startswith("--out="):
+        if any(_argv[_i].startswith(f + "=") for f in _SINK_FLAGS):
             _i += 1
             continue
         _keep.append(_argv[_i])
