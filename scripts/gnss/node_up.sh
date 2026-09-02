@@ -61,7 +61,14 @@ if [ -z "${GNSS_CFG:-}" ] && [ -f "$K/config/gnss_fleet_chord.yaml" ]; then
     GNSS_CFG=$(python3 "$K/scripts/gnss/gen_fleet.py" "$K/config/gnss_fleet_chord.yaml" \
                        --node "$N" --print-path 2>/dev/null || true)
 fi
-CFG=${GNSS_CFG:-$K/config/generated/chord_gnss_$N.yaml}
+# ⚠️ NO BARE-NAME FALLBACK. This used to default to $K/config/generated/chord_gnss_$N.yaml,
+# and those files EXISTED -- stale GPS-only configs from before E5a that start cleanly and
+# simply lack six of the eight chains, so a node brought up on one comes back green and
+# wrong. The files are purged (2026-09-02); the fallback goes with them, because a default
+# nobody chose is what made a wrong config reachable in the first place. Empty here is fine:
+# only the START path needs a config, and `down`/`status` must keep working for a node the
+# manifest has never heard of. preflight() is where this is fatal.
+CFG=${GNSS_CFG:-}
 LOG=${GNSS_LOG:-/tmp/gnss_node.log}
 
 # --- shared by `up` and `restart` -------------------------------------------------------------
@@ -76,6 +83,15 @@ preflight() {
     # It cost several rounds of restarts on 2026-08-07, when a config path was pasted with a
     # literal "..." in it. Check here, where we can say which path was wrong. These are LOCAL
     # checks of an NFS-shared tree, which is the same filesystem the node will read.
+    if [ -z "$CFG" ]; then
+        echo "FAILED: no config for $N -- the fleet manifest does not name one." >&2
+        echo "  config/gnss_fleet_chord.yaml is the authority; run it directly to see why:" >&2
+        echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml \\" >&2
+        echo "            --node $N --print-path" >&2
+        echo "  Either $N is not in the manifest, or gen_fleet.py failed." >&2
+        echo "  To run a one-off config DELIBERATELY, set GNSS_CFG=<absolute path>." >&2
+        exit 1
+    fi
     if [ ! -r "$CFG" ]; then
         echo "FAILED: config not readable: $CFG" >&2
         echo "  (a relative or elided path? GNSS_CFG must be absolute)" >&2
