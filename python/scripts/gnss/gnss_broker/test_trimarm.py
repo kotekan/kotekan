@@ -121,10 +121,18 @@ def main():
     check(pol.get("gain_per_s") == 0.0,
           "warmup raised to 600 s: at t=500 s still frozen (hold tracks the warmup)")
 
-    # 5. OFF is off -- the pre-fix behaviour stays reachable.
+    # 5. OFF is off -- and OFF IS THE SHIPPED DEFAULT, because the freeze was flown on
+    #    2026-09-02 and made the transient WORSE (q>=2.2 over the first 9 min: 57-95%
+    #    loop-live vs 14-38% frozen). This arm guards the default itself: re-enabling it
+    #    needs new on-sky evidence, not a plausible argument.
     pol = run(age_s=10.0, estab_hold=0.0)
     check(pol.get("gain_per_s") == 2.5,
-          "establish-hold 0: OFF, loop live from the first cycle (pre-fix behaviour)")
+          "establish-hold 0: OFF, loop live from the first cycle")
+    from gnss_broker import cli as _cli
+    _found = [_a for _a in _cli.build_parser("t")._actions
+              if "--fleet-trim-establish-hold-s" in (_a.option_strings or [])]
+    check(len(_found) == 1 and _found[0].default == 0.0,
+          "the SHIPPED DEFAULT is 0/off -- falsified on sky, kept only as an instrument")
 
     # 5b. ⚠️ INERT IN REPLAY, and this arm is load-bearing. The window is wall-clock from
     #     broker start, so if it engaged under --transcript-read whether a cycle is inside
@@ -165,7 +173,7 @@ def main():
         for f in _fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 12 arms on the fast loop's two freezes")
+    print("GATE GOOD: 13 arms on the fast loop's two freezes")
     return 0
 
 

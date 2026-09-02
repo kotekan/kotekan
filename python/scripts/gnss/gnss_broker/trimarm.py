@@ -53,10 +53,13 @@ def stage_fleet_trim_arming(ctx):
         #
         # Per-chain is the right granularity precisely BECAUSE a brownout is chain-wide.
         _brown_hold = (ctx.args.fleet_trim_brownout_hold_s > 0.0 and ctx.brown.established())
-        # ── THE ESTABLISHMENT FREEZE (2026-09-02) ────────────────────────────────────
-        # MEASURED, not inferred. Every broker restart cost ~8 min of gps_l5 q thrash
-        # (15:28, 16:20 and 17:32 on 2026-09-02 alone) and the FLEET-TRIM READBACK series
-        # says why -- the fast loop drives itself into the clamp and back out:
+        # ── THE ESTABLISHMENT FREEZE: BUILT, FLOWN, FALSIFIED, DEFAULT OFF (2026-09-02) ──
+        # ⚠️⚠️ DO NOT TURN THIS ON WITHOUT NEW EVIDENCE. It is kept because the instrument
+        # is worth having and the flight is worth recording, not because it works.
+        #
+        # THE HYPOTHESIS. Every broker restart cost ~8 min of gps_l5 q thrash (15:28,
+        # 16:20 and 17:32 on 2026-09-02), and the FLEET-TRIM READBACK series looked like a
+        # confession -- the fast loop driving itself into its own clamp and back out:
         #
         #   17:32:44  mean +0.170  max 0.546     restart; normal
         #   17:34:44  mean +1.109  max 2.182     climbing through the warmup
@@ -64,18 +67,25 @@ def stage_fleet_trim_arming(ctx):
         #   17:38:50  mean +1.701  max 3.000     still clamped
         #   17:40:53  mean +0.162  max 0.591     collapsed back; steady state is 0.2-0.5
         #
-        # ⚠️ THE EXCURSION IS COMMON-MODE -- all seven PRNs the same sign, mean +1.1 to
-        # +1.7 -- so it is a CLOCK/SEED STEP being chased, not per-sat noise. That is the
-        # signature of establishment: the clock bootstrap, the seed audit's whole-chip
-        # STEPs, and above all the joint feed OPENING at --joint-feed-warmup-s, which is
-        # 34 s before the first clamped readback. The loop is a fine correction to a good
-        # seed; while the seed is being re-pinned wholesale its discriminator is garbage,
-        # and integrating garbage at 2.5 chips/s of bandwidth reaches a 3-chip clamp fast.
+        # Common-mode too -- all seven PRNs one sign -- which reads as "chasing a clock or
+        # seed STEP rather than per-sat noise". Freezing it held max|trim| at 0.615 across
+        # five identical readbacks through exactly that window: the actuation worked.
         #
-        # So the window is measured from BROKER START and ends a margin past the feed
-        # opening, not at it: the rail begins during the warmup and peaks after. Expressed
-        # relative to --joint-feed-warmup-s deliberately, so raising the warmup moves this
-        # with it rather than leaving a hold that stops mid-transient.
+        # ⚠️ AND THE FLEET GOT WORSE. Paired restarts, gps_l5, fraction of rows above the
+        # q=2.2 gate over the first nine minutes:
+        #
+        #   loop LIVE   (17:32)   57-95%   mean_q 2.4-3.3
+        #   loop FROZEN (19:17)   14-38%   mean_q 1.1-1.8
+        #
+        # Worse on every single minute, and BOTH converge to ~100% at +9 to +12 min. That
+        # last fact is the real finding: THE TRANSIENT'S LENGTH IS SET BY THE SEEDS
+        # SETTLING, NOT BY THE LOOP. So the clamp excursion is a SYMPTOM. The loop was not
+        # integrating garbage -- it was absorbing a real common-mode establishment offset,
+        # and it reached the clamp because the offset exceeds 3 chips. Freeze it and
+        # nothing absorbs that offset, the despread sits off-peak, and q collapses.
+        #
+        # A real fix belongs at the seed/clock step, or in a WIDER clamp during
+        # establishment -- the opposite direction from holding the loop down.
         #
         # ⚠️ INERT UNDER --transcript-read, AND THAT IS A CORRECTNESS REQUIREMENT, NOT A
         # CONVENIENCE. The window is wall-clock from broker start, so in a replay whether
