@@ -227,14 +227,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0057765
-    t_inst_ns: 1787961600000000000
-    xp_as: 0.213608
-    yp_as: 0.341464
-  - delta_UT1_inst: 0.0048817
-    t_inst_ns: 1788048000000000000
-    xp_as: 0.212906
-    yp_as: 0.340582
   - delta_UT1_inst: 0.0031673
     t_inst_ns: 1788134400000000000
     xp_as: 0.211313
@@ -251,6 +243,14 @@ earth_rotation_data:
     t_inst_ns: 1788393600000000000
     xp_as: 0.209029
     yp_as: 0.336055
+  - delta_UT1_inst: 0.0008301
+    t_inst_ns: 1788480000000000000
+    xp_as: 0.208247
+    yp_as: 0.335174
+  - delta_UT1_inst: 0.0007049
+    t_inst_ns: 1788566400000000000
+    xp_as: 0.207471
+    yp_as: 0.334308
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -3652,21 +3652,43 @@ host_bf_mask_applied_ringbuffer_1:
   ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor)
     * num_elements
 host_bf_mask_buffer:
-  dimnames:
+  dimnames: &id039
   - Tbf
   - P
   - D
-  dimscalings:
+  dimscalings: &id040
   - bf_mask_lifetime_in_samples
   - 1
   - 1
-  extents:
+  extents: &id041
   - 1
   - num_polarizations
   - num_dishes
   kotekan_buffer: ndarray
   metadata_pool: main_pool
   num_frames: host_side_buffer_depth
+  numa_node: 0
+  peek_hold: true
+  quantity_name: bf_mask
+  value_type: int8
+host_bf_mask_buffer_v0:
+  dimnames: *id039
+  dimscalings: *id040
+  extents: *id041
+  kotekan_buffer: ndarray
+  metadata_pool: main_pool
+  num_frames: 4
+  numa_node: 0
+  peek_hold: true
+  quantity_name: bf_mask
+  value_type: int8
+host_bf_mask_buffer_v1:
+  dimnames: *id039
+  dimscalings: *id040
+  extents: *id041
+  kotekan_buffer: ndarray
+  metadata_pool: main_pool
+  num_frames: 4
   numa_node: 0
   peek_hold: true
   quantity_name: bf_mask
@@ -4672,7 +4694,7 @@ run_send_bf_mask:
     - 14
     gpu_id: 0
     in_buffers:
-      host_bf_mask_buffer_in: host_bf_mask_buffer
+      host_bf_mask_buffer_in: host_bf_mask_buffer_v0
     kotekan_stage: cudaProcess
     out_buffers:
       host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
@@ -4690,7 +4712,7 @@ run_send_bf_mask:
     - 27
     gpu_id: 1
     in_buffers:
-      host_bf_mask_buffer_in: host_bf_mask_buffer
+      host_bf_mask_buffer_in: host_bf_mask_buffer_v1
     kotekan_stage: cudaProcess
     out_buffers:
       host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
@@ -5636,6 +5658,14 @@ updatable_config:
     kotekan_update_endpoint: json
     start_time: 1788188409.7181444
     update_id: bffs-1788188404718
+valve_bf_mask_0:
+  in_buf: host_bf_mask_buffer
+  kotekan_stage: Valve
+  out_buf: host_bf_mask_buffer_v0
+valve_bf_mask_1:
+  in_buf: host_bf_mask_buffer
+  kotekan_stage: Valve
+  out_buf: host_bf_mask_buffer_v1
 vis_blocksize: 16
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 vis_num_blocks_lin: num_elements / vis_blocksize

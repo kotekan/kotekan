@@ -2829,6 +2829,53 @@ def main():
     if _stamped:
         sys.stderr.write(f"  hardened {_stamped} ring copies with expect_quantity_name\n")
 
+    # ⚠️ THE BF-MASK VALVE SPLIT (2026-09-02, KV's interim for the startup deadlock). The
+    # bad-feed mask had ONE producer, ONE ring, and BOTH GPU halves as peek-hold, seq-matched
+    # consumers -- so a half whose capture starts late (port-1 stream-id set + the 30 s
+    # anchor) wants mask seqs the blocked producer can never write: producer waits on
+    # consumer, consumer waits on impossible seqs, the half is dark forever (proven by four
+    # backtraces on cx19+cx43, 2026-09-02; the same knot also starves the PL chain and,
+    # via the trickle-fed searcher merge, the whole fleet's search). The GPUs are
+    # INDEPENDENT PIPELINES; nothing ever required matched consumption. Give each half its
+    # own small buffer behind a Valve: the valves always drain the shared buffer (the
+    # producer can never block), and a stalled half sheds ITS OWN frames -- counted in
+    # kotekan_valve_dropped_frames_total -- instead of wedging the node. Two valve
+    # consumers force Valve's memcpy path, so no metadata aliasing is introduced.
+    if isinstance(out.get("host_bf_mask_buffer"), dict):
+        _mask_def = out["host_bf_mask_buffer"]
+        _split = 0
+        # The consumers are NESTED cudaProcess runtimes (run_send_bf_mask/gpu_N in the
+        # captured base), not top-level stages -- walk the whole tree.
+        _procs = []
+        def _walk_masks(_o):
+            if isinstance(_o, dict):
+                if (_o.get("kotekan_stage") == "cudaProcess"
+                        and isinstance(_o.get("in_buffers"), dict)):
+                    _procs.append(_o)
+                for _vv in _o.values():
+                    _walk_masks(_vv)
+            elif isinstance(_o, list):
+                for _vv in _o:
+                    _walk_masks(_vv)
+        _walk_masks(out)
+        for _st in _procs:
+            _inb = _st["in_buffers"]
+            for _k, _v in list(_inb.items()):
+                if _v == "host_bf_mask_buffer":
+                    _gpu = _st.get("gpu_id", _split)
+                    _nb = f"host_bf_mask_buffer_v{_gpu}"
+                    out[_nb] = dict(_mask_def)
+                    out[_nb]["num_frames"] = 4
+                    out[f"valve_bf_mask_{_gpu}"] = {
+                        "kotekan_stage": "Valve",
+                        "in_buf": "host_bf_mask_buffer",
+                        "out_buf": _nb,
+                    }
+                    _inb[_k] = _nb
+                    _split += 1
+        if _split:
+            sys.stderr.write(f"  bf-mask valve split: {_split} gpu consumer(s) decoupled\n")
+
     # --frame0-nano: START WITHOUT chive's timing service.
     #
     # kotekan requires a GPS time at STARTUP (CHORDTelescope), which makes chive:54321 a hard
