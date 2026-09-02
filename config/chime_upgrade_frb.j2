@@ -1734,8 +1734,8 @@ FRB:
         # x_dir_grid and y_dir_grid are the direction sines in the normal vector,
         # sin(angle-from-zenith-towards-x) and -y, equally spaced in y for CHIME.
         beams:
-{%- for ns in range(frb2_num_beams_y) %}
 {%- for ew in range(frb2_num_beams_x) %}
+{%- for ns in range(frb2_num_beams_y) %}
           - id: {{ 1000 * ew + ns }}
             x_dir_grid: {{ sin_achromatic_beam_angles_EW[ew] }}
             y_dir_grid: {{ (ns - 127)*1.73205080756888/256 }}
