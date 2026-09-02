@@ -70,11 +70,15 @@ using namespace HighFive;
  * @conf prefix_host_rank  Bool. Prepend rank to output file names. Default: false.
  * @conf frequency_pool_rank    Int. This stage's rank in the frequency pool.
  * @conf frequency_pool_size    Int. Number of stages in the frequency pool.
- * @conf max_frames  Int. Stop writing after this many frames, Default 0 = unlimited
- *       frames.
+ * @conf max_frames  Int. Default: -1 = unlimited; N >= 0 stops after N frames and
+ *       shuts kotekan down.
  * @conf skip_writing  Bool. Do not actually write anything. Default:
  *       false.
- * @conf create_single_file Bool. Write all data to one single file.
+ * @conf use_compression  Bool. Default: true. bitshuffle+zstd (filter 32008).
+ * @conf create_single_file Bool. Write all data to one single file. Only supported for
+ *       chord metadata. Note that this stores the metadata attributes only once (from
+ *       the first frame), so the per-frame metadata and the frame boundary are not
+ *       preserved; see hdf5FileRead for how they are reconstructed when replaying.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
  *       Default: -1 (disabled).
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).

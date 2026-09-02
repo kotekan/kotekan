@@ -47,7 +47,7 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type) {
             return HighFive::AtomicType<double>();
         default:
             throw std::runtime_error(
-                fmt::format("chord2hdf5 given unknown DataType value: {;d} ", (int64_t)type));
+                fmt::format("chord2hdf5 given unknown DataType value: {:d} ", (int64_t)type));
     }
 }
 
