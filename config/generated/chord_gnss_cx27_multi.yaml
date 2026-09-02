@@ -390,6 +390,7 @@ gnss0_b2a_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1176450000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_b2a_inject/get_prns
@@ -612,6 +613,7 @@ gnss0_b2b_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1207140000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_b2b_inject/get_prns
@@ -836,6 +838,7 @@ gnss0_b3i_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1268520000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_b3i_inject/get_prns
@@ -1072,6 +1075,7 @@ gnss0_e5a_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1176450000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_e5a_inject/get_prns
@@ -1302,6 +1306,7 @@ gnss0_e5b_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1207140000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_e5b_inject/get_prns
@@ -1530,6 +1535,7 @@ gnss0_e6_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1278750000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_e6_inject/get_prns
@@ -1744,6 +1750,7 @@ gnss0_l2c_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 2.0
     f_offset_hz: 1227600000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_l2c_inject/get_prns
@@ -1963,6 +1970,7 @@ gnss0_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1176450000.0
     fft_length: 16384
     get_prns_endpoint: /gnss0_inject/get_prns
@@ -2220,6 +2228,7 @@ gnss1_b2a_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1176450000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_b2a_inject/get_prns
@@ -2420,6 +2429,7 @@ gnss1_b2b_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1207140000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_b2b_inject/get_prns
@@ -2619,6 +2629,7 @@ gnss1_b3i_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1268520000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_b3i_inject/get_prns
@@ -2822,6 +2833,7 @@ gnss1_e5a_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1176450000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_e5a_inject/get_prns
@@ -3022,6 +3034,7 @@ gnss1_e5b_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1207140000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_e5b_inject/get_prns
@@ -3218,6 +3231,7 @@ gnss1_e6_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1278750000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_e6_inject/get_prns
@@ -3410,6 +3424,7 @@ gnss1_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
+    dll_spacing: 0.5
     f_offset_hz: 1176450000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_inject/get_prns

@@ -235,6 +235,9 @@ static void usage() {
         "                     REAL fleet rate; 0 removes the re-pin lever and makes this\n"
         "                     harness blind to the (delta f)*t_abs family -- see #52)\n"
         "  --seed-file P      use a REAL captured broker seed (seeds.jsonl) for this PRN\n"
+        "  --dll-spacing D    Early/Late tap offset from prompt, COMPONENT chips (default 0.5,\n"
+        "                     the node default). With --trim sweeps this measures q on the\n"
+        "                     peak and the discriminator slope for a spacing choice.\n"
         "  --emit-detection P write the detection in /get_detections wire format (for e2e_broker)\n"
         "  --ms-split K       run the ms-split acquire over K ~1 ms sub-windows instead\n"
         "  --sub-hops N       hops per sub-window (default 196 = ceil(code period))\n"
@@ -367,6 +370,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--bench-cmd-every")) o.bench_cmd_every = (int)next_d();
         else if (arg_eq(a, "--bench-cmd-max")) o.bench_cmd_max = next_d();
         else if (arg_eq(a, "--trim")) o.trim_chips = next_d();
+        else if (arg_eq(a, "--dll-spacing")) o.dll_spacing = next_d();
         else if (arg_eq(a, "--signal")) o.signal = argv[++i];
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];

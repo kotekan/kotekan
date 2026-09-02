@@ -147,6 +147,33 @@ def signal_tag(name):
     return "_" + body.lower()
 
 
+def dll_spacing_chips(name):
+    """Early/Late tap offset from prompt, in the signal's OWN (component) chips.
+
+    The tap offset has to be set by the CORRELATION WIDTH the tracker actually sees, not by
+    the chip. That width is the channel geometry's: L5's 7-channel comb spans its 20 MHz
+    mainlobe, so the correlation is chip-narrow and 0.5 chip (49 ns) sits on the slope. GPS
+    L2C's mainlobe is six freq_ids wide -- narrower than the comb stride -- so every L2C
+    instance despreads ONE 195 kHz channel, whose correlation is |sinc|^2 with its first null
+    at 1/B = 5.1 us = 2.6 CM chips. At 0.5 CM chip (1 us) E and L sit 90% of the way up the
+    peak: q = 2P/(E+L) = 1.11 for a PERFECT lock (e2e, replica on truth to 0.000 chips), which
+    is why every L2C instrument gated on q (fast-loop trim_quality_min 2.2, presence, the
+    viewer) read "dead" through the first on-sky locks of 2026-09-02.
+
+    Measured on the harness (scripts/gnss/e2e --signal GPS_L2C_CM --t-nchan 1 --t-chan0 6286
+    --dll-spacing D --trim X), q on the peak / discriminator slope per chip:
+        D 0.5: 1.11 / 0.22   1.0: 1.55 / 0.46   1.25: 2.00 / 0.57   1.5: 2.77 / 0.73
+        D 1.75: 4.13 / 0.90  2.0: 6.74 / 1.10   2.5: 26 / 1.65 (taps on the null)
+    The tap-AMPLITUDE slope, which sets DLL jitter, is flat within 10% from 1.25 to 2.0, so
+    widening is free until the null. 2.0 clears the 2.2 gates with L5-class margin, is
+    monotonic to +-2 chips, and its slope (1.10/chip) matches the shipped trim law
+    tau = -disc/4 * (D/0.5) within 10%. MUST MATCH the broker chain's --dll-spacing
+    (config/gnss_chains_chord.yaml): the C++ fleet loop takes its law's spacing from the
+    arming payload while the taps come from here.
+    """
+    return {"GPS_L2C_CM": 2.0}.get(name, 0.5)
+
+
 def broker_chain_name(name):
     """gnssSignal.hpp name -> the BROKER's chain key. GPS_L5_Q -> gps_l5, GAL_E5A_Q_CS -> gal_e5a.
 
@@ -444,6 +471,9 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  # bare primary to ~zero (the NH20/CS100 partial sums cancel by design); see
                  # chord_gnss_node.yaml and docs/CHORD_MULTIBAND.md section 4.
                  "signal": track_signal,
+                 # E/L tap offset in the signal's chips -- set by the channel geometry, see
+                 # dll_spacing_chips. Must match the broker chain's --dll-spacing.
+                 "dll_spacing": dll_spacing_chips(track_signal),
                  # GLOBAL bins of this GPU's covering comb, in the tap's local order. The
                  # replica for a channel must be built at ITS OWN sky frequency, and CHORD's
                  # comb is stride-16, so a contiguous chan_offset cannot describe it -- passing
@@ -1172,6 +1202,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  "n_elements": 1,  # unused by the injector; the state class requires it
                  "channel_ids": freq_ids,  # GLOBAL bins, local order (replica sky freq)
                  "signal": track_signal,
+                 # E/L tap offset in the signal's chips -- set by the channel geometry, see
+                 # dll_spacing_chips. Must match the broker chain's --dll-spacing.
+                 "dll_spacing": dll_spacing_chips(track_signal),
                  "f_offset_hz": carrier_hz,
                  "hops_per_record": args.hops_per_record,
                  "fft_length": cfg["fengine"]["fft_length"],

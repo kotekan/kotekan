@@ -2767,14 +2767,23 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # the first from a same-constellation pair.
     signal: gps_l2c
     dr-clock-adopt: true
-    # OFF UNTIL THE FLEET BINARY CARRIES THE propagate_seed comb_mult FIX (gnssSeedTransport.cpp,
-    # 2026-09-02). The deployed nodes read code_phase_at_ref_chips as COMBINED chips while the
+    # REQUIRES THE propagate_seed comb_mult FIX (gnssSeedTransport.cpp 2fe49e77f, 2026-09-02) IN
+    # THE NODE BINARY. Before it, nodes read code_phase_at_ref_chips as COMBINED chips while the
     # broker ships CM chips -- on a comb_mult-2 signal that put every L2C replica ~phase/2 mod
-    # 10230 chips (milliseconds) from the sky, which is why this chain never locked. The
-    # argument path (code_phase_chips -> phase_from_arg) converts correctly on the OLD binary,
-    # so shipping only the argument makes L2C trackable now. Flip back to true at the first
-    # node restart that carries the fix (the phase path is the better-conditioned one).
-    seed-phase-transport: false
+    # 10230 chips (milliseconds) from the sky, which is why this chain never locked. Running
+    # with `false` (argument path only, which converted correctly on the old binary) gave the
+    # first L2C locks at 15:28 UTC that day; flipped back to true for the restart that carries
+    # the fix (the phase path is the better-conditioned one). If L2C goes dark after a restart
+    # onto an OLDER binary, this flag is the first suspect.
+    seed-phase-transport: true
+    # E/L TAP OFFSET, CM chips: MUST MATCH the node's dll_spacing (config/gen_chord_gnss_config.py
+    # dll_spacing_chips). Every L2C instance despreads ONE 195 kHz channel (the mainlobe is
+    # narrower than the comb stride), so the correlation is |sinc|^2 with its null at 2.6 CM
+    # chips; at the 0.5 default E and L sit 90% up the peak and q = 2P/(E+L) is PEGGED at 1.11
+    # for a perfect lock -- which is what every q-gated instrument (fast-loop 2.2 gate, presence,
+    # viewer) showed through the first locks. 2.0 chips: q on peak 6.7, discriminator slope
+    # 1.10/chip (the shipped tau law assumes 1.0), monotonic to +-2 chips, jitter equal to 1.25.
+    dll-spacing: 2.0
     presence-admit-displaced: true
     joint-consume: clk,rate
     fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
