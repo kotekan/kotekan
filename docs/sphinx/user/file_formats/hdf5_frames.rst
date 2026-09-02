@@ -68,13 +68,17 @@ Dataset attributes:
    * - ``gps_time_enabled``
      - Whether the FPGA timestamp is GPS-disciplined.
    * - ``chord_metadata_version``
-     - int[2] metadata format version (currently {1, 0}).
+     - int[2] metadata format version (currently {2, 0}).
    * - ``name``
      - The ndarray name from the buffer metadata.
    * - ``type``
      - Element data type as a string (e.g. ``float16``).
    * - ``dim_names``
      - String array of dimension names (e.g. ``["T", "F", "D", "P"]``).
+   * - ``dim_scalings``
+     - int64 array of per-dimension scaling factors: how many elements of
+       the underlying, un-decimated axis one element along that dimension
+       represents (1 for an axis that is neither decimated nor combined).
    * - ``fpga_seq_num``, ``fpga_seq_time_nsec``
      - First FPGA sequence number of the frame and its instrument time in
        ns (only if the metadata carries a sequence number).
@@ -85,11 +89,8 @@ Dataset attributes:
        indices (if present).
    * - ``rfi_frame_excision_enabled``, ``rfi_frame_excision_thresholds``
      - RFI frame-excision state (if present).
-   * - ``num_polarizations``, ``num_dishes``, ``num_elements``
+   * - ``num_polarizations``, ``num_dishes``
      - Telescope input counts (from the stage configuration).
-   * - ``input_order``
-     - Element ordering of the data (an ``ElementOrder`` name; see
-       :ref:`element_order`).
    * - ``itrs_lat_deg``, ``itrs_lon_deg``
      - Telescope origin ITRS coordinates, degrees.
    * - ``grid_orientation``
@@ -98,8 +99,9 @@ Dataset attributes:
      - Dish grid dimensions.
    * - ``feed_separation_x_m``, ``feed_separation_y_m``
      - Grid spacing, metres.
-   * - ``main_array_grid_indices``
-     - Per-element (x, y) grid indices; (-1, -1) off the main array.
+   * - ``dish_grid_indices``
+     - Per-dish (x, y) grid indices, int64 with shape
+       (``num_dishes``, 2); (-1, -1) off the main array.
    * - ``feed_positions_m``
      - Per-element 3D feed positions in the grid frame, metres.
 
@@ -206,6 +208,9 @@ Configuration
      - false
      - Append all frames to one file (CHORD mode only) instead of one file
        per frame.
+   * - ``use_compression``
+     - true
+     - Compress the data with bitshuffle+zstd (filter 32008).
    * - ``write_x_frames``, ``per_y_frames``
      - -1
      - Decimation: write only the first X out of every Y frames.
@@ -218,9 +223,49 @@ Configuration
    * - ``num_polarizations``, ``num_dishes``
      - required
      - Telescope input counts recorded in the attributes.
-   * - ``input_order``
-     - required
-     - Element ordering recorded in the attributes.
 
 Reading the files requires the bitshuffle HDF5 plugin with zstd support
 (``import hdf5plugin`` in Python).
+
+Reading the files back
+======================
+
+CHORD-metadata files can be replayed into a kotekan buffer with the
+``hdf5FileRead`` stage (``lib/stages/hdf5FileRead.cpp``). It reconstructs the
+payload and the chord metadata from the dataset and its attributes, and aborts
+if the telescope attributes disagree with the telescope of the replaying
+session. The destination buffer must be declared with ``kotekan_buffer:
+ndarray``; the reader validates the declared frame descriptor against the file.
+
+* **Per-frame files**: point ``input_dir``/``file_name`` (and
+  ``prefix_hostname``/``prefix_host_rank``) at the files written above. The
+  reader starts at frame index 0 and stops when the next file is missing; a
+  missing file at index 0 is fatal.
+* **Single file**: additionally set ``read_single_file: true``. The reader
+  splits axis 0 of the dataset into frames.
+
+Because a single file stores the attributes only once (taken from the first
+frame), some per-frame information is *not* preserved: ``frame_counter``,
+``first_packet_recv_time``, the per-frame ``fpga_seq_num``, and the frame
+boundary itself. The replay therefore reconstructs them:
+
+* the axis-0 extent of one frame is the first extent declared for the
+  reader's ``out_buf`` (the remaining extents, the element type and the
+  labels must match the file);
+* ``fpga_seq_num`` of frame *i* is ``fpga_seq_num + i * extents[0] *
+  time_downsampling_fpga`` (a downsampling factor of 1 is assumed when the
+  attribute is absent);
+* the number of frames is ``axis0 / extents[0]``; a remainder is reported
+  and ignored.
+
+The writer must have finished before the reader starts, so the two have to run
+in separate kotekan sessions: the whole single file, or the first per-frame
+file, has to exist and be complete at startup. After a writer crash the file
+may need ``h5clear -s FILENAME.h5`` first.
+
+``hdf5FileReadSingleFile`` (``lib/stages/hdf5FileReadSingleFile.cpp``) is a
+different, special-purpose stage: it replays only CHIME/F-engine baseband
+voltages (rank-4 ``int4x2_swapped_withoffset`` data with a leading ``T`` axis
+and an ``F`` axis), selecting a subset of the frequency channels and optionally
+transposing time and frequency or combining dishes and polarizations. Use
+``hdf5FileRead`` with ``read_single_file`` for everything else.
