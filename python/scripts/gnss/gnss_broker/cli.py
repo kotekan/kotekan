@@ -734,8 +734,10 @@ _FROZEN = dict(
     dll_quality_sigma=3.0,
 
     # --dll-spacing
-    #   tracker Early/Late spacing in chips (must match dll_spacing_chips)
-    dll_spacing=0.5,
+    # (--dll-spacing UNFROZEN 2026-09-02 for the L2C tap widening -- the first chain whose
+    #  correlation is NOT chip-narrow needs a per-chain value, which is the "alongside the
+    #  A/B that needs it" clause above. It is a real flag again; see the argparse entry next
+    #  to --dll-deep-gate. Every other chain still runs the 0.5 it always ran.)
 
     # --dr-clock-drift
     #   CHORD: prime the dead-reckon clock DRIFT (chips/s). The drift estimator needs
@@ -2244,6 +2246,19 @@ def build_parser(description):
                          "fit is noise and tau's sign is a coin flip, so consecutive "
                          "agreement halves the false-fire rate per strike and a random walk "
                          "cannot build.")
+    ap.add_argument("--dll-spacing", type=float, default=0.5, metavar="CHIPS",
+                    help="the tracker's Early/Late tap offset from Prompt, in the signal's own "
+                         "(component) chips. MUST MATCH the node's dll_spacing for this chain "
+                         "(config/gen_chord_gnss_config.py dll_spacing_chips): the taps live on "
+                         "the node, but the trim law tau = -disc/4 * (D/0.5) here and the C++ "
+                         "fleet loop's copy (armed from this value) assume it -- a mismatch is a "
+                         "pure gain error. Set by the CORRELATION WIDTH, not the chip: on a "
+                         "chip-narrow correlation (L5/E5/B2: a 7-channel comb) 0.5 sits on the "
+                         "slope; GPS L2C despreads ONE 195 kHz channel, whose |sinc|^2 nulls at "
+                         "2.6 CM chips, so at 0.5 E and L sit 90%% up the peak and q = 2P/(E+L) "
+                         "is pegged at 1.11 for a perfect lock (harness, 2026-09-02) -- every "
+                         "q-gated instrument read the first L2C locks as dead. L2C runs 2.0: q "
+                         "6.7 on peak, slope 1.10/chip, monotonic to +-2 chips.")
     ap.add_argument("--dll-deep-gate", default="",
                     help="fleet DLL (task #49): PRNs whose trim PRESENCE is gated on "
                          "deep_snr >= margin x deep_floor instead of on summed prompt power. "
