@@ -178,6 +178,7 @@ void frbNetworkSend::main_thread() {
     const int time_downsampling_fpga = metadata->get_time_downsampling_fpga();
     assert(time_downsampling_fpga == 384); // for now
     const unsigned samples_per_frame =
+        16 / packets_per_stream * // 16 is from ttilde16_lo16
         samples_per_packet * packets_per_stream
         * time_downsampling_fpga; // number of FPGA samples in each frame
     const unsigned long time_interval = samples_per_frame * fpga_ns; // time per buffer frame in ns
