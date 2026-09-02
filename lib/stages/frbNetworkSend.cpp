@@ -409,6 +409,10 @@ void frbNetworkSend::main_thread() {
                                     assert(reinterpret_cast<char*>(offset + _nbeams * _nfreq_coarse)
                                            == &*header_buf.cend());
 
+                                    // end of packet still a valid address (or
+                                    // just beyond)?
+                                    assert(static_cast<size_t>(frb_packet_num * header.data_nbytes + header.data_nbytes) <= in_buf->frame_size);
+
                                     struct iovec msg_iov[2] = {
                                         {.iov_base = header_buf.data(),
                                          .iov_len = header_buf.size()},
@@ -437,6 +441,8 @@ void frbNetworkSend::main_thread() {
                                                         sizeof(ip_addr)),
                                               send_len);
                                     }
+
+                                    total_data_sent += msg_iov[1].iov_len;
                                 }
                             }
                         }
@@ -450,6 +456,7 @@ void frbNetworkSend::main_thread() {
                         add_nsec(t1, wait_per_packet);
                     }
                 }
+        assert(total_data_sent == in_buf->frame_size);
 
         in_buf->mark_frame_empty(unique_name, frame_id);
         offsetscale_buf->mark_frame_empty(unique_name, frame_id);
