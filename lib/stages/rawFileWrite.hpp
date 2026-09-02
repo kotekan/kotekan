@@ -48,6 +48,8 @@ private:
     std::string _file_ext;
     uint32_t _num_frames_per_file;
     uint32_t _exit_after_n_files;
+    /// Write NDArray-descriptor buffers anyway (shape known out of band; see the .cpp note).
+    bool _allow_ndarray = false;
     // Prefix file name with hostname or not
     bool _prefix_hostname;
 };

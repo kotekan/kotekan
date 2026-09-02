@@ -44,6 +44,8 @@ private:
     bool prefix_hostname;
     // Interrupt Kotekan if run out of files to read
     bool end_interrupt;
+    // Realtime replay pacing: microseconds to sleep per frame (0 = unthrottled)
+    uint64_t frame_period_us;
 };
 
 #endif
