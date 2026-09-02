@@ -26,6 +26,22 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
                 -Wl,--no-whole-archive)
     if(ASDF_CXX_FOUND)
         target_link_libraries(kotekan PRIVATE blosc)
+        # asdf-cxx's pkg-config declares -lblosc (c-blosc 1.x), but SOME INSTALLS of the same
+        # version are compiled against c-blosc2 and reference blosc2_schunk_* out of ndarray.cxx.
+        # Measured 2026-08-05: cx19's libasdf-cxx.a (2026-01-20) needs 2 blosc1 symbols and no
+        # blosc2; cf06's (2026-01-22, same declared version 8.0.0) needs 7 blosc2 symbols. Same
+        # kotekan flags, same CMake cache, different library -- so this cannot be detected from
+        # the .pc file, only from the archive.
+        #
+        # Link blosc2 too where it exists. Raw flags rather than the resolved path because CMake
+        # hoists imported library paths ahead of -lasdf-cxx, where --as-needed then discards the
+        # .so as unused; and --as-needed is restored immediately so this does not leak onto
+        # everything that follows.
+        find_library(BLOSC2_LIB blosc2)
+        if(BLOSC2_LIB)
+            target_link_libraries(kotekan PRIVATE "-Wl,--no-as-needed" "-lblosc2"
+                                                  "-Wl,--as-needed")
+        endif()
     endif()
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(kotekan PRIVATE -Wl,-all_load kotekan_libs)
