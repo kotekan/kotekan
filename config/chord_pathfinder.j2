@@ -660,10 +660,11 @@ n2_buffer_1:
     num_frames: host_side_buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
-# DishInputs: compact frames over the elements whose dish type is ArrayDish, derived
-# from the telescope's dish table (num_elements here is the full count they are
-# selected from). Each element's full-order identity travels in the descriptor's
-# input_list; masking stays a per-element flags concern, subsetting lives here.
+# DishInputs: compact frames over the connected elements, those whose dish type is
+# not Fake (array dishes and RFI antennas alike), derived from the telescope's dish
+# table (num_elements here is the full count they are selected from). Each element's
+# full-order identity travels in the descriptor's input_list; masking stays a
+# per-element flags concern, subsetting lives here.
 n2_subset_buffer:
     kotekan_buffer: N2
     peek_hold: true
@@ -1591,7 +1592,8 @@ n2_accumulate:
 
 
 # Subset to the connected feeds: the DishInputs output buffers are compact frames
-# over the ArrayDish elements, products and per-element fields alike.
+# over the non-Fake elements (array dishes and RFI antennas), products and
+# per-element fields alike.
 
 n2_subset:
     kotekan_stage: N2Subset

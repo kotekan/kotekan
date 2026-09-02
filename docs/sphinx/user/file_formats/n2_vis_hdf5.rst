@@ -251,8 +251,8 @@ File identity and structure
      - Visibility matrix packing: ``FullUpperTri``,
        ``RedundantBaselineAvg``, ``Autocorrelations``, ``InputANDMasked``,
        ``InputORMasked``, ``GeneralSubset``, or ``DishInputs`` (a compact
-       frame holding the dense triangle over the elements whose dish type
-       is ``ArrayDish``; see the ``input_list`` attribute).
+       frame holding the dense triangle over the connected elements, those
+       whose dish type is not ``Fake``; see the ``input_list`` attribute).
    * - ``input_list``
      - int32 array
      - Compact subset layouts only: the element index, in the full

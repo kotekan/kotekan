@@ -13,11 +13,11 @@ enum class N2Layout : int32_t {
     InputANDMasked = 3,
     InputORMasked = 4,
     GeneralSubset = 5,
-    // A compact frame over the elements whose dish type is ArrayDish, derived from
-    // the telescope's dish table (Fake and RFI-antenna inputs are excluded, matching
-    // the elements bufferBadInputs can ever unmask). Products and per-element fields
-    // index the frame's own dense element axis; each element's identity in the full
-    // fiducial order is carried in the descriptor's input_list.
+    // A compact frame over the connected elements -- those whose dish type is not
+    // Fake, array dishes and RFI antennas alike -- derived from the telescope's dish
+    // table. Products and per-element fields index the frame's own dense element
+    // axis; each element's identity in the full fiducial order is carried in the
+    // descriptor's input_list.
     DishInputs = 6
 };
 

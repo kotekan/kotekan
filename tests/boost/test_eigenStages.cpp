@@ -474,10 +474,10 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_all_inputs_flagged) {
 }
 
 // DishInputs layout: the frame descriptor derives a compact frame from the
-// telescope's dish table (two of four dishes Fake -> the 4 elements {0, 1, 4, 5}
-// of the full 8, carried in the input_list), and the eigen stage solves it as an
-// ordinary dense triangle, blind to where the elements came from. A rank-1 phase
-// matrix must converge with all four evec entries populated.
+// telescope's dish table (an array dish, an RFI antenna and two Fake dishes -> the
+// 4 elements {0, 1, 4, 5} of the full 8, carried in the input_list), and the eigen
+// stage solves it as an ordinary dense triangle, blind to where the elements came
+// from. A rank-1 phase matrix must converge with all four evec entries populated.
 BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     ensure_n2metadata_registered();
 
@@ -499,7 +499,8 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     cfg["dataset_manager"]["enable_state_caching"] = false;
     cfg["dataset_manager"]["use_dataset_broker"] = false;
 
-    // Four dishes, two of them Fake: DishInputs selects elements {0, 1, 4, 5}.
+    // Four dishes, two of them Fake: DishInputs keeps the array dish and the RFI
+    // antenna, elements {0, 1, 4, 5}.
     add_test_telescope_config(cfg);
     cfg["telescope"]["num_dishes"] = 4;
     cfg["telescope"]["dish_inputs"] = nlohmann::json::array(
@@ -515,8 +516,8 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
           {"grid_y_idx", 0},
           {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
           {"coelev_disp_deg", 0.0},
-          {"type", "ArrayDish"},
-          {"label", "D01"}},
+          {"type", "RFIDish"},
+          {"label", "R01"}},
          {{"dish_idx", 2},
           {"grid_x_idx", 2},
           {"grid_y_idx", 0},
@@ -539,7 +540,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     datasetManager::instance(conf);
 
     // The derivation itself: a compact 4-element frame whose identities are the
-    // ArrayDish elements {0, 1, 4, 5} of the full order, with a dense triangle over
+    // non-Fake elements {0, 1, 4, 5} of the full order, with a dense triangle over
     // its own element axis.
     auto desc = std::make_shared<kotekan::N2FrameDesc>(conf, "/n2buf");
     BOOST_REQUIRE_EQUAL(desc->get_num_elements(), 4u);
