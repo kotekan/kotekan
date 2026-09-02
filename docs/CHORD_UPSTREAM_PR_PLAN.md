@@ -44,6 +44,14 @@ Removed from the PR because it is not source:
 * Six generated matplotlib PNGs (~1.5 MB), zero references, reproducible from
   `gps_cn0_map.py`.
 
+Dead generator scratch:
+
+* **`config/generated/live_*_gpu.yaml` (9 files, 163 KB)** — output of `gen_band_config.py
+  --check`. A basename grep says they are referenced; they are not. Every hit is the
+  *deployed twin* at `config/live_*.yaml`, and `gen_3band_config.py:67` (`HERE = "config/"`)
+  is the line that settles it. The two genuine references were provenance comments, repointed
+  to the byte-identical deployed copy.
+
 And one real defect, which was ours and not upstream's to cause:
 
 * **`config/crs_full_packet_capture.yaml` reverted.** An early sweeping commit repointed this
@@ -166,10 +174,38 @@ by line count, lowest by risk — none of it compiles into kotekan.
 4. **`python/scripts/gnss/gps_distributed_broker.py` (+2,818)** appears superseded by the
    `gnss_broker/` package. Confirm before shipping both.
 5. **`lib/cuda/benches/chordShapeBench.cu` (+253)** is referenced by no build file or script.
-6. **Airspy prototype heritage.** `config/airspy_autocorr.yaml` carries a CORS entry for
-   `http://gx10.vdl:8080`, the retired prototype host. Decide whether the airspy path is still
-   supported or is dead weight to drop.
-7. **19 files hardcode `/home/kvand`** paths (mostly bench/test scripts). Cosmetic, but it is
+6. **⚠️ THE BIG ONE — is the gx10 airspy prototype retired, and does it still pull this
+   branch?** This single question gates roughly **600 KB** of `config/`: `gnss_node.yaml`
+   (119 KB), `WIRING.md`, the four `gen_*_config.py` airspy generators, every top-level
+   `live_*.yaml`, `run_live.sh` (58 KB), `run_band.sh`, `run_3band.sh`, `bandctl.sh`,
+   `night_batch.sh`, and the `peel_*` / `replay_*` / `capture_*` benches.
+
+   *Evidence it is still live:* the prototype checkout at `/home/lwlab/airspy_gps/kotekan`
+   **shares this git history** — `config/binomial_trial.sh` even carries a scratch path from
+   that host — so deleting these here removes the prototype's own launchers on its next pull.
+   The family was maintained as recently as 2026-08-07.
+   *Evidence it is retired:* the prototype is documented as a different repo and instrument,
+   and `airspy_docs/buglist.md`'s newest entry is 2026-07-28.
+
+   ⚠️ **And one trap that makes this more than a tidiness question.** `config/run_live.sh` is
+   the ONLY non-definition user of about ten broker flags (`--xband-combiner`,
+   `--coast-to-horizon`, `--adc-stage`, `--xband-seed`, `--xband-lo-dongle`, …). The `_FROZEN`
+   sweep in `gnss_broker/cli.py` freezes a flag on the premise *"not set in the production
+   config, in any launch script, or in any gate or fixture in this repo"* — so **deleting
+   `run_live.sh` silently makes those flags eligible for freezing.** A config deletion would
+   quietly change the tuning contract. Whatever the answer, `run_live.sh` needs the frozen-flag
+   audit re-run, not just a `git rm`.
+
+   Held pending that answer: five prototype-host shell scripts that hardcode
+   `/home/lwlab/airspy_gps/kotekan` and cannot execute on CHORD (`binomial_trial.sh`,
+   `replay_bench_leg.sh`, `replay_l1gps_leg.sh`, `replay_l1bds_leg.sh`, `run_trim_bench.sh`) —
+   the repo's own `scripts/gnss/fixtures/README.md` already names three of them as a known trap.
+
+7. **`config/base/live_config_20260730.json`** is superseded as the fleet base, but
+   `gather_up.sh:42` names it as the input that `generated/chord_gnss_gather.yaml` — a LIVE
+   config — was built from. Confirm that gather config is reproducible without it before
+   deleting.
+8. **19 files hardcode `/home/kvand`** paths (mostly bench/test scripts). Cosmetic, but it is
    the kind of thing a reviewer notices in file one.
 
 ---
