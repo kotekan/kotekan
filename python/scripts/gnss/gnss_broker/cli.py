@@ -1328,7 +1328,7 @@ def build_parser(description):
                          "the value. This flag doubles as the CAP -- past it the hold expires "
                          "and a genuinely set satellite is released normally.")
     ap.add_argument("--fleet-trim-establish-hold-s", type=float, default=0.0,
-                    help="⚠️⚠️ DEFAULT OFF, AND THE MEASUREMENT SAYS KEEP IT OFF -- this was "
+                    help="#106. ⚠️⚠️ DEFAULT OFF, AND THE MEASUREMENT SAYS KEEP IT OFF -- this was "
                          "tried on sky 2026-09-02 and MADE THE TRANSIENT WORSE. Retained as an "
                          "instrument, not a recommendation. Read the numbers below before "
                          "setting it.\n"

@@ -1611,6 +1611,70 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #106 — the ~8 min q thrash after EVERY broker restart is the SEEDS SETTLING, not the fast loop; freezing the loop was tried and made it WORSE (2026-09-02) — ROOT REFRAMED, fix `[withdrawn]`, cause OPEN
+
+Every broker restart costs ~8 minutes of degraded gps_l5 before the chain settles. Seen
+three times on 2026-09-02 alone (15:28, 16:20, 17:32) and previously written off in the
+handoff notes as "a self-settling restart transient — judge L5 only after ~10 min".
+
+**The evidence that made it look like a controller fault.** `FLEET-TRIM READBACK` (armed by
+`fleet-trim-readback: 1`; the ONLY place the C++ fast loop's standing trims are visible
+historically — the broker's own `DLL:` line reads 0.000 for armed PRNs because the Python arm
+stands down) across the 17:32 restart:
+
+| t | mean(trim) | max|trim| | |
+|---|---|---|---|
+| 17:32:44 | +0.170 | 0.546 | restart; normal |
+| 17:34:44 | +1.109 | 2.182 | climbing through the JFEED warmup |
+| 17:36:46 | +1.144 | **3.000** | AT THE CLAMP (joint feed opened 17:36:12) |
+| 17:38:50 | +1.701 | **3.000** | still clamped |
+| 17:40:53 | +0.162 | 0.591 | collapsed back |
+
+Steady state is max 0.2–0.5, so a 6–10× excursion into the hard clamp, and **common-mode** —
+all seven PRNs the same sign, mean +1.1 to +1.7.
+
+**The fix that was built, flown, and falsified in one paired restart.** Hold the fast loop
+through establishment by reusing #91(b)'s brownout freeze (`gain_per_s = leak_per_s = 0`,
+PRNs still armed; zeroing both retains the standing trim — disarming erases it in ~5.6 s —
+so no C++ change was needed). Commits `6e6bc4d88` (attempt) and `19a06fd3f` (falsification),
+kept rather than squashed because the flight is the artifact.
+
+Actuation was perfect: five consecutive readbacks identical at mean +0.305 / max 0.615
+through exactly the window that had been clamped. **And the fleet got worse** — gps_l5,
+fraction of rows above the q = 2.2 gate over the first nine minutes:
+
+| | loop LIVE (17:32) | loop FROZEN (19:17) |
+|---|---|---|
+| frac ≥ 2.2 | 57–95 % | **14–38 %** |
+| mean_q | 2.4–3.3 | **1.1–1.8** |
+
+Worse on **every single minute**. Both restarts then converge to ~100 % at +9 to +12 min.
+
+**⚠️ THAT CONVERGENCE IS THE FINDING: the transient's LENGTH IS SET BY THE SEEDS SETTLING,
+NOT BY THE LOOP.** So the clamp excursion is a *symptom*. The loop was never integrating
+establishment garbage — it was absorbing a genuine common-mode establishment offset, and it
+reached the clamp *because that offset exceeds 3 chips*. Freeze it and nothing absorbs the
+offset: the despread sits off-peak and q collapses.
+
+**⚠️ AND THE COMMON-MODE SIGNATURE MEANT THE OPPOSITE OF WHAT IT LOOKED LIKE.** "All PRNs one
+sign" is not evidence of chasing noise; it is evidence of chasing something REAL that every
+satellite shares. That inversion is what made a wrong hypothesis look airtight.
+
+**Status.** `--fleet-trim-establish-hold-s` survives as a working instrument, **default 0**,
+with a `test_trimarm.py` arm asserting the shipped default is 0 (verified to FAIL when the
+default is restored to 300) so re-enabling it needs new on-sky evidence, not a good story.
+The underlying cause — a >3-chip common-mode offset present at establishment — is **OPEN**.
+
+**Next attack, and it is the opposite direction from the withdrawn fix.** Go at the
+seed/clock step itself, or widen the clamp *during* establishment so the loop can absorb
+what it is plainly reaching for. **First measure the offset**: the clamp means we only know
+it is >3 chips, not what it is — instrument the pre-clamp value before designing anything.
+
+**⚠️ Process note worth keeping.** With the freeze live under `--transcript-read`, 4 of 7
+`broker_equiv` fixtures went red, and blessing them would have made the digests depend on how
+long a replay TAKES. Wall-clock logic must be inert in replay and covered by a unit test, never
+by a fixture digest — the same treatment #90's admission gate already gets.
+
 ## #105 — fleet-common q-crash BURSTS = the clock-freq bias EMA OSCILLATES and is COMMANDED into every seed (CLOSED 2026-08-31 00:50 UTC: all 3 fixes verified on sky)
 
 The "funny q oscillations": per-sat q crashes 4 -> <1 with immediate recovery, bursty

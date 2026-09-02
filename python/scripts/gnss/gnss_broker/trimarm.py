@@ -53,7 +53,7 @@ def stage_fleet_trim_arming(ctx):
         #
         # Per-chain is the right granularity precisely BECAUSE a brownout is chain-wide.
         _brown_hold = (ctx.args.fleet_trim_brownout_hold_s > 0.0 and ctx.brown.established())
-        # ── THE ESTABLISHMENT FREEZE: BUILT, FLOWN, FALSIFIED, DEFAULT OFF (2026-09-02) ──
+        # ── #106 ESTABLISHMENT FREEZE: BUILT, FLOWN, FALSIFIED, DEFAULT OFF (2026-09-02) ──
         # ⚠️⚠️ DO NOT TURN THIS ON WITHOUT NEW EVIDENCE. It is kept because the instrument
         # is worth having and the flight is worth recording, not because it works.
         #
