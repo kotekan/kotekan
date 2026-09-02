@@ -123,17 +123,19 @@ telescope:
     dish_vert_axis: [0.0, 0.0, 1.0]
 
     dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
-    check_duplicate_dish_grid: true  # Only ArrayDish entries are checked; Fake rows C-H are exempt
+    check_duplicate_dish_grid: true  # Only ArrayDish entries are checked; Fake and RFIDish rows are exempt
 
     dish_grid_size_x: 8
     dish_grid_size_y: 12
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
-    # Live wiring (July 2026): 4 CRS boards (crate slots 1-4) x 8 ADCs = 32 inputs,
-    # covering dishes A1-A8 and B1-B8. Element order is [P][D] (CHORDBeamformer). Must
-    # stay identical to dish_inputs in chord_pathfinder.j2, which labels the same
-    # element axis; see the crs_board_remap comment there for how it is built.
-    # Rows C-H are not connected yet and are typed Fake (masked on the X-engine side);
+    # Live wiring (Sep 2 2026): 6 CRS boards x 8 ADCs = 48 inputs: dishes A1-A8 and
+    # B1-B8 (dish slots 0-15) plus the RFI antennas (dish slots 56-63, typed RFIDish).
+    # Element order is [P][D] (CHORDBeamformer). Must stay identical to dish_inputs in
+    # chord_pathfinder.j2, which labels the same element axis; see the crs_board_remap
+    # comment there for how it is built.
+    # RFIDish rows are masked on the X-engine side and excluded from the DishInputs vis
+    # subset; their grid positions are placeholders. Rows typed Fake are not connected;
     # flip a row to ArrayDish when its boards come online.
     dish_inputs: [
         {dish_idx:  0, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4},
@@ -192,14 +194,14 @@ telescope:
         {dish_idx: 53, grid_x_idx: 2,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G3},
         {dish_idx: 54, grid_x_idx: 1,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G2},
         {dish_idx: 55, grid_x_idx: 0,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G1},
-        {dish_idx: 56, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H8},
-        {dish_idx: 57, grid_x_idx: 6,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H7},
-        {dish_idx: 58, grid_x_idx: 5,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H6},
-        {dish_idx: 59, grid_x_idx: 4,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H5},
-        {dish_idx: 60, grid_x_idx: 7,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G8},
-        {dish_idx: 61, grid_x_idx: 6,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G7},
-        {dish_idx: 62, grid_x_idx: 5,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G6},
-        {dish_idx: 63, grid_x_idx: 4,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G5}
+        {dish_idx: 56, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB4},
+        {dish_idx: 57, grid_x_idx: 6,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB3},
+        {dish_idx: 58, grid_x_idx: 5,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB2},
+        {dish_idx: 59, grid_x_idx: 4,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB1},
+        {dish_idx: 60, grid_x_idx: 7,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA4},
+        {dish_idx: 61, grid_x_idx: 6,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA3},
+        {dish_idx: 62, grid_x_idx: 5,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA2},
+        {dish_idx: 63, grid_x_idx: 4,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA1}
     ]
 
     require_gps: True
@@ -225,7 +227,7 @@ chord_pool:
 
 
 
-# Receive subset N2 buffer: compact frames over the ArrayDish elements, derived from
+# Receive subset N2 buffer: compact frames over the non-Fake elements, derived from
 # this config's telescope dish table, which must match the X-engine's (the wire
 # carries the sender's element identities, so a divergent table fails loudly rather
 # than mislabeling).
