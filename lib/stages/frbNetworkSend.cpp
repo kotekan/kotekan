@@ -293,13 +293,14 @@ void frbNetworkSend::main_thread() {
         DEBUG("Beam offset: {:d}", local_beam_offset);
 
         // r4 is e_stream (or link) below
+        size_t total_data_sent = 0;
         for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse;
-             ++fbar64) // TODO: think about swapping this with the
-                       // ttilde16_low16_by_packets_per_stream loop to keep all frequencies closer
-                       // together in the network stream
+             ++fbar64) { // TODO: think about swapping this with the
+                         // ttilde16_low16_by_packets_per_stream loop to keep all frequencies closer
+                         // together in the network stream
             for (int ttilde16_low16_by_packets_per_stream = 0;
                  ttilde16_low16_by_packets_per_stream < 16 / packets_per_stream;
-                 ++ttilde16_low16_by_packets_per_stream)
+                 ++ttilde16_low16_by_packets_per_stream) {
                 for (int frame = 0; frame < packets_per_stream; frame++) {
                     const int nstreams = _total_nbeams / _nbeams;
                     assert(nstreams == 256);
@@ -456,6 +457,8 @@ void frbNetworkSend::main_thread() {
                         add_nsec(t1, wait_per_packet);
                     }
                 }
+            }
+        }
         assert(total_data_sent == in_buf->frame_size);
 
         in_buf->mark_frame_empty(unique_name, frame_id);
