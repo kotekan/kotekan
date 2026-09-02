@@ -432,15 +432,25 @@ void N2Accumulate::main_thread() {
         // DIFFERENT quantity, it is a recycled unstamped object and the fields name the
         // producer; if only the seq is stale, it is a stamp-path bug in this stream's own
         // producer. The FATAL still fires -- this is diagnosis, not survival.
+        // OBJECT IDENTITY (2026-09-02): the metadata "pool" allocates fresh heap objects on
+        // every request -- it cannot recycle -- so a frame carrying another stage's stamp
+        // means the SAME object is installed in two slots (pass_metadata aliasing or the
+        // no-op allocate_new_metadata_object) and was mutated in place through the other
+        // alias. Printing each object's ADDRESS plus the recent address history turns the
+        // next death into direct proof: a stale frame whose pointer matches a recent lap
+        // of another stream names the alias pair outright.
         auto _autopsy = [](const char* tag, const std::shared_ptr<chordMetadata>& m) {
-            ERROR_NON_OO("  AUTOPSY {:s}: seq={:d} name='{:s}' dims={:d} [{:s}]", tag,
-                         m->get_fpga_seq_num(),
+            ERROR_NON_OO("  AUTOPSY {:s}: seq={:d} obj={:p} use_count={:d} name='{:s}' "
+                         "dims={:d} [{:s}]",
+                         tag, m->get_fpga_seq_num(), (const void*)m.get(),
+                         (int64_t)m.use_count(),
                          std::string(m->name, strnlen(m->name, CHORD_META_MAX_DIMNAME)),
                          m->dims, m->get_dimensions_string());
         };
         {
             static constexpr size_t SEQ_HIST = 16;
             static thread_local std::array<std::array<int64_t, SEQ_HIST>, 5> _hist{};
+            static thread_local std::array<std::array<const void*, SEQ_HIST>, 5> _phist{};
             static thread_local size_t _hist_n = 0;
             const std::array<std::pair<const char*, const std::shared_ptr<chordMetadata>*>, 5>
                 _streams{{{"correlation", &frame_metadata},
@@ -458,16 +468,20 @@ void N2Accumulate::main_thread() {
                     _autopsy(st.first, *st.second);
                 const size_t n = std::min(_hist_n, SEQ_HIST);
                 for (size_t k = 0; k < _streams.size(); ++k) {
-                    std::string h;
+                    std::string h, ph;
                     for (size_t j = 0; j < n; ++j) {
                         const size_t idx = (_hist_n - n + j) % SEQ_HIST;
                         h += fmt::format("{}{}", j ? " " : "", _hist[k][idx]);
+                        ph += fmt::format("{}{}", j ? " " : "", _phist[k][idx]);
                     }
                     ERROR_NON_OO("  history {:s}: [{:s}]", _streams[k].first, h);
+                    ERROR_NON_OO("  objects {:s}: [{:s}]", _streams[k].first, ph);
                 }
             }
-            for (size_t k = 0; k < _streams.size(); ++k)
+            for (size_t k = 0; k < _streams.size(); ++k) {
                 _hist[k][_hist_n % SEQ_HIST] = (*_streams[k].second)->get_fpga_seq_num();
+                _phist[k][_hist_n % SEQ_HIST] = (const void*)(*_streams[k].second).get();
+            }
             ++_hist_n;
         }
         if (frame_metadata->get_fpga_seq_num() != counts_metadata->get_fpga_seq_num()) {
