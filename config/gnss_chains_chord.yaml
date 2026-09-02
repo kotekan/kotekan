@@ -2766,6 +2766,14 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # residual against that bootstrap is tau_band(1227.6 vs 1176.45) -- a FOURTH equation, and
     # the first from a same-constellation pair.
     signal: gps_l2c
+    # SAME GATE AS gps_l5, DIFFERENT CUT (2026-09-02). L2C is Block IIR-M and newer, so
+    # the IGS registry proves 4 of the 32 PRNs can never carry it: 2, 16, 19, 22 (IIR-A/
+    # IIR-B). Unlike L5's 11, these are few enough to look like ordinary dead rows -- which
+    # is exactly why they survived bring-up. Without the gate they take hints, seeds and
+    # (via require_hint) search slots, and land as permanent q~1.0 rows in the presence
+    # population. Registry, never Celestrak. Verify after a restart: the startup log line
+    # "signal-capability gps_l2c: 4 PRN(s) excluded ... 2, 16, 19, 22".
+    signal-capability: gps_l2c
     dr-clock-adopt: true
     # REQUIRES THE propagate_seed comb_mult FIX (gnssSeedTransport.cpp 2fe49e77f, 2026-09-02) IN
     # THE NODE BINARY. Before it, nodes read code_phase_at_ref_chips as COMBINED chips while the
