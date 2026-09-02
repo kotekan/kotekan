@@ -94,6 +94,99 @@ _CHAINS = {
 }
 
 
+# RF band names, keyed by carrier to 10 kHz. This is the COLUMN a viewer groups by, and it is
+# NOT the signal's own name: Galileo E5a and GPS L5 are both the L5 band (they share 1176.45
+# MHz, which is the whole reason they share a receiver), while E5a-Q and L5-Q are different
+# signals within it. Getting this wrong puts every signal in its own column and defeats the
+# point of the table. Module-level because two consumers need it WITHOUT a signal in hand:
+# SignalDef.rf_band (carrier -> name) and band_of_freq_id (a bare channel -> name).
+RF_BAND_BY_CARRIER = {
+    1575.42: "L1",     # GPS L1 C/A + L1C, Galileo E1, BeiDou B1C
+    1227.60: "L2",     # GPS L2C
+    1176.45: "L5",     # GPS L5, Galileo E5a, BeiDou B2a  <- CHORD's band today
+    1207.14: "E5b",    # Galileo E5b, BeiDou B2b/B2I
+    1278.75: "E6",     # Galileo E6
+    1268.52: "B3",     # BeiDou B3I
+    1202.025: "L3",    # GLONASS L3OC
+    1561.098: "B1I",   # BeiDou B1I (BDS-2, outside CHORD's band)
+    1246.00: "G2",     # GLONASS L2OF
+    1248.06: "G2",     # GLONASS L2OC
+}
+
+# CHORD's F-engine channel pitch. freq_id is a PHYSICAL bin index, so the centre frequency is
+# exactly freq_id * this (config/chord_gnss_node.yaml: channel_width_hz 195312.5,
+# freq_id_is_physical_bin true). Same constant as GnssGpuRecordAssemble.cpp's 0.1953125.
+FREQ_ID_MHZ = 0.1953125
+
+# How far from a carrier a channel may sit and still be called part of that band. The widest
+# signal we fly is BPSK(10) -- a 10.23 MHz mainlobe half-width -- so 12 MHz admits a whole
+# mainlobe and a little shoulder, and rejects a channel that belongs to nothing we track.
+_BAND_CLAIM_MHZ = 12.0
+
+
+def carriers_for_chains(chain_names):
+    """[(carrier MHz, band name)] for the given chain names -- the DECLARED band set.
+
+    Physics comes from gnssSignal.hpp via the descriptor table, so a carrier is never typed
+    a second time; the config only declares WHICH chains the receiver flies. Unknown names
+    are skipped rather than fatal: this feeds a health panel, and a typo should cost a label,
+    not a chain.
+    """
+    out = []
+    for name in chain_names or []:
+        key = str(name).strip().lower()
+        if not key:
+            continue
+        try:
+            sig = get(key)
+        except Exception:
+            continue
+        mhz = round(sig.carrier_hz / 1e6, 3)
+        if mhz not in [c for c, _ in out]:
+            out.append((mhz, RF_BAND_BY_CARRIER.get(mhz, "%.2fMHz" % mhz)))
+    return sorted(out)
+
+
+def band_of_freq_id(freq_id, carriers=None):
+    """(band name, carrier MHz) for the RF band a CHORD channel sits in; (None, None) if none.
+
+    ⚠️⚠️ `carriers` IS THE DECLARED SET AND LEAVING IT OUT INVENTS BANDS. Measured while this
+    was being written: with the full RF_BAND_BY_CARRIER table as candidates, cx19/gnss1's
+    channels 287-288 (1199.2 and 1202.3 MHz) came back as "L3" -- they sit nearer GLONASS
+    L3OC's 1202.025 carrier than Galileo E5b's 1207.14, and CHORD does not fly L3OC at all.
+    The lower shoulder of a band we DO track was confidently named as a band we do not. Pass
+    the carriers the receiver actually flies (see carriers_for_chains and the broker's
+    --rf-bands, declared in config/gnss_chains_chord.yaml) and the ambiguity disappears,
+    because the only candidates are bands that really are in the data.
+
+    ⚠️ NEAREST CARRIER, NOT CONTAINMENT, among those candidates. bds_b3i (1268.52, BPSK(10))
+    has a mainlobe edge at exactly gal_e6's carrier (1278.75), so the occupied bands OVERLAP
+    and containment has no single answer there. Nearest splits at the midpoint, gives the
+    same answer on every instance, and groups each channel with the neighbourhood a
+    band-selective source moves as a unit -- which is the question the panel exists to ask.
+
+    ⚠️ THE INPUT IS AN ABSOLUTE freq_id, never a local comb index. Local index is meaningless
+    off the node (nodes hold different subsets), which is the whole reason the tap serves
+    freq_ids alongside chans. A local index here yields a confident wrong band.
+    """
+    if freq_id is None:
+        return (None, None)
+    try:
+        mhz = float(freq_id) * FREQ_ID_MHZ
+    except (TypeError, ValueError):
+        return (None, None)
+    cands = (list(carriers) if carriers
+             else sorted((c, n) for c, n in RF_BAND_BY_CARRIER.items()))
+    best, best_d = None, None
+    for carrier, name in cands:
+        d = abs(mhz - float(carrier))
+        if best_d is None or d < best_d:
+            best, best_d = (name, float(carrier)), d
+    if best is None or best_d > _BAND_CLAIM_MHZ:
+        return (None, None)
+    return best
+
+
 class SignalDef(object):
     """One named chain: constellation x band x code, frozen at construction."""
 
@@ -126,18 +219,7 @@ class SignalDef(object):
     # share 1176.45 MHz, which is the whole reason they share a receiver), while E5a-Q and
     # L5-Q are different signals within it. Getting this wrong puts every signal in its own
     # column and defeats the point of the table.
-    _RF_BAND = {
-        1575.42: "L1",     # GPS L1 C/A + L1C, Galileo E1, BeiDou B1C
-        1227.60: "L2",     # GPS L2C
-        1176.45: "L5",     # GPS L5, Galileo E5a, BeiDou B2a  <- CHORD's band today
-        1207.14: "E5b",    # Galileo E5b, BeiDou B2b/B2I
-        1278.75: "E6",     # Galileo E6
-        1268.52: "B3",     # BeiDou B3I
-        1202.025: "L3",    # GLONASS L3OC
-        1561.098: "B1I",   # BeiDou B1I (BDS-2, outside CHORD's band)
-        1246.00: "G2",     # GLONASS L2OF
-        1248.06: "G2",     # GLONASS L2OC
-    }
+    _RF_BAND = RF_BAND_BY_CARRIER
 
     @property
     def rf_band(self):

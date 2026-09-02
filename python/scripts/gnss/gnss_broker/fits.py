@@ -6,6 +6,8 @@ arguments -- no globals, no I/O -- so they are testable in isolation for the fir
 import math
 import statistics
 
+from gnss_broker import signals
+
 
 def fit_cp_rate(hist, code_len):
     """Least-squares fit cp0 vs capture hop -> (rate chips/hop, hop_ref, cp_ref).
@@ -472,20 +474,35 @@ def tracker_phase_at(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_s
               * (seed.get("doppler_rate_hz_s", 0.0) or 0.0) * dt * dt) % mod
 
 
-def rf_lobes(chans, power, clip_lo, clip_hi):
-    """Group one tap's per-channel RF stats into contiguous LOBES. Pure; see test_rf_lobes.py.
+def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
+    """Group one tap's per-channel RF stats into BANDS. Pure; see test_rf_lobes.py.
 
     The tap serves a flat channel list because that is what it walks. But the list is the
-    UNION of every chain's covering set on that GPU, so it arrives as one contiguous run per
-    BAND -- 277..283 (1176.45 MHz) and 287..293 (1207.14) on cx19/gnss0. Contiguity is
-    therefore the band grouping, and it needs no extra configuration and no second place that
-    has to be kept in step with the generator.
+    UNION of every chain's covering set on that GPU, so it arrives as contiguous runs.
 
-    ⚠️ LOBES ARE NUMBERED, NOT NAMED. Naming them by frequency needs the node's GLOBAL channel
-    map and the tap serves LOCAL comb indices -- the same two axes that put freq_id 5972 into
-    a 384-channel frame while this was being built. Rather than guess a mapping here, the
-    channel range is published and the consumer labels it. Numbering is ordered by channel, so
-    lobe 0 is always the lower band.
+    ⚠⚠ LOBES ARE NOW NAMED, AND NUMBERING ALONE WAS SILENTLY WRONG (2026-09-02). The old
+    contract was "contiguity is the band grouping, and lobe 0 is always the lower band on
+    every instance". That held while the fleet ran two well-separated bands and BROKE without
+    a single error when it stopped:
+
+      * gps_l2c adds ONE channel near 1227.6 MHz, and only 5 of 12 instances own one
+        (cx19/g1 6284, cx27/g0 6288, cx42/g1 6285, cx43/g1 6286, cx51/g1 6287; cx44 owns
+        none). So instances disagree on lobe COUNT, and index 2 meant L2C on five of them and
+        something else on the rest.
+      * bds_b3i (1268.52) and gal_e6 (1278.75) ABUT -- B3I's BPSK(10) mainlobe edge lands on
+        E6's carrier -- so their channels form ONE contiguous run that contiguity cannot
+        split. Two bands were being medianed into one row.
+
+    A consumer keyed on index therefore compared different bands across instances and the
+    only symptom was a permanent amber "instances disagree on lobe count" banner. `band` is
+    now the identity: it comes from the ABSOLUTE freq_id the tap serves alongside `chans`
+    (GnssChordVoltageTap: read from the frame's own chord metadata, never from config), so it
+    means the same thing on every instance no matter which local subset that node holds.
+
+    Runs split on BOTH a channel gap and a band change. Without freq_ids -- an older node
+    binary, or a frame that carried no chord metadata -- `band` is None and the grouping
+    degrades to exactly the old contiguity behaviour, so a mixed-binary fleet during a
+    rolling restart shows old-style rows rather than wrong ones.
 
     POWER IS MEANED, CLIP IS MAXED, and the asymmetry is deliberate: power is a LEVEL and the
     band's average is the honest summary, while clip is DAMAGE -- one railing channel corrupts
@@ -495,6 +512,21 @@ def rf_lobes(chans, power, clip_lo, clip_hi):
     n = min(len(chans), len(power), len(clip_lo), len(clip_hi))
     if n == 0:
         return []
+    # freq_ids is OPTIONAL and must be exactly parallel to chans to be usable. A short or
+    # ragged array means the two are not describing the same channels, and a misaligned band
+    # name is worse than none -- fall back to unnamed rather than label channel k with
+    # channel j's frequency.
+    fids = list(freq_ids) if freq_ids else []
+    if len(fids) != len(chans):
+        fids = []
+    # `carriers` is the DECLARED band set (broker --rf-bands). Without it the labeller has
+    # the whole RF_BAND_BY_CARRIER table as candidates and will name a band we do not fly --
+    # E5b's lower shoulder came back as GLONASS "L3". No declaration, no names.
+    named = [signals.band_of_freq_id(fids[i], carriers) if (fids and carriers)
+             else (None, None) for i in range(n)]
+    band = [b for b, _ in named]
+    carrier = [c for _, c in named]
+
     order = sorted(range(n), key=lambda i: chans[i])
     out, run = [], []
 
@@ -503,17 +535,27 @@ def rf_lobes(chans, power, clip_lo, clip_hi):
             return
         lo = max(range(len(run)), key=lambda k: clip_lo[run[k]])
         hi = max(range(len(run)), key=lambda k: clip_hi[run[k]])
-        out.append({
+        rec = {
             "lobe": len(out),
             "chan0": chans[run[0]], "chan1": chans[run[-1]], "n_chan": len(run),
             "power": sum(power[i] for i in run) / float(len(run)),
             "power_max": max(power[i] for i in run),
             "clip_lo": clip_lo[run[lo]], "clip_lo_chan": chans[run[lo]],
             "clip_hi": clip_hi[run[hi]], "clip_hi_chan": chans[run[hi]],
-        })
+        }
+        if fids:
+            rec["band"] = band[run[0]]
+            rec["carrier_mhz"] = carrier[run[0]]
+            rec["freq_id0"] = fids[run[0]]
+            rec["freq_id1"] = fids[run[-1]]
+            rec["mhz0"] = round(fids[run[0]] * signals.FREQ_ID_MHZ, 3)
+            rec["mhz1"] = round(fids[run[-1]] * signals.FREQ_ID_MHZ, 3)
+        out.append(rec)
 
     for i in order:
-        if run and chans[i] != chans[run[-1]] + 1:
+        # Split on a channel GAP or a band CHANGE. The band test is what separates the
+        # abutting bds_b3i and gal_e6 runs, which no gap ever will.
+        if run and (chans[i] != chans[run[-1]] + 1 or band[i] != band[run[-1]]):
             flush(run)
             run = []
         run.append(i)

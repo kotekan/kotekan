@@ -68,26 +68,48 @@ def inst(lobes, state="on"):
     return {"state": state, "lobes": lobes}
 
 
-def lobe(i, c0, c1, lo=0.0, hi=0.0, pw=1.0):
-    return {"lobe": i, "chan0": c0, "chan1": c1, "n_chan": c1 - c0 + 1,
-            "power": pw, "power_max": pw, "clip_lo": lo, "clip_lo_chan": c0,
-            "clip_hi": hi, "clip_hi_chan": c0}
+def lobe(i, c0, c1, lo=0.0, hi=0.0, pw=1.0, band=None, mhz=None, f0=None, f1=None):
+    """One lobe as the broker's rf_lobes emits it. `band`/`carrier_mhz` present = a node
+    binary that serves freq_ids AND a broker with --rf-bands declared; absent = the legacy
+    unnamed shape, which the panel must still render (rolling restart)."""
+    d = {"lobe": i, "chan0": c0, "chan1": c1, "n_chan": c1 - c0 + 1,
+         "power": pw, "power_max": pw, "clip_lo": lo, "clip_lo_chan": c0,
+         "clip_hi": hi, "clip_hi_chan": c0}
+    if band is not None:
+        f0 = f0 if f0 is not None else 1548 + 16 * c0
+        f1 = f1 if f1 is not None else 1548 + 16 * c1
+        d.update({"band": band, "carrier_mhz": mhz, "freq_id0": f0, "freq_id1": f1,
+                  "mhz0": round(f0 * 0.1953125, 3), "mhz1": round(f1 * 0.1953125, 3)})
+    return d
 
 
+# LEGACY shape: no band identity. Kept as a fixture on purpose -- it is what a not-yet-
+# restarted node half serves, and the panel must degrade to unnamed rows rather than merge
+# them with named ones.
 TWO = [lobe(0, 277, 283), lobe(1, 287, 293)]
+
+# The 2026-09-02 fleet: eight chains collapse to FIVE RF bands. L2 is the case that broke
+# lobe-index keying -- one channel, and only 5 of 12 instances own one.
+BANDED = [lobe(0, 277, 283, band="L5", mhz=1176.45),
+          lobe(1, 287, 292, band="E5b", mhz=1207.14),
+          lobe(2, 306, 310, band="B3", mhz=1268.52),
+          lobe(3, 311, 314, band="E6", mhz=1278.75)]
+BANDED_L2 = [BANDED[0], BANDED[1],
+             lobe(2, 296, 296, band="L2", mhz=1227.60),
+             lobe(3, 306, 310, band="B3", mhz=1268.52),
+             lobe(4, 311, 314, band="E6", mhz=1278.75)]
 RED, AMBER, GREEN = "#d64550", "#e8a13c", "#3fb26f"
 
 
 def main():
     fails = []
 
-    # 1. HEALTHY FLEET: two lobe rows, both green, all instances counted.
+    # 1. HEALTHY FLEET, LEGACY (unnamed) SHAPE: two lobe rows, both green, all instances.
     doc = {"t": 1.0, "instances": {"http://cx%d:12048/gnss%d_srch_tap" % (n, g): inst(TWO)
                                    for n in (19, 27, 42, 43, 44, 51) for g in (0, 1)}}
     h = make(doc)
     # Count ROW LABELS, not the substring: the label tooltip legitimately says "lobe 0 is
     # the lower band", so a bare h.count("lobe 0") counts prose as rows.
-    rows = re.findall(r"lobe (\d) &middot; ch |lobe (\d) \u00b7 ch ", h)
     n0 = h.count("lobe 0 \u00b7 ch "); n1 = h.count("lobe 1 \u00b7 ch ")
     if (n0, n1) != (1, 1):
         fails.append("expected one row per lobe, got lobe0=%d lobe1=%d" % (n0, n1))
@@ -96,7 +118,48 @@ def main():
     elif RED in h or AMBER in h:
         fails.append("healthy fleet rendered a warning colour")
     else:
-        print("ok  healthy 12-instance fleet -> 2 lobe rows, 12/12, all green")
+        print("ok  healthy fleet, legacy unnamed lobes -> 2 rows, 12/12, all green")
+
+    # 1b. THE 2026-09-02 FLEET: five BANDS, named, in carrier order, no warning colour.
+    #     This is the arm that fails if row keying ever goes back to lobe index: L2 exists
+    #     on 5 instances at index 2 while B3 sits at index 2 on the other 7.
+    insts = {}
+    for n in (19, 27, 42, 43, 51):
+        for g in (0, 1):
+            insts["http://cx%d:12048/gnss%d_srch_tap" % (n, g)] = inst(
+                BANDED_L2 if g == 1 else BANDED)
+    for g in (0, 1):
+        insts["http://cx44:12048/gnss%d_srch_tap" % g] = inst(BANDED)   # cx44 owns no L2C
+    h = make({"t": 1.0, "instances": insts})
+    order = [h.find("%s \u00b7 " % b) for b in ("L5", "E5b", "L2", "B3", "E6")]
+    if any(o < 0 for o in order):
+        fails.append("band rows missing: %s" % dict(zip(("L5", "E5b", "L2", "B3", "E6"), order)))
+    elif order != sorted(order):
+        fails.append("band rows out of carrier order: %s" % order)
+    elif h.count("L2 \u00b7 ") != 1:
+        fails.append("L2 rendered %d times, want exactly one row" % h.count("L2 \u00b7 "))
+    elif "5/12" not in h:
+        fails.append("L2's partial coverage not shown as 5/12")
+    elif AMBER in h:
+        fails.append("a correctly-partial band (L2 on 5 of 12) rendered as a warning")
+    elif "1176.45 MHz" not in h or "1227.60 MHz" not in h:
+        fails.append("band rows do not carry the carrier frequency")
+    else:
+        print("ok  8-chain fleet -> 5 BAND rows in carrier order; L2 on 5/12 is grey, not amber")
+
+    # 1c. MIXED BINARIES (a rolling restart): named and unnamed instances must not merge,
+    #     and the banner must say the unnamed rows are not comparable.
+    mixed_i = dict(insts)
+    mixed_i["http://cx19:12048/gnss0_srch_tap"] = inst(TWO)
+    h = make({"t": 1.0, "instances": mixed_i})
+    if "L5 \u00b7 " not in h:
+        fails.append("named rows vanished when one instance served no band")
+    elif "lobe 0 \u00b7 ch " not in h:
+        fails.append("unnamed instance's lobes were dropped instead of rendered separately")
+    elif "not comparable" not in h:
+        fails.append("mixed named/unnamed fleet did not warn")
+    else:
+        print("ok  mixed named/unnamed instances -> both render, banner says not comparable")
 
     # 2. ⚠️ THE ONE THAT MATTERS: NOT ARMED must not look like QUIET.
     doc_off = {"t": 1.0, "instances": {"http://cx19:12048/gnss0_srch_tap": {"state": "off"}}}
@@ -148,14 +211,17 @@ def main():
     else:
         print("ok  no RF document -> renders nothing (airspy pages unaffected)")
 
-    # 7. MIXED LOBE COUNTS must warn rather than silently compare different bands.
+    # 7. MIXED LOBE COUNTS, ALL UNNAMED, must still warn -- the legacy path is the one
+    #    where lobe index is the only key and a count disagreement really does mean the
+    #    rows may be different bands. (Once bands are named, differing counts are NORMAL:
+    #    only 5 of 12 instances own an L2C channel. Arm 1b is the guard for that.)
     mix = {"http://cx19:12048/gnss0_srch_tap": inst(TWO),
            "http://cx27:12048/gnss0_srch_tap": inst([lobe(0, 277, 283)])}
     h = make({"t": 1.0, "instances": mix})
     if "disagree on lobe count" not in h:
         fails.append("mixed lobe counts did not warn")
     else:
-        print("ok  instances disagree on lobe count -> warns instead of blending")
+        print("ok  unnamed instances disagree on lobe count -> warns instead of blending")
 
     # 8. RFI SK: a jammed channel (SK outside band) -> RED, flagged count shown, worst named.
     sk_doc = {"t": 1.0, "instances": {
@@ -223,7 +289,7 @@ def main():
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 12 arms, run in QuickJS against the real panel source")
+    print("GATE GOOD: 14 arms, run in QuickJS against the real panel source")
     return 0
 
 

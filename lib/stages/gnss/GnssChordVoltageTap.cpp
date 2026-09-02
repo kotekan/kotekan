@@ -124,6 +124,17 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
             std::lock_guard<std::mutex> lk(_rf_lock);
             r["enabled"] = !_bp_chans.empty();
             r["chans"] = _bp_chans;             // LOCAL channel indices, as configured
+            // ⚠️ THE ONE FIELD THAT MAKES A LOBE NAMEABLE, and it comes from the FRAME, not
+            // the config. Local comb position has no meaning off the node: nodes hold
+            // different channel subsets, so local 296 is 1227.34 MHz here and something else
+            // next door. The consumer used to key rows by lobe INDEX and assume order was
+            // stable across instances -- true while the fleet ran two well-separated bands,
+            // false the moment gps_l2c (one channel) and the abutting bds_b3i/gal_e6 runs
+            // arrived: index 2 was L2C on five instances and B3I+E6 on the other seven, and
+            // the panel medianed power across two different bands in one row. Parallel to
+            // `chans`; empty if no chord-metadata frame has been measured yet, which the
+            // consumer must treat as "unknown", never as freq_id 0.
+            r["freq_ids"] = _bp_freq_ids;
             r["power"] = _bp_power;             // mean |x|^2 per monitored channel
             r["clip_lo"] = _bp_clip_lo;         // fraction of nibbles at -8, per channel
             r["clip_hi"] = _bp_clip_hi;         // fraction at +7, per channel
@@ -242,13 +253,34 @@ void GnssChordVoltageTap::main_thread() {
                         ecl[(size_t)e] /= 2.0 * n_per_elem;
                     }
                     int64_t seq = -1;
+                    std::vector<int> fids;
                     if (metadata_is_chord(in_buf, in_id)) {
                         auto md = get_chord_metadata(in_buf, in_id);
                         if (md != nullptr && md->has_fpga_seq_num())
                             seq = md->get_fpga_seq_num();
+                        // ABSOLUTE freq_id per monitored channel, from the frame we just
+                        // measured. coarse_freq is indexed by LOCAL comb position, which is
+                        // exactly what _bp_chans holds, so this is a lookup and not a
+                        // conversion -- no gpu_offsets_mod16 arithmetic to get wrong (the
+                        // generator's rf_monitor_channels docstring is the record of how easy
+                        // the two axes are to conflate). Bounds-checked against the frame's
+                        // own nfreq rather than assumed: publish nothing rather than a wrong
+                        // identity, since a wrong band name is worse than no band name.
+                        if (md != nullptr && md->has_coarse_freq()) {
+                            const std::vector<int> cf = md->get_coarse_freq();
+                            bool ok = true;
+                            for (int c : _bp_chans)
+                                if (c < 0 || (size_t)c >= cf.size())
+                                    ok = false;
+                            if (ok)
+                                for (int c : _bp_chans)
+                                    fids.push_back(cf[(size_t)c]);
+                        }
                     }
                     const double cost = (current_time() - t_start) * 1e3;
                     std::lock_guard<std::mutex> lk(_rf_lock);
+                    if (!fids.empty())
+                        _bp_freq_ids.swap(fids);   // keep the last known map if this frame had none
                     _bp_power.swap(pw);
                     _bp_clip_lo.swap(clo);
                     _bp_clip_hi.swap(chi);

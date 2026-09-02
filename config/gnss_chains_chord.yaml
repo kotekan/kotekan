@@ -730,6 +730,23 @@ http://cx51:12048/gnss{0..1}_srch_tap"
     # rf-stats-endpoints), not in common:.
     rfi-stats: true
     drop-stats: true
+    # #8+ THE ROWS OF THE STREAM HEALTH PANEL, declared rather than inferred (2026-09-02).
+    # Chain NAMES, not frequencies -- the carriers come from gnssSignal.hpp, so no number is
+    # typed twice. The eight chains collapse to five RF bands: L5 (1176.45, shared by gps_l5
+    # + gal_e5a + bds_b2a), E5b (1207.14, gal_e5b + bds_b2b), L2 (1227.60), B3 (1268.52),
+    # E6 (1278.75).
+    #
+    # ⚠️ THIS EXISTS BECAUSE "NEAREST CARRIER IN THE BAND TABLE" INVENTS BANDS. Measured
+    # while building it: cx19/gnss1's channels 287-288 (1199.2 and 1202.3 MHz) came back as
+    # GLONASS "L3" -- E5b's lower shoulder sits nearer L3OC's 1202.025 carrier than E5b's
+    # own, and CHORD does not fly L3OC at all. Declaring the set removes the ambiguity;
+    # omitting this line falls back to unnamed "lobe N" rows, which is the correct
+    # degradation (a missing declaration costs a label, it never produces a wrong one).
+    #
+    # ⚠️ FLEET-SCOPE, like rf-stats-endpoints: the tap is per GPU and watches the union of
+    # every chain on it, so this is every band the RECEIVER flies, not this chain's.
+    # Add the chain here when a ninth chain arrives, or its channels join a neighbour's row.
+    rf-bands: "gps_l5,gal_e5a,bds_b2a,gal_e5b,bds_b2b,gps_l2c,bds_b3i,gal_e6"
     spectrum-endpoints: "http://cx19:12048/gnss{0..1}_n2assemble,http://cx27:12048/gnss{0..1}_n2assemble,\
 http://cx42:12048/gnss{0..1}_n2assemble,http://cx43:12048/gnss{0..1}_n2assemble,\
 http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"

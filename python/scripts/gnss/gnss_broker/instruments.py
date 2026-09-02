@@ -29,6 +29,7 @@ from gnss_broker.transport import _TR, _now, _get, _log, _log_rl, parse_endpoint
 from gnss_broker import combdll
 from gnss_broker import elemgain
 from gnss_broker.fits import rf_lobes
+from gnss_broker import signals
 from gnss_broker.fleet import (
     fleet_spectrum, fleet_spectrum_aligned, fit_spectrum_delay, poll_rf_stats,
 )
@@ -120,7 +121,15 @@ def instr_rf_stats(ctx):
         _rf_ep = parse_endpoints(ctx.args.rf_stats_endpoints, ctx.base)
         if _rf_ep and ctx.t0 - ctx.rf_last[0] >= ctx.args.rf_stats_poll_s:
             ctx.rf_last[0] = ctx.t0
-            _rf = poll_rf_stats(_rf_ep, rf_lobes,
+            # The declared band set (--rf-bands), resolved ONCE per poll from chain names
+            # to carriers via the signal table. Empty list -> rf_lobes names nothing and
+            # the panel shows the old unnamed rows, which is the correct degradation: a
+            # missing declaration must cost a label, never produce a wrong one.
+            _carr = signals.carriers_for_chains(
+                [c for c in (ctx.args.rf_bands or "").split(",") if c.strip()])
+            _rf = poll_rf_stats(_rf_ep,
+                                lambda ch, pw, lo, hi, fids=None: rf_lobes(
+                                    ch, pw, lo, hi, fids, _carr),
                                 fetch_sk=ctx.args.rfi_stats,
                                 fetch_drops=ctx.args.drop_stats)
             ctx.publisher.set_rf(_rf, ctx.t0)

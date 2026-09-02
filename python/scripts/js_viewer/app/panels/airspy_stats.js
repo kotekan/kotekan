@@ -225,14 +225,30 @@ export class AirspyStatsPanel {
     }
 
     // ── #8: THE F-ENGINE FRONT END ─────────────────────────────────────────────────────
-    // One row per LOBE, aggregated across the fleet's twelve instances.
+    // One row per RF BAND, aggregated across the fleet's twelve instances.
     //
-    // WHY LOBE INDEX IS A VALID KEY ACROSS INSTANCES, which is not obvious: a lobe is a run
-    // of contiguous LOCAL comb indices, and local index tracks frequency order within a
-    // node's comb -- so lobe 0 is the lower band (1176.45) on every instance and lobe 1 the
-    // upper (1207.14), even though the nodes hold different channel subsets and so different
-    // absolute indices. If instances ever disagree on lobe COUNT the row says so rather than
-    // blending two different things.
+    // ⚠️⚠️ THE KEY IS THE BAND, AND IT USED TO BE THE LOBE INDEX, WHICH WENT SILENTLY WRONG.
+    // The old argument was that a lobe is a run of contiguous LOCAL comb indices and local
+    // index tracks frequency order, so lobe 0 was the lower band on every instance. True for
+    // two well-separated bands; false from the moment the fleet grew to eight chains:
+    //
+    //   * gps_l2c contributes ONE channel and only 5 of 12 instances own one, so instances
+    //     disagree on lobe COUNT and index 2 was L2C on five of them, B3I+E6 on the rest --
+    //     this panel medianed power across two different bands into one row and the only
+    //     symptom was a permanently-lit amber "disagree on lobe count" banner.
+    //   * bds_b3i and gal_e6 ABUT, so contiguity cannot separate them at all.
+    //
+    // Rows now key on `band`, which the broker derives from the ABSOLUTE freq_id the tap
+    // serves (GnssChordVoltageTap reads it from the frame's own chord metadata). That means
+    // the same thing on every instance regardless of which local subset the node holds.
+    // A lobe with no `band` (older node binary, or --rf-bands not declared) still renders,
+    // keyed by index and labelled the old way, and the banner then says the rows are not
+    // comparable rather than pretending they are.
+    //
+    // ⚠️ PARTIAL COVERAGE IS NOT A FAULT HERE. "5/12" on the L2 row is CORRECT -- L2C's
+    // mainlobe is six freq_ids wide and five land on distinct instances. Partial coverage is
+    // therefore grey and names the missing instances in the tooltip; only a full-fleet band
+    // going short is worth colour, and the worst-instance column already carries fault state.
     //
     // ⚠️ CLIP IS THE HEADLINE AND IT IS A MAX, NOT A MEAN. One railing channel on one
     // instance is a real fault; averaging it across a healthy fleet is how it stays
@@ -269,11 +285,44 @@ export class AirspyStatsPanel {
                   — these cells are NOT a measurement of zero (rf-stats is off, or the
                   broker has no get_rf)</div></div>`;
         }
-        const nLobe = Math.max(...on.map(([, v]) => (v.lobes || []).length));
-        const mixed = on.some(([, v]) => (v.lobes || []).length !== nLobe);
+        // Group every instance's lobes by BAND; fall back to lobe index for any that carry
+        // no band, so a mixed-binary fleet renders both kinds side by side rather than
+        // merging them.
+        const groups = new Map();
+        let unnamed = 0;
+        for (const [u, v] of on) {
+            const ls = v.lobes || [];
+            if (!ls.length) continue;
+            if (!ls.some(l => l && l.band)) unnamed++;
+            ls.forEach((l, i) => {
+                if (!l) return;
+                const key = l.band ? `b:${l.band}` : `i:${i}`;
+                if (!groups.has(key))
+                    groups.set(key, {band: l.band || null, idx: i,
+                                     mhz: l.carrier_mhz != null ? l.carrier_mhz : null,
+                                     have: []});
+                groups.get(key).have.push([u, l]);
+            });
+        }
+        // Named rows sort by carrier (physical order, identical on every render); unnamed
+        // rows keep lobe order and follow them.
+        const ordered = [...groups.values()].sort((a, b) => {
+            if (a.mhz != null && b.mhz != null) return a.mhz - b.mhz;
+            if (a.mhz != null) return -1;
+            if (b.mhz != null) return 1;
+            return a.idx - b.idx;
+        });
+        const mixed = unnamed > 0 && unnamed < on.length;
+        // The all-unnamed fleet keeps the ORIGINAL warning: with no band identity anywhere,
+        // lobe index is the only key available and a disagreement in lobe COUNT is exactly
+        // the "these rows may be different bands" case the banner was written for. Once
+        // bands are named this test is meaningless -- instances legitimately differ (only
+        // 5 of 12 own an L2C channel) -- which is why it is scoped to the legacy path.
+        const legacyCounts = new Set(on.map(([, v]) => (v.lobes || []).length));
+        const legacyMixed = unnamed === on.length && legacyCounts.size > 1;
         let rows = "";
-        for (let i = 0; i < nLobe; i++) {
-            const have = on.map(([u, v]) => [u, (v.lobes || [])[i]]).filter(([, l]) => l);
+        for (const grp of ordered) {
+            const have = grp.have;
             if (!have.length) continue;
             let worstU = null, worstC = -1;
             let pw = [];
@@ -287,28 +336,51 @@ export class AirspyStatsPanel {
             // >1% of nibbles at a rail = the quantiser is discarding signal, not headroom.
             const cCol = worstC > 0.01 ? "#d64550" : worstC > 0.001 ? "#e8a13c" : "#3fb26f";
             const rng = have[0][1];
+            const missing = on.map(([u]) => u).filter(u => !have.some(([h]) => h === u));
+            const label = grp.band
+                ? `${grp.band} · ${grp.mhz != null ? grp.mhz.toFixed(2) : "?"} MHz`
+                : `lobe ${grp.idx} · ch ${rng.chan0}-${rng.chan1}`;
+            const lblTip = grp.band
+                ? `${grp.band} band, carrier ${grp.mhz} MHz. Spans `
+                  + `${rng.mhz0}-${rng.mhz1} MHz (freq_id ${rng.freq_id0}-${rng.freq_id1}, `
+                  + `local comb ch ${rng.chan0}-${rng.chan1}) on the first reporting instance; `
+                  + "nodes hold different channel subsets, so the local range differs per "
+                  + "instance while the BAND does not. Channels are assigned to the nearest "
+                  + "declared carrier (broker --rf-bands)."
+                : `local comb channels ${rng.chan0}-${rng.chan1}. UNNAMED: this instance's `
+                  + "tap served no freq_ids, so the band is unknown -- an older node binary, "
+                  + "or --rf-bands not declared. Rows keyed by lobe index are NOT comparable "
+                  + "across instances once the fleet runs more than two bands.";
             rows += `<div style="display:flex;align-items:center;
                                  border-top:1px solid #f0f0f0;">
                 <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;
-                            white-space:nowrap;" title="local comb channels ${rng.chan0}-${rng.chan1} on the first reporting instance; nodes hold different subsets, so lobe ORDER is the stable identity -- lobe 0 is the lower band">lobe ${i} · ch ${rng.chan0}-${rng.chan1}</div>`
+                            white-space:nowrap;" title="${lblTip}">${label}</div>`
                 + cell((worstC * 100).toPrecision(2) + "%", cCol,
-                       "WORST instance's fraction of 4+4b nibbles at a rail, this lobe. "
+                       "WORST instance's fraction of 4+4b nibbles at a rail, this band. "
                        + "Max not mean: one railing channel on one instance is a real fault. "
                        + "Above ~1% the quantiser is losing signal, not just headroom, and "
                        + "every C/N0 below it is understated for a reason that is not the sky.")
                 + cell(med != null ? med.toPrecision(3) : "—", "#5a6472",
-                       "median |x|^2 across reporting instances, this lobe. Compare LOBES: a "
+                       "median |x|^2 across reporting instances, this band. Compare BANDS: a "
                        + "source that lifts one and not the other is band-selective and "
                        + "external, which is the 2026-08-18 signature.")
                 + cell(`${have.length}/${inst.length}`,
-                       have.length === inst.length ? "#3fb26f" : "#e8a13c",
-                       "instances reporting this lobe" + (unreach ? `; ${unreach} unreachable` : ""))
+                       have.length === inst.length ? "#3fb26f" : "#8a8f98",
+                       "instances reporting this band. PARTIAL IS OFTEN CORRECT: a narrow "
+                       + "band lands on only a few instances by design (gps_l2c's mainlobe is "
+                       + "6 freq_ids and 5 land on distinct instances). Not reporting: "
+                       + (missing.length ? missing.map(short).join(", ") : "none")
+                       + (unreach ? `; ${unreach} unreachable` : ""))
                 + `<div style="flex:0 0 9em;padding:.15em .5em;font-size:.85em;
                                color:#8a8f98;white-space:nowrap;overflow:hidden;"
                         title="${worstU || ""}">${worstU ? short(worstU) : "—"}</div>`
                 + "</div>";
         }
         if (mixed)
+            rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
+                ⚠️ ${unnamed} instance(s) serve no band identity — their rows are keyed by
+                lobe index and are not comparable with the named rows above</div>`;
+        else if (legacyMixed)
             rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
                 ⚠️ instances disagree on lobe count — rows may compare different bands</div>`;
 

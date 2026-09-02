@@ -108,6 +108,11 @@ private:
     /// event was band-selective at +16 dB); a per-element-only number averages it away.
     std::mutex _rf_lock;
     std::vector<int> _bp_chans;         ///< local channel indices to monitor (empty = OFF)
+    /// Per _bp_chans: the ABSOLUTE freq_id, read from the frame's own chord metadata
+    /// (coarse_freq), not from config. Empty until the first pass over a chord-metadata
+    /// frame. This is what makes a lobe nameable: local comb position is meaningless off
+    /// the node, freq_id x 0.1953125 MHz is not. See the rf_stats callback.
+    std::vector<int> _bp_freq_ids;
     std::vector<double> _bp_power;      ///< per _bp_chans: mean |x|^2 over elements and hops
     std::vector<double> _bp_clip_lo;    ///< per _bp_chans: fraction of nibbles at -8
     std::vector<double> _bp_clip_hi;    ///< per _bp_chans: fraction of nibbles at +7

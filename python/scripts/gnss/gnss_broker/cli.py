@@ -1928,6 +1928,24 @@ def build_parser(description):
                          "(rfi_sk_metrics/sk_metrics_{gpu}) and fold an SK summary into get_rf. "
                          "Default off; rides the SAME endpoints as --rf-stats-endpoints (the SK "
                          "url is derived per instance), so no second endpoint list.")
+    ap.add_argument("--rf-bands", default="",
+                    help="Comma list of CHAIN NAMES whose RF bands the receiver actually "
+                         "flies, e.g. gps_l5,gal_e5b,gps_l2c,bds_b3i,gal_e6. Names the rows "
+                         "of the Stream health panel: each monitored channel is labelled with "
+                         "the nearest DECLARED carrier, and the carriers come from "
+                         "gnssSignal.hpp so no frequency is typed twice.\n"
+                         "\n"
+                         "⚠️ WITHOUT THIS THE PANEL FALLS BACK TO UNNAMED 'lobe N' ROWS, ON "
+                         "PURPOSE. The obvious shortcut -- label each channel with whatever "
+                         "carrier in the band table is nearest -- INVENTS BANDS: measured "
+                         "2026-09-02, cx19/gnss1's channels 287-288 (1199.2/1202.3 MHz) came "
+                         "back as GLONASS 'L3', which CHORD does not fly, because E5b's lower "
+                         "shoulder is nearer L3OC's carrier than E5b's own. Declaring the set "
+                         "removes the ambiguity instead of hiding it.\n"
+                         "\n"
+                         "⚠️ Rides the SAME arming as --rf-stats-endpoints -- one chain only. "
+                         "The list is the FLEET's bands, not this chain's: the tap is per GPU "
+                         "and monitors the union of every chain on it.")
     ap.add_argument("--drop-stats", action="store_true",
                     help="Also poll each rf-stats instance's node /metrics for drop counters "
                          "(gnss{gpu} srch/telem buffer-send drops, node dpdk rx-missed and "

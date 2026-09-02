@@ -122,8 +122,13 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
                                                # median over all 128 reads 0 and hides the signal
         summ = {
             "state": "on",
+            # freq_ids: ABSOLUTE channel identity, served by the tap from the frame's own
+            # chord metadata. Older node binaries do not have the field -- [] then, and the
+            # labeller degrades to unnamed rows rather than guessing, so a rolling restart
+            # shows old-style rows on the not-yet-restarted halves instead of wrong ones.
             "lobes": lobes_fn(r.get("chans") or [], r.get("power") or [],
-                              r.get("clip_lo") or [], r.get("clip_hi") or []),
+                              r.get("clip_lo") or [], r.get("clip_hi") or [],
+                              r.get("freq_ids") or []),
             "elem_clip_max": max(ec) if ec else None,
             "elem_clip_worst": (max(range(len(ec)), key=lambda i: ec[i]) if ec else None),
             "elem_power_med": (sorted(ep_live)[len(ep_live) // 2] if ep_live else None),
