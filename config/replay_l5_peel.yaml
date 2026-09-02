@@ -1,5 +1,5 @@
 ---
-# L5 PEEL A/B REPLAY -- generated from config/generated/live_l5_gpu.yaml by patching ONLY the
+# L5 PEEL A/B REPLAY -- generated from config/live_l5_gpu.yaml by patching ONLY the
 # front end (airspyInput -> rawFileRead over /tmp/gpsin_l5) and stripping the viewer/broker
 # spawns. EVERY tracking parameter is inherited verbatim, so the replay is the live L5 chain
 # fed a fixed voltage file instead of the sky.

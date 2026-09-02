@@ -17,7 +17,7 @@
 # suspects by measurement). A live twin-despread verifier was tried and did not work. This
 # is the deterministic route the revert commit asked for in the first place.
 #
-# FRONT END IS BYTE-FAITHFUL to config/generated/live_l5_gpu.yaml (serial, freq, gains,
+# FRONT END IS BYTE-FAITHFUL to config/live_l5_gpu.yaml (serial, freq, gains,
 # sample_bw, samples_per_data_set). Any drift here makes the replay a different experiment.
 #
 # SIZE: 49920 samples * 2 B = 99840 B/frame, 2.496 ms/frame -> ~40 MB/s. 30 s ~ 1.2 GB.
