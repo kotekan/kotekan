@@ -352,6 +352,9 @@ void frbNetworkSend::main_thread() {
                                             tel.to_time_ns(0)), // a constant over the run
                                         .fpga_count =
                                             metadata->get_fpga_seq_num()
+                                            + ttilde16_low16_by_packets_per_stream
+                                                * packets_per_stream * _timesamples_per_frb_packet
+                                                  * static_cast<uint64_t>(time_downsampling_fpga)
                                             + frame * _timesamples_per_frb_packet
                                                   * static_cast<uint64_t>(time_downsampling_fpga),
                                         .nbeams = _nbeams,
