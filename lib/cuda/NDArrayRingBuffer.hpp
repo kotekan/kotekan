@@ -619,13 +619,17 @@ public:
     // There is no third state. Falls back to the old in-place path only if the pool is gone,
     // which would mean the source metadata is already being torn down.
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) {
-        std::shared_ptr<chordMetadata> metadata;
-        if (const std::shared_ptr<metadataPool> pool = other_metadata->parent_pool.lock()) {
-            metadata = get_chord_metadata(pool->request_metadata_object());
-        } else {
-            ringbuffer->allocate_new_metadata_object(0);
-            metadata = get_metadata();
-        }
+        // ⚠️ ALWAYS A FRESH OBJECT, NEVER IN PLACE (2026-09-02). The first version fell back
+        // to allocate_new_metadata_object(0)-then-mutate when the source had no parent_pool
+        // -- and that is not a rare corner: cudaCopyToRingbuffer creates ring metadata with a
+        // bare make_shared (no pool tag), so EVERY per-execute set_metadata sourced from a
+        // ring object (both correlators, the whole PL-mask chain) took the fallback and
+        // mutated the live slot-0 object under concurrent readers -- the very torn-write this
+        // function was rewritten to kill. The pool was only ever a size-accounting tag
+        // (request_metadata_object heap-allocates fresh; nothing recycles), so a poolless
+        // fresh object is strictly correct; keep the pool tag when the source has one.
+        auto metadata = std::make_shared<chordMetadata>();
+        metadata->parent_pool = other_metadata->parent_pool;
         metadata->deepCopy(other_metadata);
         metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
