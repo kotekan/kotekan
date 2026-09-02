@@ -1644,8 +1644,8 @@ FRB:
         ] %}
         values:
 # direction sine in the normal vector sin(angle-from-zenith-towards-x), equally spaced for CHIME
-{%- for ns in range(frb2_num_beams_y) %}
 {%- for ew in range(frb2_num_beams_x) %}
+{%- for ns in range(frb2_num_beams_y) %}
           - {{ sin_achromatic_beam_angles_EW[ew] }}
           - {{ (ns - 127)*1.73205080756888/256 }}
 {%- endfor %}
