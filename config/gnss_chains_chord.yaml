@@ -2767,7 +2767,14 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # the first from a same-constellation pair.
     signal: gps_l2c
     dr-clock-adopt: true
-    seed-phase-transport: true
+    # OFF UNTIL THE FLEET BINARY CARRIES THE propagate_seed comb_mult FIX (gnssSeedTransport.cpp,
+    # 2026-09-02). The deployed nodes read code_phase_at_ref_chips as COMBINED chips while the
+    # broker ships CM chips -- on a comb_mult-2 signal that put every L2C replica ~phase/2 mod
+    # 10230 chips (milliseconds) from the sky, which is why this chain never locked. The
+    # argument path (code_phase_chips -> phase_from_arg) converts correctly on the OLD binary,
+    # so shipping only the argument makes L2C trackable now. Flip back to true at the first
+    # node restart that carries the fix (the phase path is the better-conditioned one).
+    seed-phase-transport: false
     presence-admit-displaced: true
     joint-consume: clk,rate
     fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"

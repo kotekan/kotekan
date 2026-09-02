@@ -335,8 +335,18 @@ SeedPropagation propagate_seed(const ChannelizedReplicaBank& bank, const SeedSta
         * (1.0 + bank.code_doppler_sign * sd.doppler_hz / bank.carrier_hz());
     const double quad = 0.5 * (bank.chip_rate_hz() / f_offset_hz) * sd.dop_rate * dt * dt;
 
+    // The transported phase is in the PRODUCER'S units -- component chips (CM chips for
+    // GPS_L2C_CM), the same currency as code_phase_chips, cp_at_ref and the broker's
+    // chip_hz arithmetic (gnss_broker/fits.py seed_phase_at_ref). phase_from_arg returns
+    // COMBINED chips (comb_mult * arg + advance), and everything below -- the combined-rate
+    // advance, arg_from_phase's reduction mod eff_code_length -- is in combined chips. So the
+    // phase branch has to convert on entry, exactly as the argument branch does inside
+    // phase_from_arg. Taking the wire value raw put the L2C replica (phase/2 mod 10230) chips
+    // from the sky: ~4700 CM chips = 9 ms in the e2e reproduction with a broker-unit seed,
+    // P/P_true 1e-3, q 1.05 -- the exact on-sky signature of the chain that never locked
+    // (2026-09-02). Identity for comb_mult == 1, i.e. every other deployed signal.
     out.phase_ref = (sd.phase_ref_chips >= 0.0)
-                        ? sd.phase_ref_chips // transported as a phase: no back-reference at all
+                        ? (double)bank.comb_mult() * sd.phase_ref_chips
                         : bank.phase_from_arg(sd.cp_chips, sd.ref_hop * (long long)fft_len,
                                               sd.doppler_hz);
     out.phase_now = out.phase_ref + (chips_per_hop + sd.cp_rate) * dh + quad + trim_chips;

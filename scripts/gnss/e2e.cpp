@@ -545,8 +545,12 @@ int main(int argc, char** argv) {
 
     // The truth, in the currency each leg has to get right. The argument is constant over all
     // time (that is what an argument IS), so the true physical phase at any window is one call.
+    // In WIRE units: component chips, what cp_at_ref reports and the broker ships in
+    // code_phase_at_ref_chips. phase_from_arg returns COMBINED chips (comb_mult x), and feeding
+    // that straight into the seed made this harness agree with propagate_seed while the sky
+    // disagreed (L2C, comb_mult 2: "ph@ref 11011" on a 10230-chip code was the tell).
     auto truth_phase_at = [&](long long wstart) {
-        return tbank.phase_from_arg(o.cp204, wstart, o.dop);
+        return tbank.phase_from_arg(o.cp204, wstart, o.dop) / (double)tbank.comb_mult();
     };
 
     // -----------------------------------------------------------------------------------------
@@ -1088,7 +1092,9 @@ int main(int argc, char** argv) {
         // difference cancels when each is fed to the generator alongside its own Doppler. That
         // is the exact mistake this whole tool exists to catch, made inside the tool, caught in
         // one run by the despread power disagreeing with the arithmetic. Leave the warning here.
-        const double err = wrap(pr.phase_now - truth_phase_at(W), LL);
+        // pr.phase_now is the bank's currency (COMBINED chips); the truth is in wire units.
+        const double err =
+            wrap(pr.phase_now / (double)tbank.comb_mult() - truth_phase_at(W), LL);
 
         auto rec = tbank.channels_hoprate(0, W, o.cp204, o.dop, o.hops_per_record, t_chans, {}, -1);
         // RAMPED-CARRIER TRUTH (--truth-dop-rate): quadratic phase about the seed epoch,
