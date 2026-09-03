@@ -1900,6 +1900,16 @@ the pairing. The old FATAL survives as an escalation after `max_consecutive_desy
 (default 4) consecutive bad tuples, which is what separates a one-frame glitch — every incident
 so far — from a genuine desync.
 
+**⚠️ THE DROP COUNTER IS PER-STAGE, AND cx19/accum_1 IS THE CANARY.** `desync_drops` is a local
+in `main_thread`, so each `accum` stage counts independently and the WARN's "total drops N" is
+per-GPU-half, not per-node — do not add them up as a node figure without saying so. The right
+unit is per-stream anyway, since each `accum` stage emits its own visibilities. Distribution at
+~6.3 h uptime was strikingly uneven: **cx19/accum_1 = 11 drops**, cx42/accum_1 = 4,
+cx27/accum_0 = 3, cx27/accum_1 = 1, and cx43 / cx44 / cx51 = **0 on both halves**. Same binary,
+same config, same uptime — so some per-node timing difference in the RFI path governs how often
+the publish/patch window is lost. Two consequences: cx19/accum_1 is the site to watch when
+verifying a fix, and cx43/cx44/cx51 would show a false "fixed" because they never fail anyway.
+
 **COST OF THE MITIGATION, MEASURED (06:5x).** `num_subintegrations_per_bin: 238` in the running
 generated configs ⇒ a bin is 238 × 8192 / 195312.5 = **9.98 s**, so each drop discards ~10 s of
 integration. Overnight tally after ~4.9 h: cx19 2, cx27 2, cx42 3, cx43/cx44/cx51 0 — worst node
