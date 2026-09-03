@@ -1678,6 +1678,35 @@ produces a foreign stamp. That is where to look next.
 in ~25–30 min bands (01:27/01:52, 03:02/03:25, 19:31/19:32, 19:56/19:56/20:01) — the ~25 min
 recurrence is the real structure, not two isolated moments.
 
+### 2026-09-03 02:0x — MITIGATION PROVEN ON SKY, and the hunt narrows to a use-after-free
+
+**cx19 hit the fault at 3.8 h uptime and SURVIVED** — one `DESYNC (#107)`, zero FATALs, node
+still up. First time any node has lived through this. incident #10:
+`corr=21005000704 vs rficounts=19002087424`, 2.85 h behind, **2048 mod 8192 — off-grid again**.
+That is the off-grid prediction confirmed on fresh, independent data rather than fitted to the
+original nine.
+
+**New code fact that reframes object lifetime:** `Buffer::private_finish_frame_empty` does
+`metadata[ID].reset()`. So a slot's metadata pointer is **dropped every time the frame goes
+empty** — meaning `allocate_new_metadata_object`'s "no-op if populated" branch almost never
+applies, and every stream allocates a fresh chordMetadata per frame and frees it per frame.
+Metadata objects churn through malloc continuously; that is why the autopsy's pointer histories
+show a handful of addresses repeating irregularly rather than one stable object per slot.
+
+**⚡⚡ THE ADDRESSES ARE DETERMINISTIC ACROSS NODES AND RUNS.** Each stream's objects live in
+their own glibc arena (cx19: correlation `0x76435c…`, counts `0x764354…`, rficounts `0x7645c0…`,
+plcounts `0x7645d4…`). Within the rficounts arena, the offending object sat at offset **`0x3440`
+on cx19 AND on cx51** — different machines, different runs — and offsets `3440`, `3cc0`, `2ac0`
+recur in both nodes' rotations. The culprit is therefore a *deterministic allocation slot*, not
+a random race.
+
+⇒ **Hunt a metadata read that does not take a `shared_ptr` copy** — a raw pointer or reference
+held across `mark_frame_empty`, which now frees the object — reading a block malloc has already
+recycled. `GenericBuffer::get_metadata` deliberately returns a copy under the lock for exactly
+this reason; the bug will be somewhere that bypasses it. Note the bad object was NOT in cx19's
+recent rotation but WAS in cx51's, which fits recycled-freed-memory rather than an aliased live
+object.
+
 ### Mitigation shipped 2026-09-03 (root cause still open)
 
 `N2Accumulate` no longer FATALs on a seq mismatch. A mismatch **poisons the whole tuple**: all
