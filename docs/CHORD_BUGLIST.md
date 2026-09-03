@@ -1724,6 +1724,11 @@ look.
 `dc=414392320`, `dr=103598080`, ratio **0.25 exact** — on a different node *and* a different GPU
 instance from the cx27/accum_0 pair. Two independent measurements of the same quarter.
 
+**PREDICTIVE, not fitted (06:31, cx42 — a third node).** From cx42's first desync alone the law
+predicts uptime = gap/0.75 = **16574 s**; measured uptime was **16634 s**, the 60 s difference
+being the lag between the event firing and the sample. Computed before measuring, so this is a
+prospective confirmation. The law now holds on three nodes across both GPU instances.
+
 **Narrowing the factor of 4 to one expression.** Data-side byte accounting looks right (a
 consumer genuinely eating 1/4 of what the producer writes would back the ring up and block the
 producer, which is not happening). So the 4 is in the *seq arithmetic only*:
