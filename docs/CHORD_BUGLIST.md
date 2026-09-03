@@ -1611,6 +1611,66 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #107 — two nodes died on a RESURFACED metadata object (2026-09-02 23:05 / 23:35), and the torn-read fix did not close this class — OPEN
+
+cx27 (23:05) and cx19 (23:35) both FATAL'd identically. The kill chain, from the archived
+autopsies:
+
+1. `N2Accumulate` FATAL: correlation buffer seq vs RFICounts buffer seq disagree.
+2. That stage's death stops the downstream consumer, so `FramePrefetchService` logs
+   `wait_for_empty_frame will block`, all four DPDK workers exit on handler errors, and
+   `exit_on_worker_failure` (default true) takes the node down.
+
+**⚠️ IT IS ONE BAD FRAME, NOT A STALLED STREAM, AND THAT IS THE WHOLE POINT.** On cx27 the
+16 rficounts frames preceding the death are flawless — 16340279296 → 16340402176, stepping
+**exactly 8192 each**, no gaps. The very next frame carries seq **13832116224**.
+
+| node | died | correlation seq | rficounts seq | backward by |
+|---|---|---|---|---|
+| cx27 | 23:05 | 16340410368 | 13832116224 | 3.57 h |
+| cx19 | 23:35 | 16687022080 | 13835382784 | 4.06 h |
+
+**⚠️⚠️ THE TWO BAD VALUES ARE 16.7 SECONDS APART.** Different nodes, deaths 30 minutes
+apart, and each resurfaced an object stamped within the same 17-second window — ~19:30-19:31
+UTC, which is *inside* both processes' own lifetimes (nodes started 18:09). The values are
+not garbage: they are plausible seqs from ~80 minutes after startup. That reads as a
+**recycled metadata object handed back out hours later**, not corruption. (Cross-check: the
+two correlation seqs differ by 1775 s = the 30 minutes between the deaths, so the shared seq
+axis is self-consistent.)
+
+**NOT a regression from the 2026-09-02 merge.** `lib/cuda/NDArrayRingBuffer.hpp`,
+`lib/core/buffer.cpp` and `lib/metadata/` are byte-identical across `6e7cc65b0` (the merge
+only touched `N2FrameDesc.cpp`/`N2Layout.hpp`), and `3ea6543d7`'s fresh-object `set_metadata`
+is present in the source the running binary was built from. So this is the torn-read class
+**not actually closed** — and it has changed shape: it was recorded as a ONE-STALE-FRAME
+death, and this is 306,000x that.
+
+**Fuse.** Nodes up 18:09, died at ~5 h. The pre-fix fuse was 2-5 h and the fix's clean run on
+2026-09-02 morning was only ever validated over ~5 h, so it may never have been fixed.
+
+**Next.** The 19:30 correlation is the sharpest lead this bug has ever produced — every prior
+autopsy was a single node. Find what publishes rficounts metadata on a path the
+NDArrayRingBuffer fix does not cover. Evidence preserved at
+`logs/gnss_node_cx*_signal_20260902_2340.log` (non-valve extract of all four survivors, 14 MB
+instead of 40 GB).
+
+**⚠️ Two collateral findings from the same logs, both independent of the deaths:**
+
+* **A fleet-wide CONSTANT ~12.2 s wire-vs-wall axis skew.** Every node, every port, every
+  worker logs `THE WIRE'S SEQ AXIS IS 12.2xs FROM THE WALL CLOCK at the capture anchor` —
+  the check added in `6456d1183` for the cx19 port-1 dark link, which fires above 5 s where
+  healthy is ~-0.1 s. It **survives node restarts** and is identical on nodes that did and
+  did not restart, and the node system clocks are NTP-synchronised and agree. Decisively, it
+  is **not drift**: cx42 anchored at 18:09 and cx19 at 00:36 — 6.5 h apart — and both read
+  12.22 s. So it is a constant error in `Telescope::to_time(seq)`, whose epoch comes from
+  `chive:54321/get-frame0-time`. Harmless-looking so far (chains lock normally, and a
+  fleet-uniform offset cancels in differential work) but it is exactly the instrument that
+  says "records too old for the fleet to bank", and nobody chose this value.
+* **`eigencalc: Only 0 of 32 elements are unmasked`** on the survivors — the bf mask is
+  masking everything. That is both why the mask valve free-runs at ~250k frames/s (10 GB of
+  node log in 5 h, 99.99% of it that one warning) and a plausible source of the non-real
+  eigen diagonals behind the `LinearAlgebra.hpp` change withheld from the upstream Stage 1.
+
 ## #106 — the ~8 min q thrash after EVERY broker restart is the SEEDS SETTLING, not the fast loop; freezing the loop was tried and made it WORSE (2026-09-02) — ROOT REFRAMED, fix `[withdrawn]`, cause OPEN
 
 Every broker restart costs ~8 minutes of degraded gps_l5 before the chain settles. Seen
