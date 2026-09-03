@@ -1720,6 +1720,25 @@ it silently falls further behind in the ring. Note `host_n2k_rficounts_buffer` i
 `num_frames: 4 * buffer_depth` against the ring's `buffer_depth`; that 4 is the first place to
 look.
 
+**CONFIRMED INDEPENDENTLY (06:2x):** cx19/accum_1 gave its own pair of desyncs 2121.7 s apart —
+`dc=414392320`, `dr=103598080`, ratio **0.25 exact** — on a different node *and* a different GPU
+instance from the cx27/accum_0 pair. Two independent measurements of the same quarter.
+
+**Narrowing the factor of 4 to one expression.** Data-side byte accounting looks right (a
+consumer genuinely eating 1/4 of what the producer writes would back the ring up and block the
+producer, which is not happening). So the 4 is in the *seq arithmetic only*:
+`step = time_downsampling_fpga * _output_size / sample_bytes`, and `sample_bytes()` derives from
+the **ring slot-0 metadata's `dim[0]`**. A `dim[0]` four times too small makes `sample_bytes`
+four times too large and the step four times too small — 2048 instead of 8192, which is exactly
+what we measure. `cudaCopyToRingbuffer` only *asserts* that relation
+(`out_meta->dim[0] == in_buffer->frame_size / in_meta->sample_bytes()`), and **asserts are
+compiled out in release** — so a wrong `dim[0]` would ship silently. Log the ring's slot-0
+`dim[0]`, `sample_bytes()` and the resulting per-frame step at startup; that single line should
+close this.
+
+Mismatching slot indices are scattered (3,5,6,7,8,10,11,12,13,17,20,22), so it is not one bad
+buffer position.
+
 **⚠️ STILL UNEXPLAINED — do not skip this.** A systematically 1/4-rate axis should mismatch on
 *every* frame and kill the node seconds after start, yet mismatches are rare (hours apart) and
 16 consecutive frames step perfectly beforehand. So the slow axis cannot be the only producer of
