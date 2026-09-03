@@ -153,7 +153,7 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input,
     for (int freq = 0; freq < out_nfreqs_chunk; ++freq) {
         for (int time = 0; time < out_ntimes_chunk; ++time) {
             const int in_ind = time + in_ntimes * freq;
-            const int out_ind = time + out_ntimes_chunk * freq;
+            const int out_ind = time + out_ntimes_chunk * (out_nfreqs_chunk - 1 - freq);
             // Get value
             const float x = __half2float(input[in_ind]);
             // Scale. (A zero scale maps all values to `outi_min`, as on the GPU.)
@@ -216,7 +216,7 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
                                     int beam_outer) {
         return time_chunk
                + out_ntimes_chunk
-                     * (freq_chunk
+                     * ((out_nfreqs_chunk - 1 - freq_chunk)
                         + out_nfreqs_chunk
                               * (freq_packet
                                  + out_nfreqs_packet
