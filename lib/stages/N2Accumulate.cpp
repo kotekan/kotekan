@@ -433,24 +433,37 @@ void N2Accumulate::main_thread() {
 
         // Check synchronization.
         //
-        // ⚠️ THE AUTOPSY (2026-09-01). Four nodes died on these FATALs in one night, each
-        // killed by ONE frame whose seq was HOURS older than its siblings' -- everything
-        // matched until that frame, so there is no pre-death window to catch live and the
-        // death itself must carry the evidence. The leading suspect is a recycled metadata
-        // pool object shipped without being re-stamped (it then carries whatever seq --
-        // and name/dims -- it held in its previous life, cf. the 9216 = 8x384x3 torn-read
-        // diagnosis). So on mismatch, print EVERYTHING both objects know plus the recent
-        // seq history of every stream: if the stale frame's name/dims belong to a
-        // DIFFERENT quantity, it is a recycled unstamped object and the fields name the
-        // producer; if only the seq is stale, it is a stamp-path bug in this stream's own
-        // producer. The FATAL still fires -- this is diagnosis, not survival.
-        // OBJECT IDENTITY (2026-09-02): the metadata "pool" allocates fresh heap objects on
-        // every request -- it cannot recycle -- so a frame carrying another stage's stamp
-        // means the SAME object is installed in two slots (pass_metadata aliasing or the
-        // no-op allocate_new_metadata_object) and was mutated in place through the other
-        // alias. Printing each object's ADDRESS plus the recent address history turns the
-        // next death into direct proof: a stale frame whose pointer matches a recent lap
-        // of another stream names the alias pair outright.
+        // ⚠️ THE AUTOPSY -- kept as the instrument that solved #107, and as the record of how.
+        //
+        // ROOT CAUSE (2026-09-03, buglist #107): the mismatching seq was never STALE. It is a
+        // LIVE value computed with the wrong scale. `cudaRFISKtilde::execute` publishes
+        // rfi_S012's metadata into the RFImask ring's slot 0, reads it straight back via
+        // NDArrayRingBuffer::get_metadata() -- which returns the LIVE slot-0 object -- and then
+        // multiplies time_downsampling_fpga by 4 IN PLACE. cudaCopyFromRingbuffer reads slot 0
+        // live every frame, so a reader that lands between the publish and the patch sees
+        // ds=256 instead of 1024 and emits C + 256*(cursor/sample_bytes). Because `cursor` is
+        // the ABSOLUTE byte count since startup, that one bad read scales the whole accumulated
+        // offset by 1/4 -- which is why a single frame appears HOURS behind rather than one
+        // frame behind, and why the gap is always 0.75 x node uptime.
+        //
+        // ⚠️ It violates the warning at NDArrayRingBuffer.hpp:599 ("BUILD IT FULLY, THEN
+        // PUBLISH IT ATOMICALLY -- NEVER FILL IN PLACE") that the 08-31 torn-read fix installed.
+        // That fix hardened set_metadata; this caller defeats it by mutating AFTER publishing.
+        // Hardening a function does not protect a caller who mutates after publication.
+        //
+        // ⚠️ THREE EARLIER DIAGNOSES HERE WERE WRONG, so distrust confident readings of this
+        // evidence: "recycled pool object" (the pool make_shares fresh, it cannot recycle),
+        // "aliasing -- one object in two slots", and "use-after-free on a malloc-recycled
+        // block". Each was built on real, correctly measured facts. What finally settled it was
+        // arithmetic, not identity: solving C = (4*stale - corr)/3 on every event returns ONE
+        // per-node constant with zero remainder, proving the same anchor and a quartered offset.
+        //
+        // The printout stays useful: seq + object ADDRESS + use_count + name/dims + the recent
+        // seq and address history of all five streams. Note the addresses proved LESS
+        // informative than they looked -- repeated pointers are just malloc reuse, since
+        // Buffer::private_finish_frame_empty resets a slot's metadata on every mark_frame_empty.
+        // The seq HISTORY is the part that pays: a stream stepping perfectly then jumping is the
+        // signature of a scale race, not of a stale object.
         auto _autopsy = [](const char* tag, const std::shared_ptr<chordMetadata>& m) {
             ERROR_NON_OO("  AUTOPSY {:s}: seq={:d} obj={:p} use_count={:d} name='{:s}' "
                          "dims={:d} [{:s}]",
