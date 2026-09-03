@@ -1724,6 +1724,54 @@ look.
 `dc=414392320`, `dr=103598080`, ratio **0.25 exact** — on a different node *and* a different GPU
 instance from the cx27/accum_0 pair. Two independent measurements of the same quarter.
 
+### ⚡⚡⚡ THE FACTOR OF 4 IS `time_downsampling_fpga` = 256 INSTEAD OF 1024
+
+Found in `cudaRFISKtilde::execute` (lib/cuda/cudaRFISKtilde.cpp:315-321):
+
+```cpp
+rfi_SKtilde.set_metadata(rfi_S012.get_metadata());
+rfi_RFImask.set_metadata(rfi_S012.get_metadata());   // <-- SHARES the same object
+// Correct RFImask metadata
+// TODO: Set these metadata only once
+const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
+rfi_meta->set_time_downsampling_fpga(rfi_meta->get_time_downsampling_fpga()
+                                     * div_noremainder(128 * 8, rfi_downsampling_factor));
+```
+
+Production has `rfi_downsampling_factor: 256` and S012 carries
+`dimscalings: [rfi_downsampling_factor, 1, 1]`, so **S012's `time_downsampling_fpga` is 256** and
+the correction multiplies it by `div_noremainder(1024, 256) = 4` to give **1024**. Feed both
+values through the consumer's seq arithmetic
+(`step = ds * _output_size / sample_bytes`, with `_output_size = 384*8192/8 = 393216` and
+`sample_bytes = type_total_bytes(uint1x8) * stride[0] = 1 * 384*128 = 49152`):
+
+    ds = 1024  (x4 applied)  -> step = 8192   correct
+    ds =  256  (x4 missing)  -> step = 2048   the value we measure
+
+**And one wrong read reproduces the whole gap, not one frame's worth.** `out_seq` is
+`C + ds*(cursor/sample_bytes)` where `cursor` is the ABSOLUTE byte count since startup. Using 256
+instead of 1024 scales the entire accumulated offset by 1/4, so a single bad read emits
+`C + 2048n` against a true `C + 8192n` — a gap of `6144n`, i.e. exactly **0.75 × elapsed**.
+That is the measured law, derived analytically. Ratio 0.25 between two events on one node follows
+too: both compute (1/4)·cursor, so their difference is 1/4 of the correlation difference.
+
+**The injection point is the non-atomic publish.** `set_metadata` shares the S012 object and the
+×4 lands as a *separate, later* statement, so between those two lines the object is published
+carrying 256. A reader sampling in that window gets the raw value — which is why this is rare and
+sporadic rather than systematic. The `TODO: Set these metadata only once` is pointing straight at
+it. Note also that the ×4 mutates an object **shared with `rfi_SKtilde` and `rfi_S012`**, so the
+correction leaks into their metadata as a side effect.
+
+⚠️ `div_noremainder`'s `assert(rx % ry == 0)` is **compiled out in release**. `RfiMaskSum` does
+`div_noremainder(in_meta->get_time_downsampling_fpga(), 1024)`; with ds=256 that asserts in debug
+but silently yields **0** in release, so `set_time_downsampling_fpga(0)` downstream is another
+symptom of the same root.
+
+**FIX SHAPE:** publish `rfi_RFImask`'s metadata already corrected — give it its OWN object
+(deep copy, ds set before `set_metadata`) rather than sharing S012's and patching it afterwards.
+**Remaining unknown:** exactly which reader picks up the uncorrected 256. That is now the only
+gap, and it is a narrow one.
+
 **PREDICTIVE, not fitted (06:31, cx42 — a third node).** From cx42's first desync alone the law
 predicts uptime = gap/0.75 = **16574 s**; measured uptime was **16634 s**, the 60 s difference
 being the lag between the event firing and the sample. Computed before measuring, so this is a
