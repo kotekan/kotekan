@@ -1895,6 +1895,10 @@ All six nodes on +217.gba3f69c028 since 12:37:20 UTC. At **5h41–43m uptime: ze
 zero FatalError, zero failed resyncs, fleet-wide** — measured by direct log grep on each node,
 not inferred from monitor silence.
 
+**Held to 6h40–43m (19:17 UTC), still zero — past ALL NINE historical death points**, the
+longest of which was 6.6 h. There is no remaining uptime at which this fault was ever observed
+that the fleet has not now survived clean.
+
 The window is past the 4.6 h point where every site had already dropped at least once, and past
 the 5.6 h conclusive mark. Reconstructed in-regime exposure and expectation:
 
