@@ -1611,7 +1611,7 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #107 — nine node deaths: ROOT-CAUSED 2026-09-03 (a post-publication patch of ring slot-0 metadata) + MITIGATED; fix not yet written
+## #107 — nine node deaths: ROOT-CAUSED, FIXED and VERIFIED ON SKY 2026-09-03 (a post-publication patch of ring slot-0 metadata)
 
 cx27 (23:05) and cx19 (23:35) both FATAL'd identically. The kill chain, from the archived
 autopsies:
@@ -1888,6 +1888,40 @@ recycled. `GenericBuffer::get_metadata` deliberately returns a copy under the lo
 this reason; the bug will be somewhere that bypasses it. Note the bad object was NOT in cx19's
 recent rotation but WAS in cx51's, which fits recycled-freed-memory rather than an aliased live
 object.
+
+### ✅ VERDICT 2026-09-03 18:17 UTC — THE FIX IS VERIFIED ON SKY
+
+All six nodes on +217.gba3f69c028 since 12:37:20 UTC. At **5h41–43m uptime: zero DESYNC,
+zero FatalError, zero failed resyncs, fleet-wide** — measured by direct log grep on each node,
+not inferred from monitor silence.
+
+The window is past the 4.6 h point where every site had already dropped at least once, and past
+the 5.6 h conclusive mark. Reconstructed in-regime exposure and expectation:
+
+| site | first drop at | in regime now | rate | expected |
+|---|---|---|---|---|
+| cx19/accum_1 | 3.80 h | 1.92 h | 1.75/h raw | 3.4 |
+| cx27/accum_0 | 3.89 h | 1.79 h | 0.80/h raw | 1.4 |
+| cx42/accum_1 | 4.60 h | 1.08 h | 0.64/h raw | 0.7 |
+
+⚡ **IT PASSES UNDER BOTH RATE MODELS, which is the point** — the verdict no longer depends on
+the in-regime enhancement I could not justify:
+
+* scaled in-regime (8.2/h combined): 14.0 expected, **p(0) = 8e-7**
+* CONSERVATIVE (raw full-window rates, in-regime hours only, no enhancement at all):
+  5.5 expected, **p(0) = 0.4%**
+
+Quoting the conservative number is the honest one to carry: it assumes the thing I could not
+prove is false, and still passes.
+
+⚠️ **STILL UNEXPLAINED, AND WORTH ITS OWN LOOK: THE ONSET DELAY.** No node ever dropped before
+3.8 h of uptime, on any of the nine deaths. That is a property of the fault, not of this fix,
+and it means the race window WIDENS with something that accumulates. If that is general, other
+latent races in this codebase are uptime-gated too — and every short soak test in this repo is
+a gate that cannot fail. This is the loose thread; it is not a reason to hold the fix.
+
+⚠️ cx43/cx44/cx51 contributed NOTHING to this verdict and never could: they logged zero drops
+in 6.3 h of baseline. Six green nodes is three nodes' worth of evidence.
 
 ### ⚠️ VERIFICATION: THE 2 h WINDOW WAS A GATE THAT COULD NOT FAIL (corrected 14:40)
 
