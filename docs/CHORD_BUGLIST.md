@@ -1745,10 +1745,26 @@ Mismatching slot indices are scattered (3,5,6,7,8,10,11,12,13,17,20,22), so it i
 buffer position.
 
 **⚠️ STILL UNEXPLAINED — do not skip this.** A systematically 1/4-rate axis should mismatch on
-*every* frame and kill the node seconds after start, yet mismatches are rare (hours apart) and
-16 consecutive frames step perfectly beforehand. So the slow axis cannot be the only producer of
+*every* frame and kill the node seconds after start, yet mismatches are sporadic and 16
+consecutive frames step perfectly beforehand. So the slow axis cannot be the only producer of
 these frames: something must install its value only occasionally. Resolving that is what turns
 this from a shape into a fix — do not patch the factor of 4 without explaining the rarity.
+
+**⚠️ AND A CORRECTION TO MY OWN RETIREMENT OF ALIASING.** Three pairs now give ratio 0.25 exact,
+but at intervals of **234.9 s, 983.9 s and 2121.7 s** — sporadic, not periodic. That irregularity
+IS the rarity, and it points at two mechanisms operating together rather than one:
+
+* **the VALUE** comes from an axis mis-scaled by 4 (this is what `gap = 0.75 × uptime`, the exact
+  0.25 ratio and the 2048 grid all measure);
+* **the APPEARANCE** — why that value lands in an rficounts slot at all, sporadically — is still
+  most plausibly a contamination/aliasing event.
+
+I retired "aliasing" too completely when the rate finding landed. What that finding actually
+killed was **"the value is STALE"** — it is *slow*, not old. It did not kill the possibility that
+a foreign object is occasionally installed; those are complementary, not competing. So the search
+is for **a ring consumer whose per-frame seq step is 2048 instead of 8192**, plus whatever path
+lets its metadata reach `host_n2k_rficounts_buffer`. Candidate consumers on the RFImask/SKtilde
+rings: `cudaCorrelator`, `cudaPL1bitCorrelator`, `run_recv_rfi_RFImask`, `run_recv_rfi_SKtilde`.
 
 ### 2026-09-03 02:0x — mitigation proven on sky (superseded diagnosis below)
 
