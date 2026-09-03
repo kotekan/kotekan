@@ -47,10 +47,11 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
     // Interrupt Kotekan if run out of files to read.
     end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
 
-    // Optional realtime pacing: sleep this many microseconds after each frame so a
-    // captured file replays at (near) its acquisition rate. 0 = as fast as possible
-    // (default). Useful to exercise wall-clock control loops (e.g. the GNSS broker)
-    // against a recording rather than blasting the whole capture through in one gulp.
+    // Optional replay pacing: sleep this many microseconds after publishing each frame,
+    // so a captured file replays at roughly the rate it was acquired at. 0 (the default)
+    // reads as fast as the downstream pipeline drains, which is what you want unless
+    // something downstream is tied to the wall clock. See the class doc: this is a floor
+    // on the frame period, not a rate lock.
     frame_period_us = config.get_default<uint64_t>(unique_name, "frame_period_us", 0);
 }
 
@@ -145,7 +146,7 @@ void rawFileRead::main_thread() {
             frame_id = (frame_id + 1) % buf->num_frames;
 
             if (frame_period_us > 0)
-                usleep(frame_period_us); // realtime-pace the replay
+                usleep(frame_period_us); // pace the replay (see ctor)
         }
 
         fclose(fp);

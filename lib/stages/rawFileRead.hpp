@@ -26,7 +26,25 @@
  * @conf   base_dir         String. Directory to read from.
  * @conf   file_name        String. Base filename to read.
  * @conf   file_ext         String. File extension.
- * @conf   end_interrupt    Bool. Interrupt Kotekan if run out of files to read
+ * @conf   end_interrupt    Bool. Interrupt Kotekan if run out of files to read.
+ *                          Default false.
+ * @conf   prefix_hostname  Bool. Expect the local hostname in the filename, as written
+ *                          by rawFileWrite. Default false -- note rawFileWrite defaults
+ *                          the same key to TRUE, so a capture written with defaults
+ *                          needs prefix_hostname: true here to be found.
+ * @conf   frame_period_us  Uint64. Sleep this long after publishing each frame, so a
+ *                          capture replays at roughly the rate it was acquired at.
+ *                          Set it to one frame's worth of acquisition time: e.g. a frame
+ *                          of 199680 samples taken at 20 MS/s is 9984 us.
+ *                          Default 0 = unthrottled: frames are read as fast as the
+ *                          downstream pipeline drains them, which is the behaviour you
+ *                          want unless something in the pipeline is tied to the wall
+ *                          clock. Note this is a floor on the frame period, not a rate
+ *                          lock -- the read and per-file open overhead add to it, so a
+ *                          paced replay runs somewhat slower than 1/frame_period_us
+ *                          (0.80x measured on one replay bench). A consumer that
+ *                          needs to know where in the file it is should derive that
+ *                          from the frame metadata, not from elapsed wall time.
  */
 class rawFileRead : public kotekan::Stage {
 public:
