@@ -127,7 +127,7 @@ public:
             return beams.at(
                 time_chunk
                 + out_ntimes_chunk
-                      * (freq_chunk
+                      * ((out_nfreqs_chunk - 1 - freq_chunk)
                          + out_nfreqs_chunk
                                * (freq_packet
                                   + out_nfreqs_packet
@@ -228,7 +228,7 @@ public:
                                     for (int time_chunk = 0; time_chunk < out_ntimes_chunk;
                                          ++time_chunk) {
                                         const int freq =
-                                            freq_chunk
+                                            (out_nfreqs_chunk - 1 - freq_chunk)
                                             + out_nfreqs_chunk
                                                   * (freq_packet + out_nfreqs_packet * freq_outer);
                                         const int time = time_chunk + out_ntimes_chunk * time_outer;
