@@ -1123,59 +1123,59 @@ n2k_PLmask_count:
     sub_integration_ntime: n2k_sub_integration_ntime
     packet_loss_is_scalar: True
 
-vis_accumulate:
-    kotekan_stage: N2Accumulate
-    in_buf: host_n2k_correlation_buffer
-    in_counts_buf: host_n2k_counts_buffer
-    in_rficounts_buf: host_n2k_RFIcounts_buffer
-    in_plcounts_buf: host_n2k_PLcounts_buffer
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
-    out_buf: vis_10s_buffer
-    packet_loss_is_scalar: True
-    cpu_affinity: [17, 18, 19]
-    num_workers: 3
-    input_order: CHIMEBeamformer
-    output_order: CHIMECylinder
-    # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-    # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
-    # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-    # num_subintegrations_per_bin: (num_subintegrations_per_bin_maybe_odd + 1) / 2 * 2
-    num_subintegrations_per_bin: 240
-    # these recap values from cudaCorrelator
-    num_freq_per_n2k_frame: num_freq_gpu_buf
-    #samples_per_data_set: n2k_samples_per_data_set # a global of this nam exists used by n2k_samples_per_data_set
-    sub_integration_ntime: n2k_sub_integration_ntime
-    # set as global variable of same name
-    #rfi_downsampling_factor: rfi_downsampling_factor
-    num_elements: n2k_correlation_num_elements
-    num_ev: 0 # only allowed value
-    variance_mode: CHIMEv1
-
-eigencalc:
-    kotekan_stage: EigenN2Iter
-    cpu_affinity: [14, 15, 16] # for blaze
-    num_blaze_workers: 3
-    num_ev: num_ev_to_calculate
-    in_buf: vis_10s_buffer
-    out_buf: eig_10s_buffer
-    failed_buf: failed_10s_buffer
-    # Convergence config from chime science run
-    tol_eval: 0.00001
-    tol_evec: 0.0001
-    max_iterations: 19
-    num_ev_conv: 2
-    krylov: 2
-    subspace: 1
-    # Masking config from chime science run
-    # TODO: these are (Roland assumes) in CHIME cylinder order but data is in
-    # CHIME beamformer order (after xpose2048)
-    diagonal_bands_filled: [ [0, 30], [251, 262] ]
-    exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
-                      370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
-                      807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
-                     1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
-                     1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
-                     1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
+#vis_accumulate:
+#    kotekan_stage: N2Accumulate
+#    in_buf: host_n2k_correlation_buffer
+#    in_counts_buf: host_n2k_counts_buffer
+#    in_rficounts_buf: host_n2k_RFIcounts_buffer
+#    in_plcounts_buf: host_n2k_PLcounts_buffer
+#    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
+#    out_buf: vis_10s_buffer
+#    packet_loss_is_scalar: True
+#    cpu_affinity: [17, 18, 19]
+#    num_workers: 3
+#    input_order: CHIMEBeamformer
+#    output_order: CHIMECylinder
+#    # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
+#    # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
+#    # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
+#    # num_subintegrations_per_bin: (num_subintegrations_per_bin_maybe_odd + 1) / 2 * 2
+#    num_subintegrations_per_bin: 240
+#    # these recap values from cudaCorrelator
+#    num_freq_per_n2k_frame: num_freq_gpu_buf
+#    #samples_per_data_set: n2k_samples_per_data_set # a global of this nam exists used by n2k_samples_per_data_set
+#    sub_integration_ntime: n2k_sub_integration_ntime
+#    # set as global variable of same name
+#    #rfi_downsampling_factor: rfi_downsampling_factor
+#    num_elements: n2k_correlation_num_elements
+#    num_ev: 0 # only allowed value
+#    variance_mode: CHIMEv1
+#
+#eigencalc:
+#    kotekan_stage: EigenN2Iter
+#    cpu_affinity: [14, 15, 16] # for blaze
+#    num_blaze_workers: 3
+#    num_ev: num_ev_to_calculate
+#    in_buf: vis_10s_buffer
+#    out_buf: eig_10s_buffer
+#    failed_buf: failed_10s_buffer
+#    # Convergence config from chime science run
+#    tol_eval: 0.00001
+#    tol_evec: 0.0001
+#    max_iterations: 19
+#    num_ev_conv: 2
+#    krylov: 2
+#    subspace: 1
+#    # Masking config from chime science run
+#    # TODO: these are (Roland assumes) in CHIME cylinder order but data is in
+#    # CHIME beamformer order (after xpose2048)
+#    diagonal_bands_filled: [ [0, 30], [251, 262] ]
+#    exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+#                      370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+#                      807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
+#                     1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
+#                     1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
+#                     1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
 
 vis_convert:
     kotekan_stage: n2FrameToVisFrame
