@@ -1611,7 +1611,7 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #107 — nine node deaths on a FOREIGN metadata stamp in the rficounts slot — MITIGATED 2026-09-03, root cause still OPEN
+## #107 — nine node deaths: ROOT-CAUSED 2026-09-03 (a post-publication patch of ring slot-0 metadata) + MITIGATED; fix not yet written
 
 cx27 (23:05) and cx19 (23:35) both FATAL'd identically. The kill chain, from the archived
 autopsies:
@@ -1724,7 +1724,53 @@ look.
 `dc=414392320`, `dr=103598080`, ratio **0.25 exact** — on a different node *and* a different GPU
 instance from the cx27/accum_0 pair. Two independent measurements of the same quarter.
 
-### ⚡⚡⚡ THE FACTOR OF 4 IS `time_downsampling_fpga` = 256 INSTEAD OF 1024
+### ✅✅ ROOT CAUSE, COMPLETE (2026-09-03 07:30) — A POST-PUBLICATION PATCH OF RING SLOT-0 METADATA
+
+`cudaRFISKtilde::execute` (lib/cuda/cudaRFISKtilde.cpp:315-321):
+
+```cpp
+rfi_RFImask.set_metadata(rfi_S012.get_metadata());   // publishes into ring slot 0
+const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();  // reads slot 0 back
+rfi_meta->set_time_downsampling_fpga(rfi_meta->get_time_downsampling_fpga()
+                                     * div_noremainder(128 * 8, rfi_downsampling_factor));
+```
+
+`rfi_RFImask` is an `NDArrayRingBuffer`, and `NDArrayRingBuffer::get_metadata()` returns
+`ringbuffer->get_metadata(0)` — **the ring's slot-0 object, live, with a non-const overload**. So
+the ×4 correction *mutates the already-published slot-0 metadata in place, every frame.*
+Meanwhile `cudaCopyFromRingbuffer::execute` reads `signal_buffer->get_metadata(0)` **live every
+frame** and immediately uses `get_time_downsampling_fpga()`.
+
+**A consumer that samples in the window between the publish and the patch reads
+`time_downsampling_fpga = 256` instead of 1024**, and computes
+`out_seq = C + 256*(cursor/sample_bytes)` — a quarter of the true offset from the anchor.
+
+⚠️⚠️ **`NDArrayRingBuffer.hpp:599` carries the warning this violates**, added by the 08-31
+torn-read fix: *"BUILD IT FULLY, THEN PUBLISH IT ATOMICALLY — NEVER FILL IN PLACE."* That fix
+hardened `set_metadata`; this caller **publishes and then patches**, which walks around the
+hardening entirely. Same fault family one layer up — which is exactly why `3ea6543d7` looked
+relevant and did not close this.
+
+**Every observation follows from that one mechanism:**
+
+| observation | why |
+|---|---|
+| anchor `C` identical across 12 events, zero remainder | the seq field is correct; only `ds` is caught mid-patch |
+| ratio exactly 0.25 between events on one node | 256 vs 1024 |
+| ONE bad read gives an hours-long gap | `cursor` is absolute since startup, so the whole offset scales |
+| `gap = 0.75 × uptime` | analytic consequence of the above |
+| rare, sporadic intervals (235 s … 2122 s) | narrow race window |
+| values on a 2048 grid | step = 2048 instead of 8192 |
+| 16 perfect frames before each event | the race is lost only occasionally |
+
+**FIX:** correct `time_downsampling_fpga` **before** publishing — build the corrected object and
+`set_metadata` that, never patch after. The `TODO: Set these metadata only once` sits on the same
+lines. Verify with a one-line startup log asserting the ring's slot-0 `ds == 1024` and the derived
+per-frame step `== 8192`; the mitigation's `DESYNC` counter going to zero is the on-sky gate.
+⚠️ This is upstream non-GNSS code (Jim's group) and the ×4 also mutates an object shared with
+`rfi_SKtilde` and `rfi_S012`, so the corrected copy must not change what those two see.
+
+### The factor of 4 is `time_downsampling_fpga` = 256 instead of 1024 (working notes)
 
 Found in `cudaRFISKtilde::execute` (lib/cuda/cudaRFISKtilde.cpp:315-321):
 
