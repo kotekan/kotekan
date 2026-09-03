@@ -33,6 +33,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     num_components = config.get<uint32_t>(unique_name, "num_components");
     scaling_factor = config.get_default<float>(unique_name, "scaling_factor", 1.0);
     conjugate_gains = config.get_default<bool>(unique_name, "conjugate_gains", false);
+    invert_gains = config.get_default<bool>(unique_name, "invert_gains", false);
 
     // Input gain buffers
     json in_buf_list = config.get_value(unique_name, "gain_buffers");
@@ -115,6 +116,19 @@ void processFeedGains::copy_upchannelize(float* frame, size_t beam_id) {
         for (size_t i = 1; i < num_beam_elements; i += 2) {
             float16_t* u_ptr = out_ptr + i;
             *u_ptr *= float16_t(-1.0);
+        }
+    }
+    if (invert_gains && num_components > 1) {
+        size_t num_beam_elements = num_elements * num_local_freq * upchan_factor * num_components;
+
+        for (size_t i = 0; i < num_beam_elements; i += 2) {
+            float16_t* u_ptr = out_ptr + i;
+            // not the most numerically stable way of doing this...
+            float mag2 = float(u_ptr[0])*float(u_ptr[0]) + float(u_ptr[1])*float(u_ptr[1]);
+            if(mag2 != 0.0) {
+              u_ptr[0] /= mag2;
+              u_ptr[1] /= -mag2;
+            }
         }
     }
 }
