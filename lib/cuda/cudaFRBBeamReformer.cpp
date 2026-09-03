@@ -214,11 +214,13 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     }
 
     // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
-    auto frb1_beams_meta = std::dynamic_pointer_cast<chordMetadata>(frb1_beams_buffer.get_metadata());
+    auto frb1_beams_meta =
+        std::dynamic_pointer_cast<chordMetadata>(frb1_beams_buffer.get_metadata());
     assert(frb1_beams_meta);
     const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
-    frb2_beams_meta->set_fpga_seq_num(frb1_beams_meta->get_fpga_seq_num() + frb1_beams_offset
-                                      * frb2_beams_meta->get_time_downsampling_fpga());
+    frb2_beams_meta->set_fpga_seq_num(frb1_beams_meta->get_fpga_seq_num()
+                                      + frb1_beams_offset
+                                            * frb2_beams_meta->get_time_downsampling_fpga());
 
     if (poison_buffers)
         frb2_beams_buffer.set_to_poison(0xff); // 0xffff is a NaN16
