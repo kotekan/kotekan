@@ -1668,8 +1668,19 @@ death, and this is 306,000x that.
 **Fuse.** Nodes up 18:09, died at ~5 h. The pre-fix fuse was 2-5 h and the fix's clean run on
 2026-09-02 morning was only ever validated over ~5 h, so it may never have been fixed.
 
-**Next.** The 19:30 correlation is the sharpest lead this bug has ever produced — every prior
-autopsy was a single node. Find what publishes rficounts metadata on a path the
+**⚠️ THE POINTER HISTORY IS THE BEST EVIDENCE IN THE AUTOPSY, AND IT NARROWS THE MECHANISM.**
+Over the 16 frames before cx27's death, the streams cycle through very few metadata objects:
+`counts` uses 5 distinct pointers, **`rficounts` only 3**. The object carrying the bad seq
+(`0x722d0c0039f0`) is one of those three — it is in normal rotation, not a stray.
+
+That rules out the simplest story. If a recycled object merely failed to be re-stamped it
+would carry the seq from its previous use ~3 frames (~126 ms) earlier, not 3.57 h. And the
+history shows that *same pointer* carrying CORRECT, correctly-stepping seqs earlier in the
+window. So the object's contents were **overwritten with an old payload** while in live
+rotation — a stale WRITE into a live object, not a missing update and not a stray pointer.
+
+**Next.** Two events ~26 min apart (see the pair table) is the sharpest lead this bug has
+produced — every prior autopsy was a single node. Find what publishes rficounts metadata on a path the
 NDArrayRingBuffer fix does not cover. Evidence preserved at
 `logs/gnss_node_cx*_signal_20260902_2340.log` (non-valve extract of all four survivors, 14 MB
 instead of 40 GB).
