@@ -1678,7 +1678,55 @@ produces a foreign stamp. That is where to look next.
 in ~25–30 min bands (01:27/01:52, 03:02/03:25, 19:31/19:32, 19:56/19:56/20:01) — the ~25 min
 recurrence is the real structure, not two isolated moments.
 
-### 2026-09-03 02:0x — MITIGATION PROVEN ON SKY, and the hunt narrows to a use-after-free
+### ⚡⚡⚡ 2026-09-03 06:05 — SOLVED IN SHAPE: THE SEQ IS NOT STALE, IT RUNS AT EXACTLY 1/4 RATE
+
+The surviving fleet gave what nine deaths could not: **two desyncs on the same node**, which
+turns the gap into a measurable *rate*.
+
+    cx27 desync #1 -> #2, 983.9 s apart:
+        correlation advanced   192167936
+        "stale" seq advanced    48041984
+        ratio                   0.25000000   (exact: dr*4 == dc, to the byte)
+
+And across all three post-fix incidents the gap is a fixed fraction of **node uptime**:
+
+    cx19    gap 10256 s / uptime 13680 s = 0.7497
+    cx27#1  gap 10505 s / uptime 14098 s = 0.7451
+    cx27#2  gap 11243 s / uptime 15082 s = 0.7454      (residuals = sampling lag, ~90 s)
+
+⇒ **gap = 0.75 × uptime.** Two axes anchored together at startup, one advancing at 1/4 the
+other's rate, diverge at exactly 3/4 of elapsed time. Every previously mysterious fact is a
+corollary:
+
+* **Nothing is stale, recycled, resurfaced or aliased.** The value is *live and correctly
+  produced by a mis-scaled axis*. This retires, in order: the recycled-pool hypothesis, the
+  metadata-aliasing hypothesis, and the use-after-free hypothesis recorded above — all three
+  were mine, and all three were explaining an artifact.
+* **The 2048 grid is the same fact.** 2048 = 8192/4; an axis stepping 2048 per correlator frame
+  lands only on multiples of 2048. Off-grid values were the factor of 4 showing through.
+* **There is no "5-6.6 h uptime fuse."** The gap grows linearly from zero at restart. Nothing
+  fuses; the FATAL simply fires the first time the mismatch is sampled.
+* **The cross-node "clustering" of stale stamps was an artifact of shared uptime.** Nodes
+  restarted together have similar uptimes, so their 1/4-rate axes read similar values. The
+  25-30 min bands, the "two tight pairs", the 16.7 s agreement — all of it was this. That entire
+  line of investigation was chasing a shadow.
+
+**WHAT TO FIX:** a factor of 4 in the rficounts seq derivation, i.e. in
+`out_seq = C + time_downsampling_fpga * (input_cursor / sample_bytes)`
+(`cudaCopyFromRingbuffer::execute`) or in the `_output_size` the consumer claims per call from
+`host_rfi_RFImask_ringbuffer`. If the consumer claims one quarter of what the producer writes
+per frame, its cursor — and therefore its dead-reckoned seq — advances at exactly 1/4 rate while
+it silently falls further behind in the ring. Note `host_n2k_rficounts_buffer` is declared
+`num_frames: 4 * buffer_depth` against the ring's `buffer_depth`; that 4 is the first place to
+look.
+
+**⚠️ STILL UNEXPLAINED — do not skip this.** A systematically 1/4-rate axis should mismatch on
+*every* frame and kill the node seconds after start, yet mismatches are rare (hours apart) and
+16 consecutive frames step perfectly beforehand. So the slow axis cannot be the only producer of
+these frames: something must install its value only occasionally. Resolving that is what turns
+this from a shape into a fix — do not patch the factor of 4 without explaining the rarity.
+
+### 2026-09-03 02:0x — mitigation proven on sky (superseded diagnosis below)
 
 **cx19 hit the fault at 3.8 h uptime and SURVIVED** — one `DESYNC (#107)`, zero FATALs, node
 still up. First time any node has lived through this. incident #10:
