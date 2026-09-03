@@ -547,6 +547,21 @@ void N2Accumulate::main_thread() {
                  desync_buf_id, desync_seq, (corr_seq - desync_seq) / _n_fpga_samples_per_n2k_frame,
                  consecutive_desync_drops, _max_consecutive_desync_drops, desync_drops);
             state = AccumState::WAITING_FOR_ALIGNMENT;
+
+            // ⚠️ The accumulators are zeroed ONLY when a bin is emitted. Re-aligning without
+            // clearing them here would fold whatever this bin had already accumulated into the
+            // NEXT bin -- a silent bias, which is exactly what dropping the tuple is meant to
+            // avoid. Discard the partial bin explicitly.
+            std::fill(_vis.begin(), _vis.end(), decltype(_vis)::value_type{});
+            std::fill(_var.begin(), _var.end(), decltype(_var)::value_type{});
+            std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
+            std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
+            std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
+            std::fill(_n_pl_samples_in_vis.begin(), _n_pl_samples_in_vis.end(), 0);
+            std::fill(_accum_bf_mask.begin(), _accum_bf_mask.end(), 1u);
+            std::fill(_vis_input_frames_skipped_rfi.begin(), _vis_input_frames_skipped_rfi.end(),
+                      0);
+            _vis_samples_in_out_frame = 0;
         } else {
             consecutive_desync_drops = 0;
             if (in_bf_mask_buf != nullptr)
