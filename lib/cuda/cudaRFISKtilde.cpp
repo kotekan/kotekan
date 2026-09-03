@@ -313,12 +313,41 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     rfi_S012.check_metadata();
 
     rfi_SKtilde.set_metadata(rfi_S012.get_metadata());
-    rfi_RFImask.set_metadata(rfi_S012.get_metadata());
-    // Correct RFImask metadata
+
+    // Correct the RFImask time downsampling BEFORE publishing, never after.
+    //
+    // ⚠️ This used to read the object back out of the ring with
+    // `rfi_RFImask.get_metadata()` and multiply `time_downsampling_fpga` in place. But
+    // `NDArrayRingBuffer::get_metadata()` returns the LIVE slot-0 object, so that patched
+    // metadata which `set_metadata` had already published -- exactly the "BUILD IT FULLY,
+    // THEN PUBLISH IT ATOMICALLY, NEVER FILL IN PLACE" hazard documented on
+    // `NDArrayRingBuffer::set_metadata`. That function is atomic; a caller that mutates the
+    // published object afterwards defeats it.
+    //
+    // `cudaCopyFromRingbuffer::execute` reads `signal_buffer->get_metadata(0)` live on every
+    // frame and immediately derives a sequence number from this field:
+    //     out_seq = anchor + time_downsampling_fpga * (input_cursor / sample_bytes)
+    // A reader landing between the publish and the patch saw the UNCORRECTED value (256
+    // instead of 1024 with CHORD's rfi_downsampling_factor of 256). Because `input_cursor`
+    // is the absolute byte count since startup, that quarters the entire accumulated offset
+    // rather than one frame's worth, emitting a sequence number 0.75 x uptime behind.
+    // `N2Accumulate` then FATALs on the correlation-vs-RFICounts mismatch, and with
+    // `exit_on_worker_failure` set that takes the whole node down. Nine CHORD nodes died
+    // this way on 2026-09-02/03; the gap was measured at exactly 0.75 x uptime on three
+    // nodes, and the ratio between successive events at exactly 0.25.
+    //
+    // Building the corrected object first closes the window: slot 0 is only ever visible
+    // carrying the final value.
     // TODO: Set these metadata only once
-    const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    rfi_meta->set_time_downsampling_fpga(rfi_meta->get_time_downsampling_fpga()
-                                         * div_noremainder(128 * 8, rfi_downsampling_factor));
+    {
+        const std::shared_ptr<const chordMetadata> s012_meta = rfi_S012.get_metadata();
+        auto rfi_meta = std::make_shared<chordMetadata>();
+        rfi_meta->parent_pool = s012_meta->parent_pool;
+        rfi_meta->deepCopy(s012_meta);
+        rfi_meta->set_time_downsampling_fpga(rfi_meta->get_time_downsampling_fpga()
+                                             * div_noremainder(128 * 8, rfi_downsampling_factor));
+        rfi_RFImask.set_metadata(rfi_meta);
+    }
 
     if (poison_buffers) {
         rfi_SKtilde.set_to_poison(0xff);
