@@ -1630,13 +1630,33 @@ autopsies:
 | cx27 | 23:05 | 16340410368 | 13832116224 | 3.57 h |
 | cx19 | 23:35 | 16687022080 | 13835382784 | 4.06 h |
 
-**⚠️⚠️ THE TWO BAD VALUES ARE 16.7 SECONDS APART.** Different nodes, deaths 30 minutes
-apart, and each resurfaced an object stamped within the same 17-second window — ~19:30-19:31
-UTC, which is *inside* both processes' own lifetimes (nodes started 18:09). The values are
-not garbage: they are plausible seqs from ~80 minutes after startup. That reads as a
-**recycled metadata object handed back out hours later**, not corruption. (Cross-check: the
-two correlation seqs differ by 1775 s = the 30 minutes between the deaths, so the shared seq
-axis is self-consistent.)
+**⚠️ CORRECTED AT n=4 — IT IS TWO TIGHT PAIRS, NOT ONE MOMENT.** The first write-up of this
+entry called the two-node 16.7 s agreement "a specific fleet-wide moment"; that was an n=2
+over-read, and the third and fourth deaths reshaped it. All four nodes resurfaced an object
+stamped *inside their own lifetime* (all started 18:09), and the stamps pair up:
+
+| node | died | backward | resurfaced object stamped |
+|---|---|---|---|
+| cx27 | 09-02 23:05 | 3.57 h | 19:30 |
+| cx19 | 09-02 23:35 | 4.06 h | 19:31 |
+| cx43 | 09-03 00:43 | 4.78 h | 19:56 |
+| cx42 | 09-03 00:46 | 4.80 h | 19:58 |
+
+Within a pair the stamps are **16.7 s** and **7.1 s** apart; between pairs, 26 minutes. The
+pairs also died together (30 min apart, then 3 min apart). Four points inside a 25-minute
+band of a ~6 h process life is a **~0.1%** coincidence, so the clustering is real — but it is
+TWO events, not one, and any explanation has to produce two of them ~26 min apart rather than
+a single fleet-wide instant.
+
+The values are not garbage: they are plausible seqs from 80-110 minutes after startup, which
+is what makes "recycled metadata object handed back out hours later" the reading rather than
+corruption. (Cross-check: cx27 and cx19's correlation seqs differ by 1775 s = the 30 minutes
+between their deaths, so the shared seq axis is self-consistent.)
+
+**⚠️ THE FUSE IS FLEET-WIDE AND UPTIME-KEYED.** All six nodes started together at 18:09 and
+died at 5.0-6.6 h of uptime, in start order. Restarting buys ~5 h; restarting them together
+means they die together. Staggering restarts keeps a subset alive but is a workaround, not a
+fix.
 
 **NOT a regression from the 2026-09-02 merge.** `lib/cuda/NDArrayRingBuffer.hpp`,
 `lib/core/buffer.cpp` and `lib/metadata/` are byte-identical across `6e7cc65b0` (the merge
