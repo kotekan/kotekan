@@ -108,6 +108,7 @@ private:
 
     /// Whether or not to conjugate the gains
     bool conjugate_gains;
+    bool invert_gains;
 
     /// Fixed buffers used to hold gains separately from the kotekan buffers
     std::vector<float16_t> gain_store_buf;
