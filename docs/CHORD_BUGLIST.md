@@ -1889,6 +1889,30 @@ this reason; the bug will be somewhere that bypasses it. Note the bad object was
 recent rotation but WAS in cx51's, which fits recycled-freed-memory rather than an aliased live
 object.
 
+### ⚠️ VERIFICATION: THE 2 h WINDOW WAS A GATE THAT COULD NOT FAIL (corrected 14:40)
+
+Fleet went fully onto the fix (+217.gba3f69c028) at 12:37:20 UTC. At the 2 h mark all six
+nodes read DESYNC=0, FATAL=0 by direct log grep -- and I nearly called that a pass on a
+3.2 drops/h baseline (p ~ 0.2%). **That baseline was wrong.** Reconstructing each site's FIRST
+drop from its gap (uptime = gap/0.75):
+
+    cx19/accum_1  first drop at 3.80 h uptime, 11 drops to 6.33 h  -> 4.35/h in regime
+    cx27/accum_0  first drop at 3.89 h uptime,  5 drops to 6.90 h  -> 1.66/h in regime
+    cx42/accum_1  first drop at 4.60 h uptime,  6 drops to 7.39 h  -> 2.15/h in regime
+
+**No node ever dropped before 3.8 h of uptime.** The 3.2/h figure averaged over a span that
+included ~4 h of guaranteed zeros, so it both understated the in-regime rate (~8.2/h combined)
+and assumed a constant hazard the data contradicts. Zero drops at 2 h is precisely what an
+UNFIXED node looks like at 2 h -- the window could not have produced a negative result.
+
+Onset delay is unexplained. The plausible read is that the race window widens with accumulated
+system pressure (the valve_bf_mask free-run alone writes ~2.3 GB/h per node), but that is not
+established.
+
+REAL THRESHOLDS (from the 12:37:20 restart): 4.6 h = 17:15 UTC enters the regime; 5.6 h =
+18:15 UTC gives ~8 expected events missing (p ~ 0.03%, conclusive); 6.6 h = 19:15 UTC is past
+where all nine nodes died. **Do not open the upstream PR on pre-4.6 h evidence.**
+
 ### Mitigation shipped 2026-09-03 (root cause still open)
 
 `N2Accumulate` no longer FATALs on a seq mismatch. A mismatch **poisons the whole tuple**: all
