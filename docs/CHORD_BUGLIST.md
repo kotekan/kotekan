@@ -1806,6 +1806,13 @@ the pairing. The old FATAL survives as an escalation after `max_consecutive_desy
 (default 4) consecutive bad tuples, which is what separates a one-frame glitch — every incident
 so far — from a genuine desync.
 
+**COST OF THE MITIGATION, MEASURED (06:5x).** `num_subintegrations_per_bin: 238` in the running
+generated configs ⇒ a bin is 238 × 8192 / 195312.5 = **9.98 s**, so each drop discards ~10 s of
+integration. Overnight tally after ~4.9 h: cx19 2, cx27 2, cx42 3, cx43/cx44/cx51 0 — worst node
+**30 s lost out of 4.9 h = 0.17%**, and the counts are consistent frame-for-frame with `counts`,
+so it is lost integration time and not a bias. Compare the alternative: node death, i.e. 100% of
+that node plus every GNSS chain on it. The trade is overwhelmingly worth keeping.
+
 ⚠️ This is a **survival** change, not a fix: it stops one bad frame from costing the node and
 every GNSS chain on it via `exit_on_worker_failure`. Its diagnostic value is the larger win —
 the full autopsy block still fires on every mismatch, so instead of one sample per node death we
