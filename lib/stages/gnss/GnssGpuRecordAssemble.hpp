@@ -181,6 +181,52 @@ private:
     /// header rides the new bare reference for ~3 tau while the cal re-warms.
     int _pending_ref = -1;
     std::vector<std::complex<double>> _spec_scratch; ///< [n_elem] per-channel cal-combine input
+
+    // ── THE BEAM CUBE: the (channel x element) axis, un-collapsed (2026-09-03) ────────────
+    /// ⚠️ BOTH AXES ALREADY SURVIVE THIS STAGE -- SEPARATELY, AND THAT IS THE WHOLE PROBLEM.
+    /// The element blocks are summed over the covering channels (the per-antenna covering-mask
+    /// sum in main_thread), and the comb block is "NCO-derotated and ELEMENT-COMBINED, i.e. one
+    /// element-equivalent per channel" (gnssRecord.hpp). So a beam map can be resolved in
+    /// frequency OR in element, never in both -- while `corr` on the host is literally
+    /// [rows][n_chan][n_elem] and has carried the joint quantity all along. Two different sums
+    /// over one array, taken a few lines apart, and neither keeps what a per-element
+    /// per-subband beam map needs.
+    ///
+    /// Why that matters and gets worse: the beam evolves across a wide signal (L5 spans ~20 MHz
+    /// over 52 channels here), and a BOC signal puts its power in TWO lobes tens of MHz apart,
+    /// so a frequency-collapsed per-element map averages a split spectrum and describes neither
+    /// lobe. Per element, because separating a feed problem from an array problem is exactly
+    /// what the element axis is for.
+    ///
+    /// ⚠️ DELIBERATELY **NOT** IN THE RECORD. config/chord_gnss_node.yaml called this "a real
+    /// change to the assembler and the schema"; the schema half is avoidable. A beam map wants
+    /// an INTEGRATED power, not a per-record stream -- so this is an accumulator served over
+    /// REST next to /get_spectrum, and the frame layout, record_stride() and every downstream
+    /// consumer are untouched. No flag day.
+    ///
+    /// The value is |A_e,c|^2 with A_e,c = G_e,c / E_c -- the SAME per-channel replica energy
+    /// normalises every element, because one replica is correlated against all of them, so the
+    /// ratios stay comparable across antennas (the property the beam map is built on). It is
+    /// INCOHERENT, so no NCO rotation is applied or needed: `rot` cancels in the magnitude.
+    /// Still BIASED by the noise pedestal -- debiasing is the broker's job, from the probe
+    /// PRNs, in the power domain, exactly as for the element archive's p2.
+    bool _cube_on = false;
+    /// Channels per output subband bin. 0 (default) = no binning, one bin per channel: the
+    /// finest cube the instrument can produce. Binning trades frequency resolution for archive
+    /// volume, which is the binding constraint here -- NOT memory, and not compute.
+    int _cube_bin_width = 0;
+    int _cube_bins = 0;                    ///< derived: number of subband bins
+    std::mutex _cube_mtx;                  ///< guards _cube_* between main_thread and REST
+    /// [n_prn * _cube_bins * n_elem] running SUM of |A_e,c|^2, and [n_prn * _cube_bins] the
+    /// number of (record, channel) terms behind each bin. RESET ON READ: a poll returns exactly
+    /// the interval since the previous poll, with the weight needed to combine intervals
+    /// offline by addition. Unlike the spectrum ring this needs no cross-instance window
+    /// alignment -- it carries no phase, so there is nothing for a misaligned window to
+    /// decohere; only the weights have to be honest, and they are reported.
+    std::vector<double> _cube_p2;
+    std::vector<double> _cube_w;
+    std::vector<double> _cube_t0;          ///< [1] wall clock at the start of the open interval
+    void beam_cube_callback(kotekan::connectionInstance& conn);
     /// Accumulate one record's channels into the window that owns `wstart`, opening/clearing
     /// the ring slot on a boundary crossing. Caller holds _spec_mtx.
     SpecWindow& spec_window_for(int64_t wstart);

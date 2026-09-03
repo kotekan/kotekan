@@ -213,10 +213,44 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         }
         _spec_scratch.assign((size_t)std::max(1, _n_elements), {0.0, 0.0});
     }
+
+    // ── THE BEAM CUBE (hpp): the (channel x element) axis, un-collapsed ──────────────────
+    // Requires BOTH axes to exist: channel_ids (so a bin has a frequency) and an element axis
+    // (so it has an antenna). Silent no-op otherwise -- this is opt-in and costs exactly
+    // nothing when off, which is what makes it safe to ship dark and arm per chain.
+    _cube_on = config.get_default<bool>(unique_name, "beam_cube", false)
+               && !_spec_freq_ids.empty() && _n_elements > 0;
+    if (_cube_on) {
+        const int nc = (int)_spec_freq_ids.size();
+        _cube_bin_width = config.get_default<int>(unique_name, "beam_cube_bin_width", 0);
+        if (_cube_bin_width < 0)
+            _cube_bin_width = 0;
+        // 0 = one bin per channel. Otherwise ceil, so the last bin may be narrow rather than
+        // silently dropping the top channels -- a truncated band edge is exactly the kind of
+        // quiet loss that looks like a real beam feature later.
+        _cube_bins = (_cube_bin_width > 0) ? (nc + _cube_bin_width - 1) / _cube_bin_width : nc;
+        _cube_p2.assign((size_t)n * _cube_bins * _n_elements, 0.0);
+        _cube_w.assign((size_t)n * _cube_bins, 0.0);
+        _cube_t0.assign(1, 0.0);
+        INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} subband bin(s) "
+             "({:d} channel(s), width {:d}) x {:d} element(s) = {:d} accumulator(s), "
+             "reset-on-read at /get_beam_cube",
+             unique_name, n, _cube_bins, nc, _cube_bin_width ? _cube_bin_width : 1,
+             _n_elements, (size_t)n * _cube_bins * _n_elements);
+    } else if (config.get_default<bool>(unique_name, "beam_cube", false)) {
+        WARN("GnssGpuRecordAssemble[{:s}]: beam_cube requested but {:s} -- the cube needs BOTH "
+             "axes and is OFF.", unique_name,
+             _spec_freq_ids.empty() ? "this config has no channel_ids (no frequency axis)"
+                                    : "n_elements is 0 (no element axis)");
+    }
     using namespace std::placeholders;
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_spectrum",
         std::bind(&GnssGpuRecordAssemble::spectrum_callback, this, _1));
+    if (_cube_on)
+        kotekan::restServer::instance().register_get_callback(
+            unique_name + "/get_beam_cube",
+            std::bind(&GnssGpuRecordAssemble::beam_cube_callback, this, _1));
     if (_elem_sum)
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_gain",
@@ -327,6 +361,21 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
                     W.phi0[(size_t)p] = 0.0;
                 if ((size_t)p < W.nreanchor.size())
                     W.nreanchor[(size_t)p] = 0;
+            }
+        }
+        // THE BEAM CUBE accumulates per slot too, and for the same reason: carried across a
+        // swap, the departing satellite's integrated power would be attributed to the arriving
+        // one -- and a beam map is precisely a claim about where power came from, so this one
+        // would not merely be wrong, it would be wrong in the shape of a feature. Zero the
+        // slot's sums AND its weights together: a nonzero weight over a zeroed sum reads as a
+        // real measurement of no power, which is worse than absence.
+        if (_cube_on) {
+            std::lock_guard<std::mutex> ck(_cube_mtx);
+            const size_t ne = (size_t)_n_elements;
+            if ((size_t)(p + 1) * _cube_bins * ne <= _cube_p2.size()) {
+                std::fill_n(_cube_p2.begin() + (size_t)p * _cube_bins * ne, _cube_bins * ne,
+                            0.0);
+                std::fill_n(_cube_w.begin() + (size_t)p * _cube_bins, _cube_bins, 0.0);
             }
         }
         WARN("GnssGpuRecordAssemble: slot {:d} PRN {:d} -> {:d} (the producer swapped it). "
@@ -846,6 +895,48 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                         return v * rot;
                     };
+                    // ── BEAM CUBE (hpp): |A_e,c|^2 per (subband bin, element) ─────────────
+                    // The joint axis, taken from `corr` BEFORE either collapse: the element
+                    // blocks below sum this over channels, the comb block sums it over
+                    // elements, and neither keeps the product.
+                    //
+                    // INCOHERENT, so `rot` is deliberately NOT applied -- it is a unit-modulus
+                    // common phase and cancels exactly in |.|^2. Applying it would cost work
+                    // and buy nothing, and a reader who saw it applied would reasonably infer
+                    // the quantity was phase-referenced when it is not.
+                    //
+                    // Normalised by the channel's OWN replica energy, once, for every element:
+                    // one replica is correlated against all of them (which is why energies
+                    // live in the record header and only the correlations are per element), so
+                    // A_e = G_e/E_c keeps the antenna ratios comparable -- the property the
+                    // whole beam map rests on. A zero-energy channel contributes nothing
+                    // rather than an infinity.
+                    if (_cube_on) {
+                        std::lock_guard<std::mutex> ck(_cube_mtx);
+                        if (_cube_t0[0] == 0.0)
+                            _cube_t0[0] = std::chrono::duration<double>(
+                                              std::chrono::system_clock::now()
+                                                  .time_since_epoch())
+                                              .count();
+                        for (int ch = 0; ch < n_chan; ++ch) {
+                            if (!((c.chan_mask >> ch) & 1ULL))
+                                continue;
+                            const double ec = energy[prow + ch];
+                            if (!(ec > 0.0))
+                                continue;
+                            const int bin = (_cube_bin_width > 0) ? (ch / _cube_bin_width) : ch;
+                            const size_t b = (prow + ch) * n_e;
+                            double* acc = _cube_p2.data()
+                                          + ((size_t)p * _cube_bins + bin) * n_e;
+                            const double inv = 1.0 / (ec * ec);
+                            for (int el = 0; el < n_e; ++el) {
+                                const double vr = corr[2 * (b + el)];
+                                const double vi = corr[2 * (b + el) + 1];
+                                acc[el] += (vr * vr + vi * vi) * inv;
+                            }
+                            _cube_w[(size_t)p * _cube_bins + bin] += 1.0;
+                        }
+                    }
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
@@ -1138,6 +1229,94 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
                         {"phi0", phi0.empty() ? 0.0 : phi0[p]},
                         {"n_reanchor", nre.empty() ? 0 : nre[p]},
                         {"chan", chans}});
+    }
+    reply["prns"] = prns;
+    conn.send_json_reply(reply);
+}
+
+
+// THE BEAM CUBE endpoint (hpp): the (subband x element) incoherent power, un-collapsed.
+//
+// ⚠️ RESET ON READ, unlike /get_spectrum next door. That endpoint was deliberately made
+// addressable and idempotent (task #53) because its value carries a PHASE that has to be
+// aligned across instances, and a second consumer stealing half a window destroyed exactly
+// that. Neither reason applies here: this is |A|^2, so there is no phase for a misaligned
+// window to decohere, and the only thing an offline coadd needs is that the weights are
+// honest about which interval each sum covers -- which they are, and which is why the SUM and
+// its WEIGHT are both published rather than a mean.
+//
+// The consequence is the one thing to remember: TWO consumers polling this endpoint SPLIT the
+// data between them. One archiver, please. The reply says which interval it covers so a gap
+// (an archiver restart) is visible as a gap rather than silently averaged away.
+//
+// Emitted RAW: biased by the noise pedestal, no debias, no range normalisation, no combine.
+// All three are the reader's job -- debias in the POWER domain from the probe PRNs, per
+// (instance, element, subband, time bin), never medianed across elements. A combined number
+// can always be rebuilt from these parts; the parts can never be recovered from a combined
+// number, which is the whole argument for shipping this axis instead of a central estimator
+// over it.
+void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn) {
+    if (!_cube_on) {
+        conn.send_error("beam cube is OFF for this stage (needs 'beam_cube: true' plus both "
+                        "axes: 'channel_ids' for frequency and 'n_elements' for element)",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const int nc = (int)_spec_freq_ids.size();
+    const int ne = _n_elements;
+    std::vector<double> p2, w;
+    double t0 = 0.0;
+    const double t1 =
+        std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    {
+        std::lock_guard<std::mutex> ck(_cube_mtx);
+        p2.swap(_cube_p2);
+        w.swap(_cube_w);
+        t0 = _cube_t0[0];
+        _cube_p2.assign((size_t)_prns.size() * _cube_bins * ne, 0.0);
+        _cube_w.assign((size_t)_prns.size() * _cube_bins, 0.0);
+        _cube_t0[0] = 0.0; // next accumulation stamps its own start
+    }
+
+    nlohmann::json reply;
+    reply["n_bin"] = _cube_bins;
+    reply["n_elem"] = ne;
+    reply["n_chan"] = nc;
+    reply["bin_width"] = _cube_bin_width ? _cube_bin_width : 1;
+    reply["freq_ids"] = _spec_freq_ids;
+    reply["t0"] = t0; // host wall clock bounding the accumulated interval; t0 == 0 means
+    reply["t1"] = t1; // nothing accumulated since the last read (no records, or all masked)
+    reply["reference_element"] = _reference_element;
+    // Per-bin freq_id span, so a reader never has to reproduce the binning arithmetic --
+    // the one place a resolution change could silently re-point every archived row.
+    nlohmann::json bins = nlohmann::json::array();
+    for (int b = 0; b < _cube_bins; ++b) {
+        const int c0 = _cube_bin_width ? b * _cube_bin_width : b;
+        const int c1 = _cube_bin_width ? std::min(nc, (b + 1) * _cube_bin_width) - 1 : b;
+        bins.push_back({_spec_freq_ids[c0], _spec_freq_ids[c1]});
+    }
+    reply["bin_freq_ids"] = bins;
+
+    nlohmann::json prns = nlohmann::json::array();
+    for (size_t p = 0; p < _prns.size(); ++p) {
+        double wtot = 0.0;
+        for (int b = 0; b < _cube_bins; ++b)
+            wtot += w[p * _cube_bins + b];
+        if (!(wtot > 0.0))
+            continue; // silence, not zeros -- the get_records/get_spectrum convention
+        nlohmann::json wb = nlohmann::json::array(), pb = nlohmann::json::array();
+        for (int b = 0; b < _cube_bins; ++b) {
+            wb.push_back(w[p * _cube_bins + b]);
+            nlohmann::json els = nlohmann::json::array();
+            const double* acc = p2.data() + ((size_t)p * _cube_bins + b) * ne;
+            for (int el = 0; el < ne; ++el)
+                els.push_back(acc[el]);
+            pb.push_back(els);
+        }
+        // p2_sum[bin][elem] and w[bin]: the SUM and its term count, so intervals, instances
+        // and days all combine by addition and nothing has to be reprocessed to add a night.
+        prns.push_back({{"prn", _prns[p]}, {"w", wb}, {"p2_sum", pb}});
     }
     reply["prns"] = prns;
     conn.send_json_reply(reply);
