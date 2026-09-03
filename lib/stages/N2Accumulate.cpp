@@ -69,6 +69,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _packet_loss_is_scalar(config.get<bool>(unique_name, "packet_loss_is_scalar")),
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
+    _max_consecutive_desync_drops(
+        config.get_default<int64_t>(unique_name, "max_consecutive_desync_drops", 4)),
     _num_polarizations(config.get<int64_t>(unique_name, "num_polarizations")),
     _num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
     _num_elements(_num_polarizations * _num_dishes),
@@ -347,6 +349,16 @@ void N2Accumulate::main_thread() {
     // We start with START.
     AccumState state = AccumState::START;
 
+    // ⚠️ #107 SURVIVAL (2026-09-03). A single frame whose seq disagreed with its siblings used
+    // to be a FATAL, and because `exit_on_worker_failure` defaults true that FATAL took the
+    // WHOLE NODE down -- nine times in the 21 h to 09-03 01:01. The disagreement is real and
+    // must never be accumulated, but it is survivable: drop the offending tuple and re-align.
+    // Escalate to the old FATAL only if the streams genuinely fail to resync, which is what
+    // separates a one-frame glitch (all nine incidents: 16 perfect frames, one bad, death)
+    // from real desynchronisation.
+    int64_t desync_drops = 0;
+    int64_t consecutive_desync_drops = 0;
+
     // track the number of skipped input frames per frequency
     std::vector<uint64_t> _vis_input_frames_skipped_rfi(_num_freq_per_n2k_frame, 0);
 
@@ -484,47 +496,63 @@ void N2Accumulate::main_thread() {
             }
             ++_hist_n;
         }
-        if (frame_metadata->get_fpga_seq_num() != counts_metadata->get_fpga_seq_num()) {
-            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
-                        "Counts buffer {:s}[{:d}] seq={:d}",
-                        in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                        in_counts_buf->buffer_name, in_counts_frame_id,
-                        counts_metadata->get_fpga_seq_num());
-        }
-        if (frame_metadata->get_fpga_seq_num() != rficounts_metadata->get_fpga_seq_num()) {
-            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
-                        "RFICounts buffer {:s}[{:d}] seq={:d}",
-                        in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                        in_rficounts_buf->buffer_name, in_rficounts_frame_id,
-                        rficounts_metadata->get_fpga_seq_num());
-        }
-        if (frame_metadata->get_fpga_seq_num() != plcounts_metadata->get_fpga_seq_num()) {
-            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
-                        "PLCounts buffer {:s}[{:d}] seq={:d}",
-                        in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                        in_plcounts_buf->buffer_name, in_plcounts_frame_id,
-                        plcounts_metadata->get_fpga_seq_num());
-        }
-        if (frame_metadata->get_fpga_seq_num() != rfiframemask_metadata->get_fpga_seq_num()) {
-            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
-                        "RFIFrameMask buffer {:s}[{:d}] seq={:d}",
-                        in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                        in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id,
-                        rfiframemask_metadata->get_fpga_seq_num());
-        }
-        if (in_bf_mask_buf != nullptr) {
-            const std::shared_ptr<chordMetadata> bf_mask_metadata =
-                get_chord_metadata(in_bf_mask_buf, in_bf_mask_frame_id);
-            if (frame_metadata->get_fpga_seq_num() != bf_mask_metadata->get_fpga_seq_num()) {
+        // Compare every sibling stream against the correlation frame. Any mismatch poisons the
+        // WHOLE tuple, and we drop all of it together -- that is what keeps the visibilities and
+        // the counts that normalise them consistent with each other, so a drop costs integration
+        // time rather than introducing a bias.
+        const char* desync_stream = nullptr;
+        std::string desync_buf_name;
+        int desync_buf_id = 0;
+        int64_t desync_seq = 0;
+        const int64_t corr_seq = frame_metadata->get_fpga_seq_num();
+        auto check = [&](const char* tag, const std::shared_ptr<chordMetadata>& m, Buffer* buf,
+                         int fid) {
+            if (desync_stream || m->get_fpga_seq_num() == corr_seq)
+                return;
+            desync_stream = tag;
+            desync_buf_name = buf->buffer_name;
+            desync_buf_id = fid;
+            desync_seq = m->get_fpga_seq_num();
+        };
+        check("Counts", counts_metadata, in_counts_buf, in_counts_frame_id);
+        check("RFICounts", rficounts_metadata, in_rficounts_buf, in_rficounts_frame_id);
+        check("PLCounts", plcounts_metadata, in_plcounts_buf, in_plcounts_frame_id);
+        check("RFIFrameMask", rfiframemask_metadata, in_rfiframemask_buf, in_rfiframemask_frame_id);
+        if (in_bf_mask_buf != nullptr)
+            check("bad feed mask", get_chord_metadata(in_bf_mask_buf, in_bf_mask_frame_id),
+                  in_bf_mask_buf, in_bf_mask_frame_id);
+
+        // A poisoned tuple: refuse to accumulate it, release every stream's frame together (the
+        // shared advance block at the end of the loop does that), and force re-alignment.
+        // Frames accumulate in PAIRS -- an even t_abs stashes the pointers an odd t_abs consumes
+        // -- so dropping one frame must also invalidate the pairing, hence WAITING_FOR_ALIGNMENT
+        // rather than simply continuing. A drop costs one accumulation bin; the old FATAL cost
+        // the node and every GNSS chain on it.
+        const bool poisoned = (desync_stream != nullptr);
+        if (poisoned) {
+            ++desync_drops;
+            ++consecutive_desync_drops;
+            if (consecutive_desync_drops > _max_consecutive_desync_drops) {
                 FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
-                            "bad feed mask buffer {:s}[{:d}] seq={:d}",
-                            in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                            in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
-                            bf_mask_metadata->get_fpga_seq_num());
+                            "{:s} buffer {:s}[{:d}] seq={:d}, and did NOT resync after {:d} "
+                            "consecutive dropped frames -- a true desync, not a one-frame glitch.",
+                            in_buf->buffer_name, in_frame_id, corr_seq, desync_stream,
+                            desync_buf_name, desync_buf_id, desync_seq,
+                            consecutive_desync_drops - 1);
             }
-            // AND every row of this frame's mask into the current bin's flags: a feed
-            // flagged at any point in the bin is flagged for the whole bin.
-            fold_bf_mask_into_accum(bf_mask);
+            WARN("DESYNC (#107): correlation {:s}[{:d}] seq={:d} vs {:s} {:s}[{:d}] seq={:d} "
+                 "({:d} frames behind). Dropping this frame tuple and re-aligning; the current "
+                 "accumulation bin is discarded. Consecutive {:d}/{:d}, total drops {:d}.",
+                 in_buf->buffer_name, in_frame_id, corr_seq, desync_stream, desync_buf_name,
+                 desync_buf_id, desync_seq, (corr_seq - desync_seq) / _n_fpga_samples_per_n2k_frame,
+                 consecutive_desync_drops, _max_consecutive_desync_drops, desync_drops);
+            state = AccumState::WAITING_FOR_ALIGNMENT;
+        } else {
+            consecutive_desync_drops = 0;
+            if (in_bf_mask_buf != nullptr)
+                // AND every row of this frame's mask into the current bin's flags: a feed
+                // flagged at any point in the bin is flagged for the whole bin.
+                fold_bf_mask_into_accum(bf_mask);
         }
 
         // Record the current frame time being processed.
@@ -561,7 +589,7 @@ void N2Accumulate::main_thread() {
 
         // Accumulate each visibility sample in the in_frame
         // t_outer
-        for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
+        for (int64_t t = 0; !poisoned && t < _n_integrations_per_n2k_frame; ++t) {
 
 #ifdef WITH_OMP
             [[maybe_unused]] double prof_start_time = omp_get_wtime();

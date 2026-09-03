@@ -265,6 +265,12 @@ private:
     const int64_t _n_fpga_samples_per_n2k_correlation;
     int64_t _n_integrations_per_n2k_frame;
 
+    /// #107: how many CONSECUTIVE desynced frame tuples to drop before declaring a true desync
+    /// and taking the FATAL. Every incident so far has been a single bad frame after a run of
+    /// perfect ones, so a small bound survives the glitch while still failing loudly if the
+    /// streams have genuinely parted company.
+    const int64_t _max_consecutive_desync_drops;
+
     const int64_t _num_polarizations; ///< Total number of telescope elements (~2 * num dishes)
     const int64_t _num_dishes;        ///< Total number of telescope elements (~2 * num dishes)
     const int64_t _num_elements;      ///< Total number of telescope elements (~2 * num dishes)

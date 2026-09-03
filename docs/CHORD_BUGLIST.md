@@ -1611,7 +1611,7 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #107 — two nodes died on a RESURFACED metadata object (2026-09-02 23:05 / 23:35), and the torn-read fix did not close this class — OPEN
+## #107 — nine node deaths on a FOREIGN metadata stamp in the rficounts slot — MITIGATED 2026-09-03, root cause still OPEN
 
 cx27 (23:05) and cx19 (23:35) both FATAL'd identically. The kill chain, from the archived
 autopsies:
@@ -1624,6 +1624,75 @@ autopsies:
 **⚠️ IT IS ONE BAD FRAME, NOT A STALLED STREAM, AND THAT IS THE WHOLE POINT.** On cx27 the
 16 rficounts frames preceding the death are flawless — 16340279296 → 16340402176, stepping
 **exactly 8192 each**, no gaps. The very next frame carries seq **13832116224**.
+
+### 2026-09-03: NINE incidents, and the mechanism is now pinned by arithmetic
+
+It is not two deaths, it is **nine**, spanning 09-02 04:13 → 09-03 01:01 — so this predates the
+evening and predates the merge. All nine are the identical FATAL and kill chain:
+
+| node | died | corr seq | stale seq | behind | (corr−stale) mod 8192 |
+|---|---|---|---|---|---|
+| cx42 | 09-02 04:13 | 3031900160 | 1124519936 | 2.71 h | 4096 |
+| cx27 | 09-02 05:50 | 4205821952 | 1416734720 | 3.97 h | 6144 |
+| cx43 | 09-02 06:43 | 4837621760 | 2512652288 | 3.31 h | 6144 |
+| cx44 | 09-02 08:30 | 6093520896 | 2238676992 | 5.48 h | 0 |
+| cx27 | 09-02 23:05 | 16340410368 | 13832116224 | 3.57 h | 2048 |
+| cx19 | 09-02 23:35 | 16687022080 | 13835382784 | 4.06 h | 4096 |
+| cx43 | 09-03 00:43 | 17483980800 | 14123397120 | 4.78 h | 4096 |
+| cx42 | 09-03 00:51 | 17493819392 | 14122010624 | 4.80 h | 6144 |
+| cx51 | 09-03 01:01 | 17706246144 | 14182416384 | 5.01 h | 0 |
+
+**THE STALE SEQ IS OFF THIS STREAM'S OWN GRID.** Trace the only path that can stamp an
+rficounts frame:
+
+* `cudaCopyToRingbuffer` stamps `host_rfi_RFImask_ringbuffer` **slot 0 exactly once**, at
+  startup, guarded by `initial_fpga_seq_num == -1` — call that anchor `C`.
+* `cudaCopyFromRingbuffer::execute` computes, every frame,
+  `out_seq = C + time_downsampling_fpga * (input_cursor / sample_bytes)`.
+  `input_cursor` is `RingBuffer::read_heads[name]`, which is **absolute and monotone**
+  (`read_heads[name] += sz`), advances by exactly `_output_size` per call, and
+  `register_consumer` *throws* on a second registration, so it cannot be reset.
+* `RfiMaskSum` never sets a seq — it `deepCopy`s the one above.
+
+So every legal rficounts seq is `C + 8192·n`, and since a healthy rficounts frame equals the
+correlation seq (which is ≡ 0 mod 8192), `C ≡ 0 mod 8192`. **Values at 2048, 4096 and 6144 mod
+8192 are therefore not producible by this chain at all.** Four of the nine sit off-grid.
+
+⇒ **The object N2Accumulate read was stamped by a different producer** — one working on a 2048
+grid — not by a stamp-path arithmetic error in the RFI chain. This **retires the leading
+hypothesis** recorded above and in the `N2Accumulate.cpp` autopsy comment (a recycled,
+un-restamped pool object): `metadataPool::request_metadata_object()` `make_shared`s a fresh
+object every call and has no free list, so the pool cannot recycle. Two further facts frame the
+search for the alias:
+
+* `GenericBuffer::allocate_new_metadata_object` is a **no-op when the slot is already
+  populated** (`if (!metadata[ID])`), so a buffer slot holds ONE long-lived metadata object that
+  its producer mutates in place, forever.
+* `GenericBuffer::set_metadata` unconditionally **replaces** the slot pointer and always returns
+  true, freeing the previous object back to malloc.
+
+Two incompatible lifetime disciplines on objects drawn from one allocator is the shape that
+produces a foreign stamp. That is where to look next.
+
+**Also retired: the "two tight pairs 26 min apart" reading.** With n=9 the stale stamps cluster
+in ~25–30 min bands (01:27/01:52, 03:02/03:25, 19:31/19:32, 19:56/19:56/20:01) — the ~25 min
+recurrence is the real structure, not two isolated moments.
+
+### Mitigation shipped 2026-09-03 (root cause still open)
+
+`N2Accumulate` no longer FATALs on a seq mismatch. A mismatch **poisons the whole tuple**: all
+five streams' frames are dropped together, so the visibilities and the counts that normalise
+them stay consistent (a drop costs integration time, it does not bias the result), and the
+accumulator is forced back to `WAITING_FOR_ALIGNMENT` because frames accumulate in **pairs** —
+an even `t_abs` stashes the pointers an odd `t_abs` consumes, so a dropped frame must invalidate
+the pairing. The old FATAL survives as an escalation after `max_consecutive_desync_drops`
+(default 4) consecutive bad tuples, which is what separates a one-frame glitch — every incident
+so far — from a genuine desync.
+
+⚠️ This is a **survival** change, not a fix: it stops one bad frame from costing the node and
+every GNSS chain on it via `exit_on_worker_failure`. Its diagnostic value is the larger win —
+the full autopsy block still fires on every mismatch, so instead of one sample per node death we
+now collect them continuously from a live fleet.
 
 | node | died | correlation seq | rficounts seq | backward by |
 |---|---|---|---|---|
