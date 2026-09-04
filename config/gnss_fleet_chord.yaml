@@ -360,9 +360,23 @@ common:
   # calibration against the unsteered e5b sibling exactly as before.
   elem-steer-bands: null
   elem-steer-sign: 1.0
-  # Writes the COMBINER records (~52 KB/window), not the 17 MB/s tiles, so a transit can be
-  # analysed after the fact. Its absence is why the 03:58 E30 pass was lost on 2026-08-07.
-  n2-dump: true
+  # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
+  #
+  # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
+  # purpose was "so a transit can be analysed after the fact" -- its absence is why the 03:58
+  # E30 pass was lost on 2026-08-07. That rationale is worth keeping in view, but it had
+  # ALREADY STOPPED HOLDING: all 7 gnss0 chains shared one file_name and all 8 gnss1 chains
+  # another, so ~87% of frames were overwritten within milliseconds and no survivor could be
+  # attributed to a chain. A transit archive you cannot attribute to a signal is not a transit
+  # archive. (Names are unique as of df06d26bc, which is what made the volume visible: with the
+  # collision fixed every stream lands, taking /tmp/gnss from ~104 to ~780 GB/day/node -- and
+  # --n2-dump's own help says "short captures only, 1 GB/min".)
+  #
+  # THE REPLACEMENT IS THE BEAM CUBE, which records the axis this never did (subband x element,
+  # coherent + incoherent, ~1 s windows) at ~77 GB/day for the whole fleet. Re-arm this flag
+  # deliberately for a short targeted capture -- a near-boresight pass with the gain backed off
+  # -- and disarm it again afterwards. It is not a background service.
+  n2-dump: false
   # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's
   # answer and would point every node at itself.
   search-host: 10.222.3.6

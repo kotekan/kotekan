@@ -903,7 +903,14 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         ("max_prn", pk0["max_prn"]), ("records_per_frame", pk0["records_per_frame"]),
         ("telem_host", out[pre0 + "telem_send"]["server_ip"]),
         ("telem_port", out[pre0 + "telem_send"]["server_port"]),
-        ("sink_dir", snk0["base_dir"]),
+        # ⚠️ THE SINK IS NOT ALWAYS A FILE WRITER. With --n2-dump off the n2sink is a
+        # dropAllFrames, which has no base_dir -- and this line crashed the generator with
+        # KeyError the first time the flag was actually turned off (2026-09-04). It had never
+        # been exercised because --n2-dump had been armed continuously since multi-chain came
+        # in. Fall back to the configured record_dir so gnss_chain.j2 still renders and
+        # re-arming stays a one-flag change, rather than emitting an empty path that would
+        # only fail later, inside a template.
+        ("sink_dir", snk0.get("base_dir", cfg["runtime"]["record_dir"])),
         ("buffer_depth", out[pre0 + "n2ctl_buf"]["num_frames"]),
         ("telem_frames", out[pre0 + "telem_buf"]["num_frames"]),
         ("search_host", out["gnss%d_srch_send" % gpus[0]]["server_ip"]),
