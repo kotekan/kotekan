@@ -79,7 +79,14 @@ using namespace HighFive;
  *   config (all other extents, the value type and the labels must match the file);
  * - `fpga_seq_num(i) = fpga_seq_num + i * extents[0] * time_downsampling_fpga`, using a
  *   downsampling factor of 1 if the attribute is absent;
- * - the number of frames is `axis0 / extents[0]`; a remainder is reported and ignored.
+ * - the number of frames is `axis0 / extents[0]`; a remainder is reported and ignored, but
+ *   a dataset holding less than one frame is fatal.
+ *
+ * That reconstruction is only valid for the contiguous, uniformly sampled stream that
+ * @c hdf5FileWrite enforces for `create_single_file`, so this mode additionally requires
+ * (fatal otherwise) that dimension 0 is a time axis (its name starts with "T") and that
+ * `dim_scalings[0]` equals @c time_downsampling_fpga (1 if that attribute is absent).
+ * Data that does not satisfy this has to be written and read as per-frame files.
  *
  * @par Sessions
  * The writer must have finished before the reader starts: run the two in separate kotekan
@@ -102,7 +109,8 @@ using namespace HighFive;
  *                              @c file_name, using @c frequency_pool_rank.
  * @conf  frequency_pool_rank   Int. Default: 0. The rank used by @c prefix_host_rank.
  * @conf  do_once               Bool. Default: false. Read only the first frame and then
- *                              idle instead of reading the whole input.
+ *                              idle instead of reading the whole input. The stage never
+ *                              ends the pipeline in that case.
  * @conf  read_single_file      Bool. Default: false. Read all frames from a single file
  *                              instead of one file per frame; see above.
  * @conf  num_polarizations     Int. Required. Cross-checked against the file.
@@ -125,6 +133,10 @@ class hdf5FileRead : public kotekan::Stage {
 
     Buffer* const buffer;
 
+    kotekan::prometheus::Gauge& read_time_metric =
+        kotekan::prometheus::Metrics::instance().add_gauge("kotekan_hdf5fileread_read_time_seconds",
+                                                           unique_name);
+
 public:
     hdf5FileRead(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container) :
@@ -133,10 +145,6 @@ public:
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         buffer(get_buffer("out_buf")) {
-    kotekan::prometheus::Gauge& read_time_metric =
-        kotekan::prometheus::Metrics::instance().add_gauge("kotekan_hdf5fileread_read_time_seconds",
-                                                           unique_name);
-
         assert(buffer);
         buffer->register_producer(unique_name);
     }
@@ -393,6 +401,7 @@ public:
         if (value_type == kotekan::unknown_type)
             FATAL_ERROR("Dataset \"{:s}\" has unknown data type \"{:s}\"", file_name,
                         dataset.getAttribute("type").read<std::string>());
+        check_storage_type(dataset, value_type);
         const std::string name = dataset.getAttribute("name").read<std::string>();
         const auto dim_names = dataset.getAttribute("dim_names").read<std::vector<std::string>>();
         const auto dim_scalings =
@@ -401,7 +410,6 @@ public:
         const std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
         const std::vector<std::ptrdiff_t> dimscalings(dim_scalings.begin(), dim_scalings.end());
         buffer->require_frame_desc(
-        check_storage_type(dataset, value_type);
             kotekan::GenericNDArray::describe(value_type, name, dimensions, dimnames, dimscalings));
     }
 
@@ -441,14 +449,6 @@ public:
                 << "." << std::setw(8) << std::setfill('0') << frame_index << ".h5";
             const std::string full_path = buf.str();
 
-            // Open HDF5 file
-            try {
-                const File file(full_path, File::ReadOnly);
-
-                // Wait for buffer
-                DEBUG("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
-                std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
-                if (!frame)
             // Stop at the first missing file. The very first file has to exist; see the
             // note about sessions in the class documentation.
             if (!std::filesystem::exists(full_path)) {
@@ -460,6 +460,14 @@ public:
                 break;
             }
 
+            // Open HDF5 file
+            try {
+                const File file(full_path, File::ReadOnly);
+
+                // Wait for buffer
+                DEBUG("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
+                std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
+                if (!frame)
                     break;
 
                 // Read metadata (attributes)
@@ -482,6 +490,7 @@ public:
                 const auto type = dataset.getDataType();
                 const auto dims = space.getDimensions();
 
+                require_attributes(dataset, full_path);
                 check_metadata_version(dataset);
 
                 set_metadata(dataset, meta, dims, 0);
@@ -490,7 +499,6 @@ public:
                 check_telescope_metadata(dataset);
 
                 /* new style array description */
-                require_attributes(dataset, full_path);
                 require_frame_desc_from(dataset, dims);
                 /* test that things are consistent */
                 meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
@@ -532,6 +540,7 @@ public:
             const auto dims = dataset.getSpace().getDimensions();
             if (dims.empty())
                 FATAL_ERROR("Dataset \"{:s}\" in {:s} has rank 0", file_name, full_path);
+            require_attributes(dataset, full_path);
             check_metadata_version(dataset);
 
             // One frame's axis-0 extent comes from the destination buffer declaration;
@@ -540,13 +549,36 @@ public:
                 buffer->require_frame_desc<kotekan::GenericNDArray>()->get_extents().at(0));
             if (frame_dim0 == 0)
                 FATAL_ERROR("Buffer {:s} declares a zero-length first axis", buffer->buffer_name);
-            require_attributes(dataset, full_path);
             std::vector<std::size_t> frame_dims(dims);
             frame_dims.at(0) = frame_dim0;
             require_frame_desc_from(dataset, frame_dims); // type, other extents, labels, bytes
             check_telescope_metadata(dataset);
 
+            // Splitting the dataset into frames and reconstructing their fpga_seq_num is only
+            // valid for the contiguous, uniformly sampled time axis that hdf5FileWrite
+            // enforces for create_single_file.
+            const auto dim_names =
+                dataset.getAttribute("dim_names").read<std::vector<std::string>>();
+            const auto dim_scalings =
+                dataset.getAttribute("dim_scalings").read<std::vector<std::ptrdiff_t>>();
+            if (dim_names.empty() || !is_time_axis(dim_names.at(0)))
+                FATAL_ERROR("{:s}: read_single_file requires a time axis as dimension 0, but "
+                            "dimension 0 is \"{:s}\"",
+                            full_path, dim_names.empty() ? std::string() : dim_names.at(0));
+            const std::int64_t tds =
+                dataset.hasAttribute("time_downsampling_fpga")
+                    ? dataset.getAttribute("time_downsampling_fpga").read<int>()
+                    : 1;
+            if (dim_scalings.at(0) != tds)
+                FATAL_ERROR("{:s}: dim_scalings[0] ({:d}) != time_downsampling_fpga ({:d}); cannot "
+                            "reconstruct per-frame fpga_seq_num",
+                            full_path, dim_scalings.at(0), tds);
+
             const std::int64_t num_frames = std::int64_t(dims.at(0) / frame_dim0);
+            if (num_frames == 0)
+                FATAL_ERROR("{:s}: dataset holds {:d} samples along axis 0, fewer than one frame "
+                            "({:d})",
+                            full_path, dims.at(0), frame_dim0);
             if (dims.at(0) % frame_dim0 != 0)
                 WARN("{:s}: axis 0 ({:d}) is not a multiple of the frame extent ({:d}); "
                      "ignoring the trailing {:d} samples",
@@ -582,9 +614,11 @@ public:
                 buffer->mark_frame_full(unique_name, frame_id);
                 read_time_metric.set(current_time() - t0);
                 if (do_once) {
+                    INFO("do_once is set: read frame 0 of {:d} from {:s}, now idling", num_frames,
+                         full_path);
                     while (!stop_thread)
                         sleep(1);
-                    break;
+                    return;
                 }
             }
             INFO("Done reading {:d} frames from {:s}", num_frames, full_path);

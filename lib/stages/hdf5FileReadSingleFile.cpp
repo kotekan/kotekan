@@ -50,6 +50,11 @@ using namespace HighFive;
  * CHIME X-engine pipeline expects. Anything that does not match these expectations is
  * fatal.
  *
+ * Time downsampling is supported as long as the file is self-consistent: the time axis'
+ * @c dim_scalings entry has to equal the @c time_downsampling_fpga attribute (1 if that
+ * attribute is absent), because the per-frame @c fpga_seq_num is reconstructed as
+ * `fpga_seq_num + frame_index * num_times * time_downsampling_fpga`.
+ *
  * This stage is NOT a general replay path for the files written by @c hdf5FileWrite: use
  * @c hdf5FileRead (with @c read_single_file for a single file) for any other data type,
  * rank, or axis order. Unlike @c hdf5FileRead, this stage never ends the pipeline; it
@@ -92,15 +97,15 @@ class hdf5FileReadSingleFile : public kotekan::Stage {
 
     Buffer* const buffer;
 
+    kotekan::prometheus::Gauge& read_time_metric =
+        kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_hdf5filereadsinglefile_read_time_seconds", unique_name);
+
 public:
     hdf5FileReadSingleFile(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& buffer_container) :
         Stage(config, unique_name, buffer_container,
               [](const kotekan::Stage& stage) {
-    kotekan::prometheus::Gauge& read_time_metric =
-        kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_hdf5filereadsinglefile_read_time_seconds", unique_name);
-
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         buffer(get_buffer("out_buf")) {
@@ -252,9 +257,13 @@ public:
                 FATAL_ERROR("Dataset \"{:s}\": dimension 0 is named \"{:s}\", but "
                             "hdf5FileReadSingleFile requires the time axis \"T\" there",
                             file_name, dim_names.at(0));
-            if (dim_scalings.at(0) != 1)
-                FATAL_ERROR("Dataset \"{:s}\": the time axis has dim_scaling {:d}, expected 1",
-                            file_name, dim_scalings.at(0));
+            // The per-frame fpga_seq_num is reconstructed as
+            // fpga_seq_num + frame_index * num_times * time_downsampling_fpga, which is only
+            // correct if the time axis is sampled at the downsampling rate of the file.
+            if (dim_scalings.at(0) != time_downsampling_fpga)
+                FATAL_ERROR("Dataset \"{:s}\": the time axis has dim_scaling {:d} but "
+                            "time_downsampling_fpga is {:d}",
+                            file_name, dim_scalings.at(0), time_downsampling_fpga);
             const std::ptrdiff_t available_num_times = dims.at(0);
             const std::ptrdiff_t available_num_frames = available_num_times / num_times;
             INFO("This file has {} time samples", available_num_times);
