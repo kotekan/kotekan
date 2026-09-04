@@ -605,10 +605,10 @@ int run_dry_run(Config& config) {
         const json& b = it.value();
         if (!b.is_object())
             continue;
-        const bool has_prod = b.contains("producers") && b["producers"].is_object()
-                              && !b["producers"].empty();
-        const bool has_cons = b.contains("consumers") && b["consumers"].is_object()
-                              && !b["consumers"].empty();
+        const bool has_prod =
+            b.contains("producers") && b["producers"].is_object() && !b["producers"].empty();
+        const bool has_cons =
+            b.contains("consumers") && b["consumers"].is_object() && !b["consumers"].empty();
         if (has_prod || !has_cons)
             continue;
         std::string who;
