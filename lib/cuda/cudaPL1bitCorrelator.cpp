@@ -208,11 +208,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
 
     pl_expanded_mask.check_metadata();
     rfi_RFImask.check_metadata();
-    n2k_counts.set_metadata(pl_expanded_mask.get_metadata());
-
     const std::shared_ptr<const chordMetadata> pl_meta = pl_expanded_mask.get_metadata();
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    const std::shared_ptr<chordMetadata> n2k_counts_meta = n2k_counts.get_metadata();
 
     // Ensure consistency
     assert(pl_meta->get_fpga_seq_num()
@@ -220,16 +217,23 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
            == rfi_meta->get_fpga_seq_num()
                   + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
 
-    // The input ringbuffers do not contain time-dependent metadata,
-    // so we must reconstruct it here. (fpga_seq_num)
-    n2k_counts_meta->set_fpga_seq_num(rfi_meta->get_fpga_seq_num()
-                                      + rfi_RFImask.get_read_valid().begin()
-                                            * rfi_meta->get_time_downsampling_fpga());
+    // The input ringbuffers do not contain time-dependent metadata, so we must reconstruct
+    // it here (fpga_seq_num) -- BEFORE publishing, not into the published object. Same
+    // hazard and same per-frame-varying value as cudaCorrelator::execute; see
+    // cudaRFISKtilde::execute for the failure this class produced on CHORD.
+    {
+        auto n2k_counts_meta = std::make_shared<chordMetadata>();
+        n2k_counts_meta->deepCopy(pl_meta);
+        n2k_counts_meta->set_fpga_seq_num(rfi_meta->get_fpga_seq_num()
+                                          + rfi_RFImask.get_read_valid().begin()
+                                                * rfi_meta->get_time_downsampling_fpga());
 
-    // The PL mask time_downsampling_factor includes a factor of 64 from
-    // the fast time axis which is eaten up by the correlator.
-    n2k_counts_meta->set_time_downsampling_fpga(
-        n2k_sub_integration_ntime * div_noremainder(pl_meta->get_time_downsampling_fpga(), 64));
+        // The PL mask time_downsampling_factor includes a factor of 64 from
+        // the fast time axis which is eaten up by the correlator.
+        n2k_counts_meta->set_time_downsampling_fpga(
+            n2k_sub_integration_ntime * div_noremainder(pl_meta->get_time_downsampling_fpga(), 64));
+        n2k_counts.set_metadata(n2k_counts_meta);
+    }
 
     // Set poison for debug checks.
     if (poison_buffers)

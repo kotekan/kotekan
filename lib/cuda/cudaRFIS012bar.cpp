@@ -171,11 +171,18 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     rfi_S012.check_metadata();
 
+    // Build the corrected metadata, THEN publish it -- same hazard as cudaRFIS012 and
+    // cudaRFISKtilde: patching the published slot-0 object leaves a window in which a
+    // consumer of this ring reads the uncorrected downsampling.
     // TODO: Set these metadata only once
-    rfi_S012bar.set_metadata(rfi_S012.get_metadata());
-    const auto& rfi_S012bar_meta = rfi_S012bar.get_metadata();
-    rfi_S012bar_meta->set_time_downsampling_fpga(rfi_S012bar_meta->get_time_downsampling_fpga()
-                                                 * rfi_second_downsampling_factor);
+    {
+        const std::shared_ptr<const chordMetadata> s012_meta = rfi_S012.get_metadata();
+        auto rfi_S012bar_meta = std::make_shared<chordMetadata>();
+        rfi_S012bar_meta->deepCopy(s012_meta);
+        rfi_S012bar_meta->set_time_downsampling_fpga(rfi_S012bar_meta->get_time_downsampling_fpga()
+                                                     * rfi_second_downsampling_factor);
+        rfi_S012bar.set_metadata(rfi_S012bar_meta);
+    }
 
     // There is no poison value
     // if (poison_buffers)

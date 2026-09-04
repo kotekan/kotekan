@@ -192,12 +192,14 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
         // Set metadata
         const std::shared_ptr<const chordMetadata> frb1_beams_meta =
             frb1_beams_buffer.get_metadata();
-        frb2_beams_buffer.set_metadata(frb1_beams_meta);
-        const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
+        // Built before publishing, not patched afterwards; see cudaRFISKtilde::execute.
+        auto frb2_beams_meta = std::make_shared<chordMetadata>();
+        frb2_beams_meta->deepCopy(frb1_beams_meta);
         frb2_beams_meta->set_time_downsampling_fpga(frb1_beams_meta->get_time_downsampling_fpga());
         frb2_beams_meta->set_coarse_freq(frb1_beams_meta->get_coarse_freq());
         frb2_beams_meta->set_freq_upchan_factor(frb1_beams_meta->get_freq_upchan_factor());
         frb2_beams_meta->set_freq_upchan_index(frb1_beams_meta->get_freq_upchan_index());
+        frb2_beams_buffer.set_metadata(frb2_beams_meta);
     }
     frb2_beams_buffer.check_metadata();
 
