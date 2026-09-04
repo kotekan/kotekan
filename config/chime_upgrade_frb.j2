@@ -231,6 +231,11 @@ dpdk:
     - 0d:00.1
     - 9f:00.0
     - 9f:00.1
+  # the input NICs used by NUMA domain 1
+{%- for i in range(8) %}
+    - b4:00.{{i}}
+    - b5:00.{{i}}
+{%- endfor %}
   # Format is index = lcore, value = array of port IDs
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
