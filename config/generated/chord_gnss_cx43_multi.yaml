@@ -227,10 +227,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0031673
-    t_inst_ns: 1788134400000000000
-    xp_as: 0.211313
-    yp_as: 0.338658
   - delta_UT1_inst: 0.0022846
     t_inst_ns: 1788220800000000000
     xp_as: 0.210621
@@ -251,6 +247,10 @@ earth_rotation_data:
     t_inst_ns: 1788566400000000000
     xp_as: 0.207471
     yp_as: 0.334308
+  - delta_UT1_inst: 0.0005883
+    t_inst_ns: 1788652800000000000
+    xp_as: 0.206701
+    yp_as: 0.333458
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -470,9 +470,10 @@ gnss0_b2a_n2sink:
   cpu_affinity:
   - 41
   file_ext: raw
-  file_name: cx43_gnss0_n2rec
+  file_name: cx43_gnss0_b2a_n2rec
   in_buf: gnss0_b2a_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss0_b2a_n2tiles_buf:
   frame_size: 917504
   kotekan_buffer: standard
@@ -695,9 +696,10 @@ gnss0_b2b_n2sink:
   cpu_affinity:
   - 41
   file_ext: raw
-  file_name: cx43_gnss0_n2rec
+  file_name: cx43_gnss0_b2b_n2rec
   in_buf: gnss0_b2b_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss0_b2b_n2tiles_buf:
   frame_size: 917504
   kotekan_buffer: standard
@@ -918,9 +920,10 @@ gnss0_b3i_n2sink:
   cpu_affinity:
   - 41
   file_ext: raw
-  file_name: cx43_gnss0_n2rec
+  file_name: cx43_gnss0_b3i_n2rec
   in_buf: gnss0_b3i_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss0_b3i_n2tiles_buf:
   frame_size: 786432
   kotekan_buffer: standard
@@ -1155,9 +1158,10 @@ gnss0_e5a_n2sink:
   cpu_affinity:
   - 41
   file_ext: raw
-  file_name: cx43_gnss0_n2rec
+  file_name: cx43_gnss0_e5a_n2rec
   in_buf: gnss0_e5a_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss0_e5a_n2tiles_buf:
   frame_size: 917504
   kotekan_buffer: standard
@@ -1388,9 +1392,10 @@ gnss0_e5b_n2sink:
   cpu_affinity:
   - 41
   file_ext: raw
-  file_name: cx43_gnss0_n2rec
+  file_name: cx43_gnss0_e5b_n2rec
   in_buf: gnss0_e5b_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss0_e5b_n2tiles_buf:
   frame_size: 917504
   kotekan_buffer: standard
@@ -1613,9 +1618,10 @@ gnss0_e6_n2sink:
   cpu_affinity:
   - 41
   file_ext: raw
-  file_name: cx43_gnss0_n2rec
+  file_name: cx43_gnss0_e6_n2rec
   in_buf: gnss0_e6_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss0_e6_n2tiles_buf:
   frame_size: 393216
   kotekan_buffer: standard
@@ -1845,6 +1851,7 @@ gnss0_n2sink:
   file_name: cx43_gnss0_n2rec
   in_buf: gnss0_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss0_n2tiles_buf:
   frame_size: 917504
   kotekan_buffer: standard
@@ -2101,9 +2108,10 @@ gnss1_b2a_n2sink:
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx43_gnss1_n2rec
+  file_name: cx43_gnss1_b2a_n2rec
   in_buf: gnss1_b2a_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_b2a_n2tiles_buf:
   frame_size: 786432
   kotekan_buffer: standard
@@ -2299,9 +2307,10 @@ gnss1_b2b_n2sink:
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx43_gnss1_n2rec
+  file_name: cx43_gnss1_b2b_n2rec
   in_buf: gnss1_b2b_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_b2b_n2tiles_buf:
   frame_size: 786432
   kotekan_buffer: standard
@@ -2499,9 +2508,10 @@ gnss1_b3i_n2sink:
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx43_gnss1_n2rec
+  file_name: cx43_gnss1_b3i_n2rec
   in_buf: gnss1_b3i_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_b3i_n2tiles_buf:
   frame_size: 917504
   kotekan_buffer: standard
@@ -2703,9 +2713,10 @@ gnss1_e5a_n2sink:
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx43_gnss1_n2rec
+  file_name: cx43_gnss1_e5a_n2rec
   in_buf: gnss1_e5a_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_e5a_n2tiles_buf:
   frame_size: 786432
   kotekan_buffer: standard
@@ -2901,9 +2912,10 @@ gnss1_e5b_n2sink:
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx43_gnss1_n2rec
+  file_name: cx43_gnss1_e5b_n2rec
   in_buf: gnss1_e5b_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_e5b_n2tiles_buf:
   frame_size: 786432
   kotekan_buffer: standard
@@ -3093,9 +3105,10 @@ gnss1_e6_n2sink:
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx43_gnss1_n2rec
+  file_name: cx43_gnss1_e6_n2rec
   in_buf: gnss1_e6_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_e6_n2tiles_buf:
   frame_size: 393216
   kotekan_buffer: standard
@@ -3306,9 +3319,10 @@ gnss1_l2c_n2sink:
   cpu_affinity:
   - 62
   file_ext: raw
-  file_name: cx43_gnss1_n2rec
+  file_name: cx43_gnss1_l2c_n2rec
   in_buf: gnss1_l2c_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_l2c_n2tiles_buf:
   frame_size: 131072
   kotekan_buffer: standard
@@ -3502,6 +3516,7 @@ gnss1_n2sink:
   file_name: cx43_gnss1_n2rec
   in_buf: gnss1_n2cmb_buf
   kotekan_stage: rawFileWrite
+  num_frames_per_file: 100
 gnss1_n2tiles_buf:
   frame_size: 786432
   kotekan_buffer: standard

@@ -1474,8 +1474,25 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             {"kotekan_stage": "rawFileWrite",
              "in_buf": f"{pre}n2cmb_buf",
              "base_dir": args.record_dir or rt["record_dir"],
-             "file_name": f"{node}_gnss{gpu}_n2rec",
+             # ⚠️ THE TAG IS LOAD-BEARING. `pre` carries {tag} everywhere else in this
+             # function, but this name did not -- so all SEVEN gnss0 chains wrote
+             # "<node>_gnss0_n2rec_%07d.raw" into ONE directory, and all eight gnss1 chains
+             # shared another. rawFileWrite opens O_WRONLY|O_CREAT (no O_EXCL) with a
+             # per-stage counter that starts at 0, so they did not error -- they silently
+             # overwrote each other.
+             #
+             # MEASURED on cx19 2026-09-03: 455 distinct files touched in 20 s, against 456
+             # predicted if all 15 writers sit in lockstep on the same two index sequences.
+             # ~87% of written frames destroyed within milliseconds, and the survivors are
+             # UNATTRIBUTABLE -- nothing in the file or its name says which chain wrote it.
+             # An archive you cannot attribute is not an archive.
+             "file_name": f"{node}_gnss{gpu}{tag}_n2rec",
              "file_ext": "raw",
+             # One frame per file gave 2,498,836 files and a 245 MB directory inode on cx19,
+             # which makes even `ls` expensive and any readdir-based consumer unusable.
+             # rawFileRead derives the count from the file size, so bundling is transparent
+             # to every reader.
+             "num_frames_per_file": args.n2_dump_frames_per_file,
              # The tiles buffer carries an NDArray descriptor (set dynamically by the GPU
              # path); we write raw bytes and the reader supplies the layout, which is fixed
              # by construction (see cudaCorrelatorDual.hpp's tile-list note).
@@ -2328,6 +2345,11 @@ def main():
     ap.add_argument("--n2-dump", action="store_true",
                     help="with --n2-dual: rawFileWrite the gathered tiles to /tmp/gnss "
                          "(~17 MB/s -- short captures only, 1 GB/min) instead of dropAllFrames")
+    ap.add_argument("--n2-dump-frames-per-file", type=int, default=100,
+                    metavar="N", dest="n2_dump_frames_per_file",
+                    help="frames bundled into each --n2-dump file (default 100). One frame "
+                         "per file produced 2.5M files on cx19; this does not reduce BYTES, "
+                         "only inodes -- --n2-dump is still short-captures-only.")
     ap.add_argument("--n2-full-freq", action="store_true",
                     help="cudaCorrelatorDual computes the FULL triangle over every frequency "
                          "(AA included) instead of the mixed+synthetic blocks over the GNSS comb "
