@@ -9,6 +9,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for ElementOrder
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
@@ -37,6 +38,9 @@
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
  *                                      "bad_inputs"  An array of bad inputs in cylinder order.
+ * @conf    element_order               String. Ordering of data in voltage
+ *                                      array (not bad inputs).
+ *                                      Default: Telescope::CHIMEBeamformer
  *
  * @author James Willis & Liam Gray
  */
@@ -72,8 +76,9 @@ private:
     std::vector<uint8_t> input_mask;
 
     // The table to reorder from beamformer to cylinder order.
-    // reorder[beamformer_idx] = cylinder_idx;
+    // reorder[cylinder_idx] = element_idx;
     std::vector<size_t> reorder;
+    const ElementOrder element_order; // ordering of data in voltage array
 };
 
 #endif
