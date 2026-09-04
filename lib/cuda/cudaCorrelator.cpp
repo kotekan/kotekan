@@ -121,11 +121,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     voltage.check_metadata();
     rfi_RFImask.check_metadata();
-    n2k_correlation.set_metadata(voltage.get_metadata());
-
     const std::shared_ptr<const chordMetadata> voltage_meta = voltage.get_metadata();
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    const std::shared_ptr<chordMetadata> n2k_corr_meta = n2k_correlation.get_metadata();
 
     // Ensure consistency:
     assert(voltage_meta->get_fpga_seq_num()
@@ -133,13 +130,22 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
            == rfi_meta->get_fpga_seq_num()
                   + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
 
-    // The input ringbuffer metadata do not contain time-dependent metadata,
-    // so we must reconstruct it here. (fpga_seq_num)
-    n2k_corr_meta->set_fpga_seq_num(voltage_meta->get_fpga_seq_num()
-                                    + voltage.get_read_valid().begin()
-                                          * voltage_meta->get_time_downsampling_fpga());
-    n2k_corr_meta->set_time_downsampling_fpga(_sub_integration_ntime
+    // The input ringbuffer metadata do not contain time-dependent metadata, so we must
+    // reconstruct it here (fpga_seq_num). Reconstruct it BEFORE publishing: this used to
+    // publish voltage's metadata and then write the reconstructed fields into the object it
+    // had just handed to the ring, where a consumer reading slot 0 could see the anchor
+    // without the read_valid().begin() term. Unlike the RFImask case that value differs on
+    // every frame, so the window is wider. See cudaRFISKtilde::execute.
+    {
+        auto n2k_corr_meta = std::make_shared<chordMetadata>();
+        n2k_corr_meta->deepCopy(voltage_meta);
+        n2k_corr_meta->set_fpga_seq_num(voltage_meta->get_fpga_seq_num()
+                                        + voltage.get_read_valid().begin()
                                               * voltage_meta->get_time_downsampling_fpga());
+        n2k_corr_meta->set_time_downsampling_fpga(_sub_integration_ntime
+                                                  * voltage_meta->get_time_downsampling_fpga());
+        n2k_correlation.set_metadata(n2k_corr_meta);
+    }
 
     // Set poison for debug checks.
     if (_poison_buffers)
