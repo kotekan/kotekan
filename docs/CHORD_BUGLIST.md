@@ -1611,6 +1611,68 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #108 — every node WEDGES 2^33 bf-mask frames after start (~15 h): `frameID` never reduced its counter, and the int wrap skipped 8 slots of the shared `host_bf_mask_buffer` — ROOT-CAUSED 2026-09-04, FIX BUILT, awaiting the rolling restart
+
+**Shape.** Both GPUs at 0%, load decaying, only the DPDK pollers running; REST `/buffers` shows
+`host_voltage_buffer_{0,1}` 24/24, `host_pl_mask_buffer{,_1}` 24/24, GPU outputs 1/24; the broker
+reports `INSTANCE STALLED` for both halves (GPU0 and GPU1 stop ~1.7 s apart — the same fault,
+caught at different points in a mask lifetime). No FATAL, no RESYNC, nothing in the node log.
+Today: cx42 ≈11:43, cx43 ≈12:12, cx51 <12:30, cx27 13:00:30, cx44 13:26:37 UTC; cx27 also 09-02
+05:50 and 09-03 21:51. `/proc` on the node process is root-only, so KV took a gdb
+`thread apply all bt` of wedged cx27 (`logs/cx27_wedge_20260904_1300_stacks.txt`, 301 threads).
+
+**Not #107, not the `gpu_command_mutex` wedge.** No thread is inside a CUDA call. The knot is a
+ring-dependency deadlock rooted at ONE host buffer:
+`set_bf_mask` (bufferBadInputs) in `wait_for_empty_frame(16)` — full; `valve_bf_mask_0/1` in
+`wait_for_full_frame` — on slot **0**, empty. Downstream, all as consequences: the per-GPU
+bf-mask rings starve → `sktilde`/`skbar` `wait_without_claiming` → no `rfi_RFImask` → the
+correlator holds its voltage claim → voltage ring full → `d_voltage` copies block → GPU idle.
+
+**The impossible state.** `host_bf_mask_buffer` (24 frames, peek_hold): `frames =
+000000000000000111111111`, producer last acquired/released 15, both valves last
+acquired/released 15 with `is_done` set ONLY on 15. Under the Buffer protocol this cannot arise
+with sequential frame ids: slots 16–23 were filled and never consumed while the consumers went
+past them to 0. So the consumers did not go 15 → 16. They went 15 → 0.
+
+**Root: `modulo<int>` (`frameID`, `lib/utils/visUtil.hpp`, duplicated in `lib/utils/N2Util.hpp`)
+never reduces.** `_i` is a plain `int` incremented forever ("we don't bother mod'ing ... only at
+output time"); `norm()` returns `_i % _n` with `_n` UNSIGNED. After 2^32 increments `_i` has
+wrapped through INT_MIN and back to 0, and the unsigned conversion inside that modulo is
+discontinuous by 2^32 mod 24 = **16**: the slot sequence runs ..., 14, 15, **0**, 1, ... The first
+skip (at 2^32 frames) is absorbed as an 8-frame lag; the second (at 2^33) leaves slots 16–23 full
+with the producer needing 16 and the consumers needing 0. Deadlock. A scaled-down simulation of
+the Buffer protocol with a `modulo<int>` consumer (wrap period W, W mod 24 = 16) reproduces the
+live state field-for-field at exactly 2·W consumed frames (`scratchpad/wrapsim.py`, this
+session). Any buffer whose `num_frames` does not divide 2^32 is exposed (24 = 8·3; the 4-frame
+valve outputs are immune, which is why nothing else in the pipeline shows it).
+
+**Smoking gun, live, both wedged nodes:** `kotekan_valve_passed_frames_total +
+kotekan_valve_dropped_frames_total` = **8 589 934 592 = 2^33 exactly**, both valves, cx27 AND cx44
+(cx27: 1 233 086 passed + 8 588 701 506 dropped). cx44 was found this way BEFORE the broker flagged
+it (`/buffers` at 13:26:37 showed the identical state).
+
+**Why now.** The 09-02 interim fix for the startup-order deadlock on this same buffer
+(`91a0155e4`, per-half Valves) let `set_bf_mask` free-run: ~160k frames/s, 99.99% dropped at the
+valves (8.6 × 10^9 drops on cx27). 2^33 / 157k f/s = 15.2 h — cx27's lifetime today (restart after
+the 21:51 death → 13:00:30). At the frame rates every other kotekan buffer runs at, the same wrap
+takes years, which is why a bug in a class used by 100+ stages went unnoticed. The rest of the
+fleet at 13:28 UTC: cx19 8.7% of 2^33, cx42/43/51 ~4.5% at ~167k f/s → they die ≈03:00 UTC 09-05
+if not restarted or fixed first.
+
+**Fix (this branch, both copies).** `modulo<T>` reduces on every mutation (`=`, `++`, `--`,
+`+=`, `-=`) with a signed-correct `reduce()`, so `_i` stays in `[0, n)` and never overflows;
+`norm()` returns `_i`. This also fixes decrement below zero: `frame_id - 1` at 0 used to give 15
+on a 24-frame buffer (unsigned wrap of -1), now n-1. `tests/boost/test_modulo.cpp` pins it: the
+chunked-add case passes on the fix and, on the old headers, one case fails on the negative wrap
+and the 2^32 case HANGS (signed-overflow UB at -O2) — the test distinguishes the two. Built into
+`build/` (nodes' tree) as a staged binary; lands at each node's next `node_up`.
+
+**Still owed (separate change, not urgent once the wrap is fixed):** pace `set_bf_mask` by its
+`bf_mask_lifetime` clock instead of letting it spin — the 160k f/s free-run is pure heat (3 cores,
+~2.3 GB/h of copies) and it is what turned a years-long fuse into a 15-hour one. The
+`chord-bfmask-startup-deadlock` note's "real fix" direction (seq-tolerant mask consumers) is the
+same item.
+
 ## #107 — nine node deaths: ROOT-CAUSED, FIXED and VERIFIED ON SKY 2026-09-03 (a post-publication patch of ring slot-0 metadata)
 
 cx27 (23:05) and cx19 (23:35) both FATAL'd identically. The kill chain, from the archived
