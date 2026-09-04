@@ -578,10 +578,11 @@ int validate_config_static(Config& config) {
  * @return 0 if the pipeline built and tore down cleanly, 1 otherwise.
  */
 int run_dry_run(Config& config) {
-    update_log_levels(config);
-
     kotekanMode* mode = nullptr;
     try {
+        // Inside the try: a config with no root `log_level` throws here, and a
+        // validator must report that rather than terminate on it.
+        update_log_levels(config);
         mode = new kotekanMode(config);
         mode->initalize_stages();
     } catch (const std::exception& ex) {
@@ -735,6 +736,14 @@ int main(int argc, char** argv) {
         }
     }
 
+    // The validation modes need a config file, and they have to say so on
+    // stderr: the daemon-mode block right below switches logging to syslog
+    // only, which would swallow the message and leave a bare exit status.
+    if ((check_config || dry_run) && string(config_file_name) == "none") {
+        fprintf(stderr, "--check-config/--dry-run require a config file (-c/--config).\n");
+        return 1;
+    }
+
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;
         fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
@@ -766,10 +775,6 @@ int main(int argc, char** argv) {
     // The validation modes must never bind the REST port: the whole point is to
     // be runnable on a node that already has a kotekan instance on it.
     const bool validate_only = check_config || dry_run;
-    if (validate_only && string(config_file_name) == "none") {
-        ERROR_NON_OO("--check-config/--dry-run require a config file (--config).");
-        exit(-1);
-    }
     if (!validate_only)
         rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
 
@@ -811,22 +816,35 @@ int main(int argc, char** argv) {
             if (dump_config)
                 config.dump_config();
 
-            int problems = validate_config_static(config);
-            // Only attempt the build if the static checks passed -- building on
-            // a config with an unknown stage type just reports the same fault
-            // again, more expensively and with hardware side effects.
-            if (dry_run && problems == 0)
-                problems += run_dry_run(config);
-
-            if (problems == 0) {
-                INFO_NON_OO("{:s}: {:s} PASSED.", dry_run ? "dry run" : "config check",
-                            config_file_name);
-            } else {
-                ERROR_NON_OO("{:s}: {:s} FAILED with {:d} problem(s).",
-                             dry_run ? "dry run" : "config check", config_file_name, problems);
+            const char* what = dry_run ? "dry run" : "config check";
+            int problems = 0;
+            // A malformed config throws out of the checks themselves -- a
+            // non-string `kotekan_stage`, a missing root `log_level`. A
+            // validator has to report that as a failed config, not abort: the
+            // half-written config is exactly the case it exists for.
+            try {
+                problems = validate_config_static(config);
+                // Only attempt the build if the static checks passed -- building
+                // on a config with an unknown stage type just reports the same
+                // fault again, more expensively and with hardware side effects.
+                if (dry_run && problems == 0)
+                    problems += run_dry_run(config);
+            } catch (const std::exception& ex) {
+                fprintf(stderr, "%s: %s FAILED: %s\n", what, config_file_name, ex.what());
+                free(config_file_name);
+                return 1;
             }
+
+            // The verdict goes to stdout/stderr directly, not through the log
+            // level: `log_level: off` in the config under test must not be able
+            // to suppress the answer the caller asked for.
+            if (problems == 0)
+                fprintf(stdout, "%s: %s PASSED.\n", what, config_file_name);
+            else
+                fprintf(stderr, "%s: %s FAILED with %d problem(s).\n", what, config_file_name,
+                        problems);
             free(config_file_name);
-            return problems == 0 ? 0 : -1;
+            return problems == 0 ? 0 : 1;
         }
 
         try {
