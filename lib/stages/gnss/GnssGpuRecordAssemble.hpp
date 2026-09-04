@@ -211,21 +211,63 @@ private:
     /// Still BIASED by the noise pedestal -- debiasing is the broker's job, from the probe
     /// PRNs, in the power domain, exactly as for the element archive's p2.
     bool _cube_on = false;
-    /// Channels per output subband bin. 0 (default) = no binning, one bin per channel: the
-    /// finest cube the instrument can produce. Binning trades frequency resolution for archive
-    /// volume, which is the binding constraint here -- NOT memory, and not compute.
+    /// Channels per output subband bin. 0 (default) = one bin per channel: the finest cube
+    /// the instrument can produce. Binning trades frequency resolution for archive volume,
+    /// which is the binding constraint here -- NOT memory, and not compute.
     int _cube_bin_width = 0;
     int _cube_bins = 0;                    ///< derived: number of subband bins
+
+    /// ── ARC PRESERVATION: WHY THIS IS A WINDOW RING AND NOT A RESET-ON-READ SUM ─────────
+    /// The first version of this accumulator kept only SUM |A|^2 and was reset on read. That
+    /// is correct for a beam map -- an incoherent power carries no phase, so there is nothing
+    /// for a misaligned window to decohere -- and it is USELESS for anything that needs the
+    /// arc: element calibration, a phased-array map, delay/TEC. Keeping the coherent sum is
+    /// one extra float per cell and it cannot be recovered later, so it is kept.
+    ///
+    /// ⚠️ THE COHERENT SUM IS MEANINGLESS WITHOUT ITS PHASE REFERENCE (task #52). Each record
+    /// is rotated by exp(-i*_phi[p]); `_phi[p]` is ZEROED on a fresh acquisition and STEPPED
+    /// on a continuous re-pin, and the broker re-pins seeds every ~2 minutes. Integrate ~96
+    /// records without publishing the origin and the consumer holds a number whose phase
+    /// reference it cannot know. So phi0 -- _phi[p] at the window's FIRST record -- is
+    /// published, exactly as the spectrum ring does.
+    ///
+    /// ⚠️ DO **NOT** "TIDY" THIS BY REFERENCING TO THE WINDOW'S OWN FIRST RECORD. That was
+    /// tried (45fe3a438) to remove the arbitrary per-instance origin of _phi, and it gives
+    /// every window its own arbitrary constant: measured coherence across 7 consecutive
+    /// windows fell to 0.38 against a 0.378 random baseline, i.e. destroyed. Publish the raw
+    /// phi, do not subtract an origin.
+    ///
+    /// ⚠️ AND LOST ARC LOOKS EXACTLY LIKE SIGNAL. Coherence inside one window is capped by the
+    /// residual carrier (1 Hz of residual is ~6.3 rad over 1 s and the sum collapses) and by
+    /// the data/overlay symbol rate; the incoherent sum has neither cap. A satellite whose
+    /// carrier loop is limping therefore yields a SMALL coherent sum -- indistinguishable
+    /// from "the beam is weak here", which is the very quantity a beam map measures. Both
+    /// sums are stored so |SUM coh|^2 / SUM |.|^2 is available as the coherence, and that
+    /// ratio is the self-check: at ~1/N the arc was lost in that window and the archive says
+    /// so itself, instead of the loss arriving later as a plausible map.
+    ///
+    /// WINDOWS ARE ADDRESSABLE, not reset-on-read, for the reason #53 made them so for the
+    /// spectrum: the index is floor(wstart / win_samples) on the F-engine sample clock, so
+    /// every instance assigns a record to the same window WITHOUT talking to any other
+    /// instance, and a second consumer no longer steals anyone's data.
+    struct CubeWindow {
+        int64_t idx = -1;                  ///< window index, or -1 for an unused slot
+        int64_t w0 = -1, w1 = -1;          ///< wstart of the first/last record in it
+        std::vector<double> coh_re, coh_im; ///< [n_prn * n_bin * n_elem] SUM A_e,c * rot
+        std::vector<double> incoh;          ///< [n_prn * n_bin * n_elem] SUM |A_e,c|^2
+        std::vector<double> w;              ///< [n_prn * n_bin] (record, channel) term count
+        std::vector<double> energy;         ///< [n_prn * n_bin] SUM replica energy
+        std::vector<int> nrec;              ///< [n_prn] records contributing
+        std::vector<double> phi0;           ///< [n_prn] _phi[p] at this window's FIRST record
+        std::vector<int> nreanchor;         ///< [n_prn] UNFOLDED resets inside it (see below)
+    };
+    std::vector<CubeWindow> _cube_ring;    ///< depth from config; index -> idx % depth
+    int64_t _cube_win_samples = 0;         ///< window length in F-engine samples
+    int64_t _cube_max_idx = -1;            ///< newest index SEEN; complete windows are < this
     std::mutex _cube_mtx;                  ///< guards _cube_* between main_thread and REST
-    /// [n_prn * _cube_bins * n_elem] running SUM of |A_e,c|^2, and [n_prn * _cube_bins] the
-    /// number of (record, channel) terms behind each bin. RESET ON READ: a poll returns exactly
-    /// the interval since the previous poll, with the weight needed to combine intervals
-    /// offline by addition. Unlike the spectrum ring this needs no cross-instance window
-    /// alignment -- it carries no phase, so there is nothing for a misaligned window to
-    /// decohere; only the weights have to be honest, and they are reported.
-    std::vector<double> _cube_p2;
-    std::vector<double> _cube_w;
-    std::vector<double> _cube_t0;          ///< [1] wall clock at the start of the open interval
+    /// Accumulate into the window owning `wstart`, opening/clearing the ring slot on a
+    /// boundary crossing. Caller holds _cube_mtx.
+    CubeWindow& cube_window_for(int64_t wstart);
     void beam_cube_callback(kotekan::connectionInstance& conn);
     /// Accumulate one record's channels into the window that owns `wstart`, opening/clearing
     /// the ring slot on a boundary crossing. Caller holds _spec_mtx.

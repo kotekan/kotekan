@@ -222,27 +222,56 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                && !_spec_freq_ids.empty() && _n_elements > 0;
     if (_cube_on) {
         const int nc = (int)_spec_freq_ids.size();
-        _cube_bin_width = config.get_default<int>(unique_name, "beam_cube_bin_width", 0);
-        if (_cube_bin_width < 0)
-            _cube_bin_width = 0;
+        _cube_bin_width =
+            std::max(0, config.get_default<int>(unique_name, "beam_cube_bin_width", 0));
         // 0 = one bin per channel. Otherwise ceil, so the last bin may be narrow rather than
         // silently dropping the top channels -- a truncated band edge is exactly the kind of
         // quiet loss that looks like a real beam feature later.
         _cube_bins = (_cube_bin_width > 0) ? (nc + _cube_bin_width - 1) / _cube_bin_width : nc;
-        _cube_p2.assign((size_t)n * _cube_bins * _n_elements, 0.0);
-        _cube_w.assign((size_t)n * _cube_bins, 0.0);
-        _cube_t0.assign(1, 0.0);
+
+        // WINDOW LENGTH IN SAMPLES, NOT SECONDS, for the reason #53 gave the spectrum ring:
+        // the index is floor(wstart / win_samples) in integer arithmetic, and if that division
+        // is not exact two instances can straddle a boundary differently -- which is the whole
+        // failure being avoided. Every instance must be given the SAME value.
+        //
+        // ⚠️ AN EXACT 1.000 s WINDOW DOES NOT EXIST ON THIS CLOCK. The hop rate is 195312.5 Hz,
+        // so one second is 195312.5 samples -- not an integer. The default is 196608 = 96
+        // records = 24 frames = 1.00663 s: an exact multiple of BOTH the record (2048) and the
+        // frame (8192), so no record is ever split and the per-window record count is constant,
+        // which is one less thing to explain in a residual. Anyone wanting a round number in
+        // seconds is asking for a boundary that lands mid-record on half the fleet.
+        _cube_win_samples =
+            (int64_t)config.get_default<double>(unique_name, "beam_cube_window_samples", 196608.0);
+        const int depth =
+            std::max(2, config.get_default<int>(unique_name, "beam_cube_ring_depth", 8));
+        _cube_ring.resize((size_t)depth);
+        const size_t ncell = (size_t)n * _cube_bins * _n_elements;
+        const size_t nbin = (size_t)n * _cube_bins;
+        for (auto& W : _cube_ring) {
+            W.coh_re.assign(ncell, 0.0);
+            W.coh_im.assign(ncell, 0.0);
+            W.incoh.assign(ncell, 0.0);
+            W.w.assign(nbin, 0.0);
+            W.energy.assign(nbin, 0.0);
+            W.nrec.assign((size_t)n, 0);
+            W.phi0.assign((size_t)n, 0.0);
+            W.nreanchor.assign((size_t)n, 0);
+        }
         INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} subband bin(s) "
-             "({:d} channel(s), width {:d}) x {:d} element(s) = {:d} accumulator(s), "
-             "reset-on-read at /get_beam_cube",
+             "({:d} channel(s), width {:d}) x {:d} element(s); COHERENT + incoherent, "
+             "addressable windows of {:d} samples ({:.5f} s), ring depth {:d}; "
+             "{:d} cell(s), {:.1f} MB",
              unique_name, n, _cube_bins, nc, _cube_bin_width ? _cube_bin_width : 1,
-             _n_elements, (size_t)n * _cube_bins * _n_elements);
+             _n_elements, (long long)_cube_win_samples,
+             (double)_cube_win_samples / _sample_rate, depth, ncell,
+             depth * (3.0 * ncell + 2.0 * nbin) * sizeof(double) / 1e6);
     } else if (config.get_default<bool>(unique_name, "beam_cube", false)) {
         WARN("GnssGpuRecordAssemble[{:s}]: beam_cube requested but {:s} -- the cube needs BOTH "
              "axes and is OFF.", unique_name,
              _spec_freq_ids.empty() ? "this config has no channel_ids (no frequency axis)"
                                     : "n_elements is 0 (no element axis)");
     }
+
     using namespace std::placeholders;
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_spectrum",
@@ -366,16 +395,30 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         // THE BEAM CUBE accumulates per slot too, and for the same reason: carried across a
         // swap, the departing satellite's integrated power would be attributed to the arriving
         // one -- and a beam map is precisely a claim about where power came from, so this one
-        // would not merely be wrong, it would be wrong in the shape of a feature. Zero the
-        // slot's sums AND its weights together: a nonzero weight over a zeroed sum reads as a
-        // real measurement of no power, which is worse than absence.
+        // would not merely be wrong, it would be wrong in the shape of a feature. The COHERENT
+        // sum is worse still: its phi0 refers to the OLD satellite's NCO history, so a
+        // consumer would rotate the new satellite onto a reference that never described it.
+        //
+        // Clear the slot in EVERY OPEN WINDOW, not just the newest -- the ring holds several,
+        // and a window straddling the swap would otherwise sum two satellites into one row and
+        // report the total as one PRN. Zero the sums AND the weights together: a nonzero
+        // weight over a zeroed sum reads as a real measurement of no power, which is worse
+        // than absence.
         if (_cube_on) {
             std::lock_guard<std::mutex> ck(_cube_mtx);
             const size_t ne = (size_t)_n_elements;
-            if ((size_t)(p + 1) * _cube_bins * ne <= _cube_p2.size()) {
-                std::fill_n(_cube_p2.begin() + (size_t)p * _cube_bins * ne, _cube_bins * ne,
-                            0.0);
-                std::fill_n(_cube_w.begin() + (size_t)p * _cube_bins, _cube_bins, 0.0);
+            const size_t ncell = (size_t)_cube_bins * ne;
+            for (auto& C : _cube_ring) {
+                if (C.idx < 0 || (size_t)p >= C.nrec.size())
+                    continue;
+                std::fill_n(C.coh_re.begin() + (size_t)p * ncell, ncell, 0.0);
+                std::fill_n(C.coh_im.begin() + (size_t)p * ncell, ncell, 0.0);
+                std::fill_n(C.incoh.begin() + (size_t)p * ncell, ncell, 0.0);
+                std::fill_n(C.w.begin() + (size_t)p * _cube_bins, _cube_bins, 0.0);
+                std::fill_n(C.energy.begin() + (size_t)p * _cube_bins, _cube_bins, 0.0);
+                C.nrec[(size_t)p] = 0;
+                C.phi0[(size_t)p] = 0.0;
+                C.nreanchor[(size_t)p] = 0;
             }
         }
         WARN("GnssGpuRecordAssemble: slot {:d} PRN {:d} -> {:d} (the producer swapped it). "
@@ -895,29 +938,40 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                         return v * rot;
                     };
-                    // ── BEAM CUBE (hpp): |A_e,c|^2 per (subband bin, element) ─────────────
-                    // The joint axis, taken from `corr` BEFORE either collapse: the element
-                    // blocks below sum this over channels, the comb block sums it over
+                    // ── BEAM CUBE (hpp): the (subband bin x element) axis, un-collapsed ───
+                    // The joint quantity, taken from `corr` BEFORE either collapse: the
+                    // element blocks below sum this over channels, the comb block sums it over
                     // elements, and neither keeps the product.
                     //
-                    // INCOHERENT, so `rot` is deliberately NOT applied -- it is a unit-modulus
-                    // common phase and cancels exactly in |.|^2. Applying it would cost work
-                    // and buy nothing, and a reader who saw it applied would reasonably infer
-                    // the quantity was phase-referenced when it is not.
+                    // BOTH SUMS ARE KEPT. The incoherent one is the beam (no phase model, no
+                    // nav-bit cap, grows like sqrt(K)); the coherent one is the arc, and it is
+                    // the one that cannot be reconstructed afterwards. `rot` is the SAME
+                    // rotation the record's prompt and the spectrum ring just got -- one
+                    // common phase per record -- so the accumulation does not wind with the
+                    // residual carrier while the cross-element and cross-channel RELATIVE
+                    // phases pass through untouched. Its origin, _phi[p], is published as
+                    // phi0 below; without that the coherent sum is a number with an unknowable
+                    // reference (see the hpp).
                     //
                     // Normalised by the channel's OWN replica energy, once, for every element:
-                    // one replica is correlated against all of them (which is why energies
-                    // live in the record header and only the correlations are per element), so
-                    // A_e = G_e/E_c keeps the antenna ratios comparable -- the property the
-                    // whole beam map rests on. A zero-energy channel contributes nothing
-                    // rather than an infinity.
+                    // one replica is correlated against all of them, so A_e = G_e/E_c keeps the
+                    // antenna ratios comparable -- the property the whole beam map rests on. A
+                    // zero-energy channel contributes nothing rather than an infinity.
                     if (_cube_on) {
                         std::lock_guard<std::mutex> ck(_cube_mtx);
-                        if (_cube_t0[0] == 0.0)
-                            _cube_t0[0] = std::chrono::duration<double>(
-                                              std::chrono::system_clock::now()
-                                                  .time_since_epoch())
-                                              .count();
+                        CubeWindow& C = cube_window_for(wstart);
+                        // PUBLISH THE PHASE CURRENCY at the window's first record, and count
+                        // only UNFOLDED resets: reanchored 2 and 3 are the CONTINUOUS re-pins
+                        // whose phase step has already been folded into _phi, so counting them
+                        // would mark every window broken forever (measured: 100% of (PRN,
+                        // window) on all four chains, which is how that counter was found to be
+                        // the problem rather than the receiver). Only 1 is a fresh acquisition,
+                        // where the NCO is reset and the arc genuinely breaks.
+                        if (C.nrec[p] == 0)
+                            C.phi0[p] = _phi[p];
+                        if (c.reanchored == 1)
+                            C.nreanchor[p] += 1;
+                        C.nrec[p] += 1;
                         for (int ch = 0; ch < n_chan; ++ch) {
                             if (!((c.chan_mask >> ch) & 1ULL))
                                 continue;
@@ -926,15 +980,23 @@ void GnssGpuRecordAssemble::main_thread() {
                                 continue;
                             const int bin = (_cube_bin_width > 0) ? (ch / _cube_bin_width) : ch;
                             const size_t b = (prow + ch) * n_e;
-                            double* acc = _cube_p2.data()
-                                          + ((size_t)p * _cube_bins + bin) * n_e;
-                            const double inv = 1.0 / (ec * ec);
+                            const size_t k0 = ((size_t)p * _cube_bins + bin) * n_e;
+                            const double inv = 1.0 / ec;
                             for (int el = 0; el < n_e; ++el) {
-                                const double vr = corr[2 * (b + el)];
-                                const double vi = corr[2 * (b + el) + 1];
-                                acc[el] += (vr * vr + vi * vi) * inv;
+                                const std::complex<double> v =
+                                    std::complex<double>(corr[2 * (b + el)] * inv,
+                                                         corr[2 * (b + el) + 1] * inv)
+                                    * rot;
+                                C.coh_re[k0 + el] += v.real();
+                                C.coh_im[k0 + el] += v.imag();
+                                // |v|^2 == |A|^2: rot is unit modulus, so the incoherent sum is
+                                // blind to the rotation, which is exactly why it survives a
+                                // broken arc when the coherent sum does not.
+                                C.incoh[k0 + el] += std::norm(v);
                             }
-                            _cube_w[(size_t)p * _cube_bins + bin] += 1.0;
+                            const size_t kb = (size_t)p * _cube_bins + bin;
+                            C.w[kb] += 1.0;
+                            C.energy[kb] += ec;
                         }
                     }
                     for (int ch = 0; ch < n_chan; ++ch) {
@@ -1098,6 +1160,168 @@ GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_
     return W;
 }
 
+GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_t wstart) {
+    // Caller holds _cube_mtx. Same window arithmetic as spec_window_for, deliberately: the two
+    // rings must agree on where a boundary is, or a consumer joining the cube to the spectrum
+    // would be pairing different slices of time and nothing would say so.
+    int64_t idx = wstart / _cube_win_samples;
+    if (wstart < 0 && idx * _cube_win_samples != wstart)
+        --idx; // FLOOR, not C's truncation toward zero (see spec_window_for)
+    const int64_t n = (int64_t)_cube_ring.size();
+    CubeWindow& C = _cube_ring[(size_t)(((idx % n) + n) % n)];
+    if (C.idx != idx) {
+        // First record of this window, or the ring wrapped past the old occupant: clear it.
+        std::fill(C.coh_re.begin(), C.coh_re.end(), 0.0);
+        std::fill(C.coh_im.begin(), C.coh_im.end(), 0.0);
+        std::fill(C.incoh.begin(), C.incoh.end(), 0.0);
+        std::fill(C.w.begin(), C.w.end(), 0.0);
+        std::fill(C.energy.begin(), C.energy.end(), 0.0);
+        std::fill(C.nrec.begin(), C.nrec.end(), 0);
+        std::fill(C.phi0.begin(), C.phi0.end(), 0.0);
+        std::fill(C.nreanchor.begin(), C.nreanchor.end(), 0);
+        C.idx = idx;
+        C.w0 = C.w1 = -1;
+    }
+    if (C.w0 < 0)
+        C.w0 = wstart;
+    C.w1 = wstart;
+    if (idx > _cube_max_idx)
+        _cube_max_idx = idx;
+    return C;
+}
+
+
+// THE BEAM CUBE endpoint (hpp): the (subband x element) axis, coherent AND incoherent.
+//
+// ADDRESSABLE AND IDEMPOTENT, like /get_spectrum and for the same reason: `?window=N` returns
+// exactly window N, no argument returns the newest COMPLETE one, nothing is reset. An earlier
+// draft of this endpoint was reset-on-read, which is defensible only while the payload carries
+// no phase -- the moment the coherent sum was added it stopped being defensible, because two
+// consumers would then split a coherent integration between them and each would see a sum over
+// a random subset of the records with no way to know it.
+//
+// EMITTED RAW: no debias, no range normalisation, no combine, no dB. All of them are the
+// reader's job. Debias in the POWER domain from the probe PRNs, per (instance, element,
+// subband, time bin), never medianed across elements.
+void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn) {
+    if (!_cube_on) {
+        conn.send_error("beam cube is OFF for this stage (needs 'beam_cube: true' plus both "
+                        "axes: 'channel_ids' for frequency and 'n_elements' for element)",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    bool want_specific = false;
+    int64_t want = -1;
+    for (const auto& kv : conn.get_query()) {
+        if (kv.first != "window")
+            continue;
+        want_specific = true;
+        try {
+            want = std::stoll(kv.second);
+        } catch (const std::exception&) {
+            conn.send_error("get_beam_cube: 'window' must be an integer window index",
+                            kotekan::HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+    }
+
+    nlohmann::json reply;
+    const int ne = _n_elements;
+    std::vector<double> coh_re, coh_im, incoh, w, energy, phi0;
+    std::vector<int> nrec, nre;
+    int64_t idx = -1, w0 = -1, w1 = -1, lo = -1, hi = -1;
+    const char* status = "ok";
+    {
+        std::lock_guard<std::mutex> ck(_cube_mtx);
+        // A window is COMPLETE once a LATER one has been opened -- the only local evidence
+        // that no more records are coming for it; there is no end-of-window event to wait on.
+        hi = _cube_max_idx - 1;
+        lo = _cube_max_idx - (int64_t)_cube_ring.size() + 1;
+        if (lo < 0)
+            lo = 0;
+        idx = want_specific ? want : hi;
+        if (_cube_max_idx < 0)
+            status = "not_yet";
+        else if (idx > hi)
+            status = "not_yet"; // NORMAL: instances lag each other; simply re-ask this one
+        else if (idx < lo)
+            status = "too_old"; // those records are gone -- the caller must JUMP, and say so
+        else {
+            const int64_t n = (int64_t)_cube_ring.size();
+            const CubeWindow& C = _cube_ring[(size_t)(((idx % n) + n) % n)];
+            if (C.idx != idx)
+                status = "too_old";
+            else {
+                coh_re = C.coh_re; coh_im = C.coh_im; incoh = C.incoh;
+                w = C.w; energy = C.energy; phi0 = C.phi0;
+                nrec = C.nrec; nre = C.nreanchor;
+                w0 = C.w0; w1 = C.w1;
+            }
+        }
+    }
+
+    const int nc = (int)_spec_freq_ids.size();
+    reply["n_bin"] = _cube_bins;
+    reply["n_elem"] = ne;
+    reply["n_chan"] = nc;
+    reply["bin_width"] = _cube_bin_width ? _cube_bin_width : 1;
+    reply["freq_ids"] = _spec_freq_ids;
+    reply["window"] = idx;
+    reply["window_samples"] = (double)_cube_win_samples;
+    reply["sample_rate"] = _sample_rate;
+    reply["available"] = nlohmann::json::array({lo, hi});
+    reply["status"] = status;
+    reply["wstart0"] = w0; // the cross-instance alignment key, same clock as fleet hops
+    reply["wstart1"] = w1;
+    reply["reference_element"] = _reference_element;
+    // Per-bin freq_id span, so a reader never has to reproduce the binning arithmetic -- the
+    // one place a resolution change could silently re-point every archived row.
+    nlohmann::json bins = nlohmann::json::array();
+    for (int b = 0; b < _cube_bins; ++b) {
+        const int c0 = _cube_bin_width ? b * _cube_bin_width : b;
+        const int c1 = _cube_bin_width ? std::min(nc, (b + 1) * _cube_bin_width) - 1 : b;
+        bins.push_back({_spec_freq_ids[c0], _spec_freq_ids[c1]});
+    }
+    reply["bin_freq_ids"] = bins;
+    if (std::string(status) != "ok") {
+        reply["prns"] = nlohmann::json::array();
+        conn.send_json_reply(reply);
+        return;
+    }
+
+    nlohmann::json prns = nlohmann::json::array();
+    for (size_t p = 0; p < _prns.size(); ++p) {
+        if (nrec[p] <= 0)
+            continue; // silence, not zeros -- the get_records/get_spectrum convention
+        nlohmann::json wb = nlohmann::json::array(), eb = nlohmann::json::array();
+        nlohmann::json cb = nlohmann::json::array(), ib = nlohmann::json::array();
+        for (int b = 0; b < _cube_bins; ++b) {
+            const size_t kb = p * _cube_bins + b;
+            wb.push_back(w[kb]);
+            eb.push_back(energy[kb]);
+            nlohmann::json cr = nlohmann::json::array(), ir = nlohmann::json::array();
+            const size_t k0 = ((size_t)p * _cube_bins + b) * ne;
+            for (int el = 0; el < ne; ++el) {
+                cr.push_back({coh_re[k0 + el], coh_im[k0 + el]});
+                ir.push_back(incoh[k0 + el]);
+            }
+            cb.push_back(cr);
+            ib.push_back(ir);
+        }
+        // coh[bin][elem] = [re, im] and incoh[bin][elem], with w[bin] the term count: the SUMS
+        // and their weight, so windows, instances and days all combine by addition and nothing
+        // has to be reprocessed to add a night. phi0 is the coherent sum's phase reference and
+        // n_reanchor > 0 means the arc broke INSIDE this window -- no constant can undo that,
+        // so drop those rather than rotating them onto anything.
+        prns.push_back({{"prn", _prns[p]}, {"n_rec", nrec[p]},
+                        {"phi0", phi0[p]}, {"n_reanchor", nre[p]},
+                        {"w", wb}, {"energy", eb}, {"coh", cb}, {"incoh", ib}});
+    }
+    reply["prns"] = prns;
+    conn.send_json_reply(reply);
+}
+
+
 void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn) {
     // ADDRESSABLE, IDEMPOTENT READ (task #53). `?window=N` returns exactly window N; no
     // argument returns the newest COMPLETE one. Nothing is reset, so polling is free of side
@@ -1234,93 +1458,6 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     conn.send_json_reply(reply);
 }
 
-
-// THE BEAM CUBE endpoint (hpp): the (subband x element) incoherent power, un-collapsed.
-//
-// ⚠️ RESET ON READ, unlike /get_spectrum next door. That endpoint was deliberately made
-// addressable and idempotent (task #53) because its value carries a PHASE that has to be
-// aligned across instances, and a second consumer stealing half a window destroyed exactly
-// that. Neither reason applies here: this is |A|^2, so there is no phase for a misaligned
-// window to decohere, and the only thing an offline coadd needs is that the weights are
-// honest about which interval each sum covers -- which they are, and which is why the SUM and
-// its WEIGHT are both published rather than a mean.
-//
-// The consequence is the one thing to remember: TWO consumers polling this endpoint SPLIT the
-// data between them. One archiver, please. The reply says which interval it covers so a gap
-// (an archiver restart) is visible as a gap rather than silently averaged away.
-//
-// Emitted RAW: biased by the noise pedestal, no debias, no range normalisation, no combine.
-// All three are the reader's job -- debias in the POWER domain from the probe PRNs, per
-// (instance, element, subband, time bin), never medianed across elements. A combined number
-// can always be rebuilt from these parts; the parts can never be recovered from a combined
-// number, which is the whole argument for shipping this axis instead of a central estimator
-// over it.
-void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn) {
-    if (!_cube_on) {
-        conn.send_error("beam cube is OFF for this stage (needs 'beam_cube: true' plus both "
-                        "axes: 'channel_ids' for frequency and 'n_elements' for element)",
-                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    const int nc = (int)_spec_freq_ids.size();
-    const int ne = _n_elements;
-    std::vector<double> p2, w;
-    double t0 = 0.0;
-    const double t1 =
-        std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
-            .count();
-    {
-        std::lock_guard<std::mutex> ck(_cube_mtx);
-        p2.swap(_cube_p2);
-        w.swap(_cube_w);
-        t0 = _cube_t0[0];
-        _cube_p2.assign((size_t)_prns.size() * _cube_bins * ne, 0.0);
-        _cube_w.assign((size_t)_prns.size() * _cube_bins, 0.0);
-        _cube_t0[0] = 0.0; // next accumulation stamps its own start
-    }
-
-    nlohmann::json reply;
-    reply["n_bin"] = _cube_bins;
-    reply["n_elem"] = ne;
-    reply["n_chan"] = nc;
-    reply["bin_width"] = _cube_bin_width ? _cube_bin_width : 1;
-    reply["freq_ids"] = _spec_freq_ids;
-    reply["t0"] = t0; // host wall clock bounding the accumulated interval; t0 == 0 means
-    reply["t1"] = t1; // nothing accumulated since the last read (no records, or all masked)
-    reply["reference_element"] = _reference_element;
-    // Per-bin freq_id span, so a reader never has to reproduce the binning arithmetic --
-    // the one place a resolution change could silently re-point every archived row.
-    nlohmann::json bins = nlohmann::json::array();
-    for (int b = 0; b < _cube_bins; ++b) {
-        const int c0 = _cube_bin_width ? b * _cube_bin_width : b;
-        const int c1 = _cube_bin_width ? std::min(nc, (b + 1) * _cube_bin_width) - 1 : b;
-        bins.push_back({_spec_freq_ids[c0], _spec_freq_ids[c1]});
-    }
-    reply["bin_freq_ids"] = bins;
-
-    nlohmann::json prns = nlohmann::json::array();
-    for (size_t p = 0; p < _prns.size(); ++p) {
-        double wtot = 0.0;
-        for (int b = 0; b < _cube_bins; ++b)
-            wtot += w[p * _cube_bins + b];
-        if (!(wtot > 0.0))
-            continue; // silence, not zeros -- the get_records/get_spectrum convention
-        nlohmann::json wb = nlohmann::json::array(), pb = nlohmann::json::array();
-        for (int b = 0; b < _cube_bins; ++b) {
-            wb.push_back(w[p * _cube_bins + b]);
-            nlohmann::json els = nlohmann::json::array();
-            const double* acc = p2.data() + ((size_t)p * _cube_bins + b) * ne;
-            for (int el = 0; el < ne; ++el)
-                els.push_back(acc[el]);
-            pb.push_back(els);
-        }
-        // p2_sum[bin][elem] and w[bin]: the SUM and its term count, so intervals, instances
-        // and days all combine by addition and nothing has to be reprocessed to add a night.
-        prns.push_back({{"prn", _prns[p]}, {"w", wb}, {"p2_sum", pb}});
-    }
-    reply["prns"] = prns;
-    conn.send_json_reply(reply);
-}
 
 
 // PATH B endpoint: inject a per-element complex gain prior into every PRN's ElemCal so the

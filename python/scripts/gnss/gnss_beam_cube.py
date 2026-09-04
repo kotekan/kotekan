@@ -30,10 +30,16 @@ TWO SOURCES, ONE OUTPUT FORMAT
         upstream, so the subband axis comes out LENGTH 1 per chain. The 8 chains still give
         real coarse frequency (5 distinct bands), which is why this is worth building now.
   --source cube  fixtures/cube/cube_<chain>_<YYYYMMDD>.jsonl
-        The /get_beam_cube archive: per (subband, element), the joint axis. Needs the node
-        side armed (GnssGpuRecordAssemble `beam_cube: true`) -- until then there are no files
-        and this source finds nothing. The output format is IDENTICAL either way, so the
-        viewer does not change when the axis becomes real; only n_subband grows.
+        The /get_beam_cube archive: per (subband, element), the joint axis, on ~1 s
+        addressable windows. Needs the node side armed (GnssGpuRecordAssemble
+        `beam_cube: true`) -- until then there are no files and this source finds nothing. The
+        output format is IDENTICAL either way, so the viewer does not change when the axis
+        becomes real; only n_subband grows.
+        ⚠️ Rows carry BOTH sums. `incoh` is the beam and is what this builds maps from; `coh`
+        (with `phi0` and `n_reanchor`) is the arc, for calibration and the phased-array map.
+        A row with n_reanchor > 0 had its phase reference reset MID-WINDOW -- no constant can
+        undo that, so such rows are unusable for anything coherent, though their `incoh` is
+        still a perfectly good beam sample.
 
 ⚠️ THE RAILING VETO IS CROSS-CHAIN, AND THAT IS THE POINT. A satellite within ~5 deg of
 boresight rails the 4+4b quantiser for EVERY chain at once -- they all ride the same nibbles.
@@ -262,15 +268,26 @@ def probe_floors(paths, tmin, tmax):
 
 
 def _rows(d):
-    """Per-subband list of per-element p2 for one archive row, for BOTH sources.
+    """Per-subband list of per-element power for one archive row, for BOTH sources.
 
-    elem archive: `p2` is [n_elem]                      -> one subband
-    cube archive: `p2_sum` is [n_sub][n_elem] with `w`  -> per-subband MEAN power
+    elem archive: `p2` is [n_elem]                     -> one subband
+    cube archive: `incoh` is [n_sub][n_elem] with `w`  -> per-subband MEAN power
+
+    ⚠️ THE BEAM IS THE INCOHERENT SUM, NOT THE COHERENT ONE. /get_beam_cube publishes both
+    (`coh` carries the arc, and it is the half that cannot be reconstructed later), but only
+    `incoh` is a beam: it has no phase model and no nav-bit cap, so it survives a window in
+    which the arc broke. The coherent sum in the same window may be small for a reason that
+    has nothing to do with the sky -- a limping carrier loop -- and "small" is exactly what a
+    beam map is trying to measure. Mapping `coh` would put receiver health on the sky.
+
+    `coh` is carried through to the master cube untouched, for element calibration and the
+    phased-array map; the RATIO |coh|^2 / incoh is the coherence, and it is the self-check
+    that says whether the arc survived that second.
     """
-    if "p2_sum" in d:
+    if "incoh" in d:
         w = d.get("w") or []
         out = []
-        for sub, els in enumerate(d["p2_sum"]):
+        for sub, els in enumerate(d["incoh"]):
             ww = float(w[sub]) if sub < len(w) else 0.0
             out.append([float(v) / ww for v in els] if ww > 0.0 else [0.0] * len(els))
         return out
