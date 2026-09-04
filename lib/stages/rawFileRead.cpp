@@ -11,6 +11,7 @@
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>   // for assert
+#include <chrono>     // for microseconds
 #include <cstdio>     // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
 #include <errno.h>    // for errno
 #include <functional> // for bind, function
@@ -18,6 +19,7 @@
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
 #include <sys/stat.h> // for stat
+#include <thread>     // for sleep_for
 #include <unistd.h>   // for gethostname, sleep
 
 
@@ -144,8 +146,10 @@ void rawFileRead::main_thread() {
             buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
 
+            // sleep_for, not usleep: useconds_t is 32-bit, so a period past
+            // ~4.29 s would silently truncate (and POSIX.1-2008 dropped usleep).
             if (frame_period_us > 0)
-                usleep(frame_period_us); // realtime-pace the replay
+                std::this_thread::sleep_for(std::chrono::microseconds(frame_period_us));
         }
 
         fclose(fp);

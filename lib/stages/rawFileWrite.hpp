@@ -23,6 +23,10 @@
  * @conf file_ext  String. File extension.
  * @conf num_frames_per_file Int. No of frames to write into a single file.
  * @conf exit_after_n_files  Int. Stop writing after this many files, Default 0 = unlimited files.
+ * @conf prefix_hostname    Bool. Prefix the filename with the hostname. Default true.
+ * @conf allow_ndarray      Bool. Write an NDArray buffer's raw bytes instead of failing.
+ *                          Default false. The frame descriptor is NOT written, so the
+ *                          reader has to know the shape out of band.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds

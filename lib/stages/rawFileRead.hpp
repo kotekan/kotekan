@@ -12,7 +12,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <string> // for string, basic_string
+#include <stdint.h> // for uint64_t
+#include <string>   // for string, basic_string
 
 /**
  * @class rawFileRead
