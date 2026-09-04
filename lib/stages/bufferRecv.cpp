@@ -304,7 +304,10 @@ void bufferRecv::main_thread() {
     // Bind even when connections from a previous run are still in TIME_WAIT.
     // Without this, a restart within the TIME_WAIT window (a couple of minutes)
     // fails with EADDRINUSE on a port nothing is listening on any more, which
-    // is exactly the window a supervisor restarts kotekan in.
+    // is exactly the window a supervisor restarts kotekan in. This is safe:
+    // SO_REUSEADDR on a listening socket only permits rebinding over TIME_WAIT,
+    // it does not let two live listeners share a port -- that needs
+    // SO_REUSEPORT, which is not set here.
     {
         int reuse = 1;
         if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {

@@ -71,6 +71,15 @@ restServer::restServer() : main_thread() {
 restServer::~restServer() {
     _restServer_alive.store(false, std::memory_order_release);
     stop_thread = true;
+    // A server that was never started has no thread to join, and join() on a
+    // non-joinable thread throws -- which used to print two warnings on the way out.
+    // That is now an ORDINARY path, not an anomaly: --check-config and --dry-run both
+    // build the REST endpoints without ever starting the server, so warning about it
+    // means every successful check-config run ends in warnings it did nothing wrong to
+    // earn. Keep the warning for the case it was written for: a join that fails on a
+    // thread that really was running.
+    if (!main_thread.joinable())
+        return;
     try {
         main_thread.join();
     } catch (std::exception& e) {
@@ -723,6 +732,15 @@ static void maybe_add_cors_headers(struct evhttp_request* request) {
 }
 
 void restServer::set_server_affinity(Config& config) {
+    // If the server was never started there is no thread to pin, and
+    // main_thread.native_handle() is 0 -- passing that to pthread_setaffinity_np
+    // segfaults. This is the case when a pipeline is built without being run
+    // (see kotekan --dry-run).
+    if (!main_thread.joinable()) {
+        DEBUG_NON_OO("restServer: not started, skipping affinity.");
+        return;
+    }
+
     vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>("/rest_server", "cpu_affinity");
 
     cpu_set_t cpuset;

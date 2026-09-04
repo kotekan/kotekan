@@ -11,6 +11,7 @@
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>   // for assert
+#include <chrono>     // for microseconds
 #include <cstdio>     // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
 #include <errno.h>    // for errno
 #include <functional> // for bind, function
@@ -18,6 +19,7 @@
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
 #include <sys/stat.h> // for stat
+#include <thread>     // for sleep_for
 #include <unistd.h>   // for gethostname, sleep
 
 
@@ -46,6 +48,13 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
 
     // Interrupt Kotekan if run out of files to read.
     end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
+
+    // Optional replay pacing: sleep this many microseconds after publishing each frame,
+    // so a captured file replays at roughly the rate it was acquired at. 0 (the default)
+    // reads as fast as the downstream pipeline drains, which is what you want unless
+    // something downstream is tied to the wall clock. See the class doc: this is a floor
+    // on the frame period, not a rate lock.
+    frame_period_us = config.get_default<uint64_t>(unique_name, "frame_period_us", 0);
 }
 
 rawFileRead::~rawFileRead() {}
@@ -137,6 +146,11 @@ void rawFileRead::main_thread() {
                  buf->buffer_name, frame_id);
             buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
+
+            // sleep_for, not usleep: useconds_t is 32-bit, so a period past
+            // ~4.29 s would silently truncate (and POSIX.1-2008 dropped usleep).
+            if (frame_period_us > 0)
+                std::this_thread::sleep_for(std::chrono::microseconds(frame_period_us));
         }
 
         fclose(fp);
