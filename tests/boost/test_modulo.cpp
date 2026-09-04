@@ -21,16 +21,22 @@ static void check_sequence_survives_2_32(unsigned n) {
     // implementation overflows its int at the third chunk and never recovers.
     M x(n);
     int64_t total = 0;
+    // BOOST_REQUIRE, not BOOST_CHECK: against the old headers this loop is
+    // signed-overflow UB, and at -O2 gcc turns a CHECK failure here into a
+    // non-terminating loop that emits gigabytes of output. The CI runner
+    // captures stdout into a shell variable, so a soft check would OOM the
+    // runner instead of reporting a failed test.
     for (int chunk = 0; chunk < 9; ++chunk) {
         x += 1000000000;
         total += 1000000000;
-        BOOST_CHECK_EQUAL((int)x, (int)(total % n));
+        BOOST_REQUIRE_EQUAL((int)x, (int)(total % n));
+        BOOST_REQUIRE((int)x >= 0 && (int)x < (int)n);
     }
     // ...and keeps counting in step after the wrap.
     for (int k = 0; k < 100; ++k) {
         ++x;
         ++total;
-        BOOST_CHECK_EQUAL((int)x, (int)(total % n));
+        BOOST_REQUIRE_EQUAL((int)x, (int)(total % n));
     }
 }
 
@@ -74,11 +80,48 @@ static void check_basic_semantics(unsigned n) {
     BOOST_CHECK(x < y);
 }
 
+// An unsigned T has no negative intermediate to reduce, so the decrement path
+// has to be right in the arithmetic rather than in a sign fixup: at 0 a
+// decrement must land on n-1, not on ((max value) % n) -- which is 15, not 23,
+// for size_t on a 24-frame base, the same wrong answer the old signed code gave.
+template<typename M>
+static void check_unsigned_semantics(unsigned n) {
+    M x(n);
+    BOOST_CHECK_EQUAL((uint64_t)x, 0u);
+    --x;
+    BOOST_CHECK_EQUAL((uint64_t)x, (uint64_t)n - 1);
+    x -= 1;
+    BOOST_CHECK_EQUAL((uint64_t)x, (uint64_t)n - 2);
+    ++x;
+    ++x;
+    BOOST_CHECK_EQUAL((uint64_t)x, 0u);
+    // A delta far larger than the base, and larger than a 32-bit type.
+    x += 5000000000LL;
+    BOOST_CHECK_EQUAL((uint64_t)x, (uint64_t)(5000000000LL % n));
+}
+
 BOOST_AUTO_TEST_CASE(_modulo_basic) {
     check_basic_semantics<modulo<int>>(24);
     check_basic_semantics<N2::modulo<int>>(24);
     check_basic_semantics<modulo<int>>(4);
     check_basic_semantics<modulo<int>>(7);
+}
+
+BOOST_AUTO_TEST_CASE(_modulo_unsigned_base) {
+    check_unsigned_semantics<modulo<size_t>>(24);
+    check_unsigned_semantics<N2::modulo<size_t>>(24);
+    check_unsigned_semantics<modulo<unsigned>>(7);
+}
+
+// A delta whose magnitude exceeds T: the increment is reduced before it is
+// combined, so it cannot overflow the stored value on the way in.
+BOOST_AUTO_TEST_CASE(_modulo_delta_larger_than_type) {
+    modulo<int> x(24);
+    x += int64_t(5000000000LL);
+    BOOST_CHECK_EQUAL((int)x, (int)(5000000000LL % 24));
+    modulo<int> y(24);
+    y -= int64_t(5000000000LL);
+    BOOST_CHECK_EQUAL((int)y, (int)((24 - 5000000000LL % 24) % 24));
 }
 
 BOOST_AUTO_TEST_CASE(_modulo_survives_int_wrap) {
