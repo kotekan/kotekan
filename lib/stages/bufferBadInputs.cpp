@@ -27,7 +27,9 @@ REGISTER_KOTEKAN_STAGE(bufferBadInputs);
 
 bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)),
+    element_order(config.get_default<ElementOrder>(unique_name, "element_order",
+                                                   ElementOrder::CHIMEBeamformer)) {
 
     num_elements = config.get<size_t>(unique_name, "num_elements");
 
@@ -46,7 +48,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     // cylinder order is already gives the station id
     for (station_id_t cyl_idx = 0; cyl_idx < num_elements; ++cyl_idx) {
         reorder.at(cyl_idx) =
-            tel.station_id_to_element_index(cyl_idx, ElementOrder::CHIMEBeamformer);
+            tel.station_id_to_element_index(cyl_idx, element_order);
     }
 
     // Set the frame description
