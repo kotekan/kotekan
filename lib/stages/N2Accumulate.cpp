@@ -1077,9 +1077,9 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
                             // Populate the visibility matrix, remember the upper-tri element
                             // is the conjugate of the lower-tri element.
-                            N2::cfloat v{
-                                (float)_vis[2 * idx],
-                                (float)(swapped ? +_vis[2 * idx + 1] : -_vis[2 * idx + 1])};
+                            N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
+                            if (swapped)
+                                v = std::conj(v);
                             out_vis.vis[n2_idx] = ins * std::conj(v);
 
                             out_vis.weight[n2_idx] = calc_out_vis_weight(idx, v);
