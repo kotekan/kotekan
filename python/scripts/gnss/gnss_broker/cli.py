@@ -2058,6 +2058,29 @@ def build_parser(description):
                          "ample against a 0.2-0.3 s lag -- but not so large that the "
                          "linear range-rate propagation in cp_predicted degrades (range "
                          "acceleration ~0.2 m/s^2 gives ~0.4 m = 0.013 chips at 2 s).")
+    ap.add_argument("--dr-clock-freeze-s", type=float, default=6.0,
+                    help="HOLD the dead-reckon receiver clock solve and its drift EMA while "
+                         "the newest telemetry hop has not advanced for this many seconds "
+                         "(0 disables). This is the CONTROL that --fe-axis-stale-s's log "
+                         "line always implied and never had (2026-09-03 19:37): the F-engine "
+                         "stopped streaming, the detections froze, the orbit model kept "
+                         "moving with the wall clock, and the clock solve read the sky's "
+                         "motion as clock drift -- -0.3543 chips/s, accepted in 0.05-EMA "
+                         "steps each inside the 1.0 bound, then held for 17 h because a "
+                         "clock walking 10 chips between solves seeds every tracker "
+                         "off-peak and nothing ever re-measured it. Same-band adoption "
+                         "spread it to gal_e5a and bds_b2a in 10 s. While frozen, raw_prev "
+                         "is dropped so no pair of solves is ever differenced across the "
+                         "gap. The axis normally advances every ~2 s cycle; 6 s is three "
+                         "missed advances, and a held state costs nothing on frozen data.")
+    ap.add_argument("--dr-drift-max-age-s", type=float, default=600.0,
+                    help="A dead-reckon clock DRIFT that has not been re-measured (or "
+                         "re-adopted) for this many seconds EXPIRES back to the f_chip*(l-a) "
+                         "model (0 disables). The drift EMA is refreshed only by consecutive "
+                         "raw solves, and a WRONG drift is exactly what prevents them, so a "
+                         "long-unrefreshed value is not steady, it is unmeasurable -- and the "
+                         "longer it stands the likelier that is the reason. Breaks the "
+                         "self-sustaining loop regardless of how the poison got in.")
     ap.add_argument("--fe-axis-stale-s", type=float, default=30.0,
                     help="Log loudly when the newest telemetry hop -- the thing t_now_abs is "
                          "built from -- has not advanced for this many seconds. 0 disables. "

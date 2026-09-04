@@ -122,6 +122,37 @@ def dr_clock_quality(ctx):
     ⚠️ A PRIME IS NOT A MEASUREMENT. Seeding the clock with a fixed value silences the alarm that
     the solve is failing rather than making it succeed -- `--dr-clock-chips 0.0` did exactly that
     once, and the snap it hid was real."""
+    # ⚠️⚠️ FROZEN DATA MUST FREEZE THE STATE (2026-09-03 19:37, the 17-hour drift poison).
+    # The F-engine stopped streaming; every instance's pow_hop froze; `*** TIME BASE
+    # FROZEN` printed on schedule -- LOG ONLY -- and 20 s later this function accepted the
+    # sky's motion against the frozen detections as CLOCK motion: the EMA below walked
+    # -0.005 -> -0.031 -> -0.26 -> -0.3543 chips/s (each step inside the 1.0 bound) and
+    # then held -0.3543 for 17 HOURS, because a clock walking 10 chips between solves
+    # seeds every tracker off-peak, so no solve ever came to re-measure it. Same-band
+    # adoption then copied it to gal_e5a and bds_b2a within 10 s (the cross-band
+    # bootstrap does not carry drift, which is why the OTHER five chains were spared and
+    # the fault wore a band-split costume). #75 (2026-08-18) was this same class, and the
+    # detector it produced was left log-only -- the #98 shape. This is the control: while
+    # the newest telemetry hop has not advanced, no raw solve is applied, no drift is
+    # differenced, and `raw_prev` is dropped so the first pair across the gap is never
+    # taken. The staleness stamp is the time the hop LAST ADVANCED (fe_axis[0][1]), the
+    # same clock as now_w, so "frozen" here is exactly what that guard means by it.
+    _fe = ctx.fe_axis[0] if getattr(ctx, "fe_axis", None) else None
+    _freeze_s = getattr(ctx.args, "dr_clock_freeze_s", 0.0) or 0.0
+    if (_fe is not None and _freeze_s > 0.0 and ctx.drp.now_w is not None
+            and ctx.drp.now_w - _fe[1] > _freeze_s):
+        if ctx.dr_state.pop("raw_prev", None) is not None or not ctx.dr_state.get("clk_frozen"):
+            _log("dead-reckon: time base frozen %.0f s (hop %.0f) -- receiver clock solve "
+                 "and drift EMA HELD; raw_prev dropped so nothing is differenced across the "
+                 "gap (--dr-clock-freeze-s %.1f)"
+                 % (ctx.drp.now_w - _fe[1], _fe[0], _freeze_s))
+        ctx.dr_state["clk_frozen"] = True
+        return
+    if ctx.dr_state.pop("clk_frozen", False):
+        _log("dead-reckon: time base advancing again -- clock solve RESUMES from the held "
+             "state (drift %s)"
+             % ("%+.4f chips/s" % ctx.dr_state["drift"]
+                if ctx.dr_state.get("drift") is not None else "unmeasured"))
     if len(ctx.drp.offs) >= ctx.args.dr_min_sats and ctx.drp.raw_clk is not None:
         prev_raw = ctx.dr_state.get("raw_prev")
         # A primed drift is authoritative (the GPSDO rate is a band constant):
@@ -156,6 +187,7 @@ def dr_clock_quality(ctx):
                 ctx.dr_state["drift"] = (d_est if ctx.dr_state.get("drift") is None
                                      else ctx.dr_state["drift"]
                                      + 0.05 * (d_est - ctx.dr_state["drift"]))
+                ctx.dr_state["drift_t"] = ctx.drp.now_w
         ctx.dr_state["raw_prev"] = (ctx.drp.raw_clk, ctx.drp.now_w)
         # SNAP ON THE FIRST MEASUREMENT, whether or not a prime is standing.
         # `raw` is a circular median over >= --dr-min-sats satellites, so it is a
@@ -285,8 +317,12 @@ def dr_clock_adopt(ctx):
                          - ctx.code_len / 2) if prev is not None else None)
             ctx.dr_state["clk"] = new_clk
             ctx.dr_state["clk_t"] = ctx.t0
-            if dr.get("drift_chips_s") is not None:
-                ctx.dr_state["drift"] = float(dr["drift_chips_s"])
+            # The donor's drift comes WITH its clock, "unknown" included: keeping our own
+            # stale value when the donor has none is how a poisoned drift outlived its
+            # donor's (2026-09-03).
+            ctx.dr_state["drift"] = (float(dr["drift_chips_s"])
+                                     if dr.get("drift_chips_s") is not None else None)
+            ctx.dr_state["drift_t"] = ctx.t0
             # Loud on a real MOVE, quiet on the steady state. A jump is the
             # signature of an F-engine restart re-establishing frame 0, which is
             # precisely the event the hand-primed constant used to survive wrongly.
@@ -1570,6 +1606,27 @@ def stage_dead_reckon(ctx):
             # below), falling back to the f_chip*(l-a) model until measured -- the
             # modeled value left a persistent EMA lag (~0.6 chips at first deploy),
             # outside the BOC DLL capture range.
+            # ⚠️ A DRIFT IS A MEASUREMENT WITH AN EXPIRY (2026-09-03). The EMA is only
+            # refreshed by consecutive raw solves, and a wrong drift PREVENTS raw solves
+            # (it walks the seeds off-peak), so an unrefreshed value is not "steady" --
+            # it is unmeasurable, and the longer it stands the more likely that is why.
+            # -0.3543 chips/s stood for 17 h. Past --dr-drift-max-age-s it reverts to the
+            # f_chip*(l-a) model, which is what a chain that never measured one uses.
+            _dmax = getattr(ctx.args, "dr_drift_max_age_s", 0.0) or 0.0
+            _dt = ctx.dr_state.get("drift_t")
+            if (_dmax > 0.0 and ctx.dr_state.get("drift") is not None
+                    and _dt is not None and ctx.drp.now_w - _dt > _dmax):
+                _log("dead-reckon: clock drift %+.4f chips/s last MEASURED %.0f s ago -- "
+                     "EXPIRED (--dr-drift-max-age-s %.0f); back to the (l-a) model %+.4f "
+                     "until a fresh pair of solves"
+                     % (ctx.dr_state["drift"], ctx.drp.now_w - _dt, _dmax,
+                        ctx.args.chip_rate_hz * ctx.drp.la))
+                ctx.dr_state["drift"] = None
+                ctx.dr_state.pop("drift_t", None)
+            elif (_dmax > 0.0 and ctx.dr_state.get("drift") is not None and _dt is None):
+                # a drift that predates the stamp (restored state, or set by a path that
+                # does not stamp): give it one full lifetime from now rather than forever
+                ctx.dr_state["drift_t"] = ctx.drp.now_w
             ctx.drp.drift = ctx.dr_state.get("drift")
             if ctx.drp.drift is None:
                 ctx.drp.drift = ctx.args.chip_rate_hz * ctx.drp.la
@@ -1983,8 +2040,10 @@ def stage_dead_reckon(ctx):
                     # prime is spent. If this chain ever gains detectors it should refine by
                     # EMA from here, not snap away from a good number.
                     ctx.dr_state.pop("clk_primed", None)
-                    if ctx.drp.rx_sib.extra.get("drift") is not None:
-                        ctx.dr_state["drift"] = float(ctx.drp.rx_sib.extra["drift"])
+                    # drift travels with the clock, "unknown" included (see dr_clock_adopt)
+                    _sd = ctx.drp.rx_sib.extra.get("drift")
+                    ctx.dr_state["drift"] = float(_sd) if _sd is not None else None
+                    ctx.dr_state["drift_t"] = ctx.drp.rx_sib.t
             elif ctx.drp.rx_sib is not None:
                 # Same band, different code length: the chips are modular in a different
                 # period, so the number is numerically fine and physically meaningless.
