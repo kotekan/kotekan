@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <unistd.h>   // for gethostname
 #include <stdexcept>
 #include <string>
 
@@ -256,6 +257,43 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             W.nrec.assign((size_t)n, 0);
             W.phi0.assign((size_t)n, 0.0);
             W.nreanchor.assign((size_t)n, 0);
+        }
+        // THE PUSH LEG (hpp). Optional: with no cube_buf the cube is REST-only, which is what
+        // an interactive bench wants and is NOT an archive.
+        // THE FULL ADDRESS: <hostname>/<stage>. The stage name is unique only within a node
+        // and the far side has ONE bufferRecv for the whole fleet.
+        {
+            char hn[64] = {0};
+            gethostname(hn, sizeof(hn) - 1);
+            char* dot = std::strchr(hn, '.');
+            if (dot)
+                *dot = '\0'; // short name: "cx19", not "cx19.site.chord-observatory.ca"
+            _cube_chain = config.get_default<std::string>(unique_name, "beam_cube_chain",
+                                                          std::string(hn) + "/" + unique_name);
+        }
+        _cube_gpu = config.get_default<int>(unique_name, "beam_cube_gpu", -1);
+        _cube_max_bins = std::max(_cube_bins,
+                                  config.get_default<int>(unique_name, "beam_cube_max_bins",
+                                                          _cube_bins));
+        _cube_max_prn = std::max(n, config.get_default<int>(unique_name, "beam_cube_max_prn", n));
+        const std::string cbuf = config.get_default<std::string>(unique_name, "cube_buf", "");
+        if (!cbuf.empty()) {
+            _cube_out_buf = buffer_container.get_buffer(cbuf);
+            _cube_out_buf->register_producer(unique_name);
+            const size_t need = gnss::cube_frame_bytes(_cube_max_prn, _cube_max_bins, _n_elements);
+            if ((size_t)_cube_out_buf->frame_size < need) {
+                FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: cube_buf needs a {:d} B frame "
+                            "({:d} PRN x {:d} bin x {:d} elem); {:s} is {:d} B. The generator "
+                            "sizes this from gnss::cube_frame_bytes -- regenerate the config.",
+                            unique_name, need, _cube_max_prn, _cube_max_bins, _n_elements,
+                            cbuf, (size_t)_cube_out_buf->frame_size);
+                return;
+            }
+            INFO("GnssGpuRecordAssemble[{:s}]: beam-cube PUSH leg on -> {:s} ({:d} B/frame, "
+                 "~{:.2f} MB/s at this window length); backpressure DROPS and the loss is "
+                 "counted into the next frame",
+                 unique_name, cbuf, need,
+                 need / ((double)_cube_win_samples / _sample_rate) / 1e6);
         }
         INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} subband bin(s) "
              "({:d} channel(s), width {:d}) x {:d} element(s); COHERENT + incoherent, "
@@ -1185,9 +1223,111 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
     if (C.w0 < 0)
         C.w0 = wstart;
     C.w1 = wstart;
-    if (idx > _cube_max_idx)
+    if (idx > _cube_max_idx) {
+        // The PREVIOUS window is now provably complete -- a later one has opened, which is the
+        // only local evidence that no more records are coming for it. Push it. Done here, on
+        // the boundary crossing, so completeness is a property of the clock and not of any
+        // consumer's timing.
+        if (_cube_out_buf != nullptr && _cube_max_idx >= 0) {
+            const int64_t n2 = (int64_t)_cube_ring.size();
+            const CubeWindow& prev =
+                _cube_ring[(size_t)(((_cube_max_idx % n2) + n2) % n2)];
+            if (prev.idx == _cube_max_idx)
+                emit_cube_window(prev);
+        }
         _cube_max_idx = idx;
+    }
     return C;
+}
+
+void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
+    // Caller holds _cube_mtx.
+    //
+    // NON-BLOCKING ACQUIRE (hpp): this stage is in the real-time path, so a full buffer must
+    // cost the ARCHIVE a window, never cost the tracker a record. is_frame_empty() is a safe
+    // pre-check here because this stage is the buffer's only producer -- nothing else can take
+    // the slot between the test and the call.
+    if (!_cube_out_buf->is_frame_empty(_cube_out_id)) {
+        ++_cube_dropped;
+        // First drop, then every hundredth: a wedged far side would otherwise print at ~1 Hz
+        // per instance forever and drown the log -- and the count rides in the data anyway,
+        // so the log is a courtesy here, not the record.
+        if (_cube_dropped == 1 || _cube_dropped % 100 == 0)
+            WARN("beam-cube window {:d} DROPPED, output buffer full ({:d} lost since start). "
+                 "The next emitted frame's dropped_windows carries this, so the gap is SIZED "
+                 "in the archive rather than inferred from a hole in the index.",
+                 (long long)C.idx, (long long)_cube_dropped);
+        return;
+    }
+    uint8_t* f = _cube_out_buf->wait_for_empty_frame(unique_name, _cube_out_id);
+    if (f == nullptr)
+        return; // shutting down
+    const int mp = _cube_max_prn, mb = _cube_max_bins, ne = _n_elements;
+    std::memset(f, 0, gnss::cube_frame_bytes(mp, mb, ne)); // pad is ZERO, not stale bytes
+
+    auto i64 = [&](size_t off, int64_t v) { std::memcpy(f + off, &v, sizeof(v)); };
+    auto f64 = [&](size_t off, double v) { std::memcpy(f + off, &v, sizeof(v)); };
+    auto i32 = [&](size_t off, int32_t v) { std::memcpy(f + off, &v, sizeof(v)); };
+    i64(0, gnss::CUBE_VERSION);
+    i64(8, C.idx);
+    i64(16, C.w0);
+    i64(24, C.w1);
+    i64(32, _cube_dropped);
+    i64(40, (int64_t)_prns.size());
+    i64(48, (int64_t)_cube_bins);
+    i64(56, (int64_t)ne);
+    f64(64, (double)_cube_win_samples);
+    f64(72, _sample_rate);
+    i32(80, _cube_gpu);
+    i32(84, _cube_bin_width ? _cube_bin_width : 1);
+    std::strncpy((char*)f + 88, _cube_chain.c_str(), gnss::CUBE_CHAIN_CHARS - 1);
+
+    size_t off = gnss::CUBE_HEADER_BYTES;
+    // Doubles FIRST -- see gnssRecord.hpp: their alignment must not depend on max_bins/max_prn.
+    double*  phi0   = (double*)(f + off);               off += (size_t)mp * sizeof(double);
+    int32_t* fid_lo = (int32_t*)(f + off);              off += (size_t)mb * sizeof(int32_t);
+    int32_t* fid_hi = (int32_t*)(f + off);              off += (size_t)mb * sizeof(int32_t);
+    int32_t* prn    = (int32_t*)(f + off);              off += (size_t)mp * sizeof(int32_t);
+    int32_t* nrec   = (int32_t*)(f + off);              off += (size_t)mp * sizeof(int32_t);
+    int32_t* nre    = (int32_t*)(f + off);              off += (size_t)mp * sizeof(int32_t);
+    float*   w      = (float*)(f + off);                off += (size_t)mp * mb * sizeof(float);
+    float*   en     = (float*)(f + off);                off += (size_t)mp * mb * sizeof(float);
+    float*   coh_re = (float*)(f + off); off += (size_t)mp * mb * ne * sizeof(float);
+    float*   coh_im = (float*)(f + off); off += (size_t)mp * mb * ne * sizeof(float);
+    float*   incoh  = (float*)(f + off);
+
+    const int nc = (int)_spec_freq_ids.size();
+    for (int b = 0; b < _cube_bins && b < mb; ++b) {
+        const int c0 = _cube_bin_width ? b * _cube_bin_width : b;
+        const int c1 = _cube_bin_width ? std::min(nc, (b + 1) * _cube_bin_width) - 1 : b;
+        fid_lo[b] = _spec_freq_ids[c0];
+        fid_hi[b] = _spec_freq_ids[c1];
+    }
+    for (size_t p = 0; p < _prns.size() && (int)p < mp; ++p) {
+        // A slot with no records this window is left at prn = 0 -- SILENCE, not a row of zeros.
+        // Zeros would read downstream as a real measurement of no power, which is the one
+        // reading that must never be manufactured by a transport.
+        if (C.nrec[p] <= 0)
+            continue;
+        prn[p] = _prns[p];
+        nrec[p] = C.nrec[p];
+        nre[p] = C.nreanchor[p];
+        phi0[p] = C.phi0[p];
+        for (int b = 0; b < _cube_bins && b < mb; ++b) {
+            const size_t kb = p * _cube_bins + b;
+            w[p * mb + b] = (float)C.w[kb];
+            en[p * mb + b] = (float)C.energy[kb];
+            const size_t src = ((size_t)p * _cube_bins + b) * ne;
+            const size_t dst = ((size_t)p * mb + b) * ne;
+            for (int el = 0; el < ne; ++el) {
+                coh_re[dst + el] = (float)C.coh_re[src + el];
+                coh_im[dst + el] = (float)C.coh_im[src + el];
+                incoh[dst + el] = (float)C.incoh[src + el];
+            }
+        }
+    }
+    _cube_out_buf->mark_frame_full(unique_name, _cube_out_id);
+    _cube_out_id = (_cube_out_id + 1) % _cube_out_buf->num_frames;
 }
 
 

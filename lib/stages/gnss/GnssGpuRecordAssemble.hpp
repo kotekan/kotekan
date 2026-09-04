@@ -265,6 +265,40 @@ private:
     int64_t _cube_win_samples = 0;         ///< window length in F-engine samples
     int64_t _cube_max_idx = -1;            ///< newest index SEEN; complete windows are < this
     std::mutex _cube_mtx;                  ///< guards _cube_* between main_thread and REST
+    /// ── THE PUSH LEG: completed windows go OUT, they are not fetched ───────────────────
+    /// ⚠️ A POLLED ENDPOINT CANNOT PRODUCE A COMPLETE DATASET, and this stage's own
+    /// neighbourhood already learned that: task #59's leg exists because "the broker used to
+    /// make ~60 REST round trips per cycle and then infer which instance and which window each
+    /// reply described; #52, #53, #46 and the 6x error in the #33 carrier-rate feed were all
+    /// that inference going wrong." /get_beam_cube's ring is 8 windows ~ 8 seconds of
+    /// tolerance; any consumer stall longer than that loses those windows permanently, and
+    /// addressability makes the loss VISIBLE, never recoverable. So the archive path is a
+    /// push: a completed window is packed and bufferSent, and the address (chain, instance,
+    /// absolute window index, wstart) travels WITH the data on the F-engine's own clock.
+    /// The REST endpoint stays, demoted to interactive inspection.
+    ///
+    /// ⚠️ BACKPRESSURE MUST DROP, NEVER BLOCK (KV, 2026-09-04). This stage sits in the
+    /// real-time path; waiting for an empty frame would stall the tracker to protect an
+    /// archive, which is the wrong way round. So the acquire is non-blocking (is_frame_empty
+    /// first -- safe because this stage is the buffer's only producer) and a full buffer
+    /// increments `_cube_dropped`.
+    ///
+    /// ⚡ AND THE DROP COUNT IS CARRIED IN THE NEXT FRAME. An archive that silently loses
+    /// windows is worse than one that loses them loudly: "we have every record" then becomes a
+    /// claim nobody can check. The counter is cumulative since start, so a reader differences
+    /// consecutive frames to learn exactly how many windows fell in that gap, and a gap in the
+    /// window index that is NOT matched by a rise in the counter means the loss happened
+    /// somewhere else (bufferSend's drop_frames, the far side) -- a distinction worth having.
+    Buffer* _cube_out_buf = nullptr;
+    int _cube_out_id = 0;
+    int _cube_max_bins = 0;               ///< frame is sized for this many bins, zero-padded
+    int _cube_max_prn = 0;                ///< and this many PRN slots -- UNIFORM across senders
+    int64_t _cube_dropped = 0;            ///< windows lost to a full buffer, cumulative
+    std::string _cube_chain;              ///< "<host>/<stage>" stamped in every frame
+    int _cube_gpu = -1;                   ///< which GPU, for the reader's convenience
+    /// Pack one completed window into `_cube_out_buf` and mark it full. Caller holds _cube_mtx.
+    void emit_cube_window(const CubeWindow& C);
+
     /// Accumulate into the window owning `wstart`, opening/clearing the ring slot on a
     /// boundary crossing. Caller holds _cube_mtx.
     CubeWindow& cube_window_for(int64_t wstart);

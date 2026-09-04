@@ -416,6 +416,73 @@ constexpr int CHAN_L_RE = 6;     ///< LATE
 constexpr int CHAN_L_IM = 7;
 constexpr int CHAN_L_ENERGY = 8;
 
+// ---------------------------------------------------------------------------------------
+// BEAM-CUBE FRAME (2026-09-04) -- one completed ~1 s window, PUSHED not polled
+// ---------------------------------------------------------------------------------------
+/// One frame carries exactly one window of the (subband x element) cube from one instance.
+///
+/// ⚠️ THE ADDRESS TRAVELS WITH THE DATA. chain, gpu, window index and wstart are IN the frame,
+/// so the far side never infers which instance or which window it is holding -- the inference
+/// this replaces is what #52, #53, #46 and the #33 6x carrier-rate error all were.
+///
+/// ⚠️ UNIFORM SIZE ACROSS EVERY SENDER, deliberately, exactly as the #59 telemetry leg is: one
+/// bufferRecv, one port, one buffer on the far side, and no per-chain plumbing that can be
+/// wired up crooked. Chains carry between 1 and 7 covering channels, so the frame is sized for
+/// @c max_bins and the unused bins are zero -- the cost is a few zero rows, and the alternative
+/// is a per-chain frame size that must be kept in step in two places forever.
+///
+/// LAYOUT (little-endian, offsets in BYTES):
+///   0   int64   version (== CUBE_VERSION)
+///   8   int64   window index (absolute, = floor(wstart / win_samples))
+///   16  int64   wstart0, 24 int64 wstart1   -- first/last record's wstart in this window
+///   32  int64   dropped_windows CUMULATIVE  -- see GnssGpuRecordAssemble.hpp; difference
+///                                              consecutive frames to size a gap
+///   40  int64   n_prn, 48 int64 n_bin, 56 int64 n_elem   (actual, <= the max the frame holds)
+///   64  double  win_samples, 72 double sample_rate
+///   80  int32   gpu, 84 int32 bin_width
+///   88  char[CUBE_CHAIN_CHARS]  "<hostname>/<stage>", NUL-padded -- THE FULL ADDRESS.
+///                                 The stage name alone is unique only within a node, and the
+///                                 far side has one bufferRecv for the whole fleet, so the
+///                                 node has to be IN the frame; a sender identified only by
+///                                 the socket it arrived on is exactly the inference this
+///                                 layout exists to remove.
+///   then, all arrays sized by the MAX (zero-padded), in order:
+///     double  phi0[max_prn]                  -- the coherent sum's phase reference (#52)
+///     int32   freq_id_lo[max_bins], freq_id_hi[max_bins]
+///     int32   prn[max_prn], n_rec[max_prn], n_reanchor[max_prn]
+///     float   w[max_prn][max_bins]           -- (record, channel) term count
+///     float   energy[max_prn][max_bins]
+///     float   coh_re[max_prn][max_bins][n_elem], coh_im[...]   -- THE ARC
+///     float   incoh[max_prn][max_bins][n_elem]                 -- THE BEAM
+///
+/// ⚠️ float32 ON THE WIRE, not float16. The sums are accumulated in double and float32 keeps 7
+/// digits, which is ample for a power sum; half-float would need a library here for no gain,
+/// because the wire is not the constraint (0.9 -> 1.8 MB/s fleet-wide either way). If the
+/// ARCHIVE wants 77 GB/day rather than 155, the writer downconverts -- that is a storage
+/// decision and belongs where storage is decided, not baked into the transport.
+/// ⚠️ THE DOUBLES COME FIRST, AND THAT IS NOT COSMETIC. phi0 is a double, and if it follows
+/// the int32 arrays its offset is 136 + max_bins*8 + max_prn*12 -- 8-aligned only by accident
+/// of the chosen maxima. It happens to be aligned at (8, 32) and (7, 32), the values we run,
+/// and is MISALIGNED at (1, 1) and (5, 17). Reading a misaligned double through a cast pointer
+/// is undefined behaviour; on x86 it merely works, which is precisely why it would have
+/// survived every test here and failed somewhere else. The header is 8-aligned by
+/// construction, so putting the doubles immediately after it makes alignment a property of the
+/// layout rather than of the configuration.
+constexpr int64_t CUBE_VERSION = 1;
+constexpr int CUBE_CHAIN_CHARS = 48;
+constexpr size_t CUBE_HEADER_BYTES = 88 + CUBE_CHAIN_CHARS;
+
+/// Bytes in a beam-cube frame sized for @c max_prn PRN slots, @c max_bins subband bins and
+/// @c n_elem antennas. The ONE size rule -- the stage, the buffer and any reader all call this.
+constexpr size_t cube_frame_bytes(int max_prn, int max_bins, int n_elem) {
+    return CUBE_HEADER_BYTES
+           + (size_t)max_bins * 2 * sizeof(int32_t)               // freq_id lo/hi
+           + (size_t)max_prn * 3 * sizeof(int32_t)                // prn, n_rec, n_reanchor
+           + (size_t)max_prn * sizeof(double)                     // phi0
+           + (size_t)max_prn * max_bins * 2 * sizeof(float)       // w, energy
+           + (size_t)max_prn * max_bins * n_elem * 3 * sizeof(float); // coh_re/im, incoh
+}
+
 /// Floats per PRN for a record carrying @c n_elem antennas (@c n_elem 0 => the airspy layout).
 constexpr int record_stride(int n_elem) {
     return RECORD_FLOATS + n_elem * ELEM_FLOATS;
