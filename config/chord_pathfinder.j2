@@ -1723,3 +1723,37 @@ buffer_send_n2_full_1:
     server_port: 11027
     retry_time: 10.0
     drop_frames: true
+
+
+########################################################################################
+# GNSS beam-mapping branch (optional; off unless a node is named).
+#
+# Renders nothing by default, so every existing render of this file is byte-unchanged.
+# To include it:
+#
+#     kotekan -c config/chord_pathfinder.j2 -j '{"gnss_node": "cx19"}'
+#
+# gnss_node selects config/gnss/gnss_vars_<node>.j2 -- the variable data (channels, PRNs,
+# cores, ports, frame sizes) for that node -- and config/gnss/gnss_chain.j2 renders the
+# stage graph from it with loops. Structure lives in the include; numbers live in the
+# vars; nothing GNSS-specific is hard-coded here.
+#
+# MEASURED (config/gnss/README.md): 139 GNSS keys collapse to 31 patterns, and 69% of the
+# fields across those repeats are identical in every copy -- which is why this is a loop
+# over data rather than 100 KB of emitted YAML per node.
+#
+# WARNING, and it is the one mechanical constraint of the split: the vars must be IMPORTED
+# and re-bound here, not merely included. Jinja passes this file's context DOWN into an
+# include but does not export that include's assignments back UP, so an included vars file
+# leaves `gnss` undefined inside the chain template. Hence two lines, not one.
+#
+# The branch adds ~137 blocks (5 signal chains x 2 GPUs, a per-GPU acquisition search leg,
+# and a metadata pool) and touches nothing above it: it taps host_voltage_ringbuffer and
+# host_voltage_buffer_<gpu> as additional CONSUMERS, so the N^2 path is unaffected.
+# scripts/gnss/j2_chain_equiv.py checks this render field-by-field against the config the
+# Python generator emits today.
+{% if gnss_node is defined %}
+{% import "gnss/gnss_vars_" ~ gnss_node ~ ".j2" as gnss_vars %}
+{% set gnss = gnss_vars.gnss %}
+{% include "gnss/gnss_chain.j2" %}
+{% endif %}

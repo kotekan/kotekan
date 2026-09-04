@@ -26,6 +26,26 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
                 -Wl,--no-whole-archive)
     if(ASDF_CXX_FOUND)
         target_link_libraries(kotekan PRIVATE blosc)
+        # asdf-cxx's pkg-config declares -lblosc (c-blosc 1.x), but SOME INSTALLS of the same
+        # version are compiled against c-blosc2 and reference blosc2_schunk_* out of ndarray.cxx.
+        # Measured 2026-08-05: cx19's libasdf-cxx.a (2026-01-20) needs 2 blosc1 symbols and no
+        # blosc2; cf06's (2026-01-22, same declared version 8.0.0) needs 7 blosc2 symbols. Same
+        # kotekan flags, same CMake cache, different library -- so this cannot be detected from
+        # the .pc file, only from the archive.
+        #
+        # Link blosc2 too where it exists. --no-as-needed because the reference is from asdf-cxx's
+        # archive, which the linker has not seen yet at this point in the line, so the .so would
+        # otherwise be dropped as unused. push-state/pop-state rather than a bare --as-needed
+        # afterwards: --as-needed is positional and sticky, so asserting it here would silently
+        # apply to every library that follows (and would cancel the --no-as-needed that
+        # CMAKE_LINK_WHAT_YOU_USE puts at the front of the line). pop-state restores whatever the
+        # toolchain default was. Link the resolved path, not -lblosc2: find_library searches CMake's
+        # prefixes, which the linker's own -l search does not.
+        find_library(BLOSC2_LIB blosc2)
+        if(BLOSC2_LIB)
+            target_link_libraries(kotekan PRIVATE "-Wl,--push-state,--no-as-needed" ${BLOSC2_LIB}
+                                                  "-Wl,--pop-state")
+        endif()
     endif()
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(kotekan PRIVATE -Wl,-all_load kotekan_libs)

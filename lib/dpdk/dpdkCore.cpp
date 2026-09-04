@@ -62,12 +62,24 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     nic_rx_nombuf_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_nic_rx_nombuf_total", unique_name, {"port"})),
     nic_link_up_metric(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_dpdk_nic_link_up", unique_name, {"port"})) {
+        "kotekan_dpdk_nic_link_up", unique_name, {"port"})),
+    workers_active_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_workers_active", unique_name)),
+    workers_expected_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_workers_expected", unique_name)),
+    worker_packet_errors_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_worker_packet_errors_total", unique_name)) {
 
     uint32_t num_mbufs = config.get_default<uint32_t>(unique_name, "num_mbufs", 1024);
     const uint32_t mbuf_cache_size =
         config.get_default<uint32_t>(unique_name, "mbuf_cache_size", 250);
     burst_size = config.get_default<uint32_t>(unique_name, "burst_size", 32);
+    // Default TRUE: a node that has silently lost a worker is worse than one that stopped
+    // (see the note at exit_loop). Set false to keep the pre-2026-08-15 limp-on behaviour.
+    exit_on_worker_failure =
+        config.get_default<bool>(unique_name, "exit_on_worker_failure", true);
+    abort_worker_on_handler_error =
+        config.get_default<bool>(unique_name, "abort_worker_on_handler_error", false);
     rx_ring_size = config.get_default<uint32_t>(unique_name, "rx_ring_size", 512);
     tx_ring_size = config.get_default<uint32_t>(unique_name, "tx_ring_size", 512);
 
@@ -296,6 +308,8 @@ void dpdkCore::create_workers(bufferContainer& buffer_container) {
         worker_id++;
     }
     active_workers = worker_id;
+    // Kept so a LOST worker is reportable as "n of N", not just a bare survivor count.
+    num_workers = worker_id;
 }
 
 void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
@@ -383,6 +397,33 @@ void dpdkCore::main_thread() {
 
         // Poll the NIC hardware counters and link state for each port.
         update_port_stats();
+
+        // ---- IS THIS NODE STILL WHOLE? (2026-08-15) --------------------------------
+        // Publish it every cycle so a dead worker is one curl away rather than a
+        // gdb backtrace, and refuse to run on quietly with a starved port. A node that
+        // has lost a worker is dropping ~all of that port's packets: for the GNSS
+        // chains AND for the production N2 correlator on that GPU. Down loudly beats
+        // half-alive silently -- that state cost three reboots and a day of chasing a
+        // beam-amplitude column that scattered because a third of the fleet's element
+        // gains were a quarter of an hour stale.
+        const int32_t live = active_workers.load();
+        workers_active_metric.set(live);
+        workers_expected_metric.set(num_workers);
+        worker_packet_errors_metric.set(worker_packet_errors.load());
+        if (num_workers > 0 && live < num_workers) {
+            if (exit_on_worker_failure) {
+                FATAL_ERROR("DPDK: only {:d} of {:d} workers are alive -- this node is "
+                            "dropping nearly every packet on the starved port(s), for the "
+                            "GNSS chains and the N2 correlator alike. Stopping so the "
+                            "failure is visible and the process can be restarted. Set "
+                            "'exit_on_worker_failure: false' to run on regardless.",
+                            live, num_workers);
+            } else {
+                ERROR("DPDK: only {:d} of {:d} workers are alive -- the starved port's "
+                      "packets are being dropped at the ring.",
+                      live, num_workers);
+            }
+        }
     }
 
     // Wait for the lcores to join
@@ -568,15 +609,39 @@ int dpdkCore::lcore_rx(void* args) {
 
             for (uint16_t j = 0; j < num_rx; ++j) {
                 if (unlikely(local_worker->handle_packet(mbufs[j]) != 0)) {
+                    // DROP THE PACKET AND CARRY ON (2026-08-15). This used to jump to
+                    // exit_loop, deleting the receive thread for the rest of the run: one
+                    // packet the handler disliked cost ~99.5% of a port's data until
+                    // somebody noticed and rebooted the node. A capture process that
+                    // amputates its own inputs is strictly worse than one that keeps
+                    // running with a counter climbing -- an operator can SEE a counter.
+                    // Set abort_worker_on_handler_error to restore the old behaviour.
                     rte_pktmbuf_free(mbufs[j]);
-                    goto exit_loop;
+                    core->worker_packet_errors++;
+                    if (unlikely(core->abort_worker_on_handler_error))
+                        goto exit_loop;
+                    continue;
                 }
                 rte_pktmbuf_free(mbufs[j]);
             }
         }
     exit_loop:
 
-        INFO_NON_OO("Exiting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
+        // ⚠️ A WORKER THAT EXITS HERE NEVER COMES BACK, AND THE NODE DOES NOT NOTICE.
+        // handle_packet() returning non-zero is documented as "a serious error requiring
+        // shutdown", but the shutdown only happens once EVERY worker has died. Measured
+        // 2026-08-15 on cx19/cx42/cx43: two of four workers exited ~7 s after start, the
+        // lcores parked in eal_thread_wait_command() forever, their rings filled, and the
+        // distributor dropped 99.5% of that port's packets (219-335 MILLION) for HOURS --
+        // starving the entire GPU-0 pipeline, GNSS and the production N2 correlator alike,
+        // while the node kept answering REST and running its other GPU at 90%. It cost
+        // three node reboots and a day before anyone counted packets, because this line was
+        // INFO (invisible in a log flooded at frame rate) and nothing exported the fact.
+        // So: say it at ERROR, count it, and see exit_on_worker_failure in main_thread.
+        ERROR_NON_OO("DPDK WORKER DIED: worker_id {:d}, lcore {:d} exited on a handler error. "
+                     "Its ring will now fill and this port's packets will be DROPPED. "
+                     "{:d} of {:d} workers remain.",
+                     worker_id, lcore, core->active_workers.load() - 1, core->num_workers);
         core->active_workers--;
         if (core->active_workers == 0) {
             core->stop_thread = true;

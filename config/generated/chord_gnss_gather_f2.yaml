@@ -1,0 +1,62 @@
+cpu_affinity: &id001
+- 19
+- 24
+- 31
+- 57
+- 58
+- 59
+- 60
+- 61
+- 62
+- 63
+fleet_trim:
+  cpu_affinity:
+  - 59
+  in_buf: telem_buf
+  kotekan_stage: GnssFleetTrim
+  min_instances: 2
+  n_win: 4
+  post_targets:
+    gps_l5:
+    - http://127.0.0.1:12099/fake0/set_trim
+    - http://127.0.0.1:12099/fake1/set_trim
+gnss_pool:
+  kotekan_metadata_pool: GnssChanMetadata
+  num_metadata_objects: 4096
+log_level: info
+rest_server:
+  cpu_affinity: *id001
+  enable_cors: true
+  port: 12051
+telem_buf:
+  frame_size: 25200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 1024
+telem_gather:
+  cpu_affinity:
+  - 58
+  in_buf: telem_buf
+  kotekan_stage: GnssTelemGather
+  serve_host: 127.0.0.1
+  serve_port: 11061
+  stale_after_s: 5.0
+telem_recv:
+  buf: telem_buf
+  cpu_affinity:
+  - 19
+  - 24
+  - 31
+  - 57
+  drop_frames: true
+  kotekan_stage: bufferRecv
+  listen_port: 11060
+  num_threads: 4
+  use_config_tracker: false
+telescope:
+  name: ICETelescope
+  num_dishes: 1
+  num_polarizations: 1
+  query_gps: false
+  require_gps: false
+type: config

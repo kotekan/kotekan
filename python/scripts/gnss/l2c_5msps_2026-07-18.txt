@@ -1,0 +1,7 @@
+L2C-band GNSS capture (5 MSPS real, matches the live L2C pipeline front end)
+file: l2c_5msps_2026-07-18.bin  (120s), date: 2026-07-18
+device: airspy 0x744C60C821692F4F, ACTIVE antenna via EXTERNAL bias tee (dongle bias off)
+format: int16 real (airspy_rx -t 3), little-endian, NO header (PRE-flip)
+sample_rate: 5 MSPS real (-a 1); center 1227.6 MHz; IF = Fs/4 = 1.25 MHz after the (-1)^n flip
+gains: lna 11, mix 11, if 11 ; dither: ON (airspy_rx can't disable it)
+capture cmd: airspy_rx -t 3 -a 1 -f 1227.6 -l 11 -m 11 -v 11 -b 0 -s 0x744C60C821692F4F -n 600000000 -r <file>

@@ -200,11 +200,20 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
     voltage.check_metadata();
 
+    // Build the corrected metadata, THEN publish it. See cudaRFISKtilde::execute: this
+    // used to publish and then multiply time_downsampling_fpga in the published slot-0
+    // object, and every consumer of this ring -- cudaRFISKtilde among them -- could read
+    // it mid-correction. There the uncorrected value costs a factor rfi_downsampling_factor
+    // (256 on CHORD), which SKtilde then multiplies by 4 and republishes.
     // TODO: Set these metadata only once
-    rfi_S012.set_metadata(voltage.get_metadata());
-    const auto& rfi_S012_meta = rfi_S012.get_metadata();
-    rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
-                                              * rfi_downsampling_factor);
+    {
+        const std::shared_ptr<const chordMetadata> voltage_meta = voltage.get_metadata();
+        auto rfi_S012_meta = std::make_shared<chordMetadata>();
+        rfi_S012_meta->deepCopy(voltage_meta);
+        rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
+                                                  * rfi_downsampling_factor);
+        rfi_S012.set_metadata(rfi_S012_meta);
+    }
 
     // There is no poison value
     // if (poison_buffers)

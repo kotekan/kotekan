@@ -5,6 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "chordMetadata.hpp"
+#include "visUtil.hpp" // for ts_to_double
 #include "kotekanLogging.hpp"
 
 #include <atomic>
@@ -79,6 +80,14 @@ private:
     size_t mask;
 
     uint64_t marked_full_cursor = 0;
+
+    /// AXIS WATCHDOG (2026-08-31, cx19 port 1): an F-engine link can go onto a stale seq
+    /// axis MID-RUN as well as at the anchor, and the window then tracks it silently. Every
+    /// _axis_check_interval marked-full frames (~10 s) the frame's seq is converted to a
+    /// wall time and compared to the actual wall clock; a persistent multi-second skew is a
+    /// desynced F-engine board, throttled to one ERROR per 30 s.
+    static constexpr uint64_t _axis_check_interval = 256;
+    double _last_axis_skew_log = 0.0;
 
     std::vector<uint32_t> expected_stream_ids;
 
@@ -200,6 +209,22 @@ void FramePrefetchService::prefetcher_loop() {
             buf->mark_frame_full(unique_name, info.frame_id);
             receipt_bitmap_buf->mark_frame_full(unique_name, info.frame_id);
             marked_full_cursor++;
+
+            if (marked_full_cursor % _axis_check_interval == 0) {
+                const timespec frame_ts = Telescope::instance().to_time(info.start_seq);
+                const double skew = current_time() - ts_to_double(frame_ts);
+                const double now_ax = current_time();
+                if (std::abs(skew) > 5.0 && now_ax - _last_axis_skew_log > 30.0) {
+                    _last_axis_skew_log = now_ax;
+                    ERROR("FramePrefetchService {}: frames are being stamped {:.2f}s from the "
+                          "wall clock (port {}). The wire's seq axis is stale -- a desynced "
+                          "F-engine board -- and this GPU's records are too old for the fleet "
+                          "to bank even though every counter here looks healthy. Check the "
+                          "F-engine link feeding this port "
+                          "(scripts/gnss/port_axis_gate.py).",
+                          unique_name, skew, port);
+                }
+            }
 
             if (capture_n_frames > 0 && marked_full_cursor >= capture_n_frames) {
                 complete_flag = true;

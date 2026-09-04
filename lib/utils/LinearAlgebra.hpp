@@ -5,8 +5,11 @@
 #ifndef LINEARALGEBRA_HPP
 #define LINEARALGEBRA_HPP
 
+#include "kotekanLogging.hpp" // for WARN_NON_OO (the diagonal diagnostic)
 #include "visUtil.hpp"
 
+#include <atomic> // for atomic (the diagonal diagnostic counter)
+#include <cmath>  // for INFINITY, std::abs
 #include <blaze/Blaze.h>
 #include <complex>     // for complex
 #include <cstdint>     // for uint32_t
@@ -399,7 +402,47 @@ DynamicHermitian<MT> to_blaze_herm(const gsl_lite::span<MT>& data) {
     int ind = 0;
     for (uint32_t i = 0; i < N; i++) {
         for (uint32_t j = i; j < N; j++) {
-            A(i, j) = data[ind];
+            if (i == j) {
+                // ── DIAGONAL DIAGNOSTIC (2026-08-19, GNSS #89) ──────────────────────────
+                // A Hermitian diagonal must be REAL, and blaze enforces it: assigning a
+                // diagonal element with a non-zero imaginary part throws
+                // std::invalid_argument("Invalid assignment to diagonal matrix element").
+                // A diagonal element here is an AUTOCORRELATION, so imag == 0 is physics,
+                // not convention -- a violation means the data is wrong, not the matrix.
+                //
+                // ⚠️ WHY THIS LOGS INSTEAD OF THROWING. On 2026-08-18 that throw killed all
+                // six GNSS nodes within a minute of the eigen path first being given a
+                // consumer, while a stock node (cx47) ran the identical stage config at
+                // ~38 frames/s without complaint. So the difference is in OUR data, and an
+                // exception that aborts the process destroys the evidence needed to find
+                // it. Taking the real part is exactly what blaze would demand anyway; the
+                // point is to survive long enough to MEASURE the residue.
+                //
+                // Read the log line as a discriminator:
+                //   rel ~1e-7        -> float rounding; a tolerance bug, not corruption
+                //   rel large        -> real corruption; bisect by bringing our GNSS chains
+                //                       up one at a time (they share the GPU with run_n2k)
+                //   first frames only-> a startup race; the fix is a warm-up guard
+                const auto im = std::imag(data[ind]);
+                if (im != decltype(im)(0)) {
+                    static std::atomic<uint64_t> n_bad{0};
+                    const uint64_t k = n_bad++;
+                    if (k < 20 || (k % 10000) == 0) {
+                        const auto re = std::real(data[ind]);
+                        const double rel =
+                            re != decltype(re)(0) ? std::abs((double)im / (double)re) : INFINITY;
+                        WARN_NON_OO("to_blaze_herm: NON-REAL DIAGONAL at element {:d} of {:d} "
+                                    "-- re {:g}, im {:g}, |im/re| {:g} (occurrence {:d}). An "
+                                    "autocorrelation cannot have an imaginary part, so this "
+                                    "visibility is not Hermitian. Taking the real part and "
+                                    "continuing, to keep the evidence instead of aborting.",
+                                    i, N, (double)re, (double)im, rel, k + 1);
+                    }
+                }
+                A(i, j) = MT(std::real(data[ind]));
+            } else {
+                A(i, j) = data[ind];
+            }
             ind++;
         }
     }

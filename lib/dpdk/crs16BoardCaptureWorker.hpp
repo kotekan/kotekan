@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <immintrin.h>
+#include <unordered_map>
 
 
 /**
@@ -148,13 +149,65 @@ protected:
     const kotekan::FrameInfo* active_f0 = nullptr;
     const kotekan::FrameInfo* active_f1 = nullptr;
 
-    /// Sample-based FPGA seq monotonicity check. At each sample the seq must
-    /// be strictly greater than the previous sample's, otherwise we treat it
-    /// as an FPGA reset and shut down. Sampled every @c _seq_check_interval
-    /// packets, which at typical CRS packet rates is roughly once per second.
+    /// Sample-based FPGA seq monotonicity check, PER STREAM. At each sample this stream's
+    /// seq must exceed the previous sample FROM THE SAME STREAM -- one worker interleaves
+    /// several boards and each keeps its own counter, so a single shared scalar compared
+    /// different boards to each other and cried "FPGA reset" at ordinary inter-board skew
+    /// (see the note at the check). Sampled every @c _seq_check_interval packets, roughly
+    /// once per second at typical CRS rates; the map is touched only in that branch.
     static constexpr uint64_t _seq_check_interval = 500000;
-    uint64_t _last_check_seq = 0;
+    std::unordered_map<uint16_t, uint64_t> _last_check_seq_by_stream;
     uint64_t _seq_check_packet_count = 0;
+    /// Genuine backwards steps seen since start. NOT fatal (see the check) -- but a
+    /// sustained count is a real controller reset and the frames around it are suspect.
+    uint64_t seq_backwards_count = 0;
+    /// Rate limit for the "still waiting for stream IDs" warning (see first_run).
+    double _last_incomplete_warn = 0.0;
+
+    /// ⚠️ RATE LIMIT FOR THE OUT-OF-RANGE DROP -- THIS ONE TOOK NODES OFF THE AIR.
+    /// The drop below is a PER-PACKET condition: once the stream runs ahead of the two active
+    /// frames, EVERY packet takes that branch. Logged unthrottled at CRS rates that is
+    /// terabytes per hour -- measured 2026-08-16, /tmp/gnss_node.log at 2.7 TB on cx19 and
+    /// 2.0 TB on cx42, root filesystem full, both nodes dead. Deleting the file did not even
+    /// free the space, because the process still held the fd.
+    ///
+    /// The cascade is what makes it dangerous: a momentary stall puts the stream outside the
+    /// window, the drop logs per packet, the log fills the disk, and a node that might have
+    /// recovered on its own instead dies completely. cx19 came straight back to 88% GPU the
+    /// moment the disk was freed, so the drop was survivable and the LOG was not.
+    ///
+    /// One line per second, carrying the count since the last line so nothing is hidden -- the
+    /// rate is the diagnosis anyway, not any individual sequence number.
+    double _last_range_drop_log = 0.0;
+    uint64_t _range_drops_since_log = 0;
+    /// Total out-of-range drops, for the stats endpoint: a rising count is the real signal.
+    uint64_t range_drop_count = 0;
+    /// Same throttle for the prefetch-not-ready drop, which is also per packet.
+    double _last_prefetch_drop_log = 0.0;
+    uint64_t _prefetch_drops_since_log = 0;
+
+    /// AHEAD-RESYNC (2026-08-18). Max frames to advance in one go when the stream has moved
+    /// PAST the active window; 0 = off (the historical behaviour: drop and stay put).
+    ///
+    /// ⚠️ WHY THIS EXISTS. `advance()` below is reachable ONLY from the in-range path, so a
+    /// packet past the window is dropped and returns before anything can move the window
+    /// forward. That makes the state self-latching: once the stream is ahead, every packet is
+    /// ahead, and nothing ever brings the window back. Measured on cx19 port 1, 2026-08-16:
+    /// the FIRST stray packet was 5472 samples past the end -- less than ONE 8192-sample
+    /// frame, i.e. a single advance() would have recovered it -- and 25 hours later the
+    /// window still read the identical [123976286208, 123976302592] having dropped
+    /// 18,716,211,314 packets at ~195k/s, with GPU1 idle and cold and its whole pipeline
+    /// starved. The existing ERROR even names the state ("the window is not tracking the
+    /// stream") but only logs it.
+    ///
+    /// BEHIND is deliberately NOT resynced: those packets are genuinely late and the window
+    /// cannot rewind without corrupting frames already being filled.
+    uint32_t _resync_max_advances = 0;
+    /// Resyncs performed, for the stats endpoint. A rising count is a REAL fault upstream
+    /// (or a node that cannot keep up) even though the pipeline now survives it -- this must
+    /// stay visible, or the fix silently hides the thing it recovers from.
+    uint64_t resync_count = 0;
+    double _last_resync_log = 0.0;
 
     /**
      * @brief Copies one packet's payload into the output frame using non-temporal stores.
@@ -183,6 +236,11 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
     worker_id(worker_id), packet_size(config.get<uint32_t>(unique_name, "packet_size")),
     payload_size(config.get<uint32_t>(unique_name, "payload_size")),
     num_expected_stream_ids(config.get<uint32_t>(unique_name, "num_expected_stream_ids")) {
+
+    // Default 0 = OFF: this is the production N^2 receive path, so the recovery is opt-in
+    // and a node that does not set it behaves exactly as before.
+    _resync_max_advances =
+        config.get_default<uint32_t>(unique_name, "resync_max_advances", 0);
 
     out_buf->register_producer(unique_name);
     receipt_bitmap_buf->register_producer(unique_name);
@@ -271,15 +329,40 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // Sample-based FPGA seq monotonicity check: at each sample boundary the
     // current seq must be strictly greater than the previous sample's,
     // otherwise the FPGA likely reset.
+    // ⚠️ PER STREAM. The previous version kept ONE scalar for the whole worker and compared
+    // a sample against the sample 500,000 packets earlier -- but a worker interleaves
+    // `num_expected_stream_ids` boards (4 on CHORD), each with its OWN sequence counter, so
+    // consecutive samples routinely came from DIFFERENT boards. Any skew between boards then
+    // read as "the FPGA went backwards", and because that path was FATAL it killed the lcore:
+    // its ring filled, the distributor dropped ~99.5% of that port's packets, and the whole
+    // GPU pipeline (GNSS *and* the production N2 correlator) starved while the node kept
+    // answering REST. Measured 2026-08-15 on cx19/cx42/cx43 -- three reboots, a day of
+    // hunting, and it was never an FPGA fault at all: two numbers that were never the same
+    // measurement, compared. Keyed by stream_id the comparison is apples to apples.
+    //
+    // The map is touched only in the SAMPLED branch (once per _seq_check_interval packets),
+    // never per packet, so the fast path keeps its single increment.
     if (unlikely(++_seq_check_packet_count >= _seq_check_interval)) {
-        if (unlikely(_last_check_seq != 0 && seq_num < _last_check_seq)) {
-            FATAL_ERROR("Port: {:d}, Worker: {:d}; CRS FPGA seq went backwards ({:d} -> {:d}), "
-                        "controller likely reset, kotekan stopping...",
-                        port, worker_id, _last_check_seq, seq_num);
-            return -1;
-        }
-        _last_check_seq = seq_num;
         _seq_check_packet_count = 0;
+        uint64_t& last_seq = _last_check_seq_by_stream[stream_id];
+        if (unlikely(last_seq != 0 && seq_num < last_seq)) {
+            // ⚠️ AND NEVER FATAL. A capture process that deletes one of its own receive
+            // threads is strictly worse than one that keeps going: the array does not stop,
+            // it silently half-stops, which is the hardest failure to see. Count it, say it,
+            // resync this stream's baseline, drop the packet, carry on.
+            //
+            // ⚠️ A SUSTAINED count here IS still a real controller reset, and the frames
+            // written around it are suspect (the prefetch service keys frames by seq, so a
+            // genuine backwards jump misplaces data). This counter is the trigger for
+            // deciding to restart capture -- deliberately an operator/monitoring decision
+            // now, not an lcore suicide.
+            seq_backwards_count++;
+            WARN("Port: {:d}, Worker: {:d}, Stream: {:d}; CRS FPGA seq went backwards "
+                 "({:d} -> {:d}); resyncing this stream and continuing (count {:d}). A "
+                 "SUSTAINED count means a real controller reset and suspect frames.",
+                 port, worker_id, stream_id, last_seq, seq_num, seq_backwards_count);
+        }
+        last_seq = seq_num;
     }
 
     if (unlikely(first_run)) {
@@ -296,6 +379,21 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         }
 
         if (stream_ids_expected.size() < num_expected_stream_ids) {
+            // ⚠️ SAY SO. This branch consumes packets forever and produces NOTHING while it
+            // waits, so a worker that never sees all its streams looks exactly like a
+            // healthy busy worker: ring draining, packets counted, CPU spinning -- and its
+            // GPU idle with no frames, no log line and no metric. cx43 sat in precisely
+            // that state on 2026-08-15 (port 0 receiving 430k pkt/s, ring drops static,
+            // all workers alive, /gnss0_n2combine frozen) and it survived a restart, so it
+            // is deterministic rather than a race. One line a second names what is missing.
+            const double now = current_time();
+            if (now - _last_incomplete_warn > 1.0) {
+                _last_incomplete_warn = now;
+                WARN("Port: {:d}, Worker: {:d}; STILL WAITING to start capture -- seen "
+                     "{:d} of {:d} expected stream IDs. No frames are produced until the "
+                     "set is complete, so this GPU's pipeline stays idle.",
+                     port, worker_id, stream_ids_expected.size(), num_expected_stream_ids);
+            }
             return 0; // Wait for more packets to establish the full list
         }
 
@@ -307,6 +405,31 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         // but for now we just start well into the future.
         uint64_t future_seq = seq_num + 6000000; // About 30 second in the future.
         uint64_t start_seq = future_seq - (future_seq % time_samples_per_frame);
+
+        // AXIS SANITY AT THE ANCHOR (2026-08-31, cx19 port 1). The anchor trusts the wire's
+        // sequence number absolutely, and an F-engine link can come back from the switch-port
+        // bounce with its counter resumed ~25 s stale and zero payloads. Anchored to that,
+        // the capture tracks the stale axis forever while every health instrument stays
+        // green (full packet rate, zero drops, frames advancing in real time -- all zeros,
+        // stamped hundreds of frames old). The wall clock is the one reference the wire
+        // cannot fake: to_time(seq) must be ~now (the healthy axis reads ~0.1 s stale).
+        {
+            const timespec wire_ts = Telescope::instance().to_time(seq_num);
+            const double axis_skew_s = current_time() - ts_to_double(wire_ts);
+            if (std::abs(axis_skew_s) > 5.0) {
+                ERROR("Port: {:d}, Worker: {:d}; THE WIRE'S SEQ AXIS IS {:.2f}s FROM THE WALL "
+                      "CLOCK at the capture anchor (seq {:d}). This is an F-engine link fault "
+                      "(a desynced board counter), not a node fault: capture will faithfully "
+                      "track a stale axis and every packet/GPU counter will look healthy while "
+                      "this GPU's records are too old for the fleet to bank. Check the "
+                      "F-engine link feeding this port (scripts/gnss/port_axis_gate.py).",
+                      port, worker_id, axis_skew_s, seq_num);
+            } else {
+                INFO("Port: {:d}, Worker: {:d}; capture anchor axis skew {:+.3f}s vs wall "
+                     "(healthy is ~-0.1s)",
+                     port, worker_id, axis_skew_s);
+            }
+        }
         prefetch_service->start(start_seq, stream_ids_expected);
         first_run = false;
         INFO("Port: {:d}, Worker: {:d}; Starting prefetch service at sequence number {:d}", port,
@@ -345,10 +468,21 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         if (prefetch_service->has_error() || prefetch_service->is_complete())
             return -1;
 
+        // ⚠️ THROTTLED for the same reason as the out-of-range drop below: this is a
+        // per-PACKET branch, and an unthrottled line here is the same terabyte-per-hour
+        // failure mode with a different message.
         if (seq_num >= prefetch_service->get_start_seq()) {
-            WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because "
-                 "prefetch service is not ready (start_seq: {:d})",
-                 port, worker_id, seq_num, prefetch_service->get_start_seq());
+            _prefetch_drops_since_log++;
+            const double now_pf = current_time();
+            if (now_pf - _last_prefetch_drop_log > 1.0) {
+                WARN("Port: {:d}, Worker: {:d}; dropping packets, prefetch service not ready "
+                     "(start_seq {:d}) -- {:d} in the last {:.1f}s",
+                     port, worker_id, prefetch_service->get_start_seq(),
+                     _prefetch_drops_since_log,
+                     (_last_prefetch_drop_log > 0.0) ? (now_pf - _last_prefetch_drop_log) : 0.0);
+                _last_prefetch_drop_log = now_pf;
+                _prefetch_drops_since_log = 0;
+            }
         }
         return 0;
     }
@@ -376,12 +510,75 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             return 0;
         }
 
-        // Packet is outside the range of the two active frames, drop it
-        ERROR("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} outside active "
-              "frame range [{:d}, {:d}]",
-              port, worker_id, seq_num, active_f0->start_seq,
-              active_f1->start_seq + time_samples_per_frame);
+        // AHEAD-RESYNC: walk the window forward to the stream instead of dropping forever.
+        // Only when purely AHEAD (never rewind), and bounded, so a wild sequence number
+        // cannot make us spin the prefetch service through the whole ring. Each advance is
+        // the SAME operation the in-range path performs below, including the sfence.
+        if (_resync_max_advances > 0
+            && seq_num >= active_f1->start_seq + time_samples_per_frame) {
+            const uint64_t before = active_f0->start_seq;
+            uint32_t moved = 0;
+            while (moved < _resync_max_advances
+                   && seq_num >= active_f1->start_seq + time_samples_per_frame) {
+                _mm_sfence(); // NT stores complete before the frame is handed on
+                prefetch_service->advance();
+                active_f0 = prefetch_service->get_frame(0);
+                active_f1 = prefetch_service->get_frame(1);
+                moved++;
+                if (unlikely(active_f0 == nullptr || active_f1 == nullptr)) {
+                    if (prefetch_service->has_error() || prefetch_service->is_complete())
+                        return -1;
+                    active_f0 = nullptr;
+                    active_f1 = nullptr;
+                    return 0;
+                }
+            }
+            if (moved > 0) {
+                resync_count += moved;
+                const double now_rs = current_time();
+                if (now_rs - _last_resync_log > 1.0) {
+                    WARN("Port: {:d}, Worker: {:d}; RESYNC advanced {:d} frame(s) to follow the "
+                         "stream ({:d} -> {:d}, packet seq {:d}); {:d} total. The pipeline "
+                         "survives, but a rising count is a REAL upstream fault -- this used to "
+                         "be a permanent stall.",
+                         port, worker_id, moved, before, active_f0->start_seq, seq_num,
+                         resync_count);
+                    _last_resync_log = now_rs;
+                }
+            }
+        }
+
+        // STILL out of range -- behind (never recoverable), or ahead by more than the bound?
+        // Then drop, exactly as before. If the resync above brought us back in range this
+        // test is false and we fall through to the normal copy path.
+        if (seq_num < active_f0->start_seq
+            || seq_num >= active_f1->start_seq + time_samples_per_frame) {
+
+        // Packet is outside the range of the two active frames, drop it.
+        // ⚠️ THROTTLED -- see _last_range_drop_log. This is a per-PACKET condition and logging
+        // it per packet filled a 3.5 TB root filesystem and killed two nodes.
+        range_drop_count++;
+        _range_drops_since_log++;
+        const double now_rd = current_time();
+        if (now_rd - _last_range_drop_log > 1.0) {
+            const uint64_t ahead = (seq_num >= active_f1->start_seq + time_samples_per_frame)
+                                       ? seq_num - (active_f1->start_seq + time_samples_per_frame)
+                                       : 0;
+            const uint64_t behind = (seq_num < active_f0->start_seq)
+                                        ? active_f0->start_seq - seq_num : 0;
+            ERROR("Port: {:d}, Worker: {:d}; DROPPING PACKETS outside the active frame range "
+                  "[{:d}, {:d}] -- {:d} in the last {:.1f}s, {:d} total. This packet seq {:d} is "
+                  "{:d} ahead / {:d} behind. A SUSTAINED count means the window is not tracking "
+                  "the stream and this pipeline is producing nothing.",
+                  port, worker_id, active_f0->start_seq,
+                  active_f1->start_seq + time_samples_per_frame, _range_drops_since_log,
+                  (_last_range_drop_log > 0.0) ? (now_rd - _last_range_drop_log) : 0.0,
+                  range_drop_count, seq_num, ahead, behind);
+            _last_range_drop_log = now_rd;
+            _range_drops_since_log = 0;
+        }
         return -1;
+        } // end: still-out-of-range drop (resync above may have recovered instead)
     }
 
     // If we are at least 160 time samples past the start of the next frame,

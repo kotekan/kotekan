@@ -12,7 +12,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <string> // for string, basic_string
+#include <stdint.h> // for uint64_t
+#include <string>   // for string, basic_string
 
 /**
  * @class rawFileRead
@@ -44,6 +45,8 @@ private:
     bool prefix_hostname;
     // Interrupt Kotekan if run out of files to read
     bool end_interrupt;
+    // Realtime replay pacing: microseconds to sleep per frame (0 = unthrottled)
+    uint64_t frame_period_us;
 };
 
 #endif

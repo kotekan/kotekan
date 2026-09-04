@@ -1,7 +1,8 @@
 #include "fftwEngine.hpp"
 
-#include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
+#include "Config.hpp"           // for Config
+#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan
+#include "NDArray.hpp"          // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "airspyFrameDesc.hpp" // for make_fengine_desc
 #include "buffer.hpp"          // for Buffer
@@ -35,9 +36,12 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
 
     // Output is cfloat32 1-D regardless of input_type (we accept either int16
     // reals or cint16 IQ pairs upstream, so in_buf's descriptor is intentionally
-    // left for the upstream producer to assert). out_buf's descriptor is declared
-    // in config (kotekan_buffer: ndarray); require_frame_desc confirms it.
-    out_buf->require_frame_desc();
+    // left for the upstream producer to assert). ensure_frame_desc, NOT
+    // require_frame_desc: this stage originates out_buf's descriptor, so it works
+    // both with a config declaration (reconciled, mismatch fatal) and without one
+    // (attached here) -- see the note in airspyInput.cpp.
+    out_buf->ensure_frame_desc(
+        kotekan_airspy::make_fengine_desc(out_buf->frame_size / sizeof(fftwf_complex)));
 
     _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 128);
 
@@ -65,6 +69,31 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
         fft_plan =
             fftwf_plan_dft_1d(_spectrum_length, complex_samples, spectrum, -1, FFTW_ESTIMATE);
     }
+
+    // Optional polyphase filter bank: num_taps > 1 prepends a windowed-sinc
+    // prototype + fold before each FFT; num_taps == 1 leaves the straight FFT
+    // path untouched. fft_len is the transform size (2x in real mode).
+    _num_taps = config.get_default<int>(unique_name, "num_taps", 1);
+    if (_num_taps > 1) {
+        const int fft_len = _real_input ? _spectrum_length * 2 : _spectrum_length;
+        const std::string win =
+            config.get_default<std::string>(unique_name, "pfb_window", "hamming");
+        try {
+            _proto = dsp::pfb_prototype(fft_len, _num_taps, dsp::window_from_string(win));
+        } catch (const std::exception& e) {
+            FATAL_ERROR("fftwEngine: {:s}", e.what());
+            return;
+        }
+        if (_real_input) {
+            _hist_r.assign(fft_len * _num_taps, 0.0f);
+            _block_r.resize(fft_len);
+        } else {
+            _hist_c.assign(fft_len * _num_taps, std::complex<float>(0.0f, 0.0f));
+            _block_c.resize(fft_len);
+        }
+    } else {
+        _num_taps = 1;
+    }
 }
 
 fftwEngine::~fftwEngine() {
@@ -83,6 +112,7 @@ fftwEngine::~fftwEngine() {
 void fftwEngine::main_thread() {
     frame_in = 0;
     frame_out = 0;
+    long long frames_produced = 0; // monotonic output-frame counter (absolute reference)
 
     constexpr int BYTES_PER_SAMPLE = 2; // int16_t
 
@@ -101,8 +131,15 @@ void fftwEngine::main_thread() {
             const int fft_len = _spectrum_length * 2;
             for (int j = 0; j < samples_per_input_frame; j += fft_len) {
                 DEBUG("Running real FFT, {:d}", in_local[j]);
-                for (int i = 0; i < fft_len; i++) {
-                    real_samples[i] = (float)in_local[i + j] / _spectrum_length;
+                if (_num_taps > 1) {
+                    for (int i = 0; i < fft_len; i++)
+                        _block_r[i] = (float)in_local[i + j] / _spectrum_length;
+                    dsp::pfb_push(_hist_r.data(), _block_r.data(), fft_len, _num_taps);
+                    dsp::pfb_fold(_hist_r.data(), _proto.data(), fft_len, _num_taps, real_samples);
+                } else {
+                    for (int i = 0; i < fft_len; i++) {
+                        real_samples[i] = (float)in_local[i + j] / _spectrum_length;
+                    }
                 }
                 fftwf_execute(fft_plan);
                 // r2c gives fft_len/2+1 = _spectrum_length+1 bins; we drop Nyquist.
@@ -113,9 +150,18 @@ void fftwEngine::main_thread() {
             // Complex IQ: each input sample is an int16 pair, so step by 2*_spectrum_length ints.
             for (int j = 0; j < samples_per_input_frame / 2; j += _spectrum_length) {
                 DEBUG("Running complex FFT, {:d}", in_local[2 * j]);
-                for (int i = 0; i < _spectrum_length; i++) {
-                    complex_samples[i][0] = in_local[2 * (i + j)];
-                    complex_samples[i][1] = in_local[2 * (i + j) + 1];
+                if (_num_taps > 1) {
+                    for (int i = 0; i < _spectrum_length; i++)
+                        _block_c[i] = std::complex<float>(in_local[2 * (i + j)],
+                                                          in_local[2 * (i + j) + 1]);
+                    dsp::pfb_push(_hist_c.data(), _block_c.data(), _spectrum_length, _num_taps);
+                    dsp::pfb_fold(_hist_c.data(), _proto.data(), _spectrum_length, _num_taps,
+                                  reinterpret_cast<std::complex<float>*>(complex_samples));
+                } else {
+                    for (int i = 0; i < _spectrum_length; i++) {
+                        complex_samples[i][0] = in_local[2 * (i + j)];
+                        complex_samples[i][1] = in_local[2 * (i + j) + 1];
+                    }
                 }
                 fftwf_execute(fft_plan);
                 // Shift DC into the centre.
@@ -127,9 +173,25 @@ void fftwEngine::main_thread() {
             }
         }
 
+        // Stamp the absolute sample reference (chordMetadata sample_seq) so downstream
+        // search/track -- possibly on other nodes after bufferSend/Recv -- share one
+        // "sample 0" for code-phase referencing. Propagate the source seq if the input
+        // carries it, else generate from the monotonic output-frame counter.
+        if (out_buf->metadata_pool) {
+            out_buf->allocate_new_metadata_object(frame_out);
+            int64_t seq = frames_produced * (int64_t)samples_per_input_frame; // abs sample of hop 0
+            if (metadata_is_gnss_chan(in_buf)) {
+                auto* mi = get_gnss_chan_metadata(in_buf, frame_in);
+                if (mi && mi->sample_seq >= 0) // propagate the source seq if present
+                    seq = mi->sample_seq;
+            }
+            get_gnss_chan_metadata(out_buf, frame_out)->sample_seq = seq;
+        }
+
         in_buf->mark_frame_empty(unique_name, frame_in);
         out_buf->mark_frame_full(unique_name, frame_out);
         frame_in = (frame_in + 1) % in_buf->num_frames;
         frame_out = (frame_out + 1) % out_buf->num_frames;
+        frames_produced++;
     }
 }

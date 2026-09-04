@@ -94,6 +94,17 @@ public:
     /// Fills kotekan buffer frames from one USB transfer. See class doc.
     void airspy_producer(airspy_transfer_t* transfer);
 
+    /// Watches the sample stream and says so, loudly, when it is not running. Runs on the
+    /// stage thread for the life of the stage; see the definition for why it has to exist.
+    /// ⚠️ THREAD SIGNATURE CHANGED (2026-07-27): because main_thread() no longer returns after
+    /// airspy_start_rx(), a healthy airspy stage is now **3** threads, not 2 -- measured
+    /// 3/3/3 across l1/l2c/l5. The old field diagnostic
+    ///   cat /proc/$(pgrep -x kotekan)/task/*/comm | grep airspy_in | sort | uniq -c
+    /// therefore reads 3 = healthy, 2 = half-open (the libusb poll thread is the one that is
+    /// never created). Prefer kotekan_airspy_streaming from /metrics -- it states the answer
+    /// instead of encoding it in a count that shifts whenever this file changes.
+    void stream_watchdog();
+
     /// REST callbacks.
     void get_config_callback(kotekan::connectionInstance& conn);
     void set_config_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
@@ -111,6 +122,30 @@ private:
     uint32_t frame_loc;
     /// Index of the current frame.
     int frame_id;
+    /// Absolute sample index since stream start, counting BOTH received samples and
+    /// libairspy-dropped ones (transfer->dropped_samples). When the output buffer has a GNSS
+    /// metadata pool, each completed frame is stamped with sample_seq = _frame_seq0 (its first
+    /// sample's index); the F-engine propagates it (else derives its own), so this is opt-in per
+    /// config and a no-op for pool-less buffers. Folding in dropped_samples makes sample_seq
+    /// track TRUE time across USB drops -- a drop becomes a clean, KNOWN gap downstream (the
+    /// search/tracker absolute-hop referencing handles it) instead of silent counter divergence.
+    /// On a drop the partial frame is abandoned so no frame straddles the gap.
+    int64_t _samples_seq = 0; ///< running true sample index (received + dropped)
+    /// Stream-integrity counters, exposed via /adcstat (drop fraction = dropped/total).
+    /// The producer already ACCOUNTS drops (clean sample_seq gaps); these make the rate
+    /// a standing metric instead of a grep through WARN logs. Atomics: the REST thread
+    /// reads them against the producer's writes.
+    std::atomic<uint64_t> _samples_total{0};   ///< mirror of _samples_seq for lock-free reads
+    std::atomic<uint64_t> _samples_dropped{0}; ///< cumulative libairspy FIFO drops (samples)
+    std::atomic<uint64_t> _drop_events{0};     ///< number of distinct drop episodes
+    int64_t _frame_seq0 = 0;  ///< true sample index of the current frame's first sample
+    /// Wall-clock UTC (unix seconds) of TRUE sample 0, anchored at the first producer callback
+    /// (~ms accuracy: USB delivery latency; the tiny alignment lag is ignored). 0 = not yet
+    /// anchored. Served in /adcstat as "utc0_sample0" -- the absolute-time anchor for the
+    /// broker's L2C CL time-assist: the CL 1.5 s code epoch is locked to GPS time, so an
+    /// absolute timeline good to ~10 ms pins the CL segment (the measured CM code phase
+    /// supplies the fine time below that).
+    std::atomic<double> _utc0_sample0{0.0};
     /// Pending byte-count of samples to skip before next copy (for inter-device alignment).
     uint32_t lag = 0;
     /// Whether @c airspy_init() succeeded (gates @c airspy_exit() in the destructor).
@@ -137,6 +172,21 @@ private:
     long _airspy_sn;
     /// Optional file path to read raw samples from instead of a device.
     std::string _airspy_fn;
+
+    /// How long /adcstat waits for the producer before failing the request. The wait MUST
+    /// stay bounded: the handler runs on restServer's single libevent thread, so an
+    /// unbounded wait on a non-streaming (half-open) device takes down the REST plane for
+    /// every band at once -- THE WEDGE, see adcstat_callback().
+    int _adcstat_timeout_ms = 3000;
+
+    /// Stream watchdog thresholds -- see stream_watchdog().
+    /// @c _stream_start_timeout_ms: how long after a SUCCESSFUL airspy_start_rx() to wait for
+    /// the first sample before declaring the device half-open. Generous (USB enumeration +
+    /// R820T PLL lock + the first bulk transfers); a healthy unit delivers in tens of ms.
+    /// @c _stream_stall_ms: how long an already-running stream may go silent before the same
+    /// verdict. Both are diagnosis-only -- the watchdog never touches the device.
+    int _stream_start_timeout_ms = 5000;
+    int _stream_stall_ms = 2000;
 
     /// ADC statistics. The REST adcstat handler requests a dump and waits on
     /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the

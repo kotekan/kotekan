@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""One broker process, many signals (task #27 M5).
+
+    broker_multi.py config/gnss_chains_chord.yaml [--only gps_l5] [extra broker args...]
+
+WHAT THIS REPLACES. Today CHORD runs `broker_up.sh` for GPS L5 and `broker_up_extra.sh e5a`
+for Galileo E5a, side by side. Those two chains are on the SAME CARRIER -- both pass
+`--carrier-hz 1176.45e6` -- through the same feed, the same cable, the same F-engine and
+the same GPS-disciplined clock. They are not two receivers; they are one receiver estimated
+twice, and everything that costs comes from the process boundary between them:
+
+  * the receiver clock had to be hand-pasted, then serialised through a JSON file with a
+    flush cadence and a two-read slew gate, to cross four inches of memory;
+  * the F-engine time anchor was fetched and latched independently, so two processes could
+    straddle a restart and disagree forever, each certain;
+  * the BRDC file was parsed twice and each copy's other constellations thrown away
+    (measured: one parse holds 32 GPS and 33 Galileo satellites);
+  * the viewer needed one instance per broker.
+
+HOW IT WORKS, AND WHY IT IS SO SMALL. `main()` is a closure whose locals are exactly one
+chain's state -- that is what a closure is. So running N chains is calling it N times, in N
+threads, with one shared `Receiver`. There is no chain object to build, and the 3252-line
+cycle body is untouched.
+
+THREADS, NOT A SEQUENTIAL SWEEP. A chain issues ~25 HTTP requests per cycle against a 2 s
+interval with 5 s timeouts; four chains in series would not fit in the interval, and the
+first slow endpoint would delay every other signal's seeds. Chains share nothing mutable
+except the Receiver, which is locked and contribute/consume only.
+
+A CHAIN THAT DIES MUST NOT TAKE THE OTHERS WITH IT, and must not die quietly either -- a
+silently missing chain looks exactly like a satellite-free band. Each thread logs its own
+death loudly and the driver reports which chains are still alive on exit.
+"""
+import argparse
+import faulthandler
+import os
+import signal
+import sys
+import threading
+import time
+
+# WHY: this process is five chain threads plus a telemetry reader, and when a cycle takes
+# 15 s nobody can say WHICH of them is waiting for what. `top` says 6% CPU, `wchan` says
+# futex, and neither names a line of Python. py-spy cannot attach after the fact either --
+# ptrace_scope is 1 on these hosts and the broker is daemonised, so it is nobody's child.
+#
+#     kill -USR1 $(pgrep -f '[b]roker_multi')      -> every thread's stack to stderr (the log)
+#
+# Free when unused, costs one signal handler, and answers the question in one line instead
+# of a restart under a profiler. Added 2026-08-23 after the cycle-time hunt spent an hour
+# inferring from wait channels.
+#
+# ⚠️⚠️ ONE DUMP AT A TIME. DO NOT USE THIS AS A SAMPLING PROFILER -- IT KILLED THE BROKER.
+# faulthandler walks every thread's frame objects from inside a signal handler, without the
+# GIL, while those threads are running and mutating them. That is fine for the occasional
+# look (12 signals at 0.9 s: survived; and it is what the module is FOR -- a process that is
+# usually already dying). Driven at 45 signals in 40 s against five busy chain threads it
+# raced and the process vanished mid-dump: no traceback, no fatal line, no OOM, nothing in
+# dmesg -- just a log that stops in the middle of a stack. Cost the instrument ~80 s of
+# downtime plus a settle, on 2026-08-23, to learn this.
+#
+# If you want a profile, profile a REPLAY (broker_equiv holds the transcripts and has no
+# side effects) or launch the broker as py-spy's child. Use this to answer "where is it
+# stuck RIGHT NOW", once.
+faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
+
+K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
+
+import yaml                                              # noqa: E402
+import gps_distributed_broker as broker                  # noqa: E402
+from gnss_broker import publish, receiver, transport     # noqa: E402
+
+
+def flags(d):
+    """A {key: value} block -> broker command-line flags.
+
+    Values are passed through as strings, `true` becomes a bare flag and `false`/`null`
+    drops it -- so a config reads like the flags it becomes, and a typo'd key surfaces as
+    argparse's "unrecognized arguments" rather than being silently ignored.
+    """
+    out = []
+    for k, v in d.items():
+        if v is None or v is False:
+            continue
+        out.append("--" + str(k).replace("_", "-"))
+        if v is not True:
+            out.append(str(v))
+    return out
+
+
+def load(path):
+    cfg = yaml.safe_load(open(path)) or {}
+    common = cfg.get("common") or {}
+    chains = cfg.get("chains") or {}
+    if not chains:
+        sys.exit("%s defines no chains" % path)
+    out = []
+    for name, spec in chains.items():
+        merged = dict(common)
+        merged.update(spec or {})
+        out.append((name, flags(merged)))
+    return out
+
+
+def run_chain(name, argv, rx, alive, pub=None):
+    transport.set_log_tag(name)
+    try:
+        broker.main(argv, rx=rx, publisher=pub)
+        transport._log("chain finished (main returned)")
+    except transport._TranscriptDone as e:
+        # A REPLAY ENDING IS NOT A DEATH. Without this the driver reports "*** CHAIN DIED"
+        # on a perfectly successful gate run -- and, worse, prints no digest, so the driver
+        # itself cannot be gated against a recording. That is exactly backwards: the piece
+        # with the new concurrency is the piece most in need of the gate.
+        transport._log("transcript replay complete (%s); %d posts, digest %s"
+                       % (e, len(transport._TR.posts), transport._TR.digest()))
+        print(transport._TR.digest())
+    except SystemExit as e:
+        # argparse's ap.error() lands here. In a thread it would otherwise be invisible.
+        transport._log("*** CHAIN REFUSED TO START: %s. Its signal is DARK; the others "
+                       "keep running." % e)
+    except Exception as e:
+        import traceback
+        transport._log("*** CHAIN DIED: %r\n%s" % (e, traceback.format_exc()))
+    finally:
+        alive.discard(name)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("config")
+    ap.add_argument("--only", action="append", default=[],
+                    help="run just these chains (repeatable) -- for bisecting a fleet "
+                         "problem down to one signal without editing the config")
+    ap.add_argument("--list", action="store_true", help="print the resolved flags and exit")
+    a, extra = ap.parse_known_args()
+
+    chains = load(a.config)
+    if a.only:
+        chains = [c for c in chains if c[0] in a.only]
+        if not chains:
+            sys.exit("--only %s matched no chain in %s" % (a.only, a.config))
+
+    if a.list:
+        for name, argv in chains:
+            print("%s:\n  %s\n" % (name, " ".join(argv + extra)))
+        return
+
+    rx = receiver.Receiver(log=transport._log)
+    transport.set_log_tag("driver")
+    # ONE PUBLISHER FOR THE WHOLE PROCESS (task #27 M6), if any chain asks for a port. The
+    # first --publish-port found wins and the rest are ignored with a note: two ports would
+    # put us straight back to a viewer instance per constellation, which is the thing being
+    # retired. Chains are told apart by /<chain>/get_status or ?chain=<id>.
+    port, owner = None, None
+    for name, argv in chains:
+        if "--publish-port" in argv:
+            p = argv[argv.index("--publish-port") + 1]
+            if port is None and p not in ("0", ""):
+                port, owner = int(p), name
+            elif p not in ("0", "") and int(p) != port:
+                transport._log("chain %s asks for publish-port %s; ignoring -- one process "
+                               "publishes on ONE port (%d, from %s). Select with "
+                               "?chain=%s or /%s/get_status." % (name, p, port, owner,
+                                                                 name, name))
+    # Before any chain starts polling: name resolution was this process's cycle time.
+    transport.install_dns_cache()
+    pub = publish.FleetPublisher(port, transport._log) if port else None
+    if pub:
+        transport._log("fleet publisher shared by every chain on :%d" % port)
+    transport._log("starting %d chain(s): %s"
+                   % (len(chains), ", ".join(n for n, _ in chains)))
+
+    alive = set(n for n, _ in chains)
+    threads = []
+    for name, argv in chains:
+        t = threading.Thread(target=run_chain, args=(name, argv + extra, rx, alive, pub),
+                             name=name, daemon=True)
+        t.start()
+        threads.append(t)
+        # Stagger the starts. Not a settling wait -- there is no such thing here (every
+        # timescale in this system is seconds or faster). It is so the first chain latches
+        # the time anchor and builds the BRDC store while the second is still parsing
+        # arguments, which keeps the startup log readable and the shared fetches to one.
+        time.sleep(0.25)
+
+    # WHERE THE CYCLE ACTUALLY GOES. The driver is the only thread that belongs to no chain,
+    # so it is the only place a PROCESS-WIDE number can be logged without picking a chain to
+    # blame. It also means this needed no change to the 5100-line main().
+    #
+    # Every 60 s, not every cycle: the report is ~10 lines and the thing it measures moves on
+    # the scale of minutes. A per-cycle dump would be six times the volume of the thing being
+    # diagnosed. Reset-on-read, so each block covers exactly the interval since the last.
+    every = float(os.environ.get("GNSS_HTTP_REPORT_S", "60"))
+    # For the slack column. Chains can in principle differ; they do not today, and a wrong
+    # denominator would be worse than none, so take it only when every chain agrees.
+    ivs = set()
+    for _, argv in chains:
+        if "--interval" in argv:
+            try:
+                ivs.add(float(argv[argv.index("--interval") + 1]))
+            except (ValueError, IndexError):
+                pass
+    interval = ivs.pop() if len(ivs) == 1 else None
+    last, t_http = None, time.time()
+    try:
+        while any(t.is_alive() for t in threads):
+            time.sleep(1.0)
+            now = frozenset(alive)
+            if now != last:
+                transport.set_log_tag("driver")
+                transport._log("chains alive: %s" % (", ".join(sorted(now)) or "NONE"))
+                transport._log(rx.summary())
+                last = now
+            if every > 0 and time.time() - t_http >= every:
+                t_http = time.time()
+                transport.set_log_tag("driver")
+                for ln in transport.cycle_report(interval_s=interval):
+                    transport._log(ln)
+                for ln in transport.http_timing_report(top=12):
+                    transport._log(ln)
+    except KeyboardInterrupt:
+        transport.set_log_tag("driver")
+        transport._log("interrupted; chains are daemon threads and exit with the process")
+        return
+    transport.set_log_tag("driver")
+    transport._log("*** EVERY CHAIN HAS EXITED -- the broker is doing nothing. This is not "
+                   "an idle state, it is an outage.")
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

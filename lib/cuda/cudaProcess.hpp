@@ -20,6 +20,7 @@
 
 #include <memory> // for shared_ptr
 #include <string> // for string
+#include <cstdint>  // for int32_t
 #include <vector> // for vector
 
 /**
@@ -47,6 +48,27 @@ public:
                                             const std::string& unique_name) override;
     gpuEventContainer* create_signal() override;
     void queue_commands(int gpu_frame_counter) override;
+
+private:
+    /// The CUDA streams this pipeline's commands enqueue onto, ASCENDING and unique. Only
+    /// these streams' mutexes are taken while queuing a frame, so a pipeline with private
+    /// streams never blocks another one (see cudaDeviceInterface::stream_mutex).
+    std::vector<std::int32_t> _my_stream_ids;
+
+    /// Which of our streams carries the end-of-frame join. Must be one WE own: the join makes
+    /// it wait on every other stream's last event, and pointing that at a stream another
+    /// pipeline enqueues onto puts that pipeline's work behind our events -- a false
+    /// dependency that becomes a hang if our event never completes. It was hardcoded to
+    /// stream 0, which every pipeline shares by default.
+    std::int32_t _join_stream_id = 0;
+
+    /// Fill the two above from the constructed command list. Called once, after init().
+    void collect_stream_ids();
+
+    /// per-frame-slot join events for multi-stream command chains (see queue_commands:
+    /// frame completion must wait on every stream's last event, not just the last
+    /// command's). Destroyed lazily on slot reuse.
+    std::vector<cudaEvent_t> join_events;
 
     void register_host_memory(Buffer* host_buffer) override;
 

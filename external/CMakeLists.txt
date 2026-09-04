@@ -16,11 +16,15 @@ if(CUDAToolkit_FOUND)
     target_link_libraries(libexternal INTERFACE ksgpu)
     add_subdirectory(n2k)
     target_link_libraries(libexternal INTERFACE n2k)
+    # n2k_dual: two-input clone of n2k for the GNSS path-B integration (n2k itself is
+    # deliberately untouched -- see external/n2k_dual/README.md).
+    add_subdirectory(n2k_dual)
+    target_link_libraries(libexternal INTERFACE n2k_dual)
 
     # Treat vendored ksgpu/n2k headers as system headers for consumers, so their pre-existing
     # diagnostics (e.g. -Wclass-conversion in ksgpu/Array.hpp) don't fail kotekan's -Werror build.
     # Their own sources still see -Wall.
-    foreach(tgt ksgpu n2k)
+    foreach(tgt ksgpu n2k n2k_dual)
         get_target_property(inc ${tgt} INTERFACE_INCLUDE_DIRECTORIES)
         if(inc)
             set_property(

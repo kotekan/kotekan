@@ -44,6 +44,36 @@ add_library(
     simpleAutocorr.cpp
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
+    gnss/gpsCACode.cpp
+    gnss/beidouB1CCode.cpp
+    gnss/galileoE1Code.cpp
+    gnss/galileoE5aCode.cpp
+    gnss/gpsL1CCode.cpp
+    gnss/gpsL2CCode.cpp
+    gnss/gpsL5Code.cpp
+    gnss/beidouB2aCode.cpp
+    gnss/beidouB2bCode.cpp
+    gnss/galileoE5bCode.cpp
+    gnss/galileoE6Code.cpp
+    gnss/beidouB1ICode.cpp
+    gnss/beidouB3ICode.cpp
+    gnss/glonassL3OCCode.cpp
+    gnss/glonassCACode.cpp
+    gnss/glonassL2OCCode.cpp
+    gnss/gnssOverlay.cpp
+    gnss/GnssSubbandSplit.cpp
+    gnss/GnssQuantize44.cpp
+    gnss/GnssCoherentCombiner.cpp
+    gnss/GnssBeamCube.cpp
+    gnss/GnssTrackState.cpp
+    # Task #59, the tracker->broker telemetry transport. Deliberately OUTSIDE the FFTW block:
+    # the gather half runs on the broker host, which has no F-engine, no GPU and no reason to
+    # carry an FFTW dependency, and the pack half must build in the same tree as the trackers.
+    gnss/GnssTelemPack.cpp
+    gnss/GnssTelemGather.cpp
+    # Task #51, the fast code loop. Rides in the gather instance beside GnssTelemGather (the
+    # only place with the whole fleet at frame rate), so it belongs in the same no-FFTW block.
+    gnss/GnssFleetTrim.cpp
     SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
@@ -127,7 +157,7 @@ add_library(
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
-target_include_directories(kotekan_stages PRIVATE .)
+target_include_directories(kotekan_stages PRIVATE . gnss)
 
 if(LIBAIRSPY_FOUND)
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
@@ -141,7 +171,27 @@ if(LIBAIRSPY_FOUND)
 endif()
 
 if(FFTW_FOUND)
-    target_sources(kotekan_stages PRIVATE fftwEngine.cpp)
+    target_sources(
+        kotekan_stages
+        PRIVATE fftwEngine.cpp
+                gnss/GpsReplicaCorrelator.cpp
+                pfbPrototype.cpp
+                gnss/gnssBandPlan.cpp
+                gnss/gnssChannelizedDespread.cpp
+                gnss/gnssChannelizedAcquire.cpp
+                gnss/gnssChannelizedReplica.cpp
+                gnss/gnssSeedTransport.cpp
+                gnss/GnssChannelizedTracker.cpp
+                gnss/GnssChannelizedSearch.cpp
+                gnss/GnssVoltagePeel.cpp
+                gnss/GnssChannelGather.cpp
+                gnss/GnssChordVoltageTap.cpp
+                gnss/cudaGnssChordTrack.cpp
+                gnss/cudaGnssInject.cpp
+                gnss/GnssN2RecordAssemble.cpp
+                gnss/GnssChordDequantize.cpp
+                gnss/GnssChanAlignMerge.cpp)
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
 
@@ -230,4 +280,19 @@ if(CUDAToolkit_FOUND)
     message(STATUS "kotekan_stages include dirs: ")
     get_target_property(STAGES_INCLUDES kotekan_stages INCLUDE_DIRECTORIES)
     message(STATUS "${STAGES_INCLUDES}")
+endif()
+
+# GPU GNSS despread driver (docs/gnss_gpu_migration.md G1b): only with CUDA; defines GNSS_CUDA so
+# GnssChannelizedTracker exposes use_cuda. One-way link stages -> kotekan_cuda (kernel only).
+if(USE_CUDA)
+    target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
+    # Phase F (docs/gnss_gpu_migration.md §6): the cudaProcess tracking command + its host
+    # record assembler. The command lives here (not lib/cuda) because it drives the
+    # GnssCudaDespread driver -- keeps the stages -> kotekan_cuda link one-way.
+    target_sources(kotekan_stages PRIVATE gnss/cudaGnssTrack.cpp gnss/GnssGpuRecordAssemble.cpp)
+    # A2 of docs/gnss_gpu_search.md: the device-resident acquisition search. Needs cuFFT (the
+    # despread driver did not -- it generates replicas in closed form and never transforms).
+    target_sources(kotekan_stages PRIVATE gnss/GnssCudaAcquire.cpp)
+    target_link_libraries(kotekan_stages PRIVATE kotekan_cuda CUDA::cufft)
+    target_compile_definitions(kotekan_stages PRIVATE GNSS_CUDA=1)
 endif()

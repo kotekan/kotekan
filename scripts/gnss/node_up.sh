@@ -1,0 +1,286 @@
+#!/bin/bash
+# Bring a CHORD GNSS node's kotekan up (or down, or check it).
+#
+# WHY THIS EXISTS: the node service is a TRANSIENT systemd unit -- `systemd-run --unit=gnss-node`
+# creates it in /run/systemd/transient/, and STOPPING IT DELETES IT. So after a
+# `systemctl stop gnss-node`, `systemctl start gnss-node` fails with "Unit not found" and the
+# only way back is the full systemd-run line. Six nodes were stopped overnight on 2026-08-02 and
+# every one of them needs this to come back.
+#
+# The exec path must be ABSOLUTE: systemd-run does not resolve a relative one against
+# --working-directory, and the failure mode is a unit that starts and immediately dies.
+#
+# usage:  node_up.sh <node> [up|down|restart|status]      default: up
+#         node_up.sh cx51
+#         node_up.sh cx51 status
+#         for n in cx42 cx43 cx44 cx47 cx51 cx52; do scripts/gnss/node_up.sh $n; done
+#         for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/node_up.sh $n restart; done
+#
+# USE `restart` RATHER THAN down-then-up. sudo's credential cache is per-TTY and `ssh -t`
+# allocates a fresh one each call, so a down loop followed by an up loop prompts for the
+# password TWICE PER NODE -- twelve prompts to cycle six nodes. `restart` does the stop and the
+# systemd-run inside ONE ssh session, so it is one prompt per node and one loop.
+#
+#   env:  GNSS_BIN  binary            (default build/kotekan/kotekan)
+#         GNSS_CFG  config            (default config/generated/chord_gnss_<node>.yaml)
+#         GNSS_LOG  log file          (default /tmp/gnss_node.log)
+#
+# Needs an interactive sudo on the target, so it uses `ssh -t` and will prompt per node.
+set -u
+K=/home/kvand/gnss/kotekan
+# build/kotekan since 2026-08-03: the merge segfault is FIXED (c5e9e754a -- an emit-metrics loop
+# indexed _navbuf past the end whenever no wipe was configured, which is every CHORD config).
+# cx51 ran the fixed binary for hours without crashing. kotekan_premerge is kept as the fallback
+# and is what `up-premerge` runs; it has NO deep coherent rung, so a node on it reports
+# coherence_s = 0 structurally and a ~3x worse carrier residual (per-emit squared fit rather
+# than the buffered-stream fit).
+# GNSS_BIN overrides (that is how up-premerge works: exec re-reads this file, so the
+# choice has to travel in the ENVIRONMENT, not a shell variable).
+PREMERGE=/home/kvand/gnss/kotekan_premerge
+BIN=${GNSS_BIN:-/home/kvand/gnss/kotekan/build/kotekan/kotekan}
+N=${1:?usage: node_up.sh <node> [up|down|status]}
+ACT=${2:-up}
+# GNSS_CFG / GNSS_LOG override the config and the log, the same way GNSS_BIN overrides the
+# binary. Use them to bring a node up on the PROFILING config without editing anything:
+#
+#   GNSS_CFG=$K/config/generated/chord_gnss_cx19_prof.yaml GNSS_LOG=/tmp/gnss_prof.log \
+#       scripts/gnss/node_up.sh cx19
+#
+# Give the profiling run its OWN log: it emits one INFO block per GPU frame per GPU (~760
+# lines/s), which buries /tmp/gnss_node.log. And note the log must not already exist owned by a
+# DIFFERENT user -- systemd runs the unit as root, and fs.protected_regular=2 refuses root an
+# O_CREAT append onto another user's file in /tmp. That failure surfaces as status=209/STDOUT
+# with nothing else to go on; `sudo rm -f` the stale file first.
+# DEFAULT TO THE CONFIG THE FLEET MANIFEST OWNS, not to a bare chord_gnss_<node>.yaml.
+# The fleet has run on a SUFFIXED config since E5a (_e5afleet, now _multi), so the old default
+# pointed at a stale GPS-only file that still exists and still starts -- the worst kind of
+# wrong, because it comes up healthy and simply lacks two constellations. Every restart has
+# had to carry GNSS_CFG by hand and remember which suffix was current. Ask the manifest.
+# GNSS_CFG still overrides, which is how the profiling/one-off configs are run.
+if [ -z "${GNSS_CFG:-}" ] && [ -f "$K/config/gnss_fleet_chord.yaml" ]; then
+    GNSS_CFG=$(python3 "$K/scripts/gnss/gen_fleet.py" "$K/config/gnss_fleet_chord.yaml" \
+                       --node "$N" --print-path 2>/dev/null || true)
+fi
+# ⚠️ NO BARE-NAME FALLBACK. This used to default to $K/config/generated/chord_gnss_$N.yaml,
+# and those files EXISTED -- stale GPS-only configs from before E5a that start cleanly and
+# simply lack six of the eight chains, so a node brought up on one comes back green and
+# wrong. The files are purged (2026-09-02); the fallback goes with them, because a default
+# nobody chose is what made a wrong config reachable in the first place. Empty here is fine:
+# only the START path needs a config, and `down`/`status` must keep working for a node the
+# manifest has never heard of. preflight() is where this is fatal.
+CFG=${GNSS_CFG:-}
+LOG=${GNSS_LOG:-/tmp/gnss_node.log}
+
+# --- shared by `up` and `restart` -------------------------------------------------------------
+# One copy of the preflight and one copy of the systemd-run line, so the two actions can never
+# drift apart -- a `restart` that started the node differently from `up` would be a nasty thing
+# to debug at 2am.
+preflight() {
+    # FAIL LOUDLY ON A MISSING CONFIG OR BINARY. The systemd-run below is guarded by
+    # `test -r '$CFG' && ...`, and a failing test short-circuits the whole chain SILENTLY:
+    # the command returns instantly, prints nothing, creates no unit, and `systemctl status`
+    # then says "could not be found". That is indistinguishable from a dozen other failures.
+    # It cost several rounds of restarts on 2026-08-07, when a config path was pasted with a
+    # literal "..." in it. Check here, where we can say which path was wrong. These are LOCAL
+    # checks of an NFS-shared tree, which is the same filesystem the node will read.
+    if [ -z "$CFG" ]; then
+        echo "FAILED: no config for $N -- the fleet manifest does not name one." >&2
+        echo "  config/gnss_fleet_chord.yaml is the authority; run it directly to see why:" >&2
+        echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml \\" >&2
+        echo "            --node $N --print-path" >&2
+        echo "  Either $N is not in the manifest, or gen_fleet.py failed." >&2
+        echo "  To run a one-off config DELIBERATELY, set GNSS_CFG=<absolute path>." >&2
+        exit 1
+    fi
+    if [ ! -r "$CFG" ]; then
+        echo "FAILED: config not readable: $CFG" >&2
+        echo "  (a relative or elided path? GNSS_CFG must be absolute)" >&2
+        exit 1
+    fi
+    if [ ! -x "$BIN" ]; then
+        echo "FAILED: binary not executable: $BIN" >&2
+        exit 1
+    fi
+    # ⚠️ IS THE BINARY OLDER THAN THE LIBRARY IT LINKS? A WARNING, never a refusal.
+    #
+    # `ninja lib/stages/all` builds the static library and DOES NOT RELINK kotekan. Everything
+    # then looks built: the compile is clean, the .a is fresh, the source is committed -- and
+    # the executable on disk is yesterday's. On 2026-08-15 that cost a full six-node restart:
+    # the trackers came up without the /set_trim endpoint that had been "deployed" hours
+    # earlier, and the only reason it was caught was a checker that looked at what the process
+    # SERVED rather than at what was compiled. Restarts here need sudo and someone's attention,
+    # so the cheap mtime comparison belongs in front of one.
+    #
+    # It is deliberately a warning: mtimes over NFS are not a correctness oracle, and refusing
+    # a restart on one would be worse than the thing it prevents. Build with `ninja kotekan`.
+    _LIB=$(dirname "$BIN")/../lib/stages/libkotekan_stages.a
+    if [ -f "$_LIB" ] && [ "$_LIB" -nt "$BIN" ]; then
+        echo "⚠️  $BIN is OLDER than $(basename "$_LIB") -- it was not relinked." >&2
+        echo "    binary  $(date -r "$BIN" '+%F %T')" >&2
+        echo "    library $(date -r "$_LIB" '+%F %T')" >&2
+        echo "    'ninja lib/stages/all' does not relink kotekan. Run 'ninja kotekan'." >&2
+        echo "    Starting anyway -- but this node will run the OLD code." >&2
+    fi
+    # ⚠️ AND IS THE BINARY OLDER THAN THE SOURCES? The check above cannot catch the tree
+    # never being built at all: /home/kvand is NFS-shared and there are TWO build trees
+    # (`build/` = the nodes' DPDK build launched here; `build_nodpdk/` = cf06's), so a
+    # change built and verified in one leaves the other -- binary AND library together,
+    # consistently, silently -- old. On 2026-08-15 that cost a six-node restart that came
+    # up without /get_elements: the combiner change was compiled, linked and
+    # strings-verified in build_nodpdk while this script launched build/. Same warning
+    # discipline: mtimes are provenance, not correctness; never a refusal.
+    _NEWEST_SRC=$(find /home/kvand/gnss/kotekan/lib/stages/gnss -name '*.cpp' -o -name '*.hpp' \
+                  2>/dev/null | xargs -r ls -t 2>/dev/null | head -1)
+    if [ -n "$_NEWEST_SRC" ] && [ "$_NEWEST_SRC" -nt "$BIN" ]; then
+        echo "⚠️  $BIN is OLDER than $(basename "$_NEWEST_SRC") -- this BUILD TREE was never rebuilt." >&2
+        echo "    binary  $(date -r "$BIN" '+%F %T')" >&2
+        echo "    source  $(date -r "$_NEWEST_SRC" '+%F %T')  ($_NEWEST_SRC)" >&2
+        echo "    Two build trees exist (build/ = nodes, build_nodpdk/ = cf06); rebuild THIS one:" >&2
+        echo "    cd $(dirname "$BIN")/.. && ninja kotekan" >&2
+        echo "    Starting anyway -- but this node will run the OLD code." >&2
+    fi
+    # PROVENANCE, NOT CORRECTNESS -- a WARNING, never a refusal. If this config is one the
+    # fleet manifest owns, say whether it still matches. A node started from a config nobody
+    # can regenerate has no explanation available when it later misbehaves, and that is
+    # exactly the state all six nodes were in through 2026-08-08.
+    #
+    # It does not block: bringing a node up from a deliberately hand-rolled config (a
+    # profiling run, a one-off) is legitimate and common, and a preflight that refused it
+    # would just get bypassed -- at which point it protects nothing.
+    #
+    # Ask the manifest WHICH file it owns for this node rather than guessing from $N: the
+    # suffix (_e5afleet today) lives in the manifest, so a hand-rolled config for the same
+    # node must not be judged against the fleet one -- that would report a mismatch for a file
+    # the manifest has no opinion about, which is worse than saying nothing.
+    # ⚠️ DISTINGUISH "THE CONFIG DIFFERS" FROM "THE CHECKER BROKE". The first version of this
+    # treated ANY non-zero exit as a mismatch, so a missing PyYAML, a generator traceback or a
+    # host without the right python3 all reported "does not match config/gnss_fleet_chord.yaml"
+    # -- a confident, specific, WRONG claim about the config. It fired on cx27/cx42/cx51 on
+    # 2026-08-09 while all six configs were in fact byte-identical to the manifest, which sent
+    # KV looking for a config problem that did not exist. gen_fleet exits 1 ONLY for a real
+    # difference, so anything else is the tool failing and must say so in its own words.
+    local MAN="$K/config/gnss_fleet_chord.yaml" OWNED RC OUT
+    if [ -f "$MAN" ]; then
+        OWNED=$(python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --print-path 2>/dev/null)
+        if [ -n "$OWNED" ] && [ "$OWNED" = "$CFG" ]; then
+            OUT=$(python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --check 2>&1)
+            RC=$?
+            if [ "$RC" -eq 1 ]; then
+                echo "⚠️  $CFG no longer matches config/gnss_fleet_chord.yaml." >&2
+                echo "$OUT" | sed 's/^/    /' >&2
+                echo "    Starting it anyway (regenerate: scripts/gnss/gen_fleet.py $MAN)" >&2
+            elif [ "$RC" -ne 0 ]; then
+                echo "note: could not VERIFY $CFG against the manifest (checker exited $RC)." >&2
+                echo "      This says nothing about the config -- the check itself failed:" >&2
+                echo "$OUT" | tail -3 | sed 's/^/      /' >&2
+            fi
+        fi
+    fi
+}
+
+# The record dir is node-local (NOT the NFS home) and rawFileWrite fails on a missing one.
+# `systemctl stop` on a transient unit usually removes it, but a stopped-or-failed unit can
+# stay LOADED, and then systemd-run refuses the name: "Unit gnss-node.service was already
+# loaded or has a fragment file". reset-failed clears it; harmless when there is nothing to
+# clear, hence the `|| true`.
+REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+      test -r '$CFG' && sudo systemd-run --unit=gnss-node \
+        --working-directory=$K \
+        --property=StandardOutput=truncate:$LOG \
+        --property=StandardError=inherit \
+        '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"
+
+# ---------------------------------------------------------------------------------------
+# START, THEN VERIFY, THEN RETRY -- because starting is not deterministic (2026-08-08).
+#
+# kotekan's ConfigTracker GETs chive:54321/config at construction and its failure is FATAL.
+# That service is a single-threaded asyncio server whose per-second metrics gather does real
+# register reads over 16 live boards, so /config is BIMODAL: measured over 20 sequential
+# requests, median 6 ms, p90 6.5 s, max 16.2 s. Whether a given node starts depends on
+# whether its request lands in a gather window.
+#
+# Measured cost of not doing this: a six-node restart took three passes. First pass 1 of 6
+# came up; second pass (20 s apart) 4 of 6; a third for the stragglers. And the failure mode
+# LIES -- one node succeeded between two failures, which reads as a per-node fault rather
+# than a timeout, so the obvious diagnosis is the wrong one.
+#
+# THE OPERATOR IS NOT A RETRY LOOP. The retry lives inside ONE ssh session on purpose: sudo's
+# credential cache is per-TTY, so retrying out here would cost a password per attempt --
+# exactly what the `restart` action exists to avoid.
+#
+# WAIT ON THE PORT, NOT ON THE UNIT. `systemctl is-active` goes active the moment systemd-run
+# forks, long before kotekan has bound 12048 or fetched anything; on 2026-08-08 five nodes
+# reported active and then exited. The REST port answering is the first honest evidence the
+# process got past ConfigTracker. And if the unit DIES, stop waiting immediately rather than
+# burning the budget -- fail fast on death, wait patiently while alive.
+REMOTE_START_VERIFY="for attempt in 1 2 3; do \
+      sudo systemctl stop gnss-node 2>/dev/null || true; sleep 1; \
+      $REMOTE_UP || { echo \"node_up: config unreadable\"; exit 2; }; \
+      ok=0; \
+      for i in \$(seq 1 100); do \
+        if curl -sf -m 2 -o /dev/null http://localhost:12048/telescope/time0_ns 2>/dev/null; \
+          then ok=1; break; fi; \
+        systemctl is-active --quiet gnss-node || break; \
+        sleep 2; \
+      done; \
+      if [ \$ok = 1 ]; then echo \"node_up: up on attempt \$attempt\"; exit 0; fi; \
+      echo \"node_up: attempt \$attempt did not reach :12048 -- retrying\"; \
+    done; \
+    echo \"node_up: FAILED after 3 attempts; last 15 log lines:\"; tail -15 '$LOG'; exit 1"
+# ---------------------------------------------------------------------------------------
+
+case "$ACT" in
+  status)
+    # `systemctl is-active` EXITS NON-ZERO for a stopped unit, so a bare `|| echo unreachable`
+    # reports every healthy-but-stopped node as unreachable. Capture instead of chaining.
+    printf "%-6s " "$N"
+    S=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "$N" systemctl is-active gnss-node 2>/dev/null)
+    echo "${S:-unreachable}"
+    ;;
+  down)
+    ssh -t "$N" "sudo systemctl stop gnss-node"
+    echo "note: the unit is transient -- it is now GONE. Use '$0 $N' to bring it back."
+    ;;
+  up)
+    preflight
+    ssh -t "$N" "$REMOTE_START_VERIFY"
+    ;;
+  restart)
+    # STOP AND START IN ONE SSH SESSION -- the entire point. sudo's credential cache is keyed to
+    # the TTY, `ssh -t` allocates a new one per call, so `down` then `up` is two passwords per
+    # node. Here the stop and the systemd-run share one session and one prompt.
+    #
+    # The stop is `|| true` on purpose: the unit is TRANSIENT, so on a node that is already down
+    # it does not exist and `systemctl stop` exits non-zero. That is the normal case for a node
+    # that crashed, not an error, and must not abort the start that follows.
+    #
+    # Preflight BEFORE stopping. Checking afterwards would take a healthy node down and then
+    # refuse to bring it back because of a typo in GNSS_CFG -- the one outcome worse than not
+    # restarting at all.
+    preflight
+    ssh -t "$N" "$REMOTE_START_VERIFY"
+    ;;
+  debug)
+    # Run the POST-MERGE binary under gdb so a crash leaves a full backtrace instead of just an
+    # exit status. The merge broke GnssCoherentCombiner (segfault) and the node has run
+    # kotekan_premerge ever since, which also blocks every combiner change from being deployed --
+    # including the plain coherent rung. One node at a time: leave cx19 on premerge as a control.
+    #
+    # gdb --batch runs to completion and only prints on a fault, so a healthy node logs nothing
+    # extra; `-ex run` starts it, and the two bt commands fire when it stops.
+    DBG=/home/kvand/gnss/kotekan/build/kotekan/kotekan
+    ssh -t "$N" "mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+      test -x '$DBG' && sudo systemd-run --unit=gnss-node \
+        --working-directory=$K \
+        --property=StandardOutput=append:/tmp/gnss_node_dbg.log \
+        --property=StandardError=append:/tmp/gnss_node_dbg.log \
+        /usr/bin/gdb --batch -ex run -ex 'thread apply all bt' -ex 'info registers' \
+          --args '$DBG' --config '$CFG' --bind-address 0.0.0.0:12048" \
+      && sleep 5 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node \
+      && echo "backtrace (if it faults) lands in /tmp/gnss_node_dbg.log on $N"
+    ;;
+  up-premerge)
+    GNSS_BIN=$PREMERGE exec "$0" "$N" up
+    ;;
+  *) echo "unknown action '$ACT' (up|down|restart|status|debug|up-premerge)"; exit 2 ;;
+esac

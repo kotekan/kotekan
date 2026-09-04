@@ -18,6 +18,14 @@ log_level: info
 
 instrument_name: airspy
 
+# The chord-branch framework builds a default ICETelescope at startup, whose
+# constructor requires num_polarizations/num_dishes even though the airspy
+# autocorr pipeline never uses the telescope. Provide a trivial 1x1 stub.
+telescope:
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
 # Permit cross-origin REST access so the browser-based viewer can call
 # airspyInput's set_config / get_config / adcstat endpoints.
 # Scoped to the viewer's own origin(s) via an allowlist (validated Origin
@@ -27,6 +35,7 @@ rest_server:
     cors_allow_origins:
         - "http://localhost:8080"
         - "http://127.0.0.1:8080"
+        - "http://gx10.vdl:8080"
 
 samples_per_data_set: 32768
 bytes_per_sample: 2
@@ -49,7 +58,7 @@ input_buf:
     metadata_pool: none
     num_frames: buffer_depth
 
-sample_bw: 10. #MHz, must be float?
+sample_bw: 2.5 #MHz device rate (Fs_real = 5 MSPS); R2 supports 10 and 2.5
 freq: 1421.    #MHz
 airspy_input:
     kotekan_stage: airspyInput
@@ -57,8 +66,13 @@ airspy_input:
     gain_lna: 10 #0-14
     gain_mix: 10 #0-15
     gain_if: 10  #0-15
+    # OFF: the active antenna is powered by a SEPARATE inline bias tee as of the 3-airspy
+    # rework (2026-07-14). Three dongles pushing DC into a shared splitter is the failure
+    # mode to avoid; the antenna LNA wants exactly one supply. Set true ONLY if the feed is
+    # ever back on a single dongle with no external supply (the antenna IS active -- it is
+    # dead without bias from somewhere; A/B confirmed).
     biast_power: false
-#    serial: 0x03A464C834658167  # uncomment & edit to pick a specific dongle
+#    serial: 0x744C60C821311C4F  # CHORD-feed dongle
 
 
 spectrum_output:
@@ -107,5 +121,5 @@ spectrum_output:
     spawn_pyviewer:
         kotekan_stage: SpawnProcess
         in_buf: post_corr_buf
-        exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py'
+        exec: '${VIEWER_PYTHON:-python3} ./python/scripts/js_viewer/livebeam_server.py'
 

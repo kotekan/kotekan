@@ -1,0 +1,858 @@
+"""FleetPublisher: the broker's own REST surface (GET /get_status).
+
+Extracted verbatim from gps_distributed_broker.py (task #27 M1).
+
+⚠️ THIS IS THE ONE PIECE M6 MUST CHANGE SHAPE. Today one publisher serves one chain on one
+port, which is why CHORD needs a viewer instance per constellation (12060 GPS, 12061 E5a).
+The unified broker publishes every chain on one port, keyed by chain id -- see
+docs/CHORD_BROKER_REFACTOR.md M7. Moved unchanged here so that change is isolated.
+"""
+import collections
+import json
+import math
+import time
+import threading
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from .transport import _now
+
+# Prompt-intensity Rayleigh bar for the blind-tracking flag (task #47). A prompt tap holding a
+# coherent signal has s4_raw well below 1; a tap on noise is Rayleigh, s4_raw ~= 1.
+# DERIVED FROM SKY, not chosen: over 2026-08-11/12 the measured populations are 1.00-1.05 while
+# blind (broker-wide, all five chains) and 0.17-0.82 while tracking, so the bar sits in an empty
+# gap between them rather than inside either. Re-derive it -- do not nudge it -- if the split
+# ever stops being bimodal; scripts/gnss/blind_witness_check.py prints both populations.
+PROMPT_RAYLEIGH_S4 = 0.90
+
+# Trailing window for det_duty_s / inst_snr_med_win (seconds). Chosen as ~12 seed-POST
+# intervals (posts land every ~10 s), so the duty averages over many flicker cycles
+# rather than aliasing against one. Not a smoothing constant to be tuned for looks: it
+# is the averaging time of a MEASUREMENT of how often the array is actually holding a
+# satellite, and it should be reported alongside the number (det_duty_n).
+DUTY_WIN_S = 120.0
+
+
+class FleetPublisher:
+    """Serve the broker's FLEET-MERGED per-PRN state over REST, in a combiner's schema.
+
+    WHY THE BROKER. The broker is already the shared-knowledge node -- it fuses the pooled (l-a)
+    code rate, the clock-frequency bias (with cross-band sibling sharing), the fused LO, the
+    cross-band Doppler assist. Merging a track across frequency subbands is the same kind of
+    object, and fleet_dll() already computes it every cycle. The only thing missing was
+    publication.
+
+    WHY NOT LET THE VIEWER DO IT. The viewer's polling is browser-side: livebeam_server hands
+    the page a rest_port and the JS fetches kotekan directly (there is even a comment in it
+    about cross-origin failures from doing exactly that). On the airspy prototype that is one
+    origin. On CHORD it would be FOURTEEN origins across eight hosts, and each would show only
+    that instance's 6.7% of the L5 lobe. The merge has to happen upstream of the browser, and
+    upstream of the browser is here.
+
+    SCHEMA. Rows carry the field names GnssCoherentCombiner::get_status uses, so the viewer's
+    signal_metrics() consumes them unchanged -- amplitude, coh_amplitude, deep_amplitude,
+    unbiased_amplitude, doppler_hz, coherence_s, deep_snr, deep_records, amp_snr, deep_floor,
+    peel_*. What each MEANS is chosen honestly rather than uniformly:
+
+      * MERGED across the fleet (this is the added value): dll_disc and the E/P/L powers, and
+        amp_snr / amplitude derived from the summed prompt power against the live noise
+        population -- full 20.46 MHz rather than one node's 1.37 MHz.
+      * BEST-OF a single instance: every COHERENT statistic (deep_amplitude, deep_snr,
+        coherence_s, peel_*). These need cross-node phase alignment to merge, which is the very
+        thing the power combine avoids; claiming a fleet number for them would be a lie. The
+        source node ships as `coh_src` so a reader can see whose view it is.
+      * BROKER-OWNED: doppler_hz, code_phase_chips, code_phase_rate, dll_trim -- the shared
+        model, which no single combiner knows.
+
+    Read-only, no side effects, and entirely optional: without --publish-port nothing starts.
+    """
+
+    def __init__(self, port, log):
+        self._rf = {"t": None, "instances": {}}   # #8: receiver-wide RF health
+        # RECEIVER-WIDE SKY: {sysc: {prn: (el, az)}} plus a stamp, so the viewer can draw the
+        # sky from what the BROKER believes instead of re-deriving it. Keyed by constellation
+        # because each chain contributes its own and they must not overwrite each other.
+        self._sky = {}                           # sysc -> {"t": float, "sats": {prn: (el, az)}}
+        # ONE PORT, MANY CHAINS (task #27 M6). Each registered chain gets its own row/det
+        # store; a request selects one chain or gets them all, tagged. Before this, one
+        # publisher served one chain on one port, which is why CHORD needed a viewer
+        # instance per constellation (12060 GPS, 12061 E5a).
+        self._chains = {}          # chain id -> {"rows", "dets", "meta", "ctl", "sig", "band"}
+        self._order = []           # registration order, so output is deterministic
+        self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
+        # TRAILING DETECTION HISTORY, (chain, prn) -> deque[(t, inst_snr_med, certified)].
+        # Exists because EVERY instantaneous statistic in this row churns: measured
+        # 2026-08-14, all 12 instances collapse to noise together and recover on a ~10 s
+        # cadence (the seed POST cadence), so a single poll samples a violently flickering
+        # quantity and the display reads as random. A trailing duty is the honest summary --
+        # it does not hide the flicker, it MEASURES it. See det_duty_s below.
+        self._hist = {}
+        # RUNTIME CONTROL, deliberately narrow. Everything else here is read-only; this one
+        # value is writable because the experiment that needs it CANNOT be run any other way.
+        # Measuring the carrier loop's open-loop transfer function means holding a fixed
+        # carrier_trim_hz and watching deep_rate_hz -- but deep_rate_hz is measured against the
+        # tracker's f_ref, and changing the trim via --carrier-trim-const requires a broker
+        # restart, whose first seed list drops PRNs (the tracker's `active` fill is
+        # authoritative, so a dropped PRN sets f_ref = NaN and re-acquires). The step and the
+        # reference change are then inseparable, which is exactly how the 2026-08-04 attempt
+        # came out uninterpretable. Setting it in a LIVE broker holds f_ref still.
+        self._ctl = {"carrier_trim_const": None}
+        pub = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass  # a browser polls this at 1 Hz; the broker's own log stays readable
+
+            def _cors(self):
+                # ON EVERY RESPONSE, INCLUDING ERRORS. A 404 or a 501 without these headers
+                # reaches the browser as a CORS failure, not as the status it actually is --
+                # so the console says "blocked by CORS policy" when the truth is "no such
+                # endpoint here". That misdirection cost real time on 2026-08-08: the viewer
+                # was asking this port for prototype stage names (gal_search, gal_combiner,
+                # airspy_in) and the reported symptom was CORS rather than 404.
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+            def do_OPTIONS(self):
+                # WITHOUT THIS, BaseHTTPRequestHandler answers 501 with no CORS headers, and
+                # every preflighted request dies. A POST of application/json IS preflighted,
+                # so /set_carrier_trim was unreachable from a browser entirely.
+                self.send_response(204)
+                self._cors()
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def do_GET(self):
+                # The viewer builds every URL as <base>/<stage>/<endpoint> from ONE host:port,
+                # so it cannot straddle the search (12050) and this publisher. Serving the raw
+                # detections here as well makes the broker a single origin for both -- which is
+                # also the right shape: it already merges across all 14 combiners, and a browser
+                # cannot poll 14 origins itself.
+                #
+                # CHAIN SELECTION, two ways, because the consumers differ:
+                #   /get_status?chain=gps_l5   explicit, for anything we write
+                #   /gps_l5/get_status         a PATH SEGMENT naming a chain -- which is what
+                #                              the viewer already emits, since it builds
+                #                              <base>/<stage>/<endpoint> and cannot add a
+                #                              query string. Point its --gps-combiner-stage at
+                #                              a chain id and it filters with no code change.
+                # Neither given -> every chain, each row tagged. With ONE chain registered
+                # that is byte-identical to the old single-chain output plus the tag, so
+                # nothing that exists today has to change at once.
+                raw = self.path.split("?", 1)
+                p = raw[0].rstrip("/")
+                q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
+                want = (q.get("chain") or [None])[0]
+                segs = [s for s in p.strip("/").split("/") if s]
+                # ⚠️ AN UNKNOWN CHAIN MUST NOT FALL THROUGH TO THE MERGED TABLE. The old code
+                # was `ids = [want] if want in _chains else list(_order)`, which conflated two
+                # completely different requests: "no selector -- give me everything" (correct)
+                # and "give me chain X" where X is not running (must not silently answer with
+                # every OTHER chain's rows). The viewer keys one column per chain and fetches
+                # <chain>/get_status trusting it to be filtered (livebeam_server's
+                # discover_broker_chains sets combiner = the chain id, and gps_feed.js hangs
+                # metrics off that key), so the fall-through populated a column with another
+                # signal's satellites.
+                #
+                # MEASURED 2026-08-09, and it is why this is a 404 and not a tidy-up: with the
+                # two 1207.14 MHz chains removed from the config, /gal_e5b/get_status,
+                # /bds_b2b/get_status, /nonsense_chain/get_status and /zzz/get_status all
+                # returned the SAME 28 rows -- byte-identical, the concatenation of gps_l5 (10)
+                # + gal_e5a (9) + bds_b2a (9), PRNs 8 and 24 appearing twice. On the viewer that
+                # read as "E5b and B2b are tracking nicely, with almost uniformly identical
+                # significance to their E5a/B2a partners". They were their E5a/B2a partners.
+                # Identical numbers from two independent measurements is never the good news it
+                # looks like.
+                #
+                # 404 rather than an empty list, because gps_feed.js already documents "a 404 on
+                # a missing gal_/bds_ stage just skips that chain" -- so the column goes away
+                # instead of going quietly blank, and curl says which chains DO exist.
+                _EPS = ("get_status", "get_detections", "get_chains", "get_elements")
+                asked = want
+                if asked is None and len(segs) >= 2 and segs[-1] in _EPS:
+                    asked = segs[-2]
+                unknown = None
+                with pub._lock:
+                    if (asked is not None and asked not in pub._chains
+                            and not p.endswith("get_chains")):
+                        unknown = (asked, list(pub._order))
+                    ids = [asked] if asked in pub._chains else list(pub._order)
+                    if p.endswith("get_chains"):
+                        # DISCOVERY. The viewer's own discover_signals() reads kotekan's
+                        # /config, which a broker publisher does not serve -- so it fell
+                        # back to a static PROTOTYPE table and asked for stage names that
+                        # have never existed on CHORD (gal_search, gal_combiner,
+                        # airspy_in). The broker already knows every chain it runs, its
+                        # constellation, band and record length; publishing that lets ONE
+                        # viewer instance build its table from what is actually running.
+                        body = json.dumps([pub._chains[c]["desc"]
+                                           for c in pub._order]).encode()
+                    elif p.endswith("get_detections"):
+                        body = json.dumps(pub._collect(ids, "dets")).encode()
+                    elif p.endswith("get_elements"):
+                        # One chain asked -> its table directly (the viewer's shape); no
+                        # selector -> {chain: table}, so the merged form can never be
+                        # mistaken for a single chain's (the /zzz lesson above).
+                        _et = {c: pub._chains[c].get("elem") or {} for c in ids}
+                        body = json.dumps(_et[ids[0]] if (asked in pub._chains
+                                                          and len(ids) == 1)
+                                          else _et).encode()
+                    elif p.endswith("get_sky"):
+                        # RECEIVER-WIDE like get_rf: the sky is not a per-chain quantity, so
+                        # this ignores the chain selector rather than pretending it is one.
+                        # Shape: [{"const": "G", "prn": 3, "el": .., "az": .., "age_s": ..}]
+                        # -- flat, because the consumer draws markers, and age_s so a frozen
+                        # chain reads as stale rather than as a satellite standing still.
+                        _now_s = time.time()
+                        _sky = []
+                        for _sc, _d in sorted(pub._sky.items()):
+                            _age = (_now_s - _d["t"]) if _d.get("t") else None
+                            for _p, (_el, _az) in sorted(_d["sats"].items()):
+                                _sky.append({"const": _sc, "prn": _p, "el": _el, "az": _az,
+                                             "age_s": (round(_age, 1)
+                                                       if _age is not None else None)})
+                        body = json.dumps(_sky).encode()
+                    elif p.endswith("get_rf"):
+                        # RECEIVER-WIDE, so it ignores the chain selector entirely rather
+                        # than pretending a per-chain view exists.
+                        body = json.dumps(pub._rf).encode()
+                    elif p.endswith("get_status"):
+                        body = json.dumps(pub._collect(ids, "rows")).encode()
+                    else:
+                        body = json.dumps(pub._collect_meta(ids)).encode()
+                if unknown is not None:
+                    body = json.dumps({"error": "unknown chain",
+                                       "asked": unknown[0],
+                                       "chains": unknown[1]}).encode()
+                self.send_response(404 if unknown is not None else 200)
+                self.send_header("Content-Type", "application/json")
+                # The viewer is served from a different origin than this port, and its whole
+                # job is to fetch from here -- so say so explicitly rather than leaving the
+                # browser to fail a preflight with nothing in the log.
+                self._cors()
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                # ONLY /set_carrier_trim. Body {"hz": <float>} holds that trim on every seeded
+                # PRN; {"hz": null} releases it back to --carrier-trim-const. Diagnostic: pair
+                # it with --carrier-gain 0 so the loop does not immediately correct the step away.
+                raw = self.path.split("?", 1)
+                p = raw[0].rstrip("/")
+                q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
+                sel = (q.get("chain") or [None])[0]
+                if sel is None:
+                    for seg in p.strip("/").split("/"):
+                        if seg in pub._chains:
+                            sel = seg
+                            break
+                if not p.endswith("set_carrier_trim"):
+                    self.send_response(404)
+                    self._cors()
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    req = json.loads(self.rfile.read(n) or b"{}")
+                    hz = req.get("hz")
+                    hz = None if hz is None else float(hz)
+                except Exception as e:
+                    body = json.dumps({"error": str(e)}).encode()
+                    self.send_response(400)
+                    self._cors()
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                # A trim is a PER-CHAIN experiment. With one chain registered, name it
+                # implicitly; with several, an unqualified POST would silently step every
+                # signal at once, so require ?chain= and say so.
+                with pub._lock:
+                    targets = [sel] if sel in pub._chains else list(pub._order)
+                    if len(targets) > 1:
+                        body = json.dumps({"error": "several chains registered (%s); name "
+                                                    "one with ?chain=<id>"
+                                                    % ", ".join(targets)}).encode()
+                        targets = []
+                    else:
+                        for c in targets:
+                            pub._chains[c]["ctl"]["carrier_trim_const"] = hz
+                        pub._ctl["carrier_trim_const"] = hz
+                        body = json.dumps({"carrier_trim_const": hz,
+                                           "chain": targets[0] if targets else None}).encode()
+                if not targets:
+                    self.send_response(400)
+                    self._cors()
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                pub._log("carrier trim const set to %s by REST on %s (diagnostic)"
+                         % ("released" if hz is None else "%+.3f Hz" % hz, targets[0]))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self._log = log
+        self._srv = ThreadingHTTPServer(("0.0.0.0", port), H)
+        threading.Thread(target=self._srv.serve_forever, daemon=True).start()
+        log("fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state; "
+            "POST /set_carrier_trim {\"hz\": x} -- diagnostic open-loop trim)" % port)
+
+    # -- multi-chain plumbing (task #27 M6) ---------------------------------------------
+    def register(self, chain, signal=None, band=None, meta=None):
+        """Claim a slot on this port and get a handle that looks like the old publisher.
+
+        Returns a per-chain VIEW rather than self, so every existing call site --
+        `publisher.update(...)`, `publisher.carrier_trim_const(...)` -- keeps working
+        unchanged whether it is the only chain or one of five."""
+        with self._lock:
+            if chain not in self._chains:
+                self._chains[chain] = {"rows": [], "dets": [], "meta": {}, "elem": {},
+                                       "ctl": {"carrier_trim_const": None},
+                                       "sig": signal, "band": band,
+                                       "desc": dict(meta or {}, chain=chain,
+                                                    signal=signal, band=band)}
+                self._order.append(chain)
+        return _ChainView(self, chain)
+
+    def _collect(self, ids, key):
+        """Rows/detections for `ids`, each tagged with which chain it came from.
+
+        The tag is ADDED, never substituted: the schema stays GnssCoherentCombiner's, so
+        the viewer's signal_metrics() consumes these unchanged and simply ignores three
+        extra keys."""
+        out = []
+        for c in ids:
+            st = self._chains.get(c)
+            if not st:
+                continue
+            for r in st[key]:
+                if isinstance(r, dict):
+                    r = dict(r)
+                    r["chain"], r["signal"], r["band"] = c, st["sig"], st["band"]
+                out.append(r)
+        return out
+
+    def _collect_meta(self, ids):
+        if len(ids) == 1 and ids[0] in self._chains:
+            return self._chains[ids[0]]["meta"]
+        return {"chains": {c: self._chains[c]["meta"] for c in ids if c in self._chains}}
+
+    def set_rf(self, rf, t):
+        """Publish the fleet's RF-path health (#8). NOT per-chain, deliberately.
+
+        The voltage tap is per GPU and serves every signal on it, so clip fraction and band
+        power are properties of the RECEIVER, not of a tracking chain. Filing them under a
+        chain would invite exactly the mistake the numbers exist to prevent -- reading an
+        instrument-wide saturation as one chain's problem, which is how the 08-18 event was
+        first written up.
+        """
+        with self._lock:
+            self._rf = {"t": t, "instances": rf}
+
+    def set_sky(self, sysc, sats, t):
+        """One constellation's az/el, from the chain that predicts it. Receiver-wide output.
+
+        The viewer used to compute this itself, which meant fetching and MERGING its own copy
+        of the broadcast ephemeris -- making it a second writer of the shared nav cache, with
+        whatever version of the merge it imported at startup (2026-08-27: nine days old). It
+        also meant the sky plot could disagree with the broker while its own docstring claimed
+        it used "the SAME source the tracker uses". One source of truth, served.
+        """
+        with self._lock:
+            self._sky[sysc] = {"t": t, "sats": {int(p): (round(float(v[0]), 2),
+                                                         round(float(v[1]), 2))
+                                                for p, v in (sats or {}).items()}}
+
+    def carrier_trim_const(self, fallback, chain=None):
+        """The REST override if one has been posted, else the command-line value."""
+        with self._lock:
+            st = self._chains.get(chain) if chain else None
+            v = st["ctl"]["carrier_trim_const"] if st else self._ctl["carrier_trim_const"]
+        return fallback if v is None else v
+
+    def set_elements(self, table, chain=None):
+        """The per-element complex-gain table (task #57 step 2), served on /get_elements.
+
+        {prn: {probe, inst: {tag: {keff, amp[], ph[], sig[]}}}} -- amplitude AND phase per
+        antenna per instance, the beam/peel coefficients (gnss_broker/elemgain.py). Stored
+        whole and replaced whole; a stamped `utc` rides along so a stalled producer is
+        visible as an aging table rather than a fresh-looking stale one."""
+        with self._lock:
+            st = self._chains.get(chain)
+            if st is not None:
+                st["elem"] = {"utc": _now(), "prns": table}
+
+    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
+               pcn0=None, kcoh=None, innov=None, cpp_trim=None):
+        rows = []
+        fcoh = fcoh or {}
+        pcn0 = pcn0 or {}
+        kcoh = kcoh or {}
+        innov = innov or {}
+        cpp_trim = cpp_trim or {}
+        for prn, v in sorted(fleet.items()):
+            c = v.get("coh_row") or {}
+            sd = seeds.get(prn, {})
+            # Fleet incoherent amplitude/significance from the SUMMED prompt power, referenced
+            # to the live noise median -- the same population the gate is built on, so the
+            # number in the viewer and the number the loop gates on cannot drift apart.
+            p_med = v.get("p_med") or 0.0
+            ratio = (v["p_pow"] / p_med) if p_med > 0 else 0.0
+            row = dict(c)                      # start from the best instance's row...
+            row.update({                       # ...then override what the fleet knows better
+                "prn": prn,
+                "amp_snr": math.sqrt(max(0.0, ratio - 1.0)) if ratio > 0 else 0.0,
+                "amplitude": math.sqrt(max(0.0, v["p_pow"])),
+                "unbiased_amplitude": math.sqrt(max(0.0, v["p_pow"] - p_med)),
+                "dll_disc": v["disc"],
+                # ⚠️ `doppler_hz` IS THE COMMANDED SEED, NOT WHAT THE CORRELATOR RAN AT.
+                # These two differ by the tracker's feed-forward, dop_rate x (seed age), and
+                # the seed changes only when the broker reseeds -- so this field is a STAIRCASE
+                # even while the tracker is following the sky perfectly smoothly.
+                #
+                # THAT COST A WHOLE MISDIAGNOSIS (2026-08-09). The viewer plots this as
+                # "tracked Doppler"; it froze for 12 minutes at a time, and I read it as the
+                # tracker failing to apply dop_rate -- reporting "75 Hz un-applied" that was
+                # really just the seed being stale. Polling the combiner directly showed the
+                # applied Doppler advancing smoothly at the model rate the whole time.
+                #
+                # So publish BOTH, and never make anyone infer the tracker's state from the
+                # broker's own command again. `c` is the best instance's combiner row, whose
+                # doppler_hz is record slot REC_DOPPLER = PrnCtl.fcar_report = the propagated
+                # value the despread actually used.
+                "doppler_hz": sd.get("doppler_hz", c.get("doppler_hz", 0.0)),
+                "doppler_applied_hz": c.get("doppler_hz"),
+                # Fleet phase-slope delay fit (task #32): tau of the correlation peak
+                # RELATIVE to the replica placement, from the cross-channel phase ramp.
+                # Measurement-only today -- published next to the disc it is intended to
+                # replace, so the two can be judged against each other on sky.
+                "spec_tau_chips": v.get("spec_tau"),
+                "spec_peak_ratio": v.get("spec_ratio"),
+                # The b_sat actually being APPLIED to this sat's seeds (0 = none/stale) --
+                # published so the closed loop's health is checkable from outside: b_sat
+                # should hold near the P1 open-loop means while spec_tau collapses to 0.
+                "bsat_chips": v.get("bsat"),
+                "code_phase_chips": sd.get("code_phase_chips", c.get("code_phase_chips", 0.0)),
+                # fleet-only extras: not in the combiner schema, ignored by older consumers
+                "fleet_q": v["q"], "fleet_q_floor": v["q_floor"],
+                "fleet_p_over_noise": ratio, "fleet_present": bool(v["present"]),
+                # ⚠️ WHICH GATE SAID SO. present alone is a boolean with five different
+                # provenances -- "q+p:probes", the "prompt" peer fallback, "UNANCHORED",
+                # "deep", and the displaced re-admissions -- and an A/B on any of them is
+                # UNJUDGEABLE from outside without this. Found 2026-08-27 while arming
+                # --presence-admit-displaced: the arm's whole observable is that rows start
+                # carrying 'q+deep:probes+disp', and nothing published it, so the experiment
+                # could not have been read even if it worked perfectly.
+                "fleet_present_gate": v.get("present_gate"),
+                # the displaced admission's own numbers, when it ran: which evidence admitted
+                # the row, and the fit it was admitted on.
+                "fleet_off_chips": v.get("off_chips"),
+                "fleet_pedestal": v.get("pedestal"),
+                "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
+                "fleet_hop": v["hop"], "coh_src": v.get("coh_src"),
+                "code_phase_rate": sd.get("code_phase_rate", 0.0),
+                # The SECOND-ORDER carrier term. propagate_seed turns this into the quadratic
+                # CODE term (quad = 0.5*(chip/f_c)*dop_rate*dt^2), which is what holds the phase
+                # while the Doppler accelerates -- maximal near zenith, i.e. exactly where the
+                # signal is strongest. Published so its ABSENCE is visible: a seed that omits it
+                # walks the code several chips per seed interval and no loop can hold that.
+                "doppler_rate_hz_s": sd.get("doppler_rate_hz_s"),
+                "dll_trim": dll_trim.get(prn, 0.0),
+                # #76: the C++ fleet loop's standing trim, read back from
+                # /fleet_trim/get_dll. `dll_trim` above is the PYTHON arm only, which on an
+                # armed chain is exactly the arm that stands down (the handover) -- so
+                # before this field the viewer showed "trim +0.00" for satellites being
+                # actively trimmed. The applied correction is the SUM of the two.
+                "dll_trim_cpp": cpp_trim.get(prn, 0.0),
+            })
+            # #83 2(d): the innovation rides the row when this PRN has recent detections --
+            # innov_chips (freshest), innov_age_s, innov_p95_10m, innov_n_10m. Absent keys
+            # mean "no detection in the window", which is a statement, not a zero.
+            iv = innov.get(prn)
+            if iv:
+                row.update(iv)
+            # FLEET-COHERENT OVERRIDE. This is what overturns the "BEST-OF a single instance"
+            # rule in the class docstring above: the coherent statistics ARE mergeable now,
+            # because fleet_coherent solves the cross-node phase alignment that the power
+            # combine deliberately avoids. Only for PRNs that cleared the MEASURED null floor;
+            # everything else keeps the best single instance's numbers, which stay honest.
+            fc = fcoh.get(prn)
+            if fc and fc.get("present"):
+                row.update({
+                    "deep_snr": fc["deep_snr"],
+                    "deep_amplitude": fc["deep_amplitude"],
+                    "coh_frac": fc["coh_frac"],
+                    "coh_src": "fleet:%d" % fc["n_src"],
+                    "fleet_coh_floor": fc["floor"],
+                    "fleet_coh_align": fc["align"],
+                    "fleet_coh_records": fc["n_rec"],
+                    # The best single instance kept alongside, so the GAIN this buys is
+                    # visible in the same row rather than inferred across restarts.
+                    "fleet_coh_best_inst": fc["best_inst_snr"],
+                    # THE RECORD-STREAM CARRIER RATE and its split-half sigma (Hz), the
+                    # rrate state's coarse feed since 2974aaa81. Published beside
+                    # deep_rate_full_hz -- the fold's argmax it replaced -- so the two
+                    # estimators of the same quantity can be judged against each other on
+                    # sky rather than by argument. The fold's measured structure function
+                    # was FLAT with lag (1.44 m/s rms at 3 s, 2.07 at 24 s), i.e. pure
+                    # per-sample noise; this one is what that comparison needs.
+                    "rec_rate_hz": fc.get("rate_hz"),
+                    "rec_rate_sigma_hz": fc.get("rate_sigma_hz"),
+                })
+            else:
+                if fc:
+                    # Measured and rejected: publish the floor it failed against, so "no
+                    # fleet number" is distinguishable from "fleet never looked at this PRN".
+                    row.update({"fleet_coh_floor": fc["floor"],
+                                "fleet_coh_align": fc["align"]})
+                # QUADRATURE FALLBACK (2026-08-10, docs 11.31). The argmax this replaces sat
+                # a measured 4.9 dB below the fleet value, so every fleet-gate flicker
+                # stepped the published series 5-8 dB -- and at the observed 20-70% duty
+                # that mixture alone contributed ~3.5 dB of C/N0 scatter. The quadrature
+                # lands at the fleet level (-0.7..+2.0 dB over 5 strong PRNs), making the
+                # series CONTINUOUS across the gate. It is not quieter within-state than
+                # the argmax (no scalar is; the engagement rate is the real fix, #10) --
+                # continuity is what it buys. The argmax stays published alongside so the
+                # A/B lives in the row, and coh_src says which population produced the
+                # number ('quad:N' vs a URL).
+                _q = v.get("coh_quad")
+                row["coh_best_inst_snr"] = c.get("deep_snr")
+                if _q is not None:
+                    row.update({"deep_snr": _q[0],
+                                "coh_src": "quad:%d" % _q[1]})
+            # ---- THE HONEST HEALTH METRIC (2026-08-14, task #57) ------------------------
+            # Everything above is best-of-instance or fleet-override, and BOTH churn: the
+            # served row is a single sample of a quantity that (measured on sky, 12
+            # instances polled simultaneously at 2 s) collapses to noise and recovers on
+            # the ~10 s seed-POST cadence, fleet-wide and in lockstep. A viewer built on
+            # any instantaneous scalar therefore reads as random -- which is exactly the
+            # "bad churn, at most 3 sats" KV reported while GPS SEARCH was seeing the same
+            # satellites at SNR 1674-2362 continuously.
+            #
+            # Two properties make these fields trustworthy where the others are not:
+            #  * MEDIAN, not max, over instances. The max is an order statistic: it
+            #    tracks whichever instance happens to be highest, so it churns whenever
+            #    the winner changes and is biased upward by the most favourable noise
+            #    draw (see adr_fine_rate's churn gate for the same disease biting the
+            #    carrier loop). The median is neither.
+            #    ⚠️ INSTANCE AGREEMENT IS REGIME-DEPENDENT, do not quote one number for
+            #    it: measured 2026-08-14, instances agreed to ~5% while the fleet was
+            #    strong (per-instance deep_snr ~20-40) and scattered by 70-110% half an
+            #    hour later when the same satellites had fallen to deep_snr ~1-30. That
+            #    is expected -- a noise-dominated estimate scatters -- but it means the
+            #    spread is itself a diagnostic, which is why inst_snr_lo/_hi ship beside
+            #    the median rather than being reduced away.
+            #  * A TRAILING DUTY rather than a snapshot. det_duty_s reports the fraction
+            #    of the last DUTY_WIN_S in which the median instance cleared its floor.
+            #    This does not smooth the flicker away -- a satellite that is genuinely
+            #    half dead reads 0.5, and that IS the finding.
+            _pi = sorted((fc.get("per_inst") or {}).values()) if fc else []
+            if _pi:
+                _n = len(_pi)
+                row["inst_snr_med"] = (_pi[_n // 2] if _n % 2
+                                       else 0.5 * (_pi[_n // 2 - 1] + _pi[_n // 2]))
+                row["inst_snr_lo"], row["inst_snr_hi"] = _pi[0], _pi[-1]
+                row["inst_snr_n"] = _n
+            # Trailing duty over the last DUTY_WIN_S: the fraction of it in which the
+            # median instance's COHERENT number beat the fleet's own measured floor.
+            #
+            # ⚠️ THIS IS A DEEP-STAGE DUTY, NOT "IS THE SATELLITE BEING TRACKED".
+            # Measured 2026-08-14, and it is the whole diagnosis: with the broker
+            # SIGSTOPped (no seed POSTs, no trims, no commands of any kind) the flicker
+            # was UNCHANGED -- dead 48% before, 48% frozen, 44% after -- while p_pow, the
+            # prompt correlation power, sat flat through every collapse (PRN 23: p_pow
+            # 67,67,67,69,64,67,69,70 while deep_snr ran 5,17,11,7,0,1,7,13). The
+            # despread is holding the satellite continuously; the deep fold intermittently
+            # fails to certify it, identically on all 12 instances because it is a
+            # deterministic algorithm over near-identical data. So read a low duty as
+            # "the deep stage keeps losing this", never as "the array lost the sky".
+            _t_now = _now()
+            _key = (chain, prn)
+            _h = self._hist.setdefault(_key, collections.deque())
+            if _pi:
+                _fl = float(fc.get("floor") or 0.0)
+                _h.append((_t_now, row["inst_snr_med"], row["inst_snr_med"] > _fl > 0.0))
+            while _h and _t_now - _h[0][0] > DUTY_WIN_S:
+                _h.popleft()
+            if _h:
+                row["det_duty_s"] = sum(1 for _, _, ok in _h if ok) / float(len(_h))
+                row["det_duty_n"] = len(_h)
+                _m = sorted(v for _, v, _ok in _h)
+                row["inst_snr_med_win"] = _m[len(_m) // 2]
+            # SIGNIFICANCE WITH A MATCHED GATE. The viewer computed
+            #     sig = coherence_s > 0 ? max(deep_snr, amp_snr) : amp_snr
+            # where deep_snr may be the FLEET value while coherence_s is the best single
+            # INSTANCE's ladder pick -- two different estimators over two different
+            # integrations. Measured 2026-08-14: PRN 26 served deep_snr 137, coh_frac
+            # 1.00, coh_src 'fleet:11' and coherence_s 0.0, i.e. a live fleet detection
+            # displayed as insignificant, flickering in and out as the winning instance
+            # changed. Same numerator/denominator class as the cn0_coh_db pairing bug
+            # (#35) -- fixed there in the VALUE, left in place on the GATE.
+            # Publish sig with its gate and its source attached so no consumer has to
+            # re-derive the pairing.
+            # PROMPT HOLD -- the one number here that does not flicker (2026-08-14).
+            # p_pow is the fleet-summed PROMPT correlation power and `ratio` is it against
+            # the live noise median: no deep fold, no rate search, no nav-wipe ladder, no
+            # floor certification -- just "is there signal under the tap we commanded".
+            # Through every deep-stage collapse measured today it moved by <25% while
+            # deep_snr swung 20-30x, so it is the honest answer to "are we on the
+            # satellite" and the deep columns are the honest answer to "did the coherent
+            # stage manage to use it". Publishing both, named for what they are, is the
+            # point of this block: KV could read the sky off GPS search while every
+            # deep/coh column on the display was telling him the array had gone dark.
+            row["prompt_hold"] = ratio          # fleet prompt power / noise median
+            # ⚠️ `sig` NOW COMES FROM THE KNOWN-RATE FOLD (task #57 step 3, 2026-08-15).
+            # Every branch below it is a DEEP-FOLD significance, and the deep fold's
+            # per-integration rate re-search is the fault #47/#66 diagnosed: on sky those
+            # branches served single digits while the SEARCH saw the same satellites at
+            # hundreds-to-thousands of sigma -- KV read exactly that off this column and
+            # asked whether it still meant anything. It did not. kcoh_sig is the fold power
+            # over the probes' IDENTICALLY-folded floor: one estimator, one normalisation,
+            # a floor measured on noise-by-construction rows, and no search anywhere.
+            #
+            # THE DEEP NUMBERS ARE NOT DESTROYED -- inst_snr_med/_lo/_hi/_n and deep_snr
+            # stay published beside this, so the old population remains inspectable and the
+            # switch is visible in `sig_src` rather than hidden in a changed number.
+            # USE THE COHERENT SIGNIFICANCE ONLY WHERE THE FOLD ACTUALLY COHERED. Measured
+            # 2026-08-15 on gal_e5a: eta 20/124 (16%), kcoh_sig 1-2 on satellites the
+            # incoherent estimator had at 19 dB-Hz -- a fold that did not cohere reports a
+            # weak DETECTION, which is true of the fold and false of the satellite. Swapping
+            # one understated column for another would have been no fix at all. So: coherent
+            # significance when eta says the coherence is real, else the incoherent
+            # t-statistic (combdll.prompt_cn0's sig_inc), else the old deep branches.
+            # sig_src always names which, so the population is never switched silently.
+            # ⚠️ Both dicts are read HERE by their own lookups, not via the _pc/_kc locals
+            # the C/N0 blocks below define -- those are ~100 lines later in this function
+            # and would be an UnboundLocalError (the same ordering slip cost the broker a
+            # restart cycle earlier today).
+            _kc2 = kcoh.get(prn) or {}
+            _pc2 = pcn0.get(prn) or {}
+            _ks, _eta, _kn = _kc2.get("sig"), _kc2.get("eta"), _kc2.get("n_rec")
+            _si = _pc2.get("sig_inc")
+            if _ks is not None and _eta is not None and _kn and _eta >= 0.25 * _kn:
+                row["sig"] = _ks
+                row["sig_src"] = "kcoh:%d" % _kn
+            elif _si is not None:
+                row["sig"] = _si
+                row["sig_src"] = "inc:%d" % (_pc2.get("n_used") or 0)
+            elif _ks is not None:
+                row["sig"] = _ks
+                row["sig_src"] = "kcoh_weak:%d" % (_kn or 0)
+            elif _pi and row.get("det_duty_s") is not None:
+                row["sig"] = row.get("inst_snr_med_win") or row["inst_snr_med"]
+                row["sig_src"] = "inst_med:%d" % row["inst_snr_n"]
+            elif (c.get("coherence_s") or 0.0) > 0.0 and c.get("deep_snr"):
+                row["sig"] = c["deep_snr"]      # one instance, its own certified span
+                row["sig_src"] = "inst_best"
+            else:
+                row["sig"] = row.get("amp_snr") or 0.0
+                row["sig_src"] = "incoh"
+            # C/N0, PUBLISHED RATHER THAN DERIVED (task #35, 2026-08-11). The viewer used
+            # to compute 20log10(deep_snr) - 10log10(coherence_s), which is only valid
+            # when deep_snr is ONE instance's amplitude SNR. It is not: the fleet override
+            # and the quadrature fallback serve two estimators with different
+            # normalisations into that same field (quad inflates by exactly 10log10(N) =
+            # 10.8 dB at N=12; measured +8.72 dB vs the best instance against the fleet's
+            # +0.79), so every fleet<->quad flip stepped the displayed value ~8 dB and at
+            # ~50% duty that mixture WAS the "C/N0 scatter" (docs 11.31, the 2026-08-10
+            # G32-vs-E32 investigation).
+            #
+            # Definition: the BEST SINGLE INSTANCE's deep SNR over its own coherent span.
+            # One estimator, one normalisation, continuous across serving states BY
+            # CONSTRUCTION -- it never switches population. The fleet's coherent gain
+            # stays visible in deep_snr + coh_src, which remain untouched: deep_snr is a
+            # detection SIGNIFICANCE and gates consume it; this field is the radiometry.
+            # ⚠️ THE NUMERATOR AND THE DENOMINATOR MUST DESCRIBE THE SAME INTEGRATION.
+            # This is a C/N0, i.e. amplitude-SNR^2 per unit time, so pairing an SNR
+            # measured over N records with a span measured over M != N records is not an
+            # approximation -- it is a different quantity, and it JUMPS whenever either
+            # count changes.
+            #
+            # MEASURED 2026-08-11 on PRN 21: `coherence_s` is the best INSTANCE's ladder
+            # pick and hops 12 / 25 / 50 / 100 records poll to poll, while
+            # `fleet_coh_best_inst` is integrated over `fleet_coh_records` (42, 52, ...).
+            # The four rungs put -10log10(T) at -0.21 / +2.81 / +5.81 / +9.00 dB, so the
+            # pairing alone injects up to 9.2 dB of DISCRETE steps -- observed 41.6 ->
+            # 33.6 -> 22.8 -> 40.5 dB-Hz within 30 s on an unchanging satellite. That
+            # bimodal "switch" is the last of the C/N0 scatter (KV spotted the shape:
+            # discrete transitions, not a continuous multiplicative scaling, which is what
+            # sent this hunt after gain-like mechanisms for a day).
+            #
+            # So take each estimator WITH ITS OWN span: the fleet value over the records
+            # the fleet actually summed, the instance value over the instance's own ladder
+            # pick. t_rec is derived from the instance row rather than hardcoded, so a
+            # different record geometry cannot silently desynchronise this.
+            # ONE ESTIMATOR, UNCONDITIONALLY: the best single instance's own deep SNR over
+            # its own coherent span. Not the fleet value when the fleet gate happens to
+            # pass and the instance value when it does not -- that is a switch between two
+            # populations, and MEASURED 2026-08-11 on PRN 21 the two sit ~8-17 dB apart
+            # (best_inst 7.4-37.6 with the gate open, 67-82 with it closed), which is the
+            # bimodal switching KV identified in the served series.
+            #
+            # THE FLEET'S COHERENT GAIN DOES NOT BELONG IN A C/N0. C/N0 is a property of
+            # the signal and the receiver's sensitivity, not of how many nodes were
+            # summed; combining N instances raises the DETECTION SIGNIFICANCE, which is
+            # what deep_snr is for and what the gates consume. Publishing the fleet gain
+            # here made a satellite's radiometry depend on the fleet's engagement state --
+            # the same category error as the sqrt(N) quadrature inflation this field was
+            # introduced to remove (docs 11.31), just one layer further in.
+            #
+            # `c` is the best instance's own combiner row, so snr and span are the same
+            # integration by construction and no pairing can drift.
+            _bi = c.get("deep_snr")
+            _T = float(c.get("coherence_s") or 0.0)
+            row["cn0_coh_db"] = (20.0 * math.log10(_bi) - 10.0 * math.log10(_T)
+                                 if (_bi and _bi > 0.0 and _T > 0.0) else None)
+            # The fleet's view stays published beside it (deep_snr / coh_src /
+            # fleet_coh_best_inst), so the gain is still visible -- just not conflated
+            # with the radiometry.
+            #
+            # ---- THE ESTIMATOR-STACK C/N0 (task #57, 2026-08-15) ------------------------
+            # combdll.prompt_cn0: per-record prompt power off the gather feed, q-gated on
+            # the probes' own per-record q population, noise-debiased by the probes' median
+            # prompt power. NO FIT ANYWHERE IN IT -- the rate is the tracker's, the tap is
+            # the loop's -- which is what cn0_coh_db above can never have: its deep fold
+            # re-searches a residual rate per integration and carries ~20 dB of its own
+            # paired scatter doing so. Both are published; this one is the radiometry to
+            # consume. cn0_prompt_duty is the fraction of records that passed the lock
+            # gate: a duty near 0 means the number rests on a handful of upward
+            # fluctuations (decline it); cn0_prompt_split_db is the even/odd-record
+            # self-consistency, the split-half witness served with the value it witnesses.
+            _pc = pcn0.get(prn)
+            if _pc:
+                row["cn0_prompt_db"] = _pc.get("cn0_db")
+                row["cn0_prompt_duty"] = _pc.get("duty")
+                row["cn0_prompt_n"] = _pc.get("n_used")
+                row["cn0_prompt_split_db"] = _pc.get("split_db")
+                row["cn0_prompt_src"] = ("probes:%d,q>=%.2f"
+                                         % (_pc.get("n_probe_rec", 0),
+                                            _pc.get("q_gate", 0.0)))
+                # The probes themselves ride the same rows (they are seeded PRNs); flag
+                # them so no consumer plots a below-horizon noise reference as a satellite.
+                row["noise_probe"] = bool(_pc.get("probe"))
+            # ---- THE KNOWN-RATE COHERENT C/N0 (task #57 step 3) ------------------------
+            # The ~1 s fold with the residual rate INJECTED (previous cycle's record-stream
+            # fit -- causal), not searched. Same currency as cn0_prompt_db by construction,
+            # so on a strong stationary satellite the two MUST agree -- serving both makes
+            # that a standing cross-check instead of a one-time validation. kcoh_sig is the
+            # fold power over the probes' identically-folded floor (the detection number
+            # for deep-sidelobe satellites below the per-record gate); kcoh_eta is the
+            # coherence efficiency (n_rec when fully coherent, ~1 on noise) -- a wrong rate
+            # or a phase discontinuity shows up THERE, never as a silently low C/N0.
+            _kc = kcoh.get(prn)
+            if _kc:
+                row["cn0_kcoh_db"] = _kc.get("cn0_db")
+                row["cn0_kcoh_sky_db"] = _kc.get("cn0_sky_db")
+                row["kcoh_sig"] = _kc.get("sig")
+                row["kcoh_sig_sky"] = _kc.get("sig_sky")
+                row["kcoh_eta"] = _kc.get("eta")
+                row["kcoh_n"] = _kc.get("n_rec")
+                row["kcoh_rate_hz"] = _kc.get("rate_hz")
+                row["kcoh_rate_src"] = _kc.get("rate_src")
+                row["kcoh_t_coh_s"] = _kc.get("t_coh_s")
+            #
+            # ---- PROMPT LOCK (task #47, 2026-08-12). ------------------------------------
+            # EVERY C/N0 IN THIS ROW IS BLIND TO CODE ERROR. deep_snr comes from the deep
+            # fold, which RE-SEARCHES rate and phase and therefore re-finds the satellite no
+            # matter where the prompt tap was actually commanded. So a row can serve 41 dB-Hz
+            # while E/P/L sit on pure noise, and nothing downstream can tell.
+            #
+            # MEASURED, 2026-08-12 15:20-15:45 UTC (the window KV reported as the array's BEST
+            # look of the day, on all five chains at once): per-instance deep_snr 1.5-2.5,
+            # cross-instance align 0.14-0.22, s4_raw 1.00-1.05 (Rayleigh -- no coherent
+            # component at all), cn0_inc 22-25 dB-Hz (the rectification floor), `present` 0-1
+            # of 11-12 PRNs. dll_disc read 0.01 THROUGHOUT, because a discriminator built from
+            # E ~= L ~= noise is zero. Over 08-11 and 08-12, 7-30% of all BRIGHT-LOOKING
+            # samples carry this signature; 08-11 17h UTC looked like that day's best hour by
+            # every served metric and was 30-41% blind.
+            #
+            # ⚠️ A ZERO DISCRIMINATOR MEANS ON-PEAK **OR** BLIND. It is not evidence of health,
+            # and neither is a high cn0_coh. Judge tracking on the witnesses below.
+            #
+            # Two witnesses, deliberately of different kinds, because each alone has a failure
+            # mode the other covers:
+            #   s4_raw -- the prompt intensity's fractional variation. ABSOLUTE and per-satellite:
+            #       it needs no population and no floor estimate, so it survives the case that
+            #       breaks every relative gate (a fleet in which EVERY satellite is blind, where
+            #       the median IS the blind level). ~1.0 is Rayleigh, i.e. no coherent component.
+            #       Fails alone under strong scintillation, which is real on these bands.
+            #   fleet_present -- summed prompt power over the LIVE noise population (fleet.py
+            #       _floor). Immune to scintillation, but RELATIVE: it asks "brighter than the
+            #       median PRN", so a uniformly strong fleet also reads low. Cannot be the whole
+            #       test on its own -- that is why it is not.
+            # Blind is asserted only when BOTH agree, so the flag is conservative: it never calls
+            # a satellite blind on the strength of one estimator's weakness.
+            _s4 = row.get("s4_raw")
+            _rayleigh = (_s4 is not None and _s4 >= PROMPT_RAYLEIGH_S4)
+            row["prompt_rayleigh"] = _rayleigh
+            row["prompt_lock"] = not (_rayleigh and not row["fleet_present"])
+            # cn0_coh_db is the RADIOMETRY and is only meaningful when the prompt is on the
+            # signal. Published unconditionally (never destroy an estimator's output -- a row
+            # that has had a model applied cannot be un-applied), with the flag beside it so
+            # consumers can decline it. gnss_observables + the viewer both honour this.
+            rows.append(row)
+        meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
+                "present": sum(1 for r in rows if r["fleet_present"]),
+                "utc": _now()}
+        with self._lock:
+            st = self._chains.get(chain)
+            if st is not None:
+                st["rows"] = rows
+                if dets is not None:
+                    st["dets"] = dets
+                st["meta"] = meta
+            self._rows = rows          # legacy single-chain mirror
+            if dets is not None:
+                self._dets = dets
+            self._meta = meta
+
+
+class _ChainView(object):
+    """One chain's handle on a shared publisher.
+
+    Exists so every call site keeps the pre-M6 shape -- `publisher.update(...)`,
+    `publisher.carrier_trim_const(...)` -- whether the process runs one chain or five. The
+    alternative was threading a chain id through the cycle body, which is the 3252 lines
+    this refactor has deliberately not touched."""
+
+    __slots__ = ("_pub", "_chain")
+
+    def __init__(self, pub, chain):
+        self._pub, self._chain = pub, chain
+
+    def update(self, *a, **kw):
+        kw["chain"] = self._chain
+        return self._pub.update(*a, **kw)
+
+    def carrier_trim_const(self, fallback):
+        return self._pub.carrier_trim_const(fallback, chain=self._chain)
+
+    def set_elements(self, table):
+        return self._pub.set_elements(table, chain=self._chain)
+
+    def set_rf(self, rf, t):
+        # RECEIVER-WIDE, so it forwards WITHOUT a chain tag -- the voltage tap is per GPU and
+        # serves every signal on it (#8). The view exists to keep per-chain call sites working;
+        # this one is deliberately not per-chain, and still has to be here.
+        #
+        # ⚠️ ITS ABSENCE KILLED gps_l5 ON 2026-08-19. set_rf was added to FleetPublisher but
+        # not to this proxy, and the broker only ever holds a _ChainView -- so the one chain
+        # with rf-stats-endpoints armed threw AttributeError at its first poll and died, while
+        # the other four ran on. That is the worst shape for this bug: the chain that carries
+        # the only search, and whose clock the other four adopt, is the one that stops.
+        return self._pub.set_rf(rf, t)
+
+    def set_sky(self, sysc, sats, t):
+        # Per-chain call site, receiver-wide effect: the chain names its OWN constellation and
+        # the publisher unions them. Present here for the reason set_rf's comment gives -- the
+        # broker only ever holds a _ChainView, so a method missing from this class is an
+        # AttributeError at the first call, on whichever chain happens to use it.
+        return self._pub.set_sky(sysc, sats, t)

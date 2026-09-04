@@ -1,0 +1,573 @@
+# CHORD GNSS node configs -- the WHOLE fleet's generator flags, in one versioned file.
+#
+#   scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml            # write them
+#   scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --check    # verify, write nothing
+#
+# WHY THIS EXISTS. `gen_chord_gnss_config.py` takes ~48 flags, and until 2026-08-09 the set
+# that produced the running fleet was recorded NOWHERE: not in the generated header, not in
+# a script, not in a commit message. Six configs the instrument ran on all day were, in
+# practice, unreproducible -- so every change to a node was a hand-patch of a generated file
+# stamped "DO NOT HAND-EDIT", which is how the two combiner shapes below drifted apart in the
+# first place. Recovering the flags took an hour of diffing candidate outputs against the
+# committed files. A file like this would have taken a minute.
+#
+# THE RULE: if a node's config changes, it changes HERE and is regenerated. `--check` is what
+# makes that enforceable -- it regenerates into memory and compares, so a hand-edit or a
+# generator change shows up as a red gate instead of a silent divergence.
+#
+# Keys become flags exactly as in config/gnss_chains_chord.yaml: `keep-n2: true` -> a bare
+# `--keep-n2`, `search-port-base: 11040` -> `--search-port-base 11040`, false/null -> omitted.
+# Same convention, so a mistyped key surfaces as argparse's "unrecognized arguments".
+
+# ⚠️ THE BASE IS PINNED, AND THAT IS DELIBERATE. The generator INJECTS into production's
+# config rather than restating it, so the base is a real input -- and a base re-captured from
+# a running node on a different day silently produces a different fleet. This snapshot is the
+# one all six live configs were built from (sha256 ccf62befb3a4189f...); it came from
+# /home/kvand/gnss/session_artifacts_20260730/data/live_config.json, which survived only by
+# luck. Re-capture deliberately (`curl -s http://cx19:12048/config`), commit the new base
+# under config/base/ with its date, and point this key at it -- never in place.
+#
+# ⚠️ RE-CAPTURED 2026-08-31 (sha256 8630ca13702a83ec...), from cx47 -- FORCED, not chosen.
+# The origin/chord merge brought a bf-mask sync rework whose config contract the July-30
+# base predates: the merged binary REFUSES to start on it ("bf_mask_lifetime_in_samples is
+# required", then "host_bf_mask_ringbuffer doesn't exist"). Captured from an IDLE BENCH NODE
+# (cx47 == cx52 byte-for-byte, so there is nothing node-specific in it) because the six
+# tracker nodes were down at the time -- a capture is a capture, but note the bench nodes
+# ran production, not a GNSS config.
+#
+# ⚠️ AND IT MOVED THE LIVE ELEMENTS. dpdk gained crs_board_remap (identity -> pol-grouping)
+# and missing_source_ids went [4..15] -> [2,3,4,5,6,7,10,11,12,13,14,15]: the four live CRS
+# boards now land at OUTPUT LOCATIONS 0,1,8,9 instead of 0,1,2,3, so the live element set is
+# {0..15, 64..79} rather than the contiguous {0..31}. Element 0 is the same physical feed
+# either way (remap[0] == 0), which is why the GPS search reference survives untouched.
+# See array.live_element_ranges in config/chord_gnss_node.yaml.
+base: base/live_config_20260831.json
+
+# Where the generated files land: config/generated/chord_gnss_<node><suffix>.yaml
+#
+# ⚠️ THIS MANIFEST OWNS THE LIVE FLEET AND NOTHING ELSE. config/generated/ also holds ~20
+# one-off dev variants (_prof, _n2debug, _chandump, the aggregator and search instances,
+# and the pre-E5a chord_gnss_<node>.yaml). Those are deliberately unowned -- they were
+# built for a single measurement and regenerating them is not a goal. `--check` therefore
+# says nothing about them, which is correct: a gate that reported drift in a file nobody
+# intends to reproduce would train you to ignore it.
+# Renamed from `_e5afleet` when B2a landed (2026-08-09): that name described the ONE extra
+# chain it had at birth, and a config called "e5afleet" that actually carries GPS L5 + Galileo
+# E5a + BeiDou B2a is the kind of stale name this project has already lost hours to. The old
+# files are DELETED rather than left beside these, so a restart that reaches for the old path
+# fails loudly in node_up.sh's preflight instead of quietly bringing a node up without B2a.
+suffix: _multi
+
+common:
+  # ⚠️⚠️ TEMPORARY EXPERIMENT -- REMOVE WITH TASK #55. ⚠️⚠️
+  #
+  # TASK #52 A/B: 'ab' puts the carrier-phase fix (DespreadJob::ang0, phase taken at the
+  # window's reference sample) on GPU 0 and the pre-86349ac4d wc*n_abs expression on GPU 1, on
+  # EVERY node. Same node, same sky, same seeds, same poll, six instances per arm.
+  #
+  # It is here rather than passed by hand because a hand-run generator flag is exactly the
+  # unreproducible state this file exists to abolish -- and because someone (probably me) has
+  # to find it later to take it out. Set back to 1 to ship the fix everywhere, or 0 to revert
+  # the whole change without a rebuild.
+  #
+  # ⚠️ THIS DELIBERATELY MAKES HALF THE FLEET RUN CODE WE BELIEVE IS WRONG. That is the cost of
+  # measuring it: the sky churns faster than a before/after across restarts can resolve
+  # (2026-08-13: deep_snr max swung 52-197 in four minutes, seeded PRNs moved 12 -> 5 on
+  # geometry alone). Do not leave it armed once the comparison is in.
+  # A/B RESULT (2026-08-13, paired, same nodes/seeds/poll, gated to satellites whose cohFIT
+  # clears 1.5x its own shuffled null): the fix has the smoother per-record phase in 9 of 10,
+  # sign test p = 0.011. Modest -- med|dphi| 0.519 vs 0.604 rad -- and cross-instance agreement
+  # was FLAT between arms, so it is a real term and not the dominant one. Fleet set uniform on
+  # the fix; the A/B has told us what it can.
+  carrier-phase-from-ref: 1
+  # ── #71: THE CARRIER NCO, PAIRED PER GPU (2026-08-16) ───────────────────────────────
+  # 'ab' = GPU 0 accumulates the replica phase across records, GPU 1 keeps arm 1. The old
+  # arm evaluates the phase as f*n0 on the ABSOLUTE sample, so the whole phase history
+  # hangs off the CURRENT frequency estimate over a lever of n0/fs = the UPTIME: a Doppler
+  # change of 2.7e-7 Hz rotates it a full radian, and propagate_seed moves the Doppler
+  # EVERY RECORD by dop_rate*10.5 ms. Offline gate: scripts/gnss/carrier_nco_gate.cpp
+  # (accumulated 9e-16 rad under a ramp vs 1.2-2.8 rad for the absolute arm).
+  #
+  # PAIRED PER GPU BECAUSE THE SKY MOVES FASTER THAN A RESTART. Same node, same seeds,
+  # same poll -- the only pairing that resolves this, exactly as --carrier-phase-from-ref
+  # already does. ⚠️ It DOES cost the #52 ab arm if that is ever re-run: gpu 0 now differs
+  # from gpu 1 in two ways at once. #52's arm is currently pinned at 1 above, so nothing is
+  # confounded today.
+  #
+  # ⚠️ JUDGE ON |r_1|/|r_4| (scripts/gnss/kcoh_phase_series.py, ON cf06) -- RATE-BLIND, so
+  # unlike every C/N0 in this stack it cannot be rescued by a better rate. And do NOT
+  # expect eta to recover: this is the per-RECORD lever, and the per-FRAME jump that
+  # dominates eta is a separate, still-unidentified fault.
+  # Revert: set this to 1 and regenerate.
+  # ⚠️ REVERTED TO 1 ON SKY, 2026-08-16 00:30. Arm 2 measured WORSE in the paired A/B it was
+  # built for (kcoh_phase_series.py --split-gpu, gps_l5, both arms off the SAME records):
+  #     |r_m|/|r_4|      m=1     m=2     m=8     m=32    m=64
+  #     arm2 (NCO)      0.799   0.595   0.977   0.484   0.218
+  #     arm1 (old)      0.788   0.582   0.996   0.691   0.480
+  # and the per-record phase step went from +0.09 rad (arm 1, PRN 4) to -3.11 rad (arm 2),
+  # satellite-dependent: PRN 11 read -0.95. Arm 2 makes the replica phase LESS continuous, not
+  # more. |A| is unaffected (0.909 vs 0.907), so tracking never noticed either way.
+  #
+  # ⚠️ WHY THE OFFLINE GATE MISSED IT. carrier_nco_gate drives the accumulator against MY OWN
+  # model of the truth, in isolation. It never checked the CONTRACT WITH THE KERNEL -- that
+  # ang0 must be the phase at n0 for a ramp the kernel then continues at wc across the record.
+  # A gate on a formula is not a gate on an interface, and this one passed at 9e-16 rad while
+  # the thing it validated was wrong where it meets its caller.
+  #
+  # The prediction that DID hold: |r_1|/|r_4| is unchanged between arms (0.799 vs 0.788), so
+  # the frame-periodic fault is untouched by anything per-record -- exactly as stated.
+  carrier-phase-mode: 1
+
+  # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
+  # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
+  keep-n2: true
+  n2-dual: true
+
+  # ── SYNTHESIS ~4x (GPU TODO items 3+6, ARMED FLEET-WIDE 2026-08-31) ─────────────────────
+  # fp16 Phi tables (item 3): halves the RESIDENT table -- the one lever the DRAM-footprint
+  # verdict (gnss_gpu_search.md 10.6c) says pays. 1.55x through the SHIPPED enqueue_waveform
+  # (scripts/gnss/phi16gpu ALL PASS: wave rel 1.1e-3 vs the 3.3e-4 storage floor; the
+  # raw-float2 paths THROW while armed rather than despread garbage).
+  phi-fp16: true
+  # CENTERED 80-chip gather window (item 6): the prototype peaks mid-span, so 80 CENTERED
+  # chips keep -0.05 dB where the one-sided cap cliffed at 105-120. e2e-EXACT (== the
+  # untruncated baseline, GPU tracker leg included) across a 3-PRN x 3-Doppler sweep.
+  # ⚠️ 2.6x, not 1.75x: the "shipped one-sided 140" never actually shipped -- before this,
+  # production walked the full ~210 chips. Centered floor is 60 (harsh-comb flip at 52);
+  # 80 carries margin in both comb regimes. Disarm = delete these three keys, regenerate,
+  # restart -- d_first == 0 is the historical walk BIT-FOR-BIT.
+  despread-max-chips: 80
+  despread-chips-centered: true
+
+  # ✅ WIDENED FLEET-WIDE 2026-08-18 14:15, and the sky forced the question. On KV's
+  # full-fleet restart at ~14:05, FOUR instances wedged on startup -- cx42/gnss0,
+  # cx43/gnss0, cx44/gnss1, cx51/gnss0 -- every one of them on a node where this guard was
+  # OFF, while cx19 (the only armed node) came up clean. Measured on cx42/port 0: window
+  # frozen at [151567122432, 151567138816] with the stream 52.5 MILLION samples ahead and
+  # 195,313 packets/s -- the entire stream -- dropped; the instance served stale rows
+  # forever (pow_hop advanced 0 hops in 30 s) while its REST endpoint answered 200, which
+  # is why "all 12 respond" is not "all 12 are alive". THE ONSET GAP WAS 35,568 SAMPLES
+  # = 4.34 frames, so the bound of 8 would have closed it with 1.8x headroom.
+  # 32 rather than 8 for real headroom: one advance discards one 8192-sample frame, so 32
+  # bounds the recovery at 1.34 s of data, cheap against a pipeline that otherwise produces
+  # NOTHING until an operator notices. The bound still exists to stop a garbage sequence
+  # number teleporting the window into the future -- that failure is also a wedge, just
+  # facing the other way.
+  dpdk-resync-max-advances: 32
+
+  # ── SHIP THE N^2 VISIBILITIES (the last hop; 2026-08-18) ────────────────────────────────
+  # Flip to `true` to run stock-equivalent on the science pipeline. Everything upstream is
+  # ALREADY stock-equivalent and measured so: run_n2k's command list is byte-identical to
+  # chord_pathfinder.j2's, host_correlation_buffer has the identical shape/dtype, and
+  # n2_accumulate carries identical parameters (238 subints/bin, bin_in_ERA over 8640,
+  # CHORDBeamformer, EvenOddPosDef, no fringestop). We compute the visibilities every 10 s
+  # and currently drop them: n2_eigen_buffer has no consumer and n2_buffer's only reference
+  # is an inert hex_dump (which is commented out in the stock config too). This one flag
+  # adds the four bufferSend legs the stock config has and we don't.
+  #
+  # Endpoint defaults to the standard receiver (10.222.0.51, ports 11025 subset / 11027
+  # full) -- the SAME destination choco's production nodes use, so our frames land beside
+  # theirs. KV's call 2026-08-18: that is the intent (stock-equivalent), pending a word to
+  # the rest of the team. Override with n2-send-ip / n2-send-port-{full,subset} to point at
+  # our own receiver instead.
+  #
+  # COST measured from the schema: 7.7 MB/s per node, 0.37 Gbps fleet-wide. drop_frames
+  # stays true, so an absent or slow receiver degrades rather than backpressuring the GPU
+  # chain. ⚠️ Needs a NODE RESTART to take effect (sudo -- KV's), and that same restart also
+  # deploys the DPDK resync fleet-wide, since the binary is ahead of every running node.
+  #
+  # ⚠️⚠️ DISARMED 2026-08-18 23:0x -- ARMING THIS CORE-DUMPED THE WHOLE FLEET IN ~1 MINUTE.
+  #
+  #   ERROR: /eigencalc: Exception in stage /eigencalc: Invalid assignment to diagonal
+  #          matrix element
+  #   terminate called after throwing an instance of 'std::invalid_argument'
+  #   systemctl: Result=core-dump, ExecMainStatus=6, on every node
+  #
+  # THE MECHANISM, and it is worth understanding before re-arming. `n2_eigen_buffer` had
+  # NO CONSUMER: eigencalc (EigenN2Iter) produced into it, nothing drained it, so after
+  # num_frames the stage blocked on wait_for_empty_frame and simply parked. It has been
+  # parked for the entire life of this instrument. Adding buffer_send_n2_subset gave it a
+  # consumer, so eigencalc RAN FOR THE FIRST TIME -- and threw immediately.
+  #
+  # So the "no consumer" fact recorded below was not merely a missing last hop; it was the
+  # only reason a broken stage never executed. The subset leg is not a transport change,
+  # it is a code path that has never been exercised on our data.
+  #
+  # ⚠️ THE TWO LEGS ARE NOT EQUALLY RISKY, and a re-arm should split them:
+  #   FULL   (n2_buffer -> 11027): n2_buffer ALREADY has a consumer (n2_subset), so it is
+  #          flowing today. Adding a second consumer is a genuine last-hop-only change.
+  #   SUBSET (n2_eigen_buffer -> 11025): unblocks eigencalc. THIS is what cored the fleet.
+  # See --n2-send-legs. Do not re-arm the subset leg until eigencalc is fixed upstream.
+  #
+  # (Also observed, and separate: 10.222.0.51 REFUSED connections on both ports -- the
+  # receiver was not listening. Harmless by itself, drop_frames absorbs it, but it means
+  # nothing was being delivered even before the crash.)
+  # ✅ RE-ARMED 2026-08-18 23:2x -- FULL LEG ONLY. The full leg is the one that carries the
+  # N^2 VISIBILITIES (n2_buffer, the N2Accumulate product); the subset leg carries the eigen
+  # decomposition and is what cored the fleet. n2_buffer already has a consumer (n2_subset),
+  # so adding bufferSend there unblocks nothing and changes no upstream stage -- which is the
+  # last-hop-only change the first attempt wrongly claimed for all four legs.
+  # ⚠️⚠️ DISARMED 2026-08-19 01:5x -- OUR FRAMES KILLED recv1's hdf5 writer.
+  #
+  #   /hdf5_N2_write_subset: FatalError: N2FileData: frame information mismatch at (f=12,t=0)
+  #     time_center_ut1_ns  stored ... != incoming ...   (+5.007339 ms)
+  #     bin_t_inst_ns       stored ... != incoming ...   (-5.007339 ms)
+  #     bin_delta_ut1_inst  0.00757906138607267 != 0.0125864 (deg)
+  #     bin_xp_as / bin_yp_as also differ
+  #
+  # ONE ROOT CAUSE, not five: the delta_ut1 difference is 0.005007339, which is EXACTLY the
+  # 5.007339 ms shift in both time fields, with the sign flip UT1 = UTC + dUT1 predicts. Our
+  # Earth-orientation numbers are wrong, and the two timestamps are derived from them.
+  #
+  # WHY: OUR EOP TABLE ENDS 2026-08-01 AND IS 18.1 DAYS STALE. The telescope block carries
+  # `eop_updatable_config: /earth_rotation_data`, i.e. EOP is PUSHED to each node over REST
+  # and ours never receives it -- cx19 has logged 17,085,672 "Requesting EOP later than in
+  # table" warnings while stock node cx47 has logged ZERO. We have been treating that flood
+  # as log noise (#68); it was the instrument telling us its Earth orientation was frozen.
+  # Our values are the clamped last table row (6 significant figures); production's are
+  # interpolated to the instant (full double). recv1's writer collates our frames with the
+  # stock nodes' and requires the metadata to agree, so ours are fatal to it.
+  #
+  # ⚠️ DO NOT RE-ARM UNTIL THE EOP TABLE IS CURRENT. Our N^2 VISIBILITIES are fine -- #89's
+  # diagonal check reads clean -- but the frames carry time metadata that no collator can
+  # reconcile, and sending them takes down a shared receiver for everyone.
+  #
+  # THE LIKELY FIX IS THE PORT, and this is what KV was reaching for: the EOP push targets
+  # nodes on 12048 and we listen on 12049, so the control plane has never been able to
+  # reach us. 12048 is FREE on our six (nothing answered there; stock cx47/cx52 do answer),
+  # because our kotekan replaced production's on these nodes rather than joining it.
+  # ✅ ARMED 2026-08-19 02:3x -- FULL LEG, fleet-wide. The blocker is gone: the EOP table is
+  # current on all six (2026-08-16 -> 08-21, matching stock cx47) and cx19's "Requesting EOP
+  # later" counter is FROZEN, so dUT1 is right and the frame metadata that killed recv1's
+  # writer should now agree with the stock nodes'.
+  # ⚠️⚠️ RESTART ORDER: NODES FIRST, THEN recv1 -- EVERY TIME THE NODE CONFIG CHANGES.
+  #
+  # recv1's ConfigTracker keys each upstream by (host, REST port) -- 10.222.1.19:12048 for
+  # cx19 -- and remembers the config that identity advertised. Reconnecting from the same
+  # host:port with DIFFERENT content is FATAL by design (configTracker.hpp:895,
+  # _config_info_matches -> FATAL_ERROR_NON_OO), and it takes recv1's bufferRecv workers
+  # down with it.
+  #
+  # That is exactly what happened on 2026-08-19 02:46: recv1 had learned our full-leg-only
+  # config at 02:08, we regenerated with the subset leg plus rf-stats, restarted the nodes,
+  # and cx19 came back as the same identity with different content. The "Address already in
+  # use" errors that followed were SECONDARY -- systemd restarting faster than the old
+  # listening sockets closed. Restart recv1 as stop -> confirm the process is gone and
+  # 11025/11027 are free -> start, not a single `restart`.
+  #
+  # This bites us harder than production because we regenerate far more often than they do.
+  # Any flag in this file that changes a node's emitted config -- n2-send, n2-send-legs,
+  # rf-stats, extra-signal, the resync bound -- means a recv1 restart after the node cycle.
+  n2-send: true
+  # ✅ BOTH LEGS, FLEET-WIDE 2026-08-19 (KV). The full leg is proven: 2 connections per node
+  # to recv1:11027, dropped-frame count 0 and flat on all twelve legs, and recv1 alive
+  # through it where it previously died in under a minute.
+  #
+  # ⚠️ WIDER THAN THE TEST WAS. #89 exercised the subset leg on cx19 ALONE. What justifies
+  # the widening is that the thing which killed recv1's subset writer was FRAME METADATA --
+  # a 5.007 ms dUT1 from the stale EOP table -- and the subset leg carries the same metadata
+  # the full leg does, which recv1 is now demonstrably accepting. eigencalc itself ran clean
+  # on cx19 for hours: zero non-real diagonals at ~38 fps.
+  # Rollback if recv1's writer complains again: n2-send-legs: full, regenerate, restart.
+  n2-send-legs: both
+  # ⚠️ RETRACTION 2026-08-18 23:4x -- KV asked "are we certain we didn't mess up the N^2 in
+  # our manipulations?" and the honest answer is NO, not certain. The previous note claimed
+  # eigencalc "has been parked for the life of this instrument" and that we merely uncovered
+  # an upstream bug. THE CAPTURED PRODUCTION BASE CONTRADICTS THAT: it carries
+  # buffer_send_n2_subset consuming n2_eigen_buffer, so eigencalc HAD a consumer and was
+  # presumably running in production. The claim was built on our own config's shape and I
+  # generalised it to everyone's.
+  #
+  # WHAT SURVIVES THE CHECK (verified, not asserted): all 15 stock N^2 objects -- run_n2k,
+  # accum_*, n2_subset*, eigencalc*, and every buffer -- are BYTE-IDENTICAL to the captured
+  # base; host_correlation_buffer has exactly ONE producer (run_n2k), and cudaCorrelatorDual
+  # references none of the N^2 buffers. So we changed no parameter and inject no data.
+  #
+  # WHAT DOES NOT: if production runs the same stages with the same parameters AND the subset
+  # leg, eigencalc works there and died here, so SOMETHING differs and it is not yet found.
+  # Ranked candidates: (1) a startup race -- it threw twice immediately then died, and our
+  # nodes carry far more stages, so accum may emit before run_n2k has produced valid data and
+  # an uninitialised diagonal is complex; (2) the base is a 2026-07-30 capture and production
+  # may have disabled that leg SINCE, possibly for this very reason -- ask Jim, it is the
+  # cheapest question; (3) resource pressure, least likely to give this exact exception.
+  # First measurement: guard to_blaze_herm's diagonal and log imag -- frames 1-2 only means
+  # a race, every frame means the data.
+
+  # ── #8: THE RF-PATH MONITOR (2026-08-18) ────────────────────────────────────────────────
+  # Flip to `true` to serve 4+4b clip fraction and per-channel band power from each GPU's
+  # search tap, at <node>:12049/gnss{0,1}_srch_tap/rf_stats.
+  #
+  # WHY IT EXISTS. Amplitudes swing 5-10x per hour across the whole fleet, on flipped and
+  # unflipped satellites together (#56). The root is upstream of tracking AND of the combine,
+  # and nothing in this pipeline measures whether the quantiser is railing or how power sits
+  # across the band -- so the swing that keeps confounding our A/Bs is the one thing we cannot
+  # see. It already cost a false alarm about THE FLIP, cleared only by pairing in time.
+  #
+  # WHAT MAKES IT DIAGNOSTIC: the channel list is the UNION of every chain's covering
+  # channels on that GPU, so both lobes are watched in the SAME sample -- 14 local channels
+  # on cx19/gnss0, 277-283 (1176.45 MHz) and 287-293 (1207.14 MHz). The 08-18 event was
+  # +16 dB on 1176 with 1207 flat; one band alone cannot tell an external source from the
+  # sky or the gain moving.
+  #
+  # COST, MEASURED at production shape (8192 hops x 384 chan x 128 elem, 14 channels, stride
+  # 32) rather than estimated: 1.0-1.2 ms per pass = ~0.01% duty at the 10 s period. The pass
+  # reads the frame IN PLACE. Copying it out first -- the obvious "grab it and release" shape
+  # -- would cost ~40 ms of DRAM traffic for a 402 MB frame against a 41.94 ms frame period,
+  # so computing inline holds the frame for ~35x LESS time than copying it would.
+  #
+  # It also runs ABOVE the tap's drop check, so a backed-up GNSS branch does not blind the
+  # monitor -- which is when you most want it.
+  # ⚠️ Needs a NODE RESTART (sudo -- KV's). Off means the pass never runs, not that it runs
+  # and reports nothing: config/gates/rf_stats_gate.py's control arm checks exactly that.
+  # ✅ ARMED 2026-08-19 (KV). Clip fraction + per-band power from each GPU's voltage tap,
+  # served at <node>:12048/gnss{0,1}_srch_tap/rf_stats, polled by the broker (gps_l5 only)
+  # and rendered in the viewer's stream-health strip. Cost measured at production shape:
+  # 1.0-1.2 ms per pass, ~0.01% duty at the 10 s period. Rollback: rf-stats: false.
+  rf-stats: true
+  # PATH A OFF (task #26, 2026-08-09). The primary chain's path-A tracker is not
+  # instantiated: the broker seeds gnss*_inject and reads gnss*_n2combine, validated on sky
+  # before this landed (PRN 10 deep 88.9, same bias structure as path A, clk within 0.6
+  # chips). Worth 17.712 of ~20.2 ms/frame per GPU. The SEARCH leg is untouched -- it is
+  # built alongside path A but taps the voltage buffer directly, and it is what detects GPS
+  # and so solves the clock for all five chains. Flip this off to get path A back for
+  # single-signal debugging.
+  no-path-a: true
+  # SKY-CORRECTED DEEP RUNG (2026-08-10). The combiner scores the LOO element-derotated
+  # prompt (record slots 24/25) as a deep-fold candidate. Enablement case: the 2026-08-05
+  # "beats the genie" anomaly was a comparator error (the split's honest bound is the
+  # HALF-aperture genie; against it the split reads 0.84-0.95 in every harness seed with
+  # the null fail-closed), and ON SKY the slots hold phase-coherence 0.92-0.96 over 120 s
+  # where the raw prompt sits at the random-walk floor (docs 11.32). Merit-gated: the rung
+  # pays the same measured floor as every other candidate, so a cold cal loses instead of
+  # corrupting the fold. This is the lever on the fleet-engagement collapse (#10): per-
+  # instance deep up ~7 dB lifts mid sats over the alignment's SNR threshold.
+  sky-deep: true
+  # ── #102 ELEMENT STEERING, first-order positions (KV, 2026-08-29): the e5a assemblers
+  # get elem_positions_enu from config/chord_dish_layout.json (nominal grid, mapping as
+  # stated -- 'better than nothing'; the phase-stage solve refines). e5b stays UNSTEERED
+  # as the band-sibling control AND the live sign calibration: if e5a's per-element
+  # coherence/p2 degrade vs e5b, the sign is wrong -- flip elem-steer-sign, regenerate.
+  # ⚠️ DISARMED 2026-08-31 FOR THE POST-MERGE RESTART, deliberately and temporarily.
+  # chord_dish_layout.json is indexed by the OLD element numbering (its element 0 is
+  # "A01X"), and the re-captured base renumbers the element axis to [P][D] with the live
+  # feeds at {0..15, 64..79} -- so every position in that file now names a different feed
+  # than it did when the #102 amplitude pattern measured it. A steering vector built from a
+  # stale index map is not a weaker steer, it is a WRONG one: it derotates each element by
+  # another element's geometric delay, which degrades the very coherence the arm is judged
+  # on. Re-derive the map post-restart from the measured pattern (fixtures/
+  # elem_mapping_check.py against the banked pre-restart fingerprint,
+  # fixtures/elem_fingerprint_20260831_premerge_restart.txt), then re-arm with the sign
+  # calibration against the unsteered e5b sibling exactly as before.
+  elem-steer-bands: null
+  elem-steer-sign: 1.0
+  # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
+  #
+  # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
+  # purpose was "so a transit can be analysed after the fact" -- its absence is why the 03:58
+  # E30 pass was lost on 2026-08-07. That rationale is worth keeping in view, but it had
+  # ALREADY STOPPED HOLDING: all 7 gnss0 chains shared one file_name and all 8 gnss1 chains
+  # another, so ~87% of frames were overwritten within milliseconds and no survivor could be
+  # attributed to a chain. A transit archive you cannot attribute to a signal is not a transit
+  # archive. (Names are unique as of df06d26bc, which is what made the volume visible: with the
+  # collision fixed every stream lands, taking /tmp/gnss from ~104 to ~780 GB/day/node -- and
+  # --n2-dump's own help says "short captures only, 1 GB/min".)
+  #
+  # THE REPLACEMENT IS THE BEAM CUBE, which records the axis this never did (subband x element,
+  # coherent + incoherent, ~1 s windows) at ~77 GB/day for the whole fleet. Re-arm this flag
+  # deliberately for a short targeted capture -- a near-boresight pass with the gain backed off
+  # -- and disarm it again afterwards. It is not a background service.
+  n2-dump: false
+  # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's
+  # answer and would point every node at itself.
+  search-host: 10.222.3.6
+  # TASK #59: the frame-synced tracker->broker telemetry leg. Same host as the search
+  # aggregator and the broker -- cf06 already runs a kotekan instance, so this is a second
+  # small one beside it (scripts/gnss/gather_up.sh), not a new kind of thing.
+  #
+  # WHAT IT ADDS PER INSTANCE: a second CONSUMER of each chain's record buffer (the combiner
+  # is untouched), which strips each record to its gnssRecord.hpp header plus the per-channel
+  # E/P/L comb, batches four of them on an ABSOLUTE window boundary, and bufferSends 25200 B at
+  # 23.84 Hz. 24 MB/s from the whole fleet, and drop_frames means a gather that is down costs
+  # nothing but a log line.
+  #
+  # ⚠️ BRING THE GATHER UP BEFORE RESTARTING NODES INTO THIS. 60 senders retrying a dead
+  # listener is ~2 log lines a second across the fleet even at reconnect_time 30.
+  telem-host: 10.222.3.6
+  # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
+  # closes any connection whose frame_size disagrees with its buffer -- so changing either one
+  # means regenerating the GATHER config in the same commit, and restarting both ends. Left at
+  # the generator defaults (16 / 4): 4 records is exactly one 8192-hop correlator frame, and 16
+  # is how many SIMULTANEOUSLY LIVE satellites one frame carries -- not the record buffer's slot
+  # count, because GnssTelemPack compacts rows onto the PRNs that were actually despread.
+  #
+  # ⚠️ WAS 40 UNTIL 2026-08-15, WHICH COST ~5 s ON EVERY BROKER CYCLE. 40 rows for 11-14 live
+  # satellites is ~65% zeros: 480 Mbps of cf06's ONE 1 GbE (eno8303), and because the senders
+  # are frame-synced they burst together, so the broker's ~60 REST polls queued behind them.
+  # A-B-A on all five chains, parking the gather: 16.5 s -> 11.5 s -> 17.8 s median cycle,
+  # against an 11.8 s pre-transport baseline. Task #64.
+  # Extra tracker chains on the SAME 1176.45 MHz tap. Both are free of an extra voltage tap
+  # (identical covering channels to GPS L5) but each gets its OWN 128-lane synth buffer and
+  # its own dual-correlator pass, so the cost is GPU, not bandwidth.
+  #
+  # ⚠️ THE PRN COUNT IS A HARD BUDGET, NOT A PREFERENCE: 4 lanes per PRN (E, P, L, P_HEAD)
+  # against num_synth 128 means **32 PRNs maximum per chain**. Going over needs NSB=256 and a
+  # second kernel instantiation (docs 11, path-B plan). Both lists below are at or under it.
+  extra-signal:
+    # Galileo: the range 1-36 minus the slots with no active satellite. Exactly 32 -- full.
+    - GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+    # BeiDou B2a. BDS-3 ONLY (PRN >= 19 -- B1I/B2I-era BDS-2 birds do not broadcast B2a), and
+    # further cut to the 24 that ACTUALLY RISE HERE. The BRDC carries 38 BDS-3 PRNs, but
+    # 43-52/56-60 are IGSO/GEO parked over Asia and never clear the horizon at 49.3N/119.6W --
+    # computed over 24 h, max elevation < 0 for every one of them, while 19-42 all reach
+    # 34-88 deg. Seeding a satellite that cannot be there costs 4 lanes and produces noise.
+    - BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+
+    # -- 1207.14 MHz: THE SECOND BAND (2026-08-09) -------------------------------------
+    # Everything above sits at 1176.45 MHz, so until now the instrument has been
+    # single-band and `tau_band` -- a declared state in the joint solve
+    # (docs/CHORD_JOINT_TRACKING.md) -- has been unobservable by construction. These two
+    # chains are the leverage: SAME satellites, SAME rays, DIFFERENT carrier.
+    #
+    # THIS COSTS NO BANDWIDTH AND NO RETUNE. The science band is freq_id 1536..7679 =
+    # 300.0..1499.8 MHz, and every node already holds 768 channels spread across all of it,
+    # so 1207.14 MHz is ALREADY ARRIVING -- the fleet lobe there is 106 channels, exactly as
+    # at 1176.45. (The F-engine digitises to 1600 MHz; 300-1500 is the science SELECTION.
+    # L1/E1/B1C at 1575.42 is outside that selection, not outside the digitiser -- KV is
+    # negotiating to have it passed through, so do not write L1 off as unreachable.)
+    #
+    # ⚠️ PRN LISTS ARE A DELIBERATE FIRST-CUT BUDGET, NOT THE INTENDED FINAL SET. The two
+    # GPUs per node already run at 62-79% with three chains; adding two more at the 32/24
+    # counts above would ask for roughly double the live tracker load and saturate them.
+    # These short lists are spread across orbital slots so something is always up. GROW THEM
+    # AFTER MEASURING the actual delta -- and note that P3 (retiring the E/L lanes) halves
+    # the per-PRN synthesis cost, which is the real unlock for full-count multi-band.
+    #
+    # ⚠️ MIRRORS ITS BAND SIBLING'S LIST, AND THAT IS NOT A CONVENIENCE (2026-08-09, #34).
+    # The first list here was 8 PRNs "spread across orbital slots so something is always up".
+    # Measured on sky the moment the endpoint stopped lying: of those 8, exactly ONE (13) was
+    # also being published by E5a -- and E5a read PRN 13 at deep 3.2, coh 0.24, i.e. NOISE on
+    # the chain that demonstrably works. Meanwhile E5a's real detections that minute were PRN
+    # 26 (deep 255.8, coh 1.00) and PRN 29 (72.4, 0.99), NEITHER of which E5b was seeding. So
+    # "E5b reads noise" was consistent with a broken chain AND with a chain that had never
+    # been given a detectable satellite, and the two were indistinguishable by construction.
+    #
+    # THE POINT OF THE SECOND BAND IS THE SAME SATELLITE AT A DIFFERENT CARRIER. tau_band is a
+    # per-BAND instrumental delay separated from a per-SAT bias only by observing one ray on
+    # two carriers; a seed list disjoint from its sibling's cannot measure that no matter how
+    # correct the code is. So these lists mirror E5A/B2A exactly and should be kept in step
+    # with them -- if a satellite is worth tracking at 1176.45 it is worth tracking at 1207.14.
+    #
+    # LANE BUDGET: still 4 lanes/PRN against num_synth 128, so still 32 PRNs max per chain.
+    # 32 and 24 match the siblings and are at/under it. GPU: path A is gone, so a node runs 5
+    # path-B chains at ~12.6 of 41.94 ms/frame; the added PRNs are ~+3 ms on that estimate,
+    # not measured -- check the _prof frame timing before growing anything further.
+    #
+    # GAL_E5B_Q_CS -- the BAKED variant, and the _CS suffix is load-bearing. Deployed
+    # first as plain GAL_E5B_Q, it read NOISE on sky (deep 2-3 against E5a's 96 on the same
+    # fleet in the same minute): the bare descriptor despreads only the 1 ms primary while
+    # the real per-PRN CS100 overlay flips sign every millisecond, so coherent integration
+    # past 1 ms cancels itself. Same reason E5a and B2a use _CS above -- which is exactly
+    # what the two lines above should have told me before I wrote the bare name (#34).
+    - GAL_E5B_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+    # BDS_B2B_I is the PPP-B2b DATA channel and has NO secondary overlay at all
+    # (secondary_length=0: B-CNAV3 runs 1000 sps = one symbol per 1 ms code period). That
+    # makes it the most SEARCHABLE signal in the descriptor set -- no per-PRN CS to hunt --
+    # and the natural first candidate if we want a searcher that is not GPS. But it is
+    # data-only, so coherent integration past 1 ms needs nav-bit wipe, which
+    # cudaGnssChordTrack does not have yet (task #31). Expect it to TRACK with modest deep
+    # until that lands; it is here for the band, not yet for the sensitivity.
+    - BDS_B2B_I:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+
+    # -- 1268.52 + 1278.75 MHz: THE THIRD BAND (2026-08-31) -----------------------------
+    # The L2 groundwork's verdict: GPS L2C is 0-1 covering channels/node (narrowband --
+    # parked as a cross-node design), while B3I (13-14 chan/node, record geometry
+    # identical to B2b) and E6-C (6-7) drop into this template verbatim. Same rays,
+    # THIRD carrier: tau_band gets a third equation. No bandwidth, no retune -- both
+    # carriers are inside the science selection every node already receives. GPU cost:
+    # ~+2.5 ms/node-frame at the post-fp16+centered rates (measured 12.2-13.8 total),
+    # which is exactly what the 08-31 arm freed. Lists MIRROR the siblings (#34).
+    # The _NH/_CS suffixes are load-bearing (gal_e5b's lesson above): trackers run the
+    # BAKED variants; blind search does not exist for either (searcher stays GPS-only).
+    - BDS_B3I_NH:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+    - GAL_E6_C_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+
+    # -- 1227.6 MHz: GPS L2C (2026-08-31) ------------------------------------------------
+    # ⚠️ THE "0-1 CHANNELS PER NODE" VERDICT THAT PARKED THIS WAS A PER-INSTANCE ERROR (KV).
+    # Nothing meaningful happens per instance any more: fleet_dll SUMS RAW POWERS across every
+    # instance reporting a window and forms ONE discriminator, so sensitivity is fleet-wide and
+    # a per-node channel count means nothing. What matters is the fraction of the MAINLOBE the
+    # fleet captures, and L2C's mainlobe is only 6 freq_ids wide (6283-6288) because the signal
+    # is narrowband -- 5 of those 6 land on DISTINCT instances (cx19/g1 6284, cx27/g0 6288,
+    # cx42/g1 6285, cx43/g1 6286, cx51/g1 6287). That is ~83% of the mainlobe against L5's
+    # ~80%, and 5 reporting instances clears --dll-min-instances 2 and coh-min-instances 3.
+    # cx44 owns none of the six and simply does not report this chain -- which the combine
+    # handles by construction (a PRN it does not despread is skipped, not blocked).
+    #
+    # ⚠️ FIRST TIME-MULTIPLEXED SIGNAL, and it found a real bug: CM and CL interleave chip by
+    # chip, so comb_mult == 2 and the combined stream runs at 2x the component rate.
+    # propagate_seed advanced the phase at chip_rate_hz (COMPONENT) and then reduced it with
+    # arg_from_phase (COMBINED) -- identically zero for comb_mult 1, which is every signal we
+    # had ever flown, and a -4.167 chips/record drift at 1000 Hz for this one. Fixed in
+    # a5bb46bc0; e2e at 1227.6 now closes 0.000 at every record. NOT a chip-rate bug: E6-C at
+    # 5.115 Mcps reads 0.000 on the same invocation.
+    #
+    # PRNs: the 28 L2C-CAPABLE satellites from the IGS SINEX registry (L2C is IIR-M and newer,
+    # so 2/16/19/22 are excluded) -- MORE sats than gps_l5's 21. Tracking CM, not CL: CM is
+    # 10230 chips / 20 ms and sits in the record geometry the fleet already runs, while CL's
+    # 767250 chips / 1.5 s is a different regime that deserves its own bring-up.
+    # Model-primary like b3i/e6 -- the searcher stays GPS-L5-only.
+    - GPS_L2C_CM:1,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,20,21,23,24,25,26,27,28,29,30,31,32
+
+nodes:
+  # search-port-base is NOT arbitrary: the aggregator addresses feeds at base+i in node-major,
+  # GPU-minor order, so these must stay 2 apart and in this sequence or the search instance
+  # reads the wrong node's comb.
+  #
+  # combine-gpus is GONE from cx19 and cx51 (KV, 2026-08-09), and the fleet is now UNIFORM:
+  # every node exposes two per-GPU combiners, on both paths.
+  #
+  # WHY IT WAS ALWAYS WRONG FOR THIS ARCHITECTURE, not merely inconsistent. The flag merged
+  # GPU 0 and GPU 1 into ONE 14-channel path-A combiner. The whole point of the current design
+  # is to ship per-channel results from every instance back to the broker so it can fit a
+  # phase SLOPE across frequency (task #32 / CHORD_JOINT_TRACKING.md P1) -- and a merge is the
+  # one operation the broker can never undo. Collapsing two instances into one also throws
+  # away the axis fleet_coherent needs most: instances are what give the leave-one-out
+  # reference and the one-way S/R split something to work with, which is why the weak PRNs
+  # measured BETTER split than merged (PRN 3: 5.2 vs 4.0; PRN 7: 3.4 vs 2.5) while the median
+  # fleet ratio was 0.997 -- i.e. the merge bought nothing and cost the margins.
+  #
+  # It was already a dead letter in practice: --no-path-a means path A's combiner is not
+  # instantiated at all, and path B has always built one combiner per GPU on every node. So
+  # this removal changes no running stage today -- it removes a trap. While it was set, the
+  # natural-looking `gnss{0..1}_combine` in a chain file silently pointed 2 of 12 URLs at
+  # stages that did not exist on those two nodes, and fleet_coherent skips an unreachable
+  # instance without failing. scripts/gnss/check_chain_endpoints.py now catches that class,
+  # but not having the asymmetry at all is better than catching it.
+  # AHEAD-RESYNC canary (2026-08-18). cx19 ONLY for now: the capture window's advance is
+  # reachable only from the in-range path, so once the stream runs past it nothing brings it
+  # back -- this node stalled twice in ~30 h (gnss1/port 1 for 25 h from a 5472-sample
+  # overshoot; then gnss0/port 0 after the recovery restart, which froze the broker's whole
+  # time base and took every clock-adopting chain down). 8 is a small bound: at ~195k pkt/s
+  # even one advance per packet closes a gap at once. Watch the RESYNC lines in the node log
+  # -- a rising count is a REAL upstream fault that we now survive rather than die from.
+  # ⚠️ cx19 IS THE #89 TEST NODE (2026-08-19). It alone builds the SUBSET leg, which gives
+  # eigencalc a consumer and makes it run. On 08-18 that core-dumped every node; the
+  # diagonal diagnostic in to_blaze_herm now logs the offending element instead of throwing,
+  # so this should SURVIVE and produce the measurement. The other five stay on `full`, so a
+  # repeat failure costs one node, not the fleet.
+  # Revert: delete n2-send-legs here, regenerate, restart cx19.
+  # ⚠️ cx19's `n2-send-legs: both` REMOVED 2026-08-19. It carried the #89 subset test, which
+  # read clean all night (zero non-real diagonals while eigencalc produced at ~38 fps). But
+  # the ordering that matters now is: prove recv1 ACCEPTS our frames on the full leg before
+  # handing it the subset leg too. We have already cost that receiver one outage; a second
+  # would be ours to own twice.
+  # ⚠️ COST OF THIS CHOICE, stated so it is a decision and not an oversight: parking the
+  # subset leg parks eigencalc again, and with it the Hermitian diagonal check that is our
+  # only detector for #89. Restore `n2-send-legs: both` here once recv1 is confirmed writing
+  # our full-leg frames.
+  cx19: {search-port-base: 11040}
+  cx27: {search-port-base: 11042}
+  cx42: {search-port-base: 11044}
+  cx43: {search-port-base: 11046}
+  cx44: {search-port-base: 11048}
+  cx51: {search-port-base: 11050}

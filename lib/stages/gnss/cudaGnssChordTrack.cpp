@@ -1,0 +1,1135 @@
+#include "cudaGnssChordTrack.hpp"
+
+#include "Telescope.hpp" // for Telescope (the LIVE record epoch, not a config copy)
+
+#include <chrono>
+
+#include "cudaGnssChordDespread.hpp"
+#include "gnssBandPlan.hpp"
+#include "gnssGpuChain.hpp"
+#include "gnssSeedTransport.hpp"
+#include "gnssSignal.hpp"
+#include "GnssChanMetadata.hpp"
+#include "cudaUtils.hpp"
+#include "kotekanLogging.hpp"
+#include "pfbPrototype.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <functional>
+
+using kotekan::Config;
+using kotekan::bufferContainer;
+
+REGISTER_CUDA_COMMAND_WITH_STATE(cudaGnssChordTrack, cudaGnssChordTrackState);
+
+// ---------------------------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------------------------
+cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::string& unique_name,
+                                                 bufferContainer& host_buffers,
+                                                 cudaDeviceInterface& device) :
+    cudaCommandState(config, unique_name, host_buffers, device) {
+    using namespace std::placeholders;
+
+    prns = config.get<std::vector<int>>(unique_name, "prns");
+    n_prn = (int)prns.size();
+    n_chan = config.get<int>(unique_name, "n_channels");
+    n_elem = config.get<int>(unique_name, "n_elements");
+    elem_stride = config.get_default<int>(unique_name, "elem_stride", n_elem);
+    frame_chan_stride = config.get_default<int>(unique_name, "frame_chan_stride", n_chan);
+    n_hops_frame = config.get<int>(unique_name, "samples_per_data_set");
+    hops_per_record = config.get_default<int>(unique_name, "hops_per_record", 2048);
+    fft_len = config.get_default<int>(unique_name, "fft_length", 16384);
+    sample_rate = config.get_default<double>(unique_name, "sample_rate", 3.2e9);
+    f_offset_hz = config.get_default<double>(unique_name, "f_offset_hz", 0.0);
+    // F-engine conjugation, measured on sky 2026-07-30 -- see DespreadParams::conj_data.
+    // Without it the tracker despreads the conjugate of the sky and never locks.
+    _conjugate = config.get_default<bool>(unique_name, "conjugate", false);
+    dll_spacing = config.get_default<double>(unique_name, "dll_spacing", 0.5);
+    doppler_margin_hz = config.get_default<double>(unique_name, "doppler_margin_hz", 5000.0);
+    trim_enable = config.get_default<bool>(unique_name, "code_trim", false);
+    trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 0.0);
+    trim_gain = config.get_default<double>(unique_name, "trim_gain", 0.15);
+    trim_leak = config.get_default<double>(unique_name, "trim_leak", 0.002);
+    trim_clamp = config.get_default<double>(unique_name, "trim_clamp", 3.0);
+    trim_quality_min = config.get_default<double>(unique_name, "trim_quality_min", 2.2);
+    trim_pow_alpha = config.get_default<double>(unique_name, "trim_pow_alpha", 0.05);
+    trim_ref_elem = config.get_default<int>(unique_name, "trim_ref_elem", 0);
+    // ── THE RECORD EPOCH COMES FROM THE TELESCOPE, NOT FROM THE CONFIG ──────────────────
+    // utc0 is the UTC of ABSOLUTE SAMPLE 0, and this process already knows it exactly:
+    // CHORDTelescope::to_time_ns(seq) = time0_ns + seq*dt_ns, where time0_ns is fetched
+    // live from the FPGA controller at startup (query_gps/require_gps) WITH the GPS
+    // week-rollover correction applied. to_time_ns(0) is therefore the same quantity the
+    // config's frame0_utc has been hand-carrying -- from a better source.
+    //
+    // ⚠️ WHY THIS CHANGED (2026-08-18). The config copy went stale twice: 13.78 days from
+    // 2026-07-24, and 9.165 days tonight when the F-engine restarted at 18:30 UTC during
+    // site work. Both times /telescope served the truth while every GNSS record would have
+    // been stamped days in the past, and nothing downstream could tell -- every
+    // cross-record estimator works in differences, so a uniformly-wrong epoch stays
+    // uniform. The generator grew a check against the running fleet to catch it; that
+    // check was a workaround for a duplicated source of truth, and this removes the
+    // duplication instead. A value the process can look up should never be pasted into a
+    // config.
+    //
+    // The config key SURVIVES as an explicit override, because --frame0-nano exists to
+    // start without chive's timing service and that path must keep working. Precedence:
+    // an explicitly-configured value wins (it is a deliberate operator act), otherwise the
+    // telescope, otherwise 0 -> the assembler's host-clock fallback and its loud warning.
+    const double cfg_frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
+    double tel_frame0_utc = 0.0;
+    {
+        const auto& tel = Telescope::instance();
+        if (tel.gps_time_enabled()) {
+            const int64_t t0 = tel.to_time_ns(0);
+            if (t0 > 0)
+                tel_frame0_utc = (double)t0 * 1e-9;
+        }
+    }
+    frame0_utc = cfg_frame0_utc > 0.0 ? cfg_frame0_utc : tel_frame0_utc;
+    if (tel_frame0_utc > 0.0 && cfg_frame0_utc > 0.0
+        && std::abs(cfg_frame0_utc - tel_frame0_utc) > 1e-3) {
+        // The generator refuses to EMIT a disagreeing config, but it can only check at
+        // generation time -- an F-engine restart after that is invisible to it and not to
+        // us. Do not silently prefer one: an operator who set frame0_utc meant it, and an
+        // operator who did not needs to know their file is stale.
+        WARN("cudaGnssChordTrack: frame0_utc CONFLICT -- config {:.9f}, telescope {:.9f} "
+             "({:.3f} days apart). USING THE CONFIG because an explicit value is an "
+             "operator decision, but this almost always means the F-engine restarted and "
+             "the config was not regenerated. Every record from this node is stamped "
+             "{:.3f} days off, and nothing downstream can see it. Clear frame0_utc from "
+             "the node file to follow the telescope.",
+             cfg_frame0_utc, tel_frame0_utc,
+             std::abs(cfg_frame0_utc - tel_frame0_utc) / 86400.0,
+             std::abs(cfg_frame0_utc - tel_frame0_utc) / 86400.0);
+    } else if (tel_frame0_utc > 0.0 && cfg_frame0_utc <= 0.0) {
+        INFO("cudaGnssChordTrack: record epoch from the TELESCOPE, frame0_utc {:.9f} "
+             "(live GPS time0, week-rollover corrected). No config value to go stale.",
+             frame0_utc);
+    } else if (tel_frame0_utc <= 0.0) {
+        WARN("cudaGnssChordTrack: the telescope has no GPS time0; record epoch falls back "
+             "to the config's frame0_utc {:.9f}. That value cannot self-correct across an "
+             "F-engine restart -- verify it against telescope/time0_ns before trusting any "
+             "absolute record time.",
+             frame0_utc);
+    }
+    // 0 = never expire (the old latching behaviour). The broker re-seeds every --interval (2 s
+    // live), so 60 s is ~30 refreshes of margin while still retiring a set satellite promptly.
+    seed_ttl_s = config.get_default<double>(unique_name, "seed_ttl_s", 60.0);
+    // BENCH: report the synthesis / correlation split per frame. Pairs with the cudaProcess
+    // stage's `log_profiling` -- that gives the command's total, this says where it goes.
+    // Read here with the other config; the engine is ENABLED after `despread` exists (below).
+    split_timing = config.get_default<bool>(unique_name, "log_kernel_split", false);
+
+    if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
+        FATAL_ERROR("cudaGnssChordTrack: hops_per_record {:d} must divide samples_per_data_set "
+                    "{:d} exactly -- a partial trailing record would silently drop data.",
+                    hops_per_record, n_hops_frame);
+    const int n_rec = n_hops_frame / hops_per_record;
+    if (n_rec > gnss_gpu::MAX_REC)
+        FATAL_ERROR("cudaGnssChordTrack: {:d} records/frame exceeds MAX_REC {:d}; raise "
+                    "hops_per_record.",
+                    n_rec, gnss_gpu::MAX_REC);
+
+    const std::string signame = config.get<std::string>(unique_name, "signal");
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name(signame);
+    if (!sig)
+        FATAL_ERROR("cudaGnssChordTrack: unknown signal '{:s}'", signame);
+
+    // The tap already selected the covering channels, so in the DATA they are dense
+    // 0..n_chan-1 and every one is covered. Their SKY identity is a different matter: the
+    // replica for local channel c must be synthesized at the centre frequency of the global
+    // bin it came from, and CHORD's comb is stride-16 (5972, 5988, ...), not contiguous.
+    // `channel_ids` carries those global bins, in local order.
+    covering.resize((size_t)n_chan);
+    for (int c = 0; c < n_chan; ++c)
+        covering[(size_t)c] = c;
+    channel_ids = config.get<std::vector<int>>(unique_name, "channel_ids");
+    if ((int)channel_ids.size() != n_chan)
+        FATAL_ERROR("cudaGnssChordTrack: channel_ids has {:d} entries but n_channels is {:d} -- "
+                    "these are the GLOBAL bins of this GPU's covering comb, in local order.",
+                    (int)channel_ids.size(), n_chan);
+
+    // The replica bank must be built with the F-ENGINE's exact PFB, or the channelized replica
+    // does not match the data: CHORD is a 4-tap Hamming critically-sampled bank over 8192
+    // positive-frequency bins (arXiv:2607.01625 s2.2.2, recorded in chord_gnss_node.yaml).
+    const int N = fft_len / 2;
+    replica = std::make_unique<gnss::ChannelizedReplicaBank>(
+        *sig, sample_rate, f_offset_hz, N, /*num_taps=*/4, dsp::window_from_string("hamming"),
+        prns);
+    // SPARSE comb -> the chan_ids overload. Passing chan_offset 0 here built every replica at
+    // global bins 0..6 (DC) while the data sat at 5972..6076: noise at every code phase, which
+    // is why nothing ever locked (found 2026-07-31). See GnssCudaDespread.hpp.
+    despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
+                                                 sample_rate, f_offset_hz);
+    // A/B ARM FOR TASK #52 -- ⚠️ TEMPORARY, remove with task #55. Default = the fix (carrier
+    // phase from a reference sample). Set false on HALF the fleet to compare the two arms in a
+    // SINGLE poll; a before/after across restarts cannot resolve it, because the sky churns
+    // faster than the effect (deep_snr max swung 52-197 in four minutes, 2026-08-13).
+    // ⚠️ MUST be set on the despread the same way in BOTH producers, or path A and path B
+    // silently run different arms on the same node and the comparison means nothing.
+    // #71: `carrier_phase_mode` supersedes the bool, and DEFAULTS TO IT so nothing moves
+    // until a config says so -- arm 2 changes the replica's phase history and has to be armed
+    // deliberately, on a node restart, with the continuity gate run against it.
+    despread->set_carrier_phase_mode(config.get_default<int>(
+        unique_name, "carrier_phase_mode",
+        config.get_default<bool>(unique_name, "carrier_phase_from_ref", true) ? 1 : 0));
+    // MUST follow the construction above: enabling it next to the config read dereferenced a
+    // null unique_ptr and the node SEGV'd 12 s into startup. The cf06 build did not catch it --
+    // the aggregator links this file but never instantiates cudaGnssChordTrack.
+    if (split_timing)
+        despread->enable_split_timing(true);
+    // Truncate the per-hop PFB chip gather. Synthesis is 89% of this kernel and LINEAR in the
+    // depth, so this is the biggest single lever on tracker GPU load.
+    //
+    // VALIDATED FLOOR IS 120 (scripts/gnss/e2e --max-chips, CHORD geometry, 2026-08-05): every
+    // value from 120 to the full 210 reproduces the full-depth answer EXACTLY (+0.123 chips),
+    // and 105 is 13 chips out with the wrong NH alignment -- a discontinuity, not a gradual
+    // degradation. 140 is the recommended operating point: 1.50x, with 17% margin over 120.
+    // Below 120 the truncated replica stops making the true lobe win and the search settles on a
+    // grating lobe, which is the old refine_span: 4096 failure wearing a different hat.
+    const int max_chips = config.get_default<int>(unique_name, "despread_max_chips", 0);
+    // Item 6: CENTERED window placement. Changes where the max_chips window sits, so the
+    // validated floors differ: one-sided 120 (9.5), centered 60 (80 recommended -- the harsh
+    // 2-node comb flips at 52 and margin is cheap). Default OFF = the shipped one-sided cap.
+    const bool centered = config.get_default<bool>(unique_name, "despread_chips_centered", false);
+    if (centered)
+        despread->set_chips_centered(true);
+    if (max_chips > 0) {
+        despread->set_max_chips(max_chips);
+        if (centered && max_chips < 60)
+            WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED is BELOW THE "
+                        "VALIDATED FLOOR of 60 (the 2-node comb flips to a grating lobe at "
+                        "52). Timing experiments only; detections and locks are INVALID.",
+                        max_chips);
+        else if (centered)
+            INFO_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED (item 6) -- "
+                        "central window of the ~210-chip span; {:.2f}x less synthesis work",
+                        max_chips, 210.0 / (double)max_chips);
+        else if (max_chips < 120)
+            WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} is BELOW THE VALIDATED "
+                        "FLOOR of 120 -- the replica is truncated past the point where the "
+                        "search resolves the true lobe. Timing experiments only; detections "
+                        "and locks from this run are INVALID.",
+                        max_chips);
+        else
+            INFO_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} (full span ~210) -- gather "
+                        "truncated at a validated depth; {:.2f}x less synthesis work",
+                        max_chips, 210.0 / (double)max_chips);
+    }
+
+    // fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table -- the one
+    // lever the DRAM-footprint verdict (§10.6c) says pays; 1.27-1.37x measured on synthesis,
+    // storage error 3.3e-4 (~0.14 dB class against the 4-bit voltage floor). Default OFF.
+    // READ THE RETURN: "armed" and "in effect" are different states (#96/#97) -- the engine
+    // refuses fp16 while shared tables are armed.
+    if (config.get_default<bool>(unique_name, "phi_fp16", false)) {
+        if (despread->set_phi_fp16(true))
+            INFO_NON_OO("cudaGnssChordTrack: fp16 Phi tables ARMED (item 3) -- resident Phi "
+                        "halved; despread_batch/device/peel paths will refuse while set");
+        else
+            WARN_NON_OO("cudaGnssChordTrack: phi_fp16 requested but the despread REFUSED it -- "
+                        "running fp32; check the engine's own warning for why");
+    }
+
+    seeds.assign((size_t)n_prn, Seed{});
+    trim.assign((size_t)n_prn, 0.0);
+    trim_disc.assign((size_t)n_prn, 0.0);
+    trim_q.assign((size_t)n_prn, 0.0);
+    trim_n.assign((size_t)n_prn, 0);
+    trim_t_recv.assign((size_t)n_prn, 0.0);
+    ema_e2.assign((size_t)n_prn, 0.0);
+    ema_p2.assign((size_t)n_prn, 0.0);
+    ema_l2.assign((size_t)n_prn, 0.0);
+    ema_n.assign((size_t)n_prn, 0);
+
+    slot_gen.assign((size_t)n_prn, 0);
+
+    const std::string ep =
+        config.get_default<std::string>(unique_name, "seed_endpoint", "/chord_track/set_seeds");
+    kotekan::restServer::instance().register_post_callback(
+        ep, std::bind(&cudaGnssChordTrackState::set_seeds_callback, this, _1, _2));
+    const std::string tep =
+        config.get_default<std::string>(unique_name, "trim_endpoint", "/chord_track/get_trim");
+    kotekan::restServer::instance().register_get_callback(
+        tep, std::bind(&cudaGnssChordTrackState::get_trim_callback, this, _1));
+    // TASK #51 F2: the fleet controller's actuator. Registered ALWAYS -- it carries its own
+    // authority (an explicit POST) rather than depending on `code_trim`, which gates the
+    // IN-TRACKER loop and nothing else. The two must never both be writing `trim`; that is a
+    // deployment rule, and get_trim reports `code_trim` so it is visible which one is live.
+    const std::string sep =
+        config.get_default<std::string>(unique_name, "set_trim_endpoint", "/chord_track/set_trim");
+    kotekan::restServer::instance().register_post_callback(
+        sep, std::bind(&cudaGnssChordTrackState::set_trim_callback, this, _1, _2));
+    // LIVE PRN MEMBERSHIP. Registered ALWAYS and carrying its own authority, exactly as
+    // /set_trim does: there is no "enable live reconfiguration" flag on the node, because a
+    // node that will not answer "which satellite is slot 7?" is strictly worse than one that
+    // will, and the arming decision belongs to the BROKER (which is the only side that knows
+    // whether it is in report-only or apply mode). GET is a diagnostic; POST is the actuator.
+    const std::string gpe =
+        config.get_default<std::string>(unique_name, "get_prns_endpoint", "/chord_track/get_prns");
+    kotekan::restServer::instance().register_get_callback(
+        gpe, std::bind(&cudaGnssChordTrackState::get_prns_callback, this, _1));
+    const std::string spe =
+        config.get_default<std::string>(unique_name, "set_prns_endpoint", "/chord_track/set_prns");
+    kotekan::restServer::instance().register_post_callback(
+        spe, std::bind(&cudaGnssChordTrackState::set_prns_callback, this, _1, _2));
+    INFO_NON_OO("cudaGnssChordTrack: {:d} PRN x {:d} chan x {:d} elem, {:d} hops/record "
+                "({:d} rec/frame), seeds on {:s}",
+                n_prn, n_chan, n_elem, hops_per_record, n_rec, ep);
+}
+
+void cudaGnssChordTrackState::note_frame_hop(long long hop) {
+    if (hop < 0)
+        return;
+    std::lock_guard<std::mutex> lk(prn_mtx);
+    last_hop = (int64_t)hop;
+}
+
+std::vector<int> cudaGnssChordTrackState::prn_map() {
+    std::lock_guard<std::mutex> lk(prn_mtx);
+    return prns;
+}
+
+void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json out = nlohmann::json::array();
+    nlohmann::json gen = nlohmann::json::array();
+    bool pend = false;
+    std::string err;
+    uint64_t swaps = 0;
+    int64_t at_h = -1, last_h = -1;
+    {
+        std::lock_guard<std::mutex> lk(prn_mtx);
+        for (int p = 0; p < n_prn; ++p) {
+            out.push_back(prns[(size_t)p]);
+            gen.push_back(slot_gen[(size_t)p]);
+        }
+        pend = prn_pending;
+        err = prn_last_err;
+        swaps = prn_swaps;
+        at_h = prn_at_hop;
+        last_h = last_hop;
+    }
+    nlohmann::json reply = {{"prns", out},    {"n_prn", n_prn},   {"slot_gen", gen},
+                            {"swaps", swaps}, {"pending", pend},  {"last_error", err},
+                            // So the broker can see WHEN a staged swap is due and whether
+                            // this node's clock has reached it -- a swap that is merely
+                            // waiting must not read like a swap that was refused. And
+                            // last_hop < 0 on a LIVE node is the alarm: it means no producer
+                            // is feeding the deadline clock, so every swap silently degrades
+                            // to apply-immediately (which is exactly how this shipped inert).
+                            {"pending_at_hop", at_h}, {"last_hop", last_h}};
+    conn.send_json_reply(reply);
+}
+
+void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& conn,
+                                                nlohmann::json& request) {
+    // Parse and validate OUTSIDE every lock. The GPU thread takes prn_mtx once per frame, so
+    // a parse under it would stall the tracker for the duration of an HTTP body -- the same
+    // lesson set_seeds_callback records above.
+    std::vector<int> want;
+    std::string err;
+    int64_t at_hop = -1;
+    bool obsolete_at_seq = false;
+    try {
+        // OPTIONAL, and absent means "as soon as possible" -- the pre-scheduling behaviour,
+        // kept so a hand-driven curl still works and so an older broker is not broken by a
+        // newer node.
+        if (request.is_object() && request.contains("at_hop") && !request.at("at_hop").is_null())
+            at_hop = request.at("at_hop").get<int64_t>();
+        // ⚠️ THE OBSOLETE FIELD IS REFUSED, NOT REINTERPRETED. `at_seq` carried the same
+        // deadline in a different currency (see the header). Reading it as hops would be a
+        // guess about which side of the 2026-08-27 fix the sender is on, and guessing wrong
+        // is a swap 16384 frames early or late; ignoring it costs only the fleet-wide
+        // simultaneity, which is what an unscheduled post already costs. Loud, never silent.
+        else if (request.is_object() && request.contains("at_seq")
+                 && !request.at("at_seq").is_null())
+            obsolete_at_seq = true;
+        const nlohmann::json& arr = request.is_object() ? request.at("prns") : request;
+        if (!arr.is_array())
+            throw std::runtime_error("expected an array of PRNs, or {\"prns\": [...]}");
+        want.reserve(arr.size());
+        for (const auto& v : arr)
+            want.push_back(v.get<int>());
+    } catch (const std::exception& e) {
+        err = std::string("bad prns payload: ") + e.what();
+    }
+    if (err.empty() && (int)want.size() != n_prn)
+        err = "prns has " + std::to_string(want.size()) + " entries but this chain has "
+              + std::to_string(n_prn)
+              + " slots. THE SLOT COUNT IS NOT LIVE: it sizes every buffer, GPU allocation and "
+                "wire frame in the pipeline, so a resize is a fleet-wide re-plumb and a node "
+                "restart, not a swap. Send exactly one PRN per slot.";
+    if (err.empty())
+        for (size_t i = 0; i < want.size() && err.empty(); ++i) {
+            if (want[i] < 1 || want[i] > 63)
+                err = "PRN " + std::to_string(want[i]) + " at slot " + std::to_string(i)
+                      + " is outside 1..63";
+            for (size_t j = 0; j < i && err.empty(); ++j)
+                if (want[j] == want[i])
+                    // A duplicate would put one satellite in two slots: both would be seeded,
+                    // both would report, and the broker would fold two copies of one ray into
+                    // its per-satellite state as though they were independent measurements.
+                    err = "PRN " + std::to_string(want[i]) + " appears in slots "
+                          + std::to_string(j) + " and " + std::to_string(i);
+        }
+    if (!err.empty()) {
+        {
+            std::lock_guard<std::mutex> lk(prn_mtx);
+            prn_last_err = err;
+        }
+        conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    int n_diff = 0;
+    {
+        std::lock_guard<std::mutex> lk(prn_mtx);
+        for (int p = 0; p < n_prn; ++p)
+            if (want[(size_t)p] != prns[(size_t)p])
+                ++n_diff;
+        prn_last_err.clear();
+        if (n_diff > 0) {
+            pending_prns = want;
+            prn_pending = true;
+            prn_at_hop = at_hop;
+            prn_stage_hop = last_hop;   // for the re-base guard in apply_prn_swaps
+        }
+    }
+    if (n_diff > 0) {
+        if (obsolete_at_seq)
+            WARN_NON_OO("set_prns: the payload carries the OBSOLETE `at_seq` field (samples) "
+                        "and no `at_hop` (hops). Staging UNSCHEDULED: this node will swap at "
+                        "its own next frame boundary, so the fleet will NOT cross together. "
+                        "Update the broker -- see cudaGnssChordTrack.hpp on the currency.");
+        if (at_hop >= 0)
+            INFO_NON_OO("set_prns: {:d} slot(s) staged for frame hop >= {:d} "
+                        "(now {:d}, {:d} frame(s) ahead)",
+                        n_diff, (long long)at_hop, (long long)last_hop,
+                        (long long)((at_hop - last_hop)
+                                    / (n_hops_frame > 0 ? n_hops_frame : 1)));
+        else
+            INFO_NON_OO("set_prns: {:d} slot(s) staged for the next frame boundary", n_diff);
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
+    std::vector<int> changed;
+    std::vector<std::pair<int, int>> log; // (slot, old prn) for logging outside the lock
+    {
+        std::lock_guard<std::mutex> lk(prn_mtx);
+        if (!prn_pending)
+            return changed;
+        // NOT YET DUE -- leave it staged and come back next frame.
+        if (prn_at_hop >= 0 && last_hop >= 0 && last_hop < prn_at_hop) {
+            // ⚠️ UNLESS THE COUNTER WENT BACKWARDS, in which case the deadline is unreachable
+            // and waiting for it would wedge the swap FOREVER. An F-engine restart moves seq
+            // back to ~0 ([[chord-gather-wedges-on-frame0-reset]]), so a schedule written
+            // against the old epoch can never mature. Apply immediately and say so: a swap
+            // that arrives early is a re-acquisition, a swap that never arrives is a slot
+            // stuck on a satellite that has set.
+            if (prn_stage_hop >= 0 && last_hop < prn_stage_hop) {
+                WARN_NON_OO("set_prns: frame hop went BACKWARDS ({:d} -> {:d}) -- the F-engine "
+                            "re-based, so the scheduled swap at {:d} can never arrive. "
+                            "Applying NOW; the fleet-wide alignment for this swap is lost.",
+                            (long long)prn_stage_hop, (long long)last_hop, (long long)prn_at_hop);
+            } else {
+                return changed;
+            }
+        }
+        prn_pending = false;
+        prn_at_hop = -1;
+        prn_stage_hop = -1;
+        for (int p = 0; p < n_prn; ++p) {
+            const int newp = pending_prns[(size_t)p];
+            if (newp == prns[(size_t)p])
+                continue;
+            // THE BANK AND THE DEVICE FIRST. If the code table cannot be built (a PRN with no
+            // code for this signal) nothing else must move: a slot whose seed was cleared but
+            // whose code is unchanged would despread the OLD satellite against the NEW one's
+            // model, which is a lock loss dressed as a swap.
+            if (!despread || !despread->set_prn(p, newp, stream)) {
+                prn_last_err = "slot " + std::to_string(p) + ": no code for PRN "
+                               + std::to_string(newp) + " on this signal (or an FDMA bank)";
+                continue;
+            }
+            log.emplace_back(p, prns[(size_t)p]);
+            prns[(size_t)p] = newp;
+            ++slot_gen[(size_t)p];
+            ++prn_swaps;
+            changed.push_back(p);
+        }
+        pending_prns.clear();
+    }
+    if (changed.empty())
+        return changed;
+    // ⚠️ SEQUENTIAL, NEVER NESTED. prn_mtx is released above before either of these is taken:
+    // expire_trims_locked reads `prns` with trim_mtx already held, so a prn_mtx -> trim_mtx
+    // nesting here would close a deadlock cycle against every /set_trim POST.
+    {
+        std::lock_guard<std::mutex> lk(seed_mtx);
+        for (int p : changed)
+            seeds[(size_t)p] = Seed{}; // have=false: the slot goes dark until the broker seeds it
+    }
+    {
+        std::lock_guard<std::mutex> lk(trim_mtx);
+        for (int p : changed) {
+            // A standing trim is a correction to the OLD satellite's code phase, in chips of
+            // its geometry. Carried across it is a fixed offset applied to a satellite that
+            // never asked for it -- the disease of chord-gather-restart-wipes-trims, inverted.
+            trim[(size_t)p] = 0.0;
+            trim_disc[(size_t)p] = 0.0;
+            trim_q[(size_t)p] = 0.0;
+            trim_n[(size_t)p] = 0;
+            trim_t_recv[(size_t)p] = 0.0;
+            ema_e2[(size_t)p] = 0.0;
+            ema_p2[(size_t)p] = 0.0;
+            ema_l2[(size_t)p] = 0.0;
+            ema_n[(size_t)p] = 0;
+        }
+    }
+    for (const auto& l : log)
+        WARN_NON_OO("PRN SWAP: slot {:d} PRN {:d} -> {:d}. Code table, Phi cache, carrier NCO, "
+                    "seed, trim and power averages all reset COLD for this slot; it stays dark "
+                    "until the broker seeds the new satellite.",
+                    l.first, l.second, prns[(size_t)l.first]);
+    return changed;
+}
+
+void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
+                                                 nlohmann::json& request) {
+    // Parse first, lock last -- the execute path takes seed_mtx every GPU frame, so holding it
+    // across a parse would stall the tracker directly (the same lesson cudaGnssTrack learned).
+    std::vector<std::pair<int, Seed>> upd;
+    // prn_mtx is the OUTERMOST lock (see the header): the GPU thread can be rewriting `prns`
+    // in apply_prn_swaps while this runs, and resolving a PRN against a half-written map would
+    // seed the wrong slot.
+    std::lock_guard<std::mutex> pk(prn_mtx);
+    try {
+        upd.reserve(request.size());
+        for (const auto& s : request) {
+            const int prn = s.at("prn").get<int>();
+            for (int i = 0; i < n_prn; ++i)
+                if (prns[i] == prn) {
+                    Seed sd;
+                    sd.have = true;
+                    sd.doppler_hz = s.at("doppler_hz").get<double>();
+                    sd.cp_chips = s.at("code_phase_chips").get<double>();
+                    sd.cp_rate = s.value("code_phase_rate", 0.0);
+                    sd.dop_rate = s.value("doppler_rate_hz_s", 0.0);
+                    sd.ctrim_hz = s.value("carrier_trim_hz", 0.0);
+                    sd.ref_hop = s.value("ref_hop", (long long)0);
+                    // PHYSICAL phase at ref_hop, when the producer can supply it. Preferred
+                    // over cp_chips: an argument back-references to sample 0 through a
+                    // Doppler-scaled rate, so the producer's Doppler error arrives multiplied
+                    // by ~5900 chips/Hz. A phase carries no such lever.
+                    sd.phase_ref_chips = s.value("code_phase_at_ref_chips", -1.0);
+                    upd.emplace_back(i, sd);
+                    break;
+                }
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("bad seed payload: ") + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    {
+        const double now = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
+        std::lock_guard<std::mutex> lk(seed_mtx);
+        for (auto& u : upd) {
+            u.second.t_recv = now;
+            seeds[(size_t)u.first] = u.second;
+        }
+    }
+    {
+        // A re-seed moves the commanded cp, so the power average that gates the trim no
+        // longer describes what is being despread: restart it (the trim itself persists --
+        // it is a correction to the model, not to a particular seed).
+        std::lock_guard<std::mutex> lk(trim_mtx);
+        for (auto& u : upd)
+            ema_n[(size_t)u.first] = 0;
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+void cudaGnssChordTrackState::expire_trims_locked(std::vector<int>& expired) {
+    // EXPIRE A TRIM WHOSE CONTROLLER STOPPED TALKING. A frozen trim is a permanent silent code
+    // offset that the broker's own slow DLL would then fight, and "latched forever" is the #13
+    // failure. Only STAMPED trims expire: the in-tracker loop leaves trim_t_recv at 0, and its
+    // silence means the SIGNAL went away, not the controller.
+    if (trim_ttl_s <= 0.0)
+        return;
+    const double now =
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    for (int p = 0; p < n_prn; ++p)
+        if (trim_t_recv[(size_t)p] > 0.0 && (now - trim_t_recv[(size_t)p]) > trim_ttl_s) {
+            if (trim[(size_t)p] != 0.0)
+                expired.push_back(prns[(size_t)p]);
+            trim[(size_t)p] = 0.0;
+            trim_t_recv[(size_t)p] = 0.0;
+            ++trim_expired;
+        }
+}
+
+std::vector<double> cudaGnssChordTrackState::snapshot_trims(std::vector<int>& expired) {
+    std::lock_guard<std::mutex> lk(trim_mtx);
+    expire_trims_locked(expired);
+    return trim;
+}
+
+std::vector<cudaGnssChordTrackState::Seed>
+cudaGnssChordTrackState::snapshot_seeds(std::vector<int>& expired) {
+    // EXPIRE STALE SEEDS, under the same lock that copies them (see the long note at the call
+    // site in cudaGnssChordTrack::execute -- the latch-forever failure this replaced).
+    const double now =
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    std::lock_guard<std::mutex> lk(seed_mtx);
+    if (seed_ttl_s > 0.0)
+        for (int p = 0; p < n_prn; ++p) {
+            auto& sd = seeds[(size_t)p];
+            if (sd.have && sd.t_recv > 0.0 && (now - sd.t_recv) > seed_ttl_s) {
+                sd.have = false;
+                expired.push_back(prns[(size_t)p]);
+            }
+        }
+    return seeds;
+}
+
+cudaGnssChordTrackState::~cudaGnssChordTrackState() {
+    for (auto& s : trim_slots) {
+        if (s.ev)
+            cudaEventDestroy(s.ev);
+        if (s.host)
+            cudaFreeHost(s.host);
+    }
+}
+
+void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& conn,
+                                                nlohmann::json& request) {
+    // Parse first, lock last -- the same discipline as set_seeds: the execute path takes
+    // trim_mtx every GPU frame, so holding it across a parse would stall the tracker directly.
+    std::vector<std::pair<int, double>> upd;
+    std::lock_guard<std::mutex> pk(prn_mtx); // OUTERMOST -- see set_seeds_callback
+    try {
+        upd.reserve(request.size());
+        for (const auto& s : request) {
+            const int prn = s.at("prn").get<int>();
+            const double t = s.at("trim_chips").get<double>();
+            // A NaN here would propagate into the commanded code phase and despread garbage
+            // for as long as it stood. Reject the whole request rather than a field: a partial
+            // application would leave the controller and the tracker disagreeing about what is
+            // commanded, silently.
+            if (!std::isfinite(t))
+                throw std::runtime_error("trim_chips is not finite");
+            for (int i = 0; i < n_prn; ++i)
+                if (prns[i] == prn) {
+                    upd.emplace_back(i, std::max(-trim_clamp, std::min(trim_clamp, t)));
+                    break;
+                }
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("bad trim payload: ") + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const double now =
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    {
+        std::lock_guard<std::mutex> lk(trim_mtx);
+        // Sweep here too: this callback still runs when execute() has stopped (a wedged GPU
+        // chain answers REST perfectly well), and that is precisely when a stale trim would
+        // otherwise stand indefinitely. See expire_trims_locked.
+        std::vector<int> gone;
+        expire_trims_locked(gone);
+        for (const auto& u : upd) {
+            trim[(size_t)u.first] = u.second;
+            trim_t_recv[(size_t)u.first] = now;
+            ++trim_n[(size_t)u.first];
+        }
+        ++trim_posts;
+    }
+    // ⚠️ NOTHING ELSE IS TOUCHED. Not seeds, not t_recv, not ema_n. See the header note: an
+    // actuator that quietly resets another loop's state is the failure this endpoint exists
+    // to avoid, and it is why this is not a field on /set_seeds.
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json out = nlohmann::json::array();
+    {
+        std::lock_guard<std::mutex> pk(prn_mtx); // OUTERMOST -- see set_seeds_callback
+        std::lock_guard<std::mutex> lk(trim_mtx);
+        for (int p = 0; p < n_prn; ++p)
+            out.push_back({{"prn", prns[(size_t)p]},
+                           {"trim_chips", trim[(size_t)p]},
+                           {"disc", trim_disc[(size_t)p]},
+                           {"quality", trim_q[(size_t)p]},
+                           {"ema_frames", ema_n[(size_t)p]},
+                           {"age_s", trim_t_recv[(size_t)p] > 0.0
+                                         ? (std::chrono::duration<double>(
+                                                std::chrono::steady_clock::now()
+                                                    .time_since_epoch())
+                                                .count()
+                                            - trim_t_recv[(size_t)p])
+                                         : -1.0},
+                           {"updates", trim_n[(size_t)p]}});
+    }
+    // `enabled` is the IN-TRACKER loop; `posts` is the fleet controller. Both are reported
+    // because "who is writing this trim?" must be answerable from one endpoint -- two writers
+    // on one vector is a deployment error, and it should be visible rather than inferred.
+    nlohmann::json reply = {{"enabled", trim_enable},
+                            {"posts", trim_posts},
+                            {"expired", trim_expired},
+                            {"ttl_s", trim_ttl_s},
+                            {"clamp", trim_clamp},
+                            {"trims", out}};
+    conn.send_json_reply(reply);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Command
+// ---------------------------------------------------------------------------------------------
+cudaGnssChordTrack::cudaGnssChordTrack(Config& config, const std::string& unique_name,
+                                       bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                       int instance_num,
+                                       std::shared_ptr<cudaCommandState> state) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, state,
+                "cudaGnssChordTrack", "cudaGnssChordTrack") {
+    _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
+    _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
+    _mem_jobs = unique_name + "_jobs";
+    _mem_wave = unique_name + "_wave";
+    _mem_scale = unique_name + "_scale";
+    _mem_chanids = unique_name + "_chanids";
+
+    cudaGnssChordTrackState& S = *st();
+    _in_frame_len = (size_t)S.n_hops_frame * S.frame_chan_stride * S.elem_stride;
+    _out_frame_len = gnss_gpu::frame_bytes(S.n_prn, S.n_chan, gnss_gpu::ROWS_PLAIN, S.n_elem);
+    _ctl_stage.resize(gnss_gpu::off_corr(S.n_prn));
+    // Re-pin phase-step history (task #52); not "ok" until a PRN has produced one record.
+    _dop_prev.assign((size_t)S.n_prn, 0.0);
+    _dop_prev_ok.assign((size_t)S.n_prn, 0);
+
+    if (S.trim_ref_elem < 0 || S.trim_ref_elem >= S.n_elem)
+        FATAL_ERROR("cudaGnssChordTrack: trim_ref_elem {:d} outside [0, {:d})", S.trim_ref_elem,
+                    S.n_elem);
+
+    // Trim readback slots: one per GPU frame slot, sized for the worst case (every PRN active
+    // in every record). Lazily created by whichever command instance gets here first.
+    if (S.trim_enable) {
+        std::lock_guard<std::mutex> lk(S.trim_slot_mtx);
+        if (S.trim_slots.empty()) {
+            const int n_rec = S.n_hops_frame / S.hops_per_record;
+            const size_t max_rows = (size_t)gnss_gpu::ROWS_PLAIN * S.n_prn * n_rec;
+            S.trim_slots.resize((size_t)_gpu_buffer_depth);
+            for (auto& sl : S.trim_slots) {
+                CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&sl.ev, cudaEventDisableTiming));
+                CHECK_CUDA_ERROR(cudaHostAlloc(
+                    &sl.host, max_rows * S.n_chan * 2 * sizeof(double), cudaHostAllocDefault));
+                sl.job0.assign((size_t)n_rec * S.n_prn, -1);
+            }
+            INFO("code trim ON: gain {:.3f} leak {:.4f} clamp {:.1f} q_min {:.2f} ref_elem {:d}",
+                 S.trim_gain, S.trim_leak, S.trim_clamp, S.trim_quality_min, S.trim_ref_elem);
+        }
+    }
+
+    set_command_type(gpuCommandType::KERNEL);
+}
+
+cudaGnssChordTrackState* cudaGnssChordTrack::st() {
+    return static_cast<cudaGnssChordTrackState*>(command_state.get());
+}
+
+cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
+                                        const std::vector<cudaEvent_t>& pre_events) {
+    pre_execute();
+    // PROFILING BRACKET. Without this, cudaCommand's `if (profiling && start_event && end_event)`
+    // is false and it records add_sample(0.) -- so `log_profiling` reported this command as
+    // "Time: 0.000 ms", which reads as "the kernel is free" when it actually means "the kernel
+    // was never measured". That cost real time on 2026-08-05 chasing a GPU at 100% util whose
+    // only instrumented commands were the two copies. record_start_event() is itself a no-op
+    // unless profiling is on, so this is free in production. Matches cudaGnssTrack.cpp:900.
+    record_start_event();
+    cudaGnssChordTrackState& S = *st();
+    const cudaStream_t stream = device.getStream(cuda_stream_id);
+    const int n_rec = S.n_hops_frame / S.hops_per_record;
+
+    // THE DESPREAD MUST FOLLOW THE FRAME'S H2D COPY. cudaInputData is COPY_IN (stream 0), this
+    // command is KERNEL (stream 2) -- see cudaCommand::set_command_type -- so the ONLY thing
+    // ordering the kernel after the upload is this wait. cudaGnssTrack has always done it
+    // (cudaGnssTrack.cpp, "The despread work must follow the frame's H2D copy"); this stage
+    // dropped it with a `(void)pre_events`, which is exactly the drift its own header warns
+    // about, and it went unnoticed because stream 0 is otherwise idle in the GNSS-only configs:
+    // the 1.8 MB tap copy always finished before the kernel launched.
+    //
+    // FOUND 2026-08-06: adding production's run_send_voltage (402 MB/frame through the same
+    // copy engine) delays the tap's upload past the kernel launch, and the tracker then
+    // despreads the PREVIOUS frame's voltage against THIS frame's replicas -- uncorrelated, so
+    // every PRN reads the noise floor while records, hops, replicas and the data itself all
+    // look perfect. That is the whole of docs/gnss_gpu_search.md 11.8.
+    if (!pre_events.empty() && pre_events[0])
+        CHECK_CUDA_ERROR(cudaStreamWaitEvent(stream, pre_events[0], 0));
+
+    const char* d_frame = (const char*)device.get_gpu_memory_array(
+        _gpu_mem_input, pipestate.gpu_frame_id, _gpu_buffer_depth, _in_frame_len);
+    char* d_out = (char*)device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id,
+                                                     _gpu_buffer_depth, _out_frame_len);
+    auto* d_jobs = (gnss_cuda::DespreadJob*)device.get_gpu_memory_array(
+        _mem_jobs, pipestate.gpu_frame_id, _gpu_buffer_depth,
+        (size_t)gnss_gpu::max_specs(S.n_prn) * sizeof(gnss_cuda::DespreadJob));
+    // Replica scratch: [3*specs][n_chan][hops_per_record]. Never leaves the GPU. This is the
+    // memory the split buys its reuse with -- generated once per record, read n_elem times.
+    auto* d_wave = (float2*)device.get_gpu_memory(
+        _mem_wave, (size_t)3 * gnss_gpu::max_specs(S.n_prn) * S.n_chan * S.hops_per_record
+                       * sizeof(float2));
+    auto* d_scale = (float*)device.get_gpu_memory(_mem_scale, (size_t)S.n_chan * sizeof(float));
+    auto* d_chanids = (int*)device.get_gpu_memory(_mem_chanids, (size_t)S.n_chan * sizeof(int));
+
+    // Static per-channel tables. The tap already selected the covering channels, so within the
+    // frame they are dense 0..n_chan-1. The scale is unity: CHORD's per-bin digital gain is
+    // applied in the F-engine and is part of the sky-to-bits chain we solve for end to end, so
+    // there is nothing to undo here (see chord_gnss_node.yaml `gains`).
+    if (!_uploaded_static) {
+        std::vector<float> h_scale((size_t)S.n_chan, 1.0f);
+        std::vector<int> h_ids((size_t)S.n_chan);
+        for (int c = 0; c < S.n_chan; ++c)
+            h_ids[(size_t)c] = c;
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(d_scale, h_scale.data(), h_scale.size() * sizeof(float),
+                                         cudaMemcpyHostToDevice, stream));
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(d_chanids, h_ids.data(), h_ids.size() * sizeof(int),
+                                         cudaMemcpyHostToDevice, stream));
+        _uploaded_static = true;
+    }
+
+    // Absolute sample of this frame's first hop, stamped by GnssChordVoltageTap.
+    auto meta = std::dynamic_pointer_cast<GnssChanMetadata>(
+        device.get_gpu_memory_array_metadata(_gpu_mem_input, pipestate.gpu_frame_id));
+    const long long seq0 = (meta && meta->sample_seq >= 0) ? meta->sample_seq : -1;
+
+    // LIVE PRN MEMBERSHIP, applied HERE -- at the frame boundary, before a single job is
+    // built (docs/CHORD_LIVE_PRN_RECONFIG.md). Everything the SHARED STATE keys by slot is
+    // reset inside; the per-slot Doppler history below belongs to THIS COMMAND INSTANCE and
+    // the state cannot reach it, so it is cleared here.
+    //
+    // ⚠️ VIA slot_gen, NOT VIA THE RETURN VALUE. cudaCommand runs several instances against
+    // one shared state and only the instance that happens to win the apply gets the changed
+    // list back; the others would carry a departed satellite's Doppler history into the new
+    // one and emit a continuous arc across a discontinuity that is total. The per-slot
+    // generation counter is what every instance can check for itself.
+    // THE DEADLINE CLOCK, published before the apply that tests it. In HOPS -- seq0 is a
+    // SAMPLE index (the tap stamps sample_seq = fpga_seq_num * fft_length) and the fleet's
+    // alignment key is the hop.
+    S.note_frame_hop(seq0 >= 0 && S.fft_len > 0 ? seq0 / (long long)S.fft_len : -1);
+    S.apply_prn_swaps((void*)stream);
+    {
+        if (_slot_gen_seen.size() != (size_t)S.n_prn)
+            _slot_gen_seen.assign((size_t)S.n_prn, 0);
+        std::lock_guard<std::mutex> lk(S.prn_mtx);
+        for (int p = 0; p < S.n_prn; ++p)
+            if (_slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
+                _slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
+                _dop_prev[(size_t)p] = 0.0;
+                _dop_prev_ok[(size_t)p] = 0;
+            }
+    }
+    std::memset(_ctl_stage.data(), 0, _ctl_stage.size());
+    auto* hdr = (gnss_gpu::FrameHdr*)_ctl_stage.data();
+    auto* winstart = (int64_t*)(_ctl_stage.data() + gnss_gpu::off_winstart());
+    auto* pctl = (gnss_gpu::PrnCtl*)(_ctl_stage.data() + gnss_gpu::off_prnctl());
+
+    hdr->n_rec = n_rec;
+    hdr->n_prn = S.n_prn;
+    hdr->n_chan = S.n_chan;
+    hdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
+    hdr->seq0 = seq0;
+    // DATA time, not host time. With utc0 == 0 the assembler falls back to
+    // system_clock::now() at assembly, so every record is stamped with the host wall clock
+    // plus the pipeline latency -- unusable for anything that compares a record against the
+    // model (a 100 ms stamp error is 1e6 chips of code phase). frame0_utc is the F-engine's
+    // GPS-disciplined time of absolute sample 0 (the broker's telescope/time0_ns); with it
+    // set, record UTC = frame0_utc + wstart/sample_rate tracks the DATA (good to the ~0.24 us
+    // that a double can resolve at 1.8e9 s -- fine for the combiner's ms-level alignment and
+    // dead reckoning). Chip-level work must still use sample_seq/hop, which are exact
+    // integers: 0.24 us is 2.4 chips.
+    hdr->utc0 = S.frame0_utc;
+
+    // DLL trim, step 1: fold in every completed E/P/L readback (enqueued by earlier frames'
+    // executes; cudaEventQuery keeps this non-blocking, so an unfinished frame just waits its
+    // turn). Coherent channel sum at the reference element -- exactly the assembler's header
+    // observable -- then the broker's 3c math per PRN: disc = (E^2-L^2)/(E^2+L^2) ~ -4*tau at
+    // 0.5-chip spacing, leaky integrator, clamp. Gated on q = 2P^2/(E^2+L^2) (~1 noise, ~4 on
+    // the peak) so an unlocked PRN's noise cannot walk its trim.
+    if (S.trim_enable) {
+        std::lock_guard<std::mutex> slk(S.trim_slot_mtx);
+        const int n_rec_s = S.n_hops_frame / S.hops_per_record;
+        for (auto& sl : S.trim_slots) {
+            if (!sl.pending || cudaEventQuery(sl.ev) != cudaSuccess)
+                continue;
+            sl.pending = false;
+            std::lock_guard<std::mutex> tlk(S.trim_mtx);
+            for (int p = 0; p < S.n_prn; ++p) {
+                double e2 = 0.0, p2 = 0.0, l2 = 0.0;
+                int n_meas = 0;
+                for (int r = 0; r < n_rec_s; ++r) {
+                    const int j0 = sl.job0[(size_t)r * S.n_prn + p];
+                    if (j0 < 0)
+                        continue;
+                    double pow3[3];
+                    for (int t = 0; t < 3; ++t) { // rows j0+0..2 = E, P, L
+                        double sr = 0.0, si = 0.0;
+                        const double* row = sl.host + (size_t)(j0 + t) * S.n_chan * 2;
+                        for (int ch = 0; ch < S.n_chan; ++ch) {
+                            sr += row[2 * ch];
+                            si += row[2 * ch + 1];
+                        }
+                        pow3[t] = sr * sr + si * si;
+                    }
+                    e2 += pow3[0];
+                    p2 += pow3[1];
+                    l2 += pow3[2];
+                    ++n_meas;
+                }
+                if (n_meas == 0 || e2 + l2 <= 0.0)
+                    continue;
+                // EMA the POWERS first (see the header): per-frame q saturates at 4 and its
+                // noise tail exceeds that, so only the averaged powers separate lock from
+                // noise -- for the gate AND for the discriminator the trim integrates.
+                const double al = S.trim_pow_alpha;
+                const size_t up = (size_t)p;
+                if (S.ema_n[up] == 0) {
+                    S.ema_e2[up] = e2;
+                    S.ema_p2[up] = p2;
+                    S.ema_l2[up] = l2;
+                } else {
+                    S.ema_e2[up] += al * (e2 - S.ema_e2[up]);
+                    S.ema_p2[up] += al * (p2 - S.ema_p2[up]);
+                    S.ema_l2[up] += al * (l2 - S.ema_l2[up]);
+                }
+                ++S.ema_n[up];
+                const double E = S.ema_e2[up], P = S.ema_p2[up], La = S.ema_l2[up];
+                if (E + La <= 0.0)
+                    continue;
+                const double q = 2.0 * P / (E + La);
+                S.trim_q[up] = q;
+                // Warm-up: do not judge on a half-formed average (1/alpha frames).
+                if (S.ema_n[up] < (long long)(1.0 / al) || q < S.trim_quality_min)
+                    continue;
+                const double disc = (E - La) / (E + La);
+                const double tau =
+                    -std::max(-1.0, std::min(1.0, disc)) / 4.0 * (S.dll_spacing / 0.5);
+                const double t_new = (1.0 - S.trim_leak) * S.trim[(size_t)p] + S.trim_gain * tau;
+                S.trim[(size_t)p] = std::max(-S.trim_clamp, std::min(S.trim_clamp, t_new));
+                S.trim_disc[(size_t)p] = disc;
+                ++S.trim_n[(size_t)p];
+            }
+        }
+        // Heartbeat: one line every ~256 frames (~10 s) showing whatever is actively trimming.
+        if ((++S.trim_frames & 0xFF) == 0) {
+            std::string line;
+            std::lock_guard<std::mutex> tlk(S.trim_mtx);
+            for (int p = 0; p < S.n_prn; ++p)
+                if (S.trim_n[(size_t)p] > 0)
+                    line += fmt::format(" P{:d} {:+.2f}c (d {:+.3f} q {:.1f})", S.prns[(size_t)p],
+                                        S.trim[(size_t)p], S.trim_disc[(size_t)p],
+                                        S.trim_q[(size_t)p]);
+            if (!line.empty())
+                INFO("code trim:{:s}", line);
+        }
+    }
+
+    // Snapshot the seeds (and trims) once for the whole frame; the broker updates
+    // asynchronously, and the trim update above runs on other frames' executes.
+    //
+    // EXPIRY lives in snapshot_seeds (shared with cudaGnssInject). Without it a seed was
+    // latched forever -- `have` was only ever set true -- so a satellite that had SET was
+    // still despread and the spec count grew with everything that had ever risen. Measured
+    // 2026-08-05: 14 active slots against the 6-7 the broker seeds, kernel 14.20 -> 22.63 ms
+    // over an hour, GPU memory 561 -> 601 MiB, saturating toward the 32-PRN list; after ~4 h
+    // that is the 100% GPU / 24k-dropped-frame state. Cleared in the SHARED state, not just
+    // the frame's copy, so /get_trim reports the LIVE set rather than the high-water mark.
+    //
+    // NOTE the Phi table is NOT freed: ensure_phi allocates a pair per PRN slot on first use
+    // and keeps it. That is a bounded ~7 MB x (PRNs ever seeded), capped by the PRN list, and
+    // costs no COMPUTE once `have` is false -- the spec loop skips the PRN entirely. Freeing
+    // it would only trade memory for a rebuild when the satellite next rises.
+    std::vector<double> trim_now;
+    std::vector<int> expired; // logged AFTER the lock: never log while holding seed_mtx
+    std::vector<cudaGnssChordTrackState::Seed> seeds = S.snapshot_seeds(expired);
+    // THE TRIM IS READ UNCONDITIONALLY (task #51 F2, 2026-08-15). It used to be zeroed
+    // whenever `code_trim` was false, which made the actuator slot unreachable from outside
+    // this stage. `trim` is now written by EITHER the in-tracker loop OR the fleet controller
+    // through /set_trim, and either way it is a correction to the broker's model phase.
+    // Nothing writes it unless one of those is enabled, so with both off this is exactly the
+    // old behaviour: a vector of zeros. Shared with cudaGnssInject -- see snapshot_trims.
+    std::vector<int> trim_gone;
+    trim_now = S.snapshot_trims(trim_gone);
+    for (int prn : trim_gone)
+        WARN("cudaGnssChordTrack: PRN {:d} trim EXPIRED after {:.1f} s with no /set_trim -- "
+             "zeroed. The fleet controller has stopped posting; the code phase has just "
+             "stepped back to the broker's bare model.",
+             prn, S.trim_ttl_s);
+    // Reports the PREVIOUS frame's split: this runs near the top of execute, before this
+    // frame's enqueues. That is fine for a steady-state measurement and avoids a sync here.
+    if (S.split_timing) {
+        // Spec count = seeds actually live this frame, which is what the kernel was launched
+        // with -- not the PRN list size (they differed by 2x before the seed TTL).
+        int n_active = 0;
+        for (const auto& sd : seeds)
+            if (sd.have)
+                ++n_active;
+        double syn = 0.0, cor = 0.0;
+        if (S.despread->split_timing_ms(syn, cor) && (syn + cor) > 0.0)
+            INFO("cudaGnssChordTrack: kernel split -- synthesis {:.3f} ms ({:.1f}%) | "
+                 "correlation {:.3f} ms ({:.1f}%) | {:d} spec x {:d} chan x {:d} elem x {:d} hops",
+                 syn, 100.0 * syn / (syn + cor), cor, 100.0 * cor / (syn + cor), n_active,
+                 S.n_chan, S.n_elem, S.hops_per_record);
+    }
+    for (int prn : expired)
+        INFO("cudaGnssChordTrack: PRN {:d} seed expired after {:.0f} s without a refresh -- "
+             "dropped from the despread (it was latched forever before seed_ttl_s existed)",
+             prn, S.seed_ttl_s);
+
+    int n_out_rows = 0;
+    for (int r = 0; r < n_rec; ++r) {
+        const long long hop0 = (seq0 < 0) ? 0 : (seq0 / S.fft_len) + (long long)r * S.hops_per_record;
+        const long long wstart = hop0 * (long long)S.fft_len; // absolute SAMPLE of the window
+        winstart[r] = wstart;
+
+        std::vector<GnssCudaDespread::Spec> specs;
+        specs.reserve((size_t)S.n_prn);
+        for (int p = 0; p < S.n_prn; ++p) {
+            gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
+            const auto& sd = seeds[(size_t)p];
+            c.job0 = -1;
+            // See cudaGnssInject: identity travels for dark slots too.
+            c.prn = (uint16_t)S.prns[(size_t)p];
+            if (!sd.have || seq0 < 0) {
+                // No seed (or no absolute time yet): the replica phase history cannot bridge
+                // the gap, so drop it -- the next record emits reanchored = 1. See #52.
+                _dop_prev_ok[(size_t)p] = 0;
+                continue;
+            }
+
+            // PROPAGATE IN THE PHASE DOMAIN, NEVER IN THE ARGUMENT DOMAIN (2026-07-31).
+            // The arithmetic (and the full argument for it) lives in gnssSeedTransport, so the
+            // offline end-to-end harness (scripts/e2e.cpp) drives THIS code rather than a
+            // second copy of it. The DLL trim rides ON TOP of the model phase: the broker
+            // keeps owning the seed (fit/coast state stays pure), the trim owns the sub-chip
+            // residual.
+            gnss::SeedState ss;
+            ss.cp_chips = sd.cp_chips;
+            ss.phase_ref_chips = sd.phase_ref_chips;
+            ss.doppler_hz = sd.doppler_hz;
+            ss.dop_rate = sd.dop_rate;
+            ss.cp_rate = sd.cp_rate;
+            ss.ref_hop = sd.ref_hop;
+            const gnss::SeedPropagation pr = gnss::propagate_seed(
+                *S.replica, ss, hop0, S.sample_rate, S.f_offset_hz, trim_now[(size_t)p]);
+            const double dop = pr.doppler_hz;
+            const double cp = pr.cp;
+
+            GnssCudaDespread::Spec sp;
+            sp.p = p;
+            sp.doppler_hz = dop;
+            sp.cp_seed = cp;
+            sp.spacing_chips = S.dll_spacing;
+            // THE ACTUATOR. Without this the broker's carrier loop commands a trim that reaches
+            // c.f_nco (the exported commanded phase) and nothing else -- the despread ran at the
+            // bare seed Doppler, deep_rate_hz could not respond, and the loop ratcheted to its
+            // rail at every gain tried. c.fcar below stays f_offset + dop: it is the REPLICA
+            // reference the assembler reconstructs Phi_cmd against, and f_nco already carries
+            // the trim in that identity.
+            sp.ctrim_hz = sd.ctrim_hz;
+            sp.covering = S.covering;
+
+            // THE RE-PIN PHASE STEP (task #52). Same construction as cudaGnssInject's -- the
+            // replica's carrier phase is 2*pi*(f_offset + dop + ctrim)*t_abs and dop moves
+            // every record, so the phase steps by d(dop + ctrim)*t_abs cycles. Subtracted
+            // here, in the Doppler domain, before f_offset swamps the precision
+            // (PrnCtl::dcyc). ⚠️ The APPLIED total, not the Doppler alone (2026-08-13):
+            // ctrim is inside the despread reference too, and leaving its changes out of
+            // dcyc meant every broker carrier-command slew punched an unfolded mod-1 phase
+            // step into the records -- the closed loop scrambled its own measurement.
+            const double t_abs = (double)wstart / S.sample_rate;
+            const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
+            const double applied = dop + sd.ctrim_hz;
+            const double dcyc = have_hist ? (applied - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            _dop_prev[(size_t)p] = applied;
+            _dop_prev_ok[(size_t)p] = 1;
+
+            c.run = 1;
+            c.reanchored = have_hist ? 3 : 1;
+            c.dcyc = dcyc;
+            c.job0 = (int)specs.size() * gnss_gpu::ROWS_PLAIN + n_out_rows;
+            c.fcar_report = (float)dop;
+            c.n_owned = (float)S.n_chan;
+            c.cp_seed = cp;
+            c.f_nco = sd.ctrim_hz;
+            c.chan_mask = (S.n_chan >= 64) ? ~0ULL : ((1ULL << S.n_chan) - 1ULL);
+            c.ctrim_hz = sd.ctrim_hz;
+            c.fcar = S.f_offset_hz + dop;
+            specs.push_back(sp);
+        }
+        if (specs.empty())
+            continue;
+
+        // corr carries the element axis; energy does not (one replica, every antenna).
+        auto* d_corr = (double2*)(d_out + gnss_gpu::off_corr(S.n_prn))
+                       + (size_t)n_out_rows * S.n_chan * S.n_elem;
+        auto* d_energy =
+            (double*)(d_out
+                      + gnss_gpu::off_energy(S.n_prn, S.n_chan, gnss_gpu::ROWS_PLAIN, S.n_elem))
+            + (size_t)n_out_rows * S.n_chan;
+        const char* d_window =
+            d_frame
+            + (size_t)r * S.hops_per_record * S.frame_chan_stride * S.elem_stride;
+
+        n_out_rows += S.despread->enqueue_batch_nm(d_window, d_scale, d_chanids, d_wave, S.n_elem,
+                                                   S.elem_stride, S.frame_chan_stride, wstart,
+                                                   specs, d_jobs + (size_t)n_out_rows, d_corr,
+                                                   d_energy, (void*)stream, S._conjugate);
+        // #72: second pass -- ang0 only exists once the despread has built the jobs. Taken
+        // from what the despread recorded, never re-derived here (see gnss::REC_ANG0).
+        for (const auto& sp2 : specs) {
+            gnss_gpu::PrnCtl& cc = pctl[(size_t)r * S.n_prn + sp2.p];
+            cc.ang0 = S.despread->last_ang0(sp2.p);
+            cc.phi_ddop = S.despread->last_phi_ddop(sp2.p);
+        }
+    }
+    hdr->n_jobs = n_out_rows;
+
+    // DLL trim, step 2: enqueue THIS frame's E/P/L readback -- the reference element's
+    // double2 per (row, chan), strided out of the [row][chan][elem] corr block. It lands
+    // after the despread kernels on the same stream; the recorded event is what a later
+    // execute() polls before believing the host buffer.
+    if (S.trim_enable && n_out_rows > 0) {
+        std::lock_guard<std::mutex> lk(S.trim_slot_mtx);
+        auto& sl = S.trim_slots[(size_t)pipestate.gpu_frame_id % S.trim_slots.size()];
+        if (!sl.pending) { // an unconsumed slot is one dropped measurement, never a stall
+            for (int r = 0; r < n_rec; ++r)
+                for (int p = 0; p < S.n_prn; ++p) {
+                    const gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
+                    sl.job0[(size_t)r * S.n_prn + p] = c.run ? c.job0 : -1;
+                }
+            sl.n_rows = n_out_rows;
+            const char* src = d_out + gnss_gpu::off_corr(S.n_prn)
+                              + (size_t)S.trim_ref_elem * sizeof(double2);
+            CHECK_CUDA_ERROR(cudaMemcpy2DAsync(
+                sl.host, sizeof(double2), src, (size_t)S.n_elem * sizeof(double2),
+                sizeof(double2), (size_t)n_out_rows * S.n_chan, cudaMemcpyDeviceToHost, stream));
+            CHECK_CUDA_ERROR(cudaEventRecord(sl.ev, stream));
+            sl.pending = true;
+        }
+    }
+
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(d_out, _ctl_stage.data(), _ctl_stage.size(),
+                                     cudaMemcpyHostToDevice, stream));
+    return record_end_event();
+}

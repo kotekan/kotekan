@@ -301,10 +301,23 @@ void bufferRecv::main_thread() {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     evutil_make_socket_nonblocking(listener);
 
-    // Bind even when connections from a previous run are still in TIME_WAIT.
-    // Without this, a restart within the TIME_WAIT window (a couple of minutes)
-    // fails with EADDRINUSE on a port nothing is listening on any more, which
-    // is exactly the window a supervisor restarts kotekan in.
+    // SO_REUSEADDR, UNCONDITIONALLY (2026-08-14). This used to be gated on `!drop_frames`,
+    // which tied a socket option to a completely unrelated policy knob -- whether to discard
+    // frames when the buffer fills has nothing to do with whether the listener may rebind over
+    // TIME_WAIT. The effect was that any drop_frames receiver could not be restarted promptly:
+    // every connection its senders had open sits in TIME_WAIT for ~60 s, bind() returns
+    // EADDRINUSE, and this is a FATAL_ERROR -- so the new instance shuts itself down while a
+    // launcher that only checked for a LISTENING socket happily reports success.
+    //
+    // That has already cost real time. agg_up.sh carries a 30-iteration port-poll and a comment
+    // about the aggregator hitting "Address already in use" and shutting ITSELF down on
+    // 2026-08-12, leaving the fleet with no aggregator while the log said "aggregator up"; the
+    // same thing bit the #59 gather on its first restart, with 60 sender connections in
+    // TIME_WAIT.
+    //
+    // This is safe: SO_REUSEADDR on a LISTENING socket only permits rebinding over TIME_WAIT.
+    // It does NOT allow two live listeners to share a port -- that needs SO_REUSEPORT, which is
+    // not set here.
     {
         int reuse = 1;
         if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {

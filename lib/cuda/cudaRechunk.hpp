@@ -17,9 +17,12 @@
  * @brief State shared between the cudaRechunk instances of a GPU pipeline.
  *
  * Not locked: all instances sharing this state have their execute() called
- * serially from the owning gpuProcess main thread, under
- * device->gpu_command_mutex (see cudaProcess::queue_commands). Parallelizing
- * command queuing would break this.
+ * serially from the owning gpuProcess main thread, under that pipeline's
+ * per-stream queuing locks (see cudaProcess::queue_commands). The lock became
+ * per-STREAM rather than per-device on 2026-08-31, which preserves this
+ * invariant exactly -- the state is shared only WITHIN a pipeline, and a
+ * pipeline still queues a whole frame while holding the locks for every stream
+ * it uses. Parallelizing command queuing WITHIN one pipeline would break this.
  */
 class cudaRechunkState : public cudaCommandState {
 public:

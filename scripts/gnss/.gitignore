@@ -1,0 +1,31 @@
+e2e
+aggbench
+sumtrack_test
+# build_tool.sh writes <tool>.<hostname-short> with a plain <tool> symlink, because /home/kvand
+# is NFS-shared and two hosts building the same tool clobbered each other's binary.
+*.cf[0-9]*
+*.cx[0-9]*
+*.o
+*.o.d
+carrier_nco_gate
+
+# ⚠️ THE TOOL SYMLINKS ARE PER-HOST STATE, NOT SOURCE (2026-08-23).
+# build_tool.sh points <tool> at <tool>.<host>, so a TRACKED symlink flips every time a
+# different host builds -- and a fresh checkout hands you some other machine's binary. That is
+# how fleetdll_gate.py ran an 08-15 cx19 build against an 08-16 v5 wire format and stayed red
+# for eight days while reporting it as a fold disagreement. e2e/aggbench/carrier_nco_gate were
+# already ignored for this reason; these were missed.
+acqbench
+fleetdll
+n2dualtest
+n2dualxval
+n2skyab
+n2timing
+prnswap
+phi16gpu
+skyacq
+seedchk
+phibits
+phishare
+phisharegpu
+wavebench

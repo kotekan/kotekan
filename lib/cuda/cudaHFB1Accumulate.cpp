@@ -15,6 +15,7 @@
 #include <array>          // for array
 #include <cstddef>        // for ptrdiff_t
 #include <driver_types.h> // for cudaEvent_t
+#include <memory>         // for make_shared, shared_ptr
 #include <string>         // for string
 #include <vector>         // for vector
 
@@ -163,16 +164,19 @@ cudaEvent_t cudaHFB1Accumulate::execute(cudaPipelineState& /*pipestate*/,
     record_start_event();
 
     hfb1_beams.check_metadata();
-    hfb1_accumulated_beams.set_metadata(hfb1_beams.get_metadata());
-
     // Averaging `hfb_second_downsampling_factor` samples collapses the time axis: the output sample
     // spans `hfb_second_downsampling_factor` input samples, so its FPGA time downsampling grows by
-    // that factor. (All other metadata is copied by set_metadata above; fpga_seq_num is inherited
-    // from the input window start.)
+    // that factor. (All other metadata is copied from the input; fpga_seq_num is inherited from
+    // the input window start.) Built before publishing rather than patched afterwards -- see
+    // cudaRFISKtilde::execute for what patching a published object cost on CHORD.
     const std::shared_ptr<const chordMetadata> in_meta = hfb1_beams.get_metadata();
-    const std::shared_ptr<chordMetadata> out_meta = hfb1_accumulated_beams.get_metadata();
-    out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
-                                         * hfb_second_downsampling_factor);
+    {
+        auto out_meta = std::make_shared<chordMetadata>();
+        out_meta->deepCopy(in_meta);
+        out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
+                                             * hfb_second_downsampling_factor);
+        hfb1_accumulated_beams.set_metadata(out_meta);
+    }
     hfb1_accumulated_beams.check_metadata();
 
     // The kernel is not ring-aware: it reads `hfb_second_downsampling_factor` contiguous time rows

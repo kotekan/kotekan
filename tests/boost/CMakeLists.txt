@@ -11,6 +11,99 @@ target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
+# Pure C/A code generator: compile the source directly so the test pulls in no
+# FFTW / libairspy dependency from kotekan_stages.
+add_executable(test_gps_ca_code test_gps_ca_code.cpp ../../lib/stages/gnss/gpsCACode.cpp)
+target_include_directories(test_gps_ca_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+add_executable(test_gps_l2c_code test_gps_l2c_code.cpp ../../lib/stages/gnss/gpsL2CCode.cpp)
+target_include_directories(test_gps_l2c_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+add_executable(test_gps_l5_code test_gps_l5_code.cpp ../../lib/stages/gnss/gpsL5Code.cpp)
+target_include_directories(test_gps_l5_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+add_executable(test_gps_l1c_code test_gps_l1c_code.cpp ../../lib/stages/gnss/gpsL1CCode.cpp)
+target_include_directories(test_gps_l1c_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+# Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
+add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
+target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+# Broker assignment logic: pure, no FFTW.
+add_executable(test_gnss_broker test_gnss_broker.cpp ../../lib/stages/gnss/gnssBroker.cpp
+                                ../../lib/stages/gnss/gnssBandPlan.cpp)
+target_include_directories(test_gnss_broker PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+# Pure PFB core (prototype design + polyphase fold): no FFTW; the test uses a
+# reference DFT to check channel isolation against a straight-FFT channelizer.
+add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)
+target_include_directories(test_pfb_prototype PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+# Channelized despread: sim signal -> PFB analysis (reference DFT) -> per-channel
+# correlate-and-sum, checked against the full-band matched filter. No FFTW.
+add_executable(
+    test_gnss_channelized_despread test_gnss_channelized_despread.cpp
+    ../../lib/stages/gnss/gnssChannelizedDespread.cpp ../../lib/stages/gnss/gnssSimSignal.cpp
+    ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gnss/gpsCACode.cpp
+    ../../lib/stages/gnss/gpsL5Code.cpp ../../lib/stages/gnss/gpsL1CCode.cpp)
+target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+# Channelized acquisition: FFT-domain coarse correlation + cross-channel fine-lag
+# DFT + incoherent multi-window accumulation, checked against injected code
+# phase / Doppler. Gated on FFTW (matches lib/stages, which only compiles
+# gnssChannelizedAcquire.cpp under FFTW_FOUND): the coarse-correlation workspace
+# needs fftwf. FFTW_FOUND is set by FeatureMath.cmake before this subdirectory.
+if(FFTW_FOUND)
+    add_executable(
+        test_gnss_channelized_acquire test_gnss_channelized_acquire.cpp
+        ../../lib/stages/gnss/gnssChannelizedAcquire.cpp ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/gnss/gpsCACode.cpp
+        # The L2C cases drive the real ChannelizedReplicaBank (time-mux combined code) so
+        # the bug hunt exercises the production replica + acquire path, not a test stand-in.
+        ../../lib/stages/gnss/gnssChannelizedReplica.cpp ../../lib/stages/gnss/gnssBandPlan.cpp
+        ../../lib/stages/gnss/gnssChannelizedDespread.cpp
+        ../../lib/stages/gnss/gpsL2CCode.cpp ../../lib/stages/gnss/gpsL5Code.cpp
+        ../../lib/stages/gnss/gpsL1CCode.cpp # replica signal_code() dispatches GPS_L1C_P
+        ../../lib/stages/gnss/galileoE1Code.cpp # + GAL_E1B/E1C memory codes
+        ../../lib/stages/gnss/beidouB1CCode.cpp # + BDS B1C Weil codes
+        ../../lib/stages/gnss/beidouB2aCode.cpp
+        ../../lib/stages/gnss/galileoE5aCode.cpp # + the L5-band siblings B2a/E5a
+        ../../lib/stages/gnss/galileoE5bCode.cpp ../../lib/stages/gnss/galileoE6Code.cpp
+        ../../lib/stages/gnss/beidouB1ICode.cpp ../../lib/stages/gnss/beidouB2bCode.cpp
+        ../../lib/stages/gnss/beidouB3ICode.cpp ../../lib/stages/gnss/glonassL3OCCode.cpp ../../lib/stages/gnss/glonassL2OCCode.cpp
+        ../../lib/stages/gnss/glonassCACode.cpp)
+    target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages ../../lib/stages/gnss)
+    target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
+
+    # ⚠️ BOTH targets compile gnssChannelizedReplica.cpp, whose signal_code() dispatch references
+    # EVERY code module -- so both source lists must list every one of them, whether or not the
+    # test exercises that signal. The lists had drifted six modules behind the dispatch (E5b, E6,
+    # B1I, B2b, B3I, L3OC) and would not have linked; nobody noticed because WITH_BOOST_TESTS
+    # defaults OFF in the CUDA build dir. Add the code module here when you add it to the dispatch.
+    # Channelized replica bank: per-signal code dispatch (L1 C/A, L5 I/Q, L2C),
+    # checked by self / cross-PRN / cross-signal despread. Needs FFTW (r2c replica).
+    add_executable(
+        test_gnss_channelized_replica test_gnss_channelized_replica.cpp
+        ../../lib/stages/gnss/gnssChannelizedReplica.cpp ../../lib/stages/gnss/gnssChannelizedDespread.cpp
+        ../../lib/stages/gnss/gnssBandPlan.cpp ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/gnss/gpsCACode.cpp ../../lib/stages/gnss/gpsL1CCode.cpp ../../lib/stages/gnss/gpsL2CCode.cpp
+        ../../lib/stages/gnss/gpsL5Code.cpp ../../lib/stages/gnss/galileoE1Code.cpp
+        ../../lib/stages/gnss/beidouB1CCode.cpp ../../lib/stages/gnss/beidouB2aCode.cpp
+        ../../lib/stages/gnss/galileoE5aCode.cpp
+        ../../lib/stages/gnss/glonassCACode.cpp # + GLONASS L2OF (the FDMA per-PRN carrier cases)
+        ../../lib/stages/gnss/galileoE5bCode.cpp ../../lib/stages/gnss/galileoE6Code.cpp
+        ../../lib/stages/gnss/beidouB1ICode.cpp ../../lib/stages/gnss/beidouB2bCode.cpp
+        ../../lib/stages/gnss/beidouB3ICode.cpp ../../lib/stages/gnss/glonassL3OCCode.cpp ../../lib/stages/gnss/glonassL2OCCode.cpp)
+    target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages ../../lib/stages/gnss)
+    target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
+endif()
+
+# frameID / modulo<int>: reduce-on-write, the 2^32 wrap that wedged the bf-mask buffer
+add_executable(test_modulo test_modulo.cpp)
+target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 

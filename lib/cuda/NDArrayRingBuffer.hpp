@@ -427,6 +427,43 @@ public:
         assert(read_claimed.size() == 0);
     }
 
+    // ⚠️ RESTORED 2026-08-31 AFTER THE origin/chord MERGE DELETED IT (upstream f82baaed6).
+    //
+    // It was introduced by f33b02baa, the same commit that made `wait_and_claim_readable`
+    // loop until the caller READS rather than CLAIMS -- which, in that commit's own words,
+    // means "the ringbuffer no longer guarantees that a consumer makes progress". This check
+    // is what made a lost guarantee LOUD: it fails at startup, naming the numbers, instead of
+    // hanging at run time. That commit even warned "Several stages sit exactly on this
+    // boundary today".
+    //
+    // Deleting it did not cause a bug; it removed the thing that would have NAMED one. On
+    // 2026-08-31 one GPU half per node stopped making progress on the voltage ring and the
+    // only symptom was silence: seven pipelines parked in cudaEventSynchronize, the ring
+    // full, every other consumer starved, the node eventually killed by an n2_accumulate
+    // desync several layers downstream. A startup FATAL naming read_max, min_read and the
+    // ring extent would have cost minutes instead of an afternoon.
+    //
+    // Kept here (not in external/n2k or upstream's copy) so our clone carries its own
+    // safeguard, and so re-merging upstream cannot silently drop it again.
+    void check_read_progress(const std::ptrdiff_t read_max, const std::ptrdiff_t min_read) const {
+        if (min_read <= 0)
+            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: min_read={:d} must be "
+                        "positive",
+                        cuda_command.get_unique_name(), buffer_name, min_read);
+        if (read_max < min_read)
+            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: this stage reads at most "
+                        "{:d} elements at a time, but needs at least {:d} elements to claim "
+                        "anything, and would thus never make progress. The ringbuffer (holding "
+                        "{:d} elements) is too small.",
+                        cuda_command.get_unique_name(), buffer_name, read_max, min_read,
+                        ndarray.extent(0));
+        if (min_read > ndarray.extent(0))
+            FATAL_ERROR("kernel {:s}, buffer {:s}, check_read_progress: this stage needs at least "
+                        "{:d} elements to claim anything, but the ringbuffer holds only {:d} "
+                        "elements, and it would thus never make progress.",
+                        cuda_command.get_unique_name(), buffer_name, min_read, ndarray.extent(0));
+    }
+
     // State
 
     extent_t get_maybe_empty_write_valid() const {
@@ -559,13 +596,40 @@ public:
         }
     }
 
+    // ⚠️ BUILD IT FULLY, THEN PUBLISH IT ATOMICALLY -- NEVER FILL IN PLACE (fixed 2026-08-31).
+    //
+    // This used to call `allocate_new_metadata_object(0)` and then mutate that object field by
+    // field, unlocked. But `allocate_new_metadata_object` only allocates when the slot is NULL
+    // (buffer.cpp), so from the second frame onward it hands back THE SAME OBJECT -- which we
+    // then rewrote underneath `cudaCopyFromRingbuffer`, whose execute() reads
+    // `signal_buffer->get_metadata(0)` from another thread and publishes an ndarray descriptor
+    // from whatever it sees. Catch the object mid-fill and that descriptor is part one array
+    // and part another.
+    //
+    // ⚠️ THE ARITHMETIC THAT PROVED IT, worth keeping: cx19 rejected a descriptor of 9216
+    // bytes for RFImask, whose real shape [8, 384, 128] is 393216. And 9216 = 8 x 384 x **3**
+    // -- extent[1] already updated to 384, extent[2] still the SK-triplet 3 of a recycled
+    // SKtilde object. Half-written, not wrong. The same race caught one field earlier reads as
+    // "dimname mismatch: SK != S". Either one FATALs in ensure_frame_desc, and the controlled
+    // shutdown then kills all four DPDK workers and the node with them.
+    //
+    // Now: request a FRESH object from the pool, fill it completely, and install the pointer
+    // via `GenericBuffer::set_metadata`, which takes the buffer lock. A reader either sees the
+    // previous fully-built object (its shared_ptr keeps it alive) or the new fully-built one.
+    // There is no third state. Falls back to the old in-place path only if the pool is gone,
+    // which would mean the source metadata is already being torn down.
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) {
-        // const std::shared_ptr<metadataObject> mc =
-        //     cuda_command.get_device().create_gpu_memory_array_metadata(buffer_name_device, 0,
-        //                                                                other_metadata->parent_pool);
-        // const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-        ringbuffer->allocate_new_metadata_object(0);
-        const std::shared_ptr<chordMetadata> metadata = get_metadata();
+        // ⚠️ ALWAYS A FRESH OBJECT, NEVER IN PLACE (2026-09-02). The first version fell back
+        // to allocate_new_metadata_object(0)-then-mutate when the source had no parent_pool
+        // -- and that is not a rare corner: cudaCopyToRingbuffer creates ring metadata with a
+        // bare make_shared (no pool tag), so EVERY per-execute set_metadata sourced from a
+        // ring object (both correlators, the whole PL-mask chain) took the fallback and
+        // mutated the live slot-0 object under concurrent readers -- the very torn-write this
+        // function was rewritten to kill. The pool was only ever a size-accounting tag
+        // (request_metadata_object heap-allocates fresh; nothing recycles), so a poolless
+        // fresh object is strictly correct; keep the pool tag when the source has one.
+        auto metadata = std::make_shared<chordMetadata>();
+        metadata->parent_pool = other_metadata->parent_pool;
         metadata->deepCopy(other_metadata);
         metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
@@ -581,6 +645,8 @@ public:
                                               ndarray.dimscaling(d));
             metadata->stride[d] = ndarray.stride(d);
         }
+        // Publish last: everything above is invisible to readers until this line.
+        ringbuffer->set_metadata(0, metadata);
     }
 
     // Poison

@@ -1,0 +1,39 @@
+{
+  "_comment": [
+    "CHORD dish grid + element mapping (KV, 2026-08-29). THE REFERENCE for #102.",
+    "GRID CONVENTION: dishes on a grid, nominally perfect EW rows / NS columns.",
+    "  - Every element is [A-Z][00-25][xy].",
+    "  - EW rows are LETTERS: A at the SOUTHERN end, B north of it, ... rows 8.5 m apart",
+    "    (a C element is 8.5 m north of a B element).",
+    "  - NS columns are NUMBERS: 01 at the WESTERN end, 02 east of it, ... columns 6.3 m",
+    "    apart (B01 is 6.3 m west of B02).",
+    "  - Feeds are linear: x aligned EW, y aligned NS, polarizations coincident.",
+    "ENU here: E = (column-1)*6.3, N = (row_letter-A)*8.5, U = 0, relative to A01.",
+    "MAPPING STATUS: correlator element index -> name as KV believes it stands",
+    "2026-08-29 ('I don't have perfect clarity') -- interleaved columns 1,5,2,6,3,7,4,8,",
+    "pairs (2k, 2k+1) = (X, Y) of one dish; elements 16-31 repeat with row B.",
+    "VALIDATION: fixtures/elem_mapping_check.py scores each element's measured",
+    "comb-amplitude pattern (elem archive) against every nominal position; the",
+    "assignment should reproduce this table. Re-run whenever cabling changes."
+  ],
+  "row_spacing_m": 8.5,
+  "col_spacing_m": 6.3,
+  "elements": {
+    "0":  {"name": "A01X"}, "1":  {"name": "A01Y"},
+    "2":  {"name": "A05X"}, "3":  {"name": "A05Y"},
+    "4":  {"name": "A02X"}, "5":  {"name": "A02Y"},
+    "6":  {"name": "A06X"}, "7":  {"name": "A06Y"},
+    "8":  {"name": "A03X"}, "9":  {"name": "A03Y"},
+    "10": {"name": "A07X"}, "11": {"name": "A07Y"},
+    "12": {"name": "A04X"}, "13": {"name": "A04Y"},
+    "14": {"name": "A08X"}, "15": {"name": "A08Y"},
+    "16": {"name": "B01X"}, "17": {"name": "B01Y"},
+    "18": {"name": "B05X"}, "19": {"name": "B05Y"},
+    "20": {"name": "B02X"}, "21": {"name": "B02Y"},
+    "22": {"name": "B06X"}, "23": {"name": "B06Y"},
+    "24": {"name": "B03X"}, "25": {"name": "B03Y"},
+    "26": {"name": "B07X"}, "27": {"name": "B07Y"},
+    "28": {"name": "B04X"}, "29": {"name": "B04Y"},
+    "30": {"name": "B08X"}, "31": {"name": "B08Y"}
+  }
+}

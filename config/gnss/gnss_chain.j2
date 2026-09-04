@@ -1,0 +1,246 @@
+{#
+  THE GNSS CHAIN, as a j2 include (Jim Mertens' suggestion, 2026-08-18).
+
+  This renders every per-chain GNSS block from `gnss` -- the variable data, which lives in
+  its own file (gnss_vars_<node>.j2) and is included before this one. Structure lives here;
+  numbers live there. Nothing in this file is node-specific.
+
+  WHY THE SPLIT IS WORTH IT, measured on the deployed cx19 config rather than assumed:
+  139 GNSS keys collapse to 31 distinct patterns (8x for a per-chain block, 2x for a
+  per-GPU one), and across those repeats 69% of all fields are INVARIANT -- identical in
+  every copy. The varying 31% is mechanical: names built from the loop indices, affinities
+  from a core rotation, and the per-chain channel/PRN data. So the generator has been
+  emitting ~100 KB per node of which the great majority is one template applied 8 times.
+
+  USAGE, from a top-level j2 in this directory:
+      {% raw %}{% import "gnss_vars_cx19.j2" as gv %}{% set gnss = gv.gnss %}
+      {% include "gnss_chain.j2" %}{% endraw %}
+
+  ⚠️ IMPORT THE VARS, INCLUDE THE STRUCTURE. Jinja passes the parent context DOWN into an
+  {% raw %}{% include %}{% endraw %} but does not export that include's {% raw %}{% set %}{% endraw %}
+  names back UP, so a vars file that is merely included is invisible to everything after it
+  -- the render fails with "gnss is undefined". {% raw %}{% import %}{% endraw %} does export
+  top-level assignments. This is the one mechanical constraint the split imposes.
+  kotekan's loader (python/kotekan/config.py) roots its FileSystemLoader at the including
+  file's directory, so includes resolve as plain sibling names -- the same idiom
+  config/tests/chord_pathfinder_site_deploy.j2 already uses for the dpdk/core/send split.
+
+  ⚠️ THE INVARIANTS BELOW ARE LOAD-BEARING, and several are scars. Do not "tidy" them
+  without reading the generator comment that explains each:
+    * conjugate: true          -- the despread is blind without it (chord-fengine-conjugation)
+    * rfi_all_pass: true       -- behaviour-identical to production, where first-stage
+                                  excision is off; NOT a shortcut
+    * hops_per_record: 2048    -- a record is 10.4857 code periods, not 1 (chord-record-geometry)
+    * sub_integration_ntime    -- equals hops_per_record here, NOT the stock 8192
+    * num_synth: 128           -- the synthetic lane count the dual correlator is built for
+#}
+{% for g in gnss.gpus %}
+{% for c in g.chains %}
+{% set pre = "gnss" ~ g.gpu ~ c.tag %}
+{% set vring = "host_voltage_ringbuffer" ~ ("_1" if g.gpu == 1 else "") %}
+
+# ---- {{ pre }}: {{ c.chain }} ({{ c.signal }}), {{ c.channel_ids | length }} channels,
+#      {{ c.prns | length }} PRNs, GPU {{ g.gpu }} ------------------------------------------
+{{ pre }}_n2dual:
+  kotekan_stage: cudaProcess
+  gpu_id: {{ g.gpu }}
+  cpu_affinity: [{{ c.cores.dual }}]
+  in_buffers: {host_voltage_ringbuffer: {{ vring }}}
+  out_buffers:
+    host_gnss_tiles: {{ pre }}_n2tiles_buf
+    host_gnss_n2ctl: {{ pre }}_n2ctl_buf
+  commands:
+  - name: cudaGnssInject
+    signal: {{ c.signal }}
+    channel_ids: {{ c.channel_ids }}
+    gnss_local_channels: {{ c.local_channels }}
+    n_channels: {{ c.channel_ids | length }}
+    prns: {{ c.prns }}
+    f_offset_hz: {{ c.f_offset_hz }}
+{% if gnss.frame0_utc is defined %}    frame0_utc: {{ gnss.frame0_utc }}
+{% endif %}    sample_rate: {{ gnss.sample_rate_hz }}
+    fft_length: {{ gnss.fft_len }}
+    hops_per_record: {{ gnss.hops_per_record }}
+    n_elements: 1
+    num_synth: {{ gnss.num_synth }}
+    conjugate: true
+    carrier_phase_from_ref: {{ gnss.carrier_phase_from_ref }}
+    carrier_phase_mode: {{ gnss.carrier_phase_mode }}
+    phi_fp16: {{ gnss.phi_fp16 | default(false) }}
+    despread_max_chips: {{ gnss.despread_max_chips | default(0) }}
+    despread_chips_centered: {{ gnss.despread_chips_centered | default(false) }}
+    voltage_name: voltage
+    gnss_synth_name: {{ pre }}_synth
+    gnss_ctl_name: {{ pre }}_n2ctl
+    seed_endpoint: /{{ pre }}_inject/set_seeds
+    trim_endpoint: /{{ pre }}_inject/get_trim
+    set_trim_endpoint: /{{ pre }}_inject/set_trim
+    trim_ttl_s: {{ gnss.trim_ttl_s }}
+  - name: cudaCorrelatorDual
+    gnss_freq_map: true
+    gnss_local_channels: {{ c.local_channels }}
+    gnss_synth_name: {{ pre }}_synth
+    gnss_tiles_name: {{ pre }}_tiles
+    n2k_correlation_name: {{ pre }}_n2corr
+    num_live_elements: {{ gnss.n_live_elements }}
+    num_synth: {{ gnss.num_synth }}
+    rfi_RFImask_name: rfi_RFImask
+    rfi_all_pass: true
+    sub_integration_ntime: {{ gnss.hops_per_record }}
+    voltage_name: voltage
+  - name: cudaSyncOutput
+  - {name: cudaOutputData, gpu_mem: {{ pre }}_tiles_buffer, out_buf: host_gnss_tiles}
+  - {name: cudaOutputData, gpu_mem: {{ pre }}_n2ctl, out_buf: host_gnss_n2ctl}
+
+{{ pre }}_n2assemble_tiles:
+  kotekan_stage: GnssN2RecordAssemble
+  {# its own core: the rotation gives the tiles assembler a different one from the record
+     assembler (measured: asm 31/57 per GPU, tiles 59/24/31/62 per chain). #}
+  cpu_affinity: [{{ c.cores.tiles }}]
+  tiles_buf: {{ pre }}_n2tiles_buf
+  ctl_buf: {{ pre }}_n2ctl_buf
+  out_buf: {{ pre }}_n2epl_buf
+  n_gnss_channels: {{ c.channel_ids | length }}
+  n_prn: {{ c.prns | length }}
+  n_live_elements: {{ gnss.n_live_elements }}
+  num_elements: {{ gnss.num_elements }}
+  num_synth: {{ gnss.num_synth }}
+  hops_per_record: {{ gnss.hops_per_record }}
+
+{{ pre }}_n2assemble:
+  kotekan_stage: GnssGpuRecordAssemble
+  cpu_affinity: [{{ c.cores.assemble }}]
+  in_buf: {{ pre }}_n2epl_buf
+  out_buf: {{ pre }}_n2rec_buf
+  channel_ids: {{ c.channel_ids }}
+  prns: {{ c.prns }}
+  n_elements: {{ gnss.n_live_elements }}
+  reference_element: {{ gnss.reference_element }}
+  {# THE SAME F-engine sample rate the inject command gets, in Hz. It was briefly two
+     vars -- sample_rate_hz and a "sample_rate_mhz" -- because the value was first read off
+     a dump truncated mid-number and taken for 3200 MHz. Every site in the generator builds
+     it from one expression, float(fengine.sampling_rate_MHz) * 1e6, so a second name could
+     only ever be the same number wearing a wrong unit. #}
+  sample_rate: {{ gnss.sample_rate_hz }}
+  chan_export: true
+  elem_sum: true
+  {# #25's per-subband spectrum ring. Invariant across every chain; kept here rather than
+     in the vars because it is a property of the export, not of the signal. #}
+  spectrum_ring_depth: {{ gnss.spectrum_ring_depth }}
+  spectrum_window_samples: {{ gnss.spectrum_window_samples }}
+
+{{ pre }}_n2combine:
+  kotekan_stage: GnssCoherentCombiner
+  cpu_affinity: [{{ c.cores.combine }}]
+  in_bufs: [{{ pre }}_n2rec_buf]
+  out_buf: {{ pre }}_n2cmb_buf
+  n_elements: {{ gnss.n_live_elements }}
+  n_prn: {{ c.prns | length }}
+  fft_len: {{ gnss.fft_len }}
+  integration_length: {{ gnss.integration_length }}
+  integration_mode: rolling
+  record_export: {{ gnss.record_export }}
+  deep_coherent: true
+  deep_rate_search: true
+  deep_rate_min_q: {{ gnss.deep_rate_min_q }}
+  sky_deep: {{ gnss.sky_deep }}
+  phase_track: false
+  phase_dump_prns: []
+  phase_dump_path: /tmp/gnss_n2phase_{{ gnss.node }}_{{ g.gpu }}.txt
+
+{{ pre }}_n2sink:
+  kotekan_stage: rawFileWrite
+  cpu_affinity: [{{ c.cores.sink }}]
+  in_buf: {{ pre }}_n2cmb_buf
+  base_dir: {{ gnss.sink_dir }}
+  file_name: {{ gnss.node }}_gnss{{ g.gpu }}_n2rec
+  file_ext: raw
+  allow_ndarray: true
+
+{{ pre }}_telem_pack:
+  kotekan_stage: GnssTelemPack
+  cpu_affinity: [{{ c.cores.telem }}]
+  in_buf: {{ pre }}_n2rec_buf
+  out_buf: {{ pre }}_telem_buf
+  chain: {{ c.chain }}
+  inst: {{ gnss.node }}.{{ g.gpu }}
+  channel_ids: {{ c.channel_ids }}
+  n_chan: {{ c.channel_ids | length }}
+  n_prn: {{ c.prns | length }}
+  max_prn: {{ gnss.max_prn }}
+  n_elements: {{ gnss.n_live_elements }}
+  fft_len: {{ gnss.fft_len }}
+  hops_per_record: {{ gnss.hops_per_record }}
+  records_per_frame: {{ gnss.records_per_frame }}
+  chan_export: true
+
+{{ pre }}_telem_send:
+  kotekan_stage: bufferSend
+  cpu_affinity: [{{ c.cores.send }}]
+  buf: {{ pre }}_telem_buf
+  server_ip: {{ gnss.telem_host }}
+  server_port: {{ gnss.telem_port }}
+  drop_frames: true
+  reconnect_time: 30
+  send_timeout: 2
+  use_config_tracker: false
+
+{#  Buffers. frame_size comes from the vars because the generator computes it from the
+    element/channel/PRN product; the two string-expression forms are kotekan's own
+    arithmetic and are passed through verbatim. #}
+{{ pre }}_n2ctl_buf:   {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: {{ gnss.buffer_depth }}, frame_size: {{ c.sizes.ctl }}}
+{{ pre }}_n2tiles_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: {{ gnss.buffer_depth }}, frame_size: {{ c.sizes.tiles }}}
+{{ pre }}_n2epl_buf:   {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: {{ gnss.buffer_depth }}, frame_size: {{ c.sizes.epl }}}
+{{ pre }}_n2rec_buf:   {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: {{ gnss.buffer_depth }}, frame_size: "{{ c.sizes.rec }}", peek_hold: true}
+{{ pre }}_n2cmb_buf:   {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: {{ gnss.buffer_depth }}, frame_size: "{{ c.sizes.cmb }}"}
+{{ pre }}_telem_buf:   {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: {{ gnss.telem_frames }}, frame_size: {{ c.sizes.telem }}}
+{% endfor %}
+{% endfor %}
+
+{#  ── THE PER-GPU SEARCH LEG ───────────────────────────────────────────────────────────
+    Not per-chain: ONE voltage tap per GPU feeds the acquisition search for every signal
+    on that GPU, which is why it sits outside the chain loop. It taps the voltage buffer
+    directly (in_buf host_voltage_buffer_<gpu>), so it survives whatever the tracker
+    chains do -- it is what detects GPS and therefore solves the clock for all five
+    chains (see the --no-path-a note in the generator).
+    ⚠️ n_elements: 1 -- the search runs on ONE element, not the array. The despread is the
+    thing that combines; a search over 32 elements would cost 32x for no acquisition gain.
+#}
+{% for g in gnss.gpus %}
+gnss{{ g.gpu }}_srch_tap:
+  kotekan_stage: GnssChordVoltageTap
+  cpu_affinity: [{{ g.search.tap_core }}]
+  in_buf: host_voltage_buffer_{{ g.gpu }}
+  out_buf: gnss{{ g.gpu }}_srch_buf
+  chan_ids: {{ g.search.chan_ids }}
+  n_elements: 1
+  element_offset: {{ g.search.element_offset }}
+  fft_length: {{ gnss.fft_len }}
+  frame_chan_stride: num_local_freq
+  frame_elem_stride: num_elements
+{% if g.search.band_power_chans is defined %}  band_power_chans: {{ g.search.band_power_chans }}
+  band_power_period_s: {{ g.search.band_power_period_s }}
+  band_power_hop_stride: {{ g.search.band_power_hop_stride }}
+{% endif %}
+gnss{{ g.gpu }}_srch_buf:
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: {{ gnss.buffer_depth }}
+  frame_size: "samples_per_data_set * {{ g.search.chan_ids | length }} * 1"
+
+gnss{{ g.gpu }}_srch_send:
+  kotekan_stage: bufferSend
+  cpu_affinity: [{{ g.search.send_core }}]
+  buf: gnss{{ g.gpu }}_srch_buf
+  server_ip: {{ gnss.search_host }}
+  server_port: {{ gnss.search_port_base + g.gpu }}
+  drop_frames: true
+  reconnect_time: 5
+  send_timeout: 2
+  use_config_tracker: false
+{% endfor %}
+
+{#  The GNSS metadata pool: one for the whole node, sized by the generator. #}
+gnss_pool:
+  kotekan_metadata_pool: GnssChanMetadata
+  num_metadata_objects: {{ gnss.pool_objects }}
