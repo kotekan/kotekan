@@ -47,7 +47,7 @@ using namespace HighFive;
  * @c int4x2_swapped_withoffset), selects a subset of the frequency channels, and hands the
  * data out one frame of @c num_times time samples at a time. It can transpose time and
  * frequency and combine the dish and polarization axes into a single element axis, as the
- * CHIME F-engine pipeline expects. Anything that does not match these expectations is
+ * CHIME X-engine pipeline expects. Anything that does not match these expectations is
  * fatal.
  *
  * This stage is NOT a general replay path for the files written by @c hdf5FileWrite: use
@@ -97,6 +97,10 @@ public:
                            kotekan::bufferContainer& buffer_container) :
         Stage(config, unique_name, buffer_container,
               [](const kotekan::Stage& stage) {
+    kotekan::prometheus::Gauge& read_time_metric =
+        kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_hdf5filereadsinglefile_read_time_seconds", unique_name);
+
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         buffer(get_buffer("out_buf")) {
@@ -107,9 +111,6 @@ public:
     virtual ~hdf5FileReadSingleFile() {}
 
     void main_thread() override {
-        auto& read_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_hdf5filereadsinglefile_read_time_seconds", unique_name);
-
         // Define file name
         std::ostringstream buf;
         buf << input_dir << "/" << file_name << ".h5";

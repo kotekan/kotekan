@@ -47,7 +47,6 @@
 #include <string.h>                              // for strerror
 #include <string>                                // for basic_string, char_traits, string, oper...
 #include <sys/stat.h>                            // for mkdir
-#include <unistd.h>                              // for gethostname
 #include <vector>                                // for vector
 
 
@@ -127,6 +126,10 @@ public:
               }),
         buffer(get_buffer("in_buf")) {
 
+    kotekan::prometheus::Gauge& write_time_metric =
+        kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_hdf5filewrite_write_time_seconds", unique_name);
+
         if (max_frames >= 0)
             ++waiting_for_max_frames;
 
@@ -140,16 +143,8 @@ public:
     std::shared_ptr<File> create_file(const std::int64_t frame_counter) const {
         // Define file name
         std::ostringstream buf;
-        buf << base_dir << "/";
-        if (prefix_hostname) {
-            char hostname[256];
-            gethostname(hostname, sizeof hostname);
-            buf << hostname << "_";
-        }
-        if (prefix_host_rank) {
-            buf << "x" << std::setw(4) << std::setfill('0') << host_pool_rank << "_";
-        }
-        buf << file_name;
+        buf << hdf5::file_path_prefix(base_dir, file_name, prefix_hostname, prefix_host_rank,
+                                      host_pool_rank);
         if (create_single_file) {
             // Do not include the frame counter when all output is written to a single file
             if (frame_counter >= 0)
@@ -552,9 +547,6 @@ public:
      * This function is responsible for the main logic of the hdf5FileWrite class.
      */
     void main_thread() override {
-        auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_hdf5filewrite_write_time_seconds", unique_name);
-
         const double start_time = current_time();
 
         for (std::int64_t frame_counter = 0;; ++frame_counter) {

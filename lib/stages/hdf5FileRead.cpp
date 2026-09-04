@@ -12,27 +12,30 @@
 #include <bufferContainer.hpp> // for bufferContainer
 #include <cassert>             // for assert
 #include <chordMetadata.hpp>   // for chordMetadata, metadata_is_chord, get_c...
-#include <cstddef>             // for ptrdiff_t
+#include <cstddef>             // for ptrdiff_t, size_t
 #include <cstdint>             // for int64_t, uint8_t
+#include <exception>           // for exception
+#include <filesystem>          // for exists
 #include <fmt/ranges.h>
 #include <functional>                            // for function
-#include <hdf5Files.hpp>                         // for chord_metadata_version
+#include <hdf5Files.hpp>                         // for chord_metadata_version, chord2hdf5, is_...
 #include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::read
 #include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::getAttribute
 #include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5Exception.hpp>              // for FileException
+#include <highfive/H5DataType.hpp>               // for DataType
+#include <highfive/H5Exception.hpp>              // for Exception
 #include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::getDataSet
 #include <highfive/H5Selection.hpp>              // for Selection, SliceTraits::select
 #include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getSpace
 #include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
 #include <iomanip>                               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, ERROR
+#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, INFO, WARN
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <metadata.hpp>                          // for metadataObject
 #include <prometheusMetrics.hpp>                 // for Metrics, Gauge
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
 #include <string>                                // for basic_string, char_traits, string, oper...
-#include <unistd.h>                              // for gethostname, sleep
+#include <unistd.h>                              // for sleep
 #include <vector>                                // for vector
 #include <visUtil.hpp>                           // for current_time
 
@@ -54,11 +57,18 @@ using namespace HighFive;
  *
  * - Per-frame files (default): one file per frame, named
  *   `<input_dir>/[<hostname>_][x<rank:04d>_]<file_name>.<frame:08d>.h5`. The stage reads
- *   files with consecutive indices starting at 0 until one is missing, then stops
- *   producing frames (the pipeline has to be ended by something else, e.g. a
- *   `testDataCheck*` stage or `num_frames` on a downstream stage).
+ *   files with consecutive indices starting at 0 until one is missing, then logs that at
+ *   INFO and stops producing frames (the pipeline has to be ended by something else, e.g. a
+ *   `testDataCheck*` stage or `num_frames` on a downstream stage). Per-frame files carry
+ *   their own metadata, so this mode places no constraints on the axis order or on the
+ *   sequence numbers of the frames.
  * - Single file (`read_single_file: true`): all frames concatenated along axis 0 of one
  *   dataset in `<input_dir>/[<hostname>_][x<rank:04d>_]<file_name>.h5`.
+ *
+ * In both modes the attributes @c chord_metadata_version, @c name, @c type, @c dim_names
+ * and @c dim_scalings are mandatory (a missing one is fatal, naming the attribute), the
+ * HDF5 storage type of the dataset has to match the declared @c type attribute, and any
+ * HDF5 error while reading is fatal.
  *
  * @par Reading a single file
  * The single-file format stores the metadata attributes only once (they are taken from the
@@ -123,6 +133,10 @@ public:
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         buffer(get_buffer("out_buf")) {
+    kotekan::prometheus::Gauge& read_time_metric =
+        kotekan::prometheus::Metrics::instance().add_gauge("kotekan_hdf5fileread_read_time_seconds",
+                                                           unique_name);
+
         assert(buffer);
         buffer->register_producer(unique_name);
     }
@@ -227,24 +241,59 @@ public:
     }
 
     /**
-     * @brief The common part of all file names of this stage:
-     *        "<input_dir>/[<hostname>_][x<rank:04d>_]<file_name>"
+     * @brief Abort unless @p dataset has the mandatory attribute @p key
      *
-     * The caller appends the suffix, i.e. ".<frame:08d>.h5" for per-frame files and ".h5"
-     * for a single file.
+     * @param dataset    The dataset that is being read
+     * @param key        The name of the attribute
+     * @param full_path  The file being read, for the error message
      */
-    std::string file_path_prefix() const {
-        std::ostringstream buf;
-        buf << input_dir << "/";
-        if (prefix_hostname) {
-            char hostname[256];
-            gethostname(hostname, sizeof hostname);
-            buf << hostname << "_";
+    void require_attribute(const DataSet& dataset, const std::string& key,
+                           const std::string& full_path) const {
+        if (!dataset.hasAttribute(key))
+            FATAL_ERROR("Dataset \"{:s}\" in {:s} lacks the required attribute \"{:s}\"", file_name,
+                        full_path, key);
+    }
+
+    /**
+     * @brief Abort unless all mandatory attributes are present
+     *
+     * The optional attributes (the frequency mapping, the RFI excision settings, ...) are
+     * guarded by @c hasAttribute where they are read.
+     */
+    void require_attributes(const DataSet& dataset, const std::string& full_path) const {
+        require_attribute(dataset, "chord_metadata_version", full_path);
+        require_attribute(dataset, "name", full_path);
+        require_attribute(dataset, "type", full_path);
+        require_attribute(dataset, "dim_names", full_path);
+        require_attribute(dataset, "dim_scalings", full_path);
+    }
+
+    /**
+     * @brief Abort unless the HDF5 storage type matches the declared @c type attribute
+     *
+     * The @c type attribute names the kotekan data type of the payload, and it is what
+     * determines how the frame is interpreted. Reading the raw bytes of a dataset whose
+     * storage type disagrees with it would silently produce garbage, so a disagreement is
+     * fatal.
+     *
+     * @param dataset     The dataset that is being read
+     * @param value_type  The kotekan type from the @c type attribute
+     */
+    void check_storage_type(const DataSet& dataset, const kotekan::DataType value_type) const {
+        HighFive::DataType expected;
+        try {
+            expected = chord2hdf5(value_type);
+        } catch (const std::exception& ex) {
+            FATAL_ERROR("Dataset \"{:s}\": declared type {:s} has no HDF5 storage type ({:s})",
+                        file_name, kotekan::type_to_string(value_type), ex.what());
         }
-        if (prefix_host_rank)
-            buf << "x" << std::setw(4) << std::setfill('0') << host_pool_rank << "_";
-        buf << file_name;
-        return buf.str();
+        const HighFive::DataType storage = dataset.getDataType();
+        const std::size_t expected_bytes = kotekan::type_total_bytes(value_type);
+        if (storage != expected || storage.getSize() != expected_bytes)
+            FATAL_ERROR("Dataset \"{:s}\": HDF5 storage type ({:d} bytes) does not match the "
+                        "declared type attribute {:s} ({:d} bytes)",
+                        file_name, storage.getSize(), kotekan::type_to_string(value_type),
+                        expected_bytes);
     }
 
     /**
@@ -352,6 +401,7 @@ public:
         const std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
         const std::vector<std::ptrdiff_t> dimscalings(dim_scalings.begin(), dim_scalings.end());
         buffer->require_frame_desc(
+        check_storage_type(dataset, value_type);
             kotekan::GenericNDArray::describe(value_type, name, dimensions, dimnames, dimscalings));
     }
 
@@ -368,9 +418,6 @@ public:
      * Reading stops when a file is missing; a missing file at index 0 is fatal.
      */
     void read_per_frame_files() {
-        auto& read_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_hdf5fileread_read_time_seconds", unique_name);
-
         for (int frame_index = 0;; ++frame_index) {
             const int frame_id = frame_index % buffer->num_frames;
 
@@ -389,8 +436,9 @@ public:
 
             // Define file name
             std::ostringstream buf;
-            buf << file_path_prefix() << "." << std::setw(8) << std::setfill('0') << frame_index
-                << ".h5";
+            buf << hdf5::file_path_prefix(input_dir, file_name, prefix_hostname, prefix_host_rank,
+                                          host_pool_rank)
+                << "." << std::setw(8) << std::setfill('0') << frame_index << ".h5";
             const std::string full_path = buf.str();
 
             // Open HDF5 file
@@ -401,6 +449,17 @@ public:
                 DEBUG("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
                 std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
                 if (!frame)
+            // Stop at the first missing file. The very first file has to exist; see the
+            // note about sessions in the class documentation.
+            if (!std::filesystem::exists(full_path)) {
+                if (frame_index == 0)
+                    FATAL_ERROR("Could not open HDF5 file {:s}: no such file", full_path);
+                INFO("No more input files ({:s} does not exist) after {:d} frames, terminating "
+                     "reader",
+                     full_path, frame_index);
+                break;
+            }
+
                     break;
 
                 // Read metadata (attributes)
@@ -431,6 +490,7 @@ public:
                 check_telescope_metadata(dataset);
 
                 /* new style array description */
+                require_attributes(dataset, full_path);
                 require_frame_desc_from(dataset, dims);
                 /* test that things are consistent */
                 meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
@@ -447,12 +507,8 @@ public:
                 const double t1 = current_time();
                 const double elapsed = t1 - t0;
                 read_time_metric.set(elapsed);
-            } catch (const FileException& ex) {
-                if (frame_index == 0)
-                    FATAL_ERROR("Could not open HDF5 file {:s}: {:s}", full_path, ex.what());
-                else
-                    ERROR("Could not open HDF5 file {:s}, terminating reader", full_path);
-                break;
+            } catch (const HighFive::Exception& ex) {
+                FATAL_ERROR("Could not read HDF5 file {:s}: {:s}", full_path, ex.what());
             }
 
         } // while !stop_thread
@@ -466,9 +522,9 @@ public:
      * unreadable file is always fatal.
      */
     void read_single_file_frames() {
-        auto& read_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_hdf5fileread_read_time_seconds", unique_name);
-        const std::string full_path = file_path_prefix() + ".h5";
+        const std::string full_path = hdf5::file_path_prefix(input_dir, file_name, prefix_hostname,
+                                                             prefix_host_rank, host_pool_rank)
+                                      + ".h5";
         try {
             const File file(full_path, File::ReadOnly);
             const auto dataset = file.getDataSet(file_name);
@@ -484,6 +540,7 @@ public:
                 buffer->require_frame_desc<kotekan::GenericNDArray>()->get_extents().at(0));
             if (frame_dim0 == 0)
                 FATAL_ERROR("Buffer {:s} declares a zero-length first axis", buffer->buffer_name);
+            require_attributes(dataset, full_path);
             std::vector<std::size_t> frame_dims(dims);
             frame_dims.at(0) = frame_dim0;
             require_frame_desc_from(dataset, frame_dims); // type, other extents, labels, bytes
