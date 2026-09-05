@@ -32,12 +32,18 @@ import numpy as np
 
 CUBE_VERSION_MIN = 2
 CUBE_CHAIN_CHARS = 48
-CUBE_HEADER_BYTES = 96 + CUBE_CHAIN_CHARS
+# Header size BY VERSION. v2 (2026-09-04, on disk 09-05 15:xx-...) had the chain string at 96;
+# v3 (2026-09-05) inserted `double utc0` at 96 and moved the chain to 104. A reader that knows
+# only one of them either mis-splits the other's frames or refuses an archive that is perfectly
+# good, so both are here and the version field picks.
+CUBE_FIXED_BYTES = {2: 96, 3: 104}
+CUBE_HEADER_BYTES = {v: n + CUBE_CHAIN_CHARS for v, n in CUBE_FIXED_BYTES.items()}
+CUBE_HEADER_MIN = min(CUBE_HEADER_BYTES.values())  # enough to read the version + maxima
 
 
-def frame_bytes(max_prn, max_bins, n_elem):
+def frame_bytes(max_prn, max_bins, n_elem, version=3):
     """The SAME expression as gnss::cube_frame_bytes / gnss_record_layout.cube_frame_bytes."""
-    return (CUBE_HEADER_BYTES
+    return (CUBE_HEADER_BYTES[version]
             + max_bins * 2 * 4
             + max_prn * 3 * 4
             + max_prn * 8
@@ -49,23 +55,31 @@ def parse_header(buf):
     (ver, idx, w0, w1, dropped, n_prn, n_bin, n_elem) = struct.unpack_from("<8q", buf, 0)
     win_samples, sample_rate = struct.unpack_from("<2d", buf, 64)
     gpu, bin_width, max_prn, max_bins = struct.unpack_from("<4i", buf, 80)
-    chain = buf[96:96 + CUBE_CHAIN_CHARS].split(b"\0")[0].decode("ascii", "replace")
     if ver < CUBE_VERSION_MIN:
         raise SystemExit(
             f"cube frame version {ver}: versions before {CUBE_VERSION_MIN} did not carry the "
             f"maxima, so their frame length is not derivable from the frame. Read them with the "
             f"generator flags that produced them, or (better) re-record -- v1 was never written "
             f"outside a bench.")
+    if ver not in CUBE_HEADER_BYTES:
+        raise SystemExit(f"cube frame version {ver}: this reader knows {sorted(CUBE_HEADER_BYTES)}"
+                         f" -- update CUBE_FIXED_BYTES from gnssRecord.hpp")
+    # utc0: UTC of absolute sample 0 (v3). A v2 frame has none -- the reader reports None and a
+    # consumer must be TOLD the epoch (gnss_cube_compact.py --utc0); it is never guessed here.
+    utc0 = struct.unpack_from("<d", buf, 96)[0] if ver >= 3 else None
+    co = CUBE_FIXED_BYTES[ver]
+    chain = buf[co:co + CUBE_CHAIN_CHARS].split(b"\0")[0].decode("ascii", "replace")
     return dict(version=ver, idx=idx, wstart0=w0, wstart1=w1, dropped=dropped, n_prn=n_prn,
                 n_bin=n_bin, n_elem=n_elem, win_samples=win_samples, sample_rate=sample_rate,
-                gpu=gpu, bin_width=bin_width, max_prn=max_prn, max_bins=max_bins, chain=chain)
+                gpu=gpu, bin_width=bin_width, max_prn=max_prn, max_bins=max_bins, chain=chain,
+                utc0=utc0, header_bytes=CUBE_HEADER_BYTES[ver])
 
 
 def parse_arrays(buf, h):
     """The five payload blocks, sliced to the ACTUAL extents (the pad is dropped here)."""
     mp, mb, ne = h["max_prn"], h["max_bins"], h["n_elem"]
     np_, nb = h["n_prn"], h["n_bin"]
-    o = CUBE_HEADER_BYTES
+    o = h["header_bytes"]
 
     def take(count, dtype, itemsize):
         nonlocal o
@@ -105,10 +119,15 @@ def iter_frames(path, want_arrays=True):
         if o + msize > n:
             return
         o += msize
-        if o + CUBE_HEADER_BYTES > n:
+        if o + CUBE_HEADER_MIN > n:
             return
-        h = parse_header(blob[o:o + CUBE_HEADER_BYTES])
-        fb = frame_bytes(h["max_prn"], h["max_bins"], h["n_elem"])
+        # The version sits at byte 0 and the header grows with it: peek the minimum, size the rest.
+        (ver,) = struct.unpack_from("<q", blob, o)
+        hb = CUBE_HEADER_BYTES.get(ver, CUBE_HEADER_MIN)
+        if o + hb > n:
+            return
+        h = parse_header(blob[o:o + hb])
+        fb = frame_bytes(h["max_prn"], h["max_bins"], h["n_elem"], h["version"])
         if fb <= 0:
             raise SystemExit(f"{path}: frame at {o} claims a {fb} B length")
         if o + fb > n:
@@ -176,8 +195,13 @@ def cmd_head(args):
                 break
             print(f"-- {os.path.basename(path)} frame {i}")
             for k in ("version", "chain", "gpu", "idx", "wstart0", "wstart1", "dropped",
-                      "n_prn", "n_bin", "n_elem", "max_prn", "max_bins", "bin_width"):
+                      "n_prn", "n_bin", "n_elem", "max_prn", "max_bins", "bin_width", "utc0"):
                 print(f"   {k:<12} {h[k]}")
+            if h["utc0"]:
+                import datetime
+                t = h["utc0"] + h["wstart0"] / h["sample_rate"]
+                iso = datetime.datetime.fromtimestamp(t, datetime.UTC).isoformat(timespec="milliseconds")
+                print(f"   utc(wstart0) {iso}")
             print(f"   window       {h['win_samples']:.0f} samples "
                   f"({h['win_samples'] / h['sample_rate']:.5f} s)")
             print(f"   freq_id      {a['freq_id_lo'].tolist()} .. {a['freq_id_hi'].tolist()}")

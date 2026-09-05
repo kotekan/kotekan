@@ -1014,6 +1014,10 @@ void GnssGpuRecordAssemble::main_thread() {
                     if (_cube_on) {
                         std::lock_guard<std::mutex> ck(_cube_mtx);
                         CubeWindow& C = cube_window_for(wstart);
+                        // The SAME epoch the record's own `utc` was stamped from (above), so
+                        // the cube and the record stream agree on what time a wstart is.
+                        // 0.0 when the producer sent no frame0_utc AND the fallback is unset.
+                        C.utc0 = (hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor;
                         // PUBLISH THE PHASE CURRENCY at the window's first record, and count
                         // only UNFOLDED resets: reanchored 2 and 3 are the CONTINUOUS re-pins
                         // whose phase step has already been folded into _phi, so counting them
@@ -1236,6 +1240,7 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
         C.nrec_seen = 0;
         C.idx = idx;
         C.w0 = C.w1 = -1;
+        C.utc0 = 0.0;
     }
     if (C.w0 < 0)
         C.w0 = wstart;
@@ -1323,7 +1328,11 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
     // below are laid out by these, so they are what makes the frame self-delimiting on disk.
     i32(88, mp);
     i32(92, mb);
-    std::strncpy((char*)f + 96, _cube_chain.c_str(), gnss::CUBE_CHAIN_CHARS - 1);
+    // v3: the epoch of sample 0, so the archive owns its own time axis (gnssRecord.hpp). The
+    // window's UTC is utc0 + w0 / sample_rate; a reader that has only this frame can date it.
+    f64(gnss::CUBE_UTC0_OFFSET, C.utc0);
+    std::strncpy((char*)f + gnss::CUBE_CHAIN_OFFSET, _cube_chain.c_str(),
+                 gnss::CUBE_CHAIN_CHARS - 1);
 
     size_t off = gnss::CUBE_HEADER_BYTES;
     // Doubles FIRST -- see gnssRecord.hpp: their alignment must not depend on max_bins/max_prn.

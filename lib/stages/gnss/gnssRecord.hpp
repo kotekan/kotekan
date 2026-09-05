@@ -441,7 +441,14 @@ constexpr int CHAN_L_ENERGY = 8;
 ///   64  double  win_samples, 72 double sample_rate
 ///   80  int32   gpu, 84 int32 bin_width
 ///   88  int32   max_prn, 92 int32 max_bins   -- THE FRAME'S OWN SIZE (see below)
-///   96  char[CUBE_CHAIN_CHARS]  "<hostname>/<stage>", NUL-padded -- THE FULL ADDRESS.
+///   96  double  utc0 -- UTC (Unix seconds) OF ABSOLUTE F-ENGINE SAMPLE 0, so that
+///                utc(wstart) = utc0 + wstart / sample_rate. v3 (2026-09-05). Without it the
+///                archive's time axis was F-engine samples only, and the sample-0 epoch lived in
+///                the node config (frame0_utc) -- i.e. the ONE number that turns a window index
+///                into a date was outside the record, and rolled with every F-engine restart.
+///                0.0 means the producer had no frame0_utc and the value is the assembler's
+///                host-clock fallback (see GnssGpuRecordAssemble::_wall_anchor) -- never GPS.
+///   104 char[CUBE_CHAIN_CHARS]  "<hostname>/<stage>", NUL-padded -- THE FULL ADDRESS.
 ///                                 The stage name alone is unique only within a node, and the
 ///                                 far side has one bufferRecv for the whole fleet, so the
 ///                                 node has to be IN the frame; a sender identified only by
@@ -463,7 +470,10 @@ constexpr int CHAN_L_ENERGY = 8;
 /// which is exactly the "artifact without its inputs" that stops being a record the day the
 /// config moves on. With these two fields the bytes on disk are self-delimiting and
 /// self-describing: version, address, clock, geometry and extent all travel together.
-/// (CUBE_VERSION 2. Version 1 lacked them and was never written outside a bench.)
+/// (CUBE_VERSION 2. Version 1 lacked them and was never written outside a bench. Version 3
+/// added utc0 at 96 and moved the chain string to 104; a v3 frame is 8 bytes longer, so a v2
+/// archiver and a v3 node do NOT agree on frame_size and bufferRecv closes the connection --
+/// deploy archiver first, then nodes, exactly as the #110 notes say.)
 ///
 /// ⚠️ float32 ON THE WIRE, not float16. The sums are accumulated in double and float32 keeps 7
 /// digits, which is ample for a power sum; half-float would need a library here for no gain,
@@ -478,9 +488,11 @@ constexpr int CHAN_L_ENERGY = 8;
 /// survived every test here and failed somewhere else. The header is 8-aligned by
 /// construction, so putting the doubles immediately after it makes alignment a property of the
 /// layout rather than of the configuration.
-constexpr int64_t CUBE_VERSION = 2;
+constexpr int64_t CUBE_VERSION = 3;
 constexpr int CUBE_CHAIN_CHARS = 48;
-constexpr size_t CUBE_HEADER_BYTES = 96 + CUBE_CHAIN_CHARS;
+constexpr size_t CUBE_UTC0_OFFSET = 96;
+constexpr size_t CUBE_CHAIN_OFFSET = 104;
+constexpr size_t CUBE_HEADER_BYTES = 104 + CUBE_CHAIN_CHARS;
 
 /// Bytes in a beam-cube frame sized for @c max_prn PRN slots, @c max_bins subband bins and
 /// @c n_elem antennas. The ONE size rule -- the stage, the buffer and any reader all call this.

@@ -121,7 +121,7 @@ def cube_header_bytes():
     """gnss::CUBE_HEADER_BYTES.
 
     Parsed from the header's own expression rather than restated here: it is written as
-    `88 + CUBE_CHAIN_CHARS`, and a literal copy would go stale the first time a field is
+    `104 + CUBE_CHAIN_CHARS`, and a literal copy would go stale the first time a field is
     added -- silently, because a frame that is merely the WRONG SIZE is closed by bufferRecv
     with a message about frame_size and nothing about this file.
     """

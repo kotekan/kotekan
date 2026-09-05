@@ -304,11 +304,12 @@ def main():
             w = h["idx"]
             tag = "w%d" % w
             # [4] self-description
-            exp = dict(version=2, n_prn=N_PRN, n_bin=N_CHAN, n_elem=N_ELEM, max_prn=CUBE_MAX_PRN,
+            exp = dict(version=3, n_prn=N_PRN, n_bin=N_CHAN, n_elem=N_ELEM, max_prn=CUBE_MAX_PRN,
                        max_bins=CUBE_MAX_BINS, gpu=CUBE_GPU, bin_width=1, chain=CHAIN,
                        win_samples=float(REC_PER_WIN * REC_SAMPLES), sample_rate=SAMPLE_RATE,
                        wstart0=w * REC_PER_WIN * REC_SAMPLES,
-                       wstart1=(w * REC_PER_WIN + REC_PER_WIN - 1) * REC_SAMPLES)
+                       wstart1=(w * REC_PER_WIN + REC_PER_WIN - 1) * REC_SAMPLES,
+                       utc0=1.7e9)  # v3: the producer's frame0 epoch, carried not inferred
             for k, v in exp.items():
                 if h[k] != v:
                     fails.append("%s header %s = %r, expected %r" % (tag, k, h[k], v))

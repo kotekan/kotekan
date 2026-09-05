@@ -253,6 +253,7 @@ private:
     struct CubeWindow {
         int64_t idx = -1;                  ///< window index, or -1 for an unused slot
         int64_t w0 = -1, w1 = -1;          ///< wstart of the first/last record in it
+        double utc0 = 0.0;                 ///< UTC of sample 0 as stamped on its records (v3)
         std::vector<double> coh_re, coh_im; ///< [n_prn * n_bin * n_elem] SUM A_e,c * rot
         std::vector<double> incoh;          ///< [n_prn * n_bin * n_elem] SUM |A_e,c|^2
         std::vector<double> w;              ///< [n_prn * n_bin] (record, channel) term count
