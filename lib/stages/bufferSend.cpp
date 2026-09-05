@@ -84,6 +84,7 @@ void bufferSend::main_thread() {
     int frame_id = 0;
 
     std::thread connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this));
+    uint64_t frames_without_metadata = 0;
 
     while (!stop_thread) {
 
@@ -109,6 +110,25 @@ void bufferSend::main_thread() {
             int32_t n_sent = 0;
 
             auto meta = buf->get_metadata(frame_id);
+            if (!meta) {
+                // ⚠️ A FRAME WITH NO METADATA OBJECT IS A PRODUCER BUG, NOT A SEGFAULT
+                // (2026-09-05, CHORD #110). get_metadata() legitimately returns an empty
+                // shared_ptr when the producer never called allocate_new_metadata_object(),
+                // and this loop dereferenced it unconditionally -- one forgotten call in a new
+                // producer took down every node in a six-node fleet on its first frame. The wire
+                // protocol cannot carry such a frame (the receiver sizes its metadata from its
+                // pool's type and closes on a mismatch), so DROP it, loudly, and keep the process.
+                if (frames_without_metadata++ % 1000 == 0)
+                    ERROR("{:s}[{:d}] has NO metadata object -- its producer never called "
+                          "allocate_new_metadata_object(). Dropping ({:d} so far); nothing "
+                          "reaches {:s}:{:d} until the producer stamps its frames.",
+                          buf->buffer_name, frame_id, frames_without_metadata, server_ip,
+                          server_port);
+                dropped_frame_counter.inc();
+                buf->mark_frame_empty(unique_name, frame_id);
+                frame_id = (frame_id + 1) % buf->num_frames;
+                continue;
+            }
             auto metadata_size = meta->get_serialized_size();
             auto frame_size = buf->frame_size;
             bufferFrameHeader header;

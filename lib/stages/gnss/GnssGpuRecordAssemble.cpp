@@ -299,6 +299,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                             cbuf, (size_t)_cube_out_buf->frame_size);
                 return;
             }
+            if (_cube_out_buf->metadata_pool == nullptr)
+                WARN("GnssGpuRecordAssemble[{:s}]: cube_buf {:s} has NO metadata_pool. Frames "
+                     "will carry no metadata; a bufferSend on this buffer DROPS them (it cannot "
+                     "send a frame without one) and a bufferRecv far side expects the pool's "
+                     "type. Give it metadata_pool: gnss_pool (#110).",
+                     unique_name, cbuf);
             INFO("GnssGpuRecordAssemble[{:s}]: beam-cube PUSH leg on -> {:s} ({:d} B/frame, "
                  "~{:.2f} MB/s at this window length); backpressure DROPS and the loss is "
                  "counted into the next frame",
@@ -1362,6 +1368,20 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
                 incoh[dst + el] = (float)C.incoh[src + el];
             }
         }
+    }
+    // ⚠️⚠️ THE METADATA OBJECT IS NOT OPTIONAL ON A FRAME THAT FEEDS bufferSend (#110,
+    // 2026-09-05). This leg shipped without these four lines and every node in the fleet
+    // SEGFAULTED 45-75 s after start: bufferSend does buf->get_metadata(id)->get_serialized_size()
+    // on every frame it sends, get_metadata() returns an EMPTY shared_ptr for a frame whose
+    // producer never allocated one, and that is a null dereference in the sender thread -- taken
+    // on the FIRST window emitted, which is why the archiver saw every connection and zero frames,
+    // and why the delay was the broker's seeding time (no window opens before a PRN is despread).
+    // Same stamp as the record leg above and GnssTelemPack: the window's first sample, so a
+    // kotekan consumer downstream of bufferRecv can address the frame without parsing it.
+    if (_cube_out_buf->metadata_pool) {
+        _cube_out_buf->allocate_new_metadata_object(_cube_out_id);
+        if (auto* m = get_gnss_chan_metadata(_cube_out_buf, _cube_out_id))
+            m->sample_seq = C.w0;
     }
     _cube_out_buf->mark_frame_full(unique_name, _cube_out_id);
     _cube_out_id = (_cube_out_id + 1) % _cube_out_buf->num_frames;

@@ -1611,64 +1611,68 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #110 — ARMING THE BEAM CUBE SEGFAULTS EVERY NODE 45-75 s AFTER START (OPEN, 2026-09-05, fleet-wide outage; DISARMED)
+## #110 — ARMING THE BEAM CUBE SEGFAULTED EVERY NODE 45-75 s AFTER START (FIXED 2026-09-05, fleet-wide outage; awaiting ONE-NODE re-arm)
 
-**Shape.** All six nodes, restarted onto the cube-armed configs, died with `Result=core-dump`,
-`ExecMainStatus=11` (SIGSEGV) after less than 90 s:
+**Root cause (found in the code, reproduced offline, fixed).** `emit_cube_window` marked its
+`cube_buf` frame full **without allocating a metadata object**. `bufferSend` does
+`buf->get_metadata(frame_id)->get_serialized_size()` on every frame it sends
+(`lib/stages/bufferSend.cpp:111-112`), and `get_metadata()` returns an EMPTY shared_ptr for a
+frame whose producer never called `allocate_new_metadata_object()` -- a null dereference in the
+sender thread. Every other producer feeding a `bufferSend` (the record leg at
+`GnssGpuRecordAssemble.cpp` ~1170, `GnssTelemPack.cpp:168`) allocates first; this one did not.
+The crash is taken **only inside `bufferSend`'s `connected` branch**, on the **first frame** --
+which is exactly why the archiver logged every connection and zero frames, and why the delay was
+the broker's seeding time (no cube window opens before a record carries a despread PRN; the first
+emit fires when the SECOND window opens, ~1 s after the first).
 
-| node | active | dead | lifetime |
-|---|---|---|---|
-| cx19 | 15:00:56 | 15:02:09 | 73 s |
-| cx44 | 15:08:30 | 15:09:15 | 45 s |
+**Reproduced offline, then fixed, then gated -- in that order.** `scripts/gnss/cube_e2e.py`
+(new) replays synthetic `gnss_gpu` frames through the REAL `GnssGpuRecordAssemble` with the cube
+armed, real `bufferSend` -> real `bufferRecv` -> real `rawFileWrite`, then reads the archive with
+the real reader. Against the pre-fix binary (`--expect-crash`) it dies with **SIGSEGV and zero
+windows archived** -- connections logged, no FATAL, no ERROR, log just stops: the fleet's
+signature to the letter. Against the fixed binary it PASSES: 5/5 windows, indices consecutive,
+no drops, dead slot silent (prn 0, all-zero), late PRN appears at its first window, and every
+(PRN, bin, element) cell equals `n_rec * mark` / `n_rec * mark^2` through the 1/E_c
+normalisation, the element stride and the pad-strip (maxima 32x8 over actual 4x7). A
+sabotaged copy (one expectation off by one) FAILS with 244 findings -- the gate can fail.
 
-`/tmp/gnss_node.log` holds **no FATAL and no error** -- it simply stops mid-`valve_bf_mask` WARN,
-because `log_level: WARN` on nodes means every INFO (including the cube's own "BEAM CUBE on"
-arming line) is invisible. The systemd unit is transient, so after the crash there is nothing
-left to inspect: `systemctl show gnss-node -p Result` is the ONLY thing that says it crashed
-rather than being stopped, and both readings look identical from the node log.
+**The fix, two layers** (commit on kv/chord-gnss):
+1. `emit_cube_window` allocates the metadata object and stamps `sample_seq = C.w0` (the window's
+   first sample) before `mark_frame_full`, same as the record and telem legs. The constructor
+   WARNs if `cube_buf` has no `metadata_pool`.
+2. `bufferSend` no longer dereferences a null: a frame with no metadata object is DROPPED with a
+   rate-limited ERROR naming the buffer and the producer's omission. One forgotten call in a new
+   producer must cost that producer's frames, not the node.
 
-**What is known, and it narrows the search a lot.** The archiver on cf06 logged **15 connections
-from every restarted node** (cx19, cx27, cx42, cx43 -- 60 in total) and received **ZERO frames**.
-So the senders exist, connect, and are not rejected on frame_size; the crash lands **at or before
-the first `emit_cube_window`**. And the ~45-75 s is not arbitrary: the first cube window cannot
-open until a record carries a despread PRN, which is how long the broker takes to seed after a
-node restart. So: **the first window opens, the second opens ~1 s later, the first emit runs, and
-the node dies.**
+**Why the offline gate that existed could not have caught it.** `gnss_cube_fake_sender.py` ->
+archiver -> reader exercised the wire format, the writer and the reader; it never ran the
+assembler, so it tested everything downstream of the bug. `--check-config` validates the stage
+graph, not a code path that executes once per emitted window. **A gate for a producer must run
+the producer** -- `cube_e2e.py` is that gate and is now the pre-arm check for this leg.
 
-⚠️ **NOT reproduced offline, and the offline gate could not have caught it.** The synthetic gate
-(`gnss_cube_fake_sender.py` -> archiver -> `gnss_cube_read.py`) exercises the wire format, the
-writer and the reader; it never runs `GnssGpuRecordAssemble`, so it tested everything downstream
-of the bug and nothing upstream. `--check-config` passed on all six, twice -- it validates the
-stage graph, not a code path that only executes once a satellite is being tracked.
+**Timeline.** All six nodes restarted onto the armed configs 15:00-15:09, each died
+`Result=core-dump ExecMainStatus=11` within 90 s (cx19 73 s, cx44 45 s). `/tmp/gnss_node.log`
+showed no FATAL and no error because `log_level: WARN` hides INFO and the unit is transient;
+`systemctl show gnss-node -p Result` was the only thing that distinguished "crashed" from
+"stopped". No core: these hosts have no `coredumpctl` and apport left `/var/crash` empty.
+Manifest DISARMED 15:2x, configs regenerated (identical to pre-cube except the EOP table), fleet
+back on the disarmed configs 15:25-15:30.
 
-**Read on paper without finding it** (recorded so the next pass does not repeat the work): the
-emit layout sums to exactly `cube_frame_bytes(32, 8, 32)` = 101,200 = the buffer's frame_size,
-with `memset` and every block pointer landing inside; `emit_cube_window`'s copy loop bounds `p`
-by `mp` and `b` by `mb` while striding the source by `_cube_bins`; the PRN-swap cold reset guards
-`p >= C.nrec.size()` and fills within `p*ncell + ncell`; the init-time `FATAL_ERROR` on an
-undersized `cube_buf` passes because both ends compute the size from the same expression. One
-unverified exposure noted in passing: the per-record loop runs `for (int p = 0; p < n_prn; ++p)`
-on the RUNTIME n_prn while every per-slot accumulator is sized from the config's `_prns.size()`
--- the spectrum ring has the same exposure and has never crashed, so it is not obviously the
-cause, but nothing bounds it either.
-
-**NEXT STEP IS A BACKTRACE, NOT MORE READING.** These hosts have no `coredumpctl` and apport
-leaves nothing in `/var/crash`, so the core is gone. `scripts/gnss/node_up.sh <node> debug`
-already exists for exactly this: it runs the binary under `gdb --batch -ex run -ex 'thread apply
-all bt'` and lands the result in `/tmp/gnss_node_dbg.log`. One node, armed config preserved at
-`fixtures/cube_armed_20260905/`, ~90 s to the crash. That is the whole diagnosis.
-
-**State: DISARMED.** `beam-cube`/`cube-host` are commented out of `config/gnss_fleet_chord.yaml`
-and the six node configs regenerated; they now differ from the last known-good (pre-cube) configs
-ONLY by the EOP table rolling forward. The cf06 archiver instance is left running and idle --
-it is harmless with no senders, and it is the far side we will need again.
+**State.** Fixed binary built to `build/kotekan/kotekan` (and `build_nodpdk`, 15:33/15:34) with
+the running ones staged aside as `kotekan.prev_20260905_110`. Manifest still DISARMED. Armed
+configs preserved at `fixtures/cube_armed_20260905/` -- they differ from the current disarmed
+configs ONLY by additions (the cube keys), so they are a valid one-node arm against the fixed
+binary. **Re-arm procedure: ONE node first** (`GNSS_CFG=.../cube_armed_20260905/chord_gnss_<node>_multi.yaml
+scripts/gnss/node_up.sh <node>`), judge in minutes -- alive past 3 min AND frames arriving at the
+archiver (`ls /mnt/cs00/data/kvand/gnss_cube/raw`, `gnss_cube_read.py ls`) -- THEN re-arm the
+manifest and cycle the rest.
 
 **⚠️ The lesson is about the gate, not the bug.** Every check run before this shipped was a
-check of something that does not execute on a node: config validation, a wire-format loopback, a
-frame-size comparison. The one thing that would have caught it -- run the armed config on ONE
-node and watch it for two minutes -- was skipped because the change looked config-shaped. An arm
-that fires only once a satellite is tracked cannot be gated by anything that does not track a
-satellite. Next attempt: ONE node, armed, under `debug`, before the manifest is touched.
+check of something that does not execute on a node. The one that would have caught it -- run the
+producer -- took forty minutes to write after the fact and fifteen seconds to run. An arm that
+fires only once a satellite is tracked cannot be gated by anything that does not exercise that
+path; and a new producer wired to `bufferSend` has exactly one non-obvious obligation, which the
+receiving code now enforces instead of assuming.
 
 ## #109 — the search aggregator's merge holds THREE feeds ~18 min out of step and produces nothing: cx19/gpu0, cx19/gpu1 and cx44/gpu0 (OPEN, observed 2026-09-05)
 
