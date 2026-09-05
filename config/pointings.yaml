@@ -1,0 +1,18 @@
+# Declared dish-pointing epochs for the beam-cube archive (recording plan P3).
+#
+# ⚠️ A POINTING IS DECLARED, NEVER INFERRED FROM THE DATA. Every repoint needs a fresh beam map,
+# and the archive is laid out by pointing id (l0/<id>/<sender>/<day>.h5) so that a map builder
+# can never sum two pointings by accident. gnss_cube_compact.py reads this file; an epoch that
+# is not declared here lands under l0/unknown/ -- visible, not silently merged.
+#
+# Times are UTC ISO-8601. `to` open (null) = current. Boresight per docs/CHORD_BEAM_MAPS.md:
+# the dish points at dec +40.73 (the fitted value; NOT the config's dish_coelev_deg) through the
+# local meridian.
+#
+# ⚠️ HISTORY BEFORE 2026-09-05 IS UNVERIFIED (KV to confirm/extend): the raw cube archive
+# starts 2026-09-05 15:xx UTC, so only the current epoch matters to it today.
+- id: p0_dec40p73
+  from: 2026-07-01T00:00:00Z
+  to: null
+  boresight_dec_deg: 40.73
+  note: first CHORD GNSS pointing; 09-02 beam maps (peak 6.3/6.6 deg off boresight) were taken here
