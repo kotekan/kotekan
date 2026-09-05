@@ -136,6 +136,10 @@ protected:
 
     /// True until the expected stream ID list is complete and the prefetch service started.
     bool first_run = true;
+    /// The wall-vs-wire skew measured on the anchor packet, and a flag saying the verdict on
+    /// it is still owed: it is settled on the first packet handled once capture is running.
+    double _anchor_skew_s = 0.0;
+    bool _axis_verdict_pending = false;
 
     /// Number of FPGA time samples covered by one output frame.
     uint64_t time_samples_per_frame;
@@ -413,21 +417,32 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         // green (full packet rate, zero drops, frames advancing in real time -- all zeros,
         // stamped hundreds of frames old). The wall clock is the one reference the wire
         // cannot fake: to_time(seq) must be ~now (the healthy axis reads ~0.1 s stale).
+        //
+        // ⚠️ BUT THE ANCHOR PACKET IS NOT A LIVE PACKET (2026-09-05, five of six nodes on one
+        // fleet cycle). The NIC's rx ring (4096 descriptors) fills within milliseconds of
+        // rte_eth_dev_start and then drops everything until this worker begins polling --
+        // ~12 s later on a cold start, GPU init in between. So the first packet dequeued is
+        // ~12 s STALE by construction, the ring drains in microseconds, and the axis is live
+        // again before start_seq is reached. Judging the wire on that one packet raised the
+        // ERROR below on cx27/42/43/44/51 (12.24-12.34 s, exactly the init gap) while the
+        // live axis on all six read +0.1 s. The verdict is therefore DEFERRED to the first
+        // packet handled once capture is running -- a desynced board is still stale THEN;
+        // a ring backlog is not. What the anchor skew does measure is how much of the 30 s
+        // start_seq margin the backlog ate, which is worth a WARN when it gets close.
         {
             const timespec wire_ts = Telescope::instance().to_time(seq_num);
-            const double axis_skew_s = current_time() - ts_to_double(wire_ts);
-            if (std::abs(axis_skew_s) > 5.0) {
-                ERROR("Port: {:d}, Worker: {:d}; THE WIRE'S SEQ AXIS IS {:.2f}s FROM THE WALL "
-                      "CLOCK at the capture anchor (seq {:d}). This is an F-engine link fault "
-                      "(a desynced board counter), not a node fault: capture will faithfully "
-                      "track a stale axis and every packet/GPU counter will look healthy while "
-                      "this GPU's records are too old for the fleet to bank. Check the "
-                      "F-engine link feeding this port (scripts/gnss/port_axis_gate.py).",
-                      port, worker_id, axis_skew_s, seq_num);
+            _anchor_skew_s = current_time() - ts_to_double(wire_ts);
+            _axis_verdict_pending = true;
+            if (_anchor_skew_s > 20.0) {
+                WARN("Port: {:d}, Worker: {:d}; the anchor packet (seq {:d}) is {:.2f}s stale "
+                     "-- a NIC ring backlog from init, or a stale board counter (settled at "
+                     "capture start). start_seq is anchored 30 s past it, so only ~{:.0f}s of "
+                     "that margin is left before capture would start in the PAST.",
+                     port, worker_id, seq_num, _anchor_skew_s, 30.0 - _anchor_skew_s);
             } else {
                 INFO("Port: {:d}, Worker: {:d}; capture anchor axis skew {:+.3f}s vs wall "
-                     "(healthy is ~-0.1s)",
-                     port, worker_id, axis_skew_s);
+                     "(a few seconds of NIC ring backlog is normal; the live verdict follows)",
+                     port, worker_id, _anchor_skew_s);
             }
         }
         prefetch_service->start(start_seq, stream_ids_expected);
@@ -485,6 +500,27 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             }
         }
         return 0;
+    }
+
+    // THE LIVE AXIS VERDICT (see the anchor block). This packet arrived with the prefetch
+    // service ready, long after the init backlog drained, so its seq IS the wire's live axis.
+    if (unlikely(_axis_verdict_pending)) {
+        _axis_verdict_pending = false;
+        const timespec wire_ts = Telescope::instance().to_time(seq_num);
+        const double live_skew_s = current_time() - ts_to_double(wire_ts);
+        if (std::abs(live_skew_s) > 5.0) {
+            ERROR("Port: {:d}, Worker: {:d}; THE WIRE'S SEQ AXIS IS {:.2f}s FROM THE WALL "
+                  "CLOCK with capture running (seq {:d}; anchor read {:.2f}s). This is an "
+                  "F-engine link fault (a desynced board counter), not a node fault: capture "
+                  "will faithfully track a stale axis and every packet/GPU counter will look "
+                  "healthy while this GPU's records are too old for the fleet to bank. Check "
+                  "the F-engine link feeding this port (scripts/gnss/port_axis_gate.py).",
+                  port, worker_id, live_skew_s, seq_num, _anchor_skew_s);
+        } else {
+            INFO("Port: {:d}, Worker: {:d}; live axis skew {:+.3f}s vs wall (anchor packet "
+                 "read {:+.2f}s -- the difference was NIC ring backlog from init)",
+                 port, worker_id, live_skew_s, _anchor_skew_s);
+        }
     }
 
     if (unlikely(active_f0 == nullptr)) {
