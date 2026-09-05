@@ -440,7 +440,8 @@ constexpr int CHAN_L_ENERGY = 8;
 ///   40  int64   n_prn, 48 int64 n_bin, 56 int64 n_elem   (actual, <= the max the frame holds)
 ///   64  double  win_samples, 72 double sample_rate
 ///   80  int32   gpu, 84 int32 bin_width
-///   88  char[CUBE_CHAIN_CHARS]  "<hostname>/<stage>", NUL-padded -- THE FULL ADDRESS.
+///   88  int32   max_prn, 92 int32 max_bins   -- THE FRAME'S OWN SIZE (see below)
+///   96  char[CUBE_CHAIN_CHARS]  "<hostname>/<stage>", NUL-padded -- THE FULL ADDRESS.
 ///                                 The stage name alone is unique only within a node, and the
 ///                                 far side has one bufferRecv for the whole fleet, so the
 ///                                 node has to be IN the frame; a sender identified only by
@@ -455,6 +456,15 @@ constexpr int CHAN_L_ENERGY = 8;
 ///     float   coh_re[max_prn][max_bins][n_elem], coh_im[...]   -- THE ARC
 ///     float   incoh[max_prn][max_bins][n_elem]                 -- THE BEAM
 ///
+/// ⚠️ THE FRAME CARRIES THE MAXIMA IT WAS SIZED FOR, AND NOT AS A CONVENIENCE. n_prn/n_bin/
+/// n_elem are the ACTUAL extents; the arrays are laid out by the MAXIMA, so without max_prn and
+/// max_bins a reader cannot compute the frame's own length -- and an archive of fixed-size
+/// frames that cannot be split into frames is unreadable without the config that produced it,
+/// which is exactly the "artifact without its inputs" that stops being a record the day the
+/// config moves on. With these two fields the bytes on disk are self-delimiting and
+/// self-describing: version, address, clock, geometry and extent all travel together.
+/// (CUBE_VERSION 2. Version 1 lacked them and was never written outside a bench.)
+///
 /// ⚠️ float32 ON THE WIRE, not float16. The sums are accumulated in double and float32 keeps 7
 /// digits, which is ample for a power sum; half-float would need a library here for no gain,
 /// because the wire is not the constraint (0.9 -> 1.8 MB/s fleet-wide either way). If the
@@ -468,9 +478,9 @@ constexpr int CHAN_L_ENERGY = 8;
 /// survived every test here and failed somewhere else. The header is 8-aligned by
 /// construction, so putting the doubles immediately after it makes alignment a property of the
 /// layout rather than of the configuration.
-constexpr int64_t CUBE_VERSION = 1;
+constexpr int64_t CUBE_VERSION = 2;
 constexpr int CUBE_CHAIN_CHARS = 48;
-constexpr size_t CUBE_HEADER_BYTES = 88 + CUBE_CHAIN_CHARS;
+constexpr size_t CUBE_HEADER_BYTES = 96 + CUBE_CHAIN_CHARS;
 
 /// Bytes in a beam-cube frame sized for @c max_prn PRN slots, @c max_bins subband bins and
 /// @c n_elem antennas. The ONE size rule -- the stage, the buffer and any reader all call this.

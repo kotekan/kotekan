@@ -393,6 +393,31 @@ common:
   # ⚠️ BRING THE GATHER UP BEFORE RESTARTING NODES INTO THIS. 60 senders retrying a dead
   # listener is ~2 log lines a second across the fleet even at reconnect_time 30.
   telem-host: 10.222.3.6
+  # -- THE BEAM CUBE: the continuous per-(subband x element) recording --------------------------
+  # The (channel x element) axis, un-collapsed. Every other product this fleet emits has summed
+  # one of the two away -- element blocks over channels, the comb over elements -- and a
+  # per-element/per-frequency beam map needs both at once. Completed ~1 s windows are PUSHED to
+  # the archiver instance on cf06 (chord_gnss_cubearch.yaml), never polled: the accumulator's
+  # ring is 8 windows, so a poller stalled longer than ~8 s loses them permanently and the
+  # archive silently becomes "whatever the consumer happened to catch".
+  #
+  # ⚠️ BRING THE ARCHIVER UP BEFORE RESTARTING NODES INTO THIS -- the same rule the gather has,
+  # and 90 senders is more of them.
+  #
+  # ⚠️ ON THE WIRE, so uniform across every sender AND the archiver's buffer: cube-max-prn and
+  # cube-max-bins set frame_size and bufferRecv closes any connection that disagrees. Left at
+  # the generator defaults (32 / 8), which cover the widest chain (32 PRN slots, 7 covering
+  # channels). Changing either means regenerating the archiver in the same commit.
+  #
+  # COST: 101,192 B/frame x 90 assemblers x ~1/s = 9.0 MB/s, on top of the telemetry leg's 24.
+  # ⚠️ AND IT ARRIVES AS A BURST: every sender closes the same window on the same F-engine
+  # boundary, so it is ~9 MB landing at once on cf06's ONE 1 GbE, ~73 ms of wire per second.
+  # That is the same frame-synced burstiness that cost ~5 s of broker cycle at telem-max-prn 40
+  # (task #64), so if cycle time regresses, this leg is the first thing to park. The payload is
+  # ~5x padding today -- the frame carries all 24-32 PRN SLOTS, live or not -- and compacting
+  # onto despread PRNs the way GnssTelemPack does is the lever that removes it.
+  beam-cube: true
+  cube-host: 10.222.3.6
   # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
   # closes any connection whose frame_size disagrees with its buffer -- so changing either one
   # means regenerating the GATHER config in the same commit, and restarting both ends. Left at

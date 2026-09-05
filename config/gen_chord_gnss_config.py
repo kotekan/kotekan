@@ -46,7 +46,8 @@ sys.path.insert(0, CONF)
 
 from chord_band_plan import (all_band_channels, covering_channels,  # noqa: E402
                              node_channels, signal_table)
-from gnss_record_layout import (record_stride, telem_frame_bytes,  # noqa: E402
+from gnss_record_layout import (cube_frame_bytes,  # noqa: E402
+                                record_stride, telem_frame_bytes,
                                 chan_floats, prnctl_bytes)
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
@@ -560,6 +561,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # byte-identical to reference-element-only.
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
+            **cube_assembler_keys(args, cfg, gpu, pre),
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
             # feature that was off, which is exactly the drift that makes "is the deployed
@@ -977,6 +979,56 @@ def dual_core(rt, gpu, ordv):
     """
     pool = gnss_cores(rt, gpu)
     return pool[(3 * ordv) % len(pool)]
+
+
+def cube_assembler_keys(args, cfg, gpu, pre):
+    """THE BEAM CUBE (--beam-cube): the (subband x element) axis, UN-COLLAPSED.
+
+    Everything else GnssGpuRecordAssemble emits has collapsed one of the two axes -- element
+    blocks are summed over channels, the comb is summed over elements -- and a beam map needs
+    both at once. One helper for BOTH assembler blocks (path A and path B): a recording
+    feature that exists on one path and not the other is the per-instance trap in a new
+    costume, and the two blocks have already drifted before.
+
+    Emitted only when armed, for the reason the chan-dump block gives: dark keys in every
+    production config make "is the deployed config current?" unanswerable.
+
+    ⚠️ WINDOW LENGTH IS IN F-ENGINE SAMPLES -- the same clock as wstart -- AND IS DERIVED
+    HERE RATHER THAN CHOSEN, exactly as spectrum_window_samples is and for the same reason:
+    the index is floor(wstart / win_samples) in integer arithmetic, so two instances given
+    different values straddle boundaries differently and the cross-instance alignment this
+    layout exists for is silently gone. records x hops_per_record x fft_length puts every
+    boundary on a record boundary, so no record is ever split and the per-window record count
+    is constant.
+
+    ⚠️ AND THE STAGE'S OWN DEFAULT WAS IN THE WRONG UNIT: 196608 is the HOP count for 96
+    records, missing the x fft_length that turns hops into samples. That is 12 hops (61 us),
+    not the 1.00663 s its comment claims -- a window that laps the 8-deep ring sixteen times
+    per record while every log line still looks plausible. Fixed in the stage; set explicitly
+    here regardless, because the value must MATCH across instances and a default that agrees
+    by luck is not a contract.
+    """
+    if not args.beam_cube:
+        return {}
+    keys = {
+        "beam_cube": True,
+        "beam_cube_window_samples": (args.cube_window_records * args.hops_per_record
+                                     * int(cfg["fengine"]["fft_length"])),
+        "beam_cube_bin_width": args.cube_bin_width,
+        "beam_cube_ring_depth": args.cube_ring_depth,
+        # UNIFORM ACROSS THE FLEET, never per chain: one bufferRecv, one frame size, and
+        # bufferRecv CLOSES any connection whose frame_size disagrees. Chains carry 1-7
+        # covering channels and 24-32 PRN slots, so the short ones pad with zeros.
+        "beam_cube_max_prn": args.cube_max_prn,
+        "beam_cube_max_bins": args.cube_max_bins,
+        "beam_cube_gpu": gpu,
+    }
+    # beam_cube_chain is left to the stage, which builds "<short hostname>/<stage>" itself.
+    # Generating it here would let a config be copied to another node and keep the old name --
+    # an archive mislabelled at the source, which no reader can detect.
+    if args.cube_host:
+        keys["cube_buf"] = f"{pre}cube_buf"
+    return keys
 
 
 def live_element_ranges(arr):
@@ -1411,6 +1463,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                else {}),
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
+            **cube_assembler_keys(args, cfg, gpu, pre),
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
             # feature that was off, which is exactly the drift that makes "is the deployed
@@ -1593,6 +1646,53 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # a config_tracker block from the production base and the gather instance has
                 # none, so left to default the two disagree by one header field and the stream
                 # shifts, surfacing as an unrelated-looking "Frame size does not match".
+                "use_config_tracker": False,
+                "cpu_affinity": [V["cores"]["send"]],
+            },
+        })
+    # -- THE BEAM-CUBE PUSH LEG (--cube-host) -------------------------------------------------
+    # One completed ~1 s window per frame, PUSHED the moment a later window opens. Not polled:
+    # the accumulator's ring is 8 windows, so any consumer stall longer than ~8 s loses those
+    # windows permanently, and a beam map built from "whatever the poller happened to catch" is
+    # a record nobody can audit. Same transport as the #59 telemetry leg, deliberately.
+    #
+    # ⚠️ BACKPRESSURE DROPS, NEVER BLOCKS. This rides the real-time tracker path; drop_frames is
+    # what keeps an archive from ever stalling a tracker. The stage counts what it dropped and
+    # the count rides in the NEXT frame, so a hole in the window index that is NOT matched by a
+    # rise in that counter means the loss happened downstream -- in this bufferSend or on the
+    # far side -- which is a distinction worth being able to make from the archive alone.
+    if args.cube_host:
+        cube_bytes = cube_frame_bytes(args.cube_max_prn, args.cube_max_bins, n_live)
+        if n_chan > args.cube_max_bins and args.cube_bin_width == 0:
+            raise SystemExit(f"chain {pre.strip('_')}: {n_chan} covering channels but "
+                             f"--cube-max-bins {args.cube_max_bins}; the frame cannot hold "
+                             f"them. Raise it (every sender must then use the same value) or "
+                             f"set --cube-bin-width to group channels.")
+        if n_prn > args.cube_max_prn:
+            raise SystemExit(f"chain {pre.strip('_')}: {n_prn} PRN slots but --cube-max-prn "
+                             f"{args.cube_max_prn}; raise it on EVERY sender and the archiver.")
+        blocks.update({
+            f"{pre}cube_buf": {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                # ~1 frame/s per sender: 16 frames is ~16 s of absorption for a far side that
+                # stalls, at 1.6 MB. Past that the ASSEMBLER drops (non-blocking acquire) and
+                # says so in the next frame's counter.
+                "num_frames": 16,
+                "frame_size": cube_bytes,
+            },
+            f"{pre}cube_send": {
+                "kotekan_stage": "bufferSend",
+                "buf": f"{pre}cube_buf",
+                "server_ip": args.cube_host,
+                "server_port": args.cube_port,
+                "drop_frames": True,
+                "reconnect_time": 30,
+                "send_timeout": 2,
+                # ⚠️ MUST MATCH THE ARCHIVER -- see the telem_recv note: the nodes inherit a
+                # config_tracker block from the production base and the archiver instance has
+                # none, so left to default the two write different header lengths and the
+                # stream shifts by one field.
                 "use_config_tracker": False,
                 "cpu_affinity": [V["cores"]["send"]],
             },
@@ -1877,6 +1977,88 @@ def build_aggregator_instance(cfg, nodes, args, port):
     out["gps_search"]["acquire_threads"] = nth
     out["gps_search"]["cpu_affinity"] = list(cores[-max(nth, 6):])
     return out, feeds, union_ids
+
+
+def build_cube_archive_instance(cfg, args, port):
+    """THE BEAM-CUBE ARCHIVER -- the whole fleet's completed cube windows onto bulk storage.
+
+    Deliberately tiny, and deliberately SEPARATE from both of cf06's other listeners. One
+    bufferRecv accepts every sender (90 assemblers today) on a single port and one rawFileWrite
+    lands the frames, bundled, under --cube-archive-dir.
+
+    WHY ITS OWN INSTANCE. The gather holds GnssFleetTrim's state in process, so restarting it
+    wipes every standing trim; the search aggregator is restarted routinely. Either would take
+    the record down with it, and a record with unexplained holes is the thing this exists to
+    avoid. Moving the archiver is --cube-host on the nodes and nothing else.
+
+    WHY RAW FRAMES AND NOT A TYPED FILE FORMAT. The frame IS self-describing: version, absolute
+    window index, wstart, the sender's own <host>/<stage> address, gpu, freq_id per bin, prn per
+    slot, and a CUMULATIVE dropped-window counter all travel inside the payload (gnssRecord.hpp).
+    So the bytes on disk carry their own provenance with no schema on the side, and converting
+    them to whatever the science format turns out to be is an OFFLINE job that can be redone --
+    where a writer that decides the format at capture time cannot be redone at all.
+    ⚠️ The padding is real: uniform frames mean zero rows for short chains, ~5x on the wire and
+    on this raw tier. Stripping is the converter's job, not the transport's.
+
+    ⚠️ NO FRAME IS EVER SPLIT ACROSS FILES: rawFileWrite bundles a fixed count, so a reader
+    derives the frame count from the file size and can start anywhere.
+    """
+    rt = cfg["runtime"]
+    cores = rt["cpu_affinity"]
+    n_elem = live_element_count(cfg["array"])
+    frame_bytes = cube_frame_bytes(args.cube_max_prn, args.cube_max_bins, n_elem)
+    out = {
+        "type": "config",
+        "log_level": "info",
+        # bufferRecv deserializes the sender's metadata into a pool object of the same type, so
+        # the pool must exist here even though nothing in this instance reads it.
+        "gnss_pool": {"kotekan_metadata_pool": "GnssChanMetadata",
+                      "num_metadata_objects": 4096},
+        "cpu_affinity": cores,
+        "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
+        # kotekan constructs a Telescope whatever the stage graph contains; minimal valid block,
+        # same as the gather and search instances. query_gps false: no F-engine to ask here.
+        "telescope": {"name": "ICETelescope", "num_polarizations": 1, "num_dishes": 1,
+                      "query_gps": False, "require_gps": False},
+        "cube_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            # 90 senders x ~1 frame/s. 512 frames is ~5 s of absorption at 52 MB, which covers a
+            # writer stalled behind an NFS commit without ever pushing back on a sender.
+            "num_frames": 512,
+            "frame_size": frame_bytes,
+        },
+        "cube_recv": {
+            "kotekan_stage": "bufferRecv",
+            "buf": "cube_buf",
+            "listen_port": args.cube_port,
+            # One thread per ~15 senders; the work is socket reads, not compute.
+            "num_threads": 6,
+            "drop_frames": True,
+            # ⚠️ MUST MATCH THE SENDER EXACTLY -- see the telem_recv note. The nodes inherit a
+            # config_tracker block from the production base and this instance has none, so left
+            # to default the two write different header lengths and the stream shifts by a field.
+            "use_config_tracker": False,
+            "cpu_affinity": list(cores[:6]),
+        },
+        "cube_write": {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": "cube_buf",
+            "base_dir": args.cube_archive_dir,
+            "file_name": "gnss_cube",
+            "file_ext": "raw",
+            # The archiver host is always the same host, so its name in every filename carries
+            # no information -- and the name that WOULD (which sender wrote a frame) is in the
+            # frame, because one file holds frames from all 90 of them.
+            "prefix_hostname": False,
+            "num_frames_per_file": args.cube_archive_frames_per_file,
+            # The frames carry an NDArray-free fixed layout of our own; write the bytes and let
+            # the reader supply the layout, which gnssRecord.hpp fixes by construction.
+            "allow_ndarray": True,
+            "cpu_affinity": [cores[6 % len(cores)]],
+        },
+    }
+    return out
 
 
 def build_gather_instance(cfg, args, port):
@@ -2606,6 +2788,67 @@ def main():
                          "boundary is the ABSOLUTE window index wstart/(this*hops*fft_len), not "
                          "a local counter, so every instance batches the same record sets "
                          "without negotiating -- the #53 lesson, applied before it can bite.")
+    # -- THE BEAM CUBE: the continuous per-(subband x element) recording ----------------------
+    ap.add_argument("--beam-cube", action="store_true",
+                    help="arm GnssGpuRecordAssemble's beam-cube accumulator: per (PRN slot, "
+                         "subband bin, element) COHERENT sum plus incoherent power, in "
+                         "addressable windows on the F-engine clock. This is the (channel x "
+                         "element) axis every other product collapses, and it is what a "
+                         "per-element/per-frequency beam map is built from. Serves "
+                         "/get_beam_cube; add --cube-host to PUSH it to an archiver, which is "
+                         "what makes it a record rather than a bench readout.")
+    ap.add_argument("--cube-host", default=None,
+                    help="push completed beam-cube windows to the archiver at this address "
+                         "(bufferSend -> bufferRecv). Implies --beam-cube. Normally the broker "
+                         "host (cf06, 10.222.3.6), which already runs the search aggregator and "
+                         "the telemetry gather -- but the archiver is a SEPARATE instance from "
+                         "both, because a restart of either must never interrupt the record.")
+    ap.add_argument("--cube-port", type=int, default=11070,
+                    help="port the archiver's bufferRecv listens on. ONE port for the whole "
+                         "fleet: every frame carries its own <host>/<stage> address, gpu, "
+                         "absolute window index and wstart, so there is no per-chain port map "
+                         "to wire up crooked.")
+    ap.add_argument("--cube-window-records", type=int, default=96,
+                    help="records per beam-cube window. 96 = 24 correlator frames = 1.00663 s "
+                         "at hops_per_record 2048 -- an exact multiple of BOTH the record and "
+                         "the frame, so no record is split and every window holds the same "
+                         "record count. ⚠️ AN EXACT 1.000 s WINDOW DOES NOT EXIST ON THIS "
+                         "CLOCK (the hop rate is 195312.5 Hz); asking for a round number in "
+                         "seconds buys a boundary that lands mid-record on half the fleet.")
+    ap.add_argument("--cube-bin-width", type=int, default=0,
+                    help="covering channels per subband bin; 0 (default) = one bin per "
+                         "channel, i.e. the full 195 kHz frequency resolution. Grouping halves "
+                         "the archive per doubling and is the first lever if disk binds -- but "
+                         "frequency is an axis of the product, and it is what separates a "
+                         "narrowband interferer from beam structure.")
+    ap.add_argument("--cube-ring-depth", type=int, default=8,
+                    help="windows held open in the assembler before the oldest is emitted. "
+                         "8 ~ 8 s of tolerance for out-of-order records.")
+    ap.add_argument("--cube-max-prn", type=int, default=32,
+                    help="PRN slot rows the WIRE FRAME holds. ⚠️ ON THE WIRE and therefore "
+                         "IDENTICAL on every sender AND on the archiver's receive buffer -- "
+                         "bufferRecv closes any connection whose frame_size disagrees, so "
+                         "changing it needs both ends restarted. Chains run 24-32 slots today; "
+                         "the short ones pad with zero rows, which the archiver strips.")
+    ap.add_argument("--cube-max-bins", type=int, default=8,
+                    help="subband bin columns the wire frame holds -- same uniformity rule as "
+                         "--cube-max-prn. Chains carry 1-7 covering channels today.")
+    ap.add_argument("--cube-archive-instance", action="store_true",
+                    help="emit the standalone beam-cube ARCHIVER instance: one bufferRecv for "
+                         "the whole fleet's cube frames and a rawFileWrite that lands them on "
+                         "bulk storage. No DPDK, no GPU, no hugepages. SEPARATE from the "
+                         "gather and the aggregator on purpose -- a gather restart wipes every "
+                         "standing trim and the aggregator is restarted often, and neither "
+                         "should be able to punch a hole in a record.")
+    ap.add_argument("--cube-archive-dir", default="/mnt/cs00/data/kvand/gnss_cube/raw",
+                    help="where the archiver writes (--cube-archive-instance). ⚠️ NOT /tmp and "
+                         "NOT NFS home: cf06's /tmp is wiped by the ~weekly kernel reboot, and "
+                         "home has 8 TB against cs00's 200 TB free.")
+    ap.add_argument("--cube-archive-frames-per-file", type=int, default=900,
+                    help="cube frames bundled into one file (~10 s of a 90-sender fleet, ~91 MB "
+                         "at the default frame size). One frame per file gave 2.5 million files "
+                         "and a 245 MB directory inode on cx19; rawFileRead derives the count "
+                         "from the file size, so bundling is transparent to every reader.")
     ap.add_argument("--gather-instance", action="store_true",
                     help="TASK #59: emit the standalone GATHER instance -- one bufferRecv for "
                          "the whole fleet's telemetry plus GnssTelemGather, which hands the "
@@ -2777,6 +3020,12 @@ def main():
     ap.add_argument("--search-instance", action="store_true",
                     help="emit the SEARCH instance config instead of the node config")
     args = ap.parse_args()
+
+    # --cube-host without --beam-cube would emit a buffer and a bufferSend for an accumulator
+    # that is never armed: a leg that connects, stays silent forever, and looks healthy from
+    # both ends. Imply it rather than reject it -- pushing IS the reason to arm it.
+    if args.cube_host:
+        args.beam_cube = True
 
     with open(args.node_file) as fh:
         cfg = yaml.safe_load(fh)
@@ -3045,6 +3294,39 @@ def main():
             print(f"  feed {i}: {node} gpu{gpu} {len(fids)} ch  <- port "
                   f"{args.search_port_base + i}", file=sys.stderr)
         print(f"  union    {len(union_ids)} channels", file=sys.stderr)
+        print(f"  rest     {port}", file=sys.stderr)
+        return
+
+    if args.cube_archive_instance:
+        port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"] + 3
+        if port == 12048:
+            raise SystemExit("refusing port 12048 (choco owns it)")
+        out = build_cube_archive_instance(cfg, args, port)
+        n_elem = live_element_count(cfg["array"])
+        nbytes = cube_frame_bytes(args.cube_max_prn, args.cube_max_bins, n_elem)
+        per_file = nbytes * args.cube_archive_frames_per_file
+        text = ("# GENERATED by config/gen_chord_gnss_config.py --cube-archive-instance -- DO "
+                "NOT HAND-EDIT.\n"
+                "# THE BEAM-CUBE ARCHIVER: every sender's completed ~1 s (subband x element)\n"
+                f"# windows, landed raw under {args.cube_archive_dir}.\n"
+                f"# wire frame {nbytes} B = {args.cube_max_prn} PRN x {args.cube_max_bins} bin "
+                f"x {n_elem} elem; listen {args.cube_port}; rest {port}\n"
+                f"# {args.cube_archive_frames_per_file} frames/file = {per_file / 1e6:.1f} MB\n"
+                "# ⚠️ cube_max_prn, cube_max_bins and the live element count must match EVERY\n"
+                "#    sender: together they set frame_size, and bufferRecv closes any\n"
+                "#    connection that disagrees -- it delivers no data rather than bad data,\n"
+                "#    which is safe but says nothing about which end is wrong.\n"
+                + yaml.safe_dump(out, default_flow_style=False, sort_keys=True))
+        if args.out:
+            os.makedirs(os.path.dirname(args.out), exist_ok=True)
+            open(args.out, "w").write(text)
+            print(f"wrote {args.out}")
+        else:
+            sys.stdout.write(text)
+        print("  BEAM-CUBE ARCHIVER instance", file=sys.stderr)
+        print(f"  listens  {args.cube_port} (all senders)", file=sys.stderr)
+        print(f"  writes   {args.cube_archive_dir}", file=sys.stderr)
+        print(f"  frame    {nbytes} B", file=sys.stderr)
         print(f"  rest     {port}", file=sys.stderr)
         return
 

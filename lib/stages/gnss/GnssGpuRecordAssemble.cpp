@@ -236,13 +236,23 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         // failure being avoided. Every instance must be given the SAME value.
         //
         // ⚠️ AN EXACT 1.000 s WINDOW DOES NOT EXIST ON THIS CLOCK. The hop rate is 195312.5 Hz,
-        // so one second is 195312.5 samples -- not an integer. The default is 196608 = 96
-        // records = 24 frames = 1.00663 s: an exact multiple of BOTH the record (2048) and the
-        // frame (8192), so no record is ever split and the per-window record count is constant,
-        // which is one less thing to explain in a residual. Anyone wanting a round number in
-        // seconds is asking for a boundary that lands mid-record on half the fleet.
-        _cube_win_samples =
-            (int64_t)config.get_default<double>(unique_name, "beam_cube_window_samples", 196608.0);
+        // so one second is 195312.5 hops -- not an integer. 96 records = 24 frames = 1.00663 s
+        // is an exact multiple of BOTH the record (2048 hops) and the frame (8192), so no
+        // record is ever split and the per-window record count is constant, which is one less
+        // thing to explain in a residual. Anyone wanting a round number in seconds is asking
+        // for a boundary that lands mid-record on half the fleet.
+        //
+        // ⚠️⚠️ THE UNIT IS F-ENGINE SAMPLES, NOT HOPS -- wstart is in samples, and one hop is
+        // fft_length (16384) of them. The default here READ 196608, which is 96 x 2048 HOPS:
+        // the record arithmetic above, with the conversion left off. As a sample count that is
+        // 12 hops, 61 us, and it would lap this 8-deep ring sixteen times per record while
+        // every log line still looked plausible -- the window length is only ever printed as
+        // win_samples/_sample_rate, which is small and self-consistently wrong. The generator
+        // now always sets this explicitly (records x hops_per_record x fft_length, the same
+        // expression spectrum_window_samples is derived from), because a value that must MATCH
+        // across instances should never come from a default that agrees by luck.
+        _cube_win_samples = (int64_t)config.get_default<double>(
+            unique_name, "beam_cube_window_samples", 96.0 * 2048.0 * 16384.0);
         const int depth =
             std::max(2, config.get_default<int>(unique_name, "beam_cube_ring_depth", 8));
         _cube_ring.resize((size_t)depth);
@@ -1217,12 +1227,35 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
         std::fill(C.nrec.begin(), C.nrec.end(), 0);
         std::fill(C.phi0.begin(), C.phi0.end(), 0.0);
         std::fill(C.nreanchor.begin(), C.nreanchor.end(), 0);
+        C.nrec_seen = 0;
         C.idx = idx;
         C.w0 = C.w1 = -1;
     }
     if (C.w0 < 0)
         C.w0 = wstart;
     C.w1 = wstart;
+    // ⚠️ A WINDOW SHORTER THAN A RECORD IS A UNIT ERROR, AND IT IS INVISIBLE OTHERWISE. It
+    // produces one window per record, each holding exactly one, so every array is well formed,
+    // every index is consistent, and the archive is simply the record stream at 1/96 of the
+    // integration it claims. The tell is structural rather than numeric -- a window that never
+    // accumulates a second record -- so check it here, once, where consecutive wstarts are the
+    // thing in hand. (beam_cube_window_samples is in F-ENGINE SAMPLES; a value in HOPS is off
+    // by fft_length and lands exactly here.)
+    if (!_cube_win_warned && C.nrec_seen == 0 && idx == _cube_max_idx + 1 && _cube_max_idx >= 0) {
+        if (++_cube_singleton_windows >= 8) {
+            _cube_win_warned = true;
+            WARN("GnssGpuRecordAssemble[{:s}]: beam_cube_window_samples {:d} gives ONE RECORD "
+                 "PER WINDOW ({:.6f} s) -- 8 in a row. That is what a window length given in "
+                 "HOPS rather than F-engine SAMPLES looks like (they differ by fft_length); "
+                 "the cube is being recorded at the record cadence, not the window cadence it "
+                 "reports. Expected many records per window.",
+                 unique_name, (long long)_cube_win_samples,
+                 (double)_cube_win_samples / _sample_rate);
+        }
+    } else if (C.nrec_seen > 0) {
+        _cube_singleton_windows = 0;
+    }
+    ++C.nrec_seen;
     if (idx > _cube_max_idx) {
         // The PREVIOUS window is now provably complete -- a later one has opened, which is the
         // only local evidence that no more records are coming for it. Push it. Done here, on
@@ -1280,7 +1313,11 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
     f64(72, _sample_rate);
     i32(80, _cube_gpu);
     i32(84, _cube_bin_width ? _cube_bin_width : 1);
-    std::strncpy((char*)f + 88, _cube_chain.c_str(), gnss::CUBE_CHAIN_CHARS - 1);
+    // THE MAXIMA THIS FRAME WAS SIZED FOR. n_prn/n_bin above are the actual extents; the arrays
+    // below are laid out by these, so they are what makes the frame self-delimiting on disk.
+    i32(88, mp);
+    i32(92, mb);
+    std::strncpy((char*)f + 96, _cube_chain.c_str(), gnss::CUBE_CHAIN_CHARS - 1);
 
     size_t off = gnss::CUBE_HEADER_BYTES;
     // Doubles FIRST -- see gnssRecord.hpp: their alignment must not depend on max_bins/max_prn.

@@ -260,10 +260,16 @@ private:
         std::vector<int> nrec;              ///< [n_prn] records contributing
         std::vector<double> phi0;           ///< [n_prn] _phi[p] at this window's FIRST record
         std::vector<int> nreanchor;         ///< [n_prn] UNFOLDED resets inside it (see below)
+        /// Records assigned to this window so far, ALL PRNs -- not per-slot like `nrec`. Its
+        /// only job is the unit check in cube_window_for(): a window that never sees a second
+        /// record is what a window length given in hops rather than samples looks like.
+        int nrec_seen = 0;
     };
     std::vector<CubeWindow> _cube_ring;    ///< depth from config; index -> idx % depth
     int64_t _cube_win_samples = 0;         ///< window length in F-engine samples
     int64_t _cube_max_idx = -1;            ///< newest index SEEN; complete windows are < this
+    int _cube_singleton_windows = 0;    ///< consecutive windows that held exactly one record
+    bool _cube_win_warned = false;      ///< the unit-error warning fires once, not per record
     std::mutex _cube_mtx;                  ///< guards _cube_* between main_thread and REST
     /// ── THE PUSH LEG: completed windows go OUT, they are not fetched ───────────────────
     /// ⚠️ A POLLED ENDPOINT CANNOT PRODUCE A COMPLETE DATASET, and this stage's own

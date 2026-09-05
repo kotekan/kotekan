@@ -9,7 +9,8 @@
 #       --carrier-phase-from-ref 1 --carrier-phase-mode 1 --keep-n2 --n2-dual --phi-fp16
 #       --despread-max-chips 80 --despread-chips-centered --dpdk-resync-max-advances 32
 #       --n2-send --n2-send-legs both --rf-stats --no-path-a --sky-deep --elem-steer-sign 1.0
-#       --search-host 10.222.3.6 --telem-host 10.222.3.6 --extra-signal
+#       --search-host 10.222.3.6 --telem-host 10.222.3.6 --beam-cube --cube-host 10.222.3.6
+#       --extra-signal
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
 #       BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
@@ -227,14 +228,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0022846
-    t_inst_ns: 1788220800000000000
-    xp_as: 0.210621
-    yp_as: 0.337792
-  - delta_UT1_inst: 0.0015722
-    t_inst_ns: 1788307200000000000
-    xp_as: 0.209832
-    yp_as: 0.336934
   - delta_UT1_inst: 0.0010903
     t_inst_ns: 1788393600000000000
     xp_as: 0.209029
@@ -251,6 +244,14 @@ earth_rotation_data:
     t_inst_ns: 1788652800000000000
     xp_as: 0.206701
     yp_as: 0.333458
+  - delta_UT1_inst: 0.0001306
+    t_inst_ns: 1788739200000000000
+    xp_as: 0.204703
+    yp_as: 0.335596
+  - delta_UT1_inst: -0.0004337
+    t_inst_ns: 1788825600000000000
+    xp_as: 0.203923
+    yp_as: 0.334816
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -293,7 +294,30 @@ fpga_monitor:
   kotekan_stage: FPGAMonitor
   poll_interval_seconds: 5
 frame_arrival_period: 5.12e-6 * 8192
+gnss0_b2a_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss0_b2a_cube_send:
+  buf: gnss0_b2a_cube_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss0_b2a_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 0
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id001
   - 5986
@@ -304,6 +328,7 @@ gnss0_b2a_n2assemble:
   - 6066
   cpu_affinity:
   - 33
+  cube_buf: gnss0_b2a_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b2a_n2epl_buf
@@ -509,7 +534,30 @@ gnss0_b2a_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss0_b2b_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss0_b2b_cube_send:
+  buf: gnss0_b2b_cube_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss0_b2b_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 0
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id004
   - 6130
@@ -521,6 +569,7 @@ gnss0_b2b_n2assemble:
   - 6226
   cpu_affinity:
   - 33
+  cube_buf: gnss0_b2b_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b2b_n2epl_buf
@@ -728,7 +777,30 @@ gnss0_b2b_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss0_b3i_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss0_b3i_cube_send:
+  buf: gnss0_b3i_cube_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss0_b3i_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 0
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id007
   - 6450
@@ -740,6 +812,7 @@ gnss0_b3i_n2assemble:
   - 6546
   cpu_affinity:
   - 33
+  cube_buf: gnss0_b3i_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b3i_n2epl_buf
@@ -952,7 +1025,46 @@ gnss0_cmb_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+gnss0_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss0_cube_send:
+  buf: gnss0_cube_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
+gnss0_e5a_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss0_e5a_cube_send:
+  buf: gnss0_e5a_cube_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss0_e5a_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 0
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id010
   - 5986
@@ -963,6 +1075,7 @@ gnss0_e5a_n2assemble:
   - 6066
   cpu_affinity:
   - 33
+  cube_buf: gnss0_e5a_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e5a_n2epl_buf
@@ -1176,7 +1289,30 @@ gnss0_e5a_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss0_e5b_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss0_e5b_cube_send:
+  buf: gnss0_e5b_cube_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss0_e5b_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 0
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id013
   - 6130
@@ -1188,6 +1324,7 @@ gnss0_e5b_n2assemble:
   - 6226
   cpu_affinity:
   - 33
+  cube_buf: gnss0_e5b_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e5b_n2epl_buf
@@ -1403,7 +1540,30 @@ gnss0_e5b_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss0_e6_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss0_e6_cube_send:
+  buf: gnss0_e6_cube_buf
+  cpu_affinity:
+  - 40
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss0_e6_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 0
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id016
   - 6530
@@ -1411,6 +1571,7 @@ gnss0_e6_n2assemble:
   - 6562
   cpu_affinity:
   - 33
+  cube_buf: gnss0_e6_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e6_n2epl_buf
@@ -1619,6 +1780,13 @@ gnss0_e6_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 0
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id019
   - 5986
@@ -1629,6 +1797,7 @@ gnss0_n2assemble:
   - 6066
   cpu_affinity:
   - 33
+  cube_buf: gnss0_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_n2epl_buf
@@ -1900,7 +2069,30 @@ gnss0_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss1_b2a_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss1_b2a_cube_send:
+  buf: gnss1_b2a_cube_buf
+  cpu_affinity:
+  - 61
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss1_b2a_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 1
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id022
   - 5978
@@ -1912,6 +2104,7 @@ gnss1_b2a_n2assemble:
   - 6074
   cpu_affinity:
   - 57
+  cube_buf: gnss1_b2a_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_b2a_n2epl_buf
@@ -2095,7 +2288,30 @@ gnss1_b2a_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss1_b2b_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss1_b2b_cube_send:
+  buf: gnss1_b2b_cube_buf
+  cpu_affinity:
+  - 61
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss1_b2b_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 1
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id024
   - 6138
@@ -2106,6 +2322,7 @@ gnss1_b2b_n2assemble:
   - 6218
   cpu_affinity:
   - 57
+  cube_buf: gnss1_b2b_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_b2b_n2epl_buf
@@ -2287,7 +2504,30 @@ gnss1_b2b_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss1_b3i_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss1_b3i_cube_send:
+  buf: gnss1_b3i_cube_buf
+  cpu_affinity:
+  - 61
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss1_b3i_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 1
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id026
   - 6442
@@ -2299,6 +2539,7 @@ gnss1_b3i_n2assemble:
   - 6538
   cpu_affinity:
   - 57
+  cube_buf: gnss1_b3i_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_b3i_n2epl_buf
@@ -2487,7 +2728,46 @@ gnss1_cmb_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+gnss1_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss1_cube_send:
+  buf: gnss1_cube_buf
+  cpu_affinity:
+  - 61
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
+gnss1_e5a_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss1_e5a_cube_send:
+  buf: gnss1_e5a_cube_buf
+  cpu_affinity:
+  - 61
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss1_e5a_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 1
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id028
   - 5978
@@ -2499,6 +2779,7 @@ gnss1_e5a_n2assemble:
   - 6074
   cpu_affinity:
   - 57
+  cube_buf: gnss1_e5a_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_e5a_n2epl_buf
@@ -2682,7 +2963,30 @@ gnss1_e5a_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss1_e5b_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss1_e5b_cube_send:
+  buf: gnss1_e5b_cube_buf
+  cpu_affinity:
+  - 61
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss1_e5b_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 1
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id030
   - 6138
@@ -2693,6 +2997,7 @@ gnss1_e5b_n2assemble:
   - 6218
   cpu_affinity:
   - 57
+  cube_buf: gnss1_e5b_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_e5b_n2epl_buf
@@ -2874,7 +3179,30 @@ gnss1_e5b_telem_send:
   server_ip: 10.222.3.6
   server_port: 11060
   use_config_tracker: false
+gnss1_e6_cube_buf:
+  frame_size: 101200
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 16
+gnss1_e6_cube_send:
+  buf: gnss1_e6_cube_buf
+  cpu_affinity:
+  - 61
+  drop_frames: true
+  kotekan_stage: bufferSend
+  reconnect_time: 30
+  send_timeout: 2
+  server_ip: 10.222.3.6
+  server_port: 11070
+  use_config_tracker: false
 gnss1_e6_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 1
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id032
   - 6522
@@ -2883,6 +3211,7 @@ gnss1_e6_n2assemble:
   - 6570
   cpu_affinity:
   - 57
+  cube_buf: gnss1_e6_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_e6_n2epl_buf
@@ -3061,6 +3390,13 @@ gnss1_e6_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_n2assemble:
+  beam_cube: true
+  beam_cube_bin_width: 0
+  beam_cube_gpu: 1
+  beam_cube_max_bins: 8
+  beam_cube_max_prn: 32
+  beam_cube_ring_depth: 8
+  beam_cube_window_samples: 3221225472
   chan_export: true
   channel_ids: &id034
   - 5978
@@ -3072,6 +3408,7 @@ gnss1_n2assemble:
   - 6074
   cpu_affinity:
   - 57
+  cube_buf: gnss1_cube_buf
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_n2epl_buf

@@ -112,6 +112,49 @@ def telem_frame_bytes(n_rec, n_prn):
     return telem_header_bytes() + n_rec * n_prn * telem_row_floats() * 4
 
 
+def cube_chain_chars():
+    """gnss::CUBE_CHAIN_CHARS -- "<hostname>/<stage>" field width in the beam-cube frame."""
+    return _read("CUBE_CHAIN_CHARS")
+
+
+def cube_header_bytes():
+    """gnss::CUBE_HEADER_BYTES.
+
+    Parsed from the header's own expression rather than restated here: it is written as
+    `88 + CUBE_CHAIN_CHARS`, and a literal copy would go stale the first time a field is
+    added -- silently, because a frame that is merely the WRONG SIZE is closed by bufferRecv
+    with a message about frame_size and nothing about this file.
+    """
+    with open(HEADER) as fh:
+        text = fh.read()
+    m = re.search(r"^\s*constexpr\s+size_t\s+CUBE_HEADER_BYTES\s*=\s*"
+                  r"(\d+)\s*\+\s*CUBE_CHAIN_CHARS\s*;", text, re.M)
+    if not m:
+        raise SystemExit("%s: could not parse `constexpr size_t CUBE_HEADER_BYTES = N + "
+                         "CUBE_CHAIN_CHARS` -- the header's shape changed and "
+                         "config/gnss_record_layout.py needs updating" % HEADER)
+    return int(m.group(1)) + cube_chain_chars()
+
+
+def cube_frame_bytes(max_prn, max_bins, n_elem):
+    """Bytes of one beam-cube wire frame -- the SAME expression as gnss::cube_frame_bytes.
+
+    ⚠️ UNIFORM ACROSS EVERY SENDER, like the task #59 telemetry frame and for the same reason:
+    one bufferRecv serves the whole fleet, and it CLOSES any connection whose frame_size
+    disagrees with its buffer. Chains carry 1-7 covering channels and 24-32 PRN slots, so the
+    frame is sized for the maxima and the unused rows are zero -- padding on the wire, stripped
+    by the archiver.
+    """
+    return (cube_header_bytes()
+            + max_bins * 2 * 4          # freq_id lo/hi (int32)
+            + max_prn * 3 * 4           # prn, n_rec, n_reanchor (int32)
+            + max_prn * 8               # phi0 (double)
+            + max_prn * max_bins * 2 * 4       # w, energy (float)
+            + max_prn * max_bins * n_elem * 3 * 4)  # coh_re, coh_im, incoh (float)
+
+
 if __name__ == "__main__":
     print("RECORD_FLOATS %d  ELEM_FLOATS %d  TELEM_HEADER_BYTES %d"
           % (record_floats(), elem_floats(), telem_header_bytes()))
+    print("CUBE_HEADER_BYTES %d  cube_frame_bytes(32, 8, 32) %d"
+          % (cube_header_bytes(), cube_frame_bytes(32, 8, 32)))
