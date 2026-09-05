@@ -1611,6 +1611,64 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #109 — the search aggregator's merge holds THREE feeds ~18 min out of step and produces nothing: cx19/gpu0, cx19/gpu1 and cx44/gpu0 (OPEN, observed 2026-09-05)
+
+**Shape.** `GnssChanAlignMerge[/agg_merge]` logs, rate-limited and continuously:
+
+```
+inputs span 3.43e+12 samples (min 230278295453696, max 234843443036160) -- too far apart to be
+sender lag. Some feeds are pre-reset and some post-reset; the merge cannot align them and is
+producing nothing. Restart the aggregator.
+```
+
+That guard fires at `hi - lo > 2^40` (`GnssChanAlignMerge.cpp:236`). **The span is 3.4-4.6e12 ADC
+samples, and at 3.2 GHz that is 17.9-23.8 MINUTES** — not the sub-second spread sender lag can
+explain, and not a rounding on a reset either.
+
+**WHICH feeds, from the metrics rather than the message** (`kotekan_gnss_merge_skipped_frames_total`
+on :12050, feeds are node-major/GPU-minor from `search_port_base`):
+
+| input | sender | skipped |
+|---|---|---|
+| 0 | cx19 gpu0 | 32,251 |
+| 1 | cx19 gpu1 | 35,616 |
+| 8 | cx44 gpu0 | 27,482 |
+| all nine others | | 110-830 |
+
+The merge skips frames on an input to catch up, so **those three are the ones BEHIND**. Two of the
+three are one node; the third is one GPU of another.
+
+**⚠️ IT IS NOT ACCUMULATING LAG, AND THAT IS THE INFORMATIVE PART.** The span survived an
+aggregator restart (log archived to `logs/gnss_agg_20260905_1257_to_1325.log`) AND a full fleet
+node cycle at ~14:15 UTC, coming back at the same ~18 min within minutes of both. A process that
+had been falling behind for hours would restart at zero. A FIXED offset in the feed's `fpga_seq`
+is what reproduces across both restarts — so the suspicion is the seq a search sender stamps, not
+a sender that is running slow. All six nodes report the same `frame0_utc 1788541059.000002861`,
+so it is not the epoch the node was started with.
+
+**Cost while it lasted.** With the merge producing nothing there are no detections, so the broker
+cannot solve the clock (`clock-freq bias UNSOLVED ... 0 local + 0 sibling sats`) and nothing seeds:
+every chain read **0 present for ~2 h** on 2026-09-05 (12:58-14:40 UTC). It cleared after the node
+cycle plus a fresh EOP push, and presence returned to 9/12 — **but the merge is still warning and
+still skipping those same three feeds**, so what cleared the symptom is not established, and the
+fault is one node-restart away from returning.
+
+**⚠️ Do not read "0 present" as a tracking failure.** It was an ACQUISITION failure two hops
+upstream, in a component whose only complaint is a rate-limited WARN on a host nobody watches.
+The same shape as #98: the diagnosis was in a log line that fires forever and blocks nothing.
+
+**Next steps, cheapest first.**
+1. Read `fpga_seq` per feed directly (the merge does not expose it — `/agg*_recv` metrics carry
+   only counters). One `bufferRecv` debug line, or a REST `/agg_merge/get_stats` that serves each
+   input's newest seq, would settle "behind" vs "offset" in one poll instead of by inference.
+2. Compare the offending senders' `n2_send` seq against their own record stream on the node: if
+   the node's records are fine and only the search leg is offset, the fault is in the search
+   sender's stamp, not in the F-engine or the node clock.
+3. `18 min` is suspiciously round in nothing obvious (not 2^n samples, not a code period, not the
+   1024-week rollover) — resist naming it before (1) gives the real number.
+4. Failing that, the guard's own advice ("Restart the aggregator") is now known NOT to work, and
+   the message should say so rather than sending the next person around the same loop.
+
 ## #108 — every node WEDGES 2^33 bf-mask frames after start (~15 h): `frameID` never reduced its counter, and the int wrap skipped 8 slots of the shared `host_bf_mask_buffer` — ROOT-CAUSED 2026-09-04, FIX BUILT, awaiting the rolling restart
 
 **Shape.** Both GPUs at 0%, load decaying, only the DPDK pollers running; REST `/buffers` shows
