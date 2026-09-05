@@ -410,6 +410,12 @@ void dpdkCore::main_thread() {
         workers_active_metric.set(live);
         workers_expected_metric.set(num_workers);
         worker_packet_errors_metric.set(worker_packet_errors.load());
+        // A shutdown in progress empties the worker set BY DESIGN: every worker leaves its
+        // poll loop on stop_thread and decrements active_workers on the way out. Without
+        // this check a clean node_up stop raised the FATAL below on every restart
+        // (cx19, 2026-09-05) -- a false alarm that reads exactly like the real fault.
+        if (stop_thread)
+            break;
         if (num_workers > 0 && live < num_workers) {
             if (exit_on_worker_failure) {
                 FATAL_ERROR("DPDK: only {:d} of {:d} workers are alive -- this node is "
@@ -638,10 +644,12 @@ int dpdkCore::lcore_rx(void* args) {
         // three node reboots and a day before anyone counted packets, because this line was
         // INFO (invisible in a log flooded at frame rate) and nothing exported the fact.
         // So: say it at ERROR, count it, and see exit_on_worker_failure in main_thread.
-        ERROR_NON_OO("DPDK WORKER DIED: worker_id {:d}, lcore {:d} exited on a handler error. "
-                     "Its ring will now fill and this port's packets will be DROPPED. "
-                     "{:d} of {:d} workers remain.",
-                     worker_id, lcore, core->active_workers.load() - 1, core->num_workers);
+        if (!core->stop_thread) {
+            ERROR_NON_OO("DPDK WORKER DIED: worker_id {:d}, lcore {:d} exited on a handler "
+                         "error. Its ring will now fill and this port's packets will be "
+                         "DROPPED. {:d} of {:d} workers remain.",
+                         worker_id, lcore, core->active_workers.load() - 1, core->num_workers);
+        }
         core->active_workers--;
         if (core->active_workers == 0) {
             core->stop_thread = true;
