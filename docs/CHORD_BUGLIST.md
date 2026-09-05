@@ -1611,7 +1611,7 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
-## #110 — ARMING THE BEAM CUBE SEGFAULTED EVERY NODE 45-75 s AFTER START (FIXED 2026-09-05, fleet-wide outage; awaiting ONE-NODE re-arm)
+## #110 — ARMING THE BEAM CUBE SEGFAULTED EVERY NODE 45-75 s AFTER START (FIXED 2026-09-05, fleet-wide outage; VERIFIED ON cx19 17:02, manifest RE-ARMED)
 
 **Root cause (found in the code, reproduced offline, fixed).** `emit_cube_window` marked its
 `cube_buf` frame full **without allocating a metadata object**. `bufferSend` does
@@ -1666,6 +1666,16 @@ binary. **Re-arm procedure: ONE node first** (`GNSS_CFG=.../cube_armed_20260905/
 scripts/gnss/node_up.sh <node>`), judge in minutes -- alive past 3 min AND frames arriving at the
 archiver (`ls /mnt/cs00/data/kvand/gnss_cube/raw`, `gnss_cube_read.py ls`) -- THEN re-arm the
 manifest and cycle the rest.
+
+**Re-armed 2026-09-05 17:02 on cx19** (KV, `GNSS_CFG=` the fixture, fixed binary): alive past
+3.5 min with 0 ERROR/FATAL, 15/15 `cube_send` with 0 drops, valve cadence and GPU load
+unchanged; archiver received 1526 frames from 15 senders in ~100 s, **0 holes, 0 sender drops**,
+a live L2C frame decodes with 11/28 live PRN slots and stamped metadata. Manifest re-armed
+(`beam-cube: true`, `cube-host: 10.222.3.6`), six configs regenerated -- byte-identical to the
+`fixtures/cube_armed_20260905/` set cx19 proves -- `gen_fleet.py --check` green, all six
+senders' `cube_buf.frame_size` 101200 == the archiver's. Rate ~91 MB/min/node, ~780 GB/day
+fleet-wide raw (frames padded to the 32x8 maxima; ~5x payload) -- the P3+ compaction is the
+lever, 207 TB free meanwhile. KV cycles the other five.
 
 **⚠️ The lesson is about the gate, not the bug.** Every check run before this shipped was a
 check of something that does not execute on a node. The one that would have caught it -- run the

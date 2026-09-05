@@ -416,16 +416,15 @@ common:
   # (task #64), so if cycle time regresses, this leg is the first thing to park. The payload is
   # ~5x padding today -- the frame carries all 24-32 PRN SLOTS, live or not -- and compacting
   # onto despread PRNs the way GnssTelemPack does is the lever that removes it.
-  # ⚠️ DISARMED 2026-09-05 15:3x: every node that started with this armed SEGFAULTED (signal 11,
-  # systemd Result=core-dump) 45-75 s in -- cx19 15:00:56->15:02:09, cx44 15:08:30->15:09:15, all
-  # six the same. The archiver saw all 15 senders per node CONNECT and received ZERO frames, so
-  # the crash lands at or before the FIRST EMIT: the first cube window cannot open until a record
-  # carries a despread PRN, which is the ~45-75 s the broker takes to seed. Backtrace still
-  # needed (no coredumpctl, no apport report on these hosts) -- see buglist #110.
-  # Re-arm by restoring these two lines; the armed configs that crashed are preserved at
-  # fixtures/cube_armed_20260905/ so the repro is exact.
-  # beam-cube: true
-  # cube-host: 10.222.3.6
+  # ⚠️ #110 (2026-09-05): the first fleet-wide arm SEGFAULTED all six nodes 45-75 s in, at the
+  # FIRST EMIT -- emit_cube_window shipped frames with NO metadata object and bufferSend
+  # dereferenced the null. Fixed in 633a59a5f (producer stamps metadata; bufferSend drops and
+  # ERRORs instead). Needs build/kotekan/kotekan >= 15:33 09-05; the pre-fix binary dies at the
+  # first emit with nothing in the log. Offline gate: scripts/gnss/cube_e2e.py (RUNS the
+  # producer -- the earlier gates all sat downstream of it). Re-armed on cx19 17:02 09-05 with
+  # fixtures/cube_armed_20260905/chord_gnss_cx19_multi.yaml: 15 senders, 0 holes, 0 drops.
+  beam-cube: true
+  cube-host: 10.222.3.6
   # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
   # closes any connection whose frame_size disagrees with its buffer -- so changing either one
   # means regenerating the GATHER config in the same commit, and restarting both ends. Left at
