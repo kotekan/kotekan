@@ -138,6 +138,16 @@ v3-sized buffer losing every other window). The v3 binary refuses a v2 config lo
 Offline gate for the code itself: `scripts/gnss/cube_e2e.py --binary <nodpdk binary>` on cf06
 (PASS on the v3 binary; on the v2 binary it fails on version, utc0 and the lost windows).
 
+**Done 2026-09-06 15:40–15:50 UTC.** Archiver flipped 15:40, nodes cycled ~15:42, first v3 frame
+`utc(wstart0)` 15:42:28 with `utc0` = the v2 epoch to 3e-8 s (so L0 files carry one epoch).
+⚠️ **The restart clobbered raw files `gnss_cube_0000000..90`** (09-05 17:45–18:00, already in
+L0): `rawFileWrite` numbers from 0 at every start and opens without `O_TRUNC`. Fixed with
+`continue_numbering: true` (resume past the highest existing number; generator emits it for the
+archiver) — numbering resumed at 0007683. The interim run wrote `gnss_cube_r2_*` (15:44–15:50);
+the compactor now finds the still-open file by mtime, not by name, so mixed prefixes fold. The
+91 overwritten names hold v3 data from 15:40–15:44 under a size the manifest refuses; rename
+them (`gnss_cube_r1v3_*`) to fold them or leave them as a 4-minute hole.
+
 ## 8. The map builder (P5): `gnss_beam_cube.py build --source l0`
 
 The healpix builder reads the archive directly — L0 or, ~10× faster and identical in result,
@@ -187,8 +197,17 @@ in the main-lobe annulus (2–12° off boresight, `--offset-annulus`) relative t
 before summing chains and shows it as an editable dB box per chain (defaults / zero buttons).
 09-05/06 values are within ±5 dB of gps_l5 (pedestal units already remove the noise-floor scale;
 what remains is sky signal per band — b2b −4..−5, l2c +2..+4). The viewer also has per-element
-toggles (all / live only / none / invert, remembered per browser) that the sum and the single-
-element scan both honour.
+toggles (all / live only / none / invert, remembered per browser). The toggles mask the SUM
+only; the element scan has two linked sliders — one over every antenna (so the masked ones can
+still be looked at; the enabled-only slider greys while parked on one) and one over the enabled
+population — moving either moves the other.
+
+**Several chains at once.** The channel slider walks the UNION of absolute freq_ids over the
+selected chains; a chain contributes at a channel only where it covers it (l5/e5a/b2a share
+5972..6076 and are averaged there, n-weighted per pixel; e5b/b3i/e6/l2c extend the axis). The
+label names the chains covering the current channel. The old slider indexed each chain's local
+list position, so one position mixed 5978 (l5) with 6134 (e5b) and clamped E6/L2C to their last
+channel.
 
 Viewer: `gnss_beam_cube.py export <masters> --nside 32` → `fixtures/beamcube/web/`, served by
 `scripts/gnss/beamview_up.sh` on cf06 (http://cf06:8877/, port 877 is privileged). Every day in

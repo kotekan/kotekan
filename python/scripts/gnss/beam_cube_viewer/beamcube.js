@@ -12,6 +12,7 @@
 const S = {
   index: null, days: [], cache: new Map(),
   chains: [], sel: new Set(), nsub: 1, nelem: 32,
+  axis: [],              // ABSOLUTE freq_ids covered by the selected chains, sorted (the slider)
   elOn: null,            // Set of enabled element indices (the sum AND the scan use it)
   offset: new Map(),     // chain -> dB offset applied when summing/comparing chains
   cmap: 0, grid: true, hover: null,
@@ -123,7 +124,11 @@ function collapse() {
   const acc = new Map();
   const subAll = document.getElementById('subsum').checked;
   const elAll = document.getElementById('elsum').checked;
-  const subOne = +document.getElementById('sub').value;
+  // The subband slider walks S.axis, the union of ABSOLUTE channels over the selected chains.
+  // A chain joins a channel only where it covers it: gps_l5 and gal_e5b never share one, so
+  // a position on the slider is ONE frequency however many chains are ticked -- not "bin 3
+  // of whichever list each chain happens to have" (which was 5978 on l5 and 6134 on e5b).
+  const fidOne = S.axis[Math.min(+document.getElementById('sub').value, S.axis.length - 1)];
   const elOne = +document.getElementById('el').value;
   const [i0, i1] = dayRange();
   const ref = S.cache.get(S.days[i0]);
@@ -138,15 +143,17 @@ function collapse() {
     for (const c of man.chains) {
       if (!S.sel.has(c.chain) || !c.loaded) continue;
       const P = c.n_pix;
-      const s0 = subAll ? 0 : Math.min(subOne, c.n_sub - 1);
-      const s1e = subAll ? c.n_sub - 1 : s0;
       const e0 = elAll ? 0 : Math.min(elOne, c.n_elem - 1);
       const e1 = elAll ? c.n_elem - 1 : e0;
       // The per-chain offset brings this chain onto the reference chain's zero (manifest
       // default, reader-tweakable). Applied to the LINEAR accumulator, so the sum over
       // chains is a weighted mean of aligned patterns, not of raw ones.
+      // Where several chains cover the same channel (l5/e5a/b2a all sit on 5972..6076) the
+      // pixel is their n-WEIGHTED mean: a chain that put 200 samples in a pixel outweighs
+      // one that put 2. A pixel only one chain reached is that chain's value, unchanged.
       const gain = Math.pow(10, -(S.offset.get(c.chain) || 0) / 10);
-      for (let s = s0; s <= s1e; s++) {
+      for (let s = 0; s < c.n_sub; s++) {
+        if (!subAll && c.freq_ids[s][0] !== fidOne) continue;
         for (let e = e0; e <= e1; e++) {
           if (elAll && S.elOn && !S.elOn.has(e)) continue;   // toggled off by the reader
           const base = (s * c.n_elem + e) * P;
@@ -163,6 +170,37 @@ function collapse() {
     }
   }
   return acc;
+}
+
+// The subband axis: every ABSOLUTE channel any selected (and loaded) chain covers in the
+// selected days, sorted. Rebuilt whenever the selection or the day range changes; the slider
+// keeps the same frequency across rebuilds when that frequency is still on the axis.
+function rebuildAxis() {
+  const [i0, i1] = dayRange();
+  const ref = S.cache.get(S.days[i0]);
+  const set = new Set();
+  for (let d = i0; d <= i1; d++) {
+    const man = S.cache.get(S.days[d]);
+    if (!man || !sameCurrency(man, ref)) continue;
+    for (const c of man.chains) {
+      if (!S.sel.has(c.chain) || !c.loaded) continue;
+      for (const f of c.freq_ids) if (f[0] != null) set.add(f[0]);
+    }
+  }
+  const sub = document.getElementById('sub');
+  const was = S.axis[+sub.value];
+  S.axis = [...set].sort((a, b) => a - b);
+  sub.max = Math.max(0, S.axis.length - 1);
+  const keep = S.axis.indexOf(was);
+  sub.value = keep >= 0 ? keep : Math.min(+sub.value, S.axis.length - 1);
+}
+
+// Which selected chains cover a channel (for the labels).
+function chainsAt(fid) {
+  const man = S.cache.get(S.days[dayRange()[0]]);
+  if (!man) return [];
+  return man.chains.filter(c => S.sel.has(c.chain) && c.loaded && c.freq_ids.some(f => f[0] === fid))
+    .map(c => c.chain);
 }
 
 const sameCurrency = (a, b) =>
@@ -230,7 +268,12 @@ function draw() {
   const [a, b] = dayRange();
   const nDays = b - a + 1;
   document.getElementById('hud').innerHTML =
-    `<b>${[...S.sel].join(' + ') || 'no chain selected'}</b><br>` +
+    `<b>${[...S.sel].join(' + ') || 'no chain selected'}</b>` +
+    (document.getElementById('subsum').checked
+      ? ` &middot; ${S.axis.length} ch`
+      : ` &middot; ch ${S.axis.length ? S.axis[+document.getElementById('sub').value] : '—'}`) +
+    (document.getElementById('elsum').checked ? '' : ` &middot; elem ${document.getElementById('el').value}`) +
+    `<br>` +
     `${nDays} day${nDays > 1 ? 's' : ''} &middot; ${db.size} pixel${db.size === 1 ? '' : 's'} ` +
     `&ge; ${minN} sample${minN === 1 ? '' : 's'}<br>` +
     `peak ${peak === -Infinity ? '—' : peak.toFixed(1) + ' dB'} &middot; ` +
@@ -312,6 +355,8 @@ function checkBands() {
   } else el.innerHTML = '';
 }
 
+const enabledList = () => [...Array(S.nelem).keys()].filter(e => !S.elOn || S.elOn.has(e));
+
 function saveElOn() {
   try { localStorage.setItem('beamcube.elOn', JSON.stringify([...S.elOn])); } catch (e) {}
 }
@@ -321,23 +366,22 @@ function bindUI() {
   for (const id of ids) {
     document.getElementById(id).addEventListener('input', async () => {
       await ensureDaysLoaded();
+      if (id === 'd0' || id === 'd1') rebuildAxis();
       syncLabels();
       draw();
     });
   }
-  // Scanning single elements SKIPS the toggled-off ones: the slider steps in the direction
-  // it was moved until it lands on an enabled element (or stays put if there is none).
-  const el = document.getElementById('el');
-  let last = +el.value;
-  el.addEventListener('input', () => {
-    let v = +el.value;
-    if (S.elOn && S.elOn.size && !S.elOn.has(v)) {
-      const dir = v >= last ? 1 : -1;
-      let k = v;
-      for (let i = 0; i < S.nelem; i++) { k += dir; if (k < 0 || k >= S.nelem) { k = last; break; } if (S.elOn.has(k)) break; }
-      v = k; el.value = v; syncLabels(); draw();
-    }
-    last = v;
+  // TWO LINKED ELEMENT SLIDERS. `el` walks every antenna, toggled-off ones included, so a
+  // reader can still go and look at the ones they masked out of the sum; `elon` walks only
+  // the enabled ones. Moving either moves the other. When `el` sits on a masked antenna the
+  // enabled-only slider has nothing to point at: it is greyed (not disabled) and parks at the
+  // nearest enabled one so the next nudge starts from somewhere sensible.
+  const elon = document.getElementById('elon');
+  elon.addEventListener('input', () => {
+    const on = enabledList();
+    if (!on.length) return;
+    document.getElementById('el').value = on[Math.min(+elon.value, on.length - 1)];
+    syncLabels(); draw();
   });
   document.getElementById('cmapbtn').addEventListener('click', e => {
     S.cmap = (S.cmap + 1) % CMAPS.length;
@@ -385,14 +429,11 @@ function syncLabels() {
   const elOn = !document.getElementById('elsum').checked;
   document.getElementById('sub').disabled = !subOn;
   document.getElementById('el').disabled = !elOn;
-  const manA = S.cache.get(S.days[a]);
-  const cA = manA && manA.chains.find(c => S.sel.has(c.chain));
-  const si = Math.min(+document.getElementById('sub').value, cA ? cA.n_sub - 1 : 0);
-  const fidAt = cA && cA.freq_ids[si] && cA.freq_ids[si][0] != null ? cA.freq_ids[si] : null;
+  const si = Math.min(+document.getElementById('sub').value, Math.max(0, S.axis.length - 1));
+  const fidAt = S.axis[si];
   document.getElementById('sublab').textContent =
-    subOn ? (fidAt ? `${fidAt[0]}${fidAt[1] !== fidAt[0] ? '..' + fidAt[1] : ''} ` +
-                     `(${(fidAt[0] * 0.1953125).toFixed(2)} MHz)` : '#' + si)
-          : 'all (' + (cA ? cA.n_sub : S.nsub) + ')';
+    subOn ? (fidAt != null ? `${fidAt} (${(fidAt * 0.1953125).toFixed(2)} MHz)` : '—')
+          : `all (${S.axis.length})`;
   document.getElementById('drlab').textContent = document.getElementById('dr').value + ' dB';
   document.getElementById('mnlab').textContent = document.getElementById('mn').value;
   // Elements 4, 5, 12, 13 are dark: their LNAs are broken and are not coming back. Not a
@@ -404,20 +445,46 @@ function syncLabels() {
     elOn
       ? (DARK.includes(one) ? `element ${one} is DARK (broken LNA) — expect an empty map` : '')
       : `${nOn} of ${S.nelem} elements in the sum` + (nOn < S.nelem ? ' (toggle below)' : '');
+  const masked = elOn && S.elOn && !S.elOn.has(one);
   document.getElementById('ellab').textContent =
-    elOn ? '#' + one : `all (${nOn})`;
-  for (const b of document.querySelectorAll('#elgrid button'))
+    elOn ? '#' + one + (masked ? ' (masked out of the sum)' : '') : `all (${nOn})`;
+  // Keep the enabled-only slider in step with the full one.
+  const on = enabledList();
+  const elonEl = document.getElementById('elon');
+  elonEl.max = Math.max(0, on.length - 1);
+  elonEl.disabled = !elOn || !on.length;
+  elonEl.classList.toggle('greyed', !!masked);
+  if (elOn && on.length) {
+    let k = on.indexOf(one);
+    if (k < 0) {   // masked: park at the nearest enabled antenna
+      k = 0;
+      for (let i = 0; i < on.length; i++) if (Math.abs(on[i] - one) < Math.abs(on[k] - one)) k = i;
+    }
+    elonEl.value = k;
+    document.getElementById('elonlab').textContent =
+      (masked ? 'nearest enabled #' : '#') + on[k] + ` (${k + 1} of ${on.length})`;
+  } else document.getElementById('elonlab').textContent = on.length ? `${on.length} enabled` : 'none enabled';
+  for (const b of document.querySelectorAll('#elgrid button')) {
     b.classList.toggle('on', !S.elOn || S.elOn.has(+b.dataset.e));
+    b.classList.toggle('cur', elOn && +b.dataset.e === one);
+  }
   // The axis is the ABSOLUTE F-engine channel (0.1953125 MHz each), the union over every
-  // instance of the fleet -- never an instance's local bin index, which means nothing
-  // physical (bin 0 of cx19/gnss0 is 5972, bin 0 of cx27/gnss1 is 5976).
-  const c = cA;
-  const fid = c && c.freq_ids[0][0] != null
-    ? `freq_id ${c.freq_ids[0][0]}..${c.freq_ids[c.n_sub - 1][1]} ` +
-      `(${(c.freq_ids[0][0] * 0.1953125).toFixed(1)}–${(c.freq_ids[c.n_sub - 1][1] * 0.1953125).toFixed(1)} MHz)`
-    : 'freq ids missing in this export — re-export';
-  document.getElementById('subinfo').textContent =
-    c ? `${c.n_sub} channel${c.n_sub === 1 ? '' : 's'}: ${fid}` : '';
+  // instance of the fleet AND over the selected chains -- never an instance's local bin
+  // index, which means nothing physical (bin 0 of cx19/gnss0 is 5972, bin 0 of cx27/gnss1
+  // is 5976). Chains that share a channel (l5/e5a/b2a) are averaged there; chains in other
+  // bands (e5b, b3i, e6, l2c) simply extend the axis.
+  const A = S.axis;
+  let info = '';
+  if (A.length) {
+    const cov = new Map();   // channel -> number of selected chains covering it
+    for (const f of A) cov.set(f, chainsAt(f).length);
+    const multi = [...cov.values()].filter(n => n > 1).length;
+    info = `${A.length} channel${A.length === 1 ? '' : 's'}: freq_id ${A[0]}..${A[A.length - 1]} ` +
+      `(${(A[0] * 0.1953125).toFixed(1)}–${(A[A.length - 1] * 0.1953125).toFixed(1)} MHz)` +
+      (S.sel.size > 1 ? ` · ${multi} covered by >1 chain (averaged, n-weighted)` : '');
+    if (subOn && fidAt != null) info += ` · at ${fidAt}: ${chainsAt(fidAt).join(' + ') || '—'}`;
+  } else if (S.sel.size) info = 'freq ids missing in this export — re-export';
+  document.getElementById('subinfo').textContent = info;
 }
 
 async function ensureDaysLoaded() {
@@ -438,6 +505,7 @@ async function ensureDaysLoaded() {
     }
   } catch (e) { st.innerHTML = `<div class="note bad">${e.message}</div>`; throw e; }
   st.textContent = '';
+  rebuildAxis();
 }
 
 async function boot() {
