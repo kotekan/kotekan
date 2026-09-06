@@ -40,6 +40,21 @@ TWO SOURCES, ONE OUTPUT FORMAT
         A row with n_reanchor > 0 had its phase reference reset MID-WINDOW -- no constant can
         undo that, so such rows are unusable for anything coherent, though their `incoh` is
         still a perfectly good beam sample.
+  --source l0    <archive>/<sender>/<YYYYMMDD>.h5   (archive = .../gnss_cube/l0/<pointing>)
+        The recorded beam-cube archive (docs/CHORD_CUBE_ARCHIVE.md): the same rows as the
+        `cube` jsonl, pushed by every instance and folded on cf06 -- 89 sender files per day,
+        ~11 per chain (6 nodes x 2 GPUs). A rung directory (.../rung12/<pointing>) is accepted
+        too: same row schema, 12 or 60 windows pre-summed, ~10x faster to build from.
+        ⚠️ THE ARCHIVE ROOT IS A POINTING. One master cube is one pointing by construction:
+        the path names it, the attrs confirm it, and two pointings in one build are refused.
+        ⚠️ NO PROBE FLAG TRAVELS IN THE CUBE FRAME, so the pedestal comes from the rows
+        themselves: per (sender, subband, element, 5 min) the MEDIAN mean power over every
+        slot. It is the pedestal because the beam is narrow: a satellite is inside the main
+        lobe for minutes of a pass and in sidelobes 10-20 dB under the noise for the rest, so
+        11 of the 12 slots are noise at any moment and the median never sees the bright one.
+        (A probe's incoh is the same noise; this is the same estimator with a different
+        selection rule.) The bias from many faint sidelobe sats is a few percent of the
+        pedestal -- far under the ~20 dB the map spans.
 
 ⚠️ THE RAILING VETO IS CROSS-CHAIN, AND THAT IS THE POINT. A satellite within ~5 deg of
 boresight rails the 4+4b quantiser for EVERY chain at once -- they all ride the same nibbles.
@@ -76,6 +91,20 @@ GEOM_BIN_S = 60.0         # BRDC evaluated once per (prn, minute), interpolation
 # frequency: naming a band by nearest carrier is what invented a "GLONASS L3" we do not fly.
 CHAIN_SYS = {"gps_l5": "G", "gps_l2c": "G", "gal_e5a": "E", "gal_e5b": "E", "gal_e6": "E",
              "bds_b2a": "C", "bds_b2b": "C", "bds_b3i": "C"}
+
+# Cube-archive sender ("cx19_gnss0_b2b_n2assemble") -> chain. The band token is the stage's
+# infix; the GPS L5 stage carries none. DECLARED, like CHAIN_SYS: a sender with an unlisted
+# infix is skipped loudly, never guessed.
+SENDER_BAND_CHAIN = {"": "gps_l5", "l2c": "gps_l2c", "e5a": "gal_e5a", "e5b": "gal_e5b",
+                     "e6": "gal_e6", "b2a": "bds_b2a", "b2b": "bds_b2b", "b3i": "bds_b3i"}
+
+
+def sender_chain(sender):
+    parts = sender.split("_")
+    if len(parts) < 3 or not parts[-1].startswith("n2assemble"):
+        return None
+    band = parts[2] if len(parts) >= 4 else ""
+    return SENDER_BAND_CHAIN.get(band)
 
 
 # ─────────────────────────────────────────────────────────────────────────────────────────
@@ -219,6 +248,30 @@ class CubeAccum:
         c[0][live] += 1
         c[1][live] += power[live]
         c[2][live] += power[live] ** 2
+
+    def add_bulk(self, sub, pix, power, live):
+        """Vectorised add: sub[K], pix[K] per sample, power[K,E], live[K,E]."""
+        if len(pix) == 0:
+            return
+        key = np.stack([np.asarray(sub, np.int64), np.asarray(pix, np.int64)], 1)
+        uk, inv = np.unique(key, axis=0, return_inverse=True)
+        inv = inv.ravel()
+        pw = np.where(live, power, 0.0)
+        n = np.zeros((len(uk), self.n_elem), np.uint32)
+        s1 = np.zeros((len(uk), self.n_elem))
+        s2 = np.zeros((len(uk), self.n_elem))
+        np.add.at(n, inv, live.astype(np.uint32))
+        np.add.at(s1, inv, pw)
+        np.add.at(s2, inv, pw ** 2)
+        self.n_sub = max(self.n_sub, int(uk[:, 0].max()) + 1)
+        for j, (sb, px) in enumerate(uk):
+            c = self.cells.get((int(sb), int(px)))
+            if c is None:
+                self.cells[(int(sb), int(px))] = [n[j], s1[j], s2[j]]
+            else:
+                c[0] += n[j]
+                c[1] += s1[j]
+                c[2] += s2[j]
 
     def arrays(self):
         """-> (pix[P], n[S,E,P], s1[S,E,P], s2[S,E,P]) with pix sorted and unique."""
@@ -371,7 +424,144 @@ def build_day(args, chain, paths, day_unix, geom):
     return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids[:n.shape[0]])
 
 
+def _h5_rows(path):
+    """One L0 or rung file -> (attrs, t[R], prn[R], P[R,S,E] mean power (nan: bin unused),
+    reanchored[R], freq_ids[S]).
+
+    `incoh/w` is the mean |A_e|^2 per (record, channel) term in BOTH formats: a rung row is
+    the window sums added, and a ratio of sums is still a mean. Time is the window's UTC
+    (L0: through the window table, exact -- every row idx is a window idx) or the block's
+    mid-point (rung).
+    """
+    import h5py
+    with h5py.File(path, "r") as f:
+        a = dict(f.attrs)
+        fmt = a.get("format")
+        prn = f["rows/prn"][:].astype(int)
+        w = f["rows/w"][:].astype(np.float64)
+        nre = f["rows/n_reanchor"][:]
+        incoh = f["rows/incoh"][:].astype(np.float64)
+        if fmt == "gnss_cube_l0":
+            idx = f["rows/idx"][:]
+            widx, wutc = f["win/idx"][:], f["win/utc"][:]
+            o = np.argsort(widx)
+            t = np.interp(idx, widx[o], wutc[o])
+            lo, hi = f["win/freq_id_lo"][0], f["win/freq_id_hi"][0]
+        elif fmt == "gnss_cube_rung":
+            t = 0.5 * (f["rows/utc0"][:] + f["rows/utc1"][:])
+            lo = a.get("freq_id_lo")
+            hi = a.get("freq_id_hi")
+        else:
+            raise SystemExit("%s: not a cube archive file (format=%r)" % (path, fmt))
+    P = np.where((w > 0.0)[:, :, None], incoh / np.maximum(w, 1e-30)[:, :, None], np.nan)
+    if lo is not None:
+        freq_ids = [[int(l), int(h)] for l, h in zip(lo, hi)]
+    else:
+        freq_ids = [[None, None]] * P.shape[1]
+    return a, t, prn, P, nre, freq_ids
+
+
+def build_day_h5(args, chain, paths, day_unix, geom):
+    """Master cube for one chain from cube-archive files (L0 or rung), one sender per file."""
+    tmin, tmax = day_unix, day_unix + 86400.0
+    sys_ = CHAIN_SYS[chain]
+    acc, freq_ids, pointing = None, None, None
+    stats = defaultdict(int)
+    for path in paths:
+        a, t, prn, P, nre, fids = _h5_rows(path)
+        pt = str(a.get("pointing"))
+        if pointing is None:
+            pointing = pt
+        elif pt != pointing:
+            sys.exit("%s: pointing %s in a build of %s -- one master is ONE pointing"
+                     % (path, pt, pointing))
+        R, S, E = P.shape
+        if acc is None:
+            acc = CubeAccum(args.nside, E)
+            freq_ids = fids
+        inday = (t >= tmin) & (t < tmax)
+        stats["rows"] += int(inday.sum())
+        # -- pedestal: per (5-min, subband, element) median over every slot (see docstring) ----
+        tb = ((t - day_unix) // FLOOR_BIN_S).astype(int)
+        floor = np.full_like(P, np.nan)
+        for b in np.unique(tb[inday]):
+            m = (tb == b) & inday
+            with np.errstate(all="ignore"):
+                floor[m] = np.nanmedian(P[m], axis=0)[None]
+        # -- geometry per (prn, minute); veto per minute -------------------------------------
+        minute = (t // GEOM_BIN_S).astype(int)
+        keys = np.stack([prn, minute], 1)
+        uk, inv = np.unique(keys, axis=0, return_inverse=True)
+        inv = inv.ravel()
+        el = np.full(len(uk), np.nan)
+        az = np.full(len(uk), np.nan)
+        rng = np.full(len(uk), np.nan)
+        vet = np.zeros(len(uk), bool)
+        for j, (pn, mn) in enumerate(uk):
+            tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
+            vet[j] = geom.vetoed(tt)
+            g = geom.at(sys_, int(pn), tt)
+            if g and g[0] is not None:
+                el[j], az[j], rng[j] = g
+        vet_r, el_r, az_r, rng_r = vet[inv], el[inv], az[inv], rng[inv]
+        stats["vetoed"] += int((inday & vet_r).sum())
+        stats["nogeo"] += int((inday & ~vet_r & np.isnan(el_r)).sum())
+        ok = inday & ~vet_r & ~np.isnan(el_r)
+        stats["low"] += int((ok & (el_r <= args.mask_deg)).sum())
+        ok &= el_r > args.mask_deg
+        if not ok.any():
+            continue
+        pix = azel_to_pix(args.nside, az_r[ok], el_r[ok]).astype(np.int64)
+        rscale = np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
+        Pk, Fk = P[ok], floor[ok]
+        # Debias in POWER; DROP a sample under its own pedestal (never clamp -- see build_day).
+        # ⚠️ IN UNITS OF THE PEDESTAL. The cube's |A_e|^2 is normalised by the channel's own
+        # replica energy (A = G/E_c), so a bin's scale is 1/E_c^2 -- the BPSK(10) main lobe
+        # gives the centre channels ~20 dB less pedestal than the edge ones in these units,
+        # and a raw sum over subbands is then just the edge bins. Measured 2026-09-05: PRN 28
+        # at 52 deg off axis was +7 dB per centre bin and "0 dB" in the raw 7-bin sum. Dividing
+        # by each (bin, element)'s own pedestal makes every cell "received power per element
+        # over that element's noise in that channel": dimensionless, comparable across bins,
+        # elements and chains, and what a sum over any axis in the viewer can mean.
+        # --unbiased keeps the samples UNDER the pedestal too: (P-F)/F averaged with its sign
+        # is an unbiased pattern estimate whose noise averages DOWN with samples, where the
+        # drop leaves a positive floor of ~0.4 sigma per cell (the half-normal mean) that no
+        # amount of data lowers. The drop is the elem-archive convention and the default; the
+        # unbiased map can go negative in a cell, which the viewer shows as "below floor".
+        with np.errstate(all="ignore"):
+            valid = (Pk > 0.0) & (Fk > 0.0)
+            live = valid if args.unbiased else (valid & (Pk > Fk))
+            pw = np.where(live, (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None], 0.0)
+        for sub in range(S):
+            lv = live[:, sub, :]
+            enough = lv.sum(1) >= MIN_ELEMS
+            stats["thin"] += int((~enough & (lv.sum(1) > 0)).sum())
+            if enough.any():
+                acc.add_bulk(np.full(int(enough.sum()), sub), pix[enough], pw[enough, sub, :],
+                             lv[enough])
+                stats["cells"] += int(enough.sum())
+        print("    %s: %d rows, %d used" % (os.path.basename(os.path.dirname(path)),
+                                            int(inday.sum()), int(ok.sum())))
+    if acc is None or not acc.cells:
+        print("  %s: no usable rows (%s)" % (chain, dict(stats)))
+        return None
+    pix, n, s1, s2 = acc.arrays()
+    print("  %s: %d row(s) -> %d subband(s) x %d element(s) x %d pixel(s); "
+          "vetoed %d, no-geom %d, below-mask %d, thin %d; pointing %s"
+          % (chain, stats["rows"], n.shape[0], n.shape[1], len(pix),
+             stats["vetoed"], stats["nogeo"], stats["low"], stats["thin"], pointing))
+    return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids[:n.shape[0]], pointing=pointing,
+                units="pedestal" + ("_unbiased" if args.unbiased else ""))
+
+
 def find_inputs(args, chain, daystr):
+    if args.source == "l0":
+        import glob
+        out = []
+        for p in sorted(glob.glob(os.path.join(args.archive, "*", daystr + ".h5"))):
+            if sender_chain(os.path.basename(os.path.dirname(p))) == chain:
+                out.append(p)
+        return out
     pat = ("cube_%s_%s.jsonl" if args.source == "cube" else "elem_%s_%s.jsonl") % (chain, daystr)
     p = os.path.join(args.archive, pat)
     return [p] if os.path.exists(p) else []
@@ -395,9 +585,17 @@ def cmd_build(args):
                "chains": []}
         blobs = {}
         for chain, paths in present:
-            r = build_day(args, chain, paths, day_unix, geom)
+            if args.source == "l0":
+                r = build_day_h5(args, chain, paths, day_unix, geom)
+            else:
+                r = build_day(args, chain, paths, day_unix, geom)
             if r is None:
                 continue
+            out["units"] = r.get("units", "power")
+            if r.get("pointing"):
+                if out.get("pointing", r["pointing"]) != r["pointing"]:
+                    sys.exit("two pointings in one build: %s / %s" % (out["pointing"], r["pointing"]))
+                out["pointing"] = r["pointing"]
             i = len(out["chains"])
             out["chains"].append({"chain": chain, "sys": CHAIN_SYS[chain],
                                   "n_sub": int(r["n"].shape[0]),
@@ -477,6 +675,7 @@ def cmd_export(args):
         with open(binp, "wb") as fh:
             fh.write(blob)
         man = {"day": day, "nside": nside, "source": meta["source"],
+               "pointing": meta.get("pointing"), "units": meta.get("units", "power"),
                "veto_deg": meta["veto_deg"], "range_norm": meta["range_norm"],
                "chains": chains,
                # Byte offsets so the viewer slices one ArrayBuffer instead of parsing.
@@ -623,8 +822,10 @@ def main():
     b = sub.add_parser("build", help="archives -> master cube per day")
     b.add_argument("--days", nargs="+", required=True, help="YYYYMMDD")
     b.add_argument("--chains", nargs="*", help="default: every chain with an archive")
-    b.add_argument("--source", choices=["elem", "cube"], default="elem")
-    b.add_argument("--archive", default="/home/kvand/gnss/fixtures/obs")
+    b.add_argument("--source", choices=["elem", "cube", "l0"], default="elem")
+    b.add_argument("--archive", default=None,
+                   help="elem/cube: fixtures/obs; l0: a POINTING dir of the cube archive, e.g. "
+                        "/mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73 (or rung12/...)")
     b.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube")
     b.add_argument("--nside", type=int, default=64)
     b.add_argument("--veto-deg", type=float, default=5.0,
@@ -632,6 +833,8 @@ def main():
                         "contaminated -- quote it as a lower bound if you do)")
     b.add_argument("--mask-deg", type=float, default=0.0)
     b.add_argument("--no-range-norm", action="store_true")
+    b.add_argument("--unbiased", action="store_true",
+                   help="l0: keep below-pedestal samples (signed debias) instead of dropping them")
     b.set_defaults(func=cmd_build)
 
     e = sub.add_parser("export", help="master cubes -> browser cubes + index.json")
@@ -646,6 +849,9 @@ def main():
     l.set_defaults(func=cmd_ls)
 
     args = ap.parse_args()
+    if getattr(args, "archive", 0) is None:
+        args.archive = ("/mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73" if args.source == "l0"
+                        else "/home/kvand/gnss/fixtures/obs")
     args.func(args)
 
 

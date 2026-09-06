@@ -11,7 +11,7 @@
 
       cd /home/kvand/gnss/fixtures/beamcube/web
       ln -sf /home/kvand/gnss/kotekan/python/scripts/gnss/beam_cube_viewer/index.html .
-      python3 -m http.server 877          # then open http://<host>:877/
+      python3 -m http.server 8877         # then open http://<host>:8877/  (cf06: scripts/gnss/beamview_up.sh)
 
   file:// will NOT work: fetching the .bin is a cross-origin read there and the browser
   blocks it. That failure looks exactly like a missing file, so it is called out here rather

@@ -438,18 +438,26 @@ def cmd_ls(args):
             d["gaps"] = {(int(d["idx"][j]), int(d["idx"][j + 1])): int(d["dropped"][j + 1] - d["dropped"][j])
                          for j in np.nonzero(dd > 1)[0]}
             info.append((p, d))
-    # host-wide = every other sender file of that host has a gap at the same place (+-2 windows:
-    # senders close their last window a second apart, so the edges never match exactly)
+    # host-wide = every other sender file of that host has a gap at the same place. The edges never
+    # match exactly: senders close their last window a second apart, and the GPU-1 stages come up
+    # ~5 windows after GPU-0 at a restart -- so two gaps agree when they OVERLAP by >= 80% of the
+    # longer one (09-06 cx19 restart: gnss0 77 windows, gnss1 82-83, offset 1-2).
+    # Only files whose window range COVERS the gap get a vote -- ls over several days lists
+    # files that never saw that hour, and a file with no gap because it has no such windows is
+    # not evidence that the sender was fine.
     by_host = {}
     for p, d in info:
         if d:
-            by_host.setdefault(d["host"], []).append(list(d["gaps"]))
+            by_host.setdefault(d["host"], []).append((int(d["idx"][0]), int(d["idx"][-1]), list(d["gaps"])))
 
     def is_hostwide(host, a, b):
-        others = by_host.get(host, [])
+        others = [g for i0, i1, g in by_host.get(host, []) if i0 <= a and i1 >= b]
         if len(others) < 2:
             return False
-        return all(any(abs(a2 - a) <= 2 and abs(b2 - b) <= 2 for a2, b2 in g) for g in others)
+        def same(a2, b2):
+            ov = min(b, b2) - max(a, a2)
+            return ov >= 0.8 * max(b - a, b2 - a2)
+        return all(any(same(a2, b2) for a2, b2 in g) for g in others)
 
     print(f"{'file':<58} {'wins':>6} {'span':>6} {'holes':>5} {'sdrop':>5} {'rows':>8} "
           f"{'live/w':>6} {'MB':>7}  first .. last (UTC)")
@@ -564,6 +572,10 @@ def cmd_rung(args):
                 g.attrs["rung_n"] = n
                 g.attrs["ref_elem"] = ref
                 g.attrs["source_l0"] = p
+                # The covering channels, from the L0 window table (constant over a file unless
+                # the F-engine was reconfigured mid-day): a rung has no window table of its own.
+                g.attrs["freq_id_lo"] = f["win/freq_id_lo"][0]
+                g.attrs["freq_id_hi"] = f["win/freq_id_hi"][0]
                 g.attrs["created"] = iso(time.time())
                 g.attrs["units"] = ("SUMS over the block's windows of the L0 sums (float64); cohpow = "
                                     "SUM |coh|^2 per window; cohref = SUM coh[e]*conj(coh[ref_elem]) "

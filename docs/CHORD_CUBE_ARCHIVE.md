@@ -86,13 +86,17 @@ time0 for the 2026-09-05 archive: **1788541059.000002870** s (frame0_nano 116922
 
 - **sender dropped N** — the frame's cumulative `dropped` rose across the gap: the assembler's
   output buffer was full, the tracker outran the archive. The node's fault; sized exactly.
-- **host-wide (node down/restart)** — every sender on that host has the same gap (±2 windows
-  at the edges): a node_up (≈75 windows), a fleet cycle, a wedge. Not a recording-chain loss.
+- **host-wide (node down/restart)** — every OTHER sender file on that host that covers the gap
+  has a gap overlapping it by ≥80% of the longer one: a node_up (≈75 windows), a fleet cycle, a
+  wedge. Not a recording-chain loss. (The first rule, "same gap ±2 windows", called every one
+  of 2354 real host-wide holes DOWNSTREAM on 09-06: GPU 1's instances come up ~5 windows after
+  GPU 0's, and a day file that ends before the gap has no vote — only files COVERING [a, b] do.)
 - **DOWNSTREAM (transport/archiver)** — one sender, counter flat: `bufferSend drop_frames`, the
   network, or the archiver. The recording chain's fault and the only one worth chasing; `ls`
   prints these even without `--gaps`.
 
-09-05 state after the first pass: 1156 holes, all host-wide (cx19's 15 senders × 76–77 windows
+09-05/06 state (13:20 UTC 09-06): 89/89 senders, 2354 holes, all host-wide (two cx19 restarts:
+17:44 09-05 fleet cycle, 06:12 09-06), 0 sender drops, 0 downstream. First pass: 1156 holes, all host-wide (cx19's 15 senders × 76–77 windows
 at 17:44:14 — the fleet cycle), 0 sender drops, 0 downstream.
 
 ## 6. L0 / rung contents
@@ -133,3 +137,34 @@ v3-sized buffer losing every other window). The v3 binary refuses a v2 config lo
 
 Offline gate for the code itself: `scripts/gnss/cube_e2e.py --binary <nodpdk binary>` on cf06
 (PASS on the v3 binary; on the v2 binary it fails on version, utc0 and the lost windows).
+
+## 8. The map builder (P5): `gnss_beam_cube.py build --source l0`
+
+The healpix builder reads the archive directly — L0 or, ~10× faster and identical in result,
+`rung12/` (each 12-window block is one sample). `--archive` is a POINTING directory
+(`.../rung12/p0_dec40p73`); it refuses to mix two. Per (sender file, 5-min, bin, element) it
+takes the **median over all slots** as the pedestal F (11 of 12 slots are noise at any moment,
+and the cube frame carries no probe flag), then accumulates `(P − F)/F` — **pedestal units** —
+into the (subband, pixel, element) cells. Samples below F are dropped by default (the elem
+builder's convention; leaves a ~0.4σ floor), `--unbiased` keeps them signed.
+
+⚠️⚠️ **THE BINS ARE NOT IN A COMMON UNIT.** `incoh` is Σ|G/E_c|², so each bin's scale is
+∝ 1/E_c² of its own channel: for a BPSK(10) signal the centre channels sit ~20 dB below the
+edge channels *in these units*, at equal sky power. A raw sum over bins is just the edge bins
+— it put a 21 dB "peak" at the horizon and made five instances look "per-instance bright"
+(they were the 6-bin vs 7-bin channel subsets, not a bug). Normalise per bin FIRST (P/F), sum
+after. The same applies to anything downstream that reads `incoh`/`coh` across bins.
+
+Result on 09-05 and 09-06, every chain: peak 4–8° off axis at +15–21 dB over the >15° median;
+the far field is real spillover (PRN 28 at 52° off axis is +7 dB in a single centre bin), not
+floor. Timing on cf06: ~15 s/chain from rung12, 80 s for a full 13 h day of 8 chains.
+
+Coherence check: `|coh|²/(w·incoh)` ≈ 1/w (0.010) for noise; near boresight at +9.6 dB it
+measures 0.006 — **the per-window coherent sum WINDS** (residual carrier > 1 turn/s within the
+~1 s window), so the cube's coherent arc is currently incoherent and `incoh` is the beam. A
+usable arc needs a per-record (10 ms) rotation with the tracked carrier before the window sum.
+
+Viewer: `gnss_beam_cube.py export <masters> --nside 32` → `fixtures/beamcube/web/`, served by
+`scripts/gnss/beamview_up.sh` on cf06 (http://cf06:8877/, port 877 is privileged). Every day in
+one `index.json` must share `units` and `pointing`; the page refuses to sum a day that differs
+and names it. The 08-25..09-02 elem-archive export (raw power units) lives in `web_elem/`.

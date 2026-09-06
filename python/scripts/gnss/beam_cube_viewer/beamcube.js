@@ -114,10 +114,15 @@ function collapse() {
   const subOne = +document.getElementById('sub').value;
   const elOne = +document.getElementById('el').value;
   const [i0, i1] = dayRange();
+  const ref = S.cache.get(S.days[i0]);
 
   for (let d = i0; d <= i1; d++) {
     const man = S.cache.get(S.days[d]);
     if (!man) continue;
+    // NEVER SUM TWO CURRENCIES. An elem-archive day is in raw power, a cube day is in
+    // pedestal units ((P-F)/F), and a repoint is a different beam altogether. A day whose
+    // units or pointing differ from the first selected day is skipped, and syncLabels says so.
+    if (!sameCurrency(man, ref)) continue;
     for (const c of man.chains) {
       if (!S.sel.has(c.chain)) continue;
       const P = c.n_pix;
@@ -142,6 +147,9 @@ function collapse() {
   }
   return acc;
 }
+
+const sameCurrency = (a, b) =>
+  (a.units || 'power') === (b.units || 'power') && (a.pointing || null) === (b.pointing || null);
 
 const dayRange = () => {
   const a = +document.getElementById('d0').value, b = +document.getElementById('d1').value;
@@ -327,8 +335,16 @@ function syncLabels() {
   const [a, b] = dayRange();
   document.getElementById('d0lab').textContent = S.days[a] || '—';
   document.getElementById('d1lab').textContent = S.days[b] || '—';
+  const ref = S.cache.get(S.days[a]);
+  let skipped = 0;
+  for (let i = a; i <= b; i++) {
+    const m = S.cache.get(S.days[i]);
+    if (m && ref && !sameCurrency(m, ref)) skipped++;
+  }
   document.getElementById('dayinfo').textContent =
-    `${b - a + 1} of ${S.days.length} day(s) loaded`;
+    `${b - a + 1} of ${S.days.length} day(s) loaded`
+    + (ref ? ` · ${ref.units || 'power'} units · pointing ${ref.pointing || 'unknown'}` : '')
+    + (skipped ? ` · ${skipped} day(s) SKIPPED: different units or pointing than ${S.days[a]}` : '');
   const subOn = !document.getElementById('subsum').checked;
   const elOn = !document.getElementById('elsum').checked;
   document.getElementById('sub').disabled = !subOn;
@@ -378,7 +394,7 @@ async function boot() {
       `If the page is open as <b>file://</b> that is expected — the browser blocks the ` +
       `cross-origin read and it looks identical to a missing file. Serve the directory ` +
       `instead:<br><br><code>cd /home/kvand/gnss/fixtures/beamcube/web<br>` +
-      `python3 -m http.server 877</code></div>`;
+      `python3 -m http.server 8877</code></div>`;
     return;
   }
   S.days = S.index.days.map(d => d.day);

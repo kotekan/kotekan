@@ -117,7 +117,9 @@ Two effects at once, pushing opposite ways:
 `gnss_beam_veto.py` drops every row in an epoch whose closest satellite (pooled over **all**
 chains) is inside `--deg`. **The pooling is the point**: a per-chain veto would clean the chain
 carrying the bright satellite and leave the other four contaminated *while they look like
-clean controls*. At 5° it removes ~4.7% of epochs.
+clean controls*. At 5° it removes **18.8% of epochs** on the 09-02 elem archive (the 4.7%
+quoted here earlier was a per-chain count; the pooled veto is the one that ships) and 13–14% of
+minutes on the 09-05/09-06 cube days.
 
 ⚠️ Vetoing removes the main lobe itself. That is the honest outcome, not a bug: **the main
 lobe cannot be measured this way because the main lobe is what breaks the measurement.** Quote
@@ -170,6 +172,12 @@ across. Never quote a fitted FWHM from this without saying so.
 
 ## 7. Next steps
 
+* **The beam cube is the data source now** (2026-09-05 on): `gnss_beam_cube.py build --source l0`
+  reads the recorded cube archive (`docs/CHORD_CUBE_ARCHIVE.md` §8) — 32 elements × 7 subbands per
+  chain, all 8 chains, every second — and reproduces the §6 result (peak 4–8° off axis, +15–21 dB
+  over the >15° median) in ~15 s per chain from the 12-window rungs. The elem-archive path below
+  stays for the 08-25..09-02 days only. Viewer: `ssh cf06 scripts/gnss/beamview_up.sh` →
+  http://cf06:8877/.
 * **More nights**: pure addition, no reprocessing. The obvious first extension.
 * **Phased-array map**: apply the elemcal gains before summing `u`, turning the §6 sanity
   check into a real coherent-beam map instead of a random-phase floor.
