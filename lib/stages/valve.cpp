@@ -1,5 +1,7 @@
 #include "valve.hpp"
 
+#include <chrono>
+
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
@@ -55,6 +57,7 @@ void Valve::main_thread() {
     auto& passed_total =
         Metrics::instance().add_counter("kotekan_valve_passed_frames_total", unique_name);
     uint64_t n_dropped = 0;
+    auto last_warn = std::chrono::steady_clock::now();
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id
@@ -77,14 +80,19 @@ void Valve::main_thread() {
             _buf_out->mark_frame_full(unique_name, frame_id_out++);
             passed_total.inc();
         } else {
-            // Rate-limited: one line per frame buried the 2026-07-27 soak log under 4642
-            // WARNs, which is how a real signal becomes noise nobody greps for. The ring
-            // frame id was never the useful number anyway -- the RUNNING TOTAL is.
+            // Rate-limited IN TIME: one line per frame buried the 2026-07-27 soak log under
+            // 4642 WARNs, and one line per 100 drops still wrote ~2 GB/h per node on
+            // 2026-09-06 (the bf-mask valves drop at ~160k frames/s when the consumer is not
+            // there). A real signal becomes noise nobody greps for either way. The ring frame
+            // id was never the useful number -- the RUNNING TOTAL is, once a minute.
             ++n_dropped;
-            if (n_dropped == 1 || n_dropped % 100 == 0)
+            auto now = std::chrono::steady_clock::now();
+            if (n_dropped == 1 || now - last_warn >= std::chrono::seconds(60)) {
                 WARN("Output buffer full, dropping frames: {:d} lost so far (downstream "
                      "cannot keep up; each loss is a gap the consumer must zero-fill).",
                      n_dropped);
+                last_warn = now;
+            }
             dropped_total.inc();
         }
         _buf_in->mark_frame_empty(unique_name, frame_id_in++);
