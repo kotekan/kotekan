@@ -40,6 +40,7 @@ cube_recv:
 cube_write:
   allow_ndarray: true
   base_dir: /mnt/cs00/data/kvand/gnss_cube/raw
+  continue_numbering: true
   cpu_affinity:
   - 60
   file_ext: raw

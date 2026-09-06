@@ -263,7 +263,10 @@ def raw_files(rawdir, include_open):
         # The newest file is the one rawFileWrite is still appending to; everything before it is
         # closed (900 frames or the writer moved on). A file that is not the newest but is short
         # is a writer that was restarted -- complete as far as it will ever be.
-        files = files[:-1]
+        # NEWEST BY MTIME, NOT BY NAME: a restarted writer may use another file_name prefix
+        # (gnss_cube_r2_* after the 2026-09-06 flip), and the alphabetically last file is then
+        # a closed one that would never be folded while the truly open file got folded early.
+        files.remove(max(files, key=os.path.getmtime))
     return files
 
 

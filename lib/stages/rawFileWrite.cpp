@@ -14,9 +14,11 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <algorithm>  // for max
 #include <atomic>     // for __atomic_base, atomic
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <filesystem> // for directory_iterator (continue_numbering)
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
 #include <stdint.h>   // for uint32_t, int32_t, uint8_t
@@ -45,6 +47,12 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     _exit_after_n_files = config.get_default<uint32_t>(unique_name, "exit_after_n_files", 0);
+    // OPT-IN: start numbering AFTER the highest <file_name>_NNNNNNN.<ext> already in base_dir
+    // instead of at 0. The default restarts at 0 on every process start and open()s WITHOUT
+    // O_TRUNC, so a restarted long-running archiver silently overwrites its own oldest files:
+    // the 2026-09-06 beam-cube archiver flip clobbered raw files 0..90 of the previous day in
+    // four minutes. An archive that is meant to outlive the process must say so here.
+    _continue_numbering = config.get_default<bool>(unique_name, "continue_numbering", false);
     // OPT-IN escape from the NDArray refusal below. The refusal exists because the frame
     // DESCRIPTOR is set dynamically and is not written to the file, so a reader cannot
     // recover the shape from the file alone -- a real hazard for anything self-describing.
@@ -75,6 +83,33 @@ void rawFileWrite::main_thread() {
 
     const int full_path_len = 200;
     char full_path[full_path_len];
+
+    if (_continue_numbering) {
+        // Files are "<prefix>_<7 digits>.<ext>"; resume one past the largest number seen.
+        // Anything else in the directory (other prefixes, other runs) is ignored, so two
+        // writers with different file_name values can share a base_dir.
+        std::string prefix = _prefix_hostname
+                                 ? fmt::format("{:s}_{:s}_", hostname, _file_name)
+                                 : fmt::format("{:s}_", _file_name);
+        std::string suffix = "." + _file_ext;
+        std::error_code ec;
+        for (auto& ent : std::filesystem::directory_iterator(_base_dir, ec)) {
+            std::string n = ent.path().filename().string();
+            if (n.size() != prefix.size() + 7 + suffix.size() || n.compare(0, prefix.size(), prefix)
+                || n.compare(n.size() - suffix.size(), suffix.size(), suffix))
+                continue;
+            std::string digits = n.substr(prefix.size(), 7);
+            if (digits.find_first_not_of("0123456789") != std::string::npos)
+                continue;
+            file_num = std::max(file_num, (uint32_t)std::stoul(digits) + 1);
+        }
+        if (ec)
+            WARN("continue_numbering: cannot list {:s} ({:s}); starting at 0", _base_dir,
+                 ec.message());
+        else
+            INFO("continue_numbering: resuming {:s}NNNNNNN{:s} at {:07d}", prefix, suffix,
+                 file_num);
+    }
 
     auto& write_time_metric =
         Metrics::instance().add_gauge("kotekan_rawfilewrite_write_time_seconds", unique_name);

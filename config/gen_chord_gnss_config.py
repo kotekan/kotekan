@@ -2052,6 +2052,11 @@ def build_cube_archive_instance(cfg, args, port):
             # frame, because one file holds frames from all 90 of them.
             "prefix_hostname": False,
             "num_frames_per_file": args.cube_archive_frames_per_file,
+            # THE ARCHIVE OUTLIVES THE PROCESS. rawFileWrite numbers from 0 at every start and
+            # opens without O_TRUNC; the 2026-09-06 v3 flip restarted the archiver over a
+            # day-old raw tree and overwrote files 0..90 of the previous day in four minutes.
+            # Resume past the highest existing number instead.
+            "continue_numbering": True,
             # The frames carry an NDArray-free fixed layout of our own; write the bytes and let
             # the reader supply the layout, which gnssRecord.hpp fixes by construction.
             "allow_ndarray": True,
