@@ -453,6 +453,18 @@ def _h5_rows(path):
             hi = a.get("freq_id_hi")
         else:
             raise SystemExit("%s: not a cube archive file (format=%r)" % (path, fmt))
+    if fmt == "gnss_cube_rung" and lo is None:
+        # Rungs built before 2026-09-06 carry no freq ids. The L0 file the rung was folded
+        # from sits at the same <pointing>/<sender>/<day>.h5 under l0/; read the ids there
+        # rather than shipping a "null..null" subband axis to the viewer.
+        parts = os.path.normpath(path).split(os.sep)
+        for i, seg in enumerate(parts):
+            if seg.startswith("rung"):
+                l0p = os.sep.join(parts[:i] + ["l0"] + parts[i + 1:])
+                if os.path.exists(l0p):
+                    with h5py.File(l0p, "r") as f0:
+                        lo, hi = f0["win/freq_id_lo"][0], f0["win/freq_id_hi"][0]
+                break
     P = np.where((w > 0.0)[:, :, None], incoh / np.maximum(w, 1e-30)[:, :, None], np.nan)
     if lo is not None:
         freq_ids = [[int(l), int(h)] for l, h in zip(lo, hi)]
@@ -665,10 +677,22 @@ def cmd_export(args):
             az, el = pix_centres(pixu, nside)
             chains.append({"chain": c["chain"], "sys": c["sys"],
                            "n_sub": int(n.shape[0]), "n_elem": int(n.shape[1]),
-                           "n_pix": int(len(pixu)), "freq_ids": sub_fid})
+                           "n_pix": int(len(pixu)), "freq_ids": sub_fid,
+                           "lobe_db": lobe_level_db(n, s1, az, el, args.offset_annulus)})
             arrays.append((pixu.astype(np.int32),
                            np.stack([az, el], 1).astype(np.float32).ravel(),
                            n.astype(np.uint32), s1.astype(np.float32)))
+        # CROSS-CHAIN OFFSETS. Pedestal units remove each bin's own noise-floor scale, but the
+        # sky signal per chain still differs (satellite EIRP per band, code bandwidth caught by
+        # the comb), so two chains are two beams with different zeros. The offset that brings
+        # each chain onto the reference is measured where every chain samples the SAME
+        # structure -- the main-lobe annulus (default 2..12 deg off boresight; the peak ring
+        # sits at 4..8 deg) -- as the median pixel level there. It ships as a DEFAULT the
+        # viewer applies and lets the reader tweak; it is never baked into the cube.
+        ref = next((c for c in chains if c["chain"] == args.offset_ref), chains[0])
+        for c in chains:
+            c["offset_db"] = (round(c["lobe_db"] - ref["lobe_db"], 2)
+                              if c["lobe_db"] is not None and ref["lobe_db"] is not None else 0.0)
         day = meta["day"]
         blob = b"".join(a.tobytes() for arr in arrays for a in arr)
         binp = os.path.join(args.outdir, "cube_%s.bin" % day)
@@ -677,6 +701,7 @@ def cmd_export(args):
         man = {"day": day, "nside": nside, "source": meta["source"],
                "pointing": meta.get("pointing"), "units": meta.get("units", "power"),
                "veto_deg": meta["veto_deg"], "range_norm": meta["range_norm"],
+               "offset_ref": ref["chain"], "offset_annulus_deg": list(args.offset_annulus),
                "chains": chains,
                # Byte offsets so the viewer slices one ArrayBuffer instead of parsing.
                "layout": "per chain, in order: pix int32[n_pix], centre float32[n_pix*2] "
@@ -688,10 +713,24 @@ def cmd_export(args):
                       "chains": [c["chain"] for c in chains]})
         print("%s -> %s (%.2f MB, nside %d, %d chain(s))"
               % (src, binp, len(blob) / 1e6, nside, len(chains)))
+        print("   lobe %.0f..%.0f deg vs %s: %s" % (args.offset_annulus[0], args.offset_annulus[1],
+              ref["chain"], "  ".join("%s %+.1f dB" % (c["chain"], c["offset_db"]) for c in chains)))
     index.sort(key=lambda d: d["day"])
     with open(os.path.join(args.outdir, "index.json"), "w") as fh:
         json.dump({"days": index}, fh)
     print("index.json: %d day(s)" % len(index))
+
+
+def lobe_level_db(n, s1, az, el, annulus, min_n=8):
+    """Median per-pixel mean (all subbands, all elements) inside the off-boresight annulus, in
+    dB. None if fewer than 10 pixels qualify (a chain that never saw the lobe has no offset)."""
+    nn, ss = n.sum((0, 1)), s1.sum((0, 1))
+    th = angsep_deg(az, el, BORE_AZ, BORE_EL)
+    ok = (nn >= min_n) & (th >= annulus[0]) & (th <= annulus[1])
+    if ok.sum() < 10:
+        return None
+    m = np.median(ss[ok] / nn[ok])
+    return float(10.0 * np.log10(m)) if m > 0 else None
 
 
 def pix_centres(pix, nside):
@@ -842,6 +881,10 @@ def main():
     e.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube/web")
     e.add_argument("--nside", type=int, default=16, help="0 = keep the master's")
     e.add_argument("--subbands", type=int, default=8, help="0 = keep every subband")
+    e.add_argument("--offset-ref", default="gps_l5",
+                   help="chain whose main-lobe level defines 0 dB for the per-chain offsets")
+    e.add_argument("--offset-annulus", type=float, nargs=2, default=(2.0, 12.0),
+                   metavar=("LO", "HI"), help="off-boresight degrees where the offsets are measured")
     e.set_defaults(func=cmd_export)
 
     l = sub.add_parser("ls", help="describe master cubes")

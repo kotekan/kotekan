@@ -12,8 +12,12 @@
 const S = {
   index: null, days: [], cache: new Map(),
   chains: [], sel: new Set(), nsub: 1, nelem: 32,
+  elOn: null,            // Set of enabled element indices (the sum AND the scan use it)
+  offset: new Map(),     // chain -> dB offset applied when summing/comparing chains
   cmap: 0, grid: true, hover: null,
 };
+// Elements 4, 5, 12, 13 are dark: their LNAs are broken and are not coming back.
+const DARK = [4, 5, 12, 13];
 const CMAPS = ['turbo', 'viridis', 'magma'];
 const R = 330, CX = 360, CY = 360;   // sky disc, canvas coordinates
 
@@ -130,16 +134,21 @@ function collapse() {
       const s1e = subAll ? c.n_sub - 1 : s0;
       const e0 = elAll ? 0 : Math.min(elOne, c.n_elem - 1);
       const e1 = elAll ? c.n_elem - 1 : e0;
+      // The per-chain offset brings this chain onto the reference chain's zero (manifest
+      // default, reader-tweakable). Applied to the LINEAR accumulator, so the sum over
+      // chains is a weighted mean of aligned patterns, not of raw ones.
+      const gain = Math.pow(10, -(S.offset.get(c.chain) || 0) / 10);
       for (let s = s0; s <= s1e; s++) {
         for (let e = e0; e <= e1; e++) {
+          if (elAll && S.elOn && !S.elOn.has(e)) continue;   // toggled off by the reader
           const base = (s * c.n_elem + e) * P;
           for (let p = 0; p < P; p++) {
             const nn = c.n[base + p];
             if (!nn) continue;                  // absent, not zero power
             const key = c.pix[p];
             const cur = acc.get(key);
-            if (cur) { cur[0] += nn; cur[1] += c.s1[base + p]; }
-            else acc.set(key, [nn, c.s1[base + p]]);
+            if (cur) { cur[0] += nn; cur[1] += gain * c.s1[base + p]; }
+            else acc.set(key, [nn, gain * c.s1[base + p]]);
           }
         }
       }
@@ -289,9 +298,14 @@ function checkBands() {
     el.className = 'note';
     el.innerHTML = `<b>Mixing ${bands.size} bands</b> (${[...bands].join(', ')} MHz). ` +
       `The dB zero is arbitrary <i>per chain</i> and bands differ in gain by ~11 dB, so this ` +
-      `sum is two patterns with different offsets added — the shape is not a better-sampled ` +
-      `beam. Same-band chains (e.g. gps_l5 + gal_e5a + bds_b2a) are the safe coadd.`;
+      `sum is two patterns with different zeros added unless the per-chain offsets (dB boxes) ` +
+      `align them. The defaults align the main-lobe level; judge the far field with them on ` +
+      `and off before trusting a cross-band coadd.`;
   } else el.innerHTML = '';
+}
+
+function saveElOn() {
+  try { localStorage.setItem('beamcube.elOn', JSON.stringify([...S.elOn])); } catch (e) {}
 }
 
 function bindUI() {
@@ -303,6 +317,20 @@ function bindUI() {
       draw();
     });
   }
+  // Scanning single elements SKIPS the toggled-off ones: the slider steps in the direction
+  // it was moved until it lands on an enabled element (or stays put if there is none).
+  const el = document.getElementById('el');
+  let last = +el.value;
+  el.addEventListener('input', () => {
+    let v = +el.value;
+    if (S.elOn && S.elOn.size && !S.elOn.has(v)) {
+      const dir = v >= last ? 1 : -1;
+      let k = v;
+      for (let i = 0; i < S.nelem; i++) { k += dir; if (k < 0 || k >= S.nelem) { k = last; break; } if (S.elOn.has(k)) break; }
+      v = k; el.value = v; syncLabels(); draw();
+    }
+    last = v;
+  });
   document.getElementById('cmapbtn').addEventListener('click', e => {
     S.cmap = (S.cmap + 1) % CMAPS.length;
     e.target.textContent = 'colormap: ' + CMAPS[S.cmap];
@@ -351,26 +379,32 @@ function syncLabels() {
   document.getElementById('el').disabled = !elOn;
   document.getElementById('sublab').textContent =
     subOn ? document.getElementById('sub').value : 'all (' + S.nsub + ')';
-  document.getElementById('ellab').textContent =
-    elOn ? '#' + document.getElementById('el').value : 'all (' + S.nelem + ')';
   document.getElementById('drlab').textContent = document.getElementById('dr').value + ' dB';
   document.getElementById('mnlab').textContent = document.getElementById('mn').value;
   // Elements 4, 5, 12, 13 are dark: their LNAs are broken and are not coming back. Not a
   // fault to chase -- it is the instrument -- so the viewer says so instead of showing an
   // empty sky and letting the reader diagnose it again.
   const one = +document.getElementById('el').value;
+  const nOn = S.elOn ? S.elOn.size : S.nelem;
   document.getElementById('elinfo').textContent =
-    (elOn && [4, 5, 12, 13].includes(one))
-      ? `element ${one} is DARK (broken LNA) — expect an empty map`
-      : '';
+    elOn
+      ? (DARK.includes(one) ? `element ${one} is DARK (broken LNA) — expect an empty map` : '')
+      : `${nOn} of ${S.nelem} elements in the sum` + (nOn < S.nelem ? ' (toggle below)' : '');
+  document.getElementById('ellab').textContent =
+    elOn ? '#' + one : `all (${nOn})`;
+  for (const b of document.querySelectorAll('#elgrid button'))
+    b.classList.toggle('on', !S.elOn || S.elOn.has(+b.dataset.e));
   const man = S.cache.get(S.days[a]);
   const c = man && man.chains.find(c => S.sel.has(c.chain));
+  // Each "subband" is ONE F-engine channel (0.1953125 MHz) of the tracker's sparse comb --
+  // 7 channels 16 freq_ids (3.125 MHz) apart across a 20 MHz band, 1 for the narrow L2C.
+  // The cube inherits the tracker's channel set; ~100 channels would mean tracking them.
+  const fid = c && c.freq_ids[0][0] != null
+    ? `freq_id ${c.freq_ids[0][0]}..${c.freq_ids[c.n_sub - 1][1]}` +
+      (c.n_sub > 1 ? `, step ${c.freq_ids[1][0] - c.freq_ids[0][0]} (×0.1953 MHz)` : '')
+    : 'freq ids missing in this export — rebuild from an archive with freq_id attrs';
   document.getElementById('subinfo').textContent =
-    c ? (c.n_sub === 1
-      ? 'axis is length 1: the node-side beam cube is not armed yet, so the covering '
-        + 'channels are still summed upstream'
-      : `${c.n_sub} subbands, freq_id ${c.freq_ids[0][0]}..${c.freq_ids[c.n_sub - 1][1]}`)
-    : '';
+    c ? `${c.n_sub} channel${c.n_sub === 1 ? '' : 's'} of the tracker comb: ${fid}` : '';
 }
 
 async function ensureDaysLoaded() {
@@ -419,17 +453,64 @@ async function boot() {
   document.getElementById('el').max = S.nelem - 1;
 
   const box = document.getElementById('chains');
+  const offOf = ch => { const m = man.chains.find(c => c.chain === ch); return m ? (m.offset_db || 0) : 0; };
   for (const c of S.chains) {
+    S.offset.set(c, offOf(c));
     const l = document.createElement('label');
-    l.innerHTML = `<input type="checkbox" value="${c}"> ${c} ` +
-      `<span class="muted">${BAND[c] || '?'}</span>`;
-    const cb = l.querySelector('input');
+    l.className = 'chainrow';
+    l.innerHTML = `<input type="checkbox" value="${c}"> <span class="cname">${c}</span>` +
+      `<span class="muted">${BAND[c] || '?'}</span>` +
+      `<input type="number" class="off" step="0.1" value="${offOf(c).toFixed(1)}" ` +
+      `title="offset (dB) subtracted from ${c} before comparing/summing; default = main-lobe ` +
+      `level vs ${man.offset_ref || 'reference'}"><span class="muted">dB</span>`;
+    const cb = l.querySelector('input[type=checkbox]');
     cb.addEventListener('change', () => {
       cb.checked ? S.sel.add(c) : S.sel.delete(c);
       checkBands(); syncLabels(); draw();
     });
+    const off = l.querySelector('input.off');
+    off.addEventListener('input', () => { S.offset.set(c, +off.value || 0); draw(); });
     box.appendChild(l);
   }
+  document.getElementById('offreset').addEventListener('click', () => {
+    for (const l of box.querySelectorAll('label')) {
+      const ch = l.querySelector('input[type=checkbox]').value;
+      l.querySelector('input.off').value = offOf(ch).toFixed(1);
+      S.offset.set(ch, offOf(ch));
+    }
+    draw();
+  });
+  document.getElementById('offzero').addEventListener('click', () => {
+    for (const l of box.querySelectorAll('label')) {
+      l.querySelector('input.off').value = '0.0';
+      S.offset.set(l.querySelector('input[type=checkbox]').value, 0);
+    }
+    draw();
+  });
+  document.getElementById('offinfo').textContent = man.offset_ref
+    ? `defaults: median main-lobe level ${man.offset_annulus_deg[0]}–${man.offset_annulus_deg[1]}° ` +
+      `off boresight, relative to ${man.offset_ref} (day ${S.days[0]})`
+    : 'this export carries no offsets (re-run gnss_beam_cube.py export)';
+
+  // Element toggles: one button per antenna, remembered per browser.
+  try { const sv = JSON.parse(localStorage.getItem('beamcube.elOn')); if (Array.isArray(sv)) S.elOn = new Set(sv); } catch (e) {}
+  if (!S.elOn) S.elOn = new Set([...Array(S.nelem).keys()]);
+  const grid = document.getElementById('elgrid');
+  for (let e = 0; e < S.nelem; e++) {
+    const b = document.createElement('button');
+    b.dataset.e = e; b.textContent = e;
+    if (DARK.includes(e)) b.title = `element ${e}: DARK (broken LNA)`;
+    b.addEventListener('click', () => {
+      S.elOn.has(e) ? S.elOn.delete(e) : S.elOn.add(e);
+      saveElOn(); syncLabels(); draw();
+    });
+    grid.appendChild(b);
+  }
+  const setAll = pred => { S.elOn = new Set([...Array(S.nelem).keys()].filter(pred)); saveElOn(); syncLabels(); draw(); };
+  document.getElementById('elall').addEventListener('click', () => setAll(() => true));
+  document.getElementById('elnone').addEventListener('click', () => setAll(() => false));
+  document.getElementById('ellive').addEventListener('click', () => setAll(e => !DARK.includes(e)));
+  document.getElementById('elinv').addEventListener('click', () => { const was = S.elOn; setAll(e => !was.has(e)); });
   // Default to a single chain: a first view that silently mixed bands would teach the wrong
   // reading of the very axis this page exists to separate.
   const first = box.querySelector('input');

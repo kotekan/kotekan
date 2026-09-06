@@ -164,6 +164,21 @@ measures 0.006 — **the per-window coherent sum WINDS** (residual carrier > 1 t
 ~1 s window), so the cube's coherent arc is currently incoherent and `incoh` is the beam. A
 usable arc needs a per-record (10 ms) rotation with the tracked carrier before the window sum.
 
+**The subband axis is the tracker's comb, not the band.** Each cube bin is ONE F-engine channel
+(0.1953125 MHz); the tracker despreads 7 channels 16 freq_ids (3.125 MHz) apart across a 20 MHz
+BPSK(10) band (1 for L2C, 4 for E6) — ~7% of the band, by GPU cost — and the cube records exactly
+those. ~100 subbands means tracking ~100 channels, which is a tracker change, not an archive one.
+Rungs built before 09-06 have no `freq_id_lo/hi` attrs; the builder reads them from the L0 twin.
+
+**Cross-chain offsets** are measured at export, never baked in: per chain, the median pixel level
+in the main-lobe annulus (2–12° off boresight, `--offset-annulus`) relative to `--offset-ref`
+(gps_l5) ships in the manifest as `offset_db`; the viewer applies it to the linear accumulator
+before summing chains and shows it as an editable dB box per chain (defaults / zero buttons).
+09-05/06 values are within ±5 dB of gps_l5 (pedestal units already remove the noise-floor scale;
+what remains is sky signal per band — b2b −4..−5, l2c +2..+4). The viewer also has per-element
+toggles (all / live only / none / invert, remembered per browser) that the sum and the single-
+element scan both honour.
+
 Viewer: `gnss_beam_cube.py export <masters> --nside 32` → `fixtures/beamcube/web/`, served by
 `scripts/gnss/beamview_up.sh` on cf06 (http://cf06:8877/, port 877 is privileged). Every day in
 one `index.json` must share `units` and `pointing`; the page refuses to sum a day that differs
