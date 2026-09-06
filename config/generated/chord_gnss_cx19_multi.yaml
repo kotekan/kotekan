@@ -295,7 +295,7 @@ fpga_monitor:
   poll_interval_seconds: 5
 frame_arrival_period: 5.12e-6 * 8192
 gnss0_b2a_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -538,7 +538,7 @@ gnss0_b2a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_b2b_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -781,7 +781,7 @@ gnss0_b2b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_b3i_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -1026,7 +1026,7 @@ gnss0_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -1042,7 +1042,7 @@ gnss0_cube_send:
   server_port: 11070
   use_config_tracker: false
 gnss0_e5a_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -1293,7 +1293,7 @@ gnss0_e5a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_e5b_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -1544,7 +1544,7 @@ gnss0_e5b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss0_e6_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -2078,7 +2078,7 @@ gnss0_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_b2a_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -2297,7 +2297,7 @@ gnss1_b2a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_b2b_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -2513,7 +2513,7 @@ gnss1_b2b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_b3i_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -2737,7 +2737,7 @@ gnss1_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -2753,7 +2753,7 @@ gnss1_cube_send:
   server_port: 11070
   use_config_tracker: false
 gnss1_e5a_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -2972,7 +2972,7 @@ gnss1_e5a_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_e5b_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -3188,7 +3188,7 @@ gnss1_e5b_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_e6_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
@@ -3398,7 +3398,7 @@ gnss1_e6_telem_send:
   server_port: 11060
   use_config_tracker: false
 gnss1_l2c_cube_buf:
-  frame_size: 101200
+  frame_size: 101208
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 16
