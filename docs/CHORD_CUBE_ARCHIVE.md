@@ -164,11 +164,22 @@ measures 0.006 — **the per-window coherent sum WINDS** (residual carrier > 1 t
 ~1 s window), so the cube's coherent arc is currently incoherent and `incoh` is the beam. A
 usable arc needs a per-record (10 ms) rotation with the tracked carrier before the window sum.
 
-**The subband axis is the tracker's comb, not the band.** Each cube bin is ONE F-engine channel
-(0.1953125 MHz); the tracker despreads 7 channels 16 freq_ids (3.125 MHz) apart across a 20 MHz
-BPSK(10) band (1 for L2C, 4 for E6) — ~7% of the band, by GPU cost — and the cube records exactly
-those. ~100 subbands means tracking ~100 channels, which is a tracker change, not an archive one.
-Rungs built before 09-06 have no `freq_id_lo/hi` attrs; the builder reads them from the L0 twin.
+**The subband axis is the ABSOLUTE F-engine channel — the full band, never an instance's bin
+index.** Each cube bin is one channel (0.1953125 MHz; `freq_id_lo == freq_id_hi`). An instance
+holds the 6–7 channels its node was dealt, interleaved with the other nodes' (cx19/gnss0: 5972,
+5988, …; cx27/gnss1: 5976, 5992, …), and the 12 instances of a chain together record **79 distinct
+channels** of the 20 MHz L5/E5/B2 band (5972..6076; 39 for E6, 5 for L2C) — the fleet records
+the band, per channel. The first builder keyed cells on the instance-local bin index and so summed
+12 different frequencies into 7 fake "subbands", an instance grouping with no physical meaning
+(the rule: NOTHING IS PER-INSTANCE). The builder now takes the union of freq_ids over every sender
+file of the chain and each file's bins land on their own channel; `export` keeps every channel by
+default (`--subbands 0`) and writes ONE .bin per chain (~30 MB at nside 32) that the viewer fetches
+only when the chain is selected. Rungs built before 09-06 have no `freq_id` attrs; the builder
+reads them from the L0 twin.
+
+Per-channel maps are real: the centre channels (~6023 for L5) peak at 6° at +20 dB; the channels at
+the band edges (5972, 6076 = ±10 MHz = the BPSK(10) spectral null) carry almost no signal and their
+"peak" is wherever the RFI is (the horizon). Scan the channel axis before summing it.
 
 **Cross-chain offsets** are measured at export, never baked in: per chain, the median pixel level
 in the main-lobe annulus (2–12° off boresight, `--offset-annulus`) relative to `--offset-ref`

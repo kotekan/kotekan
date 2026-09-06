@@ -71,40 +71,48 @@ function ramp(name, x) {
 }
 
 // ── data ─────────────────────────────────────────────────────────────────────────────────
+// A day is a manifest plus one .bin PER CHAIN, fetched only when that chain is selected: the
+// channel axis is the full band (79 absolute F-engine channels for L5), so a chain is ~30 MB
+// and a whole day up front would be ~250 MB.
 async function loadDay(day) {
   if (S.cache.has(day)) return S.cache.get(day);
   const man = await (await fetch(`cube_${day}.json`)).json();
-  const buf = await (await fetch(`cube_${day}.bin`)).arrayBuffer();
-  let off = 0;
-  for (const c of man.chains) {
-    const P = c.n_pix, N = c.n_sub * c.n_elem * P;
-    c.pix = new Int32Array(buf, off, P);           off += 4 * P;
-    c.ctr = new Float32Array(buf, off, 2 * P);     off += 8 * P;
-    c.n = new Uint32Array(buf, off, N);            off += 4 * N;
-    c.s1 = new Float32Array(buf, off, N);          off += 4 * N;
-  }
-  if (off !== buf.byteLength) {
-    throw new Error(`cube_${day}.bin: consumed ${off} of ${buf.byteLength} bytes -- the ` +
-      `manifest and the blob disagree, so every array after the first mismatch is ` +
-      `misaligned. Re-run gnss_beam_cube.py export.`);
-  }
-  verifyPixelisation(man);
+  if (!man.chains.every(c => c.bin))
+    throw new Error(`cube_${day}.json predates the per-chain export (no "bin" per chain). ` +
+      `Re-run gnss_beam_cube.py export.`);
+  for (const c of man.chains) c.loaded = false;
   S.cache.set(day, man);
   return man;
 }
 
+async function loadChain(man, c) {
+  if (c.loaded) return;
+  const buf = await (await fetch(c.bin)).arrayBuffer();
+  const P = c.n_pix, N = c.n_sub * c.n_elem * P;
+  let off = 0;
+  c.pix = new Int32Array(buf, off, P);           off += 4 * P;
+  c.ctr = new Float32Array(buf, off, 2 * P);     off += 8 * P;
+  c.n = new Uint32Array(buf, off, N);            off += 4 * N;
+  c.s1 = new Float32Array(buf, off, N);          off += 4 * N;
+  if (off !== buf.byteLength) {
+    throw new Error(`${c.bin}: consumed ${off} of ${buf.byteLength} bytes -- the manifest and ` +
+      `the blob disagree, so every array after the first mismatch is misaligned. Re-run ` +
+      `gnss_beam_cube.py export.`);
+  }
+  verifyPixelisation(man, c);
+  c.loaded = true;
+}
+
 // THE GATE. Reproduce every shipped pixel centre's index with the JS port; any disagreement
 // means the port and the exporter do not share a convention and nothing below can be trusted.
-function verifyPixelisation(man) {
-  for (const c of man.chains) {
-    for (let i = 0; i < c.n_pix; i++) {
-      const got = azelToPix(man.nside, c.ctr[2 * i], c.ctr[2 * i + 1]);
-      if (got !== c.pix[i]) {
-        throw new Error(`pixelisation mismatch on ${c.chain}: centre ` +
-          `(az ${c.ctr[2 * i].toFixed(3)}, el ${c.ctr[2 * i + 1].toFixed(3)}) -> ${got}, ` +
-          `exported as ${c.pix[i]} (nside ${man.nside}). The JS ang2pix port disagrees with ` +
-          `healpy; refusing to draw a map that would be plausible and wrong.`);
-      }
+function verifyPixelisation(man, c) {
+  for (let i = 0; i < c.n_pix; i++) {
+    const got = azelToPix(man.nside, c.ctr[2 * i], c.ctr[2 * i + 1]);
+    if (got !== c.pix[i]) {
+      throw new Error(`pixelisation mismatch on ${c.chain}: centre ` +
+        `(az ${c.ctr[2 * i].toFixed(3)}, el ${c.ctr[2 * i + 1].toFixed(3)}) -> ${got}, ` +
+        `exported as ${c.pix[i]} (nside ${man.nside}). The JS ang2pix port disagrees with ` +
+        `healpy; refusing to draw a map that would be plausible and wrong.`);
     }
   }
 }
@@ -128,7 +136,7 @@ function collapse() {
     // units or pointing differ from the first selected day is skipped, and syncLabels says so.
     if (!sameCurrency(man, ref)) continue;
     for (const c of man.chains) {
-      if (!S.sel.has(c.chain)) continue;
+      if (!S.sel.has(c.chain) || !c.loaded) continue;
       const P = c.n_pix;
       const s0 = subAll ? 0 : Math.min(subOne, c.n_sub - 1);
       const s1e = subAll ? c.n_sub - 1 : s0;
@@ -377,8 +385,14 @@ function syncLabels() {
   const elOn = !document.getElementById('elsum').checked;
   document.getElementById('sub').disabled = !subOn;
   document.getElementById('el').disabled = !elOn;
+  const manA = S.cache.get(S.days[a]);
+  const cA = manA && manA.chains.find(c => S.sel.has(c.chain));
+  const si = Math.min(+document.getElementById('sub').value, cA ? cA.n_sub - 1 : 0);
+  const fidAt = cA && cA.freq_ids[si] && cA.freq_ids[si][0] != null ? cA.freq_ids[si] : null;
   document.getElementById('sublab').textContent =
-    subOn ? document.getElementById('sub').value : 'all (' + S.nsub + ')';
+    subOn ? (fidAt ? `${fidAt[0]}${fidAt[1] !== fidAt[0] ? '..' + fidAt[1] : ''} ` +
+                     `(${(fidAt[0] * 0.1953125).toFixed(2)} MHz)` : '#' + si)
+          : 'all (' + (cA ? cA.n_sub : S.nsub) + ')';
   document.getElementById('drlab').textContent = document.getElementById('dr').value + ' dB';
   document.getElementById('mnlab').textContent = document.getElementById('mn').value;
   // Elements 4, 5, 12, 13 are dark: their LNAs are broken and are not coming back. Not a
@@ -394,28 +408,35 @@ function syncLabels() {
     elOn ? '#' + one : `all (${nOn})`;
   for (const b of document.querySelectorAll('#elgrid button'))
     b.classList.toggle('on', !S.elOn || S.elOn.has(+b.dataset.e));
-  const man = S.cache.get(S.days[a]);
-  const c = man && man.chains.find(c => S.sel.has(c.chain));
-  // Each "subband" is ONE F-engine channel (0.1953125 MHz) of the tracker's sparse comb --
-  // 7 channels 16 freq_ids (3.125 MHz) apart across a 20 MHz band, 1 for the narrow L2C.
-  // The cube inherits the tracker's channel set; ~100 channels would mean tracking them.
+  // The axis is the ABSOLUTE F-engine channel (0.1953125 MHz each), the union over every
+  // instance of the fleet -- never an instance's local bin index, which means nothing
+  // physical (bin 0 of cx19/gnss0 is 5972, bin 0 of cx27/gnss1 is 5976).
+  const c = cA;
   const fid = c && c.freq_ids[0][0] != null
-    ? `freq_id ${c.freq_ids[0][0]}..${c.freq_ids[c.n_sub - 1][1]}` +
-      (c.n_sub > 1 ? `, step ${c.freq_ids[1][0] - c.freq_ids[0][0]} (×0.1953 MHz)` : '')
-    : 'freq ids missing in this export — rebuild from an archive with freq_id attrs';
+    ? `freq_id ${c.freq_ids[0][0]}..${c.freq_ids[c.n_sub - 1][1]} ` +
+      `(${(c.freq_ids[0][0] * 0.1953125).toFixed(1)}–${(c.freq_ids[c.n_sub - 1][1] * 0.1953125).toFixed(1)} MHz)`
+    : 'freq ids missing in this export — re-export';
   document.getElementById('subinfo').textContent =
-    c ? `${c.n_sub} channel${c.n_sub === 1 ? '' : 's'} of the tracker comb: ${fid}` : '';
+    c ? `${c.n_sub} channel${c.n_sub === 1 ? '' : 's'}: ${fid}` : '';
 }
 
 async function ensureDaysLoaded() {
   const [a, b] = dayRange();
   const st = document.getElementById('status');
-  for (let i = a; i <= b; i++) {
-    if (S.cache.has(S.days[i])) continue;
-    st.textContent = `loading ${S.days[i]}…`;
-    try { await loadDay(S.days[i]); }
-    catch (e) { st.innerHTML = `<div class="note bad">${e.message}</div>`; throw e; }
-  }
+  try {
+    for (let i = a; i <= b; i++) {
+      if (!S.cache.has(S.days[i])) {
+        st.textContent = `loading ${S.days[i]}…`;
+        await loadDay(S.days[i]);
+      }
+      const man = S.cache.get(S.days[i]);
+      for (const c of man.chains) {
+        if (!S.sel.has(c.chain) || c.loaded) continue;
+        st.textContent = `loading ${S.days[i]} ${c.chain} (${(c.bytes / 1e6).toFixed(0)} MB)…`;
+        await loadChain(man, c);
+      }
+    }
+  } catch (e) { st.innerHTML = `<div class="note bad">${e.message}</div>`; throw e; }
   st.textContent = '';
 }
 
@@ -444,7 +465,7 @@ async function boot() {
   }
   document.getElementById('d0').value = 0;
 
-  await ensureDaysLoaded();
+  await ensureDaysLoaded();                   // manifests only; no chain is selected yet
   const man = S.cache.get(S.days[0]);
   S.chains = man.chains.map(c => c.chain);
   S.nsub = Math.max(...man.chains.map(c => c.n_sub));
@@ -464,8 +485,9 @@ async function boot() {
       `title="offset (dB) subtracted from ${c} before comparing/summing; default = main-lobe ` +
       `level vs ${man.offset_ref || 'reference'}"><span class="muted">dB</span>`;
     const cb = l.querySelector('input[type=checkbox]');
-    cb.addEventListener('change', () => {
+    cb.addEventListener('change', async () => {
       cb.checked ? S.sel.add(c) : S.sel.delete(c);
+      await ensureDaysLoaded();
       checkBands(); syncLabels(); draw();
     });
     const off = l.querySelector('input.off');
@@ -515,6 +537,7 @@ async function boot() {
   // reading of the very axis this page exists to separate.
   const first = box.querySelector('input');
   if (first) { first.checked = true; S.sel.add(first.value); }
+  await ensureDaysLoaded();                   // now the selected chain's .bin
 
   document.getElementById('boot').remove();
   bindUI();

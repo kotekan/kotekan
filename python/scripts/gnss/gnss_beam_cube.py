@@ -446,17 +446,29 @@ def _h5_rows(path):
             widx, wutc = f["win/idx"][:], f["win/utc"][:]
             o = np.argsort(widx)
             t = np.interp(idx, widx[o], wutc[o])
-            lo, hi = f["win/freq_id_lo"][0], f["win/freq_id_hi"][0]
         elif fmt == "gnss_cube_rung":
             t = 0.5 * (f["rows/utc0"][:] + f["rows/utc1"][:])
-            lo = a.get("freq_id_lo")
-            hi = a.get("freq_id_hi")
         else:
             raise SystemExit("%s: not a cube archive file (format=%r)" % (path, fmt))
-    if fmt == "gnss_cube_rung" and lo is None:
-        # Rungs built before 2026-09-06 carry no freq ids. The L0 file the rung was folded
-        # from sits at the same <pointing>/<sender>/<day>.h5 under l0/; read the ids there
-        # rather than shipping a "null..null" subband axis to the viewer.
+    P = np.where((w > 0.0)[:, :, None], incoh / np.maximum(w, 1e-30)[:, :, None], np.nan)
+    fid = _h5_freq_ids(path)
+    freq_ids = [[f, f] for f in fid] if fid else [[None, None]] * P.shape[1]
+    return a, t, prn, P, nre, freq_ids
+
+
+def _h5_freq_ids(path):
+    """Absolute F-engine channel per bin of one archive file (list of int), or None.
+
+    Each bin is ONE channel (freq_id_lo == freq_id_hi everywhere in the archive). Rungs built
+    before 2026-09-06 carry no freq ids; the L0 file they were folded from sits at the same
+    <pointing>/<sender>/<day>.h5 under l0/, so read them there rather than ship a
+    "null..null" axis."""
+    import h5py
+    with h5py.File(path, "r") as f:
+        fmt = f.attrs.get("format")
+        lo = f["win/freq_id_lo"][0] if fmt == "gnss_cube_l0" else f.attrs.get("freq_id_lo")
+        hi = f["win/freq_id_hi"][0] if fmt == "gnss_cube_l0" else f.attrs.get("freq_id_hi")
+    if lo is None:
         parts = os.path.normpath(path).split(os.sep)
         for i, seg in enumerate(parts):
             if seg.startswith("rung"):
@@ -465,20 +477,37 @@ def _h5_rows(path):
                     with h5py.File(l0p, "r") as f0:
                         lo, hi = f0["win/freq_id_lo"][0], f0["win/freq_id_hi"][0]
                 break
-    P = np.where((w > 0.0)[:, :, None], incoh / np.maximum(w, 1e-30)[:, :, None], np.nan)
-    if lo is not None:
-        freq_ids = [[int(l), int(h)] for l, h in zip(lo, hi)]
-    else:
-        freq_ids = [[None, None]] * P.shape[1]
-    return a, t, prn, P, nre, freq_ids
+    if lo is None:
+        return None
+    if hi is not None and list(lo) != list(hi):
+        sys.exit("%s: a bin spans channels %s..%s -- the archive promised one channel per bin"
+                 % (path, list(lo), list(hi)))
+    return [int(x) for x in lo]
 
 
 def build_day_h5(args, chain, paths, day_unix, geom):
     """Master cube for one chain from cube-archive files (L0 or rung), one sender per file."""
     tmin, tmax = day_unix, day_unix + 86400.0
     sys_ = CHAIN_SYS[chain]
-    acc, freq_ids, pointing = None, None, None
+    acc, pointing = None, None
     stats = defaultdict(int)
+    # ⚠️⚠️ THE SUBBAND AXIS IS THE ABSOLUTE F-ENGINE CHANNEL, NEVER THE INSTANCE'S BIN INDEX.
+    # An instance holds the 6-7 channels its node was dealt (cx19/gnss0 has 5972, 5988, ...;
+    # cx27/gnss1 has 5976, 5992, ...): bin 0 of one instance and bin 0 of another are
+    # DIFFERENT frequencies, and the fleet together records ~79 distinct channels of the L5
+    # band. Keying cells on the local bin index summed those into 7 fake "subbands" -- an
+    # instance grouping that means nothing physical. So: union of freq_ids across every sender
+    # file of the chain first, then each file's bins land on their own channel.
+    fid_by_path = {}
+    for path in paths:
+        fid_by_path[path] = _h5_freq_ids(path)
+        if fid_by_path[path] is None:
+            sys.exit("%s: no freq ids -- the subband axis cannot be built without them" % path)
+    band = sorted(set(x for v in fid_by_path.values() for x in v))
+    sub_of = {fid: i for i, fid in enumerate(band)}
+    freq_ids = [[fid, fid] for fid in band]
+    print("  %s: %d distinct channel(s) freq_id %d..%d across %d sender file(s)"
+          % (chain, len(band), band[0], band[-1], len(paths)))
     for path in paths:
         a, t, prn, P, nre, fids = _h5_rows(path)
         pt = str(a.get("pointing"))
@@ -488,9 +517,10 @@ def build_day_h5(args, chain, paths, day_unix, geom):
             sys.exit("%s: pointing %s in a build of %s -- one master is ONE pointing"
                      % (path, pt, pointing))
         R, S, E = P.shape
+        sub_idx = [sub_of[f] for f in fid_by_path[path]]
         if acc is None:
             acc = CubeAccum(args.nside, E)
-            freq_ids = fids
+            acc.n_sub = len(band)
         inday = (t >= tmin) & (t < tmax)
         stats["rows"] += int(inday.sum())
         # -- pedestal: per (5-min, subband, element) median over every slot (see docstring) ----
@@ -549,8 +579,8 @@ def build_day_h5(args, chain, paths, day_unix, geom):
             enough = lv.sum(1) >= MIN_ELEMS
             stats["thin"] += int((~enough & (lv.sum(1) > 0)).sum())
             if enough.any():
-                acc.add_bulk(np.full(int(enough.sum()), sub), pix[enough], pw[enough, sub, :],
-                             lv[enough])
+                acc.add_bulk(np.full(int(enough.sum()), sub_idx[sub]), pix[enough],
+                             pw[enough, sub, :], lv[enough])
                 stats["cells"] += int(enough.sum())
         print("    %s: %d rows, %d used" % (os.path.basename(os.path.dirname(path)),
                                             int(inday.sum()), int(ok.sum())))
@@ -562,7 +592,8 @@ def build_day_h5(args, chain, paths, day_unix, geom):
           "vetoed %d, no-geom %d, below-mask %d, thin %d; pointing %s"
           % (chain, stats["rows"], n.shape[0], n.shape[1], len(pix),
              stats["vetoed"], stats["nogeo"], stats["low"], stats["thin"], pointing))
-    return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids[:n.shape[0]], pointing=pointing,
+    assert n.shape[0] == len(band), (n.shape, len(band))
+    return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids, pointing=pointing,
                 units="pedestal" + ("_unbiased" if args.unbiased else ""))
 
 
@@ -694,25 +725,36 @@ def cmd_export(args):
             c["offset_db"] = (round(c["lobe_db"] - ref["lobe_db"], 2)
                               if c["lobe_db"] is not None and ref["lobe_db"] is not None else 0.0)
         day = meta["day"]
-        blob = b"".join(a.tobytes() for arr in arrays for a in arr)
-        binp = os.path.join(args.outdir, "cube_%s.bin" % day)
-        with open(binp, "wb") as fh:
-            fh.write(blob)
+        # ONE .bin PER CHAIN, fetched by the page only when that chain is selected: with the
+        # full channel axis (79 channels x 32 elements x ~1500 pixels) a chain is ~30 MB at
+        # nside 32 and a day of 8 chains would be ~250 MB up front.
+        total = 0
+        for c, arr in zip(chains, arrays):
+            blob = b"".join(a.tobytes() for a in arr)
+            c["bin"] = "cube_%s_%s.bin" % (day, c["chain"])
+            c["bytes"] = len(blob)
+            with open(os.path.join(args.outdir, c["bin"]), "wb") as fh:
+                fh.write(blob)
+            total += len(blob)
+        stale = os.path.join(args.outdir, "cube_%s.bin" % day)   # the pre-09-06 single blob
+        if os.path.exists(stale):
+            os.remove(stale)
         man = {"day": day, "nside": nside, "source": meta["source"],
                "pointing": meta.get("pointing"), "units": meta.get("units", "power"),
                "veto_deg": meta["veto_deg"], "range_norm": meta["range_norm"],
                "offset_ref": ref["chain"], "offset_annulus_deg": list(args.offset_annulus),
                "chains": chains,
                # Byte offsets so the viewer slices one ArrayBuffer instead of parsing.
-               "layout": "per chain, in order: pix int32[n_pix], centre float32[n_pix*2] "
+               "layout": "per chain file: pix int32[n_pix], centre float32[n_pix*2] "
                          "(az,el degrees), n uint32[n_sub*n_elem*n_pix], "
                          "s1 float32[n_sub*n_elem*n_pix]"}
         with open(os.path.join(args.outdir, "cube_%s.json" % day), "w") as fh:
             json.dump(man, fh)
-        index.append({"day": day, "bytes": len(blob),
+        index.append({"day": day, "bytes": total,
                       "chains": [c["chain"] for c in chains]})
-        print("%s -> %s (%.2f MB, nside %d, %d chain(s))"
-              % (src, binp, len(blob) / 1e6, nside, len(chains)))
+        print("%s -> %s/cube_%s_<chain>.bin (%.1f MB, nside %d, %d chain(s), %s)"
+              % (src, args.outdir, day, total / 1e6, nside, len(chains),
+                 "  ".join("%s %d ch" % (c["chain"], c["n_sub"]) for c in chains)))
         print("   lobe %.0f..%.0f deg vs %s: %s" % (args.offset_annulus[0], args.offset_annulus[1],
               ref["chain"], "  ".join("%s %+.1f dB" % (c["chain"], c["offset_db"]) for c in chains)))
     index.sort(key=lambda d: d["day"])
@@ -880,7 +922,9 @@ def main():
     e.add_argument("masters", nargs="+")
     e.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube/web")
     e.add_argument("--nside", type=int, default=16, help="0 = keep the master's")
-    e.add_argument("--subbands", type=int, default=8, help="0 = keep every subband")
+    e.add_argument("--subbands", type=int, default=0,
+                   help="group the channel axis into N bins (0 = every channel, the default -- "
+                        "the axis is absolute freq_id and a sum across it is the reader's call)")
     e.add_argument("--offset-ref", default="gps_l5",
                    help="chain whose main-lobe level defines 0 dB for the per-chain offsets")
     e.add_argument("--offset-annulus", type=float, nargs=2, default=(2.0, 12.0),
