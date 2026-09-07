@@ -63,6 +63,17 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     // has to be trusted to produce byte-identical output -- the thing a deterministic replay
     // exists to avoid. Default stays false: you must say you know.
     _allow_ndarray = config.get_default<bool>(unique_name, "allow_ndarray", false);
+    // OPT-IN: create base_dir (and parents) now. The default leaves the directory the
+    // operator's job, but a writer that sits idle behind a gate for hours before its first
+    // frame would otherwise take the whole process down on a missing directory at the one
+    // moment the data matters.
+    if (config.get_default<bool>(unique_name, "create_base_dir", false)) {
+        std::error_code ec;
+        std::filesystem::create_directories(_base_dir, ec);
+        if (ec)
+            FATAL_ERROR("rawFileWrite: cannot create base_dir {:s}: {:s}", _base_dir,
+                        ec.message());
+    }
 
     if (_exit_after_n_files > 0)
         waiting_for_max_frames++;

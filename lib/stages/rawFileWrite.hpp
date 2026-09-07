@@ -32,6 +32,9 @@
  *                          false (upstream behaviour). Files are opened WITHOUT O_TRUNC, so a
  *                          restart at 0 over an existing archive overwrites its oldest files;
  *                          any archive meant to survive a restart wants this true.
+ * @conf create_base_dir    Bool. Create base_dir (and parents) at construction. Default
+ *                          false. Without it a missing directory is fatal at the FIRST
+ *                          WRITE, which for a gated writer may be hours after startup.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds

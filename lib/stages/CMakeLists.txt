@@ -117,6 +117,7 @@ add_library(
     rfiAVXVDIF.cpp
     ReceiveFlags.cpp
     valve.cpp
+    frameWindowGate.cpp
     visTransform.cpp
     visDebug.cpp
     removeEv.cpp
