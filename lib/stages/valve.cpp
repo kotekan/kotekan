@@ -1,5 +1,7 @@
 #include "valve.hpp"
 
+#include <chrono> // for steady_clock, seconds
+
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
@@ -45,16 +47,13 @@ void Valve::main_thread() {
     /// Metric to track the number of dropped frames.
     auto& dropped_total =
         Metrics::instance().add_counter("kotekan_valve_dropped_frames_total", unique_name);
-    // ...and the DENOMINATOR. A drop count alone cannot be read: 2909 is catastrophic on a
-    // 1-minute run and negligible on an 8-hour one. With both counters any consumer (the
-    // viewer's stream-health strip, a prometheus rule) gets the fraction of the stream that
-    // was silently lost without needing to know the frame period. (2026-07-27: the L5 peel
-    // spent a day looking like broken arithmetic because this loss was invisible -- the
-    // dropped frames became sample_seq gaps, which the ring zero-filled, which shredded
-    // every coherent window that touched them.)
+    // ...and the denominator: a drop count alone cannot be read (the same number is
+    // catastrophic on a short run and negligible on a long one). With both counters a
+    // consumer gets the lost fraction without knowing the frame period.
     auto& passed_total =
         Metrics::instance().add_counter("kotekan_valve_passed_frames_total", unique_name);
     uint64_t n_dropped = 0;
+    auto last_warn = std::chrono::steady_clock::now();
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id
@@ -77,14 +76,18 @@ void Valve::main_thread() {
             _buf_out->mark_frame_full(unique_name, frame_id_out++);
             passed_total.inc();
         } else {
-            // Rate-limited: one line per frame buried the 2026-07-27 soak log under 4642
-            // WARNs, which is how a real signal becomes noise nobody greps for. The ring
-            // frame id was never the useful number anyway -- the RUNNING TOTAL is.
+            // Rate-limited BY TIME, carrying the running total. A valve in front of a
+            // newest-is-best consumer drops most of its input by design -- at 1e5 frames/s
+            // even one line per hundred drops is gigabytes of log per hour -- while a valve
+            // that should never drop wants its first loss reported at once.
             ++n_dropped;
-            if (n_dropped == 1 || n_dropped % 100 == 0)
+            auto now = std::chrono::steady_clock::now();
+            if (n_dropped == 1 || now - last_warn >= std::chrono::seconds(60)) {
                 WARN("Output buffer full, dropping frames: {:d} lost so far (downstream "
                      "cannot keep up; each loss is a gap the consumer must zero-fill).",
                      n_dropped);
+                last_warn = now;
+            }
             dropped_total.inc();
         }
         _buf_in->mark_frame_empty(unique_name, frame_id_in++);

@@ -231,8 +231,10 @@ void print_help() {
     printf("                                   duplicate names, dangling metadata pools.\n");
     printf("                                   Constructs nothing -- safe to run next to a\n");
     printf("                                   live pipeline.\n");
-    printf("    --dry-run                      Builds the full pipeline and tears it down\n");
-    printf("                                   without starting it. Authoritative, but stage\n");
+    printf("    --dry-run                      Builds the full pipeline (every constructor,\n");
+    printf("                                   every config key), fails on any buffer with\n");
+    printf("                                   consumers but no producer, then tears down\n");
+    printf("                                   without starting. Authoritative, but stage\n");
     printf("                                   constructors open devices (DPDK/CUDA) and\n");
     printf("                                   buffers claim hugepages -- only run this where\n");
     printf("                                   the node is free.\n\n");
@@ -532,7 +534,9 @@ int validate_config_static(Config& config) {
             report(fmt::format(fmt("stage {:s} has unknown type '{:s}'"), stage.path, stage.type));
     }
 
-    // Duplicate names are fatal in the factories; find them before they are.
+    // Duplicate names are fatal in the factories; find them before they are. Buffers and
+    // pools are keyed by bare name, so the same name in two scopes collides; stages are
+    // keyed by full path, which a JSON tree cannot duplicate, so they are not checked.
     auto find_duplicates = [&report](const std::vector<config_block>& blocks, const char* what) {
         std::map<std::string, int> counts;
         for (const auto& block : blocks)
@@ -543,7 +547,6 @@ int validate_config_static(Config& config) {
                                    count.second));
         }
     };
-    find_duplicates(stages, "stage");
     find_duplicates(buffers, "buffer");
     find_duplicates(pools, "metadata pool");
 
@@ -591,15 +594,11 @@ int run_dry_run(Config& config) {
         return 1;
     }
 
-    // A kotekan stage BLOCKS until its inputs arrive, so a buffer left with consumers and no
-    // producer is not an error at construction -- it is a pipeline that starts, looks healthy,
-    // and silently wedges forever with no log line. That is exactly how the first live CHORD
-    // GNSS run failed: a stage the config pruned was the only producer of the packet-loss mask
-    // the transposes require, and the ingest stalled with DPDK happily filling its input buffer.
-    //
-    // The graph is fully known here -- every stage has registered -- so check it while we can.
-    // The reverse case (a producer with no consumer) is NOT an error: it is a normal way to
-    // disable an output leg, and those buffers simply fill and stop.
+    // A stage blocks until its inputs arrive, so a buffer with consumers and no producer is
+    // not an error at construction -- it is a pipeline that starts, looks healthy, and wedges
+    // silently (e.g. a config that pruned the only producer of a mask another stage needs).
+    // The graph is fully known here, so check it. The reverse case (a producer with no
+    // consumer) is NOT an error: it is the normal way to disable an output leg.
     int stalled = 0;
     const json bufs = mode->get_buffer_json();
     for (auto it = bufs.begin(); it != bufs.end(); ++it) {
