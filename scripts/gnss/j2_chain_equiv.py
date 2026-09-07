@@ -81,9 +81,11 @@ def extract(cfg, node):
             pre = "gnss%d%s_" % (gpu, tag)
             dual = cfg[pre + "n2dual"]
             inj = next(x for x in dual["commands"] if x.get("name") == "cudaGnssInject")
+            corr = next(x for x in dual["commands"] if x.get("name") == "cudaCorrelatorDual")
             pack = cfg[pre + "telem_pack"]
             c.update(
                 chain=pack["chain"], signal=inj["signal"],
+                viscap=bool(corr.get("gnss_gather_aa", False)),
                 channel_ids=inj["channel_ids"], local_channels=inj["gnss_local_channels"],
                 prns=inj["prns"], f_offset_hz=inj["f_offset_hz"],
                 cores={"dual": dual["cpu_affinity"][0],

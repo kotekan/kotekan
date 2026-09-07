@@ -425,6 +425,28 @@ common:
   # fixtures/cube_armed_20260905/chord_gnss_cx19_multi.yaml: 15 senders, 0 holes, 0 drops.
   beam-cube: true
   cube-host: 10.222.3.6
+
+  # ── VISIBILITY CAPTURE (team request; ARMED 2026-09-07, INERT UNTIL TRIGGERED) ──────────
+  # Builds, per GPU instance, a REST-armed FrameWindowGate between the n2dual chain's
+  # tiles/ctl buffers and two rawFileWrite sinks (<record_dir>/viscap/<node>_gnss<g>_vis{tiles,ctl}).
+  # Nothing is written until an operator arms an absolute F-engine sample window on every
+  # gate (scripts/gnss/viscap.py arm --start-in 30 --duration 300); the gate auto-disarms
+  # past end_seq. The window is ONE absolute clock fleet-wide (FrameHdr.seq0), so the six
+  # nodes capture the same sky interval to the frame.
+  #
+  # ⚠️ NOT THE PRODUCTION N^2. recv1's data set is run_n2k -> n2_accumulate -> the n2-send legs
+  # above (keep-n2 / n2-send / n2-send-legs) -- the collaboration's main product; those keys
+  # stay ARMED regardless of this one. gnss_gather_aa below is a block inside the GNSS DUAL
+  # correlator (32 live elements, the 6-7 despread channels) so the capture carries N^2 next
+  # to NxM; it does not touch cudaCorrelator or anything downstream of it.
+  # It ALSO turns on gnss_gather_aa: the correlator adds the 3 antenna-antenna (N^2) tiles over
+  # the live element columns per channel (+1 block class, ~0.03 ms/instance) so the capture
+  # carries N^2 + NxM, not NxM alone. That changes the tiles frame size (917504 -> 1089536 B
+  # for 7 channels); the assembler FATALs on mismatch rather than mis-decode.
+  # Value = the chain name whose n2dual is captured (a comma list is accepted).
+  # Volume when armed: ~30 MB/s per instance -> ~18 GB/node per 5 min, on the node nvme.
+  # Disarm = delete this key, regenerate, restart. docs/CHORD_VIS_CAPTURE.md.
+  vis-capture: gps_l5
   # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
   # closes any connection whose frame_size disagrees with its buffer -- so changing either one
   # means regenerating the GATHER config in the same commit, and restarting both ends. Left at

@@ -78,6 +78,7 @@
     trim_ttl_s: {{ gnss.trim_ttl_s }}
   - name: cudaCorrelatorDual
     gnss_freq_map: true
+    gnss_gather_aa: {{ c.viscap | default(false) | lower }}
     gnss_local_channels: {{ c.local_channels }}
     gnss_synth_name: {{ pre }}_synth
     gnss_tiles_name: {{ pre }}_tiles
@@ -102,6 +103,7 @@
   out_buf: {{ pre }}_n2epl_buf
   n_gnss_channels: {{ c.channel_ids | length }}
   n_prn: {{ c.prns | length }}
+  gnss_gather_aa: {{ c.viscap | default(false) | lower }}
   n_live_elements: {{ gnss.n_live_elements }}
   num_elements: {{ gnss.num_elements }}
   num_synth: {{ gnss.num_synth }}
