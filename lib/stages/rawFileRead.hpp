@@ -42,10 +42,10 @@
  *                          want unless something in the pipeline is tied to the wall
  *                          clock. Note this is a floor on the frame period, not a rate
  *                          lock -- the read and per-file open overhead add to it, so a
- *                          paced replay runs somewhat slower than 1/frame_period_us
- *                          (0.80x measured on one replay bench). A consumer that
- *                          needs to know where in the file it is should derive that
- *                          from the frame metadata, not from elapsed wall time.
+ *                          paced replay runs somewhat slower than 1/frame_period_us.
+ *                          A consumer that needs to know where in the file it is
+ *                          should derive that from the frame metadata, not from
+ *                          elapsed wall time.
  */
 class rawFileRead : public kotekan::Stage {
 public:

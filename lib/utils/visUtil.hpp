@@ -905,16 +905,15 @@ public:
     }
 
 private:
-    // Keep _i in [0, _n) after every mutation. The value used to count up
-    // unreduced and be taken mod _n only when read, with _n UNSIGNED: once the
-    // int had been incremented 2^32 times the conversion in that modulo was
-    // discontinuous by (2^32 mod _n) -- 16 slots on a 24-frame buffer -- so a
-    // frameID went 15 -> 0 and skipped eight frames. Two such skips wedged the
-    // shared bf-mask buffer on every node ~15 h after start (2026-09-04, a
-    // Valve consuming a free-running producer at 160k frames/s: producer
-    // waiting on a full slot, consumers waiting on an empty one). Reducing on
-    // write also makes a decrement below zero land on _n-1 rather than on the
-    // unsigned wrap of -1, which was 15 on the same buffer.
+    // Keep _i in [0, _n) after every mutation. Counting unreduced and taking
+    // `_i % _n` only on read is not equivalent: a signed T overflows after 2^k
+    // increments and the (unsigned) `% _n` is then discontinuous by (2^k mod _n)
+    // unless _n divides 2^k (e.g. int over a base of 24: 2^32 mod 24 == 16, so
+    // the sequence jumps from 15 to 0 and skips 8 values). Reducing on write also
+    // makes a decrement below zero land on _n-1 instead of on the unsigned wrap of -1.
+    //
+    // A base of 0 means "not set" (default-constructed): the value is left
+    // unreduced rather than divided by zero, and norm() returns it as stored.
     void reduce() {
         if (_n == 0)
             return;

@@ -72,12 +72,10 @@ restServer::~restServer() {
     _restServer_alive.store(false, std::memory_order_release);
     stop_thread = true;
     // A server that was never started has no thread to join, and join() on a
-    // non-joinable thread throws -- which used to print two warnings on the way out.
-    // That is now an ORDINARY path, not an anomaly: --check-config and --dry-run both
-    // build the REST endpoints without ever starting the server, so warning about it
-    // means every successful check-config run ends in warnings it did nothing wrong to
-    // earn. Keep the warning for the case it was written for: a join that fails on a
-    // thread that really was running.
+    // non-joinable thread throws. That is an ordinary path (--check-config and
+    // --dry-run build the REST endpoints without starting the server), so it is
+    // not a warning; the warning below is for a join that fails on a thread that
+    // really was running.
     if (!main_thread.joinable())
         return;
     try {
