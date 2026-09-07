@@ -48,7 +48,13 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
     // zero rather than deleted so the three sites that state this contract still line up
     // (here, build_tile_selection, gen_chord_gnss_config.py's tiles_frame_bytes).
     _n_bb = 0;
-    _n_tile = _n_mixed + _n_bb;
+    // AA (live antenna x live antenna) rides after the mixed block when the correlator has
+    // gnss_gather_aa -- the visibility capture's N^2. The lower triangle over nlive16
+    // columns; this stage never reads it, only steps over it.
+    _n_aa = config.get_default<bool>(unique_name, "gnss_gather_aa", false)
+                ? _nlive16 * (_nlive16 + 1) / 2
+                : 0;
+    _n_tile = _n_mixed + _n_aa + _n_bb;
 
     if (4 * _n_prn > _num_synth)
         FATAL_ERROR("GnssN2RecordAssemble: 4*n_prn ({:d}) exceeds num_synth ({:d})", 4 * _n_prn,
@@ -60,9 +66,20 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
                     "{:d} chan x {:d} elem",
                     (size_t)_out_buf->frame_size, need, _n_prn, _n_gnss_chan, _n_live);
 
+    // The tiles frame is n_rec x n_chan x n_tile x (16x16 complex int32). A mismatch here
+    // means the three statements of the tile contract (this stage, build_tile_selection, the
+    // config generator's tiles_frame_bytes) have drifted apart -- fail now, not as garbage.
+    const size_t tiles_need =
+        (size_t)(_n_hops_frame / _hops_per_record) * _n_gnss_chan * _n_tile * 512 * sizeof(int32_t);
+    if ((size_t)_tiles_buf->frame_size != tiles_need)
+        FATAL_ERROR("GnssN2RecordAssemble: tiles_buf frame_size {:d} != {:d} for {:d} rec x {:d} "
+                    "chan x {:d} tiles ({:d} mixed + {:d} AA + {:d} BB)",
+                    (size_t)_tiles_buf->frame_size, tiles_need, _n_hops_frame / _hops_per_record,
+                    _n_gnss_chan, _n_tile, _n_mixed, _n_aa, _n_bb);
+
     INFO("GnssN2RecordAssemble: {:d} PRN x {:d} chan x {:d} elem; tiles {:d} ({:d} mixed + {:d} "
-         "BB) per channel",
-         _n_prn, _n_gnss_chan, _n_live, _n_tile, _n_mixed, _n_bb);
+         "AA + {:d} BB) per channel",
+         _n_prn, _n_gnss_chan, _n_live, _n_tile, _n_mixed, _n_aa, _n_bb);
 }
 
 void GnssN2RecordAssemble::main_thread() {

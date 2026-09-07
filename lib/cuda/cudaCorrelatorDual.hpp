@@ -66,6 +66,11 @@
  * @conf  gnss_local_channels  List of Int. LOCAL frame channel indices (0..num_local_freq)
  *                             of the GNSS comb. GLOBAL freq_ids do NOT go here -- the config
  *                             generator derives local from global (the DC-replica lesson).
+ * @conf  gnss_gather_aa       Bool, default false. Also gather the live antennas' own N^2
+ *                             tiles (lower triangle over live_element_tiles, appended after
+ *                             the mixed block) and, with gnss_freq_map, compute the AA block
+ *                             on the comb channels. This is the visibility-capture feed; the
+ *                             tracker never reads these tiles.
  * @conf  gnss_tiles_name      String. Base name for the gathered-tiles output buffer.
  * @conf  gnss_synth_name      String. Name of the synthetic-input GPU array. Default
  *                             "gnss_synth".
@@ -109,6 +114,11 @@ private:
     /// since the 2026-08-31 crs_board_remap the live elements are {0..15, 64..79} = columns
     /// {0, 4}. Its POSITIONS define the record's element axis (see build_tile_selection).
     const std::vector<int> _live_tile_cols;
+
+    /// gnss_gather_aa: also gather the live antennas' N^2 tiles (after the mixed block) and,
+    /// in freq-map mode, compute the AA block on the comb channels. Off for the tracker,
+    /// on for the visibility capture.
+    const bool _gather_aa;
 
     /// (freq, int32-offset-within-slice) of each gathered tile, in output order.
     std::vector<int2> _tile_sel;

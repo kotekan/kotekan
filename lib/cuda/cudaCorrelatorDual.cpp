@@ -56,7 +56,7 @@ static std::vector<int> live_tile_columns(Config& config, const std::string& uni
 static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& chans,
                                               int num_elements, int num_synth,
                                               const std::vector<int>& live_cols,
-                                              bool compacted = false) {
+                                              bool compacted = false, bool gather_aa = false) {
     // compacted: with a freq map the kernel writes slice k for chans[k], so the gather must
     // index by k, not by the real channel number.
     std::vector<int2> sel;
@@ -89,6 +89,16 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
         // The correlator still COMPUTES the BB block; skipping it needs
         // n2k_dual's block_class_mask plumbed through, which is a kernel-path change with
         // its own gate (docs/CHORD_GPU_TODO.md item 1b).
+        //
+        // AA (antenna x antenna, the live N^2) LAST, and only on request: the lower triangle
+        // of live tile columns, row-major with column <= row, so the (k1, k2) tile sits at
+        // k1*(k1+1)/2 + k2 in this block. With gnss_freq_map the kernel only writes the AA
+        // block when BLOCK_MASK_AA is in its mask -- the constructor adds it iff gather_aa.
+        if (gather_aa)
+            for (size_t k1 = 0; k1 < live_cols.size(); k1++)
+                for (size_t k2 = 0; k2 <= k1; k2++)
+                    sel.push_back({f, 512 * (live_cols[k1] * (live_cols[k1] + 1) / 2
+                                             + live_cols[k2])});
     }
     return sel;
 }
@@ -126,9 +136,11 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
     _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name,
                                                                "gnss_local_channels")),
     _live_tile_cols(live_tile_columns(config, unique_name, _num_live_elements)),
+    _gather_aa(config.get_default<bool>(unique_name, "gnss_gather_aa", false)),
     _tile_sel(build_tile_selection(_gnss_local_channels, _num_elements, _num_synth,
                                    _live_tile_cols,
-                                   config.get_default<bool>(unique_name, "gnss_freq_map", false))),
+                                   config.get_default<bool>(unique_name, "gnss_freq_map", false),
+                                   _gather_aa)),
     _rfi_all_pass(config.get_default<bool>(unique_name, "rfi_all_pass", false)),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
@@ -166,8 +178,13 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         // restricting to MIXED|BB is what makes the map worth 2.90x -> 1.21x stock N^2
         // (n2timing). With gnss_freq_map false the launch is the full triangle over every
         // channel and the N^2 prefix stays available for the standard pipeline.
+        // gnss_gather_aa adds the live antennas' own N^2 to the gathered tiles (the
+        // visibility capture), which needs the AA block computed on the comb channels too.
         config.get_default<bool>(unique_name, "gnss_freq_map", false)
-            ? (n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB)
+            ? (n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB
+               | (config.get_default<bool>(unique_name, "gnss_gather_aa", false)
+                      ? n2k_dual::BLOCK_MASK_AA
+                      : 0))
             : n2k_dual::BLOCK_MASK_ALL,
         freq_map_for(config, unique_name))),
     _freq_map_mode(config.get_default<bool>(unique_name, "gnss_freq_map", false)) {

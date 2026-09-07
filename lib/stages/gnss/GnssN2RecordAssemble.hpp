@@ -59,6 +59,8 @@
  * @conf  num_synth      Int. Synthetic stations. Default 128.
  * @conf  n_live_elements Int. Live antennas the tiles cover.
  * @conf  n_gnss_channels Int. Comb channels gathered.
+ * @conf  gnss_gather_aa  Bool, default false. Mirror of the correlator's flag: the tiles frame
+ *                       then carries nlive16*(nlive16+1)/2 AA tiles after the mixed block.
  * @conf  n_prn, hops_per_record, samples_per_data_set
  */
 class GnssN2RecordAssemble : public kotekan::Stage {
@@ -77,7 +79,7 @@ private:
     int _hops_per_record, _n_hops_frame;
 
     /// Tile geometry, recomputed from config exactly as cudaCorrelatorDual does.
-    int _na16, _nt16, _nlive16, _n_mixed, _n_bb, _n_tile;
+    int _na16, _nt16, _nlive16, _n_mixed, _n_aa, _n_bb, _n_tile;
 
     /// int32 offset of tile (ihi, jhi) within one (t, f) slice of the FULL triangle.
     static size_t tri_off(int ihi, int jhi) {
