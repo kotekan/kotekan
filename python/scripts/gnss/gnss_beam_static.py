@@ -226,7 +226,8 @@ def elem_gains(N, S, mode, min_n, fit_mask, quiet=False):
     return g, live, share, int(keep.sum())
 
 
-def collapse(N, S, gains, elems, smooth_deg=0.0, nside=None, weight="ivar"):
+def collapse(N, S, gains, elems, smooth_deg=0.0, nside=None, weight="ivar",
+             min_occ=0.5):
     """Gain-corrected, n-weighted mean power per pixel over the chosen elements.
 
     `smooth_deg` widens the bin instead of interpolating the answer: the NUMERATOR and the
@@ -251,11 +252,19 @@ def collapse(N, S, gains, elems, smooth_deg=0.0, nside=None, weight="ivar"):
     if smooth_deg > 0.0:
         import healpy as hp
         fwhm = np.radians(smooth_deg)
-        num = hp.smoothing(num, fwhm=fwhm, verbose=False) if _hp_verbose() else hp.smoothing(
-            num, fwhm=fwhm)
-        den = hp.smoothing(den, fwhm=fwhm, verbose=False) if _hp_verbose() else hp.smoothing(
-            den, fwhm=fwhm)
-        num, den = np.maximum(num, 0.0), np.maximum(den, 0.0)
+
+        def sm(a):
+            return hp.smoothing(a, fwhm=fwhm, verbose=False) if _hp_verbose() \
+                else hp.smoothing(a, fwhm=fwhm)
+
+        occ = sm((den > 0).astype(float))          # how much of the kernel saw real data
+        num, den = np.maximum(sm(num), 0.0), np.maximum(sm(den), 0.0)
+        # ⚠️ A SMOOTHED COUNT IS NOT EVIDENCE OF COVERAGE. The kernel's tail carries weight from
+        # every neighbour, and a neighbour holding 50,000 samples leaks past any absolute
+        # threshold into a pixel that has none of its own -- which paints the vetoed hole around
+        # boresight full of data that was never measured there. So a pixel survives only if at
+        # least `min_occ` of the kernel's weight comes from pixels that actually held samples.
+        den = np.where(occ >= min_occ, den, 0.0)
     with np.errstate(all="ignore"):
         return np.where(den > 0, num / np.maximum(den, 1e-9), np.nan), den
 
@@ -436,7 +445,7 @@ def cmd_map(args):
             N, S, nside, info = gather(d["masters"], freqs, d["offsets"])
         else:
             N, S, nside, info = d["N"], d["S"], d["nside"], d["info"]
-        val, cnt = collapse(N, S, d["gains"], elems, args.smooth, nside, args.elem_weight)
+        val, cnt = collapse(N, S, d["gains"], elems, args.smooth, nside, args.elem_weight, args.min_occ)
         val = np.where(cnt >= args.min_n, val, np.nan)
         with np.errstate(all="ignore"):
             db = 10.0 * np.log10(val)
@@ -481,7 +490,7 @@ def cmd_radial(args):
             if not d["live"][e]:
                 print("  element %d is dark -- skipped" % e)
                 continue
-            val, cnt = collapse(d["N"], d["S"], d["gains"], [e], args.smooth, d["nside"], args.elem_weight)
+            val, cnt = collapse(d["N"], d["S"], d["gains"], [e], args.smooth, d["nside"], args.elem_weight, args.min_occ)
             series.append(("element %d" % e, val, cnt))
     else:
         ids = sorted(d["freqs"]) if d["freqs"] else []
@@ -490,7 +499,7 @@ def cmd_radial(args):
         elems = parse_elems(args.elements, n_elem)
         for f in ids:
             N, S, _, _ = gather(d["masters"], {f}, d["offsets"])
-            val, cnt = collapse(N, S, d["gains"], elems, args.smooth, d["nside"], args.elem_weight)
+            val, cnt = collapse(N, S, d["gains"], elems, args.smooth, d["nside"], args.elem_weight, args.min_occ)
             series.append(("freq_id %d (%.1f MHz)" % (f, f * 0.1953125), val, cnt))
 
     # Profile every series first: the y-range, the reference level and the residual panel all
@@ -597,7 +606,7 @@ def cmd_gains(args):
         curves = []
         want = set(parse_elems(args.elements, len(g)))
         for e in [x for x in np.flatnonzero(live) if int(x) in want]:
-            val, cnt = collapse(d["N"], d["S"], g, [int(e)], args.smooth, d["nside"], args.elem_weight)
+            val, cnt = collapse(d["N"], d["S"], g, [int(e)], args.smooth, d["nside"], args.elem_weight, args.min_occ)
             with np.errstate(all="ignore"):
                 db = 10.0 * np.log10(np.where(cnt >= args.min_n, val, np.nan))
             cen, med, _, _, _ = profile(d["th"], db, edges)
@@ -656,6 +665,9 @@ def main():
                             "(0 = raw pixels). At nside 128 the sky is sampled along "
                             "satellite TRACKS, so a map is track-limited long before "
                             "it is resolution-limited")
+        p.add_argument("--min-occ", type=float, default=0.5,
+                       help="with --smooth: fraction of the kernel's weight that must come from "
+                            "pixels holding real samples (0 = the old, leaky behaviour)")
         p.add_argument("--peak-norm", action="store_true")
         p.add_argument("--out", required=True)
 
