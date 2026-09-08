@@ -820,16 +820,17 @@ public:
     /// Assignment of a number into the modular number.
     modulo<T>& operator=(const T& i) {
         _i = i;
+        reduce();
         return *this;
     }
 
     // Increment and decrement
     modulo<T>& operator++() {
-        _i++;
+        shift(1);
         return *this;
     }
     modulo<T>& operator--() {
-        _i--;
+        shift(-1);
         return *this;
     }
     modulo<T> operator++(int) {
@@ -845,13 +846,13 @@ public:
 
     template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
     modulo<T>& operator+=(const V& rhs) {
-        _i += rhs;
+        shift(static_cast<std::int64_t>(rhs));
         return *this;
     }
 
     template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
     modulo<T>& operator-=(const V& rhs) {
-        _i -= rhs;
+        shift(-static_cast<std::int64_t>(rhs));
         return *this;
     }
 
@@ -895,7 +896,7 @@ public:
      * @returns The modular number.
      **/
     T norm() const {
-        return _i % _n;
+        return _i;
     }
 
     /// Conversion back to type T
@@ -904,8 +905,45 @@ public:
     }
 
 private:
-    // Internally we don't actually keep bother mod'ing the number when
-    // we do arithmetic, only at output time.
+    // Keep _i in [0, _n) after every mutation. Counting unreduced and taking
+    // `_i % _n` only on read is not equivalent: a signed T overflows after 2^k
+    // increments and the (unsigned) `% _n` is then discontinuous by (2^k mod _n)
+    // unless _n divides 2^k (e.g. int over a base of 24: 2^32 mod 24 == 16, so
+    // the sequence jumps from 15 to 0 and skips 8 values). Reducing on write also
+    // makes a decrement below zero land on _n-1 instead of on the unsigned wrap of -1.
+    //
+    // A base of 0 means "not set" (default-constructed): the value is left
+    // unreduced rather than divided by zero, and norm() returns it as stored.
+    void reduce() {
+        if (_n == 0)
+            return;
+        const T n = static_cast<T>(_n);
+        _i %= n;
+        // Only a signed T can land below zero here; the test is not merely
+        // redundant for an unsigned one, it is unreachable, which is why every
+        // step that could go below zero goes through shift() instead.
+        if constexpr (std::is_signed<T>::value) {
+            if (_i < 0)
+                _i += n;
+        }
+    }
+
+    // Apply a delta to the stored value. The delta is reduced BEFORE it is
+    // combined, in int64 arithmetic, so no argument can overflow T on the way
+    // in and an unsigned T never sees the wrap of a negative intermediate
+    // (a decrement at 0 lands on _n-1 for every T, not on (max % _n)).
+    // The base is assumed to fit in an int64; every Buffer cursor's does,
+    // since Buffer::num_frames is an int.
+    void shift(std::int64_t delta) {
+        if (_n == 0)
+            return;
+        const std::int64_t n = static_cast<std::int64_t>(_n);
+        std::int64_t v = (static_cast<std::int64_t>(_i) % n + delta % n) % n;
+        if (v < 0)
+            v += n;
+        _i = static_cast<T>(v);
+    }
+
     T _i = 0;
 
     // The modular base.
