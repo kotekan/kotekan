@@ -167,8 +167,8 @@ cudaEvent_t cudaHFB1Accumulate::execute(cudaPipelineState& /*pipestate*/,
     // Averaging `hfb_second_downsampling_factor` samples collapses the time axis: the output sample
     // spans `hfb_second_downsampling_factor` input samples, so its FPGA time downsampling grows by
     // that factor. (All other metadata is copied from the input; fpga_seq_num is inherited from
-    // the input window start.) Built before publishing rather than patched afterwards -- see
-    // cudaRFISKtilde::execute for what patching a published object cost on CHORD.
+    // the input window start.) Built before publishing: `set_metadata` fills this ring's live
+    // slot-0 object, which a consumer may read before a later patch lands.
     const std::shared_ptr<const chordMetadata> in_meta = hfb1_beams.get_metadata();
     {
         auto out_meta = std::make_shared<chordMetadata>();

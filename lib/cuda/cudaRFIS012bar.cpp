@@ -171,9 +171,8 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     rfi_S012.check_metadata();
 
-    // Build the corrected metadata, THEN publish it -- same hazard as cudaRFIS012 and
-    // cudaRFISKtilde: patching the published slot-0 object leaves a window in which a
-    // consumer of this ring reads the uncorrected downsampling.
+    // Build the corrected metadata, THEN publish it: `set_metadata` fills the ring's live
+    // slot-0 object, so a consumer can read a field that is patched after the call.
     // TODO: Set these metadata only once
     {
         const std::shared_ptr<const chordMetadata> s012_meta = rfi_S012.get_metadata();

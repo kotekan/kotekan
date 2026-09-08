@@ -20,7 +20,7 @@
 #include <cstdint>        // for uint64_t
 #include <driver_types.h> // for cudaEvent_t
 #include <functional>     // for function
-#include <memory>         // for shared_ptr
+#include <memory>         // for make_shared, shared_ptr
 #include <string>         // for string
 #include <vector>         // for vector
 
@@ -225,15 +225,19 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
     record_start_event();
 
     pl_expanded_mask.check_metadata();
-    pl_upchannelized_expanded_mask.set_metadata(pl_expanded_mask.get_metadata());
 
     // The upchannelizer downsamples the time axis by `upchannelization_factor`; the frequency
-    // layout is unchanged (all other metadata is copied by set_metadata above).
-    // TODO: Set this metadata only once.
-    const auto& in_meta = pl_expanded_mask.get_metadata();
-    const auto& out_meta = pl_upchannelized_expanded_mask.get_metadata();
-    out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
-                                         * upchannelization_factor);
+    // layout is unchanged (all other metadata is copied from the input). Built before
+    // publishing: `set_metadata` fills the ring's live slot-0 object, so a consumer can read a
+    // field that is patched after the call.
+    {
+        const std::shared_ptr<const chordMetadata> in_meta = pl_expanded_mask.get_metadata();
+        auto out_meta = std::make_shared<chordMetadata>();
+        out_meta->deepCopy(in_meta);
+        out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
+                                             * upchannelization_factor);
+        pl_upchannelized_expanded_mask.set_metadata(out_meta);
+    }
 
     kotekan::uint1x8_t* const in_memory = pl_expanded_mask.get_ndarray().data();
     kotekan::uint1x8_t* const out_memory = pl_upchannelized_expanded_mask.get_ndarray().data();

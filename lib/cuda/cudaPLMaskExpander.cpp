@@ -18,7 +18,7 @@
 #include <cstddef>        // for ptrdiff_t
 #include <driver_types.h> // for cudaEvent_t, CUevent_st, CUstream_st
 #include <functional>     // for function
-#include <memory>         // for allocator, shared_ptr, __shared_ptr_access
+#include <memory>         // for allocator, make_shared, shared_ptr, __shared_ptr_access
 #include <string>         // for basic_string, string
 #include <sys/types.h>    // for ulong
 #include <vector>         // for vector
@@ -168,13 +168,16 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
 
     pl_mask.check_metadata();
 
-    pl_expanded_mask.set_metadata(pl_mask.get_metadata());
-    const auto& pl_mask_meta = pl_mask.get_metadata();
-    const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
-
-    // TODO: Set these metadata only once
-    pl_expanded_mask_meta->set_time_downsampling_fpga(
-        div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
+    // Build the corrected metadata, THEN publish it: `set_metadata` fills the ring's live
+    // slot-0 object, so a consumer can read a field that is patched after the call.
+    {
+        const std::shared_ptr<const chordMetadata> pl_mask_meta = pl_mask.get_metadata();
+        auto pl_expanded_mask_meta = std::make_shared<chordMetadata>();
+        pl_expanded_mask_meta->deepCopy(pl_mask_meta);
+        pl_expanded_mask_meta->set_time_downsampling_fpga(
+            div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
+        pl_expanded_mask.set_metadata(pl_expanded_mask_meta);
+    }
 
     // There is no poison value
     // if (poison_buffers)

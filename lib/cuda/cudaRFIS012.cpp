@@ -200,11 +200,10 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
     voltage.check_metadata();
 
-    // Build the corrected metadata, THEN publish it. See cudaRFISKtilde::execute: this
-    // used to publish and then multiply time_downsampling_fpga in the published slot-0
-    // object, and every consumer of this ring -- cudaRFISKtilde among them -- could read
-    // it mid-correction. There the uncorrected value costs a factor rfi_downsampling_factor
-    // (256 on CHORD), which SKtilde then multiplies by 4 and republishes.
+    // Build the corrected metadata, THEN publish it. `NDArrayRingBuffer::set_metadata` fills
+    // the ring's live slot-0 object, which consumers of this ring may read at any time, so a
+    // field patched after the call is observable in both its states. The uncorrected value
+    // here is low by `rfi_downsampling_factor`, and every downstream stage scales it further.
     // TODO: Set these metadata only once
     {
         const std::shared_ptr<const chordMetadata> voltage_meta = voltage.get_metadata();

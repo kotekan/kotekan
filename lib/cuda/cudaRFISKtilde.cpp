@@ -137,8 +137,7 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_SKtilde_name(config.get<std::string>(unique_name, "rfi_SKtilde_name")),
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
-    bf_mask_applied_name(
-        config.get_default<std::string>(unique_name, "bf_mask_applied_name", "")),
+    bf_mask_applied_name(config.get_default<std::string>(unique_name, "bf_mask_applied_name", "")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask",
             std::array<std::ptrdiff_t, 3>{buffer_depth * 1, num_polarizations, num_dishes},
@@ -314,14 +313,13 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
 
     rfi_SKtilde.set_metadata(rfi_S012.get_metadata());
 
-    // Build the corrected RFImask metadata, THEN publish it -- never publish and then
-    // patch the published object. `NDArrayRingBuffer::get_metadata()` hands back the live
-    // slot-0 object, and `cudaCopyFromRingbuffer::execute` reads it on every frame to derive
+    // Build the corrected RFImask metadata, THEN publish it. `NDArrayRingBuffer::get_metadata`
+    // hands back the ring's live slot-0 object, so a field patched after `set_metadata` is
+    // observable in both states. `cudaCopyFromRingbuffer::execute` derives
     //     out_seq = anchor + time_downsampling_fpga * (input_cursor / sample_bytes)
-    // so a reader landing between the publish and the patch saw 256 rather than 1024 (with
-    // CHORD's rfi_downsampling_factor of 256) and, because input_cursor is absolute, emitted
-    // a sequence number 0.75 * uptime behind. N2Accumulate FATALs on the resulting
-    // correlation-vs-RFICounts mismatch: nine CHORD nodes died that way on 2026-09-02/03.
+    // from this object on every frame; `input_cursor` is absolute, so an uncorrected
+    // downsampling factor scales the whole sequence number rather than one frame's worth, and
+    // N2Accumulate FATALs on the correlation-vs-RFICounts mismatch that follows.
     // TODO: Set these metadata only once
     {
         const std::shared_ptr<const chordMetadata> s012_meta = rfi_S012.get_metadata();
