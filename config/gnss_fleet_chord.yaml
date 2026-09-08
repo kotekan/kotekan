@@ -393,6 +393,14 @@ common:
   # ⚠️ BRING THE GATHER UP BEFORE RESTARTING NODES INTO THIS. 60 senders retrying a dead
   # listener is ~2 log lines a second across the fleet even at reconnect_time 30.
   telem-host: 10.222.3.6
+  # PACE EVERY PUSH LEG (telem, cube, search tap) at 2x its mean rate. Every sender in the
+  # fleet emits on the F-engine frame clock, so unpaced they all land on the receiver's single
+  # 1 GbE in the same millisecond and the switch drops what its egress queue cannot hold; each
+  # loss is an RTO stall of ~200 ms, and a telemetry frame that stalls reaches the gather after
+  # its window has closed. At 2x, a frame spreads over half its period and the aggregate at the
+  # link is the mean, which the link carries. 0 = unpaced. The real fix is a faster link into
+  # the receiver; this is the one that needs no hardware.
+  send-pacing-factor: 2.0
   # -- THE BEAM CUBE: the continuous per-(subband x element) recording --------------------------
   # The (channel x element) axis, un-collapsed. Every other product this fleet emits has summed
   # one of the two away -- element blocks over channels, the comb over elements -- and a

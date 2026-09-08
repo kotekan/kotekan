@@ -659,6 +659,8 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # The search must NEVER back-pressure the ingest: acquisition is a bootstrap
             # convenience, the science chain is not.
             "drop_frames": True,
+            **send_pacing(args, cfg, cfg.get("samples_per_data_set", 8192),
+                          int(cfg.get("samples_per_data_set", 8192)) * n_chan),
             # ⚠️ `retry_time` WAS A DEAD KEY -- bufferSend reads `reconnect_time`, and nothing
             # warns about a config key nobody consumes. It happened to be set to the same value
             # as the default, so the leg behaved correctly for the wrong reason and would have
@@ -1112,6 +1114,25 @@ def elem_positions_from_layout(path, n_elem):
         m = _re.match(r"([A-Z])(\d+)[XY]", v["name"])
         out += [(int(m.group(2)) - 1) * cs, (ord(m.group(1)) - 65) * rs, 0.0]
     return out
+
+
+def send_pacing(args, cfg, spds, frame_bytes, frames_per_fengine_frame=1.0):
+    """bufferSend `max_pacing_rate_mbps` for a leg that emits `frame_bytes` per F-engine frame
+    (or that fraction of one), or {} when --send-pacing-factor is 0.
+
+    EVERY SENDER IN THE FLEET EMITS ON THE SAME FRAME CLOCK, so unpaced they all burst into the
+    receiver's link in the same millisecond and the switch's egress queue for that port is what
+    absorbs it -- or does not. Capping each socket a little above its mean rate spreads a frame
+    over most of its own period, and the aggregate at the link is then the mean, which the link
+    carries; the cap is per connection so a leg that fell behind catches up at (factor - 1) x
+    its mean rate, which is why this is a factor and not a rate.
+    """
+    if not args.send_pacing_factor or args.send_pacing_factor <= 1.0:
+        return {}
+    frame_s = float(spds) * float(cfg["fengine"]["fft_length"]) \
+        / (float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6)
+    mean_mbps = frame_bytes * frames_per_fengine_frame * 8.0 / frame_s / 1e6
+    return {"max_pacing_rate_mbps": round(mean_mbps * args.send_pacing_factor, 3)}
 
 
 def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
@@ -1723,6 +1744,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # must cost us nothing; that is also why this is a separate consumer of
                 # n2rec_buf rather than a stage inside the chain.
                 "drop_frames": True,
+                # one wire frame per telem_records_per_frame records
+                **send_pacing(args, cfg, spds, telem_bytes,
+                              n_rec_per_frame / float(args.telem_records_per_frame)),
                 # 30 s, not the 5 s default. When the gather is down EVERY sender logs one WARN
                 # per attempt, and there are 60 of them (12 instances x 5 chains): at the
                 # default that is ~12 lines a second of "Connection refused" across the fleet
@@ -1781,6 +1805,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 "drop_frames": True,
                 "reconnect_time": 30,
                 "send_timeout": 2,
+                **send_pacing(args, cfg, spds, cube_bytes,
+                              n_rec_per_frame / float(args.cube_window_records)),
                 # ⚠️ MUST MATCH THE ARCHIVER -- see the telem_recv note: the nodes inherit a
                 # config_tracker block from the production base and the archiver instance has
                 # none, so left to default the two write different header lengths and the
@@ -2897,6 +2923,15 @@ def main():
                          "boundary is the ABSOLUTE window index wstart/(this*hops*fft_len), not "
                          "a local counter, so every instance batches the same record sets "
                          "without negotiating -- the #53 lesson, applied before it can bite.")
+    ap.add_argument("--send-pacing-factor", type=float, default=0.0,
+                    help="cap every push leg's socket (telem_send, cube_send, srch_send) at this "
+                         "multiple of the leg's MEAN rate via SO_MAX_PACING_RATE (0 = unpaced). "
+                         "Every sender emits on the F-engine frame clock, so unpaced the whole "
+                         "fleet bursts into the receiver's link in the same millisecond and the "
+                         "switch drops what its egress queue cannot hold; each connection then "
+                         "pays a 200 ms RTO stall, and the gather closes the window before the "
+                         "frame arrives. A factor of 2 spreads each frame over half its period "
+                         "and lets a leg that fell behind catch up at its mean rate.")
     # -- THE BEAM CUBE: the continuous per-(subband x element) recording ----------------------
     ap.add_argument("--beam-cube", action="store_true",
                     help="arm GnssGpuRecordAssemble's beam-cube accumulator: per (PRN slot, "

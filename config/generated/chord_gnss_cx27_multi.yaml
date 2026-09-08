@@ -9,8 +9,8 @@
 #       --carrier-phase-from-ref 1 --carrier-phase-mode 1 --keep-n2 --n2-dual --phi-fp16
 #       --despread-max-chips 80 --despread-chips-centered --dpdk-resync-max-advances 32
 #       --n2-send --n2-send-legs both --rf-stats --no-path-a --sky-deep --elem-steer-sign 1.0
-#       --search-host 10.222.3.6 --telem-host 10.222.3.6 --beam-cube --cube-host 10.222.3.6
-#       --vis-capture gps_l5 --extra-signal
+#       --search-host 10.222.3.6 --telem-host 10.222.3.6 --send-pacing-factor 2.0 --beam-cube
+#       --cube-host 10.222.3.6 --vis-capture gps_l5 --extra-signal
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
 #       BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
@@ -228,14 +228,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: 0.0008301
-    t_inst_ns: 1788480000000000000
-    xp_as: 0.208247
-    yp_as: 0.335174
-  - delta_UT1_inst: 0.0007049
-    t_inst_ns: 1788566400000000000
-    xp_as: 0.207471
-    yp_as: 0.334308
   - delta_UT1_inst: 0.0005883
     t_inst_ns: 1788652800000000000
     xp_as: 0.206701
@@ -252,6 +244,14 @@ earth_rotation_data:
     t_inst_ns: 1788912000000000000
     xp_as: 0.203192
     yp_as: 0.334095
+  - delta_UT1_inst: -0.002399
+    t_inst_ns: 1788998400000000000
+    xp_as: 0.20243
+    yp_as: 0.333408
+  - delta_UT1_inst: -0.0036989
+    t_inst_ns: 1789084800000000000
+    xp_as: 0.20163
+    yp_as: 0.332738
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -305,6 +305,7 @@ gnss0_b2a_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -531,6 +532,7 @@ gnss0_b2a_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -547,6 +549,7 @@ gnss0_b2b_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -776,6 +779,7 @@ gnss0_b2b_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -792,6 +796,7 @@ gnss0_b3i_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1021,6 +1026,7 @@ gnss0_b3i_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1042,6 +1048,7 @@ gnss0_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1058,6 +1065,7 @@ gnss0_e5a_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1292,6 +1300,7 @@ gnss0_e5a_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1308,6 +1317,7 @@ gnss0_e5b_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1545,6 +1555,7 @@ gnss0_e5b_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1561,6 +1572,7 @@ gnss0_e6_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1786,6 +1798,7 @@ gnss0_e6_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1802,6 +1815,7 @@ gnss0_l2c_cube_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2017,6 +2031,7 @@ gnss0_l2c_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2228,6 +2243,7 @@ gnss0_srch_send:
   - 34
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 18.75
   reconnect_time: 5
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2310,6 +2326,7 @@ gnss0_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2374,6 +2391,7 @@ gnss1_b2a_cube_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2579,6 +2597,7 @@ gnss1_b2a_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2595,6 +2614,7 @@ gnss1_b2b_cube_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2800,6 +2820,7 @@ gnss1_b2b_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2816,6 +2837,7 @@ gnss1_b3i_cube_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3018,6 +3040,7 @@ gnss1_b3i_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3039,6 +3062,7 @@ gnss1_cube_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3055,6 +3079,7 @@ gnss1_e5a_cube_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3260,6 +3285,7 @@ gnss1_e5a_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3276,6 +3302,7 @@ gnss1_e5b_cube_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3481,6 +3508,7 @@ gnss1_e5b_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3497,6 +3525,7 @@ gnss1_e6_cube_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 1.609
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3690,6 +3719,7 @@ gnss1_e6_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3871,6 +3901,7 @@ gnss1_srch_send:
   - 58
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 21.875
   reconnect_time: 5
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3955,6 +3986,7 @@ gnss1_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
+  max_pacing_rate_mbps: 9.906
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6

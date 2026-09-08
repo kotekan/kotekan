@@ -55,6 +55,8 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     drop_threshold = config.get_default<float>(unique_name, "drop_threshold", 0.6);
+    const double pacing_mbps = config.get_default<double>(unique_name, "max_pacing_rate_mbps", 0.0);
+    max_pacing_rate_bps = pacing_mbps > 0.0 ? (uint32_t)(pacing_mbps * 1e6 / 8.0) : 0;
 
     // Publish current dropped frame count.
 
@@ -312,6 +314,20 @@ void bufferSend::connect_to_server() {
             < 0) {
             ERROR("bufferSend: setsockopt() timeout failed.");
         }
+
+#ifdef SO_MAX_PACING_RATE
+        // Per connection, so it must be re-applied on every reconnect.
+        if (max_pacing_rate_bps > 0
+            && setsockopt(socket_fd, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&max_pacing_rate_bps,
+                          sizeof(max_pacing_rate_bps))
+                   < 0) {
+            ERROR("bufferSend: setsockopt() SO_MAX_PACING_RATE failed: {:s}", strerror(errno));
+        }
+#else
+        if (max_pacing_rate_bps > 0)
+            WARN("bufferSend: max_pacing_rate_mbps set but SO_MAX_PACING_RATE is not available "
+                 "on this platform; sending unpaced.");
+#endif
 
         INFO("Connected to server {:s}:{:d} for sending buffer {:s}", server_ip, server_port,
              buf->buffer_name);
