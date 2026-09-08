@@ -6,6 +6,7 @@ needs one copy of it, not one per constellation.
 """
 import gzip
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -13,6 +14,8 @@ import socket
 import sys
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 
@@ -95,6 +98,116 @@ def install_dns_cache(ttl_s=None):
         return res
 
     socket.getaddrinfo = _cached
+
+
+# ---------------------------------------------------------------------------------------
+# KEEP-ALIVE POOL -- one TCP connection per (thread, host:port), reused across calls.
+#
+# WHY. The nodes answer in milliseconds, but a FRESH connection to them from the broker
+# host can stall for seconds: its single 1 GbE ingress carries the whole fleet's
+# frame-synced telemetry bursts and drops a few percent of the nodes' segments, and a lost
+# SYN-ACK has no fast retransmit, only the 1 s -> 2 s -> 4 s RTO ladder. A data segment lost
+# on an OPEN connection costs one 200 ms RTO; a handshake segment lost costs seconds. Nothing
+# on the node is blocked -- an already-open connection to the same node, probed alongside a
+# stalling fresh one, sees none of it. So this is the same fix the DNS cache above was: take
+# the per-call handshake off a link that loses handshakes. It also stops loading the nodes'
+# TIME-WAIT tables with one dead socket per request.
+#
+# ⚠️ PER THREAD. http.client connections are not thread-safe and the chain threads run
+# their cycles concurrently; a thread-local pool needs no lock and costs threads x nodes
+# sockets (the fd soft limit is raised below so that can never be the failure).
+#
+# ⚠️ SEMANTICS PRESERVED. Same socket timeout for connect and every read as urlopen had;
+# status >= 400 raises urllib.error.HTTPError exactly as urlopen did, so callers' except
+# clauses see the same types. ONE free retry on a REUSED connection when the failure is
+# the connection itself (the server closed an idle keep-alive, which is not a fault) --
+# never on a timeout, never on a fresh connection. GNSS_NO_KEEPALIVE=1 restores urlopen.
+_tl = threading.local()
+_fd_raised = False
+
+
+def _raise_fd_soft_limit():
+    global _fd_raised
+    if _fd_raised:
+        return
+    _fd_raised = True
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        want = min(hard, 65536) if hard != resource.RLIM_INFINITY else 65536
+        if soft < want:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (want, hard))
+    except Exception:
+        pass
+
+
+def _ka_conn(netloc, timeout):
+    pool = getattr(_tl, "conns", None)
+    if pool is None:
+        pool = _tl.conns = {}
+        _raise_fd_soft_limit()
+    c = pool.get(netloc)
+    if c is None:
+        host, _, port = netloc.rpartition(":")
+        if not host:
+            host, port = netloc, ""
+        c = http.client.HTTPConnection(host, int(port) if port else 80, timeout=timeout)
+        pool[netloc] = c
+        return c, False
+    c.timeout = timeout
+    if c.sock is not None:
+        try:
+            c.sock.settimeout(timeout)
+        except OSError:
+            _ka_drop(netloc)
+            return _ka_conn(netloc, timeout)
+    return c, True
+
+
+def _ka_drop(netloc):
+    pool = getattr(_tl, "conns", None)
+    c = pool.pop(netloc, None) if pool else None
+    if c is not None:
+        try:
+            c.close()
+        except Exception:
+            pass
+
+
+_RETRY_ON = (http.client.RemoteDisconnected, http.client.BadStatusLine,
+             http.client.CannotSendRequest, http.client.ResponseNotReady,
+             BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+
+
+def http_request(method, url, timeout, data=None, headers=None):
+    """(status, body bytes) over a pooled keep-alive connection; HTTPError on status >= 400."""
+    u = urllib.parse.urlsplit(url)
+    if os.environ.get("GNSS_NO_KEEPALIVE"):
+        req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=timeout) as h:
+            return h.status, h.read()
+    path = u.path or "/"
+    if u.query:
+        path += "?" + u.query
+    for attempt in (0, 1):
+        c, reused = _ka_conn(u.netloc, timeout)
+        try:
+            c.request(method, path, body=data, headers=headers or {})
+            r = c.getresponse()
+            body = r.read()
+        except _RETRY_ON:
+            _ka_drop(u.netloc)
+            if reused and attempt == 0:
+                continue
+            raise
+        except Exception:
+            _ka_drop(u.netloc)
+            raise
+        if r.will_close:
+            _ka_drop(u.netloc)
+        if r.status >= 400:
+            raise urllib.error.HTTPError(url, r.status, r.reason, r.headers, None)
+        return r.status, body
 
 
 # ---------------------------------------------------------------------------------------
@@ -242,8 +355,7 @@ class _Transcript:
             return r["r"]
         _t0 = time.perf_counter()
         try:
-            with urllib.request.urlopen(url, timeout=timeout) as h:
-                v = json.loads(h.read().decode())
+            v = json.loads(http_request("GET", url, timeout)[1].decode())
             _http_record("get", url, time.perf_counter() - _t0, True)
         except Exception as e:
             _http_record("get", url, time.perf_counter() - _t0, False)
@@ -275,12 +387,10 @@ class _Transcript:
                 raise RuntimeError(r["e"])
             return r["s"]
         data = json.dumps(payload).encode()
-        req = urllib.request.Request(url, data=data, method="POST",
-                                     headers={"Content-Type": "application/json"})
         _t0 = time.perf_counter()
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as h:
-                s = h.status
+            s = http_request("POST", url, timeout, data=data,
+                             headers={"Content-Type": "application/json"})[0]
             _http_record("post", url, time.perf_counter() - _t0, True)
         except Exception as e:
             _http_record("post", url, time.perf_counter() - _t0, False)
