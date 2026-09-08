@@ -2802,13 +2802,13 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # onto an OLDER binary, this flag is the first suspect.
     seed-phase-transport: true
     # E/L TAP OFFSET, CM chips: MUST MATCH the node's dll_spacing (config/gen_chord_gnss_config.py
-    # dll_spacing_chips). Every L2C instance despreads ONE 195 kHz channel (the mainlobe is
-    # narrower than the comb stride), so the correlation is |sinc|^2 with its null at 2.6 CM
-    # chips; at the 0.5 default E and L sit 90% up the peak and q = 2P/(E+L) is PEGGED at 1.11
-    # for a perfect lock -- which is what every q-gated instrument (fast-loop 2.2 gate, presence,
-    # viewer) showed through the first locks. 2.0 chips: q on peak 6.7, discriminator slope
-    # 1.10/chip (the shipped tau law assumes 1.0), monotonic to +-2 chips, jitter equal to 1.25.
-    dll-spacing: 2.0
+    # dll_spacing_chips), and the nodes must be cycled FIRST so the taps lead the law. Every
+    # L2C instance despreads ONE 195 kHz channel (the mainlobe is narrower than the comb
+    # stride), so the fleet loop's coherent sum over senders is a sum over five CONTIGUOUS
+    # channels: a 5-channel Dirichlet with its first null at 1/(5B) = 0.52 CM chips, not the
+    # per-channel |sinc|^2 null at 2.6. Taps outside that null land on sidelobes, where the
+    # discriminator reverses sign and the loop false-locks ~half a chip off peak.
+    dll-spacing: 0.4
     presence-admit-displaced: true
     joint-consume: clk,rate
     fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"

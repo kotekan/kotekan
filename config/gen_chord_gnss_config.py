@@ -151,28 +151,25 @@ def signal_tag(name):
 def dll_spacing_chips(name):
     """Early/Late tap offset from prompt, in the signal's OWN (component) chips.
 
-    The tap offset has to be set by the CORRELATION WIDTH the tracker actually sees, not by
-    the chip. That width is the channel geometry's: L5's 7-channel comb spans its 20 MHz
-    mainlobe, so the correlation is chip-narrow and 0.5 chip (49 ns) sits on the slope. GPS
-    L2C's mainlobe is six freq_ids wide -- narrower than the comb stride -- so every L2C
-    instance despreads ONE 195 kHz channel, whose correlation is |sinc|^2 with its first null
-    at 1/B = 5.1 us = 2.6 CM chips. At 0.5 CM chip (1 us) E and L sit 90% of the way up the
-    peak: q = 2P/(E+L) = 1.11 for a PERFECT lock (e2e, replica on truth to 0.000 chips), which
-    is why every L2C instrument gated on q (fast-loop trim_quality_min 2.2, presence, the
-    viewer) read "dead" through the first on-sky locks of 2026-09-02.
+    The tap offset is set by the CORRELATION WIDTH THE LOOP ACTUALLY CLOSES ON, not by the
+    chip: E and L must straddle the mainlobe of that correlation, inside its first null, or
+    the discriminator reverses sign off-peak and the loop has stable false locks.
 
-    Measured on the harness (scripts/gnss/e2e --signal GPS_L2C_CM --t-nchan 1 --t-chan0 6286
-    --dll-spacing D --trim X), q on the peak / discriminator slope per chip:
-        D 0.5: 1.11 / 0.22   1.0: 1.55 / 0.46   1.25: 2.00 / 0.57   1.5: 2.77 / 0.73
-        D 1.75: 4.13 / 0.90  2.0: 6.74 / 1.10   2.5: 26 / 1.65 (taps on the null)
-    The tap-AMPLITUDE slope, which sets DLL jitter, is flat within 10% from 1.25 to 2.0, so
-    widening is free until the null. 2.0 clears the 2.2 gates with L5-class margin, is
-    monotonic to +-2 chips, and its slope (1.10/chip) matches the shipped trim law
-    tau = -disc/4 * (D/0.5) within 10%. MUST MATCH the broker chain's --dll-spacing
-    (config/gnss_chains_chord.yaml): the C++ fleet loop takes its law's spacing from the
-    arming payload while the taps come from here.
+    Two geometries are in play. L5 and every other chain despread a multi-freq_id comb inside
+    one instance, so the correlation is chip-narrow and 0.5 chip sits on the slope. GPS L2C's
+    mainlobe is six freq_ids -- narrower than the comb stride -- so each instance despreads ONE
+    195 kHz channel; that per-channel correlation is |sinc|^2 with its null at 2.6 CM chips,
+    but the fleet loop sums the senders' complex taps COHERENTLY, and on L2C the senders are
+    five contiguous channels, so what the loop sees is a 5-channel Dirichlet whose first null
+    is 1/(5B) = 0.52 CM chips. The tap offset must respect the COMBINED width: only inside it
+    is the discriminator monotonic (q on peak is then ~6, and a q that reads far higher means
+    the taps have landed in a null, not that the lock improved).
+
+    MUST MATCH the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
+    loop takes its law's spacing from the arming payload while the taps come from here, and
+    nodes must be cycled before the broker so the taps lead the law.
     """
-    return {"GPS_L2C_CM": 2.0}.get(name, 0.5)
+    return {"GPS_L2C_CM": 0.4}.get(name, 0.5)
 
 
 def broker_chain_name(name):

@@ -3621,7 +3621,7 @@ gnss1_l2c_n2dual:
     conjugate: true
     despread_chips_centered: true
     despread_max_chips: 80
-    dll_spacing: 2.0
+    dll_spacing: 0.4
     f_offset_hz: 1227600000.0
     fft_length: 16384
     get_prns_endpoint: /gnss1_l2c_inject/get_prns
