@@ -12,6 +12,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
+#include <chrono>     // for steady_clock, seconds
 #include <cstring>    // for memcpy
 #include <exception>  // for exception
 #include <functional> // for bind, function
@@ -45,6 +46,13 @@ void Valve::main_thread() {
     /// Metric to track the number of dropped frames.
     auto& dropped_total =
         Metrics::instance().add_counter("kotekan_valve_dropped_frames_total", unique_name);
+    // ...and the denominator: a drop count alone cannot be read (the same number is
+    // catastrophic on a short run and negligible on a long one). With both counters a
+    // consumer gets the lost fraction without knowing the frame period.
+    auto& passed_total =
+        Metrics::instance().add_counter("kotekan_valve_passed_frames_total", unique_name);
+    uint64_t n_dropped = 0;
+    auto last_warn = std::chrono::steady_clock::now();
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id
@@ -65,8 +73,20 @@ void Valve::main_thread() {
                 break;
             }
             _buf_out->mark_frame_full(unique_name, frame_id_out++);
+            passed_total.inc();
         } else {
-            WARN("Output buffer full. Dropping incoming frame {:d}.", frame_id_in);
+            // Rate-limited BY TIME, carrying the running total. A valve in front of a
+            // newest-is-best consumer drops most of its input by design -- at 1e5 frames/s
+            // even one line per hundred drops is gigabytes of log per hour -- while a valve
+            // that should never drop wants its first loss reported at once.
+            ++n_dropped;
+            auto now = std::chrono::steady_clock::now();
+            if (n_dropped == 1 || now - last_warn >= std::chrono::seconds(60)) {
+                WARN("Output buffer full, dropping frames: {:d} lost so far (downstream "
+                     "cannot keep up).",
+                     n_dropped);
+                last_warn = now;
+            }
             dropped_total.inc();
         }
         _buf_in->mark_frame_empty(unique_name, frame_id_in++);
