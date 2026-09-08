@@ -1,9 +1,17 @@
 # Staged upstream PR plan — `kv/chord-gnss` → `chord`
 
-**Status 2026-09-02.** PR [#1618](https://github.com/kotekan/kotekan/pull/1618) is open as a
-draft, base `chord`, head `kv/chord-gnss`, **no description**. It currently carries the whole
-branch: **661 files, +220,684 / −143, 1,741 commits, one author.** No maintainer has reviewed
-it, which is the expected outcome of asking anyone to read 661 files.
+**Status 2026-09-08.** Stage 1 has **landed**: PR
+[#1640](https://github.com/kotekan/kotekan/pull/1640) was approved and squash-merged into
+`chord` as `a6ce5ac49`. Two fixes split out of the later stages are open and approved-or-clean:
+[#1638](https://github.com/kotekan/kotekan/pull/1638) (caller-side publish-then-mutate, 7
+`lib/cuda` stages) and [#1642](https://github.com/kotekan/kotekan/pull/1642)
+(`cudaCopyFromRingbuffer` reads its own snapshot). **Stage 2 is in progress** — see the split
+recorded under its heading below.
+
+PR [#1618](https://github.com/kotekan/kotekan/pull/1618) remains open as a draft, base `chord`,
+head `kv/chord-gnss`, **no description**, carrying the whole branch: **661 files, +220,684 /
+−143, 1,741 commits, one author.** No maintainer has reviewed it, which is the expected outcome
+of asking anyone to read 661 files.
 
 This document is the plan to make it landable. It is versioned here rather than in the PR
 body because it has to stay in step with the branch as stages land.
@@ -89,16 +97,36 @@ symbol. This stage exists so the first review is a pleasant one.
 
 ### Stage 2 — shared buffer / metadata data path *(4 files, needs the owners)*
 
+**Split into three, because the four files have three different audiences and one of them is a
+conversation rather than a patch.**
+
+**2a — the metadata torn-write root fix.** Ready on `kv/chord-upstream-2`; 2 files, +36/−7.
+Invited explicitly by @jbmertens on #1638 ("Only publishing metadata inside `finish_write`,
+with the data, would subsume them. Separate PR.").
+
 * `lib/core/buffer.cpp` — `get_metadata()` now returns a copy of the `shared_ptr` under the
   buffer lock.
 * `lib/cuda/NDArrayRingBuffer.hpp` — `set_metadata()` builds a **fresh** object and publishes
   it, instead of allocating slot 0 and mutating in place under a live reader. This is the
   torn-read fix (`9216 = 8×384×3`) behind four autopsied node deaths.
-  > ⚠️ **This also restores `check_read_progress()`, which upstream deleted in `f82baaed6`.**
-  > A deliberate re-revert must be discussed with that commit's author, not slipped in.
+  > The published object keeps its pool provenance: where the ring's buffer has a metadata
+  > pool the fresh object is requested from it, exactly as `allocate_new_metadata_object` did,
+  > so `parent_pool` stays set for `get_object_size()`. Only a poolless ring (producer-built
+  > metadata, as in `cudaCopyToRingbuffer`) falls back to a bare `make_shared`.
+  > ⚠️ It does **not** subsume the caller-side fixes in #1638: a caller that patches a derived
+  > field after `set_metadata` returns is still writing into a published object.
+
+**2b — the consumer and its diagnostics.** Blocked on #1642, which touches the same file.
+
 * `lib/cuda/cudaCopyFromRingbuffer.{cpp,hpp}` — descriptor publication becomes a validated
   defer-and-retry rather than an unconditional call.
 * `lib/stages/N2Accumulate.cpp` — desync autopsy diagnostics; the existing FATALs are unchanged.
+
+**2c — HELD, and it is a conversation.** Restoring `check_read_progress()` in
+`lib/cuda/NDArrayRingBuffer.hpp`, which upstream deleted in `f82baaed6` (Erik Schnetter,
+2026-08-12). A deliberate re-revert of another author's deliberate deletion must be discussed
+with that author, not slipped into a PR about something else. Our only caller is
+`cudaCorrelatorDual.cpp`, which is Stage 8, so nothing before then depends on the answer.
 
 ### Stage 3 — GPU scheduling *(the highest-risk shared change; goes alone)*
 
