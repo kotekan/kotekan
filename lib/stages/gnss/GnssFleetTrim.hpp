@@ -206,10 +206,11 @@ private:
     uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
     std::vector<uint64_t> _sent_gen;                ///< per thread slot, last generation sent
     int _post_every = 1;
-    /// Per-request budget. 200 ms is ~5 frames: long enough that a busy tracker is not
-    /// declared dead, short enough that a wedged one cannot hold a poster thread past the
-    /// point where its trim would be stale anyway.
-    int _post_timeout_ms = 200;
+    /// Per-request budget on an established connection: wider than one kernel minimum RTO
+    /// (200 ms) so a single lost segment recovers instead of costing the socket, short
+    /// enough that a wedged tracker cannot hold a poster thread past the point where its
+    /// trim would be stale anyway. Handshakes are not charged against it (see post_loop).
+    int _post_timeout_ms = 450;
     /// PER CHAIN, not fleet-wide. Summing across chains made any chain's window close trigger
     /// a post round for EVERY chain: measured 116 posts/s/path against the 23.8 intended, a
     /// clean 5x for the five chains (2026-08-15). Harmless in correctness -- the trim is

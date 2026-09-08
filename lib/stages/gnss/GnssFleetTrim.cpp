@@ -25,28 +25,39 @@
 
 namespace {
 
-/// Connect with a bounded wait. A blocking connect() has no timeout short of the kernel's,
-/// which is minutes -- far longer than the 42 ms window this loop lives in.
-int connect_to(const struct sockaddr_in& addr, int timeout_ms) {
+/// Begin a connect and return at once. The handshake completes (or not) on its own; the
+/// poster asks after it with connect_poll() on later rounds.
+///
+/// ⚠️ NEVER WAIT ON A HANDSHAKE IN THIS LOOP. The broker host's uplink loses a few percent
+/// of the nodes' segments, and a lost SYN-ACK is recovered only by the kernel's 1 s -> 2 s
+/// retransmit ladder -- there is no fast path for a handshake. A connect that must
+/// complete inside the post timeout therefore fails on exactly the rounds the link is
+/// lossy, every retry fails the same way, and the backoff walks the target past the trim
+/// TTL. Left in flight, the same handshake completes by itself a second or three later
+/// while the thread keeps serving its other targets.
+int connect_start(const struct sockaddr_in& addr) {
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0)
         return -1;
     ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    int rc = ::connect(fd, (const struct sockaddr*)&addr, sizeof(addr));
-    if (rc < 0 && errno == EINPROGRESS) {
-        struct pollfd pfd = {fd, POLLOUT, 0};
-        if (::poll(&pfd, 1, timeout_ms) != 1) {
-            ::close(fd);
-            return -1;
-        }
-        int err = 0;
-        socklen_t len = sizeof(err);
-        if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
-            ::close(fd);
-            return -1;
-        }
-    } else if (rc < 0) {
+    if (::connect(fd, (const struct sockaddr*)&addr, sizeof(addr)) < 0 && errno != EINPROGRESS) {
         ::close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+/// 1: established (socket now blocking, with the post timeout on send and recv);
+/// 0: still in flight; -1: failed and closed (errno tells why).
+int connect_poll(int fd, int timeout_ms) {
+    struct pollfd pfd = {fd, POLLOUT, 0};
+    if (::poll(&pfd, 1, 0) != 1)
+        return 0;
+    int err = 0;
+    socklen_t len = sizeof(err);
+    if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
+        ::close(fd);
+        errno = err ? err : ECONNABORTED;
         return -1;
     }
     ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK);
@@ -55,22 +66,16 @@ int connect_to(const struct sockaddr_in& addr, int timeout_ms) {
     ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     int one = 1;
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)); // 200-byte posts at 24 Hz
-    return fd;
+    return 1;
 }
 
-/// One HTTP/1.1 POST on a KEPT-ALIVE connection. Returns false and leaves *fd == -1 on any
-/// error, so the caller simply reconnects next round -- there is no state to repair and
-/// nothing that can throw or exit.
-bool http_post(int* fd, const struct sockaddr_in& addr, const std::string& host,
-               const std::string& path, const std::string& body, int timeout_ms,
-               std::string* err) {
-    for (int attempt = 0; attempt < 2; ++attempt) { // one free retry: a kept-alive socket the
-        if (*fd < 0)                                // peer closed fails on the first write
-            *fd = connect_to(addr, timeout_ms);
-        if (*fd < 0) {
-            *err = "connect: " + std::string(std::strerror(errno));
-            return false;
-        }
+/// One HTTP/1.1 POST on an ESTABLISHED kept-alive connection. Any transport error closes the
+/// socket and leaves *fd == -1: the caller starts a fresh connect next round and the payload
+/// simply goes out one round late -- there is no state to repair and nothing that can throw
+/// or exit.
+bool http_post(int* fd, const std::string& host, const std::string& path,
+               const std::string& body, std::string* err) {
+    {
         std::string req = "POST " + path + " HTTP/1.1\r\nHost: " + host
                           + "\r\nContent-Type: application/json\r\nContent-Length: "
                           + std::to_string(body.size()) + "\r\nConnection: keep-alive\r\n\r\n"
@@ -88,8 +93,6 @@ bool http_post(int* fd, const struct sockaddr_in& addr, const std::string& host,
         if (!wrote) {
             ::close(*fd);
             *fd = -1;
-            if (attempt == 0)
-                continue; // stale keep-alive: reconnect and send once more
             *err = "send: " + std::string(std::strerror(errno));
             return false;
         }
@@ -142,8 +145,6 @@ bool http_post(int* fd, const struct sockaddr_in& addr, const std::string& host,
         if (dead) {
             ::close(*fd);
             *fd = -1;
-            if (attempt == 0)
-                continue;
             *err = "recv: " + std::string(std::strerror(errno));
             return false;
         }
@@ -153,7 +154,6 @@ bool http_post(int* fd, const struct sockaddr_in& addr, const std::string& host,
         }
         return true;
     }
-    return false;
 }
 
 } // namespace
@@ -211,7 +211,10 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     // freshness gate, and expiring a chain that merely posted late would disarm a healthy loop.
     _policy_ttl_s = std::max(5.0, config.get_default<double>(unique_name, "policy_ttl_s", 60.0));
     _post_every = std::max(1, config.get_default<int>(unique_name, "post_every_n_windows", 1));
-    _post_timeout_ms = std::max(20, config.get_default<int>(unique_name, "post_timeout_ms", 200));
+    // ⚠️ WIDER THAN ONE RETRANSMIT. A segment lost on a healthy connection comes back at the
+    // kernel's minimum RTO (200 ms) plus a round trip; a timeout at 200 ms throws away the
+    // socket exactly when it is about to recover, and the replacement has to handshake.
+    _post_timeout_ms = std::max(20, config.get_default<int>(unique_name, "post_timeout_ms", 450));
     const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
     _sent_gen.assign((size_t)nthr, 0);
     _n_post_threads = nthr; // BEFORE the threads exist -- see the header note
@@ -715,7 +718,16 @@ void GnssFleetTrim::post_loop(int slot) {
     // 200 from a valid but unintended instance for the seven chains whose stage names are
     // fleet-uniform, a 404 for L2C, and instances starved past the trim TTL while their
     // rounds went elsewhere.
-    std::map<std::string, int> fds;    // target url -> socket, this thread's alone
+    struct Conn {
+        int fd = -1;
+        bool connecting = false; // fd is a handshake in flight, not yet a connection
+        std::chrono::steady_clock::time_point since;
+    };
+    // A handshake gets this long to complete on its own before it counts as a failure:
+    // enough for the kernel's SYN retransmits at 1 s and 3 s, and still inside the
+    // trackers' trim TTL so a target that comes back is served before its trims expire.
+    constexpr auto kConnectBudget = std::chrono::milliseconds(3500);
+    std::map<std::string, Conn> conns; // target url -> socket, this thread's alone
     std::map<std::string, int> skips;  // rounds still to skip (backoff)
     std::map<std::string, int> nfails; // consecutive failures
     while (!stop_thread) {
@@ -753,11 +765,35 @@ void GnssFleetTrim::post_loop(int slot) {
                 --skip;
                 continue;
             }
-            auto fdi = fds.emplace(t.url, -1).first;
-            int& fd = fdi->second;
+            Conn& c = conns[t.url];
             std::string err;
-            const bool ok = http_post(&fd, t.addr, t.host, t.path, it->second.dump(),
-                                      _post_timeout_ms, &err);
+            bool ok = false;
+            if (c.fd < 0) {
+                c.fd = connect_start(t.addr);
+                c.connecting = true;
+                c.since = std::chrono::steady_clock::now();
+                if (c.fd < 0)
+                    err = "connect: " + std::string(std::strerror(errno));
+            }
+            if (c.fd >= 0 && c.connecting) {
+                const int r = connect_poll(c.fd, _post_timeout_ms);
+                if (r > 0)
+                    c.connecting = false;
+                else if (r < 0) {
+                    c.fd = -1;
+                    c.connecting = false;
+                    err = "connect: " + std::string(std::strerror(errno));
+                } else if (std::chrono::steady_clock::now() - c.since < kConnectBudget) {
+                    continue; // in flight: costs this thread nothing and counts as nothing
+                } else {
+                    ::close(c.fd);
+                    c.fd = -1;
+                    c.connecting = false;
+                    err = "connect: timed out";
+                }
+            }
+            if (c.fd >= 0)
+                ok = http_post(&c.fd, t.host, t.path, it->second.dump(), &err);
             int& nfail = nfails[t.url];
             if (ok)
                 nfail = 0;
@@ -774,7 +810,7 @@ void GnssFleetTrim::post_loop(int slot) {
         }
         // A target that left this thread's stride (list changed) takes its socket with it:
         // close here rather than hold a connection nothing will use again.
-        for (auto f = fds.begin(); f != fds.end();) {
+        for (auto f = conns.begin(); f != conns.end();) {
             bool mine = false;
             for (size_t i = (size_t)slot; i < tgt.size() && !mine; i += (size_t)_n_post_threads)
                 mine = tgt[i].url == f->first;
@@ -782,11 +818,11 @@ void GnssFleetTrim::post_loop(int slot) {
                 ++f;
                 continue;
             }
-            if (f->second >= 0)
-                ::close(f->second);
+            if (f->second.fd >= 0)
+                ::close(f->second.fd);
             skips.erase(f->first);
             nfails.erase(f->first);
-            f = fds.erase(f);
+            f = conns.erase(f);
         }
         {
             std::lock_guard<std::mutex> lk(_pend_mtx);
@@ -794,9 +830,9 @@ void GnssFleetTrim::post_loop(int slot) {
                 _sent_gen[(size_t)slot] = gen;
         }
     }
-    for (auto& f : fds)
-        if (f.second >= 0)
-            ::close(f.second);
+    for (auto& f : conns)
+        if (f.second.fd >= 0)
+            ::close(f.second.fd);
 }
 
 void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
