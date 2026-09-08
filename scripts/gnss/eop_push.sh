@@ -9,9 +9,9 @@
 # config file's stale copy. So: run this AFTER every node bring-up, and any time the window
 # is near its edge. The 2026-08-24 restart reverted Jim's Friday curls exactly this way.
 #
-# SOURCE. The observatory keeps the rolling file at choco:/etc/choco/configs/eop-state.json
+# SOURCE. The observatory keeps the rolling file at choco:/var/lib/choco/eop/state.json
 # (refreshed daily at ~12:00). cf06 CANNOT reach choco, so the file must be staged by a host
-# that reaches both:  scp choco:/etc/choco/configs/eop-state.json cf06:/tmp/eop-state.json
+# that reaches both:  scp choco:/var/lib/choco/eop/state.json cf06:/tmp/eop-state.json
 # This script then runs ON cf06 (or any host that reaches the cx nodes).
 #
 #   usage:  eop_push.sh [file]          default /tmp/eop-state.json
@@ -32,7 +32,7 @@ print("table: %d entries, %s .. %s" % (len(t), lo.date(), hi.date()))
 if now > hi:
     print("REFUSING: the table's last entry is already in the past (%s < today %s)."
           % (hi.date(), now.date()))
-    print("Stage a fresh one:  scp choco:/etc/choco/configs/eop-state.json %s" % sys.argv[1])
+    print("Stage a fresh one:  scp choco:/var/lib/choco/eop/state.json %s" % sys.argv[1])
     raise SystemExit(1)
 if (hi - now).days < 1:
     print("WARNING: <1 day of table left past now -- stage a fresh file soon.")
