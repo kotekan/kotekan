@@ -6,15 +6,21 @@ discriminator the broker closes its code loop with is the LAST thing that needed
 summed slots; everything here is formed from `comb_epl()` -- Early, Prompt and Late per
 CHANNEL, per record, as the transport ships them.
 
-WHAT THIS REPRODUCES, EXACTLY. GnssCoherentCombiner forms, per record:
+WHAT THIS FORMS. Per record, per PRN, over EVERY channel c of the lobe -- all senders, each
+sender's columns first multiplied by exp(+i*phi0) (REC_PHI0) so they sit on one reference:
 
-    A   = (SUM_c G_c) / (SUM_c E_c)                       ... the cross-channel coherent sum
-    p2  = |A|^2 ,   e2 = |SUM_c G^E_c|^2 / (SUM_c E^E_c)^2 ,  l2 likewise
+    p2 = |SUM_c G_c|^2 / (SUM_c E_c)^2 ,   e2 and l2 likewise, each tap on its own energy
 
-then averages over its integration window and publishes e_pow/p_pow/l_pow, which fleet_dll
-sums over instances. `comb_epl()` gives A_c = G_c/E_c and E_c per channel, so SUM_c G_c =
-SUM_c A_c*E_c and the same three numbers fall out here. The arithmetic is not new; WHERE it
-happens is the whole point.
+then the mean over the records in the ring, and disc = (E-L)/(E+L), q = 2P/(E+L).
+`comb_epl()` gives A_c = G_c/E_c and E_c per channel, so SUM_c G_c = SUM_c A_c*E_c.
+
+⚠️ THE COHERENCE UNIT IS THE LOBE, NEVER THE SENDER. A sender is a `freq_id mod 8` grouping
+of channels -- a transport artefact. Summing each sender's channels coherently and then adding
+POWERS across senders (what GnssCoherentCombiner does per instance, and what this module did
+before the lobe combine) puts that grouping into the discriminator: seven channels at 3.125 MHz
+stride are a 3.27-chip grating comb in the correlation response, and the noise floor is
+n_sender times what the band can give. No sender count is an operand anywhere here; the only
+use of one is COMPLETENESS -- a record too few senders reached is left out, not reweighted.
 
 WHY THE NUMBERS WILL NOT MATCH TO THE LAST DIGIT, and which differences are legitimate:
   * AVERAGING. The combiner runs a rolling EMA of length 100 records (~1.05 s); this takes a
@@ -47,6 +53,7 @@ import math
 # imports fleet for apply_presence, so the definition lives there to keep imports acyclic.
 from .fleet import apply_presence
 from .fleet import epl_decompose
+from .telem import REC_PHI0
 
 __all__ = ["epl_decompose"]  # the re-export, stated
 
@@ -88,19 +95,19 @@ def dll_integrate(trim, disc, gain, leak, clamp, spacing):
     return max(-clamp, min(clamp, t))
 
 
-def instance_taps(client, chain, wins, prns=None, per_channel=True):
-    """{prn: {inst: {e, p, l, hop, n_chan, n_rec, chan}}} -- per-record powers, meaned.
+def _lobe_fold(client, chain, wins, want, per_channel):
+    """The one walk over the frames both lobe_taps and lobe_records reduce from.
 
-    One entry per (PRN, instance) that had at least one record with a live comb in `wins`.
-    `chan` is {freq_id: [e, p, l, n_rec]}: the same three powers formed from ONE channel, kept
-    unsummed. Records with no comb (PRN not despread that record, or an instance running
-    without chan_export) contribute nothing rather than zeros -- a zeroed record is not a
-    measurement of no signal, it is the absence of one, and averaging it in dilutes the power
-    exactly the way the deep fold's zero-padding did.
+    Returns (acc, chan_w): acc is {(win, slot): {prn: [gE, gP, gL, wE, wP, wL, n_chan,
+    n_inst, hop]}} -- the rotated complex partial sums, NOT yet powers -- and chan_w is
+    {win: ({prn: {fid: [e, p, l, n_rec]}}, {fid: owner}, {dup fids})}.
     """
-    want = None if prns is None else set(int(p) for p in prns)
+    # (win, slot) -> {prn: [gE, gP, gL, wE, wP, wL, n_chan, n_inst, hop]}
     acc = {}
+    # per window: {prn: {fid: [e, p, l, n_rec]}}, {fid: owner}, {dup fids}
+    chan_w = {}
     for w in wins:
+        cw = chan_w.setdefault(w, ({}, {}, set()))
         for inst, f in client.frame_set(chain, w).items():
             for r in range(f.n_rec):
                 if not f.has_record(r):
@@ -114,45 +121,146 @@ def instance_taps(client, chain, wins, prns=None, per_channel=True):
                         continue
                     gE = gP = gL = 0j
                     eE = eP = eL = 0.0
-                    d = acc.setdefault(prn, {}).setdefault(
-                        inst, {"e": 0.0, "p": 0.0, "l": 0.0, "hop": -1, "n_chan": 0.0,
-                               "n_rec": 0, "chan": {}})
-                    for fid, E, P, L, (wE, wP, wL) in cmb:
+                    for _fid, E, P, L, (wE, wP, wL) in cmb:
                         gE += E * wE
                         gP += P * wP
                         gL += L * wL
                         eE += wE
                         eP += wP
                         eL += wL
-                        if per_channel:
+                    if eP <= 0.0:
+                        continue
+                    row = f.row(r, prn)
+                    rot = cmath.exp(1j * float(row[REC_PHI0])) if row is not None else 1.0
+                    d = acc.setdefault((w, r), {}).setdefault(
+                        prn, [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1])
+                    d[0] += gE * rot
+                    d[1] += gP * rot
+                    d[2] += gL * rot
+                    d[3] += eE
+                    d[4] += eP
+                    d[5] += eL
+                    d[6] += len(cmb)
+                    d[7] += 1
+                    d[8] = max(d[8], hop)
+                    if per_channel:
+                        per_fid = cw[0].setdefault(prn, {})
+                        for fid, E, P, L, _w in cmb:
+                            own = cw[1].setdefault(fid, inst)
+                            if own != inst:
+                                cw[2].add(fid)
                             # ONE channel's own three powers, formed by the identical
                             # expression -- |G|^2/E^2 with each tap on its own replica energy.
-                            c = d["chan"].setdefault(fid, [0.0, 0.0, 0.0, 0])
+                            c = per_fid.setdefault(fid, [0.0, 0.0, 0.0, 0])
                             c[0] += abs(E) ** 2
                             c[1] += abs(P) ** 2
                             c[2] += abs(L) ** 2
                             c[3] += 1
-                    if eP <= 0.0:
+    return acc, chan_w
+
+
+def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1):
+    """{prn: {e, p, l, hop, n_chan, n_rec, n_inst, chan, chan_dup}} -- lobe-coherent per-record
+    powers, meaned over records.
+
+    THE COHERENCE UNIT IS THE LOBE. Per record, ONE complex sum over every channel of every
+    sender, each sender's columns first multiplied by exp(+i*phi0) (REC_PHI0 -- the per-sender
+    NCO accumulator the assembler applied, whose zero is arbitrary per sender), then the power
+    |SUM_c G_c|^2 / (SUM_c E_c)^2 with each tap on its own replica energy. A sender is a
+    `freq_id mod 8` grouping of channels -- a transport artefact -- and appears nowhere in the
+    arithmetic: not as a partial-power term, not as a divisor, not as a weight.
+
+    `n_inst` is the COMPLETENESS of a record (how many senders reached it) and is used for one
+    thing only: a record fewer than `min_instances` senders reached is not averaged in. A
+    partial record carries the same normalised signal power and more noise; whether it is
+    still worth having is the caller's call, and the caller states it here.
+
+    `chan` is {freq_id: [e, p, l, n_rec]}: the same three powers formed from ONE channel, kept
+    unsummed, each meaned over ITS OWN live records. A freq_id two senders both carried in one
+    window is a routing fault upstream: it is listed in `chan_dup` and DROPPED from `chan`
+    rather than reported as a number that is neither sender's measurement (the lobe sum keeps
+    it -- a duplicated channel is still that channel's measurement, twice).
+
+    Records with no comb (PRN not despread that record, or a sender running without
+    chan_export) contribute nothing rather than zeros -- a zeroed record is not a measurement
+    of no signal, it is the absence of one, and averaging it in dilutes the power exactly the
+    way the deep fold's zero-padding did.
+
+    ⚠️ THE ORDER OF OPERATIONS IS THE C++ ARM'S (gnss::FleetDll::fold), on purpose: per
+    sender the raw complex is summed over its channels FIRST, that partial sum is rotated,
+    and the rotated partials are added. scripts/gnss/fleetdll_gate.py compares the two arms
+    at 1e-9 on identical bytes, and a different association of the same sum is a different
+    float.
+    """
+    want = None if prns is None else set(int(p) for p in prns)
+    acc, chan_w = _lobe_fold(client, chain, wins, want, per_channel)
+    out = {}
+    complete = set()   # (win, prn) with at least one record that passed the gate
+    for (w, _r), per_prn in acc.items():
+        for prn, d in per_prn.items():
+            if d[7] < min_instances:
+                continue
+            complete.add((w, prn))
+            t = out.setdefault(prn, {"e": 0.0, "p": 0.0, "l": 0.0, "hop": -1, "n_chan": 0.0,
+                                     "n_rec": 0, "n_inst": 0, "chan": {}, "chan_dup": set()})
+            t["e"] += (abs(d[0]) / d[3]) ** 2 if d[3] > 0.0 else 0.0
+            t["p"] += (abs(d[1]) / d[4]) ** 2
+            t["l"] += (abs(d[2]) / d[5]) ** 2 if d[5] > 0.0 else 0.0
+            t["n_chan"] += d[6]
+            t["n_rec"] += 1
+            t["n_inst"] = max(t["n_inst"], d[7])
+            t["hop"] = max(t["hop"], d[8])
+    if per_channel:
+        for w, (per_prn, _own, dup) in chan_w.items():
+            for prn, per_fid in per_prn.items():
+                # A PRN whose every record THIS window was incomplete contributes no lobe
+                # tap from it, and its channels must not appear without one: the two tables
+                # describe the same records, window by window.
+                if (w, prn) not in complete:
+                    continue
+                t = out[prn]
+                t["chan_dup"] |= dup & set(per_fid)
+                for fid, c in per_fid.items():
+                    if fid in dup or c[3] <= 0:
                         continue
-                    d["e"] += (abs(gE) / eE) ** 2 if eE > 0.0 else 0.0
-                    d["p"] += (abs(gP) / eP) ** 2
-                    d["l"] += (abs(gL) / eL) ** 2 if eL > 0.0 else 0.0
-                    d["n_chan"] += len(cmb)
-                    d["n_rec"] += 1
-                    d["hop"] = max(d["hop"], hop)
-    for _prn, per_inst in acc.items():
-        for _inst, d in per_inst.items():
-            n = float(d["n_rec"]) or 1.0
-            d["e"] /= n
-            d["p"] /= n
-            d["l"] /= n
-            d["n_chan"] /= n
-            for c in d["chan"].values():
-                m = float(c[3]) or 1.0
-                c[0] /= m
-                c[1] /= m
-                c[2] /= m
-    return acc
+                    a = t["chan"].setdefault(fid, [0.0, 0.0, 0.0, 0])
+                    a[0] += c[0]
+                    a[1] += c[1]
+                    a[2] += c[2]
+                    a[3] += c[3]
+    for t in out.values():
+        n = float(t["n_rec"]) or 1.0
+        t["e"] /= n
+        t["p"] /= n
+        t["l"] /= n
+        t["n_chan"] /= n
+        t["chan_dup"] = sorted(t["chan_dup"])
+        for c in t["chan"].values():
+            m = float(c[3]) or 1.0
+            c[0] /= m
+            c[1] /= m
+            c[2] /= m
+    return out
+
+
+def lobe_records(client, chain, wins, prns=None):
+    """{(win, slot): {prn: [e, p, l, n_inst, n_chan]}} -- the SAME lobe-coherent powers,
+    per record, un-averaged. prompt_cn0's input; the twin of gnss::FleetDll::rec_series.
+
+    Every record with a live comb is here, however partial: `n_inst`/`n_chan` say how
+    complete it was and the consumer declines one. No power in it depends on a sender.
+    """
+    want = None if prns is None else set(int(p) for p in prns)
+    acc, _cw = _lobe_fold(client, chain, wins, want, False)
+    recs = {}
+    for key, per_prn in acc.items():
+        for prn, d in per_prn.items():
+            recs.setdefault(key, {})[prn] = [
+                (abs(d[0]) / d[3]) ** 2 if d[3] > 0.0 else 0.0,
+                (abs(d[1]) / d[4]) ** 2,
+                (abs(d[2]) / d[5]) ** 2 if d[5] > 0.0 else 0.0,
+                d[7], d[6]]
+    return recs
 
 
 #: The keys carried across from the polled arm untouched. All three are products of the
@@ -161,20 +269,23 @@ COH_KEYS = ("coh_row", "coh_src", "coh_quad")
 
 
 def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
-    """`instance_taps`' object, fetched from the gather's C++ reduction instead of rebuilt.
+    """`lobe_taps`' object, fetched from the gather's C++ reduction instead of rebuilt.
 
     ⚠️ THIS IS THE SAME ARITHMETIC, NOT AN APPROXIMATION OF IT. gnss::FleetDll forms these taps
     from the same frames, and scripts/gnss/fleetdll_gate.py hands both arms IDENTICAL BYTES and
-    requires e/p/l/n_chan to agree to 1e-9 with n_rec/hop exact, per instance AND per channel.
+    requires e/p/l/n_chan to agree to 1e-9 with n_rec/n_inst/hop exact, per PRN AND per channel.
     That gate is the only thing standing behind this call: broker_equiv replays only what goes
     through gnss_broker.transport, and the gather is a raw socket, so a replay runs with no
     telemetry at all and quietly falls back to the polled discriminator.
 
-    WHY IT EXISTS. Rebuilding this in Python walks every (window, instance, record, PRN,
-    channel) of the gathered stream -- ~140k channel-tuples per chain per cycle, ~700k across
-    the fleet, each allocating Python complex objects, ~18% of chain CPU. The broker is pinned
-    at 100% of ONE core by the GIL, where cycle time IS the sum of the five chains' Python CPU,
-    so that 18% is ~2 s of every cycle. The reduction is ~6k numbers.
+    WHY IT EXISTS. Rebuilding this in Python walks every (window, sender, record, PRN, channel)
+    of the gathered stream -- ~140k channel-tuples per chain per cycle, ~700k across the fleet,
+    each allocating Python complex objects, ~18% of chain CPU. The broker is pinned at 100% of
+    ONE core by the GIL, where cycle time IS the sum of the chains' Python CPU, so that 18% is
+    ~2 s of every cycle. The reduction is ~1k numbers.
+
+    The C++ arm drops duplicated freq_ids at window close and counts them in its stats; it
+    does not list them per PRN, so `chan_dup` is [] here.
 
     `get` is the caller's HTTP getter (transport._get), passed in so this module keeps its
     no-transport-import property and so a replay records the fetch like any other.
@@ -182,22 +293,18 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
     d = get("%s/get_taps" % url.rstrip("/"), timeout=timeout) or {}
     want = None if prns is None else set(int(p) for p in prns)
     out = {}
-    for prn, insts in (d.get(chain) or {}).items():
+    for prn, v in (d.get(chain) or {}).items():
         p = int(prn)
         if want is not None and p not in want:
             continue
-        per = {}
-        for inst, v in insts.items():
-            # n_rec 0 cannot happen here (the C++ creates a Tap only for a record with a live
-            # comb, as the Python does) but fleet_dll_comb filters on it anyway and so do we:
-            # the two arms must agree about which instances EXIST, not just their numbers.
-            per[inst] = {"e": float(v["e"]), "p": float(v["p"]), "l": float(v["l"]),
-                         "n_chan": float(v["n_chan"]), "n_rec": int(v["n_rec"]),
-                         "hop": int(v["hop"]),
-                         "chan": {int(f): [float(c[0]), float(c[1]), float(c[2]), float(c[3])]
-                                  for f, c in (v.get("chan") or {}).items()}}
-        if per:
-            out[p] = per
+        if int(v["n_rec"]) <= 0:
+            continue
+        out[p] = {"e": float(v["e"]), "p": float(v["p"]), "l": float(v["l"]),
+                  "n_chan": float(v["n_chan"]), "n_rec": int(v["n_rec"]),
+                  "n_inst": int(v["n_inst"]), "hop": int(v["hop"]),
+                  "chan": {int(f): [float(c[0]), float(c[1]), float(c[2]), float(c[3])]
+                           for f, c in (v.get("chan") or {}).items()},
+                  "chan_dup": []}
     return out
 
 
@@ -210,7 +317,12 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
     Same keys, same meanings, same presence policy (apply_presence, shared with fleet_dll so
     the two paths cannot drift apart in their verdicts) -- the difference is confined to where
     the three powers came from. Extra keys: `src` = "comb", `n_rec`, `chan` (per-channel
-    powers and discriminators), `per_inst` (each instance's own three powers).
+    powers and discriminators), `chan_dup`.
+
+    ⚠️ THE POWERS ARE LOBE-COHERENT AND NORMALISED (lobe_taps): p_pow is |SUM_c G_c|^2 over
+    EVERY channel of the lobe divided by the summed energy squared, so for a signal it does
+    not scale with how many senders or channels are up. `n_src` is the sender count behind
+    the most complete record -- completeness, reported, never an operand.
 
     `coh_from`: a fleet_dll-shaped dict whose COH_KEYS are copied across verbatim. The deep
     gate (#49) and the publisher's quadrature fallback both read them, and BOTH must be
@@ -222,7 +334,8 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
     if taps_src is not None:
         # THE C++ ARM. No window selection here: the depth is the gather's `taps_win`, set to
         # match this broker's telem-windows. Asking for a different one silently would be the
-        # 2-vs-32 window mismatch the split-ring gate exists to catch.
+        # 2-vs-32 window mismatch the split-ring gate exists to catch. The completeness gate
+        # is applied in the C++ (its own min_instances), identically.
         per_prn = taps_src(chain, prns)
         if not per_prn:
             return {}
@@ -231,53 +344,36 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
         if not wins:
             return {}
         wins = wins[-int(n_win):]
-        per_prn = instance_taps(client, chain, wins, prns=prns, per_channel=per_channel)
+        per_prn = lobe_taps(client, chain, wins, prns=prns, per_channel=per_channel,
+                            min_instances=min_instances)
     coh_from = coh_from or {}
     out = {}
-    for prn, per_inst in per_prn.items():
-        use = {i: d for i, d in per_inst.items() if d["n_rec"] > 0}
-        if len(use) < min_instances:
+    for prn, t in per_prn.items():
+        if t["n_rec"] <= 0:
             continue
-        E = sum(d["e"] for d in use.values())
-        P = sum(d["p"] for d in use.values())
-        L = sum(d["l"] for d in use.values())
+        E, P, L = t["e"], t["p"], t["l"]
         if E + L <= 0.0:
             continue
         src = coh_from.get(prn) or {}
-        chan, dup = {}, []
+        chan = {}
         if per_channel:
-            for _inst, d in use.items():
-                for fid, c in d["chan"].items():
-                    # A channel reaches exactly ONE instance (freq_id mod 8 routing), so this
-                    # is a merge across instances, never a sum over duplicates. If two ever
-                    # claim one freq_id something upstream is misconfigured: name it and DROP
-                    # the channel rather than adding the two together, which would invent a
-                    # number that is neither instance's measurement. The full-band powers are
-                    # formed from the per-instance sums and are unaffected either way, so this
-                    # never costs the loop its discriminator.
-                    if fid in chan:
-                        dup.append(fid)
-                        continue
-                    ce, cp, cl = c[0], c[1], c[2]
-                    chan[fid] = {"e": ce, "p": cp, "l": cl, "n_rec": c[3],
-                                 "disc": (ce - cl) / (ce + cl) if ce + cl > 0.0 else 0.0,
-                                 "q": 2.0 * cp / (ce + cl) if ce + cl > 0.0 else 0.0}
-            for fid in dup:
-                chan.pop(fid, None)
+            for fid, c in t["chan"].items():
+                ce, cp, cl = c[0], c[1], c[2]
+                chan[fid] = {"e": ce, "p": cp, "l": cl, "n_rec": c[3],
+                             "disc": (ce - cl) / (ce + cl) if ce + cl > 0.0 else 0.0,
+                             "q": 2.0 * cp / (ce + cl) if ce + cl > 0.0 else 0.0}
         out[prn] = {"disc": (E - L) / (E + L),
                     "q": 2.0 * P / (E + L),
                     "p_pow": P,
                     "e_pow": E,
                     "l_pow": L,
-                    "hop": max(d["hop"] for d in use.values()),
-                    "n_src": len(use),
-                    "n_chan": sum(d["n_chan"] for d in use.values()),
-                    "n_rec": max(d["n_rec"] for d in use.values()),
+                    "hop": t["hop"],
+                    "n_src": t["n_inst"],
+                    "n_chan": t["n_chan"],
+                    "n_rec": t["n_rec"],
                     "src": "comb",
                     "chan": chan,
-                    "chan_dup": sorted(set(dup)),
-                    "per_inst": {i: (d["e"], d["p"], d["l"], d["n_rec"])
-                                 for i, d in use.items()}}
+                    "chan_dup": list(t.get("chan_dup") or [])}
         # The deep statistics: carried across, never invented (module header).
         for k in COH_KEYS:
             out[prn][k] = src.get(k)
@@ -289,10 +385,10 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
 def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
     """`prompt_cn0`'s per-record series, fetched from the gather's C++ reduction.
 
-    Returns ({(win, slot): {prn: [e, p, l, n_inst]}}, hops_per_record).
+    Returns ({(win, slot): {prn: [e, p, l, n_inst, n_chan]}}, hops_per_record).
 
     ⚠️ SAME ARITHMETIC, GATED ON IDENTICAL BYTES: fleetdll_gate.py's REC-SERIES leg requires
-    e/p/l to 1e-9 and n_inst exactly, per (window, slot, PRN). That gate is the only thing
+    e/p/l to 1e-9 and n_inst/n_chan exactly, per (window, slot, PRN). That gate is the only thing
     behind this call -- broker_equiv replays only what goes through transport, and the gather
     is a raw socket, so a replay carries no telemetry and this path is never exercised.
 
@@ -304,12 +400,12 @@ def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
     want = None if prns is None else set(int(p) for p in prns)
     recs = {}
     for row in (d.get(chain) or []):
-        win, slot, prn, n_inst, e, p, l = row
+        win, slot, prn, n_inst, n_chan, e, p, l = row
         prn = int(prn)
         if want is not None and prn not in want:
             continue
         recs.setdefault((int(win), int(slot)), {})[prn] = [float(e), float(p), float(l),
-                                                           int(n_inst)]
+                                                           int(n_inst), int(n_chan)]
     return recs, int((d.get("hops_per_record") or {}).get(chain) or 0)
 
 
@@ -327,10 +423,12 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
 
     THE THREE INGREDIENTS, each load-bearing:
 
-      * PER-RECORD prompt power, fleet-summed then divided by the record's instance count.
-        The per-instance mean (not the raw sum) is what makes a record with a dropped frame
-        comparable to a full one -- signal and noise both scale with n_inst, so the ratio to
-        the probe floor is unaffected in the common case and robust in the degraded one.
+      * PER-RECORD prompt power, LOBE-COHERENT: |SUM_c G_c|^2 / (SUM_c E_c)^2 over every
+        channel of every sender that reached the record (lobe_taps' record, un-averaged).
+        Normalised, so a signal reads the same however many senders are up, and the noise
+        floor -- measured from the probes through the identical reduction -- falls with the
+        channel count. A record fewer than `min_instances` senders reached is excluded
+        rather than reweighted: no per-sender arithmetic survives anywhere in this path.
 
       * q-GATED. C/N0 is radiometry CONDITIONAL ON LOCK: a record where the tap sat off the
         peak measures the tap, not the satellite, and averaging it in is the incoherent
@@ -376,47 +474,24 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
             return {}
         wins = wins[-int(n_win):]
         t_rec = None
-        recs = {}   # (win, slot) -> {prn: [e_sum, p_sum, l_sum, n_inst]}
+        recs = {}   # (win, slot) -> {prn: [e, p, l, n_inst, n_chan]}
     for w in wins:
-        for inst, f in client.frame_set(chain, w).items():
+        for _inst, f in client.frame_set(chain, w).items():
             if t_rec is None and getattr(f, "hops_per_record", 0) > 0:
                 t_rec = f.hops_per_record * hop_s
-            for r in range(f.n_rec):
-                if not f.has_record(r):
-                    continue
-                for prn in f.prns():
-                    if want is not None and prn not in want:
-                        continue
-                    cmb = f.comb_epl(r, prn)
-                    if not cmb:
-                        continue
-                    gE = gP = gL = 0j
-                    eE = eP = eL = 0.0
-                    for _fid, E, P, L, (wE, wP, wL) in cmb:
-                        gE += E * wE
-                        gP += P * wP
-                        gL += L * wL
-                        eE += wE
-                        eP += wP
-                        eL += wL
-                    if eP <= 0.0:
-                        continue
-                    d = recs.setdefault((w, r), {}).setdefault(prn, [0.0, 0.0, 0.0, 0])
-                    d[0] += (abs(gE) / eE) ** 2 if eE > 0.0 else 0.0
-                    d[1] += (abs(gP) / eP) ** 2
-                    d[2] += (abs(gL) / eL) ** 2 if eL > 0.0 else 0.0
-                    d[3] += 1
+    if wins:
+        recs = lobe_records(client, chain, wins, prns=want)
     if not recs or t_rec is None:
         return {}
 
-    # Per-PRN time-ordered per-record series: (win, slot, p_mean, q).
+    # Per-PRN time-ordered per-record series: (win, slot, p, q).
     series = {}
     for key in sorted(recs):
-        for prn, (e, p, l, n) in recs[key].items():
+        for prn, (e, p, l, n, _nch) in recs[key].items():
             if n < min_instances:
                 continue
             q = 2.0 * p / (e + l) if (e + l) > 0.0 else 0.0
-            series.setdefault(prn, []).append((key[0], key[1], p / n, q))
+            series.setdefault(prn, []).append((key[0], key[1], p, q))
 
     # THE NOISE ANCHOR. Pooled over the whole capture rather than per record: the per-record
     # median of 3 probes carries ~20% scatter, the pooled one ~1/sqrt(N); the #56 power

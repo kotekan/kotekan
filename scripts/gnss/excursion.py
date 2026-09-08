@@ -43,8 +43,8 @@ from gnss_broker import telem  # noqa: E402
 def per_record(frames, prn):
     """[(win, rec, inst, e, p, l, nch, {fid: (e,p,l)})] -- ONE record, no averaging anywhere.
 
-    Same expression as combdll.instance_taps, with the record loop left UNCOLLAPSED: that mean
-    over records is exactly what hides a 10 ms step.
+    The per-SENDER partial power (the pre-lobe-combine expression), with the record loop left
+    UNCOLLAPSED: that mean over records is exactly what hides a 10 ms step.
     """
     out = []
     for (win, inst), f in sorted(frames.items()):

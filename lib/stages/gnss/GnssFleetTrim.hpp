@@ -69,7 +69,8 @@
  *
  * @conf n_win          Int, default 4. Windows averaged into one discriminator. 4 windows =
  *                        16 records = 168 ms, matching --fast-trim-windows on the Python arm.
- * @conf min_instances  Int, default 2. Instances required before a PRN gets a discriminator.
+ * @conf min_instances  Int, default 2. Senders a RECORD must have reached before it is
+ *                        averaged in -- a completeness gate, never an operand.
  * @conf max_open_win   Int, default 8. Windows held open per chain before the oldest is
  *                        force-closed, so a sender that dies mid-window cannot pin memory.
  *

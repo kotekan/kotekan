@@ -24,6 +24,14 @@ floats handed to two parsers tests the parsers. A fixture of BYTES tests the con
 requires the comparison to report a difference. A gate that only ever passes has told you
 nothing, and this repository has shipped two of those (docs/CHORD_FAST_TRIM.md 7b).
 
+⚠️ THE COHERENCE UNIT IS THE LOBE, NEVER THE SENDER. Each sender's rows carry REC_PHI0, the
+per-sender phase reference the assembler applied, and the fixture writes a DIFFERENT one per
+sender, record and PRN, rotating that sender's comb by exp(-i*phi0) so that ONLY the
+rotation by exp(+i*phi0) recovers the common reference. An arm that dropped the rotation, or
+formed a power per sender before adding, gives a different lobe power here. Absolute freq_ids
+are disjoint per sender (the fleet's `mod 8` grouping) except one deliberate duplicate, so
+the per-channel table's dup handling is exercised too.
+
 ⚠️ AND IT MUST BE PRODUCTION-SIZED. fast_trim_e2e.py runs a 3-PRN fixture and could not catch
 the regression where 5 Hz was requested and 1.5 Hz delivered -- it reached 4.39 Hz either way.
 This one carries PRN and instance counts in the production range for the same reason, even
@@ -52,7 +60,7 @@ from gnss_broker import combdll, telem  # noqa: E402
 # ---------------------------------------------------------------------------------------------
 
 N_REC = 4                 # records per frame -- production
-N_PRN = 12                # rows per record   -- production is 16 after #64
+N_PRN = 16                # rows per record   -- production after #64
 HOPS_PER_RECORD = 2048
 FFT_LEN = 16384
 SPACING = 0.5             # E/L spacing, chips
@@ -62,6 +70,25 @@ SPACING = 0.5             # E/L spacing, chips
 INSTANCES = [("cx19.0", 7), ("cx19.1", 6), ("cx27.0", 7), ("cx27.1", 8),
              ("cx42.0", 7), ("cx42.1", 6)]
 
+#: The freq_id one sender carries that another also does. A freq_id is ABSOLUTE and belongs to
+#: exactly one sender per window; two senders both carrying it is a routing fault upstream that
+#: the per-channel table must DROP (and count) rather than average, while the lobe sum keeps it.
+DUP_FID = 5960
+
+
+def chan_ids_for(i, n_chan):
+    """A sender's absolute freq_ids: the fleet's `freq_id mod n_inst` grouping, disjoint per
+    sender, plus DUP_FID on the last sender (already the first sender's first channel)."""
+    ids = [5960 + i + 8 * k for k in range(n_chan)]
+    if i == len(INSTANCES) - 1:
+        ids[-1] = DUP_FID
+    return ids
+
+
+def phi0_for(i, r, prn):
+    """The per-sender phase reference: arbitrary per sender, record and PRN, as on the fleet."""
+    return 0.9 * i + 0.37 * r + 0.11 * prn
+
 #: prn -> (code offset in chips, amplitude). Offset 0 = on peak.
 #: Spread across the pull-in region so `disc` is not a single value: a gate whose fixture
 #: produces one number cannot tell a working discriminator from a constant.
@@ -70,6 +97,8 @@ TARGETS = {4: (0.00, 1.00),    # on peak: disc ~ 0, q high
            27: (-0.31, 0.65),  # late shoulder
            3: (0.55, 0.40),    # far out
            11: (0.10, 0.50),   # ONE instance only -> must be excluded by min_instances
+           20: (0.15, 0.60),   # TWO instances on odd windows, one on even: complete in HALF
+                               # the windows, so the record-level gate must bite per window
            16: (0.00, 0.02),   # essentially noise
            # ⚠️ THE SIGNAL-FREE POPULATION IS LOAD-BEARING, NOT PADDING (added 2026-08-23).
            # The C++ integrator's information test is `p_pow >= sig_k * MEDIAN(p_pow over this
@@ -96,8 +125,9 @@ def _R(x):
     return max(0.0, 1.0 - abs(x))
 
 
-def _chan_block(rng, prn, fid, dead_energy, dead_el_energy):
-    """One channel's nine floats: E, P, L as the assembler writes them (raw, un-normalised)."""
+def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0):
+    """One channel's nine floats: E, P, L as the assembler writes them (raw, un-normalised),
+    on the SENDER'S reference: the common phase rotated by exp(-i*phi0)."""
     d, amp = TARGETS[prn]
     if dead_energy:
         # No live comb this channel this record -- the assembler leaves the energy at zero and
@@ -105,7 +135,7 @@ def _chan_block(rng, prn, fid, dead_energy, dead_el_energy):
         # way the deep fold's zero-padding did.
         return [0.0] * 9
     e_p = 40.0 + 3.0 * (fid % 5)          # replica energy: per-channel, not per-tap
-    phi = 0.7 * fid + 0.3 * prn           # a per-channel phase, so |sum| != sum|.|
+    phi = 0.7 * fid + 0.3 * prn - phi0    # a per-channel phase, so |sum| != sum|.|
     noise = lambda: rng.gauss(0.0, 0.02 * amp + 0.01)
 
     def tap(off, energy):
@@ -124,11 +154,11 @@ def _chan_block(rng, prn, fid, dead_energy, dead_el_energy):
     return [p[0], p[1], p[2], e[0], e[1], e_e, l[0], l[1], e_l]
 
 
-def build_frame(chain, inst, n_chan, win, seq, prn_rows, present, rng, dead):
+def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng, dead):
     """One wire frame, bytes. `prn_rows` is the row->PRN map (row compaction, #64)."""
     row_total = telem._ROW_FLOATS + telem._MAX_CHAN * telem._CHAN_FLOATS
     wstart0 = win * N_REC * HOPS_PER_RECORD * FFT_LEN
-    chan_ids = [100 + 4 * i for i in range(n_chan)] + [0] * (telem._MAX_CHAN - n_chan)
+    chan_ids = chan_ids_for(inst_idx, n_chan) + [0] * (telem._MAX_CHAN - n_chan)
     hdr = telem._HDR.pack(
         telem._MAGIC, telem._VERSION, N_REC, N_PRN, telem._ROW_FLOATS, n_chan, 32,
         HOPS_PER_RECORD, FFT_LEN, win, seq, wstart0, 0.0, present,
@@ -143,11 +173,14 @@ def build_frame(chain, inst, n_chan, win, seq, prn_rows, present, rng, dead):
             rows[base + telem.REC_PRN] = float(prn)
             if prn == 0 or not (present & (1 << r)):
                 continue
+            phi0 = phi0_for(inst_idx, r, prn)
+            rows[base + telem.REC_PHI0] = phi0
             for ch in range(n_chan):
                 cb = base + telem._ROW_FLOATS + ch * telem._CHAN_FLOATS
                 blk = _chan_block(rng, prn, chan_ids[ch],
                                   dead_energy=(ch, prn) in dead["energy"],
-                                  dead_el_energy=(ch, prn) in dead["el_energy"])
+                                  dead_el_energy=(ch, prn) in dead["el_energy"],
+                                  phi0=phi0)
                 rows[cb:cb + telem._CHAN_FLOATS] = blk
     return hdr + struct.pack("<%df" % len(rows), *rows)
 
@@ -166,13 +199,15 @@ def build_fixture(n_win, seed=20260815):
                 # satellite's comb and produce a confident wrong discriminator.
                 prns = [4, 9, 27, 3, 16, 5, 12, 18, 21, 24, 30]
                 if i == 0:
-                    prns = prns + [11]        # PRN 11 on ONE instance only
+                    prns = prns + [11, 20]    # PRN 11 on ONE instance only
+                if i == 1 and win % 2:
+                    prns = prns + [20]        # PRN 20 reaches two only on odd windows
                 order = list(prns)
                 rng.shuffle(order)
                 prn_rows = order + [0] * (N_PRN - len(order))
                 # A record slot that did not run is a HOLE AT A KNOWN INDEX. Vary which.
                 present = 0xF if (win + i) % 4 else 0xD
-                frames.append((build_frame(chain, inst, n_chan, win, win * 100 + i,
+                frames.append((build_frame(chain, inst, i, n_chan, win, win * 100 + i,
                                            prn_rows, present, rng, dead), chain))
     return frames
 
@@ -207,10 +242,10 @@ def python_arm(frames, n_win, min_instances):
     return out
 
 
-def python_taps(frames, n_win):
-    """combdll.instance_taps, per instance AND per channel, through the REAL client ring.
+def python_taps(frames, n_win, min_instances):
+    """combdll.lobe_taps, per PRN AND per channel, through the REAL client ring.
 
-    The object the C++ `taps()` accessor now forms on the gather host. Compared field by field
+    The object the C++ `taps()` accessor forms on the gather host. Compared field by field
     because THIS PATH HAS NO OTHER GATE: broker_equiv replays only what goes through
     gnss_broker.transport, and the telemetry stream is a raw socket, so a replay runs with no
     telemetry at all and quietly falls back to the polled discriminator. The digest stays green
@@ -223,67 +258,61 @@ def python_taps(frames, n_win):
     out = {}
     for chain in client.chains():
         wins = client.windows(chain, lag=1)[-int(n_win):]
-        out[chain] = combdll.instance_taps(client, chain, wins, per_channel=True)
+        out[chain] = combdll.lobe_taps(client, chain, wins, per_channel=True,
+                                       min_instances=min_instances)
     return out
 
 
-#: Per-instance tap fields, with tolerances. The powers are means over records; `chan` is
-#: compared separately because its denominator is per channel, not per instance.
+#: Per-PRN lobe tap fields, with tolerances. The powers are means over records; `chan` is
+#: compared separately because its denominator is one channel's energy, not the lobe's.
 TAP_FIELDS = [("e", 1e-9), ("p", 1e-9), ("l", 1e-9), ("n_chan", 1e-9),
-              ("n_rec", 0.0), ("hop", 0.0)]
+              ("n_rec", 0.0), ("n_inst", 0.0), ("hop", 0.0)]
 
 
 def compare_taps(py, cpp):
-    """[(severity, message)] -- empty means the per-instance/per-channel taps agree."""
+    """[(severity, message)] -- empty means the per-PRN/per-channel taps agree."""
     bad = []
     cj = cpp.get("taps", {})
     for chain in sorted(set(py) | set(cj)):
-        p_prns = {int(k): v for k, v in (py.get(chain) or {}).items()}
+        p_prns = {int(k): v for k, v in (py.get(chain) or {}).items() if v["n_rec"] > 0}
         c_prns = {int(k): v for k, v in (cj.get(chain) or {}).items()}
-        # Python creates an entry for any (prn, inst) with a live comb; a PRN whose every
-        # record was empty has n_rec 0 and is dropped by fleet_dll_comb, so compare on the
-        # populated set and say so if the SETS differ.
-        p_use = {p: {i: d for i, d in v.items() if d["n_rec"] > 0} for p, v in p_prns.items()}
-        p_use = {p: v for p, v in p_use.items() if v}
-        for prn in sorted(set(p_use) - set(c_prns)):
+        for prn in sorted(set(p_prns) - set(c_prns)):
             bad.append(("TAP-MISSING", "%s PRN %d: Python has taps, C++ does not" % (chain, prn)))
-        for prn in sorted(set(c_prns) - set(p_use)):
+        for prn in sorted(set(c_prns) - set(p_prns)):
             bad.append(("TAP-EXTRA", "%s PRN %d: C++ has taps, Python does not" % (chain, prn)))
-        for prn in sorted(set(p_use) & set(c_prns)):
-            pi, ci = p_use[prn], c_prns[prn]
-            for inst in sorted(set(pi) - set(ci)):
-                bad.append(("TAP-INST", "%s PRN %d: instance %s only in Python" % (chain, prn, inst)))
-            for inst in sorted(set(ci) - set(pi)):
-                bad.append(("TAP-INST", "%s PRN %d: instance %s only in C++" % (chain, prn, inst)))
-            for inst in sorted(set(pi) & set(ci)):
-                a, b = pi[inst], ci[inst]
-                for f, tol in TAP_FIELDS:
-                    x, y = float(a[f]), float(b[f])
+        for prn in sorted(set(p_prns) & set(c_prns)):
+            a, b = p_prns[prn], c_prns[prn]
+            for f, tol in TAP_FIELDS:
+                x, y = float(a[f]), float(b[f])
+                if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
+                    bad.append(("TAP", "%s PRN %d %s: py %.17g cpp %.17g"
+                                % (chain, prn, f, x, y)))
+            pc = {int(k): v for k, v in a["chan"].items()}
+            cc = {int(k): v for k, v in b["chan"].items()}
+            if set(pc) != set(cc):
+                bad.append(("TAP-CHAN", "%s PRN %d: freq_id sets differ py %s cpp %s"
+                            % (chain, prn, sorted(pc), sorted(cc))))
+                continue
+            if DUP_FID in pc:
+                bad.append(("TAP-DUP", "%s PRN %d: duplicated freq_id %d was AVERAGED into the "
+                            "per-channel table" % (chain, prn, DUP_FID)))
+            for fid in sorted(pc):
+                for k, name in enumerate(("e", "p", "l", "n_rec")):
+                    x, y = float(pc[fid][k]), float(cc[fid][k])
+                    tol = 0.0 if name == "n_rec" else 1e-9
                     if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
-                        bad.append(("TAP", "%s PRN %d %s %s: py %.17g cpp %.17g"
-                                    % (chain, prn, inst, f, x, y)))
-                pc = {int(k): v for k, v in a["chan"].items()}
-                cc = {int(k): v for k, v in b["chan"].items()}
-                if set(pc) != set(cc):
-                    bad.append(("TAP-CHAN", "%s PRN %d %s: freq_id sets differ py %s cpp %s"
-                                % (chain, prn, inst, sorted(pc), sorted(cc))))
-                    continue
-                for fid in sorted(pc):
-                    for k, name in enumerate(("e", "p", "l", "n_rec")):
-                        x, y = float(pc[fid][k]), float(cc[fid][k])
-                        tol = 0.0 if name == "n_rec" else 1e-9
-                        if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
-                            bad.append(("TAP-CHAN", "%s PRN %d %s fid %d %s: py %.17g cpp %.17g"
-                                        % (chain, prn, inst, fid, name, x, y)))
+                        bad.append(("TAP-CHAN", "%s PRN %d fid %d %s: py %.17g cpp %.17g"
+                                    % (chain, prn, fid, name, x, y)))
     return bad
 
 
 def python_recs(frames, n_win):
-    """combdll.prompt_cn0's `recs`: {(win, slot): {prn: [e, p, l, n_inst]}}.
+    """combdll.lobe_records -- prompt_cn0's `recs`: {(win, slot): {prn: [e, p, l, n_inst,
+    n_chan]}}, through the REAL client ring.
 
-    Lifted from prompt_cn0's own frame walk so the gate compares what that estimator consumes,
-    not a paraphrase of it. The statistics ON TOP of this -- the probe anchor, the Gamma-mean
-    debias, the q gate, the clip -- stay in Python and are not what this leg is about.
+    The estimator's own input, so the gate compares what it consumes and not a paraphrase.
+    The statistics ON TOP of this -- the probe anchor, the Gamma-mean debias, the q gate, the
+    clip -- stay in Python and are not what this leg is about.
     """
     client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
     for buf, _chain in frames:
@@ -292,33 +321,7 @@ def python_recs(frames, n_win):
     out = {}
     for chain in client.chains():
         wins = client.windows(chain, lag=1)[-int(n_win):]
-        recs = {}
-        for w in wins:
-            for _inst, f in client.frame_set(chain, w).items():
-                for r in range(f.n_rec):
-                    if not f.has_record(r):
-                        continue
-                    for prn in f.prns():
-                        cmb = f.comb_epl(r, prn)
-                        if not cmb:
-                            continue
-                        gE = gP = gL = 0j
-                        eE = eP = eL = 0.0
-                        for _fid, E, P, L, (wE, wP, wL) in cmb:
-                            gE += E * wE
-                            gP += P * wP
-                            gL += L * wL
-                            eE += wE
-                            eP += wP
-                            eL += wL
-                        if eP <= 0.0:
-                            continue
-                        d = recs.setdefault((w, r), {}).setdefault(prn, [0.0, 0.0, 0.0, 0])
-                        d[0] += (abs(gE) / eE) ** 2 if eE > 0.0 else 0.0
-                        d[1] += (abs(gP) / eP) ** 2
-                        d[2] += (abs(gL) / eL) ** 2 if eL > 0.0 else 0.0
-                        d[3] += 1
-        out[chain] = recs
+        out[chain] = combdll.lobe_records(client, chain, wins)
     return out
 
 
@@ -329,8 +332,8 @@ def compare_recs(py, cpp):
     for chain in sorted(set(py) | set(cj)):
         p_rows = py.get(chain) or {}
         c_rows = {}
-        for win, slot, prn, n_inst, e, p, l in (cj.get(chain) or []):
-            c_rows[(int(win), int(slot), int(prn))] = [e, p, l, int(n_inst)]
+        for win, slot, prn, n_inst, n_chan, e, p, l in (cj.get(chain) or []):
+            c_rows[(int(win), int(slot), int(prn))] = [e, p, l, int(n_inst), int(n_chan)]
         p_flat = {(int(w), int(r), int(prn)): v
                   for (w, r), per in p_rows.items() for prn, v in per.items()}
         for k in sorted(set(p_flat) - set(c_rows))[:5]:
@@ -339,9 +342,9 @@ def compare_recs(py, cpp):
             bad.append(("REC-EXTRA", "%s (win %d, slot %d, PRN %d) only in C++" % ((chain,) + k)))
         for k in sorted(set(p_flat) & set(c_rows)):
             a, b = p_flat[k], c_rows[k]
-            for i, name in enumerate(("e", "p", "l", "n_inst")):
+            for i, name in enumerate(("e", "p", "l", "n_inst", "n_chan")):
                 x, y = float(a[i]), float(b[i])
-                tol = 0.0 if name == "n_inst" else 1e-9
+                tol = 0.0 if name in ("n_inst", "n_chan") else 1e-9
                 if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
                     bad.append(("REC", "%s (win %d, slot %d, PRN %d) %s: py %.17g cpp %.17g"
                                 % (chain, k[0], k[1], k[2], name, x, y)))
@@ -407,20 +410,12 @@ def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
         ws = client.windows(chain, lag=0)[-n_win:]
         if not ws:
             continue
-        rows = combdll.instance_taps(client, chain, ws, per_channel=False)
+        rows = combdll.lobe_taps(client, chain, ws, per_channel=False,
+                                 min_instances=min_instances)
         got = {}
-        for prn, per_inst in rows.items():
-            use = {i: d for i, d in per_inst.items() if d["n_rec"] > 0}
-            if len(use) < min_instances:
-                continue
-            # ⚠️ NO /n_rec HERE. instance_taps ALREADY divides by it (see the tail of that
-            # function) -- fleet_dll_comb sums the per-instance values raw, and so must this.
-            # Dividing again weights each instance by 1/n_rec^2, which moved disc by ~1e-3 and
-            # read as a C++/Python disagreement. Harness bug, caught by the gate, 2026-08-15.
-            E = sum(d["e"] for d in use.values())
-            L = sum(d["l"] for d in use.values())
-            if E + L > 0.0:
-                got[prn] = (E - L) / (E + L)
+        for prn, t in rows.items():
+            if t["n_rec"] > 0 and t["e"] + t["l"] > 0.0:
+                got[prn] = (t["e"] - t["l"]) / (t["e"] + t["l"])
         out[w] = got
     return out
 
@@ -541,6 +536,16 @@ def main():
         if 11 in rows:
             problems.append("%s PRN 11 was NOT excluded -- min_instances is not being applied,"
                             " so the gate is not testing what it claims" % chain)
+        # PRN 20 is complete on ODD windows only: it must be present, and with FEWER records
+        # than an always-complete PRN. Present with as many says the gate is per PRN, not per
+        # record; absent says it is per PRN the other way round.
+        if 20 not in rows or 4 not in rows:
+            problems.append("%s PRN 20 or PRN 4 missing -- the half-complete PRN did not reach"
+                            " the answer" % chain)
+        elif not 0 < rows[20]["n_rec"] < rows[4]["n_rec"]:
+            problems.append("%s PRN 20 n_rec %d vs PRN 4 %d -- the record-level completeness"
+                            " gate did not bite PER RECORD" % (chain, rows[20]["n_rec"],
+                                                                rows[4]["n_rec"]))
     if problems:
         for p in problems:
             print("FIXTURE PROBLEM: %s" % p)
@@ -585,21 +590,32 @@ def main():
         return 1
     print("LATE-FRAME PASS -- counted (1) and dropped; the answer is unchanged.")
 
-    # ---- THE PER-INSTANCE / PER-CHANNEL TAPS -------------------------------------------
+    # ---- THE PER-PRN / PER-CHANNEL LOBE TAPS ----------------------------------------------
     # A tighter comparison than the discriminator legs above, and deliberately so: disc and q
     # are RATIOS, so a common factor on E, P and L cancels and a whole class of fold error
     # survives them. These are the unreduced numbers.
-    pt = python_taps(frames, args.n_win)
+    pt = python_taps(frames, args.n_win, args.min_instances)
     bad_t = compare_taps(pt, cpp)
     if bad_t:
         print("FAIL -- %d tap disagreement(s):" % len(bad_t))
         for sev, msg in bad_t[:12]:
             print("  %-11s %s" % (sev, msg))
         return 1
-    n_it = sum(len(v) for ch in pt.values() for v in ch.values())
-    n_ch = sum(len(d["chan"]) for ch in pt.values() for v in ch.values() for d in v.values())
-    print("TAPS PASS -- %d (PRN, instance) taps and %d per-channel rows agree, e/p/l/n_chan "
-          "to 1e-9 and n_rec/hop exactly." % (n_it, n_ch))
+    n_it = sum(len(v) for v in pt.values())
+    n_ch = sum(len(d["chan"]) for v in pt.values() for d in v.values())
+    n_dup = {c: v.get("dup_chan") for c, v in cpp["chains"].items()}
+    closed = {c: v["windows_closed"] for c, v in cpp["chains"].items()}
+    if n_dup != closed:
+        print("FAIL -- one freq_id is carried by two senders in EVERY window, so dup_chan must "
+              "equal windows_closed: dup %s vs closed %s" % (n_dup, closed))
+        return 1
+    if any(d["chan_dup"] != [DUP_FID] for v in pt.values() for d in v.values()):
+        print("FAIL -- Python did not list freq_id %d as duplicated on every PRN: %s"
+              % (DUP_FID, {c: {p: d["chan_dup"] for p, d in v.items()} for c, v in pt.items()}))
+        return 1
+    print("TAPS PASS -- %d PRN lobe taps and %d per-channel rows agree, e/p/l/n_chan to 1e-9 "
+          "and n_rec/n_inst/hop exactly; freq_id %d (two senders) dropped from the channel "
+          "table and counted (%s)." % (n_it, n_ch, DUP_FID, n_dup))
 
     # ---- THE PER-RECORD SERIES (the served C/N0's input) --------------------------------
     pr = python_recs(frames, args.n_win)
@@ -610,8 +626,8 @@ def main():
             print("  %-12s %s" % (sev, msg))
         return 1
     n_rr = sum(len(v) for ch in pr.values() for v in ch.values())
-    print("REC-SERIES PASS -- %d (window, slot, PRN) records agree, e/p/l to 1e-9 and n_inst "
-          "exactly." % n_rr)
+    print("REC-SERIES PASS -- %d (window, slot, PRN) records agree, e/p/l to 1e-9 and "
+          "n_inst/n_chan exactly." % n_rr)
 
     # ---- THE SHIPPING CONFIGURATION: taps_win != n_win ---------------------------------
     # Production runs the loop on 2 windows and serves the broker 32 -- different questions,
@@ -627,7 +643,7 @@ def main():
         print("FAIL -- deepening taps_win CHANGED the discriminator. aggregate() must keep "
               "walking only the newest n_win of the ring.")
         return 1
-    bad_d = compare_taps(python_taps(frames, deep), c_deep)
+    bad_d = compare_taps(python_taps(frames, deep, args.min_instances), c_deep)
     if bad_d:
         print("FAIL -- %d disagreement(s) at taps_win=%d:" % (len(bad_d), deep))
         for sev, msg in bad_d[:12]:
@@ -868,6 +884,30 @@ def main():
             return 1
         print("SELF-TEST PASS -- the arms still agree on perturbed bytes, and the comparison "
               "sees the perturbation (%d field(s) moved)." % len(moved))
+
+        # AND THE ROTATION MUST BE LOAD-BEARING. Move ONE sender's phi0 on that same row by
+        # 1 rad without touching its comb: that sender's partial sum now lands off the common
+        # reference and the lobe power must change. If it does not, the arms agree on a sum
+        # that ignores REC_PHI0 -- coherent per sender, not per lobe.
+        buf = bytearray(frames[poke_at][0])
+        off = telem._HDR_BYTES + _row * telem._ROW_TOTAL * 4 + telem.REC_PHI0 * 4
+        (v,) = struct.unpack_from("<f", buf, off)
+        struct.pack_into("<f", buf, off, v + 1.0)
+        poked = frames[:poke_at] + [(bytes(buf), frames[poke_at][1])] + frames[poke_at + 1:]
+        p4 = os.path.join(tmp, "frames_phi0.bin")
+        write_stream(p4, poked)
+        c4 = cpp_arm(args.exe, p4, args.n_win, args.min_instances)
+        if compare(python_arm(poked, args.n_win, args.min_instances), c4):
+            print("SELF-TEST FAIL: the arms disagree once one sender's phi0 moves -- they do "
+                  "not rotate the same way.")
+            return 1
+        moved = compare(py, c4)
+        if not moved:
+            print("SELF-TEST FAIL: moving one sender's REC_PHI0 by 1 rad changed NOTHING. The "
+                  "senders are being added as powers, not as rotated complex sums.")
+            return 1
+        print("PHI0 SELF-TEST PASS -- one sender's reference moved 1 rad, both arms agree and "
+              "the lobe power moved (%d field(s))." % len(moved))
     if not args.keep:
         for f in os.listdir(tmp):
             os.remove(os.path.join(tmp, f))

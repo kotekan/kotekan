@@ -809,37 +809,37 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
-/// `<unique_name>/get_taps` -- the per-instance, per-channel taps over the served window depth.
+/// `<unique_name>/get_taps` -- the lobe-coherent, per-channel taps over the served window depth.
 ///
-/// WHAT THIS REPLACES. combdll.instance_taps builds the identical object in Python by walking
-/// every (window, instance, record, PRN, channel) of the gathered stream: ~140k channel-tuples
-/// per chain per cycle, ~700k across the fleet, each allocating Python complex objects.
-/// Profiled live it is ~18% of chain CPU -- and the broker is pinned at 100% of ONE core by
-/// the GIL, where cycle time IS the sum of the five chains' Python CPU. The frames are already
-/// here. The reduction is ~6k numbers per chain against the 46 MB/s it reduces.
+/// WHAT THIS REPLACES. combdll.lobe_taps builds the identical object in Python by walking
+/// every (window, sender, record, PRN, channel) of the gathered stream: ~140k channel-tuples
+/// per chain per cycle, ~700k across the fleet, each allocating Python complex objects, on a
+/// process pinned at 100% of ONE core by the GIL, where cycle time IS the sum of the chains'
+/// Python CPU. The frames are already here. The reduction is ~1k numbers per chain against
+/// the 46 MB/s it reduces.
+///
+/// Shape: {chain: {prn: {e, p, l, n_chan, n_rec, n_inst, hop, chan: {freq_id: [e,p,l,n_rec]}}}}.
+/// No sender appears: the coherence unit is the lobe (gnssFleetDll.hpp), and `n_inst` is the
+/// completeness of the best record behind the mean, never an operand.
 ///
 /// ⚠️ MEASUREMENTS ONLY. Presence, the noise floor, the deep gate and the arming verdict are
-/// POLICY and stay on the broker's cycle (see the class header). This endpoint invents no gate
-/// and drops no satellite: a PRN with a live comb on one instance appears here, and whether
-/// that is enough is the broker's call, exactly as it is when it walks the frames itself.
+/// POLICY and stay on the broker's cycle (see the class header). The one filter here is the
+/// record-completeness gate (`min_instances`), applied identically in both arms.
 void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
     nlohmann::json reply = nlohmann::json::object();
     std::lock_guard<std::mutex> lk(_mtx);
     for (const auto& cv : _dll.taps()) {
         nlohmann::json pj = nlohmann::json::object();
         for (const auto& pv : cv.second) {
-            nlohmann::json ij = nlohmann::json::object();
-            for (const auto& iv : pv.second) {
-                nlohmann::json cj = nlohmann::json::object();
-                for (const auto& ch : iv.second.chan)
-                    cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
-                                                    ch.second[3]};
-                ij[iv.first] = {{"e", iv.second.e},         {"p", iv.second.p},
-                                {"l", iv.second.l},         {"n_chan", iv.second.n_chan},
-                                {"n_rec", iv.second.n_rec}, {"hop", iv.second.hop},
-                                {"chan", cj}};
-            }
-            pj[std::to_string(pv.first)] = ij;
+            const gnss::FleetDll::LobeTap& t = pv.second;
+            nlohmann::json cj = nlohmann::json::object();
+            for (const auto& ch : t.chan)
+                cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
+                                                ch.second[3]};
+            pj[std::to_string(pv.first)] = {{"e", t.e},           {"p", t.p},
+                                            {"l", t.l},           {"n_chan", t.n_chan},
+                                            {"n_rec", t.n_rec},   {"n_inst", t.n_inst},
+                                            {"hop", t.hop},       {"chan", cj}};
         }
         reply[cv.first] = pj;
     }
@@ -847,13 +847,13 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
-/// `<unique_name>/get_rec_taps` -- the PER-RECORD three powers, summed across instances.
+/// `<unique_name>/get_rec_taps` -- the PER-RECORD three lobe-coherent powers.
 ///
 /// The served C/N0's input (#57). combdll.prompt_cn0 builds this by walking the gathered
 /// frames a SECOND time, after the comb DLL has already walked them for its own reduction --
 /// the same ~140k channel-tuples per chain per cycle, twice.
 ///
-/// Rows are [win, slot, prn, n_inst, e, p, l], flat and time-ordered. Flat rather than nested
+/// Rows are [win, slot, prn, n_inst, n_chan, e, p, l], flat and time-ordered. Flat rather than nested
 /// because it is a SERIES: nesting it by window invites a consumer to reduce it, and the whole
 /// point of this estimator is that it fits and averages nothing upstream of its own q gate.
 ///
@@ -866,7 +866,7 @@ void GnssFleetTrim::rec_taps_callback(kotekan::connectionInstance& conn) {
     for (const auto& cv : _dll.rec_series()) {
         nlohmann::json arr = nlohmann::json::array();
         for (const auto& r : cv.second)
-            arr.push_back({r.win, r.slot, r.prn, r.n_inst, r.e, r.p, r.l});
+            arr.push_back({r.win, r.slot, r.prn, r.n_inst, r.n_chan, r.e, r.p, r.l});
         reply[cv.first] = arr;
     }
     for (const auto& cv : _dll.chains())
@@ -886,6 +886,7 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
                             {"windows_closed", c.n_closed},
                             {"late_frames", c.n_late},
                             {"forced_closes", c.n_forced},
+                            {"dup_chan", c.n_dup_chan},
                             // A1: >0 means the F-engine's frame0 moved and the fold
                             // re-anchored. Rising steadily = something is wrong with the
                             // axis, not with the fold.

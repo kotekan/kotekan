@@ -7,7 +7,8 @@ WHAT THESE ARE FOR. The live A/B (scripts/gnss/comb_dll_ab.py) shows the comb pa
 the polled one on sky, but agreement on today's sky cannot tell a coherent channel combine from
 an incoherent one -- with every channel roughly in phase the two differ only in scale, and the
 DLL's ratios divide the scale out. So the properties that MATTER are pinned here on constructed
-data where they separate: a phase-opposed comb must cancel, instances must add in POWER, and a
+data where they separate: a phase-opposed comb must cancel, the sum across SENDERS must be
+coherent too (after the REC_PHI0 rotation -- the lobe is the unit, not the sender), and a
 missing record must be a hole rather than a zero.
 
 The wire layout these frames assume is proved against the C++ header by test_telem.py's
@@ -15,6 +16,7 @@ test_wire_format_matches_cpp; if the layout moves, that test fails first and the
 meaningful rather than becoming quietly wrong.
 """
 import cmath
+import math
 import os
 import struct
 import sys
@@ -28,11 +30,13 @@ from gnss_broker import combdll, telem  # noqa: E402
 
 def make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=2,
                chan_ids=(5972, 5988, 6004), taps=None, present=None,
-               hops_per_record=2048, fft_len=16384):
+               hops_per_record=2048, fft_len=16384, phi0=0.0):
     """One wire frame with an EXPLICIT comb.
 
     `taps` is {(record, prn_index, channel_index): (A_early, A_prompt, A_late, energy)} with
     complex A; anything unlisted defaults to (0.5, 1+0j, 0.25, 1.0). PRN numbers are 1+index.
+    `phi0` is written to REC_PHI0 and the comb is rotated by exp(-i*phi0) as the assembler
+    does, so the consumer's exp(+i*phi0) recovers `taps` exactly.
     """
     if present is None:
         present = (1 << n_rec) - 1
@@ -50,8 +54,11 @@ def make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=2,
             base = (r * n_prn + p) * telem._ROW_TOTAL
             body[base + telem.REC_PRN] = float(1 + p)
             body[base + telem.REC_P_ENERGY] = 1.0
+            body[base + telem.REC_PHI0] = phi0
+            derot = cmath.exp(-1j * phi0)
             for ch in range(n_chan):
                 E, P, L, en = taps.get((r, p, ch), (0.5 + 0j, 1 + 0j, 0.25 + 0j, 1.0))
+                E, P, L = E * derot, P * derot, L * derot
                 cb = base + telem._ROW_FLOATS + ch * telem._CHAN_FLOATS
                 # The wire carries G = A*energy; comb_epl() divides it back out.
                 body[cb + telem.CHAN_E_RE], body[cb + telem.CHAN_E_IM] = (E * en).real, (E * en).imag
@@ -70,15 +77,19 @@ def client_with(frames, depth=16):
     return c
 
 
+def one(c, wins):
+    """lobe_taps for a single-sender fixture, min_instances 1 (there is only one)."""
+    return combdll.lobe_taps(c, "gps_l5", wins, min_instances=1)
+
+
 class TestInstancePowers(unittest.TestCase):
-    """A. One instance: the powers are the combiner's expression, formed from the comb."""
+    """A. One sender: the powers are the combiner's expression, formed from the comb."""
 
     def test_matches_the_combiners_own_arithmetic(self):
         # 3 channels, A = 1 (prompt) / 0.5 (early) / 0.25 (late), unit energy each.
         # e2 = |sum G|^2/(sum E)^2 = (3*0.5)^2/9 = 0.25, p2 = 1.0, l2 = 0.0625.
         c = client_with([make_frame(win=w) for w in (10, 11)])
-        t = combdll.instance_taps(c, "gps_l5", [10, 11])
-        d = t[1]["cx19.0"]
+        d = one(c, [10, 11])[1]
         self.assertAlmostEqual(d["p"], 1.0, places=6)
         self.assertAlmostEqual(d["e"], 0.25, places=6)
         self.assertAlmostEqual(d["l"], 0.0625, places=6)
@@ -98,7 +109,7 @@ class TestInstancePowers(unittest.TestCase):
             taps[(r, 0, 0)] = (0.5 + 0j, 1 + 0j, 0.25 + 0j, 1.0)
             taps[(r, 0, 1)] = (-0.5 + 0j, -1 + 0j, -0.25 + 0j, 1.0)
         c = client_with([make_frame(chan_ids=(5972, 5988), taps=taps, n_prn=1)])
-        d = combdll.instance_taps(c, "gps_l5", [100])[1]["cx19.0"]
+        d = one(c, [100])[1]
         self.assertAlmostEqual(d["p"], 0.0, places=9)
         self.assertAlmostEqual(d["e"], 0.0, places=9)
         # ...while the per-channel powers, which are single-channel by construction, are NOT
@@ -116,7 +127,7 @@ class TestInstancePowers(unittest.TestCase):
             taps[(r, 0, 0)] = (0j, 1 + 0j, 0j, 9.0)
             taps[(r, 0, 1)] = (0j, 3 + 0j, 0j, 1.0)
         c = client_with([make_frame(chan_ids=(5972, 5988), taps=taps, n_prn=1)])
-        d = combdll.instance_taps(c, "gps_l5", [100])[1]["cx19.0"]
+        d = one(c, [100])[1]
         self.assertAlmostEqual(d["p"], 1.2 ** 2, places=6)
 
     def test_a_missing_record_is_a_hole_not_a_zero(self):
@@ -127,30 +138,72 @@ class TestInstancePowers(unittest.TestCase):
         had (a tiny |A| at an enormous fake significance).
         """
         c = client_with([make_frame(present=0b0101)])
-        d = combdll.instance_taps(c, "gps_l5", [100])[1]["cx19.0"]
+        d = one(c, [100])[1]
         self.assertEqual(d["n_rec"], 2)
         self.assertAlmostEqual(d["p"], 1.0, places=6)   # NOT 0.5
 
 
 class TestFleetCombine(unittest.TestCase):
-    """B. Across instances: powers add, and the discriminator is the summed-power ratio."""
+    """B. Across senders: ONE coherent sum over the lobe, and the sender is not a unit."""
 
-    def _fleet(self, **kw):
-        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004), **kw),
-                  make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), **kw)]
+    def _fleet(self, phi=(0.0, 0.0), **kw):
+        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004), phi0=phi[0], **kw),
+                  make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), phi0=phi[1], **kw)]
         return combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)
 
-    def test_powers_add_across_instances_and_the_ratio_does_not(self):
+    def test_the_lobe_sum_is_normalised_and_the_ratios_are_the_combiners(self):
         out = self._fleet()
         v = out[1]
         self.assertEqual(v["n_src"], 2)
-        self.assertAlmostEqual(v["p_pow"], 2.0, places=6)        # 1.0 + 1.0
-        self.assertAlmostEqual(v["e_pow"], 0.5, places=6)
-        self.assertAlmostEqual(v["l_pow"], 0.125, places=6)
-        # disc and q are RATIOS: identical to one instance's. That is the documented property
-        # of this combine -- summing shrinks the variance, it does not raise q.
+        # Six channels at A = 1: |6|^2 / 6^2 = 1.0. The sender count does NOT appear -- a
+        # signal reads the same power however many senders carry it; only the noise falls.
+        self.assertAlmostEqual(v["p_pow"], 1.0, places=6)
+        self.assertAlmostEqual(v["e_pow"], 0.25, places=6)
+        self.assertAlmostEqual(v["l_pow"], 0.0625, places=6)
+        self.assertAlmostEqual(v["n_chan"], 6.0, places=6)
         self.assertAlmostEqual(v["disc"], (0.25 - 0.0625) / 0.3125, places=6)
         self.assertAlmostEqual(v["q"], 2 * 1.0 / 0.3125, places=6)
+
+    def test_senders_add_COHERENTLY_after_the_phi0_rotation(self):
+        """The whole point. Each sender's comb is stamped with its own arbitrary phi0
+        (gnssRecord.hpp REC_PHI0); the consumer's exp(+i*phi0) puts them on one reference.
+        With the rotation applied, two senders at different phi0 sum to full power; drop it
+        and a pi offset cancels the lobe sum outright. The per-channel table is a power and
+        cannot see any of this."""
+        v = self._fleet(phi=(0.3, 0.3 + math.pi))[1]
+        self.assertAlmostEqual(v["p_pow"], 1.0, places=6)
+        self.assertAlmostEqual(v["e_pow"], 0.25, places=6)
+        for fid in (5972, 5976, 5988, 5992, 6004, 6008):
+            self.assertAlmostEqual(v["chan"][fid]["p"], 1.0, places=6)
+
+    def test_a_sender_in_antiphase_cancels_the_lobe(self):
+        """Same two senders, but the SECOND's comb genuinely sits at -A (no phi0 to explain
+        it): the lobe sum cancels. An instance-coherent combine would have reported full
+        power from each and summed them -- blind to the cross-sender phase."""
+        taps = {(r, p, ch): (-0.5 + 0j, -1 + 0j, -0.25 + 0j, 1.0)
+                for r in range(4) for p in range(2) for ch in range(3)}
+        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004)),
+                  make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), taps=taps)]
+        out = combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)
+        self.assertEqual(out, {})   # E + L == 0: no discriminator can be formed
+        t = combdll.lobe_taps(client_with(frames), "gps_l5", [100])[1]
+        self.assertAlmostEqual(t["p"], 0.0, places=9)
+        self.assertAlmostEqual(t["chan"][5976][1], 1.0, places=6)
+
+    def test_a_partial_record_is_excluded_not_reweighted(self):
+        """min_instances is a COMPLETENESS gate on the record. Sender B drops records 1 and 3;
+        with min_instances=2 those records leave the mean; with 1 they stay, at the same
+        normalised power (three channels at A=1 read 1.0 exactly as six do)."""
+        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004)),
+                  make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), present=0b0101)]
+        t2 = combdll.lobe_taps(client_with(frames), "gps_l5", [100], min_instances=2)[1]
+        self.assertEqual(t2["n_rec"], 2)
+        self.assertAlmostEqual(t2["n_chan"], 6.0, places=6)
+        t1 = combdll.lobe_taps(client_with(frames), "gps_l5", [100], min_instances=1)[1]
+        self.assertEqual(t1["n_rec"], 4)
+        self.assertAlmostEqual(t1["n_chan"], 4.5, places=6)
+        self.assertAlmostEqual(t1["p"], 1.0, places=6)
+        self.assertEqual(t1["n_inst"], 2)
 
     def test_one_instance_is_not_a_fleet(self):
         c = client_with([make_frame(inst="cx19.0")])
@@ -174,7 +227,7 @@ class TestFleetCombine(unittest.TestCase):
         v = combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)[1]
         self.assertEqual(v["chan_dup"], [5988])
         self.assertEqual(sorted(v["chan"]), [5972, 6004])
-        self.assertAlmostEqual(v["p_pow"], 2.0, places=6)   # the full-band sum is untouched
+        self.assertAlmostEqual(v["p_pow"], 1.0, places=6)   # the lobe sum is untouched
 
     def test_presence_policy_is_the_shared_one(self):
         """The keys apply_presence writes must be here -- it is the SAME function fleet_dll
@@ -195,8 +248,11 @@ class TestFleetCombine(unittest.TestCase):
                       "coh_src": "http://cx19:12048/x", "coh_quad": (55.0, 7)}}
         fed = combdll.fleet_dll_comb(c, "gps_l5", n_win=4, lag=0, coh_from=polled,
                                      deep_gate_prns=True)[1]
-        self.assertEqual(fed["present_gate"], "deep")
-        self.assertTrue(fed["present"])
+        # No probes in this fixture, so presence is UNANCHORED and admits nobody -- by
+        # design (fleet.apply_presence). What is pinned here is that the deep statistics
+        # TRAVEL, whatever the verdict.
+        self.assertEqual(fed["present_gate"], "UNANCHORED")
+        self.assertEqual(fed["coh_row"]["deep_snr"], 40.0)
         # ALL THREE keys travel. coh_quad is the publisher's continuity fallback; losing it
         # is a 5-8 dB step in the served C/N0 that looks like a display quirk (docs 11.31).
         self.assertEqual(fed["coh_src"], "http://cx19:12048/x")
@@ -220,7 +276,7 @@ class TestPhaseSensitivity(unittest.TestCase):
                 rot = cmath.exp(2j * cmath.pi * ch / len(ids))   # a full turn across the comb
                 taps[(r, 0, ch)] = (0j, rot, 0j, 1.0)
         c = client_with([make_frame(chan_ids=ids, taps=taps, n_prn=1)])
-        d = combdll.instance_taps(c, "gps_l5", [100])[1]["cx19.0"]
+        d = one(c, [100])[1]
         self.assertAlmostEqual(d["p"], 0.0, places=9)
         for fid in ids:
             self.assertAlmostEqual(d["chan"][fid][1], 1.0, places=6)

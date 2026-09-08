@@ -314,7 +314,7 @@ common:
   # coherence_s and the quadrature fallback come from the combiner's DEEP FOLD, which is not
   # in the gathered stream. That poll still must be made.
   telem-coherent: true
-  # ⚠️ SHADOW (1), NOT ARMED (2) -- 2026-08-23. Takes the comb DLL's per-instance and
+  # ⚠️ SHADOW (1), NOT ARMED (2) -- 2026-08-23. Takes the comb DLL's per-PRN lobe and
   # per-channel taps from the gather's C++ reduction (<fleet-trim-url>/get_taps) instead of
   # rebuilding them here by walking every (window, instance, record, PRN, channel) of the
   # gathered stream: ~140k channel-tuples per chain per cycle, ~700k across the fleet, ~18% of
@@ -322,14 +322,14 @@ common:
   # CYCLE TIME IS the sum of the five chains' Python CPU, so that 18% is ~2 s of every cycle.
   #
   # The arithmetic is gated offline on IDENTICAL BYTES (scripts/gnss/fleetdll_gate.py:
-  # e/p/l/n_chan to 1e-9, n_rec and hop exact, per instance AND per channel). What that gate
+  # e/p/l/n_chan to 1e-9, n_rec and hop exact, per PRN AND per channel). What that gate
   # cannot see is a LIVE mismatch -- chain naming, window depth, instance tags -- which would
   # give two self-consistent answers about different things. Nor can broker_equiv: the gather
   # is a raw socket, not transport, so a replay carries no telemetry at all and falls back to
   # the polled discriminator. Shadow measures exactly that: watch the COMB-TAPS line's
   # |ddisc| / |dq| and its shared-PRN count before setting 2.
   # ⚠️ ARMED (2) 2026-08-23, on this evidence, and revert to 1 or 0 with one line:
-  #   OFFLINE, identical bytes: e/p/l/n_chan agree to 1e-9, n_rec and hop EXACT, per instance
+  #   OFFLINE, identical bytes: e/p/l/n_chan agree to 1e-9, n_rec and hop EXACT, per PRN
   #     AND per channel (fleetdll_gate.py TAPS + SPLIT-RING legs).
   #   LIVE shadow, all five chains: same PRN counts, ALL shared -- so chain naming, instance
   #     tags and window depth line up, which is the thing the offline gate cannot see.

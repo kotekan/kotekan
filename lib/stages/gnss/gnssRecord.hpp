@@ -106,6 +106,7 @@
 #include <cstddef> // for size_t -- this header is standalone (parsed by the config generator
                    // and included by tools that pull in nothing else), so it must not rely on
                    // an earlier include having happened to provide it.
+#include <cstdint> // likewise, for the fixed-width types of the cube frame layout.
 
 namespace gnss {
 
