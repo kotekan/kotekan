@@ -273,7 +273,7 @@ def instr_prompt_cn0(ctx):
                     if (ctx.args.comb_taps_cpp >= 2 and ctx.args.fleet_trim_url) else None),
                 n_win=(ctx.args.telem_dll_windows or ctx.args.telem_windows),
                 min_instances=ctx.args.dll_min_instances,
-                k_sigma=ctx.args.dll_quality_sigma,
+                min_sig=ctx.args.cn0_prompt_min_sig,
                 prns=set(ctx.seeds) or None, probe_prns=ctx.probe_set,
                 hop_s=1.0 / ctx.args.hops_per_sec)
         except Exception as e:
@@ -294,11 +294,12 @@ def instr_prompt_cn0(ctx):
             # fleet-wide level swings (measured moving 3 dB in 2 min on 2026-08-15,
             # carrying every satellite's served C/N0 with it, common-mode).
             _log_rl("pcn0",
-                    "PROMPT-CN0 %s: %s | q_gate %.2f, sigma2 %.3e from %d probe "
-                    "records"
+                    "PROMPT-CN0 %s: %s | present at t>=%.0f, q_noise %.2f, sigma2 %.3e "
+                    "from %d probe records"
                     % (ctx.telem_chain,
                        "; ".join(_lv) if _lv else "no PRN above the noise",
-                       _any["q_gate"], _any["sigma2"], _any["n_probe_rec"]),
+                       _any["min_sig"], _any["q_noise"], _any["sigma2"],
+                       _any["n_probe_rec"]),
                     every_s=30.0)
         elif ctx.telem_client is not None:
             _log_rl("pcn0-empty",

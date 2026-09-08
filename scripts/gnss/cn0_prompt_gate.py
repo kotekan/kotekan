@@ -123,7 +123,7 @@ def polled_cn0(polls, probes, t_rec):
         return {}, None, {}
     pooled.sort()
     med = pooled[len(pooled) // 2]
-    kept = [x for x in pooled if x <= 8.0 * med]     # same clipped MEAN as the estimator
+    kept = [x for x in pooled if x <= 20.0 * med]    # same clipped MEAN as the estimator
     s2 = sum(kept) / len(kept)
     if s2 <= 0.0:
         return {}, None, {}
@@ -154,7 +154,7 @@ def polled_cn0(polls, probes, t_rec):
 # ---------------------------------------------------------------------------------------
 class _FakeFrame(object):
     def __init__(self, rng, win, inst, chans, sats, sig_amp, noise_sig, n_rec=4):
-        self.n_rec, self.hops_per_record = n_rec, 2048
+        self.n_rec, self.hops_per_record, self._win = n_rec, 2048, win
         self._rng, self._chans, self._sats = rng, chans, sats
         self._sig, self._noise = sig_amp, noise_sig
         self._prns = sorted(set(p for p, _on in sats))
@@ -162,8 +162,15 @@ class _FakeFrame(object):
     def has_record(self, r):
         return True
 
+    def hop(self, r):
+        # absolute F-engine hop of slot r, as telem.TelemFrame.hop: 4 records per 8192-hop frame
+        return self._win * 8192 + r * self.hops_per_record
+
     def prns(self):
         return self._prns
+
+    def row(self, r, prn):
+        return None      # no REC_PHI0: every fake sender is already on one phase reference
 
     def comb_epl(self, r, prn):
         on = dict(self._sats).get(prn, False)
@@ -209,10 +216,10 @@ def self_test():
     if not got:
         print("SELF-TEST: FAIL -- estimator returned nothing")
         return 1
-    # per-channel complex noise variance 2*noise_sig^2; the cross-channel mean divides it
-    # by n_chan per instance -- and the instance mean leaves it there (each instance is an
-    # independent draw at the same level, signal and noise alike).
-    rho_true = sig_amp ** 2 / (2.0 * noise_sig ** 2 / cpi)
+    # per-channel complex noise variance 2*noise_sig^2; the lobe-coherent sum over EVERY
+    # channel of every sender divides it by the total channel count (the senders are on one
+    # phase reference here, so their signal adds as amplitude and their noise as power).
+    rho_true = sig_amp ** 2 / (2.0 * noise_sig ** 2 / fc.n_chan_total)
     cn0_true = 10.0 * math.log10(rho_true / t_rec)
     fails = []
     for prn in (23, 7):
@@ -230,17 +237,45 @@ def self_test():
             fails.append("PRN %d: cn0 off truth by %+.2f dB" % (prn, err))
         if v["duty"] < 0.9:
             fails.append("PRN %d: duty %.2f on a clean strong signal" % (prn, v["duty"]))
+    # A probe served ANY number is the fires-on-noise disease; the old bar here (duty >
+    # 0.2) let a per-record q tail serve below-horizon probes at 18-21 dB-Hz, duty 0.1.
     for prn in (91, 92, 93):
         v = got.get(prn)
-        if v and v["cn0_db"] is not None and v["duty"] > 0.2:
-            fails.append("probe %d SERVED a cn0 at duty %.2f -- fires on noise"
-                         % (prn, v["duty"]))
+        if v and v["cn0_db"] is not None:
+            fails.append("probe %d SERVED %.1f dB-Hz at duty %.2f, sig_inc %.1f -- fires "
+                         "on noise" % (prn, v["cn0_db"], v["duty"], v["sig_inc"] or 0.0))
     # the AUC leg on the synthetic records: satellite vs pooled probe rho
     probe_rho = [x[2] for p in (91, 92, 93) for x in got[p]["recs"]]
     a = auc([x[2] for x in got[23]["recs"]], probe_rho)
     print("SELF-TEST AUC (PRN 23 vs probes): %.3f" % a)
     if a < 0.99:
         fails.append("AUC %.3f on a strong synthetic signal" % a)
+    # THE WEAK LEG: a 25 dB-Hz satellite, where the lock conditional's selection bias lives.
+    # Per record it read +0.7 dB at duty 0.86 here; per window +0.13 at 0.99 (the probe-q
+    # bar it replaced would have dropped ~half the records of a locked satellite this weak).
+    weak_amp = 0.6
+    fw = _FakeClient(seed=2, sig_amp=weak_amp, noise_sig=noise_sig, chans_per_inst=cpi,
+                     n_win=192)
+    gw = combdll.prompt_cn0(fw, "fake", n_win=192, probe_prns={91, 92, 93})
+    cn0_weak = 10.0 * math.log10(weak_amp ** 2 / (2.0 * noise_sig ** 2 / fw.n_chan_total) / t_rec)
+    v = gw.get(23)
+    if not v or v["cn0_db"] is None:
+        fails.append("weak PRN 23 (%.1f dB-Hz): no cn0 served" % cn0_weak)
+    else:
+        err = v["cn0_db"] - cn0_weak
+        print("SELF-TEST weak PRN 23: cn0 %.2f dB-Hz (truth %.2f, err %+.2f) duty %.2f sig_inc %.1f"
+              % (v["cn0_db"], cn0_weak, err, v["duty"], v["sig_inc"]))
+        # 0.5 dB: the estimator's own scatter at 768 records and rho ~3 is ~0.2 dB 1-sigma
+        # (record scatter and the probe anchor's), so this bar is the bias, not the noise
+        if abs(err) > 0.5:
+            fails.append("weak PRN 23: cn0 off truth by %+.2f dB (selection bias)" % err)
+        if v["duty"] < 0.9:
+            fails.append("weak PRN 23: duty %.2f -- the lock conditional is a strength gate"
+                         % v["duty"])
+    for prn in (91, 92, 93):
+        v = gw.get(prn)
+        if v and v["cn0_db"] is not None:
+            fails.append("probe %d SERVED %.1f dB-Hz in the weak leg" % (prn, v["cn0_db"]))
     if fails:
         print("SELF-TEST: FAIL\n  " + "\n  ".join(fails))
         return 1
@@ -322,8 +357,9 @@ def main():
     probe_rho = [x[2] for p in probes for x in (got.get(p, {}).get("recs") or [])]
     sats = sorted(p for p in got if p not in probes)
     v0 = got[sats[0]] if sats else next(iter(got.values()))
-    print("\n%d PRNs, %d probe records, sigma2 %.3e, q_gate %.2f, t_rec %.4f s"
-          % (len(got), v0["n_probe_rec"], v0["sigma2"], v0["q_gate"], t_rec))
+    print("\n%d PRNs, %d probe records, sigma2 %.3e, present at t>=%.0f, q_noise %.2f, "
+          "t_rec %.4f s" % (len(got), v0["n_probe_rec"], v0["sigma2"], v0["min_sig"],
+                            v0["q_noise"], t_rec))
     print("\n  PRN     cn0_db   duty  n_used  split_dB    AUC   polled_dB  pair_dB")
     legs = {"auc": [], "split": [], "pair": []}      # failures per leg
     judged = {"auc": [], "split": [], "pair": []}    # PRNs each leg could actually score

@@ -135,6 +135,16 @@ _FROZEN = dict(
     #   a held strong sat.
     carrier_refade=10,
 
+    # --cn0-prompt-min-sig
+    #   served C/N0 (combdll.prompt_cn0): a PRN is served only when the mean debiased prompt
+    #   power over EVERY gathered record is this many standard errors above zero, the scatter
+    #   measured from the same records (sig_inc, ungated). In the lobe currency a record's
+    #   prompt power is one complex dof, so a below-horizon probe's statistic is N(0,1) and 5
+    #   admits nothing that is not there; the weakest satellite it serves at 384 records is
+    #   ~14 dB-Hz, below anything the loop holds. Measured on gps_l5: probes and untracked
+    #   PRNs 0.0-1.1, real satellites 20-200.
+    cn0_prompt_min_sig=5.0,
+
     # --clock-bias-alarm-hz
     #   CLOCK DRIFT ALARM bar: loud log if the live bias EMA departs the warm-start calibration
     #   by more than this (GPSDO unlock / thermal event -- hardware news, not something to

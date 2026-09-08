@@ -410,7 +410,7 @@ def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
 
 
 def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
-               k_sigma=3.0, min_instances=2, hop_s=5.12e-6, keep_records=False,
+               min_sig=5.0, min_instances=2, hop_s=5.12e-6, keep_records=False,
                min_used=8, recs_src=None):
     """THE SERVED C/N0 (task #57): per-record prompt power, q-gated, probe-debiased.
 
@@ -430,16 +430,39 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
         channel count. A record fewer than `min_instances` senders reached is excluded
         rather than reweighted: no per-sender arithmetic survives anywhere in this path.
 
-      * q-GATED. C/N0 is radiometry CONDITIONAL ON LOCK: a record where the tap sat off the
-        peak measures the tap, not the satellite, and averaging it in is the incoherent
-        estimator's bias (#24). The gate bar comes from the PROBES' own per-record q
-        population (med + k*MAD), i.e. the same statistic on noise-by-construction rows.
+      * PRESENT, BY A SELECTION-FREE STATISTIC. A PRN is served only if its mean debiased
+        prompt power over EVERY record (no gate anywhere upstream of it) is `min_sig`
+        standard errors above zero -- `sig_inc`, the incoherent detection significance,
+        with the scatter measured from the same records. Under the null the per-record
+        prompt power is ONE complex dof in the lobe currency (Exp: sd = mean), so a probe's
+        t is N(0,1) and a bar of 5 admits nothing that is not there; the weakest satellite
+        this can serve at 384 records is ~14 dB-Hz, below anything the loop holds. This is
+        the gate that keeps noise off the served rows -- NOT the lock conditional below,
+        whose per-record statistic has a tail that no bar can be set on: in the lobe
+        currency 9% of probe RECORDS clear a median+3*MAD q bar, and at min_used 8 that
+        served below-horizon probes and untracked PRNs at 18-21 dB-Hz, duty 0.08-0.11.
+
+      * LOCK-CONDITIONAL, PER WINDOW, WITHOUT A CONSTANT. C/N0 is radiometry CONDITIONAL ON
+        LOCK: a record where the tap sat off the peak measures the tap, not the satellite,
+        and averaging it in is the incoherent estimator's bias (#24). A window's records
+        are kept when THE PROMPT IS THE TALLEST TAP on the window's summed E, P, L: true on
+        the peak for every correlation shape the taps straddle, false once the tap is off
+        by more than half the E/L spacing -- so it needs neither the spacing nor the
+        chain's on-peak q, which differ per chain (4.4 on L5 at 0.5 chip, 6.7 on L2C at
+        2.0) and would make any q bar a STRENGTH criterion: on-peak q falls with C/N0
+        because E and L carry noise power, and the probe-derived bar was dropping half the
+        records of a locked 31 dB-Hz satellite (duty 0.47, +0.9 dB selection bias). Noise
+        passes this 1/3 of the time, which is why presence must never rest on it.
         ⚠️ This on-peak bias is CORRECT here and would be the #49 latch in a trim gate --
         an estimator publishes its duty and lets the consumer decline; a gate starves the
         loop. Do not transplant this bar into presence logic.
-        ⚠️ SELECTION BIAS AT THE MARGIN: q and P share noise, so a satellite passing the
-        gate only on upward fluctuations reads high. `duty` is published precisely so a
-        low-duty cn0 can be declined; a duty near 1 has no selection to bias it.
+        ⚠️ SELECTION BIAS AT THE MARGIN: P and the conditional share noise, so a satellite
+        passing only on upward fluctuations reads high. Judged per RECORD that is +0.7 dB at
+        25 dB-Hz and +2 dB at 21 (duty 0.86 / 0.69); judged on the WINDOW's summed taps --
+        the shortest span an off-peak episode can have, the loop acts on 30 s -- it is
+        +0.1 / +0.6 dB with duty 0.99 / 0.92, and +1.5 dB at 19 dB-Hz where duty is 0.78.
+        `duty` is published precisely so a low-duty cn0 can be declined; near 1 it is
+        unbiased.
 
       * PROBE-DEBIASED. E[|P|^2] = |s|^2 + sigma^2, and sigma^2 is MEASURED as the median
         per-record prompt power of the below-horizon probes -- the only rows that are noise
@@ -452,9 +475,11 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
     Every normalisation upstream of P -- element cal, channel weights, the 4+4b scale --
     cancels in the ratio because the probes ride the identical pipeline.
 
-    Returns {prn: {cn0_db, rho, duty, n_used, n_rec, split_db, sigma2, q_gate, t_rec_s,
-    n_probe_rec, probe}} for every PRN seen (probes included, flagged -- their cn0 SHOULD
-    be None/negative, which is what the AUC leg of the validation bar checks).
+    Returns {prn: {cn0_db, rho, sig_inc, duty, n_used, n_rec, split_db, sigma2, q_noise,
+    min_sig, t_rec_s, n_probe_rec, probe}} for every PRN seen (probes included, flagged --
+    their cn0 MUST be None, which is what the self-test and the AUC leg of the validation
+    bar check). `q_noise` is the probes' median per-record q, the no-peak value, served as
+    a diagnostic only.
     `split_db` is the even/odd-record self-consistency in dB: free, and it is the
     split-half witness of the validation bar. keep_records=True adds `recs`
     [(win, slot, rho, q, gated)] for the offline tools; the broker must not carry it.
@@ -484,21 +509,31 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
     if not recs or t_rec is None:
         return {}
 
-    # Per-PRN time-ordered per-record series: (win, slot, p, q).
+    # Per-PRN time-ordered per-record series: (win, slot, p, q, on_peak), on_peak judged on
+    # the WINDOW's summed taps (see the docstring: the conditional's noise is what biases
+    # the served number, and a window is the shortest span an off-peak episode can have).
     series = {}
+    by_win = {}   # (prn, win) -> [E, P, L] summed over the window's records
     for key in sorted(recs):
         for prn, (e, p, l, n, _nch) in recs[key].items():
             if n < min_instances:
                 continue
             q = 2.0 * p / (e + l) if (e + l) > 0.0 else 0.0
             series.setdefault(prn, []).append((key[0], key[1], p, q))
+            t = by_win.setdefault((prn, key[0]), [0.0, 0.0, 0.0])
+            t[0] += e
+            t[1] += p
+            t[2] += l
+    for prn, rows in series.items():
+        series[prn] = [(w, r, p, q, by_win[(prn, w)][1] > by_win[(prn, w)][0]
+                        and by_win[(prn, w)][1] > by_win[(prn, w)][2]) for w, r, p, q in rows]
 
     # THE NOISE ANCHOR. Pooled over the whole capture rather than per record: the per-record
     # median of 3 probes carries ~20% scatter, the pooled one ~1/sqrt(N); the #56 power
     # swings are ~hourly against this window's ~1.3 s, so pooling loses nothing they move.
     probe_p, probe_q = [], []
     for prn in probe_prns:
-        for _w, _r, p, q in series.get(prn, ()):
+        for _w, _r, p, q, _on in series.get(prn, ()):
             probe_p.append(p)
             probe_q.append(q)
     if len(probe_p) < 16:
@@ -511,46 +546,38 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
     # sits BELOW its mean -- the self-test caught a +0.7 dB high bias from exactly this
     # (Gamma(3): median/mean = 0.89 -> +0.5 dB; ~+0.13 dB at a healthy 11-instance
     # fleet, still a bias, not noise). The median stays as the CLIP reference only:
-    # mean over records <= 8x median keeps a single contaminated probe record from
-    # dragging the anchor, and clips essentially nothing of a genuine Gamma tail.
+    # mean over records <= 20x median keeps a single contaminated probe record from
+    # dragging the anchor by more than ~2% of it. ⚠️ THE CLIP MUST CLEAR THE TAIL: in the
+    # lobe currency the probe power is ONE complex dof (Exp), and a clip at 8x median
+    # (5.5 sigma^2) cuts 0.4% of the records but 2.7% of the mean, which reads as +0.12 dB
+    # on every served satellite (measured on the self-test, 6 seeds); at 20x the tail
+    # above the clip is 1e-5 of the mean.
     _med = probe_p[len(probe_p) // 2]
     if _med <= 0.0:
         return {}
-    _kept = [x for x in probe_p if x <= 8.0 * _med]
+    _kept = [x for x in probe_p if x <= 20.0 * _med]
     sigma2 = sum(_kept) / len(_kept)
     if sigma2 <= 0.0:
         return {}
-    q_med = probe_q[len(probe_q) // 2]
-    _mad = sorted(abs(x - q_med) for x in probe_q)[len(probe_q) // 2]
-    q_gate = q_med + max(k_sigma * 1.4826 * _mad, 0.05)
+    q_noise = probe_q[len(probe_q) // 2]
 
     out = {}
     for prn, rows in series.items():
-        rho_gated, rec_rows = [], []
-        for w, r, p, q in rows:
+        rho_all, rho_gated, rec_rows = [], [], []
+        for w, r, p, q, gated in rows:
             rho = (p - sigma2) / sigma2
-            gated = q >= q_gate
+            rho_all.append(rho)
             if gated:
                 rho_gated.append(rho)
             if keep_records:
                 rec_rows.append((w, r, rho, q, gated))
         n_used, n_tot = len(rho_gated), len(rows)
-        # ⚠️ TOO FEW GATED RECORDS IS NOT A MEASUREMENT -- SERVE NOTHING.
-        # The q gate and the signal share noise, so at low duty the records that PASS are
-        # precisely the upward fluctuations: the mean of a handful of them is biased high
-        # and scatters enormously. Measured 2026-08-15, E19 transiting boresight on
-        # gal_e5b at q 0.36 (BELOW the 1.0 no-peak value -- the array never got on the
-        # peak): duty 0.01, n_used 1, and the served value was 27.8 dB-Hz off ONE record.
-        # The viewer plotted a decade of that as a C/N0 history. `duty` was published so a
-        # consumer could decline the number, but publishing a declinable number and hoping
-        # is not a gate -- this is (see also the no-peer-fallback rule for the floor).
-        # duty/n_used are still served, so "tracked but not measurable" stays visible and
-        # is distinguishable from "never seen".
-        rho_mean = (sum(rho_gated) / n_used) if n_used >= min_used else None
-        # THE INCOHERENT DETECTION SIGNIFICANCE, empirically (2026-08-15). A t-statistic on
-        # the gated per-record rho: mean / (std/sqrt(n)). No distributional assumption --
-        # the scatter is MEASURED from the same records the mean is, so scintillation and
-        # any residual non-whiteness make it conservative rather than wrong.
+        # THE INCOHERENT DETECTION SIGNIFICANCE, on EVERY record: mean / (std/sqrt(n)) of the
+        # ungated per-record rho. No distributional assumption -- the scatter is MEASURED
+        # from the same records the mean is, so scintillation and any residual
+        # non-whiteness make it conservative rather than wrong -- and no selection: the
+        # gated records are the upward fluctuations by construction, and a t on them reads
+        # a healthy significance off pure noise. This is the presence verdict below.
         #
         # ⚠️ WHY THIS EXISTS: `sig` was the deep fold's number, which read single digits
         # while the SEARCH saw the same satellites at hundreds of sigma (KV, 2026-08-15).
@@ -558,16 +585,30 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
         # actually cohered; where it did not, this is the honest detection statement, and
         # it is large for exactly the satellites that are obviously there.
         sig_inc = None
-        if n_used >= 8 and rho_mean is not None and rho_mean > 0.0:
-            _v = sum((x - rho_mean) ** 2 for x in rho_gated) / (n_used - 1)
-            _se = (_v / n_used) ** 0.5
+        if n_tot >= 8:
+            _m = sum(rho_all) / n_tot
+            _v = sum((x - _m) ** 2 for x in rho_all) / (n_tot - 1)
+            _se = (_v / n_tot) ** 0.5
             if _se > 0.0:
-                sig_inc = rho_mean / _se
+                sig_inc = _m / _se
+        present = sig_inc is not None and sig_inc >= min_sig
+        # ⚠️ NOT PRESENT, OR TOO FEW ON-PEAK RECORDS, IS NOT A MEASUREMENT -- SERVE NOTHING.
+        # The lock conditional and the signal share noise, so at low duty the records that
+        # PASS are precisely the upward fluctuations: the mean of a handful of them is
+        # biased high and scatters enormously (E19 transiting boresight on gal_e5b at q
+        # 0.36, duty 0.01, n_used 1, served 27.8 dB-Hz off ONE record; the viewer plotted a
+        # decade of that as a C/N0 history). `duty` was published so a consumer could
+        # decline the number, but publishing a declinable number and hoping is not a gate
+        # -- this is (see also the no-peer-fallback rule for the floor). duty/n_used/sig_inc
+        # are still served, so "tracked but not measurable" stays visible and is
+        # distinguishable from "never seen".
+        rho_mean = ((sum(rho_gated) / n_used)
+                    if present and n_used >= min_used else None)
         cn0 = (10.0 * math.log10(rho_mean / t_rec)
                if rho_mean is not None and rho_mean > 0.0 else None)
         # Even/odd split of the GATED records: the self-consistency of the number served.
         split_db = None
-        if n_used >= 8:
+        if present and n_used >= 8:
             re_ = sum(rho_gated[0::2]) / len(rho_gated[0::2])
             ro_ = sum(rho_gated[1::2]) / len(rho_gated[1::2])
             if re_ > 0.0 and ro_ > 0.0:
@@ -578,7 +619,8 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
                     "duty": n_used / float(n_tot) if n_tot else 0.0,
                     "n_used": n_used, "n_rec": n_tot,
                     "split_db": split_db,
-                    "sigma2": sigma2, "q_gate": q_gate, "t_rec_s": t_rec,
+                    "sigma2": sigma2, "q_noise": q_noise, "min_sig": min_sig,
+                    "t_rec_s": t_rec,
                     "n_probe_rec": len(probe_p),
                     "probe": prn in probe_prns}
         if keep_records:

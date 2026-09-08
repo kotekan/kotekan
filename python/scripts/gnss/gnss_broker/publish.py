@@ -642,7 +642,7 @@ class FleetPublisher:
                 row["sig_src"] = "kcoh:%d" % _kn
             elif _si is not None:
                 row["sig"] = _si
-                row["sig_src"] = "inc:%d" % (_pc2.get("n_used") or 0)
+                row["sig_src"] = "inc:%d" % (_pc2.get("n_rec") or 0)
             elif _ks is not None:
                 row["sig"] = _ks
                 row["sig_src"] = "kcoh_weak:%d" % (_kn or 0)
@@ -722,8 +722,8 @@ class FleetPublisher:
             # the loop's -- which is what cn0_coh_db above can never have: its deep fold
             # re-searches a residual rate per integration and carries ~20 dB of its own
             # paired scatter doing so. Both are published; this one is the radiometry to
-            # consume. cn0_prompt_duty is the fraction of records that passed the lock
-            # gate: a duty near 0 means the number rests on a handful of upward
+            # consume. cn0_prompt_duty is the fraction of records on which the prompt was
+            # the tallest tap: a duty near 0 means the number rests on a handful of upward
             # fluctuations (decline it); cn0_prompt_split_db is the even/odd-record
             # self-consistency, the split-half witness served with the value it witnesses.
             _pc = pcn0.get(prn)
@@ -732,9 +732,9 @@ class FleetPublisher:
                 row["cn0_prompt_duty"] = _pc.get("duty")
                 row["cn0_prompt_n"] = _pc.get("n_used")
                 row["cn0_prompt_split_db"] = _pc.get("split_db")
-                row["cn0_prompt_src"] = ("probes:%d,q>=%.2f"
+                row["cn0_prompt_src"] = ("probes:%d,t>=%.0f,P>E,L"
                                          % (_pc.get("n_probe_rec", 0),
-                                            _pc.get("q_gate", 0.0)))
+                                            _pc.get("min_sig", 0.0)))
                 # The probes themselves ride the same rows (they are seeded PRNs); flag
                 # them so no consumer plots a below-horizon noise reference as a satellite.
                 row["noise_probe"] = bool(_pc.get("probe"))
