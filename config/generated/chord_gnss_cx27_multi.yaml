@@ -385,7 +385,7 @@ gnss0_b2a_n2cmb_buf:
   num_frames: 4
 gnss0_b2a_n2combine:
   cpu_affinity:
-  - 35
+  - 4
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -628,7 +628,7 @@ gnss0_b2b_n2cmb_buf:
   num_frames: 4
 gnss0_b2b_n2combine:
   cpu_affinity:
-  - 35
+  - 40
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -873,7 +873,7 @@ gnss0_b3i_n2cmb_buf:
   num_frames: 4
 gnss0_b3i_n2combine:
   cpu_affinity:
-  - 35
+  - 43
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1146,7 +1146,7 @@ gnss0_e5a_n2cmb_buf:
   num_frames: 4
 gnss0_e5a_n2combine:
   cpu_affinity:
-  - 35
+  - 41
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1397,7 +1397,7 @@ gnss0_e5b_n2cmb_buf:
   num_frames: 4
 gnss0_e5b_n2combine:
   cpu_affinity:
-  - 35
+  - 34
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1646,7 +1646,7 @@ gnss0_e6_n2cmb_buf:
   num_frames: 4
 gnss0_e6_n2combine:
   cpu_affinity:
-  - 35
+  - 33
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -1881,7 +1881,7 @@ gnss0_l2c_n2cmb_buf:
   num_frames: 4
 gnss0_l2c_n2combine:
   cpu_affinity:
-  - 35
+  - 36
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -2431,7 +2431,7 @@ gnss1_b2a_n2cmb_buf:
   num_frames: 4
 gnss1_b2a_n2combine:
   cpu_affinity:
-  - 59
+  - 24
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -2652,7 +2652,7 @@ gnss1_b2b_n2cmb_buf:
   num_frames: 4
 gnss1_b2b_n2combine:
   cpu_affinity:
-  - 59
+  - 61
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -2872,7 +2872,7 @@ gnss1_b3i_n2cmb_buf:
   num_frames: 4
 gnss1_b3i_n2combine:
   cpu_affinity:
-  - 59
+  - 19
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -3112,7 +3112,7 @@ gnss1_e5a_n2cmb_buf:
   num_frames: 4
 gnss1_e5a_n2combine:
   cpu_affinity:
-  - 59
+  - 62
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -3333,7 +3333,7 @@ gnss1_e5b_n2cmb_buf:
   num_frames: 4
 gnss1_e5b_n2combine:
   cpu_affinity:
-  - 59
+  - 58
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true
@@ -3550,7 +3550,7 @@ gnss1_e6_n2cmb_buf:
   num_frames: 4
 gnss1_e6_n2combine:
   cpu_affinity:
-  - 59
+  - 57
   deep_coherent: true
   deep_rate_min_q: 10.0
   deep_rate_search: true

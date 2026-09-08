@@ -837,7 +837,12 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
             "dual":     dual_core(rt, gpu, ordv),
             "tiles":    cores[(gpu + 9 + 3 * ordv) % nc],
             "assemble": cores[(gpu + 2) % nc],
-            "combine":  cores[(gpu + 4) % nc],
+            # The combiner is the heaviest host stage (10-16 % of a core per chain, scaling
+            # with PRN count), so it MUST rotate per chain like dual/tiles: stacked on one
+            # core the chains sum to ~100 %, the heaviest chain is left exactly real time,
+            # and any transient becomes a permanent backlog that walks back through the
+            # shared voltage ring into the F-engine input (and the science N2 with it).
+            "combine":  cores[(gpu + 4 + 3 * ordv) % nc],
             "telem":    cores[(gpu + 5) % nc],
             "send":     cores[(gpu + 6) % nc],
             "sink":     cores[(gpu + 7) % nc],
@@ -2391,7 +2396,7 @@ def choco_eop_table(args, timeout=10.0):
     fallback to a frozen base capture is the exact failure this function exists to prevent.
     """
     import subprocess
-    path = getattr(args, "eop_file", None) or "choco:/etc/choco/configs/eop-state.json"
+    path = getattr(args, "eop_file", None) or "choco:/var/lib/choco/eop/state.json"
     host, _, remote = path.partition(":")
     try:
         if remote:
@@ -3529,7 +3534,7 @@ def main():
     # and the table simply ages out from under it while the log fills at frame rate with a
     # warning everyone has learned to ignore (#68). So this refuses to be quiet about it.
     # ── THE AUTHORITATIVE EOP SOURCE (KV, 2026-08-28) ────────────────────────────────────
-    # choco:/etc/choco/configs/eop-state.json is where the observatory REFRESHES the table.
+    # choco:/var/lib/choco/eop/state.json is where the observatory REFRESHES the table.
     # Asking the running fleet (live_eop_table below) only ever finds what the fleet was last
     # STARTED with, so it cannot recover from staleness -- and it returns nothing at all when
     # the fleet is down, which silently falls back to the BASE capture. That is not
