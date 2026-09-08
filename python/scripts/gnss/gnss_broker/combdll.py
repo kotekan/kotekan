@@ -99,10 +99,16 @@ def _lobe_fold(client, chain, wins, want, per_channel):
     """The one walk over the frames both lobe_taps and lobe_records reduce from.
 
     Returns (acc, chan_w): acc is {(win, slot): {prn: [gE, gP, gL, wE, wP, wL, n_chan,
-    n_inst, hop]}} -- the rotated complex partial sums, NOT yet powers -- and chan_w is
-    {win: ({prn: {fid: [e, p, l, n_rec]}}, {fid: owner}, {dup fids})}.
+    n_inst, hop, aP, aP_sq]}} -- the rotated complex partial sums, NOT yet powers -- and
+    chan_w is {win: ({prn: {fid: [e, p, l, n_rec]}}, {fid: owner}, {dup fids})}.
+
+    aP / aP_sq are the ROTATION'S OWN CHECK: SUM_i a_i and SUM_i |a_i|^2 over the senders'
+    energy-normalised, derotated prompts a_i = gP_i / eP_i * rot_i. Their cross-sender
+    coherence (|SUM a|^2 - SUM |a|^2) / (SUM |a|^2 (n-1)) is ~1 when phi0 put the senders on
+    one reference and ~0 when the lobe sum is adding unrelated phasors. A diagnostic beside the
+    sum, never an operand in it.
     """
-    # (win, slot) -> {prn: [gE, gP, gL, wE, wP, wL, n_chan, n_inst, hop]}
+    # (win, slot) -> {prn: [gE, gP, gL, wE, wP, wL, n_chan, n_inst, hop, aP, aP_sq]}
     acc = {}
     # per window: {prn: {fid: [e, p, l, n_rec]}}, {fid: owner}, {dup fids}
     chan_w = {}
@@ -133,7 +139,7 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                     row = f.row(r, prn)
                     rot = cmath.exp(1j * float(row[REC_PHI0])) if row is not None else 1.0
                     d = acc.setdefault((w, r), {}).setdefault(
-                        prn, [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1])
+                        prn, [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1, 0j, 0.0])
                     d[0] += gE * rot
                     d[1] += gP * rot
                     d[2] += gL * rot
@@ -143,6 +149,9 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                     d[6] += len(cmb)
                     d[7] += 1
                     d[8] = max(d[8], hop)
+                    a = gP / eP * rot   # normalise FIRST, then rotate -- the C++ arm's order
+                    d[9] += a
+                    d[10] += a.real * a.real + a.imag * a.imag
                     if per_channel:
                         per_fid = cw[0].setdefault(prn, {})
                         for fid, E, P, L, _w in cmb:
@@ -159,9 +168,17 @@ def _lobe_fold(client, chain, wins, want, per_channel):
     return acc, chan_w
 
 
+def _rec_xcoh(d):
+    """One record's cross-sender coherence from a _lobe_fold accumulator; None below two
+    senders (the statistic needs a pair)."""
+    if d[7] < 2 or d[10] <= 0.0:
+        return None
+    return (abs(d[9]) ** 2 - d[10]) / (d[10] * (d[7] - 1))
+
+
 def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1):
-    """{prn: {e, p, l, hop, n_chan, n_rec, n_inst, chan, chan_dup}} -- lobe-coherent per-record
-    powers, meaned over records.
+    """{prn: {e, p, l, hop, n_chan, n_rec, n_inst, xcoh, n_xcoh, chan, chan_dup}} --
+    lobe-coherent per-record powers, meaned over records.
 
     THE COHERENCE UNIT IS THE LOBE. Per record, ONE complex sum over every channel of every
     sender, each sender's columns first multiplied by exp(+i*phi0) (REC_PHI0 -- the per-sender
@@ -180,6 +197,12 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
     window is a routing fault upstream: it is listed in `chan_dup` and DROPPED from `chan`
     rather than reported as a number that is neither sender's measurement (the lobe sum keeps
     it -- a duplicated channel is still that channel's measurement, twice).
+
+    `xcoh` is the mean over the `n_xcoh` records two or more senders reached of the
+    cross-sender coherence of their derotated prompts (_lobe_fold); None when none did. ~1 says
+    phi0 put the senders on one reference; ~0 says the lobe sum is adding unrelated phasors
+    and the prompt above is BELOW what per-sender summing would give. It is reported beside
+    the taps and enters none of them.
 
     Records with no comb (PRN not despread that record, or a sender running without
     chan_export) contribute nothing rather than zeros -- a zeroed record is not a measurement
@@ -202,7 +225,8 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
                 continue
             complete.add((w, prn))
             t = out.setdefault(prn, {"e": 0.0, "p": 0.0, "l": 0.0, "hop": -1, "n_chan": 0.0,
-                                     "n_rec": 0, "n_inst": 0, "chan": {}, "chan_dup": set()})
+                                     "n_rec": 0, "n_inst": 0, "xcoh": None, "n_xcoh": 0,
+                                     "chan": {}, "chan_dup": set()})
             t["e"] += (abs(d[0]) / d[3]) ** 2 if d[3] > 0.0 else 0.0
             t["p"] += (abs(d[1]) / d[4]) ** 2
             t["l"] += (abs(d[2]) / d[5]) ** 2 if d[5] > 0.0 else 0.0
@@ -210,6 +234,10 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
             t["n_rec"] += 1
             t["n_inst"] = max(t["n_inst"], d[7])
             t["hop"] = max(t["hop"], d[8])
+            xc = _rec_xcoh(d)
+            if xc is not None:
+                t["xcoh"] = (t["xcoh"] or 0.0) + xc
+                t["n_xcoh"] += 1
     if per_channel:
         for w, (per_prn, _own, dup) in chan_w.items():
             for prn, per_fid in per_prn.items():
@@ -234,6 +262,8 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
         t["p"] /= n
         t["l"] /= n
         t["n_chan"] /= n
+        if t["n_xcoh"]:
+            t["xcoh"] /= float(t["n_xcoh"])
         t["chan_dup"] = sorted(t["chan_dup"])
         for c in t["chan"].values():
             m = float(c[3]) or 1.0
@@ -302,6 +332,8 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
         out[p] = {"e": float(v["e"]), "p": float(v["p"]), "l": float(v["l"]),
                   "n_chan": float(v["n_chan"]), "n_rec": int(v["n_rec"]),
                   "n_inst": int(v["n_inst"]), "hop": int(v["hop"]),
+                  "xcoh": None if v.get("xcoh") is None else float(v["xcoh"]),
+                  "n_xcoh": int(v.get("n_xcoh") or 0),
                   "chan": {int(f): [float(c[0]), float(c[1]), float(c[2]), float(c[3])]
                            for f, c in (v.get("chan") or {}).items()},
                   "chan_dup": []}
@@ -317,7 +349,8 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
     Same keys, same meanings, same presence policy (apply_presence, shared with fleet_dll so
     the two paths cannot drift apart in their verdicts) -- the difference is confined to where
     the three powers came from. Extra keys: `src` = "comb", `n_rec`, `chan` (per-channel
-    powers and discriminators), `chan_dup`.
+    powers and discriminators), `chan_dup`, `xcoh` (cross-sender coherence of the derotated
+    prompts, lobe_taps -- the live check that the senders sit on one phase reference).
 
     ⚠️ THE POWERS ARE LOBE-COHERENT AND NORMALISED (lobe_taps): p_pow is |SUM_c G_c|^2 over
     EVERY channel of the lobe divided by the summed energy squared, so for a signal it does
@@ -371,6 +404,8 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
                     "n_src": t["n_inst"],
                     "n_chan": t["n_chan"],
                     "n_rec": t["n_rec"],
+                    "xcoh": t.get("xcoh"),
+                    "n_xcoh": int(t.get("n_xcoh") or 0),
                     "src": "comb",
                     "chan": chan,
                     "chan_dup": list(t.get("chan_dup") or [])}

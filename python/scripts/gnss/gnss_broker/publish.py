@@ -457,6 +457,10 @@ class FleetPublisher:
                 "fleet_off_chips": v.get("off_chips"),
                 "fleet_pedestal": v.get("pedestal"),
                 "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
+                # cross-sender coherence of the derotated prompts (combdll.lobe_taps): the
+                # lobe sum is only a lobe sum while this is ~1; ~0 means the senders were not
+                # on one phase reference and the fleet prompt sat BELOW the per-sender one.
+                "fleet_xcoh": v.get("xcoh"),
                 "fleet_hop": v["hop"], "coh_src": v.get("coh_src"),
                 "code_phase_rate": sd.get("code_phase_rate", 0.0),
                 # The SECOND-ORDER carrier term. propagate_seed turns this into the quadratic

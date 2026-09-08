@@ -236,15 +236,22 @@ def instr_tap_walk(ctx):
         if _cf:
             _shared = sorted(set(_cf) & set(ctx.dllp.fleet or {}))
             _dd = sorted(_cf[p]["disc"] - ctx.dllp.fleet[p]["disc"] for p in _shared)
+            # XCOH per PRESENT PRN: the lobe sum's own check that the senders' phi0 put them
+            # on one reference. A present PRN reading ~0 is a cross-sender reference loss --
+            # its prompt is then below what per-sender summing would give -- and this is
+            # the only place that loss is visible from (q and disc both stay plausible).
+            _xc = " ".join("%d:%.2f" % (p, v["xcoh"]) for p, v in sorted(_cf.items())
+                           if v.get("present") and v.get("xcoh") is not None)
             _log_rl("comb-dll",
                     "COMB-DLL %s: %d PRNs from %d instances / %d channels; vs polled on "
-                    "%d shared: median ddisc %+.4f, max %.4f%s"
+                    "%d shared: median ddisc %+.4f, max %.4f%s | xcoh %s"
                     % (ctx.telem_chain, len(_cf),
                        max(v["n_src"] for v in _cf.values()),
                        int(max(v["n_chan"] for v in _cf.values())), len(_shared),
                        _dd[len(_dd) // 2] if _dd else 0.0,
                        max((abs(x) for x in _dd), default=0.0),
-                       "" if _shared else "  (NO OVERLAP -- check the chain key)"),
+                       "" if _shared else "  (NO OVERLAP -- check the chain key)",
+                       _xc or "-"),
                     every_s=30.0)
             ctx.dllp.fleet = _cf
         else:

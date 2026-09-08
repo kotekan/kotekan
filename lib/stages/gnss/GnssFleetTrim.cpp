@@ -833,12 +833,15 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
         for (const auto& pv : cv.second) {
             const gnss::FleetDll::LobeTap& t = pv.second;
             nlohmann::json cj = nlohmann::json::object();
+            // JSON has no NaN: a PRN no two senders reached says so with null, not a number
+            const nlohmann::json xc = std::isfinite(t.xcoh) ? nlohmann::json(t.xcoh) : nlohmann::json();
             for (const auto& ch : t.chan)
                 cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
                                                 ch.second[3]};
             pj[std::to_string(pv.first)] = {{"e", t.e},           {"p", t.p},
                                             {"l", t.l},           {"n_chan", t.n_chan},
                                             {"n_rec", t.n_rec},   {"n_inst", t.n_inst},
+                                            {"xcoh", xc},         {"n_xcoh", t.n_xcoh},
                                             {"hop", t.hop},       {"chan", cj}};
         }
         reply[cv.first] = pj;

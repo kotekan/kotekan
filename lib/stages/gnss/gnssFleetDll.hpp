@@ -54,6 +54,7 @@
 #include <cstring>
 #include <deque>
 #include <map>
+#include <limits>
 #include <set>
 #include <string>
 #include <vector>
@@ -194,6 +195,13 @@ public:
     struct RecAcc {
         double gE_re = 0, gE_im = 0, gP_re = 0, gP_im = 0, gL_re = 0, gL_im = 0;
         double wE = 0, wP = 0, wL = 0;
+        /// THE ROTATION'S OWN CHECK. Each sender's energy-normalised, derotated prompt
+        /// a_i = (G_P/W_P)*exp(+i*phi0): SUM_i a_i (complex) and SUM_i |a_i|^2. From these the
+        /// record's cross-sender coherence (|SUM a|^2 - SUM |a|^2) / (SUM |a|^2 * (n-1)) says
+        /// whether phi0 put the senders on ONE reference (~1) or the lobe sum is adding
+        /// unrelated phasors (~0, and the prompt above is then BELOW the per-sender one). It
+        /// is a diagnostic beside the sum, never an operand in it.
+        double aP_re = 0, aP_im = 0, aP_sq = 0;
         int n_chan = 0;  ///< channels behind the sums
         int n_inst = 0;  ///< senders behind the sums -- completeness, never an operand
         int64_t hop = -1;
@@ -212,6 +220,8 @@ public:
     /// same normalised signal power and more noise, and the consumer decides whether to use it.
     struct RecTap {
         double e = 0.0, p = 0.0, l = 0.0;
+        /// cross-sender coherence of the derotated prompts (RecAcc); NaN below two senders
+        double xcoh = std::numeric_limits<double>::quiet_NaN();
         int n_chan = 0, n_inst = 0;
         int64_t hop = -1;
     };
@@ -405,6 +415,15 @@ public:
                 a.wE += wE;
                 a.wP += wP;
                 a.wL += wL;
+                // ⚠️ NORMALISE FIRST, THEN ROTATE, mirroring the Python `gP / eP * rot`: the
+                // same number in exact arithmetic and not the same float otherwise.
+                {
+                    const double nr = gP_re / wP, ni = gP_im / wP;
+                    const double ar = nr * cr - ni * ci, ai = nr * ci + ni * cr;
+                    a.aP_re += ar;
+                    a.aP_im += ai;
+                    a.aP_sq += ar * ar + ai * ai;
+                }
                 a.n_chan += used;
                 a.n_inst++;
                 a.hop = std::max(a.hop, hop);
@@ -591,6 +610,10 @@ public:
     /// `combdll.lobe_taps` returns for one PRN.
     struct LobeTap {
         double e = 0.0, p = 0.0, l = 0.0, n_chan = 0.0;
+        /// mean cross-sender coherence over the `n_xcoh` records two or more senders reached;
+        /// NaN when none did. The per-PRN answer to "are the senders on one reference".
+        double xcoh = std::numeric_limits<double>::quiet_NaN();
+        int n_xcoh = 0;
         int n_rec = 0;   ///< records behind the mean
         int n_inst = 0;  ///< senders behind the most complete record -- completeness, not an operand
         int64_t hop = -1;
@@ -639,6 +662,10 @@ public:
                         t.n_rec++;
                         t.n_inst = std::max(t.n_inst, r.n_inst);
                         t.hop = std::max(t.hop, r.hop);
+                        if (std::isfinite(r.xcoh)) {
+                            t.xcoh = (t.n_xcoh ? t.xcoh : 0.0) + r.xcoh;
+                            t.n_xcoh++;
+                        }
                     }
                 for (const auto& pv : w.chan) {
                     // A PRN whose every record THIS window was incomplete contributes no
@@ -665,6 +692,8 @@ public:
                 t.p /= n;
                 t.l /= n;
                 t.n_chan /= n;
+                if (t.n_xcoh)
+                    t.xcoh /= (double)t.n_xcoh;
                 for (auto& cv2 : t.chan) {
                     const double m = cv2.second[3] ? cv2.second[3] : 1.0;
                     cv2.second[0] /= m;
@@ -701,6 +730,10 @@ private:
                 r.e = a.wE > 0.0 ? (aE / a.wE) * (aE / a.wE) : 0.0;
                 r.p = (aP / a.wP) * (aP / a.wP);
                 r.l = a.wL > 0.0 ? (aL / a.wL) * (aL / a.wL) : 0.0;
+                if (a.n_inst >= 2 && a.aP_sq > 0.0) {
+                    const double num = (a.aP_re * a.aP_re + a.aP_im * a.aP_im) - a.aP_sq;
+                    r.xcoh = num / (a.aP_sq * (double)(a.n_inst - 1));
+                }
                 r.n_chan = a.n_chan;
                 r.n_inst = a.n_inst;
                 r.hop = a.hop;

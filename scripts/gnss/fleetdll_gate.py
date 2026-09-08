@@ -125,17 +125,18 @@ def _R(x):
     return max(0.0, 1.0 - abs(x))
 
 
-def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0):
+def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0, ramp=0.7, amp_scale=1.0):
     """One channel's nine floats: E, P, L as the assembler writes them (raw, un-normalised),
     on the SENDER'S reference: the common phase rotated by exp(-i*phi0)."""
     d, amp = TARGETS[prn]
+    amp *= amp_scale
     if dead_energy:
         # No live comb this channel this record -- the assembler leaves the energy at zero and
         # the consumer must SKIP it. Zeroing it in instead would dilute the power exactly the
         # way the deep fold's zero-padding did.
         return [0.0] * 9
     e_p = 40.0 + 3.0 * (fid % 5)          # replica energy: per-channel, not per-tap
-    phi = 0.7 * fid + 0.3 * prn - phi0    # a per-channel phase, so |sum| != sum|.|
+    phi = ramp * fid + 0.3 * prn - phi0   # a per-channel phase, so |sum| != sum|.|
     noise = lambda: rng.gauss(0.0, 0.02 * amp + 0.01)
 
     def tap(off, energy):
@@ -154,7 +155,8 @@ def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0):
     return [p[0], p[1], p[2], e[0], e[1], e_e, l[0], l[1], e_l]
 
 
-def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng, dead):
+def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng, dead,
+                ramp=0.7, amp_scale=1.0):
     """One wire frame, bytes. `prn_rows` is the row->PRN map (row compaction, #64)."""
     row_total = telem._ROW_FLOATS + telem._MAX_CHAN * telem._CHAN_FLOATS
     wstart0 = win * N_REC * HOPS_PER_RECORD * FFT_LEN
@@ -180,13 +182,18 @@ def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng,
                 blk = _chan_block(rng, prn, chan_ids[ch],
                                   dead_energy=(ch, prn) in dead["energy"],
                                   dead_el_energy=(ch, prn) in dead["el_energy"],
-                                  phi0=phi0)
+                                  phi0=phi0, ramp=ramp, amp_scale=amp_scale)
                 rows[cb:cb + telem._CHAN_FLOATS] = blk
     return hdr + struct.pack("<%df" % len(rows), *rows)
 
 
-def build_fixture(n_win, seed=20260815):
-    """[(bytes, chain)] in DELIVERY ORDER -- window-major, as the live path sees them."""
+def build_fixture(n_win, seed=20260815, ramp=0.7, amp_scale=1.0):
+    """[(bytes, chain)] in DELIVERY ORDER -- window-major, as the live path sees them.
+
+    `ramp` is the per-channel phase slope (rad per freq_id); `amp_scale` multiplies every
+    PRN's amplitude. Both exist for the XCOH leg, which needs a stream whose senders are
+    exactly co-phased (ramp 0) and one that is pure noise (amp_scale 0); the main fixture
+    keeps both at their defaults."""
     rng = random.Random(seed)
     dead = {"energy": {(2, 9), (5, 27)},      # two channels with no live comb
             "el_energy": {(0, 4)}}            # one channel predating the E/L energies
@@ -208,7 +215,8 @@ def build_fixture(n_win, seed=20260815):
                 # A record slot that did not run is a HOLE AT A KNOWN INDEX. Vary which.
                 present = 0xF if (win + i) % 4 else 0xD
                 frames.append((build_frame(chain, inst, i, n_chan, win, win * 100 + i,
-                                           prn_rows, present, rng, dead), chain))
+                                           prn_rows, present, rng, dead, ramp=ramp,
+                                           amp_scale=amp_scale), chain))
     return frames
 
 
@@ -266,7 +274,7 @@ def python_taps(frames, n_win, min_instances):
 #: Per-PRN lobe tap fields, with tolerances. The powers are means over records; `chan` is
 #: compared separately because its denominator is one channel's energy, not the lobe's.
 TAP_FIELDS = [("e", 1e-9), ("p", 1e-9), ("l", 1e-9), ("n_chan", 1e-9),
-              ("n_rec", 0.0), ("n_inst", 0.0), ("hop", 0.0)]
+              ("n_rec", 0.0), ("n_inst", 0.0), ("hop", 0.0), ("xcoh", 1e-9), ("n_xcoh", 0.0)]
 
 
 def compare_taps(py, cpp):
@@ -283,6 +291,12 @@ def compare_taps(py, cpp):
         for prn in sorted(set(p_prns) & set(c_prns)):
             a, b = p_prns[prn], c_prns[prn]
             for f, tol in TAP_FIELDS:
+                if a.get(f) is None or b.get(f) is None:
+                    # xcoh is None/null below two senders -- both arms must say so together
+                    if a.get(f) is not None or b.get(f) is not None:
+                        bad.append(("TAP", "%s PRN %d %s: py %r cpp %r"
+                                    % (chain, prn, f, a.get(f), b.get(f))))
+                    continue
                 x, y = float(a[f]), float(b[f])
                 if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
                     bad.append(("TAP", "%s PRN %d %s: py %.17g cpp %.17g"
@@ -616,6 +630,79 @@ def main():
     print("TAPS PASS -- %d PRN lobe taps and %d per-channel rows agree, e/p/l/n_chan to 1e-9 "
           "and n_rec/n_inst/hop exactly; freq_id %d (two senders) dropped from the channel "
           "table and counted (%s)." % (n_it, n_ch, DUP_FID, n_dup))
+
+    # ---- XCOH MEANS WHAT IT CLAIMS -----------------------------------------------------------
+    # TAPS PASS says the arms agree on xcoh; it says nothing about whether xcoh is the
+    # statistic it claims to be. Three streams settle that, each through BOTH arms:
+    #   co-phased  -- ramp 0: every sender's prompt sits on the common reference after the
+    #                 exp(+i*phi0) rotation, so every PRN with signal must read ~1;
+    #   noise      -- amp_scale 0: unrelated phasors, so every PRN must read ~0 (the main
+    #                 fixture's "noise" PRNs are 2-sigma signals, not noise);
+    #   reference loss -- the co-phased stream with ONE sender's phi0 moved pi on every row
+    #                 of one PRN: that PRN's xcoh must FALL, and only that PRN's.
+    # The main fixture itself is not used: its within-sender ramp gives senders of different
+    # channel counts different partial-sum phases, which is real arithmetic but not a
+    # reference the statistic is meant to score.
+    def _xc(frames):
+        pth = os.path.join(tmp, "frames_xcoh.bin")
+        write_stream(pth, frames)
+        cpp_t = cpp_arm(args.exe, pth, args.n_win, args.min_instances)
+        py_t = python_taps(frames, args.n_win, args.min_instances)
+        bad = compare_taps(py_t, cpp_t)
+        if bad:
+            print("FAIL -- arms disagree on an XCOH stream: %s" % bad[:3])
+            return None
+        return {(c, p): d.get("xcoh") for c, v in py_t.items() for p, d in v.items()}
+    co = _xc(build_fixture(args.windows, ramp=0.0))
+    nz = _xc(build_fixture(args.windows, amp_scale=0.0))
+    if co is None or nz is None:
+        return 1
+    if any(v is None for v in co.values()):
+        print("FAIL -- xcoh is None on a PRN two or more senders reached: %s"
+              % sorted(k for k, v in co.items() if v is None))
+        return 1
+    lo_sig = min(v for (c, p), v in co.items() if TARGETS[p][1] >= 0.4)
+    hi_nz = max(abs(v) for v in nz.values() if v is not None)
+    if lo_sig < 0.9 or hi_nz > 0.3:
+        print("FAIL -- xcoh does not read the reference: min over co-phased signal PRNs %.3f "
+              "(want >= 0.9), max |xcoh| over pure-noise PRNs %.3f (want <= 0.3)"
+              % (lo_sig, hi_nz))
+        return 1
+    # the reference loss: sender 0's phi0 moved pi on every row of PRN 4, co-phased stream
+    lost = []
+    for buf, chain in build_fixture(args.windows, ramp=0.0):
+        b = bytearray(buf)
+        inst = telem._HDR.unpack_from(b)[17]
+        if inst.rstrip(b"\0") == INSTANCES[0][0].encode():
+            hdr = telem._HDR.unpack_from(b)
+            n_rec, n_prn, row_total = hdr[2], hdr[3], hdr[15]
+            for r in range(n_rec):
+                for pi in range(n_prn):
+                    base = telem._HDR_BYTES + (r * n_prn + pi) * row_total * 4
+                    (prn_f,) = struct.unpack_from("<f", b, base + telem.REC_PRN * 4)
+                    if int(prn_f) == 4:
+                        off = base + telem.REC_PHI0 * 4
+                        (v,) = struct.unpack_from("<f", b, off)
+                        struct.pack_into("<f", b, off, v + math.pi)
+        lost.append((bytes(b), chain))
+    lo = _xc(lost)
+    if lo is None:
+        return 1
+    for c in sorted({c for c, _ in co}):
+        if not lo[(c, 4)] < co[(c, 4)] - 0.2:
+            print("FAIL -- %s PRN 4: one sender lost its reference and xcoh did not fall "
+                  "(%.3f -> %.3f)" % (c, co[(c, 4)], lo[(c, 4)]))
+            return 1
+        others = [abs(lo[(c, p)] - co[(c, p)]) for (cc, p) in co if cc == c and p != 4
+                  and co[(cc, p)] is not None and lo.get((cc, p)) is not None]
+        if max(others) > 1e-9:
+            print("FAIL -- %s: moving PRN 4's phi0 on one sender moved another PRN's xcoh "
+                  "by %.3g" % (c, max(others)))
+            return 1
+    print("XCOH PASS -- co-phased signal PRNs >= %.3f, pure noise <= %.3f in |xcoh|; one "
+          "sender's reference loss on PRN 4 read %.2f -> %.2f and touched no other PRN."
+          % (lo_sig, hi_nz, co[("gps_l5", 4)], lo[("gps_l5", 4)]))
+
 
     # ---- THE PER-RECORD SERIES (the served C/N0's input) --------------------------------
     pr = python_recs(frames, args.n_win)
