@@ -399,9 +399,14 @@ std::string exec(std::vector<std::string>& cmd) {
     return result;
 }
 
-void update_log_levels(Config& config) {
-    // Adjust the log level
-    string s_log_level = config.get<std::string>("/", "log_level");
+/**
+ * @brief Maps a `log_level` string to its level, throwing on anything else.
+ *
+ * Split out so the static config check tests exactly what the runtime accepts: a second copy
+ * of this list would be free to drift, and a validator that passes a config the runtime then
+ * rejects is worse than no validator.
+ */
+logLevel parse_log_level(const std::string& s_log_level) {
     logLevel log_level;
 
     if (strcasecmp(s_log_level.c_str(), "off") == 0) {
@@ -423,6 +428,12 @@ void update_log_levels(Config& config) {
                         s_log_level));
     }
 
+    return log_level;
+}
+
+void update_log_levels(Config& config) {
+    // Adjust the log level
+    const logLevel log_level = parse_log_level(config.get<std::string>("/", "log_level"));
     _global_log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
@@ -562,6 +573,15 @@ int validate_config_static(Config& config) {
             report(fmt::format(fmt("buffer '{:s}' requests metadata pool '{:s}', which is not "
                                    "defined"),
                                buffer.name, pool));
+    }
+
+    // The runtime and --dry-run both call update_log_levels() before anything else, so a
+    // config without a usable root `log_level` fails there however well-formed the rest is.
+    // Checked through the same parser rather than a second copy of the accepted values.
+    try {
+        parse_log_level(config.get<std::string>("/", "log_level"));
+    } catch (const std::exception& ex) {
+        report(fmt::format(fmt("root 'log_level': {:s}"), ex.what()));
     }
 
     INFO_NON_OO("config check: {:d} stages, {:d} buffers, {:d} metadata pools", stages.size(),

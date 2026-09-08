@@ -1,7 +1,5 @@
 #include "valve.hpp"
 
-#include <chrono> // for steady_clock, seconds
-
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
@@ -14,6 +12,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
+#include <chrono>     // for steady_clock, seconds
 #include <cstring>    // for memcpy
 #include <exception>  // for exception
 #include <functional> // for bind, function
@@ -84,7 +83,7 @@ void Valve::main_thread() {
             auto now = std::chrono::steady_clock::now();
             if (n_dropped == 1 || now - last_warn >= std::chrono::seconds(60)) {
                 WARN("Output buffer full, dropping frames: {:d} lost so far (downstream "
-                     "cannot keep up; each loss is a gap the consumer must zero-fill).",
+                     "cannot keep up).",
                      n_dropped);
                 last_warn = now;
             }
