@@ -431,6 +431,12 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
                 keep.push_back(std::move(t));
         for (auto& t : tg)
             keep.push_back(std::move(t));
+        // CANONICAL ORDER, INDEPENDENT OF POST ORDER. The posters stride this list by index,
+        // so a target's position must depend only on the SET of targets, never on which
+        // chain's policy arrived last -- otherwise every per-chain post rotates the list under
+        // the threads and their per-target state (sockets, backoff) follows the wrong host.
+        std::stable_sort(keep.begin(), keep.end(),
+                         [](const Target& a, const Target& b) { return a.url < b.url; });
         _targets = std::move(keep);
     }
     rearm();
@@ -703,9 +709,15 @@ void GnssFleetTrim::post_trims() {
 
 void GnssFleetTrim::post_loop(int slot) {
     uint64_t last = 0;
-    std::map<size_t, int> fds;    // target index -> socket, this thread's alone
-    std::map<size_t, int> skips;  // rounds still to skip (backoff)
-    std::map<size_t, int> nfails; // consecutive failures
+    // ⚠️ KEYED BY THE TARGET, NOT ITS INDEX. A kept-alive socket is a connection to one
+    // host; the index only says where that host sits in a list /set_policy may rebuild
+    // mid-round. Index-keyed state sent a chain's payload down another host's socket -- a
+    // 200 from a valid but unintended instance for the seven chains whose stage names are
+    // fleet-uniform, a 404 for L2C, and instances starved past the trim TTL while their
+    // rounds went elsewhere.
+    std::map<std::string, int> fds;    // target url -> socket, this thread's alone
+    std::map<std::string, int> skips;  // rounds still to skip (backoff)
+    std::map<std::string, int> nfails; // consecutive failures
     while (!stop_thread) {
         std::map<std::string, nlohmann::json> work;
         std::vector<Target> tgt;
@@ -736,16 +748,17 @@ void GnssFleetTrim::post_loop(int slot) {
             // target held its thread ~400 ms per round (send, timeout, retry, timeout).
             // Exponential, capped, reset by a single success, so a node that comes back
             // rejoins within a couple of seconds.
-            int& skip = skips[i];
+            int& skip = skips[t.url];
             if (skip > 0) {
                 --skip;
                 continue;
             }
-            int& fd = fds[i];
+            auto fdi = fds.emplace(t.url, -1).first;
+            int& fd = fdi->second;
             std::string err;
             const bool ok = http_post(&fd, t.addr, t.host, t.path, it->second.dump(),
                                       _post_timeout_ms, &err);
-            int& nfail = nfails[i];
+            int& nfail = nfails[t.url];
             if (ok)
                 nfail = 0;
             else
@@ -758,6 +771,22 @@ void GnssFleetTrim::post_loop(int slot) {
                 _post_fail++;
                 _post_last_err = t.url + ": " + err;
             }
+        }
+        // A target that left this thread's stride (list changed) takes its socket with it:
+        // close here rather than hold a connection nothing will use again.
+        for (auto f = fds.begin(); f != fds.end();) {
+            bool mine = false;
+            for (size_t i = (size_t)slot; i < tgt.size() && !mine; i += (size_t)_n_post_threads)
+                mine = tgt[i].url == f->first;
+            if (mine) {
+                ++f;
+                continue;
+            }
+            if (f->second >= 0)
+                ::close(f->second);
+            skips.erase(f->first);
+            nfails.erase(f->first);
+            f = fds.erase(f);
         }
         {
             std::lock_guard<std::mutex> lk(_pend_mtx);
