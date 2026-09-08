@@ -72,7 +72,7 @@ echo "gather config: $(basename "$CFG") -- recv :$RECV, serve :$SERVE, rest :$RE
 # pkill signals the shell executing it, the rest of the script never runs, and ssh returns 255.
 # broker_restart.sh's header records the same trap costing 20 minutes on 2026-08-04; I repeated
 # it from the command line on 2026-08-14. The literal brackets here do not match themselves.
-pkill -9 -f "[k]otekan --config.*gather" 2>/dev/null || true
+pkill -9 -f "[k]otekan[^ ]* --config.*gather" 2>/dev/null || true
 # LISTENING sockets only, deliberately. bufferRecv now sets SO_REUSEADDR unconditionally, so a
 # fresh listener may rebind over the ~60 s of TIME_WAIT left by 60 sender connections; waiting
 # for those to drain would add half a minute to every restart for no reason. Before that fix
@@ -92,7 +92,7 @@ nohup setsid "$BIN" --config "$CFG" --bind-address "0.0.0.0:$REST" \
     > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 5
-pgrep -f "kotekan --config.*[g]ather" > /dev/null \
+pgrep -f "kotekan[^ ]* --config.*[g]ather" > /dev/null \
     || { echo "FAILED to start -- check $LOG" >&2; exit 1; }
 if grep -qi "FatalError" "$LOG" 2>/dev/null; then
     echo "FAILED: the stage graph raised a FatalError and is shutting down:" >&2

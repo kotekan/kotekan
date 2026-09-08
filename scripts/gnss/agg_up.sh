@@ -51,7 +51,7 @@ if nvidia-smi -L >/dev/null 2>&1 && ! grep -q 'use_cuda_acquire: *true' "$CFG"; 
     echo "  NOTE: this host has a GPU but $(basename "$CFG") does not set use_cuda_acquire --" >&2
     echo "        the search will run on the CPU (measured ~46x slower, and it starves)." >&2
 fi
-pkill -9 -f "kotekan --config.*agg" 2>/dev/null || true
+pkill -9 -f "[k]otekan[^ ]* --config.*agg" 2>/dev/null || true
 # WAIT FOR THE PORTS, NOT A FIXED SLEEP. 2026-08-12: a 5 s sleep was not enough -- the new
 # instance found :11040 still held by the dying one, hit "Address already in use", and shut
 # ITSELF down as a FatalError. The launcher then reported success (a process existed: the one
@@ -71,7 +71,7 @@ nohup setsid env GNSS_SEARCH_PROFILE=1 "$BIN" \
     --config "$CFG" --bind-address 0.0.0.0:12050 > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 8
-pgrep -f "kotekan --config.*[a]gg" > /dev/null \
+pgrep -f "kotekan[^ ]* --config.*[a]gg" > /dev/null \
     || { echo "FAILED to start -- check $LOG" >&2; exit 1; }
 if grep -qi "FatalError" "$LOG" 2>/dev/null; then
     echo "FAILED: the stage graph raised a FatalError and is shutting down:" >&2
