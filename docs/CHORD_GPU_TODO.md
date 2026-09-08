@@ -449,6 +449,49 @@ would need its own A/B).
 
 ---
 
+## 8. ONE (N+M)² correlator per GPU: merge the GNSS dual correlation into the science N²
+##    [FOLLOW-UP / MERGE JOB -- not started; flagged 2026-09-08]
+
+Today every GPU runs TWO n2k correlations over the same voltage ring: the production N² (128
+stations, `sub_integration_ntime` 8192 = one visibility per 41.94 ms frame, `cudaCorrelator`,
+`external/n2k`) and, per GNSS chain instance, the dual (N+M)² (`external/n2k_dual`,
+`sub_integration_ntime` = `hops_per_record` = 2048, 4 records per frame) whose N² prefix is
+thrown away. The N² block of the dual output is a verbatim prefix of the production
+visibility per (t, f) -- triangular tile packing orders by `ihi` row, tiles 0..35 are
+internally identical -- so a single (N+M)² pass per GPU could serve both: its N² prefix IS
+the production visibility (one `cudaMemcpy2DAsync`, width 18432 int32, src pitch 69632, dst
+pitch 18432, height 384, into the standard `correlation_buffer`), its N×M block is the
+despread. The science correlation would then come for free with the GNSS one, not beside it.
+
+Why it was NOT built this way (2026-08-06 decision, still the right call for that day): others
+actively develop `n2k` and the N² path; the dual was cloned, byte-untouched upstream, so it
+could ship without a merge negotiation. That reason expires when the dual is stable enough
+to be the production path.
+
+What has to be reconciled before a merge:
+  * CADENCE. Production integrates 8192 hops per visibility; the tracker wants 2048-hop
+    records (its E/P/L cadence, the fleet DLL, cp currency). Either the merged kernel emits
+    2048-hop sub-integrations and `N2Accumulate` sums four of them (changes the science
+    accumulator's input cadence, not its output), or the tracker moves to frame-length
+    records (touches every `hops_per_record` assumption from the aggregator to the broker --
+    the survey listed for Path-B M5 was never done).
+  * BLOCK CLASSES. `block_class_mask` (AA|MIXED|BB) already exists in `n2k_dual`; the merged
+    kernel needs AA (science) + MIXED (despread) and drops BB.
+  * RFI MASK. Both passes already apply the same per-(f,t) mask, so the science integration
+    time is unchanged by the merge; the SK statistics never see synthetic lanes (separate
+    buffer). Verify, do not assume: the merged pass must reproduce the production N² output
+    bit-exactly with injection on and off (n2dualtest [3] AA-prefix bitwise is the shape).
+  * COST. At 128 stations the AA block is 36 of 136 tiles, so the science correlation is
+    ~26% of the dual pass and the merge saves ~that per GPU. At 1024 elements (+128 synthetic lanes, 16x16-station tiles) AA is
+    2080 of 2628 tiles: the two passes would each be dominated by AA and running both would
+    DOUBLE the correlator's DRAM traffic on the voltage ring -- at full CHORD this stops
+    being a tidy-up and becomes the only affordable way to run GNSS at all.
+
+Owner: whoever owns `cudaCorrelator` upstream + GNSS. Land as an upstream PR after the
+n2k_dual PR itself; the clone-don't-clobber history goes in that PR's description.
+
+---
+
 ## Record-format cleanups (small bytes, real clarity) -- from the 2026-08-28 audit
 
 - **UTC (slots 9-10) is duplicated across every PRN row.** `const double utc` is computed
