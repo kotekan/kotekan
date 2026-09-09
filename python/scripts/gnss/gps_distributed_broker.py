@@ -841,7 +841,7 @@ def main(argv=None, rx=None, publisher=None):
         """Per-cycle diagnostic products of the DLL stage. None means NOT MEASURED."""
         __slots__ = ("fcoh", "kcoh", "fcoh_n2", "spec_fit", "innov_pub", "report",
                      "deep_gate_eff", "run_est", "run_pcn0", "fleet", "pcn0",
-                     "inst_hops", "admit_disp", "trk")
+                     "inst_hops", "admit_disp", "trk", "fadr")
 
         def __init__(self):
             self.fcoh = None
@@ -856,6 +856,8 @@ def main(argv=None, rx=None, publisher=None):
             self.pcn0 = None
             # prn -> the tracker's code residual this cycle (trkresid); {} = not measured
             self.trk = {}
+            # prn -> the fleet ADR (fleetadr); {} = no telemetry
+            self.fadr = {}
             # instance -> newest telemetry hop seen this cycle; the instance-stall and
             # axis-freshness watches read it after the polls have filled it.
             self.inst_hops = None

@@ -23,6 +23,7 @@ from gnss_broker.fits import q_stall_verdict, instance_stall_verdict
 from gnss_broker import instruments
 from gnss_broker import codeloop
 from gnss_broker import trkresid
+from gnss_broker import fleetadr
 
 
 def stage_fleet_dll(ctx):
@@ -376,6 +377,20 @@ def stage_fleet_dll(ctx):
                        " ".join("%d:%+.3f(n%d sd%.2f)" % (_p, _v["chips"], _v["n"], _v["sd"])
                                 for _p, _v in sorted(ctx.dllp.trk.items()))),
                     every_s=60.0)
+        # The fleet ADR: this cycle's records folded into each satellite's carrier arc, at
+        # exact hops. A measurement, not an actuator input: failure costs the loop nothing.
+        try:
+            ctx.dllp.fadr = fleetadr.stage_fleet_adr(ctx)
+        except Exception as _fe:
+            ctx.dllp.fadr = {}
+            _log_rl("fleetadr", "fleet ADR failed (%s)" % _fe, every_s=60.0)
+        if ctx.dllp.fadr:
+            _log_rl("fadr", "FADR %s (fleet ADR: arc/records/instances, Doppler-only cycles): %s"
+                    % (log_tag() or ctx.args.signal,
+                       " ".join("%d:a%d/n%d/i%d %+.1f" % (_p, _v["arc"], _v["n_rec"], _v["n_inst"],
+                                                      _v["dop_cycles"])
+                                for _p, _v in sorted(ctx.dllp.fadr.items()))),
+                    every_s=60.0)
         if ctx.publisher is not None:
             # Published BEFORE the trim update so the row shows the state the loop acted
             # on, not the state after it acted -- otherwise a reader can never see the
@@ -386,7 +401,7 @@ def stage_fleet_dll(ctx):
                                        for _p, _r in ctx.dls.readback.items()},
                              integ=(ctx.dr_state or {}).get("integ"),
                              integ_now=getattr(ctx.dllp, "now_w", None),
-                             trk=ctx.dllp.trk)
+                             trk=ctx.dllp.trk, fadr=ctx.dllp.fadr)
         ctx.dllp.report = []
         codeloop.stage_dll_control(ctx)
         if ctx.dllp.report:

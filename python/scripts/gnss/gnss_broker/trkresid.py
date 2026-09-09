@@ -106,7 +106,10 @@ def residuals(records, pd, tag, cp_predicted, clk, drift, t_now_abs, hps, chip_r
         ds = [wrap(r - r0, code_len) for r in rs]
         m = sum(ds) / len(ds)
         sd = math.sqrt(sum((x - m) ** 2 for x in ds) / len(ds)) if len(ds) > 1 else 0.0
-        out[prn] = {"chips": wrap(r0 + m, code_len), "sd": sd, "n": len(rs),
+        r_clk = wrap(r0 + m, code_len)
+        # `raw` keeps the receiver clock IN (the code RANGE residual, what a carrier residual
+        # also carries, so the two can be differenced); `chips` has the solved clock removed
+        out[prn] = {"chips": r_clk, "raw": wrap(r_clk + clk, code_len), "sd": sd, "n": len(rs),
                     "hop": max(h for h, _c, _d in recs)}
     return out
 
@@ -148,4 +151,5 @@ def tracker_residuals(ctx, n_win=2):
     for r in res.values():
         r["t"] = now
         r["s"] = r["chips"] / ctx.args.chip_rate_hz
+        r["raw_s"] = r["raw"] / ctx.args.chip_rate_hz
     return res

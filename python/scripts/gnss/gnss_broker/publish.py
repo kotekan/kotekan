@@ -392,7 +392,7 @@ class FleetPublisher:
 
     def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
                pcn0=None, kcoh=None, innov=None, cpp_trim=None, integ=None, integ_now=None,
-               trk=None):
+               trk=None, fadr=None):
         rows = []
         fcoh = fcoh or {}
         pcn0 = pcn0 or {}
@@ -405,6 +405,7 @@ class FleetPublisher:
         _now_w = integ_now or time.time()
         # the tracker's code residual (trkresid), keyed by PRN; same absence semantics
         _trk = trk or {}
+        _fadr = fadr or {}
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
             sd = seeds.get(prn, {})
@@ -483,6 +484,9 @@ class FleetPublisher:
                 # (L2C's are CM chips), and seconds do not ask it to.
                 "trk_resid_chips": (_trk.get(prn) or {}).get("chips"),
                 "trk_resid_s": (_trk.get(prn) or {}).get("s"),
+                # the same residual with the receiver clock left IN: the code RANGE residual,
+                # the quantity a carrier residual also carries (Hatch differences the two)
+                "trk_range_s": (_trk.get(prn) or {}).get("raw_s"),
                 "trk_resid_sd_chips": (_trk.get(prn) or {}).get("sd"),
                 "trk_resid_n": (_trk.get(prn) or {}).get("n"),
                 "trk_resid_hop": (_trk.get(prn) or {}).get("hop"),
@@ -495,6 +499,28 @@ class FleetPublisher:
                 "cp_rec_chips": c.get("code_phase_chips"),
                 "dop_rec_hz": c.get("doppler_hz"),
                 "rec_hop": c.get("pow_hop"),
+                # THE FLEET ADR (gnss_broker/fleetadr): the accumulated carrier phase folded
+                # from every instance's records, at EXACT hops. `adr_cycles` above is one
+                # instance's, stamped by record count, epoch hidden -- it cannot be paired
+                # across bands; this can. fadr_dop_cycles has the nominal f_c*dt stripped
+                # (exact), so it is the Doppler-integrated phase a consumer can difference
+                # against a model at t(fadr_hop); fadr_hop0 is the arc's first hop.
+                "fadr_cycles": (_fadr.get(prn) or {}).get("cycles"),
+                "fadr_dop_cycles": (_fadr.get(prn) or {}).get("dop_cycles"),
+                "fadr_hop": (_fadr.get(prn) or {}).get("hop"),
+                "fadr_hop0": (_fadr.get(prn) or {}).get("hop0"),
+                "fadr_arc": (_fadr.get(prn) or {}).get("arc"),
+                "fadr_n_rec": (_fadr.get(prn) or {}).get("n_rec"),
+                "fadr_n_inst": (_fadr.get(prn) or {}).get("n_inst"),
+                "fadr_trim_cycles": (_fadr.get(prn) or {}).get("trim_cycles"),
+                "fadr_res_cycles": (_fadr.get(prn) or {}).get("res_cycles"),
+                "fadr_age_s": (_fadr.get(prn) or {}).get("age_s"),
+                # the ADR at the newest fleet-wide GRID hop (fleetadr.GRID_HOPS): the sample
+                # at which every chain's rows carry the SAME hop, so bands pair exactly
+                "fadr_g_hop": (_fadr.get(prn) or {}).get("g_hop"),
+                "fadr_g_dop_cycles": (_fadr.get(prn) or {}).get("g_dop_cycles"),
+                "fadr_g_cycles": (_fadr.get(prn) or {}).get("g_cycles"),
+                "fadr_g_n_rec": (_fadr.get(prn) or {}).get("g_n_rec"),
                 "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
                 # cross-sender coherence of the derotated prompts (combdll.lobe_taps): the
                 # lobe sum is only a lobe sum while this is ~1; ~0 means the senders were not

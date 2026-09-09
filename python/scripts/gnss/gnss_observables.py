@@ -315,6 +315,8 @@ def main():
                 code_resid_m = None
                 carr_resid_m = None
                 code_resid_src = None
+                carr_resid_src = None
+                _clk_in = False
                 if v is not None and (utc0 or frame0) and adr is not None:
                     # ⚠️ THE DOPPLER MUST BE THE ONE THE GENERATOR WAS HANDED. code_phase_chips
                     # is an ARGUMENT back-referenced to sample 0 along a Doppler-scaled rate,
@@ -336,7 +338,15 @@ def main():
                     # same clock (gnss_broker/trkresid), resolves ~1e-2 chips, and exists on
                     # every chain, detectors or not. Taken in SECONDS: the broker's chips
                     # are its own currency (CM chips on L2C) and metres must not guess it.
-                    _ts = r.get("trk_resid_s")
+                    # The RANGE form (receiver clock left in, trk_range_s) is the row's
+                    # code_resid_m -- "receiver clock NOT removed" is this record's contract,
+                    # and the carrier residual below carries the same clock, so code minus
+                    # carrier is clock-free. Older brokers published only the clock-removed
+                    # form; it is kept as the fallback, and code_resid_clk says which.
+                    _ts = r.get("trk_range_s")
+                    _clk_in = _ts is not None
+                    if _ts is None:
+                        _ts = r.get("trk_resid_s")
                     _ta = r.get("trk_resid_age_s")
                     _ic = r.get("dr_integ_chips")
                     _ia = r.get("dr_integ_age_s")
@@ -371,6 +381,27 @@ def main():
                         code_resid_m = d * C_LIGHT / args.chip_rate_hz
                         code_resid_src = "reconstructed"
                     carr_resid_m = -adr * lam - v["range_m"]
+                    carr_resid_src = "adr"
+                    # ⚡ THE FLEET ADR, at ITS OWN hop (gnss_broker/fleetadr). adr_cycles above
+                    # is one instance's accumulator with its epoch hidden; a carrier phase
+                    # counts 1.17e9 cycles/s, so a residual built from it at the row's epoch is
+                    # off by c*dt. fadr_dop_cycles is the Doppler-only phase at fadr_hop, and
+                    # the model range is evaluated at exactly that hop -- so the residual is
+                    # the geometry-free carrier range on this arc, up to the arc's constant.
+                    _fh = r.get("fadr_hop")
+                    _fd = r.get("fadr_dop_cycles")
+                    if frame0 and _fh and _fd is not None and eph:
+                        try:
+                            _ta = frame0 + _fh * args.samples_per_hop / args.sample_rate_hz
+                            _va = predict_all(eph, args.lat, args.lon, args.alt,
+                                              datetime.fromtimestamp(_ta, tz=timezone.utc),
+                                              mask_deg=-90.0,
+                                              max_age=args.eph_geom_window_s).get((args.sys, prn))
+                        except Exception:
+                            _va = None
+                        if _va is not None:
+                            carr_resid_m = -_fd * lam - _va["range_m"]
+                            carr_resid_src = "fadr"
                 row = {
                     "t": round(t_epoch, 4),
                     "t_gps": round(gpst_of_utc(t_epoch), 4),
@@ -390,6 +421,7 @@ def main():
                     "adr_arc": arc, "adr_records": nrec,
                     "code_resid_m": code_resid_m,     # model-removed code range (CMC input)
                     "code_resid_src": code_resid_src,  # trk | dr_integ | reconstructed
+                    "code_resid_clk": _clk_in,         # True: receiver clock IN (range form)
                     # the tracker residual's own scatter and support (metres, records)
                     "code_resid_sd_m": ((r.get("trk_resid_sd_chips") or 0.0) * C_LIGHT
                                         / args.chip_rate_hz
@@ -403,6 +435,25 @@ def main():
                     "rec_hop": r.get("rec_hop"),
                     "dll_trim_cpp": r.get("dll_trim_cpp"),
                     "carr_resid_m": carr_resid_m,     # model-removed carrier range (CMC input)
+                    "carr_resid_src": carr_resid_src,  # fadr (exact hop) | adr (epoch hidden)
+                    # the arc the carrier residual lives on: fleet ADR's when it is the source
+                    "carr_arc": (r.get("fadr_arc") if carr_resid_src == "fadr" else arc),
+                    # THE FLEET ADR, verbatim: Doppler-only cycles and the full phase, both at
+                    # fadr_hop, on arc fadr_arc that began at fadr_hop0. Every chain's rows carry
+                    # hops on the one F-engine axis, so two bands pair at EQUAL hops exactly.
+                    "fadr_dop_cycles": r.get("fadr_dop_cycles"),
+                    "fadr_cycles": r.get("fadr_cycles"),
+                    "fadr_hop": r.get("fadr_hop"),
+                    "fadr_hop0": r.get("fadr_hop0"),
+                    "fadr_arc": r.get("fadr_arc"),
+                    "fadr_n_rec": r.get("fadr_n_rec"),
+                    "fadr_n_inst": r.get("fadr_n_inst"),
+                    "fadr_trim_cycles": r.get("fadr_trim_cycles"),
+                    "fadr_res_cycles": r.get("fadr_res_cycles"),
+                    # the same ADR at the fleet-wide grid hop: EQUAL hops across every chain
+                    "fadr_g_hop": r.get("fadr_g_hop"),
+                    "fadr_g_dop_cycles": r.get("fadr_g_dop_cycles"),
+                    "fadr_g_cycles": r.get("fadr_g_cycles"),
                     "adr_lock_s": r.get("adr_lock_s"),
                     # --- POWER
                     "cn0_coh_dbhz": cn0_dbhz(r, r.get("deep_snr"), r.get("coherence_s")),

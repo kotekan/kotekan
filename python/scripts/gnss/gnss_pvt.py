@@ -156,8 +156,14 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     if not rows:
         return None
     new = rows[-1]
-    t_new, arc = new["t"], new.get("adr_arc")
-    sel = [r for r in rows if r["t"] >= t_new - window_s and r.get("adr_arc") == arc]
+
+    def _arc(r):
+        # the arc the CARRIER residual lives on (carr_arc), falling back to the ADR's
+        a = r.get("carr_arc")
+        return a if a is not None else r.get("adr_arc")
+
+    t_new, arc = new["t"], _arc(new)
+    sel = [r for r in rows if r["t"] >= t_new - window_s and _arc(r) == arc]
     c_new = float(new["code_resid_m"])
 
     def _code(r):
