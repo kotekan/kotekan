@@ -1611,6 +1611,35 @@ INTEG-VETO now honest (the relative-veto arm is belt-and-suspenders), model-prim
 seed quality +5 chips, the gal band-shared trim drift should shrink in the GAP 3
 shadow, MODEL-UNTRUSTED churn should collapse.
 
+## #111 — the Earthdata token fails SILENTLY, and DCB has no fallback (OPEN, 2026-09-09)
+
+**The shape.** `gnss_brdc_supply._earthdata_token()` and `gnss_dcb._token()` both return `None`
+when the token is missing, expired or rejected, and every caller treats `None` as "this source
+is unavailable" — no WARN, no metric, no counter. So the failure mode of an expired credential
+is not an error; it is a source quietly leaving the pool.
+
+**What each loses.** BRDC degrades: CDDIS is supplementary and BKG/IGS remains primary, so the
+fleet keeps running on one source instead of two and nothing says so. **DCB stops entirely**:
+`fetch_dcb()` returns `None` before its first request if there is no token
+(`gnss_dcb.py:66-68`) and CDDIS is its ONLY source, so differential code biases simply cease to
+arrive. That is the same class as the EOP staleness — the fleet echoing its own silence — and
+it is why this is a bug and not a chore.
+
+**Also true today:** an expired token and an absent one are indistinguishable to the caller,
+because a 401 is caught by the same `except` that handles a missing file. Distinguishing them
+is most of the value: "no token configured" is a deployment state, "the token was rejected" is
+an alert.
+
+**To do.**
+1. WARN once per process when a token is configured but rejected, and once when a source is
+   skipped for lack of one — not per fetch.
+2. A staleness metric on the DCB product's age, since its absence is otherwise invisible.
+3. Optional: check expiry proactively at broker start and log the remaining days.
+
+⚠️ Operationally the token is ONE file on NFS home (`~/.cache/kotekan_gps/.earthdata_token`),
+read on every call, so a replacement takes effect on the next fetch with no restart, and
+`$EARTHDATA_TOKEN` overrides it if ever exported. Next expiry ~2026-09-19.
+
 ## #110 — ARMING THE BEAM CUBE SEGFAULTED EVERY NODE 45-75 s AFTER START (FIXED 2026-09-05, fleet-wide outage; VERIFIED ON cx19 17:02, manifest RE-ARMED)
 
 **Root cause (found in the code, reproduced offline, fixed).** `emit_cube_window` marked its
