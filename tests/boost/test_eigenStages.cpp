@@ -503,35 +503,34 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     // antenna, elements {0, 1, 4, 5}.
     add_test_telescope_config(cfg);
     cfg["telescope"]["num_dishes"] = 4;
-    cfg["telescope"]["dish_inputs"] = nlohmann::json::array(
-        {{{"dish_idx", 0},
-          {"grid_x_idx", 0},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "ArrayDish"},
-          {"label", "D00"}},
-         {{"dish_idx", 1},
-          {"grid_x_idx", 1},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "RFIDish"},
-          {"label", "R01"}},
-         {{"dish_idx", 2},
-          {"grid_x_idx", 2},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "Fake"},
-          {"label", "F02"}},
-         {{"dish_idx", 3},
-          {"grid_x_idx", 3},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "Fake"},
-          {"label", "F03"}}});
+    cfg["telescope"]["dish_inputs"] = nlohmann::json::array({{{"dish_idx", 0},
+                                                              {"grid_x_idx", 0},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "ArrayDish"},
+                                                              {"label", "D00"}},
+                                                             {{"dish_idx", 1},
+                                                              {"grid_x_idx", 1},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "RFIDish"},
+                                                              {"label", "R01"}},
+                                                             {{"dish_idx", 2},
+                                                              {"grid_x_idx", 2},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "Fake"},
+                                                              {"label", "F02"}},
+                                                             {{"dish_idx", 3},
+                                                              {"grid_x_idx", 3},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "Fake"},
+                                                              {"label", "F03"}}});
 
     kotekan::Config conf;
     conf.update_config(cfg);
@@ -555,8 +554,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     const size_t frame_size = desc->get_byte_size();
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "n2_pool_di", "N2Metadata");
     Buffer in_buf(2, frame_size, pool, "in_buf", "N2", 0, false, false, std::vector<int>{}, true);
-    Buffer out_buf(2, frame_size, pool, "out_buf", "N2", 0, false, false, std::vector<int>{},
-                   true);
+    Buffer out_buf(2, frame_size, pool, "out_buf", "N2", 0, false, false, std::vector<int>{}, true);
     in_buf.ensure_frame_desc(desc);
     out_buf.ensure_frame_desc(desc);
     in_buf.register_producer("test-producer");

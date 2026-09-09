@@ -64,7 +64,8 @@ protected:
     uint64_t ring_full_dropped_packets = 0;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& packets_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& bad_checksum_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        bad_checksum_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& non_crs_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
         invalid_stream_id_packets_total_metric;

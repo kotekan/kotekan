@@ -137,8 +137,7 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_SKtilde_name(config.get<std::string>(unique_name, "rfi_SKtilde_name")),
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
-    bf_mask_applied_name(
-        config.get_default<std::string>(unique_name, "bf_mask_applied_name", "")),
+    bf_mask_applied_name(config.get_default<std::string>(unique_name, "bf_mask_applied_name", "")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask",
             std::array<std::ptrdiff_t, 3>{buffer_depth * 1, num_polarizations, num_dishes},

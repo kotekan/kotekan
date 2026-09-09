@@ -86,8 +86,8 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
     element_index_map = out_desc->get_input_list();
     for (const uint16_t el : element_index_map)
         if (el >= _in_num_elements)
-            FATAL_ERROR("N2Subset: output element identity {:d} outside input's {:d} elements",
-                        el, _in_num_elements);
+            FATAL_ERROR("N2Subset: output element identity {:d} outside input's {:d} elements", el,
+                        _in_num_elements);
 
     // Build the index mapping from output products to input products, translating
     // compact element indices to the input's before matching.

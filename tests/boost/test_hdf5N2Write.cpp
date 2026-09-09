@@ -5,16 +5,16 @@
 #include "CHORDTelescope.hpp"
 #include "Config.hpp" // for Config
 #include "H5Support.hpp"
-#include "NDArray.hpp"       // for GenericNDArray
-#include "chordMetadata.hpp" // for chordMetadata, get_chord_metadata
 #include "N2FrameDesc.hpp" // for N2FrameDesc
 #include "N2FrameView.hpp" // for N2FrameView
 #include "N2Metadata.hpp"  // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"      // for N2 helpers
+#include "NDArray.hpp"     // for GenericNDArray
 #include "Stage.hpp"       // for Stage
 #include "Telescope.hpp"
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "configUpdater.hpp"
 #include "hdf5N2Write.hpp" // for hdf5N2Write
 #include "restServer.hpp"

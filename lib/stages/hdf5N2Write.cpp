@@ -5,6 +5,7 @@
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "N2Util.hpp"         // for freq_ctype, frameID, modulo, cfloat
 #include "Telescope.hpp"      // for Telescope, freq_id_t
+#include "chordMetadata.hpp"  // for chordMetadata, get_chord_metadata
 #include "geoUtil.hpp"        // for mat3x3d_t
 #include "hdf5Files.hpp"      // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
@@ -30,8 +31,6 @@
 #include <cmath>             // for fabs
 #include <complex>           // for complex
 #include <configTracker.hpp> // for ConfigTracker
-#include "chordMetadata.hpp" // for chordMetadata, get_chord_metadata
-
 #include <cstdint>           // for uint64_t, int64_t, int32_t, uint16_t
 #include <cstdio>            // for size_t, rename
 #include <cstdlib>           // for llabs
@@ -363,8 +362,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             std::vector<grid_idx_2d_t> grid_indices(input_list.size());
             std::vector<vec3d_t> feed_positions(input_list.size());
             for (size_t i = 0; i < input_list.size(); ++i) {
-                grid_indices[i] = telescope.element_index_to_main_array_grid_indices(input_list[i],
-                                                                                     input_order);
+                grid_indices[i] =
+                    telescope.element_index_to_main_array_grid_indices(input_list[i], input_order);
                 feed_positions[i] = telescope.station_id_to_feed_position_m(
                     telescope.element_index_to_station_id(input_list[i], input_order));
             }

@@ -53,10 +53,9 @@ N2FrameDesc::N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_pr
     // full fiducial order directly and must not carry one.
     if (n2_layout == N2Layout::DishInputs) {
         if (this->input_list.size() != num_elements)
-            FATAL_ERROR_NON_OO(
-                "N2FrameDesc: layout DishInputs requires one input_list entry per "
-                "element (got {:d} for {:d} elements)",
-                this->input_list.size(), num_elements);
+            FATAL_ERROR_NON_OO("N2FrameDesc: layout DishInputs requires one input_list entry per "
+                               "element (got {:d} for {:d} elements)",
+                               this->input_list.size(), num_elements);
         for (size_t i = 1; i < this->input_list.size(); ++i)
             if (this->input_list[i] <= this->input_list[i - 1])
                 FATAL_ERROR_NON_OO("N2FrameDesc: input_list must be strictly increasing");

@@ -214,9 +214,9 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_dish_inputs) {
         N2FrameDesc::calculate_frame_size(out_num_elements, num_ev, out_num_prod);
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
-        out_num_elements, num_ev, out_num_prod, N2Layout::DishInputs, std::vector<N2::prod_ctype>{},
-        ids));
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(out_num_elements, num_ev, out_num_prod,
+                                                            N2Layout::DishInputs,
+                                                            std::vector<N2::prod_ctype>{}, ids));
 
     bufferContainer bc;
     bc.add_buffer(in_buf_name, &in_buf);
