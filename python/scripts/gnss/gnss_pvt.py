@@ -67,30 +67,39 @@ def _los_enu(az_deg, el_deg):
 
 
 def _fit(rows, npar):
-    """One weighted LS pass. rows: (los[3], resid, group_idx). Returns (x, post, Ninv) or None."""
+    """One weighted LS pass. rows: (los[3], resid, group_idx, sigma). Returns
+    (x, post_m, Ninv_weighted, Ninv_unit) or None; post is in metres, unweighted."""
     n = len(rows)
     if n < npar:
         return None
     H = np.zeros((n, npar))
     r = np.zeros(n)
-    for i, (los, resid, g) in enumerate(rows):
+    w = np.zeros(n)
+    for i, (los, resid, g, sig) in enumerate(rows):
         H[i, 0:3] = -los
         H[i, 3 + g] = 1.0
         r[i] = resid
+        w[i] = 1.0 / sig
+    Hw, rw = H * w[:, None], r * w
     try:
-        Ninv = np.linalg.inv(H.T @ H)
+        Ninv = np.linalg.inv(Hw.T @ Hw)
+        Ninv_unit = np.linalg.inv(H.T @ H)
     except np.linalg.LinAlgError:
         return None
-    x = Ninv @ (H.T @ r)
-    return x, r - H @ x, Ninv
+    x = Ninv @ (Hw.T @ rw)
+    return x, r - H @ x, Ninv, Ninv_unit
 
 
 def _solve(rows, n_groups, group_of, reject_floor=60.0, reject_k=5.0):
-    """Robust LS with RAIM-style outlier rejection. The code residuals carry gross outliers
-    (bad-tracking sats / wrong sub-code-period ambiguity, tens of km off a clean ~20 m cluster),
-    so drop the single worst satellite while its post-fit residual exceeds
-    max(reject_floor, reject_k * median|post|) and redundancy remains. Returns
-    (dx[3], clocks[n_groups], resid_rms, sigma_diag, Ninv, n_used, n_rej) or None."""
+    """Robust weighted LS with RAIM-style outlier rejection. The code residuals carry gross
+    outliers (bad-tracking sats / wrong sub-code-period ambiguity, tens of km off a clean
+    ~20 m cluster), so drop the single worst satellite while its post-fit residual exceeds
+    max(reject_floor, reject_k * median|post|) and redundancy remains. Weights are 1/sigma^2
+    from each measurement's own scatter (see solve); the rejection test stays in metres so
+    a heavily down-weighted row can still be thrown out for being wrong rather than merely
+    noisy. Returns (dx[3], clocks[n_groups], sigma0, sigma_diag, Ninv_unit, n_used, n_rej)
+    or None; sigma0 is the unitless a-posteriori factor (1.0 = the scatter matched the
+    weights) and sigma_diag the 1-sigma parameter errors in metres."""
     npar = 3 + n_groups
     kept = list(rows)
     n_rej = 0
@@ -98,7 +107,7 @@ def _solve(rows, n_groups, group_of, reject_floor=60.0, reject_k=5.0):
         f = _fit(kept, npar)
         if f is None:
             return None
-        x, post, Ninv = f
+        x, post, Ninv, Ninv_unit = f
         ap = np.abs(post)
         w = int(np.argmax(ap))
         thr = max(reject_floor, reject_k * float(np.median(ap)))
@@ -108,10 +117,13 @@ def _solve(rows, n_groups, group_of, reject_floor=60.0, reject_k=5.0):
             continue
         break
     dof = max(1, len(kept) - npar)
-    sigma0 = math.sqrt(float(post @ post) / dof)
-    cov = sigma0 ** 2 * Ninv
-    return (x[0:3], x[3:], sigma0, np.sqrt(np.clip(np.diag(cov), 0.0, None)), Ninv,
-            len(kept), n_rej)
+    sig = np.array([k[3] for k in kept])
+    sigma0 = math.sqrt(float(((post / sig) ** 2).sum()) / dof)
+    # never report an error smaller than the weights alone imply: a lucky low chi^2 on few
+    # degrees of freedom is not a tighter measurement
+    cov = max(1.0, sigma0) ** 2 * Ninv
+    return (x[0:3], x[3:], sigma0, np.sqrt(np.clip(np.diag(cov), 0.0, None)), Ninv_unit,
+            len(kept), n_rej, math.sqrt(float(post @ post) / dof))
 
 
 def _dops(Ninv3):
@@ -122,9 +134,69 @@ def _dops(Ninv3):
                 vdop=float(math.sqrt(d[2])))
 
 
-def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0):
+def hatch_smooth(rows, window_s, wrap_m=None):
+    """Carrier-smoothed code residual for one satellite-band: (resid_m, n, sd_m, method).
+
+    Hatch filtering, in its simplest exact form. Within one carrier arc the code residual and
+    the carrier residual differ by a constant (the arc's ambiguity) plus what the carrier does
+    not see: code noise, code multipath, and twice the ionosphere (the code-carrier
+    divergence, slow). So the mean of (code - carrier) over a window is a low-noise estimate
+    of that constant, and carrier_now + that mean is the code range with the carrier's noise
+    and the code's absoluteness. Carrier phase must never be averaged ACROSS an arc break --
+    the constant changes there -- so only rows sharing the newest row's `adr_arc` enter.
+
+    `rows` are obs-log dicts (t, code_resid_m, carr_resid_m, adr_arc) for ONE (sys, prn, band);
+    the newest row is the epoch reported. `wrap_m` is the code period in metres: the code
+    residual is modular, so each row is first unwrapped to within half a period of the newest.
+    Falls back to a plain boxcar of the code when no carrier is available, and to the single
+    newest row when the window holds nothing else.
+    """
+    rows = sorted((r for r in rows if r.get("code_resid_m") is not None and r.get("t") is not None),
+                  key=lambda r: r["t"])
+    if not rows:
+        return None
+    new = rows[-1]
+    t_new, arc = new["t"], new.get("adr_arc")
+    sel = [r for r in rows if r["t"] >= t_new - window_s and r.get("adr_arc") == arc]
+    c_new = float(new["code_resid_m"])
+
+    def _code(r):
+        c = float(r["code_resid_m"])
+        return c - wrap_m * round((c - c_new) / wrap_m) if wrap_m else c
+
+    if len(sel) < 2:
+        return c_new, 1, None, "single"
+
+    def _msd(xs):
+        m = sum(xs) / len(xs)
+        return m, math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
+
+    c = [_code(r) for r in sel]
+    m_box, sd_box = _msd(c)
+    # THE CARRIER MUST EARN ITS PLACE. Hatch is only a gain when code - carrier is quieter
+    # than the code alone; a carrier that jumps between rows (a phase reference that moved, an
+    # arc the logger did not mark, an accumulated phase stamped at a different epoch than the
+    # row) makes it catastrophically worse, and the obs logs have carried exactly that. So
+    # both estimates are formed and the quieter one is reported. When the carrier is healthy
+    # this picks Hatch by orders of magnitude; when it is not, nothing is lost.
+    carr_ok = (new.get("carr_resid_m") is not None
+               and all(r.get("carr_resid_m") is not None for r in sel))
+    if carr_ok:
+        d = [ci - float(r["carr_resid_m"]) for ci, r in zip(c, sel)]
+        m_h, sd_h = _msd(d)
+        if sd_h < sd_box:
+            return float(new["carr_resid_m"]) + m_h, len(d), sd_h, "hatch"
+    return m_box, len(c), sd_box, "boxcar"
+
+
+def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0, sigma_floor_m=0.5,
+          sigma_default_m=5.0):
     """PVT self-survey. `measurements`: iterable of dicts {group, az, el, resid_m} where `group`
-    is a (constellation, band) label. A group whose label ends in "-IF" is an IONO-FREE
+    is a (constellation, band) label, optionally with `sd_m` and `n` (the smoother's scatter and
+    support): each row is weighted 1/sigma^2 with sigma = max(sigma_floor_m, sd_m/sqrt(n)), or
+    sigma_default_m when it carries no scatter. This is what keeps a chain in its post-restart
+    transient (residuals jumping by chips, sd of 100 m) from steering the fit while seven quiet
+    chains sit at 3 m. A group whose label ends in "-IF" is an IONO-FREE
     (dual-frequency) group; those are solved together into `combined_if`, and the single-frequency
     groups into `combined`, so the two never mix (their clock biases differ and an IF sat is
     correlated with its own single-freq rows). Returns {groups: {group: result}, combined,
@@ -143,7 +215,10 @@ def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0):
         g = m.get("group")
         if az is None or el is None or res is None or g is None or el < min_el_deg:
             continue
-        by_group.setdefault(g, []).append((_los_enu(az, el), float(res)))
+        sd, n = m.get("sd_m"), m.get("n")
+        sig = (max(sigma_floor_m, float(sd) / math.sqrt(max(1, int(n or 1))))
+               if sd is not None else sigma_default_m)
+        by_group.setdefault(g, []).append((_los_enu(az, el), float(res), sig))
     # GROSS pre-filter: the good satellites cluster within ~tens of metres of the group median
     # while bad ones (wrong sub-code-period ambiguity / mislock) sit km away. Cut those against
     # the robust median BEFORE the LS, so even a thin group (too few sats to reject in-fit) is
@@ -154,31 +229,32 @@ def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0):
             med = float(np.median([o[1] for o in obs]))
             by_group[g] = [o for o in obs if abs(o[1] - med) < 1000.0]
 
-    def _ok(Ninv, sig_diag):
+    def _ok(Ninv, sig_diag, n_used, npar):
         # Reject a degenerate / ill-conditioned geometry (e.g. all sats at one elevation ->
-        # the vertical is unconstrained) rather than publish a garbage position.
+        # the vertical is unconstrained) rather than publish a garbage position, and a fit
+        # with no redundancy (n == npar fits anything exactly and reports +-0).
         pd = math.sqrt(max(0.0, sum(np.clip(np.diag(Ninv[0:3, 0:3]), 0.0, None))))
-        return pd < 30.0 and float(np.max(sig_diag[0:3])) < 1000.0
+        return n_used > npar and pd < 30.0 and float(np.max(sig_diag[0:3])) < 1000.0
 
-    def _pack(dx_enu, clock_m, sigma0, sig_diag, Ninv, n_used, n_rej):
+    def _pack(dx_enu, clock_m, sigma0, sig_diag, Ninv, n_used, n_rej, rms_m):
         pos = apr + R.T @ dx_enu           # ENU correction -> ECEF
         lat, lon, alt = _ecef_to_llh(pos)
         return dict(n_sats=n_used, n_rejected=n_rej,
                     lat=lat, lon=lon, alt=alt, ecef=pos.tolist(),
                     d_e=float(dx_enu[0]), d_n=float(dx_enu[1]), d_u=float(dx_enu[2]),
-                    clock_m=float(clock_m), resid_rms_m=float(sigma0),
+                    clock_m=float(clock_m), resid_rms_m=float(rms_m), sigma0=float(sigma0),
                     sigma_e=float(sig_diag[0]), sigma_n=float(sig_diag[1]),
                     sigma_u=float(sig_diag[2]),
                     **_dops(Ninv[0:3, 0:3]))
 
     out = {"groups": {}, "combined": None}
     for g, obs in sorted(by_group.items()):
-        rows = [(los, res, 0) for los, res in obs]
+        rows = [(los, res, 0, sig) for los, res, sig in obs]
         s = _solve(rows, 1, {0: g})
         if s:
-            dx, clk, sig0, sd, Ninv, nu, nr = s
-            if _ok(Ninv, sd):
-                out["groups"][g] = _pack(dx, clk[0], sig0, sd, Ninv, nu, nr)
+            dx, clk, sig0, sd, Ninv, nu, nr, rms = s
+            if _ok(Ninv, sd, nu, 4):
+                out["groups"][g] = _pack(dx, clk[0], sig0, sd, Ninv, nu, nr, rms)
 
     # combined: one clock column per group. Solve single-frequency groups and iono-free (-IF)
     # groups SEPARATELY -- an IF group's clock folds two dongle clocks together and its sats are
@@ -188,12 +264,12 @@ def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0):
         if not sel:
             return None
         gi = {g: i for i, g in enumerate(sel)}
-        rows = [(los, res, gi[g]) for g in sel for los, res in by_group[g]]
+        rows = [(los, res, gi[g], sig) for g in sel for los, res, sig in by_group[g]]
         s = _solve(rows, len(sel), gi)
-        if not (s and _ok(Ninv=s[4], sig_diag=s[3])):
+        if not (s and _ok(s[4], s[3], s[5], 3 + len(sel))):
             return None
-        dx, clks, sig0, sd, Ninv, nu, nr = s
-        c = _pack(dx, 0.0, sig0, sd, Ninv, nu, nr)
+        dx, clks, sig0, sd, Ninv, nu, nr, rms = s
+        c = _pack(dx, 0.0, sig0, sd, Ninv, nu, nr, rms)
         c["clock_m"] = None
         c["clocks_m"] = {g: float(clks[gi[g]]) for g in sel}
         c["n_groups"] = len(sel)

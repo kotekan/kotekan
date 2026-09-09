@@ -36,8 +36,15 @@ class T(unittest.TestCase):
         g = {x["group"] for x in m}
         self.assertTrue({"gps_l5", "gps_l2c"} <= g, "GPS L5 and L2C must be separate groups")
 
-    def test_iono_free_pairs_form_on_the_widest_split(self):
+    def test_iono_free_is_off_by_default(self):
+        """The co-hosted splits here are 51-102 MHz: the combination amplifies code noise
+        8-17x to remove a few metres of ionosphere, so it is opt-in."""
         m = lb._pvt_measurements([os.path.join(self.d, "*.jsonl")], 300.0, time.time())
+        self.assertFalse(any(x["group"].endswith("-IF") for x in m))
+
+    def test_iono_free_pairs_form_on_the_widest_split(self):
+        m = lb._pvt_measurements([os.path.join(self.d, "*.jsonl")], 300.0, time.time(),
+                                 iono_free=True)
         # Galileo has 1176.45 / 1207.14 / 1278.75 -> the widest split is E5a x E6
         self.assertTrue(any(x["group"] == "E-IF" for x in m), "no Galileo iono-free rows formed")
         self.assertTrue(any(x["group"] == "C-IF" for x in m), "no BeiDou iono-free rows formed")

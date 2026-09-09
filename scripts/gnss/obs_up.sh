@@ -15,14 +15,16 @@
 # SignalDef the broker is actually running; the broker prints it at startup, e.g.
 #     signal gps_l5: SignalDef(gps_l5: GPS_L5_Q/GPS_L5_Q_NH, 1176.450 MHz, 10230 chips @ ...)
 # If a chain's signal changes, take the numbers from that line rather than from here. The
-# table below was checked against it on 2026-08-11 (all five chains, 10230 chips @ 10.23 Mcps;
-# the two bands are 1176.45 and 1207.14 MHz).
+# table below is those lines, one per chain. ⚠️ L2C's chips are CM chips at 0.5115 Mcps with
+# comb_mult 2 (the CM/CL multiplex): the chip is 586 m, not 29 m, and the code residual is
+# taken from the broker in SECONDS for exactly that reason.
 #
-# The lat/lon/alt is DRAO, and it is what az/el and range_m are computed against -- the whole
-# point of the record is that it pairs power with sky position, so a wrong site silently
-# produces a beam map of nowhere.
+# The lat/lon/alt MUST BE THE BROKER'S (gnss_chains_chord.yaml). The code residual the rows
+# carry is measured-minus-model with the model evaluated at the broker's site, so the PVT
+# self-survey that consumes it reports an offset from THAT point; az/el/range_m here are
+# evaluated at the same point so the two never disagree about where "here" is.
 #
-# usage:  obs_up.sh              # all five chains, into fixtures/obs/<chain>_<UTCdate>.jsonl
+# usage:  obs_up.sh              # every chain, into fixtures/obs/<chain>_<UTCdate>.jsonl
 #         OBS_OUT_DIR=/tmp/x obs_up.sh    # somewhere else (a test run)
 set -u
 K=/home/kvand/gnss/kotekan
@@ -50,22 +52,27 @@ sleep 2
 mkdir -p "$OUT"
 
 # chain  sys  carrier_hz     -- sys is the RINEX constellation letter (G/E/C)
+# chain  sys  carrier_Hz   chip_rate_Hz  code_len  comb_mult
 CHAINS="
-gps_l5  G 1176450000
-gal_e5a E 1176450000
-bds_b2a C 1176450000
-gal_e5b E 1207140000
-bds_b2b C 1207140000
+gps_l5  G 1176450000 10230000 10230 1
+gal_e5a E 1176450000 10230000 10230 1
+bds_b2a C 1176450000 10230000 10230 1
+gal_e5b E 1207140000 10230000 10230 1
+bds_b2b C 1207140000 10230000 10230 1
+bds_b3i C 1268520000 10230000 10230 1
+gal_e6  E 1278750000  5115000  5115 1
+gps_l2c G 1227600000   511500 10230 2
 "
 
 n=0
-while read -r chain sys carrier; do
+while read -r chain sys carrier chiprate codelen combmult; do
     [ -z "$chain" ] && continue
     nohup setsid "$PY" -u "$K/python/scripts/gnss/gnss_observables.py" \
         --url "$BROKER" --combiner "$chain" --search "$chain" --airspy "$chain" \
         --sys "$sys" --band "$chain" \
-        --carrier-hz "$carrier" --chip-rate-hz 10230000 --code-length 10230 \
-        --lat 49.32075144444 --lon -119.62081125 --alt 545 \
+        --carrier-hz "$carrier" --chip-rate-hz "$chiprate" --code-length "$codelen" \
+        --comb-mult "$combmult" \
+        --lat 49.32001414 --lon -119.62262691 --alt 545 \
         --frame0-url "$FRAME0_URL" \
         --out "$OUT/${chain}_%Y%m%d.jsonl" \
         > "/tmp/obs_${chain}.log" 2>&1 < /dev/null &

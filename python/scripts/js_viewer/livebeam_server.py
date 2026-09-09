@@ -1602,14 +1602,22 @@ class GpsSkyResource(resource.Resource):
         return json.dumps(out).encode("utf-8")
 
 
-def _pvt_measurements(globs, max_age_s, t_now):
-    """Freshest per-(sys, prn, freq-band) code observation across the obs logs, for the PVT
-    self-survey. One row per satellite-frequency (pilot/data of the same sat dedupe to one, same
-    geometry). Residuals are wrapped clock-dominated ranges -> de-wrapped per group to the group
-    median so the common clock is a single free parameter and no sat straddles a code-period edge.
-    Returns a list of {group, az, el, resid_m}."""
+def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0, iono_free=False):
+    """Per-(sys, prn, freq-band) code observation across the obs logs, for the PVT self-survey:
+    the freshest row's epoch, CARRIER-SMOOTHED over the last `smooth_s` seconds of its own
+    arc (gnss_pvt.hatch_smooth). One row per satellite-frequency (pilot/data of the same sat
+    dedupe to one, same geometry). Residuals are wrapped clock-dominated ranges -> de-wrapped
+    per group to the group median so the common clock is a single free parameter and no sat
+    straddles a code-period edge. Returns a list of {group, az, el, resid_m, n, sd_m, method}.
+
+    `iono_free` forms the dual-frequency combination per satellite as extra "-IF" groups. OFF
+    by default: the combination amplifies code noise by f^2/(f1^2-f2^2) per band, and this
+    fleet's co-hosted splits are 51-102 MHz (L5xL2C 16.6x, E5axE6 8.5x, B2axB3I 9.4x) -- tens of
+    metres of noise to remove a few metres of ionosphere. It stays for a receiver with L1.
+    """
     import glob as _glob
     import json as _json
+    import gnss_pvt as _pvt
     C = 299792458.0
 
     # ⚠️ THE BAND IS A FREQUENCY, NOT A SUBSTRING OF A NAME. This used to classify rows by
@@ -1636,15 +1644,26 @@ def _pvt_measurements(globs, max_age_s, t_now):
                 return CARRIER_NAME.get(round(hz / 1e6, 2), key), hz
         return "L1", 1575.42e6
 
+    t_floor = t_now - max(max_age_s, smooth_s) - 5.0
+    hist = {}     # (sys, prn, band) -> rows inside the smoothing window
     latest = {}   # (sys, prn, band) -> (t, group, az, el, resid_m, L_m, carrier_hz)
     for pat in globs:
         for path in _glob.glob(pat):
             try:
                 size = os.path.getsize(path)
                 with open(path) as f:
-                    f.seek(max(0, size - 512 * 1024))   # tail: freshest rows only
+                    # tail: the smoothing window of every satellite on this chain. Rows are
+                    # ~1.2 kB and a chain logs ~13 rows/s, so 4 MB holds several minutes.
+                    f.seek(max(0, size - 4 * 1024 * 1024))
                     f.readline()
                     for line in f:
+                        # cheap epoch pre-filter before the JSON decode: rows start {"t":...
+                        if line.startswith('{"t":'):
+                            try:
+                                if float(line[5:line.index(",", 5)]) < t_floor:
+                                    continue
+                            except Exception:
+                                pass
                         try:
                             d = _json.loads(line)
                         except Exception:
@@ -1655,10 +1674,17 @@ def _pvt_measurements(globs, max_age_s, t_now):
                         if (t is None or sysid is None or prn is None or res is None
                                 or az is None or el is None):
                             continue
-                        if t_now - t > max_age_s:
+                        if t < t_floor:
+                            continue
+                        # a replica that is not on its signal has a code phase but no range;
+                        # rows written before the broker gated this carry the flags to say so
+                        if d.get("noise_probe") or d.get("fleet_present") is False:
                             continue
                         fr, f_hz = _band(d)
                         key = (sysid, prn, fr)
+                        hist.setdefault(key, []).append(d)
+                        if t_now - t > max_age_s:
+                            continue
                         if key in latest and latest[key][0] >= t:
                             continue
                         cl, ch = d.get("code_len"), d.get("chip_rate_hz")
@@ -1667,6 +1693,17 @@ def _pvt_measurements(globs, max_age_s, t_now):
                                        az, el, float(res), L, f_hz)
             except Exception:
                 continue
+    # CARRIER-SMOOTH each satellite's code residual over its own arc (gnss_pvt.hatch_smooth).
+    # The tracker's code observable is white at ~0.1-0.25 chips per record and the carrier
+    # holds arcs for hours, so the smoothed value is the near-free order-of-magnitude win.
+    extra = {}
+    for key, v in list(latest.items()):
+        hs = _pvt.hatch_smooth(hist.get(key, []), smooth_s, wrap_m=v[5])
+        if hs is None:
+            continue
+        r_s, n, sd, method = hs
+        latest[key] = (v[0], v[1], v[2], v[3], float(r_s), v[5], v[6])
+        extra[key] = {"n": n, "sd_m": sd, "method": method}
 
     # de-wrap each group's residuals to the group median (handles the clock straddling a
     # code-period boundary; L is the code period in metres). Keep the de-wrapped per-(sys,prn,freq)
@@ -1683,8 +1720,12 @@ def _pvt_measurements(globs, max_age_s, t_now):
             _t0, g, az, el, res, L, _f = v
             if L:
                 res = res - L * round((res - med) / L)   # unwrap to within +-L/2 of the median
-            out.append({"group": g, "az": az, "el": el, "resid_m": res})
+            m = {"group": g, "sys": sysid, "prn": prn, "az": az, "el": el, "resid_m": res}
+            m.update(extra.get((sysid, prn, fr), {}))
+            out.append(m)
             dw[(sysid, prn, fr)] = (az, el, res, _f)
+    if not iono_free:
+        return out
 
     # DUAL-FREQUENCY iono-free combination: for each satellite seen on two bands, remove the
     # first-order ionosphere. rho_IF = (f1^2 rho1 - f2^2 rho2)/(f1^2 - f2^2) -- the ~1/f^2 iono
@@ -1720,13 +1761,20 @@ class DecodeHealthResource(resource.Resource):
     isLeaf = True
 
     def __init__(self, dirpath, max_age_s=120.0, lat=None, lon=None, alt=None,
-                 obs_globs=None, pvt_ttl_s=15.0, pvt_max_age_s=30.0):
+                 obs_globs=None, pvt_ttl_s=15.0, pvt_max_age_s=30.0, pvt_smooth_s=90.0,
+                 pvt_min_el_deg=15.0):
         resource.Resource.__init__(self)
         self.dirpath = dirpath
         self.max_age_s = max_age_s
         self.lat, self.lon, self.alt = lat, lon, (alt or 0.0)
         self.obs_globs = obs_globs or []
         self.pvt_ttl_s = pvt_ttl_s
+        # Carrier-smoothing window (gnss_pvt.hatch_smooth) and the elevation mask. Low
+        # satellites carry the multipath and the thickest ionosphere; both are slow, so no
+        # amount of smoothing removes them -- a low satellite wanders by chips over minutes
+        # while the high ones sit within a few hundredths.
+        self.pvt_smooth_s = pvt_smooth_s
+        self.pvt_min_el_deg = pvt_min_el_deg
         # PVT wants NEAR-SIMULTANEOUS observations: the receiver clock (a free per-group param) is
         # assumed common across a group's sats, and a disciplined-oscillator drift of ~1e-9 over
         # 120 s is already ~36 m. 30 s keeps that error small while still catching ~1 row/sat.
@@ -1740,11 +1788,18 @@ class DecodeHealthResource(resource.Resource):
             return self._pvt_cache[1]
         try:
             import gnss_pvt as _pvt
-            meas = _pvt_measurements(self.obs_globs, self.pvt_max_age_s, t_now)
-            res = _pvt.solve(meas, self.lat, self.lon, self.alt) if meas else None
+            meas = _pvt_measurements(self.obs_globs, self.pvt_max_age_s, t_now,
+                                     smooth_s=self.pvt_smooth_s)
+            res = (_pvt.solve(meas, self.lat, self.lon, self.alt,
+                              min_el_deg=self.pvt_min_el_deg) if meas else None)
             if res is not None:
                 res["apriori"] = {"lat": self.lat, "lon": self.lon, "alt": self.alt}
                 res["n_meas"] = len(meas)
+                res["smooth_s"] = self.pvt_smooth_s
+                res["min_el_deg"] = self.pvt_min_el_deg
+                # the per-satellite inputs, so the panel can show what the fit ate
+                res["meas"] = [{k: (round(v, 3) if isinstance(v, float) else v)
+                                for k, v in m.items()} for m in meas]
         except Exception as e:
             res = {"error": str(e)}
         self._pvt_cache = (t_now, res)

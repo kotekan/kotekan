@@ -67,7 +67,9 @@ export class PositionSurveyPanel {
         }
         let h = `<div style="padding:6px 6px 2px">`
               + `<span style="color:#8a8f98;font-size:11px">offset vs surveyed site`
-              + (pvt.n_meas != null ? ` · ${pvt.n_meas} obs` : "") + `</span></div>`;
+              + (pvt.n_meas != null ? ` · ${pvt.n_meas} obs` : "")
+              + (pvt.smooth_s ? ` · carrier-smoothed ${pvt.smooth_s} s` : "")
+              + (pvt.min_el_deg ? ` · el ≥ ${pvt.min_el_deg}°` : "") + `</span></div>`;
         if (pvt.combined_if) h += this._fitLine(pvt.combined_if, "iono-free", "#7dd3a8");
         if (pvt.combined)
             h += this._fitLine(pvt.combined, pvt.combined_if ? "single-freq" : "best-fit", "#cbd5e1");
@@ -96,6 +98,25 @@ export class PositionSurveyPanel {
             }
             h += `</tbody></table>`;
         }
+        // The per-satellite inputs the fit ate: which observable, how many rows were
+        // smoothed and the code scatter they showed. A satellite whose sd is far above its
+        // neighbours' is the one to look at; "single" means no smoothing happened.
+        const meas = (pvt.meas || []).slice().sort((a, b) =>
+            a.group < b.group ? -1 : a.group > b.group ? 1 : (a.prn || 0) - (b.prn || 0));
+        if (meas.length) {
+            h += `<table style="border-collapse:collapse;width:100%;font-size:10px;`
+               + `margin-top:6px;color:#8a8f98"><thead><tr style="text-align:left;`
+               + `border-bottom:1px solid #333"><th style="padding:1px 6px">sat</th>`
+               + `<th>el</th><th>resid</th><th>rows</th><th>code sd</th></tr></thead><tbody>`;
+            for (const m of meas) {
+                h += `<tr><td style="padding:1px 6px">${m.group} ${m.sys || ""}${m.prn || ""}</td>`
+                   + `<td>${m.el != null ? m.el.toFixed(0) + "°" : ""}</td>`
+                   + `<td>${m.resid_m != null ? m.resid_m.toFixed(1) + " m" : ""}</td>`
+                   + `<td>${m.n != null ? m.n : ""}${m.method === "single" ? " (single)" : ""}</td>`
+                   + `<td>${m.sd_m != null ? m.sd_m.toFixed(1) + " m" : ""}</td></tr>`;
+            }
+            h += `</tbody></table>`;
+        }
         // Only explain the -IF rows when there are some. The note named L1+L5 outright, which
         // this fleet never has: the pair is whichever two chains give the widest split.
         if (keys.some(k => k.endsWith("-IF")))
@@ -105,7 +126,9 @@ export class PositionSurveyPanel {
         else
             h += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
                + `single-frequency: the ionosphere is uncorrected and sets the error floor. `
-               + `A satellite tracked on two chains at once would add an iono-free row.</div>`;
+               + `The code is carrier-smoothed within each arc (Hatch); the iono-free `
+               + `combination is off, since this fleet's co-hosted band splits are only `
+               + `51-102 MHz and it would amplify code noise 8-17x.</div>`;
         this.root.innerHTML = h;
     }
 }
