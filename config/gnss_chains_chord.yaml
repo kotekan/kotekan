@@ -806,13 +806,15 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # (p95 < 2.0 over >=30 innov/10 min), MINNOV referee auto-exits at 3.0. Pre-reg in
     # fixtures/expectations_20260830_cp_rate_model_primary.txt (final section).
     model-primacy-max: 32
-    # PER-SUBBAND ARCHIVE (task #25). fleet_spectrum already computes per-channel,
-    # per-instance amplitudes for the tau fit and then discards them; this persists the
-    # raw points before the collapse. The per-freq x per-element axis IS the science
-    # product -- a combined number rebuilds from the parts, never the reverse -- and every
-    # combine (beam map, band health, per-element gain) becomes an offline function of it.
-    # A few kB/poll, no recomputation, no node-side change. Rolls by UTC day.
-    spectrum-archive: /home/kvand/gnss/fixtures/spectra/gps_l5_%Y%m%d.jsonl
+    # PER-SUBBAND ARCHIVE (task #25) -- RETIRED. It persisted fleet_spectrum's per-channel,
+    # per-instance points before the tau fit collapsed them, on the argument that a combined
+    # number rebuilds from the parts and never the reverse. Nothing came to read it: the beam
+    # maps and the element work consume the element archive, and the per-channel PHYSICS
+    # (element delays, per-subband beams) turned out to need the raw per-channel N x M
+    # products a visibility capture keeps, not this collapsed-over-elements view. At ~9 GB a
+    # day it was the second-largest thing on the home volume. Re-enable with
+    #   spectrum-archive: <dir>/gps_l5_%Y%m%d.jsonl
+    # and put <dir> on the data volume, not /home.
 
   # Galileo E5a -- path B, and NO DETECTORS by design: E5a-Q carries a PER-PRN secondary,
   # which the replica bank's single-sequence overlay slot cannot hold, so blind
