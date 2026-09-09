@@ -11,6 +11,7 @@
 #include "DataType.hpp"       // for type_to_string, DataType
 #include "FrameDesc.hpp"      // for FrameDesc
 #include "NDArray.hpp"        // for GenericNDArray, NDArray
+#include "PipelineGraph.hpp"  // for BufferState
 #include "Symbol.hpp"         // for Symbol, operator!=, operator==
 #include "kotekanLogging.hpp" // for FATAL_ERROR, ERROR, kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
@@ -176,6 +177,25 @@ public:
     int get_num_producers();
 
     /**
+     * @brief The names of the consumers registered to this buffer.
+     *
+     * A copy taken under the buffer lock: a stage may unregister while the
+     * pipeline runs, so @c consumers cannot be walked from another thread.
+     * The producer names are a separate copy, so a caller reading both sees
+     * the two taken a moment apart rather than as one snapshot.
+     *
+     * @return The registered consumer names, sorted by name.
+     */
+    std::vector<std::string> get_consumer_names();
+
+    /**
+     * @brief The names of the producers registered to this buffer.
+     *
+     * @return The registered producer names, sorted by name.
+     */
+    std::vector<std::string> get_producer_names();
+
+    /**
      * @brief Allocates a new metadata object from the associated pool
      *
      * Needs to be called by the first producer in a chain, or by a producer
@@ -256,10 +276,21 @@ public:
     virtual void json_description(nlohmann::json& buf_json);
 
     /**
-     * @brief Returns a text description of this buffer for use in the automatic Dot pipeline
-     * graphs.
+     * @brief Returns this buffer's description for the automatic pipeline graphs,
+     *        as one plain-text line per entry.
+     *
+     * The lines are escaped and joined by the graph renderer, so implementations
+     * must not add markup of their own.
      */
-    virtual std::string get_dot_node_label();
+    virtual std::vector<std::string> dot_label_lines(const kotekan::GraphOptions& options);
+
+    /**
+     * @brief How busy this buffer is, for the pipeline graph.
+     *
+     * Reported by the buffer itself because only it knows what "full" means for
+     * the way it stores data.
+     */
+    virtual kotekan::BufferState dot_buffer_state();
 
     /// The number of frames kept by this object
     int num_frames;
@@ -335,7 +366,7 @@ protected:
  *
  * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
- * is being dropped.
+ * is being dropped (unless @c peek_hold keeps the newest frame).
  *
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
@@ -343,6 +374,9 @@ protected:
  * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
  * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
  * @conf mlock_frames Lock the frame pages with mlock Default: true
+ * @conf peek_hold Keep the newest full frame peekable by deferring its empty
+ *                 transition until the next frame is marked full; see
+ *                 @c enable_peek_hold(). Requires num_frames >= 2. Default: false
  *
  * See metadata.h for more information on metadata pools
  *
@@ -480,6 +514,83 @@ public:
      * @returns The number of currently full frames in the buffer
      */
     int get_num_full_frames();
+
+    /**
+     * @brief Copies the data and metadata of the most recently filled frame
+     *        that is still full, without taking part in the producer/consumer
+     *        protocol.
+     *
+     * Intended for inspection/debugging (e.g. the REST `/buffer_frame`
+     * endpoint): the caller does not need to be a registered consumer, and
+     * calling this never consumes frames. The copy runs with the buffer
+     * unlocked, so producers and consumers on other frames are unaffected.
+     * Only the copied frame is held: its empty transition is deferred until
+     * the copy finishes, which is what keeps a producer out of it. The frame
+     * counts as full (and keeps its metadata object) for that long. The frame
+     * copied is the newest full one, which is the last one the producer comes
+     * back to, so the hold is only felt if the copy outlasts a lap of the
+     * ring -- reachable on a shallow buffer asked for a whole frame, not much
+     * else. A producer that gets there waits, except one that sheds load on a
+     * full ring (bufferRecv, Valve), which drops the data instead.
+     *
+     * The copy is best effort, not a consistent snapshot. A frame already
+     * being zeroed by @c zero_frames, or handed to another buffer by
+     * @c swap_frames() while the copy runs, can be observed part way through
+     * the write; peek again for a clean frame.
+     *
+     * @param[out] data_out Resized to the copy length and filled with the
+     *                      leading bytes of the frame; cleared when -1 is
+     *                      returned.
+     * @param[in] max_len Maximum number of bytes of frame data to copy; the
+     *                    copy length is min(max_len, frame_size).
+     * @param[out] metadata_out Set to the frame's metadata object, or nullptr
+     *                          if the frame has none.
+     * @return The frame ID that was copied, or -1 if the buffer currently
+     *         contains no full frame.
+     */
+    int peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
+                               std::shared_ptr<metadataObject>& metadata_out);
+
+    /**
+     * @brief Keeps the newest full frame peekable (the ``peek_hold``
+     *        buffer config option).
+     *
+     * When enabled, the frame most recently marked full never transitions
+     * to empty: its empty transition (consumer reset, metadata release,
+     * optional zeroing) is deferred until the *next* frame is marked full.
+     * The newest frame therefore always stays in the full state -- with
+     * its metadata -- so @c peek_newest_full_frame() keeps working on
+     * buffers whose consumers otherwise drain frames faster than an
+     * observer can peek.
+     *
+     * This costs no copies and no producer stalls: a producer only
+     * returns to a frame after filling every other frame in the ring, and
+     * filling any frame releases the previous hold -- so the hold is
+     * always long gone by the time its slot is wanted again. The visible
+     * costs are one permanently occupied frame slot (an otherwise-idle
+     * buffer reports one full frame) and one metadata object kept out of
+     * the pool. Data served from a held frame can be arbitrarily old if
+     * production has stopped; consult the metadata's timestamps rather
+     * than presenting it as live.
+     *
+     * Shuts kotekan down (@c FATAL_ERROR, which throws @c FatalError) for a
+     * single-frame buffer: with ``num_frames == 1`` the producer would
+     * deadlock waiting for the held frame whose release requires the
+     * producer. Warns, but continues, below @c peek_hold_shallow_frames,
+     * where the held slot is a large share of the buffer's depth.
+     */
+    void enable_peek_hold();
+
+    /**
+     * @brief Buffer depth below which @c enable_peek_hold() warns.
+     *
+     * The hold occupies one frame for the lifetime of the pipeline. On a deep
+     * buffer that is a rounding error; at three frames or fewer it is a third
+     * or more of the depth the buffer has to absorb jitter with, which is
+     * worth saying out loud at startup rather than leaving to be found in a
+     * throughput plot.
+     */
+    static constexpr int peek_hold_shallow_frames = 4;
 
     /**
      * @brief Swaps the provided frame of memory with the internal frame
@@ -695,13 +806,30 @@ public:
     double get_last_arrival_time();
 
     /**
+     * @brief The measured rate at which frames are arriving in this buffer.
+     *
+     * A decaying average of the interval between arrivals, so a buffer that has
+     * stalled reports the rate falling rather than the rate it once had. This
+     * is what the frames are actually doing, as opposed to what the config says
+     * they should.
+     *
+     * @return Frames per second, or 0 before two frames have arrived.
+     */
+    double get_arrival_rate();
+
+    /// @return The number of frames that have been marked full since startup.
+    uint64_t get_frames_arrived();
+
+    /**
      * @brief Prints a picture of the frames which are currently full.
      */
     void print_buffer_status() override;
 
     void json_description(nlohmann::json& buf_json) override;
 
-    std::string get_dot_node_label() override;
+    std::vector<std::string> dot_label_lines(const kotekan::GraphOptions& options) override;
+
+    kotekan::BufferState dot_buffer_state() override;
 
     // don't call this, it's for internal use only
     void _impl_zero_frame(const int ID);
@@ -737,8 +865,50 @@ public:
      */
     std::vector<bool> is_full;
 
+    /**
+     * @brief The index of the frame most recently marked full, or -1 if no
+     * frame has been filled yet. Frames fill in ring order, so scanning
+     * backwards from here finds the newest still-full frame; used by
+     * @c peek_newest_full_frame().
+     */
+    int last_frame_filled = -1;
+
+    /// True once enable_peek_hold() has enabled newest-frame holding.
+    bool peek_hold_enabled = false;
+
+    /**
+     * @brief The frame whose empty transition is deferred by peek_hold,
+     * or -1 if none. Set when the newest full frame would otherwise go
+     * empty; the deferred transition runs when the next frame is marked
+     * full. At most one frame is ever deferred, since only the newest
+     * frame qualifies and a newer fill releases the previous hold first.
+     */
+    int hold_deferred_id = -1;
+
+    /**
+     * @brief The number of peeks copying out of each frame with the buffer
+     * unlocked. While this is non-zero for a frame, that frame's empty
+     * transition is deferred, so it stays full and no producer can acquire
+     * it (see @c peek_newest_full_frame()).
+     */
+    std::vector<int> peek_in_progress;
+
+    /**
+     * @brief Frames whose empty transition was deferred by a peek still
+     * reading them. The deferred transition runs when the last peek on that
+     * frame finishes.
+     */
+    std::vector<bool> peek_deferred_empty;
+
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
+
+    /// The number of frames marked full since startup.
+    uint64_t frames_arrived = 0;
+
+    /// Decaying average of the interval between arrivals, in seconds; 0 until a
+    /// second frame has arrived to measure an interval against.
+    double mean_arrival_period = 0.0;
 
     /// This buffer use huge pages for its frames if the following is true
     bool use_hugepages;
@@ -761,9 +931,22 @@ private:
      * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
      *        the zeroing thread and delays marking it as empty until the zeroing is done.
      * @param id The id of the frame to mark as empty.
-     * @return True if the frame was marked as empty, false if it is being zeroed.
+     * @return True if the frame was marked as empty, false if the transition was
+     *         handed to the zeroing thread or deferred (peek_hold, in-flight peek).
      */
     bool private_mark_frame_empty(const int ID);
+    /**
+     * @brief Finishes a frame's empty transition: clears is_full, resets the
+     *        consumers and releases the metadata. Every path that empties a
+     *        frame funnels through here, so a frame a peek is copying (with
+     *        the buffer unlocked) is never handed to a producer: the
+     *        transition is deferred until the last peek unpins, which calls
+     *        back in. Callers hold the buffer lock.
+     * @param id The id of the frame to finish emptying.
+     * @return True if the frame emptied and producers need waking, false if
+     *         the transition was deferred to a peek.
+     */
+    bool private_finish_frame_empty(const int ID);
     // Resets the list of consumers for the given ID
     void private_reset_consumers(const int ID);
 

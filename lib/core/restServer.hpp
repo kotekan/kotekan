@@ -80,11 +80,19 @@ public:
     void send_empty_reply(const HTTP_RESPONSE& status);
 
     /**
-     * Sends an HTTP response with "content-type" header set to "text/plain"
+     * Sends an HTTP response with a text "content-type" header
      *
      * @param[in] reply The body of the reply
+     * @param[in] content_type The MIME type to declare; the default suits plain
+     *                         text, but a caller sending a known format (DOT,
+     *                         CSV, ...) should name it so clients can act on it.
+     *                         Name the charset too: HTTP says a text type with
+     *                         no charset is ISO-8859-1, and clients that follow
+     *                         that rule (`requests`, among others) will mangle
+     *                         any reply holding non-ASCII.
      */
-    void send_text_reply(const std::string& reply);
+    void send_text_reply(const std::string& reply,
+                         const std::string& content_type = "text/plain; charset=utf-8");
 
     /**
      * @brief Returns the message body.
