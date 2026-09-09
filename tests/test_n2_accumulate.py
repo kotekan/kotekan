@@ -20,8 +20,10 @@ prod_config = {
     "num_polarizations": 2,
     "num_dishes": 64,
     "num_subintegrations_per_bin": 2,
-    # One bad feed mask frame covers two correlation frames.
-    "bf_mask_lifetime_in_samples": 2 * 16384,
+    # One bad feed mask frame covers exactly one correlation frame, as required
+    # (N2Accumulate: "each bad feed mask frame must cover exactly one correlation
+    # frame") and as chord_pathfinder.j2 configures it in production.
+    "bf_mask_lifetime_in_samples": 16384,
     "variance_mode": "EvenOddPosDef",
     "num_ev": 0,
     "freq_ids": [0, 8191, 300, 1000, 4000],
@@ -591,7 +593,7 @@ def bf_mask_data(setup):
         shape,
         ("Tbf", "P", "D"),
         (lifetime, 1, 1),
-        0,
+        config["first_frame_index"] * lifetime,
         lifetime,
         setup["num_frames"],
         time_downsampling=lifetime,
