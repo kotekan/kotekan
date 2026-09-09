@@ -46,14 +46,15 @@ def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
     wstart0 = win * n_rec * hops_per_record * fft_len
     n_chan = 5
     chan_ids = [5972 + 16 * k for k in range(n_chan)] + [0] * (telem._MAX_CHAN - n_chan)
+    row_total = telem._ROW_FLOATS + n_chan * telem._CHAN_FLOATS
     hdr = telem._HDR.pack(telem._MAGIC, telem._VERSION, n_rec, n_prn, telem._ROW_FLOATS,
                           n_chan, 32, hops_per_record, fft_len, win, seq, wstart0, utc0,
-                          present, telem._MAX_CHAN, telem._ROW_TOTAL,
+                          present, n_chan, row_total,
                           chain.encode(), inst.encode(), *chan_ids)
-    body = [0.0] * (n_rec * n_prn * telem._ROW_TOTAL)
+    body = [0.0] * (n_rec * n_prn * row_total)
     for r in range(n_rec):
         for p in range(n_prn):
-            base = (r * n_prn + p) * telem._ROW_TOTAL
+            base = (r * n_prn + p) * row_total
             # the comb: A = 1 exactly on every column, energy 1, so a caller can check that
             # summing A*E over columns reproduces the header prompt
             for ch in range(n_chan):
@@ -73,7 +74,7 @@ def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
             body[base + telem.REC_TRIM_INC] = 0.01
     if rows:
         for (r, p, slot), v in rows.items():
-            body[(r * n_prn + p) * telem._ROW_TOTAL + slot] = v
+            body[(r * n_prn + p) * row_total + slot] = v
     return hdr + struct.pack("<%df" % len(body), *body)
 
 
@@ -155,9 +156,14 @@ class TestWireFormat(unittest.TestCase):
         # (record, PRN, channel, slot) is in the value, so a wrong row stride or a wrong comb
         # offset returns a number that provably belongs somewhere else.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        self.assertEqual(self.meta["max_chan"], telem._MAX_CHAN)
+        # max_chan IS THE STRIDE and it is the SENDER's, not the format's ceiling; the two
+        # are deliberately different in this fixture, so a reader that confuses them fails here.
+        self.assertEqual(self.meta["max_chan_const"], telem._MAX_CHAN)
+        self.assertLess(self.meta["max_chan"], self.meta["max_chan_const"])
         self.assertEqual(self.meta["chan_floats"], telem._CHAN_FLOATS)
-        self.assertEqual(self.meta["row_floats"], telem._ROW_TOTAL)
+        self.assertEqual(self.meta["row_floats"],
+                         telem._ROW_FLOATS + self.meta["max_chan"] * telem._CHAN_FLOATS)
+        self.assertEqual(f.row_total, self.meta["row_floats"])
         self.assertEqual(f.chan_ids, [5972 + 16 * ch for ch in range(5)])
         comb = f.comb(3, 102)  # r=3, p=2
         self.assertEqual(len(comb), 5)
@@ -196,12 +202,12 @@ class TestWireFormat(unittest.TestCase):
             self.assertEqual(e, eP)
 
     def test_unused_comb_columns_do_not_leak(self):
-        # telemfmt fills 5 of TELEM_MAX_CHAN columns ON PURPOSE. The reserved-but-unused ones
-        # must read as absent, never as the neighbouring row's first channel -- which is what a
-        # row stride computed from n_chan instead of max_chan would hand back.
+        # telemfmt ships 6 columns and fills 5 ON PURPOSE. The reserved-but-unused one must read
+        # as absent, never as the neighbouring row's first channel -- which is what a row stride
+        # computed from n_chan instead of the header's max_chan would hand back.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
         self.assertEqual(f.n_chan, 5)
-        self.assertLess(f.n_chan, telem._MAX_CHAN)
+        self.assertLess(f.n_chan, f.max_chan)
         for r in range(f.n_rec):
             if f.has_record(r):
                 for prn in f.prns():

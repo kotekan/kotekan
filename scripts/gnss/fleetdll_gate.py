@@ -158,13 +158,17 @@ def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0, ramp=0.7, amp_
 def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng, dead,
                 ramp=0.7, amp_scale=1.0):
     """One wire frame, bytes. `prn_rows` is the row->PRN map (row compaction, #64)."""
-    row_total = telem._ROW_FLOATS + telem._MAX_CHAN * telem._CHAN_FLOATS
+    # THE SENDER'S OWN STRIDE, as a real sender builds it: the row carries this instance's
+    # comb columns and no reserved ones. The gate's senders have DIFFERENT n_chan, so a fold
+    # that strides by the format's ceiling reads most of them at the wrong offsets -- which is
+    # the failure this fixture has to be able to catch.
+    row_total = telem._ROW_FLOATS + n_chan * telem._CHAN_FLOATS
     wstart0 = win * N_REC * HOPS_PER_RECORD * FFT_LEN
     chan_ids = chan_ids_for(inst_idx, n_chan) + [0] * (telem._MAX_CHAN - n_chan)
     hdr = telem._HDR.pack(
         telem._MAGIC, telem._VERSION, N_REC, N_PRN, telem._ROW_FLOATS, n_chan, 32,
         HOPS_PER_RECORD, FFT_LEN, win, seq, wstart0, 0.0, present,
-        telem._MAX_CHAN, row_total, chain.encode(), inst.encode(), *chan_ids)
+        n_chan, row_total, chain.encode(), inst.encode(), *chan_ids)
 
     rows = [0.0] * (N_REC * N_PRN * row_total)
     for r in range(N_REC):
@@ -939,16 +943,19 @@ def main():
         # guaranteed not to reach the answer, and the self-test reported the comparison as
         # insensitive when it was the poke that was inert. A self-test that can be defeated by
         # reordering the fixture is not a self-test. Find the row by PRN.
+        # The poked frame's stride is ITS sender's, off its own header (n_row_total), never a
+        # constant: senders here carry different comb widths.
+        _row_total = telem._HDR.unpack_from(buf, 0)[15]
         _row = None
         for _r in range(N_PRN):
-            _o = telem._HDR_BYTES + _r * telem._ROW_TOTAL * 4
+            _o = telem._HDR_BYTES + _r * _row_total * 4
             if int(struct.unpack_from("<f", buf, _o)[0] + 0.5) in SIGNAL_PRNS:
                 _row = _r
                 break
         if _row is None:
             raise SystemExit("self-test: no SIGNAL_PRNS row in the poked frame -- the fixture "
                              "changed shape and the poke would be inert")
-        off = (telem._HDR_BYTES + _row * telem._ROW_TOTAL * 4
+        off = (telem._HDR_BYTES + _row * _row_total * 4
                + telem._ROW_FLOATS * 4 + telem.CHAN_E_RE * 4)
         (v,) = struct.unpack_from("<f", buf, off)
         struct.pack_into("<f", buf, off, v * 1.01 + 1.0)
@@ -977,7 +984,7 @@ def main():
         # reference and the lobe power must change. If it does not, the arms agree on a sum
         # that ignores REC_PHI0 -- coherent per sender, not per lobe.
         buf = bytearray(frames[poke_at][0])
-        off = telem._HDR_BYTES + _row * telem._ROW_TOTAL * 4 + telem.REC_PHI0 * 4
+        off = telem._HDR_BYTES + _row * _row_total * 4 + telem.REC_PHI0 * 4
         (v,) = struct.unpack_from("<f", buf, off)
         struct.pack_into("<f", buf, off, v + 1.0)
         poked = frames[:poke_at] + [(bytes(buf), frames[poke_at][1])] + frames[poke_at + 1:]

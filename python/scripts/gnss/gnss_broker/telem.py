@@ -51,7 +51,7 @@ _MAGIC = 0x314C5447
 # v2: the row carries the UNSUMMED COMB after the record header, and the header carries the
 # columns' freq_ids. The cross-channel sum in the tracker destroyed the frequency axis a delay
 # lives on, which forced fleet_coherent to FIT a per-instance constant instead of DERIVING one.
-_VERSION = 5
+_VERSION = 6
 _HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
 _HDR_BYTES = 112
 _MAX_CHAN = 8
@@ -96,8 +96,11 @@ REC_TRIM_INC = 19
 REC_SKY_RE = 24
 REC_SKY_IM = 25
 
-# Floats per row: the record header, then the comb. gnss::TELEM_ROW_FLOATS.
-_ROW_TOTAL = _ROW_FLOATS + _MAX_CHAN * _CHAN_FLOATS
+# Widest row the format admits -- gnss::TELEM_MAX_ROW_FLOATS, and the size of the header's
+# freq_id array. ⚠️ NOT THE STRIDE: from v6 every sender ships only the comb columns it
+# despreads and declares that width in the header (`row_total`). Striding by this constant
+# reads a narrow sender's rows at a wide sender's offsets -- plausible numbers, wrong PRNs.
+_MAX_ROW_TOTAL = _ROW_FLOATS + _MAX_CHAN * _CHAN_FLOATS
 
 assert _HDR.size == _HDR_BYTES, "TelemHeader struct format does not match gnssTelem.hpp"
 
@@ -144,7 +147,7 @@ class TelemFrame(object):
             # did not run this window), so the map is read from the data rather than assumed
             # from a configured PRN list the broker would have to keep in step.
             for p in range(self.n_prn):
-                off = _HDR_BYTES + p * _ROW_TOTAL * 4
+                off = _HDR_BYTES + p * self.row_total * 4
                 prn = int(struct.unpack_from("<f", self._buf, off)[0] + 0.5)
                 if prn > 0:
                     idx[prn] = p
@@ -163,7 +166,7 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r):
             return None
-        off = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4
+        off = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4
         a = array.array("f")
         a.frombytes(self._buf[off:off + _ROW_FLOATS * 4])   # the record header only
         return a
@@ -196,7 +199,7 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r) or not self.n_chan:
             return []
-        base = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4 + _ROW_FLOATS * 4
+        base = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + _ROW_FLOATS * 4
         a = array.array("f")
         a.frombytes(self._buf[base:base + self.n_chan * _CHAN_FLOATS * 4])
         out = []
@@ -219,7 +222,7 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r) or not self.n_chan:
             return []
-        base = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4 + _ROW_FLOATS * 4
+        base = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + _ROW_FLOATS * 4
         a = array.array("f")
         a.frombytes(self._buf[base:base + self.n_chan * _CHAN_FLOATS * 4])
         out = []
@@ -246,7 +249,7 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r):
             return 0.0
-        off = _HDR_BYTES + ((r * self.n_prn) + p) * _ROW_TOTAL * 4 + REC_UTC * 4
+        off = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + REC_UTC * 4
         return struct.unpack_from("<d", self._buf, off)[0]
 
 
@@ -342,6 +345,19 @@ class TelemClient(object):
                 _log_rl("telem-bad", "telem: rejecting a frame (magic %#x v%d n_row %d, want "
                         "%#x v%d %d) -- a tracker and this broker are on different builds"
                         % (hdr[0], hdr[1], hdr[4], _MAGIC, _VERSION, _ROW_FLOATS))
+                continue
+            # THE SHAPE IS THE SENDER'S AND IT IS CHECKED AGAINST THE LENGTH PREFIX. Senders
+            # ship different widths (their own comb columns) and different row counts (their
+            # chain's), so the stride cannot be assumed -- and a stride that disagrees with the
+            # bytes on the wire is exactly the failure that reads plausible numbers off the
+            # wrong rows. n_rec, n_prn, max_chan, row_total are hdr[2], [3], [14], [15].
+            if (hdr[14] > _MAX_CHAN or hdr[5] > hdr[14]
+                    or hdr[15] != _ROW_FLOATS + hdr[14] * _CHAN_FLOATS
+                    or _HDR_BYTES + hdr[2] * hdr[3] * hdr[15] * 4 != length):
+                self.bad += 1
+                _log_rl("telem-shape", "telem: rejecting a frame whose header shape does not "
+                        "match its %d bytes (n_rec %d n_prn %d n_chan %d max_chan %d row_total "
+                        "%d)" % (length, hdr[2], hdr[3], hdr[5], hdr[14], hdr[15]))
                 continue
             self._store_frame(TelemFrame(hdr, buf, time.time()))
 

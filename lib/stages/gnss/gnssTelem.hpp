@@ -97,6 +97,12 @@ constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
 /// v5 (2026-08-16): RECORD_FLOATS 28 -> 29 for REC_PHI0, the comb's phase currency -- #72's
 /// root cause. Without it the comb carries a per-instance arbitrary phase constant that no
 /// consumer can undo, which is what held the fleet combine to within-instance coherence.
+/// v6: THE ROW STRIDE AND THE ROW COUNT ARE THE SENDER'S OWN, not fleet-wide constants. Rows
+/// reserved eight comb columns for every sender when instances despread one to seven, and every
+/// sender shipped the widest chain's PRN row count, so most of the fleet's telemetry bytes on a
+/// shared 1 GbE were reserved-and-empty -- while the chains that overran that row count had live
+/// satellites DROPPED at the packer. `max_chan`, `n_row_total` and `n_prn` were already on the
+/// wire for exactly this; from v6 they are authoritative and a reader MUST stride by them.
 /// v4 (2026-08-16): RECORD_FLOATS 26 -> 28 for REC_ANG0 + REC_PHI_DDOP (#72). The row grew, so
 /// the frame did: a v3 sender against a v4 gather (or the reverse) mis-strides every row, which
 /// is why this is a version bump and not a quiet append -- the header's `n_row` check below
@@ -109,11 +115,12 @@ constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
 /// each instance, that's *never* what we want to do" -- the cross-channel sum destroys the
 /// frequency axis a delay lives on, so the broker was left FITTING a per-instance constant
 /// where it should DERIVE one from the ramp across ~106 channels.
-constexpr uint16_t TELEM_VERSION = 5;
+constexpr uint16_t TELEM_VERSION = 6;
 
-/// Comb columns reserved per row. Instances hold 6-7 covering channels today; the frame is a
-/// fixed size for every sender (one bufferRecv, one buffer, no per-chain plumbing), so this is
-/// the ceiling and the header's n_chan says how many are real.
+/// Comb columns a row MAY carry. This is the format's ceiling and the size of the header's
+/// freq_id label array -- NOT the row stride: each sender ships exactly the columns it despreads
+/// and declares that in `max_chan`. The gather's one receive buffer is sized from this ceiling,
+/// which is how senders of different widths keep sharing a single listener.
 constexpr int TELEM_MAX_CHAN = 8;
 
 /// Hard ceiling on records batched into one wire frame. Not the configured value -- that is
@@ -203,23 +210,54 @@ static_assert(offsetof(TelemHeader, chan_id) == 96, "TelemHeader layout is a wir
 /// The record header keeps its summed prompt (slots 3/4) so nothing downstream has to change on
 /// the same day; the comb is what the broker should actually combine, because only it carries
 /// the frequency axis a delay lives on.
-constexpr int TELEM_ROW_FLOATS = RECORD_FLOATS + TELEM_MAX_CHAN * CHAN_FLOATS;
+/// Widest row the format admits. A CEILING, NOT THE STRIDE: every sender declares its own row
+/// width in `max_chan`/`n_row_total`, and a reader that assumes this constant instead of reading
+/// those fields walks a frame from a narrower sender at the wrong offsets -- plausible numbers,
+/// wrong satellites. Use telem_row_floats(h.max_chan).
+constexpr int TELEM_MAX_ROW_FLOATS = RECORD_FLOATS + TELEM_MAX_CHAN * CHAN_FLOATS;
 
-/// Bytes of one wire frame carrying @c n_rec record slots of @c n_prn rows.
-/// ⚠️ The senders and the gather's receive buffer MUST agree on this exactly; it is computed
-/// once in the config generator from the same integers and written into both.
-constexpr size_t telem_frame_bytes(int n_rec, int n_prn) {
-    return sizeof(TelemHeader) + (size_t)n_rec * n_prn * TELEM_ROW_FLOATS * sizeof(float);
+/// Floats per row for a sender carrying @c n_cols comb columns (0 when the comb is off).
+constexpr int telem_row_floats(int n_cols) {
+    return RECORD_FLOATS + n_cols * CHAN_FLOATS;
+}
+
+/// Bytes of one wire frame carrying @c n_rec record slots of @c n_prn rows of @c n_cols columns.
+///
+/// ⚠️ THE FRAME SIZE IS PER SENDER, and it is the sender's own shape: an instance despreading one
+/// 195 kHz channel ships one comb column, not the eight the widest chain needs. Every column and
+/// every PRN row the wire reserves and nobody fills is bytes on a link the whole fleet shares.
+/// The gather's receive buffer is sized to the WIDEST sender and accepts anything up to it
+/// (bufferRecv `allow_short_frames`), so senders of different shapes share one listener.
+constexpr size_t telem_frame_bytes(int n_rec, int n_prn, int n_cols) {
+    return sizeof(TelemHeader) + (size_t)n_rec * n_prn * telem_row_floats(n_cols) * sizeof(float);
 }
 
 /// Float offset of PRN row @c p in record slot @c r, within the payload (i.e. AFTER the header).
-constexpr size_t telem_row_offset(int r, int p, int n_prn) {
-    return ((size_t)r * n_prn + p) * TELEM_ROW_FLOATS;
+/// @c row_floats is the SENDER's stride (header n_row_total), never the compile-time ceiling.
+constexpr size_t telem_row_offset(int r, int p, int n_prn, int row_floats) {
+    return ((size_t)r * n_prn + p) * row_floats;
 }
 
 /// Float offset of comb column @c ch within a row (relative to the row's start).
 constexpr size_t telem_chan_offset(int ch) {
     return (size_t)RECORD_FLOATS + (size_t)ch * CHAN_FLOATS;
+}
+
+/// Bytes this header says its own frame is. The wire is what defines the shape now, so a
+/// consumer reading a frame out of a buffer sized to the WIDEST sender asks the header how much
+/// of that buffer is really this sender's frame -- never the buffer's own frame_size.
+inline size_t telem_frame_bytes(const TelemHeader& h) {
+    return telem_frame_bytes(h.n_rec, h.n_prn, h.max_chan);
+}
+
+/// Does this header describe a self-consistent frame of @c bytes? The shape travels on the wire
+/// and the payload is walked with it, so a reader that skips this walks off the end of a short
+/// frame instead of rejecting it.
+inline bool telem_shape_ok(const TelemHeader& h, size_t bytes) {
+    return h.max_chan <= TELEM_MAX_CHAN && h.n_row == RECORD_FLOATS
+           && h.n_row_total == telem_row_floats(h.max_chan) && h.n_chan <= h.max_chan
+           && h.n_rec > 0 && h.n_rec <= TELEM_MAX_REC && h.n_prn > 0
+           && telem_frame_bytes(h.n_rec, h.n_prn, h.max_chan) == bytes;
 }
 
 /// The payload floats of a frame.

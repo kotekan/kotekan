@@ -47,7 +47,7 @@ sys.path.insert(0, CONF)
 from chord_band_plan import (all_band_channels, covering_channels,  # noqa: E402
                              node_channels, signal_table)
 from gnss_record_layout import (cube_frame_bytes,  # noqa: E402
-                                record_stride, telem_frame_bytes,
+                                record_stride, telem_frame_bytes, telem_max_chan,
                                 chan_floats, prnctl_bytes)
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
@@ -170,6 +170,42 @@ def dll_spacing_chips(name):
     nodes must be cycled before the broker so the taps lead the law.
     """
     return {"GPS_L2C_CM": 0.4}.get(name, 0.5)
+
+
+# PRN rows per chain, and the number every other chain gets. See telem_rows().
+_TELEM_ROWS = {"gal_e5a": 20, "gal_e5b": 20, "gal_e6": 20}
+_TELEM_ROWS_DEFAULT = 14
+
+
+def telem_rows(chain_name, override):
+    """PRN rows this chain's senders put on the wire.
+
+    A WIRE CAPACITY, NOT A PRN LIST: GnssTelemPack compacts rows onto the PRNs that were
+    actually despread in the window, so this is how many satellites a sender may carry AT ONCE.
+    Over it, the packer ships the lowest-numbered and DROPS the rest -- silently as far as the
+    sky is concerned, because downstream a dropped PRN is indistinguishable from one that set.
+
+    It is per chain because the constellations do not seed alike: Galileo's tracker holds
+    several more live replicas than GPS's or BeiDou's, and one number for the fleet either
+    truncates Galileo or pads everyone else. Both cost -- the padding rides a 1 GbE the whole
+    fleet shares -- so size each chain to its own live count with a few rows of headroom, and
+    watch the packer's overflow WARN, which names the first PRN it dropped.
+    """
+    if override is not None:
+        return override
+    return _TELEM_ROWS.get(chain_name, _TELEM_ROWS_DEFAULT)
+
+
+def telem_rows_max(override):
+    """The most rows ANY chain can put on the wire -- what the gather's buffer must hold.
+
+    Read off the same table rather than off the chains in this run: the gather serves the whole
+    fleet, including chains a later node config adds, and a buffer one row short of some sender
+    is a connection bufferRecv closes -- that sender delivers nothing at all.
+    """
+    if override is not None:
+        return override
+    return max([_TELEM_ROWS_DEFAULT] + list(_TELEM_ROWS.values()))
 
 
 def broker_chain_name(name):
@@ -863,7 +899,10 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
                       + (f" + {n_prn} * {n_chan} * {chan_floats()} * sizeof_float32"
                          if args.telem_host else "")),
             "cmb":   f"{n_prn} * {record_floats} * sizeof_float32",
-            "telem": telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn),
+            "telem": telem_frame_bytes(args.telem_records_per_frame,
+                                       telem_rows(broker_chain_name(sig["primary"]),
+                                                  args.telem_max_prn),
+                                       n_chan),
         },
     }
 
@@ -1685,12 +1724,14 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # error in the #33 carrier-rate feed were all that inference going wrong. Here the address
     # (chain, instance, absolute window) travels with the data on the F-engine's own clock.
     #
-    # FRAME SIZE IS UNIFORM ACROSS EVERY SENDER, deliberately: one bufferRecv, one port, one
-    # buffer on the far side, and no per-chain plumbing that can be wired up crooked. The cost
-    # is zero rows for chains carrying fewer than telem_max_prn PRNs -- a few MB/s.
+    # FRAME SIZE IS THE SENDER'S OWN: its chain's PRN rows and the comb columns THIS instance
+    # despreads. One bufferRecv still serves the whole fleet -- the identity is in the payload,
+    # and the receive buffer is sized to the widest sender (`allow_short_frames`) -- but a
+    # reserved column or a reserved row that nobody fills is bytes on a link the fleet shares.
     if args.telem_host:
         chain_name = broker_chain_name(chain["signal"] if chain else sig["primary"])
-        telem_bytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
+        telem_max_prn = telem_rows(chain_name, args.telem_max_prn)
+        telem_bytes = telem_frame_bytes(args.telem_records_per_frame, telem_max_prn, n_chan)
         # ⚠️ NO LONGER AN ERROR WHEN n_prn EXCEEDS IT (task #64). GnssTelemPack COMPACTS the
         # wire rows onto the PRNs that were actually despread, so max_prn is the number of
         # SIMULTANEOUSLY LIVE satellites the wire can carry, not a mirror of the record
@@ -1698,7 +1739,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         # 16 rows, and the 40 rows this used to demand were ~65% zeros: 480 Mbps of cf06's
         # single 1 GbE, which measured ~5 s on every broker cycle. The stage WARNs by PRN name
         # if a window ever has more live than fit.
-        if args.telem_max_prn < 1:
+        if telem_max_prn < 1:
             raise SystemExit(f"--telem-max-prn must be >= 1 (chain {chain_name})")
         blocks.update({
             f"{pre}telem_buf": {
@@ -1720,7 +1761,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 "inst": f"{node}.{gpu}",
                 "n_prn": n_prn,
                 "n_elements": n_live,
-                "max_prn": args.telem_max_prn,
+                "max_prn": telem_max_prn,
                 "records_per_frame": args.telem_records_per_frame,
                 "hops_per_record": args.hops_per_record,
                 "fft_len": cfg["fengine"]["fft_length"],
@@ -2203,9 +2244,13 @@ def build_gather_instance(cfg, args, port):
     inference from arrival order or from a UTC stamp each instance derives on its own (#46
     measured 0.105 s of spread in exactly that stamp).
 
-    ONE LISTENER, ONE BUFFER. The identity of a frame is in its payload (chain + instance tags),
-    not in which socket it arrived on, so there is no port map to wire up crooked -- which is
-    how the search aggregator's feeds get renumbered whenever a node is dropped.
+    ONE LISTENER, ONE BUFFER, SENDERS OF DIFFERENT SHAPES. The identity of a frame is in its
+    payload (chain + instance tags), not in which socket it arrived on, so there is no port map
+    to wire up crooked -- which is how the search aggregator's feeds get renumbered whenever a
+    node is dropped. Senders no longer agree on a frame size (each ships its chain's PRN rows
+    and its own comb columns), so the buffer is sized to the WIDEST one the fleet can produce
+    and bufferRecv is told to accept anything up to it; the frames are self-describing and
+    every consumer validates the shape against the length it was given.
 
     Standalone, like the search instance and for the same reasons: it must not share the
     aggregator's fate (the aggregator is restarted often), and moving it is a change of
@@ -2213,7 +2258,13 @@ def build_gather_instance(cfg, args, port):
     """
     rt = cfg["runtime"]
     cores = rt["cpu_affinity"]
-    frame_bytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
+    # THE WIDEST SENDER, over both axes independently. Not the widest chain's product: rows and
+    # columns are set by different things (its constellation's live count, its instances' share
+    # of the band), and a buffer smaller than some sender's frame is a connection bufferRecv
+    # closes -- that sender then delivers NOTHING, which reads downstream as a dead node.
+    frame_bytes = telem_frame_bytes(args.telem_records_per_frame,
+                                    telem_rows_max(args.telem_max_prn),
+                                    telem_max_chan())
     out = {
         "type": "config",
         "log_level": "info",
@@ -2245,6 +2296,9 @@ def build_gather_instance(cfg, args, port):
             # socket reads, not compute.
             "num_threads": 4,
             "drop_frames": True,
+            # Senders ship their own shapes into this one buffer; see the docstring. Every
+            # consumer of telem_buf strides by the frame's header, never by this buffer's size.
+            "allow_short_frames": True,
             # ⚠️ MUST MATCH THE SENDER EXACTLY -- see the srch_send note in the node branch. The
             # nodes inherit a config_tracker block from the production base and this instance
             # has none, so left to default the two write different header lengths, the stream
@@ -2902,18 +2956,20 @@ def main():
                     help="port the gather instance's bufferRecv listens on. ONE port for the "
                          "whole fleet: every frame carries its own chain and instance tags, so "
                          "there is no per-chain port map to get wrong.")
-    ap.add_argument("--telem-max-prn", type=int, default=16,
-                    help="PRN rows on the wire = how many SIMULTANEOUSLY LIVE satellites one "
-                         "frame can carry. ⚠️ ON THE WIRE and therefore IDENTICAL on every "
-                         "sender and on the gather's receive buffer -- bufferRecv closes any "
-                         "connection whose frame_size disagrees, so changing this needs BOTH "
-                         "ends restarted.\n"
-                         "NOT the record buffer's slot count: GnssTelemPack compacts rows onto "
-                         "the PRNs that were actually despread, so a 32-slot tracker with 14 "
-                         "seeded satellites fits in 16 rows. Was 40 until 2026-08-15, which put "
-                         "~65%% zero rows on the wire -- 480 Mbps of cf06's single 1 GbE and a "
-                         "measured ~5 s on every broker cycle, because the ~60 REST polls "
-                         "queue behind the frame-synced bursts (task #64).")
+    ap.add_argument("--telem-max-prn", type=int, default=None,
+                    help="OVERRIDE the per-chain PRN row count (see telem_rows()), for every "
+                         "chain at once. Default None = each chain gets its own, which is what "
+                         "the fleet runs: the constellations do not seed alike, and one number "
+                         "for all of them either truncates the widest or pads the rest.\n"
+                         "PRN rows on the wire = how many SIMULTANEOUSLY LIVE satellites one "
+                         "frame can carry. NOT the record buffer's slot count: GnssTelemPack "
+                         "compacts rows onto the PRNs that were actually despread. Over the "
+                         "count, the packer ships the lowest-numbered and DROPS the rest, which "
+                         "downstream is indistinguishable from a satellite that set -- so the "
+                         "packer's overflow WARN is the thing to watch after changing it. "
+                         "⚠️ The GATHER's receive buffer must be regenerated in the same commit: "
+                         "it is sized to the WIDEST sender and bufferRecv closes any connection "
+                         "whose frame exceeds its buffer.")
     ap.add_argument("--telem-records-per-frame", type=int, default=4,
                     help="records batched into one wire frame. 4 = one 8192-hop correlator "
                          "frame at hops_per_record 2048, i.e. 23.84 frames/s. The batch "
@@ -3476,15 +3532,20 @@ def main():
         if port == 12048:
             raise SystemExit("refusing port 12048 (choco owns it)")
         out = build_gather_instance(cfg, args, port)
-        nbytes = telem_frame_bytes(args.telem_records_per_frame, args.telem_max_prn)
+        nbytes = telem_frame_bytes(args.telem_records_per_frame,
+                                   telem_rows_max(args.telem_max_prn), telem_max_chan())
         text = ("# GENERATED by config/gen_chord_gnss_config.py --gather-instance -- DO NOT "
                 "HAND-EDIT.\n"
                 f"# TASK #59: the fleet's per-record telemetry, gathered on ONE port and handed\n"
                 f"# to the PYTHON broker on {args.gather_serve_host}:{args.gather_serve_port}.\n"
-                f"# wire frame {nbytes} B = {args.telem_records_per_frame} records x "
-                f"{args.telem_max_prn} PRN rows; listen {args.telem_port}; rest {port}\n"
-                "# ⚠️ telem_max_prn and telem_records_per_frame must match EVERY sender: they\n"
-                "#    set frame_size, and bufferRecv closes any connection that disagrees.\n"
+                f"# buffer frame {nbytes} B = {args.telem_records_per_frame} records x "
+                f"{telem_rows_max(args.telem_max_prn)} PRN rows x {telem_max_chan()} comb columns"
+                f" -- THE WIDEST SENDER, not what any one ships; listen {args.telem_port}; "
+                f"rest {port}\n"
+                "# ⚠️ SENDERS SHIP THEIR OWN SHAPES -- their chain's PRN rows, their instance's\n"
+                "#    comb columns -- and this buffer only has to HOLD the widest. bufferRecv\n"
+                "#    closes any connection whose frame EXCEEDS its buffer, so raising a\n"
+                "#    chain's rows means regenerating this file in the same commit.\n"
                 + yaml.safe_dump(out, default_flow_style=False, sort_keys=True))
         if args.out:
             os.makedirs(os.path.dirname(args.out), exist_ok=True)

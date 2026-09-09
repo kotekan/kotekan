@@ -49,18 +49,22 @@ int main(int argc, char** argv) {
     gnss::telem_set_name(h.chain, "gal_e5a");
     gnss::telem_set_name(h.inst, "cx42.1");
 
-    const int n_chan = 5; // < TELEM_MAX_CHAN on purpose: the unused columns must read ZERO,
-                          // never the neighbouring row's data, and only a partial fill tests it
+    const int n_chan = 5;
+    // max_chan IS THE ROW STRIDE and it is NEITHER n_chan NOR the format ceiling here, on
+    // purpose: a reader that strides by TELEM_MAX_CHAN reads every row at the wrong offset, and
+    // a reader that strides by n_chan reads all but the first. The sixth column stays ZERO, so
+    // a reader that ignores n_chan is caught too.
+    const int n_cols = 6;
     h.n_chan = (uint16_t)n_chan;
-    h.max_chan = (uint16_t)gnss::TELEM_MAX_CHAN;
-    h.n_row_total = (uint16_t)gnss::TELEM_ROW_FLOATS;
+    h.max_chan = (uint16_t)n_cols;
+    h.n_row_total = (uint16_t)gnss::telem_row_floats(n_cols);
     for (int ch = 0; ch < n_chan; ++ch)
         h.chan_id[ch] = (uint16_t)(5972 + 16 * ch); // a real stride-16 comb
 
-    std::vector<float> rows((size_t)n_rec * n_prn * gnss::TELEM_ROW_FLOATS, 0.0f);
+    std::vector<float> rows((size_t)n_rec * n_prn * gnss::telem_row_floats(n_cols), 0.0f);
     for (int r = 0; r < n_rec; ++r)
         for (int p = 0; p < n_prn; ++p) {
-            float* row = &rows[gnss::telem_row_offset(r, p, n_prn)];
+            float* row = &rows[gnss::telem_row_offset(r, p, n_prn, gnss::telem_row_floats(n_cols))];
             for (int f = 0; f < gnss::RECORD_FLOATS; ++f)
                 row[f] = (float)(1000 * r + 10 * p + f);
             row[gnss::REC_PRN] = (float)(100 + p);
@@ -95,7 +99,8 @@ int main(int argc, char** argv) {
     std::fwrite(rows.data(), sizeof(float), rows.size(), f);
     std::fclose(f);
 
-    std::printf("{\"row_floats\": %d, \"max_chan\": %d, \"chan_floats\": %d, \"n_chan\": %d,"
+    std::printf("{\"row_floats\": %d, \"max_chan\": %d, \"max_chan_const\": %d,"
+                " \"chan_floats\": %d, \"n_chan\": %d,"
                 " \"chan_id0\": %d, \"chan_stride\": %zu,"
                 " \"header_bytes\": %zu, \"telem_header_bytes_const\": %d, \"record_floats\": %d,"
                 " \"frame_bytes\": %zu, \"n_rec\": %d, \"n_prn\": %d,"
@@ -104,10 +109,11 @@ int main(int argc, char** argv) {
                 " \"magic\": %u, \"version\": %d, \"win\": %llu, \"seq\": %llu,"
                 " \"wstart0\": %lld, \"present\": %u,"
                 " \"chain\": \"gal_e5a\", \"inst\": \"cx42.1\"}\n",
-                gnss::TELEM_ROW_FLOATS, gnss::TELEM_MAX_CHAN, gnss::CHAN_FLOATS, n_chan,
+                gnss::telem_row_floats(n_cols), n_cols, gnss::TELEM_MAX_CHAN,
+                gnss::CHAN_FLOATS, n_chan,
                 (int)h.chan_id[0], gnss::telem_chan_offset(1) - gnss::telem_chan_offset(0),
                 sizeof(gnss::TelemHeader), gnss::TELEM_HEADER_BYTES, gnss::RECORD_FLOATS,
-                gnss::telem_frame_bytes(n_rec, n_prn), n_rec, n_prn,
+                gnss::telem_frame_bytes(n_rec, n_prn, n_cols), n_rec, n_prn,
                 offsetof(gnss::TelemHeader, win), offsetof(gnss::TelemHeader, seq),
                 offsetof(gnss::TelemHeader, wstart0), offsetof(gnss::TelemHeader, utc0),
                 offsetof(gnss::TelemHeader, present), offsetof(gnss::TelemHeader, chain),

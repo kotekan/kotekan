@@ -183,18 +183,22 @@ void GnssTelemGather::main_thread() {
         // A sender built against a different record layout, or something that is not one of our
         // frames at all, must be REJECTED rather than forwarded: the broker would parse the
         // rows at the wrong stride and every number it produced would be plausible and wrong.
+        // Senders have DIFFERENT frame sizes (each ships its own PRN rows and comb columns),
+        // so the buffer is sized to the widest and the header says how much of it is this
+        // frame. Both halves are checked: self-consistent shape, and it fits the buffer.
+        const size_t wire_bytes = gnss::telem_frame_bytes(*h);
         const bool ok = h->magic == gnss::TELEM_MAGIC && h->version == gnss::TELEM_VERSION
-                        && h->n_row == gnss::RECORD_FLOATS && h->n_rec > 0
-                        && h->n_rec <= gnss::TELEM_MAX_REC && h->n_prn > 0
-                        && gnss::telem_frame_bytes(h->n_rec, h->n_prn)
-                               == (size_t)in_buf->frame_size;
+                        && gnss::telem_shape_ok(*h, wire_bytes)
+                        && wire_bytes <= (size_t)in_buf->frame_size;
         if (!ok) {
             if ((_bad_frames++ % 100) == 0)
                 ERROR("GnssTelemGather[{:s}]: rejecting frame (magic {:#x} v{:d} n_rec {:d} "
-                      "n_prn {:d} n_row {:d} vs RECORD_FLOATS {:d}, buffer frame {:d} B) -- {:d} "
-                      "so far. A sender is on a different build or a different max_prn.",
+                      "n_prn {:d} n_row {:d}/{:d} max_chan {:d} vs RECORD_FLOATS {:d}, wire {:d} B "
+                      "> buffer {:d} B) -- {:d} so far. A sender is on a different build, or one "
+                      "whose shape the gather's buffer was not sized for.",
                       unique_name, h->magic, h->version, h->n_rec, h->n_prn, h->n_row,
-                      gnss::RECORD_FLOATS, (size_t)in_buf->frame_size, _bad_frames);
+                      h->n_row_total, h->max_chan, gnss::RECORD_FLOATS, wire_bytes,
+                      (size_t)in_buf->frame_size, _bad_frames);
             in_buf->mark_frame_empty(unique_name, in_id++);
             continue;
         }
@@ -222,7 +226,10 @@ void GnssTelemGather::main_thread() {
             }
         }
 
-        broadcast(frame, (size_t)in_buf->frame_size);
+        // The frame's own bytes, not the buffer's: forwarding the buffer's ceiling would push
+        // a narrow sender's padding down the local stream and make every reader's length
+        // prefix disagree with the shape its header declares.
+        broadcast(frame, gnss::telem_frame_bytes(*h));
         in_buf->mark_frame_empty(unique_name, in_id++);
         sweep_stale();
     }

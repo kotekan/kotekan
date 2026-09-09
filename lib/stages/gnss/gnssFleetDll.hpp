@@ -285,10 +285,11 @@ public:
         const auto* h = (const TelemHeader*)frame;
         // The same validation the gather applies, for the same reason: a sender on a different
         // record layout parses at the wrong stride, and this stage would close a loop on it.
-        const bool ok = h->magic == TELEM_MAGIC && h->version == TELEM_VERSION
-                        && h->n_row == RECORD_FLOATS && h->n_rec > 0 && h->n_rec <= TELEM_MAX_REC
-                        && h->n_prn > 0 && h->n_chan <= TELEM_MAX_CHAN && h->fft_len > 0
-                        && telem_frame_bytes(h->n_rec, h->n_prn) == bytes;
+        // `bytes` is the CAPACITY the caller can read (the buffer's frame), not this frame's
+        // size: senders ship their own shapes into a buffer sized to the widest one.
+        const bool ok = h->magic == TELEM_MAGIC && h->version == TELEM_VERSION && h->fft_len > 0
+                        && telem_shape_ok(*h, telem_frame_bytes(*h))
+                        && telem_frame_bytes(*h) <= bytes;
         if (!ok)
             return FoldStatus::BAD_HEADER;
 
@@ -340,17 +341,21 @@ public:
         const float* rows = telem_rows(frame);
         const int n_prn = h->n_prn;
         const int n_chan = h->n_chan;
+        // THE SENDER'S STRIDE, off the wire. Senders carry different comb widths, so a
+        // compile-time row width reads a narrow sender's rows at the wide sender's offsets --
+        // every field lands in the previous row's comb and looks like data.
+        const int row_floats = h->n_row_total;
 
         // THE PRN MAP IS READ FROM THE DATA, from record slot 0's rows, exactly as the Python
         // client does. The assembler writes REC_PRN even for a PRN that did not run this window,
         // so it is there whether or not slot 0 was filled. A configured copy is one more thing
         // that can drift out of step with the node it describes -- and after #64's row
         // compaction the row order is not the configured PRN order at all.
-        constexpr int MAX_ROWS = 256; // telem_max_prn is 16 today, was 40 before #64
+        constexpr int MAX_ROWS = 256; // telem_max_prn is per chain now (12-24), was 40 pre-#64
         int prn_of_row[MAX_ROWS];
         const int n_row_map = std::min(n_prn, MAX_ROWS);
         for (int p = 0; p < n_row_map; ++p) {
-            const float v = rows[telem_row_offset(0, p, n_prn) + REC_PRN];
+            const float v = rows[telem_row_offset(0, p, n_prn, row_floats) + REC_PRN];
             prn_of_row[p] = (v > 0.0f) ? (int)(v + 0.5f) : 0;
         }
 
@@ -366,7 +371,7 @@ public:
                 const int prn = prn_of_row[p];
                 if (prn <= 0)
                     continue;
-                const float* row = rows + telem_row_offset(r, p, n_prn);
+                const float* row = rows + telem_row_offset(r, p, n_prn, row_floats);
 
                 // THIS SENDER'S CHANNELS, SUMMED RAW (#63). Each tap is normalised by ITS OWN
                 // replica energy, and the three were element-combined and NCO-rotated

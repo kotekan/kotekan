@@ -42,16 +42,18 @@ def make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=2,
         present = (1 << n_rec) - 1
     n_chan = len(chan_ids)
     ids = list(chan_ids) + [0] * (telem._MAX_CHAN - n_chan)
+    # The stride is the SENDER'S: rows carry this instance's comb columns only.
+    row_total = telem._ROW_FLOATS + n_chan * telem._CHAN_FLOATS
     wstart0 = win * n_rec * hops_per_record * fft_len
     hdr = telem._HDR.pack(telem._MAGIC, telem._VERSION, n_rec, n_prn, telem._ROW_FLOATS,
                           n_chan, 32, hops_per_record, fft_len, win, seq, wstart0, 0.0,
-                          present, telem._MAX_CHAN, telem._ROW_TOTAL,
+                          present, n_chan, row_total,
                           chain.encode(), inst.encode(), *ids)
-    body = [0.0] * (n_rec * n_prn * telem._ROW_TOTAL)
+    body = [0.0] * (n_rec * n_prn * row_total)
     taps = taps or {}
     for r in range(n_rec):
         for p in range(n_prn):
-            base = (r * n_prn + p) * telem._ROW_TOTAL
+            base = (r * n_prn + p) * row_total
             body[base + telem.REC_PRN] = float(1 + p)
             body[base + telem.REC_P_ENERGY] = 1.0
             body[base + telem.REC_PHI0] = phi0

@@ -499,7 +499,7 @@ gnss0_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_telem_buf:
-  frame_size: 25968
+  frame_size: 18704
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -520,7 +520,7 @@ gnss0_b2a_telem_pack:
   in_buf: gnss0_b2a_n2rec_buf
   inst: cx44.0
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 6
   n_elements: 32
   n_prn: 24
@@ -532,7 +532,7 @@ gnss0_b2a_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.135
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -745,7 +745,7 @@ gnss0_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_telem_buf:
-  frame_size: 25968
+  frame_size: 20720
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -767,7 +767,7 @@ gnss0_b2b_telem_pack:
   in_buf: gnss0_b2b_n2rec_buf
   inst: cx44.0
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 7
   n_elements: 32
   n_prn: 24
@@ -779,7 +779,7 @@ gnss0_b2b_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -992,7 +992,7 @@ gnss0_b3i_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b3i_telem_buf:
-  frame_size: 25968
+  frame_size: 20720
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1014,7 +1014,7 @@ gnss0_b3i_telem_pack:
   in_buf: gnss0_b3i_n2rec_buf
   inst: cx44.0
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 7
   n_elements: 32
   n_prn: 24
@@ -1026,7 +1026,7 @@ gnss0_b3i_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1267,7 +1267,7 @@ gnss0_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_telem_buf:
-  frame_size: 25968
+  frame_size: 26672
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1288,7 +1288,7 @@ gnss0_e5a_telem_pack:
   in_buf: gnss0_e5a_n2rec_buf
   inst: cx44.0
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 20
   n_chan: 6
   n_elements: 32
   n_prn: 32
@@ -1300,7 +1300,7 @@ gnss0_e5a_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 10.175
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1521,7 +1521,7 @@ gnss0_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_telem_buf:
-  frame_size: 25968
+  frame_size: 29552
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1543,7 +1543,7 @@ gnss0_e5b_telem_pack:
   in_buf: gnss0_e5b_n2rec_buf
   inst: cx44.0
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 20
   n_chan: 7
   n_elements: 32
   n_prn: 32
@@ -1555,7 +1555,7 @@ gnss0_e5b_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 11.273
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -1768,7 +1768,7 @@ gnss0_e6_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e6_telem_buf:
-  frame_size: 25968
+  frame_size: 18032
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1786,7 +1786,7 @@ gnss0_e6_telem_pack:
   in_buf: gnss0_e6_n2rec_buf
   inst: cx44.0
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 20
   n_chan: 3
   n_elements: 32
   n_prn: 32
@@ -1798,7 +1798,7 @@ gnss0_e6_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 6.879
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2059,7 +2059,7 @@ gnss0_srch_tap:
   n_elements: 1
   out_buf: gnss0_srch_buf
 gnss0_telem_buf:
-  frame_size: 25968
+  frame_size: 18704
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2080,7 +2080,7 @@ gnss0_telem_pack:
   in_buf: gnss0_n2rec_buf
   inst: cx44.0
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 6
   n_elements: 32
   n_prn: 32
@@ -2092,7 +2092,7 @@ gnss0_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.135
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2329,7 +2329,7 @@ gnss1_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_telem_buf:
-  frame_size: 25968
+  frame_size: 20720
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2351,7 +2351,7 @@ gnss1_b2a_telem_pack:
   in_buf: gnss1_b2a_n2rec_buf
   inst: cx44.1
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 7
   n_elements: 32
   n_prn: 24
@@ -2363,7 +2363,7 @@ gnss1_b2a_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2550,7 +2550,7 @@ gnss1_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_telem_buf:
-  frame_size: 25968
+  frame_size: 18704
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2571,7 +2571,7 @@ gnss1_b2b_telem_pack:
   in_buf: gnss1_b2b_n2rec_buf
   inst: cx44.1
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 6
   n_elements: 32
   n_prn: 24
@@ -2583,7 +2583,7 @@ gnss1_b2b_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.135
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -2772,7 +2772,7 @@ gnss1_b3i_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b3i_telem_buf:
-  frame_size: 25968
+  frame_size: 20720
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2794,7 +2794,7 @@ gnss1_b3i_telem_pack:
   in_buf: gnss1_b3i_n2rec_buf
   inst: cx44.1
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 7
   n_elements: 32
   n_prn: 24
@@ -2806,7 +2806,7 @@ gnss1_b3i_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3017,7 +3017,7 @@ gnss1_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_telem_buf:
-  frame_size: 25968
+  frame_size: 29552
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -3039,7 +3039,7 @@ gnss1_e5a_telem_pack:
   in_buf: gnss1_e5a_n2rec_buf
   inst: cx44.1
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 20
   n_chan: 7
   n_elements: 32
   n_prn: 32
@@ -3051,7 +3051,7 @@ gnss1_e5a_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 11.273
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3238,7 +3238,7 @@ gnss1_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_telem_buf:
-  frame_size: 25968
+  frame_size: 26672
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -3259,7 +3259,7 @@ gnss1_e5b_telem_pack:
   in_buf: gnss1_e5b_n2rec_buf
   inst: cx44.1
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 20
   n_chan: 6
   n_elements: 32
   n_prn: 32
@@ -3271,7 +3271,7 @@ gnss1_e5b_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 10.175
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3454,7 +3454,7 @@ gnss1_e6_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e6_telem_buf:
-  frame_size: 25968
+  frame_size: 20912
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -3473,7 +3473,7 @@ gnss1_e6_telem_pack:
   in_buf: gnss1_e6_n2rec_buf
   inst: cx44.1
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 20
   n_chan: 4
   n_elements: 32
   n_prn: 32
@@ -3485,7 +3485,7 @@ gnss1_e6_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.977
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6
@@ -3718,7 +3718,7 @@ gnss1_srch_tap:
   n_elements: 1
   out_buf: gnss1_srch_buf
 gnss1_telem_buf:
-  frame_size: 25968
+  frame_size: 20720
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -3740,7 +3740,7 @@ gnss1_telem_pack:
   in_buf: gnss1_n2rec_buf
   inst: cx44.1
   kotekan_stage: GnssTelemPack
-  max_prn: 16
+  max_prn: 14
   n_chan: 7
   n_elements: 32
   n_prn: 32
@@ -3752,7 +3752,7 @@ gnss1_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 9.906
+  max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.3.6

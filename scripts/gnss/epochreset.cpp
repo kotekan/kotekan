@@ -43,7 +43,7 @@ constexpr int PRN = 7;
 /// discriminator is non-zero and a frozen fold is visible as a stale value, not just a
 /// missing one.
 std::vector<char> make_frame(const std::string& inst, uint64_t win, uint64_t seq, double off) {
-    std::vector<char> buf(telem_frame_bytes(N_REC, N_PRN), 0);
+    std::vector<char> buf(telem_frame_bytes(N_REC, N_PRN, N_CHAN), 0);
     auto* h = (TelemHeader*)buf.data();
     h->magic = TELEM_MAGIC;
     h->version = TELEM_VERSION;
@@ -59,8 +59,8 @@ std::vector<char> make_frame(const std::string& inst, uint64_t win, uint64_t seq
     h->wstart0 = (int64_t)win * N_REC * h->hops_per_record * h->fft_len;
     h->utc0 = 0.0;
     h->present = (1u << N_REC) - 1u;
-    h->max_chan = TELEM_MAX_CHAN;
-    h->n_row_total = TELEM_ROW_FLOATS;
+    h->max_chan = N_CHAN;
+    h->n_row_total = telem_row_floats(N_CHAN);
     telem_set_name(h->chain, "gal_e5a");
     telem_set_name(h->inst, inst);
     for (int c = 0; c < N_CHAN; ++c)
@@ -69,7 +69,7 @@ std::vector<char> make_frame(const std::string& inst, uint64_t win, uint64_t seq
     float* rows = telem_rows(buf.data());
     for (int r = 0; r < N_REC; ++r) {
         for (int p = 0; p < N_PRN; ++p) {
-            float* row = rows + telem_row_offset(r, p, N_PRN);
+            float* row = rows + telem_row_offset(r, p, N_PRN, telem_row_floats(N_CHAN));
             row[REC_PRN] = (p == 0) ? (float)PRN : 0.0f;
             if (p != 0)
                 continue;

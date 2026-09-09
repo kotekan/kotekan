@@ -95,7 +95,12 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
     _rec_samples = _hops_per_record * _fft_len;
     _win_samples = (int64_t)_rec_per_frame * _rec_samples;
 
-    const size_t need = gnss::telem_frame_bytes(_rec_per_frame, _max_prn);
+    // THE SENDER'S OWN ROW WIDTH. An instance ships the comb columns it despreads and nothing
+    // else: the eight-column ceiling is the format's, not this stage's. With the comb off the
+    // row is the record header alone.
+    _cols = _chan_export ? _n_chan : 0;
+
+    const size_t need = gnss::telem_frame_bytes(_rec_per_frame, _max_prn, _cols);
     if ((size_t)out_buf->frame_size != need) {
         // EXACT, not ">=": bufferRecv compares frame_size on the wire against its own buffer and
         // closes the connection on a mismatch, so a receiver sized from a different max_prn
@@ -105,7 +110,7 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
                     "exactly {:d} B ({:d} records x {:d} PRN x {:d} floats + {:d} B header). The "
                     "gather's receive buffer must be sized from the SAME two numbers.",
                     unique_name, (size_t)out_buf->frame_size, need, _rec_per_frame, _max_prn,
-                    gnss::RECORD_FLOATS, sizeof(gnss::TelemHeader));
+                    gnss::telem_row_floats(_cols), sizeof(gnss::TelemHeader));
         return;
     }
     const size_t in_need =
@@ -117,7 +122,7 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
         return;
     }
 
-    _rows.assign((size_t)_rec_per_frame * _max_prn * gnss::TELEM_ROW_FLOATS, 0.0f);
+    _rows.assign((size_t)_rec_per_frame * _max_prn * gnss::telem_row_floats(_cols), 0.0f);
     _row_of.assign((size_t)_n_prn, -1);
 
     INFO("GnssTelemPack[{:s}]: {:s}/{:s} -- {:d} records/frame x {:d} PRN rows x {:d} floats = "
@@ -142,8 +147,8 @@ bool GnssTelemPack::flush(frameID& out_id) {
     h.n_prn = (uint16_t)_max_prn;
     h.n_row = (uint16_t)gnss::RECORD_FLOATS;
     h.n_chan = (uint16_t)(_chan_export ? _n_chan : 0);
-    h.max_chan = (uint16_t)gnss::TELEM_MAX_CHAN;
-    h.n_row_total = (uint16_t)gnss::TELEM_ROW_FLOATS;
+    h.max_chan = (uint16_t)_cols;
+    h.n_row_total = (uint16_t)gnss::telem_row_floats(_cols);
     for (int ch = 0; ch < _n_chan && ch < gnss::TELEM_MAX_CHAN; ++ch)
         h.chan_id[ch] = (uint16_t)(_chan_export ? _chan_ids[(size_t)ch] : 0);
     h.n_elem = (uint16_t)_n_elem;
@@ -276,13 +281,14 @@ void GnssTelemPack::main_thread() {
             const int wrow = _row_of[(size_t)p];
             if (wrow < 0)
                 continue;
-            float* row = &_rows[gnss::telem_row_offset(slot, wrow, _max_prn)];
+            float* row = &_rows[gnss::telem_row_offset(slot, wrow, _max_prn,
+                                                       gnss::telem_row_floats(_cols))];
             std::memcpy(row, in + (size_t)p * in_stride,
                         gnss::RECORD_FLOATS * sizeof(float));
-            // THE COMB, copied column by column so the wire's fixed TELEM_MAX_CHAN stride is
-            // filled from this instance's actual n_chan and the unused columns stay the zeros
-            // the frame was cleared to. A memcpy of n_chan*CHAN_FLOATS would be equivalent
-            // today and would silently break the moment either stride changes.
+            // THE COMB, copied column by column: the input's column stride is the tracker's
+            // and the row's is the wire's, and they are only equal by accident. A memcpy of
+            // n_chan*CHAN_FLOATS would be equivalent today and would silently break the moment
+            // either stride changes.
             if (_chan_export)
                 for (int ch = 0; ch < _n_chan; ++ch)
                     std::memcpy(row + gnss::telem_chan_offset(ch),

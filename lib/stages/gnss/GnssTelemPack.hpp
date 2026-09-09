@@ -37,7 +37,8 @@
  *
  * @par buffers
  * @buffer in_buf  tracker record frames (one per record; GnssChanMetadata::sample_seq = wstart)
- * @buffer out_buf telemetry frames, exactly gnss::telem_frame_bytes(records_per_frame, max_prn)
+ * @buffer out_buf telemetry frames, exactly
+ *                  gnss::telem_frame_bytes(records_per_frame, max_prn, n_chan)
  *
  * @conf chain             String. Chain tag carried on every frame ("gps_l5", "gal_e5a", ...).
  * @conf inst              String. Instance tag ("cx19.0" = node cx19, GPU 0). Must be unique
@@ -68,6 +69,7 @@ private:
     int _n_prn = 0;
     int _n_elem = 0;
     int _max_prn = 0;
+    int _cols = 0; ///< comb columns THIS sender ships == the header's max_chan (0 = comb off)
     int _rec_per_frame = 4;
     int64_t _hops_per_record = 0;
     int64_t _fft_len = 0;
@@ -88,7 +90,7 @@ private:
     int64_t _cur_win = -1;
     uint32_t _cur_present = 0;
     double _cur_utc0 = 0.0;
-    std::vector<float> _rows; ///< [rec_per_frame][max_prn][RECORD_FLOATS]
+    std::vector<float> _rows; ///< [rec_per_frame][max_prn][telem_row_floats(_cols)]
 
     /// ROW COMPACTION (task #64). `_row_of[p]` is the WIRE row that input PRN slot p occupies
     /// in the window currently open, or -1 if it is not carried. The tracker's record buffer

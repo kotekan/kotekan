@@ -49,7 +49,8 @@ sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 sys.path.insert(0, os.path.join(K, "config"))
 
 from gnss_broker import telem  # noqa: E402
-from gnss_record_layout import record_stride, telem_frame_bytes  # noqa: E402
+from gnss_record_layout import (record_stride, telem_frame_bytes,  # noqa: E402
+                                telem_max_chan)
 
 # Ports deliberately far from anything live (11040-11061, 12048-12051 are all in use on the
 # site). A gate that collides with production is worse than no gate.
@@ -79,7 +80,9 @@ LIVE_PRNS = [p for p in PRNS if p != DEAD_PRN]
 INSTANCES = [("cx19.0", 0), ("cx42.1", 0), ("cx51.1", 3)]
 
 REC_STRIDE = record_stride(N_ELEM)
-N_CHAN = 5          # < TELEM_MAX_CHAN, so the unused wire columns are exercised
+N_CHAN = 5          # < TELEM_MAX_CHAN: the sender's row is narrower than the format's
+                    # ceiling, so the receive buffer is bigger than the frames and the
+                    # short-frame path through bufferRecv is what this exercises
 CHAN_FLOATS = 9      # E/P/L per channel (gnssRecord.hpp v3)
 CHAN_IDS = [5972 + 16 * k for k in range(N_CHAN)]
 
@@ -182,10 +185,14 @@ def write_config(dirpath):
         "telescope: {name: ICETelescope, num_polarizations: 1, num_dishes: 1,"
         " query_gps: false, require_gps: false}",
         "rest_server: {port: %d}" % PORT_REST,
+        # THE RECEIVE BUFFER IS THE CEILING, THE SENDERS ARE NARROWER -- the deployed shape,
+        # and the reason `allow_short_frames` is on: it holds the widest row the format admits
+        # while every sender here ships N_CHAN columns.
         "telem_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 256,"
-        " frame_size: %d}" % telem_frame_bytes(REC_PER_FRAME, MAX_PRN),
+        " frame_size: %d}" % telem_frame_bytes(REC_PER_FRAME, MAX_PRN, telem_max_chan()),
         "telem_recv: {kotekan_stage: bufferRecv, buf: telem_buf, listen_port: %d,"
-        " num_threads: 2, drop_frames: false, use_config_tracker: false}" % PORT_RECV,
+        " num_threads: 2, drop_frames: false, use_config_tracker: false,"
+        " allow_short_frames: true}" % PORT_RECV,
         "telem_gather: {kotekan_stage: GnssTelemGather, in_buf: telem_buf,"
         " serve_host: 127.0.0.1, serve_port: %d}" % PORT_SERVE,
     ]
@@ -195,7 +202,7 @@ def write_config(dirpath):
             "%s_rec_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 16,"
             " frame_size: %d}" % (tag, (N_PRN * REC_STRIDE + N_PRN * N_CHAN * CHAN_FLOATS) * 4),
             "%s_out_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 64,"
-            " frame_size: %d}" % (tag, telem_frame_bytes(REC_PER_FRAME, MAX_PRN)),
+            " frame_size: %d}" % (tag, telem_frame_bytes(REC_PER_FRAME, MAX_PRN, N_CHAN)),
             "%s_read: {kotekan_stage: rawFileRead, buf: %s_rec_buf, base_dir: %s,"
             " file_name: %s, file_ext: raw, prefix_hostname: false, end_interrupt: false}"
             % (tag, tag, dirpath, inst.replace(".", "_")),

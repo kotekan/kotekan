@@ -96,20 +96,26 @@ def chan_floats():
     return _read("CHAN_FLOATS")
 
 
-def telem_row_floats():
-    """gnss::TELEM_ROW_FLOATS -- the record header PLUS the reserved comb columns."""
-    return record_floats() + telem_max_chan() * chan_floats()
+def telem_row_floats(n_cols):
+    """gnss::telem_row_floats -- the record header PLUS this sender's own comb columns."""
+    return record_floats() + n_cols * chan_floats()
 
 
-def telem_frame_bytes(n_rec, n_prn):
+def telem_max_row_floats():
+    """gnss::TELEM_MAX_ROW_FLOATS -- the widest row the format admits (a CEILING, not a stride)."""
+    return telem_row_floats(telem_max_chan())
+
+
+def telem_frame_bytes(n_rec, n_prn, n_cols):
     """Bytes of one telemetry wire frame -- the SAME expression as gnss::telem_frame_bytes.
 
-    ⚠️ Every sender's out_buf AND the gather's receive buffer must be sized from this, with the
-    same (n_rec, n_prn). bufferRecv compares frame_size on the wire against its own buffer and
-    CLOSES THE CONNECTION on a mismatch, so a disagreement here does not corrupt data -- it
-    silently delivers none, which is its own kind of expensive.
+    ⚠️ THE SHAPE IS PER SENDER: an instance ships the comb columns it despreads and its chain's
+    PRN row count, so this is not one number for the fleet. The GATHER's receive buffer is sized
+    to the WIDEST sender and accepts anything up to that (bufferRecv `allow_short_frames`); a
+    sender whose frame exceeds it has its connection closed by bufferRecv, so the gather must be
+    sized from the max over every sender the same generator run produces.
     """
-    return telem_header_bytes() + n_rec * n_prn * telem_row_floats() * 4
+    return telem_header_bytes() + n_rec * n_prn * telem_row_floats(n_cols) * 4
 
 
 def cube_chain_chars():
