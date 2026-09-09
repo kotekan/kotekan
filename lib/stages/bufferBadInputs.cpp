@@ -64,6 +64,13 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         "bf_mask", {1, num_polarizations, num_dishes}, {"Tbf", "P", "D"},
         {bf_mask_lifetime_in_samples, 1, 1}));
 
+    // Optional clock: the produced frames' FPGA sequence numbers start at the sequence number
+    // of this buffer's first frame instead of at zero. See main_thread().
+    in_clock_buf =
+        config.exists(unique_name, "in_clock_buf") ? get_buffer("in_clock_buf") : nullptr;
+    if (in_clock_buf)
+        in_clock_buf->register_consumer(unique_name);
+
     updates.resize(config.get_default<uint32_t>(unique_name, "num_kept_updates", 5));
 
     // Construct the input -> output reorder table.
@@ -163,9 +170,9 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         mask[reorder[element]] = 0;
 
     // The seq the update takes effect at -- via the telescope, so identical on every node --
-    // or -1 when it predates the run and constrains nothing. Logged for diagnostics only: the
-    // frames' FPGA sequence numbers count mask samples, so there is nowhere to put it. The
-    // clamp also keeps to_seq()'s unsigned conversion from wrapping.
+    // or -1 when it predates the run and constrains nothing. Logged for diagnostics only: which
+    // frame an update lands in is decided by the wall clock when that frame is produced, not by
+    // this value. The clamp also keeps to_seq()'s unsigned conversion from wrapping.
     const Telescope& tel = Telescope::instance();
     const int64_t effective_seq = start_ts > tel.to_time(0) ? (int64_t)tel.to_seq(start_ts) : -1;
 
@@ -182,6 +189,29 @@ void bufferBadInputs::main_thread() {
     // Always present: the constructor requires it.
     const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
         out_buf->get_frame_desc<kotekan::GenericNDArray>();
+
+    // The FPGA sequence number of the first mask sample. The consumers of the bad feed mask ring
+    // buffer locate mask sample `k` at `k * bf_mask_lifetime_in_samples` FPGA samples after the
+    // logical beginning of the voltage ring buffer, which is the sequence number of the first
+    // voltage frame -- so that is where this stream has to start as well. Read it from the clock
+    // buffer's first frame, as setBBBeams does; without a clock buffer the stream starts at zero.
+    int64_t first_fpga_seq_num = 0;
+    if (in_clock_buf) {
+        if (in_clock_buf->wait_for_full_frame(unique_name, 0) == nullptr)
+            return;
+        const std::shared_ptr<const chordMetadata> clock_meta = get_chord_metadata(in_clock_buf, 0);
+        if (!clock_meta->has_fpga_seq_num())
+            FATAL_ERROR("in_clock_buf {:s} has no fpga_seq_num, needed to start the bad feed mask "
+                        "sequence numbers.",
+                        in_clock_buf->buffer_name);
+        first_fpga_seq_num = clock_meta->get_fpga_seq_num();
+        in_clock_buf->mark_frame_empty(unique_name, 0);
+        // Only the first frame is needed; stop being a consumer so that the producer does not
+        // wait for us on the frames after it.
+        in_clock_buf->unregister_consumer(unique_name);
+        INFO("Bad feed mask FPGA sequence numbers start at {:d}, from the first frame of {:s}",
+             first_fpga_seq_num, in_clock_buf->buffer_name);
+    }
 
     // `frame_index` counts all frames produced, not just the current slot, because the FPGA
     // sequence number has to keep increasing.
@@ -208,7 +238,7 @@ void bufferBadInputs::main_thread() {
         meta->set_from_frame_desc(frame_desc);
         // Each frame is one bad feed mask sample, and each sample is valid for
         // `bf_mask_lifetime_in_samples` FPGA samples.
-        meta->set_fpga_seq_num(frame_index * bf_mask_lifetime_in_samples);
+        meta->set_fpga_seq_num(first_fpga_seq_num + frame_index * bf_mask_lifetime_in_samples);
         meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
         out_buf->mark_frame_full(unique_name, frame_id);
     }

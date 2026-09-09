@@ -551,6 +551,8 @@ set_bf_mask:
     updatable_config:
         bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
+    # The mask stream starts at the sequence number of the first voltage frame
+    in_clock_buf: host_voltage_buffer_0
 
 # Send the bad feed mask to its GPU ringbuffer. One mask element covers
 # bf_mask_lifetime_in_samples input samples, so this runs far less often than the other
