@@ -97,8 +97,10 @@ symbol. This stage exists so the first review is a pleasant one.
 
 ### Stage 2 — shared buffer / metadata data path *(4 files, needs the owners)*
 
-**Split into three, because the four files have three different audiences and one of them is a
-conversation rather than a patch.**
+**Split in two: the root fix and the consumer, which have different reviewers and different
+dependencies.** (A third piece, restoring `check_read_progress()`, was dropped on 2026-09-09 --
+we had no callers and at the one site we tried it the check reduces to a tautology. The
+function is deleted from this branch; see that commit for the reasoning.)
 
 **2a — the metadata torn-write root fix.** Ready on `kv/chord-upstream-2`; 2 files, +36/−7.
 Invited explicitly by @jbmertens on #1638 ("Only publishing metadata inside `finish_write`,
@@ -121,30 +123,6 @@ with the data, would subsume them. Separate PR.").
 * `lib/cuda/cudaCopyFromRingbuffer.{cpp,hpp}` — descriptor publication becomes a validated
   defer-and-retry rather than an unconditional call.
 * `lib/stages/N2Accumulate.cpp` — desync autopsy diagnostics; the existing FATALs are unchanged.
-
-**2c — DROPPED (2026-09-09), not held.** Restoring `check_read_progress()` in
-`lib/cuda/NDArrayRingBuffer.hpp`, deleted upstream in `f82baaed6` (Erik Schnetter, 2026-08-12).
-Two findings retire it:
-
-* **There is no recorded justification to weigh.** `f82baaed6` is a bare subject line. The
-  function was ADDED in `f33b02baa` at 16:28 and removed at 18:03 the same afternoon, nothing
-  else touching the header in between — a same-session withdrawal. `f33b02baa`'s own message
-  notes that real configs sit *exactly* on the check's threshold (`cudaRFIS012bar`:
-  `ringbuf/4 == 32 == rfi_second_downsampling_factor`), so one wrong call-site argument FATALs
-  a working pipeline at startup. That is a plausible reason to pull it; it is not a stated one.
-* **We do not call it, and where we tried, it cannot fire.** Zero callers on this branch — the
-  only mentions are the definition and the warning at `cudaCorrelatorDual.cpp:237`. The check
-  reads `ndarray.extent(0)`, which is the DECLARED shape a stage passes its constructor
-  (`buffer_depth * num_times`), not the ring's memory, so for that stage it reduces to
-  `buffer_depth * num_times >= num_times`. Falsified on sky: shrinking
-  `host_voltage_ringbuffer_1` to a quarter frame did not make it fire.
-
-Where it has teeth is upstream's own stages, whose deleted call sites passed a real fraction of
-the ring (`in_size / 4`, `extent(0) / 4`). Reinstating it there is the owner's call, with
-corrected arguments — not a re-revert for us to carry.
-
-> Follow-up, separate from upstreaming: the function is now dead code here, kept only as a
-> re-merge tripwire. Delete it and let the `cudaCorrelatorDual` comment carry the finding.
 
 ### Stage 3 — GPU scheduling *(the highest-risk shared change; goes alone)*
 
