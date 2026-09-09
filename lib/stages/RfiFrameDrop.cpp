@@ -126,8 +126,14 @@ void RfiFrameDrop::main_thread() {
         DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}", vis_seq, sk_seq,
                vis_seq - sk_seq);
 
-        // Calculate the scaling to turn kurtosis value into sigma
-        size_t num_inputs = num_elements - metadata_vis->get_rfi_num_bad_inputs();
+        // Calculate the scaling to turn kurtosis value into sigma.
+        // FIXME: this assumes every input is good. The bad-input count used to come from the
+        // frame metadata, written by the HSA correlator stages that consumed
+        // `bad_inputs_buffer`; neither those stages nor the metadata field are part of this
+        // tree any more. Whoever restores that path has to re-plumb the count to here --
+        // ignoring it overestimates `num_inputs`, and so `sigma_scale`, whenever feeds are
+        // flagged.
+        const size_t num_inputs = num_elements;
         float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
                                  / (4.0 * sk_step * sk_step));
 

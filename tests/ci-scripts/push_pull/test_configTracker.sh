@@ -44,6 +44,11 @@ CONFIG_OUT_DIR="${KOTEKAN_BUILD_DIR}/config_writes"
 rm -rf "${CONFIG_OUT_DIR}"
 mkdir -p "${CONFIG_OUT_DIR}"
 
+# configTrackerWriter's base_dir below is relative, so it lands in whatever
+# directory the instances are launched from. Launch from the build directory,
+# which is where CONFIG_OUT_DIR is checked.
+cd "${KOTEKAN_BUILD_DIR}" || exit 1
+
 # Run three instances of kotekan in an A -> B -> C chain. This exercises both
 # steps of getUpstreamConfigs on instance 3:
 #   - step 1: fetches B's local config via /config_tracker_local
@@ -143,20 +148,20 @@ check_file_hash() {
 }
 
 # Instance 3's own (local) config
-EXPECTED_LOCAL_HASH="92d32f5195eaeb8f9354a3a8eb860115"
+EXPECTED_LOCAL_HASH="0ea7c33c609614b8dc414d6270fcb241"
 if ! check_file_hash "${CONFIG_OUT_DIR}/local.json" "$EXPECTED_LOCAL_HASH"; then
     ERROR=1
 fi
 
 # B's local config as seen by C (step 1, re-keyed under 127.0.0.1:12748)
-EXPECTED_B_HASH="3cf1d34c37eb9179cf078dedd9ba0a68"
+EXPECTED_B_HASH="7f4de78da3e74a9c31e0ba312b8d4844"
 if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12748.json" "$EXPECTED_B_HASH"; then
     ERROR=1
 fi
 
 # A's config, discovered via B's upstream-hashes (step 2; B already had A
 # stored under 127.0.0.1:12048, and C trusts that key transitively).
-EXPECTED_A_HASH="7a4f644e999a4c6789d187b2c385406e"
+EXPECTED_A_HASH="998b28f455d99bfde5f4eb57ad5b1b2b"
 if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12048.json" "$EXPECTED_A_HASH"; then
     ERROR=1
 fi

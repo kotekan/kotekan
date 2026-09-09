@@ -49,6 +49,7 @@ add_library(
     FreqSubset.cpp
     prodSubset.cpp
     N2Subset.cpp
+    N2AutoSpectrum.cpp
     countCheck.cpp
     visAccumulate.cpp
     visCompression.cpp
@@ -100,6 +101,7 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    FPGAMonitor.cpp
     givenDataGen.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp

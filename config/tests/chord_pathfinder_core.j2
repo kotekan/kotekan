@@ -273,6 +273,17 @@ host_rfi_RFImask_dummy_ringbuffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
+host_bf_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_polarizations * num_dishes * sizeof_int8
+    metadata_pool: main_pool
+
+host_bf_mask_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_polarizations * num_dishes * sizeof_int8
+    metadata_pool: main_pool
+    numa_node: 1
+
 
 ########
 # Stages
@@ -346,6 +357,41 @@ run_send_rfi_RFImask_dummy:
           in_buf: host_rfi_RFImask_buffer_in
           signal_buf: host_rfi_RFImask_ringbuffer_out
           gpu_mem_output: rfi_RFImask_buffer
+
+# Send the bad feed mask to its GPU ringbuffer. One mask element covers
+# bf_mask_lifetime_in_samples input samples, so this runs far less often than the other
+# send stages.
+run_send_bf_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        cpu_affinity: [12, 13, 14]
+        in_buffers:
+            host_bf_mask_buffer_in: host_bf_mask_buffer
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_polarizations * num_dishes * sizeof_int8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_bf_mask_buffer_in
+          signal_buf: host_bf_mask_ringbuffer
+          gpu_mem_output: bf_mask_buffer
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        cpu_affinity: [25, 26, 27]
+        in_buffers:
+            host_bf_mask_buffer_in: host_bf_mask_buffer_1
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_polarizations * num_dishes * sizeof_int8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_bf_mask_buffer_in
+          signal_buf: host_bf_mask_ringbuffer
+          gpu_mem_output: bf_mask_buffer
 
 run_send_pl_mask:
     gpu_0:
@@ -424,17 +470,12 @@ run_rfi_sktilde:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
             host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
@@ -447,17 +488,12 @@ run_rfi_sktilde:
         kotekan_stage: cudaProcess
         gpu_id: 1
         in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer_1
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
             host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask

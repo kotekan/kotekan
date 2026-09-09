@@ -438,6 +438,74 @@ BOOST_AUTO_TEST_CASE(_dish_grid_population) {
 }
 
 /*
+ * @brief   Test the element index <-> station id mapping for both CHORD element orders
+ *
+ * `station_id_to_element_index` and `element_index_to_station_id` must be exact inverses, and
+ * neither may fatal for an order it supports. (A stray unconditional `FATAL_ERROR` after the
+ * order dispatch once made `station_id_to_element_index` fatal for *every* input.)
+ */
+BOOST_AUTO_TEST_CASE(_element_order_mapping) {
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["num_polarizations"] = 2;
+    json_config["dish_inputs"] =
+        std::vector<dishInfo>({dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D0")});
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    const uint64_t num_dishes = 8;
+    const uint64_t num_polarizations = 2;
+    const uint64_t num_elements = num_dishes * num_polarizations;
+
+    for (const ElementOrder ord : {ElementOrder::CHORDEarly, ElementOrder::CHORDBeamformer}) {
+        // Round trip element index -> station id -> element index, over every element. This is
+        // also what catches an order that fatals instead of returning.
+        std::vector<bool> seen(num_elements, false);
+        for (uint64_t el_idx = 0; el_idx < num_elements; ++el_idx) {
+            const station_id_t st_id = tel.element_index_to_station_id(el_idx, ord);
+            BOOST_REQUIRE_MESSAGE(st_id < station_id_t(num_elements),
+                                  fmt::format("order {:s}: element {:d} -> station id {:d} is out "
+                                              "of range",
+                                              ElementOrder_to_string(ord), el_idx, st_id));
+            BOOST_CHECK_EQUAL(tel.station_id_to_element_index(st_id, ord), el_idx);
+
+            // The mapping must be a bijection, not just self-consistent.
+            BOOST_CHECK_MESSAGE(!seen.at(st_id),
+                                fmt::format("order {:s}: station id {:d} reached twice",
+                                            ElementOrder_to_string(ord), st_id));
+            seen.at(st_id) = true;
+        }
+
+        // And the other direction, station id -> element index -> station id.
+        for (station_id_t st_id = 0; st_id < station_id_t(num_elements); ++st_id) {
+            const uint64_t el_idx = tel.station_id_to_element_index(st_id, ord);
+            BOOST_REQUIRE_MESSAGE(el_idx < num_elements,
+                                  fmt::format("order {:s}: station id {:d} -> element {:d} is out "
+                                              "of range",
+                                              ElementOrder_to_string(ord), st_id, el_idx));
+            BOOST_CHECK_EQUAL(tel.element_index_to_station_id(el_idx, ord), station_id_t(st_id));
+        }
+    }
+
+    // The explicit layouts. A station id is `dish + polarization * num_dishes`, so
+    // CHORDBeamformer ([P][D]) is the identity and CHORDEarly ([D][P]) is the transpose.
+    for (uint64_t pol = 0; pol < num_polarizations; ++pol) {
+        for (uint64_t dish = 0; dish < num_dishes; ++dish) {
+            const station_id_t st_id = dish + pol * num_dishes;
+            BOOST_CHECK_EQUAL(tel.station_id_to_element_index(st_id, ElementOrder::CHORDBeamformer),
+                              st_id);
+            BOOST_CHECK_EQUAL(tel.station_id_to_element_index(st_id, ElementOrder::CHORDEarly),
+                              pol + dish * num_polarizations);
+        }
+    }
+
+    // The rejection paths (an order CHORD does not implement, an out-of-range input) are
+    // deliberately not checked here. They go through FATAL_ERROR, which calls exit_kotekan()
+    // -> raise(SIGTERM) before it throws, and this test binary installs no handler for that, so
+    // asserting on them kills the run. That is also why the regression this case guards against
+    // shows up as the binary terminating rather than as a failed assertion.
+}
+
+/*
  * @brief   Test pointing vector retrieval
  */
 BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
