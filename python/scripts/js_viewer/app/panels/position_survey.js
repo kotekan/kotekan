@@ -96,8 +96,16 @@ export class PositionSurveyPanel {
             }
             h += `</tbody></table>`;
         }
-        h += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
-           + `iono-free = dual-frequency (L1+L5) combination; -IF rows remove the ionosphere</div>`;
+        // Only explain the -IF rows when there are some. The note named L1+L5 outright, which
+        // this fleet never has: the pair is whichever two chains give the widest split.
+        if (keys.some(k => k.endsWith("-IF")))
+            h += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
+               + `-IF rows are the dual-frequency iono-free combination, formed per satellite `
+               + `from its two most widely separated bands</div>`;
+        else
+            h += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
+               + `single-frequency: the ionosphere is uncorrected and sets the error floor. `
+               + `A satellite tracked on two chains at once would add an iono-free row.</div>`;
         this.root.innerHTML = h;
     }
 }

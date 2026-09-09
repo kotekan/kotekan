@@ -1612,15 +1612,31 @@ def _pvt_measurements(globs, max_age_s, t_now):
     import json as _json
     C = 299792458.0
 
-    def _freq(band):
-        b = str(band)
-        if "L2" in b:
-            return "L2"
-        if "L5" in b or "E5" in b or "B2A" in b or "B2a" in b:
-            return "L5"
-        return "L1"
+    # ⚠️ THE BAND IS A FREQUENCY, NOT A SUBSTRING OF A NAME. This used to classify rows by
+    # searching the band string for "L5"/"E5"/"B2A" -- case-sensitively, so every CHORD row
+    # ("gps_l5", "gal_e5a", "bds_b2b") fell through to L1. Visibly that mislabels the panel;
+    # underneath it is worse: L2C and L5 would share one group, i.e. one clock, and no pair
+    # of bands could ever differ enough to form an iono-free combination. The obs rows carry
+    # carrier_hz, so use it -- and name the group after the CHAIN, which is what owns a clock.
+    CARRIER_NAME = {1575.42: "L1", 1227.60: "L2", 1176.45: "L5",
+                    1207.14: "E5b", 1268.52: "B3", 1278.75: "E6"}
 
-    latest = {}   # (sys, prn, freq) -> (t, group, az, el, resid_m, L_m)
+    def _band(d):
+        """-> (group label, carrier Hz). The chain name is the group: one chain, one clock."""
+        f = d.get("carrier_hz")
+        name = str(d.get("band") or "")
+        if f:
+            f = float(f)
+            return (name or CARRIER_NAME.get(round(f / 1e6, 2), "%.0f" % (f / 1e6))), f
+        # airspy prototype rows: no carrier_hz, classify by name (case-insensitively this time)
+        b = name.upper()
+        for key, hz in (("L2", 1227.60e6), ("L5", 1176.45e6), ("E5A", 1176.45e6),
+                        ("B2A", 1176.45e6), ("E5B", 1207.14e6), ("B2B", 1207.14e6)):
+            if key in b:
+                return CARRIER_NAME.get(round(hz / 1e6, 2), key), hz
+        return "L1", 1575.42e6
+
+    latest = {}   # (sys, prn, band) -> (t, group, az, el, resid_m, L_m, carrier_hz)
     for pat in globs:
         for path in _glob.glob(pat):
             try:
@@ -1641,13 +1657,14 @@ def _pvt_measurements(globs, max_age_s, t_now):
                             continue
                         if t_now - t > max_age_s:
                             continue
-                        fr = _freq(d.get("band"))
+                        fr, f_hz = _band(d)
                         key = (sysid, prn, fr)
                         if key in latest and latest[key][0] >= t:
                             continue
                         cl, ch = d.get("code_len"), d.get("chip_rate_hz")
                         L = (cl / ch * C) if (cl and ch) else None
-                        latest[key] = (t, "%s-%s" % (sysid, fr), az, el, float(res), L)
+                        latest[key] = (t, fr if "_" in fr else "%s-%s" % (sysid, fr),
+                                       az, el, float(res), L, f_hz)
             except Exception:
                 continue
 
@@ -1663,28 +1680,31 @@ def _pvt_measurements(globs, max_age_s, t_now):
     for group, rows in by_group.items():
         med = _st.median([r[3][4] for r in rows])
         for sysid, prn, fr, v in rows:
-            _t0, g, az, el, res, L = v
+            _t0, g, az, el, res, L, _f = v
             if L:
                 res = res - L * round((res - med) / L)   # unwrap to within +-L/2 of the median
             out.append({"group": g, "az": az, "el": el, "resid_m": res})
-            dw[(sysid, prn, fr)] = (az, el, res)
+            dw[(sysid, prn, fr)] = (az, el, res, _f)
 
     # DUAL-FREQUENCY iono-free combination: for each satellite seen on two bands, remove the
     # first-order ionosphere. rho_IF = (f1^2 rho1 - f2^2 rho2)/(f1^2 - f2^2) -- the ~1/f^2 iono
     # cancels and any per-band clock/bias folds into a per-sat-independent constant the "-IF"
-    # group clock absorbs. Prefer the widest split (L1+L5) for the strongest iono removal. The
-    # solver puts these in their own combined_if solution (few-metre) beside the single-freq one.
-    FREQ_HZ = {"L1": 1575.42e6, "L2": 1227.60e6, "L5": 1176.45e6}
+    # group clock absorbs. The solver puts these in their own combined_if solution beside the
+    # single-frequency one.
+    # The pair is chosen by the WIDEST ACTUAL SPLIT rather than from a list of band names:
+    # this fleet's chains sit at 1176.45, 1207.14, 1227.60, 1268.52 and 1278.75 MHz, and a
+    # hardcoded (L1, L5) list can neither name nor pair most of them.
     bysat = {}
-    for (sysid, prn, fr), (az, el, res) in dw.items():
-        bysat.setdefault((sysid, prn), {})[fr] = (az, el, res)
+    for (sysid, prn, fr), (az, el, res, f_hz) in dw.items():
+        bysat.setdefault((sysid, prn), {})[fr] = (az, el, res, f_hz)
     for (sysid, prn), bands in bysat.items():
-        pair = next((p for p in (("L1", "L5"), ("L1", "L2"), ("L2", "L5"))
-                     if p[0] in bands and p[1] in bands), None)
-        if pair is None:
+        if len(bands) < 2:
             continue
-        f1, f2 = FREQ_HZ[pair[0]], FREQ_HZ[pair[1]]
-        (az1, el1, r1), (_a2, _e2, r2) = bands[pair[0]], bands[pair[1]]
+        pair = max(((a, b) for i, a in enumerate(bands) for b in list(bands)[i + 1:]),
+                   key=lambda p: abs(bands[p[0]][3] - bands[p[1]][3]))
+        (az1, el1, r1, f1), (_a2, _e2, r2, f2) = bands[pair[0]], bands[pair[1]]
+        if abs(f1 - f2) < 1e6:          # same carrier: no iono leverage, not a pair
+            continue
         rif = (f1 * f1 * r1 - f2 * f2 * r2) / (f1 * f1 - f2 * f2)
         out.append({"group": "%s-IF" % sysid, "az": az1, "el": el1, "resid_m": rif})
     return out
