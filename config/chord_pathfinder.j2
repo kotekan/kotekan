@@ -175,8 +175,8 @@ telescope:
     # defined by this table -- the lanes of a board run opposite to the dish numbering,
     # so each group of 8 reads backwards.
     # RFIDish rows are captured and correlated like any other input, but set_bf_mask
-    # always masks them (so they stay out of the SK statistic) and the DishInputs vis
-    # subset excludes them. Their grid positions are placeholders.
+    # always masks them, so they stay out of the SK statistic. Being non-Fake, they are
+    # carried in the DishInputs vis subset. Their grid positions are placeholders.
     # Rows typed Fake are not connected: set_bf_mask always masks them; flip a row to
     # ArrayDish when its boards come online.
     dish_inputs: [
@@ -1674,8 +1674,11 @@ dedup_bf_mask_applied:
         in_buf: host_bf_mask_applied_buffer_1
         out_buf: host_bf_mask_changes_buffer_1
 
+# use_frame_desc as on the N2 sends below: the mask stream is sparse, so a link whose
+# ends disagree is caught when the connection opens rather than at the next record.
 buffer_send_bf_mask_changes:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: host_bf_mask_changes_buffer
     server_ip: 10.222.0.51
     server_port: 11029
@@ -1684,6 +1687,7 @@ buffer_send_bf_mask_changes:
 
 buffer_send_bf_mask_changes_1:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: host_bf_mask_changes_buffer_1
     server_ip: 10.222.0.51
     server_port: 11029
@@ -1691,9 +1695,15 @@ buffer_send_bf_mask_changes_1:
     drop_frames: true
 
 # Buffer sends
+#
+# use_frame_desc transmits the buffer's frame descriptor once per connection, so the
+# receiver checks layout, element count and (for DishInputs) element identities rather
+# than frame size alone. Must match use_frame_desc on the receiving stages in
+# chord_pathfinder_recv.j2.
 
 buffer_send_n2_subset:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: n2_eigen_buffer
     server_ip: 10.222.0.51
     server_port: 11025
@@ -1702,6 +1712,7 @@ buffer_send_n2_subset:
 
 buffer_send_n2_full:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: n2_buffer
     server_ip: 10.222.0.51
     server_port: 11027
@@ -1710,6 +1721,7 @@ buffer_send_n2_full:
 
 buffer_send_n2_subset_1:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: n2_eigen_buffer_1
     server_ip: 10.222.0.51
     server_port: 11025
@@ -1718,6 +1730,7 @@ buffer_send_n2_subset_1:
 
 buffer_send_n2_full_1:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: n2_buffer_1
     server_ip: 10.222.0.51
     server_port: 11027

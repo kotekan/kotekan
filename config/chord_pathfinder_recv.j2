@@ -134,9 +134,9 @@ telescope:
     # Element order is [P][D] (CHORDBeamformer). Must stay identical to dish_inputs in
     # chord_pathfinder.j2, which labels the same element axis; see the crs_board_remap
     # comment there for how it is built.
-    # RFIDish rows are masked on the X-engine side and excluded from the DishInputs vis
-    # subset; their grid positions are placeholders. Rows typed Fake are not connected;
-    # flip a row to ArrayDish when its boards come online.
+    # RFIDish rows are masked on the X-engine side but, being non-Fake, are carried in
+    # the DishInputs vis subset; their grid positions are placeholders. Rows typed Fake
+    # are not connected; flip a row to ArrayDish when its boards come online.
     dish_inputs: [
         {dish_idx:  0, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4},
         {dish_idx:  1, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3},
@@ -228,9 +228,9 @@ chord_pool:
 
 
 # Receive subset N2 buffer: compact frames over the non-Fake elements, derived from
-# this config's telescope dish table, which must match the X-engine's (the wire
-# carries the sender's element identities, so a divergent table fails loudly rather
-# than mislabeling).
+# this config's telescope dish table, which must match the X-engine's. The receiving
+# stage sets use_frame_desc, so the sender's frame descriptor carries its element
+# identities and a divergent table fails loudly rather than mislabeling.
 n2_recv_subset_buffer:
     kotekan_buffer: N2
     peek_hold: true
@@ -281,13 +281,24 @@ bf_mask_changes_buffer:
 
 ## Receive data
 
+# use_frame_desc checks the sender's frame descriptor (layout, element count and, for
+# DishInputs, element identities) against the buffers declared above; without it only
+# the frame and metadata sizes are compared, so a dish table that diverges from the
+# X-engine's without changing the element count would be written out mislabeled. Must
+# match use_frame_desc on the bufferSend stages in chord_pathfinder.j2. The bf_mask
+# frames also describe their own shape in chordMetadata, which bufferRecv checks on
+# every frame; the descriptor moves that check to connection time, ahead of the next
+# sparse mask record.
+
 buffer_recv_subset_subset:
     kotekan_stage: bufferRecv
+    use_frame_desc: true
     buf: n2_recv_subset_buffer
     listen_port: 11025
 
 buffer_recv_full_n2:
     kotekan_stage: bufferRecv
+    use_frame_desc: true
     buf: n2_recv_full_buffer
     listen_port: 11027
 
@@ -295,6 +306,7 @@ buffer_recv_full_n2:
 # group holds the records covering its time span), so both writers consume this buffer.
 buffer_recv_bf_mask_changes:
     kotekan_stage: bufferRecv
+    use_frame_desc: true
     buf: bf_mask_changes_buffer
     listen_port: 11029
 
