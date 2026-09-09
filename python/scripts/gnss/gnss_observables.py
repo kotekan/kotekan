@@ -4,7 +4,9 @@
 One JSONL row per satellite per band per epoch, carrying the two ranging observables and
 the geometry needed to interpret them:
 
-    CODE   code_phase_chips (+ dll_disc, the sub-chip residual the DLL is still working off)
+    CODE   code_resid_m: the tracker's model-removed code range (src trk), else the
+           search's (dr_integ), else a reconstruction (airspy); + the record's raw
+           (cp_rec_chips, dop_rec_hz, rec_hop) triple and dll_disc
     PHASE  adr_cycles       (accumulated carrier phase on an unbroken arc, + arc id/length)
     POWER  cn0_dbhz, sig    (coherent + incoherent)
     GEOM   az, el, range_m, sat_clk_s, range_rate  (BRDC, evaluated AT THE EPOCH)
@@ -153,7 +155,7 @@ def main():
                     help="poll period (s); rows are written once per COMBINER EMIT (deduped "
                          "on the arc/record counters), so polling faster than the emit is free")
     ap.add_argument("--out", default="/tmp/gpswipe/observables.jsonl",
-                    help="obs-log path. %Y%m%d etc are strftime-expanded and the file ROLLS at "
+                    help="obs-log path. %%Y%%m%%d etc are strftime-expanded and the file ROLLS at "
                          "UTC midnight -- a date baked in at launch keeps one day's name for as "
                          "long as the process lives, and consumers that open today's file "
                          "then find nothing.")
@@ -327,9 +329,21 @@ def main():
                     # chips; the reconstruction below lands within a code period at best. The
                     # reconstruction stays as the fallback for the airspy prototype, which has
                     # no dead-reckon clock.
+                    # ⚡⚡ PREFER THE TRACKER'S RESIDUAL OVER THE SEARCH'S. dr_integ is the
+                    # search detection's code phase against the model -- the acquisition
+                    # estimate, ~0.5 chips of white noise per satellite. trk_resid is the
+                    # closed fleet DLL's replica placement against the same model and the
+                    # same clock (gnss_broker/trkresid), resolves ~1e-2 chips, and exists on
+                    # every chain, detectors or not. Taken in SECONDS: the broker's chips
+                    # are its own currency (CM chips on L2C) and metres must not guess it.
+                    _ts = r.get("trk_resid_s")
+                    _ta = r.get("trk_resid_age_s")
                     _ic = r.get("dr_integ_chips")
                     _ia = r.get("dr_integ_age_s")
-                    if _ic is not None and (_ia is None or _ia <= args.integ_max_age_s):
+                    if _ts is not None and (_ta is None or _ta <= args.integ_max_age_s):
+                        code_resid_m = float(_ts) * C_LIGHT
+                        code_resid_src = "trk"
+                    elif _ic is not None and (_ia is None or _ia <= args.integ_max_age_s):
                         code_resid_m = float(_ic) * C_LIGHT / args.chip_rate_hz
                         code_resid_src = "dr_integ"
                     dop_used = r.get("doppler_applied_hz")
@@ -375,7 +389,19 @@ def main():
                     "adr_m": (adr * lam) if adr is not None else None,
                     "adr_arc": arc, "adr_records": nrec,
                     "code_resid_m": code_resid_m,     # model-removed code range (CMC input)
-                    "code_resid_src": code_resid_src,  # dr_integ (metre-good) | reconstructed
+                    "code_resid_src": code_resid_src,  # trk | dr_integ | reconstructed
+                    # the tracker residual's own scatter and support (metres, records)
+                    "code_resid_sd_m": ((r.get("trk_resid_sd_chips") or 0.0) * C_LIGHT
+                                        / args.chip_rate_hz
+                                        if code_resid_src == "trk" else None),
+                    "code_resid_n": (r.get("trk_resid_n") if code_resid_src == "trk" else None),
+                    # the record's own (argument, Doppler, hop) triple, verbatim: the RAW code
+                    # observable, from which any residual can be re-derived offline against a
+                    # better model. Only meaningful as a triple (chord-cp-currency).
+                    "cp_rec_chips": r.get("cp_rec_chips"),
+                    "dop_rec_hz": r.get("dop_rec_hz"),
+                    "rec_hop": r.get("rec_hop"),
+                    "dll_trim_cpp": r.get("dll_trim_cpp"),
                     "carr_resid_m": carr_resid_m,     # model-removed carrier range (CMC input)
                     "adr_lock_s": r.get("adr_lock_s"),
                     # --- POWER

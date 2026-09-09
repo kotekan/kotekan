@@ -391,7 +391,8 @@ class FleetPublisher:
                 st["elem"] = {"utc": _now(), "prns": table}
 
     def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
-               pcn0=None, kcoh=None, innov=None, cpp_trim=None, integ=None, integ_now=None):
+               pcn0=None, kcoh=None, innov=None, cpp_trim=None, integ=None, integ_now=None,
+               trk=None):
         rows = []
         fcoh = fcoh or {}
         pcn0 = pcn0 or {}
@@ -402,6 +403,8 @@ class FleetPublisher:
         # clock and its drift have both settled, which is the honest state to publish.
         _integ = integ or {}
         _now_w = integ_now or time.time()
+        # the tracker's code residual (trkresid), keyed by PRN; same absence semantics
+        _trk = trk or {}
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
             sd = seeds.get(prn, {})
@@ -471,6 +474,27 @@ class FleetPublisher:
                 "dr_integ_chips": _integ.get(prn, (None, None))[0],
                 "dr_integ_age_s": (None if _integ.get(prn) is None
                                    else round(_now_w - _integ[prn][1], 2)),
+                # THE TRACKER'S CODE RESIDUAL (gnss_broker/trkresid): the replica placement the
+                # closed fleet DLL holds on the peak, lifted from the records' own slot-1/2
+                # pair, minus the model, minus the solved clock. The same quantity as
+                # dr_integ_chips but from the stage that resolves 1e-2 chips, and present on
+                # chains that have no detectors at all. `_s` is the currency-free form
+                # (seconds): a consumer converting chips to metres must know which chips
+                # (L2C's are CM chips), and seconds do not ask it to.
+                "trk_resid_chips": (_trk.get(prn) or {}).get("chips"),
+                "trk_resid_s": (_trk.get(prn) or {}).get("s"),
+                "trk_resid_sd_chips": (_trk.get(prn) or {}).get("sd"),
+                "trk_resid_n": (_trk.get(prn) or {}).get("n"),
+                "trk_resid_hop": (_trk.get(prn) or {}).get("hop"),
+                "trk_resid_age_s": (None if _trk.get(prn) is None
+                                     else round(_now_w - _trk[prn]["t"], 2)),
+                # The record's own (argument, Doppler, hop) triple, forwarded untouched. The
+                # argument is only meaningful against the Doppler it was expressed in, so the
+                # three travel together; `code_phase_chips` above is the SEED's argument and
+                # pairs with `doppler_hz`, not with `doppler_applied_hz` (chord-cp-currency).
+                "cp_rec_chips": c.get("code_phase_chips"),
+                "dop_rec_hz": c.get("doppler_hz"),
+                "rec_hop": c.get("pow_hop"),
                 "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
                 # cross-sender coherence of the derotated prompts (combdll.lobe_taps): the
                 # lobe sum is only a lobe sum while this is ~1; ~0 means the senders were not

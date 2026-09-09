@@ -22,6 +22,7 @@ from gnss_broker.fleet import fleet_dll, fleet_coherent
 from gnss_broker.fits import q_stall_verdict, instance_stall_verdict
 from gnss_broker import instruments
 from gnss_broker import codeloop
+from gnss_broker import trkresid
 
 
 def stage_fleet_dll(ctx):
@@ -361,6 +362,20 @@ def stage_fleet_dll(ctx):
                         "MINNOV %s (model vs sky, flip-gate statistic): %s"
                         % (log_tag() or ctx.args.signal, " ".join(_mv)),
                         every_s=60.0)
+        # The tracker's code residual, from this cycle's records against this cycle's model
+        # and clock. Failure here must cost the loop nothing: it is a published
+        # measurement, not an input to any actuator.
+        try:
+            ctx.dllp.trk = trkresid.tracker_residuals(ctx)
+        except Exception as _te:
+            ctx.dllp.trk = {}
+            _log_rl("trkresid", "tracker residual failed (%s)" % _te, every_s=60.0)
+        if ctx.dllp.trk:
+            _log_rl("trkres", "TRKRES %s (tracker code residual, chips, clock removed): %s"
+                    % (log_tag() or ctx.args.signal,
+                       " ".join("%d:%+.3f(n%d sd%.2f)" % (_p, _v["chips"], _v["n"], _v["sd"])
+                                for _p, _v in sorted(ctx.dllp.trk.items()))),
+                    every_s=60.0)
         if ctx.publisher is not None:
             # Published BEFORE the trim update so the row shows the state the loop acted
             # on, not the state after it acted -- otherwise a reader can never see the
@@ -370,7 +385,8 @@ def stage_fleet_dll(ctx):
                              cpp_trim={_p: (_r.get("trim_chips") or 0.0)
                                        for _p, _r in ctx.dls.readback.items()},
                              integ=(ctx.dr_state or {}).get("integ"),
-                             integ_now=getattr(ctx.dllp, "now_w", None))
+                             integ_now=getattr(ctx.dllp, "now_w", None),
+                             trk=ctx.dllp.trk)
         ctx.dllp.report = []
         codeloop.stage_dll_control(ctx)
         if ctx.dllp.report:
