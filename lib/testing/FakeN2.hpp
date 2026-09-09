@@ -56,6 +56,13 @@
  *                      If less than zero, no limit is applied. Default is `-1`.
  * @conf  zero_weight   Bool. Set all weights to zero, if this is True.
  *                      Default is False.
+ * @conf  flagged_inputs  List of UInt. Elements to report as bad in the frames'
+ *                      per-element flags (0.0 == bad). Everything else is
+ *                      flagged good. Default is empty.
+ * @conf  flag_start_frame  Int. Only apply `flagged_inputs` from this time
+ *                      index onwards (frames at the same time flip together
+ *                      across frequencies), so that flags changing mid-stream
+ *                      can be tested. Default is 0, i.e. from the first frame.
  * @conf  frequencies   Array of UInt32. Definition of frequency IDs for
  *                      mode 'test_pattern_freq'.
  * @conf  sleep_before  Float. Sleep for this number of seconds before
@@ -131,8 +138,15 @@ private:
     // If true, exit kotekan after generating num_frames
     bool end_interrupt;
 
+    // Elements to report as bad in the frames' flags, and the time index from
+    // which to start doing so.
+    std::vector<size_t> flagged_inputs;
+    int64_t flag_start_frame;
+
     /// Fill non vis components. A helper for the fill_mode functions.
-    void fill_non_vis(N2FrameView& frame);
+    /// @param time_index  Time index of the frame being filled, counted from
+    ///                    the start and shared by the frequencies at one time.
+    void fill_non_vis(N2FrameView& frame, int64_t time_index);
 };
 
 

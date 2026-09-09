@@ -88,9 +88,11 @@ stage runs, so the following hold sentinels throughout (see the *Sentinels*
 convention on the generic page):
 
 * ``gain``: -1+0j (the applied F-engine gains are in ``/digital_gains``);
-* ``flags``: 0;
 * ``radiometer_chi2``: -1;
 * ``rfi_frame_excision_enabled``: false, with ``rfi_frame_excision_num`` 0.
+
+With no flagging stage running, ``flags`` is 1.0 throughout: every element is
+reported good rather than holding a sentinel.
 
 The *subset* stream carries real eigen-data: ``EigenN2Iter`` stages run
 upstream on it, so ``eval``, ``evec``, and ``erms`` are populated. The

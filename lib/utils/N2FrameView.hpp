@@ -100,7 +100,10 @@ public:
     const gsl_lite::span<N2::cfloat> vis;
     /// View of the weight data.
     const gsl_lite::span<float> weight;
-    /// View of the input flags
+    /// View of the input flags, one per element: 1.0 is good, 0.0 is bad. This
+    /// is where bad feeds are reported, and it follows the convention the RFI,
+    /// packet loss and bad input masks all use. Consumers treat any non-zero
+    /// value as good.
     const gsl_lite::span<float> flags;
     /// View of the eigenvalues.
     const gsl_lite::span<float> eval;
@@ -114,7 +117,9 @@ public:
     const gsl_lite::span<float> radiometer_chi2;
     /// View of the applied gains
     const gsl_lite::span<N2::cfloat> gain;
-    /// View of per-element masks (uint8_t per element)
+    /// View of per-element masks (uint8_t per element). Reserved: nothing
+    /// writes it but N2Accumulate's fill of 255, no consumer interprets it, and
+    /// no convention has been settled for it. Bad feeds live in `flags`.
     const gsl_lite::span<uint8_t> mask;
 
     /**
