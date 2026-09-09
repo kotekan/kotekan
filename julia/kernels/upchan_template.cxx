@@ -179,6 +179,9 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
+
     // To avoid trailing comma below
     int dummy;
 };
@@ -249,6 +252,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    did_set_metadata(false),
     dummy()                      // avoid trailing comma
 {
     // Register host memory
@@ -356,7 +360,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     // Since we use a ring buffer we need to set the metadata only once
-    static bool did_set_metadata = false;
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
 

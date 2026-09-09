@@ -302,6 +302,9 @@ private:
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
+
     // To avoid trailing comma below
     int dummy;
 };
@@ -334,7 +337,7 @@ cudaUpchannelizer_charts_U32::cudaUpchannelizer_charts_U32(Config& config,
                 reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
-    dummy() // avoid trailing comma
+    did_set_metadata(false), dummy() // avoid trailing comma
 {
     // Register host memory
     {
@@ -429,7 +432,6 @@ cudaEvent_t cudaUpchannelizer_charts_U32::execute(cudaPipelineState& /*pipestate
     void* const info_memory = info_buffer.get_ndarray().data();
 
     // Since we use a ring buffer we need to set the metadata only once
-    static bool did_set_metadata = false;
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
 

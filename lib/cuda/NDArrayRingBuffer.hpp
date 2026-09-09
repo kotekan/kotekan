@@ -559,6 +559,15 @@ public:
         }
     }
 
+    // Set the ring buffer metadata. A ring buffer has a single metadata object for its whole
+    // lifetime: it describes the ring buffer as a whole, not any particular frame, and does not
+    // change over time. This function fills that object in place, so the producer must call it
+    // exactly once, on its first frame, before the first `finish_write` publishes data. From then
+    // on consumers -- which may run in other threads -- read the object without synchronization,
+    // and rewriting it, even with unchanged values, would race with them.
+    //
+    // A cudaCommand has `buffer_depth` instances sharing the ring buffer, and frame 0 is always
+    // handled by instance 0, so guard the call with `instance_num == 0` and a flag.
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) {
         // const std::shared_ptr<metadataObject> mc =
         //     cuda_command.get_device().create_gpu_memory_array_metadata(buffer_name_device, 0,

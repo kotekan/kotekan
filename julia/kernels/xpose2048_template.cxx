@@ -169,6 +169,9 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
+
     // To avoid trailing comma below
     int dummy;
 };
@@ -237,6 +240,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    did_set_metadata(false),
     dummy()                      // avoid trailing comma
 {
     // Register host memory
@@ -326,40 +330,45 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            {{^isoutput}}
-                if (args::{{{name}}} == args::Ein) {
-                    // Replace "Ein" with "E" etc.
-                    // {{{name}}}_buffer.check_metadata();
-                    const std::shared_ptr<const chordMetadata>& metadata = Ein_buffer.get_metadata();
-                    const auto& ndarray = Ein_buffer.get_ndarray();
-                    if (!(metadata->get_name() == ndarray.quantity_name()))
-                        FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                                    Ein_buffer.get_buffer_name(), ndarray.quantity_name(), metadata->get_name());
-                    assert(metadata->type == ndarray.value_datatype);
-                    assert(metadata->dims == ndarray.rank);
-                    for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                        if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
-                            FATAL_ERROR("buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
-                                        Ein_buffer.get_buffer_name(), d, ndarray.dimname(d), metadata->get_dimension_name(d));
-                        // The ring buffer direction is special
-                        if (d > 0)
-                            assert(metadata->dim[d] == int(ndarray.extent(d)));
-                        assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
-                        if (!(metadata->stride[d] == ndarray.stride(d)))
-                            FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: {:d}",
-                                        Ein_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
+    // Since we use a ring buffer we need to set the metadata only once
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+
+        {{#kernel_arguments}}
+            {{#hasbuffer}}
+                {{^isoutput}}
+                    if (args::{{{name}}} == args::Ein) {
+                        // Replace "Ein" with "E" etc.
+                        // {{{name}}}_buffer.check_metadata();
+                        const std::shared_ptr<const chordMetadata>& metadata = Ein_buffer.get_metadata();
+                        const auto& ndarray = Ein_buffer.get_ndarray();
+                        if (!(metadata->get_name() == ndarray.quantity_name()))
+                            FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                                        Ein_buffer.get_buffer_name(), ndarray.quantity_name(), metadata->get_name());
+                        assert(metadata->type == ndarray.value_datatype);
+                        assert(metadata->dims == ndarray.rank);
+                        for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                            if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
+                                            Ein_buffer.get_buffer_name(), d, ndarray.dimname(d), metadata->get_dimension_name(d));
+                            // The ring buffer direction is special
+                            if (d > 0)
+                                assert(metadata->dim[d] == int(ndarray.extent(d)));
+                            assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
+                            if (!(metadata->stride[d] == ndarray.stride(d)))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: {:d}",
+                                            Ein_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
+                        }
+                    } else {
+                        {{{name}}}_buffer.check_metadata();
                     }
-                } else {
-                    {{{name}}}_buffer.check_metadata();
-                }
-            {{/isoutput}}
-            {{#isoutput}}
-                {{{name}}}_buffer.set_metadata(Ein_buffer.get_metadata());
-            {{/isoutput}}
-        {{/hasbuffer}}
-    {{/kernel_arguments}}
+                {{/isoutput}}
+                {{#isoutput}}
+                    {{{name}}}_buffer.set_metadata(Ein_buffer.get_metadata());
+                {{/isoutput}}
+            {{/hasbuffer}}
+        {{/kernel_arguments}}
+    } // if !did_set_metadata
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}

@@ -111,6 +111,8 @@ private:
     // Buffers
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_upchannelized_expanded_mask;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaPLMaskUpchannelizer);
@@ -152,7 +154,8 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
         std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"},
         std::array<std::ptrdiff_t, 5>{64 * upchannelization_factor, 1, 1, 8,
                                       8 * upchannelization_factor},
-        *this)
+        *this),
+    did_set_metadata(false)
 //
 {
     if (!(0 <= Fmin && Fmin <= Fmax && Fmax <= num_frequencies))
@@ -222,15 +225,17 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
     record_start_event();
 
     pl_expanded_mask.check_metadata();
-    pl_upchannelized_expanded_mask.set_metadata(pl_expanded_mask.get_metadata());
-
-    // The upchannelizer downsamples the time axis by `upchannelization_factor`; the frequency
-    // layout is unchanged (all other metadata is copied by set_metadata above).
-    // TODO: Set this metadata only once.
-    const auto& in_meta = pl_expanded_mask.get_metadata();
-    const auto& out_meta = pl_upchannelized_expanded_mask.get_metadata();
-    out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
-                                         * upchannelization_factor);
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        pl_upchannelized_expanded_mask.set_metadata(pl_expanded_mask.get_metadata());
+        // The upchannelizer downsamples the time axis by `upchannelization_factor`; the frequency
+        // layout is unchanged (all other metadata is copied by set_metadata above).
+        const auto& in_meta = pl_expanded_mask.get_metadata();
+        const auto& out_meta = pl_upchannelized_expanded_mask.get_metadata();
+        out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
+                                             * upchannelization_factor);
+    }
 
     kotekan::uint1x8_t* const in_memory = pl_expanded_mask.get_ndarray().data();
     kotekan::uint1x8_t* const out_memory = pl_upchannelized_expanded_mask.get_ndarray().data();

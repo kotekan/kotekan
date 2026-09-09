@@ -82,8 +82,6 @@ private:
     NDArrayBuffer<float16_t, 4> frb2_beams_buffer;
 
     cublasHandle_t handle;
-
-    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamReformer);
@@ -125,9 +123,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
         frb2_beams_name, "I2",
         std::array<std::ptrdiff_t, 4>{1, frb2_num_beams, frb2_num_frequencies, frb2_num_times},
         std::array<std::string, 4>{"Ttildehi256", "R", "Fbar", "Ttildelo256"},
-        {frb_downsampling_factor * frb2_num_times, 1, 1, frb_downsampling_factor}, *this),
-
-    did_set_metadata(false)
+        {frb_downsampling_factor * frb2_num_times, 1, 1, frb_downsampling_factor}, *this)
 
 {
     frb2_weights_buffer.register_consumer();
@@ -187,18 +183,10 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     frb2_weights_buffer.check_metadata();
     frb1_beams_buffer.check_metadata();
 
-    if (!did_set_metadata) {
-        did_set_metadata = true;
-        // Set metadata
-        const std::shared_ptr<const chordMetadata> frb1_beams_meta =
-            frb1_beams_buffer.get_metadata();
-        frb2_beams_buffer.set_metadata(frb1_beams_meta);
-        const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
-        frb2_beams_meta->set_time_downsampling_fpga(frb1_beams_meta->get_time_downsampling_fpga());
-        frb2_beams_meta->set_coarse_freq(frb1_beams_meta->get_coarse_freq());
-        frb2_beams_meta->set_freq_upchan_factor(frb1_beams_meta->get_freq_upchan_factor());
-        frb2_beams_meta->set_freq_upchan_index(frb1_beams_meta->get_freq_upchan_index());
-    }
+    // `frb2_beams_buffer` is not a ring buffer, so every frame gets its own metadata object
+    // (`NDArrayBuffer::set_metadata` takes a fresh one from the pool): `fpga_seq_num` below is
+    // frame-dependent, and frames already downstream still reference their own objects.
+    frb2_beams_buffer.set_metadata(frb1_beams_buffer.get_metadata());
     frb2_beams_buffer.check_metadata();
 
     const std::ptrdiff_t frb1_beams_offset = frb1_beams_buffer.get_read_valid().begin();
