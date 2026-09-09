@@ -61,7 +61,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _block_fill_size(config.get_default<size_t>(unique_name, "block_fill_size", 0)),
     _diagonal_bands_filled(config.get_default<std::vector<std::pair<size_t, size_t>>>(
         unique_name, "diagonal_bands_filled", {})),
-    _mask_flagged_inputs(config.get_default<bool>(unique_name, "mask_flagged_inputs", true)),
+    _mask_flagged_inputs(config.get_default<bool>(unique_name, "mask_flagged_inputs", false)),
 
     comp_time_seconds_metric(
         Metrics::instance().add_gauge("kotekan_eigenN2iter_comp_time_seconds", unique_name)),
