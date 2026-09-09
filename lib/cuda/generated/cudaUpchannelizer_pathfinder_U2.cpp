@@ -354,16 +354,18 @@ cudaUpchannelizer_pathfinder_U2::cudaUpchannelizer_pathfinder_U2(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Build the PTX only once
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("Upchannelizer_pathfinder_U2_"
+                                      + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/Upchannelizer_pathfinder_U2.ptx", {kernel_symbol},
                          opts, "Upchannelizer_pathfinder_U2_");
-    });
+    }
 }
 
 cudaUpchannelizer_pathfinder_U2::~cudaUpchannelizer_pathfinder_U2() {}
