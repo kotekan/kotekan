@@ -490,10 +490,14 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
 
     // Update metadata
     {
+        const std::shared_ptr<const chordMetadata> E_meta = E_buffer.get_metadata();
         const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
 
-        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
-        J_meta->set_fpga_seq_num(T_min);
+        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`. The ring
+        // buffer's `fpga_seq_num` is the sequence number of its logical beginning, not zero,
+        // and `T_min` counts samples from there.
+        J_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
+                                 + T_min * E_meta->get_time_downsampling_fpga());
         assert(J_meta->get_time_downsampling_fpga() == 1);
     }
 
