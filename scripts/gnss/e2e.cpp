@@ -1262,6 +1262,38 @@ int main(int argc, char** argv) {
                : ">>> noiseless chain is phase-clean; the live floor comes from something this "
                  "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
 
+        // ---- [4a] THE PER-RECORD STEP SERIES, the statistic that discriminates on sky ----
+        // A smooth model mismatch (a quadratic phase) gives a per-record step that is nearly
+        // CONSTANT from record to record: small step rms. A per-record reference error gives
+        // steps that vary randomly: an OFFSET error telescopes (lag-1 autocorrelation -0.5), a
+        // WALK does not (lag-1 ~0). The sky reads step rms ~0.06 cycles at lag-1 ~-0.1, so
+        // this line is what a reproduction must match, not the about-a-ramp residual (which
+        // cannot tell a quadratic from noise). Printed raw and after the assembler's fold.
+        auto step_stats = [&](const std::vector<std::complex<double>>& ps, const char* tag) {
+            std::vector<double> stp;
+            for (size_t i = 1; i < ps.size(); ++i) {
+                double d = std::arg(ps[i] * std::conj(ps[i - 1])) / (2.0 * M_PI);
+                stp.push_back(d);
+            }
+            if (stp.size() < 4)
+                return;
+            double m = 0.0;
+            for (double v : stp) m += v;
+            m /= (double)stp.size();
+            double v2 = 0.0, c1 = 0.0;
+            int big = 0;
+            for (size_t i = 0; i < stp.size(); ++i) {
+                v2 += (stp[i] - m) * (stp[i] - m);
+                if (i + 1 < stp.size()) c1 += (stp[i] - m) * (stp[i + 1] - m);
+                if (std::fabs(stp[i] - m) > 0.2) ++big;
+            }
+            const double sd = std::sqrt(v2 / (double)stp.size());
+            printf("    [4a] %-7s per-record step: mean %+9.5f cyc  sd %.5f cyc  lag-1 %+.3f"
+                   "  |step-mean|>0.2: %d of %zu\n",
+                   tag, m, sd, v2 > 0 ? c1 / v2 : 0.0, big, stp.size());
+        };
+        step_stats(prompts, "RAW");
+
         // ---- [4b] THE ASSEMBLER'S RE-PIN FOLD, applied here (task #52/#40 root hunt) ----
         // The despread's carrier reference is (f_offset + dop) * t_abs, so the per-record
         // Doppler retag steps it by dcyc = (dop_k - dop_{k-1}) * t_k cycles. Live,
@@ -1298,6 +1330,7 @@ int main(int argc, char** argv) {
             printf("\n[4b] SAME records with the ASSEMBLER'S dcyc fold applied\n");
             printf("    coherent snr %.2f   residual about a linear ramp: %.4f rad rms\n",
                    cf2.snr, std::sqrt(qs2 / N));
+            step_stats(fp, "FOLDED");
             // THE DISCRIMINATOR: apparent frequencies. A constant per-record reference step
             // is INVISIBLE to the about-a-ramp statistic (it IS a frequency), so compare the
             // fitted rates against the prediction remainder(ddop*t_abs, 1)/dT directly.
