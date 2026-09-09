@@ -47,26 +47,20 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     _exit_after_n_files = config.get_default<uint32_t>(unique_name, "exit_after_n_files", 0);
-    // OPT-IN: start numbering AFTER the highest <file_name>_NNNNNNN.<ext> already in base_dir
+    // Opt-in: start numbering AFTER the highest <file_name>_NNNNNNN.<ext> already in base_dir
     // instead of at 0. The default restarts at 0 on every process start and open()s WITHOUT
-    // O_TRUNC, so a restarted long-running archiver silently overwrites its own oldest files:
-    // the 2026-09-06 beam-cube archiver flip clobbered raw files 0..90 of the previous day in
-    // four minutes. An archive that is meant to outlive the process must say so here.
+    // O_TRUNC, so a restarted long-running archiver silently overwrites its own oldest files.
+    // An archive meant to outlive the process must say so here.
     _continue_numbering = config.get_default<bool>(unique_name, "continue_numbering", false);
-    // OPT-IN escape from the NDArray refusal below. The refusal exists because the frame
-    // DESCRIPTOR is set dynamically and is not written to the file, so a reader cannot
-    // recover the shape from the file alone -- a real hazard for anything self-describing.
-    // It is NOT a hazard when the shape is fixed and known out of band, which is exactly the
-    // airspy raw-voltage case: input_buf is a flat 16-bit real stream whose only "shape" is
-    // samples_per_data_set, already pinned in both the capture and replay configs. Blocking
-    // that case forced captures out of kotekan entirely and into a separate tool, which then
-    // has to be trusted to produce byte-identical output -- the thing a deterministic replay
-    // exists to avoid. Default stays false: you must say you know.
+    // Opt-in escape from the NDArray refusal below. The refusal exists because the frame
+    // descriptor is set dynamically and is not written to the file, so a reader cannot
+    // recover the shape from the file alone. That is no hazard when the shape is fixed and
+    // known out of band (a flat sample stream whose only "shape" is samples_per_data_set,
+    // pinned in both the capture and the replay config). Default false: you must say you know.
     _allow_ndarray = config.get_default<bool>(unique_name, "allow_ndarray", false);
-    // OPT-IN: create base_dir (and parents) now. The default leaves the directory the
-    // operator's job, but a writer that sits idle behind a gate for hours before its first
-    // frame would otherwise take the whole process down on a missing directory at the one
-    // moment the data matters.
+    // Opt-in: create base_dir and its parents now. The default leaves the directory to the
+    // operator, but a writer that sits idle behind a gate for hours would otherwise take the
+    // process down on a missing directory at the one moment the data matters.
     if (config.get_default<bool>(unique_name, "create_base_dir", false)) {
         std::error_code ec;
         std::filesystem::create_directories(_base_dir, ec);

@@ -100,7 +100,7 @@ if(FFTW_FOUND)
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 endif()
 
-# frameID / modulo<int>: reduce-on-write, the 2^32 wrap that wedged the bf-mask buffer
+# frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
 add_executable(test_modulo test_modulo.cpp)
 target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 

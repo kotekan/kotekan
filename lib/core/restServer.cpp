@@ -71,6 +71,13 @@ restServer::restServer() : main_thread() {
 restServer::~restServer() {
     _restServer_alive.store(false, std::memory_order_release);
     stop_thread = true;
+    // A server that was never started has no thread to join, and join() on a
+    // non-joinable thread throws. That is an ordinary path (--check-config and
+    // --dry-run build the REST endpoints without starting the server), so it is
+    // not a warning; the warning below is for a join that fails on a thread that
+    // really was running.
+    if (!main_thread.joinable())
+        return;
     try {
         main_thread.join();
     } catch (std::exception& e) {
