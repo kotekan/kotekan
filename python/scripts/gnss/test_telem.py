@@ -289,6 +289,65 @@ class TestWindowRing(unittest.TestCase):
         self.assertEqual(list(c.frame_set("gal_e5a", 10)), ["cx19.0"])
 
 
+class TestQuietGatherDoesNotReconnect(unittest.TestCase):
+    """C. Silence is not a broken link.
+
+    ⚠️ WHY THIS TEST EXISTS. The client used to treat its read timeout as "gather unavailable"
+    and reconnect. With the fleet down there is nothing to forward, so it reconnected every
+    ~35 s for as long as the outage lasted -- and the gather only ever noticed a dead client
+    when a WRITE to it failed, which with no senders never happens. Twelve hours of that left
+    969 sockets in CLOSE_WAIT, the accept() calls failing with EMFILE, and the gather serving
+    nothing at all -- REST included -- exactly as the fleet came back.
+    """
+
+    def _serve(self, sock, gap_s):
+        """One frame, then GAP (longer than the client's read timeout), then a second frame."""
+        conn, _ = sock.accept()
+        self.conns += 1
+        try:
+            for raw in (_make_frame(win=1), None, _make_frame(win=2)):
+                if raw is None:
+                    time.sleep(gap_s)
+                    continue
+                conn.sendall(struct.pack("<I", len(raw)) + raw)
+            time.sleep(1.0)   # hold the connection open so a reconnect would be visible
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+    def test_a_silent_gather_is_waited_out_not_reconnected(self):
+        import socket as _s
+        import threading
+        srv = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(4)
+        self.conns = 0
+        t = threading.Thread(target=self._serve, args=(srv, 0.30), daemon=True)
+        t.start()
+
+        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=8,
+                              retry_s=0.05, read_timeout_s=0.10)
+        c.start()
+        try:
+            deadline = time.time() + 5.0
+            while time.time() < deadline and c.frames < 2:
+                time.sleep(0.02)
+        finally:
+            c.stop()
+        srv.close()
+
+        # BOTH frames arrive, ACROSS a gap three times the read timeout...
+        self.assertEqual(c.frames, 2, "the frame after the silence never arrived")
+        self.assertGreaterEqual(c.quiet, 1, "the read timeout was never exercised")
+        # ...on ONE connection. This is the assertion that would have caught the leak: the
+        # accept count is what the gather pays for, one leaked socket per reconnect.
+        self.assertEqual(self.conns, 1, "the client reconnected across a quiet gather")
+        self.assertEqual(c.connects, 1)
+        self.assertEqual(c.bad, 0)
+
+
 class TestCoherentSource(unittest.TestCase):
     """B. The /get_records replacement, in the shape fleet_coherent already consumes."""
 

@@ -88,6 +88,13 @@ if ss -ltn 2>/dev/null | grep -qE ":($RECV|$SERVE|$REST)\b"; then
     exit 1
 fi
 
+# ⚠️ FD LIMIT, RAISED HERE AND NOT LEFT TO THE SHELL'S 1024. This process holds one socket per
+# sender (89 today) plus one per broker client plus the listeners -- comfortable at 1024 until
+# anything churns connections, and then it is not a slow degradation: accept() starts failing
+# with EMFILE and the gather serves NOTHING, REST included, while every log line says the
+# senders cannot connect. 65536 is a header-file-sized number against a hard limit of ~1M.
+ulimit -n 65536 2>/dev/null || echo "WARNING: could not raise the fd limit (now $(ulimit -n))" >&2
+
 nohup setsid "$BIN" --config "$CFG" --bind-address "0.0.0.0:$REST" \
     > "$LOG" 2>&1 < /dev/null &
 disown

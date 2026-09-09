@@ -173,6 +173,7 @@ void GnssTelemGather::main_thread() {
             break; // shutting down
         if (rc > 0) {
             sweep_stale();
+            reap_clients();
             continue;
         }
         uint8_t* frame = in_buf->frames[in_id];
@@ -232,7 +233,65 @@ void GnssTelemGather::main_thread() {
         broadcast(frame, gnss::telem_frame_bytes(*h));
         in_buf->mark_frame_empty(unique_name, in_id++);
         sweep_stale();
+        reap_clients();
     }
+}
+
+void GnssTelemGather::reap_clients() {
+    // ⚠️ A CLIENT THAT GOES AWAY MUST BE NOTICED WITHOUT A WRITE. Dropping clients on a failed
+    // send is enough only while frames flow: with the fleet down there is nothing to broadcast,
+    // so a peer's FIN was never observed and its socket sat in CLOSE_WAIT forever. The broker
+    // reconnects on a timer when it is receiving nothing, which turned that into a steady leak
+    // -- ~100 dead fds an hour -- until accept() failed with EMFILE and the gather stopped
+    // serving anything at all, REST included, with the fleet coming back up. The soft limit is
+    // the second half of that story and belongs in the launcher; this is the leak itself.
+    const double now = current_time();
+    if (now - _last_reap < 1.0)
+        return; // polls every client fd, and the frame path calls this at frame rate
+    _last_reap = now;
+
+    std::vector<int> gone;
+    int left = 0;
+    uint64_t reaped = 0;
+    {
+        std::lock_guard<std::mutex> lk(_client_mtx);
+        if (_clients.empty())
+            return;
+        std::vector<struct pollfd> pfds;
+        pfds.reserve(_clients.size());
+        for (int fd : _clients)
+            pfds.push_back({fd, (short)(POLLIN | POLLRDHUP), (short)0});
+        if (::poll(pfds.data(), pfds.size(), 0) <= 0)
+            return; // nobody is readable or hung up: every client is alive and quiet
+        for (const auto& pfd : pfds) {
+            if (pfd.revents == 0)
+                continue;
+            if (pfd.revents & (POLLRDHUP | POLLHUP | POLLERR | POLLNVAL)) {
+                gone.push_back(pfd.fd);
+                continue;
+            }
+            // Readable. This stream is one-way -- a client never sends -- so PEEK to tell an
+            // orderly close (0) from a client that is talking out of turn, which is a
+            // desynchronised reader and no safer to keep than a dead one.
+            char b;
+            const ssize_t r = ::recv(pfd.fd, &b, 1, MSG_PEEK | MSG_DONTWAIT);
+            if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK))
+                gone.push_back(pfd.fd);
+        }
+        for (int fd : gone) {
+            _clients.erase(std::remove(_clients.begin(), _clients.end(), fd), _clients.end());
+            ::close(fd);
+            _client_hangups++;
+        }
+        left = (int)_clients.size();
+        reaped = _client_hangups;
+    }
+    // Logged outside the lock, with the counts READ INSIDE it: the accept thread can add a
+    // client between the two, and a log line is not worth a race on the vector.
+    for (int fd : gone)
+        INFO("GnssTelemGather[{:s}]: reaped client fd {:d} -- its peer closed. {:d} reaped so "
+             "far; {:d} client(s) remain.",
+             unique_name, fd, reaped, left);
 }
 
 void GnssTelemGather::sweep_stale() {
@@ -336,6 +395,7 @@ void GnssTelemGather::stats_callback(kotekan::connectionInstance& conn) {
     {
         std::lock_guard<std::mutex> lk(_client_mtx);
         reply["clients"] = _clients.size();
+        reply["client_hangups"] = _client_hangups;
     }
     reply["frame_bytes"] = (size_t)in_buf->frame_size;
     reply["serve"] = _serve_host + ":" + std::to_string(_serve_port);

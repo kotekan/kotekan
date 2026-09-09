@@ -108,11 +108,20 @@ private:
 
     uint64_t _bad_frames = 0;   ///< failed the magic/version/geometry check
     uint64_t _client_drops = 0; ///< clients disconnected for being too slow
+    uint64_t _client_hangups = 0; ///< clients reaped because THEY closed (see reap_clients)
+    double _last_reap = 0.0;    ///< rate limit for reap_clients: it polls every client fd
 
     /// Mark senders stale/live and log each TRANSITION once. Called on a timer, not only when
     /// a frame arrives -- a fleet that goes completely silent must still be reported, and that
     /// is exactly the case a frame-driven loop cannot see.
     void sweep_stale();
+
+    /// Close clients whose PEER has gone away. A client is otherwise only noticed when a write
+    /// to it fails, and a gather with no senders never writes -- so every disconnect during a
+    /// fleet outage leaked a CLOSE_WAIT socket, and the stage eventually could not accept at
+    /// all. Called from the same heartbeat as sweep_stale(), rate-limited because it polls
+    /// every client fd.
+    void reap_clients();
 
     void accept_loop();
     /// Write the whole buffer or fail. Returns false if the client should be dropped.

@@ -262,7 +262,8 @@ class TelemClient(object):
     the new one has been shown, on sky, to be at least as good.
     """
 
-    def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0, chains=None):
+    def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0, chains=None,
+                 read_timeout_s=30.0):
         self.host = host
         self.port = port
         self.depth = int(depth)
@@ -272,6 +273,13 @@ class TelemClient(object):
         # 30 s diagnostic being affordable and not. None = keep everything (the broker's case).
         self.chains_filter = set(chains) if chains else None
         self.retry_s = float(retry_s)
+        # How long a silent gather is tolerated before we look at the socket again. A parameter
+        # rather than a constant so the quiet path is TESTABLE in a fraction of a second -- the
+        # bug it guards against took twelve hours of silence to show up in production.
+        self.read_timeout_s = float(read_timeout_s)
+        # Read timeouts tolerated because the gather had nothing to send. A rising count
+        # with `connects` flat is a quiet fleet; the reverse pair is a link that keeps dying.
+        self.quiet = 0
         self._lock = threading.Lock()
         # chain -> OrderedDict{win: {inst: TelemFrame}}, oldest first, capped at `depth`
         self._store = {}
@@ -301,7 +309,15 @@ class TelemClient(object):
             sock = None
             try:
                 sock = socket.create_connection((self.host, self.port), timeout=10.0)
-                sock.settimeout(30.0)
+                sock.settimeout(self.read_timeout_s)
+                # KEEPALIVE, because a read timeout no longer means "reconnect" (see
+                # _read_loop): silence is now tolerated, so the ONLY thing left to notice a
+                # gather whose host vanished without closing the socket is the kernel's probe.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                for opt, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 10),
+                                 ("TCP_KEEPCNT", 3)):
+                    if hasattr(socket, opt):
+                        sock.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), val)
                 self.connected = True
                 self.connects += 1
                 _log("telem: connected to gather %s:%d" % (self.host, self.port))
@@ -319,11 +335,23 @@ class TelemClient(object):
             if not self._stop.is_set():
                 self._stop.wait(self.retry_s)
 
-    def _recv_exactly(self, sock, n):
+    def _recv_exactly(self, sock, n, quiet_ok=False):
+        """Read exactly n bytes. `quiet_ok` tolerates a read timeout BEFORE the first byte.
+
+        ⚠️ ONLY before the first byte. A timeout part-way through a frame is a desynchronised
+        stream, and continuing past it would resume parsing at an offset -- plausible numbers on
+        the wrong rows, the exact failure this transport exists to stop tolerating. So the
+        caller may treat "nothing arrived" as silence, and everything else stays fatal.
+        """
         chunks = []
         got = 0
         while got < n:
-            b = sock.recv(n - got)
+            try:
+                b = sock.recv(n - got)
+            except socket.timeout:
+                if quiet_ok and got == 0:
+                    return None
+                raise
             if not b:
                 raise IOError("gather closed the connection")
             chunks.append(b)
@@ -332,7 +360,17 @@ class TelemClient(object):
 
     def _read_loop(self, sock):
         while not self._stop.is_set():
-            (length,) = struct.unpack("<I", self._recv_exactly(sock, 4))
+            # A QUIET GATHER IS NOT A BROKEN ONE. With the fleet down there is nothing to
+            # forward, and tearing the connection down on the read timeout meant reconnecting
+            # every ~35 s for as long as the outage lasted -- which leaked one socket per cycle
+            # on the gather (it only noticed a dead client when a write to it failed) until it
+            # hit EMFILE and stopped serving anything, REST included. Wait instead; keepalive
+            # above is what detects a link that is genuinely gone.
+            raw = self._recv_exactly(sock, 4, quiet_ok=True)
+            if raw is None:
+                self.quiet += 1
+                continue
+            (length,) = struct.unpack("<I", raw)
             # A frame is delivered whole or the gather closes the connection (it never
             # half-writes), so a length outside the plausible range means the stream is not
             # what we think it is -- reconnect rather than parse garbage.
