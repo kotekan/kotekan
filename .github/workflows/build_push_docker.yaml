@@ -56,6 +56,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # `changed-files` with `since_last_remote_commit` needs the history: on a newly
+          # opened PR it falls back to `HEAD^`, which a depth-1 checkout does not have.
+          fetch-depth: 0
 
       # Has the Dockerfile ever changed vs base branch? (for tag selection)
       - name: Check Dockerfile diff vs base
