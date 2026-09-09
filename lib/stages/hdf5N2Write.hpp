@@ -42,8 +42,9 @@
  *   num_file_t, num_elements, num_prod, num_ev, num_freq, n2_layout, telescope
  *   geometry (origin, orientations, dish maps), EOP tables, num_file_f.
  * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
- *   /index_map/grid_x_idx, /index_map/grid_y_idx, /index_map/feed_pos_disp_m,
- *   /index_map/coelev_disp_deg, /index_map/type, /index_map/dish_positions_in_grid_coords.
+ *   per-element input tables over the frame's elements (/index_map/dish_idx, pol,
+ *   grid_x_idx, grid_y_idx, feed_pos_disp_m, coelev_disp_deg, type, label), and
+ *   /index_map/dish_positions_in_grid_coords per dish.
  * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
  * /frames_added; vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
  *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.

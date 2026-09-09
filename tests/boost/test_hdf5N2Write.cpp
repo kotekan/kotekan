@@ -161,6 +161,38 @@ static std::string get_dataset_name(const std::string& base_dir, uint64_t abs_fi
     return buf.str();
 }
 
+// The /index_map input tables have one row per element of the frame. A full
+// layout holds the first num_input elements of the array in the file's
+// input_order: the test telescope has two dishes and two polarizations, and
+// CHORDBeamformer order puts element = dish + pol * num_dishes, so the rows are
+// D00p1, D01p1, D00p2, D01p2 with dish i in grid column i.
+static void validate_index_map_inputs(File& file, size_t num_input) {
+    std::vector<std::string> labels;
+    std::vector<int64_t> dish_idx;
+    std::vector<int32_t> pol;
+    std::vector<int64_t> grid_x;
+    file.getDataSet("/index_map/label").read(labels);
+    file.getDataSet("/index_map/dish_idx").read(dish_idx);
+    file.getDataSet("/index_map/pol").read(pol);
+    file.getDataSet("/index_map/grid_x_idx").read(grid_x);
+
+    BOOST_REQUIRE_LE(num_input, 4u);
+    const std::vector<std::string> all_labels{"D00p1", "D01p1", "D00p2", "D01p2"};
+    const std::vector<int64_t> all_dish{0, 1, 0, 1};
+    const std::vector<int32_t> all_pol{0, 0, 1, 1};
+    const std::vector<std::string> expected_labels(all_labels.begin(),
+                                                   all_labels.begin() + num_input);
+    const std::vector<int64_t> expected_dish(all_dish.begin(), all_dish.begin() + num_input);
+    const std::vector<int32_t> expected_pol(all_pol.begin(), all_pol.begin() + num_input);
+    BOOST_CHECK_EQUAL_COLLECTIONS(labels.begin(), labels.end(), expected_labels.begin(),
+                                  expected_labels.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(dish_idx.begin(), dish_idx.end(), expected_dish.begin(),
+                                  expected_dish.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(pol.begin(), pol.end(), expected_pol.begin(), expected_pol.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(grid_x.begin(), grid_x.end(), expected_dish.begin(),
+                                  expected_dish.end());
+}
+
 // Read back and validate a few arrays using the known patterns
 // Note this is not a full validation of all data, just spot-checks
 // This function assumes the fill_n2_frame function has been called
@@ -333,6 +365,60 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
 }
 
 // Test 2: add_frame for the same (f,t) slot twice with differing metadata values
+// A DishInputs frame carries only the input_list elements, so the /index_map input
+// tables hold those rows in frame order. Elements 1 and 3 of the test telescope
+// (CHORDBeamformer: element = dish + pol * 2) are the two polarizations of dish D01.
+BOOST_AUTO_TEST_CASE(test_visfiledata_index_map_dish_inputs) {
+    const size_t num_input = 2;
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::DishInputs);
+    const size_t num_ev = 1;
+    const size_t num_file_t = 1;
+
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
+    auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool_di", "N2Metadata");
+    Buffer buf(1, frame_size, pool, "n2buf_di", "N2", 1, false, false, std::vector<int>{}, true);
+    buf.ensure_frame_desc(std::make_shared<kotekan::N2FrameDesc>(
+        num_input, num_ev, num_prod, N2Layout::DishInputs, std::vector<N2::prod_ctype>{},
+        std::vector<uint16_t>{1, 3}));
+    buf.allocate_new_metadata_object(0);
+    auto meta = get_N2_metadata(&buf, 0);
+    BOOST_REQUIRE(meta);
+    meta->freq_id = get_abs_freq_id(0);
+    N2FrameView fv(&buf, 0);
+    fv.zero_frame();
+
+    const std::string base_dir = "test_visfiledata_index_map_dish_inputs";
+    rm_tree_if_exists(base_dir);
+    ensure_directory(base_dir);
+    ensure_directory(base_dir + "/.partial");
+    {
+        TestVisFileData data(fv, num_file_t, 100.0, 0, base_dir);
+
+        std::vector<std::string> labels;
+        std::vector<int64_t> dish_idx;
+        std::vector<int32_t> pol;
+        std::vector<int32_t> type;
+        data.h5_file->getDataSet("/index_map/label").read(labels);
+        data.h5_file->getDataSet("/index_map/dish_idx").read(dish_idx);
+        data.h5_file->getDataSet("/index_map/pol").read(pol);
+        data.h5_file->getDataSet("/index_map/type").read(type);
+
+        const std::vector<std::string> expected_labels{"D01p1", "D01p2"};
+        const std::vector<int64_t> expected_dish{1, 1};
+        const std::vector<int32_t> expected_pol{0, 1};
+        const std::vector<int32_t> expected_type{0, 0}; // ArrayDish
+        BOOST_CHECK_EQUAL_COLLECTIONS(labels.begin(), labels.end(), expected_labels.begin(),
+                                      expected_labels.end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(dish_idx.begin(), dish_idx.end(), expected_dish.begin(),
+                                      expected_dish.end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(pol.begin(), pol.end(), expected_pol.begin(),
+                                      expected_pol.end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(type.begin(), type.end(), expected_type.begin(),
+                                      expected_type.end());
+    }
+    rm_tree_if_exists(base_dir);
+}
+
 BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     N2Metadata force_link_marker;
     const size_t num_input = 2;
@@ -575,6 +661,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     {
         File f(ds_path, File::ReadOnly);
         validate_dataset_content(f, num_input, num_ev, nfreq, expected_num_file_t);
+        validate_index_map_inputs(f, num_input);
     }
 
     // Cleanup

@@ -1,6 +1,6 @@
 #include "hdf5N2Write.hpp"
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope, dishInputFields
+#include "CHORDTelescope.hpp" // for CHORDTelescope, elementInputFields
 #include "H5Support.hpp"      // for create_datatype
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "N2Util.hpp"         // for freq_ctype, frameID, modulo, cfloat
@@ -347,10 +347,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "grid_size_y", telescope.get_grid_size_y());
         _check_create_attribute(*file, "feed_separation_x_m", telescope.get_feed_separation_x_m());
         _check_create_attribute(*file, "feed_separation_y_m", telescope.get_feed_separation_y_m());
-        // Per-element labels. Compact subset layouts (e.g. DishInputs) identify their
-        // elements via the descriptor's input_list; gather those elements' labels from
-        // the full fiducial order, and record the identities themselves so the file
-        // stays self-describing.
+        // Compact subset layouts (e.g. DishInputs) identify their elements via the
+        // descriptor's input_list; gather their grid indices and feed positions through
+        // it, and record the identities themselves so the file stays self-describing.
         const std::vector<uint16_t>& input_list = fv._desc->get_input_list();
         if (input_list.empty()) {
             _check_create_attribute(
@@ -408,50 +407,71 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             }
         }
 
-        // Store dish input info
+        // Per-element input info: one row per element of the frame, indexed like the
+        // element axis of /evec, /gain and /flags and the entries of /index_map/prod.
+        // Full layouts hold the array in the file's input_order; compact layouts hold
+        // the input_list elements in frame order.
         {
-            // Set up an object to receive the dish input info.
-            dishInputFields dish_inputs;
-            // Fill the object with the info.
-            telescope.fill_input_maps(dish_inputs);
-
-            _check_create_dataset(*file, "/index_map/grid_x_idx", {dish_inputs.grid_x_idx.size()},
-                                  {"dish"}, HighFive::create_datatype<int64_t>(), props_empty);
-            auto dataset_x = file->getDataSet("/index_map/grid_x_idx");
-            dataset_x.write(dish_inputs.grid_x_idx);
-
-            _check_create_dataset(*file, "/index_map/grid_y_idx", {dish_inputs.grid_y_idx.size()},
-                                  {"dish"}, HighFive::create_datatype<int64_t>(), props_empty);
-            auto dataset_y = file->getDataSet("/index_map/grid_y_idx");
-            dataset_y.write(dish_inputs.grid_y_idx);
-
-            _check_create_dataset(*file, "/index_map/feed_pos_disp_m",
-                                  {dish_inputs.feed_pos_disp_m.size(), 3}, {"element", "xyz"},
-                                  HighFive::create_datatype<double>(), props_empty);
-            auto dataset_pos = file->getDataSet("/index_map/feed_pos_disp_m");
-            dataset_pos.write(dish_inputs.feed_pos_disp_m);
-
-            _check_create_dataset(*file, "/index_map/coelev_disp_deg",
-                                  {dish_inputs.coelev_disp_deg.size()}, {"element"},
-                                  HighFive::create_datatype<double>(), props_empty);
-            auto dataset_coelev = file->getDataSet("/index_map/coelev_disp_deg");
-            dataset_coelev.write(dish_inputs.coelev_disp_deg);
-
-            _check_create_dataset(*file, "/index_map/type", {dish_inputs.type.size()}, {"dish"},
-                                  HighFive::create_datatype<int32_t>(), props_empty);
-            auto dataset_type = file->getDataSet("/index_map/type");
-            // Cast DishType enum to int32_t for storage
-            std::vector<int32_t> type_int(dish_inputs.type.size());
-            for (size_t i = 0; i < dish_inputs.type.size(); i++) {
-                type_int[i] = static_cast<int32_t>(dish_inputs.type[i]);
+            elementInputFields all_elements;
+            telescope.fill_element_maps(all_elements, input_order);
+            std::vector<size_t> rows(input_list.begin(), input_list.end());
+            if (rows.empty()) {
+                if (fv.num_elements > all_elements.label.size())
+                    FATAL_ERROR_NON_OO("N2FileData: frame has {:d} elements but the telescope "
+                                       "only {:d}",
+                                       fv.num_elements, all_elements.label.size());
+                for (size_t el = 0; el < fv.num_elements; el++)
+                    rows.push_back(el);
             }
-            dataset_type.write(type_int);
+            elementInputFields elements;
+            for (const size_t el : rows) {
+                elements.dish_idx.push_back(all_elements.dish_idx.at(el));
+                elements.pol.push_back(all_elements.pol.at(el));
+                elements.grid_x_idx.push_back(all_elements.grid_x_idx.at(el));
+                elements.grid_y_idx.push_back(all_elements.grid_y_idx.at(el));
+                elements.feed_pos_disp_m.push_back(all_elements.feed_pos_disp_m.at(el));
+                elements.coelev_disp_deg.push_back(all_elements.coelev_disp_deg.at(el));
+                elements.type.push_back(all_elements.type.at(el));
+                elements.label.push_back(all_elements.label.at(el));
+            }
+            const hsize_t num_el = elements.label.size();
 
-            _check_create_dataset(*file, "/index_map/label", {dish_inputs.label.size()},
-                                  {"element"}, HighFive::create_datatype<std::string>(),
+            _check_create_dataset(*file, "/index_map/dish_idx", {num_el}, {"element"},
+                                  HighFive::create_datatype<int64_t>(), props_empty);
+            file->getDataSet("/index_map/dish_idx").write(elements.dish_idx);
+
+            _check_create_dataset(*file, "/index_map/pol", {num_el}, {"element"},
+                                  HighFive::create_datatype<int32_t>(), props_empty);
+            file->getDataSet("/index_map/pol").write(elements.pol);
+
+            _check_create_dataset(*file, "/index_map/grid_x_idx", {num_el}, {"element"},
+                                  HighFive::create_datatype<int64_t>(), props_empty);
+            file->getDataSet("/index_map/grid_x_idx").write(elements.grid_x_idx);
+
+            _check_create_dataset(*file, "/index_map/grid_y_idx", {num_el}, {"element"},
+                                  HighFive::create_datatype<int64_t>(), props_empty);
+            file->getDataSet("/index_map/grid_y_idx").write(elements.grid_y_idx);
+
+            _check_create_dataset(*file, "/index_map/feed_pos_disp_m", {num_el, 3},
+                                  {"element", "xyz"}, HighFive::create_datatype<double>(),
                                   props_empty);
-            auto dataset_label = file->getDataSet("/index_map/label");
-            dataset_label.write(dish_inputs.label);
+            file->getDataSet("/index_map/feed_pos_disp_m").write(elements.feed_pos_disp_m);
+
+            _check_create_dataset(*file, "/index_map/coelev_disp_deg", {num_el}, {"element"},
+                                  HighFive::create_datatype<double>(), props_empty);
+            file->getDataSet("/index_map/coelev_disp_deg").write(elements.coelev_disp_deg);
+
+            // DishType enum stored as int32_t
+            std::vector<int32_t> type_int(num_el);
+            for (size_t i = 0; i < num_el; i++)
+                type_int[i] = static_cast<int32_t>(elements.type[i]);
+            _check_create_dataset(*file, "/index_map/type", {num_el}, {"element"},
+                                  HighFive::create_datatype<int32_t>(), props_empty);
+            file->getDataSet("/index_map/type").write(type_int);
+
+            _check_create_dataset(*file, "/index_map/label", {num_el}, {"element"},
+                                  HighFive::create_datatype<std::string>(), props_empty);
+            file->getDataSet("/index_map/label").write(elements.label);
         }
 
         // Store full dish positions
