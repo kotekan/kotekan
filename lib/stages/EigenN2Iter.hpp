@@ -70,12 +70,14 @@
  *                         factorization. These are indices into the incoming
  *                         frame's elements, which for a compact subset buffer are
  *                         the subset's own indices, not the full array's.
- * @conf  mask_flagged_inputs  Bool, default true. Also mask the inputs the
+ * @conf  mask_flagged_inputs  Bool, default false. Also mask the inputs the
  *                         incoming frame flags as bad, i.e. those whose entry in
- *                         the frame's per-element `flags` is zero (1.0 == good).
- *                         The mask is rebuilt when the set of zero flags
- *                         changes. Set false to ignore the frame's flags and
- *                         mask only what the config names.
+ *                         the frame's per-element `flags` is zero (1.0 == good), on
+ *                         top of what `exclude_inputs` names. Off by default so a
+ *                         source that does not populate flags (every N2 producer
+ *                         predating this option) keeps its old unmasked behaviour;
+ *                         CHORD pipelines turn it on explicitly. The mask is rebuilt
+ *                         when the set of zero flags changes.
  * @conf  tol_eval         Float, default 1e-6. Fractional change in evals must be less
  *                         than this for convergence.
  * @conf  tol_evec         Float, default 1e-5. Total eigenvector overlap must be less
