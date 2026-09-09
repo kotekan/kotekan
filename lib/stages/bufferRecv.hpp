@@ -162,6 +162,10 @@ private:
     /// the next frame header, after one corrupted frame.
     bool use_frame_desc;
 
+    /// Accept frames SMALLER than the buffer's frame (self-describing producers only, see
+    /// bufferRecv.cpp). Default false: elsewhere a size mismatch is a misconfigured sender.
+    bool allow_short_frames;
+
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);
 
@@ -276,7 +280,8 @@ public:
     /// Constructor
     connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                  const std::string& client_ip, int port, struct timeval read_timeout,
-                 bool use_config_tracker, bool use_frame_desc, uint16_t upstream_rest_port);
+                 bool use_config_tracker, bool use_frame_desc, bool allow_short_frames,
+                 uint16_t upstream_rest_port);
 
     /// Destructor
     ~connInstance();
@@ -345,6 +350,9 @@ public:
 
     /// Whether to expect a serialized frame descriptor on the wire
     const bool use_frame_desc;
+
+    /// @see bufferRecv::allow_short_frames
+    const bool allow_short_frames;
 
     /// Set once the frame descriptor has been read on this connection; the sender
     /// transmits it only on the first frame, so later frames skip the read.
