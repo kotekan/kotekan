@@ -37,6 +37,7 @@ import sys
 import time
 import urllib.request
 from datetime import datetime, timezone
+from fractions import Fraction
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_stages import resolve_stage, capture_clock
@@ -100,6 +101,29 @@ def cn0_q_dbhz(snr_q, t_rec):
     return None
 
 
+_warn_dop = [0]
+
+
+def _phys_chips(cp_arg, comb_mult, hop, t_abs, dop_hz, args):
+    """Physical code phase (chips, mod code_length) of the replica at the epoch.
+
+    C(n) = comb_mult*cp_arg + n*cps(dop), n the ABSOLUTE sample index -- the generator's own
+    definition, so this is the exact inverse of the argument the tracker was seeded with.
+    Done in exact rationals when the hop is available: n*cps is ~4.5e12 chips, and taking the
+    modulus of that in float64 leaves ~5e-4 chips (1.6 cm) -- fine, but the rational costs
+    nothing at this rate and removes the question entirely.
+    """
+    scale = 1.0 + args.code_doppler_sign * dop_hz / args.carrier_hz
+    if hop:
+        n = Fraction(int(hop) * int(args.samples_per_hop))
+        chips = (Fraction(comb_mult) * Fraction(cp_arg).limit_denominator(10 ** 12)
+                 + n * Fraction(args.chip_rate_hz).limit_denominator(10 ** 9)
+                 * Fraction(scale).limit_denominator(10 ** 15)
+                 / Fraction(args.sample_rate_hz).limit_denominator(10 ** 9))
+        return float(chips % Fraction(int(args.code_length)))
+    return (comb_mult * cp_arg + t_abs * args.chip_rate_hz * scale) % args.code_length
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -128,21 +152,68 @@ def main():
     ap.add_argument("--interval", type=float, default=1.0,
                     help="poll period (s); rows are written once per COMBINER EMIT (deduped "
                          "on the arc/record counters), so polling faster than the emit is free")
-    ap.add_argument("--out", default="/tmp/gpswipe/observables.jsonl")
+    ap.add_argument("--out", default="/tmp/gpswipe/observables.jsonl",
+                    help="obs-log path. %Y%m%d etc are strftime-expanded and the file ROLLS at "
+                         "UTC midnight -- a date baked in at launch keeps one day's name for as "
+                         "long as the process lives, and consumers that open today's file "
+                         "then find nothing.")
+    # ── THE CHORD ANCHOR. The airspy path anchors absolute time on the dongle's
+    # adcstat/utc0_sample0; CHORD has no such endpoint, and the broker answers an unknown
+    # path with a 200 and a chain summary, so `.get("utc0_sample0") or 0.0` silently yields
+    # zero and every code residual comes out null. The F-engine's own sample-0 epoch is
+    # served exactly (nanoseconds, identical on every node) at /telescope/time0_ns.
+    ap.add_argument("--frame0-url", default="",
+                    help="node REST base (e.g. http://cx43:12048) serving /telescope/time0_ns, "
+                         "the UTC of F-engine sample 0. Sets the absolute-time anchor for the "
+                         "code residual. Without it (or --frame0-utc) this falls back to the "
+                         "airspy adcstat anchor.")
+    ap.add_argument("--frame0-utc", type=float, default=0.0,
+                    help="the same anchor as a literal, for replay.")
+    ap.add_argument("--hop-key", default="fleet_hop",
+                    help="status field holding the emit's ABSOLUTE F-engine hop. The epoch is "
+                         "built from this integer, never from a UTC difference: two 1.79e9 "
+                         "floats subtract to 2.4e-7 s of resolution, which is 2.4 chips (73 m) "
+                         "of code. Which hop field is used barely matters -- both sides of the "
+                         "residual are evaluated at the SAME hop, so the choice cancels to "
+                         "first order (5e-5 chips over 12288 hops of Doppler mismatch).")
+    ap.add_argument("--integ-max-age-s", type=float, default=90.0,
+                    help="how stale the broker's dead-reckon integrity residual may be before "
+                         "this falls back to reconstructing one (it refreshes ~30 s).")
+    ap.add_argument("--samples-per-hop", type=int, default=16384)
+    ap.add_argument("--sample-rate-hz", type=float, default=3.2e9)
+    ap.add_argument("--comb-mult", type=int, default=1,
+                    help="replica comb multiplier: the generator forms "
+                         "C(n) = comb_mult*code_phase_chips + n*cps(doppler). 2 on L2C (CM).")
     args = ap.parse_args()
 
     args.combiner = resolve_stage(args.url, args.combiner)
     args.search = resolve_stage(args.url, args.search)
     to_unix = capture_clock(args.url, args.airspy)  # capture clock -> unix (band-prefixed stage)
     utc0 = 0.0                          # capture sample-0 UTC (CMC needs the absolute age)
+    frame0 = float(args.frame0_utc or 0.0)
+    if not frame0 and args.frame0_url:
+        # FATAL rather than 0.0: a missing anchor is not a degraded mode, it is every code
+        # residual silently null -- which is how this went unnoticed for as long as it did.
+        with urllib.request.urlopen(args.frame0_url.rstrip("/") + "/telescope/time0_ns",
+                                    timeout=10) as _r:
+            _t0 = json.loads(_r.read().decode()).get("time0_ns")
+        if not _t0:
+            raise SystemExit("no time0_ns at %s -- the code residual needs the F-engine "
+                             "sample-0 epoch; refusing to write null residuals" % args.frame0_url)
+        frame0 = float(_t0) * 1e-9
+        print("gnss_observables: F-engine sample 0 at %.9f (%s)" % (frame0, args.frame0_url),
+              file=sys.stderr)
     t_rec = args.code_length / args.chip_rate_hz
     lam = C_LIGHT / args.carrier_hz          # carrier wavelength (m/cycle)
 
     eph, eph_t, eph_probe_t = None, 0.0, 0.0
     last = {}   # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
     n = 0
-    f = open(args.out, "a", buffering=1)
-    print("gnss_observables: %s [%s/%s] -> %s" % (args.band, args.sys, args.combiner, args.out),
+    def _outpath(t):
+        return time.strftime(args.out, time.gmtime(t))
+    out_now = _outpath(time.time())
+    f = open(out_now, "a", buffering=1)
+    print("gnss_observables: %s [%s/%s] -> %s" % (args.band, args.sys, args.combiner, out_now),
           file=sys.stderr)
 
     while True:
@@ -202,7 +273,15 @@ def main():
                 # (and wrong) instant: pipeline latency and emit jitter of 0.1 s smear a
                 # 2 kHz Doppler by ~200 cycles, and every geometry term is evaluated at the
                 # epoch, so the error would land straight in the ionosphere estimate.
-                t_epoch = to_unix(r.get("utc") or 0.0)
+                hop = r.get(args.hop_key) or r.get("pow_hop") or 0
+                if frame0 and hop:
+                    # EXACT: an integer hop count off the F-engine's own counter, scaled by
+                    # two integers. Never (t_now - utc0) on two 1.79e9 floats.
+                    t_abs = hop * args.samples_per_hop / args.sample_rate_hz
+                    t_epoch = frame0 + t_abs
+                else:
+                    t_epoch = to_unix(r.get("utc") or 0.0)
+                    t_abs = (t_epoch - utc0) if utc0 else 0.0
                 if not (t_epoch > 1.0e9):
                     continue                   # no capture anchor yet: an untagged row is junk
                 v = None
@@ -233,18 +312,50 @@ def main():
                 # logged fields alone, which is why it is computed here, at the source.
                 code_resid_m = None
                 carr_resid_m = None
-                if v is not None and utc0 and adr is not None:
-                    t_abs = t_epoch - utc0
-                    cp_phys = ((r.get("code_phase_chips") or 0.0)
-                               + t_abs * args.chip_rate_hz
-                                 * (1.0 + args.code_doppler_sign
-                                    * (r.get("doppler_hz") or 0.0) / args.carrier_hz)
-                               ) % args.code_length
+                code_resid_src = None
+                if v is not None and (utc0 or frame0) and adr is not None:
+                    # ⚠️ THE DOPPLER MUST BE THE ONE THE GENERATOR WAS HANDED. code_phase_chips
+                    # is an ARGUMENT back-referenced to sample 0 along a Doppler-scaled rate,
+                    # so lifting it to a physical phase carries a lever of ~5095 chips per Hz
+                    # at this uptime -- exact only if the Doppler is the replica's own
+                    # (doppler_applied_hz). The reported doppler_hz differs by ~0.1 Hz, which
+                    # is 500 chips: not a degraded residual, a meaningless one.
+                    # ⚡ PREFER THE BROKER'S OWN INTEGRITY RESIDUAL. It is the same quantity
+                    # this block reconstructs -- measured code minus the model, receiver clock
+                    # removed -- but measured where the currency is unambiguous, so it does not
+                    # ride the argument's Doppler lever. On a healthy chain it is +-0.1-0.5
+                    # chips; the reconstruction below lands within a code period at best. The
+                    # reconstruction stays as the fallback for the airspy prototype, which has
+                    # no dead-reckon clock.
+                    _ic = r.get("dr_integ_chips")
+                    _ia = r.get("dr_integ_age_s")
+                    if _ic is not None and (_ia is None or _ia <= args.integ_max_age_s):
+                        code_resid_m = float(_ic) * C_LIGHT / args.chip_rate_hz
+                        code_resid_src = "dr_integ"
+                    dop_used = r.get("doppler_applied_hz")
+                    if dop_used is None:
+                        dop_used = r.get("doppler_hz") or 0.0
+                        _warn_dop[0] = _warn_dop[0] + 1
+                        if _warn_dop[0] == 1:
+                            print("gnss_observables: no doppler_applied_hz -- falling back to "
+                                  "the reported Doppler; the code residual carries the "
+                                  "5095 chips/Hz argument lever and is NOT metre-good",
+                                  file=sys.stderr)
+                    cp_phys = _phys_chips(r.get("code_phase_chips") or 0.0, args.comb_mult,
+                                          hop if (frame0 and hop) else None, t_abs,
+                                          float(dop_used), args) if code_resid_src is None else 0.0
                     t_tx = (gpst_of_utc(t_epoch) - v["range_m"] / C_LIGHT + v["sat_clk_s"])
                     cp_pred = (t_tx % t_rec) / t_rec * args.code_length
                     d = ((cp_phys - cp_pred + args.code_length / 2.0) % args.code_length
                          - args.code_length / 2.0)
-                    code_resid_m = d * C_LIGHT / args.chip_rate_hz
+                    if code_resid_src is None and not frame0:
+                        # AIRSPY ONLY. On CHORD the reconstruction rides the argument's
+                        # ~5095 chips/Hz Doppler lever, so it lands within a code period at
+                        # best -- measured 1.7 km of position error when it reached the PVT
+                        # solve as if it were an observation. A null is the honest output:
+                        # this chain has no dead-reckon clock yet, so it has no code residual.
+                        code_resid_m = d * C_LIGHT / args.chip_rate_hz
+                        code_resid_src = "reconstructed"
                     carr_resid_m = -adr * lam - v["range_m"]
                 row = {
                     "t": round(t_epoch, 4),
@@ -264,6 +375,7 @@ def main():
                     "adr_m": (adr * lam) if adr is not None else None,
                     "adr_arc": arc, "adr_records": nrec,
                     "code_resid_m": code_resid_m,     # model-removed code range (CMC input)
+                    "code_resid_src": code_resid_src,  # dr_integ (metre-good) | reconstructed
                     "carr_resid_m": carr_resid_m,     # model-removed carrier range (CMC input)
                     "adr_lock_s": r.get("adr_lock_s"),
                     # --- POWER

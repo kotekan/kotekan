@@ -47,6 +47,7 @@ nohup setsid $PY -u livebeam_server.py \
     --kotekan-rest-port "$REST" \
     --lat 49.32075144444 --lon -119.62081125 --alt 545 \
     --band l5 --unified \
+    --pvt-obs-globs "/home/kvand/gnss/fixtures/obs/[gb]*_2026*.jsonl" \
     "$@" > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 6

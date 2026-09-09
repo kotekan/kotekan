@@ -368,7 +368,9 @@ def stage_fleet_dll(ctx):
             ctx.publisher.update(ctx.dllp.fleet, ctx.seeds, ctx.dls.trim, len(ctx.dll_combiners), ctx.last_dets, ctx.dllp.fcoh,
                              pcn0=ctx.dllp.pcn0, kcoh=ctx.dllp.kcoh, innov=ctx.dllp.innov_pub,
                              cpp_trim={_p: (_r.get("trim_chips") or 0.0)
-                                       for _p, _r in ctx.dls.readback.items()})
+                                       for _p, _r in ctx.dls.readback.items()},
+                             integ=(ctx.dr_state or {}).get("integ"),
+                             integ_now=getattr(ctx.dllp, "now_w", None))
         ctx.dllp.report = []
         codeloop.stage_dll_control(ctx)
         if ctx.dllp.report:

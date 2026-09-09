@@ -391,13 +391,17 @@ class FleetPublisher:
                 st["elem"] = {"utc": _now(), "prns": table}
 
     def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None, fcoh=None, chain=None,
-               pcn0=None, kcoh=None, innov=None, cpp_trim=None):
+               pcn0=None, kcoh=None, innov=None, cpp_trim=None, integ=None, integ_now=None):
         rows = []
         fcoh = fcoh or {}
         pcn0 = pcn0 or {}
         kcoh = kcoh or {}
         innov = innov or {}
         cpp_trim = cpp_trim or {}
+        # dead-reckon integrity, keyed by PRN: (residual_chips, when). Absent until the
+        # clock and its drift have both settled, which is the honest state to publish.
+        _integ = integ or {}
+        _now_w = integ_now or time.time()
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
             sd = seeds.get(prn, {})
@@ -456,6 +460,17 @@ class FleetPublisher:
                 # the row, and the fit it was admitted on.
                 "fleet_off_chips": v.get("off_chips"),
                 "fleet_pedestal": v.get("pedestal"),
+                # THE DEAD-RECKON INTEGRITY RESIDUAL, in this chain's chips: search-vs-model
+                # with the solved receiver clock removed (deadreckon: r_i = wrap(d_i - clk),
+                # d_i = measured - predicted). It has existed for the escape referee's veto
+                # and been logged every 30 s since #99 was solved with it, but never
+                # published -- so the only consumer outside the broker had to scrape a log
+                # line. It is the metre-good code observable: +-0.1-0.5 chips on a healthy
+                # chain, where reconstructing the same quantity from code_phase_chips carries
+                # the argument's ~5095 chips/Hz Doppler lever (chord-cp-currency) and cannot.
+                "dr_integ_chips": _integ.get(prn, (None, None))[0],
+                "dr_integ_age_s": (None if _integ.get(prn) is None
+                                   else round(_now_w - _integ[prn][1], 2)),
                 "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
                 # cross-sender coherence of the derotated prompts (combdll.lobe_taps): the
                 # lobe sum is only a lobe sum while this is ~1; ~0 means the senders were not

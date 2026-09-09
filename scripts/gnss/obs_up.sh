@@ -29,7 +29,11 @@ K=/home/kvand/gnss/kotekan
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}
 OUT=${OBS_OUT_DIR:-/home/kvand/gnss/fixtures/obs}
 BROKER=${GNSS_BROKER_URL:-http://localhost:12060}
-D=$(date -u +%Y%m%d)
+# ⚠️ THE DATE IS NOT A LAUNCH-TIME CONSTANT. Baked in at start, a logger keeps writing one
+# day's filename for as long as it lives, while every consumer opens today's and finds
+# nothing. gnss_observables strftime-expands --out per row and rolls at UTC midnight, so the
+# pattern below goes through intact.
+FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}
 
 # RUNS WHERE THE BROKER RUNS: --url defaults to localhost, and the loggers poll it once a
 # second. Started from elsewhere they would silently log nothing.
@@ -62,7 +66,8 @@ while read -r chain sys carrier; do
         --sys "$sys" --band "$chain" \
         --carrier-hz "$carrier" --chip-rate-hz 10230000 --code-length 10230 \
         --lat 49.32075144444 --lon -119.62081125 --alt 545 \
-        --out "$OUT/${chain}_${D}.jsonl" \
+        --frame0-url "$FRAME0_URL" \
+        --out "$OUT/${chain}_%Y%m%d.jsonl" \
         > "/tmp/obs_${chain}.log" 2>&1 < /dev/null &
     disown
     n=$((n + 1))
@@ -70,7 +75,7 @@ done <<< "$CHAINS"
 
 sleep 12
 up=$(pgrep -fc "[g]nss_observables.py" 2>/dev/null || echo 0)
-echo "observables loggers: $up/$n up -> $OUT/<chain>_${D}.jsonl"
+echo "observables loggers: $up/$n up -> $OUT/<chain>_<UTC date>.jsonl (anchor $FRAME0_URL)"
 if [ "$up" -lt "$n" ]; then
     echo "NOT ALL STARTED -- check /tmp/obs_<chain>.log" >&2
     exit 1
