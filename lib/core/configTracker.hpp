@@ -13,7 +13,10 @@
  * An upstream FPGA controller, if present, is registered as a regular
  * upstream entry: a single combined ``{"config": ..., "timing": ...}`` JSON,
  * keyed by the controller's REST (host, port). Any change to either part
- * after the initial fetch indicates a controller reset and is fatal.
+ * after the initial fetch indicates a controller reset. The startup fetch
+ * treats a change as fatal; @c checkFpgaTracking re-reads the controller
+ * without inserting or exiting, so a poller (the FPGAMonitor stage) can decide
+ * what a deviation means.
  *
  * - kotekan::ConfigTracker
  *   -- instance
@@ -23,8 +26,10 @@
  *   -- setLocalConfig
  *   -- insertUpstreamConfig
  *   -- fetchAndRegisterFpgaTracking
+ *   -- getFpgaEndpoint / checkFpgaTracking
  *   -- applyConfig
  *   -- hasLocalConfig / hasUpstreamConfig
+ *   -- getUpstreamConfigInfo
  *   -- getLocalConfigInfo / getLocalConfigHash
  *   -- trackers_local_callback
  *   -- trackers_local_hash_callback
@@ -179,6 +184,38 @@ public:
                                   {"kotekan_git_commit_hash", kotekan_git_commit_hash},
                                   {"kotekan_cmake_options", kotekan_cmake_options}};
         }
+    };
+
+    /**
+     * @brief The upstream FPGA controller this node registered at startup.
+     *
+     * Kept so a monitor can re-poll exactly what was registered: the same
+     * canonical IPv4 the snapshot is keyed under, and the same endpoint paths.
+     */
+    struct FpgaEndpoint {
+        std::string host; ///< Canonical IPv4 the controller was reached at.
+        uint16_t port = 0;
+        std::string config_endpoint;
+        std::string timing_endpoint;
+    };
+
+    /// Outcome of one @c checkFpgaTracking poll.
+    enum class FpgaCheckStatus {
+        not_tracked, ///< No FPGA controller was registered; nothing to check.
+        unreachable, ///< The controller did not answer, or its answer did not parse.
+        changed,     ///< The controller answered, but no longer matches the record.
+        ok,          ///< The controller matches the record.
+    };
+
+    /// Result of one @c checkFpgaTracking poll: status plus enough to log it.
+    struct FpgaCheckResult {
+        FpgaCheckStatus status = FpgaCheckStatus::not_tracked;
+        /// Why, for @c unreachable and @c changed. Empty otherwise.
+        std::string detail;
+        /// Hash the tracker holds for the controller ("" if it holds none).
+        std::string recorded_hash;
+        /// Hash of what the controller just returned ("" if unreachable).
+        std::string observed_hash;
     };
 
     /**
@@ -383,10 +420,118 @@ public:
         nlohmann::json combined = {{"config", cfg_json}, {"timing", tim_json}};
         insertUpstreamConfig(ip, port, combined, "", "", "", "");
 
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            _fpga_endpoint = FpgaEndpoint{ip, port, config_endpoint, timing_endpoint};
+        }
+
         INFO_NON_OO(
             "ConfigTracker: registered FPGA controller config and timing from {}:{} (config {}, "
             "timing {})",
             ip, port, config_endpoint, timing_endpoint);
+    }
+
+    /// The FPGA controller registered at startup, or std::nullopt if none.
+    std::optional<FpgaEndpoint> getFpgaEndpoint() const {
+        std::lock_guard<std::mutex> lock(_lock);
+        return _fpga_endpoint;
+    }
+
+    /// Copy of the upstream ConfigInfo held for (host, port), or std::nullopt.
+    std::optional<ConfigInfo> getUpstreamConfigInfo(const std::string& host, uint16_t port) const {
+        std::lock_guard<std::mutex> lock(_lock);
+        auto it = _upstream_configs.find({host, port});
+        if (it == _upstream_configs.end())
+            return std::nullopt;
+        return it->second;
+    }
+
+    /**
+     * @brief Re-fetch the registered FPGA controller and compare it against
+     * the snapshot the tracker recorded at startup.
+     *
+     * Unlike @c fetchAndRegisterFpgaTracking, neither a failed fetch nor a
+     * changed payload is fatal here, and nothing is inserted: a poller has to
+     * be able to survive a controller that is briefly unreachable, and
+     * deciding what a deviation means is the caller's job (see the FPGAMonitor
+     * stage). Note that @c restClient::make_request_blocking is still fatal if
+     * libevent never calls back at all (at twice @p timeout_seconds), which is
+     * a restClient failure rather than a controller one. The comparison is
+     * made over the same combined ``{"config": ..., "timing": ...}`` JSON and
+     * the same (host, port)-keyed hash the startup fetch stored, so a match
+     * here means the tracker's record is still accurate.
+     *
+     * @param retries          Retries per request; -1 uses the tracker's policy.
+     * @param timeout_seconds  HTTP timeout per attempt; -1 uses the tracker's policy.
+     */
+    FpgaCheckResult checkFpgaTracking(int retries = -1, int timeout_seconds = -1) const {
+        FpgaCheckResult result;
+
+        FpgaEndpoint endpoint;
+        std::optional<ConfigInfo> recorded;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            if (!_fpga_endpoint.has_value()) {
+                result.status = FpgaCheckStatus::not_tracked;
+                return result;
+            }
+            endpoint = *_fpga_endpoint;
+            if (retries < 0)
+                retries = _upstream_fetch_retries;
+            if (timeout_seconds < 0)
+                timeout_seconds = _upstream_fetch_timeout_seconds;
+            auto it = _upstream_configs.find({endpoint.host, endpoint.port});
+            if (it != _upstream_configs.end())
+                recorded = it->second;
+        }
+        if (recorded.has_value())
+            result.recorded_hash = recorded->json_hash;
+
+        // Fetch outside the lock: these are blocking HTTP round trips.
+        std::string error;
+        auto cfg_json = _fpga_try_get(endpoint.host, endpoint.port, endpoint.config_endpoint,
+                                      timeout_seconds, retries, error);
+        if (!cfg_json.has_value()) {
+            result.status = FpgaCheckStatus::unreachable;
+            result.detail = error;
+            return result;
+        }
+        auto tim_json = _fpga_try_get(endpoint.host, endpoint.port, endpoint.timing_endpoint,
+                                      timeout_seconds, retries, error);
+        if (!tim_json.has_value()) {
+            result.status = FpgaCheckStatus::unreachable;
+            result.detail = error;
+            return result;
+        }
+
+        nlohmann::json combined = {{"config", *cfg_json}, {"timing", *tim_json}};
+        nlohmann::json filtered = _strip_update_endpoints(combined);
+        result.observed_hash = _jsonHashWithEndpoint(filtered, endpoint.host, endpoint.port);
+
+        if (!recorded.has_value()) {
+            result.status = FpgaCheckStatus::changed;
+            result.detail = fmt::format(fmt("the tracker holds no snapshot for {}:{}"),
+                                        endpoint.host, endpoint.port);
+            return result;
+        }
+        if (result.observed_hash == result.recorded_hash) {
+            result.status = FpgaCheckStatus::ok;
+            return result;
+        }
+
+        // Name the part that moved: "config" is the controller's setup, and
+        // "timing" its frame-0 reference, and the two mean different things
+        // (a reprogram versus a resync).
+        result.status = FpgaCheckStatus::changed;
+        std::vector<std::string> parts;
+        for (const char* key : {"config", "timing"}) {
+            if (recorded->config.value(key, nlohmann::json())
+                != filtered.value(key, nlohmann::json()))
+                parts.push_back(key);
+        }
+        result.detail = parts.empty() ? std::string("content differs")
+                                      : fmt::format(fmt("{} changed"), fmt::join(parts, " and "));
+        return result;
     }
 
     /**
@@ -787,6 +932,7 @@ public:
             _upstream_configs.clear();
             _upstream_config_hashes.clear();
             _local_config.reset();
+            _fpga_endpoint.reset();
             _tracker_hash.clear();
             _configs_total_metric().set(0.0);
         }
@@ -818,6 +964,11 @@ private:
     /// node observed for the upstream. Hash includes (host, port).
     std::map<HostPort, ConfigInfo> _upstream_configs;
     std::map<std::string, HostPort> _upstream_config_hashes;
+
+    /// The FPGA controller registered by @c fetchAndRegisterFpgaTracking, if
+    /// any. Its snapshot lives in @c _upstream_configs like any other upstream
+    /// entry; this only remembers where it came from so it can be re-polled.
+    std::optional<FpgaEndpoint> _fpga_endpoint;
 
     /// Combined hash of all configurations (local first if present, then
     /// upstream hashes in sorted order).
@@ -1010,6 +1161,32 @@ private:
         }
         // Unreachable; FATAL_ERROR_NON_OO throws.
         return nlohmann::json{};
+    }
+
+    /**
+     * @brief GET a single FPGA controller endpoint, returning std::nullopt
+     * (and a reason in @p error) instead of exiting kotekan on failure.
+     * Used by @c checkFpgaTracking, where one missed poll is not on its own a
+     * reason to bring the pipeline down.
+     */
+    static std::optional<nlohmann::json> _fpga_try_get(const std::string& ip, uint16_t port,
+                                                       const std::string& endpoint,
+                                                       int request_timeout_seconds,
+                                                       int request_retries, std::string& error) {
+        auto reply = restClient::instance().make_request_blocking(
+            endpoint, {}, ip, port, request_retries, request_timeout_seconds);
+        if (!reply.first) {
+            error = fmt::format(fmt("GET {}:{}{} failed (after {} retries, {}s timeout)"), ip, port,
+                                endpoint, request_retries, request_timeout_seconds);
+            return std::nullopt;
+        }
+        try {
+            return nlohmann::json::parse(reply.second);
+        } catch (const nlohmann::json::parse_error& e) {
+            error = fmt::format(fmt("GET {}:{}{} returned unparseable JSON: {}"), ip, port,
+                                endpoint, e.what());
+            return std::nullopt;
+        }
     }
 
     /// MD5 of a string, returned as a 32-char lowercase hex string.
