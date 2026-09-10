@@ -85,6 +85,8 @@ private:
     // Buffers
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_mask;
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaPLMaskExpander);
@@ -116,7 +118,8 @@ cudaPLMaskExpander::cudaPLMaskExpander(kotekan::Config& config, const std::strin
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
                      std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8},
-                     *this)
+                     *this),
+    did_set_metadata(false)
 //
 {
     // For pl_mask_T128_sample_bytes
@@ -168,13 +171,15 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
 
     pl_mask.check_metadata();
 
-    pl_expanded_mask.set_metadata(pl_mask.get_metadata());
-    const auto& pl_mask_meta = pl_mask.get_metadata();
-    const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
-
-    // TODO: Set these metadata only once
-    pl_expanded_mask_meta->set_time_downsampling_fpga(
-        div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        pl_expanded_mask.set_metadata(pl_mask.get_metadata());
+        const auto& pl_mask_meta = pl_mask.get_metadata();
+        const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
+        pl_expanded_mask_meta->set_time_downsampling_fpga(
+            div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
+    }
 
     // There is no poison value
     // if (poison_buffers)
