@@ -20,7 +20,7 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>          // for max
+#include <algorithm>          // for max, reverse
 #include <array>              // for array
 #include <cassert>            // for assert
 #include <cstddef>            // for ptrdiff_t
@@ -246,6 +246,20 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
     // Set metadata
     beam_buffer.set_metadata(input_meta);
     offsetscale_buffer.set_metadata(input_meta);
+
+    // we reverse the order of the upchannelized frequency channels so that they
+    // are high-MHz -> low-MHz like the coarse frequency channels. Make sure
+    // metadata reflects this.
+    auto freq_upchan_index = input_meta->get_freq_upchan_index();
+    assert(freq_upchan_index.size() == in_nfreqs
+           && freq_upchan_index.size() % out_nfreqs_chunk == 0);
+    for (size_t chunk = 0; chunk < freq_upchan_index.size() / unsigned(out_nfreqs_chunk); ++chunk) {
+        auto first = freq_upchan_index.begin() + chunk * out_nfreqs_chunk;
+        auto last = first + out_nfreqs_chunk;
+        std::reverse(first, last);
+    }
+    beam_buffer.get_metadata()->set_freq_upchan_index(freq_upchan_index);
+    offsetscale_buffer.get_metadata()->set_freq_upchan_index(freq_upchan_index);
 
     const auto& input_ndarray = input_buffer.get_ndarray();
     const float16_t* const input = input_ndarray.data();
