@@ -243,13 +243,33 @@ independent of C/N0, white in time — is the same magnitude and is the first li
 has ever had. **Next: re-run the despread test with the anchor swept, once with fp16 and once
 without, and promote `m_head_for` to long double.** A bench run.
 
-### #56 — one question left: is the hourly power swing celestial or terrestrial?
-The mechanism is settled (closed file): it is a real source, not gain or quantiser scaling, and it
-moves peak element power 2–3× in bursts of tens of minutes. What three archived days cannot settle
-is whether it is a sky source — which would drift 4 minutes earlier per day, below the available
-resolution — or something on a fixed schedule. **That needs ~2 weeks of `rail_watch`, which has
-been dead since 2026-08-24 with no systemd unit and no cron entry (same root as #120).
-Decide: give it an owner for a fortnight, or close this on the mechanism alone.**
+### #56 — near-boresight transits are most of it; a second population is not
+**[archive + BRDC, 08-22 and 08-23, 10-min bins]** KV's reading is confirmed quantitatively.
+Against boresight (az 180, el 81.41 — *not* `telescope.dish_coelev_deg`), with every GNSS
+satellite from the cached BRDC for those days:
+
+| closest GNSS satellite to boresight | median `elem_power_max` |
+|---|---|
+| inside the HWHM (≤1.24°) | **34.0** (08-23) |
+| 1.24–5° | 18.6 / 24.5 |
+| nothing within 5° | **9.3 / 9.6** |
+
+`r(min separation, power)` = **−0.41 / −0.28** and `r(n sats within 5°, power)` = **+0.52 /
++0.44** — the predicted sign, and a **2.4–3.6× median power step** between "a satellite is in the
+beam" and "nothing is within 5°". Transits are real, they are the dominant driver, and they are
+the mechanism behind the tens-of-minutes burst length.
+
+**What is left is a second population of comparable amplitude with no GNSS satellite anywhere
+near the beam.** About half of each day's top-8 power bins have nothing within 5°: 08-23 15:00
+(power 58.7, the day's largest, closest satellite 10.3°), 16:30 (38.9 at 16.9°), 22:20 (34.8 at
+7.9°); 08-22 17:40 (52.9 at 12.3°), 11:10 (50.3 at 14.4°), 15:00 (46.0 at 11.2°), 19:30, 16:30.
+And the converse: G19 passed 1.11° off boresight at 06:50 on 08-23 and the power stayed at
+baseline (10.1). Several of these recur at the same UTC time on both days (15:00, 16:30).
+⚠️ **The honest limit of this test: BRDC sees only GNSS.** A non-GNSS satellite transiting the
+beam would show as "nothing within 5°" here. **So the next test is not a fortnight of
+`rail_watch` — it is a TLE catalogue check on those specific residual bins**, which is an
+afternoon and needs no live instrument. Only if that comes back empty does the residual become
+"terrestrial, and it needs an owned instrument to characterise".
 
 ### #94 — the shared-parameter estimators: 1 of 6 sites done
 S2 (the prior gauge) is built, armed, and its falsifier now passes on sky (closed file). The

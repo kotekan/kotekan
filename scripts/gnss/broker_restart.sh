@@ -71,6 +71,15 @@ fi
 # level: the gather dropped its client every 200 ms and 5 of 6 frames were lost (gaps 95k
 # vs frames 18k). At these matrix sizes single-threaded BLAS is also simply faster.
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+# ROTATE, DO NOT TRUNCATE (buglist #65). `> "$LOG"` destroyed the evidence twice: the log a
+# restart is diagnosing is the very one it overwrites, and both times the burst that prompted
+# the restart was only in the bytes that got dropped. Keep the last three runs -- /tmp here is
+# a 2.9 T volume, and even the aggregator's ~1 GB/day log costs nothing against that.
+if [ -s "$LOG" ]; then
+    mv -f "$LOG" "$LOG.$(date -u +%Y%m%d_%H%M%S)" || true
+    # shellcheck disable=SC2012  # ls -t is the point: newest first, drop everything past 3
+    ls -1t "$LOG".20*[0-9] 2>/dev/null | tail -n +4 | xargs -r rm -f
+fi
 nohup setsid "$PY" -u "$K/scripts/gnss/broker_multi.py" "$CHAINS" "$@" \
     > "$LOG" 2>&1 < /dev/null &
 disown

@@ -95,7 +95,16 @@ cost ~0.2–0.3 adoptions/min on one chain and the fix was not load-bearing.
 
 ## Answered by measurement — questions that had an answer, not a fix
 
-**#56 — the hourly signal swings are a real source, not gain or quantiser scaling.** Answered
+**#56 — the hourly signal swings are near-boresight satellite transits (most of them).**
+Confirmed 2026-09-10 against the cached BRDC for the archived days: bins with a GNSS satellite
+inside the HWHM run a median `elem_power_max` of 34.0, bins with one at 1.24–5° run 18.6–24.5,
+and bins with nothing within 5° run 9.3–9.6 — a 2.4–3.6× step, with `r(min separation, power)`
+= −0.28…−0.41 and `r(n within 5°, power)` = +0.44…+0.52. The dishes are 8.59° south of zenith
+(boresight az 180, el 81.41, FWHM 2.48° at L5), a transit takes tens of minutes, and it rails the
+4+4b voltages — which is exactly the burst length and shape the archive shows. A residual
+population with no GNSS satellite in the beam is still open under #56.
+
+**#56 (the same measurement) — the swings are a real source, not gain or quantiser scaling.** Answered
 2026-09-10 offline from the two archived `rf_rail` days (8137 and 8635 samples, 12 instances), by
 the entry's own discriminator: `r(clip, power)` = **+0.88…+0.91** across hours and
 `r(elem_clip, elem_power)` = **+0.96…+0.97**, so clip rises *with* power. ⚠️ The entry's "~5×" was

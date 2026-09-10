@@ -67,6 +67,15 @@ if ss -ltn 2>/dev/null | grep -qE ":(11040|12050)\b"; then
     exit 1
 fi
 mkdir -p /tmp/gnss
+# ROTATE, DO NOT TRUNCATE (buglist #65). `> "$LOG"` destroyed the evidence twice: the log a
+# restart is diagnosing is the very one it overwrites, and both times the burst that prompted
+# the restart was only in the bytes that got dropped. Keep the last three runs -- /tmp here is
+# a 2.9 T volume, and even the aggregator's ~1 GB/day log costs nothing against that.
+if [ -s "$LOG" ]; then
+    mv -f "$LOG" "$LOG.$(date -u +%Y%m%d_%H%M%S)" || true
+    # shellcheck disable=SC2012  # ls -t is the point: newest first, drop everything past 3
+    ls -1t "$LOG".20*[0-9] 2>/dev/null | tail -n +4 | xargs -r rm -f
+fi
 nohup setsid env GNSS_SEARCH_PROFILE=1 "$BIN" \
     --config "$CFG" --bind-address 0.0.0.0:12050 > "$LOG" 2>&1 < /dev/null &
 disown

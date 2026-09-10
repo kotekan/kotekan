@@ -95,6 +95,15 @@ fi
 # senders cannot connect. 65536 is a header-file-sized number against a hard limit of ~1M.
 ulimit -n 65536 2>/dev/null || echo "WARNING: could not raise the fd limit (now $(ulimit -n))" >&2
 
+# ROTATE, DO NOT TRUNCATE (buglist #65). `> "$LOG"` destroyed the evidence twice: the log a
+# restart is diagnosing is the very one it overwrites, and both times the burst that prompted
+# the restart was only in the bytes that got dropped. Keep the last three runs -- /tmp here is
+# a 2.9 T volume, and even the aggregator's ~1 GB/day log costs nothing against that.
+if [ -s "$LOG" ]; then
+    mv -f "$LOG" "$LOG.$(date -u +%Y%m%d_%H%M%S)" || true
+    # shellcheck disable=SC2012  # ls -t is the point: newest first, drop everything past 3
+    ls -1t "$LOG".20*[0-9] 2>/dev/null | tail -n +4 | xargs -r rm -f
+fi
 nohup setsid "$BIN" --config "$CFG" --bind-address "0.0.0.0:$REST" \
     > "$LOG" 2>&1 < /dev/null &
 disown
