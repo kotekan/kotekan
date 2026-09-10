@@ -5,10 +5,9 @@ CHIME archive writers (VisWriter, HFBWriter, baseband)
 =========================================================
 
 The CHIME-era writer stages produce the CHIME correlator archive formats.
-They are used by the ``chime_science_run_*`` configurations and are
-documented here at summary level; the archive formats themselves are CHIME
-conventions, processed downstream (e.g. by *gossec*) into the archive HDF5
-format read by ``caput``/``ch_util``.
+They are documented here at summary level; the archive formats themselves
+are CHIME conventions, processed downstream (e.g. by *gossec*) into the
+archive HDF5 format read by ``caput``/``ch_util``.
 
 .. note::
    This page summarizes the output of ``lib/stages/BaseWriter.cpp`` and its
