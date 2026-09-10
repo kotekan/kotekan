@@ -29,10 +29,9 @@
  * Copies a list of bad inputs into a mask buffer, which is 0 if
  * an element is bad and 1 if it is good.
  *
- * The posted indices are in @c input_order and the produced mask is in
- * @c output_order, remapped through the telescope.  The defaults are the
- * CHIME orders; when the two are equal -- CHORD flags and masks in the same
- * [P][D] order -- the telescope is not consulted.
+ * The posted bad inputs are station ids (CHIME: cylinder-order indices).  The
+ * mask is written in the telescope's fiducial element order: each station id
+ * maps to its mask index through @c Telescope::station_id_to_element_index.
  *
  * Updates queue by @c start_time and take effect once the wall clock reaches
  * it (a start time already in the past applies immediately).  Mask frames
@@ -49,11 +48,11 @@
  * config block is still fatal.
  *
  * The mask is a rank-3 array with a leading (length one) time axis, which is
- * what the consumers of the bad feed mask ring buffer expect.  Element
- * @c output_idx of the flat mask is @c polarization * num_dishes + dish in
- * both of the pol-major output orders the stage is used with (see
- * @c ICETelescope::station_id_to_element_index), so the rank-3 shape is a
- * reinterpretation of the mask rather than a reordering of it.
+ * what the consumers of the bad feed mask ring buffer expect.  The fiducial
+ * order of both telescopes is pol-major (CHIMEBeamformer, CHORDBeamformer):
+ * element @c idx of the flat mask is @c polarization * num_dishes + dish, so
+ * the rank-3 shape is a reinterpretation of the mask rather than a reordering
+ * of it, and the descriptor's dimension names are what the consumers check.
  *
  * @par Buffers
  * @buffer out_buf Kotekan buffer of bad inputs (1 == good).
@@ -74,16 +73,13 @@
  *                                      is valid for.
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
- *                                      "bad_inputs"  An array of bad inputs in cylinder order.
+ *                                      "bad_inputs"  An array of station ids of the bad
+ *                                                    inputs (CHIME: cylinder order).
  *                                      "start_time"  Optional UNIX time the update takes
  *                                                    effect (default: immediately).
  *                                      "update_id"   Optional string identifying the update,
  *                                                    used in this stage's log messages.
  * @conf   num_kept_updates  Int. Default 5.  Number of updates kept in the queue.
- * @conf   input_order   ElementOrder. Default CHIMECylinder.  Order of the posted
- *                       "bad_inputs" indices.
- * @conf   output_order  ElementOrder. Default CHIMEBeamformer.  Order of the mask
- *                       written to @c out_buf.
  *
  * @author James Willis & Liam Gray
  */
@@ -105,7 +101,7 @@ public:
 private:
     /// A posted update, ready to be written into a mask frame.
     struct badInputUpdate {
-        /// The mask in output_order, 1 == good.
+        /// The mask in the fiducial element order, 1 == good.
         std::vector<uint8_t> mask;
     };
 
@@ -129,8 +125,7 @@ private:
     kotekan::prometheus::Counter& late_updates_counter;
     kotekan::prometheus::Counter& invalid_updates_counter;
 
-    /// The table to reorder from input_order to output_order.
-    /// reorder[input_idx] = output_idx;
+    /// The mask index of each station id: reorder[station_id] = fiducial element index.
     std::vector<size_t> reorder;
 };
 

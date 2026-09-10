@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "NDArray.hpp"           // for NDArray, GenericNDArray
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope, station_id_t
+#include "Telescope.hpp"         // for Telescope, ElementOrder
 #include "buffer.hpp"            // for Buffer
 #include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"     // for configUpdater
@@ -50,11 +50,10 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         FATAL_ERROR("num_elements {:d} must equal num_polarizations {:d} * num_dishes {:d}",
                     num_elements, num_polarizations, num_dishes);
 
-    // Element orders of the posted bad_inputs indices and of the produced mask.
-    const ElementOrder input_order =
-        config.get_default<ElementOrder>(unique_name, "input_order", ElementOrder::CHIMECylinder);
-    const ElementOrder output_order = config.get_default<ElementOrder>(
-        unique_name, "output_order", ElementOrder::CHIMEBeamformer);
+    // The mask is written in the telescope's fiducial element order, which is the pol-major
+    // [P][D] layout the frame descriptor below declares. The posted bad_inputs are station ids.
+    const Telescope& tel = Telescope::instance();
+    const ElementOrder element_order = tel.fiducial_element_order();
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
@@ -66,23 +65,10 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     updates.resize(config.get_default<uint32_t>(unique_name, "num_kept_updates", 5));
 
-    // Construct the input -> output reorder table.
-    // reorder[input_idx] = output_idx;
+    // Map each station id to its index in the mask.
     reorder.resize(num_elements);
-
-    const Telescope& tel = Telescope::instance();
-
-    if (input_order == output_order) {
-        // Identity; also covers orders the telescope cannot map, like the
-        // CHIME defaults on a CHORD telescope.
-        for (size_t idx = 0; idx < num_elements; ++idx)
-            reorder.at(idx) = idx;
-    } else {
-        for (size_t output_idx = 0; output_idx < num_elements; ++output_idx) {
-            station_id_t st_id = tel.element_index_to_station_id(output_idx, output_order);
-            reorder.at(tel.station_id_to_element_index(st_id, input_order)) = output_idx;
-        }
-    }
+    for (size_t st_id = 0; st_id < num_elements; ++st_id)
+        reorder.at(st_id) = tel.station_id_to_element_index(st_id, element_order);
 
     // Listen for bad input list updates. The initial config block arrives
     // through this callback during subscribe().
@@ -157,7 +143,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         return true;
     }
 
-    // Build the update's mask (1 == good) in output_order.
+    // Build the update's mask (1 == good) in the fiducial element order.
     std::vector<uint8_t> mask(num_elements, 1u);
     for (int element : bad_inputs)
         mask[reorder[element]] = 0;
