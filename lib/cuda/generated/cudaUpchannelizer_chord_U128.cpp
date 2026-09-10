@@ -302,6 +302,9 @@ private:
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
+
     // To avoid trailing comma below
     int dummy;
 };
@@ -334,7 +337,7 @@ cudaUpchannelizer_chord_U128::cudaUpchannelizer_chord_U128(Config& config,
                 reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
-    dummy() // avoid trailing comma
+    did_set_metadata(false), dummy() // avoid trailing comma
 {
     // Register host memory
     {
@@ -351,16 +354,17 @@ cudaUpchannelizer_chord_U128::cudaUpchannelizer_chord_U128(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Build the PTX only once
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("Upchannelizer_chord_U128_" + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/Upchannelizer_chord_U128.ptx", {kernel_symbol}, opts,
                          "Upchannelizer_chord_U128_");
-    });
+    }
 }
 
 cudaUpchannelizer_chord_U128::~cudaUpchannelizer_chord_U128() {}
@@ -426,7 +430,6 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
     void* const info_memory = info_buffer.get_ndarray().data();
 
     // Since we use a ring buffer we need to set the metadata only once
-    static bool did_set_metadata = false;
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
 

@@ -303,15 +303,16 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Build the PTX only once
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("{{{kernel_name}}}_" + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name={{{cuda_arch}}}",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
-    });
+    }
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
