@@ -200,6 +200,13 @@ struct Opt {
     /// (n_elem 1, the window quantised 4+4b and packed in the native order), so a per-record
     /// phase defect that lives in the waveform/correlate kernels is reproducible offline.
     int nm = 0;
+    /// PATH B's replica quantisation, modelled on the CPU. The live fleet injects the replica
+    /// into the N^2 correlator as 4+4b synthetic lanes (launch_pack44: s = 7/(3 rms), round to
+    /// nearest, clamp +-7 -- ~2.3 levels per rms), so the correlation the sky runs is against a
+    /// COARSELY QUANTISED replica, which no GPU path in this harness reproduces. This generates
+    /// the commanded replica with the bank, quantises it exactly as the pack does, and
+    /// correlates it with the window on the CPU (and the unquantised one beside it).
+    int cpu_pack44 = 0;
     int phi16 = 0;                   ///< with --nm: set_phi_fp16(true), the nodes' live mode
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
     /// Write the detection in /get_detections wire format. e2e_broker.py serves this to the
@@ -274,6 +281,8 @@ static void usage() {
         "                     N x M correlate, n_elem 1) instead of the fused kernel; implies\n"
         "                     --quantize (the frame is 4+4b bytes)\n"
         "  --phi16            with --nm: fp16 Phi tables, the nodes' live mode\n"
+        "  --cpu-pack44       also correlate on the CPU against the commanded replica RAW and\n"
+        "                     quantised as launch_pack44 does (path B's synthetic lanes)\n"
         "  --skip-search      seed straight from truth -- isolates the tracker/despread leg\n"
         "  --trim X           commanded DLL trim, chips (task #51). With --skip-search this\n"
         "                     IS a known code error: the sign test for the actuator.\n"
@@ -412,6 +421,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--fix-fine-sign")) o.fix_fine_sign = 1;
         else if (arg_eq(a, "--quantize")) o.quantize = 1;
         else if (arg_eq(a, "--nm")) { o.nm = 1; o.quantize = 1; }
+        else if (arg_eq(a, "--cpu-pack44")) o.cpu_pack44 = 1;
         else if (arg_eq(a, "--phi16")) o.phi16 = 1;
         else if (arg_eq(a, "--skip-search")) o.skip_search = 1;
         else if (arg_eq(a, "--code-doppler-sign")) o.code_doppler_sign = next_d();
@@ -1121,6 +1131,7 @@ int main(int argc, char** argv) {
     const long long gap_hops = (long long)std::llround(o.rec_gap_s / hop_s);
     double worst = 0.0;
     std::vector<std::complex<double>> prompts; // per-record P, for the deep fold below
+    std::vector<std::complex<double>> prompts_cpu, prompts_q44; // --cpu-pack44 series
     std::vector<double> rec_dop, rec_tabs;     // per-record (dop, t_abs) for the [4b] fold
     std::vector<double> rec_tage;              // per-record seed AGE, for the [4c] candidate
     std::vector<double> rec_ctrim;             // per-record applied ctrim, for the [4d] bench
@@ -1261,6 +1272,29 @@ int main(int argc, char** argv) {
                 }
         }
         rec_ctrim.push_back(ctrim_r);
+        if (o.cpu_pack44) {
+            // the COMMANDED replica, as the bank makes it (the GPU synth agrees to 1e-5)
+            auto repl = tbank.channels_hoprate(0, W, pr.cp, pr.doppler_hz, o.hops_per_record,
+                                               t_chans, {}, -1);
+            std::complex<double> g_raw(0.0, 0.0), g_q(0.0, 0.0);
+            for (int c = 0; c < o.t_nchan; ++c) {
+                double e = 0.0;
+                for (int m = 0; m < o.hops_per_record; ++m)
+                    e += std::norm(repl[(size_t)c][(size_t)m]);
+                const float rms = (float)std::sqrt(e / (double)o.hops_per_record);
+                const float sq = rms > 0.0f ? 7.0f / (3.0f * rms) : 0.0f;
+                for (int m = 0; m < o.hops_per_record; ++m) {
+                    const cf rr = repl[(size_t)c][(size_t)m];
+                    const cf d = rec[(size_t)c][(size_t)m];
+                    g_raw += std::complex<double>(d) * std::conj(std::complex<double>(rr));
+                    int qr = std::clamp((int)std::lround(sq * rr.real()), -7, 7);
+                    int qi = std::clamp((int)std::lround(sq * rr.imag()), -7, 7);
+                    g_q += std::complex<double>(d) * std::conj(std::complex<double>((float)qr, (float)qi));
+                }
+            }
+            prompts_cpu.push_back(g_raw);
+            prompts_q44.push_back(g_q);
+        }
         if (cmd_bench) {
             prompts_ctl.push_back(res[2][1].correlation);
             prompts_tru.push_back(res[1][1].correlation);
@@ -1396,6 +1430,10 @@ int main(int argc, char** argv) {
                    tag, m, sd, v2 > 0 ? c1 / v2 : 0.0, big, stp.size());
         };
         step_stats(prompts, "RAW");
+        if (o.cpu_pack44 && prompts_cpu.size() >= 4) {
+            step_stats(prompts_cpu, "CPU");
+            step_stats(prompts_q44, "CPU-Q44");
+        }
 
         // ---- [4b] THE ASSEMBLER'S RE-PIN FOLD, applied here (task #52/#40 root hunt) ----
         // The despread's carrier reference is (f_offset + dop) * t_abs, so the per-record

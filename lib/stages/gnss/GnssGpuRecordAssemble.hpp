@@ -112,6 +112,9 @@ private:
     int _chan_dump_decim = 10; ///< dump every Nth record of that PRN
     long long _chan_dump_ctr = 0;
     FILE* _chan_dump = nullptr;
+    int _phi_dump_prn = -1;   ///< --phase-dump-prn (see the .cpp): the fold's inputs and effect
+    int _phi_dump_left = 0;
+    FILE* _phi_dump = nullptr;
 
     /// PER-CHANNEL PROMPT SPECTRUM (task #32, docs/CHORD_JOINT_TRACKING.md P1). The general
     /// form of the chan_dump above: for EVERY PRN, accumulate the NCO-derotated, element-

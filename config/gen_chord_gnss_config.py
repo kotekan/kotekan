@@ -516,6 +516,10 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  # fp16 Phi tables (GPU TODO item 3): halves the resident synthesis table,
                  # 1.55x measured through the shipped call (phi16gpu). Default OFF.
                  "phi_fp16": bool(args.phi_fp16),
+                 **({"dcyc_dump_prn": args.phase_dump_prn,
+                     "dcyc_dump_records": args.phase_dump_records,
+                     "dcyc_dump_path": f"/tmp/gnss_dcyc_{node}_{gpu}{tag}.txt"}
+                    if args.phase_dump_prn >= 0 else {}),
                  # CENTERED chip-window truncation (item 6). 0 = full ~210-chip span (what has
                  # always shipped -- the one-sided 140 was measured, never armed). Centered 80
                  # = 2.6x less synthesis, e2e-EXACT multi-PRN/multi-Doppler.
@@ -625,6 +629,10 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # config current?" unanswerable. The cross-channel sum inside this stage is the one
             # combine step the broker can never undo, so whether it is lossless is a question
             # only the per-channel phases can answer -- and they are what the sum hides.
+            **({"phi_dump_prn": args.phase_dump_prn,
+                "phi_dump_records": args.phase_dump_records,
+                "phi_dump_path": f"/tmp/gnss_phi_{node}_{gpu}{tag}.txt"}
+               if args.phase_dump_prn >= 0 else {}),
             **({"chan_dump_prn": args.chan_dump_prn,
                 "chan_dump_decim": args.chan_dump_decim,
             # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
@@ -1317,6 +1325,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                                         else (1 if args.carrier_phase_from_ref != "0" else 0)),
                  # fp16 Phi tables (GPU TODO item 3) -- same knob as path A's site above.
                  "phi_fp16": bool(args.phi_fp16),
+                 **({"dcyc_dump_prn": args.phase_dump_prn,
+                     "dcyc_dump_records": args.phase_dump_records,
+                     "dcyc_dump_path": f"/tmp/gnss_dcyc_{node}_{gpu}{tag}.txt"}
+                    if args.phase_dump_prn >= 0 else {}),
                  # Item 6 -- same knobs as path A's site above.
                  "despread_max_chips": int(args.despread_max_chips),
                  "despread_chips_centered": bool(args.despread_chips_centered),
@@ -1548,6 +1560,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # config current?" unanswerable. The cross-channel sum inside this stage is the one
             # combine step the broker can never undo, so whether it is lossless is a question
             # only the per-channel phases can answer -- and they are what the sum hides.
+            **({"phi_dump_prn": args.phase_dump_prn,
+                "phi_dump_records": args.phase_dump_records,
+                "phi_dump_path": f"/tmp/gnss_phi_{node}_{gpu}{tag}.txt"}
+               if args.phase_dump_prn >= 0 else {}),
             **({"chan_dump_prn": args.chan_dump_prn,
                 "chan_dump_decim": args.chan_dump_decim,
             # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
@@ -2843,6 +2859,16 @@ def main():
                          "~60 KB/s at chan_dump_decim 10; raise the decimation for a long run.")
     ap.add_argument("--chan-dump-decim", type=int, default=10, metavar="N",
                     help="with --chan-dump-prn: dump every Nth record of that PRN.")
+    ap.add_argument("--phase-dump-prn", type=int, default=-1, metavar="PRN",
+                    help="DIAGNOSTIC: dump the carrier re-pin FOLD for this PRN, per record, on "
+                         "both sides of the tracker->assembler hand-off: the tracker writes the "
+                         "fold's inputs (seed, propagated Doppler, dop_prev, t_abs, dcyc) to "
+                         "dcyc_dump_path and the assembler writes what it applied (c.dcyc, phi "
+                         "before/after, ang0, the raw and rotated prompt phase) to phi_dump_path, "
+                         "for --phase-dump-records records, then closes. Off (-1) unless set; "
+                         "emitted only when set, so production configs do not change.")
+    ap.add_argument("--phase-dump-records", type=int, default=6000, metavar="N",
+                    help="with --phase-dump-prn: records to dump per file (~63 s at 95/s).")
     ap.add_argument("--sky-deep", action=argparse.BooleanOptionalAction, default=False,
                     help="combiner: score the SKY-PHASE-CORRECTED prompt (record slots 24/25, "
                          "gnssElemCal's leave-one-out element derotation) as a deep-fold "

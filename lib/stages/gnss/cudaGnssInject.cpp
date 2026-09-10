@@ -300,6 +300,38 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             const double applied = pr.doppler_hz + sd.ctrim_hz;
             const double dcyc =
                 have_hist ? (applied - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            if (_dcyc_dump_prn == -1) {
+                // read once; -1 stays -1 when unconfigured, -2 marks "looked, off"
+                const int want = config.get_default<int>(unique_name, "dcyc_dump_prn", -1);
+                _dcyc_dump_prn = (want >= 0) ? want : -2;
+                if (want >= 0) {
+                    _dcyc_dump_left =
+                        config.get_default<int>(unique_name, "dcyc_dump_records", 6000);
+                    const std::string path = config.get_default<std::string>(
+                        unique_name, "dcyc_dump_path", "/tmp/gnss_dcyc_dump.txt");
+                    _dcyc_dump = std::fopen(path.c_str(), "w");
+                    if (_dcyc_dump)
+                        std::fprintf(_dcyc_dump, "# r hop0 wstart seed_ref_hop seed_dop seed_dop_rate "
+                                                 "seed_ctrim dop applied dop_prev t_prev have_hist "
+                                                 "t_abs dcyc cp trim\n");
+                    INFO("cudaGnssInject: dcyc dump ARMED for PRN {:d} -> {:s} ({:d} records)", want,
+                         path, _dcyc_dump_left);
+                }
+            }
+            if (_dcyc_dump && S.prns[(size_t)p] == _dcyc_dump_prn) {
+                std::fprintf(_dcyc_dump,
+                             "%d %lld %lld %lld %.17g %.17g %.17g %.17g %.17g %.17g %.17g %d %.17g "
+                             "%.17g %.10g %.10g\n",
+                             r, (long long)hop0, (long long)wstart, (long long)sd.ref_hop,
+                             sd.doppler_hz, sd.dop_rate, sd.ctrim_hz, pr.doppler_hz, applied,
+                             _dop_prev[(size_t)p], _t_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc,
+                             pr.cp, trim_now[(size_t)p]);
+                if (--_dcyc_dump_left <= 0) {
+                    std::fclose(_dcyc_dump);
+                    _dcyc_dump = nullptr;
+                    INFO("cudaGnssInject: dcyc dump for PRN {:d} complete", _dcyc_dump_prn);
+                }
+            }
             _dop_prev[(size_t)p] = applied;
             _t_prev[(size_t)p] = t_abs;
             _dop_prev_ok[(size_t)p] = 1;

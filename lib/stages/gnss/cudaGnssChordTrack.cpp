@@ -827,6 +827,21 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     // SAMPLE index (the tap stamps sample_seq = fpga_seq_num * fft_length) and the fleet's
     // alignment key is the hop.
     S.note_frame_hop(seq0 >= 0 && S.fft_len > 0 ? seq0 / (long long)S.fft_len : -1);
+    if (_dcyc_dump_prn == -1) {
+        // read once; -1 stays -1 when unconfigured, -2 marks "looked, off"
+        const int want = config.get_default<int>(unique_name, "dcyc_dump_prn", -1);
+        _dcyc_dump_prn = (want >= 0) ? want : -2;
+        if (want >= 0) {
+            _dcyc_dump_left = config.get_default<int>(unique_name, "dcyc_dump_records", 6000);
+            const std::string path = config.get_default<std::string>(
+                unique_name, "dcyc_dump_path", "/tmp/gnss_dcyc_dump.txt");
+            _dcyc_dump = std::fopen(path.c_str(), "w");
+            if (_dcyc_dump)
+                std::fprintf(_dcyc_dump, "# r hop0 wstart seed_ref_hop seed_dop seed_dop_rate seed_ctrim dop applied dop_prev have_hist t_abs dcyc cp trim\n");
+            INFO("cudaGnssChordTrack: dcyc dump ARMED for PRN {:d} -> {:s} ({:d} records)", want, path,
+                 _dcyc_dump_left);
+        }
+    }
     S.apply_prn_swaps((void*)stream);
     {
         if (_slot_gen_seen.size() != (size_t)S.n_prn)
@@ -1061,6 +1076,19 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
             const double applied = dop + sd.ctrim_hz;
             const double dcyc = have_hist ? (applied - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            if (_dcyc_dump && S.prns[(size_t)p] == _dcyc_dump_prn) {
+                // one line per record: everything the fold is made of, at full precision
+                std::fprintf(_dcyc_dump,
+                             "%d %lld %lld %lld %.17g %.17g %.17g %.17g %.17g %.17g %d %.17g %.17g %.10g %.10g\n",
+                             r, hop0, wstart, sd.ref_hop, sd.doppler_hz, sd.dop_rate, sd.ctrim_hz, dop,
+                             applied, _dop_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc, cp,
+                             trim_now[(size_t)p]);
+                if (--_dcyc_dump_left <= 0) {
+                    std::fclose(_dcyc_dump);
+                    _dcyc_dump = nullptr;
+                    INFO("cudaGnssChordTrack: dcyc dump for PRN {:d} complete", _dcyc_dump_prn);
+                }
+            }
             _dop_prev[(size_t)p] = applied;
             _dop_prev_ok[(size_t)p] = 1;
 

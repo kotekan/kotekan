@@ -391,6 +391,14 @@ private:
     /// Lives on the COMMAND, not on cudaGnssChordTrackState, so path A and path B keep separate
     /// histories when both run against the same state on one node.
     std::vector<double> _dop_prev;
+    /// --phase-dump-prn: per-record dump of the re-pin fold's INPUTS for one PRN (the hop,
+    /// the seed, the propagated Doppler, _dop_prev, t_abs, dcyc, reanchored), to a file, for a
+    /// bounded number of records. Off unless the config names a PRN. Diagnostic only: the
+    /// assembler's REC_PHI0 increment differs at each frame's first record while REC_ANG0
+    /// steps regularly, and nothing exported says which side of the hand-off moved.
+    int _dcyc_dump_prn = -1;
+    int _dcyc_dump_left = 0;
+    FILE* _dcyc_dump = nullptr;
     std::vector<uint8_t> _dop_prev_ok;
     /// PER-SLOT SWAP GENERATION LAST SEEN BY THIS INSTANCE (live PRN membership). Compared
     /// against cudaGnssChordTrackState::slot_gen every frame; a mismatch means this slot now
