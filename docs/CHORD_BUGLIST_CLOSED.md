@@ -35,7 +35,7 @@ parallel section audits that each read the tree AND the live fleet.
 | #104 | cross-chain clock adoption had no plausibility bound | — | `dr-clock-adopt-max-chips: 5.0`; live 2 adoptions, 0 refusals |
 | #105 | fleet-common q-crash bursts | 3 fixes, 2026-08-31 | `seed-bias-source: slow`; the drift-EMA monitor line is live |
 | #107 | nine node deaths: a post-publication patch of ring slot-0 metadata | `ba3f69c02` + `b3666a3ad` | in the running binary; 0 DESYNC fleet-wide past every historical death point |
-| #108 | every node wedged at 2^33 bf-mask frames (~15 h) | `e92573330` + `b80170e95` | **verified on sky 2026-09-10 14:49 UTC** — cx44 and cx42 ran past 2^33 (102.1% / 101.1%) with all 89 senders live. First crossing since the fix; the fleet had wedged every time before |
+| #108 | every node wedged at 2^33 bf-mask frames (~15 h) | `e92573330` + `b80170e95` | **verified on sky 2026-09-10 16:11 UTC** — ALL TWELVE valve instances (6 nodes x 2 GPUs) past 2^33, leader at 110.7% (~1.4 h beyond the wedge point), 89/89 senders live and 0 stale throughout. First crossing since the fix; the fleet had wedged there every time before, and the fix had ridden the fleet 12 h untested |
 | #110 | arming the beam cube segfaulted every node | `633a59a5f` + `3173ee067` | cube frames landing; no node death in 12.4 h |
 | #22 | fp16 Φ tables | `f0b1ca2b6`→`477c06eca`→`87173351c` | **armed in production** — `phi_fp16: true` ×15 per node, `fp16 Phi ARMED` in the node log |
 | #24 | noise-debias for beam-map values | `ca47ba74a`, `c343eadc8` | cube cells are in pedestal units; `--elem-norm` fits residual gain |
