@@ -211,20 +211,6 @@ class TestFold(unittest.TestCase):
         st = run(sky, hops)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
-    def test_a_wrong_boundary_fold_is_repaired(self):
-        """The live defect: the assembler's fold at each frame's first record is off by an
-        arbitrary angle, mis-rotating that one record. The fold must notice (from REC_PHI0)
-        and undo it, or the ADR walks by that angle every frame."""
-        random.seed(9)
-        for bad in (0.7, -2.1, 3.0):
-            sky = Sky()
-            sky.bad_boundary = bad
-            hops = [HOP0 + k * HPR for k in range(400)]
-            st = run(sky, hops)
-            self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 2e-3, (bad, st.adr))
-            self.assertGreater(st.n_bfix, 90)
-            self.assertLess(abs(st.bfix + st.n_bfix * bad / (2 * math.pi)), 0.05)  # eps = -bad
-
     def test_too_few_instances_is_not_a_measurement(self):
         sky = Sky(n_inst=1)
         st = run(sky, [HOP0 + k * HPR for k in range(10)])

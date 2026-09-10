@@ -55,17 +55,14 @@ instance that (re)joins is placed at the fleet's value, an instance that slips b
 (the squared phasor's period) is re-seated, and the fleet residual is the median of the
 instances' phases.
 
-THE FRAME-BOUNDARY FOLD IS REPAIRED HERE. The assembler folds the replica's per-record
-re-pin step into its NCO (REC_PHI0 is that accumulator) and the exported prompt is
-continuous WITHIN a frame -- but at the first record of every frame the increment it applies
-is wrong by an amount that is uniform modulo a cycle, per satellite, identical on every
-instance, while the kernel's own anchor (REC_ANG0) steps regularly through the boundary. The
-true Doppler step across a boundary is the same as inside the frame (the records are
-contiguous and the seed does not change), so the fold the boundary SHOULD have received is
-the frame's in-frame step; the difference is applied to the boundary cross-product before
-its phase is read. Measured on sky before/after on a strong satellite: boundary step 0.145 ->
-0.073 cycles rms, the in-frame level. The root (why the tracker's dcyc differs at record 0)
-is not located yet; this makes the ADR walk-free of it without a node change.
+THE BROKER DOES NOT RE-FOLD THE PRODUCER'S PHASE. The assembler folds the replica's per-record
+re-pin step into its NCO from a history shared across the pipeline's command instances, so the
+exported prompt is continuous across frame boundaries as well as inside a frame. A repair here
+keyed on REC_PHI0's per-record step (once used to undo a per-instance history) cannot tell a
+wrong boundary fold from a seed re-pin: at a re-pin the step is thousands of cycles modulo one,
+i.e. a random angle, and a "repair" of a boundary that happens to be a re-pin record injects a
+random half-cycle into the arc. That is a per-satellite rate error the loop's own estimators
+never see. A wrong producer fold is a producer bug, fixed at the producer.
 
 THE COMMANDED INCREMENT MUST COVER OUR STEP. The advance over (prev -> hop) needs the Doppler
 the replica ran at from prev, so only instances that were present at prev can vouch for it;
@@ -87,7 +84,7 @@ GRID_HOPS = 96 * 2048       # ~1.0066 s: a record hop common to every chain (see
 class SatAdr(object):
     """One satellite's running arc."""
     __slots__ = ("hop", "hop0", "s_prev", "adr", "trim", "res", "arc", "n", "n_inst",
-                 "inst_prev", "inst_x", "breaks", "t", "grid", "dphi_intra", "bfix", "n_bfix")
+                 "inst_prev", "inst_x", "breaks", "t", "grid")
 
     def __init__(self):
         self.hop = None        # hop of the last record folded
@@ -109,11 +106,6 @@ class SatAdr(object):
         # record length, so grid hops are the SAME hops on every chain -- the epochs at which
         # two bands pair exactly. The live value above is whatever hop this cycle ended on.
         self.grid = None
-        # the assembler's in-frame fold increment (median REC_PHI0 step, rad), kept as a
-        # running median of the last in-frame records: what a frame boundary should have got
-        self.dphi_intra = collections.deque(maxlen=24)
-        self.bfix = 0.0      # cumulative boundary correction applied this arc, cycles
-        self.n_bfix = 0
 
 
 def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
@@ -141,23 +133,10 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     if len(vouch) >= min_inst:
         dcmd = sorted(st.inst_prev[i][1] * dt + v[1] for i, v in vouch)[len(vouch) // 2]
         trim = sorted(v[1] for _i, v in vouch)[len(vouch) // 2]
-        # the assembler's fold increment this step (radians, wrapped), median over instances
-        dphi = sorted(math.remainder(v[3] - st.inst_prev[i][3], 2.0 * math.pi)
-                      for i, v in vouch)[len(vouch) // 2]
-        r_idx = next(iter(usable.values()))[4]
-        eps = 0.0
-        if r_idx == 0 and len(st.dphi_intra) >= 3:
-            # a frame boundary: rotate the (squared) products by the fold it should have had
-            eps = sorted(st.dphi_intra)[len(st.dphi_intra) // 2] - dphi
-            st.bfix += eps / (2.0 * math.pi)
-            st.n_bfix += 1
-        elif r_idx != 0:
-            st.dphi_intra.append(dphi)
-        rot = cmath.exp(-2j * eps)
         # each voucher advances ITS OWN phase; the fleet value is the median of the phases
         for i, v in vouch:
             x = st.inst_x.get(i, st.res)
-            st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate() * rot) / (4.0 * math.pi)
+            st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate()) / (4.0 * math.pi)
         xs = sorted(st.inst_x[i] for i, _v in vouch)
         res = xs[len(xs) // 2]
         for i, _v in vouch:
@@ -179,8 +158,6 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
         st.hop0 = hop
         st.adr = st.trim = st.res = 0.0
         st.inst_x = {i: 0.0 for i in usable}
-        st.bfix = 0.0
-        st.n_bfix = 0
         st.n = 1
         ok = False
     st.s_prev = sum(v[2] for v in usable.values())
@@ -281,7 +258,6 @@ class FleetAdr(object):
             out[prn] = {"dop_cycles": s.adr, "hop": s.hop, "hop0": s.hop0, "arc": s.arc,
                         "n_rec": s.n, "n_inst": s.n_inst, "trim_cycles": s.trim,
                         "res_cycles": s.res, "breaks": s.breaks,
-                        "bfix_cycles": s.bfix, "n_bfix": s.n_bfix,
                         # the full received phase, the exact nominal added back to the
                         # Doppler-only accumulator (a double holds ~3e13 cycles to 4e-3)
                         "cycles": float(Fraction(s.adr) + nominal),
