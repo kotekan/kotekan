@@ -125,6 +125,25 @@ class TestFold(unittest.TestCase):
         self.assertLess(abs(st_all.adr - want), abs(st_one.adr - want))
         self.assertLess(abs(st_all.adr - want), 0.05)
 
+    def test_varying_instance_weights_do_not_random_walk(self):
+        """Prompt amplitudes swing record to record (where the secondary chip flips inside the
+        record decides |S|), so a fleet increment formed from the weighted sum of cross-products
+        does not telescope and its sum random-walks. Per-instance phases do telescope: with white
+        per-record noise the fleet error must stay at the single-record level after thousands
+        of records, not grow as sqrt(N)."""
+        class Flicker(Sky):
+            def record(self, hop, prev_hop, **kw):
+                out = Sky.record(self, hop, prev_hop, **kw)
+                return {i: (v[0], v[1], v[2] * random.uniform(0.05, 1.0) ** 2, v[3], v[4])
+                        for i, v in out.items()}
+        sky = Flicker(noise_rad=0.3)
+        hops = [HOP0 + k * HPR for k in range(4000)]
+        st = run(sky, hops)
+        err = st.adr - dop_only(sky, hops[-1], hops[0])
+        # 12 instances at 0.3 rad -> ~0.05 cycles each on the squared phasor; a random walk
+        # over 4000 records would be ~0.9 cycles here
+        self.assertLess(abs(err), 0.12, err)
+
     def test_gap_breaks_the_arc(self):
         sky = Sky()
         hops = [HOP0 + k * HPR for k in range(50)] + [HOP0 + k * HPR for k in range(60, 100)]

@@ -37,11 +37,23 @@ records it re-injects the folded steps, and an ADR built that way walks by hundr
 per-record increment is
     dres = arg( sum_inst S_i(k) * conj(S_i(k-1)) ) / 4pi,    S_i = H_i^2 + T_i^2,
 where H is the head amplitude and T = A - H: the per-instance constants cancel in each
-product, the fold stays folded, and the twelve products add coherently (a single instance's
-step is ~0.1 cycles rms on a weak satellite -- at the alias edge; the sum is ~0.03). Squaring
-makes S sign-free (overlay pilots flip sign record to record) and straddle-immune (both
-segments of a record that spans a secondary-chip transition add in power). A tracker that
-does not segment writes head == A, tail 0, and S reduces to A^2.
+product and the fold stays folded. Squaring makes S sign-free (overlay pilots flip sign record
+to record) and straddle-immune (both segments of a record that spans a secondary-chip
+transition add in power). A tracker that does not segment writes head == A, tail 0, and S
+reduces to A^2.
+
+THE FLEET COMBINE IS A MEDIAN OF PER-INSTANCE PHASES, NOT OF INCREMENTS. Consecutive
+increments of ONE instance telescope -- sum_k arg(S_i(k) conj S_i(k-1)) is the phase of S_i(k)
+minus that of S_i(0), and the per-record noise does not accumulate. A fleet increment formed
+first (the phase of sum_i S_i(k) conj S_i(k-1), or a median of the twelve) does NOT telescope:
+its weights (|S_i|^2, which swing with where the secondary chip flips inside each record) and
+its membership change every record, so each fleet increment carries fresh noise and their sum
+is a random walk (the published ADR's residual rate had the 1/sqrt(tau) Allan deviation of
+one, while the median of per-instance phases on the same records was white). So each vouching
+instance keeps its own continuous residual phase, an
+instance that (re)joins is placed at the fleet's value, an instance that slips by a half cycle
+(the squared phasor's period) is re-seated, and the fleet residual is the median of the
+instances' phases.
 
 THE FRAME-BOUNDARY FOLD IS REPAIRED HERE. The assembler folds the replica's per-record
 re-pin step into its NCO (REC_PHI0 is that accumulator) and the exported prompt is
@@ -75,7 +87,7 @@ GRID_HOPS = 96 * 2048       # ~1.0066 s: a record hop common to every chain (see
 class SatAdr(object):
     """One satellite's running arc."""
     __slots__ = ("hop", "hop0", "s_prev", "adr", "trim", "res", "arc", "n", "n_inst",
-                 "inst_prev", "breaks", "t", "grid", "dphi_intra", "bfix", "n_bfix")
+                 "inst_prev", "inst_x", "breaks", "t", "grid", "dphi_intra", "bfix", "n_bfix")
 
     def __init__(self):
         self.hop = None        # hop of the last record folded
@@ -89,6 +101,7 @@ class SatAdr(object):
         self.n = 0             # records folded into this arc
         self.n_inst = 0        # instances behind the last record
         self.inst_prev = {}    # inst -> (hop, dop_hz, S_i) of that instance's last record seen
+        self.inst_x = {}       # inst -> that instance's own continuous residual phase, cycles
         self.breaks = 0        # arcs ended by a gap or an unaccountable increment
         self.t = 0.0           # wall time of the last fold
         # THE GRID SNAPSHOT (hop, adr, arc, n): the state at the newest record whose hop is a
@@ -128,20 +141,32 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     if len(vouch) >= min_inst:
         dcmd = sorted(st.inst_prev[i][1] * dt + v[1] for i, v in vouch)[len(vouch) // 2]
         trim = sorted(v[1] for _i, v in vouch)[len(vouch) // 2]
-        P = sum(v[2] * st.inst_prev[i][2].conjugate() for i, v in vouch)
         # the assembler's fold increment this step (radians, wrapped), median over instances
         dphi = sorted(math.remainder(v[3] - st.inst_prev[i][3], 2.0 * math.pi)
                       for i, v in vouch)[len(vouch) // 2]
         r_idx = next(iter(usable.values()))[4]
+        eps = 0.0
         if r_idx == 0 and len(st.dphi_intra) >= 3:
-            # a frame boundary: rotate the (squared) product by the fold it should have had
+            # a frame boundary: rotate the (squared) products by the fold it should have had
             eps = sorted(st.dphi_intra)[len(st.dphi_intra) // 2] - dphi
-            P *= cmath.exp(-2j * eps)
             st.bfix += eps / (2.0 * math.pi)
             st.n_bfix += 1
         elif r_idx != 0:
             st.dphi_intra.append(dphi)
-        dres = cmath.phase(P) / (4.0 * math.pi)
+        rot = cmath.exp(-2j * eps)
+        # each voucher advances ITS OWN phase; the fleet value is the median of the phases
+        for i, v in vouch:
+            x = st.inst_x.get(i, st.res)
+            st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate() * rot) / (4.0 * math.pi)
+        xs = sorted(st.inst_x[i] for i, _v in vouch)
+        res = xs[len(xs) // 2]
+        for i, _v in vouch:
+            if abs(st.inst_x[i] - res) > 0.3:   # a half-cycle slip: re-seat, do not carry it
+                st.inst_x[i] = res
+        for i in usable:
+            if i not in st.inst_x:              # (re)joining: adopt the fleet's phase
+                st.inst_x[i] = res
+        dres = res - st.res
         st.adr += dcmd - dres
         st.res += dres
         st.trim += trim
@@ -153,6 +178,7 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
         st.arc += 1
         st.hop0 = hop
         st.adr = st.trim = st.res = 0.0
+        st.inst_x = {i: 0.0 for i in usable}
         st.bfix = 0.0
         st.n_bfix = 0
         st.n = 1
@@ -162,6 +188,8 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     st.n_inst = len(usable)
     for i, v in per_inst.items():
         st.inst_prev[i] = (hop, v[0], v[2], v[3])
+    for i in [i for i in st.inst_x if i not in usable]:
+        del st.inst_x[i]                        # gone: it rejoins at the fleet's phase
     if hop % GRID_HOPS == 0:
         st.grid = (hop, st.adr, st.arc, st.n)
     return ok
