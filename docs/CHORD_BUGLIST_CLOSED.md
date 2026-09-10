@@ -47,6 +47,7 @@ parallel section audits that each read the tree AND the live fleet.
 | #86 | rate lock / E5a no-op | — | — |
 | #90 | off-peak disarm latch | admission gate | 0 LATCH in an hour |
 | #95 residual | "the DLL cannot arm either" | `c4512de93` | the peer-median window gate was deleted; absolute floor is the only path, `presence-admit-displaced` on all 7 DR chains |
+| #54 | GPU vs CPU replicas differ per sample | see below | prompt 3.48e-02 → 4.79e-05, peel per-sample 9.55e-02 → 3.31e-05 at 6.8 d; every exactness gate still exactly 0 |
 
 ## Closed because the premise died (moot)
 
@@ -134,6 +135,56 @@ indistinguishable from baseline. The fleet-wide roll at 02:02–02:10 climbed 0.
 02:38–02:44. The standing C++ trim lives **on each node**, so one roll discards a twelfth of the
 fleet's trim state while ten combiners carry the measurement, and a fleet roll discards every
 satellite's at once and the DLL re-establishes all of them from zero.
+
+## #54 — the yardstick was the defect (2026-09-10)
+
+For a month this read as "the GPU replica is wrong at 3.5% and gets worse with uptime". It was the
+**CPU reference** that was wrong. `hoprate_stream_into` and `channels()` had both had their
+CARRIER promoted to long double, each with a long comment about the one-radian ULP at CHORD's
+absolute sample index — and in the same function the **code** phase was left as
+`cp0 + (double)n_m * cps`. At n_m ~ 1.9e15 that product reaches 3.8e14 chips, binade [2^48, 2^49),
+where a double's ULP is **0.0625 chips**.
+
+The reason it hurts more than a phase error should: the tap spacing in that loop *is* `cps`
+(~0.2 chips), so 0.0625 chips is ~30% of a tap. It does not merely shift the replica, it hands
+taps to the neighbouring chip — the same `2*proto[k]` error the boundary snap a few lines below
+exists to prevent, except at a rate set by the sample counter instead of by a rational
+coincidence. `chip_at`, the lambda the snap compares against, was quantised the same way, so the
+corrector was correcting toward a corrupted target. That is why the growth is not a power law
+(×10.3, ×1206, ×45 per decade of anchor): it is smooth while the ULP is small against a tap, then
+turns discrete as it approaches one.
+
+The prime suspect from 2026-08-13 (`C_P = cp0 + n_m*cps` **in the kernel**) was right about the
+expression and wrong about the side. `c38f0f138` fixed the kernel's copy and the number barely
+moved, which is exactly what should have happened — the same defect was sitting in the reference
+it was being measured against, and only the reference's half was still live.
+
+Fixed by promoting all three sites to long double (`CL`, `chip_at`, and `channels()`'s per-sample
+phase, the last reducing mod the code length so `code_chip` and the NH overlay both come off one
+long-double evaluation). Verified on an anchor sweep across three decades:
+
+| anchor | prompt before | prompt after | peel per-sample before | after |
+|---|---|---|---|---|
+| 0.007 d | 7.92e-08 | 7.92e-08 | 2.482e-07 | 2.482e-07 |
+| 0.068 d | 8.16e-07 | 8.16e-07 | 5.447e-07 | 5.447e-07 |
+| 0.678 d | 6.50e-04 | **1.43e-06** | 3.227e-02 | **8.619e-07** |
+| 6.781 d | 3.48e-02 | **4.79e-05** | 9.551e-02 | **3.310e-05** |
+
+Reference cross-terms went FAIL 7.94e-02 → OK 4.00e-06. Every bit-exactness gate in the suite
+(split-vs-fused, 4+4b-vs-float, N×M element axis, cross-terms off→on) still reports exactly
+0.000e+00, and `test_gnss_channelized_replica` passes all 17 cases including the NH overlay.
+
+**Two things this cost, worth remembering.** The defect was invisible to every boost test because
+they all anchor at `start = 0`; and it survived a month of being attributed to the GPU because
+nothing ever asked whether the reference was right. A reference that is never itself checked is an
+assumption wearing a measurement's clothes.
+
+⚠️ **Unrelated red gate found while checking this:** `test_gnss_channelized_acquire` fails
+`doppler_parabola_refine_beats_grid` (err_ref 44.14 vs a 25.0 bound) — and fails *identically*
+before the fix, so it is pre-existing and independent. `WITH_BOOST_TESTS` defaults OFF in the CUDA
+build dir, which is how it stayed unnoticed; the same CMakeLists already carries a comment about a
+different drift that went six modules deep for the same reason.
+
 
 ## Faults still worth reading in full
 

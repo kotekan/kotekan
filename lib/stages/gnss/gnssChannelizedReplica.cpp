@@ -489,7 +489,15 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
         for (int i = 0; i < _fft_len; ++i) {
             const long long n = start + (long long)h * _fft_len + i;
             if (n >= 0) {
-                const double phase = cp0 + (double)n * chip_per_sample;
+                // Long double for the same reason as wcL just above -- see the note in
+                // hoprate_stream_into. code_chip needs the phase only mod the code length and
+                // the overlay needs the absolute period, so both come off ONE long-double
+                // evaluation; narrowing the reduced phase to double is lossless (< 10230).
+                const long double phaseL =
+                    (long double)cp0 + (long double)n * (long double)chip_per_sample;
+                const long double LcL = (long double)_eff_code_length;
+                const long long period = (long long)std::floor(phaseL / LcL);
+                const double phase = (double)(phaseL - (long double)period * LcL);
                 int8_t c = code_chip(p, phase);
                 // BOC sub-carrier: baked into the EXPANDED code table at construction (each
                 // chip = 2m alternating-sign half-cycles at 2m x the rate) -- shared by this
@@ -500,8 +508,7 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
                 // overlay flips at those rollovers, so a multi-period coherent despread stays
                 // aligned. nh_phase < 0 -> overlay off (raw despread, the default).
                 if (_secondary_length > 0 && nh_phase >= 0)
-                    c = (int8_t)(c * overlay_sign((long long)std::floor(phase / (double)_eff_code_length),
-                                                  nh_phase));
+                    c = (int8_t)(c * overlay_sign(period, nh_phase));
                 // Real passband replica code*cos(carrier); the r2c bank keeps the
                 // positive-frequency half (the +carrier image), matching the data.
                 block[i] = c * (float)cph.real();
@@ -664,16 +671,28 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
 
     for (int m = 0; m < n_hops; ++m) {
         const long long n_m = n0 + (long long)m * _fft_len;
-        const double C = cp0 + (double)n_m * cps;
-        const long long chip0 = (long long)std::floor(C);
-        const double phi = C - (double)chip0;
+        // LONG DOUBLE for the CODE's absolute-sample product, exactly as wcL above does it for
+        // the carrier -- this is the half that was left in double. cps ~ 0.2 chips/sample and
+        // n_m ~ 1.9e15, so n_m*cps ~ 3.8e14 chips lands in the binade [2^48, 2^49) where a
+        // double's ULP is 0.0625 CHIPS. The tap spacing is cps itself, so at that anchor the
+        // quantisation is ~30% of a tap: it does not merely shift the phase, it hands taps to
+        // the neighbouring chip -- the same 2*proto[k] error the boundary snap below exists to
+        // prevent, at a rate set by the sample counter instead of by a rational coincidence.
+        // This function is the REFERENCE the GPU replica is validated against, so its own
+        // quantisation was being charged to the GPU.
+        const long double CL = (long double)cp0 + (long double)n_m * (long double)cps;
+        const long long chip0 = (long long)std::floor(CL);
+        const double phi = (double)(CL - (long double)chip0);
         const std::complex<double> pb = std::conj(pa);
 
         // The chip index the DIRECT per-sample generator (channels()) assigns to tap k, which
         // sits at absolute sample n_m - k. The fast formula below inverts this; the inversion
         // must agree with it EXACTLY, because it is channels() that matches the F-engine.
+        // Same precision as CL above, deliberately: this lambda is what the boundary snap
+        // compares against, so if it quantises the snap corrects toward the wrong chip.
         auto chip_at = [&](int k) {
-            return (long long)std::floor(cp0 + (double)(n_m - (long long)k) * cps);
+            return (long long)std::floor((long double)cp0
+                                         + (long double)(n_m - (long long)k) * (long double)cps);
         };
 
         // Chip d owns the taps k with floor(C - k*cps) == chip0 - d, i.e.

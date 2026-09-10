@@ -231,17 +231,21 @@ Pairs naturally with #115.
 
 ## Open — bench or offline, no deployment at all
 
-### #54 — the GPU and CPU replicas differ per sample, and one suspect just got worse
-**[tree]** Chased 2026-08-13: GPU-vs-CPU prompt error grows monotonically with the absolute
-anchor (7.92e-8 → 8.16e-7 → 9.55e-4 → 3.58e-2 over three decades), and the per-sample peel
-residual was 9.55e-2 at 6.8 days of uptime. The `cp_ref` fix was explicitly recorded as *not* the
-answer. Three suspects remain: the long-double CPU reference is assumed correct and never
-independently verified; `m_head_for` computes its running offset in double at n₀ ≈ 1.9e15; and
-the Φ tables — **which are now fp16 in production**, so that suspect got worse, not better.
-**[live]** The on-sky per-record carrier floor of 0.045 cycles — common across instances,
-independent of C/N0, white in time — is the same magnitude and is the first live cross-check this
-has ever had. **Next: re-run the despread test with the anchor swept, once with fp16 and once
-without, and promote `m_head_for` to long double.** A bench run.
+### #54 residual — the reference and the kernel still anchor differently
+**[bench]** The headline is closed (see `CHORD_BUGLIST_CLOSED.md`): the disagreement was the CPU
+reference's own quantisation, not the GPU. What is left is a floor of 4.79e-05 on the prompt row
+at the deepest anchor, still growing with it. Both sides now form the absolute code phase in long
+double, but at different points — the kernel reduces mod the code length ONCE at `n0` and advances
+by an intra-record offset, the reference re-evaluates `cp0 + n_m*cps` every hop — so they differ by
+their respective long-double roundings (~3e-5 chips at 3.8e14 chips).
+
+**The question is not how to make the number smaller, it is which number the gate should hold.**
+Giving the reference the kernel's anchor convention would drive it to the float floor and make the
+test green — and would also make that term *unable to fail*, which is the trap this list has been
+caught by before. The alternative is to leave the two independent and set the tolerance at the
+long-double anchor floor. **Not urgent either way:** 4.79e-05 is ~7× below the fp16 Φ storage error
+(3.3e-4) that the production replica actually carries, so the reference is no longer the limiting
+term in anything. Decide the convention before anyone re-tightens the gate.
 
 ### #56 — transits confirmed; the residual is a non-GNSS in-band emitter, chase running
 **[archive + BRDC, 08-22/08-23]** Near-boresight transits are the mechanism, and the amplitude
