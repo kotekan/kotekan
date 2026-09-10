@@ -281,14 +281,14 @@ bf_mask_changes_buffer:
 
 ## Receive data
 
-# use_frame_desc checks the sender's frame descriptor (layout, element count and, for
-# DishInputs, element identities) against the buffers declared above; without it only
-# the frame and metadata sizes are compared, so a dish table that diverges from the
-# X-engine's without changing the element count would be written out mislabeled. Must
-# match use_frame_desc on the bufferSend stages in chord_pathfinder.j2. The bf_mask
-# frames also describe their own shape in chordMetadata, which bufferRecv checks on
-# every frame; the descriptor moves that check to connection time, ahead of the next
-# sparse mask record.
+# use_frame_desc checks the sender's frame descriptor (layout and element count) against
+# the buffers declared above; without it only the frame and metadata sizes are compared.
+# Element identities are not on the descriptor: each node derives them from its own
+# dish_inputs, so a table that diverges from the X-engine's without changing the connected
+# count would be written out mislabeled; keep the two tables identical. Must match
+# use_frame_desc on the bufferSend stages in chord_pathfinder.j2. The bf_mask frames also
+# describe their own shape in chordMetadata, which bufferRecv checks on every frame; the
+# descriptor moves that check to connection time, ahead of the next sparse mask record.
 
 buffer_recv_subset_subset:
     kotekan_stage: bufferRecv

@@ -673,8 +673,9 @@ n2_buffer_1:
 # DishInputs: compact frames over the connected elements, those whose dish type is
 # not Fake (array dishes and RFI antennas alike), derived from the telescope's dish
 # table (num_elements here is the full count they are selected from). Each element's
-# full-order identity travels in the descriptor's input_list; masking stays a
-# per-element flags concern, subsetting lives here.
+# full-order identity is derived from the dish table wherever it is needed (N2Subset,
+# hdf5N2Write), not carried on the descriptor; masking stays a per-element flags
+# concern, subsetting lives here.
 n2_subset_buffer:
     kotekan_buffer: N2
     peek_hold: true
