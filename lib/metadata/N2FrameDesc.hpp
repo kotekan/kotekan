@@ -66,13 +66,19 @@ public:
      * @param num_products  Number of products in the visibility matrix
      * @param n2_layout     The layout of the visibility matrix
      * @param product_list  Optional explicit list of products (required for subset layouts)
+     * @param input_list    For compact layouts (DishInputs): the full-order element index
+     *                      each of this frame's elements corresponds to, strictly
+     *                      increasing, one entry per element. Product ids and per-element
+     *                      fields always index the frame's own 0..num_elements-1 axis;
+     *                      this list carries the elements' identities.
      *
      * @note Validation failures (product_list missing, sized inconsistently with
      *       num_products, or referencing inputs outside num_elements) are fatal
      *       and shut kotekan down (FATAL_ERROR_NON_OO).
      */
     N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_products, N2Layout n2_layout,
-                std::vector<N2::prod_ctype> product_list = {});
+                std::vector<N2::prod_ctype> product_list = {},
+                std::vector<uint16_t> input_list = {});
     virtual ~N2FrameDesc() = default;
 
     // FrameDesc overrides
@@ -110,6 +116,16 @@ public:
      */
     const std::vector<N2::prod_ctype>& get_product_list() const {
         return product_list;
+    }
+
+    /**
+     * @brief The full-order element index each of this frame's elements corresponds to.
+     *
+     * Empty for layouts whose element axis is the full fiducial order (element index =
+     * full-order index); one entry per element for compact layouts (DishInputs).
+     */
+    const std::vector<uint16_t>& get_input_list() const {
+        return input_list;
     }
 
     /**
@@ -214,6 +230,8 @@ private:
 
     /// Product list for this frame descriptor (populated for all layouts)
     const std::vector<N2::prod_ctype> product_list;
+    /// Full-order identity per element for compact layouts; empty otherwise
+    const std::vector<uint16_t> input_list;
 };
 
 } // namespace kotekan

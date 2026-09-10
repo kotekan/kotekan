@@ -12,7 +12,13 @@ enum class N2Layout : int32_t {
     Autocorrelations = 2,
     InputANDMasked = 3,
     InputORMasked = 4,
-    GeneralSubset = 5
+    GeneralSubset = 5,
+    // A compact frame over the connected elements -- those whose dish type is not
+    // Fake, array dishes and RFI antennas alike -- derived from the telescope's dish
+    // table. Products and per-element fields index the frame's own dense element
+    // axis; each element's identity in the full fiducial order is carried in the
+    // descriptor's input_list.
+    DishInputs = 6
 };
 
 void to_json(nlohmann::json& j, const N2Layout& t);

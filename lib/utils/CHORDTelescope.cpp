@@ -549,6 +549,34 @@ void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
     }
 }
 
+void CHORDTelescope::fill_element_maps(elementInputFields& input, ElementOrder ord) const {
+    const auto& dish_info_table = _dish_params.dish_info_table;
+
+    input.dish_idx.assign(_num_elements, 0);
+    input.pol.assign(_num_elements, 0);
+    input.grid_x_idx.assign(_num_elements, 0);
+    input.grid_y_idx.assign(_num_elements, 0);
+    input.feed_pos_disp_m.assign(_num_elements, vec3d_t{});
+    input.coelev_disp_deg.assign(_num_elements, 0.0);
+    input.type.assign(_num_elements, DishType::Fake);
+    input.label.assign(_num_elements, "");
+
+    for (uint64_t el = 0; el < _num_elements; el++) {
+        uint64_t dish;
+        uint64_t pol;
+        decode_station_id(element_index_to_station_id(el, ord), dish, pol);
+        const dishInfo& d = dish_info_table.at(dish);
+        input.dish_idx[el] = (dish_index_t)dish;
+        input.pol[el] = (int32_t)pol;
+        input.grid_x_idx[el] = d.grid_x_idx;
+        input.grid_y_idx[el] = d.grid_y_idx;
+        input.feed_pos_disp_m[el] = d.feed_pos_disp_m;
+        input.coelev_disp_deg[el] = d.coelev_disp_deg;
+        input.type[el] = d.type;
+        input.label[el] = fmt::format(fmt("{:s}p{:d}"), d.label, pol + 1);
+    }
+}
+
 size_t CHORDTelescope::get_num_stacks() const {
     FATAL_ERROR("get_num_stacks() has not been implemented in CHORDTelescope yet.");
     return 0;

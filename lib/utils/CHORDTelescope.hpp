@@ -126,6 +126,25 @@ struct dishInputFields {
     std::vector<std::string> label;
 };
 
+/**
+ * @brief   Per-element dish information: one row per correlator input.
+ * @details Rows follow the element order the caller names. Each row copies the
+ *          fields of the dish the element belongs to (see @c dishInputFields) and
+ *          adds the dish index and polarization the element decodes to. The label
+ *          is the dish label with the 1-based polarization appended, e.g. "A1p1"
+ *          and "A1p2" for the two inputs of dish "A1".
+ */
+struct elementInputFields {
+    std::vector<dish_index_t> dish_idx;
+    std::vector<int32_t> pol;
+    std::vector<dish_index_t> grid_x_idx;
+    std::vector<dish_index_t> grid_y_idx;
+    std::vector<vec3d_t> feed_pos_disp_m;
+    std::vector<double> coelev_disp_deg;
+    std::vector<DishType> type;
+    std::vector<std::string> label;
+};
+
 
 /**
  * @brief Struct containing dish parameters.
@@ -343,9 +362,8 @@ private:
  * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan
- **/
-
-/*
+ *
+ * @details
  * 2024/10/25: Initial version copied from ICETelescope. Frequency logic
  *              stripped out. GR
  * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table
@@ -356,7 +374,6 @@ private:
  * 2026/06/01:  Move much geographic, coordinates, and vector logic into Telescope and GeoFrame. Add
  * new functions for element ordering and dish position access. Clean up.
  */
-
 class CHORDTelescope : public Telescope {
 public:
     CHORDTelescope(const kotekan::Config& config, const std::string& path);
@@ -499,6 +516,15 @@ public:
      *                  correct size.
      **/
     void fill_input_maps(dishInputFields& input) const;
+
+    /**
+     * @brief   Fill an elementInputFields struct with one row per element of the
+     *          full array (num_elements rows), in the given element order.
+     *
+     * @param   input   The struct to fill; its vectors are resized.
+     * @param   ord     Element order the rows follow.
+     **/
+    void fill_element_maps(elementInputFields& input, ElementOrder ord) const;
 
     /**
      * @brief Get the number of unique baselines in the array

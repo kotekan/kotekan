@@ -131,9 +131,9 @@ Conventions
 **Axis labels.**
 Every dataset created by the stage carries a string-array attribute ``axis``
 naming its dimensions in order, e.g. ``/vis`` has
-``axis = ["frequency", "product", "time"]``. (Some per-input tables under
-``/index_map`` carry the axis label ``dish`` for historical reasons; see
-below.)
+``axis = ["frequency", "product", "time"]``. (Under ``/index_map`` the
+input tables are indexed by ``element`` and ``dish_positions_in_grid_coords``
+by ``dish``; see below.)
 
 **Frequency axis.**
 Index :math:`f` along the ``frequency`` axis corresponds to FPGA channel
@@ -150,7 +150,14 @@ visibility matrix, including autocorrelations, row-major:
 (N_e{-}1,N_e{-}1)`. The pair for product :math:`p` is stored in
 ``/index_map/prod`` as ``(input_a, input_b)`` with ``input_a <= input_b``;
 ``input_a`` is the row and ``input_b`` the column of the matrix entry
-:math:`V_{ab}`. The lower triangle is the complex conjugate.
+:math:`V_{ab}`. The lower triangle is the complex conjugate. Product ids
+always index the file's own element axis; ``/index_map/prod`` is
+authoritative. Compact subset layouts (e.g. ``DishInputs``) carry fewer
+elements than the full array: the ``input_list`` attribute gives, per file
+element, the corresponding element index of the full array in
+``input_order``; the per-element tables under ``/index_map`` and the
+per-element attributes (``main_array_grid_indices``, ``feed_positions_m``)
+are already gathered through it.
 
 **Element ordering.**
 The mapping from element index to physical input (dish, polarization) is
@@ -244,7 +251,13 @@ File identity and structure
      - string
      - Visibility matrix packing: ``FullUpperTri``,
        ``RedundantBaselineAvg``, ``Autocorrelations``, ``InputANDMasked``,
-       ``InputORMasked``, or ``GeneralSubset``.
+       ``InputORMasked``, ``GeneralSubset``, or ``DishInputs`` (a compact
+       frame holding the dense triangle over the connected elements, those
+       whose dish type is not ``Fake``; see the ``input_list`` attribute).
+   * - ``input_list``
+     - int32 array
+     - Compact subset layouts only: the element index, in the full
+       fiducial order, of each of the file's elements.
    * - ``input_order``
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see
@@ -364,12 +377,19 @@ omitted entirely if the telescope has no EOP table loaded.
 Index maps (``/index_map``)
 ===========================
 
-Static lookup tables describing the axes. The input tables (``grid_x_idx``
-through ``label`` below) are copied verbatim from the telescope's
-``dish_inputs`` configuration, which carries one entry per correlator input
-(element); inputs not populated in the configuration hold type ``Fake``
-(-1) and label ``"Fake"``. These tables are indexed by input even where the
-``axis`` attribute says ``dish``.
+Static lookup tables describing the axes. The input tables (``dish_idx``
+through ``label`` below) have one row per element of the file,
+:math:`N_e` rows indexed like the ``element`` axis of ``/evec``, ``/gain``
+and ``/flags`` and like the ``input_a``/``input_b`` entries of ``prod``, so
+a product's inputs read straight into them. Full layouts hold the whole
+array in the file's ``input_order`` (:math:`N_{pol} \times N_d` rows);
+compact subset layouts hold the elements named by the ``input_list``
+attribute, in the N2 layout's element order. Each row names the dish the
+element belongs to and its polarization, and copies that dish's entry from
+the telescope's ``dish_inputs`` configuration. Dishes not populated in the
+configuration hold type ``Fake`` (-1) and label ``"Fake"``, so in a full
+layout their elements read ``"Fakep1"``, ``"Fakep2"``; compact layouts
+leave them out.
 
 .. list-table::
    :header-rows: 1
@@ -389,37 +409,49 @@ through ``label`` below) are copied verbatim from the telescope's
      - compound {input_a: u2, input_b: u2}
      - Element-index pair :math:`(a, b)`, :math:`a \le b`, for each
        ``product`` index (row/column of the visibility matrix).
+   * - ``dish_idx``
+     - (elements)
+     - int64
+     - Index of the dish each element belongs to: its row in
+       ``dish_positions_in_grid_coords`` and in the ``dish_inputs``
+       configuration.
+   * - ``pol``
+     - (elements)
+     - int32
+     - Polarization index of each element, 0-based.
    * - ``grid_x_idx``
-     - (inputs)
+     - (elements)
      - int64
-     - East--west dish grid column of each input.
+     - East--west dish grid column of each element's dish.
    * - ``grid_y_idx``
-     - (inputs)
+     - (elements)
      - int64
-     - North--south dish grid row of each input.
+     - North--south dish grid row of each element's dish.
    * - ``dish_positions_in_grid_coords``
      - (:math:`N_d`, 3)
      - float64
      - Dish positions in metres in the grid coordinate frame (grid index x
        dish separation); one entry per dish.
    * - ``feed_pos_disp_m``
-     - (inputs, 3)
+     - (elements, 3)
      - float64
      - Feed position displacement from the nominal grid position, metres.
    * - ``coelev_disp_deg``
-     - (inputs)
+     - (elements)
      - float64
      - Co-elevation pointing offset from the commanded ``dish_coelev_deg``,
        degrees.
    * - ``type``
-     - (inputs)
+     - (elements)
      - int32
-     - Dish type enum: -1 = ``Fake`` (unpopulated input), 0 = ``ArrayDish``,
-       1 = ``RFIDish``.
+     - Dish type enum: -1 = ``Fake`` (element of an unpopulated dish),
+       0 = ``ArrayDish``, 1 = ``RFIDish``.
    * - ``label``
-     - (inputs)
+     - (elements)
      - variable-length string
-     - Human-readable input labels; ``"Fake"`` for unpopulated inputs.
+     - Per-element label: the dish label with the 1-based polarization
+       appended, e.g. ``A1p1`` and ``A1p2`` for the two inputs of dish
+       ``A1``.
 
 Visibility and per-(frequency, time) datasets
 =============================================
