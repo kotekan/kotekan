@@ -243,33 +243,49 @@ independent of C/N0, white in time — is the same magnitude and is the first li
 has ever had. **Next: re-run the despread test with the anchor swept, once with fp16 and once
 without, and promote `m_head_for` to long double.** A bench run.
 
-### #56 — near-boresight transits are most of it; a second population is not
-**[archive + BRDC, 08-22 and 08-23, 10-min bins]** KV's reading is confirmed quantitatively.
-Against boresight (az 180, el 81.41 — *not* `telescope.dish_coelev_deg`), with every GNSS
-satellite from the cached BRDC for those days:
+### #56 — transits confirmed; the residual is a non-GNSS in-band emitter, chase running
+**[archive + BRDC, 08-22/08-23]** Near-boresight transits are the mechanism, and the amplitude
+tracks how much of the tap's band the satellite actually lights. ⚠️ **The tap is NOT L5-only**:
+`gnss{0,1}_srch_tap/rf_stats` monitors 22 channels over **1166.8–1282.4 MHz** (L5/E5a/B2a ×7,
+E5b/B2b ×7, L2C ×1, B3I ×7, E6 ×6), and it publishes absolute `freq_ids`, so a clipping channel
+can be named. Every pass inside 2° of boresight, both days:
 
-| closest GNSS satellite to boresight | median `elem_power_max` |
-|---|---|
-| inside the HWHM (≤1.24°) | **34.0** (08-23) |
-| 1.24–5° | 18.6 / 24.5 |
-| nothing within 5° | **9.3 / 9.6** |
+| sat | sep | power vs day median | channels it lights |
+|---|---|---|---|
+| E6 | 0.26° | 4.9× | 20/22 |
+| C34 | 1.12° | 4.3× | 21/22 |
+| G9 | 1.21° | 3.5× | 8/22 |
+| C38 | 1.74° | 3.3× | 21/22 |
+| E3 | 1.99° | 2.4° → 2.4× | 20/22 |
+| G19 | 0.93° | 2.2× | **1/22** |
+| C19 | 1.15° | 2.0× | 21/22 |
+| G19 | 1.11° | **1.0× (none)** | **1/22** |
 
-`r(min separation, power)` = **−0.41 / −0.28** and `r(n sats within 5°, power)` = **+0.52 /
-+0.44** — the predicted sign, and a **2.4–3.6× median power step** between "a satellite is in the
-beam" and "nothing is within 5°". Transits are real, they are the dominant driver, and they are
-the mechanism behind the tens-of-minutes burst length.
+**Seven of eight close passes raised the power 2.0–4.9×. The one that did not is a GPS Block IIR**
+— PRN 19 predates L5 and L2C, so of the 22 monitored channels it lights exactly one, legacy L2
+P(Y) at 1227.6 MHz, ~6.6 dB below L5. So "a satellite near boresight rails the array" holds for
+every satellite with real in-band content (7/7); the exception is the one class with almost none.
+⚠️ A first pass at this filtered satellites by *L5* capability and so wrongly excluded G19
+altogether. The correct model is "how many of the 22 monitored channels does it transmit in".
 
-**What is left is a second population of comparable amplitude with no GNSS satellite anywhere
-near the beam.** About half of each day's top-8 power bins have nothing within 5°: 08-23 15:00
-(power 58.7, the day's largest, closest satellite 10.3°), 16:30 (38.9 at 16.9°), 22:20 (34.8 at
-7.9°); 08-22 17:40 (52.9 at 12.3°), 11:10 (50.3 at 14.4°), 15:00 (46.0 at 11.2°), 19:30, 16:30.
-And the converse: G19 passed 1.11° off boresight at 06:50 on 08-23 and the power stayed at
-baseline (10.1). Several of these recur at the same UTC time on both days (15:00, 16:30).
-⚠️ **The honest limit of this test: BRDC sees only GNSS.** A non-GNSS satellite transiting the
-beam would show as "nothing within 5°" here. **So the next test is not a fortnight of
-`rail_watch` — it is a TLE catalogue check on those specific residual bins**, which is an
-afternoon and needs no live instrument. Only if that comes back empty does the residual become
-"terrestrial, and it needs an owned instrument to characterise".
+**What is left is the residual: bursts of comparable amplitude with no satellite within 5°**
+(08-23 15:00 is the day's largest at 58.7 with the closest satellite 10.3° away; also 16:30,
+22:20; 08-22 17:40, 11:10, 15:00, 19:30, 16:30). Cross-correlating consecutive days cannot
+separate a solar from a sidereal repeat — the events are 12–20 min wide and the daily shift is
+only 3.93 min, so lag 0 (r 0.51) and lag −4 min (r 0.47) are indistinguishable.
+**The hypothesis under test is aeronautical.** 1166–1282 MHz sits inside the ARNS band
+(960–1215 MHz) shared with DME/TACAN and Link-16, whose emitters are orders of magnitude
+stronger than a GNSS satellite and need no boresight transit to swamp a sidelobe; aircraft
+schedules repeat near-daily with tens of minutes of jitter, which fits the archive better than
+either a solar or a sidereal repeat. **The discriminator is spectral, not geometric**: a GNSS
+transit spreads clip across the whole comb, DME occupies a single 1 MHz channel, and the tap
+gives per-channel clip with named frequencies. `fixtures/rail_aircraft.py` records taps +
+OpenSky aircraft + BRDC illuminators on one clock (it is also `rail_watch`'s replacement).
+⚠️ Concentration is only meaningful during a burst: at the ~5e-4 baseline clip a single channel
+holding the maximum is Poisson noise on a handful of samples, not a narrowband source.
+⚠️ Limits: OpenSky serves live only without credentials, so the archived bins cannot be
+attributed to specific flights; Celestrak is unreachable from cf06; and GEO is geometrically
+impossible at el 81° from 49°N, which rules out the whole geostationary belt.
 
 ### #94 — the shared-parameter estimators: 1 of 6 sites done
 S2 (the prior gauge) is built, armed, and its falsifier now passes on sky (closed file). The
