@@ -86,9 +86,13 @@ void GenericBuffer::unregister_consumer(const std::string& name, bool leave_last
             ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
             return;
         }
+        consumers_epoch++;
     }
     // Signal producers in case removing this consumer causes a buffer to become writable
     empty_cond.notify_all();
+    // Wake any wait_for_full_frame() this consumer is blocked in, so that it
+    // observes its own removal instead of waiting on an erased map entry.
+    full_cond.notify_all();
 }
 
 void GenericBuffer::register_producer(const std::string& name) {
@@ -181,27 +185,42 @@ void GenericBuffer::send_shutdown_signal() {
 }
 
 void GenericBuffer::json_description(nlohmann::json& buf_json) {
+    // Copy the stage info out under the lock and build the JSON (which
+    // allocates) after releasing it, to keep REST queries off the frame path.
+    struct StageSnapshot {
+        std::string name;
+        int last_frame_acquired;
+        int last_frame_released;
+        std::vector<bool> is_done;
+    };
+    std::vector<StageSnapshot> consumer_snapshots;
+    std::vector<StageSnapshot> producer_snapshots;
+    {
+        buffer_lock lock(mutex);
+        consumer_snapshots.reserve(consumers.size());
+        for (const auto& c : consumers)
+            consumer_snapshots.push_back({c.second.name, c.second.last_frame_acquired,
+                                          c.second.last_frame_released, c.second.is_done});
+        producer_snapshots.reserve(producers.size());
+        for (const auto& p : producers)
+            producer_snapshots.push_back({p.second.name, p.second.last_frame_acquired,
+                                          p.second.last_frame_released, p.second.is_done});
+    }
     buf_json["consumers"];
-    for (auto& cit : consumers) {
-        auto& c = cit.second;
-        std::string consumer_name = c.name;
-        buf_json["consumers"][consumer_name] = {};
-        buf_json["consumers"][consumer_name]["last_frame_acquired"] = c.last_frame_acquired;
-        buf_json["consumers"][consumer_name]["last_frame_released"] = c.last_frame_released;
+    for (const auto& c : consumer_snapshots) {
+        buf_json["consumers"][c.name] = {};
+        buf_json["consumers"][c.name]["last_frame_acquired"] = c.last_frame_acquired;
+        buf_json["consumers"][c.name]["last_frame_released"] = c.last_frame_released;
         for (int f = 0; f < num_frames; ++f)
-            buf_json["consumers"][consumer_name]["marked_frame_empty"].push_back(c.is_done[f] ? 1
-                                                                                              : 0);
+            buf_json["consumers"][c.name]["marked_frame_empty"].push_back(c.is_done[f] ? 1 : 0);
     }
     buf_json["producers"];
-    for (auto& pit : producers) {
-        auto& p = pit.second;
-        std::string producer_name = p.name;
-        buf_json["producers"][producer_name] = {};
-        buf_json["producers"][producer_name]["last_frame_acquired"] = p.last_frame_acquired;
-        buf_json["producers"][producer_name]["last_frame_released"] = p.last_frame_released;
+    for (const auto& p : producer_snapshots) {
+        buf_json["producers"][p.name] = {};
+        buf_json["producers"][p.name]["last_frame_acquired"] = p.last_frame_acquired;
+        buf_json["producers"][p.name]["last_frame_released"] = p.last_frame_released;
         for (int f = 0; f < num_frames; ++f)
-            buf_json["producers"][producer_name]["marked_frame_empty"].push_back(p.is_done[f] ? 1
-                                                                                              : 0);
+            buf_json["producers"][p.name]["marked_frame_empty"].push_back(p.is_done[f] ? 1 : 0);
     }
     buf_json["num_frames"] = num_frames;
     buf_json["type"] = buffer_type;
@@ -335,19 +354,49 @@ bool Buffer::is_frame_empty(const int ID) {
 
 uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int ID) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    auto& con = consumers.at(consumer_name);
+    // The wait below releases the mutex, and unregister_consumer() may erase
+    // this consumer's map entry meanwhile. Hold a pointer to the entry and
+    // re-look it up only when consumers_epoch says an entry was erased, so
+    // the common wake stays two array reads.
+    auto it = consumers.find(consumer_name);
+    if (it == consumers.end()) {
+        // Not necessarily a bug: a stage that unregistered itself (e.g. with
+        // leave_last) may keep consuming until it observes its own removal.
+        INFO("wait_for_full_frame({:s}[{:d}]): consumer is not registered, returning no frame.",
+             consumer_name, ID);
+        return nullptr;
+    }
+    StageInfo* con = &it->second;
+    uint64_t epoch = consumers_epoch;
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting...", consumer_name, ID);
     print_full_status();
     // This wait exits when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as done
-    full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
+    // when this consumer hasn't already marked this buffer as done, or when
+    // this consumer is unregistered while we are waiting.
+    full_cond.wait(lock, [&]() {
+        if (epoch != consumers_epoch) {
+            // Some consumer was unregistered; find out if it was this one.
+            auto find = consumers.find(consumer_name);
+            if (find == consumers.end()) {
+                con = nullptr;
+                return true;
+            }
+            con = &find->second;
+            epoch = consumers_epoch;
+        }
+        return shutdown_signal || (is_full[ID] && !con->is_done[ID]);
+    });
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
-    assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
-    lock.unlock();
 
     if (shutdown_signal)
         return nullptr;
-    con.last_frame_acquired = ID;
+    if (con == nullptr) {
+        DEBUG("wait_for_full_frame({:s}[{:d}]): consumer was unregistered while waiting.",
+              consumer_name, ID);
+        return nullptr;
+    }
+    assert(is_full[ID] && !con->is_done[ID]);
+    con->last_frame_acquired = ID;
     return frames[ID];
 }
 
@@ -357,15 +406,30 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
         std::chrono::seconds{timeout_time.tv_sec} + std::chrono::nanoseconds{timeout_time.tv_nsec};
     std::chrono::time_point<std::chrono::system_clock, decltype(dur)> deadline(dur);
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    auto& con = consumers.at(name);
+    // See wait_for_full_frame() for the pointer-plus-epoch scheme.
+    auto it = consumers.find(name);
+    if (it == consumers.end()) {
+        INFO("wait_for_full_frame_timeout({:s}[{:d}]): consumer is not registered, returning.",
+             name, ID);
+        return -1;
+    }
+    StageInfo* con = &it->second;
+    uint64_t epoch = consumers_epoch;
 
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting...", name, ID);
-    bool st = full_cond.wait_until(
-        lock, deadline, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
+    bool st = full_cond.wait_until(lock, deadline, [&]() {
+        if (epoch != consumers_epoch) {
+            auto find = consumers.find(name);
+            if (find == consumers.end()) {
+                con = nullptr;
+                return true;
+            }
+            con = &find->second;
+            epoch = consumers_epoch;
+        }
+        return shutdown_signal || (is_full[ID] && !con->is_done[ID]);
+    });
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting done.", name, ID);
-    if (st)
-        assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
-    lock.unlock();
 
     if (shutdown_signal)
         return -1;
@@ -373,7 +437,13 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     if (!st)
         return 1;
 
-    con.last_frame_acquired = ID;
+    if (con == nullptr) {
+        DEBUG("wait_for_full_frame_timeout({:s}[{:d}]): consumer was unregistered while waiting.",
+              name, ID);
+        return -1;
+    }
+    assert(is_full[ID] && !con->is_done[ID]);
+    con->last_frame_acquired = ID;
     return 0;
 }
 
@@ -388,12 +458,24 @@ int Buffer::get_num_full_frames() {
 
 void Buffer::json_description(nlohmann::json& buf_json) {
     GenericBuffer::json_description(buf_json);
+    // As above: snapshot under the lock, serialize after releasing it.
+    std::vector<bool> local_is_full;
+    double arrival_time;
+    {
+        buffer_lock lock(mutex);
+        local_is_full = is_full;
+        arrival_time = last_arrival_time;
+    }
     buf_json["frames"];
-    for (int i = 0; i < num_frames; ++i)
-        buf_json["frames"].push_back(is_full[i] ? 1 : 0);
-    buf_json["num_full_frame"] = get_num_full_frames();
+    int num_full = 0;
+    for (int i = 0; i < num_frames; ++i) {
+        buf_json["frames"].push_back(local_is_full[i] ? 1 : 0);
+        if (local_is_full[i])
+            num_full++;
+    }
+    buf_json["num_full_frame"] = num_full;
     buf_json["frame_size"] = frame_size;
-    buf_json["last_frame_arrival_time"] = last_arrival_time;
+    buf_json["last_frame_arrival_time"] = arrival_time;
 }
 
 std::string Buffer::get_dot_node_label() {
@@ -651,7 +733,6 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting done.", producer_name, ID);
     assert((!is_full[ID] && !pro->is_done[ID]) || shutdown_signal);
     assert(!((is_full[ID] || pro->is_done[ID]) && !shutdown_signal));
-    lock.unlock();
 
     if (shutdown_signal)
         return nullptr;
@@ -677,6 +758,7 @@ void Buffer::unregister_consumer(const std::string& name, bool leave_last) {
             ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
             return;
         }
+        consumers_epoch++;
         // Check if removing this consumer would cause any of the frames
         // which are currently full to become empty.
         for (int id = 0; id < num_frames; ++id)
@@ -687,6 +769,9 @@ void Buffer::unregister_consumer(const std::string& name, bool leave_last) {
     // removal of this consumer.
     if (broadcast)
         empty_cond.notify_all();
+    // Wake any wait_for_full_frame() this consumer is blocked in, so that it
+    // observes its own removal instead of waiting on an erased map entry.
+    full_cond.notify_all();
 }
 
 uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
