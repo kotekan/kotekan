@@ -1,5 +1,0 @@
-************
-EigenVisIter
-************
-
-.. doxygenclass:: EigenVisIter
