@@ -190,5 +190,44 @@ class TestDcbSource(unittest.TestCase):
                         "changed and the 'per-sat only' caveat must be revisited")
 
 
+class TestDcbStaleness(unittest.TestCase):
+    """#111: a dead token is invisible because fetch_dcb serves the cache. These pin the
+    three things that make it visible -- the product's own epoch, the token's expiry, and
+    a reason code that tells a missing credential from an unreachable network."""
+
+    def setUp(self):
+        import gnss_dcb
+        self.m = gnss_dcb
+
+    def test_product_age_comes_from_the_filename_not_the_mtime(self):
+        from datetime import datetime, timezone
+        when = datetime(2026, 9, 10, tzinfo=timezone.utc)          # doy 253
+        a = self.m.product_age_days("/x/CAS0OPSRAP_20262490000_01D_01D_DCB.BIA.gz", when)
+        self.assertAlmostEqual(a, 4.0, places=6)
+        b = self.m.product_age_days("/x/CAS0MGXRAP_20262390000_01D_01D_DCB.BSX.gz", when)
+        self.assertAlmostEqual(b, 14.0, places=6)
+        self.assertIsNone(self.m.product_age_days("/x/not-a-product.gz", when))
+        self.assertIsNone(self.m.product_age_days(None, when))
+
+    def test_token_expiry_reads_a_jwt_and_declines_anything_else(self):
+        import base64, json, time
+        exp = time.time() + 30 * 86400
+        pl = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+        self.assertAlmostEqual(self.m.token_expiry_days("h.%s.sig" % pl), 30.0, places=2)
+        self.assertIsNone(self.m.token_expiry_days("an-opaque-token"))   # not a JWT, not an error
+        self.assertIsNone(self.m.token_expiry_days(""))
+
+    def test_no_token_is_reported_as_such_not_as_unreachable(self):
+        st = {}
+        real = self.m._token
+        self.m._token = lambda: None
+        try:
+            self.assertIsNone(self.m.fetch_dcb(status=st))
+        finally:
+            self.m._token = real
+        self.assertEqual(st["reason"], "no-token")
+        self.assertIsNone(st["path"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

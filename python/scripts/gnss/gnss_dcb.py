@@ -28,10 +28,14 @@ Latency: the rapid product runs ~5 days behind, and code biases move on week-to-
 timescales, so a stale file is fine -- but `max_age_days` refuses a genuinely ancient one
 rather than silently applying last month's numbers.
 """
+import base64
 import gzip
+import json
 import math
 import os
+import re
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
@@ -57,15 +61,76 @@ def _token():
         return None
 
 
-def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14):
+_UNSET = object()
+
+
+def token_expiry_days(tok=_UNSET):
+    """Days until the Earthdata token expires, or None if that cannot be read.
+
+    Earthdata issues JWTs, whose middle segment carries an `exp` claim. Reading it costs
+    nothing and turns a silent cliff into a dated one -- the token that expires is the
+    ONLY reason this whole path stops working, and its death is otherwise invisible until
+    the cache ages out (see fetch_dcb: a cached product is served for `max_back_days`
+    after the fetches start failing).
+
+    ⚠️ NEVER LOG THE TOKEN. This returns a number of days and nothing else; the claim it
+    reads is a timestamp, not an identity.
+    """
+    # ⚠️ `tok or _token()` would be wrong: an EXPLICITLY EMPTY token is the interesting
+    # case (a truncated credential file), and falling back to the cached one would report
+    # the wrong token's expiry. Only a caller that passes nothing gets the lookup.
+    if tok is _UNSET:
+        tok = _token()
+    if not tok:
+        return None
+    parts = tok.split(".")
+    if len(parts) != 3:
+        return None                       # not a JWT: no expiry to read, not an error
+    try:
+        pad = parts[1] + "=" * (-len(parts[1]) % 4)
+        exp = json.loads(base64.urlsafe_b64decode(pad)).get("exp")
+        return None if exp is None else (float(exp) - time.time()) / 86400.0
+    except Exception:
+        return None
+
+
+def product_age_days(path, when=None):
+    """Age of a CAS bias product, from the yyyyddd in its filename. None if unparsable.
+
+    The file's mtime is when WE fetched it, which is not what matters; the epoch in the
+    name is what the biases describe.
+    """
+    if not path:
+        return None
+    m = re.search(r"_(\d{4})(\d{3})0000_", os.path.basename(path))
+    if not m:
+        return None
+    d = datetime(int(m.group(1)), 1, 1, tzinfo=timezone.utc) + timedelta(days=int(m.group(2)) - 1)
+    return ((when or datetime.now(timezone.utc)) - d).total_seconds() / 86400.0
+
+
+def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
     """Newest available CAS daily bias file, cached locally. None if unreachable.
 
     Walks BACKWARDS from `when`: the rapid product lands ~5 days late, so today's name is
     always a 404 and that is normal, not an error worth logging loudly.
+
+    ⚠️ A DEAD TOKEN LOOKS LIKE SUCCESS HERE FOR `max_back_days`. The walk checks the local
+    cache before the network, so once the credential stops working this keeps returning
+    the newest file already on disk -- correct, then quietly staler, and only after the
+    window passes does it return None. Pass a `status` dict to see which happened: it is
+    filled with `reason` (ok / no-token / auth-rejected / unreachable), `path`,
+    `age_days` (of the PRODUCT, not the file), `served_from_cache`, `http` and
+    `token_expiry_days`. The caller is expected to complain about age, not just absence.
     """
+    st = status if status is not None else {}
+    st.update(reason="no-token", path=None, age_days=None, http=None,
+              token_expiry_days=None, served_from_cache=None)
     tok = _token()
     if not tok:
         return None
+    st["token_expiry_days"] = token_expiry_days(tok)
+    st["reason"] = "unreachable"
     when = when or datetime.now(timezone.utc)
     os.makedirs(cache_dir, exist_ok=True)
     for back in range(1, max_back_days + 1):
@@ -76,6 +141,8 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14):
                      "CAS0MGXRAP_%04d%03d0000_01D_01D_DCB.BSX.gz" % (d.year, doy)):
             local = os.path.join(cache_dir, name)
             if os.path.exists(local) and os.path.getsize(local) > 1000:
+                st.update(reason="ok", path=local, served_from_cache=True,
+                          age_days=product_age_days(local, when))
                 return local
             url = ("https://cddis.nasa.gov/archive/gnss/products/bias/%04d/%s"
                    % (d.year, name))
@@ -89,7 +156,16 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14):
                 with open(tmp, "wb") as f:
                     f.write(raw)
                 os.replace(tmp, local)          # atomic: shared cache, see _atomic_write_bytes
+                st.update(reason="ok", path=local, served_from_cache=False,
+                          age_days=product_age_days(local, when))
                 return local
+            except urllib.error.HTTPError as e:
+                # 401/403 is the credential, not the calendar: every remaining day will
+                # fail the same way, so say so instead of walking silently to the end.
+                st["http"] = e.code
+                if e.code in (401, 403):
+                    st["reason"] = "auth-rejected"
+                continue
             except Exception:
                 continue
     return None

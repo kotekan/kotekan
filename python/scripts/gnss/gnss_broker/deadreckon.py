@@ -1444,18 +1444,54 @@ def stage_dead_reckon(ctx):
                 if ctx.args.dcb_bias:
                     try:
                         import gnss_dcb as _dcbm
-                        _p = _dcbm.fetch_dcb()
+                        _st = {}
+                        _p = _dcbm.fetch_dcb(status=_st)
                         _t = _dcbm.parse_dcb(_p)
                         ctx.dr_state["dcb"] = _t or None
-                        if _t:
-                            _n = sum(1 for k in _t if k[0] == ctx.args.dr_constellation)
-                            _log("dead-reckon: DCB loaded (%s; %d sats this "
-                                 "constellation) -- measured code biases override the "
-                                 "broadcast TGD/BGD per satellite"
-                                 % (os.path.basename(_p or "?"), _n))
+                        # WHY THIS IS INSTRUMENTED AND THE OTHER SOURCES ARE NOT: the
+                        # credential is the single point of failure, its death is dated,
+                        # and fetch_dcb HIDES that death for two weeks by serving the
+                        # cache. So complain about AGE, not just absence -- absence is the
+                        # late symptom. See --dcb-max-age-days.
+                        _age = _st.get("age_days")
+                        _texp = _st.get("token_expiry_days")
+                        _why = None
+                        if not _t:
+                            _why = {"no-token": "no Earthdata token configured "
+                                                "(EARTHDATA_TOKEN or the cached file)",
+                                    "auth-rejected": "the Earthdata token was REJECTED "
+                                                     "(HTTP %s) -- it has expired or been "
+                                                     "revoked" % _st.get("http"),
+                                    "unreachable": "no product reachable and none cached "
+                                                   "in the walk-back window",
+                                    }.get(_st.get("reason"), "no product (%s)"
+                                          % _st.get("reason"))
+                        elif (ctx.args.dcb_max_age_days > 0.0 and _age is not None
+                              and _age > ctx.args.dcb_max_age_days):
+                            _why = ("the product in use is %.1f days old (bar %.1f) -- the "
+                                    "fetch has stopped working and the cache is carrying "
+                                    "it" % (_age, ctx.args.dcb_max_age_days))
+                        if _why and ctx.args.dcb_require:
+                            raise SystemExit("--dcb-require: %s" % _why)
+                        if _why:
+                            _log("⚠️ DCB: %s. Falling back to the BROADCAST group delay "
+                                 "per satellite -- the per-sat bias spread is gone, and "
+                                 "for BeiDou B2a there is no broadcast term at all. %s"
+                                 % (_why,
+                                    "Token expires in %.1f days." % _texp if _texp is not None
+                                    else "Token expiry unknown (not a JWT)."))
                         else:
-                            _log("dead-reckon: no DCB product (no token/network) -- "
-                                 "falling back to the broadcast group delay")
+                            _n = sum(1 for k in _t if k[0] == ctx.args.dr_constellation)
+                            _log("dead-reckon: DCB loaded (%s, product %s; %d sats this "
+                                 "constellation) -- measured code biases override the "
+                                 "broadcast TGD/BGD per satellite%s"
+                                 % (os.path.basename(_p or "?"),
+                                    "%.1f d old" % _age if _age is not None else "age ?",
+                                    _n,
+                                    "" if _texp is None or _texp > 14.0
+                                    else "; ⚠️ TOKEN EXPIRES IN %.1f DAYS" % _texp))
+                    except SystemExit:
+                        raise
                     except Exception as _de:
                         ctx.dr_state["dcb"] = None
                         _log("dead-reckon: DCB load failed (%s); broadcast term only"

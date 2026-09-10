@@ -1812,6 +1812,24 @@ def build_parser(description):
                          "this many seconds we seed on the prime and log that we did. A guard "
                          "that can leave a chain dark forever is worse than the step it "
                          "removes.")
+    ap.add_argument("--dcb-max-age-days", type=float, default=10.0,
+                    help="WARN when the DCB product in use is older than this (days, from "
+                         "the epoch in its filename, not its mtime). The CAS rapid product "
+                         "lands ~5 days late, so a healthy steady state is 5-6 days and "
+                         "anything past ~10 means the fetch has stopped working. THIS IS "
+                         "THE ONLY TELL: fetch_dcb checks the local cache before the "
+                         "network, so an expired token keeps serving the newest file on "
+                         "disk -- correct, then quietly staler -- and returns None only "
+                         "after --dcb-bias's 14-day walk runs out of cached days. 0 = never "
+                         "warn about age.")
+    ap.add_argument("--dcb-require", action="store_true",
+                    help="Treat a missing or stale DCB product as FATAL instead of warning. "
+                         "Default off, because the DCB is optional by design -- it supplies "
+                         "the per-satellite bias spread and group_delay_s falls back to the "
+                         "broadcast TGD/BGD, which is what every run before 2026-08-23 did. "
+                         "Arm it on a chain whose measurement actually depends on the "
+                         "measured biases, so the chain refuses to start rather than "
+                         "silently changing observable.")
     ap.add_argument("--dcb-bias", action="store_true",
                     help="use the MGEX (CAS) measured differential code biases in place of "
                          "the broadcast TGD/BGD, per satellite, where the product covers the "
