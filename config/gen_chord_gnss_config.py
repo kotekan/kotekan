@@ -1312,6 +1312,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # correlator's kernel reads the synth array -- that ordering is the entire
                 # synchronization story (no ring semantics on gnss_synth).
                 {"name": "cudaGnssInject",
+                 # --phase-dump-prn: the fold's inputs, per record (see the stage). INSIDE the
+                 # command dict: Config::get_default does not inherit from the process level.
+                 **({"dcyc_dump_prn": args.phase_dump_prn,
+                     "dcyc_dump_records": args.phase_dump_records,
+                     "dcyc_dump_path": f"/tmp/gnss_dcyc_{node}_{gpu}{tag}.txt"}
+                    if args.phase_dump_prn >= 0 else {}),
                  # TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. Emitted on BOTH
                  # producers because cudaGnssChordTrackState (which owns the despread, and
                  # therefore the arm) is constructed with the COMMAND's unique_name -- so path A
@@ -1325,10 +1331,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                                         else (1 if args.carrier_phase_from_ref != "0" else 0)),
                  # fp16 Phi tables (GPU TODO item 3) -- same knob as path A's site above.
                  "phi_fp16": bool(args.phi_fp16),
-                 **({"dcyc_dump_prn": args.phase_dump_prn,
-                     "dcyc_dump_records": args.phase_dump_records,
-                     "dcyc_dump_path": f"/tmp/gnss_dcyc_{node}_{gpu}{tag}.txt"}
-                    if args.phase_dump_prn >= 0 else {}),
                  # Item 6 -- same knobs as path A's site above.
                  "despread_max_chips": int(args.despread_max_chips),
                  "despread_chips_centered": bool(args.despread_chips_centered),

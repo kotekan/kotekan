@@ -114,21 +114,16 @@ private:
     ///
     /// Kept in the DOPPLER domain on purpose: the difference must be taken before f_offset
     /// (1.176 GHz) is added, or cancellation costs 0.4 rad. See PrnCtl::dcyc.
-    std::vector<double> _dop_prev;  ///< previous record's propagated Doppler, Hz
+    /// The history is cudaGnssChordTrackState::fold_b: shared by this command's instances (a
+    /// per-instance copy differenced against the record this instance saw a buffer depth of
+    /// frames ago -- see FoldHist), separate from path A's.
     /// --phase-dump-prn: per-record dump of the re-pin fold's INPUTS for one PRN (hop, seed,
-    /// propagated Doppler, _dop_prev, t_abs, dcyc, reanchored) to a file, for a bounded number
-    /// of records; off unless the config names a PRN. The assembler's REC_PHI0 increment differs
-    /// at each frame's first record while REC_ANG0 steps regularly, and nothing exported says
-    /// which side of the hand-off moved -- this and the assembler's phi_dump are the two sides.
+    /// propagated Doppler, dop_prev, t_abs, dcyc, reanchored) to a file, for a bounded number
+    /// of records; off unless the config names a PRN. Pairs with the assembler's phi_dump: the
+    /// two sides of the hand-off.
     int _dcyc_dump_prn = -1;
     int _dcyc_dump_left = 0;
     FILE* _dcyc_dump = nullptr;
-    std::vector<double> _t_prev;    ///< and the absolute time it was pinned at, s
-    std::vector<uint8_t> _dop_prev_ok; ///< 0 => no history: emit reanchored = 1 (break the arc)
-    /// PER-SLOT SWAP GENERATION LAST SEEN BY THIS INSTANCE (live PRN membership). Compared
-    /// against cudaGnssChordTrackState::slot_gen every frame; a mismatch means this slot now
-    /// holds a different satellite and this instance's Doppler history for it is void.
-    std::vector<uint64_t> _slot_gen_seen;
 
     /// M5: the epl-format CONTROL BLOCK this command publishes for the path-B consumer --
     /// [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn][energy x jobs x n_chan],

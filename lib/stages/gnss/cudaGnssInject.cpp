@@ -63,9 +63,6 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     // Re-pin phase-step history (task #52). Not "ok" until a PRN has produced one record, so a
     // cold start and a returning seed both break the arc rather than folding a step against
     // whatever the slot happened to hold.
-    _dop_prev.assign((size_t)S.n_prn, 0.0);
-    _t_prev.assign((size_t)S.n_prn, 0.0);
-    _dop_prev_ok.assign((size_t)S.n_prn, 0);
 
     // M5 control block: the epl layout minus corr (see the header). Sized for the worst case
     // (every PRN active in every record), which is what gnss_gpu::max_jobs already encodes.
@@ -184,17 +181,16 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     // looks like a healthy scheduled swap in the broker's log. Whatever owns the frame loop
     // must feed the clock.
     S.note_frame_hop(hop0_frame);
+    auto& FH = S.fold_b; // the re-pin fold history, shared by this command's instances
     S.apply_prn_swaps((void*)stream);
     {
-        if (_slot_gen_seen.size() != (size_t)S.n_prn)
-            _slot_gen_seen.assign((size_t)S.n_prn, 0);
         std::lock_guard<std::mutex> lk(S.prn_mtx);
         for (int p = 0; p < S.n_prn; ++p)
-            if (_slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
-                _slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
-                _dop_prev[(size_t)p] = 0.0;
-                _t_prev[(size_t)p] = 0.0;
-                _dop_prev_ok[(size_t)p] = 0;
+            if (FH.slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
+                FH.slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
+                FH.dop_prev[(size_t)p] = 0.0;
+                FH.t_prev[(size_t)p] = 0.0;
+                FH.ok[(size_t)p] = 0;
             }
     }
     // Control block for this frame (M5). Zeroed each frame: a PRN that just set must read as
@@ -248,7 +244,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                 // Seed gone (set, expired, never acquired): the replica phase history is
                 // meaningless across the gap, so drop it. The next record this PRN produces
                 // emits reanchored = 1 and the assembler breaks the arc.
-                _dop_prev_ok[(size_t)p] = 0;
+                FH.ok[(size_t)p] = 0;
                 continue;
             }
 
@@ -288,7 +284,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             // phase difference AT THIS INSTANT between a replica built from the old Doppler and
             // one built from the new, which is what the despread actually swapped.
             const double t_abs = (double)wstart / S.sample_rate;
-            const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
+            const bool have_hist = FH.ok[(size_t)p] != 0;
             // THE APPLIED CARRIER, not the Doppler alone (2026-08-13, the churn root).
             // ctrim sits inside the despread's reference frequency (ang0/wc both take it),
             // so a broker carrier-command CHANGE steps the reference by dctrim*t_abs
@@ -299,7 +295,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             // recovers the baseline to mHz when the difference tracks the APPLIED total).
             const double applied = pr.doppler_hz + sd.ctrim_hz;
             const double dcyc =
-                have_hist ? (applied - _dop_prev[(size_t)p]) * t_abs : 0.0;
+                have_hist ? (applied - FH.dop_prev[(size_t)p]) * t_abs : 0.0;
             if (_dcyc_dump_prn == -1) {
                 // read once; -1 stays -1 when unconfigured, -2 marks "looked, off"
                 const int want = config.get_default<int>(unique_name, "dcyc_dump_prn", -1);
@@ -324,7 +320,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                              "%.17g %.10g %.10g\n",
                              r, (long long)hop0, (long long)wstart, (long long)sd.ref_hop,
                              sd.doppler_hz, sd.dop_rate, sd.ctrim_hz, pr.doppler_hz, applied,
-                             _dop_prev[(size_t)p], _t_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc,
+                             FH.dop_prev[(size_t)p], FH.t_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc,
                              pr.cp, trim_now[(size_t)p]);
                 if (--_dcyc_dump_left <= 0) {
                     std::fclose(_dcyc_dump);
@@ -332,9 +328,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                     INFO("cudaGnssInject: dcyc dump for PRN {:d} complete", _dcyc_dump_prn);
                 }
             }
-            _dop_prev[(size_t)p] = applied;
-            _t_prev[(size_t)p] = t_abs;
-            _dop_prev_ok[(size_t)p] = 1;
+            FH.dop_prev[(size_t)p] = applied;
+            FH.t_prev[(size_t)p] = t_abs;
+            FH.ok[(size_t)p] = 1;
 
             gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
             c.run = 1;

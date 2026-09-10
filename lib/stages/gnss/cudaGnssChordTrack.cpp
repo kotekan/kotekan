@@ -714,8 +714,6 @@ cudaGnssChordTrack::cudaGnssChordTrack(Config& config, const std::string& unique
     _out_frame_len = gnss_gpu::frame_bytes(S.n_prn, S.n_chan, gnss_gpu::ROWS_PLAIN, S.n_elem);
     _ctl_stage.resize(gnss_gpu::off_corr(S.n_prn));
     // Re-pin phase-step history (task #52); not "ok" until a PRN has produced one record.
-    _dop_prev.assign((size_t)S.n_prn, 0.0);
-    _dop_prev_ok.assign((size_t)S.n_prn, 0);
 
     if (S.trim_ref_elem < 0 || S.trim_ref_elem >= S.n_elem)
         FATAL_ERROR("cudaGnssChordTrack: trim_ref_elem {:d} outside [0, {:d})", S.trim_ref_elem,
@@ -827,6 +825,7 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     // SAMPLE index (the tap stamps sample_seq = fpga_seq_num * fft_length) and the fleet's
     // alignment key is the hop.
     S.note_frame_hop(seq0 >= 0 && S.fft_len > 0 ? seq0 / (long long)S.fft_len : -1);
+    auto& FH = S.fold_a; // the re-pin fold history, shared by this command's instances
     if (_dcyc_dump_prn == -1) {
         // read once; -1 stays -1 when unconfigured, -2 marks "looked, off"
         const int want = config.get_default<int>(unique_name, "dcyc_dump_prn", -1);
@@ -844,14 +843,12 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     }
     S.apply_prn_swaps((void*)stream);
     {
-        if (_slot_gen_seen.size() != (size_t)S.n_prn)
-            _slot_gen_seen.assign((size_t)S.n_prn, 0);
         std::lock_guard<std::mutex> lk(S.prn_mtx);
         for (int p = 0; p < S.n_prn; ++p)
-            if (_slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
-                _slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
-                _dop_prev[(size_t)p] = 0.0;
-                _dop_prev_ok[(size_t)p] = 0;
+            if (FH.slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
+                FH.slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
+                FH.dop_prev[(size_t)p] = 0.0;
+                FH.ok[(size_t)p] = 0;
             }
     }
     std::memset(_ctl_stage.data(), 0, _ctl_stage.size());
@@ -1028,7 +1025,7 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             if (!sd.have || seq0 < 0) {
                 // No seed (or no absolute time yet): the replica phase history cannot bridge
                 // the gap, so drop it -- the next record emits reanchored = 1. See #52.
-                _dop_prev_ok[(size_t)p] = 0;
+                FH.ok[(size_t)p] = 0;
                 continue;
             }
 
@@ -1073,15 +1070,15 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             // dcyc meant every broker carrier-command slew punched an unfolded mod-1 phase
             // step into the records -- the closed loop scrambled its own measurement.
             const double t_abs = (double)wstart / S.sample_rate;
-            const bool have_hist = _dop_prev_ok[(size_t)p] != 0;
+            const bool have_hist = FH.ok[(size_t)p] != 0;
             const double applied = dop + sd.ctrim_hz;
-            const double dcyc = have_hist ? (applied - _dop_prev[(size_t)p]) * t_abs : 0.0;
+            const double dcyc = have_hist ? (applied - FH.dop_prev[(size_t)p]) * t_abs : 0.0;
             if (_dcyc_dump && S.prns[(size_t)p] == _dcyc_dump_prn) {
                 // one line per record: everything the fold is made of, at full precision
                 std::fprintf(_dcyc_dump,
                              "%d %lld %lld %lld %.17g %.17g %.17g %.17g %.17g %.17g %d %.17g %.17g %.10g %.10g\n",
                              r, hop0, wstart, sd.ref_hop, sd.doppler_hz, sd.dop_rate, sd.ctrim_hz, dop,
-                             applied, _dop_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc, cp,
+                             applied, FH.dop_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc, cp,
                              trim_now[(size_t)p]);
                 if (--_dcyc_dump_left <= 0) {
                     std::fclose(_dcyc_dump);
@@ -1089,8 +1086,8 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                     INFO("cudaGnssChordTrack: dcyc dump for PRN {:d} complete", _dcyc_dump_prn);
                 }
             }
-            _dop_prev[(size_t)p] = applied;
-            _dop_prev_ok[(size_t)p] = 1;
+            FH.dop_prev[(size_t)p] = applied;
+            FH.ok[(size_t)p] = 1;
 
             c.run = 1;
             c.reanchored = have_hist ? 3 : 1;

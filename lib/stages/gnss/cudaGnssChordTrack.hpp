@@ -280,6 +280,31 @@ public:
     int trim_ref_elem = 0;          ///< element the loop listens to (match the assembler's)
     std::mutex trim_mtx;            ///< guards the vectors below (REST getter thread)
     std::vector<double> trim;       ///< per-PRN cp trim, chips (applied cp = model + trim)
+    /// THE RE-PIN FOLD HISTORY, SHARED ACROSS A PRODUCER'S INSTANCES. `dcyc` is
+    /// (applied - dop_prev) * t_abs: the carrier-phase step between THIS record and the one
+    /// immediately before it. cudaCommands are instantiated once per in-flight GPU frame
+    /// (gpu_buffer_depth) and the frames round-robin over the instances, so a history kept on
+    /// the command is the Doppler of the record THAT INSTANCE saw last -- a whole buffer depth
+    /// of frames ago at every frame boundary. The assembler folded that as the one-record
+    /// step, and the exported prompt jumped by a uniform random angle at the first record of
+    /// every frame. Records are handed over in frame order on the process's one host thread, so
+    /// a history that lives here is the true previous record for whichever instance takes the
+    /// frame. One per PRODUCER: path A (cudaGnssChordTrack) and path B (cudaGnssInject) may
+    /// both run against this state on one node and must not share a history.
+    struct FoldHist {
+        std::vector<double> dop_prev;        ///< previous record's applied carrier (dop + ctrim), Hz
+        std::vector<double> t_prev;          ///< and the absolute time it was pinned at, s
+        std::vector<uint8_t> ok;             ///< 0 = no previous record (arc start)
+        std::vector<uint64_t> slot_gen_seen; ///< slot_gen already acknowledged (history reset once)
+        void init(int n) {
+            dop_prev.assign((size_t)n, 0.0);
+            t_prev.assign((size_t)n, 0.0);
+            ok.assign((size_t)n, 0);
+            slot_gen_seen.assign((size_t)n, 0);
+        }
+    };
+    FoldHist fold_a; ///< cudaGnssChordTrack's history
+    FoldHist fold_b; ///< cudaGnssInject's history
     std::vector<double> trim_disc;  ///< last applied discriminator, diagnostics
     std::vector<double> trim_q;     ///< EMA'd quality, diagnostics + the gate
     std::vector<long long> trim_n;  ///< updates applied, diagnostics
@@ -388,22 +413,16 @@ private:
     /// RE-PIN PHASE STEP (task #52), per PRN slot, across frames and records. Identical
     /// construction and identical reason as cudaGnssInject's -- see that header, and
     /// gnss_gpu::PrnCtl::dcyc for why the subtraction has to happen here in the Doppler domain.
-    /// Lives on the COMMAND, not on cudaGnssChordTrackState, so path A and path B keep separate
-    /// histories when both run against the same state on one node.
-    std::vector<double> _dop_prev;
+    /// The history is cudaGnssChordTrackState::fold_a: shared by this command's instances,
+    /// separate from path B's -- see FoldHist for why neither placement alone was right.
     /// --phase-dump-prn: per-record dump of the re-pin fold's INPUTS for one PRN (the hop,
-    /// the seed, the propagated Doppler, _dop_prev, t_abs, dcyc, reanchored), to a file, for a
+    /// the seed, the propagated Doppler, dop_prev, t_abs, dcyc, reanchored), to a file, for a
     /// bounded number of records. Off unless the config names a PRN. Diagnostic only: the
     /// assembler's REC_PHI0 increment differs at each frame's first record while REC_ANG0
     /// steps regularly, and nothing exported says which side of the hand-off moved.
     int _dcyc_dump_prn = -1;
     int _dcyc_dump_left = 0;
     FILE* _dcyc_dump = nullptr;
-    std::vector<uint8_t> _dop_prev_ok;
-    /// PER-SLOT SWAP GENERATION LAST SEEN BY THIS INSTANCE (live PRN membership). Compared
-    /// against cudaGnssChordTrackState::slot_gen every frame; a mismatch means this slot now
-    /// holds a different satellite and this instance's Doppler history for it is void.
-    std::vector<uint64_t> _slot_gen_seen;
 };
 
 #endif // CUDA_GNSS_CHORD_TRACK_HPP
