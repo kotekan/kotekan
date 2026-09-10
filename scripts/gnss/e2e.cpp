@@ -59,6 +59,11 @@
 #include "gnssSeedTransport.hpp"
 #include "gnssSignal.hpp"
 #include "pfbPrototype.hpp"
+// --nm: the tracker's OWN despread path (launch_waveform + launch_correlate_nm) and its 4+4b
+// frame codec, so the harness can run the kernels the sky actually runs, not only the fused one.
+#include "cudaGnssDespreadKernel.hpp"
+#include "gnss44.hpp"
+#include <cuda_runtime.h>
 
 #include <algorithm>
 #include <chrono>
@@ -186,6 +191,16 @@ struct Opt {
     double bench_cmd_max = 3.0;   ///< staircase turnaround (Hz)
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
     int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
+    /// THE TRACKER'S PATH, NOT THE FUSED ONE. cudaGnssChordTrack despreads through
+    /// enqueue_batch_nm -- launch_waveform materialises the replicas, launch_correlate_nm
+    /// correlates them against every antenna of a 4+4b [hop][chan][elem] frame -- while this
+    /// harness (and cuda_gnss_despread_test) always ran despread_batch, the fused kernel. The
+    /// two share build_jobs and are exact-equal at N=1 in fp32 by test, but ONLY the N x M path
+    /// runs on sky, and only it takes the fp16 Phi gather. --nm runs each record through it
+    /// (n_elem 1, the window quantised 4+4b and packed in the native order), so a per-record
+    /// phase defect that lives in the waveform/correlate kernels is reproducible offline.
+    int nm = 0;
+    int phi16 = 0;                   ///< with --nm: set_phi_fp16(true), the nodes' live mode
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
     /// Write the detection in /get_detections wire format. e2e_broker.py serves this to the
     /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
@@ -255,6 +270,10 @@ static void usage() {
         "  --trials N         repeat the search on N noise realizations, print the spread\n"
         "  --nseed N          RNG seed (default 12345), so a noisy run is reproducible\n"
         "  --quantize         quantize the synthetic sky to 4+4b (default: noiseless float)\n"
+        "  --nm               despread through the TRACKER'S path (enqueue_batch_nm: waveform +\n"
+        "                     N x M correlate, n_elem 1) instead of the fused kernel; implies\n"
+        "                     --quantize (the frame is 4+4b bytes)\n"
+        "  --phi16            with --nm: fp16 Phi tables, the nodes' live mode\n"
         "  --skip-search      seed straight from truth -- isolates the tracker/despread leg\n"
         "  --trim X           commanded DLL trim, chips (task #51). With --skip-search this\n"
         "                     IS a known code error: the sign test for the actuator.\n"
@@ -392,6 +411,8 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--nseed")) o.nseed = (unsigned)next_i();
         else if (arg_eq(a, "--fix-fine-sign")) o.fix_fine_sign = 1;
         else if (arg_eq(a, "--quantize")) o.quantize = 1;
+        else if (arg_eq(a, "--nm")) { o.nm = 1; o.quantize = 1; }
+        else if (arg_eq(a, "--phi16")) o.phi16 = 1;
         else if (arg_eq(a, "--skip-search")) o.skip_search = 1;
         else if (arg_eq(a, "--code-doppler-sign")) o.code_doppler_sign = next_d();
         else if (arg_eq(a, "--f-offset")) { o.f_offset = next_d(); f_offset_set = 1; }
@@ -1057,6 +1078,43 @@ int main(int argc, char** argv) {
     printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n",
            o.age_s, o.rec_gap_s);
     GnssCudaDespread ds(tbank, 3, t_chans, o.hops_per_record, o.sample_rate, o.f_offset);
+    // ---- --nm: the tracker's despread path, buffers as cudaGnssChordTrack lays them out ----
+    // n_elem 1, elem_stride 1, frame_chan_stride n_chan: byte (hop, chan) at hop*n_chan + chan.
+    // Scale 1.0 and ids 0..n_chan-1 exactly as the tracker uploads them (its comment: CHORD's
+    // per-bin gain is part of the chain we solve for, so nothing is undone here).
+    unsigned char* d_nm_frame = nullptr;
+    float* d_nm_scale = nullptr;
+    int* d_nm_ids = nullptr;
+    float2* d_nm_wave = nullptr;
+    gnss_cuda::DespreadJob* d_nm_jobs = nullptr;
+    double2* d_nm_corr = nullptr;
+    double* d_nm_energy = nullptr;
+    const int nm_max_jobs = 3;
+    if (o.nm) {
+        if (o.phi16 && !ds.set_phi_fp16(true))
+            fprintf(stderr, "WARNING: --phi16 requested but set_phi_fp16 refused\n");
+        auto ck = [](cudaError_t e, const char* what) {
+            if (e != cudaSuccess) {
+                fprintf(stderr, "CUDA %s: %s\n", what, cudaGetErrorString(e));
+                exit(2);
+            }
+        };
+        const size_t nsamp = (size_t)o.hops_per_record * (size_t)o.t_nchan;
+        ck(cudaMalloc(&d_nm_frame, nsamp), "nm frame");
+        ck(cudaMalloc(&d_nm_scale, (size_t)o.t_nchan * sizeof(float)), "nm scale");
+        ck(cudaMalloc(&d_nm_ids, (size_t)o.t_nchan * sizeof(int)), "nm ids");
+        ck(cudaMalloc(&d_nm_wave, (size_t)3 * nm_max_jobs * nsamp * sizeof(float2)), "nm wave");
+        ck(cudaMalloc(&d_nm_jobs, (size_t)nm_max_jobs * sizeof(gnss_cuda::DespreadJob)), "nm jobs");
+        ck(cudaMalloc(&d_nm_corr, (size_t)4 * nm_max_jobs * o.t_nchan * sizeof(double2)), "nm corr");
+        ck(cudaMalloc(&d_nm_energy, (size_t)4 * nm_max_jobs * o.t_nchan * sizeof(double)), "nm energy");
+        std::vector<float> h_scale((size_t)o.t_nchan, 1.0f);
+        std::vector<int> h_ids((size_t)o.t_nchan);
+        for (int c = 0; c < o.t_nchan; ++c) h_ids[(size_t)c] = c;
+        ck(cudaMemcpy(d_nm_scale, h_scale.data(), h_scale.size() * sizeof(float), cudaMemcpyHostToDevice), "nm scale up");
+        ck(cudaMemcpy(d_nm_ids, h_ids.data(), h_ids.size() * sizeof(int), cudaMemcpyHostToDevice), "nm ids up");
+        printf("    [--nm] despreading through enqueue_batch_nm (waveform + N x M correlate, n_elem 1, "
+               "4+4b frame, %s Phi)\n", o.phi16 ? "fp16" : "fp32");
+    }
     printf("    rec   age_s        cp cmd    phase err     per   |   P/P_true    q=2P/(E+L)      disc\n");
 
     const long long age_hops = (long long)std::llround(o.age_s / hop_s);
@@ -1156,7 +1214,52 @@ int main(int argc, char** argv) {
                                                  {1, o.cp204, o.dll_spacing, o.dop, t_cov}};
         if (cmd_bench) // the in-run control: same seed, ctrim 0 -- the unarmed chain
             jobs.push_back({2, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov});
-        auto res = ds.despread_batch(jobs);
+        std::vector<std::array<gnss::DespreadResult, 3>> res;
+        if (!o.nm) {
+            res = ds.despread_batch(jobs);
+        } else {
+            // Pack the SAME quantised window the fused path would see (integers in [-8, 7],
+            // scale 1: the codec round-trips them exactly) in the tracker's native order.
+            std::vector<unsigned char> bytes((size_t)o.hops_per_record * (size_t)o.t_nchan);
+            int railed = 0;
+            for (int m = 0; m < o.hops_per_record; ++m)
+                for (int c = 0; c < o.t_nchan; ++c) {
+                    const cf v = rec[(size_t)c][(size_t)m];
+                    bytes[(size_t)m * (size_t)o.t_nchan + (size_t)c] =
+                        gnss44::pack(v.real(), v.imag(), 1.0f, &railed);
+                }
+            if (cudaMemcpy(d_nm_frame, bytes.data(), bytes.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
+                fprintf(stderr, "CUDA nm frame upload failed\n");
+                exit(2);
+            }
+            const int n_rows = ds.enqueue_batch_nm(d_nm_frame, d_nm_scale, d_nm_ids, d_nm_wave, 1, 1,
+                                                   o.t_nchan, W, jobs, d_nm_jobs, d_nm_corr,
+                                                   d_nm_energy, nullptr, false);
+            if (cudaDeviceSynchronize() != cudaSuccess) {
+                fprintf(stderr, "CUDA nm sync failed\n");
+                exit(2);
+            }
+            std::vector<double2> h_corr((size_t)n_rows * o.t_nchan);
+            std::vector<double> h_energy((size_t)n_rows * o.t_nchan);
+            cudaMemcpy(h_corr.data(), d_nm_corr, h_corr.size() * sizeof(double2), cudaMemcpyDeviceToHost);
+            cudaMemcpy(h_energy.data(), d_nm_energy, h_energy.size() * sizeof(double), cudaMemcpyDeviceToHost);
+            // The fused path's own reduction (despread_batch): plain sum over channels of the
+            // per-channel correlation and energy, rows 4i+0..2 = E/P/L.
+            res.resize(jobs.size());
+            for (size_t i = 0; i < jobs.size(); ++i)
+                for (int t = 0; t < 3; ++t) {
+                    const size_t row = (size_t)(4 * i + t) * o.t_nchan;
+                    std::complex<double> g(0.0, 0.0);
+                    double e = 0.0;
+                    for (int c = 0; c < o.t_nchan; ++c) {
+                        g += std::complex<double>(h_corr[row + c].x, h_corr[row + c].y);
+                        e += h_energy[row + c];
+                    }
+                    res[i][t].correlation = g;
+                    res[i][t].replica_energy = e;
+                    res[i][t].amplitude = (e > 0.0) ? g / e : std::complex<double>(0.0, 0.0);
+                }
+        }
         rec_ctrim.push_back(ctrim_r);
         if (cmd_bench) {
             prompts_ctl.push_back(res[2][1].correlation);

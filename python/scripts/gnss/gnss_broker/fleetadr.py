@@ -43,17 +43,30 @@ makes S sign-free (overlay pilots flip sign record to record) and straddle-immun
 segments of a record that spans a secondary-chip transition add in power). A tracker that
 does not segment writes head == A, tail 0, and S reduces to A^2.
 
+THE FRAME-BOUNDARY FOLD IS REPAIRED HERE. The assembler folds the replica's per-record
+re-pin step into its NCO (REC_PHI0 is that accumulator) and the exported prompt is
+continuous WITHIN a frame -- but at the first record of every frame the increment it applies
+is wrong by an amount that is uniform modulo a cycle, per satellite, identical on every
+instance, while the kernel's own anchor (REC_ANG0) steps regularly through the boundary. The
+true Doppler step across a boundary is the same as inside the frame (the records are
+contiguous and the seed does not change), so the fold the boundary SHOULD have received is
+the frame's in-frame step; the difference is applied to the boundary cross-product before
+its phase is read. Measured on sky before/after on a strong satellite: boundary step 0.145 ->
+0.073 cycles rms, the in-frame level. The root (why the tracker's dcyc differs at record 0)
+is not located yet; this makes the ADR walk-free of it without a node change.
+
 THE COMMANDED INCREMENT MUST COVER OUR STEP. The advance over (prev -> hop) needs the Doppler
 the replica ran at from prev, so only instances that were present at prev can vouch for it;
 if none can, the arc ends -- an increment we cannot account for is a break, not a guess.
 """
 import array
 import cmath
+import collections
 import math
 from fractions import Fraction
 
 from gnss_broker.telem import (_HDR_BYTES, REC_DOPPLER, REC_P_RE, REC_P_IM, REC_P_ENERGY,
-                               REC_PH_RE, REC_PH_IM, REC_TRIM_INC)
+                               REC_PH_RE, REC_PH_IM, REC_TRIM_INC, REC_PHI0)
 
 HPS = Fraction(390625, 2)   # F-engine hops per second (3.2e9 / 16384), exact
 GRID_HOPS = 96 * 2048       # ~1.0066 s: a record hop common to every chain (see SatAdr.grid)
@@ -62,7 +75,7 @@ GRID_HOPS = 96 * 2048       # ~1.0066 s: a record hop common to every chain (see
 class SatAdr(object):
     """One satellite's running arc."""
     __slots__ = ("hop", "hop0", "s_prev", "adr", "trim", "res", "arc", "n", "n_inst",
-                 "inst_prev", "breaks", "t", "grid")
+                 "inst_prev", "breaks", "t", "grid", "dphi_intra", "bfix", "n_bfix")
 
     def __init__(self):
         self.hop = None        # hop of the last record folded
@@ -83,19 +96,26 @@ class SatAdr(object):
         # record length, so grid hops are the SAME hops on every chain -- the epochs at which
         # two bands pair exactly. The live value above is whatever hop this cycle ended on.
         self.grid = None
+        # the assembler's in-frame fold increment (median REC_PHI0 step, rad), kept as a
+        # running median of the last in-frame records: what a frame boundary should have got
+        self.dphi_intra = collections.deque(maxlen=24)
+        self.bfix = 0.0      # cumulative boundary correction applied this arc, cycles
+        self.n_bfix = 0
 
 
 def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     """Fold one record hop into `st`.
 
-    per_inst: {inst: (dop_hz, trim_inc, S_i)} for the instances that despread this PRN at
-    `hop`, S_i the instance's squared prompt AS EXPORTED. Returns True if the record extended
-    the arc, False if it started a new one (or was dropped for having too few instances).
+    per_inst: {inst: (dop_hz, trim_inc, S_i, phi0, r)} for the instances that despread this
+    PRN at `hop`, S_i the instance's squared prompt AS EXPORTED, phi0 the assembler's NCO
+    accumulator (REC_PHI0) and r the record's index in its frame. Returns True if the record
+    extended the arc, False if it started a new one (or was dropped for having too few
+    instances).
     """
     usable = {i: v for i, v in per_inst.items() if v[2] != 0}
     if len(usable) < min_inst:
         for i, v in per_inst.items():
-            st.inst_prev[i] = (hop, v[0], v[2])
+            st.inst_prev[i] = (hop, v[0], v[2], v[3])
         return False
     prev = st.hop
     contiguous = (prev is not None and 0 < hop - prev <= max_gap_rec * hpr)
@@ -109,6 +129,18 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
         dcmd = sorted(st.inst_prev[i][1] * dt + v[1] for i, v in vouch)[len(vouch) // 2]
         trim = sorted(v[1] for _i, v in vouch)[len(vouch) // 2]
         P = sum(v[2] * st.inst_prev[i][2].conjugate() for i, v in vouch)
+        # the assembler's fold increment this step (radians, wrapped), median over instances
+        dphi = sorted(math.remainder(v[3] - st.inst_prev[i][3], 2.0 * math.pi)
+                      for i, v in vouch)[len(vouch) // 2]
+        r_idx = next(iter(usable.values()))[4]
+        if r_idx == 0 and len(st.dphi_intra) >= 3:
+            # a frame boundary: rotate the (squared) product by the fold it should have had
+            eps = sorted(st.dphi_intra)[len(st.dphi_intra) // 2] - dphi
+            P *= cmath.exp(-2j * eps)
+            st.bfix += eps / (2.0 * math.pi)
+            st.n_bfix += 1
+        elif r_idx != 0:
+            st.dphi_intra.append(dphi)
         dres = cmath.phase(P) / (4.0 * math.pi)
         st.adr += dcmd - dres
         st.res += dres
@@ -121,20 +153,22 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
         st.arc += 1
         st.hop0 = hop
         st.adr = st.trim = st.res = 0.0
+        st.bfix = 0.0
+        st.n_bfix = 0
         st.n = 1
         ok = False
     st.s_prev = sum(v[2] for v in usable.values())
     st.hop = hop
     st.n_inst = len(usable)
     for i, v in per_inst.items():
-        st.inst_prev[i] = (hop, v[0], v[2])
+        st.inst_prev[i] = (hop, v[0], v[2], v[3])
     if hop % GRID_HOPS == 0:
         st.grid = (hop, st.adr, st.arc, st.n)
     return ok
 
 
 def records_of_frame(f, want):
-    """{prn: {r: (dop_hz, trim_inc, S_i)}} for one sender's frame, decoded in one pass.
+    """{prn: {r: (dop_hz, trim_inc, S_i, phi0, r)}} for one sender's frame, decoded in one pass.
 
     S_i = H^2 + T^2 with H the head amplitude and T = A - H, AS EXPORTED (no phi0 rotation --
     see the module note); 0 when the record carries no prompt energy (silence, not a measurement).
@@ -162,7 +196,8 @@ def records_of_frame(f, want):
                 H = A          # an unsegmented tracker: head == A, tail 0
             T = A - H
             S = H * H + T * T
-            out.setdefault(prn, {})[r] = (float(a[b + REC_DOPPLER]), float(a[b + REC_TRIM_INC]), S)
+            out.setdefault(prn, {})[r] = (float(a[b + REC_DOPPLER]), float(a[b + REC_TRIM_INC]), S,
+                                          float(a[b + REC_PHI0]), r)
     return out
 
 
@@ -218,6 +253,7 @@ class FleetAdr(object):
             out[prn] = {"dop_cycles": s.adr, "hop": s.hop, "hop0": s.hop0, "arc": s.arc,
                         "n_rec": s.n, "n_inst": s.n_inst, "trim_cycles": s.trim,
                         "res_cycles": s.res, "breaks": s.breaks,
+                        "bfix_cycles": s.bfix, "n_bfix": s.n_bfix,
                         # the full received phase, the exact nominal added back to the
                         # Doppler-only accumulator (a double holds ~3e13 cycles to 4e-3)
                         "cycles": float(Fraction(s.adr) + nominal),

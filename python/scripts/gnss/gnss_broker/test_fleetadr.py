@@ -30,6 +30,8 @@ class Sky(object):
         self.amp = [random.uniform(0.5, 1.5) for _ in range(n_inst)]
         self.noise = noise_rad
         self.chip = 1.0
+        self.fold_step = -0.97                 # rad per record, the assembler's in-frame fold
+        self.bad_boundary = 0.0               # extra (wrong) fold at each frame's first record
 
     def t(self, hop):
         return hop / HPS
@@ -46,6 +48,10 @@ class Sky(object):
             self.chip = -self.chip
         # arg(A) = 2pi (Phi_cmd - Phi_rx)
         ang = -2 * math.pi * self.phi_res(hop)
+        # the prompt is rotated by exp(-i phi) and phi ACCUMULATES: a wrong step at each frame's
+        # first record mis-rotates that record and every record after it (a random walk)
+        nfr = (hop - HOP0) // (4 * HPR)
+        ang -= self.bad_boundary * nfr
         out = {}
         for i in (insts if insts is not None else range(len(self.phi0))):
             a = self.amp[i] * cmath.exp(1j * (ang + random.gauss(0.0, self.noise) - self.phi0[i]))
@@ -55,7 +61,11 @@ class Sky(object):
             else:
                 H, T = a * self.chip, 0.0
             S = H * H + T * T                 # as exported: the instance's constant stays in
-            out[i] = (self.dop_cmd, 0.0, S)
+            # phi0: the assembler's NCO accumulator. A perfect fold steps it by the same
+            # amount every record; `bad_boundary` mimics the live defect (a wrong step at r0).
+            r = ((hop - HOP0) // HPR) % 4
+            phi0 = self.fold_step * ((hop - HOP0) // HPR) + self.bad_boundary * ((hop - HOP0) // (4 * HPR))
+            out[i] = (self.dop_cmd, 0.0, S, phi0, r)
         return out
 
 
@@ -182,6 +192,20 @@ class TestFold(unittest.TestCase):
         st = run(sky, hops)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
+    def test_a_wrong_boundary_fold_is_repaired(self):
+        """The live defect: the assembler's fold at each frame's first record is off by an
+        arbitrary angle, mis-rotating that one record. The fold must notice (from REC_PHI0)
+        and undo it, or the ADR walks by that angle every frame."""
+        random.seed(9)
+        for bad in (0.7, -2.1, 3.0):
+            sky = Sky()
+            sky.bad_boundary = bad
+            hops = [HOP0 + k * HPR for k in range(400)]
+            st = run(sky, hops)
+            self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 2e-3, (bad, st.adr))
+            self.assertGreater(st.n_bfix, 90)
+            self.assertLess(abs(st.bfix + st.n_bfix * bad / (2 * math.pi)), 0.05)  # eps = -bad
+
     def test_too_few_instances_is_not_a_measurement(self):
         sky = Sky(n_inst=1)
         st = run(sky, [HOP0 + k * HPR for k in range(10)])
@@ -223,7 +247,7 @@ class TestFrames(unittest.TestCase):
                     A = sky.amp[i] * cmath.exp(1j * ang)
                     rows[(r, 0, telem.REC_P_RE)] = 2.0 * A.real
                     rows[(r, 0, telem.REC_P_IM)] = 2.0 * A.imag
-                    rows[(r, 0, telem.REC_PHI0)] = sky.phi0[i]
+                    rows[(r, 0, telem.REC_PHI0)] = sky.fold_step * ((hop - HOP0) // HPR)
                     rows[(r, 0, telem.REC_DOPPLER)] = sky.dop_cmd
                     rows[(r, 0, telem.REC_TRIM_INC)] = 0.0
                 raw = test_telem._make_frame(inst=inst, win=win, n_rec=n_rec, n_prn=1,
