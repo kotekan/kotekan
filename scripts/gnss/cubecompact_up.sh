@@ -48,7 +48,27 @@ fi
 
 # The bracket trick -- a bare pkill -f pattern matches this script's own command line.
 pkill -f "[c]ubecompact_loop.sh" 2>/dev/null || true
-sleep 1
+
+# ⚠️⚠️ WAIT FOR THE CHILD, NOT JUST THE LOOP. pkill takes down the bash loop and leaves any
+# in-flight `gnss_cube_compact.py` ORPHANED -- a pass runs ~25 s and the rung/publish pass runs
+# minutes. Starting the new loop on a 1 s sleep would put two compactors on the same 89 L0
+# files, which is a corrupting write, not a slow one. Wait for the old child to finish (it is
+# append-per-raw-file and exits cleanly), and only give up after 15 min.
+for _i in $(seq 1 180); do
+    pgrep -f "[g]nss_cube_compact.py" >/dev/null || break
+    [ "$_i" = 1 ] && echo "waiting for the in-flight compact pass to finish..."
+    sleep 5
+done
+if pgrep -f "[g]nss_cube_compact.py" >/dev/null; then
+    echo "REFUSING: a gnss_cube_compact.py is still running after 15 min. Two compactors on one" >&2
+    echo "L0 tree corrupt it -- find out what that pass is doing before starting another." >&2
+    exit 1
+fi
+# Same for a publish left holding the lock: it reads the archive and writes the viewer dir.
+for _i in $(seq 1 120); do
+    pgrep -f "[b]eamcube_daily.sh" >/dev/null || break
+    sleep 5
+done
 mkdir -p "$ROOT/l0" "$(dirname "$LOG")"
 [ -f "$LOG" ] && mv "$LOG" "$LOG.$(date -u +%Y%m%d_%H%M%S)"
 
