@@ -968,6 +968,13 @@ def dr_seed(ctx):
             v2 = ctx.drp.pd2.get((ctag, prn))
             dop_geo = -v["range_rate_mps"] / ctx.dr_eph_mod.C_LIGHT * ctx.args.carrier_hz
             dop_seed = ctx.args.doppler_sign * dop_geo + ctx.cb.seed  # #105: seed bias, not the hint EMA
+            # ONE EPOCH, INCLUDING THE DOPPLER. dop_geo is the model at now_w, and the seed is
+            # labelled ref_hop = the forecast hop (--dr-forecast-lead-s ahead of now). The
+            # tracker propagates doppler from ref_hop with doppler_rate, so a Doppler evaluated
+            # at now but labelled at now+lead runs the replica lead*drate off the sky for the
+            # whole seed: measured as the kcoh carrier residual = -1.04 s * doppler rate on the
+            # only two chains with the lead armed (r -0.96), and nothing on the others.
+            # Forecast it to the label, once drate is known (below).
             # ⚠️ THE HALVED DRATE (found 2026-08-22, the per-sat ramp's root).
             # This line predates the task #52 pair centring: when pd2 sat at
             # now_w+4 the /4.0 was a correct forward difference, but pd2 moved
@@ -992,6 +999,7 @@ def dr_seed(ctx):
                 drate = (ctx.args.doppler_sign
                          * (-(v2["range_rate_mps"] - v["range_rate_mps"]) / 2.0)
                          / ctx.dr_eph_mod.C_LIGHT * ctx.args.carrier_hz)
+            dop_seed += drate * (ctx.drp.t_fc_abs - ctx.drp.t_now_abs)
             # inverse of cp_loc above: physical cp -> sample-0 cp0 removes the
             # nominal advance AND the code-Doppler drift (the seed currency)
             # + b_sat (task #33): the per-sat slow bias the P1 fit measures --
