@@ -144,6 +144,20 @@ class TestFold(unittest.TestCase):
         # over 4000 records would be ~0.9 cycles here
         self.assertLess(abs(err), 0.12, err)
 
+    def test_commanded_trim_does_not_enter_the_adr(self):
+        """The export is relative to the model Doppler: the assembler rotates the commanded
+        carrier trim back out. Slot 19 must therefore be recorded (trim_cycles) but never added
+        to the accumulated phase."""
+        class Trimmed(Sky):
+            def record(self, hop, prev_hop, **kw):
+                out = Sky.record(self, hop, prev_hop, **kw)
+                return {i: (v[0], 0.004, v[2], v[3], v[4]) for i, v in out.items()}
+        sky = Trimmed()
+        hops = [HOP0 + k * HPR for k in range(400)]
+        st = run(sky, hops)
+        self.assertAlmostEqual(st.adr, dop_only(sky, hops[-1], hops[0]), places=3)
+        self.assertAlmostEqual(st.trim, 0.004 * 399, places=6)
+
     def test_gap_breaks_the_arc(self):
         sky = Sky()
         hops = [HOP0 + k * HPR for k in range(50)] + [HOP0 + k * HPR for k in range(60, 100)]

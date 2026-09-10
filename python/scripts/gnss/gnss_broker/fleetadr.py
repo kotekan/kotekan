@@ -14,11 +14,19 @@ it -- the C++ combiner's `adr_cycles` -- is a +-0.5 cycle/record random walk plu
 re-anchor steps of each window's first record, not a carrier phase. The replica runs at a
 constant f_c + dop within a record (propagate_seed per record, the re-pin step folded so the
 prompt stays continuous), so the commanded advance over [k-1, k] is exactly
-    (f_c + dop_{k-1}) * dt + trim_inc_k
-with dop from slot 1 (float32, ~20 cycles of Doppler per record: ulp 2e-6), trim_inc from
-slot 19, and dt from the integer hops. The nominal f_c*dt is exact in rationals and kept OUT
-of the accumulator, which therefore holds only the Doppler-integrated phase and never loses
-a double's precision.
+    (f_c + dop_{k-1}) * dt
+with dop from slot 1 (float32, ~20 cycles of Doppler per record: ulp 2e-6) and dt from the
+integer hops. The nominal f_c*dt is exact in rationals and kept OUT of the accumulator, which
+therefore holds only the Doppler-integrated phase and never loses a double's precision.
+
+THE CARRIER TRIM IS NOT IN THE EXPORT. The despread runs its replica at dop + ctrim, and the
+assembler then rotates the exported prompt by the NCO phase it accumulates from f_nco = ctrim,
+which takes the trim back out: what ships is the prompt relative to the MODEL Doppler alone.
+So the commanded advance the export is measured against is dop*dt, and slot 19 (the applied
+trim, integrated) is carried here only as a record of what the carrier loop commanded
+(`trim_cycles`). Adding it to the advance put the trim into the ADR once: measured as a
+geometry-free drift between a trim-commanded band and an untrimmed one equal to
+lambda * d(trim)/dt satellite by satellite (slope 1.01, r 0.999), which no ionosphere makes.
 
 WHY IT LIVES HERE. Every record in the telemetry carries its absolute hop; every chain shares
 the one F-engine hop axis; so an ADR folded here is exact where it matters -- pairing two bands
@@ -93,7 +101,7 @@ class SatAdr(object):
         self.adr = 0.0         # DOPPLER-ONLY cycles since hop0 (commanded minus residual, minus
                                # the nominal f_c*dt, which is added back exactly at publish)
         self.trim = 0.0        # commanded carrier-trim cycles over the same arc
-        self.res = 0.0         # residual cycles over the same arc
+        self.res = 0.0         # residual cycles over the same arc: model minus received
         self.arc = 0           # increments at every break
         self.n = 0             # records folded into this arc
         self.n_inst = 0        # instances behind the last record
@@ -131,7 +139,7 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
              if contiguous and i in st.inst_prev and st.inst_prev[i][0] == prev
              and st.inst_prev[i][2] != 0]
     if len(vouch) >= min_inst:
-        dcmd = sorted(st.inst_prev[i][1] * dt + v[1] for i, v in vouch)[len(vouch) // 2]
+        dcmd = sorted(st.inst_prev[i][1] * dt for i, _v in vouch)[len(vouch) // 2]
         trim = sorted(v[1] for _i, v in vouch)[len(vouch) // 2]
         # each voucher advances ITS OWN phase; the fleet value is the median of the phases
         for i, v in vouch:
