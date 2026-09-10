@@ -149,11 +149,16 @@ def main():
                 span = A[prn][seg[-1]][2] - A[prn][seg[0]][2]
                 if span < args.min_arc_s or len(seg) < 30:
                     continue
-                # ⚠️ SIGN. lam*Phi_dop is MINUS the range change (carr_resid_m in the obs
-                # writer is -fadr_dop_cycles*lam - range_m), and the ionosphere ADVANCES the
-                # carrier, so this combination is written to increase with TEC. It is checked
-                # against the diurnal rise, not asserted: see the drift column.
-                gf = [-(la * A[prn][h][0] - lb * B[prn][h][0]) / mpt for h in seg]
+                # ⚠️ SIGN, DERIVED NOT GUESSED (this was wrong for one commit). The obs
+                # writer builds carr_resid_m = -fadr_dop_cycles*lam - range_m and expects it
+                # to sit near zero, so lam*adr = -rho. The ionosphere ADVANCES the carrier,
+                # so the measured carrier range is rho - I with I = 40.308*TEC/f^2 > 0, i.e.
+                #     lam*adr = -(rho - I) = -rho + I
+                # and the geometry cancels in the difference, leaving
+                #     la*adr_a - lb*adr_b = I_a - I_b = mpt*TEC     with mpt > 0 for fa < fb.
+                # No minus. The check that this is right is that the fitted slope against the
+                # obliquity is POSITIVE (it is the vertical TEC): see --check-obliquity.
+                gf = [(la * A[prn][h][0] - lb * B[prn][h][0]) / mpt for h in seg]
                 m = sum(gf) / len(gf)
                 gf = [x - m for x in gf]               # RELATIVE: the arc constant is unknowable
                 sd = math.sqrt(sum(x * x for x in gf) / len(gf))
