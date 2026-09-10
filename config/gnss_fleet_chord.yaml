@@ -329,7 +329,7 @@ common:
   # before this landed (PRN 10 deep 88.9, same bias structure as path A, clk within 0.6
   # chips). Worth 17.712 of ~20.2 ms/frame per GPU. The SEARCH leg is untouched -- it is
   # built alongside path A but taps the voltage buffer directly, and it is what detects GPS
-  # and so solves the clock for all five chains. Flip this off to get path A back for
+  # and so solves the clock for all eight chains. Flip this off to get path A back for
   # single-signal debugging.
   no-path-a: true
   # SKY-CORRECTED DEEP RUNG (2026-08-10). The combiner scores the LOO element-derotated

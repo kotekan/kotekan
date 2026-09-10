@@ -174,7 +174,7 @@ mirror) · all three `reseed-spec-tau` sites (#90 F2/F3) · `joint-model-primary
 Closing GAP 3 is necessary but not sufficient. One joint state driving both loops on all five
 chains additionally requires:
 
-1. **Command rollout** — `rrate-command` is armed on 1 of 5 chains. e5b, b2a, b2b and l5 are
+1. **Command rollout** — `rrate-command` is armed on 3 of 8 chains (gal_e5a, gal_e5b, bds_b2a). b2b, b3i, e6, l2c and l5 are
    still open-loop on carrier. One chain at a time, controls in the same polls.
 2. **The slew rail** — 3–4 of 7 commands rail, and a railed target move is invisible
    (`chord-slew-cap-saturation`). This bounds what any coupling can deliver, so it should be
