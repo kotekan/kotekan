@@ -122,12 +122,24 @@ grown from "the gather" to six manual `nohup` processes plus a cube archiver tha
 `gnss_fleet_chord.yaml` says must come up *before* the nodes. One boot-time unit closes it; the
 constraint that deferred this ("the node restart is scarce") is gone.
 
-### #111 — the Earthdata token fails silently and DCB has no fallback
-`gnss_dcb.py` returns `None` when there is no token, with no WARN and no metric. **[live]** the
-token is healthy — issued 2026-09-09 19:05, **expires 2026-11-08, 59 days out** — and DCB is
-flowing daily since 08-23, so this is latent, not active. (An earlier estimate of a 09-19 expiry
-was wrong.) **Fix: WARN-once distinguishing "no token configured" from "401 rejected", plus a DCB
-product-age metric so staleness is visible before it is an outage.**
+### ✅ #111 — CLOSED 2026-09-10: a dying Earthdata token is now visible before it is an outage
+The silent failure was not the absence of a product, it was that **`fetch_dcb` checks the local
+cache before the network**, so an expired credential keeps returning the newest file on disk —
+correct, then quietly staler — and returns `None` only after the 14-day walk-back runs out of
+cached days. The broker's old "no token/network" line was therefore the late symptom and could
+not tell a dead credential from a dead network.
+Now: `fetch_dcb(status=…)` reports `ok` / `no-token` / `auth-rejected` (401/403 detected
+separately from a 404 walk) / `unreachable`, plus the product's age **from the epoch in its
+filename** (the mtime is when *we* fetched, which is not what matters) and the token's expiry
+read from its JWT `exp` claim — a number of days, never the token. The broker warns on age
+against `--dcb-max-age-days` (default 10; the CAS rapid product lands ~5 days late, so a healthy
+steady state is 5–6) and `--dcb-require` makes it fatal for a chain whose measurement depends on
+the measured biases. Default stays non-fatal: the DCB supplies the per-satellite spread and
+`group_delay_s` falls back to the broadcast term.
+**[live]** product 4.7 days old, token expires in **59.1 days** (2026-11-08), served from cache.
+Picks up on the next broker load. 3 tests — one of which immediately caught a real bug in the new
+code (`tok or _token()` let an *explicitly empty* token report the cached token's expiry, which is
+precisely the truncated-credential case).
 
 ### #55 — collapse the `carrier_phase_from_ref` A/B
 It is **armed in production on both node legs** and #52 (the frame-boundary jump) is now fixed
@@ -244,17 +256,42 @@ independent of C/N0, white in time — is the same magnitude and is the first li
 has ever had. **Next: re-run the despread test with the anchor swept, once with fp16 and once
 without, and promote `m_head_for` to long double.** A bench run.
 
-### #56 — the ~5× hourly signal swings, and an instrument nobody owns
-**[tree/live]** `rail_watch` has been dead since 2026-08-24, has no systemd unit and no cron
-entry, and nobody owns it — while this entry says "nothing blocks this but the reading". Two
-complete days are on disk, which is enough to apply the discriminator offline (clip rises with
-total power ⇒ source or interferer; power flat while clip rises ⇒ gain or quantiser scaling).
-**Next: run it on the archived days, then either give `rail_watch` an owner or delete it.**
+### #56 — the hourly signal swings: ✅ MECHANISM ANSWERED, one question left
+Answered offline from the two archived days, no live instrument needed. **[archive, 08-22 and
+08-23, 8137 and 8635 samples over 12 instances]** Using the entry's own discriminator — clip
+rising *with* power means a source or interferer; power flat while clip rises means gain or
+quantiser scaling — the answer is unambiguous: **r(clip, power) = +0.88…+0.91 across hours, and
+r(elem_clip, elem_power) = +0.96…+0.97.** So it is a real power swing at the element level, **not
+a gain or quantiser artefact.**
+⚠️ **And the title's "~5×" was wrong.** The swinging quantity is not what was assumed: hourly
+medians move **1.6–1.8× in `power_mean`** and **2.1–2.9× in `elem_power_max`**, while
+`clip_hi_mean` moves **22–59×** and `elem_clip_max` **28–65×**. Clip is a *tail* statistic against
+a fixed threshold, so a 2–3× rise in peak element power amplifies into a 60× rise in clip
+fraction. Any future budget should be written in element power, not in clip.
+**The shape:** short bursts of tens of minutes, not a smooth diurnal. At 10-minute resolution the
+peaks reach `elem_power_max` 40–61 against an hourly-median baseline of 7–20, and they recur at
+roughly repeated UTC times — 08:2x–08:4x on all three archived days, ~01:3x–02:00 on all three,
+15:00 and 23:1x on two.
+**The one question left is celestial vs terrestrial, and three days cannot settle it**: a sky
+source drifts 4 minutes earlier per day, which is below this resolution over three days. That
+needs ~2 weeks of the instrument — and `rail_watch` has been dead since 2026-08-24 with no
+systemd unit and no cron entry (see #120, same root: nothing on cf06 is supervised). **Decide:
+give `rail_watch` an owner for a fortnight, or accept the mechanism as characterised and close.**
 
-### #94 — the shared-parameter estimators: 1 of 6 sites done, and the armed one was never judged
-S2 (the prior gauge) is built and **armed receiver-wide for 14 days with its pre-registered
-falsifier never run** — while its own in-poll control reports **39% refusals** (936 of 2371).
-The falsifier is two minutes: drop one satellite and read `clk` either side. S1 (the
+### #94 — the shared-parameter estimators: 1 of 6 sites done. ✅ S2's falsifier PASSES
+S2 (the prior gauge) is built and armed receiver-wide. **Its pre-registered falsifier — drop a
+satellite, `clk` must not move — is now answered BY INSPECTION, no deliberate drop needed: the
+fleet loses and gains satellites on its own.** **[live, 730 `JOINT[shadow]` samples]** over 22
+membership changes with both sides ≥3 satellites, |Δclk| was median **0.016**, p90 0.096, **max
+0.119 chips** — against 707 unchanged-membership steps at median 0.008, p90 0.045, **max 0.169**.
+So the largest jump on a membership change is *smaller* than the largest with membership held, and
+all of it sits inside the reported σ of 0.045 chips. **Zero changes moved `clk` by more than
+0.2 chips.** (Two transitions through n=0 were excluded: a 150.8-chip step there is filter birth,
+not a gauge failure — and that is the number that makes the raw statistic look alarming.)
+Still open is the programme, not the gauge: **S1** (the circular-median clock) was supposed to be
+demoted to a cross-check by S2 and was not, and **S3–S6** (state the membership-invariance
+property, then test it) are not started. The 39% `SEED-OFFSET joint-vs-legacy` refusal rate is a
+separate question and is not evidence against the gauge. S1 (the
 circular-median clock) was supposed to be demoted to a cross-check by S2 and was not; S3–S6 (the
 membership-invariance property and its tests) are not started.
 
@@ -265,10 +302,26 @@ readback walked 0.470 → 1.780 → 2.272 → 2.502 → 2.789 → **3.000 (the c
 recovered by t+7 min. What is missing is a number: the **pre-clamp** common-mode trim demand.
 Nothing exposes it — the clamp is applied inside the loop and only a rail counter escapes.
 **Fix: expose the pre-clamp demand per PRN in the FleetDll stat line, then read one restart.**
-Minutes, not a soak. ⚠️ Two staleness notes: the "~8 min" figure holds for a *broker* restart, but
-a full *node* cycle now takes 25–30 min to settle; and the lobe-coherent combine made the
-discriminator ~1.5× steeper without the loop constants being retuned, which is the most likely
-reason the excursion still reaches the clamp.
+Minutes, not a soak.
+
+⚠️ **The "a node cycle costs 25–30 min" claim needed splitting, and the distinction is
+operational.** **[archive, 2026-09-10, broker up throughout]** A *single* node leaving and
+returning costs **nothing measurable**: cx43 was absent 01:24–01:54 and came back at 01:54, and
+max|readback trim| sat at 0.27–0.56 chips across both the loss and the return — indistinguishable
+from baseline. A *fleet-wide* roll is a different event entirely: after 02:02–02:10 the trims
+climbed 0.4 → 0.87 → 1.85 → 2.94, **pinned at the ±3.000 clamp from 02:18 to 02:24**, and did not
+return to the 0.2–0.4 baseline until **02:38–02:44 — about 30 minutes after the last node came
+back**.
+**The mechanism explains both**: the standing C++ trim lives on each node, so rolling one node
+discards a twelfth of the fleet's trim state while ten combiners carry the measurement, and
+nothing moves. Rolling all six discards *every* satellite's standing trim at once, and the fleet
+DLL must re-establish all of them from zero — which is the excursion, and which is also why it
+looks like #106's establishment transient. **So: stagger node rolls and there is no transient at
+all; roll the fleet together and pay ~30 minutes.** The corollary for #106 is that a fleet-wide
+roll, not a broker restart, is the disturbance that reproduces it hardest.
+The other staleness note stands: the lobe-coherent combine made the discriminator ~1.5× steeper
+without the loop constants being retuned, which is the most likely reason the excursion still
+reaches the clamp at all.
 
 ### #97 residual — the source defect fires at its original rate
 **[live]** 44 `SOURCE PERIOD DISAGREES` in 57 minutes (~46/h, against the pre-fix 37–49/h), at
