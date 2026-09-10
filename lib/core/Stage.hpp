@@ -139,7 +139,8 @@ private:
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 
-    // List of stage tids used for CPU usage tracking
+    // List of stage tids used for CPU usage tracking. Written by each stage
+    // thread as it starts and exits, and read by the CPU monitor thread.
     std::vector<pid_t> thread_list;
 
     // Lock for changing or reading thread_list, which the stage's own threads
