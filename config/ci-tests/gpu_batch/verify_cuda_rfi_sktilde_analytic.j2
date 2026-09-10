@@ -235,18 +235,18 @@ drop_rfi_mask_{{ name }}:
     in_buf: host_rfi_mask_{{ name }}_buffer
 {% endfor %}
 
-# Where 257/510 comes from. n2k's SkKernel computes per feed
-#     SK = (S0+1)/(S0-1) * (S0*S2/S1^2 - 1) - b
-# and the feed average weights each unmasked feed by its S0, which is 256 for every feed
-# here, so it is the plain mean over unmasked feeds. With S0=256 and S1=1024, S0*S2/S1^2
-# is 2 for group A (S2=8192) and 3 for group B (S2=12288):
-#     SK_A = 257/255 * 1 - b        SK_B = 257/255 * 2 - b
-#     all  = (64*SK_A + 64*SK_B)/128 = 771/510 - b
-#     half = SK_A                    = 514/510 - b
-#     all - half = 257/510 = 0.50392156862745...
-# The bias b depends only on (S1/S0, S0), identical for every feed, so it cancels and
-# the bias component of the difference is exactly 0. Sigma shrinks with the feed count
-# by an unknown table value, so component 2 is skipped.
+# Component 0, the feed-averaged SK, is the S0-weighted mean over unmasked feeds of
+#     SK_e = (S0 + 1) / (S0 - 1) * (S0 * S2 / S1^2 - 1) - bias
+# (see gpuSimulateRFISK.cpp). S0 = 256 for every feed, so the weights are uniform and
+# bias is the same table value everywhere:
+#     group A: 257/255 * (256 * 8192 / 1024^2 - 1) = 257/255 * 1 = 514/510
+#     group B: 257/255 * (256 * 12288 / 1024^2 - 1) = 257/255 * 2 = 1028/510
+#     all:  64 feeds of each, (514 + 1028) / 2 / 510 = 771/510, minus bias
+#     half: group B masked, 514/510, minus bias
+#     all - half = 257/510 = 0.503921568627451
+# Component 1 is the same S0-weighted mean of bias on both paths, so the difference is 0.
+# Sigma (component 2) shrinks with the feed count by an unknown table value, so it is
+# skipped.
 check_mask_diff:
     kotekan_stage: testDataCheckExpected
     first_buf: host_rfi_sktilde_all_buffer
