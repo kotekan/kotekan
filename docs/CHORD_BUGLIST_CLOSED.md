@@ -36,6 +36,7 @@ parallel section audits that each read the tree AND the live fleet.
 | #105 | fleet-common q-crash bursts | 3 fixes, 2026-08-31 | `seed-bias-source: slow`; the drift-EMA monitor line is live |
 | #107 | nine node deaths: a post-publication patch of ring slot-0 metadata | `ba3f69c02` + `b3666a3ad` | in the running binary; 0 DESYNC fleet-wide past every historical death point |
 | #108 | every node wedged at 2^33 bf-mask frames (~15 h) | `e92573330` + `b80170e95` | **verified on sky 2026-09-10 16:11 UTC** — ALL TWELVE valve instances (6 nodes x 2 GPUs) past 2^33, leader at 110.7% (~1.4 h beyond the wedge point), 89/89 senders live and 0 stale throughout. First crossing since the fix; the fleet had wedged there every time before, and the fix had ridden the fleet 12 h untested |
+| #111 | the Earthdata token failed silently and DCB had no fallback | `6fe68f1b7` | the silent part was that `fetch_dcb` checks the cache BEFORE the network, so a dead token serves an ageing product for 14 days and only then returns None. Now: a status dict (`ok`/`no-token`/`auth-rejected`/`unreachable`), product age from the filename epoch, token expiry from the JWT claim, a WARN against `--dcb-max-age-days` (default 10) and `--dcb-require` to make it fatal per chain |
 | #110 | arming the beam cube segfaulted every node | `633a59a5f` + `3173ee067` | cube frames landing; no node death in 12.4 h |
 | #22 | fp16 Φ tables | `f0b1ca2b6`→`477c06eca`→`87173351c` | **armed in production** — `phi_fp16: true` ×15 per node, `fp16 Phi ARMED` in the node log |
 | #24 | noise-debias for beam-map values | `ca47ba74a`, `c343eadc8` | cube cells are in pedestal units; `--elem-norm` fits residual gain |
@@ -91,6 +92,39 @@ returned to 24/min**, and on 2026-09-10 it is 0.35/min. Adoption is also gps_l5-
 seven chains log zero, because only gps_l5 has a search to produce period labels. So the revert
 cost ~0.2–0.3 adoptions/min on one chain and the fix was not load-bearing.
 **The trap worth keeping: a fix deployed onto a restart transient will look like it worked.**
+
+## Answered by measurement — questions that had an answer, not a fix
+
+**#56 — the hourly signal swings are a real source, not gain or quantiser scaling.** Answered
+2026-09-10 offline from the two archived `rf_rail` days (8137 and 8635 samples, 12 instances), by
+the entry's own discriminator: `r(clip, power)` = **+0.88…+0.91** across hours and
+`r(elem_clip, elem_power)` = **+0.96…+0.97**, so clip rises *with* power. ⚠️ The entry's "~5×" was
+the wrong quantity: hourly medians move **1.6–1.8× in mean power** and **2.1–2.9× in peak element
+power**, while **clip moves 22–65×** — clip is a tail statistic against a fixed threshold, so a
+2–3× power rise amplifies into a 60× clip rise. Write future budgets in element power, never in
+clip. The swings are bursts of tens of minutes (10-min peaks of 40–61 against a 7–20 hourly
+baseline) recurring at roughly repeated UTC times. Celestial vs terrestrial is still open (#56)
+because a sky source drifts only 4 min/day and three days cannot resolve it.
+
+**#94/S2 — the prior gauge's falsifier passes, and it never needed a deliberate satellite drop.**
+The pre-registration was "drop a satellite, `clk` must not move"; the fleet churns membership on
+its own, so it is answerable by inspection. Live, 730 `JOINT[shadow]` samples: over **22 warm
+membership changes** (both sides ≥3 sats) |Δclk| was median **0.016**, p90 0.096, max **0.119
+chips**, against 707 unchanged-membership steps at median 0.008, p90 0.045, max **0.169** — the
+largest jump on a change is *smaller* than the largest with membership held, and all of it is
+inside the reported σ of 0.045. Zero changes moved `clk` past 0.2 chips. ⚠️ The raw statistic
+looks alarming (max 150.8 chips) because it includes two transitions through n = 0: that is filter
+birth, not the gauge. **The lesson: a falsifier written as an intervention may already be
+answerable by observation, if the system perturbs itself.**
+
+**A single node roll costs nothing; a fleet-wide roll costs ~30 minutes.** Measured 2026-09-10
+from the archived broker log with the broker up throughout. cx43 alone was absent 01:24–01:54 and
+returned: max|readback trim| stayed **0.27–0.56 chips** across both the loss and the return,
+indistinguishable from baseline. The fleet-wide roll at 02:02–02:10 climbed 0.4 → 0.87 → 1.85 →
+2.94, was **pinned at the ±3.000 clamp 02:18–02:24**, and returned to the 0.2–0.4 baseline only at
+02:38–02:44. The standing C++ trim lives **on each node**, so one roll discards a twelfth of the
+fleet's trim state while ten combiners carry the measurement, and a fleet roll discards every
+satellite's at once and the DLL re-establishes all of them from zero.
 
 ## Faults still worth reading in full
 
