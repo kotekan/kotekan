@@ -21,7 +21,9 @@ center, north up). RBF (thin-plate) interpolation over the measurement points pe
 masked where the nearest measurement is > --mask-deg away (no data invented over holes).
 """
 import argparse
+import glob
 import os
+import shutil
 import subprocess
 import sys
 
@@ -513,11 +515,26 @@ def main():
         out = (args.video if os.path.isabs(args.video)
                else os.path.join(args.outdir, args.video))
         os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(args.fps),
-                        "-i", os.path.join(args.outdir, "frame_%05d.png"),
-                        "-pix_fmt", "yuv420p", "-vf",
-                        "pad=ceil(iw/2)*2:ceil(ih/2)*2", out], check=True)
-        print("wrote", out)
+        # ⚠️ THERE IS NO ffmpeg ON THIS CLUSTER (checked cx43 and cf06, 2026-09-10) and
+        # installing one needs root. Every frame rendered and then the encode raised
+        # FileNotFoundError -- the whole run wasted at the last step. Fall back to an
+        # animated GIF via Pillow, already a matplotlib dependency: bigger, but it plays
+        # anywhere and needs nothing installed. mp4 stays the default where ffmpeg exists.
+        if shutil.which("ffmpeg"):
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(args.fps),
+                            "-i", os.path.join(args.outdir, "frame_%05d.png"),
+                            "-pix_fmt", "yuv420p", "-vf",
+                            "pad=ceil(iw/2)*2:ceil(ih/2)*2", out], check=True)
+            print("wrote", out)
+        else:
+            from PIL import Image
+            gif = os.path.splitext(out)[0] + ".gif"
+            frames = sorted(glob.glob(os.path.join(args.outdir, "frame_*.png")))
+            imgs = [Image.open(f).convert("P", palette=Image.ADAPTIVE) for f in frames]
+            imgs[0].save(gif, save_all=True, append_images=imgs[1:],
+                         duration=int(1000 / max(args.fps, 1)), loop=0, optimize=True)
+            print("no ffmpeg on this host -- wrote", gif,
+                  "(%.1f MB, %d frames)" % (os.path.getsize(gif) / 1e6, len(imgs)))
 
 
 if __name__ == "__main__":
