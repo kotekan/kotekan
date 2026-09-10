@@ -290,6 +290,7 @@ private:
     std::unique_ptr<class GnssCudaAcquire> _cuda_acq;
     bool _cuda_acq_wanted = false;
     long _cuda_acq_fallbacks = 0; ///< times a pass fell back to the CPU (rate-limited WARN)
+    long _grid_bin_warns = 0;    ///< times a non-bin-aligned Doppler grid was seen (#128)
 
     /// A5: the refine on the GPU. Separate from _cuda_acq because they are different engines
     /// over different geometries (the acquire works on the correlation surface, the refine on

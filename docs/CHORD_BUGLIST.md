@@ -144,27 +144,6 @@ voided one.
 
 ---
 
-### #128 — the Doppler refine's grid precondition is enforced on one path of two
-**[tree]** `peak_from_reduction` inverts `r = |g(1-d)|/|g(d)|` with `x` in **transform bins**, so
-its ±1 grid neighbour must BE the ±1 bin. Sub-bin grids do not degrade gracefully — the ratio
-saturates and the refine reports half a step toward the neighbour, which can be *worse than the
-raw cell*. The CUDA engine refuses such a grid and says so
-(`GnssChannelizedSearch.cpp:679`, "Set doppler_step to the bin spacing"). **The CPU acquire has no
-such guard**: when `use_cuda_acquire: false` the `_cuda_acq` branch is never entered, so nothing
-warns and the out-of-domain refine just runs.
-
-**[live]** The running aggregator is safe — `chord_gnss_agg6_cuda.yaml`, `doppler_step: 62.5`
-against a 62.5 Hz bin, `use_cuda_acquire: true`. But that file is **hand-derived** (its own header
-says "DERIVED … by hand, 2026-08-05"), and it is the only one of six aggregator configs that is
-bin-aligned: `chord_gnss_agg{,2,6,8}.yaml` all carry `doppler_step: 31.25` — **half a bin** — and
-the generator's default is `62.5 if args.cuda_acquire else 31.25`. So the CPU-path default is
-out of domain, and a regeneration without `--cuda-acquire` puts it there silently.
-
-**Two lines of fix, either or both:** move the bin check out of the `_cuda_acq` branch so the CPU
-path warns too, and make the generator emit a bin-aligned step unconditionally. Neither needs a
-node cycle. ⚠️ Do not "fix" this by loosening the refine — in its own domain it recovers a
-0.300-bin offset to 0.294 (6.4 Hz of 1000), 47× better than the cell.
-
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
 ### #112 — `set_bf_mask` free-runs, and it is what makes #108's fuse 12 h instead of years

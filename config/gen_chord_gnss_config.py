@@ -1927,11 +1927,14 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # ...but on the GPU path it must ALSO be a whole number of the transform's own bin
         # spacing Fs/(Mp*fft_len) = 62.5 Hz, because that is what makes a Doppler wipe an exact
         # cyclic shift of one forward FFT instead of a fresh transform per trial.
-        # 31.25 is exactly HALF a bin, so it misses that by the maximum possible amount, and
-        # GnssCudaAcquire will decline the grid and fall back to the CPU (with a WARN saying so).
-        # 62.5 is bin-aligned, halves the grid, and costs nothing measurable: channelized_peak's
-        # parabolic vertex fit already recovers the Doppler to ~step/20.
-        "doppler_step": 62.5 if args.cuda_acquire else 31.25,
+        # 31.25 is exactly HALF a bin, so it misses that by the maximum possible amount.
+        # This used to be bin-aligned only under --cuda-acquire, because the cyclic-shift win is
+        # the GPU engine's; that reasoning was about SPEED and missed that the sub-grid refine
+        # needs bin alignment for ACCURACY on either path (buglist #128). channelized_peak
+        # inverts an amplitude ratio whose argument is in BINS, so on a half-bin grid it
+        # saturates and biases toward the neighbouring cell -- worse than reporting the raw
+        # cell. Bin-aligned unconditionally: it also halves the CPU grid, so it is free.
+        "doppler_step": 62.5,
         # 30 s, matching the live airspy L5 chain -- NOT the 8 s default. The broker
         # refreshes hints every 10 s, so an 8 s TTL guarantees a window each cycle where
         # every hint is stale; with require_hint that means every PRN is skipped before

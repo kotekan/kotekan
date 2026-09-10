@@ -51,6 +51,7 @@ parallel section audits that each read the tree AND the live fleet.
 | #54 | GPU vs CPU replicas differ per sample | see below | prompt 3.48e-02 → 4.79e-05, peel per-sample 9.55e-02 → 3.31e-05 at 6.8 d; every exactness gate still exactly 0 |
 | #65 | three stack scripts truncated their log on start | `f6f7afd61` | rotate-then-start in `agg_up.sh`/`gather_up.sh`/`broker_restart.sh`, 3 rotations kept; verified in tree at `agg_up.sh:70-77` |
 | #128 origin | the acquire refine test was red, and had been since #105 | see the #54 section | the test gridded Doppler at 0.1 bin, outside the estimator's domain; bin-spaced now, refine recovers 0.294 of a true 0.300 bin |
+| #128 | the Doppler refine's bin precondition was enforced on one path of two | see the #54 section | guard hoisted out of the `_cuda_acq` branch so the CPU path warns too; generator emits the bin-aligned 62.5 Hz unconditionally |
 
 ## Closed because the premise died (moot)
 
@@ -201,8 +202,8 @@ they all anchor at `start = 0`; and it survived a month of being attributed to t
 nothing ever asked whether the reference was right. A reference that is never itself checked is an
 assumption wearing a measurement's clothes.
 
-⚠️ **The unrelated red gate found while checking this is now diagnosed and fixed** — see #128
-in the open list for the part that is still open. `test_gnss_channelized_acquire`'s
+⚠️ **The unrelated red gate found while checking this is now diagnosed and fixed**, and so is the
+live gap it exposed (#128, closed below). `test_gnss_channelized_acquire`'s
 `doppler_parabola_refine_beats_grid` had been failing (err_ref 44.14 against a 25.0 bound),
 identically before and after this fix. It was **decayed tooling, not a live fault**: the test
 gridded Doppler at 100 Hz against a 1000 Hz transform bin (0.1 bin) and took its "truth" from a
@@ -216,6 +217,23 @@ reproduces the observed δ = 0.4964 to 0.2%.
 
 Retested in its proper domain (bin-spaced grid, truth 0.3 bin off a cell, analytic reference) it
 recovers **δ = 0.2936 against a true 0.300 — 6.4 Hz of 1000, a 47× improvement on the raw cell**.
+**#128 CLOSED.** The precondition was enforced on one path of two: `GnssCudaAcquire` declines a
+non-bin-aligned grid and logs why, but with `use_cuda_acquire: false` that branch is never
+entered, so the CPU acquire ran the out-of-domain refine silently. The check now sits where BOTH
+paths pass — before the `#ifdef GNSS_CUDA` — and warns (rate-limited 1/512) when the grid step is
+not a whole multiple of `fs/(Mp*fft_len)`. Verified against the acceptance rule it mirrors: 31.25
+on a 62.5 Hz bin warns, 62.5 and 125 do not. The generator now emits the bin-aligned 62.5 Hz
+**unconditionally** — it had been conditional on `--cuda-acquire`, reasoning about the GPU's
+cyclic-shift speed win and missing that the refine needs bin alignment for *accuracy* on either
+path. It also halves the CPU grid, so it is free.
+
+⚠️ **Four generated aggregator configs still carry `doppler_step: 31.25`** (`chord_gnss_agg.yaml`,
+`agg2`, `agg6`, `agg8`). They were NOT regenerated: `gen_chord_gnss_config.py` requires `--base`,
+a live production config pull, so regenerating would fold in unrelated drift into files nothing
+currently runs. The live aggregator is `chord_gnss_agg6_cuda.yaml` at 62.5 Hz. The guard is what
+makes this safe — starting from one of the stale four is now loud instead of silent, which is the
+property that was actually missing.
+
 Also worth noting: the old first assertion `err_ref < err_grid` required beating a *lucky* 5.5 Hz
 cell, where the expected error on a 100 Hz step is 25 Hz — badly conditioned regardless of the
 estimator. Both assertions are now well-conditioned: the cell error is 0.3 bin by construction,

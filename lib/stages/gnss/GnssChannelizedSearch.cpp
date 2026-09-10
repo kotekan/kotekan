@@ -669,6 +669,27 @@ void GnssChannelizedSearch::search_snapshot() {
 
         const std::vector<double>& grid = pgrid.empty() ? _doppler_grid : pgrid;
 
+        // THE REFINE'S DOMAIN, CHECKED ON BOTH PATHS (buglist #128). peak_from_reduction places
+        // the peak between bins by inverting r = |g(1-d)|/|g(d)| with the argument in TRANSFORM
+        // BINS, so the +-1 grid neighbour has to BE the +-1 bin. On a sub-bin grid the ratio is
+        // ~1 whatever the true offset, the inversion saturates at d -> 0.5, and the refine
+        // reports half a step toward the neighbour -- which can be WORSE than the raw cell it
+        // was meant to improve.
+        // The CUDA engine declines such a grid outright, so it could say this in its fallback
+        // message; the CPU path computes it anyway, silently, and that is the path a build
+        // without CUDA or a config without use_cuda_acquire takes. Check it where BOTH paths
+        // pass, not inside the branch only one of them enters.
+        if (grid.size() >= 2) {
+            const double bin_hz = _sample_rate / ((double)Mp * (double)_fft_len);
+            const double q = (grid[1] - grid[0]) / bin_hz;
+            if (std::fabs(q - std::round(q)) > 1e-6 && (_grid_bin_warns++ % 512) == 0)
+                WARN("GnssChannelizedSearch[{:s}]: Doppler grid step {:.4f} Hz is not a whole "
+                     "multiple of the transform bin {:.4f} Hz ({:.3f} bins) -- the sub-grid "
+                     "refine is outside its domain and will bias toward the neighbouring cell. "
+                     "Set doppler_step to the bin spacing.",
+                     unique_name, grid[1] - grid[0], bin_hz, q);
+        }
+
         // Per-PRN device setup: the Doppler grid (this PRN's, hinted or blind) and the replica
         // tables. Both are PRN-scoped, so they happen once here rather than per alignment.
         bool gpu_ok = false;
