@@ -256,8 +256,9 @@ File identity and structure
        whose dish type is not ``Fake``; see the ``input_list`` attribute).
    * - ``input_list``
      - int32 array
-     - Compact subset layouts only: the element index, in the full
-       fiducial order, of each of the file's elements.
+     - Compact subset layouts only: the element index, in ``input_order``,
+       of each of the file's elements. ``DishInputs`` holds the connected
+       elements, derived from the telescope's ``dish_inputs`` table.
    * - ``input_order``
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see

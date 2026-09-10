@@ -1,5 +1,6 @@
 #include "N2Subset.hpp"
 
+#include "CHORDTelescope.hpp"  // for CHORDTelescope
 #include "Config.hpp"          // for Config
 #include "FrameDesc.hpp"       // for FrameDesc
 #include "N2FrameDesc.hpp"     // for N2Field, N2FrameDesc
@@ -7,6 +8,7 @@
 #include "N2Metadata.hpp"      // for N2Metadata
 #include "N2Util.hpp"          // for prod_ctype, frameID, modulo
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
@@ -80,25 +82,33 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
         in_prod_to_index[key] = i;
     }
 
-    // Compact subset layouts (e.g. DishInputs) index their own element axis and carry
-    // each element's input-buffer identity in the descriptor's input_list; empty means
-    // the output indexes the input's element axis directly.
-    element_index_map = out_desc->get_input_list();
-    for (const uint16_t el : element_index_map)
+    // Output element i reads input element element_index_map[i]: the telescope's
+    // connected elements for the compact DishInputs layout, the input's own axis
+    // otherwise.
+    if (out_desc->get_n2_layout() == N2Layout::DishInputs) {
+        const CHORDTelescope* const tel =
+            dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+        if (tel == nullptr)
+            FATAL_ERROR("N2Subset: n2_layout DishInputs requires a CHORDTelescope");
+        element_index_map = tel->get_connected_elements(tel->fiducial_element_order());
+        if (element_index_map.size() != _out_num_elements)
+            FATAL_ERROR("N2Subset: DishInputs output has {:d} elements but the telescope has "
+                        "{:d} connected",
+                        _out_num_elements, element_index_map.size());
+    } else {
+        for (uint32_t i = 0; i < _out_num_elements; ++i)
+            element_index_map.push_back(i);
+    }
+    for (const uint64_t el : element_index_map)
         if (el >= _in_num_elements)
-            FATAL_ERROR("N2Subset: output element identity {:d} outside input's {:d} elements", el,
+            FATAL_ERROR("N2Subset: output element {:d} outside input's {:d} elements", el,
                         _in_num_elements);
 
-    // Build the index mapping from output products to input products, translating
-    // compact element indices to the input's before matching.
+    // Build the index mapping from output products to input products
     prod_index_map.reserve(out_prods.size());
     for (size_t out_idx = 0; out_idx < out_prods.size(); ++out_idx) {
-        const uint16_t in_a = element_index_map.empty()
-                                  ? out_prods[out_idx].input_a
-                                  : element_index_map.at(out_prods[out_idx].input_a);
-        const uint16_t in_b = element_index_map.empty()
-                                  ? out_prods[out_idx].input_b
-                                  : element_index_map.at(out_prods[out_idx].input_b);
+        const uint16_t in_a = (uint16_t)element_index_map.at(out_prods[out_idx].input_a);
+        const uint16_t in_b = (uint16_t)element_index_map.at(out_prods[out_idx].input_b);
         uint32_t key = (static_cast<uint32_t>(in_a) << 16) | static_cast<uint32_t>(in_b);
         auto it = in_prod_to_index.find(key);
         if (it == in_prod_to_index.end()) {
@@ -160,10 +170,9 @@ void N2Subset::main_thread() {
             output_vis.copy_data(input_vis, {N2Field::vis, N2Field::weight, N2Field::flags,
                                              N2Field::gain, N2Field::evec, N2Field::mask});
 
-            // Copy the output elements' flags and gain, by identity when the output is
-            // a compact subset and positionally otherwise.
+            // Copy the output elements' flags and gain through the element map
             for (uint32_t i = 0; i < _out_num_elements; ++i) {
-                const uint32_t in_i = element_index_map.empty() ? i : element_index_map[i];
+                const uint32_t in_i = (uint32_t)element_index_map[i];
                 output_vis.flags[i] = input_vis.flags[in_i];
                 output_vis.gain[i] = input_vis.gain[in_i];
                 output_vis.mask[i] = input_vis.mask[in_i];
@@ -173,7 +182,7 @@ void N2Subset::main_thread() {
             uint32_t num_ev = out_desc->get_num_ev();
             for (uint32_t ev = 0; ev < num_ev; ++ev) {
                 for (uint32_t i = 0; i < _out_num_elements; ++i) {
-                    const uint32_t in_i = element_index_map.empty() ? i : element_index_map[i];
+                    const uint32_t in_i = (uint32_t)element_index_map[i];
                     output_vis.evec[ev * _out_num_elements + i] =
                         input_vis.evec[ev * _in_num_elements + in_i];
                 }
