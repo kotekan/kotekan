@@ -142,16 +142,23 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
             NUM_ELEMENTS / 8));
     }
 
-    // AVX512 fast path is always enabled with these constants
+    // Escape hatch to run the scalar path on a machine that supports AVX512, so that both
+    // paths can be exercised and compared without rebuilding for a different -march.
+    const bool disable_avx512 = config.get_default<bool>(unique_name, "disable_avx512", false);
+
     use_avx512_fast_path = false;
+    if (disable_avx512) {
+        INFO("TransposeBasebandArray: AVX512 fast path disabled by config, using scalar path");
+    } else {
 #ifdef __AVX512F__
-    // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
-    // All requirements are met
-    use_avx512_fast_path = true;
-    INFO("TransposeBasebandArray: AVX512 fast path enabled");
+        // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
+        // All requirements are met
+        use_avx512_fast_path = true;
+        INFO("TransposeBasebandArray: AVX512 fast path enabled");
 #else
-    INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
+        INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
 #endif
+    }
 
     // Set the output buffer frame ndarray shape
 
@@ -313,13 +320,12 @@ void TransposeBasebandArray::main_thread() {
         // Transpose the data
         // Input:  E[time_long][frequency_local][element_long][time_short][element_short]
         // Output: E'[time][frequency_local][element]
+        size_t lost_blocks = 0;
 
 #ifdef __AVX512F__
         if (use_avx512_fast_path) {
             // AVX512 fast path: process one (t_long, freq) block at a time
             // Each block is 2048 bytes and produces 16 rows of 128 bytes
-            size_t lost_blocks = 0;
-
             for (uint32_t t_long = 0; t_long < time_long; t_long++) {
                 const uint32_t base_time = t_long * TIME_SHORT;
 
@@ -373,12 +379,6 @@ void TransposeBasebandArray::main_thread() {
             }
             // Memory fence to ensure all non-temporal stores are completed
             _mm_sfence();
-
-            // Log packet loss percentage
-            double loss_percentage =
-                100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ);
-            DEBUG("TransposeBasebandArray: Frame {:d} data loss = {:.4f}%", (int)in_frame_id,
-                  loss_percentage);
         } else
 #endif
         {
@@ -394,37 +394,41 @@ void TransposeBasebandArray::main_thread() {
                     size_t pl_mask_idx = t64_idx * pl_mask_t64_stride + freq * pl_mask_freq_stride;
                     uint64_t mask_val = pl_mask_ptr[pl_mask_idx];
                     bool has_packet_loss = (mask_val & check_mask) != check_mask;
+                    if (has_packet_loss)
+                        lost_blocks++;
 
-                    for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++) {
-                        for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
-                            // Calculate output time index
-                            uint32_t time = t_long * TIME_SHORT + t_short;
+                    // Loop over time samples outermost so each one's whole row of elements is
+                    // written in order, rather than writing element_short bytes per
+                    // element_long and stepping by out_time_stride between them.
+                    for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
+                        // Calculate output time index
+                        uint32_t time = t_long * TIME_SHORT + t_short;
 
-                            // Calculate output base index
-                            size_t out_base = (size_t)time * out_time_stride
-                                              + freq * out_freq_stride + e_long * ELEMENT_SHORT;
+                        // Calculate output base index
+                        size_t out_base = (size_t)time * out_time_stride + freq * out_freq_stride;
 
-                            if (has_packet_loss) {
-                                // Fill with 0x88 instead of copying
-                                std::memset(&out_frame[out_base], 0x88, ELEMENT_SHORT);
-                            } else {
-                                // Calculate input base index
-                                size_t in_base = (size_t)t_long * in_tlong_stride
-                                                 + freq * in_freq_stride
-                                                 + e_long * (TIME_SHORT * ELEMENT_SHORT)
-                                                 + t_short * ELEMENT_SHORT;
+                        if (has_packet_loss) {
+                            // Fill with 0x88 instead of copying
+                            std::memset(&out_frame[out_base], 0x88, NUM_ELEMENTS);
+                        } else {
+                            // Calculate input base index for this time sample
+                            size_t in_base = (size_t)t_long * in_tlong_stride
+                                             + freq * in_freq_stride + t_short * ELEMENT_SHORT;
 
-                                // Copy element_short contiguous bytes
-                                std::memcpy(&out_frame[out_base], &in_frame[in_base],
-                                            ELEMENT_SHORT);
-                            }
+                            // Copy element_short contiguous bytes per element_long
+                            for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++)
+                                std::memcpy(
+                                    &out_frame[out_base + e_long * ELEMENT_SHORT],
+                                    &in_frame[in_base + e_long * (TIME_SHORT * ELEMENT_SHORT)],
+                                    ELEMENT_SHORT);
                         }
                     }
                 }
             }
         }
 
-        DEBUG("TransposeBasebandArray: Transposed frame {:d}", in_frame_id);
+        DEBUG("TransposeBasebandArray: Transposed frame {:d}, data loss = {:.4f}%", in_frame_id,
+              100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ));
 
         // get a copy of the input metadata
         auto in_meta = get_chord_metadata(in_buf, in_frame_id);
