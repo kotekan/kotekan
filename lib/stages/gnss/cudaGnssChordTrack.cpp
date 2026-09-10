@@ -246,6 +246,10 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     ema_n.assign((size_t)n_prn, 0);
 
     slot_gen.assign((size_t)n_prn, 0);
+    // The fold histories are per PRN slot too; an unsized history is an out-of-bounds write on
+    // the first frame (the slot count never changes, so this is the one sizing point).
+    fold_a.init(n_prn);
+    fold_b.init(n_prn);
 
     const std::string ep =
         config.get_default<std::string>(unique_name, "seed_endpoint", "/chord_track/set_seeds");
