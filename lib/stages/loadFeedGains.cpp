@@ -62,7 +62,7 @@ loadFeedGains::loadFeedGains(Config& config, const std::string& unique_name,
     freq_id.resize(num_local_freq, FREQ_ID_NOT_SET);
 
     // Register as a producer for all gain buffers and check that their
-    // dimensionalitites match
+    // dimensionalities match
     json in_buf_list = config.get_value(unique_name, "gain_buffers");
     if (in_buf_list.size() != num_beams) {
         FATAL_ERROR("Expected {:d} gain buffers to match num_beams, got {:d}", num_beams,
@@ -85,8 +85,8 @@ loadFeedGains::loadFeedGains(Config& config, const std::string& unique_name,
             FATAL_ERROR("Input buffer does not have the expected size. Expected {:d}, got {:d}",
                         num_local_freq * num_elements * 2 * sizeof(float), buf->frame_size);
         }
-        // Set frame description
-        buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 3>::describe(
+        // Attach the frame description, or check the declared one
+        buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 3>::describe(
             "gain",
             {static_cast<ptrdiff_t>(num_local_freq), static_cast<ptrdiff_t>(num_elements),
              static_cast<ptrdiff_t>(2)},

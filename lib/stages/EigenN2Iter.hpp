@@ -34,8 +34,7 @@
  * This is performed by using a subspace iteration method with an augmented
  * Rayleigh-Ritz step and a progressive matrix completion of masked values.
  *
- * This stage is similar to EigenVisIter, but works on N2Buffer inputs/outputs,
- * and without the dataset tracking functionality.
+ * Dataset tracking is left to N2FrameToVisFrame downstream.
  *
  * @par Buffers
  * @buffer in_buf The stream to eigen decompose.
