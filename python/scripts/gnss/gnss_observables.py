@@ -126,6 +126,55 @@ def _phys_chips(cp_arg, comb_mult, hop, t_abs, dop_hz, args):
     return (comb_mult * cp_arg + t_abs * args.chip_rate_hz * scale) % args.code_length
 
 
+def make_obs_writer(path_tmpl, label="", log=None):
+    """Append-only JSONL row writer whose file ROLLS on the row's own UTC.
+
+    Returns f(t_utc, row) -> the path written, reopening whenever the strftime-expanded
+    path changes. Mirrors make_spectrum_writer() in gps_distributed_broker.py.
+
+    ⚠️⚠️ WHY THIS IS A FUNCTION AND NOT A `open()` AT STARTUP (2026-09-10). The path used
+    to be strftime-expanded ONCE, before the poll loop, so a logger begun on the 5th kept
+    writing <chain>_20260905.jsonl for as long as it lived: measured on cf06, four days
+    and 2.0 GB of rows in a file named for the first of them, while 09-06, 09-07 and
+    09-08 had no observables file at all. Both the --out help text and obs_up.sh already
+    asserted that the file rolled at UTC midnight -- the promise was in two places and the
+    behaviour in none, which is precisely why it survived a month of daily use.
+
+    ⚠️ THE KEY IS THE ROW'S EPOCH, NOT WALL-CLOCK-AT-POLL. The two differ either side of
+    midnight, and the epoch (the emit's capture time) is what every consumer joins on, so
+    filing by it is the only choice under which "the rows in <day>.jsonl are that day's
+    measurements" is true. A row is always written -- an epoch outside today never means
+    a dropped row, only a differently-named file.
+    """
+    state = {"path": None, "fh": None}
+
+    def _write(t_utc, row):
+        path = time.strftime(path_tmpl, time.gmtime(t_utc))
+        if path != state["path"]:
+            if state["fh"] is not None:
+                state["fh"].close()
+            d = os.path.dirname(path)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            # Line-buffered: a reader tailing the record sees whole rows, and a killed
+            # logger loses at most the row it was mid-write on.
+            state["fh"] = open(path, "a", buffering=1)
+            state["path"] = path
+            (log or (lambda m: print(m, file=sys.stderr)))(
+                "gnss_observables: %s -> %s" % (label, path))
+        state["fh"].write(json.dumps(row, separators=(",", ":")) + "\n")
+        return path
+
+    def _close():
+        """Only a test or a replay ever ends; the logger itself runs until killed."""
+        if state["fh"] is not None:
+            state["fh"].close()
+            state["fh"], state["path"] = None, None
+
+    _write.close = _close
+    return _write
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -155,10 +204,12 @@ def main():
                     help="poll period (s); rows are written once per COMBINER EMIT (deduped "
                          "on the arc/record counters), so polling faster than the emit is free")
     ap.add_argument("--out", default="/tmp/gpswipe/observables.jsonl",
-                    help="obs-log path. %%Y%%m%%d etc are strftime-expanded and the file ROLLS at "
-                         "UTC midnight -- a date baked in at launch keeps one day's name for as "
-                         "long as the process lives, and consumers that open today's file "
-                         "then find nothing.")
+                    help="obs-log path. %%Y%%m%%d etc are strftime-expanded PER ROW, against "
+                         "that row's own epoch, so the file rolls at UTC midnight without a "
+                         "restart and every row lands under the day it was measured. (Until "
+                         "2026-09-10 the expansion happened once at launch: a logger begun on "
+                         "the 5th wrote the 5th's filename for four days and the days between "
+                         "had no file at all.)")
     # ── THE CHORD ANCHOR. The airspy path anchors absolute time on the dongle's
     # adcstat/utc0_sample0; CHORD has no such endpoint, and the broker answers an unknown
     # path with a 200 and a chain summary, so `.get("utc0_sample0") or 0.0` silently yields
@@ -211,12 +262,13 @@ def main():
     eph, eph_t, eph_probe_t = None, 0.0, 0.0
     last = {}   # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
     n = 0
-    def _outpath(t):
-        return time.strftime(args.out, time.gmtime(t))
-    out_now = _outpath(time.time())
-    f = open(out_now, "a", buffering=1)
-    print("gnss_observables: %s [%s/%s] -> %s" % (args.band, args.sys, args.combiner, out_now),
-          file=sys.stderr)
+    write_row = make_obs_writer(
+        args.out, "%s [%s/%s]" % (args.band, args.sys, args.combiner))
+    # The first file is not opened until the first row, so announce the PATTERN here: a
+    # chain that never emits would otherwise leave an empty log, with no way to tell
+    # "wrong flags" from "nothing to record".
+    print("gnss_observables: %s [%s/%s] -> %s (rolls at UTC midnight, on the row's epoch)"
+          % (args.band, args.sys, args.combiner, args.out), file=sys.stderr)
 
     while True:
         t0 = time.time()
@@ -521,7 +573,7 @@ def main():
                                 "range_rate_mps": round(v["range_rate_mps"], 4),
                                 "sat_clk_s": v["sat_clk_s"],
                                 "eph_age_s": round(v["toe_age_s"], 1)})
-                f.write(json.dumps(row, separators=(",", ":")) + "\n")
+                write_row(t_epoch, row)
                 n += 1
         # PHASE-LOCK the cadence to the wall-clock interval grid (2026-07-19): dTEC pairing
         # intersects epochs EXACTLY across bands, and free-running loops land on arbitrary
