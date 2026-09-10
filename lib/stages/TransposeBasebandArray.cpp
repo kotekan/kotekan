@@ -320,7 +320,8 @@ void TransposeBasebandArray::main_thread() {
         // Transpose the data
         // Input:  E[time_long][frequency_local][element_long][time_short][element_short]
         // Output: E'[time][frequency_local][element]
-        size_t lost_blocks = 0;
+        // Read only by the DEBUG log below, which Release builds compile out.
+        [[maybe_unused]] size_t lost_blocks = 0;
 
 #ifdef __AVX512F__
         if (use_avx512_fast_path) {
