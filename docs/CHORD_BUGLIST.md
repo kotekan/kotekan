@@ -64,12 +64,28 @@ seven are dead-reckon.
 
 ### #119 — `--fit-flush-on-reject`'s own revert trigger is tripped, and unread
 Pre-registered as "revert if flushes happen on healthy sats outside events". **[live]** 69
-`cp-fit history FLUSHED` in 57 minutes on a healthy fleet, e.g. `PRN 24 … last -23.75 chips/s vs
-clock -0.01`. Either the guard is correctly catching #97's continuous source defect — in which
-case it is an instrument and the trigger should be rewritten — or it is churning healthy
-satellites down the birth path every ~8 minutes. **Next: pair the FLUSHED PRN/timestamps against
-`SOURCE PERIOD DISAGREES` and `SEEDAUDIT STEP` for the same PRN over a post-transient hour.** One
-log pass; no restart.
+`cp-fit history FLUSHED` in 57 minutes on a healthy fleet, all on gps_l5, concentrated on five
+PRNs (24, 8, 18, 32, 26).
+
+**Chased 2026-09-10, and the obvious hypothesis is falsified.** The flushes do NOT track #97's
+source period defect: **0 of 69** fall within 30 s of a `SOURCE PERIOD DISAGREES` on the same PRN
+(70 of those occurred in the same window); only 14 of 69 coincide with a `period ADOPTED`. So it
+is not an #97 instrument. But the guard is not over-sensitive either — the rejected rates are
+physically impossible (`+0.56`, `-23.75`, `+8.25`, `+24.08` chips/s against a clock of ±0.01), so
+it is catching real garbage. **The pre-registered revert trigger should therefore NOT fire: it
+was written on the assumption that a healthy fleet cannot produce a poisoned history, and that
+assumption is wrong.** Rewrite the trigger; keep the guard.
+**What is still open is where the garbage comes from.** Not an unwrap gap: a third of the flushed
+PRNs were seen <60 s earlier, and the gaps that do appear are 115–710 s, inside the unambiguous
+range. Next: dump the fit history itself for PRN 24 at a flush and find the sample that drags the
+slope.
+
+⚠️ **Separately, found while chasing this: `--fit-gap-s 3600` exceeds the unwrap's unambiguous
+range.** `fit_cp_rate` unwraps nearest-wrap, so it is only unambiguous while consecutive samples
+move less than half a code period: 5115 chips at the ~3.45 chips/s receiver clock (4.05 with code
+Doppler) = **21–25 minutes**. The configured tolerance accepts gaps up to 60. Any re-entry in the
+25–60 minute band is unwrapped onto the wrong branch, silently. Latent today; cap `fit-gap-s` at
+~1200 s, or make the unwrap gap-aware and reset instead of guessing.
 
 ### #118 — `dop_rate_rejected` is never cleared, and is now the loudest line in the log
 `fleetdll.py` logs it and clears only `cp_rate_rejected`; the comment beside it admits the bug.
