@@ -291,34 +291,42 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer
         file_name: bb_beam_positions
+        create_single_file: false  # not time-major
     write_bb_beam_ids:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_ids_buffer
         file_name: bb_beam_ids
+        create_single_file: false  # not time-major
     write_bb_phase:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_phase_buffer
         file_name: bb_phase
+        create_single_file: false  # not time-major
     write_bb_shift:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
+        create_single_file: false  # not time-major
     write_bb_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
+        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
     write_upchan_U8_gain:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U8_gain_buffer
         file_name: upchan_U8_gain
+        create_single_file: false  # not time-major
     write_upchan_U16_gain:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U16_gain_buffer
         file_name: upchan_U16_gain
+        create_single_file: false  # not time-major
     write_upchan_U32_gain:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U32_gain_buffer
         file_name: upchan_U32_gain
+        create_single_file: false  # not time-major
     write_upchan_U8_expanded_pl_mask:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U8_expanded_pl_mask_buffer
@@ -347,26 +355,32 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U8_phase_buffer
         file_name: frb1_U8_phase
+        create_single_file: false  # not time-major
     write_frb1_U16_phase:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U16_phase_buffer
         file_name: frb1_U16_phase
+        create_single_file: false  # not time-major
     write_frb1_U32_phase:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U32_phase_buffer
         file_name: frb1_U32_phase
+        create_single_file: false  # not time-major
     write_frb2_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_beam_positions_buffer
         file_name: frb2_beam_positions
+        create_single_file: false  # not time-major
     write_frb2_beam_ids:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_beam_ids_buffer
         file_name: frb2_beam_ids
+        create_single_file: false  # not time-major
     write_frb2_weights:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_weights_buffer
         file_name: frb2_weights
+        create_single_file: false  # not time-major
     write_frb1_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_beams_buffer
@@ -375,12 +389,15 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_beams_buffer
         file_name: frb2_beams
+        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
     write_frb3_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_buffer
         file_name: frb3_beams
+        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
     write_frb3_beams_offsetscale:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_offsetscale_buffer
         file_name: frb3_beams_offsetscale
         max_frames: 4
+        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga

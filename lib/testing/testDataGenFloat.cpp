@@ -78,6 +78,12 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
         throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
                                     "settings must be the same length!");
     }
+    _dim_scaling = config.get_default<std::vector<std::ptrdiff_t>>(
+        unique_name, "dim_scaling", std::vector<std::ptrdiff_t>(_array_shape.size(), 1));
+    if (_array_shape.size() != _dim_scaling.size()) {
+        throw std::invalid_argument("testDataGenFloat: 'array_shape' and 'dim_scaling' config "
+                                    "settings must be the same length!");
+    }
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_in_frame = config.get_default<size_t>(unique_name, "num_local_freq", 1);
