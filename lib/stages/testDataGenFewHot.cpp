@@ -1,16 +1,18 @@
 #include "testDataGenFewHot.hpp"
 
 #include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for int4x2_swapped_withoffset
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
 
-#include <assert.h> // for assert
-#include <cmath>    // for fmod
-#include <stdint.h> // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
-#include <string.h> // for memset
+#include <assert.h>   // for assert
+#include <stdint.h>   // for uint8_t
+#include <string.h>   // for memset
+#include <sys/time.h> // for gettimeofday, timeval
 
 
 using kotekan::bufferContainer;
@@ -19,44 +21,43 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(testDataGenFewHot);
 
-// Frame layout: an upchan_U16-like "Ebar" frame, dimensions (Tbar, Fbar, P, D)
-constexpr int UPCHAN_FACTOR = 16;
-constexpr int NUM_TIMES = 1024;
-constexpr int NUM_FREQ = 256;
-constexpr int NUM_COARSE_FREQ = NUM_FREQ / UPCHAN_FACTOR;
-constexpr int NUM_POL = 2;
-constexpr int NUM_ELEMNS = 2048;
-constexpr int NUM_DISHES = NUM_ELEMNS / NUM_POL;
-
 testDataGenFewHot::testDataGenFewHot(Config& config, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGenFewHot::main_thread, this)),
     type(config.get<std::string>(unique_name, "type")),
     freq_id(config.get<std::vector<freq_id_t>>(unique_name, "freq_id")),
-    elemns(config.get<std::vector<int>>(unique_name, "elemns")),
-    samples_per_dataset(config.get<ptrdiff_t>(unique_name, "samples_per_data_set")) {
+    elemns(config.get<std::vector<int>>(unique_name, "elemns")) {
 
     buf = get_buffer("out_buf");
     buf->register_producer(unique_name);
     assert(type == "fewhot");
 
+    const auto desc = buf->require_frame_desc<kotekan::GenericNDArray>();
+    if (desc->get_rank() != 4 || desc->get_value_datatype() != kotekan::int4x2_swapped_withoffset)
+        FATAL_ERROR("Buffer {:s} must be a rank-4 (Tbar, Fbar, P, D) int4x2_swapped_withoffset "
+                    "ndarray",
+                    buf->buffer_name);
+    num_times = desc->get_extent(0);
+    num_freq = desc->get_extent(1);
+    num_elemns = desc->get_extent(2) * desc->get_extent(3);
+    upchan_factor = desc->get_dimscaling(0);
+    if (upchan_factor < 1 || num_freq % upchan_factor != 0)
+        FATAL_ERROR("Fbar extent {:d} is not a multiple of the Tbar dimscaling {:d}", num_freq,
+                    upchan_factor);
+    if ((ptrdiff_t)freq_id.size() < num_freq / upchan_factor)
+        FATAL_ERROR("freq_id has {:d} entries, need at least {:d}", freq_id.size(),
+                    num_freq / upchan_factor);
+
     bool all_el_good = true;
     for (auto const el : elemns) {
-        if (el < 0 || el >= NUM_ELEMNS) {
+        if (el < 0 || el >= num_elemns) {
             all_el_good = false;
             break;
         }
     }
     if (!all_el_good)
         FATAL_ERROR("Elements {:s} must be in allowed range 0 <= el < {:d}",
-                    fmt::format("{:s}", fmt::join(elemns, ", ")), NUM_ELEMNS);
-    if (freq_id.size() < (size_t)NUM_COARSE_FREQ)
-        FATAL_ERROR("freq_id has {:d} entries, need at least {:d}", freq_id.size(),
-                    NUM_COARSE_FREQ);
-
-    assert(buf->frame_size
-           == NUM_TIMES * NUM_FREQ * NUM_ELEMNS
-                  * sizeof(kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type));
+                    fmt::format("{:s}", fmt::join(elemns, ", ")), num_elemns);
 }
 
 
@@ -74,7 +75,7 @@ void testDataGenFewHot::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
         assert(chordmeta && "metadata must be of type chordMetadata");
 
-        chordmeta->set_fpga_seq_num(seq_num * samples_per_dataset);
+        chordmeta->set_fpga_seq_num(seq_num * num_times * upchan_factor);
         chordmeta->set_time_downsampling_fpga(1);
 
         // TODO: Fix this, cannot change from frame to frame (and should not be "now")
@@ -82,42 +83,26 @@ void testDataGenFewHot::main_thread() {
         gettimeofday(&now, nullptr);
         chordmeta->set_first_packet_recv_time(now);
 
-        chordmeta->set_name("Ebar");
-        chordmeta->dims = 4;
-        chordmeta->set_array_dimension(0, NUM_TIMES, "Tbar", UPCHAN_FACTOR);
-        chordmeta->set_array_dimension(1, NUM_FREQ, "Fbar", 1);
-        chordmeta->set_array_dimension(2, NUM_POL, "P", 1);
-        chordmeta->set_array_dimension(3, NUM_DISHES, "D", 1);
-        chordmeta->set_strides_simple();
-        chordmeta->type = kotekan::int4x2_swapped_withoffset;
-        std::vector<int> coarse_freq(NUM_FREQ);
-        std::vector<int> freq_upchan_factor(coarse_freq.size());
-        std::vector<int> freq_upchan_index(coarse_freq.size());
-        for (int f = 0; f < NUM_FREQ; f++) {
-            coarse_freq.at(f) = freq_id.at(f / UPCHAN_FACTOR);
-            freq_upchan_factor.at(f) = UPCHAN_FACTOR;
-            freq_upchan_index.at(f) = f % UPCHAN_FACTOR;
-        }
+        chordmeta->set_from_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
+        std::vector<int> coarse_freq(num_freq);
+        std::vector<int> freq_upchan_factor(num_freq);
+        std::vector<int> freq_upchan_index(num_freq);
+        for (ptrdiff_t f = 0; f < num_freq; f++) {
+            coarse_freq.at(f) = freq_id.at(f / upchan_factor);
+            freq_upchan_factor.at(f) = upchan_factor;
+            freq_upchan_index.at(f) = f % upchan_factor;
+        }
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
         chordmeta->set_freq_upchan_index(freq_upchan_index);
 
         chordmeta->set_frame_counter(seq_num);
 
-        buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
-            kotekan::int4x2_swapped_withoffset, "Ebar",
-            std::vector<ptrdiff_t>{NUM_TIMES, NUM_FREQ, NUM_POL, NUM_DISHES},
-            std::vector<kotekan::Symbol>{"Tbar", "Fbar", "P", "D"},
-            std::vector<ptrdiff_t>{UPCHAN_FACTOR, 1, 1, 1}));
-        /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
-
-        std::memset(frame, 0x88 /* 0 volts */, NUM_TIMES * NUM_FREQ * NUM_ELEMNS);
-
-        for (int i = 0; i < NUM_TIMES * NUM_FREQ; ++i) {
+        std::memset(frame, 0x88 /* 0 volts */, buf->frame_size);
+        for (ptrdiff_t i = 0; i < num_times * num_freq; ++i) {
             for (const auto el : elemns) {
-                frame[i * NUM_ELEMNS + el] += 0x10;
+                frame[i * num_elemns + el] += 0x10;
             }
         }
 
