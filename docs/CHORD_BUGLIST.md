@@ -266,6 +266,32 @@ gives per-channel clip with named frequencies. `fixtures/rail_aircraft.py` recor
 OpenSky aircraft + BRDC illuminators on one clock (it is also `rail_watch`'s replacement).
 ⚠️ Concentration is only meaningful during a burst: at the ~5e-4 baseline clip a single channel
 holding the maximum is Poisson noise on a handful of samples, not a narrowband source.
+
+**[measured 2026-09-10, 180 samples over 3 h]** The recorder ran and the discriminator answered —
+**it is not DME, and it is not a transit.** Six bursts, clip median 1.83e-04 → max 6.38e-02.
+Mapped to real frequencies the repeated feature is a **flat-topped plateau ~12–15 MHz wide centred
+~1266–1268 MHz** (19:13:41, cx19.0: 1260.2→1275.8 MHz at 0.017/0.054/0.047/0.046/0.043/0.011); one
+event also lit 1199–1206 MHz. **L5/E5a (1166–1185) and L2C (1227.5) sat at the noise floor
+throughout.** DME is excluded twice over: ~1 MHz wide, and confined to 960–1215 MHz. The width and
+flat top match **B3I (1268.52 MHz)** — but the nearest BeiDou at the three worst bursts is
+**18.7°, 21.3°, 23.8°** against a 2.48° FWHM, and that separation *grows* while the clip stays
+high. So it is a broadband, band-selective emitter with no satellite within 18°.
+
+⚠️ **TWO ERRORS TO LEARN FROM, both the ORIGINAL #56 error repeated.** (1) The first read of this
+data called it DME because adjacent `clip_vec` entries were treated as adjacent in frequency —
+**they are 3.1 MHz apart**, the node holding every 16th `freq_id`, so the tap's 22 channels are
+four sparse per-band groups, not a comb. `rf_stats` publishes `freq_ids` (absolute) beside `chans`
+(local); **always map through it.** (2) `fixtures/rail_aircraft.py`'s `illuminates()` hard-codes
+**1176.45 MHz** capability, so its logged "nearest GNSS" scores a band that was dark in every one
+of these bursts — scoring by *nearest satellite* rather than *what transmits in the band that lit
+up*, which is precisely what produced the first wrong answer for this item.
+
+**Two live hypotheses, and the next check.** Either a strong satellite entering through a **far
+sidelobe** (the dishes have real sidelobe structure), or a terrestrial emitter in the 1215–1400 MHz
+radiolocation allocation. Re-run the recorder storing per-band `freq_ids` and doing the satellite
+association **per band**, then test the sidelobe hypothesis: does burst amplitude track a strong
+B3I satellite's sidelobe angle rather than its boresight separation?
+
 ⚠️ Limits: OpenSky serves live only without credentials, so the archived bins cannot be
 attributed to specific flights; Celestrak is unreachable from cf06; and GEO is geometrically
 impossible at el 81° from 49°N, which rules out the whole geostationary belt.
