@@ -17,6 +17,7 @@
 #include "pfbPrototype.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <complex>
@@ -157,6 +158,28 @@ int main(int argc, char** argv) {
     const double cps =
         bank.eff_chip_rate() / fs * (1.0 + bank.code_doppler_sign * dop / sig->carrier_hz);
     const double wc = 2.0 * M_PI * (f_off + dop) / fs;
+    // ANCHOR-SCALED TOLERANCE (task #54). The GPU-vs-CPU floor is NOT a constant, because the
+    // two sides evaluate the same long-double expression at different points: the kernel reduces
+    // the code phase mod code_len ONCE at n0 and then advances by an intra-record offset, while
+    // the reference re-evaluates cp0 + n_m*cps every hop. They therefore differ by O(1) long
+    // double ULPs of the ANCHOR product n0*cps -- a quantity that grows with the anchor, from
+    // 2^-25 chips at an hour of uptime to 2^-15 at a week.
+    //
+    // Pinning a constant here forces a choice between a bound that is red at a deep anchor and
+    // one that is meaningless at a shallow one. Scale it with the arithmetic instead, and the
+    // gate stays sharp at every anchor. ⚠️ The two sides are deliberately left INDEPENDENT:
+    // giving the reference the kernel's anchor convention would drive this to the float floor
+    // and make the term unable to fail, which is not a gate. The measured worst realisation is
+    // 5.6 ULP at the deepest anchor, so 32 is margin, not a fit -- and it still fails loudly on
+    // the defect it was built for (a double-precision reference reads 6.5e-04 against a 1.3e-04
+    // bound at 0.678 d, and 1.4e+00 against 9.9e-04 at 6.8 d).
+    const long double anchor_chips =
+        std::fabs((long double)(window_start + fft_len - 1) * (long double)cps);
+    const double ulp_anchor = // long double ULP at the anchor product, in chips (64-bit mantissa)
+        (anchor_chips > 0.0L) ? std::ldexp(1.0, std::ilogbl(anchor_chips) - 63) : 0.0;
+    const double TOL = 1e-5 + 32.0 * ulp_anchor;
+    printf("anchor n0*cps = %.4Le chips -> long double ULP %.3e chips -> tolerance %.3e\n",
+           anchor_chips, ulp_anchor, TOL);
     // Carrier phase at the hop reference sample, in LONG DOUBLE -- the same reduction
     // GnssCudaDespread::Impl::ang0_for does, and for the same reason (task #52): wc must never
     // multiply the absolute sample index. Duplicated rather than shared because this test is
@@ -267,7 +290,7 @@ int main(int argc, char** argv) {
         const double rc = std::abs(gc - cc) / std::max(1e-30, std::abs(cc));
         const double re = std::fabs(ge - ce) / std::max(1e-30, ce);
         max_rel = std::max({max_rel, rc, re});
-        const bool ok = rc < 1e-5 && re < 1e-5;
+        const bool ok = rc < TOL && re < TOL;
         pass = pass && ok;
         printf("%-4s cp=%9.2f hops=%4d: CPU |G|=%12.4f E=%12.1f | GPU |G|=%12.4f E=%12.1f | "
                "rel %.2e/%.2e %s\n",
@@ -363,8 +386,8 @@ int main(int argc, char** argv) {
             }
         }
         printf("reference cross-terms <R_P,R_E>/<R_P,R_L> (whole + head): max rel %.3e %s\n",
-               max_xc, (max_xc < 1e-5) ? "OK" : "FAIL");
-        pass = pass && (max_xc < 1e-5);
+               max_xc, (max_xc < TOL) ? "OK" : "FAIL");
+        pass = pass && (max_xc < TOL);
 
         // ---- the peel itself ----
         // A deliberately WRONG gain, sign-FLIPPED across the boundary: |a| is not the true
@@ -429,8 +452,8 @@ int main(int argc, char** argv) {
         const double res_rel = max_res / std::max(1e-30, res_scale);
         printf("peel residual vs CPU (per-sample, %d chan x %d hops, 2 gain segments): "
                "max rel %.3e %s\n",
-               n_chan, n_hops, res_rel, (res_rel < 1e-5) ? "OK" : "FAIL");
-        pass = pass && (res_rel < 1e-5);
+               n_chan, n_hops, res_rel, (res_rel < TOL) ? "OK" : "FAIL");
+        pass = pass && (res_rel < TOL);
 
         // ---- THE ADD-BACK IDENTITY ----
         // Despread the residual with the SAME job, then restore the peel's known contribution:

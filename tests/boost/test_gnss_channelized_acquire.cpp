@@ -663,10 +663,24 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     BOOST_CHECK_LT(rw.snr, r.snr * 0.3); // wrong-sign window decorrelates -> no peak
 }
 
-// The sub-grid Doppler parabola refine must BEAT the coarse-grid cell on an OFF-grid signal.
-// Reference truth = a fine-grid (step 5) max in the SAME channelization frame (so any small
-// channelization Doppler bias cancels); a coarse grid (step 100) + refine should land closer.
-BOOST_AUTO_TEST_CASE(doppler_parabola_refine_beats_grid) {
+// The sub-grid Doppler refine must BEAT the grid cell on an OFF-grid signal.
+//
+// ⚠️ THE GRID STEP MUST BE THE TRANSFORM BIN. This is the estimator's domain, not a detail:
+// peak_from_reduction inverts r = |g(1-d)|/|g(d)| with g(x) = sin(pi*x*u)/x and x in BINS, so
+// the +-1 grid neighbour has to BE the +-1 bin. GnssChannelizedSearch enforces the same
+// precondition at run time -- the CUDA acquire refuses a grid whose step is not a whole multiple
+// of the bin and logs "Set doppler_step to the bin spacing" -- and production sets 62.5 Hz
+// against a 62.5 Hz bin. Here bin = fs / (Mp * fft_len) = 20e6 / (1000 * 20) = 1000 Hz.
+//
+// This test used a step-100 coarse grid against that 1000 Hz bin (0.1 bin) and a step-5 "fine
+// reference" (0.005 bin), both far inside one bin. In that regime the neighbour ratio is ~1
+// whatever the true offset, so the inversion saturates at d -> 0.5 and reports half a step
+// toward the neighbour: it made the answer WORSE than the raw cell (5.5 Hz -> 44 Hz) and the
+// case had been red since #105 replaced the parabola with the amplitude-ratio estimator, whose
+// domain is narrower. Both grids are now bin-spaced, and truth is the analytic Doppler rather
+// than another out-of-domain acquire -- the channelization bias it used to cancel is ~10 Hz,
+// 0.01 bin, which the tolerance below swallows whole.
+BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
     constexpr double FS_L5 = 20.0e6, FOFF_L5 = 5.0e6;
     constexpr int N_L5 = 10;
@@ -677,7 +691,10 @@ BOOST_AUTO_TEST_CASE(doppler_parabola_refine_beats_grid) {
     auto repl0 = bank.channels(0, anchor, 0.0, 0.0, Mp);
     const auto cov = energy_covering_n(repl0, N_L5);
 
-    const double true_cp = 137.0, true_dop = 3037.0; // OFF the coarse grid (-3000 step 100)
+    // Truth placed 0.3 of a BIN off a grid point: far enough that a saturating or inert refine
+    // both fail, close enough to stay in the interpolating regime the estimator claims.
+    const double bin_hz = FS_L5 / ((double)Mp * (double)fft_len); // 1000 Hz here
+    const double true_cp = 137.0, true_dop = 3000.0 + 0.3 * bin_hz;
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
     auto acq = [&](const std::vector<double>& g) {
         return gnss::channelized_acquire(data, repl0, cov, g, FS_L5, sig->chip_rate_hz, N_L5,
@@ -689,10 +706,12 @@ BOOST_AUTO_TEST_CASE(doppler_parabola_refine_beats_grid) {
             g.push_back(f);
         return g;
     };
-    const double ref = acq(grid_around(-3037.0, 60.0, 5.0)).doppler_hz; // fine-grid "truth"
-    const auto coarse = grid_around(-3000.0, 250.0, 100.0);
+    const double ref = -true_dop; // the search reports the conjugate sign; analytic truth
+    // Bin-spaced grid, wide enough that the winning cell is strictly interior (the refine is
+    // skipped at the edges).
+    const auto coarse = grid_around(-3000.0, 3.0 * bin_hz, bin_hz);
     const double refined = acq(coarse).doppler_hz;
-    // the nearest coarse cell to ref (what we'd have reported WITHOUT the refine)
+    // the nearest grid cell to truth (what we'd have reported WITHOUT the refine): 0.3 bin
     double cell = coarse[0];
     for (double f : coarse)
         if (std::abs(f - ref) < std::abs(cell - ref))
@@ -701,8 +720,8 @@ BOOST_AUTO_TEST_CASE(doppler_parabola_refine_beats_grid) {
     BOOST_TEST_MESSAGE("refine: fine-ref=" << ref << " coarse-cell=" << cell << " refined="
                                            << refined << " | grid_err=" << err_grid
                                            << " refined_err=" << err_ref);
-    BOOST_CHECK_LT(err_ref, err_grid);  // the refine is closer to truth than the raw cell
-    BOOST_CHECK_LT(err_ref, 25.0);      // and within ~step/4
+    BOOST_CHECK_LT(err_ref, err_grid);        // closer to truth than the raw cell (0.3 bin)
+    BOOST_CHECK_LT(err_ref, 0.1 * bin_hz);    // and inside a tenth of a bin
 }
 
 // Galileo E1-C at the L1 front-end geometry (5 MSPS / N=20, the live_l1 configs): the BOC(1,1)

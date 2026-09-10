@@ -49,6 +49,8 @@ parallel section audits that each read the tree AND the live fleet.
 | #95 residual | "the DLL cannot arm either" | `c4512de93` | the peer-median window gate was deleted; absolute floor is the only path, `presence-admit-displaced` on all 7 DR chains |
 | #127 | the observables record was filed under the day the LOGGER STARTED, not the day the rows were measured | `461eb8ce0` | `--out` is strftime-expanded per row against the row's own epoch. `test_obs_day_roll.py` (8 tests; 6 fail against the old one-shot writer). On sky: a running logger's filename changes at 00:00 UTC with no restart. Found 2026-09-10 — `gps_l5_20260905.jsonl` held four days and 2.0 GB while 09-06..09-08 had no file at all, and the same shape runs back through August. Nothing failed: the rows were right, the name lied, and a consumer opening a day by name read an empty day. Both the `--out` help and `obs_up.sh` already promised the roll. **Archive re-filed 2026-09-10**: 13.65 M rows redistributed across 09-05..09-10 (0 wrong-day rows on a full re-scan), pre-September deleted by KV's call (15 files, 5.1 GB, see `fixtures/obs/DELETED_pre_september_obs.txt`). ⚠️ The re-file cost 183 rows of 3.35 M (0.005%) in the 09-10 files: the recovered rows were appended to files a live logger held open, and **O_APPEND is not atomic on NFS**, so ~91 writes interleaved. Quarantined in `<chain>_20260910.corrupt.txt`. Stop the writer before merging into its file — the append-atomicity that makes this safe locally does not exist over NFS |
 | #54 | GPU vs CPU replicas differ per sample | see below | prompt 3.48e-02 → 4.79e-05, peel per-sample 9.55e-02 → 3.31e-05 at 6.8 d; every exactness gate still exactly 0 |
+| #65 | three stack scripts truncated their log on start | `f6f7afd61` | rotate-then-start in `agg_up.sh`/`gather_up.sh`/`broker_restart.sh`, 3 rotations kept; verified in tree at `agg_up.sh:70-77` |
+| #128 origin | the acquire refine test was red, and had been since #105 | see the #54 section | the test gridded Doppler at 0.1 bin, outside the estimator's domain; bin-spaced now, refine recovers 0.294 of a true 0.300 bin |
 
 ## Closed because the premise died (moot)
 
@@ -175,16 +177,49 @@ Reference cross-terms went FAIL 7.94e-02 → OK 4.00e-06. Every bit-exactness ga
 (split-vs-fused, 4+4b-vs-float, N×M element axis, cross-terms off→on) still reports exactly
 0.000e+00, and `test_gnss_channelized_replica` passes all 17 cases including the NH overlay.
 
+**HOW IT WAS RETIRED (the tolerance, not a tighter fix).** The residual 4.79e-05 is the
+long-double *anchor* floor: the kernel reduces mod the code length once at `n0`, the reference
+re-evaluates every hop, so the two differ by O(1) long-double ULPs of the anchor product. Giving
+the reference the kernel's convention would drive that to the float floor **and make the term
+unable to fail**, so the two are deliberately left independent and the gate now scales with the
+arithmetic instead:
+
+```cpp
+const double ulp_anchor = std::ldexp(1.0, std::ilogbl(anchor_chips) - 63);  // chips
+const double TOL = 1e-5 + 32.0 * ulp_anchor;
+```
+
+That is 1.10e-05 at 0.007 d rising to 9.87e-04 at 6.8 d, against measured worsts of 4.92e-07 and
+1.71e-04 — margin 22× and 5.8×. **The gate still bites:** with the double-precision reference put
+back it FAILS at three of the four anchors (8.79e-03 vs 1.76e-05; 4.41e-02 vs 1.32e-04; 1.41e+00
+vs 9.87e-04 — by 500×, 334× and 1429×). It passes only at 0.007 d, where the double ULP is
+genuinely below the float floor — which is precisely why a month of prototype-scale testing could
+not see this.
+
 **Two things this cost, worth remembering.** The defect was invisible to every boost test because
 they all anchor at `start = 0`; and it survived a month of being attributed to the GPU because
 nothing ever asked whether the reference was right. A reference that is never itself checked is an
 assumption wearing a measurement's clothes.
 
-⚠️ **Unrelated red gate found while checking this:** `test_gnss_channelized_acquire` fails
-`doppler_parabola_refine_beats_grid` (err_ref 44.14 vs a 25.0 bound) — and fails *identically*
-before the fix, so it is pre-existing and independent. `WITH_BOOST_TESTS` defaults OFF in the CUDA
-build dir, which is how it stayed unnoticed; the same CMakeLists already carries a comment about a
-different drift that went six modules deep for the same reason.
+⚠️ **The unrelated red gate found while checking this is now diagnosed and fixed** — see #128
+in the open list for the part that is still open. `test_gnss_channelized_acquire`'s
+`doppler_parabola_refine_beats_grid` had been failing (err_ref 44.14 against a 25.0 bound),
+identically before and after this fix. It was **decayed tooling, not a live fault**: the test
+gridded Doppler at 100 Hz against a 1000 Hz transform bin (0.1 bin) and took its "truth" from a
+step-5 grid (0.005 bin), both far inside one bin. `6e30b654c` wrote the test alongside a
+*parabola* refine, which degrades gracefully on a flat top; #105 (2026-08-30/31) replaced it with
+the amplitude-ratio estimator, whose domain is `step == 1 bin` — and the test was never updated.
+In that regime the neighbour ratio is ~1 whatever the offset, the inversion saturates at
+d → 0.5, and the refine reports half a step toward the neighbour: 5.5 Hz of cell error became
+44 Hz of refined error. The estimator was behaving exactly as designed — the sinc model
+reproduces the observed δ = 0.4964 to 0.2%.
+
+Retested in its proper domain (bin-spaced grid, truth 0.3 bin off a cell, analytic reference) it
+recovers **δ = 0.2936 against a true 0.300 — 6.4 Hz of 1000, a 47× improvement on the raw cell**.
+Also worth noting: the old first assertion `err_ref < err_grid` required beating a *lucky* 5.5 Hz
+cell, where the expected error on a 100 Hz step is 25 Hz — badly conditioned regardless of the
+estimator. Both assertions are now well-conditioned: the cell error is 0.3 bin by construction,
+and an inert refine (300 Hz) or a saturating one (200 Hz) both fail the 0.1-bin bound.
 
 
 ## Faults still worth reading in full
