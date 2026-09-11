@@ -34,6 +34,10 @@
  * CHIME orders; when the two are equal -- CHORD flags and masks in the same
  * [P][D] order -- the telescope is not consulted.
  *
+ * Elements whose CHORD dish is not an ArrayDish (Fake dishes, RFI antennas)
+ * are never valid inputs; they are masked from the telescope's dish table and
+ * stay masked whatever the posted list says.
+ *
  * Updates queue by @c start_time and take effect once the wall clock reaches
  * it (a start time already in the past applies immediately).  Mask frames
  * are produced whenever the output buffer has room, so the stage is paced by
@@ -62,7 +66,9 @@
  * @par Buffers
  * @buffer in_clock_buf Optional.  Any buffer with an @c fpga_seq_num; only its
  *     first frame is read, then the stage unregisters as a consumer.  The
- *     voltage buffer is recommended.
+ *     voltage buffer is recommended.  Its coarse frequencies, when present,
+ *     are copied onto every mask frame, so a consumer fed by several
+ *     instances (one per GPU) can tell the streams apart.
  *     @buffer_format Any
  *     @buffer_metadata chordMetadata
  * @buffer out_buf Kotekan buffer of bad inputs (1 == good).
@@ -128,6 +134,10 @@ private:
     int num_dishes;
     /// Number of FPGA samples that one bad feed mask is valid for
     int64_t bf_mask_lifetime_in_samples;
+
+    /// Mask before any posted flags: 0 for elements whose CHORD dish is not
+    /// an ArrayDish (Fake, RFI antennas); all-1 on other telescopes.
+    std::vector<uint8_t> baseline_mask;
 
     /// Posted updates, keyed by their start time.
     updateQueue<badInputUpdate> updates;
