@@ -53,8 +53,8 @@ parallel section audits that each read the tree AND the live fleet.
 | #128 origin | the acquire refine test was red, and had been since #105 | see the #54 section | the test gridded Doppler at 0.1 bin, outside the estimator's domain; bin-spaced now, refine recovers 0.294 of a true 0.300 bin |
 | #128 | the Doppler refine's bin precondition was enforced on one path of two | see the #54 section | guard hoisted out of the `_cuda_acq` branch so the CPU path warns too; generator emits the bin-aligned 62.5 Hz unconditionally |
 | #116 | the observables writers never rolled the UTC day | `461eb8ce0` | **deployed and verified on sky**: `gps_l5_20260910.jsonl` ends at Sep 11 00:00:00 and `_20260911.jsonl` takes over; 8 tests, 6 of which fail against the old writer |
-| #117 | cross-chain grid pairing yielded 40%, and the loss was sampling | see below | `GRID_KEEP=4` snapshots published as `fadr_g_hist` and consumed by `gnss_tec_chord.py`; 7 tests incl. the pairing-yield measurement |
-| #118 | `dop_rate_rejected` was never cleared | — | one line, mirroring `cp_rate_rejected`; the sibling comment that documented the bug now documents the fix |
+| #117 | cross-chain grid pairing yielded 40%, and the loss was sampling | see below | `GRID_KEEP=4` snapshots published as `fadr_g_hist` and consumed by `gnss_tec_chord.py`; 7 tests, and **verified on sky**: per-chain coverage 50.0% → 99.8%, pair coverage 8.1% → 99.6% |
+| #118 | `dop_rate_rejected` was never cleared | — | one line, mirroring `cp_rate_rejected`. **Verified live**: rejections-per-cycle now bounded and fluctuating (1–7, up and down) with fresh values each cycle, where the bug could only grow |
 
 ## Closed because the premise died (moot)
 
@@ -272,6 +272,26 @@ Cost: **+203 bytes on a 1898-byte observables row (+10.7%)**; one chain-day is ~
 `test_grid_history.py` — 7 tests: retention bound, grid-multiples-only, newest-last, the arc
 rule, the published shape against the scalars, and the pairing yield itself modelled across six
 poll phases (newest-only < 65%, with history > 99%).
+
+
+**VERIFIED ON SKY 2026-09-11.** Broker restarted 20:22, observables writers 20:48. The A/B is on
+**identical rows** — every row carries both the scalar and the history, so the same 540 s window
+was counted twice with no confound, over 16 PRNs and 8349 grid hops:
+
+| | newest-only | with history |
+|---|---|---|
+| per-chain coverage | **50.0%** | **99.8%** |
+| pair coverage (gal_e5a × gal_e6) | **8.1%** | **99.6%** |
+
+The 50.0% reproduces the recorded per-chain baseline exactly. The pair figure came in at 8.1%
+rather than the recorded 40% because these two chains happened to be polling in near-antiphase in
+this window — which is the point: **the old yield was a function of poll phase and nothing else**,
+so it could be anywhere between ~0% and ~50% on any given pair at any given time. With the history
+it is 99.6% regardless.
+
+⚠️ `gnss_tec_chord.py` completes its science and writes the `.npz`, then dies on
+`import matplotlib` — not installed in cf06's `venv-ft`. Plot-only, pre-existing, harmless to the
+measurement, but it means the tool cannot draw on cf06.
 
 
 ## Faults still worth reading in full

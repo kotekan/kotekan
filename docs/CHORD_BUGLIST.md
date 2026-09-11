@@ -93,19 +93,6 @@ Doppler) = **21–25 minutes**. The configured tolerance accepts gaps up to 60. 
 25–60 minute band is unwrapped onto the wrong branch, silently. Latent today; cap `fit-gap-s` at
 ~1200 s, or make the unwrap gap-aware and reset instead of guessing.
 
-### #118 — shipped, awaiting the restart
-`ctx.dop_rate_rejected.clear()` after the log, exactly as `cp_rate_rejected` already did.
-**Verify after the restart:** the `dop-rate: N fit(s) REJECTED` line should go from ~91% of
-gps_l5's 2 s cycles to firing only when a fit is actually rejected that cycle.
-
-### #117 — shipped, awaiting the restart
-The broker now keeps `fleetadr.GRID_KEEP = 4` grid snapshots per satellite and publishes them as
-`fadr_g_hist`; `gnss_tec_chord.py` expands them into the pairing map. The scalars are unchanged
-and still the newest, so nothing that reads `fadr_g_hop` had to change.
-**Verify after the restart:** per-chain grid coverage should go 50% → ~100% and a band pair 40%
-→ ~100%. `gnss_tec_chord.py` prints kept/total; compare against the 3392 s baseline in the closed
-entry. Cost measured at **+203 bytes on a 1898-byte row (+10.7%)**, and one chain-day is ~830 MB.
-
 ### #120 — cf06 has zero systemd units; nothing survives the weekly reboot
 **[live]** `systemctl list-units --all | grep -iE 'gnss|broker|gather|agg|viewer|kotekan'` returns
 nothing. cf06 reboots weekly and re-fired on 2026-09-05 with 10 headless hours. The exposure has
