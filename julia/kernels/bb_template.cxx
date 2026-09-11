@@ -271,15 +271,16 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Build the PTX only once
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("{{{kernel_name}}}_" + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name={{{cuda_arch}}}",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
-    });
+    }
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
@@ -362,10 +363,14 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Update metadata
     {
+        const std::shared_ptr<const chordMetadata> E_meta = E_buffer.get_metadata();
         const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
-    
-        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
-        J_meta->set_fpga_seq_num(T_min);
+
+        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`. The ring
+        // buffer's `fpga_seq_num` is the sequence number of its logical beginning, not zero,
+        // and `T_min` counts samples from there.
+        J_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
+                                 + T_min * E_meta->get_time_downsampling_fpga());
         assert(J_meta->get_time_downsampling_fpga() == 1);
     }
 

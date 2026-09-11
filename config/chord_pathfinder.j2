@@ -101,24 +101,19 @@ rfi_downsampling_factor: {{ rfi_downsampling_factor }}
 rfi_second_downsampling_factor: {{ rfi_second_downsampling_factor }}
 rfi_num_times: {{ rfi_num_times }}
 rfi_num_times_bar: {{ rfi_num_times_bar }}
-# First-stage mask threshold: a (1.3 ms, channel) cell is flagged when the feed-averaged SK
-# is more than this many of its own standard deviations from 1 (sigma ~ 0.021 with 32 good
-# feeds). Measured Sep 2 2026: 3.0 flags ~7% of cells (0.27% expected false alarms) vs ~6%
-# at 5.0; the difference is the marginal channels beside the strong cellular lines.
+# First-stage mask threshold, in feed-averaged SK standard deviations from 1 (sigma ~ 0.021
+# with 32 good feeds). Measured Sep 2 2026: 3.0 flags ~7% of cells vs ~6% at 5.0.
 rfi_sk_rfimask_sigmas: 3.0
 rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
-# Feed-averaged SK validity gate: den (sum of S0 over feeds that are BOTH bf_mask-good AND
-# per-feed sf_valid) must be >= num_elements*Nds*frac = 128*256*frac. A fully valid feed
-# contributes Nds=256, so 0.1 (threshold ~3277) needs ~13 fully-valid feeds. When the gate
-# fails, SKtilde is written invalid (sigma=-1) and the bin is flagged bad in the first-stage
-# RFI mask (inert while rfi_first_stage_excision_enabled is false).
+# Feed-averaged SK validity gate: the S0 sum over bf_mask-good, sf_valid feeds must reach
+# num_elements*Nds*frac; at 0.1 that is ~13 fully valid feeds. A failed gate writes SKtilde
+# invalid (sigma=-1) and flags the bin in the first-stage RFI mask.
 rfi_feed_averaged_min_good_frac: 0.1
 rfi_mu_min: 2.0       # Minimum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 2.0
 rfi_mu_max: 50.0      # Maximum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 50.0
-# First-stage (GPU, SK-based) RFI excision: cudaRFISKtilde writes the rfi_sk_rfimask_sigmas
-# mask and the correlator excises the flagged samples. Set to false to produce an all-good
-# RFImask instead; the SKtilde statistics are computed either way, so second-stage excision
-# (RfiFrameMask -> N2Accumulate) keeps working in both settings.
+# First-stage (GPU, SK-based) RFI excision: the correlator excises the samples cudaRFISKtilde
+# flags. With false the RFImask is all-good; SKtilde is computed either way, so second-stage
+# excision (RfiFrameMask -> N2Accumulate) keeps working.
 rfi_first_stage_excision_enabled: true
 
 num_times: samples_per_data_set  # New N2K needs this.
@@ -167,18 +162,12 @@ telescope:
     dish_grid_size_y: 12
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
-    # Live wiring (Sep 2 2026): 6 CRS boards x 8 ADCs = 48 inputs. Crate slots 1-4
-    # (source_id 0-3) carry dishes A1-A8 and B1-B8; crate slots 15-16 (source_id 14-15)
-    # carry the RFI antennas, which occupy dish slots 56-63 (elements 56-63 and 120-127).
-    # Element order is [P][D] (CHORDBeamformer); crs_board_remap below groups the
-    # polarizations, and dish order within a polarization is free, since the D axis is
-    # defined by this table -- the lanes of a board run opposite to the dish numbering,
-    # so each group of 8 reads backwards.
-    # RFIDish rows are captured and correlated like any other input, but set_bf_mask
-    # always masks them, so they stay out of the SK statistic. Being non-Fake, they are
-    # carried in the DishInputs vis subset. Their grid positions are placeholders.
-    # Rows typed Fake are not connected: set_bf_mask always masks them; flip a row to
-    # ArrayDish when its boards come online.
+    # Live wiring (Sep 2 2026): 6 CRS boards x 8 ADCs = 48 inputs, dishes A1-A8 and B1-B8
+    # (source_id 0-3) plus the RFI antennas in dish slots 56-63 (source_id 14-15). Element
+    # order is [P][D] (CHORDBeamformer): crs_board_remap groups the polarizations and this
+    # table defines the D axis (board lanes run opposite to the dish numbering, so each
+    # group of 8 reads backwards). RFIDish rows are correlated but always masked and kept
+    # in the DishInputs subset; Fake rows are not connected, flip to ArrayDish when wired.
     dish_inputs: [
         {dish_idx:  0, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4},
         {dish_idx:  1, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3},
@@ -259,11 +248,9 @@ earth_rotation_data:
     earth_orientation_parameter_table: []
 
 updatable_config:
-    # Bad feed list, POSTed to /updatable_config/bad_inputs (e.g. by bffs via
-    # choco). Indices are element indices in the [P][D] (CHORDBeamformer)
-    # order, i.e. positions in dish_inputs; consumed by the set_bf_mask
-    # (bufferBadInputs) stages below. All three keys must be present in every
-    # update.
+    # Bad feed list, POSTed to /updatable_config/bad_inputs (e.g. by bffs via choco):
+    # element indices in [P][D] (CHORDBeamformer) order, i.e. positions in dish_inputs.
+    # Every update must carry all three keys.
     bad_inputs:
         kotekan_update_endpoint: json
         bad_inputs: []
@@ -280,31 +267,74 @@ n2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 16 * buffer_depth
 
-# The bad feed mask is valid for this many input samples. One frame (~42 ms) lines the
-# mask elements up with the GPU output cadence: each correlation frame is gated by
-# exactly one mask element. This must be a multiple of samples_per_data_set:
-# rfi_downsampling_factor has to divide it, and the quotient has to be a multiple of
-# rfi_num_times.
+# Bad feed mask buffers (see host_bf_mask_buffer). N2Accumulate holds each mask frame until
+# its correlation frame is accumulated, so the depth bounds the GPU's lead over it; the send
+# copies must ride out bufferSend's 20 s send_timeout at one frame per ~42 ms. The frames
+# get their own metadata pool: one object each, hundreds alive at a time.
+bf_mask_buffer_depth: 2 * host_side_buffer_depth
+bf_mask_send_buffer_depth: 512
+bf_mask_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 2 * (bf_mask_buffer_depth + bf_mask_send_buffer_depth) + 4 * buffer_depth
+
+# The bad feed mask is valid for this many input samples: one frame (~42 ms), so each
+# correlation frame is gated by exactly one mask element, which N2Accumulate requires.
 bf_mask_lifetime_in_samples: samples_per_data_set
 
 # Bad feed mask - marks which feeds to exclude from RFI calculations.
-# Produced by bufferBadInputs: int8 "bf_mask" [1, P, D] = [1, num_polarizations, num_dishes],
-# 1 = good / 0 = bad, one mask element per bf_mask_lifetime_in_samples input samples. It
-# reaches the GPU through host_bf_mask_ringbuffer, written by run_send_bf_mask.
+# bufferBadInputs output: int8 "bf_mask" [1, P, D], 1 = good, one element per frame, stamped
+# with the FPGA seq it applies from. One stream per NUMA half, clocked to that half's voltage
+# stream (the two DPDK captures can start frames apart) and feeding only that half's GPU copy
+# (run_send_bf_mask), N2Accumulate and recv-node send. Never cross the halves: the GPU and
+# N2Accumulate seq checks catch it unless both halves happened to start on the same frame.
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
     peek_hold: true
-    # Both NUMA nodes' GPU copies consume this one buffer, and a frame is only freed
-    # once both have taken it, so the depth bounds how far the halves can run apart
-    # before they couple: host_side_buffer_depth is ~1 s at one mask per frame.
-    num_frames: host_side_buffer_depth
+    num_frames: bf_mask_buffer_depth
     value_type: int8
     extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
-    metadata_pool: main_pool
+    metadata_pool: bf_mask_pool
     numa_node: 0
+
+host_bf_mask_buffer_1:
+    kotekan_buffer: ndarray
+    peek_hold: true
+    num_frames: bf_mask_buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: bf_mask_pool
+    numa_node: 1
+
+# Private copies of the mask streams for the recv-node sends: bufferSend drops frames
+# when its buffer looks congested, and host_bf_mask_buffer_N always does (N2Accumulate
+# holds its frames), so the sends get their own buffers.
+host_bf_mask_send_buffer:
+    kotekan_buffer: ndarray
+    num_frames: bf_mask_send_buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: bf_mask_pool
+    numa_node: 0
+
+host_bf_mask_send_buffer_1:
+    kotekan_buffer: ndarray
+    num_frames: bf_mask_send_buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: bf_mask_pool
+    numa_node: 1
 
 # Buffers
 network_input_buffers:
@@ -440,64 +470,9 @@ host_rfi_sktilde_buffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
-# The bad feed mask cudaRFISKtilde applied to each frame, echoed per rfi time sample
-# (identical rows within a frame) and consumed 1:1 with the correlation frames by
-# N2Accumulate, so the flags recorded in the N2 stream are exactly the masks applied.
-host_bf_mask_applied_buffer:
-    kotekan_buffer: ndarray
-    peek_hold: true
-    num_frames: host_side_buffer_depth
-    value_type: int8
-    quantity_name: "bf_mask"
-    dimnames: ["Trfi", "P", "D"]
-    dimscalings: [rfi_downsampling_factor, 1, 1]
-    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
-    metadata_pool: main_pool
-
-host_bf_mask_applied_buffer_1:
-    kotekan_buffer: ndarray
-    peek_hold: true
-    num_frames: host_side_buffer_depth
-    value_type: int8
-    quantity_name: "bf_mask"
-    dimnames: ["Trfi", "P", "D"]
-    dimscalings: [rfi_downsampling_factor, 1, 1]
-    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
-    metadata_pool: main_pool
-    numa_node: 1
-
-# Applied-mask change record: bufferDedup forwards a frame here whenever the mask
-# differs from the last forwarded one, and it is sent to the recv node for archiving.
-# One stream per NUMA node, recording what that node's GPU actually applied: the mask
-# frames are identical by construction (one bufferBadInputs feeds both), but the two
-# captures can start frames apart, so the applied seq windows may differ. Keeping the
-# streams separate also avoids coupling the two halves' liveness; records identify
-# their half of the band by their coarse_freq metadata.
-host_bf_mask_changes_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: int8
-    quantity_name: "bf_mask"
-    dimnames: ["Trfi", "P", "D"]
-    dimscalings: [rfi_downsampling_factor, 1, 1]
-    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
-    metadata_pool: main_pool
-
-host_bf_mask_changes_buffer_1:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: int8
-    quantity_name: "bf_mask"
-    dimnames: ["Trfi", "P", "D"]
-    dimscalings: [rfi_downsampling_factor, 1, 1]
-    extents: [samples_per_data_set / rfi_downsampling_factor, num_polarizations, num_dishes]
-    metadata_pool: main_pool
-    numa_node: 1
-
-# Per-feed (single-feed) SK statistics from the second-stage RFI kernel.
-# GPU output (cudaCopyFromRingbuffer of cudaRFISKbar rfi_skbar), consumed by RfiSKMetrics:
-# float32 "SKbar" [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
-# {Trfibar, F, SK = {SK, b, sigma}, P, D}; sigma < 0 marks an invalid cell.
+# Per-feed SK from the second-stage RFI kernel (cudaRFISKbar rfi_skbar), consumed by
+# RfiSKMetrics: float32 "SKbar" [rfi_num_times_bar, num_local_freq, 3, P, D], the 3 being
+# {SK, b, sigma}; sigma < 0 marks an invalid cell.
 host_rfi_skbar_buffer:
     kotekan_buffer: ndarray
     peek_hold: true
@@ -670,12 +645,9 @@ n2_buffer_1:
     num_frames: host_side_buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
-# DishInputs: compact frames over the connected elements, those whose dish type is
-# not Fake (array dishes and RFI antennas alike), derived from the telescope's dish
-# table (num_elements here is the full count they are selected from). Each element's
-# full-order identity is derived from the dish table wherever it is needed (N2Subset,
-# hdf5N2Write), not carried on the descriptor; masking stays a per-element flags
-# concern, subsetting lives here.
+# DishInputs: compact frames over the connected (non-Fake) elements, derived from the
+# telescope's dish table; num_elements is the full count they are selected from. Element
+# identities are derived where needed (N2Subset, hdf5N2Write), not carried on the descriptor.
 n2_subset_buffer:
     kotekan_buffer: N2
     peek_hold: true
@@ -787,17 +759,6 @@ host_rfi_sktilde_ringbuffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
-host_bf_mask_applied_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_elements
-    metadata_pool: main_pool
-
-host_bf_mask_applied_ringbuffer_1:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_elements
-    metadata_pool: main_pool
-    numa_node: 1
-
 host_rfi_s012bar_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_uint64
@@ -862,10 +823,9 @@ dpdk:
     burst_size: 32
     # Reordering map index by output location.
     # So [2, ...], maps CRS board with source_id 2 to output location 0, and so on.
-    # Output slots 0-7 are polarization 0 and slots 8-15 polarization 1 of dish groups
-    # 0-7 (8 dishes each). The dish boards send pol 0 from even and pol 1 from odd
-    # source_ids; the RFI-antenna boards are cabled the other way round, so source_id 15
-    # fills slot 7 (pol 0 of dishes 56-63) and source_id 14 fills slot 15 (pol 1).
+    # Slots 0-7 are pol 0 and 8-15 pol 1 of dish groups 0-7. Dish boards send pol 0 from
+    # even and pol 1 from odd source_ids; the RFI-antenna boards are cabled the other way
+    # round (source_id 15 -> slot 7, 14 -> slot 15).
     crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 15, 1, 3, 5, 7, 9, 11, 13, 14]
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4
@@ -931,12 +891,10 @@ dpdk:
           receipt_bitmap_buf: packet_receipt_bitmap_buffer_3
 
 
-# Output slots (after crs_board_remap, NOT raw source_ids) with no CRS board behind them.
-# ProcessPacketMask marks these slots as fully received so an absent board is not counted
-# as 100% packet loss. A slot listed here that does have a board gets no packet-loss
-# accounting at all (missing packets correlate as stale data), so update this whenever
-# boards come or go. Populated (Sep 2 2026): slots 0, 1, 8, 9 (dish boards, source_id
-# 0-3) and 7, 15 (RFI-antenna boards, source_id 15 and 14).
+# Output slots (after crs_board_remap, not raw source_ids) with no CRS board behind them:
+# ProcessPacketMask marks them fully received so an absent board is not 100% packet loss.
+# Listing a slot that has a board disables its packet-loss accounting, so update this as
+# boards come and go. Populated (Sep 2 2026): slots 0, 1, 8, 9 (dishes) and 7, 15 (RFI).
 missing_source_ids: [2, 3, 4, 5, 6, 10, 11, 12, 13, 14]
 
 # Combine packet receipt bitmaps and generate packet-loss masks
@@ -1016,20 +974,26 @@ PL_mask_compactor_1:
     in_buf: host_pl_mask_exp_buffer_1
     out_buf: host_pl_mask_buffer_1
 
-# Bad feed mask from the /updatable_config/bad_inputs endpoint (fed by bffs
-# via choco). A single instance feeds both NUMA nodes' GPU copies from one
-# buffer, so both halves apply byte-identical mask frames by construction.
-# CHORD flags arrive and are masked in the same [P][D] order, so no reorder.
-# Elements whose dish_inputs type is not ArrayDish (Fake, RFI antennas) are
-# always masked, independent of the posted list (as inventBFMask mode: auto
-# did before this stage replaced it).
+# Bad feed mask from /updatable_config/bad_inputs (fed by bffs via choco). One instance per
+# NUMA half, clocked to that half's voltage buffer (see host_bf_mask_buffer); both apply the
+# same posted list, though an update can land one frame apart between the halves. CHORD
+# flags and masks share the [P][D] order, so no reorder. Non-ArrayDish elements (Fake, RFI
+# antennas) are always masked, whatever the posted list says.
 set_bf_mask:
-    kotekan_stage: bufferBadInputs
     input_order: CHORDBeamformer
     output_order: CHORDBeamformer
-    updatable_config:
-        bad_inputs: /updatable_config/bad_inputs
-    out_buf: host_bf_mask_buffer
+    bf_mask_0:
+        kotekan_stage: bufferBadInputs
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        in_clock_buf: host_voltage_buffer_0
+        out_buf: host_bf_mask_buffer
+    bf_mask_1:
+        kotekan_stage: bufferBadInputs
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        in_clock_buf: host_voltage_buffer_1
+        out_buf: host_bf_mask_buffer_1
 
 ## Send data to GPU ringbuffers ##
 
@@ -1086,7 +1050,7 @@ run_send_bf_mask:
         gpu_id: 1
         cpu_affinity: [25, 26, 27]
         in_buffers:
-            host_bf_mask_buffer_in: host_bf_mask_buffer
+            host_bf_mask_buffer_in: host_bf_mask_buffer_1
         out_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
         commands:
@@ -1176,14 +1140,12 @@ run_rfi_sktilde:
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
-            host_bf_mask_applied_ringbuffer: host_bf_mask_applied_ringbuffer
         commands:
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
           rfi_RFImask_name: rfi_RFImask
-          bf_mask_applied_name: bf_mask_applied
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -1196,14 +1158,12 @@ run_rfi_sktilde:
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
-            host_bf_mask_applied_ringbuffer: host_bf_mask_applied_ringbuffer_1
         commands:
         - name: cudaRFISKtilde
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
           rfi_RFImask_name: rfi_RFImask
-          bf_mask_applied_name: bf_mask_applied
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -1238,42 +1198,9 @@ run_recv_rfi_sktilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_sktilde_buffer_out
 
-# Copy the applied bad feed mask back to the host, one frame per correlation frame,
-# for N2Accumulate to fold into the N2 stream's per-element flags.
-run_recv_bf_mask_applied:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_bf_mask_applied_ringbuffer_in: host_bf_mask_applied_ringbuffer
-        out_buffers:
-            host_bf_mask_applied_buffer_out: host_bf_mask_applied_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_bf_mask_applied_ringbuffer_in
-          gpu_mem_input: bf_mask_applied_buffer
-          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_elements
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_bf_mask_applied_buffer_out
-    gpu_1:
-        kotekan_stage: cudaProcess
-        gpu_id: 1
-        in_buffers:
-            host_bf_mask_applied_ringbuffer_in: host_bf_mask_applied_ringbuffer_1
-        out_buffers:
-            host_bf_mask_applied_buffer_out: host_bf_mask_applied_buffer_1
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_bf_mask_applied_ringbuffer_in
-          gpu_mem_input: bf_mask_applied_buffer
-          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_elements
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_bf_mask_applied_buffer_out
-
 # Second-stage (time-downsampled) per-feed RFI statistics: S012 -> S012bar -> SKbar.
-# rfi_skbar is the single-feed SK per element (computed for every feed regardless
-# of the bad-feed mask, so a flagged feed keeps being measured and can heal);
-# rfi_skbartilde is its feed average.
+# rfi_skbar is computed for every feed regardless of the bad feed mask, so a flagged feed
+# keeps being measured and can heal; rfi_skbartilde is its feed average.
 run_rfi_s012bar:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -1366,10 +1293,9 @@ run_recv_rfi_skbar:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_skbar_buffer_out
 
-# Export the per-feed SK: a JSON GET endpoint per instance for machine
-# consumers (bffs's rfi source polls /rfi_sk_metrics/sk_metrics_<n>/sk), plus
-# prometheus gauges on /metrics for dashboards. Elements are indexed by their
-# flat [P][D] index — the same indexing as /updatable_config/bad_inputs.
+# Export the per-feed SK: a JSON GET endpoint per instance (bffs polls
+# /rfi_sk_metrics/sk_metrics_<n>/sk) plus prometheus gauges. Elements are indexed by their
+# flat [P][D] index, the same as /updatable_config/bad_inputs.
 rfi_sk_metrics:
     sk_metrics_0:
         kotekan_stage: RfiSKMetrics
@@ -1596,7 +1522,7 @@ n2_accumulate:
         in_rficounts_buf: host_rfi_RFImask_counts_buffer
         in_plcounts_buf: host_pl_counts_buffer
         in_rfiframemask_buf: host_rfi_RFIframemask_buffer
-        in_bf_mask_buf: host_bf_mask_applied_buffer
+        in_bf_mask_buf: host_bf_mask_buffer
         out_buf: n2_buffer
     accum_1:
         kotekan_stage: N2Accumulate
@@ -1606,12 +1532,11 @@ n2_accumulate:
         in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
         in_plcounts_buf: host_pl_counts_buffer_1
         in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
-        in_bf_mask_buf: host_bf_mask_applied_buffer_1
+        in_bf_mask_buf: host_bf_mask_buffer_1
         out_buf: n2_buffer_1
 
 
-# Subset to the connected feeds: the DishInputs output buffers are compact frames
-# over the non-Fake elements (array dishes and RFI antennas), products and
+# Subset to the connected (non-Fake) feeds: DishInputs frames are compact over products and
 # per-element fields alike.
 
 n2_subset:
@@ -1662,49 +1587,44 @@ eigencalc_1:
     krylov: 2
     subspace: 2
 
-# Record applied bad feed mask changes: forward a mask frame only when its contents
-# change (or every resend_after_frames as a refresher, since the send links may drop
-# frames), and ship it to the recv node to be written to file. The frames carry the
-# absolute FPGA seq of the first sample the mask was applied to, so each record is
-# valid from its seq until the next record's. Both NUMA streams send to the same recv
-# port; records identify their GPU's half of the band by their coarse_freq metadata.
-dedup_bf_mask_applied:
-    resend_after_frames: 1024
-    dedup_0:
-        kotekan_stage: bufferDedup
-        in_buf: host_bf_mask_applied_buffer
-        out_buf: host_bf_mask_changes_buffer
-    dedup_1:
-        kotekan_stage: bufferDedup
-        in_buf: host_bf_mask_applied_buffer_1
-        out_buf: host_bf_mask_changes_buffer_1
+# Ship each half's mask stream to the recv node, where hdf5N2Write folds it into the vis
+# files' /flag_updates. Through a private copy so bufferSend's congestion heuristic sees only
+# its own backlog (see host_bf_mask_send_buffer); every frame restates the whole mask, so a
+# dropped frame only matters if the mask changed in it.
+copy_bf_mask:
+    copy_0:
+        kotekan_stage: bufferCopy
+        in_buf: host_bf_mask_buffer
+        out_bufs:
+            - host_bf_mask_send_buffer
+    copy_1:
+        kotekan_stage: bufferCopy
+        in_buf: host_bf_mask_buffer_1
+        out_bufs:
+            - host_bf_mask_send_buffer_1
 
-# use_frame_desc as on the N2 sends below: the mask stream is sparse, so a link whose
-# ends disagree is caught when the connection opens rather than at the next record.
-buffer_send_bf_mask_changes:
+# Both halves send to the same port; the recv node tells the streams apart by their
+# coarse_freq metadata.
+buffer_send_bf_mask:
     kotekan_stage: bufferSend
     use_frame_desc: true
-    buf: host_bf_mask_changes_buffer
+    buf: host_bf_mask_send_buffer
     server_ip: 10.222.0.51
     server_port: 11029
     retry_time: 10.0
     drop_frames: true
 
-buffer_send_bf_mask_changes_1:
+buffer_send_bf_mask_1:
     kotekan_stage: bufferSend
     use_frame_desc: true
-    buf: host_bf_mask_changes_buffer_1
+    buf: host_bf_mask_send_buffer_1
     server_ip: 10.222.0.51
     server_port: 11029
     retry_time: 10.0
     drop_frames: true
 
-# Buffer sends
-#
-# use_frame_desc transmits the buffer's frame descriptor once per connection, so the
-# receiver checks layout, element count and (for DishInputs) element identities rather
-# than frame size alone. Must match use_frame_desc on the receiving stages in
-# chord_pathfinder_recv.j2.
+# Buffer sends. use_frame_desc sends the frame descriptor once per connection, so the receiver
+# checks layout and element count, not just the frame size; must match chord_pathfinder_recv.j2.
 
 buffer_send_n2_subset:
     kotekan_stage: bufferSend

@@ -256,8 +256,9 @@ File identity and structure
        whose dish type is not ``Fake``; see the ``input_list`` attribute).
    * - ``input_list``
      - int32 array
-     - Compact subset layouts only: the element index, in the full
-       fiducial order, of each of the file's elements.
+     - Compact subset layouts only: the element index, in ``input_order``,
+       of each of the file's elements. ``DishInputs`` holds the connected
+       elements, derived from the telescope's ``dish_inputs`` table.
    * - ``input_order``
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see
@@ -384,11 +385,12 @@ and ``/flags`` and like the ``input_a``/``input_b`` entries of ``prod``, so
 a product's inputs read straight into them. Full layouts hold the whole
 array in the file's ``input_order`` (:math:`N_{pol} \times N_d` rows);
 compact subset layouts hold the elements named by the ``input_list``
-attribute, in frame order. Each row names the dish the element belongs to
-and its polarization, and copies that dish's entry from the telescope's
-``dish_inputs`` configuration. Dishes not populated in the configuration
-hold type ``Fake`` (-1) and label ``"Fake"``, so in a full layout their
-elements read ``"Fakep1"``, ``"Fakep2"``; compact layouts leave them out.
+attribute, in the N2 layout's element order. Each row names the dish the
+element belongs to and its polarization, and copies that dish's entry from
+the telescope's ``dish_inputs`` configuration. Dishes not populated in the
+configuration hold type ``Fake`` (-1) and label ``"Fake"``, so in a full
+layout their elements read ``"Fakep1"``, ``"Fakep2"``; compact layouts
+leave them out.
 
 .. list-table::
    :header-rows: 1
@@ -505,8 +507,10 @@ uncompressed.
    * - ``flags``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - float32
-     - Per-input flags from upstream flagging: 1.0 for a good element, 0.0
-       for one flagged bad. All 1.0 when no flagging stage ran.
+     - Per-input flags, 1.0 for a good element and 0.0 for a bad one: the
+       bad feed mask the X-engine applied, folded over the integration (an
+       element flagged at any point in it is flagged). All 1.0 when no mask
+       is wired into the accumulator.
    * - ``radiometer_chi2``
      - (:math:`N_f`, :math:`N_t`, 3)
      - float32
@@ -654,13 +658,16 @@ Flag updates group (``/flag_updates``)
 ======================================
 
 Only present when the writer's ``in_bf_mask_buf`` input is wired and at least one
-applied bad-feed-mask change record covers the file's time span. Each record is a mask
-the GPU pipeline actually applied (1 = good element, element order as ``/flags``),
-forwarded upstream only when its contents changed. A record applies from its
-``fpga_seq_num`` until the next record *from the same stream* (``freq_id``, the first
-coarse frequency of the pipeline that applied it — the streams cover disjoint parts of
-the band). The first record per stream may precede the file: it is the mask already in
-effect when the file's span starts.
+bad-feed-mask record covers the file's time span. The X-engine sends the bad feed
+mask it applies to each correlation frame (1 = good element, element order as
+``/flags``), one frame per GPU stream; frames restating an unchanged mask collapse
+into one record on ingest, so a record applies from its ``fpga_seq_num`` until the
+next record *from the same stream* (``freq_id``, the first coarse frequency of the
+stream that applied it -- the streams cover disjoint parts of the band). The first
+record per stream may precede the file: it is the mask already in effect when the
+file's span starts. The mask link may drop frames, so a change can be recorded one
+frame later than it took effect; ``/flags`` is the authoritative per-integration
+record.
 
 .. list-table::
    :header-rows: 1

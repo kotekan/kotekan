@@ -13,6 +13,7 @@
 
 #include <cstring>     // for memcpy, memset
 #include <memory>      // for __shared_ptr_access, shared_ptr
+#include <stdexcept>   // for runtime_error
 #include <vector>      // for vector
 #include <visUtil.hpp> // for frameID, modulo
 #if defined(__x86_64__) || defined(__i386__)
@@ -58,20 +59,24 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     check_for_zero_nibbles = config.get_default<bool>(unique_name, "check_for_zero_nibbles", false);
 
     if (cfg_num_local_freq != NUM_LOCAL_FREQ) {
-        FATAL_ERROR("TransposeBasebandArray: num_local_freq ({:d}) must be {:d}",
-                    cfg_num_local_freq, NUM_LOCAL_FREQ);
+        throw std::runtime_error(
+            fmt::format(fmt("TransposeBasebandArray: num_local_freq ({:d}) must be {:d}"),
+                        cfg_num_local_freq, NUM_LOCAL_FREQ));
     }
     if (cfg_num_elements != NUM_ELEMENTS) {
-        FATAL_ERROR("TransposeBasebandArray: num_elements ({:d}) must be {:d}", cfg_num_elements,
-                    NUM_ELEMENTS);
+        throw std::runtime_error(
+            fmt::format(fmt("TransposeBasebandArray: num_elements ({:d}) must be {:d}"),
+                        cfg_num_elements, NUM_ELEMENTS));
     }
     if (cfg_time_short != TIME_SHORT) {
-        FATAL_ERROR("TransposeBasebandArray: time_short ({:d}) must be {:d}", cfg_time_short,
-                    TIME_SHORT);
+        throw std::runtime_error(
+            fmt::format(fmt("TransposeBasebandArray: time_short ({:d}) must be {:d}"),
+                        cfg_time_short, TIME_SHORT));
     }
     if (cfg_element_short != ELEMENT_SHORT) {
-        FATAL_ERROR("TransposeBasebandArray: element_short ({:d}) must be {:d}", cfg_element_short,
-                    ELEMENT_SHORT);
+        throw std::runtime_error(
+            fmt::format(fmt("TransposeBasebandArray: element_short ({:d}) must be {:d}"),
+                        cfg_element_short, ELEMENT_SHORT));
     }
 
     // Get frame_mode configuration
@@ -83,8 +88,9 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     } else if (frame_mode_str == "odd") {
         frame_mode = FrameMode::Odd;
     } else {
-        FATAL_ERROR("TransposeBasebandArray: frame_mode '{}' must be 'all', 'even', or 'odd'",
-                    frame_mode_str);
+        throw std::runtime_error(fmt::format(
+            fmt("TransposeBasebandArray: frame_mode '{}' must be 'all', 'even', or 'odd'"),
+            frame_mode_str));
     }
     INFO("TransposeBasebandArray: frame_mode = {}", frame_mode_str);
 
@@ -93,9 +99,10 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
 
     // Validate that dimensions divide evenly
     if (timesamples_per_frame % TIME_SHORT != 0) {
-        FATAL_ERROR("TransposeBasebandArray: timesamples_per_frame ({:d}) must be divisible by "
-                    "time_short ({:d})",
-                    timesamples_per_frame, TIME_SHORT);
+        throw std::runtime_error(fmt::format(
+            fmt("TransposeBasebandArray: timesamples_per_frame ({:d}) must be divisible by "
+                "time_short ({:d})"),
+            timesamples_per_frame, TIME_SHORT));
     }
 
     // Validate input buffer size
@@ -103,21 +110,23 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     size_t expected_input_size =
         (size_t)time_long * NUM_LOCAL_FREQ * ELEMENT_LONG * TIME_SHORT * ELEMENT_SHORT;
     if (in_buf->frame_size != expected_input_size) {
-        FATAL_ERROR("TransposeBasebandArray: in_buf frame size ({:d}) does not match expected "
-                    "size ({:d}) for shape [time_long={:d}][num_local_freq={:d}]"
-                    "[element_long={:d}][time_short={:d}][element_short={:d}]",
-                    in_buf->frame_size, expected_input_size, time_long, NUM_LOCAL_FREQ,
-                    ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);
+        throw std::runtime_error(fmt::format(
+            fmt("TransposeBasebandArray: in_buf frame size ({:d}) does not match expected "
+                "size ({:d}) for shape [time_long={:d}][num_local_freq={:d}][element_long={:d}]"
+                "[time_short={:d}][element_short={:d}]"),
+            in_buf->frame_size, expected_input_size, time_long, NUM_LOCAL_FREQ, ELEMENT_LONG,
+            TIME_SHORT, ELEMENT_SHORT));
     }
 
     // Validate output buffer size
     // Output format: E[time][frequency_local][element]
     size_t expected_output_size = (size_t)timesamples_per_frame * NUM_LOCAL_FREQ * NUM_ELEMENTS;
     if (out_buf->frame_size != expected_output_size) {
-        FATAL_ERROR("TransposeBasebandArray: out_buf frame size ({:d}) does not match expected "
-                    "size ({:d}) for shape [time={:d}][num_local_freq={:d}][num_elements={:d}]",
-                    out_buf->frame_size, expected_output_size, timesamples_per_frame,
-                    NUM_LOCAL_FREQ, NUM_ELEMENTS);
+        throw std::runtime_error(fmt::format(
+            fmt("TransposeBasebandArray: out_buf frame size ({:d}) does not match expected "
+                "size ({:d}) for shape [time={:d}][num_local_freq={:d}][num_elements={:d}]"),
+            out_buf->frame_size, expected_output_size, timesamples_per_frame, NUM_LOCAL_FREQ,
+            NUM_ELEMENTS));
     }
 
     // Validate pl_mask buffer size
@@ -126,11 +135,11 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     size_t expected_pl_mask_size =
         (T / 64) * NUM_LOCAL_FREQ * (NUM_ELEMENTS / 8) * sizeof(uint64_t);
     if (pl_mask_buf->frame_size != expected_pl_mask_size) {
-        FATAL_ERROR("TransposeBasebandArray: pl_mask_buf frame size ({:d}) does not match "
-                    "expected size ({:d}) for shape [T/64={:d}][F={:d}][E/8={:d}] * "
-                    "sizeof(uint64_t)",
-                    pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, NUM_LOCAL_FREQ,
-                    NUM_ELEMENTS / 8);
+        throw std::runtime_error(fmt::format(
+            fmt("TransposeBasebandArray: pl_mask_buf frame size ({:d}) does not match expected "
+                "size ({:d}) for shape [T/64={:d}][F={:d}][E/8={:d}] * sizeof(uint64_t)"),
+            pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, NUM_LOCAL_FREQ,
+            NUM_ELEMENTS / 8));
     }
 
     // Escape hatch to run the scalar path on a machine that supports AVX512, so that both
@@ -311,13 +320,13 @@ void TransposeBasebandArray::main_thread() {
         // Transpose the data
         // Input:  E[time_long][frequency_local][element_long][time_short][element_short]
         // Output: E'[time][frequency_local][element]
+        // Read only by the DEBUG log below, which Release builds compile out.
+        [[maybe_unused]] size_t lost_blocks = 0;
 
 #ifdef __AVX512F__
         if (use_avx512_fast_path) {
             // AVX512 fast path: process one (t_long, freq) block at a time
             // Each block is 2048 bytes and produces 16 rows of 128 bytes
-            size_t lost_blocks = 0;
-
             for (uint32_t t_long = 0; t_long < time_long; t_long++) {
                 const uint32_t base_time = t_long * TIME_SHORT;
 
@@ -371,12 +380,6 @@ void TransposeBasebandArray::main_thread() {
             }
             // Memory fence to ensure all non-temporal stores are completed
             _mm_sfence();
-
-            // Log packet loss percentage
-            double loss_percentage =
-                100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ);
-            DEBUG("TransposeBasebandArray: Frame {:d} data loss = {:.4f}%", (int)in_frame_id,
-                  loss_percentage);
         } else
 #endif
         {
@@ -392,6 +395,8 @@ void TransposeBasebandArray::main_thread() {
                     size_t pl_mask_idx = t64_idx * pl_mask_t64_stride + freq * pl_mask_freq_stride;
                     uint64_t mask_val = pl_mask_ptr[pl_mask_idx];
                     bool has_packet_loss = (mask_val & check_mask) != check_mask;
+                    if (has_packet_loss)
+                        lost_blocks++;
 
                     // Loop over time samples outermost so each one's whole row of elements is
                     // written in order, rather than writing element_short bytes per
@@ -423,7 +428,8 @@ void TransposeBasebandArray::main_thread() {
             }
         }
 
-        DEBUG("TransposeBasebandArray: Transposed frame {:d}", in_frame_id);
+        DEBUG("TransposeBasebandArray: Transposed frame {:d}, data loss = {:.4f}%", in_frame_id,
+              100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ));
 
         // get a copy of the input metadata
         auto in_meta = get_chord_metadata(in_buf, in_frame_id);

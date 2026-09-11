@@ -1,11 +1,14 @@
 #include "RfiSKMetrics.hpp"
 
+#include "DataType.hpp"     // for DataType, GetType_t
 #include "N2Util.hpp"       // for frameID
+#include "NDArray.hpp"      // for NDArray
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
 #include "restServer.hpp"   // for restServer, connectionInstance
 
 #include <algorithm>  // for fill
 #include <cmath>      // for isnan
+#include <cstddef>    // for ptrdiff_t
 #include <functional> // for bind
 #include <json.hpp>   // for json
 #include <limits>     // for numeric_limits
@@ -26,8 +29,9 @@ RfiSKMetrics::RfiSKMetrics(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&RfiSKMetrics::main_thread, this)),
     num_freq(config.get<size_t>(unique_name, "num_local_freq")),
     num_times(config.get<size_t>(unique_name, "rfi_num_times_bar")),
-    num_elements(config.get<size_t>(unique_name, "num_polarizations")
-                 * config.get<size_t>(unique_name, "num_dishes")),
+    num_polarizations(config.get<size_t>(unique_name, "num_polarizations")),
+    num_dishes(config.get<size_t>(unique_name, "num_dishes")),
+    num_elements(num_polarizations * num_dishes),
     ema_frames(config.get_default<size_t>(unique_name, "ema_frames", 256)),
     ema_alpha(1.0 / (double)ema_frames),
     ema_sk(num_elements, std::numeric_limits<double>::quiet_NaN()),
@@ -49,6 +53,16 @@ RfiSKMetrics::RfiSKMetrics(Config& config, const std::string& unique_name,
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
+
+    // The buffer must be declared `kotekan_buffer: ndarray` with the layout main_thread
+    // reads: value type, extents and byte size are checked here, and the producer
+    // (cudaCopyFromRingbuffer) reconciles its descriptor and checks every frame's metadata
+    // against the same one.
+    in_buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 5>::describe(
+        "SKbar",
+        {ptrdiff_t(num_times), ptrdiff_t(num_freq), 3, ptrdiff_t(num_polarizations),
+         ptrdiff_t(num_dishes)},
+        {"Trfibar", "F", "SK", "P", "D"}, {1, 1, 1, 1, 1}));
 }
 
 RfiSKMetrics::~RfiSKMetrics() {

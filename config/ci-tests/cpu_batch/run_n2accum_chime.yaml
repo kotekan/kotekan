@@ -188,6 +188,9 @@ buffer_bad_inputs:
     # Exercises the default CHIME cylinder -> beamformer remapping
     updatable_config:
         bad_inputs: /bad_inputs
+    # Start the mask stream at the correlation stream's first sequence number, as the
+    # X-engine configs clock it off the voltage stream.
+    in_clock_buf: fake_correlation_buffer
     out_buf: host_bf_mask_buffer
 
 N2_accumulate:

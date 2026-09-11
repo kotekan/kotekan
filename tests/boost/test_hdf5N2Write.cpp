@@ -58,6 +58,22 @@ using kotekan::N2FrameDesc;
 static const std::string TEST_GAINS_FILE =
     std::string(TEST_DATA_DIR) + "/baseband_gains/test_gains.h5";
 
+// Install the test telescope: two dishes D00 and D01, with D00 optionally disconnected
+// (typed Fake) so that a DishInputs frame is a proper subset of the array.
+static void set_test_telescope(bool dish0_connected) {
+    nlohmann::json cfg;
+    cfg["num_polarizations"] = 2;
+    add_test_telescope_config(cfg);
+    if (!dish0_connected) {
+        cfg["telescope"]["dish_inputs"][0]["type"] = "Fake";
+        cfg["/telescope"] = cfg["telescope"];
+    }
+    kotekan::Config conf;
+    conf.update_config(cfg);
+    kotekan::configUpdater::instance().apply_config(conf);
+    Telescope::instance(conf);
+}
+
 static freq_id_t get_abs_freq_id(size_t f_index) {
     const auto& tel = Telescope::instance().cast<CHORDTelescope>();
     return tel.min_science_freq_id() + f_index;
@@ -365,10 +381,12 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
 }
 
 // Test 2: add_frame for the same (f,t) slot twice with differing metadata values
-// A DishInputs frame carries only the input_list elements, so the /index_map input
-// tables hold those rows in frame order. Elements 1 and 3 of the test telescope
-// (CHORDBeamformer: element = dish + pol * 2) are the two polarizations of dish D01.
+// A DishInputs frame carries only the telescope's connected elements, so the /index_map
+// input tables hold those rows in the N2 layout's element order. With D00 disconnected,
+// the connected elements (CHORDBeamformer: element = dish + pol * 2) are 1 and 3, the
+// two polarizations of D01.
 BOOST_AUTO_TEST_CASE(test_visfiledata_index_map_dish_inputs) {
+    set_test_telescope(false);
     const size_t num_input = 2;
     const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::DishInputs);
     const size_t num_ev = 1;
@@ -377,9 +395,8 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_index_map_dish_inputs) {
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool_di", "N2Metadata");
     Buffer buf(1, frame_size, pool, "n2buf_di", "N2", 1, false, false, std::vector<int>{}, true);
-    buf.ensure_frame_desc(std::make_shared<kotekan::N2FrameDesc>(
-        num_input, num_ev, num_prod, N2Layout::DishInputs, std::vector<N2::prod_ctype>{},
-        std::vector<uint16_t>{1, 3}));
+    buf.ensure_frame_desc(
+        std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::DishInputs));
     buf.allocate_new_metadata_object(0);
     auto meta = get_N2_metadata(&buf, 0);
     BOOST_REQUIRE(meta);
@@ -417,6 +434,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_index_map_dish_inputs) {
                                       expected_type.end());
     }
     rm_tree_if_exists(base_dir);
+    set_test_telescope(true);
 }
 
 BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
@@ -514,13 +532,7 @@ BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 struct TelescopeFixture {
     TelescopeFixture() {
-        nlohmann::json cfg;
-        cfg["num_polarizations"] = 2;
-        add_test_telescope_config(cfg);
-        kotekan::Config conf;
-        conf.update_config(cfg);
-        kotekan::configUpdater::instance().apply_config(conf);
-        Telescope::instance(conf);
+        set_test_telescope(true);
     }
 };
 
@@ -668,9 +680,10 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     rm_tree_if_exists(base_dir);
 }
 
-// Applied bad-feed-mask change records covering the file's tick span land in
-// /flag_updates: the record already in effect at the span start plus the records
-// inside it; records after the span and resent duplicates do not.
+// Bad feed mask frames covering the file's tick span land in /flag_updates as records:
+// the mask already in effect at the span start plus every change inside it; frames
+// restating an unchanged mask collapse into the earlier record, and masks that take
+// effect after the span are left out.
 BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
 
     kotekan_test_logging::configure();
@@ -711,17 +724,16 @@ BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
         std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
 
-    // Mask record buffer: frames of two identical rows of three elements.
-    const size_t mask_rows = 2;
+    // Mask buffer: one mask sample of three elements per frame, one frame per 10 ticks.
     const size_t mask_row_len = 3;
     auto chord_pool =
         metadataPool::create(8, sizeof(chordMetadata), "pool_flagup_mask", "chordMetadata");
-    Buffer mask_buf(4, mask_rows * mask_row_len, chord_pool, mask_buf_name, "ndarray", /*numa*/ 0,
+    Buffer mask_buf(4, mask_row_len, chord_pool, mask_buf_name, "ndarray", /*numa*/ 0,
                     /*huge*/ false, /*mlock*/ false, /*producers*/ std::vector<int>{},
                     /*zero_new_frames*/ true);
     mask_buf.ensure_frame_desc(kotekan::GenericNDArray::describe(
-        kotekan::int8, "bf_mask", {(std::ptrdiff_t)mask_rows, 1, (std::ptrdiff_t)mask_row_len},
-        {"Trfi", "P", "D"}, {1, 1, 1}));
+        kotekan::int8, "bf_mask", {1, 1, (std::ptrdiff_t)mask_row_len}, {"Tbf", "P", "D"},
+        {10, 1, 1}));
     mask_buf.register_producer("test-producer");
 
     kotekan::bufferContainer bc;
@@ -731,14 +743,14 @@ BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
     hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
-    // The vis frames below sit at ticks [100, 201). Records: one before the span (in
-    // effect at its start), a resent duplicate of it, one inside, one after the end.
+    // The vis frames below sit at ticks [100, 201). Mask frames: one before the span (in
+    // effect at its start), one restating it, a change inside the span, one after the end.
     const struct {
         uint64_t seq;
         std::array<int8_t, 3> mask;
     } records[] = {
         {50, {1, 1, 1}},  // in effect at the span start
-        {90, {1, 1, 1}},  // duplicate contents: collapsed on ingest
+        {90, {1, 1, 1}},  // unchanged contents: collapsed on ingest
         {150, {1, 0, 1}}, // inside the span
         {300, {0, 0, 1}}, // after the span: excluded
     };
@@ -746,8 +758,7 @@ BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
     for (const auto& rec : records) {
         int8_t* frame = (int8_t*)mask_buf.wait_for_empty_frame("test-producer", mask_fid);
         BOOST_REQUIRE(frame != nullptr);
-        for (size_t r = 0; r < mask_rows; ++r)
-            std::copy(rec.mask.begin(), rec.mask.end(), frame + r * mask_row_len);
+        std::copy(rec.mask.begin(), rec.mask.end(), frame);
         mask_buf.allocate_new_metadata_object(mask_fid);
         auto meta = get_chord_metadata(&mask_buf, mask_fid);
         meta->set_fpga_seq_num(rec.seq);

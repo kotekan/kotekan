@@ -173,6 +173,9 @@ gen_rfi_s012:
     log_level: DEBUG
     kotekan_stage: testRFIS012Gen
     out_buf: host_rfi_s012_buffer
+    # Start at a nonzero sequence number so that stages deriving sequence numbers from ring
+    # buffer positions are exercised with a nonzero origin
+    first_frame_index: 3
     type: random
     bar_mode: false
     downsampling_factor: rfi_downsampling_factor
@@ -183,6 +186,8 @@ set_bf_mask:
     updatable_config:
         bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
+    # Start the mask stream at the S012 stream's first sequence number
+    in_clock_buf: host_rfi_s012_buffer
 
 set_simulated_bf_mask:
     kotekan_stage: bufferBadInputs
@@ -191,6 +196,7 @@ set_simulated_bf_mask:
     # One mask per frame, matching `simulated_bf_mask_buffer` and the CPU reference below
     bf_mask_lifetime_in_samples: samples_per_data_set
     out_buf: simulated_bf_mask_buffer
+    in_clock_buf: host_rfi_s012_buffer
 
 run_send_bf_mask:
     gpu_0:

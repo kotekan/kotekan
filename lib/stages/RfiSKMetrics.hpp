@@ -45,7 +45,8 @@
  * external flagger can watch them and let a recovered feed heal.
  *
  * @par Buffers
- * @buffer in_buf Single-feed SK copied from the GPU.
+ * @buffer in_buf Single-feed SK copied from the GPU. Declared as ``kotekan_buffer: ndarray``;
+ *     the constructor requires its descriptor to match this shape and type.
  *     @buffer_shape [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
  *     @buffer_format float32
  *
@@ -78,6 +79,8 @@ public:
 private:
     size_t num_freq;
     size_t num_times;
+    size_t num_polarizations;
+    size_t num_dishes;
     size_t num_elements;
     size_t ema_frames;
     double ema_alpha;

@@ -78,6 +78,12 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
         throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
                                     "settings must be the same length!");
     }
+    _dim_scaling = config.get_default<std::vector<std::ptrdiff_t>>(
+        unique_name, "dim_scaling", std::vector<std::ptrdiff_t>(_array_shape.size(), 1));
+    if (_array_shape.size() != _dim_scaling.size()) {
+        throw std::invalid_argument("testDataGenFloat: 'array_shape' and 'dim_scaling' config "
+                                    "settings must be the same length!");
+    }
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_in_frame = config.get_default<size_t>(unique_name, "num_local_freq", 1);
@@ -97,7 +103,10 @@ void testDataGenFloat::main_thread() {
     void* frame = nullptr;
     uint64_t seq_num = _samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
-    static struct timeval now;
+    struct timeval now;
+    // Random-number state for `type == "random"`; per stage, so that two instances do not share it
+    std::mt19937 eng(seed);
+    std::uniform_real_distribution<float> dis(_rand_min, _rand_max);
 
     int link_id = 0;
 
@@ -176,8 +185,6 @@ void testDataGenFloat::main_thread() {
                 fvalue = fmod(j * value, 256 * value);
             } else if (type == "random") {
                 // Generate a random float between _rand_min and _rand_max
-                static std::mt19937 eng(seed);
-                static std::uniform_real_distribution<float> dis(_rand_min, _rand_max);
                 fvalue = dis(eng);
             } else {
                 throw std::runtime_error("Unexpected type " + type);

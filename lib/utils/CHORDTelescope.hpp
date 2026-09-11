@@ -126,25 +126,6 @@ struct dishInputFields {
     std::vector<std::string> label;
 };
 
-/**
- * @brief   Per-element dish information: one row per correlator input.
- * @details Rows follow the element order the caller names. Each row copies the
- *          fields of the dish the element belongs to (see @c dishInputFields) and
- *          adds the dish index and polarization the element decodes to. The label
- *          is the dish label with the 1-based polarization appended, e.g. "A1p1"
- *          and "A1p2" for the two inputs of dish "A1".
- */
-struct elementInputFields {
-    std::vector<dish_index_t> dish_idx;
-    std::vector<int32_t> pol;
-    std::vector<dish_index_t> grid_x_idx;
-    std::vector<dish_index_t> grid_y_idx;
-    std::vector<vec3d_t> feed_pos_disp_m;
-    std::vector<double> coelev_disp_deg;
-    std::vector<DishType> type;
-    std::vector<std::string> label;
-};
-
 
 /**
  * @brief Struct containing dish parameters.
@@ -518,13 +499,10 @@ public:
     void fill_input_maps(dishInputFields& input) const;
 
     /**
-     * @brief   Fill an elementInputFields struct with one row per element of the
-     *          full array (num_elements rows), in the given element order.
-     *
-     * @param   input   The struct to fill; its vectors are resized.
-     * @param   ord     Element order the rows follow.
+     * @brief   Element indices, in the given element order, of the connected elements:
+     *          those whose dish type is not Fake, array dishes and RFI antennas alike.
      **/
-    void fill_element_maps(elementInputFields& input, ElementOrder ord) const;
+    std::vector<uint64_t> get_connected_elements(ElementOrder ord) const;
 
     /**
      * @brief Get the number of unique baselines in the array
