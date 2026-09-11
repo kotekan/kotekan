@@ -121,6 +121,13 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rfiframemask_buf = get_buffer("in_rfiframemask_buf");
     in_rfiframemask_buf->register_consumer(unique_name);
 
+    // Optional bad feed mask (1 == good), folded into the output frames'
+    // per-element flags. Consumed 1:1 with the correlation frames.
+    in_bf_mask_buf =
+        config.exists(unique_name, "in_bf_mask_buf") ? get_buffer("in_bf_mask_buf") : nullptr;
+    if (in_bf_mask_buf != nullptr)
+        in_bf_mask_buf->register_consumer(unique_name);
+
     // Sanity checks on initialization
     {
         // number of frequencies in incoming frames from n2k
@@ -214,6 +221,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_valid_sample_diff_sq_sum = std::vector<float>(_num_freq_per_n2k_frame, 0);
     _n_rfi_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
     _n_pl_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
+    _accum_bf_mask = std::vector<uint8_t>(_num_elements, 1u);
 
     _vis_samples_in_out_frame = 0;
     _accum_fpga_start_tick = -1;
@@ -246,6 +254,22 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rfiframemask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
         {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
+
+    if (in_bf_mask_buf != nullptr) {
+        // The mask is consumed 1:1 with the correlation frames, so each mask frame must be
+        // one mask sample covering exactly one correlation frame.
+        const std::shared_ptr<const kotekan::GenericNDArray> mask_desc =
+            in_bf_mask_buf->require_frame_desc<kotekan::GenericNDArray>();
+        if (mask_desc->get_value_datatype() != kotekan::int8 || mask_desc->get_rank() != 3
+            || mask_desc->get_extent(0) != 1 || mask_desc->get_extent(1) != _num_polarizations
+            || mask_desc->get_extent(2) != _num_dishes)
+            FATAL_ERROR("in_bf_mask_buf {:s} must be int8 [1, {:d}, {:d}]",
+                        in_bf_mask_buf->buffer_name, _num_polarizations, _num_dishes);
+        if (mask_desc->get_dimscaling(0) != _n_fpga_samples_per_n2k_frame)
+            FATAL_ERROR("each bad feed mask frame must cover exactly one correlation frame: "
+                        "{:d} samples != {:d}",
+                        mask_desc->get_dimscaling(0), _n_fpga_samples_per_n2k_frame);
+    }
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
@@ -287,6 +311,7 @@ void N2Accumulate::main_thread() {
     frameID in_rficounts_frame_id(in_rficounts_buf);
     frameID in_plcounts_frame_id(in_plcounts_buf);
     frameID in_rfiframemask_frame_id(in_rfiframemask_buf);
+    int in_bf_mask_frame_id = 0; // only used when the mask input is wired
     frameID out_frame_id(out_buf);
 
     int previous_in_frame_id = -1;
@@ -294,6 +319,7 @@ void N2Accumulate::main_thread() {
     int previous_in_rficounts_frame_id = -1;
     int previous_in_plcounts_frame_id = -1;
     int previous_in_rfiframemask_frame_id = -1;
+    int previous_in_bf_mask_frame_id = -1; // only used when the mask input is wired
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -375,6 +401,19 @@ void N2Accumulate::main_thread() {
         if (rfiframemask == nullptr)
             break;
 
+        // Fetch the bad feed mask applied to this frame, when wired. Masks arrive 1:1
+        // with the correlation frames, so the recorded flags are exactly the masks the
+        // GPU applied to the accumulated data.
+        const uint8_t* bf_mask = nullptr;
+        if (in_bf_mask_buf != nullptr) {
+            DEBUG("Waiting for new bad feed mask frame {:s}[{:d}].", in_bf_mask_buf->buffer_name,
+                  in_bf_mask_frame_id);
+            bf_mask =
+                (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
+            if (bf_mask == nullptr)
+                break;
+        }
+
         // Get metadata for all incoming frames.
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
 
@@ -415,6 +454,20 @@ void N2Accumulate::main_thread() {
                         in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
                         in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id,
                         rfiframemask_metadata->get_fpga_seq_num());
+        }
+        if (in_bf_mask_buf != nullptr) {
+            const std::shared_ptr<chordMetadata> bf_mask_metadata =
+                get_chord_metadata(in_bf_mask_buf, in_bf_mask_frame_id);
+            if (frame_metadata->get_fpga_seq_num() != bf_mask_metadata->get_fpga_seq_num()) {
+                FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
+                            "bad feed mask buffer {:s}[{:d}] seq={:d}",
+                            in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
+                            in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
+                            bf_mask_metadata->get_fpga_seq_num());
+            }
+            // AND this frame's mask into the current bin's flags: a feed flagged at any
+            // point in the bin is flagged for the whole bin.
+            fold_bf_mask_into_accum(bf_mask);
         }
 
         // Record the current frame time being processed.
@@ -544,7 +597,7 @@ void N2Accumulate::main_thread() {
                     continue;
                 }
 
-                // Third: accum RFI sampes
+                // Third: accum RFI samples
                 _n_rfi_samples_in_vis[f] += rficounts_t0[f] + rficounts_t1[f];
 
                 // Fourth: Normalization - accum the remaining good ticks.
@@ -584,6 +637,10 @@ void N2Accumulate::main_thread() {
                         .set(_vis_input_frames_skipped_rfi.at(f));
                 }
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
+                // The rest of this frame's samples accumulate into the fresh bin, so its
+                // flags must include this frame's mask too.
+                if (bf_mask != nullptr)
+                    fold_bf_mask_into_accum(bf_mask);
 
                 _vis_samples_in_out_frame = 0;
                 std::fill(_vis_input_frames_skipped_rfi.begin(),
@@ -625,7 +682,19 @@ void N2Accumulate::main_thread() {
         if (previous_in_rfiframemask_frame_id != -1)
             in_rfiframemask_buf->mark_frame_empty(unique_name, previous_in_rfiframemask_frame_id);
         previous_in_rfiframemask_frame_id = in_rfiframemask_frame_id++;
+        if (in_bf_mask_buf != nullptr) {
+            if (previous_in_bf_mask_frame_id != -1)
+                in_bf_mask_buf->mark_frame_empty(unique_name, previous_in_bf_mask_frame_id);
+            previous_in_bf_mask_frame_id = in_bf_mask_frame_id;
+            in_bf_mask_frame_id = (in_bf_mask_frame_id + 1) % in_bf_mask_buf->num_frames;
+        }
     }
+}
+
+void N2Accumulate::fold_bf_mask_into_accum(const uint8_t* bf_mask) {
+    for (int64_t el = 0; el < _num_elements; ++el)
+        if (!bf_mask[el])
+            _accum_bf_mask[el] = 0;
 }
 
 int64_t N2Accumulate::calculate_ERA_bin_idx_from_time(const timespec& t_inst) {
@@ -1135,11 +1204,16 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
         out_vis.erms = -1;
 
-        // Per-element flags, 1.0 == good. Nothing here knows about bad feeds
-        // yet, so report every element as good; a stage that does know folds
-        // its mask in on top. Leaving these zero would instead say that every
-        // element is bad, which is what a consumer honouring the flags reads.
+        // Per-element flags, 1.0 == good, from the bad feed mask folded (AND) over the
+        // bin. The mask arrives in the input order, the flags leave in the output order.
+        // Without a mask input nothing here knows about bad feeds, so report every element
+        // good, as every other producer of these flags does; zero would tell a consumer
+        // honouring them that every element is bad.
         std::fill(out_vis.flags.begin(), out_vis.flags.end(), 1.0f);
+        if (in_bf_mask_buf != nullptr)
+            for (int64_t el = 0; el < _num_elements; ++el)
+                if (!_accum_bf_mask[el])
+                    out_vis.flags[_reorder.at(el)] = 0.0f;
 
         // Fill with sentinel values to be filled by another stage.
         std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
@@ -1187,6 +1261,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
     std::fill(_n_pl_samples_in_vis.begin(), _n_pl_samples_in_vis.end(), 0);
+    std::fill(_accum_bf_mask.begin(), _accum_bf_mask.end(), 1u);
 
 #ifdef WITH_OMP
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
