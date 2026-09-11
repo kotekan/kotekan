@@ -233,9 +233,10 @@ void testDataCheck<A_Type>::main_thread() {
 
         bool use_almost_equal = !std::is_integral_v<A_Type> && (epsilon != 0.0);
 
-        INFO(
-            "Checking that the buffers {:s}[{:d}] and {:s}[{:d}] match in {:d} elements, this could take a while...",
-            first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id, num_elements);
+        INFO("Checking that the buffers {:s}[{:d}] and {:s}[{:d}] match in {:d} elements, this "
+             "could take a while...",
+             first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+             num_elements);
 
         for (uint32_t i = 0; i < num_elements; ++i) {
             A_Type first_value = *((A_Type*)&(first_frame[i * sizeof(A_Type)]));
@@ -356,7 +357,8 @@ void testDataCheck<A_Type>::main_thread() {
             }
         } else {
             INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained {:d} values that were NOT equal!",
-                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id, num_errors);
+                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+                 num_errors);
             INFO("Test failed, exiting.");
             TEST_FAILED();
         }
