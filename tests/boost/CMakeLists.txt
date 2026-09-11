@@ -101,6 +101,12 @@ if(FFTW_FOUND)
 endif()
 
 # frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
+# test_cuda_frame_join - the end-of-frame join decision (header-only, no CUDA needed)
+add_executable(test_cuda_frame_join test_cuda_frame_join.cpp)
+target_include_directories(test_cuda_frame_join PRIVATE ${CMAKE_SOURCE_DIR}/lib/cuda)
+target_link_libraries(test_cuda_frame_join PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core)
+
 add_executable(test_modulo test_modulo.cpp)
 target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
