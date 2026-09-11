@@ -329,7 +329,7 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_phase_buffer
         file_name: bb_phase
-        create_single_file: false  # not time-major
+        create_single_file: true
     write_bb_shift:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_shift_buffer

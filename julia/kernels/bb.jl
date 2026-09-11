@@ -119,6 +119,11 @@ end
 
 const Tout = idiv(T, 4)         # always process 1/4 of the ringbuffer at a time
 
+# The phase matrix is recalculated periodically, and the matrices are handed to the GPU through a
+# ring buffer holding this many of them (the Kotekan buffer depth). How many FPGA samples one
+# matrix covers is a run-time setting, `bb_phase_lifetime_in_samples`.
+const Tbb = idiv(T, Tout)
+
 # Since we introduced Tmin and Tmax, we don't support Bt != 1 any more
 # const Bt = 16                   # distribute time samples over that many blocks
 const Bt = 1
@@ -1216,6 +1221,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "T_max",
@@ -1226,23 +1232,32 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "A",
                         "kotekan_name" => "bb_phase_name",
                         "type" => "int8",
+                        # The slowest axis is the ring buffer direction. Its `dimscaling` is a
+                        # placeholder; it is overwritten at run time with the configured
+                        # `bb_phase_lifetime_in_samples`. The kernel itself still sees a single
+                        # phase matrix: the wrapper passes it the element covering the voltage
+                        # samples being processed.
                         "axes" => [
                             Dict("label" => "C", "length" => C, "dimscaling" => 1),
                             Dict("label" => "D", "length" => D, "dimscaling" => 1),
                             Dict("label" => "B", "length" => B, "dimscaling" => 1),
                             Dict("label" => "P", "length" => P, "dimscaling" => 1),
                             Dict("label" => "F", "length" => F, "dimscaling" => 1),
+                            Dict("label" => "Tbb", "length" => Tbb, "dimscaling" => 1),
                         ],
                         "isoutput" => false,
                         "isscalar" => false,
                         "hasbuffer" => true,
-                        "hasringbuffer" => false,
-                        "do_once" => true,
+                        "hasringbuffer" => true,
+                        "do_once" => false,
+                        "haslifetime" => true,
+                        "lifetime_config" => "bb_phase_lifetime_in_samples",
                     ),
                     Dict(
                         "name" => "E",
@@ -1259,6 +1274,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => true,
                         "hasringbuffer" => true,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "s",
@@ -1274,6 +1290,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => true,
                         "hasringbuffer" => false,
                         "do_once" => true,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "J",
@@ -1291,6 +1308,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => true,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "info",
@@ -1306,6 +1324,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "log",
@@ -1319,6 +1338,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                 ],
             ),
