@@ -507,8 +507,10 @@ uncompressed.
    * - ``flags``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - float32
-     - Per-input flags from upstream flagging: 1.0 for a good element, 0.0
-       for one flagged bad. All 1.0 when no flagging stage ran.
+     - Per-input flags, 1.0 for a good element and 0.0 for a bad one: the
+       bad feed mask the X-engine applied, folded over the integration (an
+       element flagged at any point in it is flagged). All 1.0 when no mask
+       is wired into the accumulator.
    * - ``radiometer_chi2``
      - (:math:`N_f`, :math:`N_t`, 3)
      - float32
@@ -651,6 +653,44 @@ Completeness tracking and configuration snapshots
    itself), ``json_hash``, ``kotekan_version``, ``kotekan_git_commit_hash``,
    ``kotekan_build_branch``, and ``kotekan_cmake_options``. Empty if the
    tracker is disabled.
+
+Flag updates group (``/flag_updates``)
+======================================
+
+Only present when the writer's ``in_bf_mask_buf`` input is wired and at least one
+bad-feed-mask record covers the file's time span. The X-engine sends the bad feed
+mask it applies to each correlation frame (1 = good element, element order as
+``/flags``), one frame per GPU stream; frames restating an unchanged mask collapse
+into one record on ingest, so a record applies from its ``fpga_seq_num`` until the
+next record *from the same stream* (``freq_id``, the first coarse frequency of the
+stream that applied it -- the streams cover disjoint parts of the band). The first
+record per stream may precede the file: it is the mask already in effect when the
+file's span starts. The mask link may drop frames, so a change can be recorded one
+frame later than it took effect; ``/flags`` is the authoritative per-integration
+record.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 22 22 30
+
+   * - Dataset
+     - Shape
+     - Type
+     - Description
+   * - ``fpga_seq_num``
+     - (updates)
+     - uint64
+     - Absolute FPGA sequence number of the first sample the mask was
+       applied to.
+   * - ``freq_id``
+     - (updates)
+     - int32
+     - First coarse frequency of the stream that applied the mask,
+       identifying which part of the band the record covers.
+   * - ``bf_mask``
+     - (updates, elements)
+     - int8
+     - The applied mask, 1 = good.
 
 Digital gains group (``/digital_gains``)
 ========================================

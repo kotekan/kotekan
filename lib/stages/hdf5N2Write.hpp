@@ -21,6 +21,7 @@
 #include <optional>                    // for optional, nullopt
 #include <stddef.h>                    // for size_t
 #include <string>                      // for string, basic_string
+#include <utility>                     // for pair
 #include <vector>                      // for vector
 
 /**
@@ -195,6 +196,16 @@ public:
     /// an attempt is made to write data regardless.
     bool flush_to_disk();
 
+    /// The [start, end) FPGA tick span of the frames added so far; {0, 0} when none.
+    std::pair<std::uint64_t, std::uint64_t> fpga_tick_span() const;
+
+    /// Write the /flag_updates group: `n` bad feed mask records with their FPGA seq and
+    /// stream freq_id, masks flattened as (update, element) with `row_len` elements each.
+    /// See hdf5N2Write's in_bf_mask_buf.
+    void write_flag_updates(const std::vector<std::uint64_t>& seqs,
+                            const std::vector<std::int32_t>& freq_ids,
+                            const std::vector<std::int8_t>& masks, std::size_t row_len);
+
     /// Close the associated dataset handle if open.
     void close();
 
@@ -263,9 +274,20 @@ public:
  * @buffer in_buf  Input visibility buffer
  *     @buffer_format VisBuffer
  *     @buffer_metadata N2Metadata
+ * @buffer in_bf_mask_buf  Optional bad feed mask stream as applied by the X-engine: one
+ *     frame per correlation frame, stamped with the FPGA seq of the first sample it was
+ *     applied to and with the coarse frequencies of the stream that applied it. Frames
+ *     with unchanged contents collapse into one record on ingest, so a record is valid
+ *     from its seq until the next record's from the same stream. Each output file gets a
+ *     /flag_updates group holding every record whose validity overlaps the file's FPGA
+ *     tick span, including the one already in effect at the span start. Without this
+ *     input no /flag_updates group is written.
+ *     @buffer_format NDArray int8 [1, num_polarizations, num_dishes]
+ *     @buffer_metadata chordMetadata
  *
  * @par Configuration
  * @conf in_buf                   String. N2 buffer supplying frames (`buffer_type` must be "N2").
+ * @conf in_bf_mask_buf           String. Optional; see the buffer description above.
  * @conf base_dir                 String. Output directory (absolute or relative to the process
  *                                working directory where kotekan was invoked). An acquisition
  *                                subdirectory `acq_YYYYMMDD_HHMMSS_NNNNNNNNN` is appended
@@ -373,6 +395,26 @@ private:
     const ElementOrder _input_order; /// The element ordering in input buffers.
 
     Buffer* const _buffer;
+    /// Optional bad feed mask stream; null when unwired.
+    Buffer* const _bf_mask_buf;
+    /// Elements per mask frame.
+    std::size_t _bf_mask_row_len = 0;
+    int _bf_mask_frame_id = 0;
+
+    /// One bad feed mask record, kept until it has been written into every file whose
+    /// FPGA tick span it covers.
+    struct BfMaskRecord {
+        std::uint64_t fpga_seq_num;    /// first sample the mask was applied to
+        std::int32_t freq_id;          /// first coarse freq of the stream it came from
+        std::vector<std::int8_t> mask; /// the mask (1 == good)
+    };
+    /// Records per stream (keyed by freq_id), each in fpga_seq_num order.
+    std::map<std::int32_t, std::vector<BfMaskRecord>> _bf_mask_history;
+
+    /// Drain waiting mask frames into _bf_mask_history without blocking.
+    void _ingest_bf_mask_records();
+    /// Write the records covering `filedata`'s tick span to its /flag_updates group.
+    void _write_bf_mask_records(N2FileData& filedata);
 
     kotekan::prometheus::Gauge& _write_time_metric;
     kotekan::prometheus::Gauge& _n_datasets_metric;
