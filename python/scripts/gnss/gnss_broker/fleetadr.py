@@ -87,6 +87,7 @@ from gnss_broker.telem import (_HDR_BYTES, REC_DOPPLER, REC_P_RE, REC_P_IM, REC_
 
 HPS = Fraction(390625, 2)   # F-engine hops per second (3.2e9 / 16384), exact
 GRID_HOPS = 96 * 2048       # ~1.0066 s: a record hop common to every chain (see SatAdr.grid)
+GRID_KEEP = 4               # grid snapshots retained per satellite (see SatAdr.grid)
 
 
 class SatAdr(object):
@@ -109,11 +110,20 @@ class SatAdr(object):
         self.inst_x = {}       # inst -> that instance's own continuous residual phase, cycles
         self.breaks = 0        # arcs ended by a gap or an unaccountable increment
         self.t = 0.0           # wall time of the last fold
-        # THE GRID SNAPSHOT (hop, adr, arc, n): the state at the newest record whose hop is a
-        # multiple of GRID_HOPS. Every chain's records sit on hops that are multiples of the
-        # record length, so grid hops are the SAME hops on every chain -- the epochs at which
-        # two bands pair exactly. The live value above is whatever hop this cycle ended on.
-        self.grid = None
+        # THE GRID SNAPSHOTS [(hop, adr, arc, n), ...], oldest first, at most GRID_KEEP of
+        # them: the state at each recent record whose hop is a multiple of GRID_HOPS. Every
+        # chain's records sit on hops that are multiples of the record length, so grid hops
+        # are the SAME hops on every chain -- the epochs at which two bands pair exactly. The
+        # live value above is whatever hop this cycle ended on.
+        #
+        # ⚠️ A HISTORY, NOT THE NEWEST ONLY. Consumers poll on their own clock: the
+        # observables writer at 2 s against this 1.0066 s grid, which is exactly Nyquist. A
+        # single slot therefore hands each poller its own alternating half of the grid hops --
+        # measured 50% per chain, and because each chain lands on its own alternate a band
+        # PAIR shared only 40% and a triple 35%. The hops were never missing, only unsampled.
+        # Four snapshots span ~4 s, so consecutive 2 s polls overlap by two and no hop is lost
+        # unless a poll is more than GRID_KEEP grid hops late.
+        self.grid = []
 
 
 def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
@@ -176,7 +186,8 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     for i in [i for i in st.inst_x if i not in usable]:
         del st.inst_x[i]                        # gone: it rejoins at the fleet's phase
     if hop % GRID_HOPS == 0:
-        st.grid = (hop, st.adr, st.arc, st.n)
+        st.grid.append((hop, st.adr, st.arc, st.n))
+        del st.grid[:-GRID_KEEP]
     return ok
 
 
@@ -270,10 +281,19 @@ class FleetAdr(object):
                         # Doppler-only accumulator (a double holds ~3e13 cycles to 4e-3)
                         "cycles": float(Fraction(s.adr) + nominal),
                         "age_s": round(now - s.t, 2)}
-            if s.grid is not None and s.grid[2] == s.arc:
-                gh, ga, _garc, gn = s.grid
+            # Only this arc's snapshots: a break resets the accumulator, so an older arc's
+            # phase is not continuous with the current one and must never pair against it.
+            g = [t for t in s.grid if t[2] == s.arc]
+            if g:
+                gh, ga, _garc, gn = g[-1]
                 out[prn].update({"g_hop": gh, "g_dop_cycles": ga, "g_n_rec": gn,
                                  "g_cycles": float(Fraction(ga) + Fraction(gh - s.hop0) / HPS * fc)})
+                # The same four quantities for each retained hop, newest last. The scalars
+                # above are unchanged and remain the newest, so every existing consumer keeps
+                # working and only a consumer that wants the phase-independent grid reads this.
+                out[prn]["g_hist"] = [
+                    [h, a, float(Fraction(a) + Fraction(h - s.hop0) / HPS * fc), n]
+                    for h, a, _arc, n in g]
         return out
 
 

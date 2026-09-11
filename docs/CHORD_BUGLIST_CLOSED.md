@@ -52,6 +52,9 @@ parallel section audits that each read the tree AND the live fleet.
 | #65 | three stack scripts truncated their log on start | `f6f7afd61` | rotate-then-start in `agg_up.sh`/`gather_up.sh`/`broker_restart.sh`, 3 rotations kept; verified in tree at `agg_up.sh:70-77` |
 | #128 origin | the acquire refine test was red, and had been since #105 | see the #54 section | the test gridded Doppler at 0.1 bin, outside the estimator's domain; bin-spaced now, refine recovers 0.294 of a true 0.300 bin |
 | #128 | the Doppler refine's bin precondition was enforced on one path of two | see the #54 section | guard hoisted out of the `_cuda_acq` branch so the CPU path warns too; generator emits the bin-aligned 62.5 Hz unconditionally |
+| #116 | the observables writers never rolled the UTC day | `461eb8ce0` | **deployed and verified on sky**: `gps_l5_20260910.jsonl` ends at Sep 11 00:00:00 and `_20260911.jsonl` takes over; 8 tests, 6 of which fail against the old writer |
+| #117 | cross-chain grid pairing yielded 40%, and the loss was sampling | see below | `GRID_KEEP=4` snapshots published as `fadr_g_hist` and consumed by `gnss_tec_chord.py`; 7 tests incl. the pairing-yield measurement |
+| #118 | `dop_rate_rejected` was never cleared | — | one line, mirroring `cp_rate_rejected`; the sibling comment that documented the bug now documents the fix |
 
 ## Closed because the premise died (moot)
 
@@ -238,6 +241,37 @@ Also worth noting: the old first assertion `err_ref < err_grid` required beating
 cell, where the expected error on a 100 Hz step is 25 Hz — badly conditioned regardless of the
 estimator. Both assertions are now well-conditioned: the cell error is 0.3 bin by construction,
 and an inert refine (300 Hz) or a saturating one (200 Hz) both fail the 0.1-bin bound.
+
+
+## #117 — the grid hops were never missing, only unsampled (2026-09-11)
+
+The broker folds a record on every `GRID_HOPS` (96×2048 ≈ **1.0066 s**) — the epochs at which
+every chain's records carry the same hop, which is what makes two bands pair exactly. It kept
+**one** snapshot, the newest. The observables writer polls at **2 s**. That is exactly Nyquist,
+so each poller saw its own alternating half of the grid: **50% per chain measured over 3392 s**,
+and because each chain lands on its own alternate, a band **pair** shared **40%** and a triple
+**35%**. Nothing was lost in the broker; it was lost in the poll.
+
+`SatAdr.grid` is now a list of the last `GRID_KEEP = 4` snapshots, published as
+`fadr_g_hist` = `[[hop, dop_cycles, cycles, n_rec], …]`, oldest first. Four spans ~4 s, so
+consecutive 2 s polls overlap by two and no hop is lost unless a poll is more than four grid hops
+late. The scalars (`fadr_g_hop` and friends) are untouched and remain the newest entry, so every
+existing consumer keeps working; `gnss_tec_chord.py`'s loader expands the history into its
+`{prn: {g_hop: …}}` map, dating each entry back one grid cadence per step.
+
+⚠️ **Only the current arc is published.** A break resets the accumulator, so an older arc's phase
+is not continuous with the current one and must never pair against it — the filter that used to
+guard the single slot now filters the list.
+
+⚠️ **The trap that made the test hard to write:** stepping a whole grid hop per fold is a
+96-record gap, which breaks the arc on every step (`max_gap_rec=3`), leaves `n_rec` at 1, and
+publishes nothing. Chains fold *every* record; only every 96th is a grid hop. A first version of
+the test did step by grid hops, and its most important case silently skipped.
+
+Cost: **+203 bytes on a 1898-byte observables row (+10.7%)**; one chain-day is ~830 MB.
+`test_grid_history.py` — 7 tests: retention bound, grid-multiples-only, newest-last, the arc
+rule, the published shape against the scalars, and the pairing yield itself modelled across six
+poll phases (newest-only < 65%, with history > 99%).
 
 
 ## Faults still worth reading in full

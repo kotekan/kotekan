@@ -93,28 +93,18 @@ Doppler) = **21–25 minutes**. The configured tolerance accepts gaps up to 60. 
 25–60 minute band is unwrapped onto the wrong branch, silently. Latent today; cap `fit-gap-s` at
 ~1200 s, or make the unwrap gap-aware and reset instead of guessing.
 
-### #118 — `dop_rate_rejected` is never cleared, and is now the loudest line in the log
-`fleetdll.py` logs it and clears only `cp_rate_rejected`; the comment beside it admits the bug.
-**[live]** 1552 `dop-rate: N fit(s) REJECTED` lines in 57 minutes — ~91% of gps_l5's 2 s cycles —
-replaying every PRN ever rejected. This is the exact misreading trap #100 records being burned
-by (identical stale values repeating for minutes, misread as a live clock fault).
-**Fix: clear the dict after logging, exactly as `cp_rate_rejected` already is.** One line.
+### #118 — shipped, awaiting the restart
+`ctx.dop_rate_rejected.clear()` after the log, exactly as `cp_rate_rejected` already did.
+**Verify after the restart:** the `dop-rate: N fit(s) REJECTED` line should go from ~91% of
+gps_l5's 2 s cycles to firing only when a fit is actually rejected that cycle.
 
-### #116 — the observables writers never roll the UTC day
-`gnss_observables.py` computes the output path once at start-up and opens it once; there is no
-reopen. **[tree]** The `--out` help promises "the file ROLLS at UTC midnight" and then describes
-exactly the failure it has: "a date baked in at launch keeps one day's name for as long as the
-process lives, and consumers that open today's file then find nothing." **[live]** every
-2026-09-10 row is in `*_20260909.jsonl`; no `_20260910` file exists.
-⚠️ **Do not fix under a running soak** — the frozen name gives one seam-free file per chain, and
-the analysis has to know which file the data is in. Fix at the next writer restart. Three lines.
-
-### #117 — cross-chain grid pairing yields 40%, and the loss is sampling, not physics
-TEC needs two bands at the *same* grid hop. **[live, measured over 3392 s]** each chain publishes
-1686 of 3370 grid hops = **50%** — the obs writer's 2 s poll against the 1.0066 s grid is exactly
-Nyquist — and because each chain lands on its own alternate, a band **pair** shares 40% and a
-**triple** 35%. **Fix: publish the last ~4 grid snapshots per row instead of only the newest, so
-both chains' rows overlap regardless of poll phase.** Ceiling ~100%.
+### #117 — shipped, awaiting the restart
+The broker now keeps `fleetadr.GRID_KEEP = 4` grid snapshots per satellite and publishes them as
+`fadr_g_hist`; `gnss_tec_chord.py` expands them into the pairing map. The scalars are unchanged
+and still the newest, so nothing that reads `fadr_g_hop` had to change.
+**Verify after the restart:** per-chain grid coverage should go 50% → ~100% and a band pair 40%
+→ ~100%. `gnss_tec_chord.py` prints kept/total; compare against the 3392 s baseline in the closed
+entry. Cost measured at **+203 bytes on a 1898-byte row (+10.7%)**, and one chain-day is ~830 MB.
 
 ### #120 — cf06 has zero systemd units; nothing survives the weekly reboot
 **[live]** `systemctl list-units --all | grep -iE 'gnss|broker|gather|agg|viewer|kotekan'` returns

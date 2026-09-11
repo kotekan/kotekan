@@ -504,6 +504,7 @@ def main():
                     "fadr_res_cycles": r.get("fadr_res_cycles"),
                     # the same ADR at the fleet-wide grid hop: EQUAL hops across every chain
                     "fadr_g_hop": r.get("fadr_g_hop"),
+                    "fadr_g_hist": r.get("fadr_g_hist"),
                     "fadr_g_dop_cycles": r.get("fadr_g_dop_cycles"),
                     "fadr_g_cycles": r.get("fadr_g_cycles"),
                     "adr_lock_s": r.get("adr_lock_s"),

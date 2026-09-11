@@ -43,6 +43,7 @@ import sys
 C = 299792458.0
 K = 40.308e16            # m^3/s^2/TECU
 GRID_HOPS = 96 * 2048    # fleetadr.GRID_HOPS
+GRID_SECONDS = 1.006632  # wall seconds per GRID_HOPS: the grid cadence
 
 # Carrier centres, Hz -- these MUST match the SignalDef the broker runs (obs_up.sh's table).
 FREQ = {"gps_l5": 1176.45e6, "gps_l2c": 1227.60e6,
@@ -83,6 +84,24 @@ def load(path, since_s, cn0_min):
                 continue
             out[d["prn"]][gh] = (gc, d.get("fadr_arc"), d["t"], d.get("az"), d.get("el"))
             kept += 1
+            # #117: the row also carries the last few grid hops (fleetadr.GRID_KEEP). Take
+            # them. The writer polls at 2 s against a 1.0066 s grid -- exactly Nyquist -- so
+            # reading only fadr_g_hop samples alternate hops, and because each chain lands on
+            # its own alternate a band PAIR then shares ~40% of the grid rather than ~100%.
+            # The hops were never missing from the broker, only from the poll.
+            # setdefault: the same grid hop carries the same snapshot whichever row reported
+            # it, so first-writer-wins is deterministic and costs nothing.
+            for e in (d.get("fadr_g_hist") or []):
+                h, a = e[0], e[1]
+                if h == gh or h in out[d["prn"]]:
+                    continue
+                # The row's `t` is the poll instant; each earlier grid hop happened one grid
+                # cadence further back. az/el move ~0.01 deg over that span, far below
+                # anything the pairing or the mapping function resolves.
+                out[d["prn"]][h] = (a, d.get("fadr_arc"),
+                                    d["t"] - (gh - h) / GRID_HOPS * GRID_SECONDS,
+                                    d.get("az"), d.get("el"))
+                kept += 1
     return out, n, kept
 
 
@@ -124,7 +143,7 @@ def main():
     day = args.day or time.strftime("%Y%m%d", time.gmtime())
     since = time.time() - args.since_h * 3600.0
     pairs = [p.split(":") for p in (args.pair or DEFAULT_PAIRS)]
-    max_gap_hops = int(args.max_gap_s * GRID_HOPS / 1.006632)
+    max_gap_hops = int(args.max_gap_s * GRID_HOPS / GRID_SECONDS)
 
     bands = sorted({b for p in pairs for b in p})
     data = {}

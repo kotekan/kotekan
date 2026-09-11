@@ -521,6 +521,11 @@ class FleetPublisher:
                 "fadr_g_dop_cycles": (_fadr.get(prn) or {}).get("g_dop_cycles"),
                 "fadr_g_cycles": (_fadr.get(prn) or {}).get("g_cycles"),
                 "fadr_g_n_rec": (_fadr.get(prn) or {}).get("g_n_rec"),
+                # The last few grid hops as [hop, dop_cycles, cycles, n_rec], newest
+                # last (fleetadr.GRID_KEEP). A poller slower than the 1.0066 s grid sees
+                # only alternate hops otherwise, and two chains polling out of phase then
+                # pair on ~40% of them; with the history the pairing is poll-independent.
+                "fadr_g_hist": (_fadr.get(prn) or {}).get("g_hist"),
                 "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
                 # cross-sender coherence of the derotated prompts (combdll.lobe_taps): the
                 # lobe sum is only a lobe sum while this is ~1; ~0 means the senders were not

@@ -507,6 +507,10 @@ def stage_fleet_dll(ctx):
                  % (len(ctx.dop_rate_rejected),
                     ", ".join("PRN %d fit %+.3f vs model %+.3f" % (k, v[0], v[1])
                               for k, v in sorted(ctx.dop_rate_rejected.items())[:5])))
+            # Cleared after logging, for the reason spelled out under cp_rate_rejected below:
+            # an uncleared reject dict replays every PRN ever rejected, verbatim, forever, and
+            # identical stale values repeating for minutes are read as a live fault.
+            ctx.dop_rate_rejected.clear()
         # The same report for the CODE rate (#96). Separate line, not folded into the one
         # above: these reject against the POOLED CLOCK rather than an orbit model, and a
         # reader who cannot tell which reference rejected a fit cannot act on it.
@@ -519,9 +523,7 @@ def stage_fleet_dll(ctx):
             # Cleared after logging: without this the line replays every PRN ever
             # rejected, verbatim and forever (measured 2026-08-28 22:46 -- '11 fits
             # REJECTED' repeating identical stale values for minutes, which misread as
-            # a live clock fault). dop_rate_rejected above has the same latent bug --
-            # left as-is, noted in the buglist, so its log semantics do not change
-            # under this commit.
+            # a live clock fault). The dop-rate report above clears for the same reason.
             ctx.cp_rate_rejected.clear()
         _absent = sorted(p for p in ctx.seeds
                          if ctx.seeds[p].get("doppler_rate_hz_s") is None)
