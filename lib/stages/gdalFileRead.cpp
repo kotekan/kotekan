@@ -13,7 +13,6 @@
 #include <cpl_port.h>            // for GUInt64
 #include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint8_t
-#include <cstring>               // for strncpy
 #include <functional>            // for function
 #include <gdal.h>                // for GDALOpenEx, GEDTC_STRING, GDALAllRegister, GDAL_OF_MULT...
 #include <gdalFiles.hpp>         // for get_gdal_datatype, chord_metadata_version
@@ -250,8 +249,7 @@ public:
                     assert(meta->dim[d] >= 0);
                 }
                 for (int d = 0; d < meta->dims; ++d)
-                    std::strncpy(meta->dim_name[d], dimensions.at(d)->GetName().c_str(),
-                                 CHORD_META_MAX_DIMNAME);
+                    meta->set_dimension_name(d, dimensions.at(d)->GetName());
                 for (int d = meta->dims - 1; d >= 0; --d)
                     meta->stride[d] =
                         d == meta->dims - 1 ? 1 : meta->dim[d + 1] * meta->stride[d + 1];

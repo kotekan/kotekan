@@ -20,7 +20,7 @@
 #include <chordMetadata.hpp>     // for chordMetadata, CHORD_META_MAX_FREQ, metadata_is_chord
 #include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint32_t, uint8_t
-#include <cstring>               // for memcpy, strncpy
+#include <cstring>               // for memcpy
 #include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
 #include <functional>            // for function
 #include <iomanip>               // for operator<<, setfill, setw
@@ -262,7 +262,7 @@ public:
                 assert(meta->dims <= CHORD_META_MAX_DIM);
                 for (int d = 0; d < meta->dims; ++d) {
                     const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
-                    std::strncpy(meta->dim_name[d], dim_name.c_str(), CHORD_META_MAX_DIMNAME);
+                    meta->set_dimension_name(d, dim_name);
                 }
             }
 
