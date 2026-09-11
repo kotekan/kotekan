@@ -220,8 +220,33 @@ public:
         return metadata.at(jsonMetadata::FPGA_SEQ_NUM).template get<int64_t>();
     }
 
-    // Time downsampling -- the factor by which the time samples have
-    // been downsampled relative to FPGA samples.
+    // Time downsampling -- the number of FPGA samples spanned by one
+    // step along dimension 0, i.e. `dim_scaling[0]`.
+    //
+    // Dimension 0 is the buffer's slowest (outermost) axis, and for a
+    // buffer that carries time it is a time axis. Together with
+    // `fpga_seq_num` this defines the time of every slice of the
+    // buffer:
+    //
+    //     fpga_seq_num(i) = fpga_seq_num + i * time_downsampling_fpga
+    //
+    // where `i` indexes dimension 0. A frame therefore spans
+    // `dim[0] * time_downsampling_fpga` FPGA samples. Ring buffer
+    // cursors also count dimension-0 elements, so the same expression
+    // converts a cursor into an FPGA sequence number.
+    //
+    // Some buffers split the time direction into two axes, a slow
+    // outer one (dimension 0, e.g. "Thi64", "T8hi128", "Ttildehi256")
+    // and a fast inner one (the last dimension, e.g. "Tlo64",
+    // "T8lo128", "Ttildelo256"). This happens either because the
+    // samples are bit-packed (the packet loss and RFI masks) or
+    // because a whole chunk of samples is produced per frame and
+    // dimension 0 is a placeholder of extent 1 (the baseband and
+    // FRB2 beams). `time_downsampling_fpga` always refers to the
+    // *outer* axis and hence includes the inner axis' factor; it is
+    // not the spacing of individual time samples. The spacing of
+    // individual samples is `dim_scaling` of the innermost time axis,
+    // and the two are equal only when the time axis is not split.
     void set_time_downsampling_fpga(const int time_downsampling_fpga) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA] = time_downsampling_fpga;

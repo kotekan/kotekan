@@ -498,7 +498,12 @@ cudaEvent_t cudaBasebandBeamformer_charts::execute(cudaPipelineState& /*pipestat
         // and `T_min` counts samples from there.
         J_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
                                  + T_min * E_meta->get_time_downsampling_fpga());
-        assert(J_meta->get_time_downsampling_fpga() == 1);
+        // The kernel's generated dim scalings assume the input is sampled at the FPGA rate
+        assert(E_meta->get_time_downsampling_fpga() == 1);
+        // `J` splits the time direction into a slow `Thi` (dimension 0, extent 1) and a fast
+        // `T`. `time_downsampling_fpga` describes dimension 0, i.e. the whole frame, so it is
+        // that dimension's scaling, not the input's value that `set_metadata` copied over.
+        J_meta->set_time_downsampling_fpga(static_cast<int>(J_buffer.get_ndarray().dimscaling(0)));
     }
 
     // Copy inputs to device memory
