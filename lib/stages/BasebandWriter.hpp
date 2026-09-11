@@ -105,6 +105,9 @@ private:
     /// notifies the file-closing thread (i.e., running `close_old_events`)
     std::condition_variable stop_closing;
 
+    /// tells the file-closing thread to exit; guarded by `mtx`
+    bool closing_stop = false;
+
     /// Keep track of the average write time
     movingAverage write_time;
 
