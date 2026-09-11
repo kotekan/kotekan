@@ -1,5 +1,6 @@
 #include "bufferBadInputs.hpp"
 
+#include "CHORDTelescope.hpp"    // for CHORDTelescope, dishInputFields, DishType
 #include "Config.hpp"            // for Config
 #include "NDArray.hpp"           // for NDArray, GenericNDArray
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
@@ -11,6 +12,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for current_time, double_to_ts, ts_to_double
 
+#include <algorithm>  // for count
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <json.hpp>   // for json
@@ -91,6 +93,35 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         }
     }
 
+    // Baseline mask from the telescope's dish table: elements whose dish is not a real
+    // array dish (Fake or an RFI antenna) are never valid inputs and stay masked
+    // independent of the posted bad-inputs list.
+    //
+    // Every dish missing from `dish_inputs` is reported as Fake, so a telescope configured
+    // without a dish table reports all of them that way. That means the table is absent,
+    // not that every feed is bad, so leave the baseline all-good rather than mask the whole
+    // array.
+    baseline_mask = std::vector<uint8_t>(num_elements, 1u);
+    const CHORDTelescope* const chord_tel = dynamic_cast<const CHORDTelescope*>(&tel);
+    if (chord_tel != nullptr) {
+        dishInputFields dish_inputs;
+        chord_tel->fill_input_maps(dish_inputs);
+        if (std::count(dish_inputs.type.begin(), dish_inputs.type.end(), DishType::ArrayDish)
+            == 0) {
+            WARN("The telescope reports no array dishes, so its dish table is not configured; "
+                 "masking no element on dish type.");
+        } else {
+            for (size_t el = 0; el < num_elements; ++el) {
+                uint64_t dish;
+                uint64_t pol;
+                const station_id_t st_id = tel.element_index_to_station_id(el, output_order);
+                chord_tel->decode_station_id(st_id, dish, pol);
+                if (dish_inputs.type.at(dish) != DishType::ArrayDish)
+                    baseline_mask[el] = 0;
+            }
+        }
+    }
+
     // Listen for bad input list updates. The initial config block arrives
     // through this callback during subscribe().
     std::string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
@@ -164,8 +195,9 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         return true;
     }
 
-    // Build the update's mask (1 == good) in output_order.
-    std::vector<uint8_t> mask(num_elements, 1u);
+    // Build the update's mask (1 == good) in output_order, on top of the dishes the
+    // telescope says are never valid inputs.
+    std::vector<uint8_t> mask(baseline_mask);
     for (int element : bad_inputs)
         mask[reorder[element]] = 0;
 
@@ -196,6 +228,9 @@ void bufferBadInputs::main_thread() {
     // voltage frame -- so that is where this stream has to start as well. Read it from the clock
     // buffer's first frame, as setBBBeams does; without a clock buffer the stream starts at zero.
     int64_t first_fpga_seq_num = 0;
+    // The clock buffer's coarse frequencies, stamped on every mask frame so that a consumer
+    // fed by several instances can tell their streams apart.
+    std::vector<int> coarse_freq;
     if (in_clock_buf) {
         if (in_clock_buf->wait_for_full_frame(unique_name, 0) == nullptr)
             return;
@@ -205,6 +240,8 @@ void bufferBadInputs::main_thread() {
                         "sequence numbers.",
                         in_clock_buf->buffer_name);
         first_fpga_seq_num = clock_meta->get_fpga_seq_num();
+        if (clock_meta->has_coarse_freq())
+            coarse_freq = clock_meta->get_coarse_freq();
         in_clock_buf->mark_frame_empty(unique_name, 0);
         // Only the first frame is needed; stop being a consumer so that the producer does not
         // wait for us on the frames after it.
@@ -227,10 +264,10 @@ void bufferBadInputs::main_thread() {
         // pending update.
         const timespec ref_ts = double_to_ts(current_time());
 
-        // Compose the frame from the active update; all-good until one applies.
+        // Compose the frame from the active update; the bare baseline until one applies.
         const std::shared_ptr<const badInputUpdate> update = updates.get_update(ref_ts).second;
         for (size_t el = 0; el < num_elements; ++el)
-            out_frame[el] = update != nullptr ? update->mask[el] : 1u;
+            out_frame[el] = update != nullptr ? update->mask[el] : baseline_mask[el];
 
         // Set metadata and release
         out_buf->allocate_new_metadata_object(frame_id);
@@ -240,6 +277,8 @@ void bufferBadInputs::main_thread() {
         // `bf_mask_lifetime_in_samples` FPGA samples.
         meta->set_fpga_seq_num(first_fpga_seq_num + frame_index * bf_mask_lifetime_in_samples);
         meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
+        if (!coarse_freq.empty())
+            meta->set_coarse_freq(coarse_freq);
         out_buf->mark_frame_full(unique_name, frame_id);
     }
 }
