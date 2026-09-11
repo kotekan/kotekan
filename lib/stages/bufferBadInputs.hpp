@@ -42,7 +42,11 @@
  * Each frame is one bad feed mask sample, valid
  * for @c bf_mask_lifetime_in_samples FPGA samples, and its FPGA sequence
  * number is that sample's seq -- so it grows by the lifetime from frame to
- * frame, which is what the bad feed mask ring buffer requires.
+ * frame, which is what the bad feed mask ring buffer requires.  The
+ * sequence numbers start at the seq of the first frame of @c in_clock_buf
+ * (normally the voltage buffer, whose first frame also defines the logical
+ * beginning of the voltage ring buffer), or at zero if no clock buffer is
+ * configured.
  *
  * Out-of-order and malformed updates are counted and ignored while running
  * -- a bad POST must not stop the correlator -- but a malformed *initial*
@@ -56,6 +60,11 @@
  * reinterpretation of the mask rather than a reordering of it.
  *
  * @par Buffers
+ * @buffer in_clock_buf Optional.  Any buffer with an @c fpga_seq_num; only its
+ *     first frame is read, then the stage unregisters as a consumer.  The
+ *     voltage buffer is recommended.
+ *     @buffer_format Any
+ *     @buffer_metadata chordMetadata
  * @buffer out_buf Kotekan buffer of bad inputs (1 == good).
  *     @buffer_shape [1, num_polarizations, num_dishes]
  *     @buffer_format int8
@@ -110,6 +119,8 @@ private:
     };
 
     Buffer* out_buf;
+    /// Optional; see the class comment. Null when not configured.
+    Buffer* in_clock_buf;
     /// The size of the bad input mask.
     size_t num_elements;
     /// The shape of the bad input mask, num_elements == num_polarizations * num_dishes
