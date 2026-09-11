@@ -309,10 +309,10 @@ void bufferRecv::main_thread() {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     evutil_make_socket_nonblocking(listener);
 
-    // Bind even when connections from a previous run are still in TIME_WAIT;
-    // otherwise a restart within that window fails with EADDRINUSE on a port
-    // nothing is listening on. SO_REUSEADDR on a listener only permits rebinding
-    // over TIME_WAIT -- two live listeners sharing a port would need SO_REUSEPORT.
+    // Bind even when connections from a previous run are still in TIME_WAIT.
+    // Without this, a restart within the TIME_WAIT window (a couple of minutes)
+    // fails with EADDRINUSE on a port nothing is listening on any more, which
+    // is exactly the window a supervisor restarts kotekan in.
     {
         int reuse = 1;
         if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {

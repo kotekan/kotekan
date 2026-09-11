@@ -80,6 +80,8 @@ private:
     // Buffers
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012bar;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaRFIS012bar);
@@ -114,7 +116,8 @@ cudaRFIS012bar::cudaRFIS012bar(kotekan::Config& config, const std::string& uniqu
                 std::array<std::string, 5>{"Trfibar", "F", "S", "P", "D"},
                 std::array<std::ptrdiff_t, 5>{
                     rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1},
-                *this)
+                *this),
+    did_set_metadata(false)
 //
 {
     rfi_S012.register_consumer();
@@ -171,17 +174,13 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     rfi_S012.check_metadata();
 
-    // Build the corrected metadata, THEN publish it -- same hazard as cudaRFIS012 and
-    // cudaRFISKtilde: patching the published slot-0 object leaves a window in which a
-    // consumer of this ring reads the uncorrected downsampling.
-    // TODO: Set these metadata only once
-    {
-        const std::shared_ptr<const chordMetadata> s012_meta = rfi_S012.get_metadata();
-        auto rfi_S012bar_meta = std::make_shared<chordMetadata>();
-        rfi_S012bar_meta->deepCopy(s012_meta);
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        rfi_S012bar.set_metadata(rfi_S012.get_metadata());
+        const auto& rfi_S012bar_meta = rfi_S012bar.get_metadata();
         rfi_S012bar_meta->set_time_downsampling_fpga(rfi_S012bar_meta->get_time_downsampling_fpga()
                                                      * rfi_second_downsampling_factor);
-        rfi_S012bar.set_metadata(rfi_S012bar_meta);
     }
 
     // There is no poison value

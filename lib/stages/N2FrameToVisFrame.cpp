@@ -114,7 +114,7 @@ n2FrameToVisFrame::~n2FrameToVisFrame() {}
 
 void n2FrameToVisFrame::main_thread() {
 
-    // base dataset_id of visAcummulate (before gating)
+    // base dataset_id of visAccumulate (before gating)
     dset_id_t base_dataset_id;
     // added state of eigenVis
     state_id_t evState_id;

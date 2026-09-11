@@ -56,12 +56,16 @@ protected:
     uint64_t total_packets = 0;
     /// Dropped packets with a bad IP checksum (NIC offload flag).
     uint64_t bad_checksum_packets = 0;
+    /// Dropped packets that failed the size or cookie check (LLDP, ARP, etc.)
     uint64_t non_crs_packets = 0;
+    /// Dropped CRS packets whose stream_id does not map to a worker ring.
     uint64_t invalid_stream_id_packets = 0;
+    /// Dropped CRS packets that arrived while the destination worker ring was full.
     uint64_t ring_full_dropped_packets = 0;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& packets_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& bad_checksum_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        bad_checksum_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& non_crs_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
         invalid_stream_id_packets_total_metric;

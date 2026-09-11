@@ -95,34 +95,42 @@ symbol. This stage exists so the first review is a pleasant one.
 * `lib/stages/rawFileRead.*`, `rawFileWrite.*` — two opt-in config keys, defaults unchanged.
 * `docs/bfmask_deadlock_upstream_note.md` — already written for Jim and Andre.
 
-### Stage 2 — shared buffer / metadata data path *(4 files, needs the owners)*
+### Stage 2 — shared buffer / metadata data path *(CLOSED 2026-09-11, superseded upstream)*
 
-**Split in two: the root fix and the consumer, which have different reviewers and different
-dependencies.** (A third piece, restoring `check_read_progress()`, was dropped on 2026-09-09 --
-we had no callers and at the one site we tried it the check reduces to a tautology. The
-function is deleted from this branch; see that commit for the reasoning.)
+**Nothing here is left to upstream. Every piece landed upstream on someone else's PR, and the
+last survivor turned out to be defending a hazard that no longer exists.**
 
-**2a — the metadata torn-write root fix.** Ready on `kv/chord-upstream-2`; 2 files, +36/−7.
-Invited explicitly by @jbmertens on #1638 ("Only publishing metadata inside `finish_write`,
-with the data, would subsume them. Separate PR.").
+| piece | what closed it |
+|---|---|
+| `NDArrayRingBuffer::set_metadata` build-then-publish | **#1643** (`b38555c11`, on `develop`) — eschnett sets ring metadata ONCE, on the first frame. Removing the per-frame republish beats synchronising it. |
+| `cudaCopyFromRingbuffer` descriptor gate | **#1647** (`1af1099d4`, jbmertens, 2026-09-10) — reads the locked snapshot `out_meta` instead of the live slot-0 object, and replaces the `instance_num == 0` branch with a `FATAL_ERROR`. Better than what we had. |
+| `check_read_progress()` restoration | dropped 2026-09-09; no callers, and at the one site tried it reduces to a tautology. |
+| `buffer.cpp` — `get_metadata()` under the lock | **WITHDRAWN 2026-09-11, and dropped from our tree.** See below. |
 
-* `lib/core/buffer.cpp` — `get_metadata()` now returns a copy of the `shared_ptr` under the
-  buffer lock.
-* `lib/cuda/NDArrayRingBuffer.hpp` — `set_metadata()` builds a **fresh** object and publishes
-  it, instead of allocating slot 0 and mutating in place under a live reader. This is the
-  torn-read fix (`9216 = 8×384×3`) behind four autopsied node deaths.
-  > The published object keeps its pool provenance: where the ring's buffer has a metadata
-  > pool the fresh object is requested from it, exactly as `allocate_new_metadata_object` did,
-  > so `parent_pool` stays set for `get_object_size()`. Only a poolless ring (producer-built
-  > metadata, as in `cudaCopyToRingbuffer`) falls back to a bare `make_shared`.
-  > ⚠️ It does **not** subsume the caller-side fixes in #1638: a caller that patches a derived
-  > field after `set_metadata` returns is still writing into a published object.
+⚠️ **WHY THE `get_metadata` LOCK WAS WITHDRAWN — the premise expired under it.** That lock
+(`7c025c5d0`, 08-31) was the companion to OUR `set_metadata` rewrite in the same commit: our
+ring metadata was rebuilt and republished EVERY FRAME, so an unlocked reader really was racing
+a live per-frame write. #1643 deleted the writer. After it, ring metadata is written once, on
+frame 0, by instance 0, before any reader is gated in — readers block in
+`wait_and_claim_readable`, and that ordering is established by the buffer's own mutex and
+condvar, so the single write happens-before every read. For non-ring buffers the frame
+handshake already orders it. Even our own off-handshake reader, `peek_newest_full_frame`, takes
+`buffer_lock` itself and never goes through `get_metadata()`.
+**So the race is not instantiable, and by our own rule we do not raise hazards we cannot
+instantiate.** What would have remained is a consistency argument — every other public accessor
+of `metadata[]` (`set_metadata`, `pass_metadata`, `copy_metadata`,
+`allocate_new_metadata_object`) takes the lock and this one does not — which is not worth
+upstream goodwill. The lock is now removed from our tree too, so `get_metadata` is
+byte-identical to `develop` and no future merge has to re-resolve it.
 
-**2b — the consumer and its diagnostics.** Blocked on #1642, which touches the same file.
+**The lesson, since it cost a stage:** a fix carried across a merge keeps its code but not
+necessarily its justification. When upstream changes the mechanism you were defending against,
+re-derive whether the defence is still reachable before shipping it.
 
-* `lib/cuda/cudaCopyFromRingbuffer.{cpp,hpp}` — descriptor publication becomes a validated
-  defer-and-retry rather than an unconditional call.
-* `lib/stages/N2Accumulate.cpp` — desync autopsy diagnostics; the existing FATALs are unchanged.
+**N2Accumulate desync survival** was never really Stage 2; it is our own feature (268 lines
+from `develop`). It still carries the START-ordering bug and the incompatible default 4, and it
+goes later as its own PR. See §4.
+
 
 ### Stage 3 — GPU scheduling *(the highest-risk shared change; goes alone)*
 

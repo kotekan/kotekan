@@ -784,6 +784,11 @@ n2_subset_1:
 
 eigencalc:
     kotekan_stage: EigenN2Iter
+    # Explicit since develop's #1616 default is false: it is off upstream so that N2
+    # producers predating the option keep their old unmasked behaviour, and CHORD
+    # turns it on. Our tree carried a `true` DEFAULT before the develop merge, so
+    # without this line the merge would silently stop masking flagged feeds here.
+    mask_flagged_inputs: true
     num_ev: num_ev_to_calculate
     cpu_affinity: [10]
     num_blaze_workers: 1
@@ -799,6 +804,11 @@ eigencalc:
 
 eigencalc_1:
     kotekan_stage: EigenN2Iter
+    # Explicit since develop's #1616 default is false: it is off upstream so that N2
+    # producers predating the option keep their old unmasked behaviour, and CHORD
+    # turns it on. Our tree carried a `true` DEFAULT before the develop merge, so
+    # without this line the merge would silently stop masking flagged feeds here.
+    mask_flagged_inputs: true
     num_ev: num_ev_to_calculate
     cpu_affinity: [30]
     num_blaze_workers: 1

@@ -7,7 +7,6 @@
 #include <assert.h> // for assert
 #include <cstddef>  // for size_t
 #include <map>      // for map
-#include <set>      // for set
 #include <string>   // for basic_string, string
 #include <vector>   // for vector
 
@@ -44,21 +43,21 @@ class UpchannelizationSchedule : kotekan::kotekanLogging {
     const std::map<int, int> frequency_channels_to_indices;
 
     // All upchannelization factors
-    const std::set<int> upchan_factors;
+    const std::vector<int> upchan_factors;
 
     // Map upchannelization factors to channels and back
-    const std::map<int, std::set<int>> upchan_factors_to_channels; // factor -> channels
-    const std::map<int, std::set<int>> upchan_channels_to_factors; // channel -> factors
+    const std::map<int, std::vector<int>> upchan_factors_to_channels; // factor -> channels
+    const std::map<int, std::vector<int>> upchan_channels_to_factors; // channel -> factors
 
     ////////////////////////////////////////////////////////////////////////////////
 
     std::vector<int> make_frequency_channels() const;
     std::map<int, int> make_frequency_channels_to_indices() const;
 
-    std::set<int> make_upchan_factors() const;
+    std::vector<int> make_upchan_factors() const;
 
-    std::map<int, std::set<int>> make_upchan_factors_to_channels() const;
-    std::map<int, std::set<int>> make_upchan_channels_to_factors() const;
+    std::map<int, std::vector<int>> make_upchan_factors_to_channels() const;
+    std::map<int, std::vector<int>> make_upchan_channels_to_factors() const;
 
     void output_statistics() const;
     bool invariant() const;
@@ -96,13 +95,13 @@ public:
     }
 
     // All upchannelization factors
-    const std::set<int>& get_upchan_factors() const {
+    const std::vector<int>& get_upchan_factors() const {
         return upchan_factors;
     }
 
     // Map upchannelization factors to channels and back
-    const std::set<int>& get_upchan_channels(const int upchan_factor) const;
-    const std::set<int>& get_upchan_factors(const int channel) const;
+    const std::vector<int>& get_upchan_channels(const int upchan_factor) const;
+    const std::vector<int>& get_upchan_factors(const int channel) const;
 };
 
 #endif // #ifndef UPCHANNELIZATION_SCHEDULE_H
