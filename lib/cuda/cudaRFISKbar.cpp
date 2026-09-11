@@ -89,6 +89,8 @@ private:
 
     // Kernels
     const n2k::SkKernel skKernel;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaRFISKbar);
@@ -150,7 +152,8 @@ cudaRFISKbar::cudaRFISKbar(kotekan::Config& config, const std::string& unique_na
         config.get<double>(unique_name, "rfi_mu_min"),
         config.get<double>(unique_name, "rfi_mu_max"),
         rfi_downsampling_factor * rfi_second_downsampling_factor,
-    })
+    }),
+    did_set_metadata(false)
 //
 {
     if (bf_mask_lifetime_in_samples % (rfi_downsampling_factor * rfi_second_downsampling_factor)
@@ -272,8 +275,12 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     bf_mask.check_metadata();
     rfi_S012bar.check_metadata();
 
-    rfi_SKbar.set_metadata(rfi_S012bar.get_metadata());
-    rfi_SKbartilde.set_metadata(rfi_S012bar.get_metadata());
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        rfi_SKbar.set_metadata(rfi_S012bar.get_metadata());
+        rfi_SKbartilde.set_metadata(rfi_S012bar.get_metadata());
+    }
 
     if (poison_buffers) {
         rfi_SKbar.set_to_poison(0xff);

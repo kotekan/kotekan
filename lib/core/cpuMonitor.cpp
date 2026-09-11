@@ -91,7 +91,10 @@ void CpuMonitor::track_cpu() {
             WARN_NON_OO("CPU monitor cannot read from /proc/stat");
         }
 
-        // Read each thread stats based on tid
+        // Read each thread stats based on tid, and wait on stop_tracking below: both
+        // need the lock, since the REST callback walks ult_list while this loop
+        // inserts into it, and stop() sets stop_thread under the same lock so the
+        // wait cannot miss its notification by being mid-pass when it is sent.
         std::unique_lock<std::mutex> lock(ult_lock);
         for (auto stage : tid_list) {
             for (auto tid : stage.second) {
@@ -204,7 +207,7 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
 
 std::map<std::string, double> CpuMonitor::get_stage_cpu_usage() {
     std::map<std::string, double> usage;
-    if (!started)
+    if (!this_thread.joinable())
         return usage;
 
     std::lock_guard<std::mutex> lock(ult_lock);

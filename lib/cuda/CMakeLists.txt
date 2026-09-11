@@ -53,7 +53,6 @@ add_library(
     testQuantizeKernel4.cpp
     testQuantizeKernel8.cpp
     testQuantizeKernel8Chime.cpp
-    cudaRechunk.cpp
     cudaRFIS012.cpp
     cudaRFIS012bar.cpp
     cudaRFIS012tilde.cpp

@@ -6,7 +6,7 @@
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
 #include "gpuCommand.hpp"     // for gpuCommandType
-#include "kotekanLogging.hpp" // for DEBUG
+#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -115,21 +115,22 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     auto out_meta = std::make_shared<chordMetadata>();
     out_meta->deepCopy(in_meta);
 
-    assert(input_cursor % in_meta->sample_bytes() == 0);
+    // Read only `out_meta`, the locked snapshot: `get_metadata(0)` is the live slot-0 object
+    // its producer fills in place, and a torn read of `time_downsampling_fpga` is scaled by
+    // the absolute byte count below.
+    assert(input_cursor % out_meta->sample_bytes() == 0);
     if (initial_fpga_seq_num == -1) { // first time
-        if (instance_num == 0) {      // we handle frame 0 of the buffer depth
-            assert(input_cursor == 0);
-            initial_fpga_seq_num = in_meta->get_fpga_seq_num();
-        } else { // handle one of the later frames, frame 0 handler has set metadata
-            initial_fpga_seq_num = in_meta->get_fpga_seq_num();
-        }
-    } else { // not first time
-        assert(in_meta->get_fpga_seq_num() == initial_fpga_seq_num);
+        // Instance 0 handles frame 0 of the buffer depth, so it starts at the ring's origin
+        if (instance_num == 0 && input_cursor != 0)
+            FATAL_ERROR("Instance 0 of {:s} started at ring offset {:d}, expected 0", unique_name,
+                        input_cursor);
+        initial_fpga_seq_num = out_meta->get_fpga_seq_num();
+    } else {
+        assert(out_meta->get_fpga_seq_num() == initial_fpga_seq_num);
     }
-    out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
-                               + in_meta->get_time_downsampling_fpga()
-                                     * (input_cursor / in_meta->sample_bytes()));
-    assert(input_cursor % in_meta->sample_bytes() == 0);
+    out_meta->set_fpga_seq_num(initial_fpga_seq_num
+                               + out_meta->get_time_downsampling_fpga()
+                                     * (input_cursor / out_meta->sample_bytes()));
     assert(out_meta->dims > 0);
     assert(out_buffer->frame_size % out_meta->sample_bytes() == 0);
     out_meta->dim[0] = out_buffer->frame_size / out_meta->sample_bytes();

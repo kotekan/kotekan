@@ -559,28 +559,15 @@ public:
         }
     }
 
-    // ⚠️ BUILD IT FULLY, THEN PUBLISH IT ATOMICALLY -- NEVER FILL IN PLACE (fixed 2026-08-31).
+    // Set the ring buffer metadata. A ring buffer has a single metadata object for its whole
+    // lifetime: it describes the ring buffer as a whole, not any particular frame, and does not
+    // change over time. This function fills that object in place, so the producer must call it
+    // exactly once, on its first frame, before the first `finish_write` publishes data. From then
+    // on consumers -- which may run in other threads -- read the object without synchronization,
+    // and rewriting it, even with unchanged values, would race with them.
     //
-    // This used to call `allocate_new_metadata_object(0)` and then mutate that object field by
-    // field, unlocked. But `allocate_new_metadata_object` only allocates when the slot is NULL
-    // (buffer.cpp), so from the second frame onward it hands back THE SAME OBJECT -- which we
-    // then rewrote underneath `cudaCopyFromRingbuffer`, whose execute() reads
-    // `signal_buffer->get_metadata(0)` from another thread and publishes an ndarray descriptor
-    // from whatever it sees. Catch the object mid-fill and that descriptor is part one array
-    // and part another.
-    //
-    // ⚠️ THE ARITHMETIC THAT PROVED IT, worth keeping: cx19 rejected a descriptor of 9216
-    // bytes for RFImask, whose real shape [8, 384, 128] is 393216. And 9216 = 8 x 384 x **3**
-    // -- extent[1] already updated to 384, extent[2] still the SK-triplet 3 of a recycled
-    // SKtilde object. Half-written, not wrong. The same race caught one field earlier reads as
-    // "dimname mismatch: SK != S". Either one FATALs in ensure_frame_desc, and the controlled
-    // shutdown then kills all four DPDK workers and the node with them.
-    //
-    // Now: request a FRESH object from the pool, fill it completely, and install the pointer
-    // via `GenericBuffer::set_metadata`, which takes the buffer lock. A reader either sees the
-    // previous fully-built object (its shared_ptr keeps it alive) or the new fully-built one.
-    // There is no third state. Falls back to the old in-place path only if the pool is gone,
-    // which would mean the source metadata is already being torn down.
+    // A cudaCommand has `buffer_depth` instances sharing the ring buffer, and frame 0 is always
+    // handled by instance 0, so guard the call with `instance_num == 0` and a flag.
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) {
         // ⚠️ ALWAYS A FRESH OBJECT, NEVER IN PLACE (2026-09-02). The first version fell back
         // to allocate_new_metadata_object(0)-then-mutate when the source had no parent_pool

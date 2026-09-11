@@ -348,16 +348,18 @@ cudaCHIMEFRBBeamformer_chime_U16::cudaCHIMEFRBBeamformer_chime_U16(Config& confi
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Build the PTX only once
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("CHIMEFRBBeamformer_chime_U16_"
+                                      + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_89",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/CHIMEFRBBeamformer_chime_U16.ptx", {kernel_symbol},
                          opts, "CHIMEFRBBeamformer_chime_U16_");
-    });
+    }
 }
 
 cudaCHIMEFRBBeamformer_chime_U16::~cudaCHIMEFRBBeamformer_chime_U16() {}

@@ -1884,7 +1884,7 @@ write_frb:
     base_dir: frb_beams
     in_buf: host_frb3_beams_buffer_post
     file_name: host_frb3_beams_buffer
-    create_single_file: true
+    create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
     input_order: CHIMEBeamformer
 
 # enable to dump sk statistics data
