@@ -120,6 +120,7 @@ add_library(
     N2FrameToVisFrame.cpp
     RfiMaskSum.cpp
     RfiFrameMask.cpp
+    RfiSKMetrics.cpp
     CountLostPLSamplesScalar.cpp
     PLMaskExpandedToCompact.cpp
     # Julia
