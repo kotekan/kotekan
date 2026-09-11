@@ -350,8 +350,27 @@ endif()
 
 # test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
 add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
-target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_utils
-                                                      kotekan_core kotekan_metadata)
+# ⚠️ WHOLE-ARCHIVE, like every other test here that pulls in buffer.cpp. kotekan_core's
+# buffer.cpp references e_time, which lives in kotekan_utils, and CMake's dependency ordering
+# puts core LAST on the link line -- so the archive member is already past by the time the
+# undefined symbol appears. Repeating kotekan_utils does not help: CMake reorders it back.
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_FrameDescSerialize
+        PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_FrameDescSerialize
+        PRIVATE libexternal
+                kotekan_libs
+                kotekan_utils
+                -Wl,--whole-archive
+                kotekan_core
+                kotekan_metadata
+                -Wl,--no-whole-archive
+                kotekan_utils)
+endif()
 
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)
