@@ -1409,7 +1409,18 @@ FRB:
         kotekan_stage: setUpchanGain
         upchan_factor: factor_upchan_out
         upchan_max_num_channels: upchan_U16_max_num_channels
-        upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+{%-if using_dpdk %}
+        # these coefficients are taken from commit
+        # 00a332717 "correction upchan bandpass (#395)
+        # with order reveresd here due to inverted counting of sub-frequencies
+        upchan_gain: [ 0.52614263, 0.59367968, 0.6999944, 0.81113021,
+                       0.90094667, 0.95874124, 0.98905127, 0.99988676,
+                       0.99942558, 0.98662733, 0.95477358, 0.89386546,
+                       0.80121821, 0.6868705, 0.58330915, 0.52225748, ]
+{%-else %}
+        # F-Engine simulator data (could use theoretica values)
+        upchan_gain:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+{%-endif %}
         upchan_gain_buffer: host_upchan_U16_gain_buffer
         metadata_buffer: host_rfi_RFImask_buffer
 
