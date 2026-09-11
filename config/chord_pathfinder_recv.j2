@@ -4,11 +4,8 @@
 -#}
 
 
-# num_output_frames: fully accumulated N2 frames per frequency that should reach hdf5N2Write
-{% set num_output_frames = 100 %}
-
-# num_local_freq: number of contiguous frequency IDs to simulate on this GPU;
-#    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
+# num_local_freq: frequency IDs across the whole band; sizes the receive buffers, which hold
+#    buffer_depth frames per frequency.
 {% set num_local_freq = 6550 %}
 
 
@@ -16,8 +13,6 @@
 {% set sampling_rate_MHz = 3.2e3 %}
 {% set fft_length = 16384 %}
 {% set nyquist_zone = 1 %}
-{% set df_MHz = (sampling_rate_MHz / fft_length) %}
-{% set freq0_MHz = 0 %}
 
 # Science band narrowed to just the simulated freq_ids above
 {% set science_min_freq_MHz = 300 %}
@@ -29,28 +24,9 @@
 # block (num_elements/8 divisible by 8) and the packet-loss mask’s dish/8 grouping.
 {% set num_dishes = 64 %}
 
-# fpga time samples per generated frame (data_set), per frequency/polarization/dish;
-# effectively "fpga_ticks_per_full_frame". This is the frame length seen by testDataGen and the n2k correlator.
-# Must be divisible by sub_integration_ntime for the correlator output, by 1024 for the RFI mask downsample,
-# and by 128 for the packet-loss mask layout.
+# fpga time samples per X-engine correlation frame; the bad feed mask stream carries one frame
+# per this many samples. Must match chord_pathfinder.j2.
 {% set samples_per_data_set = 8192 %}
-
-# fpga samples collapsed by the GPU correlator into one n2k sub-integration/visibility sample.
-# Distinct from samples_per_data_set (the total frame length); samples_per_data_set / sub_integration_ntime is the number
-# of sub-integrations produced per frame. Choose any positive divisor of samples_per_data_set (does not need to be 1024).
-{% set sub_integration_ntime = 8192 %}
-
-# n2k sub-integrations contained in one generated frame (derived)
-# (= samples_per_data_set / sub_integration_ntime).
-{% set integrations_per_frame = samples_per_data_set // sub_integration_ntime %}
-
-# n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
-# Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
-# 238 ~= 10 seconds. 
-{% set num_subintegrations_per_bin = 238 %} 
-
-# correlation frames needed to form one output N2 frame
-{% set n2k_frames_per_output = num_subintegrations_per_bin // integrations_per_frame %}
 
 
 ---
@@ -76,7 +52,6 @@ config_tracker:
     upstream_fetch_retries: 2
     upstream_fetch_timeout_seconds: 10
 
-num_gpus: 0
 buffer_depth: 4
 
 cpu_affinity: [0,1,2,3]
@@ -330,7 +305,6 @@ fpga_monitor:
 
 # Subset visibilities
 hdf5_N2_write_subset:
-    log_level: DEBUG
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_subset_buffer
@@ -338,23 +312,17 @@ hdf5_N2_write_subset:
     input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
     baseband_gain_host_info: /fpga_controller
-    file_name: pipeline_test
-    prefix_hostname: false
     use_bitshuffle: true
     compression: "lz4"
     compression_level: 3
-    zip_compression: 0
     # Chunking: ensure positive chunk sizes
     blocksize_f: 16
     late_frame_grace_seconds: 30
-    num_ev: num_ev_to_calculate
-    n2_layout: "DishInputs"
     num_file_t: 20
 
 
 # Full visibilities (all elements)
 hdf5_N2_write_full:
-    log_level: DEBUG
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_full_buffer
@@ -362,15 +330,10 @@ hdf5_N2_write_full:
     input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/full/
     baseband_gain_host_info: /fpga_controller
-    file_name: pipeline_test
-    prefix_hostname: false
     use_bitshuffle: true
     compression: "lz4"
     compression_level: 3
-    zip_compression: 0
     # Chunking: ensure positive chunk sizes
     blocksize_f: 32
     late_frame_grace_seconds: 30
-    num_ev: 0
-    n2_layout: "FullUpperTri"
     num_file_t: 20
