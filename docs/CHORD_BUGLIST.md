@@ -166,6 +166,31 @@ carries C56/C58. Small, and separate from the above.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #130 — cx42 died of heap corruption 12.5 min into the merged binary
+**[live]** `malloc(): unaligned tcache chunk detected` and the process is gone. cx42 started
+20:10:59 on `build/kotekan/kotekan` (the develop-merge build) and aborted **20:23:33**; the other
+five were still up 20 minutes in. Glibc heap corruption, so the abort site is not the bug site —
+the log's last lines are only the benign `buffer_send` retries and post-restart trim expiries.
+No core (`/var/crash` empty), and **no precedent for this signature in the archived node logs**.
+
+⚠️ **`ARCH=native` was the obvious suspect and is FALSIFIED.** `build/` sets it and the binary was
+compiled on cx43, so a CPU mismatch would have been the tidy explanation — but cx42, cx43, cx19
+and cx51 are all Xeon Gold 5416S with **byte-identical `/proc/cpuinfo` flag sets**. The binary is
+valid on cx42.
+
+**What is and is not known.** The same merged source ran ~72 min on all six as `build-merge`
+(built without `ARCH=native`, `WITH_TESTS=OFF`) with no abort, and `build/` lost one node in
+12.5 min. That is one crash, not a rate: it does not distinguish "the merge carries a latent
+corruption that fires occasionally" from "the build/ flags expose it" from "it was always there".
+**Do not conclude from a single event.** The cheap discriminators, in order: re-run cx42 on the
+same binary and see whether it recurs; if it does, run one node under the `build-merge` binary in
+parallel; only then suspect the flags.
+
+**[carried]** The `buffer_send_n2_subset`/`n2_full` connection refusals to `10.222.0.51:11025/11027`
+are ⚠️ **NOT** related — those lines are byte-identical in the config before and after the
+regeneration, nothing has listened on those ports for some time, and all six nodes log them.
+
+
 ### #112 — `set_bf_mask` free-runs, and it is what makes #108's fuse 12 h instead of years
 **[live]** 170–188k frames/s on all six nodes, with no pacing anywhere in
 `lib/stages/bufferBadInputs.cpp` **[tree]**. That is ~3 cores and ~2.3 GB/h of copies per node
