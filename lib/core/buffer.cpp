@@ -595,10 +595,12 @@ void Buffer::json_description(nlohmann::json& buf_json) {
     // As above: snapshot under the lock, serialize after releasing it.
     std::vector<bool> local_is_full;
     double arrival_time;
+    bool hold_enabled;
     {
         buffer_lock lock(mutex);
         local_is_full = is_full;
         arrival_time = last_arrival_time;
+        hold_enabled = peek_hold_enabled;
     }
     buf_json["frames"];
     int num_full = 0;
@@ -612,7 +614,7 @@ void Buffer::json_description(nlohmann::json& buf_json) {
     buf_json["last_frame_arrival_time"] = arrival_time;
     // Lets /buffers consumers see which buffers keep their newest frame
     // peekable (and that one "full" frame at idle is the hold, not backlog).
-    buf_json["peek_hold"] = peek_hold_enabled;
+    buf_json["peek_hold"] = hold_enabled;
 }
 
 std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& options) {
