@@ -419,3 +419,6 @@ jobs:
           branch: auto-lint-fix/${{ env.SOURCE_BRANCH }}
           base: ${{ env.SOURCE_BRANCH }}
           delete-branch: true
+          # The PR is authored by the workflow token, so the owner of the source
+          # branch hears about it only if asked to review it.
+          reviewers: ${{ github.event.pull_request.user.login || github.actor }}
