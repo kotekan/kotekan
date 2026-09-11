@@ -22,15 +22,18 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
+        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
     write_frb3_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_buffer
         file_name: frb3_beams
+        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
     write_frb3_beams_offsetscale:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_offsetscale_buffer
         file_name: frb3_beams_offsetscale
         max_frames: 32          # each frame has 335.54432 ms
+        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
     # this is chime only
     write_hfb2_beams:
         kotekan_stage: hdf5FileWrite

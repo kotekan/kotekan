@@ -311,13 +311,13 @@ void TransposeBasebandArray::main_thread() {
         // Transpose the data
         // Input:  E[time_long][frequency_local][element_long][time_short][element_short]
         // Output: E'[time][frequency_local][element]
+        // Read only by the DEBUG log below, which Release builds compile out.
+        [[maybe_unused]] size_t lost_blocks = 0;
 
 #ifdef __AVX512F__
         if (use_avx512_fast_path) {
             // AVX512 fast path: process one (t_long, freq) block at a time
             // Each block is 2048 bytes and produces 16 rows of 128 bytes
-            size_t lost_blocks = 0;
-
             for (uint32_t t_long = 0; t_long < time_long; t_long++) {
                 const uint32_t base_time = t_long * TIME_SHORT;
 
@@ -371,12 +371,6 @@ void TransposeBasebandArray::main_thread() {
             }
             // Memory fence to ensure all non-temporal stores are completed
             _mm_sfence();
-
-            // Log packet loss percentage
-            double loss_percentage =
-                100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ);
-            DEBUG("TransposeBasebandArray: Frame {:d} data loss = {:.4f}%", (int)in_frame_id,
-                  loss_percentage);
         } else
 #endif
         {
@@ -392,6 +386,8 @@ void TransposeBasebandArray::main_thread() {
                     size_t pl_mask_idx = t64_idx * pl_mask_t64_stride + freq * pl_mask_freq_stride;
                     uint64_t mask_val = pl_mask_ptr[pl_mask_idx];
                     bool has_packet_loss = (mask_val & check_mask) != check_mask;
+                    if (has_packet_loss)
+                        lost_blocks++;
 
                     // Loop over time samples outermost so each one's whole row of elements is
                     // written in order, rather than writing element_short bytes per
@@ -423,7 +419,8 @@ void TransposeBasebandArray::main_thread() {
             }
         }
 
-        DEBUG("TransposeBasebandArray: Transposed frame {:d}", in_frame_id);
+        DEBUG("TransposeBasebandArray: Transposed frame {:d}, data loss = {:.4f}%", in_frame_id,
+              100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ));
 
         // get a copy of the input metadata
         auto in_meta = get_chord_metadata(in_buf, in_frame_id);

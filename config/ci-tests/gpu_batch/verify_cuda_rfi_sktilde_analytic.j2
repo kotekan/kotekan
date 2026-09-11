@@ -235,14 +235,23 @@ drop_rfi_mask_{{ name }}:
     in_buf: host_rfi_mask_{{ name }}_buffer
 {% endfor %}
 
-# The bias cancels between the two passing paths: (all - half) = 257/510 in the
-# feed-averaged SK, 0 in the bias component. Sigma shrinks with the feed count by an
-# unknown table value, so component 2 is skipped.
+# Where 257/510 comes from. n2k's SkKernel computes per feed
+#     SK = (S0+1)/(S0-1) * (S0*S2/S1^2 - 1) - b
+# and the feed average weights each unmasked feed by its S0, which is 256 for every feed
+# here, so it is the plain mean over unmasked feeds. With S0=256 and S1=1024, S0*S2/S1^2
+# is 2 for group A (S2=8192) and 3 for group B (S2=12288):
+#     SK_A = 257/255 * 1 - b        SK_B = 257/255 * 2 - b
+#     all  = (64*SK_A + 64*SK_B)/128 = 771/510 - b
+#     half = SK_A                    = 514/510 - b
+#     all - half = 257/510 = 0.50392156862745...
+# The bias b depends only on (S1/S0, S0), identical for every feed, so it cancels and
+# the bias component of the difference is exactly 0. Sigma shrinks with the feed count
+# by an unknown table value, so component 2 is skipped.
 check_mask_diff:
     kotekan_stage: testDataCheckExpected
     first_buf: host_rfi_sktilde_all_buffer
     second_buf: host_rfi_sktilde_half_buffer
-    expected: [0.503921568627451, 0.0, 0.0]
+    expected: [0.503921568627451, 0.0, 0.0] # 257/510, 0, skipped
     skip_components: [2]
     epsilon: 1.0e-5
     num_frames_to_test: 2 * buffer_depth

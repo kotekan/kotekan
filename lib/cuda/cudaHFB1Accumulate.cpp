@@ -86,6 +86,8 @@ private:
     // even though only `num_output_times == 1` element is produced per frame.
     NDArrayRingBuffer<float16_t, 4> hfb1_beams;
     NDArrayRingBuffer<float16_t, 4> hfb1_accumulated_beams;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaHFB1Accumulate);
@@ -120,7 +122,8 @@ cudaHFB1Accumulate::cudaHFB1Accumulate(kotekan::Config& config, const std::strin
         std::array<std::ptrdiff_t, 4>{buffer_depth * num_output_times, num_frequencies,
                                       frb1_num_beams_Q, frb1_num_beams_P},
         std::array<std::string, 4>{"Ttilde", "Fbar", "beamQ", "beamP"},
-        {hfb_downsampling_factor * hfb_second_downsampling_factor, 1, 1, 1}, *this)
+        {hfb_downsampling_factor * hfb_second_downsampling_factor, 1, 1, 1}, *this),
+    did_set_metadata(false)
 //
 {
     if (frb1_num_beams_P * frb1_num_beams_Q != cuda_num_beams)
@@ -164,18 +167,18 @@ cudaEvent_t cudaHFB1Accumulate::execute(cudaPipelineState& /*pipestate*/,
     record_start_event();
 
     hfb1_beams.check_metadata();
-    // Averaging `hfb_second_downsampling_factor` samples collapses the time axis: the output sample
-    // spans `hfb_second_downsampling_factor` input samples, so its FPGA time downsampling grows by
-    // that factor. (All other metadata is copied from the input; fpga_seq_num is inherited from
-    // the input window start.) Built before publishing rather than patched afterwards -- see
-    // cudaRFISKtilde::execute for what patching a published object cost on CHORD.
-    const std::shared_ptr<const chordMetadata> in_meta = hfb1_beams.get_metadata();
-    {
-        auto out_meta = std::make_shared<chordMetadata>();
-        out_meta->deepCopy(in_meta);
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        hfb1_accumulated_beams.set_metadata(hfb1_beams.get_metadata());
+        // Averaging `hfb_second_downsampling_factor` samples collapses the time axis: the output
+        // sample spans `hfb_second_downsampling_factor` input samples, so its FPGA time
+        // downsampling grows by that factor. (All other metadata is copied by set_metadata above;
+        // fpga_seq_num is inherited from the input window start.)
+        const std::shared_ptr<const chordMetadata> in_meta = hfb1_beams.get_metadata();
+        const std::shared_ptr<chordMetadata> out_meta = hfb1_accumulated_beams.get_metadata();
         out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
                                              * hfb_second_downsampling_factor);
-        hfb1_accumulated_beams.set_metadata(out_meta);
     }
     hfb1_accumulated_beams.check_metadata();
 

@@ -5,22 +5,27 @@
 #include "errors.h"            // for __enable_syslog
 #include "metadata.hpp"        // for metadataObject, metadataPool
 #include "metadataFactory.hpp" // for metadataFactory
+#include "test_logging.hpp"    // for SigtermGuard
 #include "test_utils.hpp"      // for GlobalFixture_Locale
 
 #include "json.hpp" // for json
 
 #include <atomic> // for atomic
 #include <boost/test/included/unit_test.hpp>
-#include <memory>   // for shared_ptr
-#include <stdint.h> // for uint8_t
-#include <string.h> // for memset, memcmp
-#include <thread>   // for thread
-#include <vector>   // for vector
+#include <memory>    // for shared_ptr
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint8_t
+#include <string.h>  // for memset, memcmp
+#include <thread>    // for thread
+#include <vector>    // for vector
 
 using kotekan::Config;
 using json = nlohmann::json;
 
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
+
+// Lets a test catch FATAL_ERROR, which raises SIGTERM before throwing.
+static kotekan_test_logging::SigtermGuard g_sigterm_guard;
 
 static std::shared_ptr<metadataPool> make_pool(Config& config) {
     json json_config = json::parse(
@@ -186,4 +191,28 @@ BOOST_AUTO_TEST_CASE(copy_frame_runs_beside_the_buffers) {
     stop = true;
     worker.join();
     BOOST_CHECK(!worker_failed);
+}
+
+// safe_swap_frame refuses a destination with a second producer.
+BOOST_AUTO_TEST_CASE(swap_frame_rejects_second_producer) {
+    __enable_syslog = 0;
+
+    Config config;
+    std::shared_ptr<metadataPool> pool = make_pool(config);
+    BOOST_REQUIRE(pool != nullptr);
+
+    const size_t frame_size = 1024;
+    Buffer src(2, frame_size, pool, "reject_src", "standard", 0, false, false, {}, false);
+    Buffer dest(2, frame_size, pool, "reject_dest", "standard", 0, false, false, {}, false);
+    src.register_producer("prod");
+    src.register_consumer("split");
+    dest.register_producer("split");
+    dest.register_producer("other");
+
+    BOOST_REQUIRE(produce_frame(src, "prod", 0, 0xA0));
+    BOOST_REQUIRE(src.wait_for_full_frame("split", 0) != nullptr);
+    BOOST_REQUIRE(dest.wait_for_empty_frame("split", 0) != nullptr);
+    BOOST_CHECK_THROW(src.safe_swap_frame(0, &dest, 0), std::runtime_error);
+
+    src.mark_frame_empty("split", 0);
 }

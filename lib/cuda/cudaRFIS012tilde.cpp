@@ -85,6 +85,8 @@ private:
     NDArrayRingBuffer<std::int8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<std::uint64_t, 3> rfi_S012tilde;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaRFIS012tilde);
@@ -124,7 +126,8 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     rfi_S012tilde(rfi_S012tilde_name, "S012tilde",
                   std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
                   std::array<std::string, 3>{"Trfi", "F", "S"},
-                  std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor, 1, 1}, *this)
+                  std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor, 1, 1}, *this),
+    did_set_metadata(false)
 //
 {
     if (num_times % rfi_num_times != 0)
@@ -235,7 +238,11 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     bf_mask.check_metadata();
     rfi_S012.check_metadata();
 
-    rfi_S012tilde.set_metadata(rfi_S012.get_metadata());
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        rfi_S012tilde.set_metadata(rfi_S012.get_metadata());
+    }
 
     // There is no poison value
     // if (poison_buffers)

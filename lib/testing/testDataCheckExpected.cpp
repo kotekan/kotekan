@@ -44,8 +44,7 @@ testDataCheckExpected::testDataCheckExpected(Config& config, const std::string& 
                     first_buf->frame_size);
 
     check_component.assign(expected.size(), true);
-    for (const int c :
-         config.get_default<std::vector<int>>(unique_name, "skip_components", {})) {
+    for (const int c : config.get_default<std::vector<int>>(unique_name, "skip_components", {})) {
         if (c < 0 || (size_t)c >= expected.size())
             FATAL_ERROR("skip_components entry {:d} outside expected list of {:d}", c,
                         expected.size());
@@ -79,8 +78,8 @@ void testDataCheckExpected::main_thread() {
             const size_t c = i % expected.size();
             if (!check_component[c])
                 continue;
-            const double value = second != nullptr ? (double)first[i] - (double)second[i]
-                                                   : (double)first[i];
+            const double value =
+                second != nullptr ? (double)first[i] - (double)second[i] : (double)first[i];
             if (std::fabs(value - (double)expected[c]) > epsilon) {
                 num_errors++;
                 if (num_errors <= max_num_errors_logged)
