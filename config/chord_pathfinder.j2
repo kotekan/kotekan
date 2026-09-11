@@ -4,9 +4,6 @@
 -#}
 
 
-# num_output_frames: fully accumulated N2 frames per frequency that should reach hdf5N2Write
-{% set num_output_frames = 100 %}
-
 # num_local_freq: number of frequency IDs to simulate on this GPU;
 #    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
 {% set num_local_freq = 384 %}
@@ -16,8 +13,6 @@
 {% set sampling_rate_MHz = 3.2e3 %}
 {% set fft_length = 16384 %}
 {% set nyquist_zone = 1 %}
-{% set df_MHz = (sampling_rate_MHz / fft_length) %}
-{% set freq0_MHz = 0 %}
 
 # Science band narrowed to just the simulated freq_ids above
 {% set science_min_freq_MHz = 300 %}
@@ -40,17 +35,8 @@
 # of sub-integrations produced per frame. Choose any positive divisor of samples_per_data_set (does not need to be 1024).
 {% set sub_integration_ntime = 8192 %}
 
-# n2k sub-integrations contained in one generated frame (derived)
-# (= samples_per_data_set / sub_integration_ntime).
-{% set integrations_per_frame = samples_per_data_set // sub_integration_ntime %}
-
-# n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
-# Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
-# 238 ~= 10 seconds. 
-{% set num_subintegrations_per_bin = 238 %} 
-
-# correlation frames needed to form one output N2 frame
-{% set n2k_frames_per_output = num_subintegrations_per_bin // integrations_per_frame %}
+# n2k sub-integrations to combine into each output N2 frame by N2Accumulate. 238 ~= 10 seconds.
+{% set num_subintegrations_per_bin = 238 %}
 
 # RFI Detection Parameters
 {% set rfi_downsampling_factor = 256 %}
@@ -83,7 +69,6 @@ config_tracker:
 
 numa_node: 0
 
-num_gpus: 1
 buffer_depth: 4
 num_gpu_frames: 4
 host_side_buffer_depth: buffer_depth * 6
@@ -1610,7 +1595,7 @@ buffer_send_bf_mask:
     buf: host_bf_mask_send_buffer
     server_ip: 10.222.0.51
     server_port: 11029
-    retry_time: 10.0
+    reconnect_time: 10
     drop_frames: true
 
 buffer_send_bf_mask_1:
@@ -1619,7 +1604,7 @@ buffer_send_bf_mask_1:
     buf: host_bf_mask_send_buffer_1
     server_ip: 10.222.0.51
     server_port: 11029
-    retry_time: 10.0
+    reconnect_time: 10
     drop_frames: true
 
 # Buffer sends. use_frame_desc sends the frame descriptor once per connection, so the receiver
@@ -1631,7 +1616,7 @@ buffer_send_n2_subset:
     buf: n2_eigen_buffer
     server_ip: 10.222.0.51
     server_port: 11025
-    retry_time: 10.0
+    reconnect_time: 10
     drop_frames: true
 
 buffer_send_n2_full:
@@ -1640,7 +1625,7 @@ buffer_send_n2_full:
     buf: n2_buffer
     server_ip: 10.222.0.51
     server_port: 11027
-    retry_time: 10.0
+    reconnect_time: 10
     drop_frames: true
 
 buffer_send_n2_subset_1:
@@ -1649,7 +1634,7 @@ buffer_send_n2_subset_1:
     buf: n2_eigen_buffer_1
     server_ip: 10.222.0.51
     server_port: 11025
-    retry_time: 10.0
+    reconnect_time: 10
     drop_frames: true
 
 buffer_send_n2_full_1:
@@ -1658,5 +1643,5 @@ buffer_send_n2_full_1:
     buf: n2_buffer_1
     server_ip: 10.222.0.51
     server_port: 11027
-    retry_time: 10.0
+    reconnect_time: 10
     drop_frames: true
