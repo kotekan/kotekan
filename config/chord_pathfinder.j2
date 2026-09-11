@@ -1587,10 +1587,9 @@ eigencalc_1:
     krylov: 2
     subspace: 2
 
-# Ship each half's mask stream to the recv node, where hdf5N2Write folds it into the vis
-# files' /flag_updates. Through a private copy so bufferSend's congestion heuristic sees only
-# its own backlog (see host_bf_mask_send_buffer); every frame restates the whole mask, so a
-# dropped frame only matters if the mask changed in it.
+# Ship each half's mask stream to the recv node, where hdf5N2Write records it in the vis
+# files' /bf_mask group. Through a private copy so bufferSend's congestion heuristic sees only
+# its own backlog (see host_bf_mask_send_buffer); a dropped frame shows up there as a -1 row.
 copy_bf_mask:
     copy_0:
         kotekan_stage: bufferCopy

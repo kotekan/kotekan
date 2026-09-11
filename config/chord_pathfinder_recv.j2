@@ -259,11 +259,11 @@ auto_spectrum_buffer:
     extents: [num_local_freq, num_elements]
     metadata_pool: chord_pool
 
-# Bad feed mask streams from the X-engine, one frame per correlation frame per GPU stream,
-# stamped with the FPGA seq it applies from and the stream's coarse frequencies; hdf5N2Write
-# collapses unchanged frames into one record. Frames are only ingested as N2 frames arrive,
-# so the depth covers a couple of integrations; a full buffer drops frames, which at worst
-# records a change one frame late. Shape must match the X-engine's host_bf_mask_buffer.
+# Bad feed mask streams from the X-engine, one frame per correlation frame per NUMA half,
+# stamped with the FPGA seq it applies from and the half's coarse frequencies, which identify
+# the stream. hdf5N2Write takes them in on their own thread, so the depth only has to cover
+# that thread's latency; a full buffer drops frames, which the files record as -1 rows.
+# Shape must match the X-engine's host_bf_mask_buffer.
 bf_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: 1024
@@ -295,8 +295,8 @@ buffer_recv_full_n2:
     buf: n2_recv_full_buffer
     listen_port: 11027
 
-# The mask frames are folded into the vis files by hdf5N2Write (each file's /flag_updates
-# group holds the records covering its time span), so both writers consume this buffer.
+# hdf5N2Write records the mask frames in the vis files (each file's /bf_mask group holds
+# every stream's masks over its time span), so both writers consume this buffer.
 buffer_recv_bf_mask:
     kotekan_stage: bufferRecv
     use_frame_desc: true

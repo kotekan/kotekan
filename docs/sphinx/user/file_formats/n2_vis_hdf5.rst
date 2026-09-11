@@ -654,20 +654,25 @@ Completeness tracking and configuration snapshots
    ``kotekan_build_branch``, and ``kotekan_cmake_options``. Empty if the
    tracker is disabled.
 
-Flag updates group (``/flag_updates``)
-======================================
+Bad feed mask group (``/bf_mask``)
+==================================
 
 Only present when the writer's ``in_bf_mask_buf`` input is wired and at least one
-bad-feed-mask record covers the file's time span. The X-engine sends the bad feed
-mask it applies to each correlation frame (1 = good element, element order as
-``/flags``), one frame per GPU stream; frames restating an unchanged mask collapse
-into one record on ingest, so a record applies from its ``fpga_seq_num`` until the
-next record *from the same stream* (``freq_id``, the first coarse frequency of the
-stream that applied it -- the streams cover disjoint parts of the band). The first
-record per stream may precede the file: it is the mask already in effect when the
-file's span starts. The mask link may drop frames, so a change can be recorded one
-frame later than it took effect; ``/flags`` is the authoritative per-integration
-record.
+mask stream delivered a frame while the file was open. Each X-engine half applies a
+bad feed mask to the correlation frames of the frequencies it processes and sends
+that mask downstream once per correlation frame; the writer records every stream's
+masks over the file's FPGA tick span, one row per mask frame. Rows lie on the
+streams' common grid of ``time_downsampling_fpga`` samples (the correlation frame
+length): the first row is the last grid sample at or before the span start, the
+last row the last grid sample before the span end. A stream is identified by the
+coarse frequencies its masks were applied to. The ``stream`` axis holds every
+stream known when the file's first rows were written, in order of first frequency;
+a stream that first appears while a file is open starts in the next file. Where a
+stream's frame did not reach the writer, its row holds -1. The mask's element axes
+are the telescope's polarizations and dishes in the fiducial element order (the
+mask buffer's ``[P, D]`` shape), independent of the file's ``input_order`` and
+layout. ``/flags`` remains the per-integration record: the same masks folded over
+each bin by ``N2Accumulate``.
 
 .. list-table::
    :header-rows: 1
@@ -677,20 +682,23 @@ record.
      - Shape
      - Type
      - Description
-   * - ``fpga_seq_num``
-     - (updates)
-     - uint64
-     - Absolute FPGA sequence number of the first sample the mask was
-       applied to.
-   * - ``freq_id``
-     - (updates)
-     - int32
-     - First coarse frequency of the stream that applied the mask,
-       identifying which part of the band the record covers.
-   * - ``bf_mask``
-     - (updates, elements)
+   * - ``mask``
+     - (time, streams, pols, dishes)
      - int8
-     - The applied mask, 1 = good.
+     - The applied mask: 1 = good, 0 = bad, -1 = the stream's frame for this row
+       did not arrive.
+   * - ``fpga_seq_num``
+     - (time)
+     - uint64
+     - Absolute FPGA sequence number of the first sample each row was applied to.
+   * - ``stream_freq_id``
+     - (streams, freqs)
+     - int32
+     - The coarse frequency ids each stream's masks were applied to, -1 padded.
+       A file frequency's stream is the row that contains it.
+
+The group attribute ``uncovered_freq_id`` (int32 array) lists the file frequencies
+that hold data but belong to no stream; it is absent when every frequency is covered.
 
 Digital gains group (``/digital_gains``)
 ========================================
