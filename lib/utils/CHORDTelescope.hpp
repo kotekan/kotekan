@@ -343,9 +343,8 @@ private:
  * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan
- **/
-
-/*
+ *
+ * @details
  * 2024/10/25: Initial version copied from ICETelescope. Frequency logic
  *              stripped out. GR
  * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table
@@ -356,7 +355,6 @@ private:
  * 2026/06/01:  Move much geographic, coordinates, and vector logic into Telescope and GeoFrame. Add
  * new functions for element ordering and dish position access. Clean up.
  */
-
 class CHORDTelescope : public Telescope {
 public:
     CHORDTelescope(const kotekan::Config& config, const std::string& path);
@@ -499,6 +497,12 @@ public:
      *                  correct size.
      **/
     void fill_input_maps(dishInputFields& input) const;
+
+    /**
+     * @brief   Element indices, in the given element order, of the connected elements:
+     *          those whose dish type is not Fake, array dishes and RFI antennas alike.
+     **/
+    std::vector<uint64_t> get_connected_elements(ElementOrder ord) const;
 
     /**
      * @brief Get the number of unique baselines in the array

@@ -386,6 +386,33 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
 }
 
 /*
+ * @brief   Test the connected (non-Fake) element selection
+ */
+BOOST_AUTO_TEST_CASE(_get_connected_elements) {
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::RFIDish, "R1");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["dish_grid_size_x"] = 22;
+    json_config["dish_grid_size_y"] = 24;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // Dishes 0, 1, 2 and 5 are connected (the RFI antenna included); 3, 4, 6 and 7 are
+    // Fake. CHORDBeamformer blocks polarizations (element = dish + pol * num_dishes),
+    // CHORDEarly interleaves them (element = dish * 2 + pol).
+    const std::vector<uint64_t> beamformer{0, 1, 2, 5, 8, 9, 10, 13};
+    const std::vector<uint64_t> early{0, 1, 2, 3, 4, 5, 10, 11};
+    std::vector<uint64_t> got = tel.get_connected_elements(ElementOrder::CHORDBeamformer);
+    BOOST_CHECK_EQUAL_COLLECTIONS(got.begin(), got.end(), beamformer.begin(), beamformer.end());
+    got = tel.get_connected_elements(ElementOrder::CHORDEarly);
+    BOOST_CHECK_EQUAL_COLLECTIONS(got.begin(), got.end(), early.begin(), early.end());
+}
+
+/*
  * @brief   Test dish_grid population
  */
 BOOST_AUTO_TEST_CASE(_dish_grid_population) {

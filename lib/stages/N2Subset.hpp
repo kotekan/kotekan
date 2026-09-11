@@ -29,7 +29,11 @@
  * via the buffer's YAML configuration.
  *
  * The stage validates that all products in the output buffer exist in the
- * input buffer, and builds an index mapping to efficiently copy data.
+ * input buffer, and builds an index mapping to efficiently copy data. For the
+ * compact DishInputs output layout, output element i is the telescope's i-th
+ * connected element in the fiducial order; products are matched and per-element
+ * fields copied through that identity, so the input frame must be in the
+ * fiducial order.
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read.
@@ -70,6 +74,9 @@ private:
 
     /// Index mapping: for each output product index, the corresponding input product index
     std::vector<size_t> prod_index_map;
+    /// Input element index per output element: the telescope's connected elements for
+    /// a DishInputs output, the identity otherwise.
+    std::vector<uint64_t> element_index_map;
 
     /// Number of elements in input buffer
     uint32_t _in_num_elements;

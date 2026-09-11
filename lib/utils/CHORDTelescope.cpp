@@ -549,6 +549,18 @@ void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
     }
 }
 
+std::vector<uint64_t> CHORDTelescope::get_connected_elements(ElementOrder ord) const {
+    std::vector<uint64_t> elements;
+    for (uint64_t el = 0; el < _num_elements; el++) {
+        uint64_t dish;
+        uint64_t pol;
+        decode_station_id(element_index_to_station_id(el, ord), dish, pol);
+        if (_dish_params.dish_info_table.at(dish).type != DishType::Fake)
+            elements.push_back(el);
+    }
+    return elements;
+}
+
 size_t CHORDTelescope::get_num_stacks() const {
     FATAL_ERROR("get_num_stacks() has not been implemented in CHORDTelescope yet.");
     return 0;

@@ -1,5 +1,6 @@
 #define BOOST_TEST_MODULE "test_N2Subset"
 
+#include "CHORDTelescope.hpp"
 #include "N2FrameDesc.hpp"
 #include "N2FrameView.hpp"
 #include "N2Layout.hpp"
@@ -7,9 +8,12 @@
 #include "N2Subset.hpp"
 #include "N2Util.hpp"
 #include "Stage.hpp"
+#include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "configUpdater.hpp"
 #include "metadata.hpp"
+#include "test_utils.hpp"
 
 #include "json.hpp"
 
@@ -178,6 +182,112 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_autocorrelations) {
     in_buf.send_shutdown_signal();
 
     // Stop stage
+    stage.stop();
+    stage.join();
+
+    std::cout << "Success.\n";
+}
+
+// Compact subset layouts index their own element axis: output element i is the
+// telescope's i-th connected element, through which products are matched and
+// per-element fields copied.
+BOOST_AUTO_TEST_CASE(test_fulluppertri_to_dish_inputs) {
+    std::cout << "Testing N2Subset: FullUpperTri -> DishInputs (compact)...\n";
+
+    // Four dishes of which 1 and 3 are connected (0 and 2 default to Fake): in the
+    // fiducial CHORDBeamformer order (element = dish + pol * 4) the DishInputs frame
+    // holds elements {1, 3, 5, 7} of the eight-element input.
+    {
+        json cfg;
+        cfg["num_polarizations"] = 2;
+        add_test_telescope_config(cfg);
+        json dish_inputs = json::array();
+        for (int dish : {1, 3}) {
+            json d = cfg["telescope"]["dish_inputs"][0];
+            d["dish_idx"] = dish;
+            d["grid_x_idx"] = dish;
+            d["label"] = "D0" + std::to_string(dish);
+            dish_inputs.push_back(d);
+        }
+        cfg["telescope"]["num_dishes"] = 4;
+        cfg["telescope"]["dish_inputs"] = dish_inputs;
+        cfg["/telescope"] = cfg["telescope"];
+        Config conf;
+        conf.update_config(cfg);
+        kotekan::configUpdater::instance().apply_config(conf);
+        Telescope::instance(conf);
+    }
+
+    const uint32_t num_elements = 8;
+    const uint32_t num_ev = 2;
+    const uint32_t num_frames = 2;
+    const std::vector<uint16_t> ids = {1, 3, 5, 7};
+    const uint32_t out_num_elements = ids.size();
+    const std::string in_buf_name = "in_buf";
+    const std::string out_buf_name = "out_buf";
+    const std::string stage_name = "/test_subset_di";
+
+    auto pool =
+        metadataPool::create(2 * num_frames, sizeof(N2Metadata), "test_pool_di", "N2Metadata");
+
+    uint32_t in_num_prod = N2FrameDesc::get_num_prod(num_elements, N2Layout::FullUpperTri);
+    size_t in_frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_ev, in_num_prod);
+    Buffer in_buf(num_frames, in_frame_size, pool, in_buf_name, "N2", 0, false, false,
+                  std::vector<int>{}, true);
+    in_buf.ensure_frame_desc(
+        std::make_shared<N2FrameDesc>(num_elements, num_ev, in_num_prod, N2Layout::FullUpperTri));
+    in_buf.register_producer("test_producer");
+
+    uint32_t out_num_prod = N2FrameDesc::get_num_prod(out_num_elements, N2Layout::DishInputs);
+    size_t out_frame_size =
+        N2FrameDesc::calculate_frame_size(out_num_elements, num_ev, out_num_prod);
+    Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
+                   std::vector<int>{}, true);
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(out_num_elements, num_ev, out_num_prod,
+                                                            N2Layout::DishInputs));
+
+    bufferContainer bc;
+    bc.add_buffer(in_buf_name, &in_buf);
+    bc.add_buffer(out_buf_name, &out_buf);
+    out_buf.register_consumer("test_consumer");
+
+    Config config = make_test_config(stage_name, in_buf_name, out_buf_name);
+    N2Subset stage(config, stage_name, bc);
+    stage.start();
+
+    in_buf.wait_for_empty_frame("test_producer", 0);
+    fill_input_frame(&in_buf, 0);
+    in_buf.mark_frame_full("test_producer", 0);
+
+    uint8_t* out_frame = out_buf.wait_for_full_frame("test_consumer", 0);
+    BOOST_REQUIRE(out_frame != nullptr);
+
+    N2FrameView out_fv(&out_buf, 0);
+    BOOST_CHECK_EQUAL(out_fv.num_elements, out_num_elements);
+    BOOST_CHECK_EQUAL(out_fv.num_prod, out_num_prod);
+
+    // Vis and weights: compact product (a, b) must hold the input's (ids[a], ids[b]).
+    size_t p = 0;
+    for (uint32_t a = 0; a < out_num_elements; ++a) {
+        for (uint32_t b = a; b < out_num_elements; ++b) {
+            BOOST_CHECK_EQUAL(out_fv.vis[p].real(), float(ids[a]));
+            BOOST_CHECK_EQUAL(out_fv.vis[p].imag(), float(ids[b]));
+            uint32_t in_idx = N2::cmap(ids[a], ids[b], num_elements);
+            BOOST_CHECK_EQUAL(out_fv.weight[p], float(100 + in_idx));
+            ++p;
+        }
+    }
+
+    // Per-element fields follow the identities, not positions.
+    for (uint32_t e = 0; e < num_ev; ++e)
+        for (uint32_t k = 0; k < out_num_elements; ++k) {
+            const N2::cfloat evec = out_fv.evec[e * out_num_elements + k];
+            BOOST_CHECK_EQUAL(evec.real(), float(e));
+            BOOST_CHECK_EQUAL(evec.imag(), float(ids[k]));
+        }
+
+    out_buf.mark_frame_empty("test_consumer", 0);
+    in_buf.send_shutdown_signal();
     stage.stop();
     stage.join();
 
