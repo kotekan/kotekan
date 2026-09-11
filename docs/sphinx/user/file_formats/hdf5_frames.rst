@@ -83,7 +83,11 @@ Dataset attributes:
      - First FPGA sequence number of the frame and its instrument time in
        ns (only if the metadata carries a sequence number).
    * - ``time_downsampling_fpga``
-     - Total FPGA-tick downsampling factor of the time axis (if present).
+     - FPGA ticks spanned by one step along dimension 0, i.e.
+       ``dim_scalings[0]`` (if present). For a buffer whose time direction is
+       split across a slow dimension 0 and a fast trailing dimension this
+       includes the trailing axis' factor; it is not the spacing of
+       individual time samples.
    * - ``coarse_freq``, ``freq_upchan_factor``, ``freq_upchan_index``
      - Per-channel coarse frequency ids, upchannelization factors and
        indices (if present).
@@ -118,9 +122,11 @@ stream. ``hdf5FileWrite`` enforces that and aborts otherwise:
   time axis iff its name starts with ``T`` (``T``, ``Tc``, ``Tbar``,
   ``Ttilde``, ``Thi64``, ``T8hi128``, ...);
 * ``dim_scaling[0]`` must equal ``time_downsampling_fpga`` (1 when the
-  metadata does not carry that field), so a *split* time axis --- one whose
-  high and low halves are separate dimensions, e.g. ``Thi``/``T`` or
-  ``Ttildehi256`` --- does not qualify;
+  metadata does not carry that field). This is the general kotekan
+  convention, so a *split* time axis --- one whose slow and fast halves are
+  separate dimensions, e.g. ``Thi``/``T`` or ``Ttildehi256``/``Ttildelo256``
+  --- satisfies it as well, as long as ``time_downsampling_fpga`` describes
+  the slow half and hence includes the fast half's factor;
 * consecutive frames must advance ``fpga_seq_num`` by exactly ``dim[0] *
   time_downsampling_fpga``, and must not change the frame shape or the
   downsampling factor;
@@ -135,8 +141,9 @@ That is why a number of writers in the F-engine configurations
 (``config/fengine/include/output_*.j2``, ``config/chime_upgrade_frb.j2``)
 override the group-wide ``create_single_file: true`` with
 ``create_single_file: false`` --- the beamformer phases, gains, weights and
-beam positions are not time-major, and the packed beam outputs have a split
-time axis.
+beam positions are not time-major, and the packed beam outputs carry a single
+dimension-0 slice per frame, so per-frame files spare them the requirement of
+a gap-free frame stream.
 
 The checks run per frame, so a single-file writer that aborts part-way leaves
 a truncated (but still readable) file behind; a dump that ended in a ``FATAL``

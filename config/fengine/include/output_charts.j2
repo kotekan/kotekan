@@ -248,7 +248,7 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
-        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
+        create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
     write_upchan_U32_gain:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U32_gain_buffer
@@ -286,7 +286,7 @@ write_data:
         in_buf: host_frb2_beams_buffer
         file_name: frb2_beams
         max_frames: 3
-        create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
+        create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
 #TODO     write_frb3_beams:
 #TODO         kotekan_stage: hdf5FileWrite
 #TODO         in_buf: host_frb3_beams_buffer
