@@ -71,6 +71,13 @@ restServer::restServer() : main_thread() {
 restServer::~restServer() {
     _restServer_alive.store(false, std::memory_order_release);
     stop_thread = true;
+    // A server that was never started has no thread to join, and join() on a
+    // non-joinable thread throws. That is an ordinary path (--check-config and
+    // --dry-run build the REST endpoints without starting the server), so it is
+    // not a warning; the warning below is for a join that fails on a thread that
+    // really was running.
+    if (!main_thread.joinable())
+        return;
     try {
         main_thread.join();
     } catch (std::exception& e) {
@@ -235,9 +242,45 @@ void restServer::start(const std::string& bind_address, u_short port) {
 #endif
 }
 
+void restServer::stop_processing() {
+    // Refuse further dispatch first, so any request that has not yet taken the
+    // shared lock will see this and 503 instead of invoking a callback.
+    accepting_requests = false;
+
+    // If we are already on the server thread, the single-threaded event loop
+    // guarantees no other handler is in flight, and taking the lock
+    // exclusively here would dead-lock against our own shared hold. The flag
+    // above is enough; skip the drain.
+    if (std::this_thread::get_id() == main_thread.get_id())
+        return;
+
+    // Otherwise (main-thread signal shutdown) wait out any handler currently
+    // running on the server thread. Once we hold the lock exclusively, no
+    // handler is executing and none can start, so the caller may destruct the
+    // stages those handlers reach into. Bound the wait: a handler stuck past
+    // it means shutdown would hang forever, and proceeding with a loud error
+    // at least leaves a restartable process (kotekan runs under a daemon).
+    std::unique_lock<std::shared_timed_mutex> drain(request_lock, std::chrono::seconds(30));
+    if (!drain.owns_lock())
+        ERROR_NON_OO("restServer: a request handler is still running 30s into shutdown; "
+                     "proceeding with teardown anyway.");
+}
+
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
     restServer* server = (restServer*)(cb_data);
+
+    // Hold the request lock (shared) for the whole handler, including the
+    // callback invocation below. stop_processing() takes it exclusively during
+    // teardown, so it cannot free a stage while one of that stage's callbacks
+    // is running. Distinct from callback_map_lock, which is dropped before the
+    // callback runs (callbacks may re-register endpoints).
+    std::shared_lock<std::shared_timed_mutex> request_guard(server->request_lock);
+    if (!server->accepting_requests) {
+        connectionInstance conn(request);
+        conn.send_error("Server shutting down", HTTP_RESPONSE::SERVICE_UNAVAILABLE);
+        return;
+    }
 
     string url = string(evhttp_uri_get_path(evhttp_request_get_evhttp_uri(request)));
 
@@ -687,6 +730,15 @@ static void maybe_add_cors_headers(struct evhttp_request* request) {
 }
 
 void restServer::set_server_affinity(Config& config) {
+    // If the server was never started there is no thread to pin, and
+    // main_thread.native_handle() is 0 -- passing that to pthread_setaffinity_np
+    // segfaults. This is the case when a pipeline is built without being run
+    // (see kotekan --dry-run).
+    if (!main_thread.joinable()) {
+        DEBUG_NON_OO("restServer: not started, skipping affinity.");
+        return;
+    }
+
     vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>("/rest_server", "cpu_affinity");
 
     cpu_set_t cpuset;
@@ -708,6 +760,8 @@ string restServer::get_http_responce_code_text(const HTTP_RESPONSE& status) {
             return "BAD_REQUEST";
         case HTTP_RESPONSE::REQUEST_FAILED:
             return "REQUEST_FAILED";
+        case HTTP_RESPONSE::SERVICE_UNAVAILABLE:
+            return "SERVICE_UNAVAILABLE";
         default:
             return "";
     }

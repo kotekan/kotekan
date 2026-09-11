@@ -11,6 +11,10 @@ target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
+# frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
+add_executable(test_modulo test_modulo.cpp)
+target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 

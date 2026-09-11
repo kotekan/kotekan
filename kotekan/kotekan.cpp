@@ -27,6 +27,7 @@
 #include <locale>      // for locale
 #include <map>         // for map, operator!=, _Rb_tree_iterator
 #include <mutex>       // for mutex, lock_guard
+#include <set>         // for set
 #include <stdexcept>   // for runtime_error, out_of_range
 #include <stdio.h>     // for printf, fprintf, fclose, stderr, fdopen, feof, fgets
 #include <stdlib.h>    // for exit, free, WEXITSTATUS, WIFEXITED
@@ -195,6 +196,12 @@ else:
     sys.stdout.write(json.dumps(config_yaml))
 )";
 
+// Long-only option values, past the range of any short option character.
+enum : int {
+    OPT_CHECK = 1000,
+    OPT_DRY_RUN,
+};
+
 kotekanMode* kotekan_mode = nullptr;
 bool running = false;
 std::mutex kotekan_state_lock;
@@ -218,6 +225,19 @@ void print_help() {
 
     printf("    --print-json (-p)              Prints the json version of the config.\n");
     printf("    --print-yaml (-y)              Prints the yaml version of the config.\n\n");
+    printf("Validation modes (require --config; neither binds the REST port nor runs\n");
+    printf("the pipeline, and both exit non-zero if the config does not pass):\n");
+    printf("    --check-config                 Static checks only: unknown stage types,\n");
+    printf("                                   duplicate names, dangling metadata pools.\n");
+    printf("                                   Constructs nothing -- safe to run next to a\n");
+    printf("                                   live pipeline.\n");
+    printf("    --dry-run                      Builds the full pipeline (every constructor,\n");
+    printf("                                   every config key), fails on any buffer with\n");
+    printf("                                   consumers but no producer, then tears down\n");
+    printf("                                   without starting. Authoritative, but stage\n");
+    printf("                                   constructors open devices (DPDK/CUDA) and\n");
+    printf("                                   buffers claim hugepages -- only run this where\n");
+    printf("                                   the node is free.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
     printf("expects to get it configuration via the REST endpoint '/start'.\n");
     printf("In daemon mode output is only sent to syslog.\n\n");
@@ -379,9 +399,14 @@ std::string exec(std::vector<std::string>& cmd) {
     return result;
 }
 
-void update_log_levels(Config& config) {
-    // Adjust the log level
-    string s_log_level = config.get<std::string>("/", "log_level");
+/**
+ * @brief Maps a `log_level` string to its level, throwing on anything else.
+ *
+ * Split out so the static config check tests exactly what the runtime accepts: a second copy
+ * of this list would be free to drift, and a validator that passes a config the runtime then
+ * rejects is worse than no validator.
+ */
+logLevel parse_log_level(const std::string& s_log_level) {
     logLevel log_level;
 
     if (strcasecmp(s_log_level.c_str(), "off") == 0) {
@@ -403,6 +428,12 @@ void update_log_levels(Config& config) {
                         s_log_level));
     }
 
+    return log_level;
+}
+
+void update_log_levels(Config& config) {
+    // Adjust the log level
+    const logLevel log_level = parse_log_level(config.get<std::string>("/", "log_level"));
     _global_log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
@@ -437,6 +468,189 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
     running = true;
 }
 
+/// A stage/buffer/metadata-pool block found in the config tree.
+struct config_block {
+    std::string name; ///< The key the factories use to identify it.
+    std::string type; ///< The `kotekan_stage`/`kotekan_buffer`/... type string.
+    std::string path; ///< Full config path, for hierarchical lookups.
+};
+
+/**
+ * @brief Recursively collects the stage, buffer and metadata-pool blocks.
+ *
+ * Mirrors the traversal in StageFactory/bufferFactory/metadataFactory: a block
+ * is identified by its `kotekan_stage`, `kotekan_buffer` or
+ * `kotekan_metadata_pool` key; any other object is a scope to descend into.
+ * Note the factories key buffers and pools by their bare name but stages by
+ * their full path, and that is reproduced here so duplicate detection matches
+ * what the factories themselves would reject.
+ */
+void collect_config_blocks(const json& tree, const std::string& path,
+                           std::vector<config_block>& stages, std::vector<config_block>& buffers,
+                           std::vector<config_block>& pools) {
+    for (json::const_iterator it = tree.begin(); it != tree.end(); ++it) {
+        if (!it.value().is_object())
+            continue;
+
+        const std::string block_path = fmt::format(fmt("{:s}/{:s}"), path, it.key());
+
+        const std::string stage_type = it.value().value("kotekan_stage", "none");
+        if (stage_type != "none") {
+            stages.push_back({block_path, stage_type, block_path});
+            continue;
+        }
+        const std::string buffer_type = it.value().value("kotekan_buffer", "none");
+        if (buffer_type != "none") {
+            buffers.push_back({it.key(), buffer_type, block_path});
+            continue;
+        }
+        const std::string pool_type = it.value().value("kotekan_metadata_pool", "none");
+        if (pool_type != "none") {
+            pools.push_back({it.key(), pool_type, block_path});
+            continue;
+        }
+
+        collect_config_blocks(it.value(), block_path, stages, buffers, pools);
+    }
+}
+
+/**
+ * @brief Static config checks that construct nothing and touch no hardware.
+ *
+ * Safe to run alongside a live pipeline: nothing is allocated, no device is
+ * opened, and the REST port is never bound. Catches the errors that are cheap
+ * to catch statically -- unknown stage types, duplicate names, and dangling
+ * metadata-pool references. Everything else (buffer wiring, per-stage required
+ * config keys) is left to `--dry-run`, which finds them authoritatively by
+ * actually building the pipeline.
+ *
+ * @param config The parsed config to check.
+ * @return The number of problems found; 0 means the config passed.
+ */
+int validate_config_static(Config& config) {
+    std::vector<config_block> stages, buffers, pools;
+    collect_config_blocks(config.get_full_config_json(), "", stages, buffers, pools);
+
+    int problems = 0;
+    auto report = [&problems](const std::string& msg) {
+        ERROR_NON_OO("config check: {:s}", msg);
+        problems++;
+    };
+
+    // Every stage type must be one the binary actually knows how to build.
+    const std::map<std::string, StageMaker*> known_stages =
+        StageFactoryRegistry::get_registered_stages();
+    for (const auto& stage : stages) {
+        if (known_stages.find(stage.type) == known_stages.end())
+            report(fmt::format(fmt("stage {:s} has unknown type '{:s}'"), stage.path, stage.type));
+    }
+
+    // Duplicate names are fatal in the factories; find them before they are. Buffers and
+    // pools are keyed by bare name, so the same name in two scopes collides; stages are
+    // keyed by full path, which a JSON tree cannot duplicate, so they are not checked.
+    auto find_duplicates = [&report](const std::vector<config_block>& blocks, const char* what) {
+        std::map<std::string, int> counts;
+        for (const auto& block : blocks)
+            counts[block.name]++;
+        for (const auto& count : counts) {
+            if (count.second > 1)
+                report(fmt::format(fmt("{:s} '{:s}' is defined {:d} times"), what, count.first,
+                                   count.second));
+        }
+    };
+    find_duplicates(buffers, "buffer");
+    find_duplicates(pools, "metadata pool");
+
+    // A buffer's metadata_pool may be inherited from an enclosing scope, so ask
+    // the config for it by path rather than reading the block's own json.
+    std::set<std::string> pool_names;
+    for (const auto& pool : pools)
+        pool_names.insert(pool.name);
+    for (const auto& buffer : buffers) {
+        const std::string pool =
+            config.get_default<std::string>(buffer.path, "metadata_pool", "none");
+        if (pool != "none" && pool_names.count(pool) == 0)
+            report(fmt::format(fmt("buffer '{:s}' requests metadata pool '{:s}', which is not "
+                                   "defined"),
+                               buffer.name, pool));
+    }
+
+    // The runtime and --dry-run both call update_log_levels() before anything else, so a
+    // config without a usable root `log_level` fails there however well-formed the rest is.
+    // Checked through the same parser rather than a second copy of the accepted values.
+    try {
+        parse_log_level(config.get<std::string>("/", "log_level"));
+    } catch (const std::exception& ex) {
+        report(fmt::format(fmt("root 'log_level': {:s}"), ex.what()));
+    }
+
+    INFO_NON_OO("config check: {:d} stages, {:d} buffers, {:d} metadata pools", stages.size(),
+                buffers.size(), pools.size());
+    return problems;
+}
+
+/**
+ * @brief Builds the whole pipeline, then tears it down without running it.
+ *
+ * This is the authoritative check -- it exercises every stage constructor and
+ * allocates every buffer -- and that is exactly why it is NOT safe alongside a
+ * live pipeline: stage constructors open devices (DPDK, CUDA) and buffers claim
+ * hugepages. Run it only where the node is free.
+ *
+ * @param config The parsed config to build from.
+ * @return 0 if the pipeline built and tore down cleanly, 1 otherwise.
+ */
+int run_dry_run(Config& config) {
+    kotekanMode* mode = nullptr;
+    try {
+        // Inside the try: a config with no root `log_level` throws here, and a
+        // validator must report that rather than terminate on it.
+        update_log_levels(config);
+        mode = new kotekanMode(config);
+        mode->initalize_stages();
+    } catch (const std::exception& ex) {
+        ERROR_NON_OO("dry run: pipeline construction FAILED: {:s}", ex.what());
+        delete mode;
+        return 1;
+    }
+
+    // A stage blocks until its inputs arrive, so a buffer with consumers and no producer is
+    // not an error at construction -- it is a pipeline that starts, looks healthy, and wedges
+    // silently (e.g. a config that pruned the only producer of a mask another stage needs).
+    // The graph is fully known here, so check it. The reverse case (a producer with no
+    // consumer) is NOT an error: it is the normal way to disable an output leg.
+    int stalled = 0;
+    const json bufs = mode->get_buffer_json();
+    for (auto it = bufs.begin(); it != bufs.end(); ++it) {
+        const json& b = it.value();
+        if (!b.is_object())
+            continue;
+        const bool has_prod =
+            b.contains("producers") && b["producers"].is_object() && !b["producers"].empty();
+        const bool has_cons =
+            b.contains("consumers") && b["consumers"].is_object() && !b["consumers"].empty();
+        if (has_prod || !has_cons)
+            continue;
+        std::string who;
+        for (auto c = b["consumers"].begin(); c != b["consumers"].end(); ++c)
+            who += (who.empty() ? "" : ", ") + c.key();
+        ERROR_NON_OO("dry run: buffer '{:s}' has consumers ({:s}) but NO producer -- those "
+                     "stages would block forever.",
+                     it.key(), who);
+        stalled++;
+    }
+    if (stalled > 0) {
+        ERROR_NON_OO("dry run: {:d} buffer(s) would stall the pipeline.", stalled);
+        delete mode;
+        return 1;
+    }
+
+    INFO_NON_OO("dry run: pipeline constructed; tearing down without starting stages.");
+    delete mode;
+    INFO_NON_OO("dry run: teardown complete.");
+    return 0;
+}
+
 int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
@@ -459,6 +673,8 @@ int main(int argc, char** argv) {
     bool enable_stderr = true;
     bool dump_config = false;
     bool dump_yaml = false;
+    bool check_config = false;
+    bool dry_run = false;
     std::string bind_address = "0.0.0.0:12048";
     std::string jinja_variables = "";
     // We disable syslog to start.
@@ -479,6 +695,8 @@ int main(int argc, char** argv) {
                                                {"version-json", no_argument, nullptr, 'j'},
                                                {"print-json", no_argument, nullptr, 'p'},
                                                {"print-yaml", no_argument, nullptr, 'y'},
+                                               {"check-config", no_argument, nullptr, OPT_CHECK},
+                                               {"dry-run", no_argument, nullptr, OPT_DRY_RUN},
                                                {nullptr, 0, nullptr, 0}};
 
         int option_index = 0;
@@ -524,11 +742,25 @@ int main(int argc, char** argv) {
             case 'p':
                 dump_config = true;
                 break;
+            case OPT_CHECK:
+                check_config = true;
+                break;
+            case OPT_DRY_RUN:
+                dry_run = true;
+                break;
             default:
                 printf("Invalid option, run with -h to see options");
                 return -1;
                 break;
         }
+    }
+
+    // The validation modes need a config file, and they have to say so on
+    // stderr: the daemon-mode block right below switches logging to syslog
+    // only, which would swallow the message and leave a bare exit status.
+    if ((check_config || dry_run) && string(config_file_name) == "none") {
+        fprintf(stderr, "--check-config/--dry-run require a config file (-c/--config).\n");
+        return 1;
     }
 
     if (string(config_file_name) == "none") {
@@ -559,7 +791,11 @@ int main(int argc, char** argv) {
                      bind_address.c_str());
         exit(-1);
     }
-    rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
+    // The validation modes must never bind the REST port: the whole point is to
+    // be runnable on a node that already has a kotekan instance on it.
+    const bool validate_only = check_config || dry_run;
+    if (!validate_only)
+        rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
 
     if (string(config_file_name) != "none") {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
@@ -594,6 +830,42 @@ int main(int argc, char** argv) {
             exit(-1);
         }
         config.update_config(config_json);
+
+        if (validate_only) {
+            if (dump_config)
+                config.dump_config();
+
+            const char* what = dry_run ? "dry run" : "config check";
+            int problems = 0;
+            // A malformed config throws out of the checks themselves -- a
+            // non-string `kotekan_stage`, a missing root `log_level`. A
+            // validator has to report that as a failed config, not abort: the
+            // half-written config is exactly the case it exists for.
+            try {
+                problems = validate_config_static(config);
+                // Only attempt the build if the static checks passed -- building
+                // on a config with an unknown stage type just reports the same
+                // fault again, more expensively and with hardware side effects.
+                if (dry_run && problems == 0)
+                    problems += run_dry_run(config);
+            } catch (const std::exception& ex) {
+                fprintf(stderr, "%s: %s FAILED: %s\n", what, config_file_name, ex.what());
+                free(config_file_name);
+                return 1;
+            }
+
+            // The verdict goes to stdout/stderr directly, not through the log
+            // level: `log_level: off` in the config under test must not be able
+            // to suppress the answer the caller asked for.
+            if (problems == 0)
+                fprintf(stdout, "%s: %s PASSED.\n", what, config_file_name);
+            else
+                fprintf(stderr, "%s: %s FAILED with %d problem(s).\n", what, config_file_name,
+                        problems);
+            free(config_file_name);
+            return problems == 0 ? 0 : 1;
+        }
+
         try {
             start_new_kotekan_mode(config, dump_config);
         } catch (const std::exception& ex) {
@@ -707,6 +979,15 @@ int main(int argc, char** argv) {
 
         if (sig_value == SIGINT || sig_value == SIGTERM) {
             INFO_NON_OO("Got SIGINT or SIGTERM, shutting down kotekan...");
+            // Quiesce the REST server before destructing the stages: this
+            // teardown runs on the main thread while the server thread may
+            // still be handling a request that captured a stage's `this`
+            // (e.g. a monitor polling a stage's get_status endpoint), which
+            // would use-after-free once the stage is deleted below. Must
+            // happen before kotekan_state_lock is taken: the /start, /stop
+            // and /status handlers block on that lock, so draining while
+            // holding it would deadlock against any such handler in flight.
+            rest_server.stop_processing();
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
             if (kotekan_mode != nullptr) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");
