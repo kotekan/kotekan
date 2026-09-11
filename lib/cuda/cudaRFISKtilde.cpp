@@ -289,6 +289,16 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     bf_mask.check_metadata();
     rfi_S012.check_metadata();
 
+    // The mask is looked up by ring position, so its stream must start at the sequence
+    // number the data stream starts at (the voltage stream's first frame); a mask stream
+    // clocked to another stream would gate the wrong samples.
+    const std::int64_t bf_mask_start = bf_mask.get_metadata()->get_fpga_seq_num();
+    const std::int64_t data_start = rfi_S012.get_metadata()->get_fpga_seq_num();
+    if (bf_mask_start != data_start)
+        FATAL_ERROR("The bad feed mask stream starts at seq {:d} but the data stream at {:d}: "
+                    "clock bufferBadInputs (in_clock_buf) to this GPU's voltage buffer",
+                    bf_mask_start, data_start);
+
     // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
