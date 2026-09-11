@@ -48,8 +48,7 @@ using kotekan::round_down;
  *   @gpu_mem_type         @c uint1x8
  *   @gpu_mem_dim_name     [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
  *   @gpu_mem_dim_scaling  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
- *   @gpu_mem_shape        [@c buffer_depth * num_times / 64][@c num_frequencies][@c
- * num_polarizations]
+ *   @gpu_mem_shape        [@c buffer_depth * num_times / 64][@c num_frequencies][@c num_polarizations]
  *                         [@c num_dishes / 8][@c 64 / 8]
  *   @gpu_mem_metadata     @c chordMetadata
  * @gpu_mem Output upchannelized expanded PL mask
@@ -59,12 +58,10 @@ using kotekan::round_down;
  *   @gpu_mem_dim_name     [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
  *   @gpu_mem_dim_scaling  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
  *   @gpu_mem_shape        [@c buffer_depth * num_times / (64 * upchannelization_factor)]
- *                         [@c num_frequencies_out][@c num_polarizations][@c num_dishes / 8][@c 64 /
- * 8]
+ *                         [@c num_frequencies_out][@c num_polarizations][@c num_dishes / 8][@c 64 / 8]
  *   @gpu_mem_metadata     @c chordMetadata
  * @conf  buffer_depth                         Int.  The number of GPU frames used for pipelining.
- * @conf  num_times                            Int.  Number of time samples per frame (input
- * cadence).
+ * @conf  num_times                            Int.  Number of time samples per frame (input cadence).
  * @conf  num_frequencies                      Int.  Number of (input) frequencies on this node.
  * @conf  num_frequencies_out                  Int.  Output frequency count (total available; the
  *                                                   buffer may over-allocate, only Fmax-Fmin used).
