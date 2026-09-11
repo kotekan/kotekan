@@ -14,6 +14,8 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 num_elements: 2048
+num_polarizations: 2
+num_dishes: 1024
 num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 6144 # must be this to get 16 output samples (not 12)
@@ -108,8 +110,8 @@ host_voltage_ringbuffer:
     # value = 0x55555ba9e5f0 "D"}}}
     ring_buffer_size: gpu_buffer_depth * samples_per_data_set * num_elements * num_local_freq
     type: float32
-    dimnames: ["F", "T", "P", "E"]
-    shape: [num_local_freq,  samples_per_dataset, 2, num_elements / 2]
+    dimnames: ["T", "F", "P", "D"]
+    shape: [samples_per_dataset, num_local_freq, 2, num_elements / 2]
     metadata_pool: main_pool
 
 host_beamform_frb1_buffer:
@@ -149,7 +151,9 @@ set_gain_frb_buffer:
   kotekan_stage: testDataGenFloat
   type: const
   value: 1.0
-  # TODO: needs array description etc
+  dim_scaling: [ 1, 1, 1, 1 ]
+  dim_name: ["T", "P", "D", "C"]
+  array_shape: [1,  2, 1024, 2]
   network_out_buf: gain_frb_buffer
 
 # send data to GPU
@@ -245,11 +249,17 @@ gen_data:
     #array_shape: [ samples_per_data_set, num_local_freq, 2, num_elements/2 ]
     array_shape: [ 6144, 1, 2, 1024 ]
     dim_name: [ "T", "F", "P", "D" ]
+    dim_scaling: [ 1, 1, 1, 1 ]
   test_data_gen_lost_samples:
     type: const
     value: 0
     kotekan_stage: testDataGen
     out_buf: lost_samples_buffer
+    name: "lost_samples"
+    array_shape: [ 6144 ]
+    dim_name: [ "T" ]
+    dim_scaling: [ 1 ]
+    num_local_freq: 1
 
 cpu_simulate:
   cpu_data_sim_0:
