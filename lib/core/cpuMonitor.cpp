@@ -154,7 +154,6 @@ void CpuMonitor::track_cpu() {
                         (ult_list[stage.first])[tid].prev_utime = utime;
                         (ult_list[stage.first])[tid].prev_stime = stime;
                     }
-                    fclose(thread_fp);
                 } else {
                     // The thread exited between listing the tids and reading
                     // its stats. Add 0 to stats, but only if it was already
