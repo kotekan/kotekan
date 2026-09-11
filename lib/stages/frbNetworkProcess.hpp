@@ -50,7 +50,7 @@
  * @conf   udp_frb_port_number  Int (default 1313). udp Port number for frb streams
  * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
  * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of
- * FRB data
+ * FRB data. Use magic value of 0 for local testing.
  * @conf   packets_per_stream   Int (default 8). Number of packets for each stream within each frame
  * @conf   L1_node_ips          Array of Strings. List of IPs to send to. (?)
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
@@ -152,7 +152,7 @@ private:
     /// number of L0 nodes
     int number_of_nodes;
 
-    /// number of VLANS
+    /// number of VLANS, use magic value of 0 to use 127.0.0.1 only
     int number_of_subnets;
 
     /// number of packets to each L1 nodes
