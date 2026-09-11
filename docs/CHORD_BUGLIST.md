@@ -144,28 +144,35 @@ voided one.
 
 ---
 
-### #129 — the satellite catalogue is blind in three places, and #56 walked into all three
-**[tree, 2026-09-11]** Found while chasing #56's residual, which turned out to be emissions from
-satellites we cannot locate or track.
+### #129 — we cannot place a GLONASS satellite at all (BeiDou turned out to be fine)
+**[tree, 2026-09-11]** Found chasing #56's residual.
 
-1. **No GLONASS positions anywhere.** `parse_rinex_nav` is `G/E/C only`; the daily BRDC we already
-   download carries 273 GLONASS records and we discard them. `glonass_freq_channels()` reads those
-   same records for FDMA channel numbers, so the data is in hand and only the propagator is
-   missing (PZ-90 state vector + integration — different from the Keplerian G/E/C path, which is
-   presumably why it was never written). We run `GLO_L3OC_P`/`_D` at 1202.025 MHz, so this is a
-   band we transmit-side care about and cannot geometrically reason about.
-2. **BeiDou C05, C15–C18, C43–C46 are absent from `BRDC00WRD` on all 12 recent days.** C43–C46 are
-   BDS-3 MEO and do transit at this latitude. Compare raw vs parsed before blaming the parser —
-   already done, they are genuinely not in the product. `gnss_brdc_supply.py` already merges
-   multiple sources per PRN (that is how the C31/C39 `el --` gap was closed), so the fix is likely
-   a source that carries them rather than new parsing.
-3. **The B3I chain's PRN list is 19–42**, a hard 24, so C43–C46 could not be tracked even with
-   ephemeris. `/gnss{0,1}_b3i_n2assemble` + `_n2dual/commands` on every node.
+**THE REAL GAP: no GLONASS positions anywhere.** `gnss_ephemeris.parse_rinex_nav` is `G/E/C only`
+by its own docstring. The daily BRDC we already download carries **273 GLONASS records** (plus 22
+QZSS, 40 NavIC, 1601 SBAS) and we discard every one. `glonass_freq_channels()` reads those same R
+records for FDMA channel numbers, so **the data is in hand and only the propagator is missing** —
+PZ-90 state vector plus integration, structurally different from the Keplerian G/E/C path, which
+is presumably why it was never written. This matters because we run `GLO_L3OC_P`/`_D` at
+**1202.025 MHz** and #56's secondary feature peaks at **1202.5 MHz**: a signal at a frequency we
+monitor, from the one constellation we cannot geometrically reason about at all.
+`BRDM00DLR_S` (already coded as a CDDIS fallback in `gnss_brdc_supply.py`) carries 26 GLONASS, 5
+QZSS and 3 NavIC — so the ephemeris supply is solved; it is purely the propagator.
 
-⚠️ **The generalisable trap:** a satellite we cannot see still lands power on the array. Every
-"no satellite was near boresight" conclusion is only as good as the catalogue, and this one silently
-excluded a whole constellation and a block of MEOs. ⚠️ Also, QZSS (22 records) and NavIC (40) are
-discarded on the same line — QZSS L6 sits at 1278.75 MHz, inside the tap's top group.
+⚠️ **BEIDOU IS NOT A GAP — a first pass here claimed it was, and was wrong.** `BRDC00WRD` omits
+C05, C15–C18, C43–C46 on every recent day, and BRDM00DLR omits them too. That is CORRECT: the IGS
+SINEX `SATELLITE/PRN` block lists the **currently assigned** BeiDou PRNs as C01–C04, C06–C14,
+C19–C42, C56–C58 — **40 of them, and BRDC carries 39.** C43–C46 are *SVN* numbers in the SINEX's
+left column, not PRNs; reading them as PRNs is what produced the false gap. The one real absence
+is **C57**, assigned per SINEX and missing from BRDC — worth one look, not a constellation hole.
+
+⚠️ **THE METHOD POINT, which cost two wrong answers in one afternoon:** "absent from BRDC" does
+not mean "missing". Ask the authority which PRNs are *assigned* before concluding anything is
+absent — `igs_satellite_metadata.snx`, per the standing rule that capability comes from IGS SINEX
+and never from Celestrak. A TLE catalogue lists an object in orbit, which is not the same claim.
+
+**Also still true:** the B3I chain's PRN list is 19–42 (`/gnss{0,1}_b3i_n2assemble`,
+`_n2dual/commands`), so C56–C58 are outside it even though SINEX has them assigned and BRDC
+carries C56/C58. Small, and separate from the above.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
@@ -328,13 +335,18 @@ Three independent blind spots, any one of which is sufficient:
 3. **The B3I chain searches PRNs 19–42**, so C43–C46 are excluded by configuration even if the
    ephemeris arrived — `/gnss{0,1}_b3i_n2assemble` and `_n2dual/commands`, 24 PRNs, on every node.
 
-So a BDS-3 MEO transit at 1268 MHz would clip the front end, be untracked by the B3I chain, and be
-invisible to any boresight-separation test — which is precisely the observation. The B3I chain was
-healthy throughout both bursts (PRNs 21/22/26/28/31/34/36/38/39/42, nothing anomalous), which is
-consistent: the emitter is not a PRN it is looking for.
+⚠️ **CORRECTION, same day: only the GLONASS half survives.** A first pass claimed BDS-3 MEO
+C43–C46 were missing birds that could explain the 1268 MHz plateau. They are **SVN numbers, not
+PRNs** — IGS SINEX lists 40 currently-assigned BeiDou PRNs and BRDC carries 39 of them, so BeiDou
+coverage is essentially complete and no untracked BeiDou explains the plateau. What stands is the
+**1202.5 MHz** feature against `GLO_L3OC` at **1202.025 MHz**, where we have no positions at all.
 
-**This reopens the ordinary explanation.** The residual is most likely GNSS after all — satellites
-we do not carry — not an exotic emitter. Tracked as #129.
+**So the 1268 MHz plateau is still unexplained**, and with the catalogue ruled out the **sidelobe
+hypothesis moves to the front**: the B3I chain was tracking strong satellites throughout both
+bursts (PRN 42 at A 222 during the 18:26 burst, PRN 34 at A 225 during 19:13) with the nearest
+BeiDou at 18.7–23.8°, which is sidelobe territory for these dishes. **Next test:** does burst
+amplitude track a strong B3I satellite's *sidelobe angle* rather than its boresight separation?
+Catalogue work is tracked as #129.
 
 ⚠️ Limits: OpenSky serves live only without credentials, so the archived bins cannot be
 attributed to specific flights; Celestrak is unreachable from cf06; and GEO is geometrically
