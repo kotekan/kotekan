@@ -206,7 +206,11 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     assert(frb1_beams_meta);
     const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
     frb2_beams_meta->set_fpga_seq_num(frb1_beams_meta->get_fpga_seq_num() + frb1_beams_offset
-                                      * frb2_beams_meta->get_time_downsampling_fpga());
+                                      * frb1_beams_meta->get_time_downsampling_fpga());
+    // We split the time index by frb2_num_times, so must update the the
+    // downsampling factor accordingly
+    frb2_beams_meta->set_time_downsampling_fpga(frb1_beams_meta->get_time_downsampling_fpga()
+                                                * frb2_num_times);
 
     if (poison_buffers)
         frb2_beams_buffer.set_to_poison(0xff); // 0xffff is a NaN16
