@@ -346,6 +346,22 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_rfi_SKtilde_buffer
         file_name: rfi_SKtilde
+{% if dtv_enabled|default(false) or dtv_apply_mask|default(false) %}
+    write_dtv_mask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_dtv_mask_buffer
+        file_name: dtv_mask
+    write_dtv_powers:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_dtv_powers_buffer
+        file_name: dtv_powers
+{% endif %}
+{% if dtv_apply_mask|default(false) %}
+    write_dtv_RFImask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_dtv_RFImask_buffer
+        file_name: dtv_RFImask
+{% endif %}
     write_rfi_RFImask:
         kotekan_stage: hdf5FileWrite
         in_buf: host_rfi_RFImask_buffer
