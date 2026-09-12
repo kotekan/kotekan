@@ -106,6 +106,15 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * unbiased estimate of inverse variance. The mean is V = sum_accepted corr / N, and the
  * output conjugates the lower-triangular input into upper-triangular order.
  *
+ * INPUT CHECKS
+ *
+ * The five input streams must carry the same coarse frequencies and the same correlation
+ * period, which must equal sub_integration_ntime, and the frequency order must not change.
+ * Correlation frames must be consecutive and start on a frame boundary. Within each
+ * subintegration and frequency, lower-triangular counts must be equal and between zero and
+ * sub_integration_ntime (the redundant upper entries in diagonal tiles are ignored);
+ * packet_loss_is_scalar: false is not supported.
+ *
  * TODO:    - radiometer_chi2
  *
  * num_integrations := samples_per_dataset / sub_integration_ntime
@@ -148,8 +157,9 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * @conf    packet_loss_is_scalar           bool    Whether the packet loss (ie. the counts
  *                                          matrix) is a scalar in dish element or not.  If so,
  *                                          all baselines use the same value from `counts`, the
- *                                          first element in the buffer. The `false` case has
- *                                          not been implemented.
+ *                                          first element in the buffer. Lower-triangular counts
+ *                                          must be equal and in range. The `false` case is not
+ *                                          implemented.
  * @conf    samples_per_data_set            int64_t Total number of time samples covered by each
  *                                          input frame. nt_outer in n2k.
  * @conf    sub_integration_ntime           int64_t Number of time samples integrated in each
@@ -255,6 +265,7 @@ private:
     const int64_t _n_fpga_samples_per_n2k_frame;
     const int64_t _n_fpga_samples_per_n2k_correlation;
     int64_t _n_integrations_per_n2k_frame;
+    std::vector<int> _coarse_freq_order; ///< Frequency order; must remain fixed
 
     const int64_t _num_polarizations; ///< Total number of telescope elements (~2 * num dishes)
     const int64_t _num_dishes;        ///< Total number of telescope elements (~2 * num dishes)
