@@ -49,6 +49,7 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     rfi_frame_excision_num = fmt->rfi_frame_excision_num;
     rfi_frame_excision_threshold = fmt->rfi_frame_excision_threshold;
     rfi_frame_excision_fraction = fmt->rfi_frame_excision_fraction;
+    dataset_id = fmt->dataset_id;
 
     return sizeof(N2MetadataFormat);
 }
@@ -81,6 +82,7 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->rfi_frame_excision_num = rfi_frame_excision_num;
     fmt->rfi_frame_excision_threshold = rfi_frame_excision_threshold;
     fmt->rfi_frame_excision_fraction = rfi_frame_excision_fraction;
+    fmt->dataset_id = dataset_id;
 
     return sizeof(N2MetadataFormat);
 }
@@ -139,6 +141,7 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("rfi_frame_excision_num", m.rfi_frame_excision_num);
     j.emplace("rfi_frame_excision_threshold", m.rfi_frame_excision_threshold);
     j.emplace("rfi_frame_excision_fraction", m.rfi_frame_excision_fraction);
+    j.emplace("dataset_id", m.dataset_id);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -166,4 +169,6 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.rfi_frame_excision_num = j.at("rfi_frame_excision_num");
     m.rfi_frame_excision_threshold = j.at("rfi_frame_excision_threshold");
     m.rfi_frame_excision_fraction = j.at("rfi_frame_excision_fraction");
+    // Older JSON may omit dataset_id.
+    m.dataset_id = j.value("dataset_id", dset_id_t::null);
 }

@@ -110,10 +110,23 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *
  * The five input streams must carry the same coarse frequencies and the same correlation
  * period, which must equal sub_integration_ntime, and the frequency order must not change.
- * Correlation frames must be consecutive and start on a frame boundary. Within each
- * subintegration and frequency, lower-triangular counts must be equal and between zero and
- * sub_integration_ntime (the redundant upper entries in diagonal tiles are ignored);
- * packet_loss_is_scalar: false is not supported.
+ * Correlation frames must be consecutive and start on a frame boundary. Counts must be
+ * between zero and sub_integration_ntime (the redundant upper entries in diagonal tiles are
+ * ignored). In the default scalar mode, counts must also be equal across products within each
+ * subintegration and frequency. Unequal counts require packet_loss_is_scalar: false,
+ * variance_mode: EvenOddPosDef, and an output descriptor with support_mode: per_product_v1.
+ * Debug accumulation is not supported in that mode.
+ *
+ * In native [polarization, dish] order, packet-loss groups hold eight adjacent dishes within
+ * one polarization. For lower-triangular product (i,j) with g_i=i/8, g_j=j/8, b_i=g_i/8 and
+ * b_j=g_j/8, the native count offset is 64*(b_i*(b_i+1)/2 + b_j) + 8*(g_i%8) + g_j%8; the
+ * correlation offset uses block size 16. Only lower-triangular entries are used, and without
+ * reordering the output upper-triangular product (j,i) stores the conjugate.
+ *
+ * Per-product frames append uint64 valid_fpga_ticks[num_products] in descriptor product order,
+ * bounded by the frame interval. The scalar valid, packet-loss, RFI and RFI-only counters are
+ * zeroed to mark them unavailable, and scalar loss-fraction metrics are omitted; incoming
+ * scalar diagnostic counts are still checked for synchronisation and range.
  *
  * TODO:    - radiometer_chi2
  *
@@ -158,8 +171,9 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          matrix) is a scalar in dish element or not.  If so,
  *                                          all baselines use the same value from `counts`, the
  *                                          first element in the buffer. Lower-triangular counts
- *                                          must be equal and in range. The `false` case is not
- *                                          implemented.
+ *                                          must be equal and in range. The `false` case requires
+ *                                          per_product_v1 output. Scalar loss counts are checked
+ *                                          but cannot give per-product loss reasons.
  * @conf    samples_per_data_set            int64_t Total number of time samples covered by each
  *                                          input frame. nt_outer in n2k.
  * @conf    sub_integration_ntime           int64_t Number of time samples integrated in each
@@ -296,6 +310,16 @@ private:
     int64_t _n2k_counts_lin_blocks;   ///< Linear number of blocks in the counts matrix
     int64_t _n2k_counts_num_blocks;   ///< Total number of blocks in the counts matrix
     int64_t _n2k_counts_num_products; ///< Total number of products in n2k's counts matrix
+
+    // Per-product accumulators use native blocked product order.
+    std::vector<std::complex<double>> _product_sum;
+    std::vector<double> _product_q;
+    std::vector<uint64_t> _product_n, _product_k;
+    void accum_per_product(int64_t f, const int32_t* corr0, const int32_t* corr1,
+                           const int32_t* counts0, const int32_t* counts1, double freq_MHz,
+                           EOP& target, EOP& eop0, EOP& eop1,
+                           std::vector<std::complex<float>>& phase0,
+                           std::vector<std::complex<float>>& phase1);
 
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
