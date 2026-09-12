@@ -52,6 +52,7 @@ parallel section audits that each read the tree AND the live fleet.
 | #65 | three stack scripts truncated their log on start | `f6f7afd61` | rotate-then-start in `agg_up.sh`/`gather_up.sh`/`broker_restart.sh`, 3 rotations kept; verified in tree at `agg_up.sh:70-77` |
 | #128 origin | the acquire refine test was red, and had been since #105 | see the #54 section | the test gridded Doppler at 0.1 bin, outside the estimator's domain; bin-spaced now, refine recovers 0.294 of a true 0.300 bin |
 | #128 | the Doppler refine's bin precondition was enforced on one path of two | see the #54 section | guard hoisted out of the `_cuda_acq` branch so the CPU path warns too; generator emits the bin-aligned 62.5 Hz unconditionally |
+| #93 / GAP 3 | carrier-aided code loop: is there an aiding target at all | closed by measurement | 24 h × 8 chains, 7013 window-sat pairs: at the 0.06 chips/min that motivated it the aiding gain is **−0.062, 95% CI [−0.209, +0.063]** against the ±1 physics requires |
 | #116 | the observables writers never rolled the UTC day | `461eb8ce0` | **deployed and verified on sky**: `gps_l5_20260910.jsonl` ends at Sep 11 00:00:00 and `_20260911.jsonl` takes over; 8 tests, 6 of which fail against the old writer |
 | #117 | cross-chain grid pairing yielded 40%, and the loss was sampling | see below | `GRID_KEEP=4` snapshots published as `fadr_g_hist` and consumed by `gnss_tec_chord.py`; 7 tests, and **verified on sky**: per-chain coverage 50.0% → 99.8%, pair coverage 8.1% → 99.6% |
 | #118 | `dop_rate_rejected` was never cleared | — | one line, mirroring `cp_rate_rejected`. **Verified live**: rejections-per-cycle now bounded and fluctuating (1–7, up and down) with fresh values each cycle, where the bug could only grow |
@@ -292,6 +293,66 @@ it is 99.6% regardless.
 ⚠️ `gnss_tec_chord.py` completes its science and writes the `.npz`, then dies on
 `import matplotlib` — not installed in cf06's `venv-ft`. Plot-only, pre-existing, harmless to the
 measurement, but it means the tool cannot draw on cf06.
+
+
+## #93 / GAP 3 — closed on the disturbed regime, with the lever checked (2026-09-12)
+
+#93 named its own closing condition: *"the honest test is the first DISTURBED window, not calm
+data: re-run the same statistic there, and if it holds, close GAP 3 as 'no aid available' rather
+than 'not yet tried'."* The 2026-09-10 soak is the first dataset with the power to do it — a
+genuine **24.00 h, 591k rows/chain at 6.8 rows/s**, against the 475 shadow lines the previous
+verdict rested on. Pre-registered in `fixtures/expectations_20260912_gap3_disturbed.txt`;
+tools `fixtures/gap3_regimes.py` and `fixtures/gap3_pooled.py`, statistic and gates unchanged
+from `fadr_gap3_shadow2.py`.
+
+**THE ANSWER: no aid available.** Pooling all eight chains (legitimate once code rate is divided
+by `k = f_chip/f_c`, which makes the physics chain-independent), and reporting the **slope —
+which IS the aiding gain GAP 3 would deliver** — not merely `r`:
+
+| regime | n | aiding gain | 95% CI (bootstrap) | |
+|---|---|---|---|---|
+| ramps 0.02–0.2 chips/min | 438 | **−0.041** | [−0.105, +0.017] | excludes ±1 |
+| ramps ≥ **0.06** chips/min (the motive) | 57 | **−0.062** | [−0.209, +0.063] | excludes ±1 |
+| all pairs | 7013 | −2.480 | [−6.15, −0.391] | **underpowered** |
+
+⚠️ **THE SENSITIVITY CHECK IS THE RESULT, NOT A FOOTNOTE.** A null is worthless without its own
+lever ([[a-null-result-needs-its-lever-checked]]). Here the CI excludes ±1 by ~10× in the ramp
+band and ~5× at the motivating level: the test demonstrably *could* have seen a physical coupling
+and did not. The aid is bounded to **≤10% of the ramp** over the ramp band.
+
+⚠️ **P3's escape hatch does not apply.** The worry was that a null might just mean the day was
+calm. It was not: **57 pooled pairs sit at or above the 0.06 chips/min that motivated GAP 3**,
+inside the clean ramp band. The phenomenon is present and the coupling is still absent.
+
+**THE ONE "SIGNIFICANT" RESULT IS THE TRAP.** All-pairs gives r = −0.068 at p = 0.024 — and a
+slope of −2.48 with a CI from −6.1 to −0.4, which distinguishes nothing. It is driven entirely by
+a pathological tail: `|code rate|` reaches **242 chips/min** on gps_l5 (a 600 s window at that
+rate is 2425 chips of motion — a slip or reacquisition, not a ramp). The 45 pooled pairs above
+1 chips/min carry a slope of −44. **Any un-banded version of this statistic measures slips.**
+
+**gps_l5's exception is confirmed as the documented artefact, and now quantified.** #93 warned
+its r = −0.417 was "manufactured by slew transfer (its seed absorbs trim content every ~600 s)".
+Sweeping the fitting window shows exactly that — and the control shows it is specific to gps_l5:
+
+| W | gps_l5 r (slope/k) | gal_e5a r (slope/k) |
+|---|---|---|
+| 300 s | **+0.026** (+3.10) | −0.034 (−0.35) |
+| 600 s | −0.118 (−6.99) | −0.005 (−0.03) |
+| 900 s | −0.112 (−2.41) | −0.028 (−0.07) |
+| 1200 s | **−0.501** (−21.05) | −0.077 (−0.19) |
+
+gps_l5's sign flips and its magnitude swings 20× with the analysis window; gal_e5a is stable and
+null throughout. A real per-satellite physical coupling cannot do that. Band-limiting to ramps
+collapses gps_l5's slope/k from −6.99 to −0.04 and its p from 0.027 to 0.349.
+
+**Per-chain, W = 600 s, ramp band.** One nominally significant result — gal_e5b, r = +0.257 at
+p = 0.035 — with `slope/k = +0.10`, a tenth of physics, and it is one of 16 tests (8 chains × 2
+cuts), where ~0.8 hits below p = 0.05 are expected by chance. Not evidence.
+
+**What would reopen it.** This is one day of *ordinary* operation, ramp tail included. An
+extreme plant episode (an E3-style event) is not in it, and the bound above does not speak to
+one. But the burden has moved: GAP 3 is closed unless such an episode is caught and shows a
+coupling at physics strength.
 
 
 ## Faults still worth reading in full

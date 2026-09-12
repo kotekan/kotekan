@@ -386,20 +386,6 @@ clean detections. The command side is fixed (the label is now a fleet consensus,
 satellite moves its own seed) and the node-side consensus cut the ±1 class, but not ±3/±6.
 **Next: the per-detection `(nh, cp_long, snr)` stream against injection.** A node-side dig.
 
-### #93 / GAP 3 — the aiding target has largely evaporated
-**[live, computed from 475 shadow lines this run]** de-meaned per poll per chain, the correlation
-between the carrier rate and the trim slope is ~0 on seven of eight chains (r −0.05…+0.06), and
-the trim ramps themselves are now **0.001–0.01 chips/min against the 0.06 chips/min that
-motivated GAP 3** — 6–60× smaller. The one exception, gps_l5 at r = −0.417, is manufactured by
-slew transfer (its seed absorbs trim content every ~600 s) and must not be read as divergence.
-The carrier observable GAP 3 was blocked on now exists and is clean (single-difference Allan
-deviation ~1 mHz at 256 s). **So the honest test is the first DISTURBED window, not calm data:
-re-run the same statistic there, and if it holds, close GAP 3 as "no aid available" rather than
-"not yet tried".** ⚠️ 598 s windows sampled at 60 s give ~6 independent samples per satellite per
-hour, not the raw pair count.
-
----
-
 ## Open — blocked upstream
 
 ### #107 residual — the last publish-then-mutate sites
