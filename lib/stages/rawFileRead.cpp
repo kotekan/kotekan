@@ -10,11 +10,11 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <assert.h>   // for assert
 #include <chrono>     // for microseconds
-#include <cstdio>     // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
+#include <cstdio>     // for fread, snprintf, fclose, fopen, fseeko, ftello, FILE
 #include <errno.h>    // for errno
 #include <functional> // for bind, function
+#include <limits>
 #include <memory>     // for __shared_ptr_access, shared_ptr
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
@@ -96,12 +96,18 @@ void rawFileRead::main_thread() {
 
         FILE* fp = fopen(full_path, "rb");
         uint32_t metadata_size = 0;
-        uint32_t fileSize, num_frames_per_file;
-
-        // Work out the file size, metadata size and no. of frames per file.
-        fseek(fp, 0, SEEK_END);
-        fileSize = ftell(fp);
-        rewind(fp);
+        if (!fp)
+            FATAL_ERROR("rawFileRead: cannot open {}: {}", full_path, strerror(errno));
+        if (fseeko(fp, 0, SEEK_END) != 0)
+            FATAL_ERROR("rawFileRead: cannot seek {}", full_path);
+        const auto end_offset = ftello(fp);
+        if (end_offset < 0)
+            FATAL_ERROR("rawFileRead: cannot determine file size for {}", full_path);
+        if (static_cast<uint64_t>(end_offset) < sizeof(uint32_t))
+            FATAL_ERROR("rawFileRead: missing size header in {}", full_path);
+        const uint64_t fileSize = static_cast<uint64_t>(end_offset);
+        if (fseeko(fp, 0, SEEK_SET) != 0)
+            FATAL_ERROR("rawFileRead: cannot rewind {}", full_path);
 
         if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
             ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
@@ -109,12 +115,32 @@ void rawFileRead::main_thread() {
             break;
         }
 
-        num_frames_per_file = fileSize / (metadata_size + buf->frame_size);
+        // Each rawFileWrite record includes its own metadata-size header.
+        if (buf->frame_size == 0
+            || uint64_t(buf->frame_size)
+                   > std::numeric_limits<uint64_t>::max() - sizeof(uint32_t) - metadata_size)
+            FATAL_ERROR("rawFileRead: invalid configured frame size");
+        const uint64_t record_size = sizeof(uint32_t) + uint64_t(metadata_size) + buf->frame_size;
+        if (fileSize % record_size)
+            FATAL_ERROR("rawFileRead: raw file payload does not contain whole frames for the "
+                        "configured descriptor: {}",
+                        full_path);
+        if (buf->buffer_type == "N2" && metadata_size == 0)
+            FATAL_ERROR("rawFileRead: N2 frames require metadata");
+        const uint64_t num_frames_per_file = fileSize / record_size;
+        if (fseeko(fp, 0, SEEK_SET) != 0)
+            FATAL_ERROR("rawFileRead: cannot rewind {}", full_path);
 
         INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
 
         // Read each frame from the file and copy into the buffer.
-        for (uint32_t i = 0; i < num_frames_per_file; i++) {
+        for (uint64_t i = 0; i < num_frames_per_file; i++) {
+            uint32_t record_metadata_size = 0;
+            if (fread(&record_metadata_size, sizeof(record_metadata_size), 1, fp) != 1)
+                FATAL_ERROR("rawFileRead: cannot read record metadata-size header in {}",
+                            full_path);
+            if (record_metadata_size != metadata_size)
+                FATAL_ERROR("rawFileRead: metadata size changed between records in {}", full_path);
 
             // Get an empty buffer to write into
             frame = buf->wait_for_empty_frame(unique_name, frame_id);
@@ -125,7 +151,9 @@ void rawFileRead::main_thread() {
             if (metadata_size != 0) {
                 buf->allocate_new_metadata_object(frame_id);
                 auto meta = buf->get_metadata(frame_id);
-                assert(metadata_size == meta->get_serialized_size());
+                if (metadata_size != meta->get_serialized_size())
+                    FATAL_ERROR(
+                        "rawFileRead: serialized metadata size does not match configured type");
                 char meta_buf[metadata_size];
                 if (fread(meta_buf, metadata_size, 1, fp) != 1) {
                     ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
