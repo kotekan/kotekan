@@ -96,11 +96,14 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * changes. A bias correction is applied, however, it is not guaranteed the resulting variance value
  * is positive definite.
  *
- * The "EvenOddPosDef" estimator differences normalized visibility samples and accounts for the
- * number of samples in each. It produces an unbiased estimate of the variance and is positive
- * definite, it only produces 0 if the visibilities in each pair are identical or there are no
- * samples in the accumulation bin. On Gaussian data it has the same variance as the CHIMEv1
- * estimator.
+ * The "EvenOddPosDef" estimator sums Q_pair = n0*n1/(n0+n1) * |corr1/n1-corr0/n0|^2
+ * over accepted pairs with samples in both frames. With k such pairs and N accepted samples,
+ * the weight is N*k/Q. A pair with samples in only one frame contributes to the mean, but
+ * not Q or k. The weight is zero if N, k or Q is zero, or if Q or the weight is nonfinite.
+ * Q/(k*N) estimates the variance of the mean for independent sample errors with a common
+ * variance and equal expected visibility within each pair after fringestopping. Masking
+ * based on the data can break these assumptions. Taking its reciprocal does not give an
+ * unbiased estimate of inverse variance.
  *
  * TODO:    - radiometer_chi2
  *
@@ -287,8 +290,9 @@ private:
     std::vector<int32_t> _vis;
     std::vector<float> _var;
     // number of fpga samples, per frequency, in frame
-    std::vector<int32_t> _n_valid_fpga_samples_in_vis;
+    std::vector<int64_t> _n_valid_fpga_samples_in_vis;
     std::vector<float> _n_valid_sample_diff_sq_sum;
+    std::vector<int64_t> _n_usable_variance_pairs; ///< Accepted pairs with samples in both frames
     std::vector<uint64_t> _n_rfi_samples_in_vis;
     std::vector<uint64_t> _n_pl_samples_in_vis;
     int64_t _vis_samples_in_out_frame;
