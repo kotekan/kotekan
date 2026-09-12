@@ -958,6 +958,7 @@ def expected_accum(
     accum_var_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
     accum_bias_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
     accum_count = np.zeros(count_shape, dtype=np.int32)
+    accum_usable_pairs = np.zeros(count_shape, dtype=np.int64)
     accum_plcount = np.zeros(count_shape, dtype=np.int32)
     accum_rficount = np.zeros(count_shape, dtype=np.int32)
     accum_n2 = np.zeros((num_accum, num_freq, num_n2_prod), dtype=np.complex128)
@@ -989,6 +990,7 @@ def expected_accum(
             # apply the RFI frame mask and accumulate!
             accum_corr[i] += corr_mask * (corr1 + corr2)
             accum_count[i] += mask * (N1 + N2)
+            accum_usable_pairs[i] += (mask != 0) & (N1 > 0) & (N2 > 0)
             # Packet loss is accumulated regardless of the rfi frame mask
             accum_plcount[i] += (
                 plcount_data[tf1].data[tc1] + plcount_data[tf2].data[tc2]
@@ -1017,7 +1019,8 @@ def expected_accum(
             # Accumulate the EvenOddPosDef variance. Less worried about replicating truncation here.
             inv_N1 = safe_invert(N1, float)
             inv_N2 = safe_invert(N2, float)
-            inv_var = N1 * N2 * safe_invert(N1 + N2)  # Must be 0 if N1 or N2 are.
+            # Convert before multiplying to avoid int32 overflow.
+            inv_var = N1.astype(float) * N2 * safe_invert(N1.astype(float) + N2)
             vis1 = corr1 * inv_N1[:, None, None, None, None]
             vis2 = corr2 * inv_N2[:, None, None, None, None]
             dvis = vis2 - vis1
@@ -1042,8 +1045,9 @@ def expected_accum(
             ] * (inv_N_32 ** 2)
 
             # compute final EvenOddPosDef var
-            M = len(accum["sub_idx"])
-            norm = 2 * inv_N / M
+            # Normalize by pairs that contributed to the variance estimate.
+            usable_pairs = accum_usable_pairs[i, f]
+            norm = inv_N / usable_pairs if usable_pairs > 0 else 0.0
             accum_n2_var_pos[i, f, :] = (
                 accum_var[i, f, corr_idx_b, corr_idx_i, corr_idx_j] * norm
             )
