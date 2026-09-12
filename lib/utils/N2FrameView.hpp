@@ -43,6 +43,7 @@ public:
 
     /// Layout of the visibility matrix
     const N2Layout n2_layout;
+    const kotekan::N2SupportMode support_mode;
     /// Number of elements for data in buffer
     const uint32_t num_elements;
     /// Number of products for data in buffer
@@ -121,6 +122,8 @@ public:
     /// writes it but N2Accumulate's fill of 255, no consumer interprets it, and
     /// no convention has been settled for it. Bad feeds live in `flags`.
     const gsl_lite::span<uint8_t> mask;
+    /// Valid FPGA ticks in descriptor product order; empty in scalar mode.
+    const gsl_lite::span<uint64_t> valid_fpga_ticks;
 
     /**
      * @brief Create view without modifying layout.
@@ -129,8 +132,9 @@ public:
      *
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
+     * @param allow_per_product Set only when the consumer handles per-product counts.
      */
-    N2FrameView(Buffer* buf, int frame_id);
+    N2FrameView(Buffer* buf, int frame_id, bool allow_per_product = false);
 
     size_t data_size() const override;
     void zero_frame() override;
@@ -150,19 +154,20 @@ public:
      * @param frame_id_src   The buffer location to copy from.
      * @param buf_dest       The buffer to copy into.
      * @param frame_id_dest  The buffer location to copy into.
+     * @param allow_per_product Allow per-product frames with matching descriptors.
      *
      * @returns An N2FrameView of the copied frame.
      *
      **/
     static N2FrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
-                                  int frame_id_dest);
+                                  int frame_id_dest, bool allow_per_product = false);
 
     /**
      * @brief Copy over the data, skipping specified members.
      *
      * This routine copys member by member and the structural parameters of the
      * buffer only need to match for the members actually being copied. If they
-     * don't match an exception is thrown.
+     * don't match an exception is thrown. Per-product frames require identical descriptors.
      *
      * @note To copy the whole frame it is more efficient to use the copying
      * constructor.

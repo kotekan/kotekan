@@ -91,6 +91,8 @@ public:
     const int baseband_gain_update_idx; // update_time index (-1 = latest)
     const std::string partial_filepath; // working on-disk location
     const N2Layout n2_layout;           // visibility (N2) layout
+    const kotekan::N2SupportMode support_mode;      // scalar or per-product counts
+    const std::vector<N2::prod_ctype> product_list; // product order stored in the file
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
@@ -100,22 +102,23 @@ public:
 protected:
     // Datasets to be stored until ready to write
     // f = freq, p = prod, e = eigen, i = input, t = time, k = threshold, pp = pol_prod
-    std::vector<N2::cfloat> vis;               // (f, p, t)
-    std::vector<float> vis_weight;             // (f, p, t)
-    std::vector<float> eval;                   // (f, e, t)
-    std::vector<N2::cfloat> evec;              // (f, e, i, t)
-    std::vector<float> erms;                   // (f, t)
-    std::vector<N2::cfloat> gain;              // (f, i, t)
-    std::vector<uint64_t> valid_fpga_count;    // (f, t)
-    std::vector<uint64_t> rfi_fpga_count;      // (f, t)
-    std::vector<uint64_t> rfi_only_fpga_count; // (f, t)
-    std::vector<uint64_t> pl_fpga_count;       // (f, t)
-    std::vector<float> frac_lost;              // (f, t) ; uses n_valid_fpga_ticks
-    std::vector<float> frac_rfi;               // (f, t) ; uses n_rfi_fpga_ticks
-    std::vector<float> frac_rfi_only;          // (f, t) ; uses n_rfi_only_fpga_ticks
-    std::vector<float> frac_pl;                // (f, t) ; uses n_pl_fpga_ticks
-    std::vector<float> flags;                  // (f, i, t)
-    std::vector<float> radiometer_chi2;        // (f, t, pp)
+    std::vector<N2::cfloat> vis;                        // (f, p, t)
+    std::vector<float> vis_weight;                      // (f, p, t)
+    std::vector<float> eval;                            // (f, e, t)
+    std::vector<N2::cfloat> evec;                       // (f, e, i, t)
+    std::vector<float> erms;                            // (f, t)
+    std::vector<N2::cfloat> gain;                       // (f, i, t)
+    std::vector<uint64_t> valid_fpga_count_per_product; // (f, p, t), per_product_v1 only
+    std::vector<uint64_t> valid_fpga_count;             // (f, t), scalar only
+    std::vector<uint64_t> rfi_fpga_count;               // (f, t)
+    std::vector<uint64_t> rfi_only_fpga_count;          // (f, t)
+    std::vector<uint64_t> pl_fpga_count;                // (f, t)
+    std::vector<float> frac_lost;                       // (f, t) ; uses n_valid_fpga_ticks
+    std::vector<float> frac_rfi;                        // (f, t) ; uses n_rfi_fpga_ticks
+    std::vector<float> frac_rfi_only;                   // (f, t) ; uses n_rfi_only_fpga_ticks
+    std::vector<float> frac_pl;                         // (f, t) ; uses n_pl_fpga_ticks
+    std::vector<float> flags;                           // (f, i, t)
+    std::vector<float> radiometer_chi2;                 // (f, t, pp)
 
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;           // (t)
@@ -297,6 +300,10 @@ public:
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
  * @conf max_frames               Int. Stop writing after this many frames (-1 = unlimited).
  * @conf input_order              ElementOrder. The element order of input buffer.
+ * @conf support_mode             String. "scalar" (default) or "per_product_v1". Must match
+ *                                the input descriptor. Per-product mode writes CHORD_0.1 files
+ *                                with uint64 valid_fpga_count_per_product in visibility order.
+ *                                Scalar count and loss-fraction datasets are omitted in this mode.
  *
  * @par Metrics
  * @metric kotekan_hdf5N2Write_write_time_seconds        Duration to write the last flush
@@ -371,6 +378,7 @@ private:
         _late_frame_grace_seconds;   /// Grace period in seconds for late frames (default: 60)
     const int _max_frames;           /// Stop writing after this many frames (-1 = unlimited)
     const ElementOrder _input_order; /// The element ordering in input buffers.
+    const std::string _support_mode; /// Count format expected from the input.
 
     Buffer* const _buffer;
 

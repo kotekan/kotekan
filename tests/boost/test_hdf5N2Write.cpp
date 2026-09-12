@@ -535,6 +535,264 @@ struct TelescopeFixture {
 
 BOOST_TEST_GLOBAL_FIXTURE(TelescopeFixture);
 
+// Use large, nonuniform counts that would lose precision in float32.
+// Include a supported visibility with zero weight.
+static uint64_t product_support(size_t f, size_t p, size_t t) {
+    if (p == 0)
+        return 0;
+    return (uint64_t(1) << 40) + 17 * f + 31 * p + 7 * t;
+}
+
+static void fill_product_support_frame(Buffer* buf, int frame_id, size_t f, size_t t) {
+    buf->allocate_new_metadata_object(frame_id);
+    auto meta = get_N2_metadata(buf, frame_id);
+    meta->freq_id = get_abs_freq_id(f);
+    meta->abs_time_idx = t;
+    meta->fpga_start_tick = 100 + t * (uint64_t(1) << 42);
+    meta->frame_length_fpga_ticks = uint64_t(1) << 42;
+    meta->frame_start_time_ns = 1'000'000'000 + t * 1'000'000;
+    meta->n_valid_fpga_ticks = 0;
+    meta->n_pl_fpga_ticks = 0;
+    meta->n_rfi_fpga_ticks = 0;
+    meta->n_rfi_only_fpga_ticks = 0;
+    meta->bin_eop.ERA_deg = 10.0 + t;
+    meta->time_center_eop.ERA_deg = 10.0 + t;
+    meta->bin_start_ERA_deg = 10.0 + t;
+    meta->bin_end_ERA_deg = 10.5 + t;
+    N2FrameView fv(buf, frame_id, true);
+    fv.zero_frame();
+    for (size_t p = 0; p < fv.num_prod; ++p) {
+        fv.valid_fpga_ticks[p] = product_support(f, p, t);
+        fv.vis[p] =
+            p == 0 ? N2::cfloat(0, 0) : N2::cfloat(float(100 * f + 10 * p + t), -float(2 * p + t));
+        fv.weight[p] = p <= 1 ? 0.0f : float(20 * f + p + 2 * t);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_file_roundtrip_chord_and_chime) {
+    using kotekan::N2SupportMode;
+    const size_t ni = 3, ne = 1, np = N2FrameDesc::get_num_prod(ni, N2Layout::FullUpperTri);
+    const auto mode = N2SupportMode::PerProductV1;
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "product_pool", "N2Metadata");
+    Buffer buf(2, N2FrameDesc::calculate_frame_size(ni, ne, np, mode), pool, "product_buf", "N2", 0,
+               false, false, std::vector<int>{}, true);
+    buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(ni, ne, np, N2Layout::FullUpperTri,
+                                                        std::vector<N2::prod_ctype>{}, mode));
+    for (const auto file_mode : {N2FileData::CHORD, N2FileData::CHIME}) {
+        const std::string base = file_mode == N2FileData::CHORD ? "product_chord" : "product_chime";
+        const std::string prefix = file_mode == N2FileData::CHORD ? "" : "/flags";
+        rm_tree_if_exists(base);
+        ensure_directory(base);
+        ensure_directory(base + "/.partial");
+        fill_product_support_frame(&buf, 0, 0, 2);
+        N2FrameView initial(&buf, 0, true);
+        N2FileData data(file_mode, 3, initial, 0.0, 0, ElementOrder::CHORDBeamformer, 1, 2, 2,
+                        "none", 0, false, base, "");
+        // Reuse both ring slots, reverse time/frequency order, and leave t=1 empty.
+        int frame_id = 0;
+        for (size_t t : {size_t(2), size_t(0)}) {
+            for (size_t f : {size_t(1), size_t(0)}) {
+                fill_product_support_frame(&buf, frame_id, f, t);
+                N2FrameView fv(&buf, frame_id, true);
+                BOOST_REQUIRE(data.add_frame(fv, t) == N2FileData::AddFrameStatus::Success);
+                frame_id = 1 - frame_id;
+            }
+        }
+        BOOST_REQUIRE(data.flush_to_disk());
+        data.close();
+        {
+            File file(base + "/.partial/vis_0.h5", File::ReadOnly);
+            std::string version, support, availability, units;
+            file.getAttribute("version").read(version);
+            file.getAttribute("support_mode").read(support);
+            file.getAttribute("scalar_support_availability").read(availability);
+            BOOST_CHECK_EQUAL(availability, "unavailable");
+            file.getAttribute("loss_reason_availability").read(availability);
+            BOOST_CHECK_EQUAL(availability, "unavailable");
+            file.getAttribute("support_units").read(units);
+            BOOST_CHECK_EQUAL(version, "CHORD_0.1");
+            BOOST_CHECK_EQUAL(support, "per_product_v1");
+            BOOST_CHECK_EQUAL(units, "fpga_ticks");
+            for (const std::string name :
+                 {"valid_fpga_count", "rfi_fpga_count", "rfi_only_fpga_count", "pl_fpga_count",
+                  "frac_lost", "frac_rfi", "frac_rfi_only", "frac_pl"})
+                BOOST_CHECK(!file.exist(prefix + "/" + name));
+            auto counts_dataset = file.getDataSet(prefix + "/valid_fpga_count_per_product");
+            const auto dims = counts_dataset.getSpace().getDimensions();
+            BOOST_REQUIRE(dims == std::vector<size_t>({data.num_file_f, np, 3}));
+            BOOST_CHECK_EQUAL(counts_dataset.getDataType().getSize(), sizeof(uint64_t));
+            std::vector<std::string> axes;
+            counts_dataset.getAttribute("axis").read(axes);
+            BOOST_CHECK(axes == std::vector<std::string>({"frequency", "product", "time"}));
+            std::vector<uint64_t> counts(data.num_file_f * np * 3);
+            std::vector<N2::cfloat> vis(counts.size());
+            std::vector<float> weights(counts.size());
+            std::vector<uint8_t> added(data.num_file_f * 3);
+            counts_dataset.read_raw(counts.data());
+            file.getDataSet("/vis").read_raw(vis.data());
+            file.getDataSet(prefix + "/vis_weight").read_raw(weights.data());
+            file.getDataSet("/frames_added").read_raw(added.data());
+            for (size_t f = 0; f < data.num_file_f; ++f) {
+                for (size_t t = 0; t < 3; ++t) {
+                    const bool present = f < 2 && t != 1;
+                    BOOST_CHECK_EQUAL(added[data.idx_ft(f, t)], present ? 1 : 0);
+                    for (size_t p = 0; p < np; ++p) {
+                        const size_t i = data.idx_fpt(f, p, t);
+                        BOOST_CHECK_EQUAL(counts[i], present ? product_support(f, p, t) : 0);
+                        const auto expected_vis =
+                            present && p > 0
+                                ? N2::cfloat(float(100 * f + 10 * p + t), -float(2 * p + t))
+                                : N2::cfloat(0, 0);
+                        BOOST_CHECK(vis[i] == expected_vis);
+                        BOOST_CHECK_EQUAL(weights[i],
+                                          present && p > 1 ? float(20 * f + p + 2 * t) : 0.0f);
+                    }
+                }
+            }
+        }
+        rm_tree_if_exists(base);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_file_refuses_invalid_support_and_mode_change) {
+    using kotekan::N2SupportMode;
+    const size_t ni = 2, ne = 1, np = 3;
+    const auto mode = N2SupportMode::PerProductV1;
+    auto pool = metadataPool::create(1, sizeof(N2Metadata), "product_guard_pool", "N2Metadata");
+    Buffer buf(1, N2FrameDesc::calculate_frame_size(ni, ne, np, mode), pool, "product_guard", "N2",
+               0, false, false, std::vector<int>{}, true);
+    buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(ni, ne, np, N2Layout::FullUpperTri,
+                                                        std::vector<N2::prod_ctype>{}, mode));
+    fill_product_support_frame(&buf, 0, 0, 0);
+    N2FrameView fv(&buf, 0, true);
+    const std::string base = "product_guard_file";
+    rm_tree_if_exists(base);
+    ensure_directory(base);
+    ensure_directory(base + "/.partial");
+    TestVisFileData data(fv, 2, 0.0, 0, base, "");
+    fv.valid_fpga_ticks[1] = fv.frame_length_fpga_ticks + 1;
+    BOOST_CHECK_THROW(data.add_frame(fv, 0), std::runtime_error);
+    BOOST_CHECK_EQUAL(data.get_added_count(), 0);
+    fv.valid_fpga_ticks[1] = product_support(0, 1, 0);
+    auto meta = get_N2_metadata(&buf, 0);
+    for (auto counter : {&meta->n_valid_fpga_ticks, &meta->n_pl_fpga_ticks, &meta->n_rfi_fpga_ticks,
+                         &meta->n_rfi_only_fpga_ticks}) {
+        *counter = 1;
+        BOOST_CHECK_THROW(data.add_frame(fv, 0), std::runtime_error);
+        BOOST_CHECK_EQUAL(data.get_added_count(), 0);
+        *counter = 0;
+    }
+    auto scalar_pool =
+        metadataPool::create(1, sizeof(N2Metadata), "scalar_guard_pool", "N2Metadata");
+    Buffer scalar(1, N2FrameDesc::calculate_frame_size(ni, ne, np), scalar_pool, "scalar_guard",
+                  "N2", 0, false, false, std::vector<int>{}, true);
+    scalar.ensure_frame_desc(std::make_shared<N2FrameDesc>(ni, ne, np, N2Layout::FullUpperTri));
+    fill_n2_frame_with_abs_freq(&scalar, 0, ni, ne, 0, 0, 1'000'000'000, 100, 0);
+    N2FrameView scalar_fv(&scalar, 0);
+    BOOST_CHECK_THROW(data.add_frame(scalar_fv, 0), std::runtime_error);
+    BOOST_CHECK_EQUAL(data.get_added_count(), 0);
+    BOOST_REQUIRE(data.add_frame(fv, 0) == N2FileData::AddFrameStatus::Success);
+    BOOST_REQUIRE(data.flush_to_disk());
+    data.close();
+    rm_tree_if_exists(base);
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_subset_index_order_and_reorder_refusal) {
+    const auto mode = kotekan::N2SupportMode::PerProductV1;
+    const std::vector<N2::prod_ctype> products = {{2, 2}, {0, 2}, {1, 1}};
+    const std::vector<N2::prod_ctype> reordered = {{0, 2}, {2, 2}, {1, 1}};
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "subset_support_pool", "N2Metadata");
+    const auto size = N2FrameDesc::calculate_frame_size(3, 1, 3, mode);
+    Buffer source(1, size, pool, "subset_support", "N2", 0, false, false, std::vector<int>{}, true);
+    Buffer changed(1, size, pool, "subset_reordered", "N2", 0, false, false, std::vector<int>{},
+                   true);
+    source.ensure_frame_desc(
+        std::make_shared<N2FrameDesc>(3, 1, 3, N2Layout::GeneralSubset, products, mode));
+    changed.ensure_frame_desc(
+        std::make_shared<N2FrameDesc>(3, 1, 3, N2Layout::GeneralSubset, reordered, mode));
+    fill_product_support_frame(&source, 0, 0, 0);
+    fill_product_support_frame(&changed, 0, 1, 0);
+    N2FrameView fv(&source, 0, true), reordered_fv(&changed, 0, true);
+    const std::string base = "product_subset_order";
+    rm_tree_if_exists(base);
+    ensure_directory(base);
+    ensure_directory(base + "/.partial");
+    TestVisFileData data(fv, 1, 0.0, 0, base, "");
+    BOOST_REQUIRE(data.add_frame(fv, 0) == N2FileData::AddFrameStatus::Success);
+    BOOST_CHECK_THROW(data.add_frame(reordered_fv, 0), std::runtime_error);
+    BOOST_CHECK_EQUAL(data.get_added_count(), 1);
+    BOOST_REQUIRE(data.flush_to_disk());
+    data.close();
+    {
+        File file(base + "/.partial/vis_0.h5", File::ReadOnly);
+        std::vector<N2::prod_ctype> indices(3);
+        file.getDataSet("/index_map/prod").read_raw(indices.data());
+        std::vector<uint64_t> counts(data.num_file_f * 3);
+        file.getDataSet("/valid_fpga_count_per_product").read_raw(counts.data());
+        for (size_t p = 0; p < 3; ++p) {
+            BOOST_CHECK_EQUAL(indices[p].input_a, products[p].input_a);
+            BOOST_CHECK_EQUAL(indices[p].input_b, products[p].input_b);
+            BOOST_CHECK_EQUAL(counts[p], product_support(0, p, 0));
+        }
+        for (size_t p = 3; p < counts.size(); ++p)
+            BOOST_CHECK_EQUAL(counts[p], 0);
+    }
+    rm_tree_if_exists(base);
+}
+
+BOOST_AUTO_TEST_CASE(test_writer_per_product_explicit_mode_and_serialization) {
+    using kotekan::N2SupportMode;
+    // Reject mismatched support modes; write a file when the modes match.
+    for (int scenario = 0; scenario < 3; ++scenario) {
+        const bool per_product = scenario != 0;
+        const std::string stage_mode = scenario == 1 ? "scalar" : "per_product_v1";
+        const auto mode = per_product ? N2SupportMode::PerProductV1 : N2SupportMode::Scalar;
+        const std::string base = "product_stage_" + std::to_string(scenario);
+        const std::string stage_name = "/product_writer_" + std::to_string(scenario);
+        const std::string config_key = stage_name.substr(1);
+        rm_tree_if_exists(base);
+        auto conf = make_writer_config(stage_name, "product_stage_buf", base, "vis", false, 1);
+        auto cfg = conf.get_full_config_json();
+        cfg[config_key]["support_mode"] = stage_mode;
+        cfg[config_key]["max_frames"] = 1;
+        cfg[stage_name] = cfg[config_key];
+        conf.update_config(cfg);
+        const size_t ni = 2, ne = 1, np = 3;
+        auto pool = metadataPool::create(1, sizeof(N2Metadata), "product_stage_pool", "N2Metadata");
+        Buffer buf(1, N2FrameDesc::calculate_frame_size(ni, ne, np, mode), pool,
+                   "product_stage_buf", "N2", 0, false, false, std::vector<int>{}, true);
+        buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(ni, ne, np, N2Layout::FullUpperTri,
+                                                            std::vector<N2::prod_ctype>{}, mode));
+        buf.register_producer("product-producer");
+        kotekan::bufferContainer bc;
+        bc.add_buffer("product_stage_buf", &buf);
+        hdf5N2Write stage(conf, stage_name, bc);
+        if (per_product)
+            fill_product_support_frame(&buf, 0, 0, 0);
+        else
+            fill_n2_frame_with_abs_freq(&buf, 0, ni, ne, 0, 0, 1'000'000'000, 100, 0);
+        buf.mark_frame_full("product-producer", 0);
+        if (scenario < 2) {
+            BOOST_CHECK_THROW(stage.main_thread(), std::runtime_error);
+            BOOST_CHECK(list_h5_datasets(base).empty());
+        } else {
+            stage.main_thread();
+            auto files = list_h5_datasets(base);
+            BOOST_REQUIRE_EQUAL(files.size(), 1);
+            File file(files.front(), File::ReadOnly);
+            BOOST_CHECK(file.exist("/valid_fpga_count_per_product"));
+            BOOST_CHECK(!file.exist("/frac_lost"));
+            std::vector<uint64_t> counts(
+                Telescope::instance().cast<CHORDTelescope>().num_science_freqs() * np);
+            file.getDataSet("/valid_fpga_count_per_product").read_raw(counts.data());
+            for (size_t p = 0; p < np; ++p)
+                BOOST_CHECK_EQUAL(counts[p], product_support(0, p, 0));
+        }
+        buf.send_shutdown_signal();
+        rm_tree_if_exists(base);
+    }
+}
+
 // Test 1: Two hdf5N2Write stage blocks pointing at the same base_dir should
 // be rejected at construction. Placed before any test that calls
 // kotekan_test_logging::configure() — that helper installs a SIGTERM handler

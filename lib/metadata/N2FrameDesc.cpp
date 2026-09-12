@@ -11,11 +11,42 @@
 
 namespace kotekan {
 
+N2SupportMode n2_support_mode_from_string(const std::string& value) {
+    if (value == "scalar")
+        return N2SupportMode::Scalar;
+    if (value == "per_product_v1")
+        return N2SupportMode::PerProductV1;
+    FATAL_ERROR_NON_OO("N2FrameDesc unknown support_mode: {}", value);
+}
+
+const char* n2_support_mode_name(N2SupportMode mode) {
+    switch (mode) {
+        case N2SupportMode::Scalar:
+            return "scalar";
+        case N2SupportMode::PerProductV1:
+            return "per_product_v1";
+    }
+    FATAL_ERROR_NON_OO("N2FrameDesc invalid support mode enum");
+}
+
+
 N2FrameDesc::N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_products,
-                         N2Layout n2_layout, std::vector<N2::prod_ctype> product_list) :
+                         N2Layout n2_layout, std::vector<N2::prod_ctype> product_list,
+                         N2SupportMode support_mode) :
     num_elements(num_elements), num_ev(num_ev), num_products(num_products), n2_layout(n2_layout),
+    support_mode(support_mode),
     product_list(product_list.empty() ? generate_product_list(num_elements, n2_layout)
                                       : std::move(product_list)) {
+
+    n2_support_mode_name(support_mode); // Reject invalid enum values.
+    if (support_mode == N2SupportMode::PerProductV1 && num_products == 0)
+        FATAL_ERROR_NON_OO("N2FrameDesc per_product_v1 requires at least one product");
+
+    if (support_mode == N2SupportMode::PerProductV1 && !layout_requires_product_list(n2_layout)) {
+        const auto expected = generate_product_list(num_elements, n2_layout);
+        if (num_products != expected.size() || this->product_list != expected)
+            FATAL_ERROR_NON_OO("N2FrameDesc per_product_v1 requires canonical product count/order");
+    }
 
     // Validate product list for layouts that require it. A bad descriptor is
     // unrecoverable (frames would be mis-sized downstream), so failures are
@@ -90,7 +121,9 @@ N2FrameDesc N2FrameDesc::_from_config_impl(kotekan::Config& config, const std::s
 
     const uint32_t num_prod = get_num_prod(num_elements, n2_layout, product_list);
 
-    return N2FrameDesc(num_elements, num_ev, num_prod, n2_layout, std::move(product_list));
+    return N2FrameDesc(num_elements, num_ev, num_prod, n2_layout, std::move(product_list),
+                       n2_support_mode_from_string(
+                           config.get_default<std::string>(location, "support_mode", "scalar")));
 }
 
 Symbol N2FrameDesc::get_quantity_name() const {
@@ -107,6 +140,8 @@ nlohmann::json N2FrameDesc::to_json() const {
     // The layout is encoded by name (via its json serializer) so the wire form
     // survives any reordering of the N2Layout enum.
     j["n2_layout"] = n2_layout;
+    if (support_mode != N2SupportMode::Scalar)
+        j["support_mode"] = n2_support_mode_name(support_mode);
     // Subset layouts cannot be regenerated from num_elements alone, so send the
     // explicit product list; other layouts the receiver regenerates.
     if (layout_requires_product_list(n2_layout))
@@ -133,8 +168,9 @@ std::shared_ptr<const FrameDesc> N2FrameDesc::from_json(const nlohmann::json& j)
     // Derive num_products as the config path does; the constructor validates
     // the product list (including index bounds) and fails fatally on any problem.
     const uint32_t num_products = get_num_prod(num_elements, n2_layout, product_list);
-    return std::make_shared<N2FrameDesc>(num_elements, num_ev, num_products, n2_layout,
-                                         std::move(product_list));
+    return std::make_shared<N2FrameDesc>(
+        num_elements, num_ev, num_products, n2_layout, std::move(product_list),
+        n2_support_mode_from_string(j.value("support_mode", std::string("scalar"))));
 }
 
 bool N2FrameDesc::layout_requires_product_list(N2Layout layout) {
@@ -247,7 +283,8 @@ void N2FrameDesc::output_framedesc(std::ostream& os) const {
        << "    num_elements: " << num_elements << "\n"
        << "    num_ev:       " << num_ev << "\n"
        << "    num_products: " << num_products << "\n"
-       << "    n2_layout:    " << N2Layout_to_string(n2_layout) << "\n";
+       << "    n2_layout:    " << N2Layout_to_string(n2_layout) << "\n"
+       << "    support_mode: " << n2_support_mode_name(support_mode) << "\n";
     if (!product_list.empty()) {
         os << "    product_list: [";
         for (size_t i = 0; i < std::min(product_list.size(), size_t(5)); ++i) {
@@ -267,7 +304,8 @@ bool N2FrameDesc::operator==(const FrameDesc& other) const {
         return false;
 
     if ((num_elements != other_ptr->num_elements) || (num_ev != other_ptr->num_ev)
-        || (num_products != other_ptr->num_products) || (n2_layout != other_ptr->n2_layout))
+        || (num_products != other_ptr->num_products) || (n2_layout != other_ptr->n2_layout)
+        || support_mode != other_ptr->support_mode)
         return false;
 
     // For layouts with explicit product lists, compare the lists
@@ -279,7 +317,7 @@ bool N2FrameDesc::operator==(const FrameDesc& other) const {
 }
 
 size_t N2FrameDesc::get_byte_size() const {
-    return calculate_frame_size(num_elements, num_ev, num_products);
+    return calculate_frame_size(num_elements, num_ev, num_products, support_mode);
 }
 
 size_t N2FrameDesc::get_num_prod(uint32_t num_elements_in, N2Layout n2_layout_in,
@@ -309,7 +347,7 @@ size_t N2FrameDesc::get_num_prod(uint32_t num_elements_in, N2Layout n2_layout_in
 }
 
 n2frame_layout_t N2FrameDesc::get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in,
-                                               size_t num_prod_in) {
+                                               size_t num_prod_in, N2SupportMode mode) {
     std::vector<std::pair<N2Field, size_t>> field_sizes;
     field_sizes.push_back({N2Field::vis, sizeof(N2::cfloat) * num_prod_in});
     field_sizes.push_back({N2Field::weight, sizeof(float) * num_prod_in});
@@ -328,12 +366,20 @@ n2frame_layout_t N2FrameDesc::get_frame_layout(uint32_t num_elements_in, uint32_
         layout.fields[field.first] = {offset, offset + field.second};
         offset += field.second;
     }
+    if (mode == N2SupportMode::PerProductV1) {
+        // Align the count array without moving the existing fields.
+        offset = (offset + alignof(uint64_t) - 1) & ~(alignof(uint64_t) - 1);
+        layout.fields[N2Field::valid_fpga_ticks] = {offset,
+                                                    offset + sizeof(uint64_t) * num_prod_in};
+    } else if (mode != N2SupportMode::Scalar) {
+        FATAL_ERROR_NON_OO("N2FrameDesc invalid support mode enum");
+    }
     return layout;
 }
 
 size_t N2FrameDesc::calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in,
-                                         size_t num_prod_in) {
-    return get_frame_layout(num_elements_in, num_ev_in, num_prod_in).total_size();
+                                         size_t num_prod_in, N2SupportMode mode) {
+    return get_frame_layout(num_elements_in, num_ev_in, num_prod_in, mode).total_size();
 }
 
 } // namespace kotekan

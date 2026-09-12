@@ -52,6 +52,60 @@ Earth-Rotation-Angle (ERA) grid (``bin_in_ERA: true``, with
 ``num_bins_per_rotation`` bins per Earth rotation and bin 0 starting at
 ERA = 0 just before 2000 Jan 1 noon).
 
+Per-product counts (CHORD_0.1)
+==============================
+
+Set ``support_mode: per_product_v1`` on the writer to store separate counts
+for each visibility product. The input descriptor must use the same mode.
+These files have ``version = "CHORD_0.1"``; the default ``scalar`` mode uses
+``CHORD_0.0``, as described in the tables below. A file cannot mix modes.
+
+The new version retains the visibility, weight, product index, timing,
+configuration and ``frames_added`` datasets, and adds:
+
+.. list-table:: Per-product counts and attributes
+   :header-rows: 1
+   :widths: 30 25 45
+
+   * - Name
+     - Shape / type
+     - Meaning
+   * - ``support_mode`` attribute
+     - string
+     - ``per_product_v1``
+   * - ``scalar_support_availability`` attribute
+     - string
+     - ``unavailable``
+   * - ``loss_reason_availability`` attribute
+     - string
+     - ``unavailable``; no per-product PL/RFI split is supplied
+   * - ``support_units`` attribute
+     - string
+     - ``fpga_ticks``
+   * - ``valid_fpga_count_per_product``
+     - :math:`(N_f, N_p, N_t)`, uint64
+     - Valid FPGA ticks for each visibility product; axes
+       ``frequency, product, time``
+
+The count dataset is at the root in CHORD file mode and under ``/flags`` in
+CHIME file mode, matching the location of ``vis_weight``. Its product order
+follows ``vis`` and ``index_map/prod``. Counts cannot exceed the corresponding
+``frame_length_fpga_ticks``. A product can have a positive count and zero weight
+if there are too few usable pairs to estimate its variance.
+
+The scalar ``valid_fpga_count``, ``pl_fpga_count``, ``rfi_fpga_count``,
+``rfi_only_fpga_count``, ``frac_lost``, ``frac_pl``, ``frac_rfi`` and
+``frac_rfi_only`` datasets are omitted in CHORD_0.1. The scalar count fields in
+incoming metadata must be zero, indicating that these counts are unavailable.
+They do not indicate zero loss. Per-product counts do not separate packet
+loss from RFI rejection. RFI configuration metadata still records the detector
+settings.
+
+Missing file slots have zero counts, visibilities and weights. Check
+``frames_added(f,t)`` to distinguish a missing frame from a received frame with
+zero valid samples for a product. Readers must check the file version and
+support mode before selecting count datasets.
+
 Directory layout and file naming
 ================================
 

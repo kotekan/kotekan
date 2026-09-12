@@ -23,3 +23,12 @@ snippet.
 
 See ``tests/boost/test_hdf5N2Write.cpp`` for end-to-end expectations and file
 layout checks.
+
+Per-product counts
+==================
+
+Set ``support_mode: per_product_v1`` on both the input descriptor and writer
+to store separate counts for each visibility product. This writes ``CHORD_0.1``
+files with uint64 FPGA-tick counts. Scalar counts and loss fractions are
+unavailable in this mode and their datasets are omitted. The default ``scalar``
+mode writes ``CHORD_0.0``. See :ref:`n2_vis_file_format` for the file layout.
