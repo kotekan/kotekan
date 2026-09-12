@@ -324,11 +324,19 @@ and did not. The aid is bounded to **≤10% of the ramp** over the ramp band.
 calm. It was not: **57 pooled pairs sit at or above the 0.06 chips/min that motivated GAP 3**,
 inside the clean ramp band. The phenomenon is present and the coupling is still absent.
 
-**THE ONE "SIGNIFICANT" RESULT IS THE TRAP.** All-pairs gives r = −0.068 at p = 0.024 — and a
-slope of −2.48 with a CI from −6.1 to −0.4, which distinguishes nothing. It is driven entirely by
-a pathological tail: `|code rate|` reaches **242 chips/min** on gps_l5 (a 600 s window at that
-rate is 2425 chips of motion — a slip or reacquisition, not a ramp). The 45 pooled pairs above
-1 chips/min carry a slope of −44. **Any un-banded version of this statistic measures slips.**
+**THE ONE "SIGNIFICANT" RESULT IS THE TRAP, AND ITS CAUSE IS WORTH MORE THAN THE RESULT.**
+All-pairs gives r = −0.068 at p = 0.024 — with a slope of −2.48 whose CI runs −6.1 to −0.4 and
+distinguishes nothing. It is driven entirely by a tail reaching **242 chips/min**.
+
+⚠️ **`code_resid_m` IS WRAPPED AT ±½ CODE PERIOD, AND DIFFERENCING IT ACROSS A WRAP FABRICATES
+THE RATE.** Measured over the 24 h on gps_l5: min −5060 chips, max +5104, **span 10164 against a
+10230-chip code period (0.9936 of one period)**. The largest in-arc "excursions" are 9357–10140
+chips — i.e. exactly one wrap — and **34 of 406 carrier arcs contain one**. A first pass here
+called these slips or reacquisitions; they are not, and the distinction matters because a slip
+would be a real event while a wrap is an artefact of the observable's range. **Any `d/dt` of
+`code_resid_m` must unwrap or band-limit first.** The banded analysis above does band-limit — a
+wrap in a 600 s window implies a slope of order 10230/600 chips/s, orders outside the
+0.02–0.2 chips/min band — so the verdict is unaffected; only the un-banded row is poisoned.
 
 **gps_l5's exception is confirmed as the documented artefact, and now quantified.** #93 warned
 its r = −0.417 was "manufactured by slew transfer (its seed absorbs trim content every ~600 s)".
