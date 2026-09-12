@@ -106,6 +106,10 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * unbiased estimate of inverse variance. The mean is V = sum_accepted corr / N, and the
  * output conjugates the lower-triangular input into upper-triangular order.
  *
+ * The five input streams must agree on coarse frequencies and on the correlation period, which
+ * must equal sub_integration_ntime; correlation frames must be consecutive and start on a frame
+ * boundary; counts must lie between zero and sub_integration_ntime.
+ *
  * TODO:    - radiometer_chi2
  *
  * num_integrations := samples_per_dataset / sub_integration_ntime

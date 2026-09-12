@@ -84,7 +84,14 @@ def _reference(counts, admit, raw):
     return vis, weight, total, usable, q
 
 
-def _run_accumulation(tmpdir_factory, scale=1, period=1, subintegrations_per_frame=2):
+def _run_accumulation(
+    tmpdir_factory,
+    scale=1,
+    period=1,
+    subintegrations_per_frame=2,
+    mutation=None,
+    expect_failure=False,
+):
     subintegration = 16 * scale
     num_frames = _NUM_BINS * _SUBS_PER_BIN // subintegrations_per_frame
     first_seq = _SUBS_PER_BIN * subintegration * period
@@ -207,6 +214,10 @@ def _run_accumulation(tmpdir_factory, scale=1, period=1, subintegrations_per_fra
                 rfi[frame].data[sub, f] = first_stage_rfi[t]
                 mask[frame].data[sub, f] = admitted[t]
 
+    streams = {"corr": corr, "counts": counts, "rfi": rfi, "pl": pl, "mask": mask}
+    if mutation is not None:
+        mutation(streams, subintegration, period)
+
     work = str(tmpdir_factory.mktemp("n2-mask-normalization"))
     inputs = {}
     for name, data in (
@@ -239,8 +250,11 @@ def _run_accumulation(tmpdir_factory, scale=1, period=1, subintegrations_per_fra
         inputs,
         output,
         config,
+        expect_failure=expect_failure,
     )
     stage.run()
+    if expect_failure:
+        return stage
     actual = output.load()
     assert len(actual) == len(expected)
     keyed = {(int(v.metadata.abs_time_idx), int(v.metadata.freq_id)): v for v in actual}
@@ -297,3 +311,101 @@ def test_masked_mean_counts_and_precision(masked_accumulation, case):
         if case == "zero-pair-variance":
             assert total > 0 and usable == 4 and not np.any(q)
             assert not np.any(frame.weight)
+
+
+_REJECTIONS = (
+    ("negative-count", "N2Accumulate count out of range"),
+    ("overfull-count", "N2Accumulate count out of range"),
+    ("count-frequency-reorder", "N2Accumulate coarse-frequency mismatch"),
+    ("count-period-mismatch", "N2Accumulate time-downsampling mismatch"),
+    ("skipped-frame", "N2Accumulate nonconsecutive correlation frame"),
+    ("unaligned-frame", "N2Accumulate unaligned correlation frame"),
+    ("period-off-by-one", "differs from sub_integration_ntime"),
+    ("period-doubled-later-frame", "differs from sub_integration_ntime"),
+    ("changed-frequency-order", "N2Accumulate coarse-frequency order changed"),
+    ("period-zero", "differs from sub_integration_ntime"),
+    ("missing-count-frequency", "N2Accumulate missing coarse-frequency metadata"),
+)
+
+
+def _alter_input(streams, subintegration, period, mutation):
+    count = streams["counts"][0]
+    if mutation == "nonuniform-lower-count":
+        count.data[0, 0, 0, 7, 0] -= 1
+    elif mutation == "negative-count":
+        count.data[0, 0, 0, 7, 0] = -1
+    elif mutation == "overfull-count":
+        count.data[0, 0, 0, 7, 0] = subintegration + 1
+    elif mutation == "redundant-upper-count":
+        # Upper entries in diagonal count tiles are unused.
+        count.data[:, :, 0, 0, 7] = -123
+    elif mutation == "count-frequency-reorder":
+        count.metadata["coarse_freq"] = count.metadata["coarse_freq"][::-1].copy()
+    elif mutation == "missing-count-frequency":
+        del count.metadata["coarse_freq"]
+    elif mutation == "count-period-mismatch":
+        count.metadata["time_downsampling_fpga"] += 1
+    elif mutation == "unaligned-frame":
+        for data in streams.values():
+            for frame in data:
+                frame.metadata["fpga_seq_num"] += subintegration * period
+    elif mutation == "skipped-frame":
+        for data in streams.values():
+            for frame in data[1:]:
+                frame.metadata["fpga_seq_num"] += 2 * subintegration * period
+    elif mutation == "period-off-by-one":
+        for data in streams.values():
+            data[0].metadata["time_downsampling_fpga"] += 1
+    elif mutation == "period-zero":
+        for data in streams.values():
+            data[0].metadata["time_downsampling_fpga"] = 0
+    elif mutation == "changed-frequency-order":
+        for data in streams.values():
+            data[1].metadata["coarse_freq"] = (
+                data[1].metadata["coarse_freq"][::-1].copy()
+            )
+    elif mutation == "period-doubled-later-frame":
+        for data in streams.values():
+            data[1].metadata["time_downsampling_fpga"] *= 2
+    else:
+        raise AssertionError(f"Unknown mutation: {mutation}")
+
+
+@pytest.mark.parametrize(
+    "mutation, diagnostic", _REJECTIONS, ids=[v[0] for v in _REJECTIONS]
+)
+def test_unsupported_input_refused(tmpdir_factory, mutation, diagnostic):
+    stage = _run_accumulation(
+        tmpdir_factory,
+        mutation=lambda streams, subintegration, period: _alter_input(
+            streams, subintegration, period, mutation
+        ),
+        expect_failure=True,
+    )
+    assert stage.return_code != 0, f"Stage accepted {mutation}"
+    assert diagnostic in stage.output
+
+
+def test_unequal_counts_warn_and_continue(tmpdir_factory):
+    # Counts that differ across products are a data condition: warn once, keep the first entry.
+    stage = _run_accumulation(
+        tmpdir_factory,
+        mutation=lambda streams, subintegration, period: _alter_input(
+            streams, subintegration, period, "nonuniform-lower-count"
+        ),
+        expect_failure=True,
+    )
+    assert stage.return_code == 0, stage.output
+    assert stage.output.count("counts differ across products") == 1
+
+
+def test_redundant_upper_counts_are_ignored(tmpdir_factory):
+    result = _run_accumulation(
+        tmpdir_factory,
+        mutation=lambda streams, subintegration, period: _alter_input(
+            streams, subintegration, period, "redundant-upper-count"
+        ),
+    )
+    # Check all output values after changing the unused entries.
+    for case in _CASES:
+        test_masked_mean_counts_and_precision(result, case)
