@@ -51,7 +51,6 @@ class UpchannelizationSchedule : kotekan::kotekanLogging {
 
     ////////////////////////////////////////////////////////////////////////////////
 
-    std::vector<int> make_frequency_channels() const;
     std::map<int, int> make_frequency_channels_to_indices() const;
 
     std::vector<int> make_upchan_factors() const;
@@ -68,11 +67,13 @@ public:
     UpchannelizationSchedule& operator=(const UpchannelizationSchedule&) = delete;
     UpchannelizationSchedule& operator=(UpchannelizationSchedule&&) = delete;
 
-    UpchannelizationSchedule(kotekan::Config& config, const std::string& unique_name = "");
+    UpchannelizationSchedule(kotekan::Config& config, const std::string& unique_name,
+                             const std::vector<int>& coarse_freq);
 
     // Get the singleton instance
-    static const UpchannelizationSchedule& instance(kotekan::Config& config,
-                                                    const std::string& unique_name = "");
+    static const UpchannelizationSchedule&
+    instance(kotekan::Config& config, const std::string& unique_name = "",
+             const std::vector<int>& coarse_freq = std::vector<int>());
 
     // The coarse frequency channels handled by this X-Engine
     // instance. This maps "channel index" to "channel".
