@@ -7,8 +7,14 @@ reconcile 6 of 12 citations in the old closed index pointed at code that had mov
 address is worse than none. The full narratives, including every retired hypothesis, are in this
 file's git history (`git log -p docs/CHORD_BUGLIST.md`).
 
-Reconciled 2026-09-10 against HEAD `a5e7d686c`, 496 commits after the previous pass, by seven
-parallel section audits that each read the tree AND the live fleet.
+Reconciled 2026-09-12 against HEAD `b45949144`, 57 commits after the 2026-09-10 pass (which was
+itself 496 commits after 2026-08-22, by seven parallel section audits that each read the tree AND
+the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128.
+
+⚠️ **Three of those closed on a MEASUREMENT rather than a fix**, and their write-ups below carry
+the sensitivity as well as the result — #93 in particular is a *null*, and a null is only worth
+what its lever check is worth. Do not cite them as "no effect" without the confidence interval
+that goes with it.
 
 ---
 
@@ -144,7 +150,9 @@ indistinguishable from baseline. The fleet-wide roll at 02:02–02:10 climbed 0.
 fleet's trim state while ten combiners carry the measurement, and a fleet roll discards every
 satellite's at once and the DLL re-establishes all of them from zero.
 
-## #54 — the yardstick was the defect (2026-09-10)
+## Closed with a full write-up — the three worth reading before touching these areas
+
+### #54 — the yardstick was the defect (2026-09-10)
 
 For a month this read as "the GPU replica is wrong at 3.5% and gets worse with uptime". It was the
 **CPU reference** that was wrong. `hoprate_stream_into` and `channels()` had both had their
@@ -244,7 +252,7 @@ estimator. Both assertions are now well-conditioned: the cell error is 0.3 bin b
 and an inert refine (300 Hz) or a saturating one (200 Hz) both fail the 0.1-bin bound.
 
 
-## #117 — the grid hops were never missing, only unsampled (2026-09-11)
+### #117 — the grid hops were never missing, only unsampled (2026-09-11)
 
 The broker folds a record on every `GRID_HOPS` (96×2048 ≈ **1.0066 s**) — the epochs at which
 every chain's records carry the same hop, which is what makes two bands pair exactly. It kept
@@ -295,7 +303,7 @@ it is 99.6% regardless.
 measurement, but it means the tool cannot draw on cf06.
 
 
-## #93 / GAP 3 — closed on the disturbed regime, with the lever checked (2026-09-12)
+### #93 / GAP 3 — closed on the disturbed regime, with the lever checked (2026-09-12)
 
 #93 named its own closing condition: *"the honest test is the first DISTURBED window, not calm
 data: re-run the same statistic there, and if it holds, close GAP 3 as 'no aid available' rather

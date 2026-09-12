@@ -3,13 +3,23 @@
 What is open on the CHORD side (branch `kv/chord-gnss`). Closed items are in
 [`CHORD_BUGLIST_CLOSED.md`](CHORD_BUGLIST_CLOSED.md); their narratives are in git history.
 
-**Last reconciled: 2026-09-10 at HEAD `a5e7d686c`** — 496 commits after the 2026-08-22 pass, by
-seven parallel section audits that read the tree AND the live fleet. The previous pass could not
-reach the fleet and said so; this one could, which is why so much of it dissolved.
+**Last reconciled: 2026-09-12 at HEAD `b45949144`** — 57 commits after the 2026-09-10 pass,
+which was itself 496 commits after 2026-08-22. Closed since that pass: **#54** (the CPU reference
+quantised the code phase, then retired on an anchor-scaled tolerance), **#65**, **#93 / GAP 3**
+(no aid available, bounded by measurement), **#111**, **#116**, **#117**, **#118**, **#128**.
+Opened: **#129** (no GLONASS positions anywhere), **#130** (cx42 heap corruption).
+
+⚠️ **THE FLEET IS DOWN.** The array was handed over on 2026-09-11 21:04 and the whole GNSS stack
+is stopped (`scripts/gnss/stack_down.sh`; see [`CHORD_STACK_SHUTDOWN.md`](CHORD_STACK_SHUTDOWN.md)).
+**No `[live]` claim in this file can be re-checked until it comes back** — until then every one of
+them is effectively `[carried]`, however recently it was measured. Offline work on the archived
+soak is unaffected: `fixtures/obs/*_20260910.jsonl` is a genuine 24 h at 6.8 rows/s, and is what
+closed #93.
 
 **How to read the marks.** `[tree]` = checked against the working tree, with the check named.
-`[live]` = measured on the running fleet on 2026-09-10, with the number. `[carried]` = believed,
-not re-checked — treat as a claim. Every entry names its check or says it has none.
+`[live]` = measured on the running fleet, with the date and the number. `[bench]` / `[archive]` =
+measured offline, which still works with the fleet down. `[carried]` = believed, not re-checked —
+treat as a claim. Every entry names its check or says it has none.
 
 **This file holds only what is outstanding.** An item LEAVES it the moment it closes — it is not
 ticked off in place — and a partial result leaves too: the finding moves to
@@ -94,6 +104,14 @@ Doppler) = **21–25 minutes**. The configured tolerance accepts gaps up to 60. 
 ~1200 s, or make the unwrap gap-aware and reset instead of guessing.
 
 ### #120 — cf06 has zero systemd units; nothing survives the weekly reboot
+⚠️ **The DOWN half is now solved and the UP half is not** — `scripts/gnss/stack_down.sh` stops all
+eight components in dependency order and archives the logs first
+([`CHORD_STACK_SHUTDOWN.md`](CHORD_STACK_SHUTDOWN.md)). What is still missing is anything that
+brings them *back* unattended.
+⚠️ **Do not enable a boot-time unit while the array is handed over.** cf06 reboots ~03:03 on
+`unattended-upgrades`' own schedule, so an autostart would bring the GNSS stack up inside someone
+else's run — contending for cf06 (GPU 0 carries the aggregator and cube) and writing cube data
+through their window. Write the units by all means; arm them when the array comes back.
 **[live]** `systemctl list-units --all | grep -iE 'gnss|broker|gather|agg|viewer|kotekan'` returns
 nothing. cf06 reboots weekly and re-fired on 2026-09-05 with 10 headless hours. The exposure has
 grown from "the gather" to six manual `nohup` processes plus a cube archiver that
@@ -164,6 +182,11 @@ No core (`/var/crash` empty), and **no precedent for this signature in the archi
 compiled on cx43, so a CPU mismatch would have been the tidy explanation — but cx42, cx43, cx19
 and cx51 are all Xeon Gold 5416S with **byte-identical `/proc/cpuinfo` flag sets**. The binary is
 valid on cx42.
+
+**[live, 2026-09-11 20:34] IT DID NOT RECUR.** Restarted on the same binary, cx42 ran 24 min —
+nearly twice the 12.5 it managed before — with zero aborts, and was still clean when the fleet was
+stopped at 21:04. So this stands as a **single unexplained event**, not a reproducible fault, and
+the discriminators below are for whoever sees the second one.
 
 **What is and is not known.** The same merged source ran ~72 min on all six as `build-merge`
 (built without `ARCH=native`, `WITH_TESTS=OFF`) with no abort, and `build/` lost one node in
