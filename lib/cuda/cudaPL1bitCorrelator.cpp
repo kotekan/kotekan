@@ -10,7 +10,7 @@
 #include "cudaMemsetInt.hpp"       // for cudaMemsetInt
 #include "div.hpp"                 // for div_noremainder, num_triangle_blocks, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG, ERROR
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR, WARN
 #include "n2k/pl_kernels.hpp"      // for launch_pl_1bit_correlator
 
 #include "fmt.hpp" // for compile_string_to_view
@@ -159,6 +159,13 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     warned_about_unsupported_Sds(false)
 //
 {
+    if (num_polarizations <= 0 || num_dishes <= 0)
+        FATAL_ERROR("num_polarizations ({:d}) and num_dishes ({:d}) must be positive",
+                    num_polarizations, num_dishes);
+
+    if (num_dishes % 8 != 0)
+        FATAL_ERROR("num_dishes ({:d}) must be divisible by eight", num_dishes);
+
     pl_expanded_mask.register_consumer();
     rfi_RFImask.register_consumer();
     n2k_counts.register_producer();
@@ -278,11 +285,11 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     } else {
         if (!warned_about_unsupported_Sds) {
             // These cases are not yet implemented in n2k. Pretend that there is no packet loss.
-            ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
-                  "dishes. Pretending there was no packet loss. The n2k counts will be wrong if "
-                  "there "
-                  "was packet loss.",
-                  num_dishes);
+            WARN("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
+                 "dishes. Pretending there was no packet loss. The n2k counts will be wrong if "
+                 "there "
+                 "was packet loss.",
+                 num_dishes);
             warned_about_unsupported_Sds = true;
         }
         cudaMemsetInt(n2k_counts_memory, Nds, n2k_counts.get_ndarray().size());
